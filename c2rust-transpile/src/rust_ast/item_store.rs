@@ -50,9 +50,7 @@ impl PathedMultiImports {
     pub fn into_items(self) -> Vec<Box<Item>> {
         fn build_items((mut path, imports): (Vec<String>, MultiImport)) -> Box<Item> {
             let mut leaves = imports.leaves;
-            let attrs = imports
-                .attrs
-                .unwrap_or_else(|| mk());
+            let attrs = imports.attrs.unwrap_or_else(|| mk());
 
             if leaves.len() == 1 {
                 path.push(leaves.pop().unwrap());

@@ -1,6 +1,6 @@
 [package]
 name = "c2rust-ast-exporter"
-version = "0.15.0"
+version = "0.16.0"
 authors = [
         "The C2Rust Project Developers <c2rust@immunant.com>",
         "Eric Mertens <emertens@galois.com>",
@@ -16,13 +16,14 @@ description = "Clang AST extraction API for use in the C2Rust project"
 libc = "0.2"
 serde = "1.0"
 serde_bytes = "0.11"
-serde_cbor = "0.10"
+serde_cbor = "0.11"
 
 [build-dependencies]
-bindgen = { version = "0.53", features = ["logging"] }
-cmake = "0.1"
-clang-sys = "0.29"
-env_logger = "0.7"
+bindgen = { version = "0.59", features = ["logging"] }
+clang-sys = "1.3"
+# Pinning until https://github.com/rust-lang/cmake-rs/issues/131 is resolved
+cmake = "=0.1.45"
+env_logger = "0.9"
 
 [features]
 default = []

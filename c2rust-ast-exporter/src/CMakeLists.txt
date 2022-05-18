@@ -15,8 +15,11 @@ ExternalProject_Add(tinycbor_build
             INSTALL_DIR ${CMAKE_BINARY_DIR}
             URL ${TINYCBOR_URL}
             URL_HASH MD5=${TINYCBOR_MD5}
-            # the fd redirection here fails when the build run inside Cargo
-            CONFIGURE_COMMAND sed -i -r -e "s:'>&9':>$@:" -e "s:9>::" Makefile
+            # the fd redirection here fails when the build run inside Cargo.
+            # patch from upstream:
+            # https://github.com/intel/tinycbor/commit/6176e0a28d7c5ef3a5e9cbd02521999c412de72c
+            PATCH_COMMAND patch --forward -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/tinycbor_fix_build.patch || true
+            CONFIGURE_COMMAND ""
             BUILD_COMMAND make --quiet prefix=<INSTALL_DIR> CFLAGS=-fPIC
             INSTALL_COMMAND make --quiet prefix=<INSTALL_DIR> install            
             BUILD_IN_SOURCE 1

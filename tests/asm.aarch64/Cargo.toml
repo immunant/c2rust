@@ -1,0 +1,7 @@
+[package]
+name = "asm-tests"
+version = "0.1.0"
+
+[dependencies]
+libc = "0.2"
+c2rust-asm-casts = { path = "../../c2rust-asm-casts" }

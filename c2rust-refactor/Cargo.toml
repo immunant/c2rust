@@ -1,6 +1,6 @@
 [package]
 name = "c2rust-refactor"
-version = "0.15.0"
+version = "0.16.0"
 authors = [
   "The C2Rust Project Developers <c2rust@immunant.com>",
   "Stuart Pernsteiner <spernsteiner@galois.com>",
@@ -18,8 +18,8 @@ json = "0.12"
 libc = "0.2"
 regex = "1.1"
 ena = "0.13"
-c2rust-ast-builder = { version = "0.15.0", path = "../c2rust-ast-builder" }
-c2rust-ast-printer = { version = "0.15.0", path = "../c2rust-ast-printer" }
+c2rust-ast-builder = { version = "0.16.0", path = "../c2rust-ast-builder" }
+c2rust-ast-printer = { version = "0.16.0", path = "../c2rust-ast-printer" }
 indexmap = { version = "1.0.1", features = ["serde-1"] }
 cargo = "0.44"
 clap = {version = "2.33", features = ["yaml"]}
@@ -29,7 +29,7 @@ log = "0.4"
 rlua = "0.17"
 slotmap = {version = "0.4", features = ["unstable"]}
 derive_more = "0.99"
-c2rust-macros = { version = "0.15.0", path = "../c2rust-macros" }
+c2rust-macros = { version = "0.16.0", path = "../c2rust-macros" }
 flame = { version = "0.2.2", optional = true }
 flamer = { version = "0.4", optional = true }
 failure = "0.1"

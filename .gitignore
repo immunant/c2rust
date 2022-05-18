@@ -16,8 +16,8 @@
 .python-version
 .clangd
 # ignore Clion build dirs
-/cmake-build-debug
-/cmake-build-release
+**/cmake-build-debug
+**/cmake-build-release
 
 # xcode-project
 c2rust-ast-exporter/xcode/

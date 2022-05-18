@@ -119,6 +119,7 @@ pub struct AstContext {
     pub comments: Vec<CommentNode>,
     pub files: Vec<SrcFile>,
     pub va_list_kind: BuiltinVaListKind,
+    pub target: String,
 }
 
 pub fn expect_opt_str(val: &Value) -> Option<Option<&str>> {
@@ -160,24 +161,30 @@ pub fn process(items: Value) -> error::Result<AstContext> {
     let mut types: HashMap<u64, TypeNode> = HashMap::new();
     let mut comments: Vec<CommentNode> = vec![];
 
-    let (all_nodes, top_nodes, files, raw_comments, va_list_kind): (
+    let (all_nodes, top_nodes, files, raw_comments, va_list_kind, target): (
         Vec<VecDeque<Value>>,
         Vec<u64>,
         Vec<(String, Option<(u64, u64, u64)>)>,
         Vec<(u64, u64, u64, ByteBuf)>,
         u64,
+        String,
     ) = from_value(items)?;
 
     let va_list_kind = import_va_list_kind(va_list_kind);
 
     for (fileid, line, column, bytes) in raw_comments {
         comments.push(CommentNode {
-            loc: SrcLoc { fileid, line, column },
+            loc: SrcLoc {
+                fileid,
+                line,
+                column,
+            },
             string: String::from_utf8_lossy(&bytes).to_string(),
         })
     }
 
-    let files = files.into_iter()
+    let files = files
+        .into_iter()
         .map(|(path, loc)| {
             let path = match path.as_str() {
                 "" => None,
@@ -186,7 +193,11 @@ pub fn process(items: Value) -> error::Result<AstContext> {
             };
             SrcFile {
                 path,
-                include_loc: loc.map(|(fileid, line, column)| SrcLoc { fileid, line, column }),
+                include_loc: loc.map(|(fileid, line, column)| SrcLoc {
+                    fileid,
+                    line,
+                    column,
+                }),
             }
         })
         .collect::<Vec<_>>();
@@ -222,7 +233,8 @@ pub fn process(items: Value) -> error::Result<AstContext> {
             // entry[10]
             let macro_expansions = from_value::<Vec<u64>>(entry.pop_front().unwrap()).unwrap();
 
-            let macro_expansion_text = expect_opt_str(&entry.pop_front().unwrap()).unwrap()
+            let macro_expansion_text = expect_opt_str(&entry.pop_front().unwrap())
+                .unwrap()
                 .map(|s| s.to_string());
 
             let node = AstNode {
@@ -259,5 +271,6 @@ pub fn process(items: Value) -> error::Result<AstContext> {
         comments,
         files,
         va_list_kind,
+        target,
     })
 }

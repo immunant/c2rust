@@ -1,14 +1,17 @@
-#[macro_use(crate_version, crate_authors, load_yaml)]
+#[macro_use(crate_authors, load_yaml)]
 extern crate clap;
 use clap::{App, AppSettings, SubCommand};
+use git_testament::{git_testament, render_testament};
 use std::env;
 use std::ffi::OsStr;
 use std::process::{exit, Command};
 
+git_testament!(TESTAMENT);
+
 fn main() {
     let subcommand_yamls = [load_yaml!("transpile.yaml")];
     let matches = App::new("C2Rust")
-        .version(crate_version!())
+        .version(&*render_testament!(TESTAMENT))
         .author(crate_authors!(", "))
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .subcommands(
@@ -48,7 +51,7 @@ where
     let mut cmd_path = cmd_path.as_path().canonicalize().unwrap();
     cmd_path.pop(); // remove current executable
     cmd_path.push(format!("c2rust-{}", subcommand));
-    assert!(cmd_path.exists(), format!("{:?} is missing", cmd_path));
+    assert!(cmd_path.exists(), "{:?} is missing", cmd_path);
     exit(
         Command::new(cmd_path.into_os_string())
             .args(args)

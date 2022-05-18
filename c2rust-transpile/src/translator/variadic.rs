@@ -23,7 +23,6 @@ macro_rules! match_or {
 }
 
 impl<'c> Translation<'c> {
-
     /// Returns true iff `va_start`, `va_end`, or `va_copy` may be called on `decl_id`.
     pub fn is_va_decl(&self, decl_id: CDeclId) -> bool {
         let fn_ctx = self.function_context.borrow();
@@ -44,6 +43,21 @@ impl<'c> Translation<'c> {
             Some(va_id)
         }
 
+        // struct-based va_list (e.g. x86_64) where va_list is accessed as a struct member
+        // supporting this pattern is necessary to transpile apache httpd
+        fn match_vastart_struct_member(
+            ast_context: &TypedAstContext,
+            expr: CExprId,
+        ) -> Option<CDeclId> {
+            match_or! { [ast_context[expr].kind]
+            CExprKind::ImplicitCast(_, me, _, _, _) => me }
+            match_or! { [ast_context[me].kind]
+            CExprKind::Member(_, e, _, _, _) => e }
+            match_or! { [ast_context[e].kind]
+            CExprKind::DeclRef(_, va_id, _) => va_id }
+            Some(va_id)
+        }
+
         // char pointer-based va_list (e.g. x86)
         fn match_vastart_pointer(ast_context: &TypedAstContext, expr: CExprId) -> Option<CDeclId> {
             match_or! { [ast_context[expr].kind]
@@ -53,6 +67,7 @@ impl<'c> Translation<'c> {
 
         match_vastart_struct(&self.ast_context, expr)
             .or_else(|| match_vastart_pointer(&self.ast_context, expr))
+            .or_else(|| match_vastart_struct_member(&self.ast_context, expr))
     }
 
     pub fn match_vaend(&self, expr: CExprId) -> Option<CDeclId> {
@@ -116,43 +131,58 @@ impl<'c> Translation<'c> {
             // The current implementation of the C-variadics feature doesn't allow us to
             // return `Option<fn(...) -> _>` from `VaList::arg`, so we detect function pointers
             // and construct the corresponding unsafe type `* mut fn(...) -> _`.
-            let fn_ptr_ty : Option<Box<Type>> = {
+            let fn_ptr_ty: Option<Box<Type>> = {
                 let resolved_ctype = self.ast_context.resolve_type(ty.ctype);
                 if let CTypeKind::Pointer(p) = resolved_ctype.kind {
                     // ty is a pointer type
                     let resolved_ctype = self.ast_context.resolve_type(p.ctype);
-                    if let CTypeKind::Function(
-                                        ret,
-                                        ref params,
-                                        is_variadic,
-                                        is_noreturn, _) = resolved_ctype.kind {
+                    if let CTypeKind::Function(ret, ref params, is_variadic, is_noreturn, _) =
+                        resolved_ctype.kind
+                    {
                         // ty is a function pointer type -> build Rust unsafe function pointer type
                         let opt_ret = if is_noreturn { None } else { Some(ret) };
-                        
-                        let fn_ty = self.type_converter
-                            .borrow_mut()
-                            .convert_function(&self.ast_context, opt_ret, params, is_variadic)?;
 
-                        let m = if p.qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
+                        let fn_ty = self.type_converter.borrow_mut().convert_function(
+                            &self.ast_context,
+                            opt_ret,
+                            params,
+                            is_variadic,
+                        )?;
+
+                        let m = if p.qualifiers.is_const {
+                            Mutability::Immutable
+                        } else {
+                            Mutability::Mutable
+                        };
                         Some(mk().set_mutbl(m).ptr_ty(fn_ty))
-                    } else { None }
-                } else { None }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
             };
 
             let have_fn_ptr = fn_ptr_ty.is_some();
-            let mut arg_ty = fn_ptr_ty.unwrap_or_else(||self.convert_type(ty.ctype).unwrap());
+            let mut arg_ty = fn_ptr_ty.unwrap_or_else(|| self.convert_type(ty.ctype).unwrap());
 
             let mut real_arg_ty = None;
-            if self.ast_context.get_pointee_qual_type(ty.ctype)
-                .map_or(false, |ty| self.ast_context.is_forward_declared_type(ty.ctype))
+            if self
+                .ast_context
+                .get_pointee_qual_type(ty.ctype)
+                .map_or(false, |ty| {
+                    self.ast_context.is_forward_declared_type(ty.ctype)
+                })
             {
                 real_arg_ty = Some(arg_ty.clone());
                 arg_ty = mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_void"]));
             }
 
             val.and_then(|val| {
-                let path = mk()
-                    .path_segment_with_args(mk().ident("arg"), mk().angle_bracketed_args(vec![arg_ty]));
+                let path = mk().path_segment_with_args(
+                    mk().ident("arg"),
+                    mk().angle_bracketed_args(vec![arg_ty]),
+                );
                 let mut val = mk().method_call_expr(val, path, vec![] as Vec<Box<Expr>>);
                 if let Some(ty) = real_arg_ty {
                     val = mk().cast_expr(val, ty);

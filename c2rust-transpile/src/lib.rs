@@ -1,7 +1,3 @@
-#![feature(rustc_private)]
-#![feature(label_break_value)]
-#![feature(box_patterns)]
-
 extern crate colored;
 extern crate dtoa;
 extern crate syn;
@@ -122,9 +118,10 @@ impl TranspilerConfig {
     }
 
     fn crate_name(&self) -> String {
-        self.output_dir.as_ref().and_then(
-            |x| x.file_name().map(|x| x.to_string_lossy().into_owned())
-        ).unwrap_or_else(|| "c2rust_out".into())
+        self.output_dir
+            .as_ref()
+            .and_then(|x| x.file_name().map(|x| x.to_string_lossy().into_owned()))
+            .unwrap_or_else(|| "c2rust_out".into())
     }
 }
 
@@ -171,7 +168,11 @@ impl From<ExternCrate> for ExternCrateDetails {
 }
 
 fn char_to_ident(c: char) -> char {
-    if c.is_alphanumeric() { c } else { '_' }
+    if c.is_alphanumeric() {
+        c
+    } else {
+        '_'
+    }
 }
 
 fn str_to_ident<S: AsRef<str>>(s: S) -> String {
@@ -197,7 +198,7 @@ fn get_module_name(
     file: &Path,
     check_reserved: bool,
     keep_extension: bool,
-    full_path: bool
+    full_path: bool,
 ) -> Option<String> {
     let is_rs = file.extension().map(|ext| ext == "rs").unwrap_or(false);
     let fname = if is_rs {
@@ -239,7 +240,8 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     let build_dir = get_build_dir(&tcfg, cc_db);
     for lcmd in &lcmds {
         let cmds = &lcmd.cmd_inputs;
-        let lcmd_name = lcmd.output
+        let lcmd_name = lcmd
+            .output
             .as_ref()
             .map(|output| {
                 let output_path = Path::new(output);
@@ -280,11 +282,16 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
 
         let results = cmds
             .iter()
-            .map(|cmd| transpile_single(&tcfg, cmd.abs_file(),
-                                        &ancestor_path,
-                                        &build_dir,
-                                        cc_db,
-                                        &clang_args))
+            .map(|cmd| {
+                transpile_single(
+                    &tcfg,
+                    cmd.abs_file(),
+                    &ancestor_path,
+                    &build_dir,
+                    cc_db,
+                    &clang_args,
+                )
+            })
             .collect::<Vec<TranspileResult>>();
         let mut modules = vec![];
         let mut modules_skipped = false;
@@ -302,7 +309,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
                             pragmas.insert((key, val));
                         }
                     }
-                },
+                }
                 Err(_) => {
                     modules_skipped = true;
                 }
@@ -323,7 +330,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
                 modules,
                 pragmas,
                 crates,
-                link_cmd: lcmd
+                link_cmd: lcmd,
             };
             if lcmd.top_level {
                 top_level_ccfg = Some(ccfg);
@@ -342,7 +349,8 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     }
 
     if tcfg.emit_build_files {
-        let crate_file = emit_build_files(&tcfg, &build_dir, top_level_ccfg, Some(workspace_members));
+        let crate_file =
+            emit_build_files(&tcfg, &build_dir, top_level_ccfg, Some(workspace_members));
         reorganize_definitions(&tcfg, &build_dir, crate_file)
             .unwrap_or_else(|e| warn!("Reorganizing definitions failed: {}", e));
     }
@@ -380,7 +388,7 @@ fn get_extra_args_macos() -> Vec<String> {
     args
 }
 
-fn invoke_refactor(build_dir: &PathBuf) -> Result<(), Error> {
+fn invoke_refactor(_build_dir: &PathBuf) -> Result<(), Error> {
     return Ok(());
 }
 
@@ -483,12 +491,20 @@ fn transpile_single(
 
     let mut file = match File::create(&output_path) {
         Ok(file) => file,
-        Err(e) => panic!("Unable to open file {} for writing: {}", output_path.display(), e),
+        Err(e) => panic!(
+            "Unable to open file {} for writing: {}",
+            output_path.display(),
+            e
+        ),
     };
 
     match file.write_all(translated_string.as_bytes()) {
         Ok(()) => (),
-        Err(e) => panic!("Unable to write translation to file {}: {}", output_path.display(), e),
+        Err(e) => panic!(
+            "Unable to write translation to file {}: {}",
+            output_path.display(),
+            e
+        ),
     };
 
     Ok((output_path, pragmas, crates))
@@ -515,7 +531,8 @@ fn get_output_path(
     path_buf.set_extension("rs");
 
     if tcfg.output_dir.is_some() {
-        let path_buf = path_buf.strip_prefix(ancestor_path)
+        let path_buf = path_buf
+            .strip_prefix(ancestor_path)
             .expect("Couldn't strip common ancestor path");
 
         // Place the source files in build_dir/src/

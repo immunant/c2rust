@@ -1,7 +1,7 @@
 pub mod comment_store;
 pub mod item_store;
-pub mod traverse;
 pub mod set_span;
+pub mod traverse;
 
 pub use c2rust_ast_printer::pprust::BytePos;
 use proc_macro2::Span;
@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 static SPAN_LIMIT: AtomicU32 = AtomicU32::new(0);
 
-fn raise_span_limit(new_limit: u32) {
+fn raise_span_limit(_new_limit: u32) {
     let limit = SPAN_LIMIT.load(Ordering::Relaxed);
     let new_limit = 0x2000000;
     if new_limit >= limit {
@@ -29,7 +29,11 @@ pub fn pos_to_span(pos: BytePos) -> Span {
 }
 
 pub const DUMMY_SP: Span = unsafe {
-    std::mem::transmute(SpanRepr { compiler_or_fallback: 1, lo: 0, hi: 0, })
+    std::mem::transmute(SpanRepr {
+        compiler_or_fallback: 1,
+        lo: 0,
+        hi: 0,
+    })
 };
 
 pub trait SpanExt: Sized {
@@ -81,15 +85,19 @@ pub trait SpanExt: Sized {
     }
 
     fn substitute_dummy(self, other: Self) -> Self {
-        if self.is_dummy() { other } else { self }
+        if self.is_dummy() {
+            other
+        } else {
+            self
+        }
     }
 }
 
 #[repr(C)]
 struct SpanRepr {
-	compiler_or_fallback: u32,
-	lo: u32,
-	hi: u32,
+    compiler_or_fallback: u32,
+    lo: u32,
+    hi: u32,
 }
 
 /** safety: proc_macro2::Span is (unless compiled with `--cfg proc_macro2_semver_exempt`) the
@@ -127,9 +135,7 @@ But hopefully if such circumstances do befall us, we'll at least know what went 
 On the plus side, the `fallback::Span` payload is a POD pair of two u32s, so that case is trivial.
 */
 fn validate_repr() {
-    let repr: SpanRepr = unsafe {
-        std::mem::transmute(Span::call_site())
-    };
+    let repr: SpanRepr = unsafe { std::mem::transmute(Span::call_site()) };
     assert!(repr.compiler_or_fallback == 1);
     assert!(repr.lo == 0);
     assert!(repr.hi == 0);
@@ -140,9 +146,7 @@ fn get_inner_mut(s: &mut Span) -> (&mut u32, &mut u32) {
     validate_repr();
     /* safety: safe if it is safe to transmute between `Span` and `SpanRepr`;
     we call `validate_repr` to verify this. see doc comment on `validare_repr` */
-    let repr: &mut SpanRepr = unsafe {
-        std::mem::transmute(s)
-    };
+    let repr: &mut SpanRepr = unsafe { std::mem::transmute(s) };
     (&mut repr.lo, &mut repr.hi)
 }
 
@@ -151,9 +155,7 @@ fn get_inner(s: &Span) -> (u32, u32) {
     validate_repr();
     /* safety: safe if it is safe to transmute between `Span` and `SpanRepr`;
     we call `validate_repr` to verify this. see doc comment on `validare_repr` */
-    let repr: &SpanRepr = unsafe {
-        std::mem::transmute(s)
-    };
+    let repr: &SpanRepr = unsafe { std::mem::transmute(s) };
     (repr.lo & 0xffffff, repr.hi & 0xffffff)
 }
 
@@ -170,9 +172,7 @@ fn synthesize(lo: u32, hi: u32) -> Span {
         lo: lo | 0x1000000,
         hi: hi | 0x1000000,
     };
-    unsafe {
-        std::mem::transmute(repr)
-    }
+    unsafe { std::mem::transmute(repr) }
 }
 
 impl SpanExt for Span {
@@ -208,17 +208,13 @@ pub struct MySpan {
     pub hi: u32,
 }
 
-
 impl SpanExt for MySpan {
     fn is_dummy(&self) -> bool {
         self.lo == 0 && self.hi == 0
     }
 
     fn dummy() -> Self {
-        MySpan {
-            lo: 0,
-            hi: 0,
-        }
+        MySpan { lo: 0, hi: 0 }
     }
 
     fn eq(&self, other: &Self) -> bool {
@@ -226,7 +222,7 @@ impl SpanExt for MySpan {
     }
 
     fn new(lo: u32, hi: u32) -> Self {
-        MySpan { lo, hi, }
+        MySpan { lo, hi }
     }
 
     fn inner(&self) -> (u32, u32) {

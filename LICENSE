@@ -14,4 +14,3 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 Portions of C2Rust are derived from packages written by third parties. The following third party packages are included, and carry their own copyright notices and license terms:
 
 * c2rust-ast-printer. Dual-licensed under Apache 2.0 and MIT, see c2rust-ast-printer/COPYRIGHT for details.
-* prettyplease. Dual-licensed under Apache 2.0 and MIT, see prettyplease/LICENSE-* for details.

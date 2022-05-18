@@ -12,9 +12,8 @@ use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
 use c2rust_ast_printer::pprust;
 use syn::{
-    self, AttrStyle, BinOp as RBinOp, Expr, Meta,
-    NestedMeta, Stmt, Field, Type,
-    ExprBlock, ExprAssign, ExprAssignOp, ExprBinary, ExprUnary, ExprMethodCall, ExprCast,
+    self, AttrStyle, BinOp as RBinOp, Expr, ExprAssign, ExprAssignOp, ExprBinary, ExprBlock,
+    ExprCast, ExprMethodCall, ExprUnary, Field, Meta, NestedMeta, Stmt, Type,
 };
 
 use itertools::EitherOrBoth::{Both, Right};
@@ -39,18 +38,27 @@ enum FieldType {
         ctype: CTypeId,
         field: Field,
         use_inner_type: bool,
+        is_va_list: bool,
     },
 }
 
 fn contains_block(expr_kind: &Expr) -> bool {
     match expr_kind {
         Expr::Block(..) => true,
-        Expr::Assign(ExprAssign {left, right, ..}) => contains_block(&left) || contains_block(&right),
-        Expr::AssignOp(ExprAssignOp {left, right, ..}) => contains_block(&left) || contains_block(&right),
-        Expr::Binary(ExprBinary {left, right, ..}) => contains_block(&left) || contains_block(&right),
-        Expr::Unary(ExprUnary {expr, ..}) => contains_block(&expr),
-        Expr::MethodCall(ExprMethodCall {args, ..}) => args.iter().map(|e| contains_block(&e)).any(|b| b),
-        Expr::Cast(ExprCast {expr, ..}) => contains_block(&expr),
+        Expr::Assign(ExprAssign { left, right, .. }) => {
+            contains_block(&left) || contains_block(&right)
+        }
+        Expr::AssignOp(ExprAssignOp { left, right, .. }) => {
+            contains_block(&left) || contains_block(&right)
+        }
+        Expr::Binary(ExprBinary { left, right, .. }) => {
+            contains_block(&left) || contains_block(&right)
+        }
+        Expr::Unary(ExprUnary { expr, .. }) => contains_block(&expr),
+        Expr::MethodCall(ExprMethodCall { args, .. }) => {
+            args.iter().map(|e| contains_block(&e)).any(|b| b)
+        }
+        Expr::Cast(ExprCast { expr, .. }) => contains_block(&expr),
         _ => false,
     }
 }
@@ -100,7 +108,28 @@ impl<'a> Translation<'a> {
                     .unwrap();
 
                 let ctype = typ.ctype;
-                let mut ty = self.convert_type(ctype)?;
+                // TODO: clean up code and avoid code duplication
+                // TODO: handle or panic on structs with more than one va_list?
+                let is_va_list = self.ast_context.is_va_list(ctype);
+                let mut ty = if is_va_list {
+                    let std_or_core = if self.type_converter.borrow().emit_no_std {
+                        "core"
+                    } else {
+                        "std"
+                    };
+                    let path = vec![
+                        mk().path_segment(std_or_core),
+                        mk().path_segment("ffi"),
+                        mk().path_segment_with_args(
+                            "VaListImpl",
+                            mk().angle_bracketed_args(vec![mk().lifetime("a")]),
+                        ),
+                    ];
+                    let ty = mk().path_ty(mk().abs_path(path));
+                    ty
+                } else {
+                    self.convert_type(ctype)?
+                };
                 let bitfield_width = match bitfield_width {
                     // Bitfield widths of 0 should just be markers for clang,
                     // we shouldn't need to explicitly handle it ourselves
@@ -161,6 +190,7 @@ impl<'a> Translation<'a> {
                             ctype,
                             field,
                             use_inner_type,
+                            is_va_list,
                         });
                         reorganized_fields.extend(extra_fields.into_iter());
 
@@ -272,11 +302,16 @@ impl<'a> Translation<'a> {
         struct_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
-    ) -> Result<Vec<Field>, TranslationError> {
+    ) -> Result<(Vec<Field>, bool), TranslationError> {
         let mut field_entries = Vec::with_capacity(field_ids.len());
         // We need to clobber bitfields in consecutive bytes together (leaving
         // regular fields alone) and add in padding as necessary
         let reorganized_fields = self.get_field_types(struct_id, field_ids, platform_byte_size)?;
+
+        let contains_va_list = reorganized_fields.iter().any(|field| match field {
+            FieldType::Regular { is_va_list, .. } => *is_va_list,
+            _ => false,
+        });
 
         let mut padding_count = 0;
         let mut next_padding_field = || {
@@ -303,7 +338,7 @@ impl<'a> Translation<'a> {
                     let mut field = mk();
                     let field_attrs = attrs.iter().map(|attr| {
                         let ty_str = match &*attr.1 {
-                            Type::Path(syn::TypePath {path, ..}) => pprust::path_to_string(path),
+                            Type::Path(syn::TypePath { path, .. }) => pprust::path_to_string(path),
                             _ => unreachable!("Found type other than path"),
                         };
                         let field_attr_items = vec![
@@ -330,10 +365,8 @@ impl<'a> Translation<'a> {
 
                     // Mark it with `#[bitfield(padding)]`
                     let field_padding_inner = NestedMeta::Meta(mk().meta_path("padding"));
-                    let field_padding_inner =
-                        vec![mk().nested_meta_item(field_padding_inner)];
-                    let field_padding_outer =
-                        mk().meta_list("bitfield", field_padding_inner);
+                    let field_padding_inner = vec![mk().nested_meta_item(field_padding_inner)];
+                    let field_padding_outer = mk().meta_list("bitfield", field_padding_inner);
                     let field = mk()
                         .meta_item_attr(AttrStyle::Outer, field_padding_outer)
                         .pub_()
@@ -353,7 +386,7 @@ impl<'a> Translation<'a> {
                 FieldType::Regular { field, .. } => field_entries.push(field),
             }
         }
-        Ok(field_entries)
+        Ok((field_entries, contains_va_list))
     }
 
     /// Here we output a block to generate a struct literal initializer in.
@@ -680,18 +713,36 @@ impl<'a> Translation<'a> {
             // Allow the value of this assignment to be used as the RHS of other assignments
             let val = lhs_expr_read.clone();
             let param_expr = match op {
-                BinOp::AssignAdd => mk().binary_expr(RBinOp::Add(Default::default()), lhs_expr_read, rhs_expr),
-                BinOp::AssignSubtract => mk().binary_expr(RBinOp::Sub(Default::default()), lhs_expr_read, rhs_expr),
-                BinOp::AssignMultiply => mk().binary_expr(RBinOp::Mul(Default::default()), lhs_expr_read, rhs_expr),
-                BinOp::AssignDivide => mk().binary_expr(RBinOp::Div(Default::default()), lhs_expr_read, rhs_expr),
-                BinOp::AssignModulus => mk().binary_expr(RBinOp::Rem(Default::default()), lhs_expr_read, rhs_expr),
-                BinOp::AssignBitXor => mk().binary_expr(RBinOp::BitXor(Default::default()), lhs_expr_read, rhs_expr),
-                BinOp::AssignShiftLeft => mk().binary_expr(RBinOp::Shl(Default::default()), lhs_expr_read, rhs_expr),
+                BinOp::AssignAdd => {
+                    mk().binary_expr(RBinOp::Add(Default::default()), lhs_expr_read, rhs_expr)
+                }
+                BinOp::AssignSubtract => {
+                    mk().binary_expr(RBinOp::Sub(Default::default()), lhs_expr_read, rhs_expr)
+                }
+                BinOp::AssignMultiply => {
+                    mk().binary_expr(RBinOp::Mul(Default::default()), lhs_expr_read, rhs_expr)
+                }
+                BinOp::AssignDivide => {
+                    mk().binary_expr(RBinOp::Div(Default::default()), lhs_expr_read, rhs_expr)
+                }
+                BinOp::AssignModulus => {
+                    mk().binary_expr(RBinOp::Rem(Default::default()), lhs_expr_read, rhs_expr)
+                }
+                BinOp::AssignBitXor => {
+                    mk().binary_expr(RBinOp::BitXor(Default::default()), lhs_expr_read, rhs_expr)
+                }
+                BinOp::AssignShiftLeft => {
+                    mk().binary_expr(RBinOp::Shl(Default::default()), lhs_expr_read, rhs_expr)
+                }
                 BinOp::AssignShiftRight => {
                     mk().binary_expr(RBinOp::Shr(Default::default()), lhs_expr_read, rhs_expr)
                 }
-                BinOp::AssignBitOr => mk().binary_expr(RBinOp::BitOr(Default::default()), lhs_expr_read, rhs_expr),
-                BinOp::AssignBitAnd => mk().binary_expr(RBinOp::BitAnd(Default::default()), lhs_expr_read, rhs_expr),
+                BinOp::AssignBitOr => {
+                    mk().binary_expr(RBinOp::BitOr(Default::default()), lhs_expr_read, rhs_expr)
+                }
+                BinOp::AssignBitAnd => {
+                    mk().binary_expr(RBinOp::BitAnd(Default::default()), lhs_expr_read, rhs_expr)
+                }
                 BinOp::Assign => rhs_expr,
                 _ => panic!("Cannot convert non-assignment operator"),
             };
@@ -702,7 +753,7 @@ impl<'a> Translation<'a> {
             // If there's a block we can flatten it into the current scope, and if the expr contains a block it's
             // likely complex enough to warrant putting it into a temporary variable to avoid borrowing issues
             match *param_expr {
-                Expr::Block(ExprBlock{ block, ..}) => {
+                Expr::Block(ExprBlock { block, .. }) => {
                     let last = block.stmts.len() - 1;
 
                     for (i, stmt) in block.stmts.iter().enumerate() {
@@ -717,15 +768,19 @@ impl<'a> Translation<'a> {
                         Stmt::Expr(ref expr) => expr.clone(),
                         _ => return Err(TranslationError::generic("Expected Expr Stmt")),
                     };
-                    let method_call = mk().method_call_expr(lhs_expr, setter_name, vec![Box::new(last_expr)]);
+                    let method_call =
+                        mk().method_call_expr(lhs_expr, setter_name, vec![Box::new(last_expr)]);
 
                     stmts.push(mk().semi_stmt(method_call));
                 }
                 _ if contains_block(&param_expr) => {
                     let name = self.renamer.borrow_mut().pick_name("rhs");
                     let name_ident = mk().mutbl().ident_pat(name.clone());
-                    let temporary_stmt =
-                        mk().local(name_ident, None as Option<Box<Type>>, Some(param_expr.clone()));
+                    let temporary_stmt = mk().local(
+                        name_ident,
+                        None as Option<Box<Type>>,
+                        Some(param_expr.clone()),
+                    );
                     let assignment_expr =
                         mk().method_call_expr(lhs_expr, setter_name, vec![mk().ident_expr(name)]);
 

@@ -1,10 +1,10 @@
 //! This modules handles converting `Vec<Structure>` into `Vec<Stmt>`.
 
 use super::*;
-use syn::{ExprReturn, ExprIf, ExprBreak, ExprParen, ExprUnary, Stmt, spanned::Spanned as _};
 use std::result::Result;
+use syn::{spanned::Spanned as _, ExprBreak, ExprIf, ExprParen, ExprReturn, ExprUnary, Stmt};
 
-use crate::rust_ast::{comment_store, BytePos, SpanExt, set_span::SetSpan};
+use crate::rust_ast::{comment_store, set_span::SetSpan, BytePos, SpanExt};
 
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(
@@ -27,15 +27,12 @@ pub fn structured_cfg(
     // it with the returned value.
     if cut_out_trailing_ret {
         match stmts.last().cloned() {
-            Some(Stmt::Expr(ref ret))
-            | Some(Stmt::Semi(ref ret, _)) => {
-                match ret {
-                    Expr::Return(ExprReturn { expr: None, .. }) => {
-                        stmts.pop();
-                    }
-                    _ => {}
+            Some(Stmt::Expr(ref ret)) | Some(Stmt::Semi(ref ret, _)) => match ret {
+                Expr::Return(ExprReturn { expr: None, .. }) => {
+                    stmts.pop();
                 }
-            }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -81,7 +78,7 @@ pub trait StructuredStatement: Sized {
 
     /// Make a `match` statement
     fn mk_match(
-        cond: Self::E,                    // expression being matched
+        cond: Self::E,               // expression being matched
         cases: Vec<(Self::P, Self)>, // match arms
     ) -> Self;
 
@@ -203,9 +200,7 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
 /// Recursive helper for `structured_cfg`
 ///
 /// TODO: move this into `structured_cfg`?
-fn structured_cfg_help<
-    S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = Label, S = Stmt>,
->(
+fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = Label, S = Stmt>>(
     exits: Vec<(Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>)>,
     next: &IndexSet<Label>,
     root: &Vec<Structure<Stmt>>,
@@ -237,55 +232,53 @@ fn structured_cfg_help<
                     }
                 };
 
-                let mut branch =
-                    |slbl: &StructureLabel<Stmt>| -> Result<S, TranslationError> {
-                        match slbl {
-                            &StructureLabel::Nested(ref nested) => {
-                                structured_cfg_help(exits.clone(), next, nested, used_loop_labels)
-                            }
-
-                            &StructureLabel::GoTo(to) | &StructureLabel::ExitTo(to)
-                                if next.contains(&to) =>
-                            {
-                                Ok(insert_goto(to, &next))
-                            }
-
-                            &StructureLabel::ExitTo(to) => {
-                                let mut immediate = true;
-                                for &(label, ref local) in &exits {
-                                    if let Some(&(ref follow, exit_style)) = local.get(&to) {
-                                        let lbl = if immediate {
-                                            None
-                                        } else {
-                                            used_loop_labels.insert(label);
-                                            Some(label)
-                                        };
-
-                                        let mut new_cfg = S::mk_append(
-                                            insert_goto(to, follow),
-                                            S::mk_exit(exit_style, lbl),
-                                        );
-                                        new_cfg.extend_span(*span);
-                                        return Ok(new_cfg);
-                                    }
-                                    immediate = false;
-                                }
-
-                                Err(format_err!(
-                                    "Not a valid exit: {:?} has nothing to exit to",
-                                    to
-                                )
-                                .into())
-                            }
-
-                            &StructureLabel::GoTo(to) => Err(format_err!(
-                                "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
-                                to,
-                                next
-                            )
-                            .into()),
+                let mut branch = |slbl: &StructureLabel<Stmt>| -> Result<S, TranslationError> {
+                    match slbl {
+                        &StructureLabel::Nested(ref nested) => {
+                            structured_cfg_help(exits.clone(), next, nested, used_loop_labels)
                         }
-                    };
+
+                        &StructureLabel::GoTo(to) | &StructureLabel::ExitTo(to)
+                            if next.contains(&to) =>
+                        {
+                            Ok(insert_goto(to, &next))
+                        }
+
+                        &StructureLabel::ExitTo(to) => {
+                            let mut immediate = true;
+                            for &(label, ref local) in &exits {
+                                if let Some(&(ref follow, exit_style)) = local.get(&to) {
+                                    let lbl = if immediate {
+                                        None
+                                    } else {
+                                        used_loop_labels.insert(label);
+                                        Some(label)
+                                    };
+
+                                    let mut new_cfg = S::mk_append(
+                                        insert_goto(to, follow),
+                                        S::mk_exit(exit_style, lbl),
+                                    );
+                                    new_cfg.extend_span(*span);
+                                    return Ok(new_cfg);
+                                }
+                                immediate = false;
+                            }
+
+                            Err(
+                                format_err!("Not a valid exit: {:?} has nothing to exit to", to)
+                                    .into(),
+                            )
+                        }
+
+                        &StructureLabel::GoTo(to) => Err(format_err!(
+                            "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
+                            to,
+                            next
+                        )
+                        .into()),
+                    }
+                };
 
                 new_rest = S::mk_append(
                     new_rest,
@@ -436,7 +429,8 @@ impl StructureState {
                 return (vec![s], span);
             }
 
-            Append(box Spanned {node: Empty, span: lhs_span}, rhs) => {
+            Append(spanned, rhs) if matches!(spanned.node, Empty) => {
+                let lhs_span = spanned.span;
                 let span = ast.span.substitute_dummy(lhs_span);
                 let span = span_subst_lo(span, lhs_span).unwrap_or_else(|| {
                     comment_store.move_comments(lhs_span.lo(), span.lo());
@@ -529,14 +523,20 @@ impl StructureState {
                 let mut if_stmt = match (then_stmts.is_empty(), els_stmts.is_empty()) {
                     (true, true) => mk().semi_stmt(cond),
                     (false, true) => {
-                        let if_expr =
-                            mk().ifte_expr(cond, mk().span(then_span).block(then_stmts), None as Option<Box<Expr>>);
+                        let if_expr = mk().ifte_expr(
+                            cond,
+                            mk().span(then_span).block(then_stmts),
+                            None as Option<Box<Expr>>,
+                        );
                         mk().expr_stmt(if_expr)
                     }
                     (true, false) => {
                         let negated_cond = not(&cond);
-                        let if_expr =
-                            mk().ifte_expr(negated_cond, mk().span(els_span).block(els_stmts), None as Option<Box<Expr>>);
+                        let if_expr = mk().ifte_expr(
+                            negated_cond,
+                            mk().span(els_span).block(els_stmts),
+                            None as Option<Box<Expr>>,
+                        );
                         mk().expr_stmt(if_expr)
                     }
                     (false, false) => {
@@ -568,7 +568,11 @@ impl StructureState {
                             mk().block_expr(mk().span(els_span).block(els_stmts))
                         };
 
-                        let if_expr = mk().ifte_expr(cond, mk().span(then_span).block(then_stmts), Some(els_branch));
+                        let if_expr = mk().ifte_expr(
+                            cond,
+                            mk().span(then_span).block(then_stmts),
+                            Some(els_branch),
+                        );
                         mk().expr_stmt(if_expr)
                     }
                 };
@@ -618,20 +622,34 @@ impl StructureState {
                 let (body, body_span) = self.into_stmt(*body, comment_store);
 
                 // TODO: this is ugly but it needn't be. We are just pattern matching on particular ASTs.
-                if let Some(stmt @ &Stmt::Expr(ref expr)) = body.first()
-                {
+                if let Some(stmt @ &Stmt::Expr(ref expr)) = body.first() {
                     let stmt_span = stmt.span();
-                    let span = if !stmt_span.is_dummy() { stmt_span } else { span };
-                    if let syn::Expr::If(ExprIf {ref cond, ref then_branch, else_branch: None, ..}) = expr {
+                    let span = if !stmt_span.is_dummy() {
+                        stmt_span
+                    } else {
+                        span
+                    };
+                    if let syn::Expr::If(ExprIf {
+                        ref cond,
+                        ref then_branch,
+                        else_branch: None,
+                        ..
+                    }) = expr
+                    {
                         let stmts = &then_branch.stmts;
                         {
                             if stmts.len() == 1 {
-                                if let Some(&Stmt::Semi(ref expr, _token)) = stmts.iter().nth(0)
-                                {
-                                    if let syn::Expr::Break(ExprBreak { label: None, expr: None, ..}) = expr {
+                                if let Some(&Stmt::Semi(ref expr, _token)) = stmts.iter().nth(0) {
+                                    if let syn::Expr::Break(ExprBreak {
+                                        label: None,
+                                        expr: None,
+                                        ..
+                                    }) = expr
+                                    {
                                         let e = mk().while_expr(
                                             not(cond),
-                                            mk().span(body_span).block(body.iter().skip(1).cloned().collect()),
+                                            mk().span(body_span)
+                                                .block(body.iter().skip(1).cloned().collect()),
                                             lbl.map(|l| l.pretty_print()),
                                         );
                                         return (vec![mk().span(span).expr_stmt(e)], ast.span);
@@ -642,7 +660,10 @@ impl StructureState {
                     }
                 }
 
-                let e = mk().loop_expr(mk().span(body_span).block(body), lbl.map(|l| l.pretty_print()));
+                let e = mk().loop_expr(
+                    mk().span(body_span).block(body),
+                    lbl.map(|l| l.pretty_print()),
+                );
 
                 mk().span(span).expr_stmt(e)
             }
@@ -676,7 +697,11 @@ fn not(bool_expr: &Box<Expr>) -> Box<Expr> {
         }
     }
     match **bool_expr {
-        Expr::Unary(ExprUnary { op: syn::UnOp::Not(_), ref expr, .. }) => unparen(expr).clone(),
+        Expr::Unary(ExprUnary {
+            op: syn::UnOp::Not(_),
+            ref expr,
+            ..
+        }) => unparen(expr).clone(),
         _ => mk().unary_expr("!", bool_expr.clone()),
     }
 }

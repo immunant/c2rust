@@ -1,8 +1,5 @@
-use proc_macro2::{TokenStream, TokenTree};
-
 #[cfg(test)]
 mod tests;
-
 
 #[derive(PartialEq, Eq, Debug, PartialOrd, Ord, Copy, Clone)]
 pub struct BytePos(pub u32);
@@ -58,8 +55,8 @@ impl Comments {
 
     pub fn trailing_comment(
         &mut self,
-        span: proc_macro2::Span,
-        next_pos: Option<usize>,
+        _span: proc_macro2::Span,
+        _next_pos: Option<usize>,
     ) -> Option<String> {
         /*if let Some(cmnt) = self.next() {
             if cmnt.style != comments::Trailing { return None; }
@@ -77,180 +74,118 @@ impl Comments {
 
 impl Extend<comments::Comment> for Comments {
     fn extend<I>(&mut self, iter: I)
-        where I: IntoIterator<Item = comments::Comment>
+    where
+        I: IntoIterator<Item = comments::Comment>,
     {
         self.comments.extend(iter);
     }
 }
-    
 
-pub struct State {
-    pub s: prettyplease::Printer,
-    comments: Option<Comments>,
-    is_expanded: bool
+fn strip_main_fn(s: &str) -> &str {
+    s.trim_start()
+        .trim_start_matches("fn main()")
+        .trim_start()
+        .trim_start_matches("{")
+        .trim_start()
+        .trim_end()
+        .trim_end_matches("}")
+        .trim_end()
 }
 
-pub fn to_string<F>(f: F) -> String where
-    F: FnOnce(&mut State),
-{
-    let mut printer = State {
-        s: prettyplease::Printer::new(),
-        comments: None,
-        is_expanded: false
+fn minimal_file(stmt: syn::Stmt) -> syn::File {
+    let item = syn::Item::Fn(main_fn(stmt));
+    syn::File {
+        shebang: None,
+        attrs: vec![],
+        items: vec![item],
+    }
+}
+
+fn main_fn(stmt: syn::Stmt) -> syn::ItemFn {
+    let generics = syn::Generics {
+        lt_token: None,
+        params: Default::default(),
+        gt_token: None,
+        where_clause: None,
     };
-    f(&mut printer);
-    printer.s.eof()
-}
-
-pub fn to_string_with_comments<F>(comments: Comments, f: F) -> String where
-    F: FnOnce(&mut State)
-{
-    let mut printer = State {
-        s: prettyplease::Printer::new(),
-        comments: Some(comments),
-        is_expanded: false
+    let ident = syn::Ident::new("main", proc_macro2::Span::call_site());
+    let sig = syn::Signature {
+        constness: None,
+        asyncness: None,
+        unsafety: None,
+        abi: None,
+        fn_token: Default::default(),
+        ident,
+        generics,
+        paren_token: Default::default(),
+        inputs: Default::default(),
+        variadic: None,
+        output: syn::ReturnType::Default,
     };
-    f(&mut printer);
-    printer.s.eof()
+    let block = Box::new(syn::Block {
+        brace_token: Default::default(),
+        stmts: vec![stmt],
+    });
+    syn::ItemFn {
+        attrs: vec![],
+        vis: syn::Visibility::Inherited,
+        sig,
+        block,
+    }
 }
 
-pub fn literal_to_string(lit: syn::Lit) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.lit(&lit);
-    pr.eof()
-}
-
-/// Print an ident from AST, `$crate` is converted into its respective crate name.
-pub fn ast_ident_to_string(ident: syn::Ident, is_raw: bool) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.ident(&ident);
-    pr.eof()
-}
-
-pub fn ty_to_string(ty: &syn::Type) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.ty(ty);
-    pr.eof()
-}
-
-pub fn pat_to_string(pat: &syn::Pat) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.pat(pat);
-    pr.eof()
+fn ret_expr() -> syn::Expr {
+    syn::Expr::Return(syn::ExprReturn {
+        attrs: vec![],
+        return_token: Default::default(),
+        expr: None,
+    })
 }
 
 pub fn expr_to_string(e: &syn::Expr) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.expr(e);
-    pr.eof()
-}
-
-pub fn tt_to_string(tt: TokenTree) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.single_token(tt.into(), |printer, stream| printer.macro_rules_tokens(stream, true));
-    pr.eof()
-}
-
-pub fn tts_to_string(tokens: TokenStream) -> String {
-
-    //tokens.to_string()
-    let mut pr = prettyplease::Printer::new();
-    pr.macro_rules_tokens(tokens, true);
-    //pr.tts(tokens);
-    pr.eof()
-}
-
-pub fn stmt_to_string(stmt: &syn::Stmt) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.stmt(stmt);
-    pr.eof()
-}
-
-pub fn item_to_string(i: &syn::Item) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.item(i);
-    pr.eof()
-}
-
-pub fn impl_item_to_string(i: &syn::ImplItem) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.impl_item(i);
-    pr.eof()
-}
-
-pub fn trait_item_to_string(i: &syn::TraitItem) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.trait_item(i);
-    pr.eof()
-}
-
-pub fn generic_params_to_string(generic_params: &[syn::GenericParam]) -> String {
-    let mut pr = prettyplease::Printer::new();
-    for g in generic_params {
-        pr.generic_param(g);
-    }
-    pr.eof()
+    let s = to_string(move || minimal_file(syn::Stmt::Expr(e.clone())));
+    strip_main_fn(&s).trim_end_matches(";").to_owned()
 }
 
 pub fn path_to_string(p: &syn::Path) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.path(p);
-    pr.eof()
+    let e = syn::Expr::Path(syn::ExprPath {
+        attrs: vec![],
+        qself: None,
+        path: p.clone(),
+    });
+    expr_to_string(&e)
 }
 
-pub fn path_segment_to_string(p: &syn::PathSegment) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.path_segment(p);
-    pr.eof()
+pub fn pat_to_string(p: &syn::Pat) -> String {
+    let ret_expr = Box::new(ret_expr());
+    let e = syn::Expr::Let(syn::ExprLet {
+        attrs: vec![],
+        let_token: Default::default(),
+        pat: p.clone(),
+        eq_token: Default::default(),
+        expr: ret_expr,
+    });
+    let expr_str = expr_to_string(&e);
+    expr_str
+        .trim_start_matches("let")
+        .trim_start()
+        .trim_end()
+        .trim_end_matches(";")
+        .trim_end_matches("return")
+        .trim_end()
+        .trim_end_matches("=")
+        .trim_end()
+        .to_owned()
 }
 
-pub fn vis_to_string(v: &syn::Visibility) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.visibility(v);
-    pr.eof()
+pub fn stmt_to_string(s: &syn::Stmt) -> String {
+    let s = to_string(move || minimal_file(s.clone()));
+    strip_main_fn(&s).to_owned()
 }
 
-pub fn block_to_string(blk: &syn::Block) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.expr_block(&syn::ExprBlock {attrs: vec![], label: None, block: blk.clone()});
-    pr.eof()
-}
-
-pub fn attribute_to_string(attr: &syn::Attribute) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.attr(attr);
-    pr.eof()
-}
-
-pub fn param_to_string(arg: &syn::FnArg) -> String {
-    let mut pr = prettyplease::Printer::new();
-    let _ = pr.maybe_variadic(arg);
-    pr.eof()
-}
-
-pub fn foreign_item_to_string(arg: &syn::ForeignItem) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.foreign_item(arg);
-    pr.eof()
-}
-
-pub fn visibility_qualified(vis: &syn::Visibility, s: &str) -> String {
-    let mut pr = prettyplease::Printer::new();
-    pr.visibility(vis);
-    let mut out = pr.eof();
-    out += s;
-    out
-}
-
-impl std::ops::Deref for State {
-    type Target = prettyplease::Printer;
-    fn deref(&self) -> &Self::Target {
-        &self.s
-    }
-}
-
-impl std::ops::DerefMut for State {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.s
-    }
+pub fn to_string<F>(f: F) -> String
+where
+    F: FnOnce() -> syn::File,
+{
+    prettyplease::unparse(&f())
 }

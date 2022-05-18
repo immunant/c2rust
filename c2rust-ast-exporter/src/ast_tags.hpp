@@ -141,6 +141,7 @@ enum TypeTag {
     TagBlockPointer,
     TagComplexType,
     TagHalf,
+    TagBFloat16,
 };
 
 enum StringTypeTag {

@@ -1,6 +1,6 @@
 [package]
 name = "c2rust-ast-builder"
-version = "0.15.0"
+version = "0.16.0"
 authors = [
   "The C2Rust Project Developers <c2rust@immunant.com>",
   "Eric Mertens <emertens@galois.com>",
@@ -12,4 +12,4 @@ description = "Rust AST builder support crate for the C2Rust project"
 
 [dependencies]
 proc-macro2 = { version = "1.0", features = ["span-locations"]}
-syn = { version = "1.0", features = ["full", "proc-macro", "printing"] }
+syn = { version = "1.0", features = ["full", "extra-traits", "printing"]}

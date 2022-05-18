@@ -87,7 +87,7 @@ fn generate_bindings() -> Result<(), &'static str> {
 
     let cppbindings = bindgen::Builder::default()
         .header("src/ExportResult.hpp")
-        .whitelist_type("ExportResult")
+        .allowlist_type("ExportResult")
         .generate_comments(true)
         .derive_default(true)
         // Tell bindgen we are processing c++
@@ -147,12 +147,13 @@ fn build_native(llvm_info: &LLVMInfo) {
 
     println!("cargo:rustc-link-search=native={}", llvm_lib_dir);
 
-    // Some distro's, including arch and Fedora, no longer build with 
-    // BUILD_SHARED_LIBS=ON; programs linking to clang are required to 
+    // Some distro's, including arch and Fedora, no longer build with
+    // BUILD_SHARED_LIBS=ON; programs linking to clang are required to
     // link to libclang-cpp.so instead of individual libraries.
     let use_libclang = if cfg!(target_os = "macos") {
         false
-    } else { // target_os = "linux"
+    } else {
+        // target_os = "linux"
         let mut libclang_path = PathBuf::new();
         libclang_path.push(llvm_lib_dir);
         libclang_path.push("libclang-cpp.so");
@@ -215,49 +216,54 @@ impl LLVMInfo {
             // Explicitly provided path in LLVM_CONFIG_PATH
             env::var("LLVM_CONFIG_PATH")
                 .ok()
-                // Relative to LLVM_LIB_DIR
-                .or(env::var("LLVM_LIB_DIR").ok().map(|d| {
-                    String::from(
-                        Path::new(&d)
-                            .join("../bin/llvm-config")
-                            .canonicalize()
-                            .unwrap()
-                            .to_string_lossy(),
-                    )
-                }))
-                // In PATH
-                .or([
-                    "llvm-config-13",
-                    "llvm-config-12",
-                    "llvm-config-11",
-                    "llvm-config-10",
-                    "llvm-config-9",
-                    "llvm-config-8",
-                    "llvm-config-7",
-                    "llvm-config-7.0",
-                    "llvm-config",
-                    // Homebrew install locations on MacOS
-                    "/usr/local/opt/llvm@13/bin/llvm-config",
-                    "/usr/local/opt/llvm@12/bin/llvm-config",
-                    "/usr/local/opt/llvm@11/bin/llvm-config",
-                    "/usr/local/opt/llvm@10/bin/llvm-config",
-                    "/usr/local/opt/llvm@9/bin/llvm-config",
-                    "/usr/local/opt/llvm@8/bin/llvm-config",
-                    "/usr/local/opt/llvm/bin/llvm-config",
-                ]
-                .iter()
-                .find_map(|c| {
-                    if Command::new(c)
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .spawn()
-                        .is_ok()
-                    {
-                        Some(String::from(*c))
-                    } else {
-                        None
-                    }
-                }))
+                .or_else(|| {
+                    // Relative to LLVM_LIB_DIR
+                    env::var("LLVM_LIB_DIR").ok().map(|d| {
+                        String::from(
+                            Path::new(&d)
+                                .join("../bin/llvm-config")
+                                .canonicalize()
+                                .unwrap()
+                                .to_string_lossy(),
+                        )
+                    })
+                })
+                .or_else(|| {
+                    // In PATH
+                    [
+                        "llvm-config-14",
+                        "llvm-config-13",
+                        "llvm-config-12",
+                        "llvm-config-11",
+                        "llvm-config-10",
+                        "llvm-config-9",
+                        "llvm-config-8",
+                        "llvm-config-7",
+                        "llvm-config-7.0",
+                        "llvm-config",
+                        // Homebrew install locations on MacOS
+                        "/usr/local/opt/llvm@13/bin/llvm-config",
+                        "/usr/local/opt/llvm@12/bin/llvm-config",
+                        "/usr/local/opt/llvm@11/bin/llvm-config",
+                        "/usr/local/opt/llvm@10/bin/llvm-config",
+                        "/usr/local/opt/llvm@9/bin/llvm-config",
+                        "/usr/local/opt/llvm@8/bin/llvm-config",
+                        "/usr/local/opt/llvm/bin/llvm-config",
+                    ]
+                    .iter()
+                    .find_map(|c| {
+                        if Command::new(c)
+                            .stdout(Stdio::null())
+                            .stderr(Stdio::null())
+                            .spawn()
+                            .is_ok()
+                        {
+                            Some(String::from(*c))
+                        } else {
+                            None
+                        }
+                    })
+                })
         }
 
         /// Invoke given `command`, if any, with the specified arguments.
@@ -353,13 +359,11 @@ impl LLVMInfo {
         };
 
         let llvm_major_version = {
-            let version = invoke_command(
-                llvm_config.as_ref(),
-                 &["--version"]
-                )
-                .expect(llvm_config_missing);
+            let version =
+                invoke_command(llvm_config.as_ref(), &["--version"]).expect(llvm_config_missing);
             let emsg = format!("invalid version string {}", version);
-            version.split(".")
+            version
+                .split(".")
                 .next()
                 .expect(&emsg)
                 .parse::<u32>()
@@ -377,15 +381,13 @@ impl LLVMInfo {
             "BitReader",
             "ProfileData",
             "BinaryFormat",
-            "Core"];
+            "Core",
+        ];
         if llvm_major_version >= 10 {
             args.push("FrontendOpenMP");
         }
-    
-        let mut libs: Vec<String> = invoke_command(
-            llvm_config.as_ref(),
-            &args,
-        )
+
+        let mut libs: Vec<String> = invoke_command(llvm_config.as_ref(), &args)
             .unwrap_or("-lLLVM".to_string())
             .split_whitespace()
             .map(|lib| String::from(lib.trim_start_matches("-l")))
@@ -396,19 +398,13 @@ impl LLVMInfo {
                 .ok()
                 .or(invoke_command(
                     llvm_config.as_ref(),
-                    &[
-                        "--system-libs",
-                        link_mode,
-                    ],
+                    &["--system-libs", link_mode],
                 ))
                 .unwrap_or(String::new())
                 .split_whitespace()
-                .map(|lib| String::from(lib.trim_start_matches("-l")))
+                .map(|lib| String::from(lib.trim_start_matches("-l"))),
         );
 
-        Self {
-            lib_dir,
-            libs,
-        }
+        Self { lib_dir, libs }
     }
 }

@@ -1,12 +1,12 @@
 use crate::c_ast::CDeclId;
 use crate::c_ast::*;
-use crate::renamer::*;
 use crate::diagnostics::TranslationError;
+use crate::renamer::*;
 use c2rust_ast_builder::{mk, properties::*};
 use std::collections::{HashMap, HashSet};
 use std::ops::Index;
-use syn::*;
 use std::result::Result;
+use syn::*;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 enum FieldKey {
@@ -20,7 +20,7 @@ pub struct TypeConverter {
     fields: HashMap<CDeclId, Renamer<FieldKey>>,
     suffix_names: HashMap<(CDeclId, &'static str), String>,
     features: HashSet<&'static str>,
-    emit_no_std: bool,
+    pub emit_no_std: bool,
 }
 
 pub const RESERVED_NAMES: [&str; 103] = [
@@ -165,7 +165,8 @@ impl TypeConverter {
     pub fn resolve_decl_suffix_name(&mut self, decl_id: CDeclId, suffix: &'static str) -> &str {
         let key = (decl_id, suffix);
         if !self.suffix_names.contains_key(&key) {
-            let mut suffix_name = self.resolve_decl_name(decl_id)
+            let mut suffix_name = self
+                .resolve_decl_name(decl_id)
                 .unwrap_or_else(|| "C2RustUnnamed".to_string());
             suffix_name += suffix;
 
@@ -181,7 +182,11 @@ impl TypeConverter {
         field_id: CFieldId,
         name: &str,
     ) -> String {
-        let name = if name.is_empty() { "c2rust_unnamed" } else { name };
+        let name = if name.is_empty() {
+            "c2rust_unnamed"
+        } else {
+            name
+        };
 
         if !self.fields.contains_key(&record_id) {
             self.fields.insert(record_id, Renamer::new(&RESERVED_NAMES));
@@ -194,11 +199,7 @@ impl TypeConverter {
             .expect("Field already declared")
     }
 
-    pub fn declare_padding(
-        &mut self,
-        record_id: CRecordId,
-        padding_idx: usize,
-    ) -> String {
+    pub fn declare_padding(&mut self, record_id: CRecordId, padding_idx: usize) -> String {
         if !self.fields.contains_key(&record_id) {
             self.fields.insert(record_id, Renamer::new(&RESERVED_NAMES));
         }
@@ -249,11 +250,13 @@ impl TypeConverter {
             Some(ret) => self.convert(ctxt, ret.ctype)?,
         };
 
-        let variadic = is_variadic.then(||
-            mk().variadic_arg(vec![])
-        );
+        let variadic = is_variadic.then(|| mk().variadic_arg(vec![]));
 
-        let fn_ty = Box::new((barefn_inputs, variadic, ReturnType::Type(Default::default(), output)));
+        let fn_ty = Box::new((
+            barefn_inputs,
+            variadic,
+            ReturnType::Type(Default::default(), output),
+        ));
         return Ok(mk().unsafe_().extern_("C").barefn_ty(fn_ty));
     }
 
@@ -271,11 +274,9 @@ impl TypeConverter {
         match ctxt.resolve_type(qtype.ctype).kind {
             // While void converts to () in function returns, it converts to c_void
             // in the case of pointers.
-            CTypeKind::Void => {
-                Ok(mk()
-                    .set_mutbl(mutbl)
-                    .ptr_ty(mk().path_ty(vec!["libc", "c_void"])))
-            }
+            CTypeKind::Void => Ok(mk()
+                .set_mutbl(mutbl)
+                .ptr_ty(mk().path_ty(vec!["libc", "c_void"]))),
 
             CTypeKind::VariableArray(mut elt, _len) => {
                 while let CTypeKind::VariableArray(elt_, _) = ctxt.resolve_type(elt).kind {
@@ -332,7 +333,7 @@ impl TypeConverter {
             CTypeKind::LongDouble => Ok(mk().path_ty(mk().path(vec!["f128", "f128"]))),
             CTypeKind::Float => Ok(mk().path_ty(mk().path(vec!["libc", "c_float"]))),
             CTypeKind::Int128 => Ok(mk().path_ty(mk().path(vec!["i128"]))),
-            CTypeKind::UInt128 => Ok(mk().path_ty(mk().path(vec!["u128"]))),
+            CTypeKind::UInt128 => Ok(mk().path_ty(mk().path(vec!["bf16"]))),
 
             CTypeKind::Pointer(qtype) => self.convert_pointer(ctxt, qtype),
 
@@ -364,10 +365,7 @@ impl TypeConverter {
 
             CTypeKind::ConstantArray(element, count) => {
                 let ty = self.convert(ctxt, element)?;
-                Ok(mk().array_ty(
-                    ty,
-                    mk().lit_expr(mk().int_unsuffixed_lit(count as u128)),
-                ))
+                Ok(mk().array_ty(ty, mk().lit_expr(mk().int_unsuffixed_lit(count as u128))))
             }
 
             CTypeKind::IncompleteArray(element) => {
@@ -413,7 +411,7 @@ impl TypeConverter {
         &mut self,
         ctxt: &TypedAstContext,
         ctype: CTypeId,
-        params: &Vec<CParamId>
+        params: &Vec<CParamId>,
     ) -> Result<Option<Box<Type>>, TranslationError> {
         match ctxt.index(ctype).kind {
             // ANSI/ISO C-style function
@@ -427,8 +425,8 @@ impl TypeConverter {
                     .map(|p| {
                         let decl = &ctxt.get_decl(p).unwrap().kind;
                         match decl {
-                            CDeclKind::Variable { typ, ..} => *typ,
-                            _ => panic!("parameter referenced non-variable decl.")
+                            CDeclKind::Variable { typ, .. } => *typ,
+                            _ => panic!("parameter referenced non-variable decl."),
                         }
                     })
                     .collect();
@@ -438,17 +436,25 @@ impl TypeConverter {
                 Ok(Some(fn_ty))
             }
 
-            CTypeKind::Elaborated(ref ctype) => self.knr_function_type_with_parameters(ctxt, *ctype, params),
-            CTypeKind::Decayed(ref ctype) => self.knr_function_type_with_parameters(ctxt, *ctype, params),
-            CTypeKind::Paren(ref ctype) => self.knr_function_type_with_parameters(ctxt, *ctype, params),
+            CTypeKind::Elaborated(ref ctype) => {
+                self.knr_function_type_with_parameters(ctxt, *ctype, params)
+            }
+            CTypeKind::Decayed(ref ctype) => {
+                self.knr_function_type_with_parameters(ctxt, *ctype, params)
+            }
+            CTypeKind::Paren(ref ctype) => {
+                self.knr_function_type_with_parameters(ctxt, *ctype, params)
+            }
             CTypeKind::TypeOf(ty) => self.knr_function_type_with_parameters(ctxt, ty, params),
 
             CTypeKind::Typedef(decl) => match &ctxt.index(decl).kind {
-                CDeclKind::Typedef { typ, .. } => self.knr_function_type_with_parameters(ctxt, typ.ctype, params),
+                CDeclKind::Typedef { typ, .. } => {
+                    self.knr_function_type_with_parameters(ctxt, typ.ctype, params)
+                }
                 _ => panic!("Typedef decl did not point to a typedef"),
-            }
+            },
 
-            ref kind @ _ => panic!("ctype parameter must be a function instead of {:?}", kind)
+            ref kind @ _ => panic!("ctype parameter must be a function instead of {:?}", kind),
         }
     }
 }

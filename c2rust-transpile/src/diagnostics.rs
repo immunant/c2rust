@@ -67,7 +67,6 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>, log_level: log::LevelFilt
         .expect("Could not set up diagnostics");
 }
 
-
 #[derive(Debug, Clone)]
 pub struct TranslationError {
     loc: Vec<DisplaySrcSpan>,

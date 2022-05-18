@@ -23,7 +23,8 @@ impl ToString for ArgDirSpec {
             InOut => "inout",
             LateOut => "lateout",
             InLateOut => "inlateout",
-        }.to_owned()
+        }
+        .to_owned()
     }
 }
 
@@ -40,23 +41,62 @@ impl ArgDirSpec {
     }
 }
 
-fn parse_constraints(mut constraints: &str) ->
-    Result<(ArgDirSpec, bool, String), TranslationError> {
+/// A machine architecture that rustc inline assembly knows about
+#[derive(Copy, Clone, PartialEq)]
+enum Arch {
+    X86OrX86_64,
+    Arm,
+    Aarch64,
+    Riscv,
+}
+
+/// Parse a machine architecture from a target tuple. This is a best-effort attempt.
+fn parse_arch(target_tuple: &str) -> Option<Arch> {
+    if target_tuple.starts_with("i386")
+        || target_tuple.starts_with("i486")
+        || target_tuple.starts_with("i586")
+        || target_tuple.starts_with("i686")
+        || target_tuple.starts_with("x86_64")
+        || target_tuple.starts_with("x86")
+    {
+        Some(Arch::X86OrX86_64)
+    } else if target_tuple.starts_with("aarch64")
+        || target_tuple.starts_with("armv8")
+        || target_tuple.starts_with("arm64")
+    {
+        Some(Arch::Aarch64)
+    } else if target_tuple.starts_with("arm") || target_tuple.starts_with("thumbv") {
+        Some(Arch::Arm)
+    } else if target_tuple.starts_with("riscv") {
+        Some(Arch::Riscv)
+    } else {
+        None
+    }
+}
+
+fn parse_constraints(
+    mut constraints: &str,
+    arch: Arch,
+) -> Result<(ArgDirSpec, bool, String), TranslationError> {
     let parse_error = |constraints| {
-        Err(TranslationError::new(None, failure::err_msg(
-            "Inline assembly constraints could not be parsed: ".to_owned() + constraints,
-        ).context(TranslationErrorKind::Generic)))
+        Err(TranslationError::new(
+            None,
+            failure::err_msg(
+                "Inline assembly constraints could not be parsed: ".to_owned() + constraints,
+            )
+            .context(TranslationErrorKind::Generic),
+        ))
     };
     use ArgDirSpec::*;
     let mut is_input = match constraints.chars().next() {
         Some('+') => {
             constraints = &constraints[1..];
             true
-        },
+        }
         Some('=') => {
             constraints = &constraints[1..];
             false
-        },
+        }
         _ => true,
     };
 
@@ -93,37 +133,162 @@ fn parse_constraints(mut constraints: &str) ->
     // Handle register names
     let mut constraints = constraints.replace('{', "\"").replace('}', "\"");
 
+    // Convert (simple) constraints to ones rustc understands
     match &*constraints {
         "m" => {
             mem_only = true;
             constraints = "reg".into();
-        },
+        }
         "r" => {
             constraints = "reg".into();
         }
-        _ => {},
+        "i" => {
+            // Rust inline assembly has no constraint for that, but uses the argument as an
+            // immediate value anyway
+            constraints = "reg".into();
+        }
+        _ => {
+            let is_explicit_reg = constraints.starts_with('"');
+            let is_tied = !constraints.contains(|c: char| !c.is_ascii_digit());
+
+            if !(is_explicit_reg || is_tied) {
+                // Attempt to parse machine-specific constraints
+                if let Some((machine_constraints, is_mem)) =
+                    translate_machine_constraint(&*constraints, arch)
+                {
+                    constraints = machine_constraints.into();
+                    mem_only = is_mem;
+                } else {
+                    warn!(
+                        "Did not recognize inline asm constraint: {}\n\
+                    It is likely that this will cause compilation errors or \
+                    incorrect semantics in the translated program; please \
+                    manually correct.",
+                        constraints
+                    );
+                }
+            }
+        }
     };
 
     let mode = if mem_only {
         In
     } else {
         if is_input {
-            if early_clobber {InOut} else {InLateOut}
+            if early_clobber {
+                InOut
+            } else {
+                InLateOut
+            }
         } else {
-            if early_clobber {Out} else {LateOut}
+            if early_clobber {
+                Out
+            } else {
+                LateOut
+            }
         }
     };
 
     Ok((mode, mem_only, constraints))
 }
 
+fn is_regname_or_int(parsed_constraint: &str) -> bool {
+    parsed_constraint.contains('"') || parsed_constraint.starts_with(|c: char| c.is_ascii_digit())
+}
+
+/// Translate an architecture-specific assembly constraint from llvm/gcc
+/// to those accepted by the Rust asm! macro. "Simple" (arch-independent)
+/// constraints are handled in `parse_constraints`, not here.
+/// See https://gcc.gnu.org/onlinedocs/gcc/Machine-Constraints.html,
+/// https://llvm.org/docs/LangRef.html#constraint-codes, and
+/// https://doc.rust-lang.org/nightly/reference/inline-assembly.html#register-operands
+fn translate_machine_constraint(constraint: &str, arch: Arch) -> Option<(&str, bool)> {
+    let mem = &mut false;
+    // Many constraints are not handled here, because rustc does. The best we can
+    let constraint = match arch {
+        Arch::X86OrX86_64 => match constraint {
+            // "R" => "reg_word", // rust does not support this
+            "Q" => "reg_abcd",
+            "q" => "reg_byte",
+            "a" => "\"a\"",
+            "b" => "\"b\"",
+            "c" => "\"c\"",
+            "d" => "\"d\"",
+            "S" => "\"si\"",
+            "D" => "\"di\"",
+            // "A" => "a_and_d", // rust does not support this
+            "U" => {
+                warn!(
+                    "the x86 'U' inline assembly operand constraint cannot \
+                be translated correctly. It corresponds to the `clobber_abi` \
+                option for `asm!`, but c2rust does not know the ABI being \
+                used, so it cannot be translated automatically. Please correct \
+                manually after translation."
+                );
+                return None;
+            }
+            "f" => "x87_reg",
+            "t" => "\"st(0)\"",
+            "u" => "\"st(1)\"",
+            "x" => "xmm_reg", // this could also translate as ymm_reg
+            "y" => "mmx_reg",
+            "v" => "zmm_reg",
+            "Yz" => "\"xmm0\"",
+            "Yk" => "kreg",
+
+            _ => return None,
+        },
+        Arch::Aarch64 => match constraint {
+            "k" => "\"SP\"",
+            "w" => "vreg",
+            "x" => "vreg_low16",
+            // "y" => "vreg_low8", // rust does not support this
+            // "Upl" => "preg_low8", // rust does not support this
+            "Upa" => "preg",
+            "Q" => {
+                *mem = true;
+                "reg"
+            }
+            "Ump" => {
+                *mem = true;
+                "reg"
+            }
+            _ => return None,
+        },
+        Arch::Arm => match constraint {
+            // "h" => "reg_8_15", // rust does not support this
+            "k" => "\"SP\"",
+            "l" => "reg",
+            "t" => "sreg",
+            "x" => "sreg_low16",
+            "w" => "dreg",
+            // "y" => "sreg",
+            // "z" => "sreg",
+            "Q" => {
+                *mem = true;
+                "reg"
+            }
+            "Uv" | "Uy" | "Uq" => {
+                *mem = true;
+                "reg"
+            }
+            _ => return None,
+        },
+        Arch::Riscv => match constraint {
+            "f" => "freg",
+            _ => return None,
+        },
+    };
+    Some((constraint, *mem))
+}
+
 /// Translate a template modifier from llvm/gcc asm template argument modifiers
 /// to those accepted by the Rust asm! macro. This is arch-dependent, so we need
 /// to know which architecture the asm targets.
 /// See https://doc.rust-lang.org/nightly/reference/inline-assembly.html#template-modifiers
-fn translate_modifier(modifier: char, arch: &str) -> Option<char> {
+fn translate_modifier(modifier: char, arch: Arch) -> Option<char> {
     Some(match arch {
-        "x86" => match modifier {
+        Arch::X86OrX86_64 => match modifier {
             'k' => 'e',
             'q' => 'r',
             'b' => 'l',
@@ -131,13 +296,12 @@ fn translate_modifier(modifier: char, arch: &str) -> Option<char> {
             'w' => 'x',
             _ => return None,
         },
-        "aarch64" => modifier,
-        "arm" => match modifier {
-            'p'|'q' => return None,
+        Arch::Aarch64 => modifier,
+        Arch::Arm => match modifier {
+            'p' | 'q' => return None,
             _ => modifier,
         },
-        "riscv" => modifier,
-        _ => return None,
+        Arch::Riscv => modifier,
     })
 }
 
@@ -160,17 +324,23 @@ impl BidirAsmOperand {
 }
 
 /// Return the register and corresponding template modifiers if the constraint
-/// uses a reserved register. Assumes x86_64.
-fn reg_is_reserved(constraint: &str) -> Option<(&str, &str)> {
-    Some(match constraint {
-        "\"bl\"" | "\"bh\"" | "\"bx\"" | "\"ebx\"" | "\"rbx\"" => {
-            let reg = constraint.trim_matches('"');
-            let mods = if reg.len() == 2 {
-                &reg[1..] // l/h/x
-            } else {
-                &reg[..1] // e/r
-            };
-            (reg, mods)
+/// uses a reserved register.
+fn reg_is_reserved(constraint: &str, arch: Arch) -> Option<(&str, &str)> {
+    Some(match arch {
+        Arch::X86OrX86_64 => match constraint {
+            // rbx is reserved on x86_64 but not x86, and esi is reserved on x86
+            // but not x86_64. It would be nice to distinguish these
+            // architectures here.
+            "\"bl\"" | "\"bh\"" | "\"bx\"" | "\"ebx\"" | "\"rbx\"" => {
+                let reg = constraint.trim_matches('"');
+                let mods = if reg.len() == 2 {
+                    &reg[1..] // l/h/x
+                } else {
+                    &reg[..1] // e/r
+                };
+                (reg, mods)
+            }
+            _ => return None,
         },
         _ => return None,
     })
@@ -186,7 +356,11 @@ fn reg_is_reserved(constraint: &str) -> Option<(&str, &str)> {
 ///
 /// Modifies operands and returns a pair of prefix and suffix strings that
 /// should be appended to the assembly template.
-fn rewrite_reserved_reg_operands(att_syntax: bool, operands: &mut Vec<BidirAsmOperand>) -> (String, String) {
+fn rewrite_reserved_reg_operands(
+    att_syntax: bool,
+    arch: Arch,
+    operands: &mut Vec<BidirAsmOperand>,
+) -> (String, String) {
     let (mut prolog, mut epilog) = (String::new(), String::new());
 
     let mut rewrite_idxs = vec![];
@@ -198,7 +372,7 @@ fn rewrite_reserved_reg_operands(att_syntax: bool, operands: &mut Vec<BidirAsmOp
     for (i, operand) in operands.iter().enumerate() {
         if operand.is_positional() {
             total_positional += 1;
-        } else if let Some((reg, mods)) = reg_is_reserved(&*operand.constraints) {
+        } else if let Some((reg, mods)) = reg_is_reserved(&*operand.constraints, arch) {
             rewrite_idxs.push((i, reg.to_owned(), mods.to_owned()));
         }
     }
@@ -207,7 +381,7 @@ fn rewrite_reserved_reg_operands(att_syntax: bool, operands: &mut Vec<BidirAsmOp
     for (idx, reg, mods) in rewrite_idxs {
         let operand = &mut operands[idx];
         let name = format!("restmp{}", n_moved);
-        if let Some((_idx, in_expr)) = operand.in_expr {
+        if let Some((_idx, _in_expr)) = operand.in_expr {
             let move_input = if att_syntax {
                 format!("mov %{}, {{{}:{}}}\n", reg, name, mods)
             } else {
@@ -215,7 +389,7 @@ fn rewrite_reserved_reg_operands(att_syntax: bool, operands: &mut Vec<BidirAsmOp
             };
             prolog.push_str(&move_input);
         }
-        if let Some((_idx, out_expr)) = operand.out_expr {
+        if let Some((_idx, _out_expr)) = operand.out_expr {
             let move_output = if att_syntax {
                 format!("\nmov {{{}:{}}}, %{}", name, mods, reg)
             } else {
@@ -239,15 +413,50 @@ fn rewrite_reserved_reg_operands(att_syntax: bool, operands: &mut Vec<BidirAsmOp
     (prolog, epilog)
 }
 
-fn asm_is_att_syntax(asm: &str) -> bool {
-    // For GCC, AT&T syntax is default... unless -masm=intel is passed. This
-    // means we can hope but not guarantee that x86 asm with no syntax directive
-    // uses AT&T syntax.
-    // To handle other cases, try to heuristically detect the variant we get
-    // (assuming it's actually x86 asm in the first place...).
-    // As the rust x86 default is intel syntax, we need to emit the "att_syntax"
-    // option if we get a hint that this asm uses AT&T syntax.
+/// Remove comments from an x86 assembly template. Used only to provide a less-
+/// confounding input to our Intel-vs-AT&T detection in `asm_is_att_syntax`.
+fn remove_comments(mut asm: &str) -> String {
+    // Remove C-style comments
+    let mut without_c_comments = String::with_capacity(asm.len());
+    while let Some(comment_begin) = asm.find("/*") {
+        let comment_len = asm[comment_begin..]
+            .find("*/")
+            // Comments with no terminator extend to the end of the string
+            .unwrap_or(asm[comment_begin..].len());
+        let before_comment = &asm[..comment_begin];
+        without_c_comments.push_str(before_comment);
+        asm = &asm[comment_begin + comment_len..];
+    }
+    // Push whatever is left after the final comment
+    without_c_comments.push_str(asm);
 
+    // Remove EOL comments from each line
+    let mut without_comments = String::with_capacity(without_c_comments.len());
+    for line in without_c_comments.lines() {
+        if let Some(line_comment_idx) = line.find("#") {
+            without_comments.push_str(&line[..line_comment_idx]);
+        } else {
+            without_comments.push_str(line);
+        }
+        without_comments.push('\n');
+    }
+    without_comments
+}
+
+/// Detect whether an x86[_64] gcc inline asm string uses Intel or AT&T syntax.
+/// For gcc, AT&T syntax is default... unless `-masm=intel` is passed. This
+/// means we can hope but not guarantee that x86 asm with no syntax directive
+/// uses AT&T syntax.
+/// To handle other cases, try to heuristically detect the variant we get
+/// (assuming it's actually x86 asm in the first place...).
+/// As the rust x86 default is intel syntax, we need to emit the "att_syntax"
+/// option if we get a hint that this asm uses AT&T syntax.
+fn asm_is_att_syntax(asm: &str) -> bool {
+    // First, remove comments, so we can look at only the semantically
+    // significant parts of the asm template.
+    let asm = &*remove_comments(asm);
+
+    // Look for syntax directives.
     let intel_directive = asm.find(".intel_syntax");
     let att_directive = asm.find(".att_syntax");
     if let (Some(intel_pos), Some(att_pos)) = (intel_directive, att_directive) {
@@ -261,14 +470,62 @@ fn asm_is_att_syntax(asm: &str) -> bool {
         true
     } else if asm.contains("word ptr") {
         false
+    } else if asm.contains('$') || asm.contains('%') || asm.contains('(') {
+        // Guess based on sigils used in AT&T assembly:
+        // $ for constants, % for registers, and ( for address calculations
+        true
+    } else if asm.contains('[') {
+        false
     } else {
-        asm.contains('$')
+        // default to true, because AT&T is the default for gcc inline asm
+        true
     }
 }
 
-/// References of the form $0 need to be converted to {0}, and references
-/// that are mem-only need to be converted to [{0}].
-fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F) -> String {
+/// If applicable, maps the index of an input operand to the
+/// output operand it is tied to.
+///
+/// Utilizes the fact that GNU inline assembly specifies all
+/// operands in a particular order of [output1, ... outputN]
+/// followed by [input1, ..., inputN] where the indices for all
+/// input operands are indexed relative to the size of the
+/// output operand sequence.
+fn map_input_op_idx(
+    idx: usize,
+    num_output_operands: usize,
+    tied_operands: &HashMap<(usize, bool), usize>,
+) -> usize {
+    if let Some(adj_idx) = idx.checked_sub(num_output_operands) {
+        // will only be Some(idx) if it was an input operand
+        match tied_operands.get(&(adj_idx, false)) {
+            Some(&out_idx) => {
+                return out_idx;
+            }
+            None => {
+                // get number of tied inputs before this index
+                // TODO: can calculate this once before the call, not once for each input
+                let num_tied_before = tied_operands
+                    .keys()
+                    .filter(|&&(iidx, is_out)| !is_out && iidx < adj_idx)
+                    .count();
+                // shift the original index by the number of tied input operands prior to the current one
+                return idx - num_tied_before;
+            }
+        };
+    }
+
+    idx
+}
+
+/// Rewrite a LLVM inline assembly template string into an asm!-compatible one
+/// by translating its references to operands (of the form $0 or $x0) to {0} or
+/// {0:y} (and wrapping mem-only references in square brackets).
+fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
+    asm: &str,
+    input_op_mapper: M,
+    is_mem_only: F,
+    arch: Arch,
+) -> Result<String, TranslationError> {
     let mut out = String::with_capacity(asm.len());
 
     let mut first = true;
@@ -280,7 +537,7 @@ fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F) -> String {
         if first {
             first = false;
             out.push_str(chunk);
-            continue
+            continue;
         }
 
         // Pass-through $$ as one $
@@ -291,18 +548,29 @@ fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F) -> String {
             continue;
         }
 
+        // Note empty chunks
+        if chunk == "" {
+            last_empty = true;
+            continue;
+        }
+
         // Do not re-wrap ${...}, but do translate modifiers
         if chunk.starts_with('{') {
             // Translate operand modifiers ("template modifiers" per Rust)
             if let Some(end_idx) = chunk.find('}') {
                 let ref_str = &chunk[..end_idx];
                 if let Some(colon_idx) = ref_str.find(':') {
-                    let (before_mods, modifiers) = ref_str.split_at(colon_idx + 1);
-                    out.push_str(before_mods);
-
+                    let (before_mods, _modifiers) = ref_str.split_at(colon_idx + 1);
+                    out.push_str("{");
+                    let idx: usize = before_mods
+                        .trim_matches(|c: char| !c.is_ascii_digit())
+                        .parse()
+                        .map_err(|_| TranslationError::generic("could not parse operand idx"))?;
+                    out.push_str(input_op_mapper(idx).to_string().as_str());
+                    out.push_str(":");
                     let modifiers = ref_str[colon_idx + 1..].chars();
                     for modifier in modifiers {
-                        if let Some(new) = translate_modifier(modifier, "x86") {
+                        if let Some(new) = translate_modifier(modifier, arch) {
                             out.push(new);
                         }
                     }
@@ -311,24 +579,56 @@ fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F) -> String {
             } else {
                 out.push_str(chunk);
             }
-            continue
-        }
-
-        if chunk == "" {
-            last_empty = true;
             continue;
         }
 
-        let ref_str = chunk.trim_matches(|c: char| !c.is_ascii_alphanumeric());
-        let mem_only = is_mem_only(ref_str);
-        // Push the reference wrapped in {}, or in [{}] if mem-only
-        out.push_str(if mem_only { "[{" } else {"{"});
-        out.push_str(ref_str);
-        out.push_str(if mem_only { "}]" } else {"}"});
-        // Push the rest of the chunk
-        out.push_str(&chunk[ref_str.len()..]);
+        // Translate references of the form %k0 or %3, which look like $k0
+        // or $3 in LLVM asm.
+        if chunk.starts_with(|c: char| c.is_ascii_alphanumeric()) {
+            // Find the end of the reference itself (after 'k0' or '3').
+            let end_idx = chunk
+                .find(|c: char| c == ',' || !c.is_ascii_alphanumeric())
+                .unwrap_or(chunk.len());
+            let ref_str = &chunk[..end_idx];
+
+            let index_str;
+            let mut new_modifiers = String::new();
+            // If the ref string starts with a letter, it's a modifier to translate.
+            if let Some(true) = ref_str.chars().next().map(|c| c.is_ascii_alphabetic()) {
+                let (modifiers, index) = ref_str.split_at(1);
+
+                index_str = index;
+
+                for modifier in modifiers.chars() {
+                    if let Some(new) = translate_modifier(modifier, arch) {
+                        new_modifiers.push(new);
+                    }
+                }
+            } else {
+                // Just digits
+                index_str = ref_str;
+            }
+            let mem_only = is_mem_only(index_str);
+            // Push the reference wrapped in {}, or in [{}] if mem-only
+            out.push_str(if mem_only { "[{" } else { "{" });
+            let idx: usize = index_str
+                .parse()
+                .map_err(|_| TranslationError::generic("could not parse operand idx"))?;
+            out.push_str(input_op_mapper(idx).to_string().as_str());
+            if new_modifiers != "" {
+                out.push(':');
+                out.push_str(&*new_modifiers);
+            }
+            out.push_str(if mem_only { "}]" } else { "}" });
+            // Push the rest of the chunk
+            out.push_str(&chunk[end_idx..]);
+            continue;
+        }
+
+        // We failed to parse this operand reference
+        out.push_str(&chunk[..]);
     }
-    out
+    Ok(out)
 }
 
 impl<'c> Translation<'c> {
@@ -355,6 +655,15 @@ impl<'c> Translation<'c> {
             ));
         }
 
+        let arch = match parse_arch(&self.ast_context.target) {
+            Some(arch) => arch,
+            None => {
+                return Err(TranslationError::generic(
+                    "Cannot translate inline assembly for unfamiliar architecture",
+                ))
+            }
+        };
+
         self.use_feature("asm");
 
         fn push_expr(tokens: &mut Vec<TokenTree>, expr: Box<Expr>) {
@@ -366,10 +675,12 @@ impl<'c> Translation<'c> {
         let mut tokens: Vec<TokenTree> = vec![];
 
         let mut tied_operands = HashMap::new();
-        for (input_idx, &AsmOperand {
-            ref constraints,
-            ..
-        }) in inputs.iter().enumerate()
+        for (
+            input_idx,
+            &AsmOperand {
+                ref constraints, ..
+            },
+        ) in inputs.iter().enumerate()
         {
             let constraints_digits = constraints.trim_matches(|c: char| !c.is_ascii_digit());
             if let Ok(output_idx) = constraints_digits.parse::<usize>() {
@@ -380,33 +691,47 @@ impl<'c> Translation<'c> {
             }
         }
 
-        fn operand_is_mem_only(operand: &AsmOperand) -> bool {
-            if let Ok((_dir_spec, mem_only, _parsed)) = parse_constraints(&operand.constraints) {
+        let operand_is_mem_only = |operand: &AsmOperand| -> bool {
+            if let Ok((_dir_spec, mem_only, _parsed)) =
+                parse_constraints(&operand.constraints, arch)
+            {
                 mem_only
             } else {
                 println!("could not parse asm constraints: {}", operand.constraints);
                 false
             }
-        }
+        };
 
         // Rewrite arg references in assembly template
-        let rewritten_asm = rewrite_asm(asm, |ref_str: &str| {
-            if let Ok(idx) = ref_str.parse::<usize>() {
-                inputs.iter()
-                    .chain(outputs.iter())
-                    .nth(idx)
-                    .map(operand_is_mem_only)
-                    .unwrap_or(false)
-            } else {
-                false
-            }
-        });
+        let rewritten_asm = rewrite_asm(
+            asm,
+            |idx: usize| map_input_op_idx(idx, outputs.len(), &tied_operands),
+            |ref_str: &str| {
+                if let Ok(idx) = ref_str.parse::<usize>() {
+                    outputs
+                        .iter()
+                        .chain(inputs.iter())
+                        .nth(idx)
+                        .map(operand_is_mem_only)
+                        .unwrap_or(false)
+                } else {
+                    false
+                }
+            },
+            arch,
+        )?;
 
         // Detect and pair inputs/outputs that constrain themselves to the same register
         let mut inputs_by_register = HashMap::new();
+        let mut other_inputs = Vec::new();
         for (i, input) in inputs.iter().enumerate() {
-            let (_dir_spec, mem_only, parsed) = parse_constraints(&input.constraints)?;
-            inputs_by_register.insert(parsed, (i, input.clone()));
+            let (_dir_spec, _mem_only, parsed) = parse_constraints(&input.constraints, arch)?;
+            // Only pair operands with an explicit register or index
+            if is_regname_or_int(&*parsed) {
+                inputs_by_register.insert(parsed, (i, input.clone()));
+            } else {
+                other_inputs.push((parsed, (i, input.clone())));
+            }
         }
 
         // Convert gcc asm arguments (input and output lists) into a single list
@@ -417,7 +742,7 @@ impl<'c> Translation<'c> {
 
         // Add outputs as inout if a matching input is found, else as outputs
         for (i, output) in outputs.into_iter().enumerate() {
-            match parse_constraints(&output.constraints) {
+            match parse_constraints(&output.constraints, arch) {
                 Ok((mut dir_spec, mem_only, parsed)) => {
                     // Add to args list; if a matching in_expr is found, this is
                     // an inout and we remove the output from the outputs list
@@ -439,18 +764,24 @@ impl<'c> Translation<'c> {
                         name: None,
                         constraints: parsed,
                         in_expr,
-                        out_expr: Some((i, output.expression))
+                        out_expr: Some((i, output.expression)),
                     });
-                },
+                }
                 // Constraint could not be parsed, drop it
                 Err(e) => eprintln!("{}", e),
             }
         }
         // Add unmatched inputs
-        for (_, (i, input)) in inputs_by_register {
-            let (dir_spec, mem_only, parsed) = match parse_constraints(&input.constraints) {
+        for (_, (i, input)) in inputs_by_register
+            .into_iter()
+            .chain(other_inputs.into_iter())
+        {
+            let (dir_spec, mem_only, parsed) = match parse_constraints(&input.constraints, arch) {
                 Ok(x) => x,
-                Err(e) => {eprintln!("{}", e); continue;}
+                Err(e) => {
+                    eprintln!("{}", e);
+                    continue;
+                }
             };
             args.push(BidirAsmOperand {
                 dir_spec,
@@ -463,10 +794,13 @@ impl<'c> Translation<'c> {
         }
 
         // Determine whether the assembly is in AT&T syntax
-        let att_syntax = asm_is_att_syntax(&*rewritten_asm);
+        let att_syntax = match arch {
+            Arch::X86OrX86_64 => asm_is_att_syntax(&*rewritten_asm),
+            _ => false,
+        };
 
         // Add workaround for reserved registers (e.g. rbx on x86_64)
-        let (prolog, epilog) = rewrite_reserved_reg_operands(att_syntax, &mut args);
+        let (prolog, epilog) = rewrite_reserved_reg_operands(att_syntax, arch, &mut args);
         let rewritten_asm = prolog + &rewritten_asm + &epilog;
 
         // Emit assembly template
@@ -491,7 +825,7 @@ impl<'c> Translation<'c> {
                     out_expr = mk().mutbl().addr_of_expr(out_expr);
                 }
 
-                if let Some(tied_operand) = tied_operands.get(&(output_idx, true)) {
+                if let Some(_tied_operand) = tied_operands.get(&(output_idx, true)) {
                     // If we have an input operand tied to an output operand,
                     // we need to replicate clang's behavior: the inline assembly
                     // uses the larger type internally, and the smaller value gets
@@ -543,9 +877,7 @@ impl<'c> Translation<'c> {
                         item_store.add_use(vec!["c2rust_asm_casts".into()], "AsmCastTrait");
                     });
 
-                    let (output_name, inner_name) = operand_renames
-                        .get(&tied_operand)
-                        .unwrap();
+                    let (output_name, inner_name) = operand_renames.get(&tied_operand).unwrap();
 
                     let input_name = self.renamer.borrow_mut().fresh();
                     let input_local = mk().local(
@@ -557,17 +889,14 @@ impl<'c> Translation<'c> {
 
                     // Replace `in_expr` with
                     // `c2rust_asm_casts::AsmCast::cast_in(output, input)`
-                    let path_expr = mk().path_expr(
-                        vec!["c2rust_asm_casts", "AsmCast", "cast_in"]
-                    );
+                    let path_expr = mk().path_expr(vec!["c2rust_asm_casts", "AsmCast", "cast_in"]);
                     let output = mk().ident_expr(output_name);
                     let input = mk().ident_expr(input_name);
                     in_expr = mk().call_expr(path_expr, vec![output.clone(), input.clone()]);
 
                     // Append the cast-out call after the assembly macro:
                     // `c2rust_asm_casts::AsmCast::cast_out(output, input, inner);`
-                    let path_expr = mk().path_expr(
-                        vec!["c2rust_asm_casts", "AsmCast", "cast_out"]);
+                    let path_expr = mk().path_expr(vec!["c2rust_asm_casts", "AsmCast", "cast_out"]);
                     let inner = mk().ident_expr(inner_name);
                     let cast_out = mk().call_expr(path_expr, vec![output, input, inner]);
                     post_stmts.push(mk().semi_stmt(cast_out));
@@ -585,9 +914,7 @@ impl<'c> Translation<'c> {
 
             // Emit dir_spec(constraint), quoting constraint if needed
             push_expr(&mut tokens, mk().ident_expr(operand.dir_spec.to_string()));
-            let is_regname_or_int = operand.constraints.contains('"') ||
-                operand.constraints.starts_with(|c: char| c.is_ascii_digit());
-            let constraints_ident = if is_regname_or_int {
+            let constraints_ident = if is_regname_or_int(&*operand.constraints) {
                 mk().lit_expr(operand.constraints.trim_matches('"'))
             } else {
                 mk().ident_expr(operand.constraints)
@@ -623,7 +950,7 @@ impl<'c> Translation<'c> {
             // Process and drop non-register clobbers
             if clobber == "cc" {
                 preserves_flags = false;
-                continue
+                continue;
             };
             if clobber == "memory" {
                 read_only = false;
@@ -634,11 +961,14 @@ impl<'c> Translation<'c> {
             // really means we're misinforming the compiler of what's been
             // overwritten. Warn verbosely.
             let quoted = format!("\"{}\"", clobber);
-            if reg_is_reserved(&quoted).is_some() {
-                warn!("Attempting to clobber reserved register ({}), dropping clobber! \
+            if reg_is_reserved(&quoted, arch).is_some() {
+                warn!(
+                    "Attempting to clobber reserved register ({}), dropping clobber! \
                 This likely means the potential for miscompilation has been introduced. \
                 Please rewrite this assembly to save/restore the value of this register \
-                if at all possible.", clobber);
+                if at all possible.",
+                    clobber
+                );
                 continue;
             }
 

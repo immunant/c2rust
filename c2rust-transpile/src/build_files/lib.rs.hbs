@@ -11,10 +11,10 @@ extern crate {{this.ident}};
 {{~#if this.path~}}
 #[path = "{{this.path}}"]
 {{/if~}}
-{{~#unless this.close~}}
+{{#unless this.close~}}
 pub mod {{this.name}}
 {{~#if this.open}} { {{~else~}};{{~/if}}
-{{~else~}}
+{{else~}}
 } // mod {{this.name}}
-{{~/unless}}
+{{/unless}}
 {{/each}}

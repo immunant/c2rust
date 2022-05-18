@@ -2,9 +2,6 @@ use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
-use chrono::{Duration, NaiveDate};
-use rustc_version::Channel;
-
 fn main() {
     let sysroot = Command::new(env::var("RUSTC").unwrap())
         .arg("--print=sysroot")
