@@ -26,7 +26,15 @@ pub struct Graph {
     /// The nodes in the graph.  Nodes are stored in increasing order by timestamp.  The first
     /// node, called the "root node", creates the object described by this graph, and all other
     /// nodes are derived from it.
-    nodes: IndexVec<NodeId, Node>,
+    pub nodes: IndexVec<NodeId, Node>,
+}
+
+impl Graph {
+    pub fn new() -> Graph {
+        Graph {
+            nodes: IndexVec::new(),
+        }
+    }
 }
 
 /// A node in the graph represents an operation on pointers.  It may produce a pointer from
@@ -44,22 +52,22 @@ pub struct Node {
     /// place to the caller's destination local is attributed to the `Call` terminator in the
     /// caller.  This way, the combination of `function` and `dest` accurately identifies the local
     /// modified by the operation.
-    function: DefPathHash,
+    pub function: DefPathHash,
     /// The basic block that contains this operation.
-    block: BasicBlock,
+    pub block: BasicBlock,
     /// The index within the basic block of the MIR statement or terminator that performed this
     /// operation.  As in `rustc_middle::mir::Location`, an index less than the number of
     /// statements in the block refers to that statement, and an index equal to the number of
     /// statements refers to the terminator.
-    index: usize,
+    pub index: usize,
     /// The MIR local where this operation stores its result.  This is `None` for operations that
     /// don't store anything and for operations whose result is a temporary not visible as a MIR
     /// local.
-    dest: Option<Local>,
+    pub dest: Option<Local>,
     /// The kind of operation that was performed.
-    kind: NodeKind,
+    pub kind: NodeKind,
     /// The `Node` that produced the input to this operation.
-    source: Option<NodeId>,
+    pub source: Option<NodeId>,
 }
 
 pub enum NodeKind {
@@ -110,7 +118,7 @@ pub enum NodeKind {
 pub struct Graphs {
     /// The graphs.  Each graph describes one object, or one group of objects that were all handled
     /// identically.
-    graphs: IndexVec<GraphId, Graph>,
+    pub graphs: IndexVec<GraphId, Graph>,
 
     /// Lookup table for finding all nodes in all graphs that store to a particular MIR local.
     by_local: HashMap<(DefPathHash, Local), Vec<(GraphId, NodeId)>>,
