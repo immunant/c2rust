@@ -5,9 +5,9 @@ use indexmap::IndexSet;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::{PlaceContext, Visitor};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, CastKind, Constant, Local, LocalDecl, Location, Mutability, Operand,
-    Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo, Statement, StatementKind, Terminator, TerminatorKind,
-    START_BLOCK,
+    BasicBlock, BasicBlockData, Body, CastKind, Constant, Field, Local, LocalDecl, Location,
+    Mutability, Operand, Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo, Statement,
+    StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, List, ParamEnv, TyCtxt};
 use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
@@ -66,11 +66,21 @@ impl InstrumentMemoryOps {
     /// Returned indices will not be sorted in any particular order, but are
     /// unique and constant across the entire lifetime of this instrumentation
     /// instance.
-    fn get_mir_loc_idx<'tcx>(&self, body_def: DefPathHash, location: Location) -> MirLocId {
+    fn get_mir_loc_idx<'tcx>(
+        &self,
+        body_def: DefPathHash,
+        location: Location,
+        instrumentation_kind: &InstrumentationKind,
+    ) -> MirLocId {
+        let store = match instrumentation_kind {
+            InstrumentationKind::Assign(local) => Some(u32::try_from(local.index()).unwrap()),
+            _ => None,
+        };
         let mir_loc = MirLoc {
             body_def: body_def.0.as_value().into(),
             basic_block_idx: u32::from(location.block),
             statement_idx: u32::try_from(location.statement_index).unwrap(),
+            store,
         };
         let (idx, _) = self.mir_locs.lock().unwrap().insert_full(mir_loc);
         u32::try_from(idx).unwrap()
@@ -83,6 +93,14 @@ struct InstrumentationPoint<'tcx> {
     args: Vec<Operand<'tcx>>,
     is_cleanup: bool,
     after_call: bool,
+    kind: InstrumentationKind,
+}
+
+enum InstrumentationKind {
+    Field(Local, Field),
+    Deref(Local),
+    Assign(Local),
+    Generic,
 }
 
 struct FunctionInstrumenter<'a, 'tcx: 'a> {
@@ -108,6 +126,7 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
         args: Vec<Operand<'tcx>>,
         is_cleanup: bool,
         after_call: bool,
+        kind: InstrumentationKind,
     ) {
         self.instrumentation_points
             .borrow_mut()
@@ -117,6 +136,7 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
                 args,
                 is_cleanup,
                 after_call,
+                kind,
             })
     }
 
@@ -168,6 +188,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                         ],
                         false,
                         false,
+                        InstrumentationKind::Field(local, field),
                     );
                 }
                 PlaceElem::Deref if !context.is_mutating_use() => {
@@ -177,6 +198,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                         vec![Operand::Copy(local.into())],
                         false,
                         false,
+                        InstrumentationKind::Deref(local),
                     );
                 }
                 _ => {}
@@ -201,7 +223,10 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                 let mut place_ref = place.as_ref();
                 while let Some((cur_ref, proj)) = place_ref.last_projection() {
                     if let ProjectionElem::Deref = proj {
-                        place = Place { local: cur_ref.local, projection: self.tcx.intern_place_elems(cur_ref.projection) };
+                        place = Place {
+                            local: cur_ref.local,
+                            projection: self.tcx.intern_place_elems(cur_ref.projection),
+                        };
                     }
                     place_ref = cur_ref;
                 }
@@ -211,6 +236,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                     vec![Operand::Copy(place)],
                     false,
                     false,
+                    InstrumentationKind::Assign(place.local),
                 );
             } else if value.ty(&self.body.local_decls, self.tcx).is_unsafe_ptr() {
                 // We want to insert after the assignment statement so we can
@@ -222,6 +248,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                     vec![Operand::Copy(place)],
                     false,
                     false,
+                    InstrumentationKind::Assign(place.local),
                 );
             }
         }
@@ -249,6 +276,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                                 vec![Operand::Copy(place)],
                                 false,
                                 false,
+                                InstrumentationKind::Generic,
                             );
                         }
                     }
@@ -259,7 +287,14 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                         let func_def_id = self
                             .find_instrumentation_def(fn_name)
                             .expect("Could not find instrumentation hook function");
-                        self.add_instrumentation(location, func_def_id, args.clone(), false, true);
+                        self.add_instrumentation(
+                            location,
+                            func_def_id,
+                            args.clone(),
+                            false,
+                            true,
+                            InstrumentationKind::Generic,
+                        );
                     }
                 }
             }
@@ -272,6 +307,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                         vec![Operand::Copy(place)],
                         false,
                         false,
+                        InstrumentationKind::Generic,
                     );
                 }
             }
@@ -392,11 +428,12 @@ fn do_instrumentation<'tcx>(
             ref args,
             is_cleanup,
             after_call,
+            ref kind,
         } = point;
         let mut args = args.clone();
 
         // Add the MIR location as the first argument to the instrumentation function
-        let loc_idx = state.get_mir_loc_idx(body_def, loc);
+        let loc_idx = state.get_mir_loc_idx(body_def, loc, kind);
         args.insert(0, make_const(tcx, loc_idx));
 
         let (blocks, locals) = body.basic_blocks_and_local_decls_mut();
@@ -494,7 +531,9 @@ fn insert_call<'tcx>(
     for arg in &mut args {
         if let Some((cast_stmts, cast_local)) = cast_ptr_to_usize(tcx, locals, &arg) {
             *arg = cast_local;
-            blocks[block].statements.splice(statement_index..statement_index, cast_stmts);
+            blocks[block]
+                .statements
+                .splice(statement_index..statement_index, cast_stmts);
         }
     }
 
@@ -543,7 +582,10 @@ fn cast_ptr_to_usize<'tcx>(
         let ptr_ty = arg_ty.builtin_deref(false).unwrap();
         let raw_ptr_ty = tcx.mk_ptr(ptr_ty);
         let raw_ptr_local = locals.push(LocalDecl::new(raw_ptr_ty, DUMMY_SP));
-        let mut deref = arg.place().expect("Can't get the address of a constant").clone();
+        let mut deref = arg
+            .place()
+            .expect("Can't get the address of a constant")
+            .clone();
         let mut projs = Vec::with_capacity(deref.projection.len() + 1);
         projs.extend(deref.projection);
         projs.push(ProjectionElem::Deref);

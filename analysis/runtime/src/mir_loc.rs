@@ -56,6 +56,10 @@ pub struct MirLoc {
     pub body_def: DefPathHash,
     pub basic_block_idx: u32,
     pub statement_idx: u32,
+    /// The MIR local where this operation stores its result.  This is `None` for operations that
+    /// don't store anything and for operations whose result is a temporary not visible as a MIR
+    /// local.
+    pub store: Option<u32>
 }
 
 impl fmt::Debug for MirLoc {

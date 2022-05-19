@@ -1,7 +1,7 @@
 use rustc_index::newtype_index;
-use rustc_index::vec::{IndexVec};
+use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BasicBlock, Field, Local};
-use rustc_span::def_id::DefId;
+use rustc_span::def_id::DefPathHash;
 use std::collections::HashMap;
 
 // Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
@@ -17,7 +17,6 @@ newtype_index!(
 // Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
 // #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 // pub struct NodeId(usize);
-
 
 // Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
 pub const ROOT_NODE: NodeId = NodeId::from_u32(0);
@@ -45,7 +44,7 @@ pub struct Node {
     /// place to the caller's destination local is attributed to the `Call` terminator in the
     /// caller.  This way, the combination of `function` and `dest` accurately identifies the local
     /// modified by the operation.
-    function: DefId,
+    function: DefPathHash,
     /// The basic block that contains this operation.
     block: BasicBlock,
     /// The index within the basic block of the MIR statement or terminator that performed this
@@ -73,6 +72,7 @@ pub enum NodeKind {
     /// Pointer arithmetic.  The `isize` is the concrete offset distance.  We use this to detect
     /// when two pointers always refer to different indices.
     Offset(isize),
+
     // Operations that can't have a `source`.
     /// Get the address of a local.  For address-taken locals, the root node is an `AddrOfLocal`
     /// attributed to the first statement of the function.  Taking the address of the local, as in
@@ -82,7 +82,7 @@ pub enum NodeKind {
     AddrOfLocal(Local),
     /// Get the address of a static.  These are treated the same as locals, with an
     /// `AddressOfStatic` attributed to the first statement.
-    AddrOfStatic(DefId),
+    AddrOfStatic(DefPathHash),
     /// Heap allocation.  The `usize` is the number of array elements allocated; for allocations of
     /// a single object, this value is 1.
     Malloc(usize),
@@ -90,6 +90,7 @@ pub enum NodeKind {
     IntToPtr,
     /// The result of loading a value through some other pointer.  Details TBD.
     LoadValue,
+
     // Operations that can't be the `source` of any other operation.
     /// Heap deallocation.  The object described by the current graph is no longer valid after this
     /// point.  Correct programs will only `Free` pointers produced by `Malloc`, and will no longer
@@ -112,5 +113,14 @@ pub struct Graphs {
     graphs: IndexVec<GraphId, Graph>,
 
     /// Lookup table for finding all nodes in all graphs that store to a particular MIR local.
-    by_local: HashMap<(DefId, Local), Vec<(GraphId, NodeId)>>,
+    by_local: HashMap<(DefPathHash, Local), Vec<(GraphId, NodeId)>>,
+}
+
+impl Graphs {
+    pub fn new() -> Graphs {
+        Graphs {
+            graphs: IndexVec::new(),
+            by_local: HashMap::new(),
+        }
+    }
 }
