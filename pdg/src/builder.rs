@@ -2,7 +2,10 @@ use crate::graph::{Graph, GraphId, Graphs, Node, NodeId, NodeKind};
 use bincode;
 use c2rust_analysis_rt::events::{Event, EventKind};
 use c2rust_analysis_rt::mir_loc::Metadata;
-use rustc_middle::mir::Field;
+use c2rust_analysis_rt::{mir_loc, MirLoc};
+use rustc_data_structures::fingerprint::Fingerprint;
+use rustc_hir::def_id::DefPathHash;
+use rustc_middle::mir::{Field, Local};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
@@ -29,10 +32,10 @@ pub fn read_metadata(path: String) -> Metadata {
 fn get_ptr(kind: &EventKind) -> Option<&usize> {
     Some(match kind {
         EventKind::Copy(ptr) => ptr,
-        EventKind::Field(ptr, id) => ptr,
-        EventKind::Alloc { size, ptr } => ptr,
+        EventKind::Field(ptr, ..) => ptr,
+        EventKind::Alloc { ptr, .. } => ptr,
         EventKind::Free { ptr } => ptr,
-        EventKind::Realloc { old_ptr, size, new_ptr } => old_ptr,
+        EventKind::Realloc { old_ptr, .. } => old_ptr,
         EventKind::Arg(ptr) => ptr,
         EventKind::Ret(ptr) => ptr,
         EventKind::Done => return None,
@@ -44,8 +47,8 @@ fn get_ptr(kind: &EventKind) -> Option<&usize> {
 /** return the new ptr created by an EventKind */
 fn get_new_ptr(kind: &EventKind) -> Option<&usize> {
     Some(match kind {
-        EventKind::Field(ptr, id) => todo!("ptr + id to offset"),
-        EventKind::Alloc { size, ptr } => ptr,
+        // EventKind::Field(ptr, id) => todo!("ptr + id to offset"),
+        EventKind::Alloc { ptr, .. } => ptr,
         EventKind::Realloc { new_ptr, .. } => new_ptr,
         _ => return None,
     })
@@ -57,28 +60,42 @@ pub fn event_to_node_kind(event: &Event) -> Option<NodeKind> {
         EventKind::Realloc { .. } => Some(NodeKind::Malloc(1)),
         EventKind::Free { .. } => Some(NodeKind::Free),
         EventKind::Copy(..) => Some(NodeKind::Copy),
-        EventKind::Field(_, field) => Some(NodeKind::Field(Field::from(field))),
+        EventKind::Field(_, field) => Some(NodeKind::Field(field.into())),
         EventKind::LoadAddr(..) => Some(NodeKind::LoadAddr),
         EventKind::StoreAddr(..) => Some(NodeKind::StoreAddr),
-        _ => None
+        _ => None,
     }
 }
 
-pub fn add_node(graphs: &mut Graphs, origins: &mut HashMap<NodeId, GraphId>, provenances: &mut HashMap<usize, NodeId>, event: &Event) -> Option<NodeId> {
+pub fn add_node(
+    graphs: &mut Graphs,
+    origins: &mut HashMap<NodeId, GraphId>,
+    provenances: &mut HashMap<usize, NodeId>,
+    event: &Event,
+) -> Option<NodeId> {
     let node_kind = match event_to_node_kind(event) {
         Some(kind) => kind,
         None => return None,
     };
-    let (function, block, index) = todo!("event.mir_loc");
-    let source = get_ptr(&event.kind).and_then(|p| provenances.get(p)).cloned();
+
+    let MirLoc {
+        body_def,
+        basic_block_idx,
+        statement_idx,
+        store,
+    } = mir_loc::get(event.mir_loc).unwrap();
+
+    let source = get_ptr(&event.kind)
+        .and_then(|p| provenances.get(p))
+        .cloned();
 
     let node = Node {
-        function,
-        block,
-        index,
+        function: DefPathHash(Fingerprint::new(body_def.0, body_def.1).into()),
+        block: basic_block_idx.clone().into(),
+        index: statement_idx.clone().into(),
         kind: node_kind,
         source,
-        dest: todo!("event.dest"),
+        dest: store.map(Local::from),
     };
 
     let node_id = {

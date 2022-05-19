@@ -37,7 +37,7 @@ pub fn get(index: MirLocId) -> Option<&'static MirLoc> {
 pub type MirLocId = u32;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct DefPathHash(u64, u64);
+pub struct DefPathHash(pub u64, pub u64);
 
 impl fmt::Debug for DefPathHash {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -51,15 +51,21 @@ impl From<(u64, u64)> for DefPathHash {
     }
 }
 
+impl Into<(u64, u64)> for DefPathHash {
+    fn into(self) -> (u64, u64) {
+        (self.0, self.1)
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct MirLoc {
     pub body_def: DefPathHash,
-    pub basic_block_idx: u32,
-    pub statement_idx: u32,
+    pub basic_block_idx: usize,
+    pub statement_idx: usize,
     /// The MIR local where this operation stores its result.  This is `None` for operations that
     /// don't store anything and for operations whose result is a temporary not visible as a MIR
     /// local.
-    pub store: Option<u32>
+    pub store: Option<usize>
 }
 
 impl fmt::Debug for MirLoc {

@@ -73,13 +73,13 @@ impl InstrumentMemoryOps {
         instrumentation_kind: &InstrumentationKind,
     ) -> MirLocId {
         let store = match instrumentation_kind {
-            InstrumentationKind::Assign(local) => Some(u32::try_from(local.index()).unwrap()),
+            InstrumentationKind::Assign(local) => Some(local.index()),
             _ => None,
         };
         let mir_loc = MirLoc {
             body_def: body_def.0.as_value().into(),
-            basic_block_idx: u32::from(location.block),
-            statement_idx: u32::try_from(location.statement_index).unwrap(),
+            basic_block_idx: location.block.index(),
+            statement_idx: location.statement_index,
             store,
         };
         let (idx, _) = self.mir_locs.lock().unwrap().insert_full(mir_loc);
