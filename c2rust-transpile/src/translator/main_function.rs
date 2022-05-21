@@ -32,194 +32,69 @@ impl<'c> Translation<'c> {
                 .get(&main_id)
                 .expect("Could not find main function in renamer");
 
-            let decl = mk().fn_decl("main", vec![], None, ReturnType::Default);
-
-            let main_fn = mk().path_expr(vec![main_fn_name]);
-
-            let exit_fn = mk().abs_path_expr(vec!["std", "process", "exit"]);
-            let args_fn = mk().abs_path_expr(vec!["std", "env", "args"]);
-            let vars_fn = mk().abs_path_expr(vec!["std", "env", "vars"]);
-
-            let no_args: Vec<Box<Expr>> = vec![];
+            let main_fn = syn::Ident::new(&main_fn_name, Span::dummy());
 
             let mut stmts: Vec<Stmt> = vec![];
             let mut main_args: Vec<Box<Expr>> = vec![];
+
+            let get_arg_ty = |idx: CParamId, name: &str| match self.ast_context[idx].kind {
+                CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
+                _ => Err(TranslationError::generic(
+                    format!("Cannot find type of '{}' argument in main function", name),
+                )),
+            };
 
             let n = parameters.len();
 
             if n >= 2 {
                 // `argv` and `argc`
 
-                stmts.push(mk().local_stmt(Box::new(mk().local(
-                    mk().mutbl().ident_pat("args"),
-                    Some(mk().path_ty(vec![mk().path_segment_with_args(
-                        "Vec",
-                        mk().angle_bracketed_args(vec![
-                            mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_char"])),
-                        ]),
-                    )])),
-                    Some(
-                        mk().call_expr(
-                            mk().path_expr(vec!["Vec", "new"]),
-                            vec![] as Vec<Box<Expr>>,
-                        ),
-                    ),
-                ))));
-                stmts.push(mk().semi_stmt(mk().for_expr(
-                    mk().ident_pat("arg"),
-                    mk().call_expr(args_fn, vec![] as Vec<Box<Expr>>),
-                    mk().block(vec![mk().semi_stmt(mk().method_call_expr(
-                        mk().path_expr(vec!["args"]),
-                        "push",
-                        vec![mk().method_call_expr(
-                            mk().method_call_expr(
-                                mk().call_expr(
-                                    mk().abs_path_expr(vec!["std", "ffi", "CString", "new"]),
-                                    vec![mk().path_expr(vec!["arg"])],
-                                ),
-                                "expect",
-                                vec![mk().lit_expr("Failed to convert argument into CString.")],
-                            ),
-                            "into_raw",
-                            vec![] as Vec<Box<Expr>>,
-                        )],
-                    ))]),
-                    None as Option<Ident>,
-                )));
-                stmts.push(mk().semi_stmt(mk().method_call_expr(
-                    mk().path_expr(vec!["args"]),
-                    "push",
-                    vec![mk().call_expr(
-                        mk().abs_path_expr(vec!["std", "ptr", "null_mut"]),
-                        vec![] as Vec<Box<Expr>>,
-                    )],
-                )));
+                stmts.push(syn::parse_quote! {
+                    let mut args: Vec<*mut ::libc::c_char> = Vec::new();
+                });
+                stmts.push(syn::parse_quote! {
+                    for arg in ::std::env::args() {
+                        args.push(
+                            ::std::ffi::CString::new(arg)
+                                .expect("Failed to convert argument into CString.")
+                                .into_raw()
+                        );
+                    }
+                });
+                stmts.push(syn::parse_quote! {
+                    args.push(::std::ptr::null_mut());
+                });
 
-                let argc_ty: Box<Type> = match self.ast_context.index(parameters[0]).kind {
-                    CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
-                    _ => Err(TranslationError::generic(
-                        "Cannot find type of 'argc' argument in main function",
-                    )),
-                }?;
-                let argv_ty: Box<Type> = match self.ast_context.index(parameters[1]).kind {
-                    CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
-                    _ => Err(TranslationError::generic(
-                        "Cannot find type of 'argv' argument in main function",
-                    )),
-                }?;
+                let argc_ty: Box<Type> = get_arg_ty(parameters[0], "argc")?;
+                let argv_ty: Box<Type> = get_arg_ty(parameters[1], "argv")?;
 
-                let args = mk().ident_expr("args");
-                let argc = mk().binary_expr(
-                    BinOp::Sub(Default::default()),
-                    mk().method_call_expr(args.clone(), "len", no_args.clone()),
-                    mk().lit_expr(mk().int_lit(1, "")),
-                );
-                let argv = mk().method_call_expr(args, "as_mut_ptr", no_args.clone());
-
-                main_args.push(mk().cast_expr(argc, argc_ty));
-                main_args.push(mk().cast_expr(argv, argv_ty));
+                main_args.push(syn::parse_quote!((args.len() - 1) as #argc_ty));
+                main_args.push(syn::parse_quote!(args.as_mut_ptr() as #argv_ty));
             }
 
             if n >= 3 {
                 // non-standard `envp`
 
-                stmts.push(mk().local_stmt(Box::new(mk().local(
-                    mk().mutbl().ident_pat("vars"),
-                    Some(mk().path_ty(vec![mk().path_segment_with_args(
-                        "Vec",
-                        mk().angle_bracketed_args(vec![
-                            mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_char"])),
-                        ]),
-                    )])),
-                    Some(
-                        mk().call_expr(
-                            mk().path_expr(vec!["Vec", "new"]),
-                            vec![] as Vec<Box<Expr>>,
-                        ),
-                    ),
-                ))));
-                let var_name_ident = mk().ident("var_name");
-                let var_value_ident = mk().ident("var_value");
-                stmts.push(mk().semi_stmt(mk().for_expr(
-                    mk().tuple_pat(vec![
-                        mk().ident_pat("var_name"),
-                        mk().ident_pat("var_value"),
-                    ]),
-                    mk().call_expr(vars_fn, vec![] as Vec<Box<Expr>>),
-                    mk().block(vec![
-                                mk().local_stmt(Box::new(
-                                    mk().local(
-                                        mk().ident_pat("var"),
-                                        Some(mk().path_ty(vec!["String"])),
-                                        Some(
-                                            mk().mac_expr(
-                                                mk().mac(
-                                                    vec!["format"],
-                                                    vec![
-                                                        TokenTree::Literal(
-                                                            proc_macro2::Literal::string("{}={}"),
-                                                        ),
-                                                        TokenTree::Punct(Punct::new(
-                                                            ',',
-                                                            proc_macro2::Spacing::Alone,
-                                                        )),
-                                                        TokenTree::Ident(var_name_ident),
-                                                        TokenTree::Punct(Punct::new(
-                                                            ',',
-                                                            proc_macro2::Spacing::Alone,
-                                                        )),
-                                                        TokenTree::Ident(var_value_ident),
-                                                    ]
-                                                    .into_iter()
-                                                    .collect::<TokenStream>(),
-                                                    MacroDelimiter::Paren(Default::default()),
-                                                ),
-                                            ),
-                                        ),
-                                    ),
-                                )),
-                                mk().semi_stmt(mk().method_call_expr(
-                                    mk().path_expr(vec!["vars"]),
-                                    "push",
-                                    vec![mk().method_call_expr(
-                                        mk().method_call_expr(
-                                            mk().call_expr(
-                                                mk().abs_path_expr(vec![
-                                                    "std", "ffi", "CString", "new",
-                                                ]),
-                                                vec![mk().path_expr(vec!["var"])],
-                                            ),
-                                            "expect",
-                                            vec![mk().lit_expr(
-                                            "Failed to convert environment variable into CString."
-                                        )],
-                                        ),
-                                        "into_raw",
-                                        vec![] as Vec<Box<Expr>>,
-                                    )],
-                                )),
-                            ]),
-                    None as Option<Ident>,
-                )));
-                stmts.push(mk().semi_stmt(mk().method_call_expr(
-                    mk().path_expr(vec!["vars"]),
-                    "push",
-                    vec![mk().call_expr(
-                        mk().abs_path_expr(vec!["std", "ptr", "null_mut"]),
-                        vec![] as Vec<Box<Expr>>,
-                    )],
-                )));
+                stmts.push(syn::parse_quote! {
+                    let mut vars: Vec<*mut ::libc::c_char> = Vec::new();
+                });
+                stmts.push(syn::parse_quote! {
+                    for (var_name, var_value) in ::std::env::vars() {
+                        let var: String = format!("{}={}", var_name, var_value);
+                        vars.push(
+                            ::std::ffi::CString::new(var)
+                                .expect("Failed to convert environment variable into CString.")
+                                .into_raw()
+                        );
+                    }
+                });
+                stmts.push(syn::parse_quote! {
+                    vars.push(::std::ptr::null_mut);
+                });
 
-                let envp_ty: Box<Type> = match self.ast_context.index(parameters[2]).kind {
-                    CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
-                    _ => Err(TranslationError::generic(
-                        "Cannot find type of 'envp' argument in main function",
-                    )),
-                }?;
+                let envp_ty: Box<Type> = get_arg_ty(parameters[2], "envp")?;
 
-                let envp = mk().method_call_expr(mk().ident_expr("vars"), "as_mut_ptr", no_args);
-
-                main_args.push(mk().cast_expr(envp, envp_ty));
+                main_args.push(syn::parse_quote!(vars.as_mut_ptr() as #envp_ty));
             }
 
             // Check `main` has the right form
@@ -231,29 +106,22 @@ impl<'c> Translation<'c> {
             };
 
             if let CTypeKind::Void = ret {
-                let call_main = mk().call_expr(main_fn, main_args);
-                let unsafe_block = mk().unsafe_block(vec![mk().expr_stmt(call_main)]);
-
-                stmts.push(mk().expr_stmt(mk().unsafe_block_expr(unsafe_block)));
-
-                let exit_arg = mk().lit_expr(mk().int_lit(0, "i32"));
-                let call_exit = mk().call_expr(exit_fn, vec![exit_arg]);
-
-                stmts.push(mk().semi_stmt(call_exit));
+                stmts.append(&mut syn::parse_quote! {
+                    unsafe { #main_fn( #(#main_args),* ) };
+                    ::std::process::exit(0_i32);
+                });
             } else {
-                let call_main = mk().cast_expr(
-                    mk().call_expr(main_fn, main_args),
-                    mk().path_ty(vec!["i32"]),
-                );
-
-                let call_exit = mk().call_expr(exit_fn, vec![call_main]);
-                let unsafe_block = mk().unsafe_block(vec![mk().expr_stmt(call_exit)]);
-
-                stmts.push(mk().expr_stmt(mk().unsafe_block_expr(unsafe_block)));
+                stmts.append(&mut syn::parse_quote! {
+                    let main_result = unsafe { #main_fn( #(#main_args),* ) };
+                    ::std::process::exit(main_result as i32);
+                });
             };
 
-            let block = mk().block(stmts);
-            Ok(mk().pub_().fn_item(decl, block))
+            Ok(syn::parse_quote! {
+                pub fn main() {
+                    #(#stmts)*
+                }
+            })
         } else {
             Err(TranslationError::generic(
                 "Cannot translate non-function main entry point",
