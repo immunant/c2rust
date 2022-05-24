@@ -286,7 +286,6 @@ fn simple_metaitem(name: &str) -> NestedMeta {
 
 fn int_arg_metaitem(name: &str, arg: u128) -> NestedMeta {
     let lit = mk().int_unsuffixed_lit(arg);
-    use std::iter::FromIterator;
     let inner = Meta::List(MetaList {
         path: mk().path(name),
         paren_token: Default::default(),
