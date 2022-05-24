@@ -103,7 +103,8 @@ struct SpanRepr {
 /** safety: proc_macro2::Span is (unless compiled with `--cfg proc_macro2_semver_exempt`) the
 below enum:
 
-```rust
+```compile_fail
+# Fails b/c this stuff is internal to rustc.
 enum Span {
     Compiler(proc_macro::Span),
     Fallback(fallback::Span),
@@ -115,7 +116,8 @@ looks like we expect. The only `Span` value we can synthesize is `Span::call_sit
 that against what its in-memory representation looked like at development time.
 
 gdb gives us this debug representation:
-```rust
+```compile_fail
+# Fails b/c this stuff is private.
 proc_macro2::Span {
     inner: proc_macro2::imp::Span::Fallback(proc_macro2::fallback::Span {
         lo: 0,
