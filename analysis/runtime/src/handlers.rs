@@ -59,7 +59,35 @@ pub fn ptr_field(mir_loc: MirLocId, ptr: usize, field_id: u32) {
 pub fn ptr_copy(mir_loc: MirLocId, ptr: usize) {
     TX.send(Event {
         mir_loc,
-        kind: EventKind::Copy(ptr),
+        kind: EventKind::CopyPtr(ptr as usize),
+    }).unwrap();
+}
+
+pub fn ptr_move(mir_loc: MirLocId, ptr: usize) {
+    TX.send(Event {
+        mir_loc,
+        kind: EventKind::MovePtr(ptr as usize),
+    }).unwrap();
+}
+
+pub fn ptr_contrive(mir_loc: MirLocId, ptr: usize) {
+    TX.send(Event {
+        mir_loc,
+        kind: EventKind::FromInt(ptr as usize),
+    }).unwrap();
+}
+
+pub fn addr_of_local(mir_loc: MirLocId, ptr: usize, local: u32) {
+    TX.send(Event {
+        mir_loc,
+        kind: EventKind::AddrOfLocal(ptr, local as usize),
+    }).unwrap();
+}
+
+pub fn ref_copy(mir_loc: MirLocId, _dest_local_ptr: usize) {
+    TX.send(Event {
+        mir_loc,
+        kind: EventKind::CopyRef,
     }).unwrap();
 }
 

@@ -37,7 +37,7 @@ pub fn get(index: MirLocId) -> Option<&'static MirLoc> {
 pub type MirLocId = u32;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct DefPathHash(u64, u64);
+pub struct DefPathHash(pub u64, pub u64);
 
 impl fmt::Debug for DefPathHash {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -51,11 +51,45 @@ impl From<(u64, u64)> for DefPathHash {
     }
 }
 
+impl Into<(u64, u64)> for DefPathHash {
+    fn into(self) -> (u64, u64) {
+        (self.0, self.1)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+pub struct EventMetadata {
+    // input Locals for an event
+    pub sources: Vec<usize>,
+    // destination Local for an event
+    pub destination: Option<usize>,
+}
+
+impl Default for EventMetadata {
+    fn default() -> Self {
+        Self {
+            sources: vec![],
+            destination: None,
+        }
+    }
+}
+
+impl EventMetadata {
+    /// returns the input place/local of the event in question
+    pub fn primary_source(&self) -> Option<&usize> {
+        Some(match &self.sources[..] {
+            [h, ..] => h,
+            _ => return None,
+        })
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct MirLoc {
     pub body_def: DefPathHash,
-    pub basic_block_idx: u32,
-    pub statement_idx: u32,
+    pub basic_block_idx: usize,
+    pub statement_idx: usize,
+    pub metadata: EventMetadata,
 }
 
 impl fmt::Debug for MirLoc {
