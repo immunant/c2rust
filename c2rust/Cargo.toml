@@ -10,6 +10,7 @@ edition = "2018"
 categories = ["development-tools", "development-tools::ffi", "command-line-utilities"]
 keywords = ["transpiler", "migration", "translation", "c"]
 readme = "README.md"
+default-run = "c2rust"
 
 [badges]
 travis-ci = { repository = "immunant/c2rust" }
