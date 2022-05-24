@@ -16,6 +16,7 @@ edition = "2018"
 c2rust-ast-builder = { version = "0.16.0", path = "../c2rust-ast-builder" }
 c2rust-ast-exporter = { version = "0.16.0", path = "../c2rust-ast-exporter" }
 c2rust-ast-printer = { version = "0.16.0", path = "../c2rust-ast-printer" }
+c2rust-bitfields = { version = "0.3.0", path = "../c2rust-bitfields" }
 clap = {version = "2.34", features = ["yaml"]}
 colored = "2.0"
 dtoa = "1.0"

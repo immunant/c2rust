@@ -287,6 +287,8 @@ impl<'a> Translation<'a> {
     /// Here we output a struct derive to generate bitfield data that looks like this:
     ///
     /// ```no_run
+    /// # use c2rust_bitfields::BitfieldStruct;
+    /// #
     /// #[derive(BitfieldStruct, Clone, Copy)]
     /// #[repr(C, align(2))]
     /// struct Foo {
@@ -393,6 +395,19 @@ impl<'a> Translation<'a> {
     /// It looks like this in locals and (sectioned) statics:
     ///
     /// ```no_run
+    /// # use c2rust_bitfields::BitfieldStruct;
+    /// #
+    /// # #[derive(BitfieldStruct, Clone, Copy)]
+    /// # #[repr(C, align(2))]
+    /// # struct Foo {
+    /// #     #[bitfield(name = "bf1", ty = "libc::c_char", bits = "0..=9")]
+    /// #     #[bitfield(name = "bf2", ty = "libc::c_uchar",bits = "10..=15")]
+    /// #     bf1_bf2: [u8; 2],
+    /// #     non_bf: u64,
+    /// #     _pad: [u8; 2],
+    /// # }
+    /// #
+    /// # let _ = 
     /// {
     ///     let mut init = Foo {
     ///         bf1_bf2: [0; 2],
@@ -403,6 +418,7 @@ impl<'a> Translation<'a> {
     ///     init.set_bf2(34);
     ///     init
     /// }
+    /// # ;
     /// ```
     pub fn convert_struct_literal(
         &self,
