@@ -2,10 +2,6 @@
 //!
 //! Comments are stored as attributes on the AST node immediately following the comment.
 //!
-//! ```rust
-//!   insert_comments(&mut expr.attrs, vec!["Some comment on an arm"]);
-//! ```
-//!
 //! Comments can currently be attached and printed in the following positions
 //!
 //! Before the following AST elements:
