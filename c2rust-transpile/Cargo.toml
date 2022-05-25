@@ -26,6 +26,7 @@ indexmap = { version = "1.0.1", features = ["serde-1"] }
 itertools = "0.10"
 libc = "0.2"
 log = "0.4"
+log-reroute = "0.1"
 pathdiff = "0.2"
 proc-macro2 = "1.0"
 regex = "1"
