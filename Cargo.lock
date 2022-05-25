@@ -36,6 +36,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arc-swap"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c5d78ce20460b82d3fa150275ed9d55e21064fc7951177baacf86a145c4a4b1f"
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -222,6 +228,7 @@ dependencies = [
  "itertools",
  "libc",
  "log",
+ "log-reroute",
  "pathdiff",
  "proc-macro2",
  "regex",
@@ -542,6 +549,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "log-reroute"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "741a3ba679a9a1d331319dda1c7d8f204e9f6760fd867e28576a45d17048bc02"
+dependencies = [
+ "arc-swap",
+ "log",
+ "once_cell",
+]
+
+[[package]]
 name = "maplit"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -601,6 +619,12 @@ checksum = "e42c982f2d955fac81dd7e1d0e1426a7d702acd9c98d19ab01083a6a0328c424"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "once_cell"
+version = "1.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7709cef83f0c1f58f666e746a08b21e0085f7440fa6a29cc194d68aac97a4225"
 
 [[package]]
 name = "opaque-debug"
