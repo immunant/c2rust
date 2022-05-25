@@ -30,7 +30,7 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>, log_level: log::LevelFilt
     enabled_warnings.extend(DEFAULT_WARNINGS.iter().cloned());
 
     let colors = ColoredLevelConfig::new();
-    fern::Dispatch::new()
+    let (_log_level, logger) = fern::Dispatch::new()
         .format(move |out, message, record| {
             let level_label = match record.level() {
                 Level::Error => "error",
@@ -63,8 +63,8 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>, log_level: log::LevelFilt
                 .unwrap_or(true)
         })
         .chain(io::stderr())
-        .apply()
-        .expect("Could not set up diagnostics");
+        .into_log();
+    log_reroute::reroute_boxed(logger);
 }
 
 #[derive(Debug, Clone)]
