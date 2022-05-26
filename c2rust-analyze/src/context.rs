@@ -32,6 +32,20 @@ bitflags! {
 }
 
 
+bitflags! {
+    /// Additional flags describing a given pointer type.  These are mainly derived from
+    /// `PermissionSet`, but don't follow the normal subtyping rules and propagation algorithm.
+    #[derive(Default)]
+    pub struct FlagSet: u16 {
+        /// The pointee type is wrapped in `Cell`.  This is tracked separately from the
+        /// `PermissionSet` since it depends on the past/future uses of the pointer in an unusual
+        /// way, and it can't be freely discarded (or its inverse freely added) as is the case for
+        /// everything in `PermissionSet`.
+        const CELL = 0x0001;
+    }
+}
+
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct PointerId(u32);
 

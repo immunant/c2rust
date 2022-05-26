@@ -21,7 +21,8 @@ pub unsafe fn alias2_addr_of_good(x: *mut i32) {
 }
 
 // CHECK-LABEL: final labeling for "alias2_copy_bad"
-// CHECK-DAG: ([[#@LINE+1]]: x): {{.*}}type = READ | WRITE#
+// CHECK-DAG: ([[#@LINE+2]]: x): {{.*}}type = READ | WRITE#
+// CHECK-DAG: ([[#@LINE+1]]: x): {{.*}}type flags = CELL#
 pub unsafe fn alias2_copy_bad(x: *mut i32) {
     // CHECK-DAG: ([[#@LINE+1]]: p): {{.*}}type = READ | WRITE#
     let p = x;
@@ -31,7 +32,8 @@ pub unsafe fn alias2_copy_bad(x: *mut i32) {
 }
 
 // CHECK-LABEL: final labeling for "alias2_addr_of_bad"
-// CHECK-DAG: ([[#@LINE+1]]: x): {{.*}}type = READ | WRITE#
+// CHECK-DAG: ([[#@LINE+2]]: x): {{.*}}type = READ | WRITE#
+// CHECK-DAG: ([[#@LINE+1]]: x): {{.*}}type flags = CELL#
 pub unsafe fn alias2_addr_of_bad(x: *mut i32) {
     // CHECK-DAG: ([[#@LINE+1]]: p): {{.*}}type = READ | WRITE#
     let p = ptr::addr_of_mut!(*x);

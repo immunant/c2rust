@@ -1,14 +1,14 @@
 use std::mem;
 
 use rustc_middle::mir::Body;
-use crate::context::{PermissionSet, PointerId, AnalysisCtxt};
+use crate::context::{PermissionSet, FlagSet, PointerId, AnalysisCtxt};
 
 mod type_check;
 
 
 #[derive(Clone, Debug)]
 enum Constraint {
-    /// Pointer `.0` must have a subset of the permissions of poniter `.1`.
+    /// Pointer `.0` must have a subset of the permissions of pointer `.1`.
     Subset(PointerId, PointerId),
     /// Pointer `.0` must have all the permissions in `.1`.
     AllPerms(PointerId, PermissionSet),
@@ -176,6 +176,73 @@ impl DataflowConstraints {
         }
 
         Ok(changed)
+    }
+
+    /// Update the pointer permissions in `hypothesis` to satisfy these constraints.
+    pub fn propagate_cell(&self, perms: &[PermissionSet], flags: &mut [FlagSet]) {
+        // All pointers that are WRITE and not UNIQUE must have a type like `&Cell<_>`.
+        for (p, f) in perms.iter().zip(flags.iter_mut()) {
+            if p.contains(PermissionSet::WRITE) && !p.contains(PermissionSet::UNIQUE) {
+                f.insert(FlagSet::CELL);
+            }
+        }
+
+        struct Rules<'a> {
+            perms: &'a [PermissionSet],
+        }
+        impl PropagateRules<FlagSet> for Rules<'_> {
+            fn subset(
+                &mut self,
+                a_ptr: PointerId,
+                a_val: &FlagSet,
+                b_ptr: PointerId,
+                b_val: &FlagSet,
+            ) -> (FlagSet, FlagSet) {
+                // Propagate `CELL` both forward and backward.  On the backward side, if `b` has
+                // both `WRITE` and `UNIQUE`, then we remove `CELL`, since `&mut T` can be
+                // converted to `&Cell<T>`.
+                let mut a_flags = *a_val;
+                let mut b_flags = *b_val;
+                if a_flags.contains(FlagSet::CELL) {
+                    b_flags.insert(FlagSet::CELL);
+                }
+                if b_flags.contains(FlagSet::CELL) {
+                    a_flags.insert(FlagSet::CELL);
+                }
+
+                let b_perms = self.perms[b_ptr.index()];
+                if b_perms.contains(PermissionSet::WRITE | PermissionSet::UNIQUE) {
+                    b_flags.remove(FlagSet::CELL);
+                }
+
+                (a_flags, b_flags)
+            }
+
+            fn all_perms(
+                &mut self,
+                ptr: PointerId,
+                perms: PermissionSet,
+                val: &FlagSet,
+            ) -> FlagSet {
+                *val
+            }
+
+            fn no_perms(
+                &mut self,
+                ptr: PointerId,
+                perms: PermissionSet,
+                val: &FlagSet,
+            ) -> FlagSet {
+                *val
+            }
+        }
+
+        match self.propagate_inner(flags, &mut Rules { perms }) {
+            Ok(_changed) => {},
+            Err(msg) => {
+                panic!("{}", msg);
+            },
+        }
     }
 }
 

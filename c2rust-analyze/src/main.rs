@@ -27,8 +27,8 @@ use rustc_interface::Queries;
 use rustc_interface::interface::Compiler;
 use rustc_middle::mir::{
     Body, BasicBlock, BasicBlockData, START_BLOCK, Terminator, TerminatorKind, SourceInfo, Local,
-    LocalDecl, LocalKind, Mutability, Rvalue, AggregateKind, Place, Operand, Statement,
-    StatementKind, BorrowKind, Constant, ConstantKind,
+    LocalDecl, LocalKind, LocalInfo, BindingForm, Mutability, Rvalue, AggregateKind, Place,
+    Operand, Statement, StatementKind, BorrowKind, Constant, ConstantKind,
 };
 use rustc_middle::mir::interpret::{Allocation, ConstValue};
 use rustc_middle::mir::pretty;
@@ -39,7 +39,7 @@ use rustc_span::DUMMY_SP;
 use rustc_span::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX};
 use rustc_span::symbol::Ident;
 use rustc_target::abi::Align;
-use crate::context::{AnalysisCtxt, PointerId, PermissionSet, LTy};
+use crate::context::{AnalysisCtxt, PointerId, PermissionSet, FlagSet, LTy};
 
 
 mod borrowck;
@@ -82,6 +82,45 @@ fn inspect_mir<'tcx>(
     dataflow.propagate(&mut hypothesis);
 
     borrowck::borrowck_mir(&acx, &dataflow, &mut hypothesis, name.as_str(), mir);
+
+    let mut flags = vec![FlagSet::empty(); acx.num_pointers()];
+    dataflow.propagate_cell(&hypothesis, &mut flags);
+
+
+    eprintln!("final labeling for {:?}:", name);
+    let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(acx.tcx);
+    let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(acx.tcx);
+    for (local, decl) in mir.local_decls.iter_enumerated() {
+        let addr_of1 = hypothesis[acx.addr_of_local[local].index()];
+        let ty1 = lcx1.relabel(acx.local_tys[local], &mut |lty| {
+            if lty.label == PointerId::NONE {
+                PermissionSet::empty()
+            } else {
+                hypothesis[lty.label.index()]
+            }
+        });
+        eprintln!("{:?} ({}): addr_of = {:?}, type = {:?}",
+            local,
+            describe_local(acx.tcx, decl),
+            addr_of1,
+            ty1,
+        );
+
+        let addr_of2 = flags[acx.addr_of_local[local].index()];
+        let ty2 = lcx2.relabel(acx.local_tys[local], &mut |lty| {
+            if lty.label == PointerId::NONE {
+                FlagSet::empty()
+            } else {
+                flags[lty.label.index()]
+            }
+        });
+        eprintln!("{:?} ({}): addr_of flags = {:?}, type flags = {:?}",
+            local,
+            describe_local(acx.tcx, decl),
+            addr_of2,
+            ty2,
+        );
+    }
 }
 
 fn assign_pointer_ids<'tcx>(
@@ -93,6 +132,38 @@ fn assign_pointer_ids<'tcx>(
         TyKind::RawPtr(_) => acx.new_pointer(),
         _ => PointerId::NONE,
     })
+}
+
+fn describe_local(tcx: TyCtxt, decl: &LocalDecl) -> String {
+    let mut span = decl.source_info.span;
+    if let Some(ref info) = decl.local_info {
+        if let LocalInfo::User(ref binding_form) = **info {
+            let binding_form = binding_form.as_ref().assert_crate_local();
+            if let BindingForm::Var(ref v) = *binding_form {
+                span = v.pat_span;
+            }
+        }
+    }
+
+    let s = tcx.sess.source_map().span_to_snippet(span).unwrap();
+    let s = {
+        let mut s2 = String::new();
+        for word in s.split_ascii_whitespace() {
+            if s2.len() > 0 {
+                s2.push(' ');
+            }
+            s2.push_str(word);
+        }
+        s2
+    };
+
+    let (src1, src2, src3) = if s.len() > 20 {
+        (&s[..15], " ... ", &s[s.len() - 5 ..])
+    } else {
+        (&s[..], "", "")
+    };
+    let line = tcx.sess.source_map().lookup_char_pos(span.lo()).line;
+    format!("{}: {}{}{}", line, src1, src2, src3)
 }
 
 
