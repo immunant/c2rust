@@ -100,42 +100,43 @@ struct SpanRepr {
     hi: u32,
 }
 
-/** safety: proc_macro2::Span is (unless compiled with `--cfg proc_macro2_semver_exempt`) the
-below enum:
-
-```compile_fail
-# Fails b/c this stuff is internal to rustc.
-enum Span {
-    Compiler(proc_macro::Span),
-    Fallback(fallback::Span),
-}
-```
-Unfortunately its ABI is not stable because rustc makes no such guarantees on `repr(Rust)` enums,
-but we need to get at its guts anyway. So the best we can do is a runtime assertion that a value
-looks like we expect. The only `Span` value we can synthesize is `Span::call_site()`, so we compare
-that against what its in-memory representation looked like at development time.
-
-gdb gives us this debug representation:
-```compile_fail
-# Fails b/c this stuff is private.
-proc_macro2::Span {
-    inner: proc_macro2::imp::Span::Fallback(proc_macro2::fallback::Span {
-        lo: 0,
-        hi: 0
-    }),
-    _marker: core::marker::PhantomData<proc_macro2::marker::ProcMacroAutoTraits>
-}
-```
-...which looks like `[1u32, 0u32, 0u32]` in memory.
-
-We can't do anything useful or meaningful with the `Compiler` side, and if ABI changes enough that
-`[1u32, 0u32, 0u32]` actually represents an instance of the Compiler variant (and `Span::call_site()`
-chooses to return such an instance), we're in trouble.
-
-But hopefully if such circumstances do befall us, we'll at least know what went wrong.
-
-On the plus side, the `fallback::Span` payload is a POD pair of two u32s, so that case is trivial.
-*/
+/// Safety: `proc_macro2::Span` is (unless compiled with `--cfg proc_macro2_semver_exempt`) 
+/// the below enum:
+/// 
+/// ```compile_fail
+/// # // Fails b/c this stuff is internal to rustc.
+/// enum Span {
+///     Compiler(proc_macro::Span),
+///     Fallback(fallback::Span),
+/// }
+/// ```
+/// Unfortunately its ABI is not stable because rustc makes no such guarantees on `repr(Rust)` enums,
+/// but we need to get at its guts anyway. So the best we can do is a runtime assertion that a value
+/// looks like we expect. The only `Span` value we can synthesize is `Span::call_site()`, so we compare
+/// that against what its in-memory representation looked like at development time.
+/// 
+/// gdb gives us this debug representation:
+/// ```compile_fail
+/// # // Fails b/c this stuff is private.
+/// # let _ = 
+/// proc_macro2::Span {
+///     inner: proc_macro2::imp::Span::Fallback(proc_macro2::fallback::Span {
+///         lo: 0,
+///         hi: 0
+///     }),
+///     _marker: core::marker::PhantomData<proc_macro2::marker::ProcMacroAutoTraits>
+/// }
+/// # ;
+/// ```
+/// ...which looks like `[1u32, 0u32, 0u32]` in memory.
+/// 
+/// We can't do anything useful or meaningful with the `Compiler` side, and if ABI changes enough that
+/// `[1u32, 0u32, 0u32]` actually represents an instance of the Compiler variant (and `Span::call_site()`
+/// chooses to return such an instance), we're in trouble.
+/// 
+/// But hopefully if such circumstances do befall us, we'll at least know what went wrong.
+/// 
+/// On the plus side, the `fallback::Span` payload is a POD pair of two u32s, so that case is trivial.
 fn validate_repr() {
     let repr: SpanRepr = unsafe { std::mem::transmute(Span::call_site()) };
     assert!(repr.compiler_or_fallback == 1);
