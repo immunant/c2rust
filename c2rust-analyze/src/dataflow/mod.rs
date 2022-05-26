@@ -1,3 +1,5 @@
+use std::mem;
+
 use rustc_middle::mir::Body;
 use crate::context::{PermissionSet, PointerId, AnalysisCtxt};
 
@@ -64,8 +66,9 @@ impl DataflowConstraints {
     }
 
     fn propagate_inner(&self, hypothesis: &mut [PermissionSet]) -> Result<bool, String> {
+        let mut hypothesis = TrackedSlice::new(hypothesis);
+
         let mut changed = false;
-        let mut dirty = vec![true; hypothesis.len()];
         let mut i = 0;
         loop {
             if i > hypothesis.len() + self.constraints.len() {
@@ -73,12 +76,10 @@ impl DataflowConstraints {
             }
             i += 1;
 
-            let mut new_dirty = vec![false; hypothesis.len()];
-            let mut any_new_dirty = false;
             for c in &self.constraints {
                 match *c {
                     Constraint::Subset(a, b) => {
-                        if !dirty[a.index()] && !dirty[b.index()] {
+                        if !hypothesis.dirty(a.index()) && !hypothesis.dirty(b.index()) {
                             continue;
                         }
 
@@ -99,61 +100,88 @@ impl DataflowConstraints {
                             PermissionSet::OFFSET_ADD |
                             PermissionSet::OFFSET_SUB;
 
-                        let old_a = hypothesis[a.index()];
-                        let old_b = hypothesis[b.index()];
-                        let new_a = old_a & !(!old_b & PROPAGATE_DOWN);
-                        let new_b = old_b | (old_a & PROPAGATE_UP);
-                        if new_a != old_a {
-                            eprintln!("changed {:?}: {:?} => {:?}", a, old_a, new_a);
-                            hypothesis[a.index()] = new_a;
-                            new_dirty[a.index()] = true;
-                            any_new_dirty = true;
-                        }
-                        if new_b != old_b {
-                            eprintln!("changed {:?}: {:?} => {:?}", b, old_b, new_b);
-                            hypothesis[b.index()] = new_b;
-                            new_dirty[b.index()] = true;
-                            any_new_dirty = true;
-                        }
+                        let old_a = *hypothesis.get(a.index());
+                        let old_b = *hypothesis.get(b.index());
+                        hypothesis.set(a.index(), old_a & !(!old_b & PROPAGATE_DOWN));
+                        hypothesis.set(b.index(), old_b | (old_a & PROPAGATE_UP));
                     },
 
                     Constraint::AllPerms(ptr, perms) => {
-                        if !dirty[ptr.index()] {
+                        if !hypothesis.dirty(ptr.index()) {
                             continue;
                         }
-                        let old = hypothesis[ptr.index()];
-                        let new = old | perms;
-                        if new != old {
-                            eprintln!("changed {:?}: {:?} => {:?}", ptr, old, new);
-                            hypothesis[ptr.index()] = new;
-                            new_dirty[ptr.index()] = true;
-                            any_new_dirty = true;
-                        }
+                        let old = *hypothesis.get(ptr.index());
+                        hypothesis.set(ptr.index(), old | perms);
                     },
 
                     Constraint::NoPerms(ptr, perms) => {
-                        if !dirty[ptr.index()] {
+                        if !hypothesis.dirty(ptr.index()) {
                             continue;
                         }
-                        let old = hypothesis[ptr.index()];
-                        let new = old & !perms;
-                        if new != old {
-                            hypothesis[ptr.index()] = new;
-                            eprintln!("changed {:?}: {:?} => {:?}", ptr, old, new);
-                            new_dirty[ptr.index()] = true;
-                            any_new_dirty = true;
-                        }
+                        let old = *hypothesis.get(ptr.index());
+                        hypothesis.set(ptr.index(), old & !perms);
                     },
                 }
             }
 
-            if !any_new_dirty {
+            if !hypothesis.any_new_dirty() {
                 break;
             }
-            dirty = new_dirty;
+            hypothesis.swap_dirty();
+            changed = true;
         }
 
         Ok(changed)
+    }
+}
+
+
+struct TrackedSlice<'a, T> {
+    xs: &'a mut [T],
+    dirty: Vec<bool>,
+    new_dirty: Vec<bool>,
+    any_new_dirty: bool,
+}
+
+impl<'a, T: PartialEq> TrackedSlice<'a, T> {
+    pub fn new(xs: &'a mut [T]) -> TrackedSlice<'a, T> {
+        let n = xs.len();
+        TrackedSlice {
+            xs,
+            dirty: vec![true; n],
+            new_dirty: vec![false; n],
+            any_new_dirty: false,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.xs.len()
+    }
+
+    pub fn get(&self, i: usize) -> &T {
+        &self.xs[i]
+    }
+
+    pub fn dirty(&self, i: usize) -> bool {
+        self.dirty[i]
+    }
+
+    pub fn any_new_dirty(&self) -> bool {
+        self.any_new_dirty
+    }
+
+    pub fn set(&mut self, i: usize, x: T) {
+        if x != self.xs[i] {
+            self.xs[i] = x;
+            self.new_dirty[i] = true;
+            self.any_new_dirty = true;
+        }
+    }
+
+    pub fn swap_dirty(&mut self) {
+        mem::swap(&mut self.dirty, &mut self.new_dirty);
+        self.new_dirty.fill(false);
+        self.any_new_dirty = false;
     }
 }
 
