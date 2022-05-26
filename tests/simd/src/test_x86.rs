@@ -1,3 +1,5 @@
+#![feature(simd_ffi)]
+
 extern crate libc;
 
 use x86::{
