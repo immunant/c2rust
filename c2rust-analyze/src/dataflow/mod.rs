@@ -57,7 +57,62 @@ impl DataflowConstraints {
         for (i, p) in hypothesis.iter().enumerate() {
             eprintln!("  {}: {:?}", i, p);
         }
-        match self.propagate_inner(hypothesis) {
+
+        struct PropagatePerms;
+        impl PropagateRules<PermissionSet> for PropagatePerms {
+            fn subset(
+                &mut self,
+                a_ptr: PointerId,
+                a_val: &PermissionSet,
+                b_ptr: PointerId,
+                b_val: &PermissionSet,
+            ) -> (PermissionSet, PermissionSet) {
+                let old_a = *a_val;
+                let old_b = *b_val;
+
+                // These should be `const`s, but that produces `error[E0015]: cannot call
+                // non-const operator in constants`.
+
+                // Permissions that should be propagated "down": if the superset (`b`)
+                // doesn't have it, then the subset (`a`) should have it removed.
+                #[allow(bad_style)]
+                let PROPAGATE_DOWN =
+                    PermissionSet::UNIQUE;
+                // Permissions that should be propagated "up": if the subset (`a`) has it,
+                // then the superset (`b`) should be given it.
+                #[allow(bad_style)]
+                let PROPAGATE_UP =
+                    PermissionSet::READ |
+                    PermissionSet::WRITE |
+                    PermissionSet::OFFSET_ADD |
+                    PermissionSet::OFFSET_SUB;
+
+                (
+                    old_a & !(!old_b & PROPAGATE_DOWN),
+                    old_b | (old_a & PROPAGATE_UP),
+                )
+            }
+
+            fn all_perms(
+                &mut self,
+                ptr: PointerId,
+                perms: PermissionSet,
+                val: &PermissionSet,
+            ) -> PermissionSet {
+                *val | perms
+            }
+
+            fn no_perms(
+                &mut self,
+                ptr: PointerId,
+                perms: PermissionSet,
+                val: &PermissionSet,
+            ) -> PermissionSet {
+                *val & !perms
+            }
+        }
+
+        match self.propagate_inner(hypothesis, &mut PropagatePerms) {
             Ok(changed) => changed,
             Err(msg) => {
                 panic!("{}", msg);
@@ -65,13 +120,14 @@ impl DataflowConstraints {
         }
     }
 
-    fn propagate_inner(&self, hypothesis: &mut [PermissionSet]) -> Result<bool, String> {
-        let mut hypothesis = TrackedSlice::new(hypothesis);
+    fn propagate_inner<T, R>(&self, xs: &mut [T], rules: &mut R) -> Result<bool, String>
+    where T: PartialEq, R: PropagateRules<T> {
+        let mut xs = TrackedSlice::new(xs);
 
         let mut changed = false;
         let mut i = 0;
         loop {
-            if i > hypothesis.len() + self.constraints.len() {
+            if i > xs.len() + self.constraints.len() {
                 return Err(format!("infinite loop in dataflow edges"));
             }
             i += 1;
@@ -79,55 +135,43 @@ impl DataflowConstraints {
             for c in &self.constraints {
                 match *c {
                     Constraint::Subset(a, b) => {
-                        if !hypothesis.dirty(a.index()) && !hypothesis.dirty(b.index()) {
+                        if !xs.dirty(a.index()) && !xs.dirty(b.index()) {
                             continue;
                         }
 
-                        // These should be `const`s, but that produces `error[E0015]: cannot call
-                        // non-const operator in constants`.
-
-                        // Permissions that should be propagated "down": if the superset (`b`)
-                        // doesn't have it, then the subset (`a`) should have it removed.
-                        #[allow(bad_style)]
-                        let PROPAGATE_DOWN =
-                            PermissionSet::UNIQUE;
-                        // Permissions that should be propagated "up": if the subset (`a`) has it,
-                        // then the superset (`b`) should be given it.
-                        #[allow(bad_style)]
-                        let PROPAGATE_UP =
-                            PermissionSet::READ |
-                            PermissionSet::WRITE |
-                            PermissionSet::OFFSET_ADD |
-                            PermissionSet::OFFSET_SUB;
-
-                        let old_a = *hypothesis.get(a.index());
-                        let old_b = *hypothesis.get(b.index());
-                        hypothesis.set(a.index(), old_a & !(!old_b & PROPAGATE_DOWN));
-                        hypothesis.set(b.index(), old_b | (old_a & PROPAGATE_UP));
+                        let old_a = xs.get(a.index());
+                        let old_b = xs.get(b.index());
+                        let (new_a, new_b) = rules.subset(a, old_a, b, old_b);
+                        xs.set(a.index(), new_a);
+                        xs.set(b.index(), new_b);
                     },
 
                     Constraint::AllPerms(ptr, perms) => {
-                        if !hypothesis.dirty(ptr.index()) {
+                        if !xs.dirty(ptr.index()) {
                             continue;
                         }
-                        let old = *hypothesis.get(ptr.index());
-                        hypothesis.set(ptr.index(), old | perms);
+
+                        let old = xs.get(ptr.index());
+                        let new = rules.all_perms(ptr, perms, old);
+                        xs.set(ptr.index(), new);
                     },
 
                     Constraint::NoPerms(ptr, perms) => {
-                        if !hypothesis.dirty(ptr.index()) {
+                        if !xs.dirty(ptr.index()) {
                             continue;
                         }
-                        let old = *hypothesis.get(ptr.index());
-                        hypothesis.set(ptr.index(), old & !perms);
+
+                        let old = xs.get(ptr.index());
+                        let new = rules.no_perms(ptr, perms, old);
+                        xs.set(ptr.index(), new);
                     },
                 }
             }
 
-            if !hypothesis.any_new_dirty() {
+            if !xs.any_new_dirty() {
                 break;
             }
-            hypothesis.swap_dirty();
+            xs.swap_dirty();
             changed = true;
         }
 
@@ -183,6 +227,13 @@ impl<'a, T: PartialEq> TrackedSlice<'a, T> {
         self.new_dirty.fill(false);
         self.any_new_dirty = false;
     }
+}
+
+
+trait PropagateRules<T> {
+    fn subset(&mut self, a_ptr: PointerId, a_val: &T, b_ptr: PointerId, b_val: &T) -> (T, T);
+    fn all_perms(&mut self, ptr: PointerId, perms: PermissionSet, val: &T) -> T;
+    fn no_perms(&mut self, ptr: PointerId, perms: PermissionSet, val: &T) -> T;
 }
 
 
