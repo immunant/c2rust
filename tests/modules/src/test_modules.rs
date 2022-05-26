@@ -8,5 +8,6 @@ extern "C" {
     fn modules();
 }
 
+#[cfg_attr(test, test)]
 pub fn test_modules() {
 }

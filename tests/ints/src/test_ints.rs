@@ -13,6 +13,7 @@ extern "C" {
 
 const BUFFER_SIZE: usize = 10;
 
+#[cfg_attr(test, test)]
 pub fn test_size_t_buffer() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
@@ -27,6 +28,7 @@ pub fn test_size_t_buffer() {
     assert_eq!(buffer, expected_buffer);
 }
 
+#[cfg_attr(test, test)]
 pub fn test_chars_buffer() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];

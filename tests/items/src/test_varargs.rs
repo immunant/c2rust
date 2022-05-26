@@ -26,6 +26,7 @@ extern "C" {
 
 // This test ensures we are able to define and call vararg prototypes
 // that get linked in (IE printf)
+#[cfg_attr(test, test)]
 pub fn test_call_printf() {
     unsafe {
         call_printf();
@@ -34,6 +35,7 @@ pub fn test_call_printf() {
 }
 
 // Make sure we can pass through va_list arguments
+#[cfg_attr(test, test)]
 pub fn test_call_vprintf() {
     let fmt_str = CString::new("%d, %f\n").unwrap();
     unsafe {
@@ -43,6 +45,7 @@ pub fn test_call_vprintf() {
 }
 
 // Test out a small varargs function definition
+#[cfg_attr(test, test)]
 pub fn test_my_printf() {
     let fmt_str = CString::new("%d, %f, %s\n").unwrap();
     let test_str = CString::new("test").unwrap();
@@ -52,6 +55,7 @@ pub fn test_my_printf() {
     }
 }
 
+#[cfg_attr(test, test)]
 pub fn test_simple_vacopy() {
      let fmt_str = CString::new("%d, %f\n").unwrap();
      unsafe {
@@ -60,14 +64,16 @@ pub fn test_simple_vacopy() {
      }
  }
 
- pub fn test_valist_struct_member() {
+#[cfg_attr(test, test)]
+pub fn test_valist_struct_member() {
     let fmt_str = CString::new("%d, %f\n").unwrap();
     unsafe {
         valist_struct_member(fmt_str.as_ptr(), 10, 1.5);
         rust_valist_struct_member(fmt_str.as_ptr(), 10, 1.5);
     }
- }
+}
 
+#[cfg_attr(test, test)]
 pub fn test_restart_valist() {
     let fmt_str = CString::new("%d, %f\n").unwrap();
     unsafe {
@@ -76,6 +82,7 @@ pub fn test_restart_valist() {
     }
 }
 
+#[cfg_attr(test, test)]
 pub fn test_sample_stddev() {
     unsafe {
         let c_res= sample_stddev(4, 25.0, 27.3, 26.9, 25.7);

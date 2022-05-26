@@ -19,6 +19,7 @@ const BUFFER_SIZE: usize = 4;
 const BUFFER_SIZE2: usize = 12;
 const BUFFER_SIZE3: usize = 6;
 
+#[cfg_attr(test, test)]
 pub fn test_goto_linear() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
@@ -32,6 +33,7 @@ pub fn test_goto_linear() {
     assert_eq!(buffer, expected_buffer);
 }
 
+#[cfg_attr(test, test)]
 pub fn test_goto_loop() {
     let mut buffer = [0; BUFFER_SIZE2];
     let mut rust_buffer = [0; BUFFER_SIZE2];
@@ -45,6 +47,7 @@ pub fn test_goto_loop() {
     assert_eq!(buffer, expected_buffer);
 }
 
+#[cfg_attr(test, test)]
 pub fn test_goto_switch() {
     let mut buffer = [0; BUFFER_SIZE3];
     let mut rust_buffer = [0; BUFFER_SIZE3];

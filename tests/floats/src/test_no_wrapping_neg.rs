@@ -10,6 +10,7 @@ extern "C" {
     fn double_inc_dec() -> c_double;
 }
 
+#[cfg_attr(test, test)]
 pub fn test_buffer() {
     unsafe {
         assert_eq!(no_wrapping_neg(), -1.);
@@ -17,6 +18,7 @@ pub fn test_buffer() {
     }
 }
 
+#[cfg_attr(test, test)]
 pub fn test_inc_dec_op() {
     unsafe {
         assert_eq!(float_inc_dec(), -0.79999995);

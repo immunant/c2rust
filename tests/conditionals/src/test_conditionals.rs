@@ -23,6 +23,7 @@ const BUFFER_SIZE: usize = 4;
 const BUFFER_SIZE2: usize = 30;
 const BUFFER_SIZE3: usize = 6;
 
+#[cfg_attr(test, test)]
 pub fn test_buffer() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
@@ -37,6 +38,7 @@ pub fn test_buffer() {
     assert_eq!(buffer, expected_buffer);
 }
 
+#[cfg_attr(test, test)]
 pub fn test_buffer2() {
     let mut buffer = [0; BUFFER_SIZE2];
     let mut rust_buffer = [0; BUFFER_SIZE2];
@@ -55,6 +57,7 @@ pub fn test_buffer2() {
     assert_eq!(buffer, expected_buffer);
 }
 
+#[cfg_attr(test, test)]
 pub fn test_binary_conditionals() {
     let mut buffer = [0; BUFFER_SIZE3];
     let mut rust_buffer = [0; BUFFER_SIZE3];
@@ -69,6 +72,7 @@ pub fn test_binary_conditionals() {
     assert_eq!(buffer, expected_buffer);
 }
 
+#[cfg_attr(test, test)]
 pub fn test_unused_conditional() {
   unsafe {
     assert_eq!(unused_conditional1(), rust_unused_conditional1());

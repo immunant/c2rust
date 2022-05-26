@@ -10,6 +10,7 @@ extern "C" {
 
 const BUFFER_SIZE: usize = 2;
 
+#[cfg_attr(test, test)]
 pub fn test_const() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];

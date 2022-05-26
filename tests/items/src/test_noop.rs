@@ -12,6 +12,7 @@ extern "C" {
     fn nofnargs() -> c_int;
 }
 
+#[cfg_attr(test, test)]
 pub fn test_noop() {
     unsafe {
         noop();
@@ -19,6 +20,7 @@ pub fn test_noop() {
     }
 }
 
+#[cfg_attr(test, test)]
 pub fn test_nofnargs() {
     let ret = unsafe {
         nofnargs()

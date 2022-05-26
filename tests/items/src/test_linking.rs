@@ -10,6 +10,7 @@ extern "C" {
     fn w() -> c_int;
 }
 
+#[cfg_attr(test, test)]
 pub fn test_linking() {
     let mut ret = unsafe {
         l()

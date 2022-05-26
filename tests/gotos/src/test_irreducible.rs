@@ -8,6 +8,7 @@ extern "C" {
     fn irreducible(_: c_int) -> c_int;
 }
 
+#[cfg_attr(test, test)]
 pub fn test_irreducible() {
     unsafe {
         for i in 0..20 {

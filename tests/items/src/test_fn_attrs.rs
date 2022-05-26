@@ -2,6 +2,7 @@ extern crate libc;
 
 use fn_attrs::{rust_ensure_use, rust_noinline_nonstatic, rust_inline_extern};
 
+#[cfg_attr(test, test)]
 pub fn test_fn_attrs() {
     // There's no way to directly test that a function is inlined or not
     // so instead we're checking the source itself

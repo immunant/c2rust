@@ -5,4 +5,5 @@ use jump_into_loop::rust_jump_into_loop;
 
 // This test case just makes sure that the functions imported actually were
 // translated. Compilation suffices.
+#[cfg_attr(test, test)]
 pub fn test_nothing() { }

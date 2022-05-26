@@ -4,6 +4,7 @@ use stmt_expr::rust_stmt_expr_func;
 
 use self::libc::c_int;
 
+#[cfg_attr(test, test)]
 pub fn test_stmt_expr_relooper() {
     unsafe {
         assert_eq!(rust_stmt_expr_func(0), 14);

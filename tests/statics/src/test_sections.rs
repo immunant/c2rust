@@ -5,6 +5,7 @@ use attributes::{rust_used_static, rust_used_static2, rust_used_static3, rust_no
 use sections::*;
 use self::libc::c_uint;
 
+#[cfg_attr(test, test)]
 pub fn test_sectioned_statics() {
     unsafe {
         assert_eq!(rust_section_me, c_uint::max_value());
@@ -31,6 +32,7 @@ pub fn test_sectioned_statics() {
     }
 }
 
+#[cfg_attr(test, test)]
 pub fn test_sectioned_used_static() {
     if cfg!(not(target_os = "macos")) {
         // This static variable is private and unused (but with the used attribute)

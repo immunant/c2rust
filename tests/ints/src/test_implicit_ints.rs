@@ -10,6 +10,7 @@ extern "C" {
     fn implicit_int();
 }
 
+#[cfg_attr(test, test)]
 pub fn test_identity() {
     unsafe {
         assert_eq!(identity(1), 1);
@@ -18,6 +19,7 @@ pub fn test_identity() {
 }
 
 
+#[cfg_attr(test, test)]
 pub fn test_implicit_int() {
     unsafe {
         implicit_int();

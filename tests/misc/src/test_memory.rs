@@ -14,6 +14,7 @@ extern "C" {
 const BUFFER_SIZE: usize = 3;
 const BUFFER_SIZE2: usize = 5;
 
+#[cfg_attr(test, test)]
 pub fn test_malloc() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
@@ -28,6 +29,7 @@ pub fn test_malloc() {
     assert_eq!(buffer, expected_buffer);
 }
 
+#[cfg_attr(test, test)]
 pub fn test_memset() {
     let mut buffer = [0; BUFFER_SIZE2];
     let mut rust_buffer = [0; BUFFER_SIZE2];

@@ -9,6 +9,7 @@ extern "C" {
     fn entry() -> c_int;
 }
 
+#[cfg_attr(test, test)]
 pub fn test_typedef() {
     let ret = unsafe {
         entry()
