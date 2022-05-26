@@ -2,7 +2,7 @@
 
 extern crate libc;
 
-use variable_offsetof::{rust_get_offset, rust_get_offset2, size_t};
+use crate::variable_offsetof::{rust_get_offset, rust_get_offset2, size_t};
 
 #[link(name = "test")]
 extern "C" {

@@ -1,7 +1,7 @@
 //! feature_asm,extern_crate_c2rust_asm_casts
 extern crate libc;
 
-use asm::rust_entry;
+use crate::asm::rust_entry;
 use self::libc::{c_int, c_uint};
 
 #[link(name = "test")]
