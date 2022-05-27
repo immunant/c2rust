@@ -110,6 +110,69 @@ pub struct TranspilerConfig {
     pub binaries: Vec<String>,
 }
 
+impl Default for TranspilerConfig {
+    fn default() -> Self {
+        let mut this = Self {
+            dump_untyped_context: false,
+            dump_typed_context: false,
+            pretty_typed_context: false,
+            dump_function_cfgs: false,
+            json_function_cfgs: false,
+            dump_cfg_liveness: false,
+            dump_structures: false,
+            debug_ast_exporter: false,
+            verbose: false,
+
+            incremental_relooper: true,
+            fail_on_error: false,
+            fail_on_multiple: false,
+            filter: None,
+            debug_relooper_labels: false,
+            prefix_function_names: None,
+
+            // We used to guard asm translation with a command-line
+            // option. Defaulting to enabled now, can add an option to disable if
+            // needed.
+            translate_asm: true,
+
+            // We used to guard varargs with a command-line option before nightly
+            // support landed. We may still want to disable this option to target
+            // stable rust output.
+            translate_valist: true,
+
+            translate_const_macros: false,
+            translate_fn_macros: false,
+            disable_refactoring: false,
+            preserve_unused_functions: false,
+
+            use_c_loop_info: true,
+            use_c_multiple_info: true,
+            simplify_structures: true,
+            overwrite_existing: false,
+            reduce_type_annotations: false,
+            reorganize_definitions: false,
+            emit_modules: false,
+            emit_build_files: false,
+            output_dir: None,
+            binaries: Vec::new(),
+            panic_on_translator_failure: false,
+            replace_unsupported_decls: ReplaceMode::Extern,
+            emit_no_std: false,
+            enabled_warnings: HashSet::new(),
+            log_level: log::LevelFilter::Warn,
+        };
+        // binaries imply emit-build-files
+        if !this.binaries.is_empty() {
+            this.emit_build_files = true
+        };
+        // emit-build-files implies emit-modules
+        if this.emit_build_files {
+            this.emit_modules = true
+        };
+        this
+    }
+}
+
 impl TranspilerConfig {
     fn is_binary(&self, file: &Path) -> bool {
         let file = Path::new(file.file_stem().unwrap());
