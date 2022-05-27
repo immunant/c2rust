@@ -6,7 +6,7 @@ $ c2rust instrument metadata.bc <path/to/c2rust/analysis/runtime/>
 
 This instruments the binary built from main.rs with dynamic memory tracing, and
 outputs the necessary metadata to match up instrumentation points to source code
-into `analysis_metadata.bc`. We then run the binary, logging output to log.bc 
+into `metadata.bc`. We then run the binary, logging output to `log.bc` 
 and using the aformentioned metadata file.
 
 ```sh
