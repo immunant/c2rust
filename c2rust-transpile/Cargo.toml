@@ -44,3 +44,8 @@ syn = { version = "1.0", features = ["full", "extra-traits", "parsing", "printin
 [features]
 # Force static linking of LLVM
 llvm-static = ["c2rust-ast-exporter/llvm-static"]
+
+[dev-dependencies]
+ignore = "0.4"
+json_compilation_db = "0.3"
+rayon = "1"
