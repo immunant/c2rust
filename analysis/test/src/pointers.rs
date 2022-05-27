@@ -144,6 +144,26 @@ pub unsafe extern "C" fn testing() {
     let ref mut fresh1 = ptr;
     *fresh1 = &mut y as *mut i32;
 }
+
+#[repr(C)]
+pub struct buffer {
+    pub ptr: *mut libc::c_char,
+    pub used: uint32_t,
+    pub size: uint32_t,
+}
+#[repr(C)]
+pub struct chunk {
+    mem: *mut buffer,
+    offset: off_t,
+}
+pub unsafe extern "C" fn lighttpd_test(c: *mut chunk) {
+    let mut chunks: [iovec; 32] = [iovec {
+        iov_base: 0 as *mut libc::c_void,
+        iov_len: 0,
+    }; 32];
+    chunks[10]
+        .iov_base = ((*(*c).mem).ptr).offset((*c).offset as isize) as *mut libc::c_void;
+}
 unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char)
  -> libc::c_int {
     simple();
@@ -155,6 +175,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char)
     no_owner(1i32);
     invalid();
     testing();
+    lighttpd_test(std::ptr::null_mut());
     return 0i32;
 }
 pub fn main() {

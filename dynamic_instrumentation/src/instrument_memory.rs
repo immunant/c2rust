@@ -2,6 +2,7 @@ use anyhow::Context;
 use c2rust_analysis_rt::HOOK_FUNCTIONS;
 use c2rust_analysis_rt::{Metadata, MirLoc, MirLocId};
 use indexmap::IndexSet;
+use log::debug;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::{PlaceContext, Visitor};
 use rustc_middle::mir::{
@@ -563,13 +564,7 @@ fn cast_ptr_to_usize<'tcx>(
         new_stmts.push(cast_stmt);
         Operand::Move(raw_ptr_local.into())
     } else {
-        let mut ptr_arg = arg.to_copy();
-        // Remove any deref from this pointer arg
-        if let Operand::Copy(place) = &mut ptr_arg {
-            place.projection = List::empty();
-        }
-
-        ptr_arg
+        arg.to_copy()
     };
 
     // Cast this argument to a usize before passing to the
