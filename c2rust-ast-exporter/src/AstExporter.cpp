@@ -2712,7 +2712,6 @@ ExportResult *make_export_result(const Outputs &outputs) {
 // Extract clang AST for the source file specified in the argument vector.
 // Note: The arguments should only reference one source file at a time.
 Outputs process(int argc, const char *argv[], int *result) {
-    static uint64_t source_path_count = 0;
     auto argv_ = augment_argv(argc, argv);
     int argc_ = argv_.size() - 1; // ignore the extra nullptr
 
@@ -2729,9 +2728,14 @@ Outputs process(int argc, const char *argv[], int *result) {
 #endif
 
     // the logic below assumes we're only translating one source file
-    assert(OptionsParser.getSourcePathList().size() - 1 ==
-               source_path_count++ &&
-           "Expected exactly one source path");
+    static size_t source_path_count = 0;
+    source_path_count++;
+    const size_t num_sources = OptionsParser.getSourcePathList().size();
+    assert(
+        (num_sources == 1 // newer clang versions
+        || num_sources == source_path_count // older clang versions
+        ) && "Expected exactly one source path"
+    );
 
     // CommonOptionsParser is stateful so the vector returned by
     // getSourcePathList() includes paths from past invocations.
