@@ -39,11 +39,16 @@ impl InstrumentMemoryOps {
 
     /// Instrument memory operations in-place in the function `body`.
     pub fn instrument_fn<'tcx>(&self, tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>, body_did: DefId) {
+        let function_name = tcx.item_name(body_did);
+        debug!("Instrumenting function {}", function_name);
+
         self.functions.lock().unwrap().insert(
             tcx.def_path_hash(body_did).0.as_value().into(),
             tcx.item_name(body_did).to_string(),
         );
+        debug!("Body before instrumentation: {:#?}", body);
         instrument(self, tcx, body, body_did);
+        debug!("Body after instrumentation: {:#?}", body);
     }
 
     /// Finish instrumentation and write out metadata to `metadata_file_path`.

@@ -102,9 +102,6 @@ fn override_queries(
         let body_did = def.did.to_def_id();
         let fn_ty = tcx.type_of(body_did);
         if fn_ty.is_fn() && !tcx.is_const_fn(body_did) && !tcx.is_static(body_did) {
-            // Get the name of the function we're compiling.
-            let name = tcx.item_name(body_did);
-
             INSTRUMENTER.instrument_fn(tcx, &mut mir, body_did);
 
             validate::Validator {

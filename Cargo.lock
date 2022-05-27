@@ -270,6 +270,7 @@ dependencies = [
  "cargo-util",
  "indexmap",
  "lazy_static",
+ "log",
 ]
 
 [[package]]

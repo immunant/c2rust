@@ -11,6 +11,7 @@ cargo = "0.62"
 cargo-util = "0.1"
 indexmap = "1.8"
 lazy_static = "1.4"
+log = "0.4"
 
 [package.metadata.rust-analyzer] 
 rustc_private=true

@@ -5,6 +5,7 @@ use clap::{App, Values, load_yaml};
 use c2rust_dynamic_instrumentation::instrument;
 
 fn main() -> anyhow::Result<()> {
+    env_logger::init();
     let yaml = load_yaml!("../instrument.yaml");
     let matches = App::from_yaml(yaml).get_matches();
 
