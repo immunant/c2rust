@@ -11,7 +11,7 @@ import argparse
 import platform
 import multiprocessing
 
-from typing import List, Callable
+from typing import List, Callable, Optional
 
 import plumbum as pb
 
@@ -304,6 +304,16 @@ def _invoke(console_output, cmd, *arguments):
         msg = "cmd exited with code {}: {}".format(pee.retcode, cmd[arguments])
         logging.critical(pee.stderr)
         die(msg, pee.retcode)
+
+
+def try_get_cmd(cmd: str) -> Optional[Command]:
+    """
+    lookup named command or terminate script.
+    """
+    try:
+        return pb.local[cmd]
+    except pb.CommandNotFound:
+        return None
 
 
 def get_cmd_or_die(cmd: str) -> Command:

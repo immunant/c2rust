@@ -10,7 +10,6 @@ import re
 
 from common import (
     config as c,
-    get_cmd_or_install,
     pb,
     Colors,
     get_cmd_or_die,
@@ -21,6 +20,7 @@ from common import (
     die,
     ensure_dir,
     on_mac,
+    try_get_cmd,
 )
 from enum import Enum
 from rust_file import (
@@ -40,9 +40,8 @@ clang = get_cmd_or_die(sys.executable)["-m", "ziglang", "cc"]
 rustc = get_cmd_or_die("rustc")
 diff = get_cmd_or_die("diff")
 ar = get_cmd_or_die("ar")
-rustup = get_cmd_or_die("rustup")
 cargo = get_cmd_or_die("cargo")
-cargo_zigbuild = get_cmd_or_die("cargo-zigbuild")
+cargo_zigbuild = try_get_cmd("cargo-zigbuild")
 
 
 # Intermediate files
@@ -140,8 +139,6 @@ def rustc_has_target(target: str) -> bool:
 
 def target_args(target: Optional[str]) -> List[str]:
     if target:
-        # C targets generally don't include the `-unknown-` that Rust targets do
-        target = target.replace("-unknown", "")
         return ["-target", target]
     else:
         return ["-march=native"]
@@ -244,6 +241,14 @@ class TestDirectory:
             if target_arch != get_native_arch():
                 with open(self.full_path + "/target-tuple", 'r', encoding="utf-8") as file:
                     self.target = file.read().strip()
+        if self.target is not None:
+            self.c_target = self.target.replace("-unknown", "")
+        else:
+            self.c_target = None
+        if cargo_zigbuild is not None:
+            self.cargo = cargo_zigbuild
+        else:
+            self.cargo = cargo
 
         for entry in os.listdir(self.full_path_src):
             path = os.path.abspath(os.path.join(self.full_path_src, entry))
@@ -317,7 +322,7 @@ class TestDirectory:
     def _generate_cc_db(self, c_file_path: str) -> None:
         directory, cfile = os.path.split(c_file_path)
 
-        target_args = '"-target", "{}", '.format(self.target) if self.target else ""
+        target_args = '"-target", "{}", '.format(self.c_target) if self.c_target else ""
 
         compile_commands = """ \
         [
@@ -367,7 +372,7 @@ class TestDirectory:
         self.print_status(Colors.WARNING, "RUNNING", description)
 
         try:
-            static_library = build_static_library(self.c_files, self.full_path, self.target)
+            static_library = build_static_library(self.c_files, self.full_path, self.c_target)
         except NonZeroReturn as exception:
             self.print_status(Colors.FAIL, "FAILED", "create libtest.a")
             sys.stdout.write('\n')
@@ -496,16 +501,21 @@ class TestDirectory:
 
         # Try and build test binary
         with pb.local.cwd(self.full_path):
-            args = ["zigbuild"]
+            args = ["zigbuild" if cargo_zigbuild is not None else "build"]
 
             if c.BUILD_TYPE == 'release':
                 args.append('--release')
 
             if self.target:
-                _retcode, _stdout, _stderr = rustup[["target", "add", self.target]].run(retcode=None)
+                if not rustc_has_target(self.target):
+                    self.print_status(Colors.OKBLUE, "SKIPPED",
+                      "building test {} because the {} target is not installed"
+                      .format(self.name, self.target))
+                    sys.stdout.write('\n')
+                    return []
                 args.append(["--target", self.target])
 
-            retcode, stdout, stderr = cargo_zigbuild[args].run(retcode=None)
+            retcode, stdout, stderr = self.cargo[args].run(retcode=None)
 
         if retcode != 0:
             _, main_file_path_short = os.path.split(main_file.path)
@@ -519,8 +529,7 @@ class TestDirectory:
             return outcomes
 
         if self.target:
-            c_target = self.target.replace("-unknown", "")
-            qemu_ld_prefix = Path("/usr") / c_target
+            qemu_ld_prefix = Path("/usr") / self.c_target
         else:
             qemu_ld_prefix = None
 
@@ -544,7 +553,7 @@ class TestDirectory:
 
                 with pb.local.cwd(self.full_path):
                     with pb.local.env(QEMU_LD_PREFIX=qemu_ld_prefix):
-                        retcode, stdout, stderr = cargo_zigbuild[args].run(retcode=None)
+                        retcode, stdout, stderr = self.cargo[args].run(retcode=None)
 
                 logging.debug("stdout:%s\n", stdout)
 
