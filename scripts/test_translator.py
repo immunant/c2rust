@@ -42,9 +42,7 @@ diff = get_cmd_or_die("diff")
 ar = get_cmd_or_die("ar")
 rustup = get_cmd_or_die("rustup")
 cargo = get_cmd_or_die("cargo")
-cargo_zigbuild = get_cmd_or_install("cargo-zigbuild", cargo["install", "cargo-zigbuild"])
-apt = get_cmd_or_die("apt")
-update_binfmts = get_cmd_or_install("update_binfmts", sudo[apt["install", "-y", "binfmt-support"]])
+cargo_zigbuild = get_cmd_or_die("cargo-zigbuild")
 
 
 # Intermediate files
@@ -522,22 +520,7 @@ class TestDirectory:
 
         if self.target:
             c_target = self.target.replace("-unknown", "")
-            
-            arch = self.target.split("-")[0]
-            qemu_arch = f"qemu-{arch}"
-            stdout = update_binfmts["--display", qemu_arch](retcode=None)
-            enable = sudo[update_binfmts["--enable", qemu_arch]]
-            if "enabled" in stdout:
-                pass
-            elif "disabled" in stdout:
-                enable()
-            else:
-                sudo[apt["install", "-y", "qemu-user", "qemu-user-static"]]()
-                enable()
-
             qemu_ld_prefix = Path("/usr") / c_target
-            if not qemu_ld_prefix.exists():
-                sudo[apt["install", "-y", f"gcc-{c_target}"]]()
         else:
             qemu_ld_prefix = None
 

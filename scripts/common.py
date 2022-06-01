@@ -316,17 +316,6 @@ def get_cmd_or_die(cmd: str) -> Command:
         die("{} not in path".format(cmd), errno.ENOENT)
 
 
-def get_cmd_or_install(cmd: str, install_cmd: Command) -> Command:
-    """
-    lookup named command or install it first
-    """
-    try:
-        return pb.local[cmd]
-    except pb.CommandNotFound:
-        install_cmd()
-        return pb.local[cmd]
-
-
 def ensure_dir(path):
     if not os.path.exists(path):
         logging.debug("creating dir %s", path)
