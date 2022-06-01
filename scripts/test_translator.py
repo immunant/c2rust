@@ -10,6 +10,7 @@ import re
 
 from common import (
     config as c,
+    get_cmd_or_install,
     pb,
     Colors,
     get_cmd_or_die,
@@ -34,11 +35,16 @@ from rust_file import (
 from typing import Generator, List, Optional, Set, Iterable
 
 # Tools we will need
+sudo = get_cmd_or_die("sudo")
 clang = get_cmd_or_die("clang")
 rustc = get_cmd_or_die("rustc")
 diff = get_cmd_or_die("diff")
 ar = get_cmd_or_die("ar")
+rustup = get_cmd_or_die("rustup")
 cargo = get_cmd_or_die("cargo")
+cargo_zigbuild = get_cmd_or_install("cargo-zigbuild", cargo["install", "cargo-zigbuild"])
+apt = get_cmd_or_die("apt")
+update_binfmts = get_cmd_or_install("update_binfmts", sudo[apt["install", "-y", "binfmt-support"]])
 
 
 # Intermediate files
@@ -490,21 +496,16 @@ class TestDirectory:
 
         # Try and build test binary
         with pb.local.cwd(self.full_path):
-            args = ["build"]
+            args = ["zigbuild"]
 
             if c.BUILD_TYPE == 'release':
                 args.append('--release')
 
             if self.target:
-                if not rustc_has_target(self.target):
-                    self.print_status(Colors.OKBLUE, "SKIPPED",
-                      "building test {} because the {} target is not installed"
-                      .format(self.name, self.target))
-                    sys.stdout.write('\n')
-                    return []
+                _retcode, _stdout, _stderr = rustup[["target", "add", self.target]].run(retcode=None)
                 args.append(["--target", self.target])
 
-            retcode, stdout, stderr = cargo[args].run(retcode=None)
+            retcode, stdout, stderr = cargo_zigbuild[args].run(retcode=None)
 
         if retcode != 0:
             _, main_file_path_short = os.path.split(main_file.path)
@@ -517,6 +518,27 @@ class TestDirectory:
 
             return outcomes
 
+        if self.target:
+            c_target = self.target.replace("-unknown", "")
+            
+            arch = self.target.split("-")[0]
+            qemu_arch = f"qemu-{arch}"
+            stdout = update_binfmts["--display", qemu_arch](retcode=None)
+            enable = sudo[update_binfmts["--enable", qemu_arch]]
+            if "enabled" in stdout:
+                pass
+            elif "disabled" in stdout:
+                enable()
+            else:
+                sudo[apt["install", "-y", "qemu-user", "qemu-user-static"]]()
+                enable()
+
+            qemu_ld_prefix = Path("/usr") / c_target
+            if not qemu_ld_prefix.exists():
+                sudo[apt["install", "-y", f"gcc-{c_target}"]]()
+        else:
+            qemu_ld_prefix = None
+
         for test_file in self.rs_test_files:
             if not test_file.pass_expected:
                 continue
@@ -525,13 +547,19 @@ class TestDirectory:
             extensionless_file_name, _ = os.path.splitext(file_name)
 
             for test_function in test_file.test_functions:
-                args = ["run", "{}::{}".format(extensionless_file_name, test_function.name)]
+                args = ["run"]
+
+                if self.target:
+                    args.append(["--target", self.target])
+                
+                args.append("{}::{}".format(extensionless_file_name, test_function.name))
 
                 if c.BUILD_TYPE == 'release':
                     args.append('--release')
 
                 with pb.local.cwd(self.full_path):
-                    retcode, stdout, stderr = cargo[args].run(retcode=None)
+                    with pb.local.env(QEMU_LD_PREFIX=qemu_ld_prefix):
+                        retcode, stdout, stderr = cargo_zigbuild[args].run(retcode=None)
 
                 logging.debug("stdout:%s\n", stdout)
 
