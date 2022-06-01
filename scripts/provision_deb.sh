@@ -55,8 +55,6 @@ apt-get install -qq \
     luarocks \
     zlib1g-dev
 
-apt-get clean # clear apt-caches to reduce image size
-
 python3 -m pip install --upgrade pip
 # Current version of scan-build requires setuptools 20.5 or newer to parse
 # environment markers in install_requires
@@ -69,3 +67,7 @@ luarocks path > /etc/profile.d/luarocks-path.sh
 
 # Install penlight lua package with luarocks
 luarocks install penlight
+
+"${SCRIPT_DIR}/privision_cross_tests.sh"
+
+apt-get clean # clear apt-caches to reduce image size
