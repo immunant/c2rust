@@ -36,7 +36,7 @@ from typing import Generator, List, Optional, Set, Iterable
 
 # Tools we will need
 sudo = get_cmd_or_die("sudo")
-clang = get_cmd_or_die("clang")
+clang = get_cmd_or_die(sys.executable)["-m", "ziglang", "cc"]
 rustc = get_cmd_or_die("rustc")
 diff = get_cmd_or_die("diff")
 ar = get_cmd_or_die("ar")
@@ -142,6 +142,8 @@ def rustc_has_target(target: str) -> bool:
 
 def target_args(target: Optional[str]) -> List[str]:
     if target:
+        # C targets generally don't include the `-unknown-` that Rust targets do
+        target = target.replace("-unknown", "")
         return ["-target", target]
     else:
         return ["-march=native"]
