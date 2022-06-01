@@ -1,3 +1,4 @@
+use crate::convert_type::{RESERVED_NAMES, RESERVED_PATH_SEGMENT_NAMES};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::Hash;
@@ -86,7 +87,8 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     /// Assigns a name that doesn't collide with anything in the context of a particular
     /// scope, defaulting to the current scope if None is provided
     fn pick_name_in_scope(&mut self, basename: &str, scope: Option<usize>) -> String {
-        let mut target = basename.to_string();
+        let mut target =
+            Self::raw_identifier_if_reserved_name(basename).unwrap_or_else(|| basename.to_string());
 
         for i in 0.. {
             if self.is_target_used(&target) {
@@ -176,6 +178,14 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
         self.next_fresh += 1;
         self.pick_name(&format!("fresh{}", fresh))
     }
+
+    fn raw_identifier_if_reserved_name(basename: &str) -> Option<String> {
+        if RESERVED_NAMES.contains(&basename) && !RESERVED_PATH_SEGMENT_NAMES.contains(&basename) {
+            Some(format!("r#{}", basename))
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -225,5 +235,28 @@ mod tests {
         renamer.insert(1, "example");
         renamer.drop_scope();
         assert_eq!(renamer.get(&1), None);
+    }
+
+    #[test]
+    fn raw_identifier() {
+        let mut renamer = Renamer::new(&RESERVED_NAMES);
+
+        // A reserved keyword that can be expressed as a raw identifier
+        let reserved1 = renamer.insert(1, "dyn").unwrap();
+        let reserved2 = renamer.get(&1).unwrap();
+        assert_eq!(reserved1, "r#dyn");
+        assert_eq!(reserved2, "r#dyn");
+
+        // A reserved keyword that is already bound and therefore does not need the "#r" prefix
+        let reserved1 = renamer.insert(2, "dyn").unwrap();
+        let reserved2 = renamer.get(&2).unwrap();
+        assert_eq!(reserved1, "dyn_0");
+        assert_eq!(reserved2, "dyn_0");
+
+        // A reserved that cannot be used as a raw identifier because it can be used in a path
+        let reserved1 = renamer.insert(3, "self").unwrap();
+        let reserved2 = renamer.get(&3).unwrap();
+        assert_eq!(reserved1, "self_0");
+        assert_eq!(reserved2, "self_0");
     }
 }

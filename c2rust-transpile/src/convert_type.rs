@@ -132,6 +132,14 @@ pub const RESERVED_NAMES: [&str; 103] = [
     "str",
 ];
 
+/// Keywords that cannot be expressed as a raw identifier [0] because they can be used as path
+/// segments. The list of path segment keywords can be found here [1]. For discussion of this
+/// topic see [2].
+/// [0] https://doc.rust-lang.org/edition-guide/rust-2018/module-system/raw-identifiers.html
+/// [1] https://github.com/rust-lang/rust/blob/04488afe34512aa4c33566eb16d8c912a3ae04f9/src/librustc_span/symbol.rs#L1331
+/// [2] https://internals.rust-lang.org/t/raw-identifiers-dont-work-for-all-identifiers/9094
+pub const RESERVED_PATH_SEGMENT_NAMES: [&str; 4] = ["super", "self", "Self", "crate"];
+
 impl TypeConverter {
     pub fn new(emit_no_std: bool) -> TypeConverter {
         TypeConverter {

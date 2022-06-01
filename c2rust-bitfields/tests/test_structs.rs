@@ -623,3 +623,41 @@ fn test_bool_bits() {
     assert!(bool_bits.y());
     assert!(bool_bits.z());
 }
+
+#[repr(C)]
+#[derive(BitfieldStruct)]
+struct ReservedNames {
+    #[bitfield(name = "r#use", ty = "bool", bits = "0..=0")]
+    #[bitfield(name = "r#as", ty = "bool", bits = "1..=1")]
+    use_as: [u8; 1],
+}
+
+#[test]
+fn test_reserved_names() {
+    let mut reserved_names = ReservedNames {
+        use_as: [u8::max_value(); 1],
+    };
+
+    assert!(reserved_names.r#use());
+    assert!(reserved_names.r#as());
+
+    reserved_names.set_as(false);
+
+    assert!(reserved_names.r#use());
+    assert!(!reserved_names.r#as());
+
+    reserved_names.set_use(false);
+
+    assert!(!reserved_names.r#use());
+    assert!(!reserved_names.r#as());
+
+    reserved_names.set_use(true);
+
+    assert!(reserved_names.r#use());
+    assert!(!reserved_names.r#as());
+
+    reserved_names.set_as(true);
+
+    assert!(reserved_names.r#use());
+    assert!(reserved_names.r#as());
+}
