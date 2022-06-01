@@ -35,7 +35,12 @@ from rust_file import (
 from typing import Generator, List, Optional, Set, Iterable
 
 # Tools we will need
-clang = get_cmd_or_die(sys.executable)["-m", "ziglang", "cc"]
+try:
+    import ziglang as _
+    clang = get_cmd_or_die(sys.executable)["-m", "ziglang", "cc"]
+except ImportError as e:
+    clang = get_cmd_or_die("clang")
+    raise e
 rustc = get_cmd_or_die("rustc")
 diff = get_cmd_or_die("diff")
 ar = get_cmd_or_die("ar")

@@ -60,7 +60,7 @@ python3 -m pip install --upgrade pip
 # environment markers in install_requires
 python3 -m pip install "setuptools >= 20.5" --disable-pip-version-check --quiet
 # Install python3 packages
-python3 -m pip install -r $SCRIPT_DIR/requirements.txt --disable-pip-version-check --quiet
+python3 -m pip install -r $SCRIPT_DIR/requirements.txt --disable-pip-version-check
 
 # Set the system-wide Lua path to include luarocks directories
 luarocks path > /etc/profile.d/luarocks-path.sh
