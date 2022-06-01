@@ -35,7 +35,6 @@ from rust_file import (
 from typing import Generator, List, Optional, Set, Iterable
 
 # Tools we will need
-sudo = get_cmd_or_die("sudo")
 clang = get_cmd_or_die(sys.executable)["-m", "ziglang", "cc"]
 rustc = get_cmd_or_die("rustc")
 diff = get_cmd_or_die("diff")
