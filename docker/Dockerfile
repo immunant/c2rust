@@ -33,8 +33,13 @@ ARG RUST_VER
 RUN RUST_VER=$RUST_VER /tmp/provision_rust.sh
 
 ENV PATH="/home/${USER}/.cargo/bin:${PATH}"
+
+RUN /tmp/provision_cross_tests.sh
+
 ENV CARGO_HOME="/tmp/.cargo"
 ENV RUSTUP_HOME="/home/${USER}/.rustup"
 
 # Need to switch back to root for Azure DevOps compatibility
 USER root
+
+RUN /tmp/provision_cross_tests.sh

@@ -68,6 +68,4 @@ luarocks path > /etc/profile.d/luarocks-path.sh
 # Install penlight lua package with luarocks
 luarocks install penlight
 
-"${SCRIPT_DIR}/privision_cross_tests.sh"
-
 apt-get clean # clear apt-caches to reduce image size
