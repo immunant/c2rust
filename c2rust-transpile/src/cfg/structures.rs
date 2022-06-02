@@ -232,38 +232,39 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                     }
                 };
 
-                let mut branch = |slbl: &StructureLabel<Stmt>| -> Result<S, TranslationError> {
-                    match slbl {
-                        &StructureLabel::Nested(ref nested) => {
-                            structured_cfg_help(exits.clone(), next, nested, used_loop_labels)
-                        }
-
-                        &StructureLabel::GoTo(to) | &StructureLabel::ExitTo(to)
-                            if next.contains(&to) =>
-                        {
-                            Ok(insert_goto(to, &next))
-                        }
-
-                        &StructureLabel::ExitTo(to) => {
-                            let mut immediate = true;
-                            for &(label, ref local) in &exits {
-                                if let Some(&(ref follow, exit_style)) = local.get(&to) {
-                                    let lbl = if immediate {
-                                        None
-                                    } else {
-                                        used_loop_labels.insert(label);
-                                        Some(label)
-                                    };
-
-                                    let mut new_cfg = S::mk_append(
-                                        insert_goto(to, follow),
-                                        S::mk_exit(exit_style, lbl),
-                                    );
-                                    new_cfg.extend_span(*span);
-                                    return Ok(new_cfg);
-                                }
-                                immediate = false;
+                let mut branch =
+                    |slbl: &StructureLabel<Stmt>| -> Result<S, TranslationError> {
+                        match slbl {
+                            StructureLabel::Nested(ref nested) => {
+                                structured_cfg_help(exits.clone(), next, nested, used_loop_labels)
                             }
+
+                            StructureLabel::GoTo(to) | StructureLabel::ExitTo(to)
+                                if next.contains(to) =>
+                            {
+                                Ok(insert_goto(to.clone(), &next))
+                            }
+
+                            StructureLabel::ExitTo(to) => {
+                                let mut immediate = true;
+                                for (label, local) in &exits {
+                                    if let Some(&(ref follow, exit_style)) = local.get(to) {
+                                        let lbl = if immediate {
+                                            None
+                                        } else {
+                                            used_loop_labels.insert(label.clone());
+                                            Some(label.clone())
+                                        };
+
+                                        let mut new_cfg = S::mk_append(
+                                            insert_goto(to.clone(), follow),
+                                            S::mk_exit(exit_style, lbl),
+                                        );
+                                        new_cfg.extend_span(*span);
+                                        return Ok(new_cfg);
+                                    }
+                                    immediate = false;
+                                }
 
                             Err(
                                 format_err!("Not a valid exit: {:?} has nothing to exit to", to)
@@ -271,14 +272,14 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                             )
                         }
 
-                        &StructureLabel::GoTo(to) => Err(format_err!(
-                            "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
-                            to,
-                            next
-                        )
-                        .into()),
-                    }
-                };
+                            StructureLabel::GoTo(to) => Err(format_err!(
+                                "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
+                                to,
+                                next
+                            )
+                            .into()),
+                        }
+                    };
 
                 new_rest = S::mk_append(
                     new_rest,
@@ -311,7 +312,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                     .map(|(lbl, body)| -> Result<(Label, S), TranslationError> {
                         let stmts =
                             structured_cfg_help(exits.clone(), next, body, used_loop_labels)?;
-                        Ok((*lbl, stmts))
+                        Ok((lbl.clone(), stmts))
                     })
                     .collect::<Result<Vec<(Label, S)>, TranslationError>>()?;
 
@@ -333,16 +334,16 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                 these_exits.extend(
                     entries
                         .iter()
-                        .map(|e| (*e, (entries.clone(), ExitStyle::Continue))),
+                        .map(|e| (e.clone(), (entries.clone(), ExitStyle::Continue))),
                 );
-                these_exits.extend(next.iter().map(|e| (*e, (next.clone(), ExitStyle::Break))));
+                these_exits.extend(next.iter().map(|e| (e.clone(), (next.clone(), ExitStyle::Break))));
 
-                let mut exits_new = vec![(*label, these_exits)];
+                let mut exits_new = vec![(label.clone(), these_exits)];
                 exits_new.extend(exits.clone());
 
                 let body = structured_cfg_help(exits_new, entries, body, used_loop_labels)?;
                 let loop_lbl = if used_loop_labels.contains(label) {
-                    Some(*label)
+                    Some(label.clone())
                 } else {
                     None
                 };

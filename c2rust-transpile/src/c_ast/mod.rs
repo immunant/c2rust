@@ -7,6 +7,7 @@ use std::fmt::{self, Debug, Display};
 use std::mem;
 use std::ops::Index;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 pub use c2rust_ast_exporter::clang_ast::{BuiltinVaListKind, SrcFile, SrcLoc, SrcSpan};
 
@@ -65,6 +66,9 @@ pub struct TypedAstContext {
     // sequence of #include statement locations and the file being included at
     // that location.
     include_map: Vec<Vec<SrcLoc>>,
+
+    // Names of the labels defined in the C source code.
+    pub label_names: IndexMap<CLabelId, Rc<str>>,
 
     // map expressions to the stack of macros they were expanded from
     pub macro_invocations: HashMap<CExprId, Vec<CDeclId>>,
@@ -178,6 +182,7 @@ impl TypedAstContext {
             macro_invocations: HashMap::new(),
             macro_expansions: HashMap::new(),
             macro_expansion_text: HashMap::new(),
+            label_names: Default::default(),
 
             comments: vec![],
             prenamed_decls: IndexMap::new(),

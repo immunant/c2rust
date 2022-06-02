@@ -3,6 +3,7 @@ use c2rust_ast_exporter::clang_ast::*;
 use failure::err_msg;
 use serde_bytes::ByteBuf;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::vec::Vec;
 
 use super::Located;
@@ -1017,6 +1018,18 @@ impl ConversionContext {
                 ASTEntryTag::TagLabelStmt if expected_ty & LABEL_STMT != 0 => {
                     let substmt_old = node.children[0].expect("Label sub-statement not found");
                     let substmt = self.visit_stmt(substmt_old);
+
+                    let label_name = from_value::<Rc<str>>(node.extras[0].clone())
+                        .expect("unnamed label in C source code");
+                    match self.typed_context.label_names.insert(CStmtId(new_id), label_name.clone()) {
+                        Some(old_label_name) => {
+                            panic!(
+                                "Duplicate label name with id {}. Old name: {}. New name: {}",
+                                new_id, old_label_name, label_name,
+                            );
+                        }
+                        None => {}
+                    }
 
                     let label_stmt = CStmtKind::Label(substmt);
 
@@ -2127,10 +2140,7 @@ impl ConversionContext {
                     } else {
                         None
                     };
-                    let static_assert = CDeclKind::StaticAssert {
-                        assert_expr,
-                        message,
-                    };
+                    let static_assert = CDeclKind::StaticAssert { assert_expr, message };
                     self.add_decl(new_id, located(node, static_assert));
                 }
 

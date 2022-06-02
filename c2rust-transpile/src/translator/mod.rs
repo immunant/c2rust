@@ -286,7 +286,6 @@ fn simple_metaitem(name: &str) -> NestedMeta {
 
 fn int_arg_metaitem(name: &str, arg: u128) -> NestedMeta {
     let lit = mk().int_unsuffixed_lit(arg);
-    use std::iter::FromIterator;
     let inner = Meta::List(MetaList {
         path: mk().path(name),
         paren_token: Default::default(),
@@ -2448,7 +2447,7 @@ impl<'c> Translation<'c> {
             }
 
             let current_block_ty = if self.tcfg.debug_relooper_labels {
-                mk().ref_lt_ty("'static", mk().path_ty(vec!["str"]))
+                mk().ref_lt_ty("static", mk().path_ty(vec!["str"]))
             } else {
                 mk().path_ty(vec!["u64"])
             };
@@ -4076,11 +4075,11 @@ impl<'c> Translation<'c> {
                 let result_id = substmt_ids[n - 1];
 
                 let name = format!("<stmt-expr_{:?}>", compound_stmt_id);
-                let lbl = cfg::Label::FromC(compound_stmt_id);
+                let lbl = cfg::Label::FromC(compound_stmt_id, None);
 
                 let mut stmts = match self.ast_context[result_id].kind {
                     CStmtKind::Expr(expr_id) => {
-                        let ret = cfg::ImplicitReturnType::StmtExpr(ctx, expr_id, lbl);
+                        let ret = cfg::ImplicitReturnType::StmtExpr(ctx, expr_id, lbl.clone());
                         self.convert_function_body(ctx, &name, &substmt_ids[0..(n - 1)], ret)?
                     }
 

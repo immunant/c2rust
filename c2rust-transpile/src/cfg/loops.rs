@@ -54,7 +54,7 @@ pub fn match_loop_body(
             desired_body.swap_remove(&following);
 
             follow_entries.swap_remove(&following);
-            follow_entries.extend(&bb.successors());
+            follow_entries.extend(bb.successors());
             follow_entries.retain(|e| !body_blocks.contains_key(e));
             body_blocks.insert(following, bb);
         }
@@ -88,7 +88,7 @@ pub fn heuristic_loop_body(
 ) -> () {
     if follow_entries.len() > 1 {
         for follow_entry in follow_entries.clone().iter() {
-            let mut following: Label = *follow_entry;
+            let mut following: Label = follow_entry.clone();
 
             loop {
                 // If this block might have come from 2 places, give up
@@ -104,16 +104,16 @@ pub fn heuristic_loop_body(
                 };
                 let succs = bb.successors();
 
-                body_blocks.insert(following, bb);
+                body_blocks.insert(following.clone(), bb);
                 follow_entries.swap_remove(&following);
-                follow_entries.extend(&succs);
+                follow_entries.extend(succs.clone());
 
                 // If it has more than one successor, don't try following the successor
                 if succs.len() != 1 {
                     break;
                 }
 
-                following = *succs.iter().next().unwrap();
+                following = succs.iter().next().unwrap().clone();
             }
         }
     }
