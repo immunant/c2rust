@@ -11,10 +11,9 @@ is-root() {
 }
 
 install-from-cargo() {
-    cargo install cargo-quickinstall
-    cargo quickinstall ripgrep 
-    cargo quickinstall fd-find 
-    cargo quickinstall cargo-zigbuild
+    cargo install ripgrep 
+    cargo install fd-find 
+    cargo install cargo-zigbuild
 }
 
 install-from-apt() {
