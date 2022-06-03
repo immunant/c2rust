@@ -40,7 +40,6 @@ rustc = get_cmd_or_die("rustc")
 diff = get_cmd_or_die("diff")
 ar = get_cmd_or_die("ar")
 cargo = get_cmd_or_die("cargo")
-cargo_zigbuild = try_get_cmd("cargo-zigbuild")
 
 
 # Intermediate files
@@ -242,12 +241,24 @@ class TestDirectory:
                     self.target = file.read().strip()
         if self.target is not None:
             self.c_target = self.target.replace("-unknown", "")
+            self.arch = self.target.split("-")[0]
+            self.cargo_config = f"""
+[build]
+target = "{self.target}"
+
+[target.{self.target}]
+linker = "{self.c_target}-gcc"
+rustflags = ["-C", "-link-arg=-fuse-ld=gold"] # override any other linker
+runner = "qemu-{self.arch} -L /usr/{self.c_target}"
+            """.strip()
+            cargo_config_dir = Path(self.full_path) / ".cargo"
+            cargo_config_dir.mkdir(exist_ok=True)
+            cargo_config_path = cargo_config_dir / "config.toml"
+            cargo_config_path.write_text(self.cargo_config)
+            self.generated_files["rust_src"].append(cargo_config_path)
+            self.generated_files["rust_src"].append(cargo_config_dir)
         else:
             self.c_target = None
-        if cargo_zigbuild is not None:
-            self.cargo = cargo_zigbuild
-        else:
-            self.cargo = cargo
 
         for entry in os.listdir(self.full_path_src):
             path = os.path.abspath(os.path.join(self.full_path_src, entry))
@@ -500,7 +511,7 @@ class TestDirectory:
 
         # Try and build test binary
         with pb.local.cwd(self.full_path):
-            args = ["zigbuild" if cargo_zigbuild is not None else "build"]
+            args = ["build"]
 
             if c.BUILD_TYPE == 'release':
                 args.append('--release')
@@ -514,7 +525,7 @@ class TestDirectory:
                     return []
                 args.append(["--target", self.target])
 
-            retcode, stdout, stderr = self.cargo[args].run(retcode=None)
+            retcode, stdout, stderr = cargo[args].run(retcode=None)
 
         if retcode != 0:
             _, main_file_path_short = os.path.split(main_file.path)
@@ -526,11 +537,6 @@ class TestDirectory:
             outcomes.append(TestOutcome.UnexpectedFailure)
 
             return outcomes
-
-        if self.target:
-            qemu_ld_prefix = Path("/usr") / self.c_target
-        else:
-            qemu_ld_prefix = None
 
         for test_file in self.rs_test_files:
             if not test_file.pass_expected:
@@ -551,8 +557,7 @@ class TestDirectory:
                     args.append('--release')
 
                 with pb.local.cwd(self.full_path):
-                    with pb.local.env(QEMU_LD_PREFIX=qemu_ld_prefix):
-                        retcode, stdout, stderr = self.cargo[args].run(retcode=None)
+                    retcode, stdout, stderr = cargo[args].run(retcode=None)
 
                 logging.debug("stdout:%s\n", stdout)
 

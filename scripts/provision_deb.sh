@@ -33,8 +33,6 @@ apt-get install -y --no-install-recommends \
 # gnupg2: required for gnupg2 key retrieval
 # llvm: required for llvm-config
 apt-get install -qq \
-    `# for running other architectures through qemu` \
-    binfmt-support \
     clang \
     cmake \
     curl \
@@ -64,8 +62,6 @@ native_target="$(rustc -vV | sed -n 's|host: ||p')"
 echo "${TARGETS}" | while read -r rust_target; do
     if [[ "${rust_target}" != "${native_target}" ]]; then
         c_target="${rust_target/-unknown/}"
-        arch="${rust_target/-*/}"
-        update-binfmts --enable "qemu-${arch}"
         apt install -y "gcc-${c_target}"
 	fi
 done
