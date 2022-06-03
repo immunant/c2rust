@@ -36,3 +36,9 @@ rustup component add rustfmt-preview rustc-dev rust-src
 # Make rustup directory world-writable so other test users can install new rust
 # versions
 chmod -R a+w ~/.rustup
+
+# for cross compiling
+echo "${TARGETS}" | while read -r rust_target; do
+  rustup target add "${rust_target}"
+done
+cargo install cargo-zigbuild

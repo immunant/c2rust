@@ -33,6 +33,8 @@ apt-get install -y --no-install-recommends \
 # gnupg2: required for gnupg2 key retrieval
 # llvm: required for llvm-config
 apt-get install -qq \
+    `# for running other architectures through qemu` \
+    binfmt-support \
     clang \
     cmake \
     curl \
@@ -49,11 +51,24 @@ apt-get install -qq \
     python-dev \
     python3-pip \
     python3-setuptools \
+    `# for running cross tests` \
+    qemu-user \
+    qemu-user-static \
     software-properties-common \
     unzip \
     libncurses5-dev \
     luarocks \
     zlib1g-dev
+
+native_target="$(rustc -vV | sed -n 's|host: ||p')"
+echo "${TARGETS}" | while read -r rust_target; do
+    if [[ "${rust_target}" != "${native_target}" ]]; then
+        c_target="${rust_target/-unknown/}"
+        arch="${rust_target/-*/}"
+        update-binfmts --enable "qemu-${arch}"
+        apt install -y "gcc-${c_target}"
+	fi
+done
 
 python3 -m pip install --upgrade pip
 # Current version of scan-build requires setuptools 20.5 or newer to parse
