@@ -34,7 +34,8 @@ RUN RUST_VER=$RUST_VER /tmp/provision_rust.sh
 
 ENV PATH="/home/${USER}/.cargo/bin:${PATH}"
 
-RUN /tmp/provision_cross_tests.sh
+ARG TARGETS
+RUN TARGETS="${TARGETS}" /tmp/provision_cross_tests.sh
 
 ENV CARGO_HOME="/tmp/.cargo"
 ENV RUSTUP_HOME="/home/${USER}/.rustup"

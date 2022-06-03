@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -ex
+set -euox pipefail
 
 is-command() {
     command -v "${1}" > /dev/null;
@@ -11,8 +11,6 @@ is-root() {
 }
 
 install-from-cargo() {
-    cargo install ripgrep 
-    cargo install fd-find 
     cargo install cargo-zigbuild
 }
 
@@ -33,8 +31,8 @@ install-target() {
 }
 
 install-targets() {
-    native_target="$(rustc -vV | rg '^host: (.*)$' --replace '$1')"
-    fd '^target-tuple$' "$(dirname "${0}")/.." --exec-batch cat | while read -r rust_target; do
+    native_target="$(rustc -vV | sed -n 's|host: ||p')"
+    echo "${TARGETS}" | while read -r rust_target; do
         if [[ "${rust_target}" != "${native_target}" ]]; then
             install-target "${rust_target}"
     	fi
