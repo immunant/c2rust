@@ -248,9 +248,9 @@ target = "{self.target}"
 
 [target.{self.target}]
 linker = "{self.c_target}-gcc"
-rustflags = ["-C", "-link-arg=-fuse-ld=gold"] # override any other linker
+rustflags = ["-C", "link-arg=-fuse-ld=gold"] # override any other linker
 runner = "qemu-{self.arch} -L /usr/{self.c_target}"
-            """.strip()
+            """.strip() + "\n"
             cargo_config_dir = Path(self.full_path) / ".cargo"
             cargo_config_dir.mkdir(exist_ok=True)
             cargo_config_path = cargo_config_dir / "config.toml"
