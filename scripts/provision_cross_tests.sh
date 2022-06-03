@@ -41,7 +41,9 @@ install-targets() {
 
 # Should be run as non-root first (after rustup installed), and then as root.
 main() {
-    is-command apt || return
+    if ! is-command apt; then
+        return
+    fi
     if is-root; then
         install-from-apt
         install-targets
@@ -51,4 +53,5 @@ main() {
         install-targets
     fi
 }
+
 main
