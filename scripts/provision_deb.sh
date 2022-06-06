@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -ex pipefail
+set -e pipefail
 
 # Are we on a supported distro? Note: We can't use dpkg-vendor
 # because it is installed via `build-essential`.
@@ -69,17 +69,17 @@ echo "${TARGETS}" | while read -r rust_target; do
 	fi
 done
 
+apt-get clean # clear apt-caches to reduce image size
+
 python3 -m pip install --upgrade pip
 # Current version of scan-build requires setuptools 20.5 or newer to parse
 # environment markers in install_requires
 python3 -m pip install "setuptools >= 20.5" --disable-pip-version-check --quiet
 # Install python3 packages
-python3 -m pip install -r $SCRIPT_DIR/requirements.txt --disable-pip-version-check
+python3 -m pip install -r $SCRIPT_DIR/requirements.txt --disable-pip-version-check --quiet
 
 # Set the system-wide Lua path to include luarocks directories
 luarocks path > /etc/profile.d/luarocks-path.sh
 
 # Install penlight lua package with luarocks
 luarocks install penlight
-
-apt-get clean # clear apt-caches to reduce image size

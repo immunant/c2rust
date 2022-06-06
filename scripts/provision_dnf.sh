@@ -31,5 +31,5 @@ pip3 install --upgrade pip
 # Current version of scan-build requires setuptools 20.5 or newer to parse
 # environment markers in install_requires
 pip3 install "setuptools >= 20.5" --disable-pip-version-check --quiet
-pip3 install -r $SCRIPT_DIR/requirements.txt --disable-pip-version-check
+pip3 install -r $SCRIPT_DIR/requirements.txt --disable-pip-version-check --quiet
 
