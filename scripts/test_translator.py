@@ -20,7 +20,6 @@ from common import (
     die,
     ensure_dir,
     on_mac,
-    try_get_cmd,
 )
 from enum import Enum
 from rust_file import (
