@@ -7,7 +7,7 @@ SCRIPT_DIR=$( cd "$( dirname $0 )" && pwd )
 C2RUST_HOME="$(dirname "$SCRIPT_DIR")"
 
 docker run \
-    `#--name $CONTAINER_NAME` `# names container` \
+    --name $CONTAINER_NAME `# names container` \
     --hostname docker `# sets hostname` \
     --interactive \
     --tty \
