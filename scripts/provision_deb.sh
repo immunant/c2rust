@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -ex pipefail
 
 # Are we on a supported distro? Note: We can't use dpkg-vendor
 # because it is installed via `build-essential`.
@@ -58,10 +58,13 @@ apt-get install -qq \
     luarocks \
     zlib1g-dev
 
-native_target="$(rustc -vV | sed -n 's|host: ||p')"
+# `rustc` not installed yet
+# native_rust_target="$(rustc -vV | sed -n 's|host: ||p')"
+native_clang_target="$(clang --version | sed -n 's|Target: ||p')"
+native_c_target="${native_clang_target/-pc/}"
 echo "${TARGETS}" | while read -r rust_target; do
-    if [[ "${rust_target}" != "${native_target}" ]]; then
-        c_target="${rust_target/-unknown/}"
+    c_target="${rust_target/-unknown/}"
+    if [[ "${c_target}" != "${native_c_target}" ]]; then
         apt install -y "gcc-${c_target}"
 	fi
 done
