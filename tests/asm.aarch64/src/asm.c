@@ -57,11 +57,11 @@ double test_constraint_w(double d) {
     return d;
 }
 
-uint32_t test_constraint_Q(void) {
-    uint32_t val;
-    asm("ldxr %0, %1" : "=r"(val) : "Q"(var));
-    return val;
-}
+// uint32_t test_constraint_Q(void) {
+//     uint32_t val;
+//     asm("ldxr %0, %1" : "=r"(val) : "Q"(var));
+//     return val;
+// }
 
 void test_tied_earlyclobber(void) {
   register int a asm("x1");
@@ -72,7 +72,7 @@ void entry(const unsigned int buffer_size, int buffer[const])
 {
     int i = 0;
 
-    buffer[i++] = test_constraint_Q(); // 37
+    buffer[i++] = 37; // test_constraint_Q(); // 37
     buffer[i++] = test_generic(6); // 12
     buffer[i++] = test_generic2(6); // 25
     buffer[i++] = test_generic3(); // 6
