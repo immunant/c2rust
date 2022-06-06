@@ -37,7 +37,6 @@ ARG RUST_VER
 RUN RUST_VER=$RUST_VER /tmp/provision_rust.sh
 
 ENV PATH="/home/${USER}/.cargo/bin:${PATH}"
-
 ENV CARGO_HOME="/tmp/.cargo"
 ENV RUSTUP_HOME="/home/${USER}/.rustup"
 
