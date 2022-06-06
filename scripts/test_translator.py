@@ -515,14 +515,12 @@ runner = "qemu-{self.arch} -L /usr/{self.c_target}"
             if c.BUILD_TYPE == 'release':
                 args.append('--release')
 
-            if self.target:
-                if not rustc_has_target(self.target):
-                    self.print_status(Colors.OKBLUE, "SKIPPED",
-                      "building test {} because the {} target is not installed"
-                      .format(self.name, self.target))
-                    sys.stdout.write('\n')
-                    return []
-                args.append(["--target", self.target])
+            if self.target and not rustc_has_target(self.target):
+                self.print_status(Colors.OKBLUE, "SKIPPED",
+                    "building test {} because the {} target is not installed"
+                    .format(self.name, self.target))
+                sys.stdout.write('\n')
+                return []
 
             retcode, stdout, stderr = cargo[args].run(retcode=None)
 
@@ -547,13 +545,10 @@ runner = "qemu-{self.arch} -L /usr/{self.c_target}"
             for test_function in test_file.test_functions:
                 args = ["run"]
 
-                if self.target:
-                    args.append(["--target", self.target])
-                
-                args.append("{}::{}".format(extensionless_file_name, test_function.name))
-
                 if c.BUILD_TYPE == 'release':
                     args.append('--release')
+                
+                args.append("{}::{}".format(extensionless_file_name, test_function.name))
 
                 with pb.local.cwd(self.full_path):
                     retcode, stdout, stderr = cargo[args].run(retcode=None)
