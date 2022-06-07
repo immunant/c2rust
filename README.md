@@ -7,7 +7,7 @@
 
 [Latest Version]: https://img.shields.io/crates/v/c2rust.svg
 [crates.io]: https://crates.io/crates/c2rust
-[Rustc Version]: https://img.shields.io/badge/rustc-nightly--2021--11--22-lightgrey.svg "Rustc nightly-2021-11-22"
+[Rustc Version]: https://img.shields.io/badge/rustc-nightly--2022--02--14-lightgrey.svg "Rustc nightly-2022-02-14"
 
 C2Rust helps you migrate C99-compliant code to Rust. The [translator](c2rust-transpile) (or transpiler) produces unsafe Rust code that closely mirrors the input C code. The primary goal of the translator is to preserve functionality; test suites should continue to pass after translation. 
 
