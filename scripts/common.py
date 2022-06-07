@@ -97,7 +97,9 @@ class Config:
 
     CC_DB_JSON = "compile_commands.json"
 
-    CUSTOM_RUST_NAME = 'nightly-2021-11-22'
+    # Look up rust toolchain from repo root
+    with open(os.path.join(ROOT_DIR, "rust-toolchain")) as fh:
+        CUSTOM_RUST_NAME = fh.readline().strip()
 
     LLVM_SKIP_SIGNATURE_CHECKS  = False
 
@@ -144,23 +146,7 @@ class Config:
         self.RREF_BIN = None    # set in `update_args`
         self.C2RUST_BIN = None  # set in `update_args`
         self.TARGET_DIR = None  # set in `update_args`
-        self.check_rust_toolchain()
         self.update_args()
-
-    def check_rust_toolchain(self):
-        """
-        Sanity check that the value of self.CUSTOM_RUST_NAME matches
-        the contents of self.ROOT_DIR/rust-toolchain.
-        """
-        toolchain_path = os.path.join(self.ROOT_DIR, "rust-toolchain")
-        if os.path.exists(toolchain_path):
-            with open(toolchain_path) as fh:
-                toolchain_name = fh.readline().strip()
-            emesg = "Rust version mismatch.\n"
-            emesg += "\tcommon.py expects:       {}\n" \
-                     .format(self.CUSTOM_RUST_NAME)
-            emesg += "\trust-toolchain requests: {}\n".format(toolchain_name)
-            assert self.CUSTOM_RUST_NAME == toolchain_name, emesg
 
     def update_args(self, args=None):
         build_type = 'debug' if args and args.debug else 'release'
