@@ -1,3 +1,9 @@
+# Docker image for c2rust CI and containerized development.
+# Multi-distro via optional BASE_IMAGE argument.
+# RUST_VER argument should be set to the contents of the rust-toolchain file in
+# the repo root (because dockerfiles can't access files above the location where
+# `docker build` is run).
+
 ARG BASE_IMAGE=ubuntu:bionic
 FROM ${BASE_IMAGE}
 LABEL maintainer="c2rust@immunant.com"
@@ -23,7 +29,7 @@ RUN chmod +x /tmp/provision*.sh && /tmp/provision.sh
 
 USER $USER
 # Provision rust language and packages (should not run as root)
-ARG RUST_VER=nightly-2021-11-22
+ARG RUST_VER
 RUN RUST_VER=$RUST_VER /tmp/provision_rust.sh
 
 ENV PATH="/home/${USER}/.cargo/bin:${PATH}"
