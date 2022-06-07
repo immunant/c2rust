@@ -9,7 +9,12 @@ if [[ "$EUID" -eq 0 ]]
   exit
 fi
 
-RUST_VER=${RUST_VER:-nightly-2021-11-22}
+# must run as regular user, not root.
+if [[ -z "$RUST_VER" ]]; then
+  then echo "RUST_VER must be set to the desired rust version"
+  exit
+fi
+
 if hash rustup 2>/dev/null; then # rustup is installed
   rustup toolchain install $RUST_VER
   rustup default $RUST_VER
