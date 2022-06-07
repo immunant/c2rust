@@ -11,7 +11,7 @@ fi
 
 # must run as regular user, not root.
 if [[ -z "$RUST_VER" ]]; then
-  then echo "RUST_VER must be set to the desired rust version"
+  echo "RUST_VER must be set to the desired rust version"
   exit
 fi
 
