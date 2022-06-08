@@ -98,8 +98,9 @@ class Config:
     CC_DB_JSON = "compile_commands.json"
 
     # Look up rust toolchain from repo root
-    with open(os.path.join(ROOT_DIR, "rust-toolchain")) as fh:
+    with open(os.path.join(ROOT_DIR, "rust-toolchain.toml")) as fh:
         CUSTOM_RUST_NAME = fh.readline().strip()
+
 
     LLVM_SKIP_SIGNATURE_CHECKS  = False
 
