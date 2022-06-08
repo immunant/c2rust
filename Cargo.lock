@@ -289,6 +289,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "c2rust-pdg"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "c2rust-analysis-rt",
+ "env_logger",
+ "indexed_vec",
+ "lazy_static",
+ "log",
+ "serde",
+]
+
+[[package]]
 name = "c2rust-transpile"
 version = "0.16.0"
 dependencies = [
@@ -976,6 +989,15 @@ dependencies = [
  "sized-chunks",
  "typenum",
  "version_check",
+]
+
+[[package]]
+name = "indexed_vec"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd5390d1640d64a30efbbe9cd15cb9f472388b4d5693677c693a7bc9310c0d08"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

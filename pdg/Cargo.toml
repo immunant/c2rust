@@ -1,17 +1,16 @@
 [package]
-name = "c2rust-dynamic-instrumentation"
+name = "c2rust-pdg"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0"
 bincode = "1.0.1"
 c2rust-analysis-rt = { path = "../analysis/runtime"}
-cargo = "0.62"
-cargo-util = "0.1"
-indexmap = "1.8"
+indexed_vec = "1.2.1"
+serde = { version = "1.0", features = ["derive"] }
 lazy_static = "1.4"
 log = "0.4"
+env_logger = "0.9"
 
 [package.metadata.rust-analyzer] 
 rustc_private=true

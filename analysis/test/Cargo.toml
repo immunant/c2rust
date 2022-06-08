@@ -6,3 +6,6 @@ authors = ["The C2Rust Development Team <c2rust@immunant.com>",
 
 [dependencies]
 libc = "0.2.45"
+
+[package.metadata.rust-analyzer] 
+rustc_private=true

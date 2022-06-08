@@ -11,9 +11,9 @@ use std::env;
 
 /// List of functions we want hooked for the lifetime analyis runtime.
 pub const HOOK_FUNCTIONS: &[&'static str] =
-    &["malloc", "free", "calloc", "realloc", "reallocarray"];
+    &["malloc", "free", "calloc", "realloc", "reallocarray", "offset"];
 
-pub use self::mir_loc::{DefPathHash, Metadata, MirLoc, MirLocId};
+pub use self::mir_loc::{DefPathHash, Metadata, MirLoc, MirLocId, MirPlace, MirProjection};
 
 pub use self::handlers::*;
 
