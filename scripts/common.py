@@ -10,7 +10,9 @@ import logging
 import argparse
 import platform
 import multiprocessing
+import toml
 
+from pathlib import Path
 from typing import List, Callable
 
 import plumbum as pb
@@ -98,8 +100,9 @@ class Config:
     CC_DB_JSON = "compile_commands.json"
 
     # Look up rust toolchain from repo root
-    with open(os.path.join(ROOT_DIR, "rust-toolchain.toml")) as fh:
-        CUSTOM_RUST_NAME = fh.readline().strip()
+    rust_toolchain_str = Path(ROOT_DIR).joinpath("rust-toolchain.toml").read_text()
+    rust = toml.loads(rust_toolchain_str)
+    CUSTOM_RUST_NAME = rust["toolchain"]["channel"]
 
 
     LLVM_SKIP_SIGNATURE_CHECKS  = False
