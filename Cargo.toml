@@ -16,3 +16,6 @@ exclude = [
     "examples",
     "tests",
 ]
+
+[profile.dev.package."*"]
+opt-level = 3
