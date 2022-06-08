@@ -142,6 +142,8 @@ enum TypeTag {
     TagComplexType,
     TagHalf,
     TagBFloat16,
+
+    TagAtomicType,
 };
 
 enum StringTypeTag {

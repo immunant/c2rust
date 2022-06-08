@@ -273,6 +273,8 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
 
     void VisitVariableArrayType(const VariableArrayType *T);
 
+    void VisitAtomicType(const AtomicType *AT);
+
     void VisitIncompleteArrayType(const IncompleteArrayType *T) {
         auto t = T->getElementType();
         auto qt = encodeQualType(t);
@@ -2472,15 +2474,17 @@ void TypeEncoder::VisitVariableArrayType(const VariableArrayType *T) {
 
     VisitQualType(t);
 }
-//
-//void TypeEncoder::VisitAtomicType(const AtomicType *AT) {
-//    std::string msg =
-//            "C11 Atomic types are not supported. Aborting.";
-////    auto horse = AT->get
-////    astEncoder->printError(msg, AT);
-//    AT->getValueType()->dump();
-//    abort();
-//}
+
+void TypeEncoder::VisitAtomicType(const AtomicType *AT) {
+  auto t = AT->getValueType();
+  auto qt = encodeQualType(t);
+
+  encodeType(AT, TagAtomicType, [qt](CborEncoder *local) {
+      cbor_encode_uint(local, qt);
+  });
+
+  VisitQualType(t);
+}
 
 class TranslateConsumer : public clang::ASTConsumer {
     Outputs *outputs;

@@ -815,6 +815,11 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
+                TypeTag::TagAtomicType => {
+                    // Next step in atomics implementation: Transfer to a CTypeKind
+                    panic!("C11 Atomics are not implemented in C2Rust yet.");
+                }
+
                 t => panic!(
                     "Type conversion not implemented for {:?} expecting {:?}",
                     t, expected_ty
