@@ -1,0 +1,17 @@
+[package]
+name = "c2rust-dynamic-instrumentation"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+bincode = "1.3"
+c2rust-analysis-rt = { path = "../analysis/runtime"}
+cargo = "0.62"
+cargo-util = "0.1"
+indexmap = "1.8"
+lazy_static = "1.4"
+log = "0.4"
+
+[package.metadata.rust-analyzer] 
+rustc_private=true

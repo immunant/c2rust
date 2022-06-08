@@ -8,12 +8,15 @@ members = [
     "c2rust-bitfields",
     "c2rust-macros",
     "c2rust-asm-casts",
+    "analysis/runtime",
+    "dynamic_instrumentation",
 ]
 exclude = [
     "cross-checks/pointer-tracer",
     "cross-checks/zero-malloc",
     "cross-checks/rust-checks",
     "examples",
+    "analysis/test",
     "tests",
 ]
 

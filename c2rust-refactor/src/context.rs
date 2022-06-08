@@ -9,6 +9,7 @@ use rustc::session::Session;
 use rustc::session::config::CrateType;
 use rustc::ty::subst::InternalSubsts;
 use rustc::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
+use rustc_errors::{DiagnosticBuilder, Level};
 use rustc_metadata::creader::CStore;
 use syntax::ast::{
     self, Expr, ExprKind, ForeignItem, ForeignItemKind, FnDecl, FunctionRetTy, Item, ItemKind, NodeId, Path, QSelf, UseTreeKind, DUMMY_NODE_ID,
@@ -107,6 +108,15 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
 // Other context API methods
 impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
+    pub fn make_diagnostic(&self, level: Level, message: &str) -> DiagnosticBuilder<'a> {
+        match level {
+            Level::Warning => self.sess.diagnostic().struct_warn(message),
+            Level::Error => self.sess.diagnostic().struct_err(message),
+            Level::Fatal => self.sess.diagnostic().struct_fatal(message),
+            _ => panic!("Cannot construct diagnostic for level {:?}", level),
+        }
+    }
+
     /// Get the `ty::Ty` computed for a node.
     pub fn node_type(&self, id: NodeId) -> Ty<'tcx> {
         let hir_id = self.hir_map().node_to_hir_id(id);
@@ -129,7 +139,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             return None;
         }
         let tables = self.ty_ctxt().typeck_tables_of(parent);
-        let hir_id = self.hir_map().node_to_hir_id(id);
+        let hir_id = self.hir_map().opt_node_to_hir_id(id)?;
         tables.node_type_opt(hir_id)
     }
 
@@ -597,6 +607,10 @@ impl<'a, 'hir> HirMap<'a, 'hir> {
     pub fn find(&self, id: NodeId) -> Option<Node<'hir>> {
         self.opt_node_to_hir_id(id)
             .and_then(|hir_id| self.map.find(hir_id))
+    }
+
+    pub fn find_by_hir_id(&self, id: HirId) -> Option<Node<'hir>> {
+        self.map.find(id)
     }
 
     /// Check if the node is an argument. An argument is a local variable whose
