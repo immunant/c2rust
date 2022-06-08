@@ -171,7 +171,7 @@ pub fn get_compile_commands(
     compile_commands: &Path,
     filter: &Option<Regex>,
 ) -> Result<Vec<LinkCmd>, Error> {
-    let f = File::open(compile_commands)?; // open read-only
+    let f = std::io::BufReader::new(File::open(compile_commands)?); // open read-only
 
     // Read the JSON contents of the file as an instance of `Value`
     let v: Vec<Rc<CompileCmd>> = serde_json::from_reader(f)?;
