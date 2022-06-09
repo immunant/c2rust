@@ -322,29 +322,57 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
         TypeTag tag;
         auto kind = T->getKind();
 
-        #if CLANG_VERSION_MAJOR >= 11
+#if CLANG_VERSION_MAJOR >= 10
         // Handle built-in vector types as if they're normal vector types
         if (kind >= BuiltinType::SveInt8 && kind <= BuiltinType::SveBool) {
+// Declare ElemType and ElemCount as needed by various Clang versions
+#if CLANG_VERSION_MAJOR >= 11
             auto Info = Context->getBuiltinVectorTypeInfo(T);
-            auto t = Info.ElementType;
-            auto qt = encodeQualType(t);
+            auto ElemType = Info.ElementType;
 
-            #if CLANG_VERSION_MAJOR >= 12
-            auto ElemCount = Info.EC.getKnownMinValue();
-            #else
+#if CLANG_VERSION_MAJOR >= 12
+            auto ElemCount = Info.EC.getKnownMinValue() * Info.NumVectors;
+#else
             // getKnownMinValue was added in Clang 12.
-            auto ElemCount = Info.EC.Min;
-            #endif
-
-            encodeType(T, TagVectorType, [T, qt, Info, ElemCount](CborEncoder *local) {
-                cbor_encode_uint(local, qt);
-                cbor_encode_uint(local, ElemCount * Info.NumVectors);
-            });
+            auto ElemCount = Info.EC.Min * Info.NumVectors;
+#endif // CLANG_VERSION_MAJOR
+#else
+            auto *llvmType = CodeGenTypes::ConvertType(T.desugar());
+            auto *scalable_type = cast<llvm::ScalableVectorType>(llvmType);
+            auto &Ctx = *Context;
+            auto ElemCount = scalable_type->getElementCount();
+            // Copy-pasted from Type::getSveEltType introduced after Clang 10:
+            auto ElemType = [] {
+                switch (kind) {
+                default: llvm_unreachable("Unknown builtin SVE type!");
+                case BuiltinType::SveInt8: return Ctx.SignedCharTy;
+                case BuiltinType::SveUint8:
+                case BuiltinType::SveBool:
+                    if (BTy->getKind() == BuiltinType::SveBool)
+                        return Ctx.UnsignedCharTy;
+                case BuiltinType::SveInt16: return Ctx.ShortTy;
+                case BuiltinType::SveUint16: return Ctx.UnsignedShortTy;
+                case BuiltinType::SveInt32: return Ctx.IntTy;
+                case BuiltinType::SveUint32: return Ctx.UnsignedIntTy;
+                case BuiltinType::SveInt64: return Ctx.LongTy;
+                case BuiltinType::SveUint64: return Ctx.UnsignedLongTy;
+                case BuiltinType::SveFloat16: return Ctx.Float16Ty;
+                case BuiltinType::SveFloat32: return Ctx.FloatTy;
+                case BuiltinType::SveFloat64: return Ctx.DoubleTy;
+                }
+            }();
+#endif // CLANG_VERSION_MAJOR
+            auto ElemTypeTag = encodeQualType(ElemType);
+            encodeType(T, TagVectorType,
+                       [T, ElemTypeTag, ElemCount](CborEncoder *local) {
+                           cbor_encode_uint(local, ElemTypeTag);
+                           cbor_encode_uint(local, ElemCount);
+                       });
 
             VisitQualType(t);
             return;
         }
-        #endif
+#endif
 
         // clang-format off
         switch (kind) {
