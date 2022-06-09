@@ -154,6 +154,8 @@ class RustFileBuilder:
         buffer += '\n'
 
         for crate in self.extern_crates:
+            # TODO(kkysen) `#[macro_use]` shouldn't be needed.
+            # Waiting on fix for https://github.com/immunant/c2rust/issues/426.
             buffer += "#[macro_use] extern crate {};\n".format(crate)
 
         buffer += '\n'
