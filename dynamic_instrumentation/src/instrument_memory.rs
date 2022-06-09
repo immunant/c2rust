@@ -6,11 +6,11 @@ use log::debug;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::{PlaceContext, Visitor};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, CastKind, Constant, Local, LocalDecl, Location, Mutability, Operand,
+    BasicBlock, BasicBlockData, Body, CastKind, Constant, Local, LocalDecl, Location, Operand,
     Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo, Statement, StatementKind, Terminator, TerminatorKind,
     START_BLOCK,
 };
-use rustc_middle::ty::{self, List, ParamEnv, TyCtxt};
+use rustc_middle::ty::{self, ParamEnv, TyCtxt};
 use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
 use rustc_span::{Symbol, DUMMY_SP};
 use std::cell::RefCell;
