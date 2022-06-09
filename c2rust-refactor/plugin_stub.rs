@@ -9,8 +9,8 @@ extern crate arena;
 extern crate ena;
 extern crate libc;
 extern crate diff;
-#[macro_use] extern crate json;
-#[macro_use] extern crate log;
+ extern crate json;
+ extern crate log;
 extern crate regex;
 extern crate rustc;
 extern crate rustc_data_structures;
@@ -23,7 +23,7 @@ extern crate syntax;
 extern crate syntax_ext;
 extern crate syntax_pos;
 
-#[macro_use] extern crate c2rust_refactor;
+ extern crate c2rust_refactor;
 pub use c2rust_refactor::*;
 
 

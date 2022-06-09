@@ -1,6 +1,8 @@
 #![deny(missing_docs)]
 //! Implementations of clang's builtin functions
 
+use crate::format_translation_err;
+
 use super::*;
 
 impl<'c> Translation<'c> {

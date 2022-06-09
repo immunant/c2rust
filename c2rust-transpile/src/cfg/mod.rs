@@ -32,6 +32,8 @@ use std::ops::Index;
 use syn::{spanned::Spanned, Arm, Expr, Pat, Stmt};
 
 use indexmap::{IndexMap, IndexSet};
+use indexmap::indexset;
+use failure::format_err;
 
 use serde::ser::{
     Serialize, SerializeStruct, SerializeStructVariant, SerializeTupleVariant, Serializer,

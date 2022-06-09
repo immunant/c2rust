@@ -14,7 +14,6 @@
 extern crate syntax;
 extern crate syntax_ext;
 extern crate syntax_pos;
-#[macro_use]
 extern crate smallvec;
 extern crate arena;
 extern crate rustc;
@@ -33,9 +32,7 @@ extern crate rustc_privacy;
 extern crate rustc_resolve;
 extern crate rustc_target;
 extern crate rustc_typeck;
-#[macro_use]
 extern crate json;
-#[macro_use]
 extern crate log;
 extern crate regex;
 extern crate c2rust_ast_builder;
@@ -43,10 +40,9 @@ extern crate c2rust_ast_builder;
 #[cfg(feature = "profile")]
 extern crate flame;
 #[cfg(feature = "profile")]
-#[macro_use]
 extern crate flamer;
 
-#[macro_use]
+
 mod macros;
 
 pub mod ast_manip;

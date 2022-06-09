@@ -8,8 +8,10 @@ use std::result::Result; // To override syn::Result from glob import
 
 use dtoa;
 
-use failure::{err_msg, Fail};
+use failure::{err_msg, Fail, format_err};
 use indexmap::{IndexMap, IndexSet};
+use indexmap::indexmap;
+use log::{error, warn, trace, info};
 use proc_macro2::{Punct, Spacing::*, Span, TokenStream, TokenTree};
 use syn::spanned::Spanned as _;
 use syn::*;
@@ -22,7 +24,7 @@ use crate::rust_ast::{pos_to_span, SpanExt, DUMMY_SP};
 use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_printer::pprust::{self};
 
-use crate::c_ast;
+use crate::{c_ast, format_translation_err};
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::*;
 use crate::cfg;

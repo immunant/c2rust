@@ -5,6 +5,7 @@ use serde_bytes::ByteBuf;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::vec::Vec;
+use crate::diagnostics::diag;
 
 use super::Located;
 use crate::diagnostics::{Diagnostic, TranslationError, TranslationErrorKind};

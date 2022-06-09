@@ -10,6 +10,7 @@ use std::str::FromStr;
 use self::handlebars::Handlebars;
 use self::pathdiff::diff_paths;
 use serde_json::json;
+use serde_derive::Serialize;
 
 use super::compile_cmds::LinkCmd;
 use super::TranspilerConfig;

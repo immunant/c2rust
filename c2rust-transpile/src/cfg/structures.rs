@@ -3,6 +3,7 @@
 use super::*;
 use std::result::Result;
 use syn::{spanned::Spanned as _, ExprBreak, ExprIf, ExprParen, ExprReturn, ExprUnary, Stmt};
+use log::warn;
 
 use crate::rust_ast::{comment_store, set_span::SetSpan, BytePos, SpanExt};
 

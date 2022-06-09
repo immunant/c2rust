@@ -4,6 +4,7 @@
 //! Rust.
 
 use super::*;
+use failure::format_err;
 use proc_macro2::{TokenStream, TokenTree};
 
 impl<'c> Translation<'c> {

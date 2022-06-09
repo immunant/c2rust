@@ -3,7 +3,6 @@
 {{/each}}
 
 {{#each crates~}}
-{{#if this.macro_use~}}#[macro_use]{{~/if}}
 extern crate {{this.ident}};
 {{~/each}}
 

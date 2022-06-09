@@ -4,6 +4,7 @@ use std::io::BufWriter;
 use std::sync::{Mutex, Condvar};
 use std::sync::mpsc::{self, SyncSender, Receiver};
 use std::thread;
+use lazy_static::lazy_static;
 
 use bincode;
 
