@@ -181,7 +181,7 @@ class RustFileBuilder:
     def add_features(self, features: Iterable[str]) -> None:
         self.features.update(features)
 
-    def add_pragma(self, name: str, value: [str]) -> None:
+    def add_pragma(self, name: str, value: Iterable[str]) -> None:
         self.pragmas.append((name, value))
 
     def add_extern_crate(self, crate: str) -> None:
