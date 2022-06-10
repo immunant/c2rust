@@ -58,6 +58,13 @@
             inherit buildInputs;
             dontUseCmakeConfigure = true;
             RUST_SYSROOT = "${rust}";
+            cargoExtraArgs = "--features dynamic-instrumentation";
+
+            preFixup = final.lib.optionalString stdenv.isDarwin ''
+              if [ -f "$out/bin/c2rust-instrument" ]; then
+                install_name_tool -add_rpath "${rust}/lib" "$out/bin/c2rust-instrument"
+              fi
+            '';
 
             doCheck = false;
           };
