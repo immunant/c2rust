@@ -352,11 +352,8 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
                 switch (kind) {
                 default: llvm_unreachable("Unknown builtin SVE type!");
                 case BuiltinType::SveInt8: return Ctx.SignedCharTy;
-                case BuiltinType::SveUint8:
-                case BuiltinType::SveBool:
-                    // TODO(kkysen) where/what is `BTy` supposed to be?
-                    if (BTy->getKind() == BuiltinType::SveBool)
-                        return Ctx.UnsignedCharTy;
+                case BuiltinType::SveUint8: return Ctx.UnsignedCharTy;
+                case BuiltinType::SveBool: return Ctx.UnsignedCharTy;
                 case BuiltinType::SveInt16: return Ctx.ShortTy;
                 case BuiltinType::SveUint16: return Ctx.UnsignedShortTy;
                 case BuiltinType::SveInt32: return Ctx.IntTy;
