@@ -9,7 +9,10 @@ fn main() -> eyre::Result<()> {
     color_eyre::install()?;
     // Add the toolchain lib/ directory to `-L`.  This fixes the linker error "cannot find
     // -lLLVM-13-rust-1.60.0-nightly".
-    let out = Command::new("rustup").args(&["which", "rustc"]).output()?;
+    let out = Command::new("rustup")
+        .args(&["which", "rustc"])
+        .output()
+        .or_else(|_| Command::new("which").args(&["rustc"]).output())?;
     assert!(out.status.success());
     let rustc_path = Path::new(str::from_utf8(&out.stdout)?.trim_end());
     let lib_dir = rustc_path
