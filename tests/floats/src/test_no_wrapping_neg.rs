@@ -1,7 +1,7 @@
-extern crate libc;
 
-use no_float_wrapping_neg::{rust_no_wrapping_neg, rust_float_inc_dec, rust_double_inc_dec};
-use self::libc::{c_double, c_float};
+
+use crate::no_float_wrapping_neg::{rust_no_wrapping_neg, rust_float_inc_dec, rust_double_inc_dec};
+use libc::{c_double, c_float};
 
 #[link(name = "test")]
 extern "C" {

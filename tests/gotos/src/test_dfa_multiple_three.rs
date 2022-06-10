@@ -1,6 +1,6 @@
-extern crate libc;
 
-use dfa_binary_multiple_three::rust_multiple_three;
+
+use crate::dfa_binary_multiple_three::rust_multiple_three;
 
 use std::ffi::CString;
 

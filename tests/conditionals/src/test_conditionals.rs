@@ -1,10 +1,10 @@
-extern crate libc;
 
-use conditional::rust_entry;
-use conditionals::{rust_entry2, rust_ternaries};
-use binary_conditional::rust_entry3;
-use unused_conditionals::{rust_unused_conditional1, rust_unused_conditional2, rust_unused_conditional3};
-use self::libc::{c_int, c_uint};
+
+use crate::conditional::rust_entry;
+use crate::conditionals::{rust_entry2, rust_ternaries};
+use crate::binary_conditional::rust_entry3;
+use crate::unused_conditionals::{rust_unused_conditional1, rust_unused_conditional2, rust_unused_conditional3};
+use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

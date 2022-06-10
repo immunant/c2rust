@@ -1,7 +1,7 @@
-extern crate libc;
 
-use self::libc::c_int;
-use irreducible::rust_irreducible;
+
+use libc::c_int;
+use crate::irreducible::rust_irreducible;
 
 #[link(name = "test")]
 extern "C" {

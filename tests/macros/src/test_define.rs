@@ -1,9 +1,9 @@
-extern crate libc;
 
-use define::{TEST_CONST1, TEST_CONST2, TEST_PARENS, rust_reference_define};
-use define::{ZSTD_WINDOWLOG_MAX_32, ZSTD_WINDOWLOG_MAX_64, rust_test_zstd};
-use define::{rust_fns, rust_stmt_expr_inc};
-use self::libc::{c_int, c_uint, c_ulong};
+
+use crate::define::{TEST_CONST1, TEST_CONST2, TEST_PARENS, rust_reference_define};
+use crate::define::{ZSTD_WINDOWLOG_MAX_32, ZSTD_WINDOWLOG_MAX_64, rust_test_zstd};
+use crate::define::{rust_fns, rust_stmt_expr_inc};
+use libc::{c_int, c_uint, c_ulong};
 
 #[link(name = "test")]
 extern "C" {

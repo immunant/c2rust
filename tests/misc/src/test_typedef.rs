@@ -1,8 +1,6 @@
-extern crate libc;
+use crate::typedef::{rust_entry, my_int, int_ptr};
 
-use typedef::{rust_entry, my_int, int_ptr};
-
-use self::libc::c_int;
+use libc::c_int;
 
 #[link(name = "test")]
 extern "C" {

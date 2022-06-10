@@ -1,4 +1,4 @@
-use functions::rust_coreutils_static_assert;
+use crate::functions::rust_coreutils_static_assert;
 
 #[link(name = "test")]
 extern "C" {

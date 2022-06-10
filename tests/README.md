@@ -11,11 +11,9 @@ void example(unsigned buffer_size, int buffer[]) {
 Then create a new `.rs` file with the following skeleton (_does not need to be a buffer, can check return values as well_):
 
 ```rust
-extern crate libc;
+use crate::c_file::rust_example;
 
-use c_file::rust_example;
-
-use self::libc::c_int;
+use libc::c_int;
 
 #[link(name = "test")]
 extern "C" {

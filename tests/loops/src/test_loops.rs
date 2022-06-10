@@ -1,7 +1,7 @@
-extern crate libc;
 
-use break_continue::rust_entry;
-use self::libc::{c_int, c_uint};
+
+use crate::break_continue::rust_entry;
+use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

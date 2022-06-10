@@ -1,10 +1,8 @@
 //! feature_thread_local
 
-extern crate libc;
-
-use self::libc::{c_uint, c_int};
+use libc::{c_uint, c_int};
 use std::thread;
-use thread_locals::rust_thread_entry;
+use crate::thread_locals::rust_thread_entry;
 
 #[link(name = "test")]
 extern "C" {

@@ -1,6 +1,6 @@
-extern crate libc;
 
-use x86::{
+
+use crate::x86::{
     ShuffleVectors, VectorInitLists, rust_unpack_128_2x128, rust_zero_init_all, rust_call_all, rust_call_all_used, rust_vector_init_lists, rust_vector_init_lists_used,
     rust_static_m128, rust_static_m256, rust_static_m128d, rust_static_m256d, rust_static_m128i, rust_static_m256i, rust_simd_fn_codegen,
     rust_static_uninit_m128, rust_static_uninit_m256, rust_static_uninit_m128d, rust_static_uninit_m256d, rust_static_uninit_m128i, rust_static_uninit_m256i,
@@ -103,7 +103,7 @@ impl Debug for ShuffleVectors {
 }
 
 pub fn test_unpack_128_2x128() {
-    assert!(is_x86_feature_detected!("sse2"), UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse2"), "{}", UNSAFETY_ERROR);
 
     unsafe {
         let data = _mm_setzero_si128();
@@ -133,10 +133,10 @@ pub fn test_unpack_128_2x128() {
 }
 
 pub fn test_zero_initializers() {
-    assert!(is_x86_feature_detected!("sse"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("sse2"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("avx"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("mmx"), UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse2"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("avx"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("mmx"), "{}", UNSAFETY_ERROR);
 
     unsafe {
         rust_zero_init_all();
@@ -144,8 +144,8 @@ pub fn test_zero_initializers() {
 }
 
 pub fn test_shuffle_vectors() {
-    assert!(is_x86_feature_detected!("sse4.2"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("ssse3"), UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse4.2"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("ssse3"), "{}", UNSAFETY_ERROR);
 
     let c1 = unsafe { call_all() };
     let c2 = unsafe { call_all_used() };
@@ -178,9 +178,9 @@ impl Debug for VectorInitLists {
 }
 
 pub fn test_vector_init_lists() {
-    assert!(is_x86_feature_detected!("sse"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("sse2"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("avx"), UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse2"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("avx"), "{}", UNSAFETY_ERROR);
 
     let c1 = unsafe { vector_init_lists() };
     let c2 = unsafe { vector_init_lists_used() };
@@ -192,9 +192,9 @@ pub fn test_vector_init_lists() {
 }
 
 pub fn test_static_init_lists() {
-    assert!(is_x86_feature_detected!("sse"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("sse2"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("avx"), UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse2"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("avx"), "{}", UNSAFETY_ERROR);
 
     // These should have been transmuted due to being in statics
     let rust_static_init_lists = unsafe {

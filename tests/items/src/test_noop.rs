@@ -1,9 +1,9 @@
-extern crate libc;
 
-use noop::rust_noop;
-use nofnargs::rust_nofnargs;
 
-use self::libc::c_int;
+use crate::noop::rust_noop;
+use crate::nofnargs::rust_nofnargs;
+
+use libc::c_int;
 
 #[link(name = "test")]
 extern "C" {

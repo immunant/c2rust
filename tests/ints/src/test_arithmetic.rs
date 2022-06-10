@@ -1,7 +1,7 @@
-extern crate libc;
 
-use arithmetic::rust_entry2;
-use self::libc::{c_uint, c_int};
+
+use crate::arithmetic::rust_entry2;
+use libc::{c_uint, c_int};
 
 #[link(name = "test")]
 extern "C" {

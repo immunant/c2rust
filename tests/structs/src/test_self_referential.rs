@@ -1,6 +1,6 @@
-extern crate libc;
 
-use self_referential::Node;
+
+use crate::self_referential::Node;
 
 #[link(name = "test")]
 extern "C" {

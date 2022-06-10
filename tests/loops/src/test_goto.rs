@@ -1,10 +1,10 @@
-extern crate libc;
 
-use goto_linear_cf::rust_goto_linear;
-use goto_loop_cf::rust_goto_loop;
-use goto_switch_cf::rust_goto_switch;
 
-use self::libc::{c_int, c_uint};
+use crate::goto_linear_cf::rust_goto_linear;
+use crate::goto_loop_cf::rust_goto_loop;
+use crate::goto_switch_cf::rust_goto_switch;
+
+use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

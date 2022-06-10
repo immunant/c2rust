@@ -1,7 +1,7 @@
-extern crate libc;
 
-use switch::rust_switch_val;
-use self::libc::c_int;
+
+use crate::switch::rust_switch_val;
+use libc::c_int;
 
 #[link(name = "test")]
 extern "C" {

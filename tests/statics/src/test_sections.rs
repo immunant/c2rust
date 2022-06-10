@@ -1,9 +1,7 @@
-extern crate libc;
-
 #[cfg(not(target_os = "macos"))]
-use attributes::{rust_used_static, rust_used_static2, rust_used_static3, rust_no_attrs};
-use sections::*;
-use self::libc::c_uint;
+use crate::attributes::{rust_used_static, rust_used_static2, rust_used_static3, rust_no_attrs};
+use crate::sections::*;
+use libc::c_uint;
 
 pub fn test_sectioned_statics() {
     unsafe {

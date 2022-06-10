@@ -1,6 +1,6 @@
-extern crate libc;
 
-use duffs::rust_copy;
+
+use crate::duffs::rust_copy;
 
 pub fn test_multiple_three() {
     let mut from = [1,2,3,8,2,9,8,1,8,4,5,6,2,89,0,2,3,4,56,8];

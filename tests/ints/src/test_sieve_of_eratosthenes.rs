@@ -1,7 +1,7 @@
-extern crate libc;
 
-use sieve_of_eratosthenes::rust_sieve_of_eratosthenes;
-use self::libc::c_int;
+
+use crate::sieve_of_eratosthenes::rust_sieve_of_eratosthenes;
+use libc::c_int;
 
 #[link(name = "test")]
 extern "C" {

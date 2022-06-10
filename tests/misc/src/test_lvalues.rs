@@ -1,7 +1,5 @@
-extern crate libc;
-
-use lvalues::rust_lvalue;
-use self::libc::c_int;
+use crate::lvalues::rust_lvalue;
+use libc::c_int;
 
 #[link(name = "test")]
 extern "C" {

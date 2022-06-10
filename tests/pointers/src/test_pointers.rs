@@ -1,12 +1,10 @@
 //! feature_c_variadic
 
-extern crate libc;
-
-use pointer_init::rust_entry;
-use pointer_arith::rust_entry2;
-use function_pointers::rust_entry3;
-use ref_decay::{rust_f, rust_bar, rust_bitcast, rust_foobar, rust_calls_all, rust_address_cast};
-use self::libc::{c_int, c_uint};
+use crate::pointer_init::rust_entry;
+use crate::pointer_arith::rust_entry2;
+use crate::function_pointers::rust_entry3;
+use crate::ref_decay::{rust_f, rust_bar, rust_bitcast, rust_foobar, rust_calls_all, rust_address_cast};
+use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

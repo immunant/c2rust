@@ -1,9 +1,9 @@
-extern crate libc;
 
-use arrays::rust_entry;
-use incomplete_arrays::{rust_test_sized_array,rust_entry2,rust_check_some_ints};
-use variable_arrays::{rust_variable_arrays, rust_alloca_arrays};
-use self::libc::{c_int, c_uint};
+
+use crate::arrays::rust_entry;
+use crate::incomplete_arrays::{rust_test_sized_array,rust_entry2,rust_check_some_ints};
+use crate::variable_arrays::{rust_variable_arrays, rust_alloca_arrays};
+use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

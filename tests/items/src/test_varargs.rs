@@ -1,11 +1,11 @@
 //! feature_c_variadic,
-extern crate libc;
 
-use varargs::{rust_call_printf, rust_call_vprintf, rust_my_printf, rust_simple_vacopy,
+
+use crate::varargs::{rust_call_printf, rust_call_vprintf, rust_my_printf, rust_simple_vacopy,
               rust_valist_struct_member, rust_restart_valist, rust_sample_stddev};
 
 use std::ffi::CString;
-use self::libc::c_char;
+use libc::c_char;
 
 #[link(name = "test")]
 extern "C" {

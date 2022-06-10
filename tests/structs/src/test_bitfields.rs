@@ -1,7 +1,7 @@
 //! extern_crate_c2rust_bitfields
 
 use std::mem::size_of;
-use bitfields::{
+use crate::bitfields::{
     three_byte_date, rust_compare_three_byte_date, rust_write_three_byte_date, padded_bitfield,
     rust_ops_padded_bitfield, rust_ops_padded_bitfield_init, mixed_bitfields, rust_init_bitfield_array,
     rust_static_date, from_csmith, rust_init_from_csmith, rust_get_bf_ptr, rust_modify_bf_ptr,

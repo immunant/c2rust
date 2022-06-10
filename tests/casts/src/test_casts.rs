@@ -1,9 +1,9 @@
-extern crate libc;
 
-use casts::rust_cast_stuff;
-use cast_funptr::{rust_identity, rust_get_identity, rust_entry};
 
-use self::libc::{c_int, c_uint, c_void};
+use crate::casts::rust_cast_stuff;
+use crate::cast_funptr::{rust_identity, rust_get_identity, rust_entry};
+
+use libc::{c_int, c_uint, c_void};
 
 use std::mem::transmute;
 

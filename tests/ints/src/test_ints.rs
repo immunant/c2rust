@@ -1,8 +1,8 @@
-extern crate libc;
 
-use size_t::rust_entry;
-use chars::rust_multibyte_chars;
-use self::libc::{c_int, c_uint};
+
+use crate::size_t::rust_entry;
+use crate::chars::rust_multibyte_chars;
+use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

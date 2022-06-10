@@ -1,7 +1,7 @@
-extern crate libc;
 
-use unions::rust_entry;
-use self::libc::{c_int, c_uint};
+
+use crate::unions::rust_entry;
+use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

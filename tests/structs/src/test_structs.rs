@@ -1,8 +1,8 @@
-extern crate libc;
+
 
 use std::mem::align_of;
-use structs::{Aligned8Struct, rust_entry, rust_alignment_entry};
-use self::libc::{c_int, c_uint, size_t};
+use crate::structs::{Aligned8Struct, rust_entry, rust_alignment_entry};
+use libc::{c_int, c_uint, size_t};
 
 #[link(name = "test")]
 extern "C" {

@@ -1,10 +1,10 @@
 //! feature_core_intrinsics, extern_crate_core
-extern crate libc;
 
-use atomics::{rust_atomics_entry, rust_new_atomics};
-use mem_x_fns::{rust_mem_x, rust_assume_aligned};
-use math::{rust_ffs, rust_ffsl, rust_ffsll, rust_isfinite, rust_isnan, rust_isinf_sign};
-use self::libc::{c_int, c_uint, c_char, c_long, c_longlong, c_double};
+
+use crate::atomics::{rust_atomics_entry, rust_new_atomics};
+use crate::mem_x_fns::{rust_mem_x, rust_assume_aligned};
+use crate::math::{rust_ffs, rust_ffsl, rust_ffsll, rust_isfinite, rust_isnan, rust_isinf_sign};
+use libc::{c_int, c_uint, c_char, c_long, c_longlong, c_double};
 
 #[link(name = "test")]
 extern "C" {

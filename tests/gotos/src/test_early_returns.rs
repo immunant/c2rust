@@ -1,6 +1,6 @@
-extern crate libc;
 
-use early_returns::rust_early_returns;
+
+use crate::early_returns::rust_early_returns;
 
 pub fn test_early_returns() {
     unsafe {
