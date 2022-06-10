@@ -407,7 +407,7 @@ impl<'a> Translation<'a> {
     /// #     _pad: [u8; 2],
     /// # }
     /// #
-    /// # let _ = 
+    /// # let _ =
     /// {
     ///     let mut init = Foo {
     ///         bf1_bf2: [0; 2],

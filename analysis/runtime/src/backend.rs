@@ -1,10 +1,10 @@
+use lazy_static::lazy_static;
 use std::env;
 use std::fs::File;
 use std::io::BufWriter;
-use std::sync::{Mutex, Condvar};
-use std::sync::mpsc::{self, SyncSender, Receiver};
+use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::sync::{Condvar, Mutex};
 use std::thread;
-use lazy_static::lazy_static;
 
 use bincode;
 
@@ -16,12 +16,10 @@ lazy_static! {
         thread::spawn(|| backend_thread(rx));
         tx
     };
-
     static ref FINISHED: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
 }
 
-pub fn init() {
-}
+pub fn init() {}
 
 pub fn finalize() {
     // Notify the backend that we're done
@@ -39,7 +37,10 @@ fn backend_thread(rx: Receiver<Event>) {
     let (ref lock, ref cvar) = &*FINISHED;
     let mut finished = lock.lock().unwrap();
 
-    match env::var("INSTRUMENT_BACKEND").unwrap_or(String::default()).as_str() {
+    match env::var("INSTRUMENT_BACKEND")
+        .unwrap_or(String::default())
+        .as_str()
+    {
         "log" => log(rx),
         "debug" | _ => debug(rx),
     }
@@ -52,8 +53,7 @@ fn log(rx: Receiver<Event>) {
     let path = env::var("INSTRUMENT_OUTPUT")
         .expect("Instrumentation requires the INSTRUMENT_OUTPUT environment variable be set");
     let mut out = BufWriter::new(
-        File::create(&path)
-            .expect(&format!("Could not open output file: {:?}", path))
+        File::create(&path).expect(&format!("Could not open output file: {:?}", path)),
     );
 
     for event in rx {
@@ -72,5 +72,3 @@ fn debug(rx: Receiver<Event>) {
         }
     }
 }
-
-

@@ -6,8 +6,8 @@ use std::str::FromStr;
 
 use handlebars::Handlebars;
 use pathdiff::diff_paths;
-use serde_json::json;
 use serde_derive::Serialize;
+use serde_json::json;
 
 use super::compile_cmds::LinkCmd;
 use super::TranspilerConfig;

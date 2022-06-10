@@ -1632,7 +1632,7 @@ pub enum Attribute {
     /// __attribute((visibility("hidden")))
     Visibility(String),
     /// __attribute__((fallthrough, __fallthrough__))
-    Fallthrough
+    Fallthrough,
 }
 
 impl CTypeKind {

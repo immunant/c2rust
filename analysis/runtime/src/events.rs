@@ -1,10 +1,10 @@
+use crate::mir_loc::{self, MirLocId};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use crate::mir_loc::{self, MirLocId};
 
 pub type Pointer = usize;
 
-#[derive(Serialize,Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Event {
     pub mir_loc: MirLocId,
     pub kind: EventKind,
@@ -30,7 +30,7 @@ impl Event {
     }
 }
 
-#[derive(Serialize,Deserialize,Copy,Clone)]
+#[derive(Serialize, Deserialize, Copy, Clone)]
 pub enum EventKind {
     /// A copy from one local to another. This also covers casts such as `&mut
     /// T` to `&T` or `&T` to `*const T` that don't change the type or value of
@@ -74,7 +74,11 @@ impl fmt::Debug for EventKind {
                 write!(f, "malloc({}) -> {:p}", size, ptr as *const u8)
             }
             EventKind::Free { ptr } => write!(f, "free({:p})", ptr as *const u8),
-            EventKind::Realloc { old_ptr, size, new_ptr } => write!(
+            EventKind::Realloc {
+                old_ptr,
+                size,
+                new_ptr,
+            } => write!(
                 f,
                 "realloc({:p}, {}) -> {:p}",
                 old_ptr as *const u8, size, new_ptr as *const u8

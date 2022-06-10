@@ -1,10 +1,10 @@
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::RwLock;
-use lazy_static::lazy_static;
 
 lazy_static! {
     static ref MIR_LOC_FILE_PATH: RwLock<Option<PathBuf>> = RwLock::new(None);

@@ -7,8 +7,8 @@ use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::{PlaceContext, Visitor};
 use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Body, CastKind, Constant, Local, LocalDecl, Location, Operand,
-    Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo, Statement, StatementKind, Terminator, TerminatorKind,
-    START_BLOCK,
+    Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo, Statement, StatementKind, Terminator,
+    TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, ParamEnv, TyCtxt};
 use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
@@ -207,7 +207,10 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                 let mut place_ref = place.as_ref();
                 while let Some((cur_ref, proj)) = place_ref.last_projection() {
                     if let ProjectionElem::Deref = proj {
-                        place = Place { local: cur_ref.local, projection: self.tcx.intern_place_elems(cur_ref.projection) };
+                        place = Place {
+                            local: cur_ref.local,
+                            projection: self.tcx.intern_place_elems(cur_ref.projection),
+                        };
                     }
                     place_ref = cur_ref;
                 }
@@ -500,7 +503,9 @@ fn insert_call<'tcx>(
     for arg in &mut args {
         if let Some((cast_stmts, cast_local)) = cast_ptr_to_usize(tcx, locals, &arg) {
             *arg = cast_local;
-            blocks[block].statements.splice(statement_index..statement_index, cast_stmts);
+            blocks[block]
+                .statements
+                .splice(statement_index..statement_index, cast_stmts);
         }
     }
 
@@ -549,7 +554,10 @@ fn cast_ptr_to_usize<'tcx>(
         let ptr_ty = arg_ty.builtin_deref(false).unwrap();
         let raw_ptr_ty = tcx.mk_ptr(ptr_ty);
         let raw_ptr_local = locals.push(LocalDecl::new(raw_ptr_ty, DUMMY_SP));
-        let mut deref = arg.place().expect("Can't get the address of a constant").clone();
+        let mut deref = arg
+            .place()
+            .expect("Can't get the address of a constant")
+            .clone();
         let mut projs = Vec::with_capacity(deref.projection.len() + 1);
         projs.extend(deref.projection);
         projs.push(ProjectionElem::Deref);

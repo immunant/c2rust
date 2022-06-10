@@ -1,4 +1,4 @@
-use clap::{App, AppSettings, SubCommand, load_yaml, crate_authors};
+use clap::{crate_authors, load_yaml, App, AppSettings, SubCommand};
 use git_testament::{git_testament, render_testament};
 use std::env;
 use std::ffi::OsStr;
