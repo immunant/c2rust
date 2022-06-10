@@ -1,10 +1,7 @@
 //! extern_crate_num_traits
 
-
-extern crate num_traits;
-
 use crate::long_double::{rust_long_double_ops, rust_cast2double, rust_cast2float, rust_cast2uint, rust_ld1, rust_ld2};
-use crate::float128::f128;
+use f128::f128;
 use libc::{c_double, c_float, c_uint};
 
 pub fn test_long_double_ops() {
@@ -43,7 +40,7 @@ pub fn test_long_double_casts() {
 
 pub fn test_global_f128s() {
     unsafe {
-        assert_eq!(rust_ld1, f128::new(1.0));
-        assert_eq!(rust_ld2, f128::new(3.0));
+        assert_eq!(rust_ld1, f128::new(1.0f64));
+        assert_eq!(rust_ld2, f128::new(3.0f64));
     }
 }
