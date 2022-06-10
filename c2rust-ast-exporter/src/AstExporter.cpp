@@ -340,13 +340,7 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             auto ElemCount = Info.EC.Min * Info.NumVectors;
 #endif // CLANG_VERSION_MAJOR >= 12
 #else // CLANG_VERSION_MAJOR >= 11
-            // TODO(kkysen) `CodeGenTypes::ConvertType` is a method,
-            // I'm not sure where "CodeGenTypes.h" is,
-            // and I'm not sure how to get an instance of `CodeGenTypes`.
-            auto *llvmType = CodeGenTypes::ConvertType(T->desugar());
-            auto *scalable_type = cast<llvm::ScalableVectorType>(llvmType);
             auto &Ctx = *Context;
-            auto ElemCount = scalable_type->getElementCount();
             // Copy-pasted from Type::getSveEltType introduced after Clang 10:
             auto ElemType = [&] {
                 switch (kind) {
@@ -365,6 +359,10 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
                 case BuiltinType::SveFloat64: return Ctx.DoubleTy;
                 }
             }();
+            // All the SVE types present in Clang 10 are 128-bit vectors (see
+            // AArch64SVEACLETypes.def), so we can divide 128 by their element
+            // size to get element count.
+            auto ElemCount = 128 / Context->getTypeSize(ElemType);
 #endif // CLANG_VERSION_MAJOR >= 11
             auto ElemTypeTag = encodeQualType(ElemType);
             encodeType(T, TagVectorType,
