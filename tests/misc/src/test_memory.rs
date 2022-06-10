@@ -1,7 +1,5 @@
-
-
-use crate::strings_h::rust_setmem;
 use crate::malloc::rust_malloc_test;
+use crate::strings_h::rust_setmem;
 use libc::{c_int, c_uint};
 
 #[link(name = "test")]

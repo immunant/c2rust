@@ -1,7 +1,5 @@
-
-
+use crate::cast_funptr::{rust_entry, rust_get_identity, rust_identity};
 use crate::casts::rust_cast_stuff;
-use crate::cast_funptr::{rust_identity, rust_get_identity, rust_entry};
 
 use libc::{c_int, c_uint, c_void};
 
@@ -41,31 +39,21 @@ pub fn test_buffer() {
 
 pub fn test_identity() {
     for i in 0..10 {
-        let id = unsafe {
-            identity(i)
-        };
-        let rust_id = unsafe {
-            rust_identity(i)
-        };
+        let id = unsafe { identity(i) };
+        let rust_id = unsafe { rust_identity(i) };
 
         assert_eq!(id, i);
         assert_eq!(rust_id, i);
     }
 
-    let transmuted_rust_identity: unsafe extern "C" fn(_: libc::c_int) -> libc::c_int = unsafe {
-        transmute(rust_get_identity())
-    };
-    let transmuted_identity: unsafe extern "C" fn(_: libc::c_int) -> libc::c_int = unsafe {
-        transmute(get_identity())
-    };
+    let transmuted_rust_identity: unsafe extern "C" fn(_: libc::c_int) -> libc::c_int =
+        unsafe { transmute(rust_get_identity()) };
+    let transmuted_identity: unsafe extern "C" fn(_: libc::c_int) -> libc::c_int =
+        unsafe { transmute(get_identity()) };
 
     for i in 0..10 {
-        let id = unsafe {
-            transmuted_identity(i)
-        };
-        let rust_id = unsafe {
-            transmuted_rust_identity(i)
-        };
+        let id = unsafe { transmuted_identity(i) };
+        let rust_id = unsafe { transmuted_rust_identity(i) };
 
         assert_eq!(id, i);
         assert_eq!(rust_id, i);

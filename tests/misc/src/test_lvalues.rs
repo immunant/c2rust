@@ -15,7 +15,7 @@ pub fn test_lvalue() {
 
     unsafe {
         lvalue(buffer.as_mut_ptr());
-        rust_lvalue( rust_buffer.as_mut_ptr());
+        rust_lvalue(rust_buffer.as_mut_ptr());
     }
 
     assert_eq!(buffer, rust_buffer);

@@ -1,5 +1,3 @@
-
-
 use crate::modules::rust_modules;
 use libc::c_uint;
 
@@ -8,5 +6,4 @@ extern "C" {
     fn modules();
 }
 
-pub fn test_modules() {
-}
+pub fn test_modules() {}

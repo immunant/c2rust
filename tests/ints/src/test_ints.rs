@@ -1,7 +1,5 @@
-
-
-use crate::size_t::rust_entry;
 use crate::chars::rust_multibyte_chars;
+use crate::size_t::rust_entry;
 use libc::{c_int, c_uint};
 
 #[link(name = "test")]
@@ -34,7 +32,10 @@ pub fn test_chars_buffer() {
 
     unsafe {
         assert!(multibyte_chars(BUFFER_SIZE as u32, buffer.as_mut_ptr()) as usize <= BUFFER_SIZE);
-        assert!(rust_multibyte_chars(BUFFER_SIZE as u32, rust_buffer.as_mut_ptr()) as usize <= BUFFER_SIZE);
+        assert!(
+            rust_multibyte_chars(BUFFER_SIZE as u32, rust_buffer.as_mut_ptr()) as usize
+                <= BUFFER_SIZE
+        );
     }
 
     assert_eq!(buffer, rust_buffer);

@@ -1,5 +1,3 @@
-
-
 use crate::unions::rust_entry;
 use libc::{c_int, c_uint};
 

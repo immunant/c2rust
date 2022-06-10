@@ -1,5 +1,3 @@
-
-
 use crate::volatile::rust_entry3;
 use libc::{c_int, c_uint};
 

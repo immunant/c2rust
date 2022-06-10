@@ -1,7 +1,5 @@
 //! feature_asm,extern_crate_c2rust_asm_casts
 
-
-
 use crate::asm::rust_entry;
 use libc::{c_int, c_uint};
 

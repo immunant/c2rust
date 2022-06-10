@@ -12,12 +12,8 @@ const BUFFER_SIZE: usize = 10;
 
 pub fn test_twice() {
     for i in 0..20 {
-        let double = unsafe {
-            twice(i)
-        };
-        let rust_double = unsafe {
-            rust_twice(i)
-        };
+        let double = unsafe { twice(i) };
+        let rust_double = unsafe { rust_twice(i) };
 
         assert_eq!(double, rust_double);
     }

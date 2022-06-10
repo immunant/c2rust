@@ -20,9 +20,7 @@ pub fn test_swap() {
     assert_eq!(a, 2);
     assert_eq!(b, 1);
 
-    unsafe {
-        rust_swap(&mut a, &mut b)
-    }
+    unsafe { rust_swap(&mut a, &mut b) }
 
     assert_eq!(a, 1);
     assert_eq!(b, 2);

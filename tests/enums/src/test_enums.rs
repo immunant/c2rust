@@ -1,10 +1,12 @@
-use crate::enum_as_int::{E, A, B, rust_entry};
-use crate::enum_ret::{Color, rust_entry2};
+use crate::big_enum::{rust_entry5, E1, E2, E3};
+use crate::enum_as_int::{rust_entry, A, B, E};
 use crate::enum_duplicate::{e, rust_entry3};
-use crate::top_enum::{E as otherE, rust_entry4};
-use crate::big_enum::{E1, E2, E3, rust_entry5};
-use crate::non_canonical_enum_def::{rust_abc, hrtimer_restart, HRTIMER_RESTART, HRTIMER_NORESTART};
 use crate::enum_fwd_decl::rust_foo;
+use crate::enum_ret::{rust_entry2, Color};
+use crate::non_canonical_enum_def::{
+    hrtimer_restart, rust_abc, HRTIMER_NORESTART, HRTIMER_RESTART,
+};
+use crate::top_enum::{rust_entry4, E as otherE};
 
 use libc::{c_int, c_uint};
 
@@ -27,11 +29,9 @@ const BUFFER_SIZE3: usize = 4;
 const BUFFER_SIZE4: usize = 1;
 const BUFFER_SIZE5: usize = 6;
 
-
 pub fn test_variants() {
     assert_eq!(A as u32, 0);
     assert_eq!(B as u32, 1);
-
 }
 
 pub fn test_buffer() {
