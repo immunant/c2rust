@@ -4,8 +4,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use self::handlebars::Handlebars;
-use self::pathdiff::diff_paths;
+use handlebars::Handlebars;
+use pathdiff::diff_paths;
 use serde_json::json;
 use serde_derive::Serialize;
 
