@@ -1,6 +1,5 @@
-#[macro_use(crate_authors, load_yaml)]
 extern crate clap;
-use clap::{App, AppSettings, SubCommand};
+use clap::{App, AppSettings, SubCommand, load_yaml, crate_authors};
 use git_testament::{git_testament, render_testament};
 use std::env;
 use std::ffi::OsStr;
