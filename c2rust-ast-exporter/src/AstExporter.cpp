@@ -31,9 +31,6 @@
 #include "clang/Basic/LangStandard.h"
 #endif // CLANG_VERSION_MAJOR < 10
 #include "clang/Tooling/Tooling.h"
-#if CLANG_VERSION_MAJOR < 11
-// TODO(kkysen) CodeGenTypes
-#endif // CLANG_VERSION_MAJOR < 11
 
 #include "AstExporter.hpp"
 #include "ExportResult.hpp"
