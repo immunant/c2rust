@@ -1,5 +1,5 @@
 {
-  description = "github.com/mstone/c2rust";
+  description = "help migrate C99-compliant code to Rust";
 
   inputs.crane.url = "github:ipetkov/crane";
   inputs.crane.inputs.flake-utils.follows = "flake-utils";
