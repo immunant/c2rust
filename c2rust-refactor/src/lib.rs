@@ -11,38 +11,6 @@
 )]
 #![cfg_attr(feature = "profile", feature(proc_macro_hygiene))]
 
-extern crate syntax;
-extern crate syntax_ext;
-extern crate syntax_pos;
-extern crate smallvec;
-extern crate arena;
-extern crate rustc;
-extern crate rustc_codegen_utils;
-extern crate rustc_data_structures;
-extern crate rustc_driver;
-extern crate rustc_errors;
-extern crate rustc_incremental;
-extern crate rustc_index;
-extern crate rustc_interface;
-extern crate rustc_lexer;
-extern crate rustc_lint;
-extern crate rustc_metadata;
-extern crate rustc_parse;
-extern crate rustc_privacy;
-extern crate rustc_resolve;
-extern crate rustc_target;
-extern crate rustc_typeck;
-extern crate json;
-extern crate log;
-extern crate regex;
-extern crate c2rust_ast_builder;
-
-#[cfg(feature = "profile")]
-extern crate flame;
-#[cfg(feature = "profile")]
-extern crate flamer;
-
-
 mod macros;
 
 pub mod ast_manip;

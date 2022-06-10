@@ -1,5 +1,4 @@
 #![allow(non_camel_case_types)]
-extern crate libc;
 extern crate serde_bytes;
 extern crate serde_cbor;
 

@@ -5,27 +5,8 @@
     rustc_private,
     trace_macros,
 )]
-extern crate arena;
-extern crate ena;
-extern crate libc;
-extern crate diff;
- extern crate json;
- extern crate log;
-extern crate regex;
-extern crate rustc;
-extern crate rustc_data_structures;
-extern crate rustc_driver;
-extern crate rustc_errors;
-extern crate rustc_metadata;
-extern crate rustc_resolve;
-extern crate rustc_trans;
-extern crate syntax;
-extern crate syntax_ext;
-extern crate syntax_pos;
 
- extern crate c2rust_refactor;
 pub use c2rust_refactor::*;
-
 
 fn mk<T: transform::Transform + 'static>(t: T) -> Box<command::Command> {
     Box::new(transform::TransformCommand(t))

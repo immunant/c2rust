@@ -10,8 +10,6 @@
 #![register_tool(c2rust)]
 #![register_attr(slice, nonnull, ownership_constraints)]
 
-extern crate libc;
-
 extern "C" {
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
     #[ownership_constraints(le(WRITE, _0), le(_0, WRITE))]

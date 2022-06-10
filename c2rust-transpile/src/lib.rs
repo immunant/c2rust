@@ -1,28 +1,3 @@
-extern crate colored;
-extern crate dtoa;
-extern crate syn;
-
-extern crate indexmap;
-extern crate serde;
-
-extern crate serde_derive;
-extern crate c2rust_ast_builder;
-extern crate c2rust_ast_exporter;
-extern crate clap;
-extern crate itertools;
-extern crate libc;
-extern crate regex;
-extern crate serde_json;
-
-extern crate log;
-extern crate fern;
-extern crate strum;
-
-extern crate strum_macros;
-
-extern crate failure;
-
-
 mod diagnostics;
 
 pub mod build_files;

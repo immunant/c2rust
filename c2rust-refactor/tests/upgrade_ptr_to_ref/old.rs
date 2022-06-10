@@ -1,5 +1,4 @@
 #![feature(rustc_private)]
-extern crate libc;
 
 extern "C" {
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;

@@ -12,8 +12,6 @@
 #![allow(mutable_transmutes)]
 #![allow(unused_mut)]
 
-extern crate libc;
-
 #[c2rust::src_loc = "15:0"]
 type outside = i32;
 

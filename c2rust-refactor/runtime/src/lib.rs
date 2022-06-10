@@ -1,8 +1,4 @@
-#![feature(
-    align_offset,
-    libc,
-)]
-extern crate libc;
+#![feature(align_offset)]
 
 pub mod array;
 pub mod block_ptr;

@@ -21,7 +21,6 @@ pub mod compat_h {
         pub x: libc::c_char,
     }
 }
-extern crate libc;
 
 type outside = i32;
 

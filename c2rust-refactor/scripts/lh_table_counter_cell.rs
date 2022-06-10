@@ -3,7 +3,6 @@
     rustc_private,
     trace_macros,
 )]
- extern crate c2rust_refactor;
 
 use c2rust_refactor::command::{Registry, FuncCommand, RefactorState};
 

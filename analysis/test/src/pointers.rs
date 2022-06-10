@@ -6,7 +6,6 @@
          unused_assignments,
          unused_mut)]
 #![feature(const_raw_ptr_to_usize_cast)]
-extern crate libc;
 extern "C" {
     #[no_mangle]
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
