@@ -29,8 +29,11 @@
 #include "clang/Frontend/LangStandard.h"
 #else
 #include "clang/Basic/LangStandard.h"
-#endif // CLANG_VERSION_MAJOR
+#endif // CLANG_VERSION_MAJOR < 10
 #include "clang/Tooling/Tooling.h"
+#if CLANG_VERSION_MAJOR < 11
+// TODO(kkysen) CodeGenTypes
+#endif // CLANG_VERSION_MAJOR < 11
 
 #include "AstExporter.hpp"
 #include "ExportResult.hpp"
@@ -332,22 +335,26 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
 
 #if CLANG_VERSION_MAJOR >= 12
             auto ElemCount = Info.EC.getKnownMinValue() * Info.NumVectors;
-#else
+#else // CLANG_VERSION_MAJOR >= 12
             // getKnownMinValue was added in Clang 12.
             auto ElemCount = Info.EC.Min * Info.NumVectors;
-#endif // CLANG_VERSION_MAJOR
-#else
-            auto *llvmType = CodeGenTypes::ConvertType(T.desugar());
+#endif // CLANG_VERSION_MAJOR >= 12
+#else // CLANG_VERSION_MAJOR >= 11
+            // TODO(kkysen) `CodeGenTypes::ConvertType` is a method,
+            // I'm not sure where "CodeGenTypes.h" is,
+            // and I'm not sure how to get an instance of `CodeGenTypes`.
+            auto *llvmType = CodeGenTypes::ConvertType(T->desugar());
             auto *scalable_type = cast<llvm::ScalableVectorType>(llvmType);
             auto &Ctx = *Context;
             auto ElemCount = scalable_type->getElementCount();
             // Copy-pasted from Type::getSveEltType introduced after Clang 10:
-            auto ElemType = [] {
+            auto ElemType = [&] {
                 switch (kind) {
                 default: llvm_unreachable("Unknown builtin SVE type!");
                 case BuiltinType::SveInt8: return Ctx.SignedCharTy;
                 case BuiltinType::SveUint8:
                 case BuiltinType::SveBool:
+                    // TODO(kkysen) where/what is `BTy` supposed to be?
                     if (BTy->getKind() == BuiltinType::SveBool)
                         return Ctx.UnsignedCharTy;
                 case BuiltinType::SveInt16: return Ctx.ShortTy;
@@ -361,18 +368,18 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
                 case BuiltinType::SveFloat64: return Ctx.DoubleTy;
                 }
             }();
-#endif // CLANG_VERSION_MAJOR
+#endif // CLANG_VERSION_MAJOR >= 11
             auto ElemTypeTag = encodeQualType(ElemType);
             encodeType(T, TagVectorType,
-                       [T, ElemTypeTag, ElemCount](CborEncoder *local) {
+                       [&](CborEncoder *local) {
                            cbor_encode_uint(local, ElemTypeTag);
                            cbor_encode_uint(local, ElemCount);
                        });
 
-            VisitQualType(t);
+            VisitQualType(ElemType);
             return;
         }
-#endif
+#endif // CLANG_VERSION_MAJOR >= 10
 
         // clang-format off
         switch (kind) {
