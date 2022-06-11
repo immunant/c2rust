@@ -1,4 +1,4 @@
-//! feature_core_intrinsics, extern_crate_core
+//! feature_core_intrinsics
 
 use crate::atomics::{rust_atomics_entry, rust_new_atomics};
 use crate::math::{rust_ffs, rust_ffsl, rust_ffsll, rust_isfinite, rust_isinf_sign, rust_isnan};
