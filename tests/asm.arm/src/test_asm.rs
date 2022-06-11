@@ -1,5 +1,3 @@
-//! feature_asm
-
 use crate::asm::rust_entry;
 use libc::{c_int, c_uint};
 
