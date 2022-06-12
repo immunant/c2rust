@@ -1,4 +1,3 @@
-#![feature(asm)]
 fn with_params(_unused: i32, mut used: i32, _unused2: i32, used_immut: i32) {
     let _unused3 = 1;
     let used2 = 2;

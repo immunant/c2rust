@@ -58,7 +58,7 @@ FILES_NEEDING_TRAILING_UNDERSCORE = [
     "window.rs",
 ]
 MAIN_MODS = """\
-#![feature(label_break_value, ptr_wrapping_offset_from, used)]
+#![feature(label_break_value)]
 #![allow(unused_imports)]
 extern crate libc;
 

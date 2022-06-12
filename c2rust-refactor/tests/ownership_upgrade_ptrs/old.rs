@@ -1,7 +1,5 @@
 #![feature(
     rustc_private,
-    param_attrs,
-    ptr_wrapping_offset_from,
     c_variadic,
     extern_types,
     register_tool,

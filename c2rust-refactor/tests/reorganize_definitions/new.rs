@@ -1,7 +1,4 @@
-#![feature(libc)]
 #![feature(extern_types)]
-#![feature(asm)]
-#![feature(ptr_wrapping_offset_from)]
 #![feature(rustc_private)]
 #![register_tool(c2rust)]
 #![allow(non_upper_case_globals)]

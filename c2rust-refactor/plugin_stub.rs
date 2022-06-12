@@ -1,7 +1,6 @@
 //! A generic wrapper for building parts of `c2rust-refactor` as a plugin.
 
 #![feature(
-    i128_type,
     rustc_private,
     trace_macros,
 )]

@@ -1,5 +1,4 @@
 #![feature(
-    i128_type,
     rustc_private,
     trace_macros,
 )]
