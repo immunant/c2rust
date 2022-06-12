@@ -53,7 +53,7 @@ Similarly, `//! feature_X` adds `#![feature(X)]` to the top of the main driver f
 _From the project root_, run `./scripts/test_translator.py tests` to run all of the tests in the
 `tests` folder. Here are a couple other handy options:
 
-```bash
+```shell
 # run a subset of the tests
 $ ./scripts/test_translator.py --only-directories="loops" tests
 # show output of failed tests
