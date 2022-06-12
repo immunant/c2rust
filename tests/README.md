@@ -74,6 +74,6 @@ This `tests` directory contains regression, feature, and unit tests. A test dire
 
   3. This CBOR data is fed to the `c2rust-transpile` to produce a Rust source file supposedly preserving the semantics of the initial C source file.
 
-  4. Rust test files (test_xyz.rs) are compiled into a single main wrapper and main test binary and are automatically linked against other Rust and C files thanks to `cargo`.
+  4. Rust test files (`test_xyz.rs`) are compiled into a single main wrapper and main test binary and are automatically linked against other Rust and C files thanks to `cargo`.
 
   5. The executable from the previous step is run one or more times parameterized to a specific test function.
