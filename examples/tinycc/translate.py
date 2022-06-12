@@ -91,7 +91,7 @@ if __name__ == "__main__":
     plumbum_rs_glob = local.path(TCC_REPO) // "*.rs"
 
     # Move source files to src directory
-    retcode, _, _ = move(plumbum_rs_glob, RUST_SRC_DIR)
+    retcode, _, stderr = move(plumbum_rs_glob, RUST_SRC_DIR)
 
     assert retcode != 1, "Could not move translated rs files:\n{}".format(stderr)
 

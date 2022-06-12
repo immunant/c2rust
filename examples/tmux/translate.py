@@ -237,7 +237,7 @@ if __name__ == "__main__":
     move(plumbum_rs_glob, RUST_SRC_DIR)
 
     # Move compat files to src/compat directory
-    retcode, _, _ = move(plumbum_compat_rs_glob, RUST_COMPAT_DIR)
+    retcode, _, stderr = move(plumbum_compat_rs_glob, RUST_COMPAT_DIR)
 
     assert retcode != 1, "Could not move translated rs files:\n{}".format(stderr)
 
