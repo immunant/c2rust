@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from plumbum.cmd import mv, mkdir
 from plumbum import local
 from typing import Tuple
 from common import (
@@ -9,7 +8,6 @@ from common import (
     Config,
     Command,
     die,
-    get_cmd_or_die,
     pb,
     setup_logging,
     transpile
@@ -17,11 +15,10 @@ from common import (
 
 import argparse
 import errno
-import logging
-import multiprocessing
 import os
 import re
-import sys
+
+mv = local["mv"]
 
 desc = 'transpile files in compiler_commands.json.'
 parser = argparse.ArgumentParser(description="Translates tmux into the repo/rust/src directory")
