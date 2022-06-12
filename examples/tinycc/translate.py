@@ -33,6 +33,7 @@ COMPILE_COMMANDS = os.path.join(TCC_REPO, "compile_commands.json")
 RUST_ROOT_DIR = os.path.join(TCC_REPO, "rust")
 RUST_SRC_DIR = os.path.join(RUST_ROOT_DIR, "src")
 MAIN_RS = os.path.join(RUST_SRC_DIR, "main.rs")
+# TODO(kkysen) shouldn't need `extern crate`
 MAIN_MODS = """\
 #![feature(label_break_value)]
 extern crate libc;
@@ -61,6 +62,7 @@ def rename_(*args) -> Tuple[Retcode, StdOut, StdErr]:
 def add_mods(path: str):
     with open(path, "r+") as file:
         text = file.read()
+        # TODO(kkysen) shouldn't need `extern crate`
         text = re.sub(r"extern crate libc;", MAIN_MODS, text, count=1)
 
         file.seek(0)

@@ -14,6 +14,7 @@ config = Config()
 C2RUST_DIR = config.ROOT_DIR
 LIBXML2_REPO = os.path.join(C2RUST_DIR, "examples/libxml2/repo")
 RUST_ROOT_DIR = os.path.join(LIBXML2_REPO, "rust")
+# TODO(kkysen) shouldn't need `extern crate`s
 PATCHES = {
     "examples/xmllint.rs": {
         "replace_all": [

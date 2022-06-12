@@ -1037,6 +1037,7 @@ fn make_submodule(
         .mod_item(mod_name, Some(mk().mod_(items)))
 }
 
+// TODO(kkysen) shouldn't need `extern crate`
 /// Pretty-print the leading pragmas and extern crate declarations
 fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec<Box<Item>>) {
     let mut out_attrs = vec![];
@@ -1071,6 +1072,7 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
         }
 
         if is_binary {
+            // TODO(kkysen) shouldn't need `extern crate`
             // Add `extern crate X;` to the top of the file
             for extern_crate in t.extern_crates.borrow().iter() {
                 let extern_crate = ExternCrateDetails::from(*extern_crate);

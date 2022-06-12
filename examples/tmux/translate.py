@@ -54,6 +54,7 @@ FILES_NEEDING_TRAILING_UNDERSCORE = [
     "tty_term.rs",
     "window.rs",
 ]
+# TODO(kkysen) shouldn't need `extern crate`
 MAIN_MODS = """\
 #![feature(label_break_value)]
 #![allow(unused_imports)]
@@ -206,6 +207,7 @@ def rename_(*args) -> Tuple[Retcode, StdOut, StdErr]:
 def add_mods(path: str):
     with open(path, "r+") as file:
         text = file.read()
+        # TODO(kkysen) shouldn't need `extern crate`
         text = re.sub(r"extern crate libc;", MAIN_MODS, text, count=1)
 
         file.seek(0)
