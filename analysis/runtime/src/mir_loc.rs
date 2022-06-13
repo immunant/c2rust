@@ -39,6 +39,7 @@ pub enum MirProjection {
     Deref,
     Field(usize),
     Index(usize),
+    Unsupported
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]

@@ -2,7 +2,7 @@ use rustc_index::newtype_index;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BasicBlock, Field, Local};
 use rustc_span::def_id::DefPathHash;
-use c2rust_analysis_rt::{MirPlace};
+use c2rust_analysis_rt::{MirPlace, mir_loc::EventMetadata};
 use std::{collections::HashMap, fmt::Debug};
 
 // Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
@@ -68,10 +68,10 @@ pub struct Node {
     /// statements in the block refers to that statement, and an index equal to the number of
     /// statements refers to the terminator.
     pub index: usize,
-    /// The MIR local where this operation stores its result.  This is `None` for operations that
+    /// The MIR place where this operation stores its result.  This is `None` for operations that
     /// don't store anything and for operations whose result is a temporary not visible as a MIR
-    /// local.
-    pub dest: Option<MirPlace>,
+    /// place.
+    pub metadata: EventMetadata,
     /// The kind of operation that was performed.
     pub kind: NodeKind,
     /// The `Node` that produced the input to this operation.
@@ -86,7 +86,7 @@ pub enum NodeKind {
 
     /// Field projection.  Used for operations like `_2 = &(*_1).0`.  Nested field accesses like
     /// `_4 = &(*_1).x.y.z` are broken into multiple `Node`s, each covering one level.
-    Field(Field),
+    Projection,
     /// Pointer arithmetic.  The `isize` is the concrete offset distance.  We use this to detect
     /// when two pointers always refer to different indices.
     Offset(isize),

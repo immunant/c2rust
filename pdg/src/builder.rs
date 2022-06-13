@@ -69,7 +69,7 @@ pub fn event_to_node_kind(event: &Event) -> Option<NodeKind> {
         EventKind::Realloc { .. } => NodeKind::Malloc(1),
         EventKind::Free { .. } => NodeKind::Free,
         EventKind::CopyPtr(..) | EventKind::CopyRef => NodeKind::Copy,
-        EventKind::Field(_, field) => NodeKind::Field(field.into()),
+        EventKind::Field(_, field) => NodeKind::Projection,
         EventKind::LoadAddr(..) => NodeKind::LoadAddr,
         EventKind::StoreAddr(..) => NodeKind::StoreAddr,
         EventKind::LoadValue(..) => NodeKind::LoadValue,
@@ -153,8 +153,26 @@ pub fn add_node(
     }
 
     let source = metadata.source.as_ref().and_then(|src| {
-        println!("lookup {:?},{:?}", Func(src_fn), src.local.clone());
-        graphs.latest_assignment.get(&(src_fn, src.local.clone()))
+        let last_assignment = graphs
+            .latest_assignment
+            .get(&(src_fn, src.local.clone()))
+            .cloned();
+        match event.kind {
+            EventKind::StoreAddr(..) | EventKind::LoadAddr(..) => {
+                let (gid, _) = last_assignment.unwrap();
+                for (nid, n) in graphs.graphs[gid].nodes.iter().enumerate().rev() {
+                    match n.kind {
+                        NodeKind::Projection => {
+                            return Some((gid, nid.into()))
+                        },
+                        _ => ()
+                    }
+                }
+            }
+            _ => ()
+        }
+
+        last_assignment
     });
 
     let ptr = get_ptr(&event.kind, &metadata)
@@ -164,8 +182,8 @@ pub fn add_node(
                 .nodes
                 .iter()
                 .rposition(|n| {
-                    n.dest.is_some()
-                        && n.dest.as_ref().map(|p| p.local)
+                    n.metadata.destination.is_some()
+                        && n.metadata.destination.as_ref().map(|p| p.local)
                             == metadata.source.as_ref().map(|p| p.local)
                 })
                 .map(|nid| (gid, NodeId::from(nid)))
@@ -177,10 +195,8 @@ pub fn add_node(
         block: basic_block_idx.clone().into(),
         index: statement_idx.clone().into(),
         kind: node_kind,
-        source: source
-            .cloned()
-            .and_then(|p| get_parent_object(&event.kind, p)),
-        dest: metadata.destination.clone(),
+        source: source.and_then(|p| get_parent_object(&event.kind, p)),
+        metadata: metadata.clone(),
     };
 
     let graph_id = ptr
@@ -200,7 +216,8 @@ pub fn add_node(
         {
             if !dest.projection.is_empty()
                 && graphs.graphs[last_gid].nodes[last_nid]
-                    .dest
+                    .metadata
+                    .destination
                     .as_ref()
                     .unwrap()
                     .projection
