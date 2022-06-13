@@ -69,7 +69,7 @@ pub fn event_to_node_kind(event: &Event) -> Option<NodeKind> {
         EventKind::Realloc { .. } => NodeKind::Malloc(1),
         EventKind::Free { .. } => NodeKind::Free,
         EventKind::CopyPtr(..) | EventKind::CopyRef => NodeKind::Copy,
-        EventKind::Field(_, field) => NodeKind::Projection,
+        EventKind::Field(_, field) => NodeKind::Field(field.into()),
         EventKind::LoadAddr(..) => NodeKind::LoadAddr,
         EventKind::StoreAddr(..) => NodeKind::StoreAddr,
         EventKind::LoadValue(..) => NodeKind::LoadValue,
@@ -152,29 +152,6 @@ pub fn add_node(
         statement_idx = 0;
     }
 
-    let source = metadata.source.as_ref().and_then(|src| {
-        let last_assignment = graphs
-            .latest_assignment
-            .get(&(src_fn, src.local.clone()))
-            .cloned();
-        match event.kind {
-            EventKind::StoreAddr(..) | EventKind::LoadAddr(..) => {
-                let (gid, _) = last_assignment.unwrap();
-                for (nid, n) in graphs.graphs[gid].nodes.iter().enumerate().rev() {
-                    match n.kind {
-                        NodeKind::Projection => {
-                            return Some((gid, nid.into()))
-                        },
-                        _ => ()
-                    }
-                }
-            }
-            _ => ()
-        }
-
-        last_assignment
-    });
-
     let ptr = get_ptr(&event.kind, &metadata)
         .and_then(|p| provenances.get(&p).cloned())
         .and_then(|(gid, last_nid_ref)| {
@@ -182,13 +159,31 @@ pub fn add_node(
                 .nodes
                 .iter()
                 .rposition(|n| {
-                    n.metadata.destination.is_some()
-                        && n.metadata.destination.as_ref().map(|p| p.local)
+                    n.dest.is_some()
+                        && n.dest.as_ref().map(|p| p.local)
                             == metadata.source.as_ref().map(|p| p.local)
                 })
                 .map(|nid| (gid, NodeId::from(nid)))
                 .or(Some((gid, last_nid_ref)))
         });
+
+    let source = metadata.source.as_ref().and_then(|src| {
+        
+        if ptr.is_some() && !src.projection.is_empty() {
+            let (gid, _) = ptr.unwrap();
+            for (nid, n) in graphs.graphs[gid].nodes.iter().enumerate().rev() {
+                match n.kind {
+                    NodeKind::Field(..) => return Some((gid, nid.into())),
+                    _ => break,
+                }
+            }
+        }
+
+        graphs
+            .latest_assignment
+            .get(&(src_fn, src.local.clone()))
+            .cloned()
+    });
 
     let node = Node {
         function: Func(this_func_hash),
@@ -196,7 +191,7 @@ pub fn add_node(
         index: statement_idx.clone().into(),
         kind: node_kind,
         source: source.and_then(|p| get_parent_object(&event.kind, p)),
-        metadata: metadata.clone(),
+        dest: metadata.destination.clone(),
     };
 
     let graph_id = ptr
@@ -216,8 +211,7 @@ pub fn add_node(
         {
             if !dest.projection.is_empty()
                 && graphs.graphs[last_gid].nodes[last_nid]
-                    .metadata
-                    .destination
+                    .dest
                     .as_ref()
                     .unwrap()
                     .projection

@@ -209,7 +209,9 @@ fn rv_place<'tcx>(rv: &'tcx Rvalue) -> Option<Place<'tcx>> {
 }
 
 impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
-    fn visit_place(&mut self, mut place: &Place<'tcx>, context: PlaceContext, location: Location) {
+
+    fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
+        self.super_place(place, context, location);
         let field_fn = self
             .find_instrumentation_def(Symbol::intern("ptr_field"))
             .expect("Could not find pointer field hook");
@@ -224,18 +226,32 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
             && self.body.local_decls[place.local].ty.is_unsafe_ptr()
             && !place.projection.is_empty()
         {
-            self.add_instrumentation(
-                location,
-                field_fn,
-                vec![Operand::Copy(place.local.into()), make_const(self.tcx, 0)],
-                false,
-                false,
-                EventMetadata {
-                    source: Some(to_mir_place(&place)),
-                    destination: None,
-                    transfer_kind: TransferKind::None,
-                },
-            );
+            
+            for (base, elem) in place.iter_projections() {
+                match elem {
+                    PlaceElem::Field(field, _) => {
+                        let field_fn = self
+                            .find_instrumentation_def(Symbol::intern("ptr_field"))
+                            .expect("Could not find pointer field hook");
+                        self.add_instrumentation(
+                            location,
+                            field_fn,
+                            vec![
+                                Operand::Copy(base.local.into()),
+                                make_const(self.tcx, field.as_u32()),
+                            ],
+                            false,
+                            false,
+                            EventMetadata {
+                                source: Some(to_mir_place(&place)),
+                                destination: None,
+                                transfer_kind: TransferKind::None,
+                            },
+                        );
+                    }
+                    _ => (),
+                }
+            }
 
             if place.is_indirect() {
                 if context.is_mutating_use() {
@@ -278,18 +294,12 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                 }
             }
         }
-
-        self.super_place(place, context, location);
     }
 
     fn visit_statement(&mut self, statement: &Statement<'tcx>, mut location: Location) {
-
         let copy_fn = self
             .find_instrumentation_def(Symbol::intern("ptr_copy"))
             .expect("Could not find pointer copy hook");
-        let store_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_store"))
-            .expect("Could not find pointer store hook");
         let ref_copy_fn = self
             .find_instrumentation_def(Symbol::intern("ref_copy"))
             .expect("Could not find ref copy hook");
@@ -316,9 +326,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
             if let Some(ref p) = rv_place(value) {
                 let local_decl = &self.body.local_decls[p.local];
                 if local_decl.ty.is_unsafe_ptr() && p.is_indirect() {
-                    // we're dereferencing a pointer
-                    // TODO: consider using context.is_mutating_use()
-
                     if value.ty(&self.body.local_decls, self.tcx).is_unsafe_ptr() {
                         // we're dereferencing a pointer, the result of which is another pointer
                         let mut loc = location;
@@ -358,7 +365,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                 }
             } else if value.ty(&self.body.local_decls, self.tcx).is_integral() {
                 if let Rvalue::Cast(_, op, _) = value {
-                    // TODO: consider when the pointer results from field or dereference
                     if let Some(p) = op.place() {
                         if !p.is_indirect()
                             && p.ty(&self.body.local_decls, self.tcx).ty.is_unsafe_ptr()
@@ -379,7 +385,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                     }
                 }
             } else if value.ty(&self.body.local_decls, self.tcx).is_unsafe_ptr() {
-                // TODO: simplify all of this control flow
                 if let Rvalue::Use(p) = value {
                     location.statement_index += 1;
                     self.add_instrumentation(

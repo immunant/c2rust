@@ -30,10 +30,19 @@ use std::mem;
 pub type size_t = libc::c_ulong;
 #[derive(Copy, Clone)]
 #[repr(C)]
+pub struct T {
+    pub field: libc::c_int,
+    pub field2: libc::c_ulong,
+    pub field3: *const S,
+    pub field4: libc::c_int,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
 pub struct S {
     pub field: libc::c_int,
     pub field2: libc::c_ulong,
     pub field3: *const S,
+    pub field4: T,
 }
 #[no_mangle]
 pub static mut global: *mut S = 0 as *const S as *mut S;
@@ -286,7 +295,7 @@ pub unsafe extern "C" fn test_load_self_store_self() {
         0i32 as libc::c_ulong,
         ::std::mem::size_of::<S>() as libc::c_ulong,
     ) as *mut S;
-    (*s).field = (*s).field;
+    (*s).field4.field4 = (*s).field4.field4;
     free(s as *mut libc::c_void);
 }
 #[no_mangle]
