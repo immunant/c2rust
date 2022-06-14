@@ -189,7 +189,7 @@ pub fn add_node(
     }));
 
     let node = Node {
-        function: Func(dest_fn),
+        function: Func(this_func_hash),
         block: basic_block_idx.clone().into(),
         index: statement_idx.clone().into(),
         kind: node_kind,

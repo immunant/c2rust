@@ -65,7 +65,7 @@ pub struct DefPathHash(pub u64, pub u64);
 
 impl fmt::Debug for DefPathHash {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let entry = "entry".to_string();
+        let entry = "unknown".to_string();
         write!(f, "{}", MIR_LOCS.functions.get(self).unwrap_or(&entry))
     }
 }
