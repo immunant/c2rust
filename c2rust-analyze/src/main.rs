@@ -46,6 +46,7 @@ mod borrowck;
 mod context;
 mod dataflow;
 mod labeled_ty;
+mod type_desc;
 mod util;
 
 
@@ -119,6 +120,17 @@ fn inspect_mir<'tcx>(
             describe_local(acx.tcx, decl),
             addr_of2,
             ty2,
+        );
+    }
+
+    eprintln!("\ntype assignment for {:?}:", name);
+    for (local, decl) in mir.local_decls.iter_enumerated() {
+        // TODO: apply `Cell` if `addr_of_local` indicates it's needed
+        let ty = type_desc::convert_type(&acx, acx.local_tys[local], &hypothesis, &flags);
+        eprintln!("{:?} ({}): {:?}",
+            local,
+            describe_local(acx.tcx, decl),
+            ty,
         );
     }
 }
