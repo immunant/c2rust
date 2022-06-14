@@ -364,27 +364,21 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                 if let Rvalue::Use(p) = value {
                     location.statement_index += 1;
                     if p.place().map(|p| p.is_indirect()).unwrap_or(false) {
-                        let local = p.place().unwrap().local;
-                        let local_decl = &self.body.local_decls[local];
-                        if local_decl.ty.is_unsafe_ptr() {
-                            if value.ty(&self.body.local_decls, self.tcx).is_unsafe_ptr() {
-                                // we're dereferencing a pointer, the result of which is another pointer
-                                let mut loc = location;
-                                loc.statement_index += 1;
-                                self.add_instrumentation(
-                                    location,
-                                    load_value_fn,
-                                    vec![Operand::Copy(dest)],
-                                    false,
-                                    false,
-                                    EventMetadata {
-                                        source: p.place().as_ref().map(to_mir_place),
-                                        destination: Some(to_mir_place(&dest)),
-                                        transfer_kind: TransferKind::None,
-                                    },
-                                );
-                            }
-                        }
+                        // we're dereferencing a pointer, the result of which is another pointer
+                        let mut loc = location;
+                        loc.statement_index += 1;
+                        self.add_instrumentation(
+                            location,
+                            load_value_fn,
+                            vec![Operand::Copy(dest)],
+                            false,
+                            false,
+                            EventMetadata {
+                                source: p.place().as_ref().map(to_mir_place),
+                                destination: Some(to_mir_place(&dest)),
+                                transfer_kind: TransferKind::None,
+                            },
+                        );
                     } else {
                         self.add_instrumentation(
                             location,
