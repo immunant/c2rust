@@ -2,12 +2,14 @@
 //! use this, for example, to attach a Polonius `Origin` to every reference type.  Labeled type
 //! data is manipulated by reference, the same as with `Ty`s, and the data is stored in the same
 //! arena as the underlying `Ty`s.
-use rustc_arena::DroplessArena;
-use rustc_middle::arena::Arena;
-use rustc_middle::ty::{TyCtxt, Ty, TyKind};
+use std::convert::TryInto;
 use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Deref;
+use rustc_arena::DroplessArena;
+use rustc_middle::arena::Arena;
+use rustc_middle::ty::{TyCtxt, Ty, TyKind, TypeAndMut};
+use rustc_middle::ty::subst::{GenericArg, GenericArgKind};
 
 /// The actual data for a labeled type.
 ///
@@ -247,6 +249,82 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
             .map(|lty| self.relabel(lty, func))
             .collect::<Vec<_>>();
         self.mk_slice(&ltys)
+    }
+
+    /// Perform a bottom-up rewrite on a type and convert it to unlabeled form.
+    pub fn rewrite_unlabeled<F>(&self, lty: LabeledTy<'tcx, L>, func: &mut F) -> Ty<'tcx>
+    where F: FnMut(Ty<'tcx>, &[Ty<'tcx>], L) -> Ty<'tcx> {
+        use rustc_middle::ty::TyKind::*;
+        let args = lty.args.iter()
+            .map(|&lty| self.rewrite_unlabeled(lty, func))
+            .collect::<Vec<_>>();
+
+        let ty = match *lty.ty.kind() {
+            Bool | Char | Int(_) | Uint(_) | Float(_) | Str | Foreign(_) | Never => {
+                lty.ty
+            },
+
+            Adt(adt, substs) => {
+                // Copy `substs`, but replace all types with those from `args`.
+                let mut it = args.iter().cloned();
+                let substs = self.tcx.mk_substs(substs.iter().map(|arg| match arg.unpack() {
+                    GenericArgKind::Type(_) => it.next().unwrap().into(),
+                    GenericArgKind::Lifetime(rg) => GenericArg::from(rg),
+                    GenericArgKind::Const(cn) => GenericArg::from(cn),
+                }));
+                assert!(it.next().is_none());
+                self.tcx.mk_adt(adt, substs)
+            },
+            Array(_, len) => {
+                let &[elem]: &[_; 1] = args[..].try_into().unwrap();
+                self.tcx.mk_ty(Array(elem, len))
+            }
+            Slice(_) => {
+                let &[elem]: &[_; 1] = args[..].try_into().unwrap();
+                self.tcx.mk_slice(elem)
+            }
+            RawPtr(mty) => {
+                let &[target]: &[_; 1] = args[..].try_into().unwrap();
+                self.tcx.mk_ptr(TypeAndMut { ty: target, mutbl: mty.mutbl })
+            }
+            Ref(rg, _, mutbl) => {
+                let &[target]: &[_; 1] = args[..].try_into().unwrap();
+                self.tcx.mk_ref(rg, TypeAndMut { ty: target, mutbl })
+            }
+            FnDef(def_id, substs) => {
+                // Copy `substs`, but replace all types with those from `args`.
+                let mut it = args.iter().cloned();
+                let substs = self.tcx.mk_substs(substs.iter().map(|arg| match arg.unpack() {
+                    GenericArgKind::Type(_) => it.next().unwrap().into(),
+                    GenericArgKind::Lifetime(rg) => GenericArg::from(rg),
+                    GenericArgKind::Const(cn) => GenericArg::from(cn),
+                }));
+                assert!(it.next().is_none());
+                self.tcx.mk_fn_def(def_id, substs)
+            }
+            FnPtr(ref sig) => {
+                // TODO: replace all the types under the binder
+                todo!()
+            }
+            Tuple(_) => {
+                self.tcx.mk_tup(args.iter().cloned())
+            }
+
+            // Types that aren't actually supported by this code yet
+            Dynamic(..)
+            | Closure(..)
+            | Generator(..)
+            | GeneratorWitness(..)
+            | Projection(..)
+            | Opaque(..)
+            | Param(..)
+            | Bound(..)
+            | Placeholder(..)
+            | Infer(..)
+            | Error(..) => lty.ty,
+        };
+
+        func(ty, &args, lty.label)
     }
 }
 
