@@ -209,7 +209,6 @@ fn rv_place<'tcx>(rv: &'tcx Rvalue) -> Option<Place<'tcx>> {
 }
 
 impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
-
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         self.super_place(place, context, location);
         let field_fn = self
@@ -226,7 +225,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
             && self.body.local_decls[place.local].ty.is_unsafe_ptr()
             && !place.projection.is_empty()
         {
-            
             for (base, elem) in place.iter_projections() {
                 match elem {
                     PlaceElem::Field(field, _) => {
@@ -323,28 +321,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
             println!("statement: {:?}", statement);
             let dest = assign.0;
             let value = &assign.1;
-            if let Some(ref p) = rv_place(value) {
-                let local_decl = &self.body.local_decls[p.local];
-                if local_decl.ty.is_unsafe_ptr() && p.is_indirect() {
-                    if value.ty(&self.body.local_decls, self.tcx).is_unsafe_ptr() {
-                        // we're dereferencing a pointer, the result of which is another pointer
-                        let mut loc = location;
-                        loc.statement_index += 1;
-                        self.add_instrumentation(
-                            loc,
-                            load_value_fn,
-                            vec![Operand::Copy(dest)],
-                            false,
-                            false,
-                            EventMetadata {
-                                source: Some(to_mir_place(&p)),
-                                destination: Some(to_mir_place(&dest)),
-                                transfer_kind: TransferKind::None,
-                            },
-                        );
-                    }
-                }
-            }
 
             if dest.is_indirect() {
                 if value.ty(&self.body.local_decls, self.tcx).is_unsafe_ptr() {
@@ -387,18 +363,42 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
             } else if value.ty(&self.body.local_decls, self.tcx).is_unsafe_ptr() {
                 if let Rvalue::Use(p) = value {
                     location.statement_index += 1;
-                    self.add_instrumentation(
-                        location,
-                        copy_fn,
-                        vec![Operand::Copy(dest)],
-                        false,
-                        false,
-                        EventMetadata {
-                            source: p.place().as_ref().map(to_mir_place),
-                            destination: Some(to_mir_place(&dest)),
-                            transfer_kind: TransferKind::None,
-                        },
-                    );
+                    if p.place().map(|p| p.is_indirect()).unwrap_or(false) {
+                        let local = p.place().unwrap().local;
+                        let local_decl = &self.body.local_decls[local];
+                        if local_decl.ty.is_unsafe_ptr() {
+                            if value.ty(&self.body.local_decls, self.tcx).is_unsafe_ptr() {
+                                // we're dereferencing a pointer, the result of which is another pointer
+                                let mut loc = location;
+                                loc.statement_index += 1;
+                                self.add_instrumentation(
+                                    location,
+                                    load_value_fn,
+                                    vec![Operand::Copy(dest)],
+                                    false,
+                                    false,
+                                    EventMetadata {
+                                        source: p.place().as_ref().map(to_mir_place),
+                                        destination: Some(to_mir_place(&dest)),
+                                        transfer_kind: TransferKind::None,
+                                    },
+                                );
+                            }
+                        }
+                    } else {
+                        self.add_instrumentation(
+                            location,
+                            copy_fn,
+                            vec![Operand::Copy(dest)],
+                            false,
+                            false,
+                            EventMetadata {
+                                source: p.place().as_ref().map(to_mir_place),
+                                destination: Some(to_mir_place(&dest)),
+                                transfer_kind: TransferKind::None,
+                            },
+                        );
+                    }
                 } else if let Rvalue::Cast(_, p, _) = value {
                     location.statement_index += 1;
                     if p.ty(&self.body.local_decls, self.tcx).is_integral() {
@@ -533,59 +533,61 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                     }
                 }
                 if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
-                    println!("term: {:?}", terminator.kind);
-                    let fn_name = self.tcx.item_name(*def_id);
-                    // println!(
-                    //     "visiting func {:?}, {:?}",
-                    //     fn_name,
-                    //     self.tcx.def_path_hash(*def_id)
-                    // );
-                    if HOOK_FUNCTIONS.contains(&fn_name.as_str()) {
-                        let func_def_id = self
-                            .find_instrumentation_def(fn_name)
-                            .expect("Could not find instrumentation hook function");
+                    if destination.is_some() {
+                        println!("term: {:?}", terminator.kind);
+                        let fn_name = self.tcx.item_name(*def_id);
+                        // println!(
+                        //     "visiting func {:?}, {:?}",
+                        //     fn_name,
+                        //     self.tcx.def_path_hash(*def_id)
+                        // );
+                        if HOOK_FUNCTIONS.contains(&fn_name.as_str()) {
+                            let func_def_id = self
+                                .find_instrumentation_def(fn_name)
+                                .expect("Could not find instrumentation hook function");
 
-                        self.add_instrumentation(
-                            location,
-                            func_def_id,
-                            args.clone(),
-                            false,
-                            true,
-                            EventMetadata {
-                                // TODO: hook-specific sources
-                                source: args
-                                    .clone()
-                                    .iter()
-                                    .map(|op| to_mir_place(&op.place().unwrap()))
-                                    .next(),
-                                // FIXME: hooks have sources
-                                destination: destination.map(|d| to_mir_place(&d.0)),
-                                transfer_kind: TransferKind::Ret(self.func_hash()),
-                            },
-                        );
-                    } else if destination
-                        .unwrap()
-                        .0
-                        .ty(&self.body.local_decls, self.tcx)
-                        .ty
-                        .is_unsafe_ptr()
-                    {
-                        location.statement_index = 0;
-                        location.block = destination.unwrap().1;
-                        self.add_instrumentation(
-                            location,
-                            arg_fn,
-                            vec![Operand::Copy(destination.unwrap().0)],
-                            false,
-                            false,
-                            EventMetadata {
-                                source: Some(to_mir_place(&Local::from_u32(0).into())),
-                                destination: destination.map(|d| to_mir_place(&d.0)),
-                                transfer_kind: TransferKind::Ret(
-                                    self.tcx.def_path_hash(*def_id).0.as_value(),
-                                ),
-                            },
-                        );
+                            self.add_instrumentation(
+                                location,
+                                func_def_id,
+                                args.clone(),
+                                false,
+                                true,
+                                EventMetadata {
+                                    // TODO: hook-specific sources
+                                    source: args
+                                        .clone()
+                                        .iter()
+                                        .map(|op| to_mir_place(&op.place().unwrap()))
+                                        .next(),
+                                    // FIXME: hooks have sources
+                                    destination: destination.map(|d| to_mir_place(&d.0)),
+                                    transfer_kind: TransferKind::Ret(self.func_hash()),
+                                },
+                            );
+                        } else if destination
+                            .unwrap()
+                            .0
+                            .ty(&self.body.local_decls, self.tcx)
+                            .ty
+                            .is_unsafe_ptr()
+                        {
+                            location.statement_index = 0;
+                            location.block = destination.unwrap().1;
+                            self.add_instrumentation(
+                                location,
+                                arg_fn,
+                                vec![Operand::Copy(destination.unwrap().0)],
+                                false,
+                                false,
+                                EventMetadata {
+                                    source: Some(to_mir_place(&Local::from_u32(0).into())),
+                                    destination: destination.map(|d| to_mir_place(&d.0)),
+                                    transfer_kind: TransferKind::Ret(
+                                        self.tcx.def_path_hash(*def_id).0.as_value(),
+                                    ),
+                                },
+                            );
+                        }
                     }
                 }
             }

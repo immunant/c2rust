@@ -2,7 +2,7 @@ use crate::graph::{Func, Graph, GraphId, Graphs, Node, NodeId, NodeKind};
 use bincode;
 use c2rust_analysis_rt::events::{Event, EventKind};
 use c2rust_analysis_rt::mir_loc::{EventMetadata, Metadata, TransferKind};
-use c2rust_analysis_rt::{mir_loc, MirLoc, MirPlace};
+use c2rust_analysis_rt::{mir_loc, MirLoc, MirPlace, MirProjection};
 use log;
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_hir::def_id::DefPathHash;
@@ -95,8 +95,7 @@ fn update_provenance(
         }
         EventKind::CopyPtr(ptr) => {
             // only insert if not already there
-            let res = provenances.try_insert(*ptr, mapping);
-            if res.is_ok() {
+            if let Some(..) = provenances.insert(*ptr, mapping) {
                 log::warn!("{:p} doesn't have a source", ptr);
             }
         }
@@ -152,25 +151,28 @@ pub fn add_node(
         statement_idx = 0;
     }
 
-    let ptr = get_ptr(&event.kind, &metadata)
-        .and_then(|p| provenances.get(&p).cloned())
-        .and_then(|(gid, last_nid_ref)| {
-            graphs.graphs[gid]
-                .nodes
-                .iter()
-                .rposition(|n| {
-                    n.dest.is_some()
-                        && n.dest.as_ref().map(|p| p.local)
-                            == metadata.source.as_ref().map(|p| p.local)
-                })
-                .map(|nid| (gid, NodeId::from(nid)))
-                .or(Some((gid, last_nid_ref)))
-        });
+    let head = get_ptr(&event.kind, &metadata).and_then(|p| provenances.get(&p).cloned());
+    let ptr = head.and_then(|(gid, last_nid_ref)| {
+        graphs.graphs[gid]
+            .nodes
+            .iter()
+            .rposition(|n| {
+                if let (Some(d), Some(s)) = (&n.dest, &metadata.source) {
+                    d == s
+                } else {
+                    false
+                }
+            })
+            .map(|nid| (gid, NodeId::from(nid)))
+    });
 
-    let source = metadata.source.as_ref().and_then(|src| {
-        
-        if ptr.is_some() && !src.projection.is_empty() {
-            let (gid, _) = ptr.unwrap();
+    let source = ptr.or(metadata.source.as_ref().and_then(|src| {
+        let latest_assignment = graphs
+            .latest_assignment
+            .get(&(src_fn, src.local.clone()))
+            .cloned();
+        if latest_assignment.is_some() && !src.projection.is_empty() {
+            let (gid, _) = latest_assignment.unwrap();
             for (nid, n) in graphs.graphs[gid].nodes.iter().enumerate().rev() {
                 match n.kind {
                     NodeKind::Field(..) => return Some((gid, nid.into())),
@@ -179,14 +181,15 @@ pub fn add_node(
             }
         }
 
-        graphs
-            .latest_assignment
-            .get(&(src_fn, src.local.clone()))
-            .cloned()
-    });
+        if src.projection.iter().any(|p| matches!(p, MirProjection::Deref)) {
+            head
+        } else {
+            latest_assignment
+        }
+    }));
 
     let node = Node {
-        function: Func(this_func_hash),
+        function: Func(dest_fn),
         block: basic_block_idx.clone().into(),
         index: statement_idx.clone().into(),
         kind: node_kind,
@@ -195,7 +198,7 @@ pub fn add_node(
     };
 
     let graph_id = ptr
-        .and_then(|p| get_parent_object(&event.kind, p))
+        .or(head).and_then(|p| get_parent_object(&event.kind, p))
         .map(|(gid, _)| gid)
         .unwrap_or_else(|| graphs.graphs.push(Graph::new()));
     let node_id = graphs.graphs[graph_id].nodes.push(node);
