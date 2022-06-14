@@ -181,10 +181,10 @@ pub fn add_node(
             }
         }
 
-        if src.projection.iter().any(|p| matches!(p, MirProjection::Deref)) {
-            head
-        } else {
+        if src.projection.is_empty() {
             latest_assignment
+        } else {
+            head
         }
     }));
 
