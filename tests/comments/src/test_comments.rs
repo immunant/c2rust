@@ -1,4 +1,4 @@
-use crate::comments::{CONSTANT, CONSTANT1, rust_test_fn};
+use crate::comments::{rust_test_fn, CONSTANT, CONSTANT1};
 
 pub fn test_comments() {
     let val = unsafe { rust_test_fn() };

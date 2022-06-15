@@ -1,7 +1,3 @@
-extern crate bincode;
-#[macro_use]
-extern crate lazy_static;
-
 pub mod backend;
 pub mod events;
 mod handlers;

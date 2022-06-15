@@ -8,8 +8,10 @@ use std::result::Result; // To override syn::Result from glob import
 
 use dtoa;
 
-use failure::{err_msg, Fail};
+use failure::{err_msg, format_err, Fail};
+use indexmap::indexmap;
 use indexmap::{IndexMap, IndexSet};
+use log::{error, info, trace, warn};
 use proc_macro2::{Punct, Spacing::*, Span, TokenStream, TokenTree};
 use syn::spanned::Spanned as _;
 use syn::*;
@@ -22,13 +24,13 @@ use crate::rust_ast::{pos_to_span, SpanExt, DUMMY_SP};
 use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_printer::pprust::{self};
 
-use crate::c_ast;
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::*;
 use crate::cfg;
 use crate::convert_type::TypeConverter;
 use crate::renamer::Renamer;
 use crate::with_stmts::WithStmts;
+use crate::{c_ast, format_translation_err};
 use crate::{ExternCrate, ExternCrateDetails, TranspilerConfig};
 use c2rust_ast_exporter::clang_ast::LRValue;
 
@@ -1035,6 +1037,7 @@ fn make_submodule(
         .mod_item(mod_name, Some(mk().mod_(items)))
 }
 
+// TODO(kkysen) shouldn't need `extern crate`
 /// Pretty-print the leading pragmas and extern crate declarations
 fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec<Box<Item>>) {
     let mut out_attrs = vec![];
@@ -1069,6 +1072,7 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
         }
 
         if is_binary {
+            // TODO(kkysen) shouldn't need `extern crate`
             // Add `extern crate X;` to the top of the file
             for extern_crate in t.extern_crates.borrow().iter() {
                 let extern_crate = ExternCrateDetails::from(*extern_crate);

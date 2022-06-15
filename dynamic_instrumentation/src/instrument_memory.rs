@@ -12,7 +12,7 @@ use rustc_middle::mir::{
     Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue, SourceInfo, SourceScopeData, Statement,
     StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
-use rustc_middle::ty::{self, List, ParamEnv, TyCtxt};
+use rustc_middle::ty::{self, ParamEnv, TyCtxt};
 use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
 use rustc_span::{Symbol, DUMMY_SP};
 use std::cell::RefCell;

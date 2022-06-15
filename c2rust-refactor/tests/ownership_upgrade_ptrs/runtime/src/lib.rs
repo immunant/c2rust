@@ -1,4 +1,4 @@
-#![feature(ptr_wrapping_offset_from, c_variadic, extern_types, register_tool, register_attr)]
+#![feature(c_variadic, extern_types, register_tool, register_attr)]
 #![register_tool(c2rust)]
 #![register_attr(nonnull)]
 #![register_attr(slice)]

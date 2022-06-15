@@ -1,4 +1,5 @@
 use crate::c_ast::*;
+use crate::diagnostics::diag;
 use c2rust_ast_exporter::clang_ast::*;
 use failure::err_msg;
 use serde_bytes::ByteBuf;
@@ -947,22 +948,23 @@ impl ConversionContext {
                 }
 
                 ASTEntryTag::TagAttributedStmt if expected_ty & OTHER_STMT != 0 => {
-                    let substatement = node
-                        .children[0]
-                        .map(|id| self.visit_stmt(id))
-                        .unwrap();
+                    let substatement = node.children[0].map(|id| self.visit_stmt(id)).unwrap();
                     let mut attributes = vec![];
 
                     match expect_opt_str(&node.extras[0])
                         .expect("Attributed statement kind not found")
                     {
-                        Some("fallthrough") | Some("__fallthrough__") =>
-                            attributes.push(Attribute::Fallthrough),
+                        Some("fallthrough") | Some("__fallthrough__") => {
+                            attributes.push(Attribute::Fallthrough)
+                        }
                         Some(str) => panic!("Unknown statement attribute: {}", str),
                         None => panic!("Invalid statement attribute"),
                     };
 
-                    let astmt = CStmtKind::Attributed{ attributes, substatement };
+                    let astmt = CStmtKind::Attributed {
+                        attributes,
+                        substatement,
+                    };
 
                     self.add_stmt(new_id, located(node, astmt));
                     self.processed_nodes.insert(new_id, OTHER_STMT);
@@ -1021,7 +1023,11 @@ impl ConversionContext {
 
                     let label_name = from_value::<Rc<str>>(node.extras[0].clone())
                         .expect("unnamed label in C source code");
-                    match self.typed_context.label_names.insert(CStmtId(new_id), label_name.clone()) {
+                    match self
+                        .typed_context
+                        .label_names
+                        .insert(CStmtId(new_id), label_name.clone())
+                    {
                         Some(old_label_name) => {
                             panic!(
                                 "Duplicate label name with id {}. Old name: {}. New name: {}",
@@ -1928,9 +1934,11 @@ impl ConversionContext {
                     let attributes = from_value::<Vec<Value>>(node.extras[5].clone())
                         .expect("Expected attribute array on var decl");
 
-                    assert!(has_static_duration || has_thread_duration || !is_externally_visible,
-                            "Variable cannot be extern without also being static or thread-local: {}",
-                            ident);
+                    assert!(
+                        has_static_duration || has_thread_duration || !is_externally_visible,
+                        "Variable cannot be extern without also being static or thread-local: {}",
+                        ident
+                    );
 
                     let initializer = node
                         .children
@@ -2140,7 +2148,10 @@ impl ConversionContext {
                     } else {
                         None
                     };
-                    let static_assert = CDeclKind::StaticAssert { assert_expr, message };
+                    let static_assert = CDeclKind::StaticAssert {
+                        assert_expr,
+                        message,
+                    };
                     self.add_decl(new_id, located(node, static_assert));
                 }
 

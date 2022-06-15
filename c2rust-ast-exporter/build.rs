@@ -1,8 +1,3 @@
-extern crate bindgen;
-extern crate clang_sys;
-extern crate cmake;
-extern crate env_logger;
-
 use cmake::Config;
 use std::env;
 use std::ffi::OsStr;

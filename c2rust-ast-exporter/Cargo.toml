@@ -11,6 +11,7 @@ license = "BSD-3-Clause"
 homepage = "https://c2rust.com/"
 repository = "https://github.com/immunant/c2rust"
 description = "Clang AST extraction API for use in the C2Rust project"
+edition = "2021"
 
 [dependencies]
 libc = "0.2"
@@ -19,11 +20,7 @@ serde_bytes = "0.11"
 serde_cbor = "0.11"
 
 [build-dependencies]
-# Should be updated once https://github.com/rust-lang/rust-bindgen/pull/2203 (5/17/2022) lands.
-# It has already been merged, so I think it should land in the next release.
-# This fixes https://github.com/rust-lang/rust-bindgen/issues/1651,
-# which causes warnings for nullptr derefs (UB) in the generated bindgen tests.
-bindgen = { version = "0.59", features = ["logging"] }
+bindgen = { version = "0.60", features = ["logging"] }
 clang-sys = "1.3"
 # Pinning until https://github.com/rust-lang/cmake-rs/issues/131 is resolved
 # Fixed by https://github.com/rust-lang/cmake-rs/pull/146 on 5/12/2022; waiting for next release.

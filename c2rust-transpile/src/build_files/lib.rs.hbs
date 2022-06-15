@@ -3,6 +3,8 @@
 {{/each}}
 
 {{#each crates~}}
+{{!-- TODO(kkysen) `#[macro_use]` shouldn't be needed. --}}
+{{!-- Waiting on fix for https://github.com/immunant/c2rust/issues/426. --}}
 {{#if this.macro_use~}}#[macro_use]{{~/if}}
 extern crate {{this.ident}};
 {{~/each}}

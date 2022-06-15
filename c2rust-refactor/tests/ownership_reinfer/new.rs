@@ -5,7 +5,6 @@
 //! Note that each function either keeps all of its `mono` attributes or none of them.  The
 //! analysis assumes the list of signatures in the `ownership_mono` attributes is exhaustive.
 
-#![feature(attr_literals)]
 #![register_tool(c2rust)]
 
 use std::mem;

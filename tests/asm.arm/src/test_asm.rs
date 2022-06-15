@@ -1,9 +1,5 @@
-//! feature_asm
-
-extern crate libc;
-
-use asm::rust_entry;
-use self::libc::{c_int, c_uint};
+use crate::asm::rust_entry;
+use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

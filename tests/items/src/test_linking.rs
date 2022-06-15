@@ -1,7 +1,5 @@
-extern crate libc;
-
-use linking::{rust_l, rust_w};
-use self::libc::c_int;
+use crate::linking::{rust_l, rust_w};
+use libc::c_int;
 
 #[link(name = "test")]
 extern "C" {
@@ -11,25 +9,17 @@ extern "C" {
 }
 
 pub fn test_linking() {
-    let mut ret = unsafe {
-        l()
-    };
+    let mut ret = unsafe { l() };
 
-    let mut rust_ret = unsafe {
-        rust_l()
-    };
+    let mut rust_ret = unsafe { rust_l() };
 
     assert_eq!(ret, rust_ret);
     assert_eq!(ret, 3);
     assert_eq!(rust_ret, 3);
 
-    ret = unsafe {
-        w()
-    };
+    ret = unsafe { w() };
 
-    rust_ret = unsafe {
-        rust_w()
-    };
+    rust_ret = unsafe { rust_w() };
 
     assert_eq!(ret, rust_ret);
     assert_eq!(ret, 4);

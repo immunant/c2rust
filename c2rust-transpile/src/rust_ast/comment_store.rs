@@ -24,6 +24,7 @@
 use crate::rust_ast::{pos_to_span, set_span::SetSpan, traverse, BytePos, SpanExt, DUMMY_SP};
 use c2rust_ast_printer::pprust::comments;
 use itertools::Itertools;
+use log::warn;
 use proc_macro2::{Span, TokenStream};
 use smallvec::{smallvec, SmallVec};
 use std::collections::BTreeMap;

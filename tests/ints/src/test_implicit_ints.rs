@@ -1,8 +1,8 @@
 //! xfail
-extern crate libc;
 
-use implicit_int::{identity as rust_identity, implicit_int as rust_implicit_int};
-use self::libc::{c_int, c_uint};
+
+use crate::implicit_int::{identity as rust_identity, implicit_int as rust_implicit_int};
+use libc::{c_int, c_uint};
 
 extern "C" {
     fn identity(_: c_int) -> c_int;

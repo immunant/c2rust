@@ -1,6 +1,5 @@
 //! Testing part 2 of two-part splitting.  The middle function (`f2`) was already split.  Now we
 //! split `f1` and `f3` and make sure the calls still line up right.
-#![feature(attr_literals)]
 #![register_tool(c2rust)]
 
 #[ownership_mono("take", MOVE, MOVE)]

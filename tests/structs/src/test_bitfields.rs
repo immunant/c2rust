@@ -1,13 +1,13 @@
 //! extern_crate_c2rust_bitfields
 
-use std::mem::size_of;
-use bitfields::{
-    three_byte_date, rust_compare_three_byte_date, rust_write_three_byte_date, padded_bitfield,
-    rust_ops_padded_bitfield, rust_ops_padded_bitfield_init, mixed_bitfields, rust_init_bitfield_array,
-    rust_static_date, from_csmith, rust_init_from_csmith, rust_get_bf_ptr, rust_modify_bf_ptr,
-    two_eight_bits, rust_two_eight_bits_init, rust_multiple_assignments, rust_ma_results,
-    rust_use_renamed_field,
+use crate::bitfields::{
+    from_csmith, mixed_bitfields, padded_bitfield, rust_compare_three_byte_date, rust_get_bf_ptr,
+    rust_init_bitfield_array, rust_init_from_csmith, rust_ma_results, rust_modify_bf_ptr,
+    rust_multiple_assignments, rust_ops_padded_bitfield, rust_ops_padded_bitfield_init,
+    rust_static_date, rust_two_eight_bits_init, rust_use_renamed_field, rust_write_three_byte_date,
+    three_byte_date, two_eight_bits,
 };
+use std::mem::size_of;
 
 extern "C" {
     fn size_of_three_byte_date() -> usize;
@@ -27,17 +27,13 @@ extern "C" {
 }
 
 pub fn test_three_byte_date() {
-    let c_size_of = unsafe {
-        size_of_three_byte_date()
-    };
+    let c_size_of = unsafe { size_of_three_byte_date() };
 
     // Ensure correct size (also a packed struct)
     assert_eq!(size_of::<three_byte_date>(), c_size_of);
 
     // Test zeroed bitfield struct
-    let mut tbd = unsafe {
-        zeroed_three_byte_date()
-    };
+    let mut tbd = unsafe { zeroed_three_byte_date() };
 
     tbd.set_day(26);
     tbd.set_month(4);
@@ -48,41 +44,31 @@ pub fn test_three_byte_date() {
     assert_eq!(tbd.year(), 2019);
 
     // Ensure C byte compatibility
-    let ret_code = unsafe {
-        compare_three_byte_date(&tbd, 26, 4, 2019)
-    };
+    let ret_code = unsafe { compare_three_byte_date(&tbd, 26, 4, 2019) };
 
     assert_eq!(ret_code, 0);
 
     // Ensure translated struct ptr reads work
-    let rust_ret_code = unsafe {
-        rust_compare_three_byte_date(&tbd, 26, 4, 2019)
-    };
+    let rust_ret_code = unsafe { rust_compare_three_byte_date(&tbd, 26, 4, 2019) };
 
     assert_eq!(rust_ret_code, 0);
 
     // Ensure can read from C written data
-    unsafe {
-        write_three_byte_date(&mut tbd, 24, 12, 2018)
-    }
+    unsafe { write_three_byte_date(&mut tbd, 24, 12, 2018) }
 
     assert_eq!(tbd.day(), 24);
     assert_eq!(tbd.month(), 12);
     assert_eq!(tbd.year(), 2018);
 
     // Ensure translated struct ptr write works
-    unsafe {
-        rust_write_three_byte_date(&mut tbd, 17, 7, 1343)
-    }
+    unsafe { rust_write_three_byte_date(&mut tbd, 17, 7, 1343) }
 
     assert_eq!(tbd.day(), 17);
     assert_eq!(tbd.month(), 7);
     assert_eq!(tbd.year(), 1343);
 
     // Test that overflow wraps
-    unsafe {
-        rust_write_three_byte_date(&mut tbd, 36, 19, 2u16.pow(15) + 2)
-    }
+    unsafe { rust_write_three_byte_date(&mut tbd, 36, 19, 2u16.pow(15) + 2) }
 
     assert_eq!(tbd.day(), 4);
     assert_eq!(tbd.month(), 3);
@@ -93,9 +79,7 @@ pub fn test_three_byte_date() {
     tbd.set_month(0);
     tbd.set_year(0);
 
-    unsafe {
-        write_three_byte_date(&mut tbd, 36, 19, 2u16.pow(15) + 2)
-    }
+    unsafe { write_three_byte_date(&mut tbd, 36, 19, 2u16.pow(15) + 2) }
 
     assert_eq!(tbd.day(), 4);
     assert_eq!(tbd.month(), 3);
@@ -103,38 +87,28 @@ pub fn test_three_byte_date() {
 }
 
 pub fn test_padded_bitfield() {
-    let c_size_of = unsafe {
-        size_of_padded_bitfield()
-    };
+    let c_size_of = unsafe { size_of_padded_bitfield() };
 
     assert_eq!(size_of::<padded_bitfield>(), c_size_of);
 
     // Test zeroed bitfield struct (incl padding)
-    let mut pb = unsafe {
-        zeroed_padded_bitfield()
-    };
+    let mut pb = unsafe { zeroed_padded_bitfield() };
 
     pb.set_x(13);
 
     // Ensure you can apply binary ops on bitfields
     // Through pointers:
-    unsafe {
-        ops_padded_bitfield(&mut pb)
-    }
+    unsafe { ops_padded_bitfield(&mut pb) }
 
     let c_x = pb.x();
 
     pb.set_x(13);
 
-    unsafe {
-        rust_ops_padded_bitfield(&mut pb)
-    }
+    unsafe { rust_ops_padded_bitfield(&mut pb) }
 
     assert_eq!(pb.x(), c_x);
 
-    let rust_pb = unsafe {
-        rust_ops_padded_bitfield_init()
-    };
+    let rust_pb = unsafe { rust_ops_padded_bitfield_init() };
 
     assert_eq!(rust_pb.x(), c_x);
 }
@@ -174,9 +148,7 @@ pub fn test_static_bitfield() {
 // Test creating arrays of bitfield structs
 // as well as pointers to non bitfields
 pub fn test_bf_arrays_and_pointers() {
-    let c_size_of = unsafe {
-        size_of_mixed_bitfields()
-    };
+    let c_size_of = unsafe { size_of_mixed_bitfields() };
 
     assert_eq!(size_of::<mixed_bitfields>(), c_size_of);
 
@@ -184,9 +156,7 @@ pub fn test_bf_arrays_and_pointers() {
 
     // Test zeroed bitfield struct (incl padding)
     let mut array = [unsafe { zeroed_mixed_bitfields() }; size];
-    let last_y_ptr = unsafe {
-        rust_init_bitfield_array(array.as_mut_ptr(), size as _)
-    };
+    let last_y_ptr = unsafe { rust_init_bitfield_array(array.as_mut_ptr(), size as _) };
 
     assert_eq!(array[0].x(), 0);
     assert_eq!(array[0].y, 0.0);
@@ -210,15 +180,11 @@ pub fn test_bf_arrays_and_pointers() {
 
 // This a sample struct which was generated by csmith
 pub fn test_from_csmith() {
-    let c_size_of = unsafe {
-        size_of_from_csmith()
-    };
+    let c_size_of = unsafe { size_of_from_csmith() };
 
     assert_eq!(size_of::<from_csmith>(), c_size_of);
 
-    let fc = unsafe {
-        rust_init_from_csmith()
-    };
+    let fc = unsafe { rust_init_from_csmith() };
 
     assert_eq!(fc.f0(), 1);
     assert_eq!(fc.f1(), 2);
@@ -244,9 +210,7 @@ pub fn test_returned_bitfield_ptr() {
 // padding was one byte instead of two for this
 // struct
 pub fn test_size_of_two_eight_bits() {
-    let c_size_of = unsafe {
-        size_of_two_eight_bits()
-    };
+    let c_size_of = unsafe { size_of_two_eight_bits() };
 
     assert_eq!(size_of::<two_eight_bits>(), c_size_of);
 }
@@ -255,7 +219,10 @@ pub fn test_multiple_assignments() {
     unsafe {
         multiple_assignments();
 
-        assert_eq!(ma_results, [4, 4, 2, 2, 8, 8, 8, 9, 9, 9, 9, 5, 5, 9, 9, 15, 10]);
+        assert_eq!(
+            ma_results,
+            [4, 4, 2, 2, 8, 8, 8, 9, 9, 9, 9, 5, 5, 9, 9, 15, 10]
+        );
 
         rust_multiple_assignments();
 

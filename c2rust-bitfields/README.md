@@ -40,8 +40,6 @@ Clang helpfully provides us with this information:
 And this is enough to build our rust struct:
 
 ```rust
-extern crate libc;
-
 #[repr(C, align(1))]
 #[derive(BitfieldStruct)]
 struct Date {

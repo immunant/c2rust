@@ -1,7 +1,5 @@
 use super::*;
 
-use crate::syn;
-
 /// These tests mostly verify that we strip the right context from the
 /// pretty-printed files that we have to insert non-toplevel syntactic elements
 /// into in order to run them through prettyplease.

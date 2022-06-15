@@ -1,7 +1,5 @@
-extern crate libc;
-
-use const_test::rust_entry4;
-use self::libc::{c_int, c_uint};
+use crate::const_test::rust_entry4;
+use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

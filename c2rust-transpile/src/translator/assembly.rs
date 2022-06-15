@@ -2,6 +2,7 @@
 //! This module provides basic support for converting inline assembly statements.
 
 use super::*;
+use log::warn;
 use proc_macro2::{TokenStream, TokenTree};
 use syn::__private::ToTokens;
 

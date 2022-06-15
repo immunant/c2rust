@@ -1,7 +1,5 @@
-extern crate libc;
-
-use lvalues::rust_lvalue;
-use self::libc::c_int;
+use crate::lvalues::rust_lvalue;
+use libc::c_int;
 
 #[link(name = "test")]
 extern "C" {
@@ -17,7 +15,7 @@ pub fn test_lvalue() {
 
     unsafe {
         lvalue(buffer.as_mut_ptr());
-        rust_lvalue( rust_buffer.as_mut_ptr());
+        rust_lvalue(rust_buffer.as_mut_ptr());
     }
 
     assert_eq!(buffer, rust_buffer);

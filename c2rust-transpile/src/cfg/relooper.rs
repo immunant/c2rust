@@ -17,7 +17,9 @@ pub fn reloop(
         .nodes
         .into_iter()
         .map(|(lbl, bb)| {
-            let terminator = bb.terminator.map_labels(|l| StructureLabel::GoTo(l.clone()));
+            let terminator = bb
+                .terminator
+                .map_labels(|l| StructureLabel::GoTo(l.clone()));
             (
                 lbl,
                 BasicBlock {
@@ -272,7 +274,10 @@ impl RelooperState {
             adjacency_list: &IndexMap<V, IndexSet<V>>,
         ) -> IndexMap<V, IndexSet<V>> {
             let mut edges: IndexSet<(V, V)> = IndexSet::new();
-            let mut to_visit: Vec<(V, V)> = adjacency_list.keys().map(|v| (v.clone(), v.clone())).collect();
+            let mut to_visit: Vec<(V, V)> = adjacency_list
+                .keys()
+                .map(|v| (v.clone(), v.clone()))
+                .collect();
 
             while let Some((s, v)) = to_visit.pop() {
                 for i in adjacency_list.get(&v).unwrap_or(&IndexSet::new()) {
@@ -490,7 +495,11 @@ impl RelooperState {
 
         let handler_keys: IndexSet<Label> = all_handlers.keys().cloned().collect();
         let (then, branches) = if handler_keys == entries {
-            let a_key = all_handlers.keys().next().expect("no handlers found").clone();
+            let a_key = all_handlers
+                .keys()
+                .next()
+                .expect("no handlers found")
+                .clone();
             let last_handler = all_handlers.swap_remove(&a_key).expect("just got this key");
             (last_handler, all_handlers)
         } else {
@@ -564,12 +573,14 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
 
                     for &(ref pat, ref lbl) in cases {
                         match lbl {
-                            StructureLabel::GoTo(lbl) => {
-                                merged_goto.entry(lbl.clone()).or_insert(vec![]).push(pat.clone())
-                            }
-                            StructureLabel::ExitTo(lbl) => {
-                                merged_exit.entry(lbl.clone()).or_insert(vec![]).push(pat.clone())
-                            }
+                            StructureLabel::GoTo(lbl) => merged_goto
+                                .entry(lbl.clone())
+                                .or_insert(vec![])
+                                .push(pat.clone()),
+                            StructureLabel::ExitTo(lbl) => merged_exit
+                                .entry(lbl.clone())
+                                .or_insert(vec![])
+                                .push(pat.clone()),
                             _ => panic!("simplify_structure: Nested precondition violated"),
                         }
                     }

@@ -1,28 +1,3 @@
-extern crate colored;
-extern crate dtoa;
-extern crate syn;
-#[macro_use]
-extern crate indexmap;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate c2rust_ast_builder;
-extern crate c2rust_ast_exporter;
-extern crate clap;
-extern crate itertools;
-extern crate libc;
-extern crate regex;
-extern crate serde_json;
-#[macro_use]
-extern crate log;
-extern crate fern;
-extern crate strum;
-#[macro_use]
-extern crate strum_macros;
-#[macro_use]
-extern crate failure;
-
-#[macro_use]
 mod diagnostics;
 
 pub mod build_files;
@@ -43,7 +18,9 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use failure::Error;
+use log::warn;
 use regex::Regex;
+use serde_derive::Serialize;
 
 use crate::c_ast::Printer;
 use crate::c_ast::*;

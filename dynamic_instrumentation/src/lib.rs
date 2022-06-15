@@ -41,10 +41,8 @@ use rustc_span::DUMMY_SP;
 
 use anyhow::anyhow;
 use lazy_static::lazy_static;
-use std::cell::{Cell, RefCell};
 use std::env;
 use std::ffi::OsString;
-use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -119,7 +117,7 @@ fn override_queries(
 pub fn instrument(
     metadata_file_path: &Path,
     rt_path: &Path,
-    args: &[String],
+    _args: &[String],
 ) -> anyhow::Result<()> {
     let config = Config::default().unwrap();
     config.shell().set_verbosity(Verbosity::Quiet);
@@ -161,7 +159,7 @@ struct InstrumentationExecutor {
 
 impl Executor for InstrumentationExecutor {
     fn init(&self, cx: &Context<'_, '_>, unit: &Unit) {
-        if (self.building_rt.load(Ordering::Relaxed) && cx.is_primary_package(unit)) {
+        if self.building_rt.load(Ordering::Relaxed) && cx.is_primary_package(unit) {
             *self.rt_crate_path.lock().unwrap() = cx.outputs(unit).unwrap()[0]
                 .path
                 .to_str()

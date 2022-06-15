@@ -1,4 +1,3 @@
-#![feature(libc)]
 #![feature(extern_types)]
 #![feature(label_break_value)]
 #![feature(rustc_private)]
@@ -9,9 +8,6 @@
 #![allow(dead_code)]
 #![allow(mutable_transmutes)]
 #![allow(unused_mut)]
-
-
-extern crate libc;
 
 #[path = "pointers.rs"]
 pub mod pointers;

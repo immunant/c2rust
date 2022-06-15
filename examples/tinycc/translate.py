@@ -1,24 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from plumbum.cmd import mv, mkdir, rename
 from plumbum import local
 from typing import Tuple
 from common import (
     Colors,
     Config,
-    get_cmd_or_die,
-    pb,
     setup_logging,
     transpile
 )
 
 import argparse
-import logging
-import multiprocessing
 import os
 import re
-import sys
+
+mv = local["mv"]
+mkdir = local["mkdir"]
+rename = local["rename"]
 
 desc = 'transpile files in compiler_commands.json.'
 parser = argparse.ArgumentParser(description="Translates tinycc into the repo/rust/src directory")
@@ -35,6 +33,7 @@ COMPILE_COMMANDS = os.path.join(TCC_REPO, "compile_commands.json")
 RUST_ROOT_DIR = os.path.join(TCC_REPO, "rust")
 RUST_SRC_DIR = os.path.join(RUST_ROOT_DIR, "src")
 MAIN_RS = os.path.join(RUST_SRC_DIR, "main.rs")
+# TODO(kkysen) shouldn't need `extern crate`
 MAIN_MODS = """\
 #![feature(label_break_value)]
 extern crate libc;
@@ -63,6 +62,7 @@ def rename_(*args) -> Tuple[Retcode, StdOut, StdErr]:
 def add_mods(path: str):
     with open(path, "r+") as file:
         text = file.read()
+        # TODO(kkysen) shouldn't need `extern crate`
         text = re.sub(r"extern crate libc;", MAIN_MODS, text, count=1)
 
         file.seek(0)
@@ -93,7 +93,7 @@ if __name__ == "__main__":
     plumbum_rs_glob = local.path(TCC_REPO) // "*.rs"
 
     # Move source files to src directory
-    retcode, _, _ = move(plumbum_rs_glob, RUST_SRC_DIR)
+    retcode, _, stderr = move(plumbum_rs_glob, RUST_SRC_DIR)
 
     assert retcode != 1, "Could not move translated rs files:\n{}".format(stderr)
 
