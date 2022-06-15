@@ -10,7 +10,7 @@ use crate::c_ast::CTypeKind::{Char, Double, Float, Int, LongLong, Short};
 use crate::c_ast::CastKind::{BitCast, IntegralCast};
 
 /// As of rustc 1.29, rust is known to be missing some SIMD functions.
-/// See https://github.com/rust-lang-nursery/stdsimd/issues/579
+/// See <https://github.com/rust-lang-nursery/stdsimd/issues/579>
 static MISSING_SIMD_FUNCTIONS: [&str; 36] = [
     "_mm_and_si64",
     "_mm_andnot_si64",
