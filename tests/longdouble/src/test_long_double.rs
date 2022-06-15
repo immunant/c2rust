@@ -4,7 +4,6 @@ use crate::long_double::{
     rust_cast2double, rust_cast2float, rust_cast2uint, rust_ld1, rust_ld2, rust_long_double_ops,
 };
 use f128::f128;
-use libc::{c_double, c_float, c_uint};
 
 pub fn test_long_double_ops() {
     let input_result = f128::parse("-4.40000000000000013322676295501878485").unwrap();
