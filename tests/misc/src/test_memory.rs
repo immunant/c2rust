@@ -1,8 +1,6 @@
-extern crate libc;
-
-use strings_h::rust_setmem;
-use malloc::rust_malloc_test;
-use self::libc::{c_int, c_uint};
+use crate::malloc::rust_malloc_test;
+use crate::strings_h::rust_setmem;
+use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

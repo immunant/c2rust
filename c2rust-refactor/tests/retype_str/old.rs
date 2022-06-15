@@ -1,6 +1,4 @@
 #![allow(mutable_transmutes)]
-#![feature(libc)]
-extern crate libc;
 
 use std::slice;
 

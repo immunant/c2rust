@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use failure::Error;
+use log::warn;
 use regex::Regex;
+use serde_derive::Deserialize;
 
 #[derive(Deserialize, Debug, Default, Clone)]
 pub struct CompileCmd {

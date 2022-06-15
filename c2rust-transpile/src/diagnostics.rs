@@ -7,6 +7,7 @@ use std::fmt::{self, Display};
 use std::io;
 use std::str::FromStr;
 use std::sync::Arc;
+use strum_macros::{Display, EnumString};
 
 use crate::c_ast::{ClangAstParseErrorKind, DisplaySrcSpan};
 use c2rust_ast_exporter::get_clang_major_version;
@@ -21,10 +22,11 @@ pub enum Diagnostic {
     ClangAst,
 }
 
-#[allow(unused_macros)]
 macro_rules! diag {
-    ($type:path, $($arg:tt)*) => (warn!(target: &$type.to_string(), $($arg)*))
+    ($type:path, $($arg:tt)*) => (log::warn!(target: &$type.to_string(), $($arg)*))
 }
+
+pub(crate) use diag;
 
 pub fn init(mut enabled_warnings: HashSet<Diagnostic>, log_level: log::LevelFilter) {
     enabled_warnings.extend(DEFAULT_WARNINGS.iter().cloned());

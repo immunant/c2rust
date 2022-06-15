@@ -31,6 +31,8 @@ use std::ops::Deref;
 use std::ops::Index;
 use syn::{spanned::Spanned, Arm, Expr, Pat, Stmt};
 
+use failure::format_err;
+use indexmap::indexset;
 use indexmap::{IndexMap, IndexSet};
 
 use serde::ser::{
@@ -581,8 +583,13 @@ impl Cfg<Label, StmtOrDecl> {
         ));
 
         translator.with_scope(|| -> Result<(), TranslationError> {
-            let body_exit =
-                cfg_builder.convert_stmts_help(translator, ctx, stmt_ids, Some(ret.clone()), entry)?;
+            let body_exit = cfg_builder.convert_stmts_help(
+                translator,
+                ctx,
+                stmt_ids,
+                Some(ret.clone()),
+                entry,
+            )?;
 
             if let Some(body_exit) = body_exit {
                 let mut wip = cfg_builder.new_wip_block(body_exit);
@@ -703,7 +710,11 @@ impl<Lbl: Clone + Ord + Hash + Debug, Stmt> Cfg<Lbl, Stmt> {
         // basic block corresponding to the value.
         let mut actual_rewrites: IndexMap<Lbl, Lbl> = IndexMap::new();
 
-        while let Some((from, to)) = proposed_rewrites.iter().map(|(f, t)| (f.clone(), t.clone())).next() {
+        while let Some((from, to)) = proposed_rewrites
+            .iter()
+            .map(|(f, t)| (f.clone(), t.clone()))
+            .next()
+        {
             proposed_rewrites.swap_remove(&from);
             let mut from_any: IndexSet<Lbl> = indexset![from];
 
@@ -741,7 +752,10 @@ impl<Lbl: Clone + Ord + Hash + Debug, Stmt> Cfg<Lbl, Stmt> {
         }
 
         // Apply the remaps to the entries
-        self.entries = actual_rewrites.get(&self.entries).unwrap_or(&self.entries).clone();
+        self.entries = actual_rewrites
+            .get(&self.entries)
+            .unwrap_or(&self.entries)
+            .clone();
 
         // We keep only the basic blocks that weren't remapped to anything.
         self.nodes
@@ -1118,7 +1132,7 @@ struct WipBlock {
 }
 
 impl Extend<Stmt> for WipBlock {
-    fn extend<T: IntoIterator<Item=Stmt>>(&mut self, iter: T) {
+    fn extend<T: IntoIterator<Item = Stmt>>(&mut self, iter: T) {
         for stmt in iter.into_iter() {
             self.body.push(StmtOrDecl::Stmt(stmt))
         }
@@ -1380,544 +1394,570 @@ impl CfgBuilder {
             .get_span(SomeId::Stmt(stmt_id))
             .unwrap_or(DUMMY_SP);
 
-        let out_wip: Result<Option<WipBlock>, TranslationError> =
-            match translator.ast_context.index(stmt_id).kind {
-                CStmtKind::Empty => Ok(Some(wip)),
+        let out_wip: Result<Option<WipBlock>, TranslationError> = match translator
+            .ast_context
+            .index(stmt_id)
+            .kind
+        {
+            CStmtKind::Empty => Ok(Some(wip)),
 
-                CStmtKind::Decls(ref decls) => {
-                    for decl in decls {
-                        let info = translator.convert_decl_stmt_info(ctx, *decl)?;
-                        self.last_per_stmt_mut()
-                            .decls_seen
-                            .store
-                            .insert(*decl, info);
+            CStmtKind::Decls(ref decls) => {
+                for decl in decls {
+                    let info = translator.convert_decl_stmt_info(ctx, *decl)?;
+                    self.last_per_stmt_mut()
+                        .decls_seen
+                        .store
+                        .insert(*decl, info);
 
-                        wip.push_decl(*decl);
-                        wip.defined.insert(*decl);
-                    }
-                    Ok(Some(wip))
+                    wip.push_decl(*decl);
+                    wip.defined.insert(*decl);
                 }
+                Ok(Some(wip))
+            }
 
-                CStmtKind::Return(expr) => {
-                    let val = match expr.map(|i| translator.convert_expr(ctx.used(), i)) {
-                        Some(r) => Some(r?),
-                        None => None,
-                    };
+            CStmtKind::Return(expr) => {
+                let val = match expr.map(|i| translator.convert_expr(ctx.used(), i)) {
+                    Some(r) => Some(r?),
+                    None => None,
+                };
 
-                    let (stmts, ret_val) = WithStmts::with_stmts_opt(val).discard_unsafe();
-                    wip.extend(stmts);
-                    wip.push_stmt(mk().expr_stmt(mk().return_expr(ret_val)));
+                let (stmts, ret_val) = WithStmts::with_stmts_opt(val).discard_unsafe();
+                wip.extend(stmts);
+                wip.push_stmt(mk().expr_stmt(mk().return_expr(ret_val)));
 
-                    self.add_wip_block(wip, End);
+                self.add_wip_block(wip, End);
 
-                    Ok(None)
-                }
+                Ok(None)
+            }
 
-                CStmtKind::If {
-                    scrutinee,
+            CStmtKind::If {
+                scrutinee,
+                true_variant,
+                false_variant,
+            } => {
+                let next_entry = self.fresh_label();
+                let then_entry = self.fresh_label();
+                let else_entry = if false_variant.is_none() {
+                    next_entry.clone()
+                } else {
+                    self.fresh_label()
+                };
+
+                // Condition
+                let (stmts, val) = translator
+                    .convert_condition(ctx, true, scrutinee)?
+                    .discard_unsafe();
+                wip.extend(stmts);
+
+                let cond_val = translator.ast_context[scrutinee].kind.get_bool();
+                self.add_wip_block(
+                    wip,
+                    match cond_val {
+                        Some(true) => Jump(then_entry.clone()),
+                        Some(false) => Jump(else_entry.clone()),
+                        None => Branch(val, then_entry.clone(), else_entry.clone()),
+                    },
+                );
+
+                // Then case
+                self.open_arm(then_entry.clone());
+                let then_stuff = self.convert_stmt_help(
+                    translator,
+                    ctx,
                     true_variant,
-                    false_variant,
-                } => {
-                    let next_entry = self.fresh_label();
-                    let then_entry = self.fresh_label();
-                    let else_entry = if false_variant.is_none() {
-                        next_entry.clone()
-                    } else {
-                        self.fresh_label()
-                    };
-
-                    // Condition
-                    let (stmts, val) = translator
-                        .convert_condition(ctx, true, scrutinee)?
-                        .discard_unsafe();
-                    wip.extend(stmts);
-
-                    let cond_val = translator.ast_context[scrutinee].kind.get_bool();
-                    self.add_wip_block(
-                        wip,
-                        match cond_val {
-                            Some(true) => Jump(then_entry.clone()),
-                            Some(false) => Jump(else_entry.clone()),
-                            None => Branch(val, then_entry.clone(), else_entry.clone()),
-                        },
-                    );
-
-                    // Then case
-                    self.open_arm(then_entry.clone());
-                    let then_stuff =
-                        self.convert_stmt_help(translator, ctx, true_variant, in_tail.clone(), then_entry)?;
-                    if let Some(then_end) = then_stuff {
-                        let wip_then = self.new_wip_block(then_end);
-                        self.add_wip_block(wip_then, Jump(next_entry.clone()));
-                    }
-                    let then_arm = self.close_arm();
-
-                    // Else case
-                    self.open_arm(else_entry.clone());
-                    if let Some(false_var) = false_variant {
-                        let else_stuff = self
-                            .convert_stmt_help(translator, ctx, false_var, in_tail.clone(), else_entry)?;
-                        if let Some(else_end) = else_stuff {
-                            let wip_else = self.new_wip_block(else_end);
-                            self.add_wip_block(wip_else, Jump(next_entry.clone()));
-                        }
-                    };
-                    let else_arm = self.close_arm();
-
-                    self.last_per_stmt_mut()
-                        .multiple_info
-                        .add_multiple(next_entry.clone(), vec![then_arm, else_arm]);
-
-                    // Return
-                    Ok(Some(self.new_wip_block(next_entry)))
+                    in_tail.clone(),
+                    then_entry,
+                )?;
+                if let Some(then_end) = then_stuff {
+                    let wip_then = self.new_wip_block(then_end);
+                    self.add_wip_block(wip_then, Jump(next_entry.clone()));
                 }
+                let then_arm = self.close_arm();
 
-                CStmtKind::While {
-                    condition,
-                    body: body_stmt,
-                } => {
-                    let cond_entry = self.fresh_label();
-                    let body_entry = self.fresh_label();
-                    let next_entry = self.fresh_label();
-
-                    self.add_wip_block(wip, Jump(cond_entry.clone()));
-                    self.open_loop();
-
-                    // Condition
-                    let (stmts, val) = translator
-                        .convert_condition(ctx, true, condition)?
-                        .discard_unsafe();
-                    let cond_val = translator.ast_context[condition].kind.get_bool();
-                    let mut cond_wip = self.new_wip_block(cond_entry.clone());
-                    cond_wip.extend(stmts);
-
-                    self.add_wip_block(
-                        cond_wip,
-                        match cond_val {
-                            Some(true) => Jump(body_entry.clone()),
-                            Some(false) => Jump(next_entry.clone()),
-                            None => Branch(val, body_entry.clone(), next_entry.clone()),
-                        },
-                    );
-
-                    // Body
-                    let saw_unmatched_break = self.last_per_stmt_mut().saw_unmatched_break;
-                    let saw_unmatched_continue = self.last_per_stmt_mut().saw_unmatched_continue;
-                    self.break_labels.push(next_entry.clone());
-                    self.continue_labels.push(cond_entry.clone());
-
-                    let body_stuff =
-                        self.convert_stmt_help(translator, ctx, body_stmt, None, body_entry.clone())?;
-                    if let Some(body_end) = body_stuff {
-                        let wip_body = self.new_wip_block(body_end);
-                        self.add_wip_block(wip_body, Jump(cond_entry.clone()));
-                    }
-
-                    self.last_per_stmt_mut().saw_unmatched_break = saw_unmatched_break;
-                    self.last_per_stmt_mut().saw_unmatched_continue = saw_unmatched_continue;
-                    self.break_labels.pop();
-                    self.continue_labels.pop();
-                    self.close_loop();
-
-                    //Return
-                    Ok(Some(self.new_wip_block(next_entry.clone())))
-                }
-
-                CStmtKind::DoWhile {
-                    body: body_stmt,
-                    condition,
-                } => {
-                    let body_entry = self.fresh_label();
-                    let cond_entry = self.fresh_label();
-                    let next_entry = self.fresh_label();
-
-                    self.add_wip_block(wip, Jump(body_entry.clone()));
-                    self.open_loop();
-
-                    // Body
-                    let saw_unmatched_break = self.last_per_stmt_mut().saw_unmatched_break;
-                    let saw_unmatched_continue = self.last_per_stmt_mut().saw_unmatched_continue;
-                    self.break_labels.push(next_entry.clone());
-                    self.continue_labels.push(cond_entry.clone());
-
-                    let body_stuff =
-                        self.convert_stmt_help(translator, ctx, body_stmt, None, body_entry.clone())?;
-                    if let Some(body_end) = body_stuff {
-                        let wip_body = self.new_wip_block(body_end);
-                        self.add_wip_block(wip_body, Jump(cond_entry.clone()));
-                    }
-
-                    self.last_per_stmt_mut().saw_unmatched_break = saw_unmatched_break;
-                    self.last_per_stmt_mut().saw_unmatched_continue = saw_unmatched_continue;
-                    self.break_labels.pop();
-                    self.continue_labels.pop();
-
-                    // Condition
-                    let (stmts, val) = translator
-                        .convert_condition(ctx, true, condition)?
-                        .discard_unsafe();
-                    let cond_val = translator.ast_context[condition].kind.get_bool();
-                    let mut cond_wip = self.new_wip_block(cond_entry);
-                    cond_wip.extend(stmts);
-                    self.add_wip_block(
-                        cond_wip,
-                        match cond_val {
-                            Some(true) => Jump(body_entry.clone()),
-                            Some(false) => Jump(next_entry.clone()),
-                            None => Branch(val, body_entry, next_entry.clone()),
-                        },
-                    );
-
-                    self.close_loop();
-
-                    //Return
-                    Ok(Some(self.new_wip_block(next_entry)))
-                }
-
-                CStmtKind::ForLoop {
-                    init,
-                    condition,
-                    increment,
-                    body,
-                } => {
-                    let init_entry = self.fresh_label();
-                    let cond_entry = self.fresh_label();
-                    let body_entry = self.fresh_label();
-                    let incr_entry = self.fresh_label();
-                    let next_label = self.fresh_label();
-
-                    self.with_scope(translator, |slf| -> Result<(), TranslationError> {
-                        // Init
-                        slf.add_wip_block(wip, Jump(init_entry.clone()));
-                        let init_stuff: Option<Label> = match init {
-                            None => Some(init_entry),
-                            Some(init) => {
-                                slf.convert_stmt_help(translator, ctx, init, None, init_entry)?
-                            }
-                        };
-                        if let Some(init_end) = init_stuff {
-                            let wip_init = slf.new_wip_block(init_end);
-                            slf.add_wip_block(wip_init, Jump(cond_entry.clone()));
-                        }
-
-                        slf.open_loop();
-
-                        // Condition
-                        if let Some(cond) = condition {
-                            let (stmts, val) = translator
-                                .convert_condition(ctx, true, cond)?
-                                .discard_unsafe();
-                            let cond_val = translator.ast_context[cond].kind.get_bool();
-                            let mut cond_wip = slf.new_wip_block(cond_entry.clone());
-                            cond_wip.extend(stmts);
-                            slf.add_wip_block(
-                                cond_wip,
-                                match cond_val {
-                                    Some(true) => Jump(body_entry.clone()),
-                                    Some(false) => Jump(next_label.clone()),
-                                    None => Branch(val, body_entry.clone(), next_label.clone()),
-                                },
-                            );
-                        } else {
-                            slf.add_block(cond_entry.clone(), BasicBlock::new_jump(body_entry.clone()));
-                        }
-
-                        // Body
-                        let saw_unmatched_break = slf.last_per_stmt_mut().saw_unmatched_break;
-                        let saw_unmatched_continue = slf.last_per_stmt_mut().saw_unmatched_continue;
-                        slf.break_labels.push(next_label.clone());
-                        slf.continue_labels.push(incr_entry.clone());
-
-                        let body_stuff =
-                            slf.convert_stmt_help(translator, ctx, body, None, body_entry)?;
-
-                        if let Some(body_end) = body_stuff {
-                            let wip_body = slf.new_wip_block(body_end);
-                            slf.add_wip_block(wip_body, Jump(incr_entry.clone()));
-                        }
-
-                        slf.last_per_stmt_mut().saw_unmatched_break = saw_unmatched_break;
-                        slf.last_per_stmt_mut().saw_unmatched_continue = saw_unmatched_continue;
-                        slf.break_labels.pop();
-                        slf.continue_labels.pop();
-
-                        // Increment
-                        match increment {
-                            None => slf.add_block(incr_entry, BasicBlock::new_jump(cond_entry)),
-                            Some(incr) => {
-                                let incr_stmts =
-                                    translator.convert_expr(ctx.unused(), incr)?.into_stmts();
-                                let mut incr_wip = slf.new_wip_block(incr_entry);
-                                incr_wip.extend(incr_stmts);
-                                slf.add_wip_block(incr_wip, Jump(cond_entry));
-                            }
-                        }
-
-                        slf.close_loop();
-
-                        Ok(())
-                    })?;
-
-                    // Return (it is important this happen _outside_ the `with_scope` call)
-                    Ok(Some(self.new_wip_block(next_label)))
-                }
-
-                CStmtKind::Label(sub_stmt) => {
-                    let label_name = translator.ast_context.label_names
-                        .get(&stmt_id)
-                        .cloned()
-                        .expect("missing name for a label defined in C source");
-                    let this_label = Label::FromC(stmt_id, Some(label_name));
-                    self.add_wip_block(wip, Jump(this_label.clone()));
-                    self.last_per_stmt_mut().c_labels_defined.insert(stmt_id);
-
-                    // Sub stmt
-                    let sub_stmt_next =
-                        self.convert_stmt_help(translator, ctx, sub_stmt, in_tail.clone(), this_label)?;
-                    Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
-                }
-
-                CStmtKind::Attributed { substatement, ..} => {
-                    // Note: we only support the fallthrough attribute for which no action is
-                    // required.
-                    match translator.ast_context.index(substatement).kind {
-                        CStmtKind::Empty =>  Ok(Some(wip)),
-                        _ => panic!("Expected empty attributed statement"),
-                    }
-                }
-
-                CStmtKind::Goto(label_id) => {
-                    let label_name = translator.ast_context.label_names
-                        .get(&label_id)
-                        .cloned()
-                        .expect("missing label name for a Goto label");
-                    let tgt_label = Label::FromC(label_id, Some(label_name));
-                    self.add_wip_block(wip, Jump(tgt_label));
-                    self.last_per_stmt_mut()
-                        .c_labels_used
-                        .entry(label_id)
-                        .or_insert(IndexSet::new())
-                        .insert(stmt_id);
-
-                    Ok(None)
-                }
-
-                CStmtKind::Compound(ref comp_stmts) => {
-                    let comp_entry = self.fresh_label();
-                    self.add_wip_block(wip, Jump(comp_entry.clone()));
-                    let next_lbl = self.convert_stmts_help(
+                // Else case
+                self.open_arm(else_entry.clone());
+                if let Some(false_var) = false_variant {
+                    let else_stuff = self.convert_stmt_help(
                         translator,
                         ctx,
-                        comp_stmts.as_slice(),
+                        false_var,
                         in_tail.clone(),
-                        comp_entry,
+                        else_entry,
                     )?;
-
-                    Ok(next_lbl.map(|l| self.new_wip_block(l)))
-                }
-
-                CStmtKind::Expr(expr) => {
-                    // This case typically happens in macros from system headers.
-                    // We simply inline the common statement at this point rather
-                    // than to try and create new control-flow blocks.
-                    let blk_or_wip = if let CExprKind::Unary(_, UnOp::Extension, sube, _) =
-                    translator.ast_context[expr].kind
-                    {
-                        if let CExprKind::Statements(_, stmtid) = translator.ast_context[sube].kind
-                        {
-                            let comp_entry = self.fresh_label();
-                            self.add_wip_block(wip, Jump(comp_entry.clone()));
-                            let next_lbl = self
-                                .convert_stmt_help(translator, ctx, stmtid, in_tail.clone(), comp_entry)?;
-
-                            Ok(next_lbl.map(|l| self.new_wip_block(l)))
-                        } else {
-                            Err(wip)
-                        }
-                    } else {
-                        Err(wip)
-                    };
-
-                    match blk_or_wip {
-                        Ok(blk) => Ok(blk),
-                        Err(mut wip) => {
-                            wip.extend(translator.convert_expr(ctx.unused(), expr)?.into_stmts());
-
-                            // If we can tell the expression is going to diverge, there is no falling through to
-                            // the next block.
-                            let next = if translator.ast_context.expr_diverges(expr) {
-                                self.add_wip_block(wip, End);
-                                None
-                            } else {
-                                Some(wip)
-                            };
-
-                            Ok(next)
-                        }
+                    if let Some(else_end) = else_stuff {
+                        let wip_else = self.new_wip_block(else_end);
+                        self.add_wip_block(wip_else, Jump(next_entry.clone()));
                     }
+                };
+                let else_arm = self.close_arm();
+
+                self.last_per_stmt_mut()
+                    .multiple_info
+                    .add_multiple(next_entry.clone(), vec![then_arm, else_arm]);
+
+                // Return
+                Ok(Some(self.new_wip_block(next_entry)))
+            }
+
+            CStmtKind::While {
+                condition,
+                body: body_stmt,
+            } => {
+                let cond_entry = self.fresh_label();
+                let body_entry = self.fresh_label();
+                let next_entry = self.fresh_label();
+
+                self.add_wip_block(wip, Jump(cond_entry.clone()));
+                self.open_loop();
+
+                // Condition
+                let (stmts, val) = translator
+                    .convert_condition(ctx, true, condition)?
+                    .discard_unsafe();
+                let cond_val = translator.ast_context[condition].kind.get_bool();
+                let mut cond_wip = self.new_wip_block(cond_entry.clone());
+                cond_wip.extend(stmts);
+
+                self.add_wip_block(
+                    cond_wip,
+                    match cond_val {
+                        Some(true) => Jump(body_entry.clone()),
+                        Some(false) => Jump(next_entry.clone()),
+                        None => Branch(val, body_entry.clone(), next_entry.clone()),
+                    },
+                );
+
+                // Body
+                let saw_unmatched_break = self.last_per_stmt_mut().saw_unmatched_break;
+                let saw_unmatched_continue = self.last_per_stmt_mut().saw_unmatched_continue;
+                self.break_labels.push(next_entry.clone());
+                self.continue_labels.push(cond_entry.clone());
+
+                let body_stuff =
+                    self.convert_stmt_help(translator, ctx, body_stmt, None, body_entry.clone())?;
+                if let Some(body_end) = body_stuff {
+                    let wip_body = self.new_wip_block(body_end);
+                    self.add_wip_block(wip_body, Jump(cond_entry.clone()));
                 }
 
-                CStmtKind::Break => {
-                    self.last_per_stmt_mut().saw_unmatched_break = true;
-                    let tgt_label =
-                        self.break_labels
-                            .last()
-                            .ok_or(format_err!(
-                                "Cannot find what to break from in this ({:?}) 'break' statement",
-                                stmt_id,
-                            ))?
-                            .clone();
-                    self.add_wip_block(wip, Jump(tgt_label));
+                self.last_per_stmt_mut().saw_unmatched_break = saw_unmatched_break;
+                self.last_per_stmt_mut().saw_unmatched_continue = saw_unmatched_continue;
+                self.break_labels.pop();
+                self.continue_labels.pop();
+                self.close_loop();
 
-                    Ok(None)
+                //Return
+                Ok(Some(self.new_wip_block(next_entry.clone())))
+            }
+
+            CStmtKind::DoWhile {
+                body: body_stmt,
+                condition,
+            } => {
+                let body_entry = self.fresh_label();
+                let cond_entry = self.fresh_label();
+                let next_entry = self.fresh_label();
+
+                self.add_wip_block(wip, Jump(body_entry.clone()));
+                self.open_loop();
+
+                // Body
+                let saw_unmatched_break = self.last_per_stmt_mut().saw_unmatched_break;
+                let saw_unmatched_continue = self.last_per_stmt_mut().saw_unmatched_continue;
+                self.break_labels.push(next_entry.clone());
+                self.continue_labels.push(cond_entry.clone());
+
+                let body_stuff =
+                    self.convert_stmt_help(translator, ctx, body_stmt, None, body_entry.clone())?;
+                if let Some(body_end) = body_stuff {
+                    let wip_body = self.new_wip_block(body_end);
+                    self.add_wip_block(wip_body, Jump(cond_entry.clone()));
                 }
 
-                CStmtKind::Continue => {
-                    self.last_per_stmt_mut().saw_unmatched_continue = true;
-                    let tgt_label =
-                        self.continue_labels
-                            .last()
-                            .ok_or(format_err!(
-                                "Cannot find what to continue from in this ({:?}) 'continue' statement",
-                                stmt_id,
-                            ))?
-                            .clone();
-                    self.add_wip_block(wip, Jump(tgt_label));
+                self.last_per_stmt_mut().saw_unmatched_break = saw_unmatched_break;
+                self.last_per_stmt_mut().saw_unmatched_continue = saw_unmatched_continue;
+                self.break_labels.pop();
+                self.continue_labels.pop();
 
-                    Ok(None)
-                }
+                // Condition
+                let (stmts, val) = translator
+                    .convert_condition(ctx, true, condition)?
+                    .discard_unsafe();
+                let cond_val = translator.ast_context[condition].kind.get_bool();
+                let mut cond_wip = self.new_wip_block(cond_entry);
+                cond_wip.extend(stmts);
+                self.add_wip_block(
+                    cond_wip,
+                    match cond_val {
+                        Some(true) => Jump(body_entry.clone()),
+                        Some(false) => Jump(next_entry.clone()),
+                        None => Branch(val, body_entry, next_entry.clone()),
+                    },
+                );
 
-                CStmtKind::Case(case_expr, sub_stmt, cie) => {
-                    self.last_per_stmt_mut().saw_unmatched_case = true;
-                    let this_label = Label::FromC(stmt_id, None);
-                    self.add_wip_block(wip, Jump(this_label.clone()));
+                self.close_loop();
 
-                    // Case
-                    let resolved = translator.ast_context.resolve_expr(case_expr);
-                    let branch = match resolved.1 {
-                        CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_)) => {
-                            match translator
-                                .convert_expr(ctx.used(), resolved.0)?
-                                .to_pure_expr()
-                            {
-                                Some(expr) => match *expr {
-                                    Expr::Lit(..) | Expr::Path(..) => Some(expr),
-                                    _ => None,
-                                },
-                                _ => None,
-                            }
+                //Return
+                Ok(Some(self.new_wip_block(next_entry)))
+            }
+
+            CStmtKind::ForLoop {
+                init,
+                condition,
+                increment,
+                body,
+            } => {
+                let init_entry = self.fresh_label();
+                let cond_entry = self.fresh_label();
+                let body_entry = self.fresh_label();
+                let incr_entry = self.fresh_label();
+                let next_label = self.fresh_label();
+
+                self.with_scope(translator, |slf| -> Result<(), TranslationError> {
+                    // Init
+                    slf.add_wip_block(wip, Jump(init_entry.clone()));
+                    let init_stuff: Option<Label> = match init {
+                        None => Some(init_entry),
+                        Some(init) => {
+                            slf.convert_stmt_help(translator, ctx, init, None, init_entry)?
                         }
-                        _ => None,
                     };
-                    let branch = match branch {
-                        Some(expr) => expr,
-                        None => translator.convert_constant(cie)?,
-                    };
-                    self.switch_expr_cases
-                        .last_mut()
-                        .ok_or(format_err!(
-                            "Cannot find the 'switch' wrapping this ({:?}) 'case' statement",
-                            stmt_id,
-                        ))?
-                        .cases
-                        .push((mk().lit_pat(branch), this_label.clone()));
+                    if let Some(init_end) = init_stuff {
+                        let wip_init = slf.new_wip_block(init_end);
+                        slf.add_wip_block(wip_init, Jump(cond_entry.clone()));
+                    }
 
-                    // Sub stmt
-                    let sub_stmt_next =
-                        self.convert_stmt_help(translator, ctx, sub_stmt, in_tail.clone(), this_label)?;
-                    Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
-                }
+                    slf.open_loop();
 
-                CStmtKind::Default(sub_stmt) => {
-                    self.last_per_stmt_mut().saw_unmatched_default = true;
-                    let this_label = Label::FromC(stmt_id, None);
-                    self.add_wip_block(wip, Jump(this_label.clone()));
-
-                    // Default case
-                    self.switch_expr_cases
-                        .last_mut()
-                        .expect("'default' outside of 'switch'")
-                        .default
-                        .get_or_insert(this_label.clone());
-
-                    // Sub stmt
-                    let sub_stmt_next =
-                        self.convert_stmt_help(translator, ctx, sub_stmt, in_tail.clone(), this_label)?;
-                    Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
-                }
-
-                CStmtKind::Switch {
-                    scrutinee,
-                    body: switch_body,
-                } => {
-                    let next_label = self.fresh_label();
-                    let body_label = self.fresh_label();
-
-                    // Convert the condition
-                    let (stmts, val) = translator
-                        .convert_expr(ctx.used(), scrutinee)?
-                        .discard_unsafe();
-                    wip.extend(stmts);
-
-                    let wip_label = wip.label.clone();
-                    self.add_wip_block(wip, End); // NOTE: the `End` here is temporary and gets updated
+                    // Condition
+                    if let Some(cond) = condition {
+                        let (stmts, val) = translator
+                            .convert_condition(ctx, true, cond)?
+                            .discard_unsafe();
+                        let cond_val = translator.ast_context[cond].kind.get_bool();
+                        let mut cond_wip = slf.new_wip_block(cond_entry.clone());
+                        cond_wip.extend(stmts);
+                        slf.add_wip_block(
+                            cond_wip,
+                            match cond_val {
+                                Some(true) => Jump(body_entry.clone()),
+                                Some(false) => Jump(next_label.clone()),
+                                None => Branch(val, body_entry.clone(), next_label.clone()),
+                            },
+                        );
+                    } else {
+                        slf.add_block(cond_entry.clone(), BasicBlock::new_jump(body_entry.clone()));
+                    }
 
                     // Body
-                    let saw_unmatched_break = self.last_per_stmt_mut().saw_unmatched_break;
-                    let saw_unmatched_case = self.last_per_stmt_mut().saw_unmatched_case;
-                    let saw_unmatched_default = self.last_per_stmt_mut().saw_unmatched_default;
-                    self.break_labels.push(next_label.clone());
-                    self.switch_expr_cases.push(SwitchCases::default());
+                    let saw_unmatched_break = slf.last_per_stmt_mut().saw_unmatched_break;
+                    let saw_unmatched_continue = slf.last_per_stmt_mut().saw_unmatched_continue;
+                    slf.break_labels.push(next_label.clone());
+                    slf.continue_labels.push(incr_entry.clone());
 
                     let body_stuff =
-                        self.convert_stmt_help(translator, ctx, switch_body, in_tail.clone(), body_label)?;
+                        slf.convert_stmt_help(translator, ctx, body, None, body_entry)?;
+
                     if let Some(body_end) = body_stuff {
-                        let body_wip = self.new_wip_block(body_end);
-                        self.add_wip_block(body_wip, Jump(next_label.clone()));
+                        let wip_body = slf.new_wip_block(body_end);
+                        slf.add_wip_block(wip_body, Jump(incr_entry.clone()));
                     }
 
-                    self.last_per_stmt_mut().saw_unmatched_break = saw_unmatched_break;
-                    self.last_per_stmt_mut().saw_unmatched_case = saw_unmatched_case;
-                    self.last_per_stmt_mut().saw_unmatched_default = saw_unmatched_default;
-                    self.break_labels.pop();
-                    let switch_case = self
-                        .switch_expr_cases
-                        .pop()
-                        .expect("No 'SwitchCases' to pop");
+                    slf.last_per_stmt_mut().saw_unmatched_break = saw_unmatched_break;
+                    slf.last_per_stmt_mut().saw_unmatched_continue = saw_unmatched_continue;
+                    slf.break_labels.pop();
+                    slf.continue_labels.pop();
 
-                    let mut cases: Vec<_> = switch_case.cases.clone();
-                    cases.push((
-                        mk().wild_pat(),
-                        switch_case.default.unwrap_or(next_label.clone()),
-                    ));
+                    // Increment
+                    match increment {
+                        None => slf.add_block(incr_entry, BasicBlock::new_jump(cond_entry)),
+                        Some(incr) => {
+                            let incr_stmts =
+                                translator.convert_expr(ctx.unused(), incr)?.into_stmts();
+                            let mut incr_wip = slf.new_wip_block(incr_entry);
+                            incr_wip.extend(incr_stmts);
+                            slf.add_wip_block(incr_wip, Jump(cond_entry));
+                        }
+                    }
 
-                    // Add the condition basic block terminator (we need the information built up during
-                    // the conversion of the body to make the right terminator)
-                    self.update_terminator(wip_label, Switch { expr: val, cases });
+                    slf.close_loop();
 
-                    // Return
-                    Ok(Some(self.new_wip_block(next_label)))
+                    Ok(())
+                })?;
+
+                // Return (it is important this happen _outside_ the `with_scope` call)
+                Ok(Some(self.new_wip_block(next_label)))
+            }
+
+            CStmtKind::Label(sub_stmt) => {
+                let label_name = translator
+                    .ast_context
+                    .label_names
+                    .get(&stmt_id)
+                    .cloned()
+                    .expect("missing name for a label defined in C source");
+                let this_label = Label::FromC(stmt_id, Some(label_name));
+                self.add_wip_block(wip, Jump(this_label.clone()));
+                self.last_per_stmt_mut().c_labels_defined.insert(stmt_id);
+
+                // Sub stmt
+                let sub_stmt_next =
+                    self.convert_stmt_help(translator, ctx, sub_stmt, in_tail.clone(), this_label)?;
+                Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
+            }
+
+            CStmtKind::Attributed { substatement, .. } => {
+                // Note: we only support the fallthrough attribute for which no action is
+                // required.
+                match translator.ast_context.index(substatement).kind {
+                    CStmtKind::Empty => Ok(Some(wip)),
+                    _ => panic!("Expected empty attributed statement"),
+                }
+            }
+
+            CStmtKind::Goto(label_id) => {
+                let label_name = translator
+                    .ast_context
+                    .label_names
+                    .get(&label_id)
+                    .cloned()
+                    .expect("missing label name for a Goto label");
+                let tgt_label = Label::FromC(label_id, Some(label_name));
+                self.add_wip_block(wip, Jump(tgt_label));
+                self.last_per_stmt_mut()
+                    .c_labels_used
+                    .entry(label_id)
+                    .or_insert(IndexSet::new())
+                    .insert(stmt_id);
+
+                Ok(None)
+            }
+
+            CStmtKind::Compound(ref comp_stmts) => {
+                let comp_entry = self.fresh_label();
+                self.add_wip_block(wip, Jump(comp_entry.clone()));
+                let next_lbl = self.convert_stmts_help(
+                    translator,
+                    ctx,
+                    comp_stmts.as_slice(),
+                    in_tail.clone(),
+                    comp_entry,
+                )?;
+
+                Ok(next_lbl.map(|l| self.new_wip_block(l)))
+            }
+
+            CStmtKind::Expr(expr) => {
+                // This case typically happens in macros from system headers.
+                // We simply inline the common statement at this point rather
+                // than to try and create new control-flow blocks.
+                let blk_or_wip = if let CExprKind::Unary(_, UnOp::Extension, sube, _) =
+                    translator.ast_context[expr].kind
+                {
+                    if let CExprKind::Statements(_, stmtid) = translator.ast_context[sube].kind {
+                        let comp_entry = self.fresh_label();
+                        self.add_wip_block(wip, Jump(comp_entry.clone()));
+                        let next_lbl = self.convert_stmt_help(
+                            translator,
+                            ctx,
+                            stmtid,
+                            in_tail.clone(),
+                            comp_entry,
+                        )?;
+
+                        Ok(next_lbl.map(|l| self.new_wip_block(l)))
+                    } else {
+                        Err(wip)
+                    }
+                } else {
+                    Err(wip)
+                };
+
+                match blk_or_wip {
+                    Ok(blk) => Ok(blk),
+                    Err(mut wip) => {
+                        wip.extend(translator.convert_expr(ctx.unused(), expr)?.into_stmts());
+
+                        // If we can tell the expression is going to diverge, there is no falling through to
+                        // the next block.
+                        let next = if translator.ast_context.expr_diverges(expr) {
+                            self.add_wip_block(wip, End);
+                            None
+                        } else {
+                            Some(wip)
+                        };
+
+                        Ok(next)
+                    }
+                }
+            }
+
+            CStmtKind::Break => {
+                self.last_per_stmt_mut().saw_unmatched_break = true;
+                let tgt_label = self
+                    .break_labels
+                    .last()
+                    .ok_or(format_err!(
+                        "Cannot find what to break from in this ({:?}) 'break' statement",
+                        stmt_id,
+                    ))?
+                    .clone();
+                self.add_wip_block(wip, Jump(tgt_label));
+
+                Ok(None)
+            }
+
+            CStmtKind::Continue => {
+                self.last_per_stmt_mut().saw_unmatched_continue = true;
+                let tgt_label = self
+                    .continue_labels
+                    .last()
+                    .ok_or(format_err!(
+                        "Cannot find what to continue from in this ({:?}) 'continue' statement",
+                        stmt_id,
+                    ))?
+                    .clone();
+                self.add_wip_block(wip, Jump(tgt_label));
+
+                Ok(None)
+            }
+
+            CStmtKind::Case(case_expr, sub_stmt, cie) => {
+                self.last_per_stmt_mut().saw_unmatched_case = true;
+                let this_label = Label::FromC(stmt_id, None);
+                self.add_wip_block(wip, Jump(this_label.clone()));
+
+                // Case
+                let resolved = translator.ast_context.resolve_expr(case_expr);
+                let branch = match resolved.1 {
+                    CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_)) => {
+                        match translator
+                            .convert_expr(ctx.used(), resolved.0)?
+                            .to_pure_expr()
+                        {
+                            Some(expr) => match *expr {
+                                Expr::Lit(..) | Expr::Path(..) => Some(expr),
+                                _ => None,
+                            },
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+                let branch = match branch {
+                    Some(expr) => expr,
+                    None => translator.convert_constant(cie)?,
+                };
+                self.switch_expr_cases
+                    .last_mut()
+                    .ok_or(format_err!(
+                        "Cannot find the 'switch' wrapping this ({:?}) 'case' statement",
+                        stmt_id,
+                    ))?
+                    .cases
+                    .push((mk().lit_pat(branch), this_label.clone()));
+
+                // Sub stmt
+                let sub_stmt_next =
+                    self.convert_stmt_help(translator, ctx, sub_stmt, in_tail.clone(), this_label)?;
+                Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
+            }
+
+            CStmtKind::Default(sub_stmt) => {
+                self.last_per_stmt_mut().saw_unmatched_default = true;
+                let this_label = Label::FromC(stmt_id, None);
+                self.add_wip_block(wip, Jump(this_label.clone()));
+
+                // Default case
+                self.switch_expr_cases
+                    .last_mut()
+                    .expect("'default' outside of 'switch'")
+                    .default
+                    .get_or_insert(this_label.clone());
+
+                // Sub stmt
+                let sub_stmt_next =
+                    self.convert_stmt_help(translator, ctx, sub_stmt, in_tail.clone(), this_label)?;
+                Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
+            }
+
+            CStmtKind::Switch {
+                scrutinee,
+                body: switch_body,
+            } => {
+                let next_label = self.fresh_label();
+                let body_label = self.fresh_label();
+
+                // Convert the condition
+                let (stmts, val) = translator
+                    .convert_expr(ctx.used(), scrutinee)?
+                    .discard_unsafe();
+                wip.extend(stmts);
+
+                let wip_label = wip.label.clone();
+                self.add_wip_block(wip, End); // NOTE: the `End` here is temporary and gets updated
+
+                // Body
+                let saw_unmatched_break = self.last_per_stmt_mut().saw_unmatched_break;
+                let saw_unmatched_case = self.last_per_stmt_mut().saw_unmatched_case;
+                let saw_unmatched_default = self.last_per_stmt_mut().saw_unmatched_default;
+                self.break_labels.push(next_label.clone());
+                self.switch_expr_cases.push(SwitchCases::default());
+
+                let body_stuff = self.convert_stmt_help(
+                    translator,
+                    ctx,
+                    switch_body,
+                    in_tail.clone(),
+                    body_label,
+                )?;
+                if let Some(body_end) = body_stuff {
+                    let body_wip = self.new_wip_block(body_end);
+                    self.add_wip_block(body_wip, Jump(next_label.clone()));
                 }
 
-                CStmtKind::Asm {
+                self.last_per_stmt_mut().saw_unmatched_break = saw_unmatched_break;
+                self.last_per_stmt_mut().saw_unmatched_case = saw_unmatched_case;
+                self.last_per_stmt_mut().saw_unmatched_default = saw_unmatched_default;
+                self.break_labels.pop();
+                let switch_case = self
+                    .switch_expr_cases
+                    .pop()
+                    .expect("No 'SwitchCases' to pop");
+
+                let mut cases: Vec<_> = switch_case.cases.clone();
+                cases.push((
+                    mk().wild_pat(),
+                    switch_case.default.unwrap_or(next_label.clone()),
+                ));
+
+                // Add the condition basic block terminator (we need the information built up during
+                // the conversion of the body to make the right terminator)
+                self.update_terminator(wip_label, Switch { expr: val, cases });
+
+                // Return
+                Ok(Some(self.new_wip_block(next_label)))
+            }
+
+            CStmtKind::Asm {
+                is_volatile,
+                ref asm,
+                ref inputs,
+                ref outputs,
+                ref clobbers,
+            } => {
+                wip.extend(translator.convert_asm(
+                    ctx,
+                    DUMMY_SP,
                     is_volatile,
-                    ref asm,
-                    ref inputs,
-                    ref outputs,
-                    ref clobbers,
-                } => {
-                    wip.extend(translator.convert_asm(
-                        ctx,
-                        DUMMY_SP,
-                        is_volatile,
-                        asm,
-                        inputs,
-                        outputs,
-                        clobbers,
-                    )?);
-                    Ok(Some(wip))
-                }
-            };
+                    asm,
+                    inputs,
+                    outputs,
+                    clobbers,
+                )?);
+                Ok(Some(wip))
+            }
+        };
         let out_wip: Option<WipBlock> = out_wip?; // This statement exists to help type inference...
 
         let out_end = self.fresh_label();
@@ -1929,10 +1969,10 @@ impl CfgBuilder {
         // Is the CFG for this statement self contained so can we reloop it immediately?
         if translator.tcfg.incremental_relooper
             && self
-            .per_stmt_stack
-            .last()
-            .unwrap()
-            .is_contained(&self.c_label_to_goto, self.currently_live.last().unwrap())
+                .per_stmt_stack
+                .last()
+                .unwrap()
+                .is_contained(&self.c_label_to_goto, self.currently_live.last().unwrap())
         {
             self.incrementally_reloop_subgraph(translator, in_tail, entry, out_wip)
         } else {
@@ -1983,10 +2023,7 @@ impl CfgBuilder {
                 false,
             ),
 
-            Some(ImplicitReturnType::Void) => (
-                mk().return_expr(None as Option<Box<Expr>>),
-                false,
-            ),
+            Some(ImplicitReturnType::Void) => (mk().return_expr(None as Option<Box<Expr>>), false),
 
             _ => (
                 mk().break_expr_value(Some(brk_lbl.pretty_print()), None as Option<Box<Expr>>),
@@ -2030,8 +2067,8 @@ impl CfgBuilder {
 
         // Remove unnecessary break statements. We only need a break statement if we failed to
         // remove the tail expr.
-        let need_block =
-            stmts.is_empty() || !IncCleanup::new(in_tail, brk_lbl.clone()).remove_tail_expr(&mut stmts);
+        let need_block = stmts.is_empty()
+            || !IncCleanup::new(in_tail, brk_lbl.clone()).remove_tail_expr(&mut stmts);
 
         if has_fallthrough && need_block && use_brk_lbl {
             translator.use_feature("label_break_value");

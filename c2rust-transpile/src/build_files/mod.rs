@@ -1,14 +1,12 @@
-extern crate handlebars;
-extern crate pathdiff;
-
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use self::handlebars::Handlebars;
-use self::pathdiff::diff_paths;
+use handlebars::Handlebars;
+use pathdiff::diff_paths;
+use serde_derive::Serialize;
 use serde_json::json;
 
 use super::compile_cmds::LinkCmd;

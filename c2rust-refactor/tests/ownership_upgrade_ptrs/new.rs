@@ -1,7 +1,5 @@
 #![feature(
     rustc_private,
-    param_attrs,
-    ptr_wrapping_offset_from,
     c_variadic,
     extern_types,
     register_tool,
@@ -9,8 +7,6 @@
 )]
 #![register_tool(c2rust)]
 #![register_attr(slice, nonnull, ownership_constraints)]
-
-extern crate libc;
 
 extern "C" {
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;

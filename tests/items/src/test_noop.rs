@@ -1,9 +1,7 @@
-extern crate libc;
+use crate::nofnargs::rust_nofnargs;
+use crate::noop::rust_noop;
 
-use noop::rust_noop;
-use nofnargs::rust_nofnargs;
-
-use self::libc::c_int;
+use libc::c_int;
 
 #[link(name = "test")]
 extern "C" {
@@ -20,12 +18,8 @@ pub fn test_noop() {
 }
 
 pub fn test_nofnargs() {
-    let ret = unsafe {
-        nofnargs()
-    };
-    let rust_ret = unsafe {
-        rust_nofnargs()
-    };
+    let ret = unsafe { nofnargs() };
+    let rust_ret = unsafe { rust_nofnargs() };
 
     assert_eq!(ret, 0);
     assert_eq!(rust_ret, 0);

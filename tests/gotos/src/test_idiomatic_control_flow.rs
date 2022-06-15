@@ -1,7 +1,5 @@
-extern crate libc;
-
-use idiomatic_switch::rust_idiomatic_switch;
-use idiomatic_nested_loops::rust_break_multiple;
+use crate::idiomatic_nested_loops::rust_break_multiple;
+use crate::idiomatic_switch::rust_idiomatic_switch;
 
 pub fn test_idiomatic_switch() {
     unsafe {

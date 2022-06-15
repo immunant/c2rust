@@ -3,6 +3,7 @@ use crate::c_ast::*;
 use crate::diagnostics::TranslationError;
 use crate::renamer::*;
 use c2rust_ast_builder::{mk, properties::*};
+use failure::format_err;
 use std::collections::{HashMap, HashSet};
 use std::ops::Index;
 use std::result::Result;

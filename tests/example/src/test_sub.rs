@@ -1,7 +1,5 @@
-extern crate libc;
-
-use sub::rust_sub;
-use self::libc::c_uint;
+use crate::sub::rust_sub;
+use libc::c_uint;
 
 #[link(name = "test")]
 extern "C" {

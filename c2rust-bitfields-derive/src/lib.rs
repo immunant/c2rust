@@ -1,9 +1,5 @@
 #![recursion_limit = "512"]
 
-extern crate proc_macro;
-extern crate quote;
-extern crate syn;
-
 use proc_macro::{Span, TokenStream};
 use quote::quote;
 use syn::parse::Error;

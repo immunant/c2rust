@@ -1,6 +1,4 @@
 #![feature(extern_types)]
-#![feature(asm)]
-#![feature(ptr_wrapping_offset_from)]
 #![register_tool(c2rust)]
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]

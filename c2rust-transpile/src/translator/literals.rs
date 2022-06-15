@@ -2,6 +2,8 @@
 //! This code is used to generate literal expressions of various kinds.
 //! These include integer, floating, array, struct, union, enum literals.
 
+use failure::format_err;
+
 use super::*;
 use std::iter;
 

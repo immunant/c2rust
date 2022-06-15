@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::Path;
 
-use clap::{App, Values, load_yaml};
 use c2rust_dynamic_instrumentation::instrument;
+use clap::{load_yaml, App, Values};
 
 fn main() -> anyhow::Result<()> {
     env_logger::init();

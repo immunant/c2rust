@@ -1,6 +1,3 @@
-extern crate c2rust_bitfields;
-extern crate libc;
-
 use c2rust_bitfields::BitfieldStruct;
 use libc::{c_double, c_short, c_uchar, c_uint, c_ulong, c_ushort};
 use std::mem::{size_of, transmute};
