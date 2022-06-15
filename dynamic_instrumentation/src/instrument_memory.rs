@@ -392,7 +392,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                             false,
                             false,
                             EventMetadata {
-                                source: p.place().as_ref().map(to_mir_place),
+                                source: None,
                                 destination: Some(to_mir_place(&dest)),
                                 transfer_kind: TransferKind::None,
                             },

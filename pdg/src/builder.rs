@@ -199,7 +199,7 @@ pub fn add_node(
         dest: metadata.destination.clone(),
     };
 
-    let graph_id = ptr
+    let graph_id = source.or(ptr)
         .or(head).and_then(|p| get_parent_object(&event.kind, p))
         .map(|(gid, _)| gid)
         .unwrap_or_else(|| graphs.graphs.push(Graph::new()));
