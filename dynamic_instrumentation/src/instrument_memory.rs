@@ -217,6 +217,9 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
         let load_fn = self
             .find_instrumentation_def(Symbol::intern("ptr_load"))
             .expect("Could not find pointer load hook");
+        let store_fn = self
+            .find_instrumentation_def(Symbol::intern("ptr_store"))
+            .expect("Could not find pointer store hook");
 
         if self.should_instrument(place.local, context)
             && self.body.local_decls[place.local].ty.is_unsafe_ptr()
@@ -249,7 +252,31 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
             }
 
             if place.is_indirect() {
-                // if !context.is_mutating_use() {
+                if context.is_mutating_use() {
+                    let mut dest = *place;
+                    let mut place_ref = place.as_ref();
+                    while let Some((cur_ref, proj)) = place_ref.last_projection() {
+                        if let ProjectionElem::Deref = proj {
+                            dest = Place {
+                                local: cur_ref.local,
+                                projection: self.tcx.intern_place_elems(cur_ref.projection),
+                            };
+                        }
+                        place_ref = cur_ref;
+                    }
+                    self.add_instrumentation(
+                        location,
+                        store_fn,
+                        vec![Operand::Copy(dest)],
+                        false,
+                        false,
+                        EventMetadata {
+                            source: Some(to_mir_place(&place)),
+                            destination: None,
+                            transfer_kind: TransferKind::None,
+                        },
+                    );
+                } else {
                     self.add_instrumentation(
                         location.clone(),
                         load_fn,
@@ -262,7 +289,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                             transfer_kind: TransferKind::None,
                         },
                     );
-                // }
+                }
             }
         }
     }
@@ -289,9 +316,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
         let store_value_fn = self
             .find_instrumentation_def(Symbol::intern("store_value"))
             .expect("Could not find pointer load hook");
-        let store_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_store"))
-            .expect("Could not find pointer store hook");
 
         if let StatementKind::Assign(assign) = &statement.kind {
             println!("statement: {:?}", statement);
@@ -299,29 +323,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
             let value = &assign.1;
 
             if dest.is_indirect() {
-                let mut base_dest = dest;
-                let mut place_ref = base_dest.as_ref();
-                while let Some((cur_ref, proj)) = place_ref.last_projection() {
-                    if let ProjectionElem::Deref = proj {
-                        base_dest = Place {
-                            local: cur_ref.local,
-                            projection: self.tcx.intern_place_elems(cur_ref.projection),
-                        };
-                    }
-                    place_ref = cur_ref;
-                }
-                self.add_instrumentation(
-                    location,
-                    store_fn,
-                    vec![Operand::Copy(base_dest)],
-                    false,
-                    false,
-                    EventMetadata {
-                        source: Some(to_mir_place(&dest)),
-                        destination: None,
-                        transfer_kind: TransferKind::None,
-                    },
-                );
                 if value.ty(&self.body.local_decls, self.tcx).is_unsafe_ptr() {
                     let mut loc = location;
                     loc.statement_index += 1;
