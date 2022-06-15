@@ -51,49 +51,6 @@ jobs:
       python3 ./scripts/test_translator.py ./tests
     displayName: 'Test translator (fast build)'
 
-  - script: |
-      export PATH="/home/docker/.cargo/bin:$PATH"
-      export RUSTUP_HOME=/home/docker/.rustup
-      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      cargo clean
-    displayName: 'Cargo clean'
-
-  - script: |
-      export PATH="/home/docker/.cargo/bin:$PATH"
-      export RUSTUP_HOME=/home/docker/.rustup
-      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      export GNUPGHOME=$AGENT_TEMPDIRECTORY
-      python3 ./scripts/build_translator.py --with-llvm-version=10.0.1
-    displayName: 'Developer build against local LLVM 10'
-
-  - script: |
-      export PATH="/home/docker/.cargo/bin:$PATH"
-      export RUSTUP_HOME=/home/docker/.rustup
-      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      python3 ./scripts/test_translator.py ./tests
-    displayName: 'Test translator against developer build (LLVM 10)'
-
-  # - script: |
-  #     export PATH="/home/docker/.cargo/bin:$PATH"
-  #     export RUSTUP_HOME=/home/docker/.rustup
-  #     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-  #     cargo clean && rm -rf build
-  #   displayName: 'Cargo clean && rm -rf build'
-
-  # - script: |
-  #     export PATH="/home/docker/.cargo/bin:$PATH"
-  #     export RUSTUP_HOME=/home/docker/.rustup
-  #     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-  #     python3 ./scripts/build_translator.py --with-llvm-version=8.0.0
-  #   displayName: 'Developer build against local LLVM 8'
-
-  # - script: |
-  #     export PATH="/home/docker/.cargo/bin:$PATH"
-  #     export RUSTUP_HOME=/home/docker/.rustup
-  #     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-  #     python3 ./scripts/test_translator.py ./tests
-  #   displayName: 'Test translator against developer build (LLVM 8)'
-
 - job: Darwin
   timeoutInMinutes: 180
   pool:
@@ -121,15 +78,3 @@ jobs:
 
   - script: python3 ./scripts/test_translator.py  ./tests
     displayName: 'Test translator (fast build)'
-
-  - script: cargo clean
-    displayName: 'Cargo clean'
-
-    # LLVM 10.0.X on macOS 10.15 and fails with a CMake error but later
-    # LLVM releases do not. See this issue for an example of the error.
-    # https://github.com/spack/spack/issues/19905#issuecomment-727268589
-  - script: python3 ./scripts/build_translator.py --with-llvm-version=11.1.0
-    displayName: 'Developer build against local LLVM 11'
-
-  - script: python3 ./scripts/test_translator.py ./tests
-    displayName: 'Test translator against developer build (LLVM 11)'
