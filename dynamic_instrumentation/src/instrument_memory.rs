@@ -6,7 +6,7 @@ use indexmap::IndexSet;
 use log::debug;
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_index::vec::IndexVec;
-use rustc_middle::mir::visit::{PlaceContext, Visitor};
+use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Body, CastKind, Constant, Local, LocalDecl, Location, Operand,
     Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue, SourceInfo, SourceScopeData, Statement,
@@ -107,6 +107,8 @@ struct FunctionInstrumenter<'a, 'tcx: 'a> {
     runtime_crate_did: DefId,
 
     instrumentation_points: RefCell<Vec<InstrumentationPoint<'tcx>>>,
+
+    rvalue_dest: Option<Place<'a>>,
 }
 
 impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
@@ -217,20 +219,24 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
         let load_fn = self
             .find_instrumentation_def(Symbol::intern("ptr_load"))
             .expect("Could not find pointer load hook");
-        let store_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_store"))
-            .expect("Could not find pointer store hook");
 
         if self.should_instrument(place.local, context)
             && self.body.local_decls[place.local].ty.is_unsafe_ptr()
             && !place.projection.is_empty()
         {
-            for (base, elem) in place.iter_projections() {
+            for (pid, (base, elem)) in place.iter_projections().enumerate() {
                 match elem {
                     PlaceElem::Field(field, _) => {
                         let field_fn = self
                             .find_instrumentation_def(Symbol::intern("ptr_field"))
                             .expect("Could not find pointer field hook");
+
+                        let destination = if pid == place.projection.len() - 1 {
+                            self.rvalue_dest.as_ref().map(to_mir_place)
+                        } else {
+                            None
+                        };
+
                         self.add_instrumentation(
                             location,
                             field_fn,
@@ -242,7 +248,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                             false,
                             EventMetadata {
                                 source: Some(to_mir_place(&place)),
-                                destination: None,
+                                destination,
                                 transfer_kind: TransferKind::None,
                             },
                         );
@@ -252,31 +258,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
             }
 
             if place.is_indirect() {
-                if context.is_mutating_use() {
-                    let mut dest = *place;
-                    let mut place_ref = place.as_ref();
-                    while let Some((cur_ref, proj)) = place_ref.last_projection() {
-                        if let ProjectionElem::Deref = proj {
-                            dest = Place {
-                                local: cur_ref.local,
-                                projection: self.tcx.intern_place_elems(cur_ref.projection),
-                            };
-                        }
-                        place_ref = cur_ref;
-                    }
-                    self.add_instrumentation(
-                        location,
-                        store_fn,
-                        vec![Operand::Copy(dest)],
-                        false,
-                        false,
-                        EventMetadata {
-                            source: Some(to_mir_place(&place)),
-                            destination: None,
-                            transfer_kind: TransferKind::None,
-                        },
-                    );
-                } else {
+                if !context.is_mutating_use() {
                     self.add_instrumentation(
                         location.clone(),
                         load_fn,
@@ -316,13 +298,49 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
         let store_value_fn = self
             .find_instrumentation_def(Symbol::intern("store_value"))
             .expect("Could not find pointer load hook");
+        let store_fn = self
+            .find_instrumentation_def(Symbol::intern("ptr_store"))
+            .expect("Could not find pointer store hook");
 
         if let StatementKind::Assign(assign) = &statement.kind {
             println!("statement: {:?}", statement);
             let dest = assign.0;
             let value = &assign.1;
 
+            self.visit_place(
+                &dest,
+                PlaceContext::MutatingUse(MutatingUseContext::Store),
+                location,
+            );
+
+            self.rvalue_dest = Some(dest);
+            self.visit_rvalue(value, location);
+            self.rvalue_dest = None;
+
             if dest.is_indirect() {
+                let mut base_dest = dest;
+                let mut place_ref = base_dest.as_ref();
+                while let Some((cur_ref, proj)) = place_ref.last_projection() {
+                    if let ProjectionElem::Deref = proj {
+                        base_dest = Place {
+                            local: cur_ref.local,
+                            projection: self.tcx.intern_place_elems(cur_ref.projection),
+                        };
+                    }
+                    place_ref = cur_ref;
+                }
+                self.add_instrumentation(
+                    location,
+                    store_fn,
+                    vec![Operand::Copy(base_dest)],
+                    false,
+                    false,
+                    EventMetadata {
+                        source: Some(to_mir_place(&dest)),
+                        destination: None,
+                        transfer_kind: TransferKind::None,
+                    },
+                );
                 if value.ty(&self.body.local_decls, self.tcx).is_unsafe_ptr() {
                     let mut loc = location;
                     loc.statement_index += 1;
@@ -464,8 +482,9 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                 //     );
                 // }
             }
+        } else {
+            self.super_statement(statement, location);
         }
-        self.super_statement(statement, location);
     }
 
     fn visit_terminator(&mut self, terminator: &Terminator<'tcx>, mut location: Location) {
@@ -651,6 +670,7 @@ fn instrument<'tcx>(
         runtime_crate_did,
 
         instrumentation_points: RefCell::new(vec![]),
+        rvalue_dest: None,
     };
     let main_did = tcx.entry_fn(()).map(|(def_id, _)| def_id);
     instrumenter.visit_body(body);

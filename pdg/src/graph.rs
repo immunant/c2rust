@@ -75,7 +75,7 @@ pub struct Node {
     /// The kind of operation that was performed.
     pub kind: NodeKind,
     /// The `Node` that produced the input to this operation.
-    pub source: Option<(GraphId, NodeId)>,
+    pub source: Option<(NodeId)>,
 }
 
 #[derive(Debug)]

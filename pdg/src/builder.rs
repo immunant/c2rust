@@ -95,7 +95,7 @@ fn update_provenance(
         }
         EventKind::CopyPtr(ptr) => {
             // only insert if not already there
-            if let Some(..) = provenances.insert(*ptr, mapping) {
+            if let Err(..) = provenances.try_insert(*ptr, mapping) {
                 log::warn!("{:p} doesn't have a source", ptr);
             }
         }
@@ -183,6 +183,8 @@ pub fn add_node(
 
         if src.projection.is_empty() {
             latest_assignment
+        } else if let EventKind::Field(..) = event.kind {
+            latest_assignment
         } else {
             head
         }
@@ -193,7 +195,7 @@ pub fn add_node(
         block: basic_block_idx.clone().into(),
         index: statement_idx.clone().into(),
         kind: node_kind,
-        source: source.and_then(|p| get_parent_object(&event.kind, p)),
+        source: source.and_then(|p| get_parent_object(&event.kind, p)).map(|n| n.1),
         dest: metadata.destination.clone(),
     };
 
