@@ -8,9 +8,9 @@ use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, CastKind, Constant, Local, LocalDecl, Location, Operand,
-    Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo, Statement, StatementKind, Terminator,
-    TerminatorKind, START_BLOCK,
+    BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Constant, Local, LocalDecl, Location,
+    Mutability, Operand, Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo, Statement,
+    StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, ParamEnv, TyCtxt};
 use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
@@ -96,6 +96,7 @@ enum InstrumentationOperand<'tcx> {
     AddressUsize(Operand<'tcx>),
     Reference(Operand<'tcx>),
     RawPtr(Operand<'tcx>),
+    Place(Operand<'tcx>),
 }
 
 impl<'tcx> InstrumentationOperand<'tcx> {
@@ -105,6 +106,7 @@ impl<'tcx> InstrumentationOperand<'tcx> {
             AddressUsize(x) => x,
             Reference(x) => x,
             RawPtr(x) => x,
+            Place(x) => x,
         }
         .clone()
     }
@@ -315,7 +317,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
         let copy_fn = self
             .find_instrumentation_def(Symbol::intern("ptr_copy"))
             .expect("Could not find pointer copy hook");
-        let _ref_copy_fn = self
+        let ref_copy_fn = self
             .find_instrumentation_def(Symbol::intern("ref_copy"))
             .expect("Could not find ref copy hook");
         let addr_local_fn = self
@@ -512,32 +514,47 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         },
                     );
                 }
-            } else if value.ty(&self.body.local_decls, self.tcx).is_region_ptr() {
-                /*
-                    Stephen: uncomment below to get an example of following error:
+            } else if value.ty(&self.body.local_decls, self.tcx).is_region_ptr() { // Rhs is a ref
+                /// Used to strip initital deref from projection sequences
+                fn pop_one_projection<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Place<'tcx>> {
+                    if p.projection.is_empty() {
+                        return None;
+                    }
+                    Some(Place {
+                        local: p.local,
+                        projection: tcx.intern_place_elems(&p.projection[..p.projection.len() - 1]),
+                    })
+                }
+                // For mutable borrows (let _n = &mut place), create a parallel binding that takes
+                // a raw pointer to the same place, without involving _n
+                if let Rvalue::Ref(_, BorrowKind::Mut {..}, p) = value {
+                    // We do not increment the statement index because we want to take a raw ptr
+                    // prior to the existing stmt that takes a mutable pointer
+                    //location.statement_index += 1;
 
-                    error: internal compiler error: compiler/rustc_borrowck/src/borrow_set.rs:252:17:
-                    found two uses for 2-phase borrow temporary _9: bb45[0] and bb46[1]
-                    --> ../analysis/test/src/pointers.rs:162:16
-                        |
-                    162 |     for arg in ::std::env::args() {
-                        |                ^^^^^^^^^^^^^^^^^^
-                */
-
-                // location.statement_index += 1;
-                // if let Some(p) = rv_place(value) {
-                //     self.add_instrumentation_point(
-                //         location,
-                //         ref_copy_fn,
-                //         vec![Operand::Copy(dest)],
-                //         false,
-                //         false,
-                //         EventMetadata {
-                //             source: Some(to_mir_place(&p)),
-                //             destination: Some(to_mir_place(&dest)),
-                //         },
-                //     );
-                // }
+                    // Remove outer deref if present, so we turn `&mut *x` into `addr_of!(x)` rather
+                    // than `addr_of!(*x)`
+                    let arg = match p.iter_projections().last() {
+                        Some((_, ProjectionElem::Deref)) => {
+                            let sans_proj = pop_one_projection(p, self.tcx.clone())
+                                .expect("expected but did not find deref projection");
+                            Operand::Copy(sans_proj)
+                        },
+                        _ => Operand::Copy(p.clone()),
+                    };
+                    self.add_instrumentation_point(
+                        location,
+                        ref_copy_fn,
+                        vec![InstrumentationOperand::Place(arg)],
+                        false,
+                        false,
+                        EventMetadata {
+                            source: Some(to_mir_place(&p)),
+                            destination: Some(to_mir_place(&dest)),
+                            transfer_kind: TransferKind::None,
+                        },
+                    );
+                }
             }
         } else {
             self.super_statement(statement, location);
@@ -1017,6 +1034,32 @@ fn cast_ptr_to_usize<'tcx>(
                 arg_ty
             );
             arg.to_copy()
+        }
+        // From a place to which a reference is also constructed, create a raw
+        // ptr with `addr_of!`
+        InstrumentationOperand::Place(arg) => {
+            let arg_ty = arg.ty(locals, tcx);
+            let inner_ty = ty::TypeAndMut {
+                ty: arg_ty,
+                mutbl: Mutability::Not,
+            };
+
+            let raw_ptr_ty = tcx.mk_ptr(inner_ty);
+            let raw_ptr_local = locals.push(LocalDecl::new(raw_ptr_ty, DUMMY_SP));
+
+            let arg_place = arg
+                .place()
+                .expect("Can't get the address of a constant")
+                .clone();
+            let addr_of_stmt = Statement {
+                source_info: SourceInfo::outermost(DUMMY_SP),
+                kind: StatementKind::Assign(Box::new((
+                    raw_ptr_local.into(),
+                    Rvalue::AddressOf(inner_ty.mutbl, arg_place),
+                ))),
+            };
+            new_stmts.push(addr_of_stmt);
+            Operand::Move(raw_ptr_local.into())
         }
     };
 
