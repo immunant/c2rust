@@ -1,6 +1,6 @@
 # Setting up a development environment
 
-There are three ways to build the C2Rust project:
+There are two ways to build the C2Rust project:
 
 - [Using **Docker**](../docker/).
 - **Manually**, as explained below.
