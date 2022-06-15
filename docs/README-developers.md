@@ -31,7 +31,7 @@ The previous two options automatically install all prerequisites during provisio
 
 # Building with system LLVM libraries
 
-The quickest way to build the C2Rust transpiler is with LLVM and clang system libraries (LLVM 6 and 7 are currently supported). If you have `libLLVM.so` and the `libclang` libraries (`libclangAST.a`, `libclangTooling.a`, etc. or their shared variants) installed, you can build the transpiler with:
+The quickest way to build the C2Rust transpiler is with LLVM and clang system libraries (LLVM/clang >= 7 are currently supported). If you have `libLLVM.so` and the `libclang` libraries (`libclangAST.a`, `libclangTooling.a`, etc. or their shared variants) installed, you can build the transpiler with:
 
     $ cd c2rust-transpile
     $ cargo build
