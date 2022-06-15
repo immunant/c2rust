@@ -10,7 +10,6 @@ trigger:
     - .travis.yml
     - book.toml
     - docker/*
-    - vagrant/*
     - manual/*
     - docs/*
 

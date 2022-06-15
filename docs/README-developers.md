@@ -2,7 +2,6 @@
 
 There are three ways to build the C2Rust project:
 
-- [Using **Vagrant**](../vagrant/).
 - [Using **Docker**](../docker/).
 - **Manually**, as explained below.
 
@@ -59,7 +58,7 @@ This downloads and builds LLVM under a new top-level folder named `build`. Use t
 
     $ C2RUST_BUILD_SUFFIX=.debug ./scripts/build_translator.py --debug
 
-NOTE: Set `C2RUST_BUILD_SUFFIX` if building inside and outside of the provided Docker or Vagrant environments from a single C2Rust checkout.
+NOTE: Set `C2RUST_BUILD_SUFFIX` if building inside and outside of the provided Docker environments from a single C2Rust checkout.
 
 # Testing (Optional)
 
