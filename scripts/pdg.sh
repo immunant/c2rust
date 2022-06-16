@@ -33,27 +33,31 @@ main() {
     local toolchain_dir="$(dirname "$(dirname "${rustc_path}")")"
 
     local c2rust="${cwd}/${profile_dir}/c2rust"
+    local c2rust_instrument="${cwd}/${profile_dir}/c2rust-instrument"
     local runtime="${cwd}/analysis/runtime/"
+    local metadata="${cwd}/${test_dir}/metadata.bc"
 
     (cd "${test_dir}"
-        cargo clean
-        
-        LD_LIBRARY_PATH="${toolchain_dir}/lib" \
-        "${c2rust}" instrument \
-            metadata.bc "${runtime}" \
-            -- --profile "${CARGO_PROFILE}" \
-        1> instrument.out.log \
-        2> instrument.err.log
+        if [[ "${c2rust}" -nt "${metadata}" ]] || [[ "${c2rust_instrument}" -nt "${metadata}" ]]; then
+            cargo clean
+
+            LD_LIBRARY_PATH="${toolchain_dir}/lib" \
+            "${c2rust}" instrument \
+                "${metadata}" "${runtime}" \
+                -- --profile "${CARGO_PROFILE}" \
+            1> instrument.out.log \
+            2> instrument.err.log
+        fi
         
         RUSTFLAGS=" ${RUSTFLAGS:-} -Awarnings " \
         INSTRUMENT_BACKEND=log \
         INSTRUMENT_OUTPUT=log.bc \
-        METADATA_FILE=metadata.bc \
+        METADATA_FILE="${metadata}" \
         cargo run
     )
 
     (cd pdg
-        RUST_LOG=info METADATA_FILE="../${test_dir}/metadata.bc" cargo run -- "../${test_dir}/log.bc" &> "../${test_dir}/pdg.log"
+        RUST_LOG=info METADATA_FILE="${metadata}" cargo run -- "../${test_dir}/log.bc" &> "../${test_dir}/pdg.log"
     )
 }
 
