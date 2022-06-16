@@ -2,7 +2,7 @@ use rustc_index::newtype_index;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BasicBlock, Field, Local};
 use rustc_span::def_id::DefPathHash;
-use c2rust_analysis_rt::{MirPlace, mir_loc::EventMetadata};
+use c2rust_analysis_rt::MirPlace;
 use std::{collections::HashMap, fmt::Debug};
 
 // Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
@@ -16,7 +16,7 @@ newtype_index!(
 );
 
 // Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
-pub const ROOT_NODE: NodeId = NodeId::from_u32(0);
+pub const _ROOT_NODE: NodeId = NodeId::from_u32(0);
 
 /// A pointer derivation graph, which tracks the handling of one object throughout its lifetime.
 #[derive(Debug)]
@@ -75,7 +75,7 @@ pub struct Node {
     /// The kind of operation that was performed.
     pub kind: NodeKind,
     /// The `Node` that produced the input to this operation.
-    pub source: Option<(NodeId)>,
+    pub source: Option<NodeId>,
 }
 
 #[derive(Debug)]
@@ -100,7 +100,7 @@ pub enum NodeKind {
     AddrOfLocal(Local),
     /// Get the address of a static.  These are treated the same as locals, with an
     /// `AddressOfStatic` attributed to the first statement.
-    AddrOfStatic(DefPathHash),
+    _AddrOfStatic(DefPathHash),
     /// Heap allocation.  The `usize` is the number of array elements allocated; for allocations of
     /// a single object, this value is 1.
     Malloc(usize),

@@ -2,12 +2,11 @@ use crate::graph::{Func, Graph, GraphId, Graphs, Node, NodeId, NodeKind};
 use bincode;
 use c2rust_analysis_rt::events::{Event, EventKind};
 use c2rust_analysis_rt::mir_loc::{EventMetadata, Metadata, TransferKind};
-use c2rust_analysis_rt::{mir_loc, MirLoc, MirPlace, MirProjection};
+use c2rust_analysis_rt::{mir_loc, MirLoc};
 use log;
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_hir::def_id::DefPathHash;
-use rustc_middle::mir::{Field, Local};
-use std::borrow::Borrow;
+use rustc_middle::mir::Local;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
@@ -25,13 +24,13 @@ pub fn read_event_log(path: String) -> Vec<Event> {
     events
 }
 
-pub fn read_metadata(path: String) -> Metadata {
+pub fn _read_metadata(path: String) -> Metadata {
     let file = File::open(path).unwrap();
     bincode::deserialize_from(file).unwrap()
 }
 
 /** return the ptr of interest for a particular event */
-fn get_ptr(kind: &EventKind, metadata: &EventMetadata) -> Option<usize> {
+fn get_ptr(kind: &EventKind, _metadata: &EventMetadata) -> Option<usize> {
     Some(match kind {
         EventKind::CopyPtr(lhs) => *lhs,
         EventKind::Field(ptr, ..) => *ptr,
@@ -55,9 +54,9 @@ fn get_ptr(kind: &EventKind, metadata: &EventMetadata) -> Option<usize> {
 
 fn get_parent_object(kind: &EventKind, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)> {
     Some(match kind {
-        EventKind::Realloc { new_ptr, .. } => return None,
-        EventKind::Alloc { ptr, .. } => return None,
-        EventKind::AddrOfLocal(ptr, _) => return None,
+        EventKind::Realloc { new_ptr: _new_ptr, .. } => return None,
+        EventKind::Alloc { ptr: _ptr, .. } => return None,
+        EventKind::AddrOfLocal(_ptr, _) => return None,
         EventKind::Done => return None,
         _ => obj,
     })
@@ -152,7 +151,7 @@ pub fn add_node(
     }
 
     let head = get_ptr(&event.kind, &metadata).and_then(|p| provenances.get(&p).cloned());
-    let ptr = head.and_then(|(gid, last_nid_ref)| {
+    let ptr = head.and_then(|(gid, _last_nid_ref)| {
         graphs.graphs[gid]
             .nodes
             .iter()
