@@ -738,6 +738,18 @@ fn do_instrumentation<'tcx>(
         } = point;
         let mut args = args.clone();
 
+        match metadata.transfer_kind {
+            TransferKind::Arg((a, b)) => {
+                let callee_id = tcx
+                    .def_path_hash_to_def_id(DefPathHash(Fingerprint::new(a, b)), &mut || panic!());
+                state.functions.lock().unwrap().insert(
+                    tcx.def_path_hash(callee_id).0.as_value().into(),
+                    tcx.item_name(callee_id).to_string(),
+                );
+            }
+            _ => (),
+        }
+
         // Add the MIR location as the first argument to the instrumentation function
         let loc_idx = state.get_mir_loc_idx(body_def, loc, metadata);
         args.insert(0, make_const(tcx, loc_idx));
