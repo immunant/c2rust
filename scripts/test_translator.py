@@ -2,6 +2,7 @@
 
 import errno
 import os
+from pathlib import Path
 import sys
 import logging
 import argparse
@@ -606,11 +607,12 @@ def get_testdirectories(
         keep: List[str],
         logLevel: str,
 ) -> Generator[TestDirectory, None, None]:
-    for entry in os.listdir(directory):
-        path = os.path.abspath(os.path.join(directory, entry))
-
-        if os.path.isdir(path):
-            yield TestDirectory(path, files, keep, logLevel)
+    dir = Path(directory)
+    for path in dir.iterdir():
+        if path.is_dir():
+            if path.name == "longdouble" and sys.platform == "darwin":
+                continue
+            yield TestDirectory(str(path.absolute()), files, keep, logLevel)
 
 
 def main() -> None:
