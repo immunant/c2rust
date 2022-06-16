@@ -39,7 +39,7 @@ main() {
     local metadata="${cwd}/${test_dir}/metadata.bc"
 
     (cd "${test_dir}"
-        if [[ "${c2rust}" -nt "${metadata}" ]] || [[ "${c2rust_instrument}" -nt "${metadata}" ]]; then
+        if [[ "${c2rust_instrument}" -nt "${metadata}" ]]; then
             cargo clean
 
             LD_LIBRARY_PATH="${toolchain_dir}/lib" \
