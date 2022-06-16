@@ -37,8 +37,19 @@ main() {
 
     (cd "${test_dir}"
         cargo clean
-        LD_LIBRARY_PATH="${toolchain_dir}/lib" "${c2rust}" instrument metadata.bc "${runtime}" -- --profile "${CARGO_PROFILE}" 1> instrument.out.log 2> instrument.err.log
-        INSTRUMENT_BACKEND=log INSTRUMENT_OUTPUT=log.bc METADATA_FILE=metadata.bc cargo run
+        
+        LD_LIBRARY_PATH="${toolchain_dir}/lib" \
+        "${c2rust}" instrument \
+            metadata.bc "${runtime}" \
+            -- --profile "${CARGO_PROFILE}" \
+        1> instrument.out.log \
+        2> instrument.err.log
+        
+        RUSTFLAGS=" ${RUSTFLAGS:-} -Awarnings " \
+        INSTRUMENT_BACKEND=log \
+        INSTRUMENT_OUTPUT=log.bc \
+        METADATA_FILE=metadata.bc \
+        cargo run
     )
 
     (cd pdg
