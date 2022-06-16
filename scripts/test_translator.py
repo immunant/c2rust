@@ -2,6 +2,7 @@
 
 import errno
 import os
+from pathlib import Path
 import sys
 import logging
 import argparse
@@ -601,17 +602,17 @@ def readable_directory(directory: str) -> str:
 
 
 def get_testdirectories(
-        directory: str, files: str,
-        keep: List[str], test_longdoubles: bool,
-        logLevel: str) -> Generator[TestDirectory, None, None]:
-    for entry in os.listdir(directory):
-        path = os.path.abspath(os.path.join(directory, entry))
-
-        if os.path.isdir(path):
-            if path.endswith("longdouble") and not test_longdoubles:
+        directory: str,
+        files: str,
+        keep: List[str],
+        logLevel: str,
+) -> Generator[TestDirectory, None, None]:
+    dir = Path(directory)
+    for path in dir.iterdir():
+        if path.is_dir():
+            if path.name == "longdouble" and on_mac():
                 continue
-
-            yield TestDirectory(path, files, keep, logLevel)
+            yield TestDirectory(str(path.absolute()), files, keep, logLevel)
 
 
 def main() -> None:
@@ -636,17 +637,13 @@ def main() -> None:
         choices=intermediate_files + ['all'], default=[],
         help="Which intermediate files to not clear"
     )
-    parser.add_argument(
-        '--test-longdoubles', dest='test_longdoubles',
-        default=False, action="store_true",
-        help="Enables testing of long double translation which requires gcc headers",
-    )
     c.add_args(parser)
 
     args = parser.parse_args()
     c.update_args(args)
-    test_directories = get_testdirectories(args.directory, args.regex_files,
-                                           args.keep, args.test_longdoubles,
+    test_directories = get_testdirectories(args.directory,
+                                           args.regex_files,
+                                           args.keep,
                                            args.logLevel)
     setup_logging(args.logLevel)
 

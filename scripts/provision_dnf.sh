@@ -16,6 +16,7 @@ dnf install --quiet --assumeyes \
     clang-devel \
     cmake \
     diffutils \
+    libquadmath-devel \
     llvm-devel \
     make \
     ninja-build \
