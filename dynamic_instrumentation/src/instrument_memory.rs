@@ -741,7 +741,9 @@ fn do_instrumentation<'tcx>(
         match metadata.transfer_kind {
             TransferKind::Arg((a, b)) => {
                 let callee_id = tcx
-                    .def_path_hash_to_def_id(DefPathHash(Fingerprint::new(a, b)), &mut || panic!());
+                    .def_path_hash_to_def_id(DefPathHash(Fingerprint::new(a, b)), &mut || {
+                        panic!("cannot find DefId of callee func hash")
+                    });
                 state.functions.lock().unwrap().insert(
                     tcx.def_path_hash(callee_id).0.as_value().into(),
                     tcx.item_name(callee_id).to_string(),
