@@ -610,7 +610,7 @@ def get_testdirectories(
     dir = Path(directory)
     for path in dir.iterdir():
         if path.is_dir():
-            if path.name == "longdouble" and sys.platform == "darwin":
+            if path.name == "longdouble" and on_mac():
                 continue
             yield TestDirectory(str(path.absolute()), files, keep, logLevel)
 
