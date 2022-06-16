@@ -8,6 +8,7 @@ cargo() {
 
 main() {
     local test_dir="${1}"
+    local args="${@:2}"
 
     local profile_dir_name="${PROFILE:-debug}"
     local cwd="${PWD}"
@@ -53,7 +54,7 @@ main() {
         INSTRUMENT_BACKEND=log \
         INSTRUMENT_OUTPUT=log.bc \
         METADATA_FILE="${metadata}" \
-        cargo run
+        cargo run -- "${args[@]}"
     )
 
     (cd pdg
