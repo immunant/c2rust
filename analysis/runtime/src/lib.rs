@@ -23,3 +23,18 @@ pub fn initialize() {
 pub fn finalize() {
     backend::finalize();
 }
+
+pub struct Runtime;
+
+impl Runtime {
+    pub fn new() -> Self {
+        initialize();
+        Self
+    }
+}
+
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        finalize();
+    }
+}
