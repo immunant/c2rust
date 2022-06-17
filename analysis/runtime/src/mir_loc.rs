@@ -40,7 +40,7 @@ pub enum MirProjection {
     Deref,
     Field(usize),
     Index(usize),
-    Unsupported
+    Unsupported,
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
@@ -66,8 +66,15 @@ pub struct DefPathHash(pub u64, pub u64);
 
 impl fmt::Debug for DefPathHash {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let entry = "unknown".to_string();
-        write!(f, "{}", MIR_LOCS.functions.get(self).unwrap_or(&entry))
+        write!(
+            f,
+            "{}",
+            MIR_LOCS
+                .functions
+                .get(self)
+                .map(|s| s.as_str())
+                .unwrap_or("unknown")
+        )
     }
 }
 
@@ -77,9 +84,9 @@ impl From<(u64, u64)> for DefPathHash {
     }
 }
 
-impl Into<(u64, u64)> for DefPathHash {
-    fn into(self) -> (u64, u64) {
-        (self.0, self.1)
+impl From<DefPathHash> for (u64, u64) {
+    fn from(other: DefPathHash) -> Self {
+        (other.0, other.1)
     }
 }
 
