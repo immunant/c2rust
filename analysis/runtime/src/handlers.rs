@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use crate::backend::TX;
 use crate::events::{Event, EventKind};
-use crate::mir_loc::{Local, MirLocId};
+use crate::mir_loc::MirLocId;
 
 pub fn malloc(mir_loc: MirLocId, size: u64, ptr: usize) {
     TX.send(Event {
@@ -100,7 +100,7 @@ pub fn ptr_to_int(mir_loc: MirLocId, ptr: usize) {
 pub fn addr_of_local(mir_loc: MirLocId, ptr: usize, local: u32) {
     TX.send(Event {
         mir_loc,
-        kind: EventKind::AddrOfLocal(ptr, Local { index: local }),
+        kind: EventKind::AddrOfLocal(ptr, local.into()),
     })
     .unwrap();
 }

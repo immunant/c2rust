@@ -6,7 +6,6 @@ use c2rust_analysis_rt::{mir_loc, MirLoc};
 use log;
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_hir::def_id::DefPathHash;
-use rustc_middle::mir::Local;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, BufReader};
@@ -84,7 +83,7 @@ impl EventKindExt for EventKind {
             StoreAddr(..) => NodeKind::StoreAddr,
             LoadValue(..) => NodeKind::LoadValue,
             StoreValue(..) => NodeKind::StoreValue,
-            AddrOfLocal(_, local) => NodeKind::AddrOfLocal(Local::from_u32(local.index)),
+            AddrOfLocal(_, local) => NodeKind::AddrOfLocal(local.as_u32().into()),
             ToInt(_) => NodeKind::PtrToInt,
             FromInt(_) => NodeKind::IntToPtr,
             Ret(_) => return None,

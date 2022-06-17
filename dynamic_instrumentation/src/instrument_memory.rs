@@ -175,7 +175,7 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
 
 fn to_mir_place<'tcx>(place: &Place<'tcx>) -> MirPlace {
     MirPlace {
-        local: place.local.into(),
+        local: place.local.as_u32().into(),
         projection: place
             .projection
             .iter()

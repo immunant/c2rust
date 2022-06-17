@@ -46,18 +46,47 @@ pub enum MirProjection {
 /// See [`rustc_middle::mir::Local`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/struct.Local.html).
 #[derive(Eq, PartialEq, Hash, Copy, Clone, Serialize, Deserialize)]
 pub struct Local {
-    pub index: u32,
+    /// TODO(kkysen) change to u32 like
+    /// [`rustc_middle::mir::Local`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/struct.Local.html),
+    /// but need to keep bincode binary format.
+    pub index: usize,
 }
 
-impl<T> From<T> for Local where T: Into<u32> {
-    fn from(t: T) -> Self {
-        Self { index: t.into() }
+impl From<u32> for Local {
+    fn from(index: u32) -> Self {
+        Self {
+            index: index.try_into().unwrap(),
+        }
+    }
+}
+
+impl From<usize> for Local {
+    fn from(index: usize) -> Self {
+        Self {
+            index: index.try_into().unwrap(),
+        }
+    }
+}
+
+impl Into<u32> for Local {
+    fn into(self) -> u32 {
+        self.index.try_into().unwrap()
     }
 }
 
 impl Into<usize> for Local {
     fn into(self) -> usize {
-        self.try_into().unwrap()
+        self.index.try_into().unwrap()
+    }
+}
+
+impl Local {
+    pub fn as_u32(&self) -> u32 {
+        self.clone().into()
+    }
+
+    pub fn as_usize(&self) -> usize {
+        self.clone().into()
     }
 }
 
