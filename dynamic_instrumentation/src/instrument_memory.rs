@@ -10,9 +10,9 @@ use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Constant, Local, LocalDecl, Location,
-    Mutability, Operand, Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo, Statement,
-    StatementKind, Terminator, TerminatorKind, START_BLOCK,
+    BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Constant, ConstantKind, Local,
+    LocalDecl, Location, Mutability, Operand, Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo,
+    Statement, StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, ParamEnv, TyCtxt};
 use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
@@ -184,7 +184,7 @@ struct CollectFunctionInstrumentationPoints<'a, 'tcx: 'a> {
 
     instrumentation_points: RefCell<Vec<InstrumentationPoint<'tcx>>>,
 
-    rvalue_dest: Option<Place<'a>>,
+    rvalue_dest: Option<Place<'tcx>>,
 }
 
 impl<'a, 'tcx: 'a> CollectFunctionInstrumentationPoints<'a, 'tcx> {
@@ -263,7 +263,7 @@ fn to_mir_place(place: &Place) -> MirPlace {
 }
 
 // gets the one and only input Place, if applicable
-fn rv_place<'tcx>(rv: &'tcx Rvalue) -> Option<Place<'tcx>> {
+fn rv_place<'tcx>(rv: &Rvalue<'tcx>) -> Option<Place<'tcx>> {
     match rv {
         Rvalue::Use(op) => op.place(),
         Rvalue::Repeat(op, _) => op.place(),
@@ -630,6 +630,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                 func,
                 args,
                 destination,
+                target,
                 ..
             } => {
                 let mut arg_local = mir_loc::Local { index: 1 };
@@ -674,7 +675,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     }
                 }
                 if let &ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
-                    if destination.is_some() {
+                    if true {
                         println!("term: {:?}", terminator.kind);
                         let fn_name = self.tcx.item_name(def_id);
                         // println!(
@@ -709,31 +710,27 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                                         .map(|op| to_mir_place(&op.place().unwrap()))
                                         .next(),
                                     // FIXME: hooks have sources
-                                    destination: destination.map(|d| to_mir_place(&d.0)),
+                                    destination: Some(to_mir_place(destination)),
                                     transfer_kind: TransferKind::Ret(self.func_hash()),
                                 },
                             );
                         } else if destination
-                            .unwrap()
-                            .0
                             .ty(&self.body.local_decls, self.tcx)
                             .ty
                             .is_unsafe_ptr()
                         {
                             location.statement_index = 0;
-                            location.block = destination.unwrap().1;
+                            location.block = target.unwrap();
                             // Non-hooked fn with raw-ptr result called; trace destination
                             self.add_instrumentation_point(
                                 location,
                                 arg_fn,
-                                vec![InstrumentationOperand::RawPtr(Operand::Copy(
-                                    destination.unwrap().0,
-                                ))],
+                                vec![InstrumentationOperand::RawPtr(Operand::Copy(*destination))],
                                 false,
                                 false,
                                 EventMetadata {
                                     source: Some(to_mir_place(&Local::from_u32(0).into())),
-                                    destination: destination.map(|d| to_mir_place(&d.0)),
+                                    destination: Some(to_mir_place(destination)),
                                     transfer_kind: TransferKind::Ret(
                                         self.tcx.def_path_hash(def_id).convert(),
                                     ),
@@ -776,7 +773,11 @@ fn make_const(tcx: TyCtxt, idx: u32) -> Operand {
     Operand::Constant(Box::new(Constant {
         span: DUMMY_SP,
         user_ty: None,
-        literal: ty::Const::from_bits(tcx, idx.into(), ParamEnv::empty().and(tcx.types.u32)).into(),
+        literal: ConstantKind::Ty(ty::Const::from_bits(
+            tcx,
+            idx.into(),
+            ParamEnv::empty().and(tcx.types.u32),
+        )),
     }))
 }
 
@@ -894,12 +895,13 @@ fn apply_instrumentation<'tcx>(
             InstrumentationOperand::AddressUsize(make_const(tcx, loc_idx)),
         );
 
-        let (blocks, locals) = body.basic_blocks_and_local_decls_mut();
+        let (blocks, locals) = (body.basic_blocks.as_mut(), &mut body.local_decls);
         let mut extra_statements = None;
         if after_call {
             let call = blocks[loc.block].terminator_mut();
             let ret_value = if let TerminatorKind::Call {
-                destination: Some((place, _next_block)),
+                destination: place,
+                //target: Some(_next_block),
                 args,
                 ..
             } = &mut call.kind
@@ -943,12 +945,11 @@ fn apply_instrumentation<'tcx>(
             let orig_call = blocks[successor_block].terminator_mut();
             if let (
                 TerminatorKind::Call {
-                    destination: Some((_, instrument_dest)),
+                    target: instrument_dest,
                     ..
                 },
                 TerminatorKind::Call {
-                    destination: Some((_, orig_dest)),
-                    ..
+                    target: orig_dest, ..
                 },
             ) = (&mut instrument_call.kind, &mut orig_call.kind)
             {
@@ -986,7 +987,7 @@ fn insert_call<'tcx>(
     mut args: Vec<InstrumentationOperand<'tcx>>,
 ) -> (BasicBlock, Local) {
     println!("ST: {:?}", statement_index);
-    let (blocks, locals) = body.basic_blocks_and_local_decls_mut();
+    let (blocks, locals) = (body.basic_blocks.as_mut(), &mut body.local_decls);
 
     let successor_stmts = blocks[block].statements.split_off(statement_index);
     let successor_terminator = blocks[block].terminator.take();
@@ -1015,7 +1016,8 @@ fn insert_call<'tcx>(
         kind: TerminatorKind::Call {
             func,
             args: args.iter().map(|arg| arg.inner()).collect(),
-            destination: Some((ret_local.into(), successor_block)),
+            destination: ret_local.into(),
+            target: Some(successor_block),
             cleanup: None,
             from_hir_call: true,
             fn_span: DUMMY_SP,
