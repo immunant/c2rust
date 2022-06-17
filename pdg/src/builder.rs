@@ -6,6 +6,7 @@ use c2rust_analysis_rt::{mir_loc, MirLoc};
 use log;
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_hir::def_id::DefPathHash;
+use rustc_middle::mir::Local;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, BufReader};
@@ -87,7 +88,7 @@ impl EventKindExt for EventKind {
             StoreAddr(..) => NodeKind::StoreAddr,
             LoadValue(..) => NodeKind::LoadValue,
             StoreValue(..) => NodeKind::StoreValue,
-            AddrOfLocal(_, local) => NodeKind::AddrOfLocal(local.into()),
+            AddrOfLocal(_, local) => NodeKind::AddrOfLocal(Local::from_u32(local.index)),
             ToInt(_) => NodeKind::PtrToInt,
             FromInt(_) => NodeKind::IntToPtr,
             Ret(_) => return None,
@@ -121,7 +122,7 @@ fn update_provenance(
             provenances.insert(new_ptr, mapping);
         }
         CopyRef => {
-            provenances.insert(metadata.destination.clone().unwrap().local.clone(), mapping);
+            provenances.insert(metadata.destination.clone().unwrap().local.into(), mapping);
         }
         AddrOfLocal(ptr, _) => {
             provenances.insert(ptr, mapping);

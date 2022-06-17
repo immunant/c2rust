@@ -1,5 +1,5 @@
 use anyhow::Context;
-use c2rust_analysis_rt::mir_loc::{EventMetadata, TransferKind};
+use c2rust_analysis_rt::mir_loc::{EventMetadata, TransferKind, self};
 use c2rust_analysis_rt::HOOK_FUNCTIONS;
 use c2rust_analysis_rt::{Metadata, MirLoc, MirLocId, MirPlace, MirProjection};
 use indexmap::IndexSet;
@@ -505,7 +505,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                 destination,
                 ..
             } => {
-                let mut arg_idx: usize = 1;
+                let mut arg_local = mir_loc::Local {index: 1};
                 let is_hook = {
                     if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
                         let fn_name = self.tcx.item_name(*def_id);
@@ -534,7 +534,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                                     EventMetadata {
                                         source: Some(to_mir_place(&place)),
                                         destination: Some(MirPlace {
-                                            local: arg_idx,
+                                            local: arg_local,
                                             projection: vec![],
                                         }),
                                         transfer_kind,
@@ -542,7 +542,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                                 );
                             }
                         }
-                        arg_idx += 1;
+                        arg_local.index += 1;
                     }
                 }
                 if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {

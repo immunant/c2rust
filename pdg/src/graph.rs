@@ -1,3 +1,4 @@
+use c2rust_analysis_rt::mir_loc;
 use c2rust_analysis_rt::MirPlace;
 use rustc_index::newtype_index;
 use rustc_index::vec::IndexVec;
@@ -6,7 +7,6 @@ use rustc_span::def_id::DefPathHash;
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Formatter},
-    ops::{Index, IndexMut},
 };
 
 newtype_index!(
@@ -136,7 +136,7 @@ pub struct Graphs {
     pub graphs: IndexVec<GraphId, Graph>,
 
     /// Lookup table for finding all nodes in all graphs that store to a particular MIR local.
-    pub latest_assignment: HashMap<(DefPathHash, usize), (GraphId, NodeId)>,
+    pub latest_assignment: HashMap<(DefPathHash, mir_loc::Local), (GraphId, NodeId)>,
 }
 
 impl Graphs {

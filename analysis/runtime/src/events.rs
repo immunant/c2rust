@@ -1,4 +1,4 @@
-use crate::mir_loc::{self, MirLocId};
+use crate::mir_loc::{self, MirLocId, Local};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -65,7 +65,7 @@ pub enum EventKind {
     StoreAddr(Pointer),
 
     /// The pointer that appears as the address result of addr_of(Local)
-    AddrOfLocal(Pointer, usize),
+    AddrOfLocal(Pointer, Local),
 
     /// Casting the pointer to an int
     ToInt(Pointer),

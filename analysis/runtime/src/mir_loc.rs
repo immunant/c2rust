@@ -43,15 +43,39 @@ pub enum MirProjection {
     Unsupported,
 }
 
+/// See [`rustc_middle::mir::Local`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/struct.Local.html).
+#[derive(Eq, PartialEq, Hash, Copy, Clone, Serialize, Deserialize)]
+pub struct Local {
+    pub index: u32,
+}
+
+impl<T> From<T> for Local where T: Into<u32> {
+    fn from(t: T) -> Self {
+        Self { index: t.into() }
+    }
+}
+
+impl Into<usize> for Local {
+    fn into(self) -> usize {
+        self.try_into().unwrap()
+    }
+}
+
+impl fmt::Debug for Local {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "_{}", self.index)
+    }
+}
+
 #[derive(Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
 pub struct MirPlace {
-    pub local: usize,
+    pub local: Local,
     pub projection: Vec<MirProjection>,
 }
 
 impl fmt::Debug for MirPlace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "_{}", self.local)?;
+        write!(f, "{:?}", self.local)?;
         for p in &self.projection {
             write!(f, ".{:?}", p)?;
         }
