@@ -247,6 +247,7 @@ target = "{self.target}"
 
 [target.{self.target}]
 linker = "{self.c_target}-gcc"
+ar = "{self.c_target}-ar"
 rustflags = ["-C", "link-arg=-fuse-ld=gold"] # override any other linker
 runner = "qemu-{self.arch} -L /usr/{self.c_target}"
             """.strip() + "\n"
