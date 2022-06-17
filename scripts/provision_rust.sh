@@ -9,7 +9,7 @@ if [[ "$EUID" -eq 0 ]]
   exit
 fi
 
-# must run as regular user, not root.
+# $RUST_VER must be set.
 if [[ -z "$RUST_VER" ]]; then
   echo "RUST_VER must be set to the desired rust version"
   exit

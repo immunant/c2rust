@@ -16,7 +16,7 @@ pub fn test_long_double_ops() {
 }
 
 pub fn test_long_double_casts() {
-    let mut input = f128::parse("4.41234567890123413322676295501878485").unwrap();
+    let input = f128::parse("4.41234567890123413322676295501878485").unwrap();
 
     let rust_ret = unsafe { rust_cast2double(input) };
 

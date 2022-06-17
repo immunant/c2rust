@@ -200,9 +200,9 @@ fn is_regname_or_int(parsed_constraint: &str) -> bool {
 /// Translate an architecture-specific assembly constraint from llvm/gcc
 /// to those accepted by the Rust asm! macro. "Simple" (arch-independent)
 /// constraints are handled in `parse_constraints`, not here.
-/// See https://gcc.gnu.org/onlinedocs/gcc/Machine-Constraints.html,
-/// https://llvm.org/docs/LangRef.html#constraint-codes, and
-/// https://doc.rust-lang.org/nightly/reference/inline-assembly.html#register-operands
+/// See <https://gcc.gnu.org/onlinedocs/gcc/Machine-Constraints.html>,
+/// <https://llvm.org/docs/LangRef.html#constraint-codes>, and
+/// <https://doc.rust-lang.org/nightly/reference/inline-assembly.html#register-operands>
 fn translate_machine_constraint(constraint: &str, arch: Arch) -> Option<(&str, bool)> {
     let mem = &mut false;
     // Many constraints are not handled here, because rustc does. The best we can
@@ -286,7 +286,7 @@ fn translate_machine_constraint(constraint: &str, arch: Arch) -> Option<(&str, b
 /// Translate a template modifier from llvm/gcc asm template argument modifiers
 /// to those accepted by the Rust asm! macro. This is arch-dependent, so we need
 /// to know which architecture the asm targets.
-/// See https://doc.rust-lang.org/nightly/reference/inline-assembly.html#template-modifiers
+/// See <https://doc.rust-lang.org/nightly/reference/inline-assembly.html#template-modifiers>
 fn translate_modifier(modifier: char, arch: Arch) -> Option<char> {
     Some(match arch {
         Arch::X86OrX86_64 => match modifier {
@@ -444,7 +444,7 @@ fn remove_comments(mut asm: &str) -> String {
     without_comments
 }
 
-/// Detect whether an x86[_64] gcc inline asm string uses Intel or AT&T syntax.
+/// Detect whether an x86(_64) gcc inline asm string uses Intel or AT&T syntax.
 /// For gcc, AT&T syntax is default... unless `-masm=intel` is passed. This
 /// means we can hope but not guarantee that x86 asm with no syntax directive
 /// uses AT&T syntax.

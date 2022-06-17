@@ -543,7 +543,7 @@ pub enum ImplicitReturnType {
     NoImplicitReturnType,
 
     /// This is for handling GNU C statement expressions
-    /// https://gcc.gnu.org/onlinedocs/gcc-3.2.3/gcc/Statement-Exprs.html
+    /// <https://gcc.gnu.org/onlinedocs/gcc-3.2.3/gcc/Statement-Exprs.html>
     ///
     /// TODO: document
     StmtExpr(ExprContext, CExprId, Label),

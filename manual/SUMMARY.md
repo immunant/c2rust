@@ -27,7 +27,6 @@
     - [xzoom](examples/xzoom/README.md)
     <!-- - [robotfindskitten](examples/robotfindskitten/README.md) -->
 - [For Developers](docs/README-developers.md)
-    - [Vagrant Setup](vagrant/README.md)
     - [Docker Setup](docker/README.md)
     - [Translator Testing](tests/README.md)
     - [Building the manual](docs/build_manual.md)

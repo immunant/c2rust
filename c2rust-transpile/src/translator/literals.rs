@@ -117,7 +117,7 @@ impl<'c> Translation<'c> {
                         self.use_crate(ExternCrate::F128);
 
                         let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
-                        let args = vec![mk().ident_expr(str)];
+                        let args = vec![mk().lit_expr(mk().float_unsuffixed_lit(&str))];
 
                         mk().call_expr(fn_path, args)
                     }

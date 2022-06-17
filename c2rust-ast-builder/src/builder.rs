@@ -2626,7 +2626,7 @@ fn expr_precedence(e: &Expr) -> u8 {
     }
 }
 
-/// See https://doc.rust-lang.org/reference/expressions.html
+/// See <https://doc.rust-lang.org/reference/expressions.html>
 fn binop_precedence(b: &BinOp) -> u8 {
     match b {
         BinOp::Add(_) => 8,
