@@ -37,17 +37,19 @@ main() {
             | "${script_dir}/get-binary-names-from-cargo-metadata.mjs" default)"
         local profile_dir="target/debug" # always dev/debug for now
         local binary_path="${profile_dir}/${binary_name}"
-        [[ -x "${binary_path}" ]]
         
         if [[ "${c2rust_instrument}" -nt "${metadata}" ]]; then
             cargo clean --profile dev # always dev/debug for now
 
-            LD_LIBRARY_PATH="${toolchain_dir}/lib" \
+            if ! LD_LIBRARY_PATH="${toolchain_dir}/lib" \
             "${c2rust}" instrument \
                 "${metadata}" "${runtime}" \
                 -- "${profile_args[@]}"  \
             1> instrument.out.log \
-            2> instrument.err.log
+            2> instrument.err.jsonl; then
+                "${script_dir}/pretty-instrument-err.mjs" < instrument.err.jsonl
+                return 1;
+            fi
         fi
         
         RUSTFLAGS=" ${RUSTFLAGS:-} -Awarnings " \
