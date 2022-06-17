@@ -2,30 +2,24 @@
 
 set -euox pipefail
 
-cargo() {
-    command cargo "${1}" --profile "${CARGO_PROFILE}" "${@:2}"
-}
-
 main() {
+    local script_path="${0}"
     local test_dir="${1}"
-    local args="${@:2}"
+    local args=("${@:2}")
 
-    local profile_dir_name="${PROFILE:-debug}"
+    local profile_dir_name="${PROFILE:-release}"
     local cwd="${PWD}"
 
-    if [[ "${profile_dir_name}" != "debug" ]]; then
-        echo >&2 "only debug works right now, see https://github.com/immunant/c2rust/issues/448"
-        return 1
-    fi
+    local script_dir="${cwd}/$(dirname "${script_path}")"
 
     local profile_dir="target/${profile_dir_name}"
     local profile="${profile_dir_name}"
     if [[ "${profile}" == "debug" ]]; then
         profile=dev
     fi
-    export CARGO_PROFILE="${profile}"
+    local profile_args=(--profile "${profile}")
 
-    cargo build --features dynamic-instrumentation
+    cargo build "${profile_args[@]}" --features dynamic-instrumentation
 
     export RUST_BACKTRACE=1
     unset RUSTC_WRAPPER
@@ -39,13 +33,19 @@ main() {
     local metadata="${cwd}/${test_dir}/metadata.bc"
 
     (cd "${test_dir}"
+        local binary_name="$(command cargo metadata --format-version 1 \
+            | "${script_dir}/get-binary-names-from-cargo-metadata.mjs" default)"
+        local profile_dir="target/debug" # always dev/debug for now
+        local binary_path="${profile_dir}/${binary_name}"
+        [[ -x "${binary_path}" ]]
+        
         if [[ "${c2rust_instrument}" -nt "${metadata}" ]]; then
-            cargo clean
+            cargo clean --profile dev # always dev/debug for now
 
             LD_LIBRARY_PATH="${toolchain_dir}/lib" \
             "${c2rust}" instrument \
                 "${metadata}" "${runtime}" \
-                -- --profile "${CARGO_PROFILE}" \
+                -- "${profile_args[@]}"  \
             1> instrument.out.log \
             2> instrument.err.log
         fi
@@ -54,11 +54,16 @@ main() {
         INSTRUMENT_BACKEND=log \
         INSTRUMENT_OUTPUT=log.bc \
         METADATA_FILE="${metadata}" \
-        cargo run -- "${args[@]}"
+        "${binary_path}" "${args[@]}"
     )
 
     (cd pdg
-        RUST_LOG=info METADATA_FILE="${metadata}" cargo run -- "../${test_dir}/log.bc" &> "../${test_dir}/pdg.log"
+        RUST_LOG=info \
+        METADATA_FILE="${metadata}" \
+        cargo run \
+            "${profile_args[@]}" \
+            -- "../${test_dir}/log.bc" \
+        &> "../${test_dir}/pdg.log"
     )
 }
 
