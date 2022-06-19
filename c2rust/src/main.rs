@@ -24,7 +24,7 @@ fn main() {
     let arg_name = os_args.next().and_then(|name| name.into_string().ok());
     match (&arg_name, matches.subcommand_name()) {
         (Some(arg_name), Some(subcommand)) if arg_name == subcommand => {
-            invoke_subcommand(&subcommand, os_args);
+            invoke_subcommand(subcommand, os_args);
         }
         _ => {
             eprintln!("{:?}", arg_name);

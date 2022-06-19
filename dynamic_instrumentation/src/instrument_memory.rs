@@ -501,7 +501,7 @@ fn insert_call<'tcx>(
     });
 
     for arg in &mut args {
-        if let Some((cast_stmts, cast_local)) = cast_ptr_to_usize(tcx, locals, &arg) {
+        if let Some((cast_stmts, cast_local)) = cast_ptr_to_usize(tcx, locals, arg) {
             *arg = cast_local;
             blocks[block]
                 .statements

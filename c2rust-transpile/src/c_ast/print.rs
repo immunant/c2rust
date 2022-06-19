@@ -118,7 +118,7 @@ impl<W: Write> Printer<W> {
                     Ok(())
                 }
             },
-            Some(&CExprKind::Literal(_, ref lit)) => self.print_lit(&lit, context),
+            Some(&CExprKind::Literal(_, ref lit)) => self.print_lit(lit, context),
             Some(&CExprKind::Unary(_, op, rhs, _)) => {
                 if op.is_prefix() {
                     self.print_unop(&op, context)?;

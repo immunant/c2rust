@@ -878,7 +878,7 @@ impl<'c> Translation<'c> {
                         item_store.add_use(vec!["c2rust_asm_casts".into()], "AsmCastTrait");
                     });
 
-                    let (output_name, inner_name) = operand_renames.get(&tied_operand).unwrap();
+                    let (output_name, inner_name) = operand_renames.get(tied_operand).unwrap();
 
                     let input_name = self.renamer.borrow_mut().fresh();
                     let input_local = mk().local(

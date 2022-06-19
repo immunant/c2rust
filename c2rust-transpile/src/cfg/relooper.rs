@@ -351,7 +351,7 @@ impl RelooperState {
             let new_returns: IndexSet<Label> = strict_reachable_from
                 .iter()
                 .filter(|&(lbl, _)| blocks.contains_key(lbl) && entries.contains(lbl))
-                .flat_map(|(_, ref reachable)| reachable.iter())
+                .flat_map(|(_, reachable)| reachable.iter())
                 .cloned()
                 .collect();
 

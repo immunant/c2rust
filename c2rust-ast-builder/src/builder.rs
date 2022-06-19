@@ -596,7 +596,7 @@ impl Builder {
     where
         I: Make<Path>,
     {
-        let path = path.make(&self);
+        let path = path.make(self);
         PreparedMetaItem {
             path,
             tokens: TokenStream::new(),
@@ -607,7 +607,7 @@ impl Builder {
     where
         K: Make<Meta>,
     {
-        let kind: Meta = kind.make(&self);
+        let kind: Meta = kind.make(self);
         match kind {
             Meta::List(ml) => self.prepare_meta_list(ml),
             Meta::NameValue(mnv) => self.prepare_meta_namevalue(mnv),
@@ -620,8 +620,8 @@ impl Builder {
         I: Make<Path>,
         K: Make<Meta>,
     {
-        let path = path.make(&self);
-        let kind = kind.make(&self);
+        let path = path.make(self);
+        let kind = kind.make(self);
         PreparedMetaItem {
             path: path,
             tokens: kind.to_token_stream(),

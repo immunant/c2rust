@@ -144,9 +144,9 @@ impl<'ast> Visit<'ast> for VisitorImpls {
                     mutability: Some(_),
                     elem,
                     ..
-                }) => self.generate_visit(method_name, &pat_ty.pat, &elem, method_noop),
+                }) => self.generate_visit(method_name, &pat_ty.pat, elem, method_noop),
 
-                ty => self.generate_flat_map(method_name, &pat_ty.pat, &ty, method_noop),
+                ty => self.generate_flat_map(method_name, &pat_ty.pat, ty, method_noop),
             },
 
             _ => {}

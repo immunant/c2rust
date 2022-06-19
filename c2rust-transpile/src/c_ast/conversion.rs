@@ -266,7 +266,7 @@ impl ConversionContext {
         // This starts out as all of the top-level nodes, which we expect to be 'DECL's
         let mut visit_as: Vec<(ClangId, NodeType)> = Vec::new();
         for top_node in untyped_context.top_nodes.iter().rev() {
-            if untyped_context.ast_nodes.contains_key(&top_node) {
+            if untyped_context.ast_nodes.contains_key(top_node) {
                 visit_as.push((*top_node, node_types::DECL));
             } else {
                 diag!(

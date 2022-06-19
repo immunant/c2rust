@@ -464,7 +464,7 @@ fn transpile_single(
 
     // Perform the translation
     let (translated_string, pragmas, crates) =
-        translator::translate(typed_context, &tcfg, input_path);
+        translator::translate(typed_context, tcfg, input_path);
 
     let mut file = match File::create(&output_path) {
         Ok(file) => file,
@@ -517,7 +517,7 @@ fn get_output_path(
         output_path.push("src");
         for elem in path_buf.iter() {
             let path = Path::new(elem);
-            let name = get_module_name(&path, false, true, false).unwrap();
+            let name = get_module_name(path, false, true, false).unwrap();
             output_path.push(name);
         }
 

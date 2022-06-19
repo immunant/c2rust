@@ -46,19 +46,19 @@ fn contains_block(expr_kind: &Expr) -> bool {
     match expr_kind {
         Expr::Block(..) => true,
         Expr::Assign(ExprAssign { left, right, .. }) => {
-            contains_block(&left) || contains_block(&right)
+            contains_block(left) || contains_block(right)
         }
         Expr::AssignOp(ExprAssignOp { left, right, .. }) => {
-            contains_block(&left) || contains_block(&right)
+            contains_block(left) || contains_block(right)
         }
         Expr::Binary(ExprBinary { left, right, .. }) => {
-            contains_block(&left) || contains_block(&right)
+            contains_block(left) || contains_block(right)
         }
-        Expr::Unary(ExprUnary { expr, .. }) => contains_block(&expr),
+        Expr::Unary(ExprUnary { expr, .. }) => contains_block(expr),
         Expr::MethodCall(ExprMethodCall { args, .. }) => {
-            args.iter().map(|e| contains_block(&e)).any(|b| b)
+            args.iter().map(|e| contains_block(e)).any(|b| b)
         }
-        Expr::Cast(ExprCast { expr, .. }) => contains_block(&expr),
+        Expr::Cast(ExprCast { expr, .. }) => contains_block(expr),
         _ => false,
     }
 }

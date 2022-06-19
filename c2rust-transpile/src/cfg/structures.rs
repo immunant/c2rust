@@ -242,7 +242,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                         StructureLabel::GoTo(to) | StructureLabel::ExitTo(to)
                             if next.contains(to) =>
                         {
-                            Ok(insert_goto(to.clone(), &next))
+                            Ok(insert_goto(to.clone(), next))
                         }
 
                         StructureLabel::ExitTo(to) => {

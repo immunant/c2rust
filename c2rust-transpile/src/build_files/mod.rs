@@ -90,16 +90,16 @@ pub fn emit_build_files<'lcmd>(
         ));
     }
 
-    emit_cargo_toml(tcfg, &reg, &build_dir, &crate_cfg, workspace_members);
+    emit_cargo_toml(tcfg, &reg, build_dir, &crate_cfg, workspace_members);
     if tcfg.translate_valist {
-        emit_rust_toolchain(tcfg, &build_dir);
+        emit_rust_toolchain(tcfg, build_dir);
     }
     crate_cfg.and_then(|ccfg| {
-        emit_build_rs(tcfg, &reg, &build_dir, ccfg.link_cmd);
+        emit_build_rs(tcfg, &reg, build_dir, ccfg.link_cmd);
         emit_lib_rs(
             tcfg,
             &reg,
-            &build_dir,
+            build_dir,
             ccfg.modules,
             ccfg.pragmas,
             &ccfg.crates,
@@ -167,7 +167,7 @@ fn convert_module_list(
     module_subset: ModuleSubset,
 ) -> Vec<Module> {
     modules.retain(|m| {
-        let is_binary = tcfg.is_binary(&m);
+        let is_binary = tcfg.is_binary(m);
         if is_binary && module_subset == ModuleSubset::Libraries {
             // Don't add binary modules to lib.rs, these are emitted to
             // standalone, separate binary modules.
@@ -183,12 +183,12 @@ fn convert_module_list(
     let mut module_tree = ModuleTree(BTreeMap::new());
     for m in &modules {
         match m.strip_prefix(build_dir) {
-            Ok(relpath) if !tcfg.is_binary(&m) => {
+            Ok(relpath) if !tcfg.is_binary(m) => {
                 // The module is inside the build directory, use nested modules
                 let mut cur = &mut module_tree;
                 for sm in relpath.iter() {
                     let path = Path::new(sm);
-                    let name = get_module_name(&path, true, false, false).unwrap();
+                    let name = get_module_name(path, true, false, false).unwrap();
                     cur = cur.0.entry(name).or_default();
                 }
             }

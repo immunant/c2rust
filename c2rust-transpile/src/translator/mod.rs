@@ -444,14 +444,14 @@ fn prefix_names(translation: &mut Translation, prefix: &str) {
 
                 name.insert_str(0, prefix);
 
-                translation.renamer.borrow_mut().insert(decl_id, &name);
+                translation.renamer.borrow_mut().insert(decl_id, name);
             }
             CDeclKind::Variable {
                 ref mut ident,
                 has_static_duration,
                 has_thread_duration,
                 ..
-            } if has_static_duration || has_thread_duration => ident.insert_str(0, &prefix),
+            } if has_static_duration || has_thread_duration => ident.insert_str(0, prefix),
             _ => (),
         }
     }
@@ -657,7 +657,7 @@ pub fn translate(
                         .declare_decl_name(decl_id, name);
                 }
                 Name::VarName(name) => {
-                    t.renamer.borrow_mut().insert(decl_id, &name);
+                    t.renamer.borrow_mut().insert(decl_id, name);
                 }
             }
         }
@@ -684,7 +684,7 @@ pub fn translate(
                     Err(e) => {
                         let ref k = t.ast_context.get_decl(&decl_id).map(|x| &x.kind);
                         let msg = format!("Skipping declaration {:?} due to error: {}", k, e);
-                        translate_failure(&t.tcfg, &msg);
+                        translate_failure(t.tcfg, &msg);
                     }
                 }
                 t.cur_file.borrow_mut().take();
@@ -765,7 +765,7 @@ pub fn translate(
                             }
                             _ => format!("Failed to translate declaration: {}", e,),
                         };
-                        translate_failure(&t.tcfg, &msg);
+                        translate_failure(t.tcfg, &msg);
                     }
                 }
                 t.cur_file.borrow_mut().take();
@@ -784,7 +784,7 @@ pub fn translate(
                 Ok(item) => t.items.borrow_mut()[&t.main_file].add_item(item),
                 Err(e) => {
                     let msg = format!("Failed to translate main: {}", e);
-                    translate_failure(&t.tcfg, &msg)
+                    translate_failure(t.tcfg, &msg)
                 }
             }
         }
@@ -1254,7 +1254,7 @@ impl<'c> Translation<'c> {
     {
         let mut item_stores = self.items.borrow_mut();
         let item_store = item_stores
-            .entry(Self::cur_file(&self))
+            .entry(Self::cur_file(self))
             .or_insert_with(ItemStore::new);
         f(item_store)
     }
@@ -2659,7 +2659,7 @@ impl<'c> Translation<'c> {
                 let rust_name = self
                     .renamer
                     .borrow_mut()
-                    .insert(decl_id, &ident)
+                    .insert(decl_id, ident)
                     .expect(&format!("Failed to insert variable '{}'", ident));
 
                 if self.ast_context.is_va_list(typ.ctype) {
@@ -2747,7 +2747,7 @@ impl<'c> Translation<'c> {
 
             ref decl => {
                 let inserted = if let Some(ident) = decl.get_name() {
-                    self.renamer.borrow_mut().insert(decl_id, &ident).is_some()
+                    self.renamer.borrow_mut().insert(decl_id, ident).is_some()
                 } else {
                     false
                 };
@@ -3225,7 +3225,7 @@ impl<'c> Translation<'c> {
 
         if self.tcfg.translate_fn_macros {
             let text = self.ast_context.macro_expansion_text.get(&expr_id);
-            if let Some(converted) = text.and_then(|text| self.convert_macro_invocation(ctx, &text))
+            if let Some(converted) = text.and_then(|text| self.convert_macro_invocation(ctx, text))
             {
                 return Ok(converted);
             }
@@ -4090,7 +4090,7 @@ impl<'c> Translation<'c> {
                     _ => self.convert_function_body(
                         ctx,
                         &name,
-                        &substmt_ids,
+                        substmt_ids,
                         cfg::ImplicitReturnType::Void,
                     )?,
                 };

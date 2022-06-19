@@ -216,7 +216,7 @@ impl TypedAstContext {
         let path_b = self.include_map[self.file_map[b.fileid as usize]].clone();
         for (include_a, include_b) in path_a.iter().zip(path_b.iter()) {
             if include_a.fileid != include_b.fileid {
-                return cmp_pos(&include_a, &include_b);
+                return cmp_pos(include_a, include_b);
             }
         }
         match path_a.len().cmp(&path_b.len()) {
@@ -737,7 +737,7 @@ impl CommentContext {
         for comment in &ast_context.comments {
             // Comments without a valid FileId are probably clang
             // compiler-internal definitions
-            if let Some(file_id) = ast_context.file_id(&comment) {
+            if let Some(file_id) = ast_context.file_id(comment) {
                 comments_by_file
                     .entry(file_id)
                     .or_default()
