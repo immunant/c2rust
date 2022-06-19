@@ -2237,7 +2237,7 @@ impl<'c> Translation<'c> {
                         .renamer
                         .borrow_mut()
                         .insert(decl_id, var.as_str())
-                        .expect(&format!(
+                        .unwrap_or_else(|| panic!(
                             "Failed to insert argument '{}' while converting '{}'",
                             var, name
                         ));
@@ -2660,7 +2660,7 @@ impl<'c> Translation<'c> {
                     .renamer
                     .borrow_mut()
                     .insert(decl_id, ident)
-                    .expect(&format!("Failed to insert variable '{}'", ident));
+                    .unwrap_or_else(|| panic!("Failed to insert variable '{}'", ident));
 
                 if self.ast_context.is_va_list(typ.ctype) {
                     // translate `va_list` variables to `VaListImpl`s and omit the initializer.

@@ -46,7 +46,7 @@ pub fn get_build_dir(tcfg: &TranspilerConfig, cc_db: &Path) -> PathBuf {
         Some(dir) => {
             let output_dir = dir.clone();
             if !output_dir.exists() {
-                fs::create_dir(&output_dir).expect(&format!(
+                fs::create_dir(&output_dir).unwrap_or_else(|_| panic!(
                     "couldn't create build directory: {}",
                     output_dir.display()
                 ));
@@ -84,7 +84,7 @@ pub fn emit_build_files<'lcmd>(
         .unwrap();
 
     if !build_dir.exists() {
-        fs::create_dir_all(&build_dir).expect(&format!(
+        fs::create_dir_all(&build_dir).unwrap_or_else(|_| panic!(
             "couldn't create build directory: {}",
             build_dir.display()
         ));

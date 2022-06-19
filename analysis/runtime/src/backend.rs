@@ -53,7 +53,7 @@ fn log(rx: Receiver<Event>) {
     let path = env::var("INSTRUMENT_OUTPUT")
         .expect("Instrumentation requires the INSTRUMENT_OUTPUT environment variable be set");
     let mut out = BufWriter::new(
-        File::create(&path).expect(&format!("Could not open output file: {:?}", path)),
+        File::create(&path).unwrap_or_else(|_| panic!("Could not open output file: {:?}", path)),
     );
 
     for event in rx {

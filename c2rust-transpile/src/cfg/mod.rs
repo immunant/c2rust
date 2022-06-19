@@ -673,7 +673,7 @@ impl<Lbl: Clone + Ord + Hash + Debug, Stmt> Cfg<Lbl, Stmt> {
                     continue;
                 }
 
-                let blk = self.nodes.get(&lbl).expect(&format!(
+                let blk = self.nodes.get(&lbl).unwrap_or_else(|| panic!(
                     "prune_unreachable_blocks: block not found\n{:?}\n{:?}",
                     lbl,
                     self.nodes.keys().cloned().collect::<Vec<Lbl>>()

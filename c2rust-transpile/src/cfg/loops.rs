@@ -248,7 +248,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
         &self
             .loops
             .get(&id)
-            .expect(&format!("There is no loop with id {:?}", id))
+            .unwrap_or_else(|| panic!("There is no loop with id {:?}", id))
             .0
     }
 }
