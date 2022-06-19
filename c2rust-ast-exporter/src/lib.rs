@@ -29,7 +29,7 @@ pub fn get_untyped_ast(
     debug: bool,
 ) -> Result<clang_ast::AstContext, Error> {
     let cbors = get_ast_cbors(file_path, cc_db, extra_args, debug);
-    let buffer = cbors.values().next().ok_or(Error::new(
+    let buffer = cbors.values().next().ok_or_else(|| Error::new(
         ErrorKind::InvalidData,
         "Could not parse input file",
     ))?;

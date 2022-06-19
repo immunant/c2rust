@@ -645,7 +645,7 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                                 };
 
                                 let mut nested: Vec<Structure<Stmt>> = vec![first_structure];
-                                nested.extend(branches.get(to).cloned().unwrap_or(then.clone()));
+                                nested.extend(branches.get(to).unwrap_or(then).clone());
 
                                 StructureLabel::Nested(nested)
                             }

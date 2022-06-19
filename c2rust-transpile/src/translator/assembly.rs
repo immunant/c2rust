@@ -414,7 +414,7 @@ fn remove_comments(mut asm: &str) -> String {
         let comment_len = asm[comment_begin..]
             .find("*/")
             // Comments with no terminator extend to the end of the string
-            .unwrap_or(asm[comment_begin..].len());
+            .unwrap_or_else(|| asm[comment_begin..].len());
         let before_comment = &asm[..comment_begin];
         without_c_comments.push_str(before_comment);
         asm = &asm[comment_begin + comment_len..];

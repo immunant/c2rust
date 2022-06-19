@@ -165,7 +165,7 @@ impl CommentStore {
         if let Some(comments) = self.output_comments.remove(&old) {
             self.output_comments
                 .entry(new)
-                .or_insert(SmallVec::new())
+                .or_default()
                 .extend(comments);
         }
     }
@@ -189,7 +189,7 @@ impl CommentStore {
                 };
                 self.output_comments
                     .entry(span.lo())
-                    .or_insert(SmallVec::new())
+                    .or_default()
                     .extend(new_comments);
                 span.shrink_to_lo()
             }

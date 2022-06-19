@@ -1021,11 +1021,13 @@ impl DeclStmtStore {
     /// Extract _just_ the Rust statements for a declaration (without initialization). Used when you
     /// want to move just a declaration to a larger scope.
     pub fn extract_decl(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
-        let DeclStmtInfo { decl, assign, .. } = self.store.swap_remove(&decl_id).ok_or(
-            format_err!("Cannot find information on declaration 1 {:?}", decl_id),
-        )?;
+        let DeclStmtInfo { decl, assign, .. } = self.store
+            .swap_remove(&decl_id)
+            .ok_or_else(|| format_err!(
+                "Cannot find information on declaration 1 {:?}", decl_id
+            ))?;
 
-        let decl: Vec<Stmt> = decl.ok_or(format_err!(
+        let decl: Vec<Stmt> = decl.ok_or_else(|| format_err!(
             "Declaration for {:?} has already been extracted",
             decl_id
         ))?;
@@ -1044,11 +1046,13 @@ impl DeclStmtStore {
     /// initially attached to). Used when you've moved a declaration but now you need to also run the
     /// initializer.
     pub fn extract_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
-        let DeclStmtInfo { decl, assign, .. } = self.store.swap_remove(&decl_id).ok_or(
-            format_err!("Cannot find information on declaration 2 {:?}", decl_id),
-        )?;
+        let DeclStmtInfo { decl, assign, .. } = self.store
+            .swap_remove(&decl_id)
+            .ok_or_else(|| format_err!(
+                "Cannot find information on declaration 2 {:?}", decl_id,
+            ))?;
 
-        let assign: Vec<Stmt> = assign.ok_or(format_err!(
+        let assign: Vec<Stmt> = assign.ok_or_else(|| format_err!(
             "Assignment for {:?} has already been extracted",
             decl_id
         ))?;
@@ -1071,12 +1075,12 @@ impl DeclStmtStore {
     ) -> Result<Vec<Stmt>, TranslationError> {
         let DeclStmtInfo {
             decl_and_assign, ..
-        } = self.store.swap_remove(&decl_id).ok_or(format_err!(
+        } = self.store.swap_remove(&decl_id).ok_or_else(|| format_err!(
             "Cannot find information on declaration 3 {:?}",
             decl_id
         ))?;
 
-        let decl_and_assign: Vec<Stmt> = decl_and_assign.ok_or(format_err!(
+        let decl_and_assign: Vec<Stmt> = decl_and_assign.ok_or_else(|| format_err!(
             "Declaration with assignment for {:?} has already been extracted",
             decl_id
         ))?;
@@ -1096,12 +1100,12 @@ impl DeclStmtStore {
         let &DeclStmtInfo {
             ref decl_and_assign,
             ..
-        } = self.store.get(&decl_id).ok_or(format_err!(
+        } = self.store.get(&decl_id).ok_or_else(|| format_err!(
             "Cannot find information on declaration 4 {:?}",
             decl_id
         ))?;
 
-        let decl_and_assign: Vec<Stmt> = decl_and_assign.clone().ok_or(format_err!(
+        let decl_and_assign: Vec<Stmt> = decl_and_assign.clone().ok_or_else(|| format_err!(
             "Declaration with assignment for {:?} has already been extracted",
             decl_id
         ))?;
@@ -1351,7 +1355,7 @@ impl CfgBuilder {
 
                 // We feed the optional output label into the entry label of the next block
                 for stmt in stmt_ids {
-                    let new_label: Label = lbl.unwrap_or(slf.fresh_label());
+                    let new_label: Label = lbl.unwrap_or_else(|| slf.fresh_label());
                     let sub_in_tail = in_tail.clone().filter(|_| Some(stmt) == last);
                     lbl = slf.convert_stmt_help(translator, ctx, *stmt, sub_in_tail, new_label)?;
                 }
@@ -1797,7 +1801,7 @@ impl CfgBuilder {
                 let tgt_label = self
                     .break_labels
                     .last()
-                    .ok_or(format_err!(
+                    .ok_or_else(|| format_err!(
                         "Cannot find what to break from in this ({:?}) 'break' statement",
                         stmt_id,
                     ))?
@@ -1812,7 +1816,7 @@ impl CfgBuilder {
                 let tgt_label = self
                     .continue_labels
                     .last()
-                    .ok_or(format_err!(
+                    .ok_or_else(|| format_err!(
                         "Cannot find what to continue from in this ({:?}) 'continue' statement",
                         stmt_id,
                     ))?
@@ -1850,7 +1854,7 @@ impl CfgBuilder {
                 };
                 self.switch_expr_cases
                     .last_mut()
-                    .ok_or(format_err!(
+                    .ok_or_else(|| format_err!(
                         "Cannot find the 'switch' wrapping this ({:?}) 'case' statement",
                         stmt_id,
                     ))?
@@ -1928,7 +1932,7 @@ impl CfgBuilder {
                 let mut cases: Vec<_> = switch_case.cases.clone();
                 cases.push((
                     mk().wild_pat(),
-                    switch_case.default.unwrap_or(next_label.clone()),
+                    switch_case.default.unwrap_or_else(|| next_label.clone()),
                 ));
 
                 // Add the condition basic block terminator (we need the information built up during

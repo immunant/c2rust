@@ -473,7 +473,7 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&path
     }
 
     let mut file_path: String = path.map_or("internal".to_string(), |path| path_to_str(path));
-    let path = path.unwrap_or(path::Path::new(""));
+    let path = path.unwrap_or_else(|| path::Path::new(""));
     let mut mod_names = mod_names.borrow_mut();
     if !mod_names.contains_key(&file_path.clone()) {
         mod_names.insert(file_path.clone(), path.to_path_buf());
@@ -4650,7 +4650,7 @@ impl<'c> Translation<'c> {
 
                 let &field_id = fields
                     .first()
-                    .ok_or(format_err!("A union should have a field"))?;
+                    .ok_or_else(|| format_err!("A union should have a field"))?;
 
                 let field = match self.ast_context.index(field_id).kind {
                     CDeclKind::Field { typ, .. } => self

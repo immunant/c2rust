@@ -328,7 +328,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                 let label = entries
                     .iter()
                     .next()
-                    .ok_or(format_err!("The loop {:?} has no entry", structure))?;
+                    .ok_or_else(|| format_err!("The loop {:?} has no entry", structure))?;
 
                 let mut these_exits = IndexMap::new();
                 these_exits.extend(
@@ -453,7 +453,7 @@ impl StructureState {
                     }));
                 }
                 if let Some(stmt) = stmts.last_mut() {
-                    stmt.set_span(span_subst_hi(stmt.span(), span).unwrap_or(stmt.span()));
+                    stmt.set_span(span_subst_hi(stmt.span(), span).unwrap_or_else(|| stmt.span()));
                 }
                 return (stmts, span);
             }
@@ -477,7 +477,7 @@ impl StructureState {
                     }));
                 }
                 if let Some(stmt) = stmts.last_mut() {
-                    stmt.set_span(span_subst_hi(stmt.span(), span).unwrap_or(stmt.span()));
+                    stmt.set_span(span_subst_hi(stmt.span(), span).unwrap_or_else(|| stmt.span()));
                 }
                 return (stmts, span);
             }
