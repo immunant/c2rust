@@ -102,7 +102,7 @@ unsafe fn marshal_result(result: *const ExportResult) -> HashMap<String, Vec<u8>
 
     let n = (*result).entries as isize;
     for i in 0..n {
-        let ref res = *result;
+        let res = &*result;
 
         // Convert name field
         let cname = CStr::from_ptr(*res.names.offset(i));

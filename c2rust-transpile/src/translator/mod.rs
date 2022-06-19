@@ -681,7 +681,7 @@ pub fn translate(
                     }
                     Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
-                        let ref k = t.ast_context.get_decl(&decl_id).map(|x| &x.kind);
+                        let k = &t.ast_context.get_decl(&decl_id).map(|x| &x.kind);
                         let msg = format!("Skipping declaration {:?} due to error: {}", k, e);
                         translate_failure(t.tcfg, &msg);
                     }
@@ -749,7 +749,7 @@ pub fn translate(
                     }
                     Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
-                        let ref decl = t.ast_context.get_decl(top_id);
+                        let decl = &t.ast_context.get_decl(top_id);
                         let msg = match decl {
                             Some(decl) => {
                                 let decl_identifier = decl.kind.get_name().map_or_else(
