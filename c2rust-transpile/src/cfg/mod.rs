@@ -2135,10 +2135,10 @@ impl Cfg<Label, StmtOrDecl> {
         fn sanitize_label(lbl: String) -> String {
             format!(
                 "{}\\l",
-                lbl.replace("\t", "  ")
-                    .replace("\\", "\\\\")
-                    .replace("\"", "\\\"")
-                    .replace("\n", "\\l")
+                lbl.replace('\t', "  ")
+                    .replace('\\', "\\\\")
+                    .replace('\"', "\\\"")
+                    .replace('\n', "\\l")
             )
         }
 

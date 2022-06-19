@@ -425,7 +425,7 @@ fn remove_comments(mut asm: &str) -> String {
     // Remove EOL comments from each line
     let mut without_comments = String::with_capacity(without_c_comments.len());
     for line in without_c_comments.lines() {
-        if let Some(line_comment_idx) = line.find("#") {
+        if let Some(line_comment_idx) = line.find('#') {
             without_comments.push_str(&line[..line_comment_idx]);
         } else {
             without_comments.push_str(line);

@@ -358,7 +358,7 @@ impl LLVMInfo {
                 invoke_command(llvm_config.as_ref(), &["--version"]).expect(llvm_config_missing);
             let emsg = format!("invalid version string {}", version);
             version
-                .split(".")
+                .split('.')
                 .next()
                 .expect(&emsg)
                 .parse::<u32>()

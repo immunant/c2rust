@@ -124,7 +124,7 @@ impl ExternCrateDetails {
     fn new(name: &'static str, version: &'static str, macro_use: bool) -> Self {
         Self {
             name,
-            ident: name.replace("-", "_"),
+            ident: name.replace('-', "_"),
             macro_use,
             version,
         }
