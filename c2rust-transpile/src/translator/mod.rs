@@ -4916,7 +4916,7 @@ impl<'c> Translation<'c> {
             | TypeOf(ctype)
             | Complex(ctype) => self.import_type(*ctype, decl_file_id),
             Enum(decl_id) | Typedef(decl_id) | Union(decl_id) | Struct(decl_id) => {
-                let mut decl_id = decl_id.clone();
+                let mut decl_id = *decl_id;
                 // if the `decl` has been "squashed", get the corresponding `decl_id`
                 if self.ast_context.prenamed_decls.contains_key(&decl_id) {
                     decl_id = *self.ast_context.prenamed_decls.get(&decl_id).unwrap();

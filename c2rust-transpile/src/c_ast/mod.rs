@@ -194,7 +194,7 @@ impl TypedAstContext {
     pub fn display_loc(&self, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan> {
         loc.as_ref().map(|loc| DisplaySrcSpan {
             file: self.files[self.file_map[loc.fileid as usize]].path.clone(),
-            loc: loc.clone(),
+            loc: *loc,
         })
     }
 

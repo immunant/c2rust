@@ -556,8 +556,7 @@ fn cast_ptr_to_usize<'tcx>(
         let raw_ptr_local = locals.push(LocalDecl::new(raw_ptr_ty, DUMMY_SP));
         let mut deref = arg
             .place()
-            .expect("Can't get the address of a constant")
-            .clone();
+            .expect("Can't get the address of a constant");
         let mut projs = Vec::with_capacity(deref.projection.len() + 1);
         projs.extend(deref.projection);
         projs.push(ProjectionElem::Deref);

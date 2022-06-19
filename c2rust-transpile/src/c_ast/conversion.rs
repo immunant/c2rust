@@ -124,7 +124,7 @@ impl IdMapper {
 /// Transfer location information off of an `AstNode` and onto something that is `Located`
 fn located<T>(node: &AstNode, t: T) -> Located<T> {
     Located {
-        loc: Some(node.loc.clone()),
+        loc: Some(node.loc),
         kind: t,
     }
 }
@@ -240,7 +240,7 @@ pub struct ConversionContext {
 fn display_loc(ctx: &AstContext, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan> {
     loc.as_ref().map(|loc| DisplaySrcSpan {
         file: ctx.files[loc.fileid as usize].path.clone(),
-        loc: loc.clone(),
+        loc: *loc,
     })
 }
 
