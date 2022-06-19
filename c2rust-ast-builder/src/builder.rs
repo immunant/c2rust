@@ -336,7 +336,7 @@ impl<S: Make<PathSegment>> Make<Path> for Vec<S> {
 
 impl Make<TokenStream> for Vec<TokenTree> {
     fn make(self, _mk: &Builder) -> TokenStream {
-        self.into_iter().collect::<TokenStream>().into()
+        self.into_iter().collect::<TokenStream>()
     }
 }
 
@@ -791,7 +791,7 @@ impl Builder {
     {
         let args = args.into_iter().map(|a| *a.make(&self)).collect();
         Box::new(Expr::Array(ExprArray {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             bracket_token: token::Bracket(self.span),
             elems: args,
         }))
@@ -805,7 +805,7 @@ impl Builder {
         let func = func.make(&self);
         let args = args.into_iter().map(|a| *a.make(&self)).collect();
         Box::new(parenthesize_if_necessary(Expr::Call(ExprCall {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             paren_token: token::Paren(self.span),
             func,
             args,
@@ -856,7 +856,7 @@ impl Builder {
 
         Box::new(parenthesize_if_necessary(Expr::MethodCall(
             ExprMethodCall {
-                attrs: self.attrs.into(),
+                attrs: self.attrs,
                 dot_token: token::Dot(self.span),
                 paren_token: token::Paren(self.span),
                 turbofish,
@@ -873,7 +873,7 @@ impl Builder {
     {
         let exprs: Vec<Box<Expr>> = exprs.into_iter().map(|x| x.make(&self)).collect();
         Box::new(Expr::Tuple(ExprTuple {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             paren_token: token::Paren(self.span),
             elems: punct_box(exprs),
         }))
@@ -895,7 +895,7 @@ impl Builder {
         }
 
         Box::new(parenthesize_if_necessary(Expr::Binary(ExprBinary {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             left: lhs,
             op,
             right: rhs,
@@ -911,7 +911,7 @@ impl Builder {
         // FIXME: set span for op
         let a = a.make(&self);
         Box::new(parenthesize_if_necessary(Expr::Unary(ExprUnary {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             op,
             expr: a,
         })))
@@ -924,7 +924,7 @@ impl Builder {
         let mut lit = lit.make(&self);
         lit.set_span(self.span);
         Box::new(Expr::Lit(ExprLit {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             lit,
         }))
     }
@@ -938,7 +938,7 @@ impl Builder {
         let t = t.make(&self);
 
         Box::new(parenthesize_if_necessary(Expr::Cast(ExprCast {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             as_token: token::As(self.span),
             expr: e,
             ty: t,
@@ -953,7 +953,7 @@ impl Builder {
         let e = e.make(&self);
         let t = t.make(&self);
         Box::new(Expr::Type(ExprType {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             colon_token: token::Colon(self.span),
             expr: e,
             ty: t,
@@ -974,7 +974,7 @@ impl Builder {
     {
         let blk = blk.make(&self);
         Box::new(Expr::Block(ExprBlock {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             block: *blk,
             label: None,
         }))
@@ -988,7 +988,7 @@ impl Builder {
         let blk = blk.make(&self);
         let lbl = lbl.make(&self);
         Box::new(Expr::Block(ExprBlock {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             block: *blk,
             label: Some(lbl),
         }))
@@ -1002,7 +1002,7 @@ impl Builder {
         let lhs = lhs.make(&self);
         let rhs = rhs.make(&self);
         Box::new(Expr::Assign(ExprAssign {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             eq_token: token::Eq(self.span),
             left: lhs,
             right: rhs,
@@ -1020,7 +1020,7 @@ impl Builder {
         let lhs = lhs.make(&self);
         let rhs = rhs.make(&self);
         Box::new(Expr::AssignOp(ExprAssignOp {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             op,
             left: lhs,
             right: rhs,
@@ -1035,7 +1035,7 @@ impl Builder {
         let lhs = lhs.make(&self);
         let rhs = rhs.make(&self);
         Box::new(parenthesize_if_necessary(Expr::Index(ExprIndex {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             bracket_token: token::Bracket(self.span),
             expr: lhs,
             index: rhs,
@@ -1063,7 +1063,7 @@ impl Builder {
     {
         let path = path.make(&self);
         Box::new(Expr::Path(ExprPath {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             qself,
             path,
         }))
@@ -1079,7 +1079,7 @@ impl Builder {
         let expr = expr.make(&self);
         let n = n.make(&self);
         Box::new(Expr::Repeat(ExprRepeat {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             bracket_token: token::Bracket(self.span),
             semi_token: token::Semi(self.span),
             expr,
@@ -1093,7 +1093,7 @@ impl Builder {
     {
         let e = e.make(&self);
         Box::new(Expr::Paren(ExprParen {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             paren_token: token::Paren(self.span),
             expr: e,
         }))
@@ -1113,7 +1113,7 @@ impl Builder {
     {
         let e = e.make(&self);
         Box::new(Expr::Reference(ExprReference {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             and_token: token::And(self.span),
             raw: Default::default(),
             mutability: self.mutbl.to_token(),
@@ -1127,7 +1127,7 @@ impl Builder {
     {
         let mac = mac.make(&self);
         Box::new(Expr::Macro(ExprMacro {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             mac,
         }))
     }
@@ -1138,7 +1138,7 @@ impl Builder {
     {
         let path = path.make(&self);
         Box::new(Expr::Struct(ExprStruct {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             brace_token: token::Brace(self.span),
             dot2_token: None,
             path,
@@ -1161,7 +1161,7 @@ impl Builder {
         let path = path.make(&self);
         let base = base.map(|e| e.make(&self));
         Box::new(Expr::Struct(ExprStruct {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             brace_token: token::Brace(self.span),
             dot2_token: Some(token::Dot2(self.span)),
             path,
@@ -1178,7 +1178,7 @@ impl Builder {
         let val = val.make(&self);
         let field = field.make(&self);
         Box::new(parenthesize_if_necessary(Expr::Field(ExprField {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             dot_token: token::Dot(self.span),
             base: val,
             member: Member::Named(field),
@@ -1192,7 +1192,7 @@ impl Builder {
         let val = val.make(&self);
         let field = field.make(&self);
         Box::new(parenthesize_if_necessary(Expr::Field(ExprField {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             dot_token: token::Dot(self.span),
             base: val,
             member: Member::Unnamed(Index {
@@ -1213,7 +1213,7 @@ impl Builder {
             member: Member::Named(ident),
             expr: *expr,
             colon_token: Some(token::Colon(self.span)),
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
         }
     }
 
@@ -1224,7 +1224,7 @@ impl Builder {
         let cond = cond.make(&self);
         let arms = arms.into_iter().map(|arm| arm.make(&self)).collect();
         Box::new(Expr::Match(ExprMatch {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             match_token: token::Match(self.span),
             brace_token: token::Brace(self.span),
             expr: cond,
@@ -1315,7 +1315,7 @@ impl Builder {
         });
 
         Box::new(Expr::If(ExprIf {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             if_token: token::If(self.span),
             cond,
             then_branch: then_case,
@@ -1340,7 +1340,7 @@ impl Builder {
         });
 
         Box::new(Expr::While(ExprWhile {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             while_token: token::While(self.span),
             cond,
             body,
@@ -1363,7 +1363,7 @@ impl Builder {
         });
 
         Box::new(Expr::Loop(ExprLoop {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             loop_token: token::Loop(self.span),
             body,
             label,
@@ -1389,7 +1389,7 @@ impl Builder {
         });
 
         Box::new(Expr::ForLoop(ExprForLoop {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             for_token: token::For(self.span),
             in_token: token::In(self.span),
             pat,
@@ -1407,7 +1407,7 @@ impl Builder {
     {
         let name = name.make(&self);
         Box::new(Pat::Ident(PatIdent {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             mutability: self.mutbl.to_token(),
             by_ref: None,
             ident: name,
@@ -1421,7 +1421,7 @@ impl Builder {
     {
         let pats: Vec<Box<Pat>> = pats.into_iter().map(|x| x.make(&self)).collect();
         Box::new(Pat::Tuple(PatTuple {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             paren_token: token::Paren(self.span),
             elems: punct_box(pats),
         }))
@@ -1433,7 +1433,7 @@ impl Builder {
     {
         let path = path.make(&self);
         Box::new(Pat::Path(PatPath {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             qself,
             path,
         }))
@@ -1441,7 +1441,7 @@ impl Builder {
 
     pub fn wild_pat(self) -> Box<Pat> {
         Box::new(Pat::Wild(PatWild {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             underscore_token: token::Underscore(self.span),
         }))
     }
@@ -1452,7 +1452,7 @@ impl Builder {
     {
         let lit = lit.make(&self);
         Box::new(Pat::Lit(PatLit {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             expr: lit,
         }))
     }
@@ -1474,7 +1474,7 @@ impl Builder {
     {
         let name = name.make(&self);
         Box::new(Pat::Ident(PatIdent {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             by_ref: Some(token::Ref(self.span)),
             mutability: self.mutbl.to_token(),
             ident: name,
@@ -1488,7 +1488,7 @@ impl Builder {
     {
         let pats: Vec<Box<Pat>> = pats.into_iter().map(|p| p.make(&self)).collect();
         Box::new(Pat::Or(PatOr {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             leading_vert: None, // Untested
             cases: punct_box(pats),
         }))
@@ -2234,7 +2234,7 @@ impl Builder {
             brace_token: token::Brace(self.span),
         };
         ExprUnsafe {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             unsafe_token: token::Unsafe(self.span),
             block: blk,
         }
@@ -2266,7 +2266,7 @@ impl Builder {
         let label = label.map(|l| l.make(&self).name);
         let value = value.map(|v| v.make(&self));
         Box::new(Expr::Break(ExprBreak {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             break_token: token::Break(self.span),
             label,
             expr: value,
@@ -2328,7 +2328,7 @@ impl Builder {
     {
         let ident = ident.make(&self);
         GenericParam::Type(TypeParam {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             ident,
             bounds: punct(vec![]),
             colon_token: None,
@@ -2347,7 +2347,7 @@ impl Builder {
     {
         let lifetime = lifetime.make(&self);
         GenericParam::Lifetime(LifetimeDef {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             lifetime,
             colon_token: None,
             bounds: punct(vec![]),
@@ -2364,7 +2364,7 @@ impl Builder {
         Ma: Make<TokenStream>,
     {
         let path = path.make(&self);
-        let args = args.make(&self).into();
+        let args = args.make(&self);
         Attribute {
             style,
             path,
@@ -2493,7 +2493,7 @@ impl Builder {
             *pat
         };
         Local {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             let_token: token::Let(self.span),
             semi_token: token::Semi(self.span),
             pat,
@@ -2507,7 +2507,7 @@ impl Builder {
     {
         let val = val.map(|x| x.make(&self));
         Box::new(Expr::Return(ExprReturn {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             return_token: token::Return(self.span),
             expr: val,
         }))
@@ -2523,7 +2523,7 @@ impl Builder {
         });
 
         Box::new(Expr::Continue(ExprContinue {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             continue_token: token::Continue(self.span),
             label,
         }))
@@ -2539,7 +2539,7 @@ impl Builder {
         });
 
         Box::new(Expr::Break(ExprBreak {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             break_token: token::Break(self.span),
             label,
             expr: None,
@@ -2572,7 +2572,7 @@ impl Builder {
             CaptureBy::Value => Some(Default::default()),
         };
         Box::new(Expr::Closure(ExprClosure {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             or1_token: token::Or(self.span),
             or2_token: token::Or(self.span),
             capture,
