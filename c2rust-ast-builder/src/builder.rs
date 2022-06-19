@@ -490,7 +490,7 @@ impl Builder {
 
     pub fn vis<V: Make<Visibility>>(self, vis: V) -> Self {
         let vis = vis.make(&self);
-        Builder { vis: vis, ..self }
+        Builder { vis, ..self }
     }
 
     pub fn pub_(self) -> Self {
@@ -501,7 +501,7 @@ impl Builder {
     pub fn set_mutbl<M: Make<Mutability>>(self, mutbl: M) -> Self {
         let mutbl = mutbl.make(&self);
         Builder {
-            mutbl: mutbl,
+            mutbl,
             ..self
         }
     }
@@ -513,7 +513,7 @@ impl Builder {
     pub fn unsafety<U: Make<Unsafety>>(self, unsafety: U) -> Self {
         let unsafety = unsafety.make(&self);
         Builder {
-            unsafety: unsafety,
+            unsafety,
             ..self
         }
     }
@@ -525,7 +525,7 @@ impl Builder {
     pub fn constness<C: Make<Constness>>(self, constness: C) -> Self {
         let constness = constness.make(&self);
         Builder {
-            constness: constness,
+            constness,
             ..self
         }
     }
@@ -536,12 +536,12 @@ impl Builder {
 
     pub fn extern_<A: Make<Extern>>(self, ext: A) -> Self {
         let ext = ext.make(&self);
-        Builder { ext: ext, ..self }
+        Builder { ext, ..self }
     }
 
     pub fn span<S: Make<Span>>(self, span: S) -> Self {
         let span = span.make(&self);
-        Builder { span: span, ..self }
+        Builder { span, ..self }
     }
 
     pub fn generic_over<P: Make<GenericParam>>(mut self, param: P) -> Self {
@@ -623,7 +623,7 @@ impl Builder {
         let path = path.make(self);
         let kind = kind.make(self);
         PreparedMetaItem {
-            path: path,
+            path,
             tokens: kind.to_token_stream(),
         }
     }
@@ -635,7 +635,7 @@ impl Builder {
         let mut attrs = self.attrs;
         attrs.push(attr);
         Builder {
-            attrs: attrs,
+            attrs,
             ..self
         }
     }
@@ -720,7 +720,7 @@ impl Builder {
         AngleBracketedGenericArguments {
             colon2_token: Some(token::Colon2(self.span)), // Always include a colon2 for turbofish
             lt_token: token::Lt(self.span),
-            args: args,
+            args,
             gt_token: token::Gt(self.span),
         }
     }
@@ -1993,7 +1993,7 @@ impl Builder {
                 UseTree::Rename(UseRename {
                     ident,
                     as_token: token::As(self.span),
-                    rename: rename,
+                    rename,
                 }),
             )
         } else {
@@ -2230,7 +2230,7 @@ impl Builder {
     {
         let stmts = stmts.into_iter().map(|s| s.make(&self)).collect();
         let blk = Block {
-            stmts: stmts,
+            stmts,
             brace_token: token::Brace(self.span),
         };
         ExprUnsafe {
@@ -2246,7 +2246,7 @@ impl Builder {
     {
         let stmts = stmts.into_iter().map(|s| s.make(&self)).collect();
         Box::new(Block {
-            stmts: stmts,
+            stmts,
             brace_token: token::Brace(self.span),
         })
     }
@@ -2296,8 +2296,8 @@ impl Builder {
         let pat = pat.make(&self);
         FnArg::Typed(PatType {
             attrs: Vec::new(),
-            ty: ty,
-            pat: pat,
+            ty,
+            pat,
             colon_token: token::Colon(self.span),
         })
     }
@@ -2329,7 +2329,7 @@ impl Builder {
         let ident = ident.make(&self);
         GenericParam::Type(TypeParam {
             attrs: self.attrs.into(),
-            ident: ident,
+            ident,
             bounds: punct(vec![]),
             colon_token: None,
             eq_token: None,
@@ -2399,7 +2399,7 @@ impl Builder {
         let path = path.make(&self);
         let args = args.make(&self);
         Meta::List(MetaList {
-            path: path,
+            path,
             paren_token: token::Paren(self.span),
             nested: punct(args),
         })
@@ -2579,7 +2579,7 @@ impl Builder {
             asyncness: IsAsync::NotAsync.to_token(),
             movability: mov.to_token(),
             body,
-            inputs: inputs,
+            inputs,
             output,
         }))
     }

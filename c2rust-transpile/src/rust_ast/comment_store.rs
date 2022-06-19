@@ -151,7 +151,7 @@ impl CommentStore {
         } else {
             let new_comment = comments::Comment {
                 //style,
-                lines: lines,
+                lines,
                 pos: BytePos(0), // overwritten in `add_comment`
             };
             Some(self.insert_comments(smallvec![new_comment], pos))
