@@ -188,7 +188,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
             }
         }
 
-        return Some(loop_id);
+        Some(loop_id)
     }
 
     /// Filter out any nodes which need to be pruned from the entire CFG due to being unreachable.

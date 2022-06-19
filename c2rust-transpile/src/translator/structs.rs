@@ -810,7 +810,7 @@ impl<'a> Translation<'a> {
                 }
             };
 
-            return Ok(WithStmts::new(stmts, val));
+            Ok(WithStmts::new(stmts, val))
         })
     }
 }

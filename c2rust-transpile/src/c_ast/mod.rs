@@ -335,21 +335,18 @@ impl TypedAstContext {
         let resolved_ctype = self.resolve_type(typ);
         match resolved_ctype.kind {
             CTypeKind::Struct(record_id) => {
-                let r#struct = &self[record_id];
                 if let CDeclKind::Struct {
                     name: Some(ref nam),
                     ..
-                } = r#struct.kind
+                } = &self[record_id].kind
                 {
-                    return nam == "__va_list_tag" || nam == "__va_list";
+                    nam == "__va_list_tag" || nam == "__va_list"
                 } else {
                     false
                 }
             }
             // va_list is a 1 element array; return true iff element type is struct __va_list_tag
-            CTypeKind::ConstantArray(typ, 1) => {
-                return self.is_va_list(typ);
-            }
+            CTypeKind::ConstantArray(typ, 1) => self.is_va_list(typ),
             _ => false,
         }
     }

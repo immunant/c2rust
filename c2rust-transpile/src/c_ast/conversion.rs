@@ -245,17 +245,11 @@ fn display_loc(ctx: &AstContext, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan
 }
 
 fn has_packed_attribute(attrs: Vec<Value>) -> bool {
-    for attr in attrs {
-        match from_value::<String>(attr.clone())
-            .expect("Record attributes should be strings")
-            .as_str()
-        {
-            "packed" => return true,
-            _ => {}
-        }
-    }
-
-    return false;
+    attrs.iter().any(|attr| {
+        let attr_name: String =
+            from_value(attr.clone()).expect("Record attributes should be strings");
+        attr_name == "packed"
+    })
 }
 
 impl ConversionContext {

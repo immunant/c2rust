@@ -513,8 +513,6 @@ impl RelooperState {
             then,
         });
         self.relooper(follow_entries, follow_blocks, result, disable_heuristics);
-
-        return;
     }
 }
 

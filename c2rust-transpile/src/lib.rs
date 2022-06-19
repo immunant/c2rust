@@ -367,7 +367,7 @@ fn get_extra_args_macos() -> Vec<String> {
 }
 
 fn invoke_refactor(_build_dir: &Path) -> Result<(), Error> {
-    return Ok(());
+    Ok(())
 }
 
 fn reorganize_definitions(

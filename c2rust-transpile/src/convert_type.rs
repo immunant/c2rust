@@ -249,7 +249,7 @@ impl TypeConverter {
             variadic,
             ReturnType::Type(Default::default(), output),
         ));
-        return Ok(mk().unsafe_().extern_("C").barefn_ty(fn_ty));
+        Ok(mk().unsafe_().extern_("C").barefn_ty(fn_ty))
     }
 
     pub fn convert_pointer(

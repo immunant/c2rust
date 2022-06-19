@@ -372,7 +372,7 @@ pub fn has_multiple<Stmt>(root: &[Structure<Stmt>]) -> bool {
                     _ => false,
                 })
         }
-        &Structure::Multiple { .. } => return true,
+        &Structure::Multiple { .. } => true,
         &Structure::Loop { ref body, .. } => has_multiple(body),
     })
 }
