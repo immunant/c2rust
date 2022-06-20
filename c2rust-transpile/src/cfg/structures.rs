@@ -643,7 +643,7 @@ impl StructureState {
                         let stmts = &then_branch.stmts;
                         {
                             if stmts.len() == 1 {
-                                if let Some(&Stmt::Semi(ref expr, _token)) = stmts.iter().nth(0) {
+                                if let Some(&Stmt::Semi(ref expr, _token)) = stmts.get(0) {
                                     if let syn::Expr::Break(ExprBreak {
                                         label: None,
                                         expr: None,
