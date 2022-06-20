@@ -387,7 +387,7 @@ impl TypeConverter {
             // K&R-style function
             CTypeKind::Function(ret, _, is_var, is_noreturn, false) => {
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
-                let fn_ty = self.convert_function(ctxt, opt_ret, &vec![], is_var)?;
+                let fn_ty = self.convert_function(ctxt, opt_ret, &[], is_var)?;
                 Ok(fn_ty)
             }
 

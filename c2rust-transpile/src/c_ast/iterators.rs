@@ -264,7 +264,7 @@ fn immediate_stmt_children(kind: &CStmtKind) -> Vec<SomeId> {
             ..
         } => {
             let mut res = vec![];
-            for list in vec![inputs, outputs] {
+            for list in [inputs, outputs] {
                 for elt in list {
                     res.push(elt.expression.into())
                 }
