@@ -2190,7 +2190,7 @@ impl Cfg<Label, StmtOrDecl> {
             //  Scope the node with the loops it is part of
             let mut closing_braces = 0;
             if show_loops {
-                file.write(b"  ")?;
+                file.write_all(b"  ")?;
 
                 let loop_ids: Vec<LoopId> = self.loops.enclosing_loops(lbl);
 
@@ -2231,10 +2231,10 @@ impl Cfg<Label, StmtOrDecl> {
 
             //  Close the loops the node is part of
             for _ in 0..closing_braces {
-                file.write(b"  }")?;
+                file.write_all(b"  }")?;
             }
             if closing_braces > 0 {
-                file.write(b"\n")?;
+                file.write_all(b"\n")?;
             }
 
             // All the edges starting from this node

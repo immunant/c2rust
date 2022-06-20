@@ -564,7 +564,7 @@ impl<W: Write> Printer<W> {
                         }) => {
                             self.pad()?;
                             self.print_qtype(*typ, Some(ident.as_str()), context)?;
-                            self.writer.write(b",\n")?;
+                            self.writer.write_all(b",\n")?;
                         }
                         _ => panic!("Function argument is not VarDecl"),
                     }
