@@ -161,7 +161,7 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
             typ, initializer, ..
         } => {
             let mut res = intos![typ.ctype];
-            for x in initializer {
+            if let Some(x) = initializer {
                 res.push(x.into())
             }
             res
@@ -308,7 +308,7 @@ fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
 
         VariableArray(elt, cnt) => {
             let mut res = intos![elt];
-            for x in cnt {
+            if let Some(x) = cnt {
                 res.push(x.into())
             }
             res
