@@ -4008,7 +4008,7 @@ impl<'c> Translation<'c> {
         let ident = split.next()?;
         let args = split.next()?.trim_end_matches(')');
 
-        let ts: TokenStream = syn::parse_str(&args.to_string()).ok()?;
+        let ts: TokenStream = syn::parse_str(args).ok()?;
         Some(WithStmts::new_val(mk().mac_expr(mk().mac(
             ident,
             ts,
