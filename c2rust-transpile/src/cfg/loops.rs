@@ -164,17 +164,9 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
 
     /// Find the smallest possible loop that contains all of the items
     pub fn tightest_common_loop<E: Iterator<Item = Lbl>>(&self, mut entries: E) -> Option<LoopId> {
-        let first = if let Some(f) = entries.next() {
-            f
-        } else {
-            return None;
-        };
+        let first = entries.next()?;
 
-        let mut loop_id = if let Some(i) = self.node_loops.get(&first) {
-            *i
-        } else {
-            return None;
-        };
+        let mut loop_id = *self.node_loops.get(&first)?;
 
         for entry in entries {
             // Widen the loop until it contains the `entry`, or it can no longer be widened.
