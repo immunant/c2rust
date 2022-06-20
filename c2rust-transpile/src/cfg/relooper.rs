@@ -339,7 +339,7 @@ impl RelooperState {
 
                     // Check we've actually visited all of the expected content
                     visited.swap_remove(join);
-                    if let Some(_) = visited.difference(content).next() {
+                    if visited.difference(content).next().is_some() {
                         recognized_c_multiple = false;
                     }
                 }

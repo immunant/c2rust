@@ -282,7 +282,7 @@ impl<'c> Translation<'c> {
             "__builtin_va_start" => {
                 if ctx.is_unused() && args.len() == 2 {
                     if let Some(va_id) = self.match_vastart(args[0]) {
-                        if let Some(_) = self.ast_context.get_decl(&va_id) {
+                        if self.ast_context.get_decl(&va_id).is_some() {
                             let dst = self.convert_expr(ctx.expect_valistimpl().used(), args[0])?;
                             let fn_ctx = self.function_context.borrow();
                             let src = fn_ctx.get_va_list_arg_name();
