@@ -617,7 +617,7 @@ impl Cfg<Label, StmtOrDecl> {
                         let (stmts, val) = translator.convert_expr(ctx, expr_id)?.discard_unsafe();
 
                         wip.body
-                            .extend(stmts.into_iter().map(|s| StmtOrDecl::Stmt(s)));
+                            .extend(stmts.into_iter().map(StmtOrDecl::Stmt));
                         wip.body.push(StmtOrDecl::Stmt(mk().semi_stmt(
                             mk().break_expr_value(Some(brk_label.pretty_print()), Some(val)),
                         )));

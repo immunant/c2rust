@@ -472,7 +472,7 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&path
             .replace('-', "_")
     }
 
-    let mut file_path: String = path.map_or("internal".to_string(), |path| path_to_str(path));
+    let mut file_path: String = path.map_or("internal".to_string(), path_to_str);
     let path = path.unwrap_or_else(|| path::Path::new(""));
     let mut mod_names = mod_names.borrow_mut();
     if !mod_names.contains_key(&file_path.clone()) {
@@ -488,7 +488,7 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&path
                 .parent()
                 .unwrap()
                 .iter()
-                .map(|os| PathBuf::from(os))
+                .map(PathBuf::from)
                 .collect();
 
             let mut to_prepend = path_to_str(split_path.last().unwrap());
