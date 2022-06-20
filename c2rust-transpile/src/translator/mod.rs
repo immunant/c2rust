@@ -1506,10 +1506,7 @@ impl<'c> Translation<'c> {
         let fn_decl = mk().fn_decl(fn_name.clone(), vec![], None, fn_ty.clone());
         let fn_bare_decl = Box::new((vec![], None, fn_ty));
         let fn_block = mk().block(sectioned_static_initializers);
-        let fn_item = mk()
-            .unsafe_()
-            .extern_("C")
-            .fn_item(fn_decl.clone(), fn_block);
+        let fn_item = mk().unsafe_().extern_("C").fn_item(fn_decl, fn_block);
 
         let static_attributes = mk()
             .single_attr("used")
@@ -2171,7 +2168,7 @@ impl<'c> Translation<'c> {
                 if let Some((canon_val, canon_ty)) = canonical {
                     let canon_ty_kind = self.ast_context.resolve_type(canon_ty).kind.clone();
                     if let Some(smaller_ty) =
-                        CTypeKind::smaller_compatible_type(canon_ty_kind.clone(), ty_kind.clone())
+                        CTypeKind::smaller_compatible_type(canon_ty_kind.clone(), ty_kind)
                     {
                         if smaller_ty == canon_ty_kind {
                             Ok(Some((canon_val, canon_ty)))
@@ -2661,7 +2658,7 @@ impl<'c> Translation<'c> {
 
                 if self.ast_context.is_va_list(typ.ctype) {
                     // translate `va_list` variables to `VaListImpl`s and omit the initializer.
-                    let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
+                    let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name);
                     let ty = {
                         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
                         let path = vec![std_or_core, "ffi", "VaListImpl"];

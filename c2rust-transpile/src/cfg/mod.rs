@@ -1538,10 +1538,10 @@ impl CfgBuilder {
                 self.continue_labels.push(cond_entry.clone());
 
                 let body_stuff =
-                    self.convert_stmt_help(translator, ctx, body_stmt, None, body_entry.clone())?;
+                    self.convert_stmt_help(translator, ctx, body_stmt, None, body_entry)?;
                 if let Some(body_end) = body_stuff {
                     let wip_body = self.new_wip_block(body_end);
-                    self.add_wip_block(wip_body, Jump(cond_entry.clone()));
+                    self.add_wip_block(wip_body, Jump(cond_entry));
                 }
 
                 self.last_per_stmt_mut().saw_unmatched_break = saw_unmatched_break;
@@ -1551,7 +1551,7 @@ impl CfgBuilder {
                 self.close_loop();
 
                 //Return
-                Ok(Some(self.new_wip_block(next_entry.clone())))
+                Ok(Some(self.new_wip_block(next_entry)))
             }
 
             CStmtKind::DoWhile {
@@ -1593,7 +1593,7 @@ impl CfgBuilder {
                 self.add_wip_block(
                     cond_wip,
                     match cond_val {
-                        Some(true) => Jump(body_entry.clone()),
+                        Some(true) => Jump(body_entry),
                         Some(false) => Jump(next_entry.clone()),
                         None => Branch(val, body_entry, next_entry.clone()),
                     },
@@ -2021,7 +2021,7 @@ impl CfgBuilder {
         // Close off the `wip` using a `break` terminator
         let brk_lbl: Label = self.fresh_label();
 
-        let (tail_expr, use_brk_lbl) = match in_tail.clone() {
+        let (tail_expr, use_brk_lbl) = match in_tail {
             Some(ImplicitReturnType::Main) => (
                 mk().return_expr(Some(mk().lit_expr(mk().int_lit(0, "")))),
                 false,

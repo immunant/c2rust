@@ -161,7 +161,7 @@ impl TranslationError {
     pub fn new(loc: Option<DisplaySrcSpan>, inner: Context<TranslationErrorKind>) -> Self {
         let mut loc_stack = vec![];
         if let Some(loc) = loc {
-            loc_stack.push(loc.clone());
+            loc_stack.push(loc);
         }
         TranslationError {
             loc: loc_stack,

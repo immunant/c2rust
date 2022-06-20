@@ -894,7 +894,7 @@ impl<'c> Translation<'c> {
                     } else {
                         mk().unary_expr(UnOp::Neg(Default::default()), one)
                     };
-                    mk().method_call_expr(read.clone(), "offset", vec![n])
+                    mk().method_call_expr(read, "offset", vec![n])
                 } else if self
                     .ast_context
                     .resolve_type(ty.ctype)
@@ -907,14 +907,14 @@ impl<'c> Translation<'c> {
                         ));
                     }
                     let m = if up { "wrapping_add" } else { "wrapping_sub" };
-                    mk().method_call_expr(read.clone(), m, vec![one])
+                    mk().method_call_expr(read, m, vec![one])
                 } else {
                     let k = if up {
                         BinOp::Add(Default::default())
                     } else {
                         BinOp::Sub(Default::default())
                     };
-                    mk().binary_expr(k, read.clone(), one)
+                    mk().binary_expr(k, read, one)
                 };
 
                 // *p = *p + rhs

@@ -1602,8 +1602,8 @@ impl ConversionContext {
                     let designators = designator_cbors
                         .into_iter()
                         .map(|x| {
-                            let entry = from_value::<Vec<Value>>(x.clone())
-                                .expect("expected designator array");
+                            let entry =
+                                from_value::<Vec<Value>>(x).expect("expected designator array");
                             match from_value(entry[0].clone()).expect("expected designator tag") {
                                 1 => Designator::Index(
                                     from_value(entry[1].clone()).expect("expected array index"),
