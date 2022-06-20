@@ -666,7 +666,7 @@ impl TypedAstContext {
 
     pub fn sort_top_decls(&mut self) {
         // Group and sort declarations by file and by position
-        let mut decls_top = mem::replace(&mut self.c_decls_top, vec![]);
+        let mut decls_top = mem::take(&mut self.c_decls_top);
         decls_top.sort_unstable_by(|a, b| {
             let a = self.index(*a);
             let b = self.index(*b);
