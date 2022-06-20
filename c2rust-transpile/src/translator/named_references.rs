@@ -56,16 +56,16 @@ impl<'c> Translation<'c> {
         reference.and_then(|reference| {
             /// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
             fn is_lvalue(e: &Box<Expr>) -> bool {
-                match **unparen(e) {
+                matches!(
+                    unparen(e).as_ref(),
                     Expr::Path(..)
-                    | Expr::Unary(ExprUnary {
-                        op: syn::UnOp::Deref(_),
-                        ..
-                    })
-                    | Expr::Field(..)
-                    | Expr::Index(..) => true,
-                    _ => false,
-                }
+                        | Expr::Unary(ExprUnary {
+                            op: syn::UnOp::Deref(_),
+                            ..
+                        })
+                        | Expr::Field(..)
+                        | Expr::Index(..)
+                )
             }
 
             // Check if something is a side-effect free Rust lvalue.

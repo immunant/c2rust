@@ -1412,10 +1412,7 @@ impl<'c> Translation<'c> {
                 | CExprKind::ExplicitCast(_, _, PointerToIntegral, _, _) => return true,
 
                 CExprKind::Binary(typ, op, _, _, _, _) => {
-                    let problematic_op = match op {
-                        Add | Subtract | Multiply | Divide | Modulus => true,
-                        _ => false,
-                    };
+                    let problematic_op = matches!(op, Add | Subtract | Multiply | Divide | Modulus);
 
                     if problematic_op {
                         let k = &self.ast_context.resolve_type(typ.ctype).kind;
@@ -3451,11 +3448,7 @@ impl<'c> Translation<'c> {
 
             CExprKind::ImplicitCast(ty, expr, kind, opt_field_id, _)
             | CExprKind::ExplicitCast(ty, expr, kind, opt_field_id, _) => {
-                let is_explicit = if let CExprKind::ExplicitCast(..) = *expr_kind {
-                    true
-                } else {
-                    false
-                };
+                let is_explicit = matches!(expr_kind, CExprKind::ExplicitCast(..));
                 // A reference must be decayed if a bitcast is required. Const casts in
                 // LLVM 8 are now NoOp casts, so we need to include it as well.
                 match kind {
@@ -3729,10 +3722,7 @@ impl<'c> Translation<'c> {
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _, _)
                         // Only a direct function call with pointer decay if the
                         // callee is a declref
-                        if match self.ast_context[fexp].kind {
-                            CExprKind::DeclRef(..) => true,
-                            _ => false,
-                        } =>
+                        if matches!(self.ast_context[fexp].kind, CExprKind::DeclRef(..)) =>
                     {
                         self.convert_expr(ctx.used(), fexp)?
                     }

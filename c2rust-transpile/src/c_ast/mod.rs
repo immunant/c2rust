@@ -291,15 +291,15 @@ impl TypedAstContext {
     /// the targets of pointers
     pub fn is_forward_declared_type(&self, typ: CTypeId) -> bool {
         match self.resolve_type(typ).kind.as_underlying_decl() {
-            Some(decl_id) => match self[decl_id].kind {
-                CDeclKind::Struct { fields: None, .. } => true,
-                CDeclKind::Union { fields: None, .. } => true,
-                CDeclKind::Enum {
-                    integral_type: None,
-                    ..
-                } => true,
-                _ => false,
-            },
+            Some(decl_id) => matches!(
+                self[decl_id].kind,
+                CDeclKind::Struct { fields: None, .. }
+                    | CDeclKind::Union { fields: None, .. }
+                    | CDeclKind::Enum {
+                        integral_type: None,
+                        ..
+                    }
+            ),
             _ => false,
         }
     }
@@ -384,11 +384,7 @@ impl TypedAstContext {
     pub fn is_function_pointer(&self, typ: CTypeId) -> bool {
         let resolved_ctype = self.resolve_type(typ);
         if let CTypeKind::Pointer(p) = resolved_ctype.kind {
-            if let CTypeKind::Function { .. } = self.resolve_type(p.ctype).kind {
-                true
-            } else {
-                false
-            }
+            matches!(self.resolve_type(p.ctype).kind, CTypeKind::Function { .. })
         } else {
             false
         }
@@ -397,13 +393,12 @@ impl TypedAstContext {
     /// Can the given field decl be a flexible array member?
     pub fn maybe_flexible_array(&self, typ: CTypeId) -> bool {
         let field_ty = self.resolve_type(typ);
-        match field_ty.kind {
+        matches!(
+            field_ty.kind,
             CTypeKind::IncompleteArray(_)
-            | CTypeKind::ConstantArray(_, 0)
-            | CTypeKind::ConstantArray(_, 1) => true,
-
-            _ => false,
-        }
+                | CTypeKind::ConstantArray(_, 0)
+                | CTypeKind::ConstantArray(_, 1)
+        )
     }
 
     pub fn get_pointee_qual_type(&self, typ: CTypeId) -> Option<CQualTypeId> {
@@ -686,26 +681,26 @@ impl TypedAstContext {
     }
 
     pub fn has_inner_struct_decl(&self, decl_id: CDeclId) -> bool {
-        match self.index(decl_id).kind {
+        matches!(
+            self.index(decl_id).kind,
             CDeclKind::Struct {
                 manual_alignment: Some(_),
                 ..
-            } => true,
-            _ => false,
-        }
+            }
+        )
     }
 
     pub fn is_packed_struct_decl(&self, decl_id: CDeclId) -> bool {
-        match self.index(decl_id).kind {
+        matches!(
+            self.index(decl_id).kind,
             CDeclKind::Struct {
-                is_packed: true, ..
-            } => true,
-            CDeclKind::Struct {
+                is_packed: true,
+                ..
+            } | CDeclKind::Struct {
                 max_field_alignment: Some(_),
                 ..
-            } => true,
-            _ => false,
-        }
+            }
+        )
     }
 
     pub fn is_aligned_struct_type(&self, typ: CTypeId) -> bool {
@@ -1250,11 +1245,7 @@ pub enum UnTypeOp {
 impl UnOp {
     /// Check is the operator is rendered before or after is operand.
     pub fn is_prefix(&self) -> bool {
-        match *self {
-            UnOp::PostIncrement => false,
-            UnOp::PostDecrement => false,
-            _ => true,
-        }
+        !matches!(*self, UnOp::PostIncrement | UnOp::PostDecrement)
     }
 }
 
@@ -1318,20 +1309,20 @@ impl BinOp {
 
     /// Determines whether or not this is an assignment op
     pub fn is_assignment(&self) -> bool {
-        match *self {
+        matches!(
+            self,
             BinOp::AssignAdd
-            | BinOp::AssignSubtract
-            | BinOp::AssignMultiply
-            | BinOp::AssignDivide
-            | BinOp::AssignModulus
-            | BinOp::AssignBitXor
-            | BinOp::AssignShiftLeft
-            | BinOp::AssignShiftRight
-            | BinOp::AssignBitOr
-            | BinOp::AssignBitAnd
-            | BinOp::Assign => true,
-            _ => false,
-        }
+                | BinOp::AssignSubtract
+                | BinOp::AssignMultiply
+                | BinOp::AssignDivide
+                | BinOp::AssignModulus
+                | BinOp::AssignBitXor
+                | BinOp::AssignShiftLeft
+                | BinOp::AssignShiftRight
+                | BinOp::AssignBitOr
+                | BinOp::AssignBitAnd
+                | BinOp::Assign
+        )
     }
 }
 
@@ -1637,24 +1628,15 @@ pub enum Attribute {
 
 impl CTypeKind {
     pub fn is_pointer(&self) -> bool {
-        match *self {
-            CTypeKind::Pointer { .. } => true,
-            _ => false,
-        }
+        matches!(*self, CTypeKind::Pointer { .. })
     }
 
     pub fn is_bool(&self) -> bool {
-        match *self {
-            CTypeKind::Bool => true,
-            _ => false,
-        }
+        matches!(*self, CTypeKind::Bool)
     }
 
     pub fn is_enum(&self) -> bool {
-        match *self {
-            CTypeKind::Enum { .. } => true,
-            _ => false,
-        }
+        matches!(*self, CTypeKind::Enum { .. })
     }
 
     pub fn is_integral_type(&self) -> bool {
@@ -1662,38 +1644,36 @@ impl CTypeKind {
     }
 
     pub fn is_unsigned_integral_type(&self) -> bool {
-        match *self {
-            CTypeKind::Bool => true,
-            CTypeKind::UChar => true,
-            CTypeKind::UInt => true,
-            CTypeKind::UShort => true,
-            CTypeKind::ULong => true,
-            CTypeKind::ULongLong => true,
-            CTypeKind::UInt128 => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            CTypeKind::Bool
+                | CTypeKind::UChar
+                | CTypeKind::UInt
+                | CTypeKind::UShort
+                | CTypeKind::ULong
+                | CTypeKind::ULongLong
+                | CTypeKind::UInt128
+        )
     }
 
     pub fn is_signed_integral_type(&self) -> bool {
-        match *self {
-            CTypeKind::Char => true, // true on the platforms we handle
-            CTypeKind::SChar => true,
-            CTypeKind::Int => true,
-            CTypeKind::Short => true,
-            CTypeKind::Long => true,
-            CTypeKind::LongLong => true,
-            CTypeKind::Int128 => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            CTypeKind::Char // true on the platforms we handle
+                | CTypeKind::SChar
+                | CTypeKind::Int
+                | CTypeKind::Short
+                | CTypeKind::Long
+                | CTypeKind::LongLong
+                | CTypeKind::Int128
+        )
     }
 
     pub fn is_floating_type(&self) -> bool {
-        match *self {
-            CTypeKind::Float => true,
-            CTypeKind::Double => true,
-            CTypeKind::LongDouble => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            CTypeKind::Float | CTypeKind::Double | CTypeKind::LongDouble
+        )
     }
 
     pub fn as_underlying_decl(&self) -> Option<CDeclId> {
@@ -1716,10 +1696,7 @@ impl CTypeKind {
     }
 
     pub fn is_vector(&self) -> bool {
-        match *self {
-            CTypeKind::Vector { .. } => true,
-            _ => false,
-        }
+        matches!(self, CTypeKind::Vector { .. })
     }
 
     /// Choose the smaller, simpler of the two types if they are cast-compatible.

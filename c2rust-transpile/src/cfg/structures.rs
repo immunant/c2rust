@@ -545,13 +545,7 @@ impl StructureState {
                     }
                     (false, false) => {
                         fn is_expr(kind: &Stmt) -> bool {
-                            match &kind {
-                                Stmt::Expr(expr) => match &expr {
-                                    Expr::If(..) | Expr::Block(..) => true,
-                                    _ => false,
-                                },
-                                _ => false,
-                            }
+                            matches!(kind, Stmt::Expr(Expr::If(..) | Expr::Block(..)))
                         }
 
                         // Do the else statements contain a single If, IfLet or
