@@ -175,18 +175,11 @@ fn parse_constraints(
     let mode = if mem_only {
         In
     } else {
-        if is_input {
-            if early_clobber {
-                InOut
-            } else {
-                InLateOut
-            }
-        } else {
-            if early_clobber {
-                Out
-            } else {
-                LateOut
-            }
+        match (is_input, early_clobber) {
+            (false, false) => LateOut,
+            (false, true) => Out,
+            (true, false) => InLateOut,
+            (true, true) => InOut,
         }
     };
 

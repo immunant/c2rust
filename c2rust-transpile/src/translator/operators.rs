@@ -895,28 +895,26 @@ impl<'c> Translation<'c> {
                         mk().unary_expr(UnOp::Neg(Default::default()), one)
                     };
                     mk().method_call_expr(read.clone(), "offset", vec![n])
-                } else {
-                    if self
-                        .ast_context
-                        .resolve_type(ty.ctype)
-                        .kind
-                        .is_unsigned_integral_type()
-                    {
-                        if ctx.is_const {
-                            return Err(TranslationError::generic(
-                                "Cannot use wrapping add or sub in a const expression",
-                            ));
-                        }
-                        let m = if up { "wrapping_add" } else { "wrapping_sub" };
-                        mk().method_call_expr(read.clone(), m, vec![one])
-                    } else {
-                        let k = if up {
-                            BinOp::Add(Default::default())
-                        } else {
-                            BinOp::Sub(Default::default())
-                        };
-                        mk().binary_expr(k, read.clone(), one)
+                } else if self
+                    .ast_context
+                    .resolve_type(ty.ctype)
+                    .kind
+                    .is_unsigned_integral_type()
+                {
+                    if ctx.is_const {
+                        return Err(TranslationError::generic(
+                            "Cannot use wrapping add or sub in a const expression",
+                        ));
                     }
+                    let m = if up { "wrapping_add" } else { "wrapping_sub" };
+                    mk().method_call_expr(read.clone(), m, vec![one])
+                } else {
+                    let k = if up {
+                        BinOp::Add(Default::default())
+                    } else {
+                        BinOp::Sub(Default::default())
+                    };
+                    mk().binary_expr(k, read.clone(), one)
                 };
 
                 // *p = *p + rhs
