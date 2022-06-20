@@ -80,7 +80,7 @@ impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
 
     /// Rewrite nodes to take into account a node remapping. Note that the remapping is usually
     /// going to be very much _not_ injective - the whole point of remapping is to merge some nodes.
-    pub fn rewrite_blocks(&mut self, rewrites: &IndexMap<Lbl, Lbl>) -> () {
+    pub fn rewrite_blocks(&mut self, rewrites: &IndexMap<Lbl, Lbl>) {
         self.multiples = self
             .multiples
             .iter()
@@ -111,7 +111,7 @@ impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
     }
 
     /// Add in information about a new multiple
-    pub fn add_multiple(&mut self, join: Lbl, arms: Vec<(Lbl, IndexSet<Lbl>)>) -> () {
+    pub fn add_multiple(&mut self, join: Lbl, arms: Vec<(Lbl, IndexSet<Lbl>)>) {
         let entry_set: BTreeSet<Lbl> = arms.iter().map(|&(ref l, _)| l.clone()).collect();
         let arm_map: IndexMap<Lbl, IndexSet<Lbl>> = arms.into_iter().collect();
 

@@ -85,7 +85,7 @@ pub fn heuristic_loop_body(
     body_blocks: &mut IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
     follow_blocks: &mut IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
     follow_entries: &mut IndexSet<Label>,
-) -> () {
+) {
     if follow_entries.len() > 1 {
         for follow_entry in follow_entries.clone().iter() {
             let mut following: Label = follow_entry.clone();
@@ -192,7 +192,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
     }
 
     /// Filter out any nodes which need to be pruned from the entire CFG due to being unreachable.
-    pub fn filter_unreachable(&mut self, reachable: &IndexSet<Lbl>) -> () {
+    pub fn filter_unreachable(&mut self, reachable: &IndexSet<Lbl>) {
         self.node_loops.retain(|lbl, _| reachable.contains(lbl));
         for (_, &mut (ref mut set, _)) in self.loops.iter_mut() {
             set.retain(|lbl| reachable.contains(lbl));
@@ -201,7 +201,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
 
     /// Rewrite nodes to take into account a node remapping. Note that the remapping is usually
     /// going to be very much _not_ injective - the whole point of remapping is to merge some nodes.
-    pub fn rewrite_blocks(&mut self, rewrites: &IndexMap<Lbl, Lbl>) -> () {
+    pub fn rewrite_blocks(&mut self, rewrites: &IndexMap<Lbl, Lbl>) {
         self.node_loops.retain(|lbl, _| rewrites.get(lbl).is_none());
         for (_, &mut (ref mut set, _)) in self.loops.iter_mut() {
             set.retain(|lbl| rewrites.get(lbl).is_none());
@@ -214,7 +214,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
         id: LoopId,
         contents: IndexSet<Lbl>,
         outer_id: Option<LoopId>,
-    ) -> () {
+    ) {
         for elem in &contents {
             if !self.node_loops.contains_key(elem) {
                 self.node_loops.insert(elem.clone(), id);

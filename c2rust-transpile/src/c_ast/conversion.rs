@@ -385,22 +385,22 @@ impl ConversionContext {
     }
 
     /// Add a `CType`node into the `TypedAstContext`
-    fn add_type(&mut self, id: ImporterId, typ: CType) -> () {
+    fn add_type(&mut self, id: ImporterId, typ: CType) {
         self.typed_context.c_types.insert(CTypeId(id), typ);
     }
 
     /// Add a `CStmt` node into the `TypedAstContext`
-    fn add_stmt(&mut self, id: ImporterId, stmt: CStmt) -> () {
+    fn add_stmt(&mut self, id: ImporterId, stmt: CStmt) {
         self.typed_context.c_stmts.insert(CStmtId(id), stmt);
     }
 
     /// Add a `CExpr` node into the `TypedAstContext`
-    fn add_expr(&mut self, id: ImporterId, expr: CExpr) -> () {
+    fn add_expr(&mut self, id: ImporterId, expr: CExpr) {
         self.typed_context.c_exprs.insert(CExprId(id), expr);
     }
 
     /// Add a `CDecl` node into the `TypedAstContext`
-    fn add_decl(&mut self, id: ImporterId, decl: CDecl) -> () {
+    fn add_decl(&mut self, id: ImporterId, decl: CDecl) {
         self.typed_context.c_decls.insert(CDeclId(id), decl);
     }
 
@@ -413,7 +413,7 @@ impl ConversionContext {
         new_id: ImporterId,
         node: &AstNode,
         expr: CExprKind,
-    ) -> () {
+    ) {
         if expected_ty & node_types::STMT != 0 {
             // This is going to be an extra node not present in the Clang AST
             let new_expr_id = self.id_mapper.fresh_id();
@@ -437,7 +437,7 @@ impl ConversionContext {
     /// into the `ConversionContext` on creation.
     ///
     /// This populates the `typed_context` of the `ConversionContext` it is called on.
-    fn convert(&mut self, untyped_context: &AstContext) -> () {
+    fn convert(&mut self, untyped_context: &AstContext) {
         for raw_comment in &untyped_context.comments {
             let comment = Located {
                 loc: Some(raw_comment.loc.into()),
@@ -497,7 +497,7 @@ impl ConversionContext {
         node_id: ClangId,      // Clang ID of node to visit
         new_id: ImporterId,    // New ID of node to visit
         expected_ty: NodeType, // Expected type of node to visit
-    ) -> () {
+    ) {
         use self::node_types::*;
 
         if expected_ty & TYPE != 0 {

@@ -663,7 +663,7 @@ use std::rc::Rc;
 /// about the actual contents of the CFG - we only actual call these on one monomorphic CFG type.
 impl<Lbl: Clone + Ord + Hash + Debug, Stmt> Cfg<Lbl, Stmt> {
     /// Removes blocks that cannot be reached from the CFG
-    pub fn prune_unreachable_blocks_mut(&mut self) -> () {
+    pub fn prune_unreachable_blocks_mut(&mut self) {
         let visited: IndexSet<Lbl> = {
             let mut visited: IndexSet<Lbl> = IndexSet::new();
             let mut to_visit: Vec<Lbl> = vec![self.entries.clone()];
@@ -697,7 +697,7 @@ impl<Lbl: Clone + Ord + Hash + Debug, Stmt> Cfg<Lbl, Stmt> {
 
     /// Removes empty blocks whose terminator is just a `Jump` by merging them with the block they
     /// are jumping to.
-    pub fn prune_empty_blocks_mut(&mut self) -> () {
+    pub fn prune_empty_blocks_mut(&mut self) {
         // Keys are labels corresponding to empty basic blocks with a jump terminator, values are
         // the labels they jump to (and can hopefully be replaced by).
         let mut proposed_rewrites: IndexMap<Lbl, Lbl> = self
@@ -1162,7 +1162,7 @@ impl CfgBuilder {
     }
 
     /// Add a basic block to the control flow graph, specifying under which label to insert it.
-    fn add_block(&mut self, lbl: Label, bb: BasicBlock<Label, StmtOrDecl>) -> () {
+    fn add_block(&mut self, lbl: Label, bb: BasicBlock<Label, StmtOrDecl>) {
         let currently_live = self
             .currently_live
             .last_mut()
@@ -1193,7 +1193,7 @@ impl CfgBuilder {
 
     /// Create a basic block from a WIP block by tacking on the right terminator. Once this is done,
     /// add the block into the graph.
-    fn add_wip_block(&mut self, wip: WipBlock, terminator: GenTerminator<Label>) -> () {
+    fn add_wip_block(&mut self, wip: WipBlock, terminator: GenTerminator<Label>) {
         let WipBlock {
             label,
             body,
@@ -1215,7 +1215,7 @@ impl CfgBuilder {
 
     /// Update the terminator of an existing block. This is for the special cases where you don't
     /// know the terminators of a block by visiting it.
-    fn update_terminator(&mut self, lbl: Label, new_term: GenTerminator<Label>) -> () {
+    fn update_terminator(&mut self, lbl: Label, new_term: GenTerminator<Label>) {
         match self.last_per_stmt_mut().nodes.get_mut(&lbl) {
             None => panic!("Cannot find label {:?} to update", lbl),
             Some(bb) => bb.terminator = new_term,
@@ -1223,13 +1223,13 @@ impl CfgBuilder {
     }
 
     /// Open a loop
-    fn open_loop(&mut self) -> () {
+    fn open_loop(&mut self) {
         let loop_id: LoopId = self.fresh_loop_id();
         self.loops.push((loop_id, vec![]));
     }
 
     /// Close a loop
-    fn close_loop(&mut self) -> () {
+    fn close_loop(&mut self) {
         let (loop_id, loop_contents) = self.loops.pop().expect("No loop to close.");
         let outer_loop_id: Option<LoopId> = self.loops.last().map(|&(i, _)| i);
 
@@ -1246,7 +1246,7 @@ impl CfgBuilder {
     }
 
     /// Open an arm
-    fn open_arm(&mut self, arm_start: Label) -> () {
+    fn open_arm(&mut self, arm_start: Label) {
         self.multiples.push((arm_start, vec![]));
     }
 
