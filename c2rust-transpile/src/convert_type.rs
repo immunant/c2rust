@@ -229,7 +229,7 @@ impl TypeConverter {
         &mut self,
         ctxt: &TypedAstContext,
         ret: Option<CQualTypeId>,
-        params: &Vec<CQualTypeId>,
+        params: &[CQualTypeId],
         is_variadic: bool,
     ) -> Result<Box<Type>, TranslationError> {
         let barefn_inputs = params
@@ -421,7 +421,7 @@ impl TypeConverter {
                             _ => panic!("parameter referenced non-variable decl."),
                         }
                     })
-                    .collect();
+                    .collect::<Vec<_>>();
 
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
                 let fn_ty = self.convert_function(ctxt, opt_ret, &params, is_var)?;

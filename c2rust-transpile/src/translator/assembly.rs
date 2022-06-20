@@ -353,7 +353,7 @@ fn reg_is_reserved(constraint: &str, arch: Arch) -> Option<(&str, &str)> {
 fn rewrite_reserved_reg_operands(
     att_syntax: bool,
     arch: Arch,
-    operands: &mut Vec<BidirAsmOperand>,
+    operands: &mut [BidirAsmOperand],
 ) -> (String, String) {
     let (mut prolog, mut epilog) = (String::new(), String::new());
 

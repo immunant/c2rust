@@ -366,13 +366,13 @@ fn get_extra_args_macos() -> Vec<String> {
     args
 }
 
-fn invoke_refactor(_build_dir: &PathBuf) -> Result<(), Error> {
+fn invoke_refactor(_build_dir: &Path) -> Result<(), Error> {
     return Ok(());
 }
 
 fn reorganize_definitions(
     tcfg: &TranspilerConfig,
-    build_dir: &PathBuf,
+    build_dir: &Path,
     crate_file: Option<PathBuf>,
 ) -> Result<(), Error> {
     // We only run the reorganization refactoring if we emitted a fresh crate file
@@ -400,7 +400,7 @@ fn transpile_single(
     cc_db: &Path,
     extra_clang_args: &[&str],
 ) -> TranspileResult {
-    let output_path = get_output_path(tcfg, &input_path, ancestor_path, build_dir);
+    let output_path = get_output_path(tcfg, input_path.clone(), ancestor_path, build_dir);
     if output_path.exists() && !tcfg.overwrite_existing {
         warn!("Skipping existing file {}", output_path.display());
         return Err(());
@@ -490,26 +490,24 @@ fn transpile_single(
 
 fn get_output_path(
     tcfg: &TranspilerConfig,
-    input_path: &PathBuf,
+    mut input_path: PathBuf,
     ancestor_path: &Path,
     build_dir: &Path,
 ) -> PathBuf {
-    let mut path_buf = input_path.clone();
-
     // When an output file name is not explictly specified, we should convert files
     // with dashes to underscores, as they are not allowed in rust file names.
-    let file_name = path_buf
+    let file_name = input_path
         .file_name()
         .unwrap()
         .to_str()
         .unwrap()
         .replace('-', "_");
 
-    path_buf.set_file_name(file_name);
-    path_buf.set_extension("rs");
+    input_path.set_file_name(file_name);
+    input_path.set_extension("rs");
 
     if tcfg.output_dir.is_some() {
-        let path_buf = path_buf
+        let path_buf = input_path
             .strip_prefix(ancestor_path)
             .expect("Couldn't strip common ancestor path");
 
@@ -532,6 +530,6 @@ fn get_output_path(
         }
         output_path
     } else {
-        path_buf
+        input_path
     }
 }

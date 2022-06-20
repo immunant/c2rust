@@ -9,7 +9,7 @@ use crate::rust_ast::{comment_store, set_span::SetSpan, BytePos, SpanExt};
 
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(
-    root: &Vec<Structure<Stmt>>,
+    root: &[Structure<Stmt>],
     comment_store: &mut comment_store::CommentStore,
     current_block: Box<Expr>,
     debug_labels: bool,
@@ -204,7 +204,7 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
 fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = Label, S = Stmt>>(
     exits: Vec<(Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>)>,
     next: &IndexSet<Label>,
-    root: &Vec<Structure<Stmt>>,
+    root: &[Structure<Stmt>],
     used_loop_labels: &mut IndexSet<Label>,
 ) -> Result<S, TranslationError> {
     let mut next: &IndexSet<Label> = next;
@@ -365,7 +365,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
 
 /// Checks if there are any `Multiple` structures anywhere. Only if so will there be any need for a
 /// `current_block` variable.
-pub fn has_multiple<Stmt>(root: &Vec<Structure<Stmt>>) -> bool {
+pub fn has_multiple<Stmt>(root: &[Structure<Stmt>]) -> bool {
     root.iter().any(|structure| match structure {
         &Structure::Simple { ref terminator, .. } => {
             terminator
