@@ -81,7 +81,7 @@ impl IdMapper {
 
     /// Lookup the NEW_ID corresponding to a CLANG_ID
     pub fn get_new(&mut self, old_id: ClangId) -> Option<ImporterId> {
-        self.old_to_new.get(&old_id).map(|o| *o)
+        self.old_to_new.get(&old_id).copied()
     }
 
     /// Lookup (or create if not a found) a NEW_ID corresponding to a CLANG_ID
@@ -103,7 +103,7 @@ impl IdMapper {
 
     /// Lookup the CLANG_ID corresponding to a NEW_ID
     pub fn get_old(&mut self, new_id: ImporterId) -> Option<ClangId> {
-        self.new_to_old.get(&new_id).map(|n| *n)
+        self.new_to_old.get(&new_id).copied()
     }
 
     /// If the `old_id` is present in the mapper, make `other_old_id` map to the same value. Note
