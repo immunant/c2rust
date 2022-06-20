@@ -114,6 +114,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::zero_ptr)]
     fn test_coverage() {
         macro_rules! test_combo {
             ($ty1:ty, [$($ty2:ty),*]) => {
