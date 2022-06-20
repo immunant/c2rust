@@ -451,7 +451,7 @@ impl RelooperState {
             .map(|(lbl, within)| {
                 let val = blocks
                     .iter()
-                    .filter(|(k, _)| within.contains(k.clone()))
+                    .filter(|(k, _)| within.contains(*k))
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
                 (lbl, val)
@@ -460,8 +460,8 @@ impl RelooperState {
 
         let unhandled_entries: IndexSet<Label> = entries
             .iter()
-            .filter(|e| !handled_entries.contains_key(e.clone()))
             .cloned()
+            .filter(|e| !handled_entries.contains_key(e))
             .collect();
 
         let mut handled_blocks: StructuredBlocks = IndexMap::new();
