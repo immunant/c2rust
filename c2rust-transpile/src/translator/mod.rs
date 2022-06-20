@@ -4360,14 +4360,12 @@ impl<'c> Translation<'c> {
 
                             // Static arrays can now use as_ptr. Can also cast that const ptr to a
                             // mutable pointer as we do here:
-                            if ctx.is_static {
-                                if !is_const {
-                                    return Ok(call.map(|val| {
-                                        let inferred_type = mk().infer_ty();
-                                        let ptr_type = mk().mutbl().ptr_ty(inferred_type);
-                                        mk().cast_expr(val, ptr_type)
-                                    }));
-                                }
+                            if ctx.is_static && !is_const {
+                                return Ok(call.map(|val| {
+                                    let inferred_type = mk().infer_ty();
+                                    let ptr_type = mk().mutbl().ptr_ty(inferred_type);
+                                    mk().cast_expr(val, ptr_type)
+                                }));
                             }
 
                             Ok(call)
