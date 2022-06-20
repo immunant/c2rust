@@ -618,7 +618,7 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
         }
 
         // We failed to parse this operand reference
-        out.push_str(&chunk[..]);
+        out.push_str(chunk);
     }
     Ok(out)
 }
