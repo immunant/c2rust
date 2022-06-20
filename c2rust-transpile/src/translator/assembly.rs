@@ -543,7 +543,7 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
         }
 
         // Note empty chunks
-        if chunk == "" {
+        if chunk.is_empty() {
             last_empty = true;
             continue;
         }
@@ -609,7 +609,7 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
                 .parse()
                 .map_err(|_| TranslationError::generic("could not parse operand idx"))?;
             out.push_str(input_op_mapper(idx).to_string().as_str());
-            if new_modifiers != "" {
+            if !new_modifiers.is_empty() {
                 out.push(':');
                 out.push_str(&*new_modifiers);
             }
