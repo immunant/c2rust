@@ -535,7 +535,7 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
         // Pass-through $$ as one $
         if last_empty {
             last_empty = false;
-            out.push_str("$");
+            out.push('$');
             out.push_str(chunk);
             continue;
         }
@@ -553,13 +553,13 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
                 let ref_str = &chunk[..end_idx];
                 if let Some(colon_idx) = ref_str.find(':') {
                     let (before_mods, _modifiers) = ref_str.split_at(colon_idx + 1);
-                    out.push_str("{");
+                    out.push('{');
                     let idx: usize = before_mods
                         .trim_matches(|c: char| !c.is_ascii_digit())
                         .parse()
                         .map_err(|_| TranslationError::generic("could not parse operand idx"))?;
                     out.push_str(input_op_mapper(idx).to_string().as_str());
-                    out.push_str(":");
+                    out.push(':');
                     let modifiers = ref_str[colon_idx + 1..].chars();
                     for modifier in modifiers {
                         if let Some(new) = translate_modifier(modifier, arch) {
