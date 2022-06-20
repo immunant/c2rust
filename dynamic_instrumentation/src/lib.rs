@@ -198,12 +198,12 @@ impl Executor for InstrumentationExecutor {
             // TODO: Capture stdout and pass it back to cargo
             rustc_driver::RunCompiler::new(&args, &mut callbacks)
                 .run()
-                .or_else(|_| Err(anyhow!("Compilation failed")))
+                .map_err(|_| anyhow!("Compilation failed"))
         } else {
             let mut callbacks = NullCallbacks;
             rustc_driver::RunCompiler::new(&args, &mut callbacks)
                 .run()
-                .or_else(|_| Err(anyhow!("Compilation failed")))
+                .map_err(|_| anyhow!("Compilation failed"))
         }
     }
 
