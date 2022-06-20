@@ -595,8 +595,7 @@ pub fn translate(
                     if is_unnamed
                         && !prenamed_decls
                             .values()
-                            .find(|decl_id| *decl_id == &subdecl_id)
-                            .is_some()
+                            .any(|decl_id| *decl_id == subdecl_id)
                     {
                         prenamed_decls.insert(decl_id, subdecl_id);
 
@@ -617,7 +616,7 @@ pub fn translate(
         // corresponding struct/union/enum
         fn contains(prenamed_decls: &IndexMap<CDeclId, CDeclId>, decl_id: &CDeclId) -> bool {
             prenamed_decls.contains_key(decl_id)
-                || prenamed_decls.values().find(|id| *id == decl_id).is_some()
+                || prenamed_decls.values().any(|id| *id == *decl_id)
         }
 
         // Populate renamer with top-level names
