@@ -1,5 +1,5 @@
 use anyhow::Context;
-use c2rust_analysis_rt::mir_loc::{EventMetadata, TransferKind};
+use c2rust_analysis_rt::mir_loc::{EventMetadata, TransferKind, self};
 use c2rust_analysis_rt::HOOK_FUNCTIONS;
 use c2rust_analysis_rt::{Metadata, MirLoc, MirLocId, MirPlace, MirProjection};
 use indexmap::IndexSet;
@@ -9,8 +9,8 @@ use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Body, CastKind, Constant, Local, LocalDecl, Location, Operand,
-    Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue, SourceInfo, SourceScopeData, Statement,
-    StatementKind, Terminator, TerminatorKind, START_BLOCK,
+    Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo, Statement, StatementKind, Terminator,
+    TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, ParamEnv, TyCtxt};
 use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
@@ -175,7 +175,7 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
 
 fn to_mir_place<'tcx>(place: &Place<'tcx>) -> MirPlace {
     MirPlace {
-        local: place.local.into(),
+        local: place.local.as_u32().into(),
         projection: place
             .projection
             .iter()
@@ -213,7 +213,7 @@ fn rv_place<'tcx>(rv: &'tcx Rvalue) -> Option<Place<'tcx>> {
 impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         self.super_place(place, context, location);
-        let field_fn = self
+        let _field_fn = self
             .find_instrumentation_def(Symbol::intern("ptr_field"))
             .expect("Could not find pointer field hook");
         let load_fn = self
@@ -280,7 +280,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
         let copy_fn = self
             .find_instrumentation_def(Symbol::intern("ptr_copy"))
             .expect("Could not find pointer copy hook");
-        let ref_copy_fn = self
+        let _ref_copy_fn = self
             .find_instrumentation_def(Symbol::intern("ref_copy"))
             .expect("Could not find ref copy hook");
         let addr_local_fn = self
@@ -505,7 +505,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                 destination,
                 ..
             } => {
-                let mut arg_idx: usize = 1;
+                let mut arg_local = mir_loc::Local {index: 1};
                 let is_hook = {
                     if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
                         let fn_name = self.tcx.item_name(*def_id);
@@ -534,7 +534,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                                     EventMetadata {
                                         source: Some(to_mir_place(&place)),
                                         destination: Some(MirPlace {
-                                            local: arg_idx,
+                                            local: arg_local,
                                             projection: vec![],
                                         }),
                                         transfer_kind,
@@ -542,7 +542,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                                 );
                             }
                         }
-                        arg_idx += 1;
+                        arg_local.index += 1;
                     }
                 }
                 if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
@@ -728,7 +728,7 @@ fn do_instrumentation<'tcx>(
 ) {
     for point in points {
         let &InstrumentationPoint {
-            id,
+            id: _id,
             loc,
             func,
             ref args,

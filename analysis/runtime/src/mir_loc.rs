@@ -40,18 +40,71 @@ pub enum MirProjection {
     Deref,
     Field(usize),
     Index(usize),
-    Unsupported
+    Unsupported,
+}
+
+/// See [`rustc_middle::mir::Local`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/struct.Local.html).
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+pub struct Local {
+    /// TODO(kkysen) change to u32 like
+    /// [`rustc_middle::mir::Local`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/struct.Local.html),
+    /// but need to keep bincode binary format.
+    pub index: usize,
+}
+
+impl From<u32> for Local {
+    fn from(index: u32) -> Self {
+        Self {
+            index: index.try_into().unwrap(),
+        }
+    }
+}
+
+impl From<usize> for Local {
+    fn from(index: usize) -> Self {
+        Self {
+            index: index.try_into().unwrap(),
+        }
+    }
+}
+
+impl Into<u32> for Local {
+    fn into(self) -> u32 {
+        self.index.try_into().unwrap()
+    }
+}
+
+impl Into<usize> for Local {
+    fn into(self) -> usize {
+        self.index.try_into().unwrap()
+    }
+}
+
+impl Local {
+    pub fn as_u32(&self) -> u32 {
+        self.clone().into()
+    }
+
+    pub fn as_usize(&self) -> usize {
+        self.clone().into()
+    }
+}
+
+impl fmt::Debug for Local {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "_{}", self.index)
+    }
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
 pub struct MirPlace {
-    pub local: usize,
+    pub local: Local,
     pub projection: Vec<MirProjection>,
 }
 
 impl fmt::Debug for MirPlace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "_{}", self.local)?;
+        write!(f, "{:?}", self.local)?;
         for p in &self.projection {
             write!(f, ".{:?}", p)?;
         }
@@ -66,8 +119,15 @@ pub struct DefPathHash(pub u64, pub u64);
 
 impl fmt::Debug for DefPathHash {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let entry = "unknown".to_string();
-        write!(f, "{}", MIR_LOCS.functions.get(self).unwrap_or(&entry))
+        write!(
+            f,
+            "{}",
+            MIR_LOCS
+                .functions
+                .get(self)
+                .map(|s| s.as_str())
+                .unwrap_or("unknown")
+        )
     }
 }
 
@@ -77,9 +137,9 @@ impl From<(u64, u64)> for DefPathHash {
     }
 }
 
-impl Into<(u64, u64)> for DefPathHash {
-    fn into(self) -> (u64, u64) {
-        (self.0, self.1)
+impl From<DefPathHash> for (u64, u64) {
+    fn from(other: DefPathHash) -> Self {
+        (other.0, other.1)
     }
 }
 

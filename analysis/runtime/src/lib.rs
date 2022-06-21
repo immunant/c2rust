@@ -6,8 +6,14 @@ pub mod mir_loc;
 use std::env;
 
 /// List of functions we want hooked for the lifetime analyis runtime.
-pub const HOOK_FUNCTIONS: &[&'static str] =
-    &["malloc", "free", "calloc", "realloc", "reallocarray", "offset"];
+pub const HOOK_FUNCTIONS: &[&'static str] = &[
+    "malloc",
+    "free",
+    "calloc",
+    "realloc",
+    "reallocarray",
+    "offset",
+];
 
 pub use self::mir_loc::{DefPathHash, Metadata, MirLoc, MirLocId, MirPlace, MirProjection};
 
@@ -22,4 +28,19 @@ pub fn initialize() {
 
 pub fn finalize() {
     backend::finalize();
+}
+
+pub struct Runtime;
+
+impl Runtime {
+    pub fn new() -> Self {
+        initialize();
+        Self
+    }
+}
+
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        finalize();
+    }
 }

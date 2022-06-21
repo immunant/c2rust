@@ -1,136 +1,145 @@
 use crate::graph::{Func, Graph, GraphId, Graphs, Node, NodeId, NodeKind};
 use bincode;
-use c2rust_analysis_rt::events::{Event, EventKind};
+use c2rust_analysis_rt::events::{Event, EventKind, Pointer};
 use c2rust_analysis_rt::mir_loc::{EventMetadata, Metadata, TransferKind};
-use c2rust_analysis_rt::{mir_loc, MirLoc, MirPlace, MirProjection};
+use c2rust_analysis_rt::{mir_loc, MirLoc};
+use color_eyre::eyre;
+use fs_err::File;
 use log;
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_hir::def_id::DefPathHash;
-use rustc_middle::mir::{Field, Local};
-use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::BufReader;
+use std::io::{self, BufReader};
+use std::iter;
+use std::path::Path;
 
-pub fn read_event_log(path: String) -> Vec<Event> {
-    let file = File::open(path).unwrap();
-    let mut events = vec![];
+pub fn read_event_log(path: &Path) -> io::Result<Vec<Event>> {
+    let file = File::open(path)?;
     let mut reader = BufReader::new(file);
-    loop {
-        match bincode::deserialize_from(&mut reader) {
-            Ok(e) => events.push(e),
-            _ => break,
+    let events = iter::from_fn(|| bincode::deserialize_from(&mut reader).ok()).collect::<Vec<_>>();
+    Ok(events)
+}
+
+pub fn _read_metadata(path: &Path) -> eyre::Result<Metadata> {
+    let bytes = fs_err::read(path)?;
+    let metadata = bincode::deserialize(&bytes)?;
+    Ok(metadata)
+}
+
+pub trait EventKindExt {
+    fn ptr(&self, metadata: &EventMetadata) -> Option<Pointer>;
+    fn has_parent(&self) -> bool;
+    fn parent(&self, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)>;
+    fn to_node_kind(&self) -> Option<NodeKind>;
+}
+
+impl EventKindExt for EventKind {
+    /// return the ptr of interest for a particular event
+    fn ptr(&self, _metadata: &EventMetadata) -> Option<Pointer> {
+        use EventKind::*;
+        Some(match *self {
+            CopyPtr(lhs) => lhs,
+            Field(ptr, ..) => ptr,
+            Free { ptr } => ptr,
+            Ret(ptr) => ptr,
+            LoadAddr(ptr) => ptr,
+            StoreAddr(ptr) => ptr,
+            LoadValue(ptr) => ptr,
+            StoreValue(ptr) => ptr,
+            CopyRef => return None, // FIXME
+            ToInt(ptr) => ptr,
+            Realloc { old_ptr, .. } => old_ptr,
+            FromInt(lhs) => lhs,
+            Alloc { ptr, .. } => ptr,
+            AddrOfLocal(lhs, _) => lhs,
+            Offset(ptr, _, _) => ptr,
+            Done => return None,
+        })
+    }
+
+    fn has_parent(&self) -> bool {
+        use EventKind::*;
+        match self {
+            Realloc { new_ptr: _, .. } => false,
+            Alloc { ptr: _, .. } => false,
+            AddrOfLocal(_ptr, _) => false,
+            Done => false,
+            _ => true,
         }
     }
-    events
-}
 
-pub fn read_metadata(path: String) -> Metadata {
-    let file = File::open(path).unwrap();
-    bincode::deserialize_from(file).unwrap()
-}
+    fn parent(&self, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)> {
+        self.has_parent().then(|| obj)
+    }
 
-/** return the ptr of interest for a particular event */
-fn get_ptr(kind: &EventKind, metadata: &EventMetadata) -> Option<usize> {
-    Some(match kind {
-        EventKind::CopyPtr(lhs) => *lhs,
-        EventKind::Field(ptr, ..) => *ptr,
-        EventKind::Free { ptr } => *ptr,
-        EventKind::Ret(ptr) => *ptr,
-
-        EventKind::LoadAddr(ptr) => *ptr,
-        EventKind::StoreAddr(ptr) => *ptr,
-        EventKind::LoadValue(ptr) => *ptr,
-        EventKind::StoreValue(ptr) => *ptr,
-        EventKind::CopyRef => return None, // FIXME
-        EventKind::ToInt(ptr) => *ptr,
-        EventKind::Realloc { old_ptr, .. } => *old_ptr,
-        EventKind::FromInt(lhs) => *lhs,
-        EventKind::Alloc { ptr, .. } => *ptr,
-        EventKind::AddrOfLocal(lhs, _) => *lhs,
-        EventKind::Offset(ptr, _, _) => *ptr,
-        EventKind::Done => return None,
-    })
-}
-
-fn get_parent_object(kind: &EventKind, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)> {
-    Some(match kind {
-        EventKind::Realloc { new_ptr, .. } => return None,
-        EventKind::Alloc { ptr, .. } => return None,
-        EventKind::AddrOfLocal(ptr, _) => return None,
-        EventKind::Done => return None,
-        _ => obj,
-    })
-}
-
-pub fn event_to_node_kind(event: &Event) -> Option<NodeKind> {
-    Some(match event.kind {
-        EventKind::Alloc { .. } => NodeKind::Malloc(1),
-        EventKind::Realloc { .. } => NodeKind::Malloc(1),
-        EventKind::Free { .. } => NodeKind::Free,
-        EventKind::CopyPtr(..) | EventKind::CopyRef => NodeKind::Copy,
-        EventKind::Field(_, field) => NodeKind::Field(field.into()),
-        EventKind::LoadAddr(..) => NodeKind::LoadAddr,
-        EventKind::StoreAddr(..) => NodeKind::StoreAddr,
-        EventKind::LoadValue(..) => NodeKind::LoadValue,
-        EventKind::StoreValue(..) => NodeKind::StoreValue,
-        EventKind::AddrOfLocal(_, l) => NodeKind::AddrOfLocal(Local::from(l)),
-        EventKind::ToInt(_) => NodeKind::PtrToInt,
-        EventKind::FromInt(_) => NodeKind::IntToPtr,
-        EventKind::Ret(_) => return None,
-        EventKind::Offset(_, offset, _) => NodeKind::Offset(offset),
-        EventKind::Done => return None,
-    })
+    fn to_node_kind(&self) -> Option<NodeKind> {
+        use EventKind::*;
+        Some(match *self {
+            Alloc { .. } => NodeKind::Malloc(1),
+            Realloc { .. } => NodeKind::Malloc(1),
+            Free { .. } => NodeKind::Free,
+            CopyPtr(..) | CopyRef => NodeKind::Copy,
+            Field(_, field) => NodeKind::Field(field.into()),
+            LoadAddr(..) => NodeKind::LoadAddr,
+            StoreAddr(..) => NodeKind::StoreAddr,
+            LoadValue(..) => NodeKind::LoadValue,
+            StoreValue(..) => NodeKind::StoreValue,
+            AddrOfLocal(_, local) => NodeKind::AddrOfLocal(local.as_u32().into()),
+            ToInt(_) => NodeKind::PtrToInt,
+            FromInt(_) => NodeKind::IntToPtr,
+            Ret(_) => return None,
+            Offset(_, offset, _) => NodeKind::Offset(offset),
+            Done => return None,
+        })
+    }
 }
 
 fn update_provenance(
-    provenances: &mut HashMap<usize, (GraphId, NodeId)>,
+    provenances: &mut HashMap<Pointer, (GraphId, NodeId)>,
     event_kind: &EventKind,
     metadata: &EventMetadata,
     mapping: (GraphId, NodeId),
 ) {
-    match event_kind {
-        EventKind::Alloc { ptr, .. } => {
-            provenances.insert(*ptr, mapping);
+    use EventKind::*;
+    match *event_kind {
+        Alloc { ptr, .. } => {
+            provenances.insert(ptr, mapping);
         }
-        EventKind::CopyPtr(ptr) => {
+        CopyPtr(ptr) => {
             // only insert if not already there
-            if let Err(..) = provenances.try_insert(*ptr, mapping) {
-                log::warn!("{:p} doesn't have a source", ptr);
+            if let Err(..) = provenances.try_insert(ptr, mapping) {
+                log::warn!("{:x} doesn't have a source", ptr);
             }
         }
-        EventKind::Realloc { new_ptr, .. } => {
-            provenances.insert(*new_ptr, mapping);
+        Realloc { new_ptr, .. } => {
+            provenances.insert(new_ptr, mapping);
         }
-        EventKind::Offset(_, _, new_ptr) => {
-            provenances.insert(*new_ptr, mapping);
+        Offset(_, _, new_ptr) => {
+            provenances.insert(new_ptr, mapping);
         }
-        EventKind::CopyRef => {
-            provenances.insert(metadata.destination.clone().unwrap().local.clone(), mapping);
+        CopyRef => {
+            provenances.insert(metadata.destination.clone().unwrap().local.into(), mapping);
         }
-        EventKind::AddrOfLocal(ptr, _) => {
-            provenances.insert(*ptr, mapping);
+        AddrOfLocal(ptr, _) => {
+            provenances.insert(ptr, mapping);
         }
-        _ => (),
+        _ => {}
     }
 }
 
 pub fn add_node(
     graphs: &mut Graphs,
-    provenances: &mut HashMap<usize, (GraphId, NodeId)>,
+    provenances: &mut HashMap<Pointer, (GraphId, NodeId)>,
     event: &Event,
 ) -> Option<NodeId> {
-    let node_kind = match event_to_node_kind(event) {
-        Some(kind) => kind,
-        None => return None,
-    };
+    let node_kind = event.kind.to_node_kind()?;
 
     let MirLoc {
         body_def,
         mut basic_block_idx,
         mut statement_idx,
         metadata,
-    } = mir_loc::get(event.mir_loc).unwrap().clone();
+    } = mir_loc::get(event.mir_loc).unwrap();
 
     let this_func_hash = DefPathHash(Fingerprint::new(body_def.0, body_def.1).into());
     let (src_fn, dest_fn) = match metadata.transfer_kind {
@@ -151,8 +160,11 @@ pub fn add_node(
         statement_idx = 0;
     }
 
-    let head = get_ptr(&event.kind, &metadata).and_then(|p| provenances.get(&p).cloned());
-    let ptr = head.and_then(|(gid, last_nid_ref)| {
+    let head = event
+        .kind
+        .ptr(&metadata)
+        .and_then(|ptr| provenances.get(&ptr).cloned());
+    let ptr = head.and_then(|(gid, _last_nid_ref)| {
         graphs.graphs[gid]
             .nodes
             .iter()
@@ -171,12 +183,13 @@ pub fn add_node(
             .latest_assignment
             .get(&(src_fn, src.local.clone()))
             .cloned();
-        if latest_assignment.is_some() && !src.projection.is_empty() {
-            let (gid, _) = latest_assignment.unwrap();
-            for (nid, n) in graphs.graphs[gid].nodes.iter().enumerate().rev() {
-                match n.kind {
-                    NodeKind::Field(..) => return Some((gid, nid.into())),
-                    _ => break,
+        if !src.projection.is_empty() {
+            if let Some((gid, _)) = latest_assignment {
+                for (nid, n) in graphs.graphs[gid].nodes.iter().enumerate().rev() {
+                    match n.kind {
+                        NodeKind::Field(..) => return Some((gid, nid.into())),
+                        _ => break,
+                    }
                 }
             }
         }
@@ -192,15 +205,19 @@ pub fn add_node(
 
     let node = Node {
         function: Func(dest_fn),
-        block: basic_block_idx.clone().into(),
-        index: statement_idx.clone().into(),
+        block: basic_block_idx.into(),
+        index: statement_idx.into(),
         kind: node_kind,
-        source: source.and_then(|p| get_parent_object(&event.kind, p)).map(|n| n.1),
+        source: source
+            .and_then(|p| event.kind.parent(p))
+            .map(|(_, nid)| nid),
         dest: metadata.destination.clone(),
     };
 
-    let graph_id = source.or(ptr)
-        .or(head).and_then(|p| get_parent_object(&event.kind, p))
+    let graph_id = source
+        .or(ptr)
+        .or(head)
+        .and_then(|p| event.kind.parent(p))
         .map(|(gid, _)| gid)
         .unwrap_or_else(|| graphs.graphs.push(Graph::new()));
     let node_id = graphs.graphs[graph_id].nodes.push(node);
@@ -230,15 +247,16 @@ pub fn add_node(
     Some(node_id)
 }
 
-pub fn construct_pdg(events: &Vec<Event>) -> Graphs {
+pub fn construct_pdg(events: &[Event]) -> Graphs {
     let mut graphs = Graphs::new();
-    let mut provenances = HashMap::<usize, (GraphId, NodeId)>::new();
+    let mut provenances = HashMap::new();
     for event in events {
         add_node(&mut graphs, &mut provenances, event);
     }
 
-    for ((f, l), p) in &graphs.latest_assignment {
-        println!("({:?}:_{:?}) => {:?}", Func(*f), l, p);
+    for ((func, local), p) in &graphs.latest_assignment {
+        let func = Func(*func);
+        println!("({func:?}:{local:?}) => {p:?}");
     }
     graphs
 }

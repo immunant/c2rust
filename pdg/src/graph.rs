@@ -1,25 +1,29 @@
+use c2rust_analysis_rt::mir_loc;
+use c2rust_analysis_rt::MirPlace;
 use rustc_index::newtype_index;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BasicBlock, Field, Local};
 use rustc_span::def_id::DefPathHash;
-use c2rust_analysis_rt::{MirPlace, mir_loc::EventMetadata};
-use std::{collections::HashMap, fmt::Debug};
+use std::{
+    collections::HashMap,
+    fmt::{self, Debug, Formatter},
+};
 
-// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
 newtype_index!(
+    /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
     pub struct GraphId { DEBUG_FORMAT = "GraphId({})" }
 );
 
-// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
 newtype_index!(
+    /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
     pub struct NodeId { DEBUG_FORMAT = "NodeId({})" }
 );
 
-// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
-pub const ROOT_NODE: NodeId = NodeId::from_u32(0);
+/// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
+pub const _ROOT_NODE: NodeId = NodeId::from_u32(0);
 
 /// A pointer derivation graph, which tracks the handling of one object throughout its lifetime.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Graph {
     /// The nodes in the graph.  Nodes are stored in increasing order by timestamp.  The first
     /// node, called the "root node", creates the object described by this graph, and all other
@@ -38,8 +42,8 @@ impl Graph {
 pub struct Func(pub DefPathHash);
 
 impl Debug for Func {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let x = c2rust_analysis_rt::DefPathHash::from(self.0.0.as_value());
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let x = c2rust_analysis_rt::DefPathHash::from(self.0 .0.as_value());
         x.fmt(f)
     }
 }
@@ -75,7 +79,7 @@ pub struct Node {
     /// The kind of operation that was performed.
     pub kind: NodeKind,
     /// The `Node` that produced the input to this operation.
-    pub source: Option<(NodeId)>,
+    pub source: Option<NodeId>,
 }
 
 #[derive(Debug)]
@@ -100,7 +104,7 @@ pub enum NodeKind {
     AddrOfLocal(Local),
     /// Get the address of a static.  These are treated the same as locals, with an
     /// `AddressOfStatic` attributed to the first statement.
-    AddrOfStatic(DefPathHash),
+    _AddrOfStatic(DefPathHash),
     /// Heap allocation.  The `usize` is the number of array elements allocated; for allocations of
     /// a single object, this value is 1.
     Malloc(usize),
@@ -125,13 +129,14 @@ pub enum NodeKind {
 }
 
 /// A collection of graphs describing the handling of one or more objects within the program.
+#[derive(Default)]
 pub struct Graphs {
     /// The graphs.  Each graph describes one object, or one group of objects that were all handled
     /// identically.
     pub graphs: IndexVec<GraphId, Graph>,
 
     /// Lookup table for finding all nodes in all graphs that store to a particular MIR local.
-    pub latest_assignment: HashMap<(DefPathHash, usize), (GraphId, NodeId)>,
+    pub latest_assignment: HashMap<(DefPathHash, mir_loc::Local), (GraphId, NodeId)>,
 }
 
 impl Graphs {
@@ -144,7 +149,7 @@ impl Graphs {
 }
 
 impl Debug for Graphs {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{:?}", self.graphs)
     }
 }

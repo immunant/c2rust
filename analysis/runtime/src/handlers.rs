@@ -100,7 +100,7 @@ pub fn ptr_to_int(mir_loc: MirLocId, ptr: usize) {
 pub fn addr_of_local(mir_loc: MirLocId, ptr: usize, local: u32) {
     TX.send(Event {
         mir_loc,
-        kind: EventKind::AddrOfLocal(ptr, local as usize),
+        kind: EventKind::AddrOfLocal(ptr, local.into()),
     })
     .unwrap();
 }
