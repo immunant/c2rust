@@ -675,9 +675,8 @@ impl ConversionContext {
                             .map(|cbor| {
                                 let arg =
                                     from_value(cbor.clone()).expect("Bad function type child id");
-                                let arg_new = self.visit_qualified_type(arg);
 
-                                arg_new
+                                self.visit_qualified_type(arg)
                             })
                             .collect();
                     let ret = arguments.remove(0);

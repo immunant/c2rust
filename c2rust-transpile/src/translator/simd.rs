@@ -345,14 +345,13 @@ impl<'c> Translation<'c> {
             // are not const and so we are forced to transmute
             let call = if ctx.is_static {
                 let tuple = mk().tuple_expr(params);
-                let transmute = transmute_expr(
+
+                transmute_expr(
                     mk().infer_ty(),
                     mk().infer_ty(),
                     tuple,
                     self.tcfg.emit_no_std,
-                );
-
-                transmute
+                )
             } else {
                 let fn_call_name = match (&self.ast_context[ctype].kind, len) {
                     (Float, 4) => "_mm_setr_ps",

@@ -125,8 +125,7 @@ impl<'a> Translation<'a> {
                             mk().angle_bracketed_args(vec![mk().lifetime("a")]),
                         ),
                     ];
-                    let ty = mk().path_ty(mk().abs_path(path));
-                    ty
+                    mk().path_ty(mk().abs_path(path))
                 } else {
                     self.convert_type(ctype)?
                 };
