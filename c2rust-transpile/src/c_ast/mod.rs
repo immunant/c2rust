@@ -203,7 +203,7 @@ impl TypedAstContext {
     }
 
     pub fn get_file_path(&self, id: FileId) -> Option<&Path> {
-        self.files[id].path.as_ref().map(|p| p.as_path())
+        self.files[id].path.as_deref()
     }
 
     pub fn compare_src_locs(&self, a: &SrcLoc, b: &SrcLoc) -> Ordering {
