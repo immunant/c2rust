@@ -62,8 +62,7 @@ impl CommentStore {
     pub fn into_comments(self) -> Vec<comments::Comment> {
         self.output_comments
             .into_iter()
-            .map(|(_, v)| v)
-            .flatten()
+            .flat_map(|(_, v)| v)
             .collect()
     }
 
