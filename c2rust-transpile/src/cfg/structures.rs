@@ -630,26 +630,24 @@ impl StructureState {
                         ..
                     }) = expr
                     {
-                        let stmts = &then_branch.stmts;
-                        {
-                            if stmts.len() == 1 {
-                                if let Some(&Stmt::Semi(ref expr, _token)) = stmts.get(0) {
-                                    if let syn::Expr::Break(ExprBreak {
-                                        label: None,
-                                        expr: None,
-                                        ..
-                                    }) = expr
-                                    {
-                                        let e = mk().while_expr(
-                                            not(cond),
-                                            mk().span(body_span)
-                                                .block(body.iter().skip(1).cloned().collect()),
-                                            lbl.map(|l| l.pretty_print()),
-                                        );
-                                        return (vec![mk().span(span).expr_stmt(e)], ast.span);
-                                    }
-                                }
+                        match then_branch.stmts.as_slice() {
+                            [Stmt::Semi(
+                                syn::Expr::Break(ExprBreak {
+                                    label: None,
+                                    expr: None,
+                                    ..
+                                }),
+                                _token,
+                            )] => {
+                                let e = mk().while_expr(
+                                    not(cond),
+                                    mk().span(body_span)
+                                        .block(body.iter().skip(1).cloned().collect()),
+                                    lbl.map(|l| l.pretty_print()),
+                                );
+                                return (vec![mk().span(span).expr_stmt(e)], ast.span);
                             }
+                            _ => {}
                         }
                     }
                 }

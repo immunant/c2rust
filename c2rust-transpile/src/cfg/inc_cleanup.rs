@@ -130,32 +130,28 @@ impl IncCleanup {
 /// Remove empty else clauses from if expressions that can arise from
 /// removing idempotent statements.
 fn cleanup_if(stmt: Stmt) -> Stmt {
-    if let Stmt::Expr(ref expr) = &stmt {
-        if let Expr::If(ExprIf {
-            ref cond,
-            then_branch: ref body,
-            else_branch: ref els,
-            ..
-        }) = *expr
-        {
-            if let Some((_token, ref els)) = *els {
-                if let Expr::Block(ExprBlock {
-                    block: ref blk,
-                    label: None,
-                    ..
-                }) = **els
-                {
-                    if blk.stmts.is_empty() {
-                        return Stmt::Expr(Expr::If(ExprIf {
-                            attrs: vec![],
-                            if_token: Default::default(),
-                            cond: cond.clone(),
-                            then_branch: body.clone(),
-                            else_branch: None,
-                        }));
-                    }
-                }
+    if let Stmt::Expr(Expr::If(ExprIf {
+        cond,
+        then_branch: body,
+        else_branch: Some((_token, block)),
+        ..
+    })) = &stmt
+    {
+        match &**block {
+            Expr::Block(ExprBlock {
+                block: blk,
+                label: None,
+                ..
+            }) if blk.stmts.is_empty() => {
+                return Stmt::Expr(Expr::If(ExprIf {
+                    cond: cond.clone(),
+                    then_branch: body.clone(),
+                    else_branch: None,
+                    attrs: vec![],
+                    if_token: Default::default(),
+                }));
             }
+            _ => {}
         }
     }
     stmt

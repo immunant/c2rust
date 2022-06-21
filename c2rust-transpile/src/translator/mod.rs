@@ -376,17 +376,13 @@ fn vec_expr(val: Box<Expr>, count: Box<Expr>) -> Box<Expr> {
 }
 
 pub fn stmts_block(mut stmts: Vec<Stmt>) -> Box<Block> {
-    if stmts.len() == 1 {
-        if let Stmt::Expr(ref e) = stmts[0] {
-            if let Expr::Block(ExprBlock {
-                block: ref b,
-                label: None,
-                ..
-            }) = e
-            {
-                return Box::new(b.clone());
-            }
-        }
+    match stmts.as_slice() {
+        [Stmt::Expr(Expr::Block(ExprBlock {
+            block: b,
+            label: None,
+            ..
+        }))] => return Box::new(b.clone()),
+        _ => {}
     }
 
     if stmts.len() > 0 {
@@ -4044,16 +4040,17 @@ impl<'c> Translation<'c> {
         compound_stmt_id: CStmtId,
     ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         fn as_semi_break_stmt(stmt: &Stmt, lbl: &cfg::Label) -> Option<Option<Box<Expr>>> {
-            if let Stmt::Semi(ref expr, _) = *stmt {
-                if let Expr::Break(ExprBreak {
-                    label: Some(ref blbl),
-                    expr: ref ret_val,
+            if let Stmt::Semi(
+                Expr::Break(ExprBreak {
+                    label: Some(blbl),
+                    expr: ret_val,
                     ..
-                }) = *expr
-                {
-                    if blbl.ident == mk().label(lbl.pretty_print()).name.ident {
-                        return Some(ret_val.clone());
-                    }
+                }),
+                _,
+            ) = stmt
+            {
+                if blbl.ident == mk().label(lbl.pretty_print()).name.ident {
+                    return Some(ret_val.clone());
                 }
             }
             None
