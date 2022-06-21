@@ -8,6 +8,8 @@
  * There's 1 optional argument.  If it's "default",
  * then use the `default-run` key in `Cargo.toml`s
  * and only print default target binaries.
+ * 
+ * Requires a `node` that at least supports `Array.prototype.flatMap`.
  */
 
 import * as fs from "fs";

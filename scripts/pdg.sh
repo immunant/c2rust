@@ -35,6 +35,9 @@ set -euox pipefail
 #   Thus, the instrumented binary is always in `dev`/`debug`` mode.
 #   The other crates are compiled in `release` mode by default,
 #   though that can be overridden by setting `PROFILE=debug` or another `cargo` profile.
+#
+# Requirements:
+# * A recent node for some scripts.  `node@18.2.0` works.
 main() {
     local script_path="${0}"
     local test_dir="${1}"
