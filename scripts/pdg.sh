@@ -88,7 +88,6 @@ main() {
             fi
         fi
         
-        RUSTFLAGS=" ${RUSTFLAGS:-} -Awarnings " \
         INSTRUMENT_BACKEND=log \
         INSTRUMENT_OUTPUT=log.bc \
         METADATA_FILE="${metadata}" \
