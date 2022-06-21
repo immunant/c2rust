@@ -220,10 +220,8 @@ impl CommentTraverser {
             let new_pos = self.store.insert_comments(cmmts, None);
             self.old_to_new_pos.insert(sp, new_pos);
             Some(new_pos)
-        } else if let Some(new_pos) = self.old_to_new_pos.get(&sp) {
-            Some(*new_pos)
         } else {
-            None
+            self.old_to_new_pos.get(&sp).copied()
         }
     }
 
