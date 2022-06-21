@@ -179,8 +179,8 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
         }
         EnumConstant { .. } => vec![],
         Typedef { typ, .. } => intos![typ.ctype],
-        Struct { ref fields, .. } => fields.iter().flat_map(|x| x).map(|&x| x.into()).collect(),
-        Union { ref fields, .. } => fields.iter().flat_map(|x| x).map(|&x| x.into()).collect(),
+        Struct { ref fields, .. } => fields.iter().flatten().map(|&x| x.into()).collect(),
+        Union { ref fields, .. } => fields.iter().flatten().map(|&x| x.into()).collect(),
         Field { typ, .. } => intos![typ.ctype],
         MacroObject { .. } | MacroFunction { .. } => vec![],
         NonCanonicalDecl { canonical_decl } => intos![canonical_decl],
