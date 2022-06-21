@@ -203,7 +203,7 @@ impl TypedAstContext {
             .and_then(|fileid| self.get_file_path(fileid))
     }
 
-    pub fn get_file_path<'a>(&'a self, id: FileId) -> Option<&'a Path> {
+    pub fn get_file_path(&self, id: FileId) -> Option<&Path> {
         self.files[id].path.as_ref().map(|p| p.as_path())
     }
 

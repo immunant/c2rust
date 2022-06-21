@@ -244,7 +244,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
     }
 
     /// Get all of the nodes contained in a given loop
-    pub fn get_loop_contents<'a>(&'a self, id: LoopId) -> &'a IndexSet<Lbl> {
+    pub fn get_loop_contents(&self, id: LoopId) -> &IndexSet<Lbl> {
         &self
             .loops
             .get(&id)
