@@ -22,9 +22,11 @@ mod graph;
 
 use builder::{construct_pdg, read_event_log};
 use c2rust_analysis_rt::{mir_loc, Runtime};
+use color_eyre::eyre;
 use std::{env, path::Path};
 
-fn main() -> anyhow::Result<()> {
+fn main() -> eyre::Result<()> {
+    color_eyre::install()?;
     env_logger::init();
     let _runtime = Runtime::new();
 

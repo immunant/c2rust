@@ -10,10 +10,11 @@ indexed_vec = "1.2.1"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 env_logger = "0.9"
-anyhow = "1"
+color-eyre = "0.6"
+fs-err = "2"
 
 [build-dependencies]
-anyhow = "1"
+color-eyre = "0.6"
 
 [package.metadata.rust-analyzer] 
 rustc_private = true

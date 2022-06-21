@@ -3,11 +3,12 @@ use bincode;
 use c2rust_analysis_rt::events::{Event, EventKind, Pointer};
 use c2rust_analysis_rt::mir_loc::{EventMetadata, Metadata, TransferKind};
 use c2rust_analysis_rt::{mir_loc, MirLoc};
+use color_eyre::eyre;
+use fs_err::File;
 use log;
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_hir::def_id::DefPathHash;
 use std::collections::HashMap;
-use std::fs::{self, File};
 use std::io::{self, BufReader};
 use std::iter;
 use std::path::Path;
@@ -19,8 +20,8 @@ pub fn read_event_log(path: &Path) -> io::Result<Vec<Event>> {
     Ok(events)
 }
 
-pub fn _read_metadata(path: &Path) -> anyhow::Result<Metadata> {
-    let bytes = fs::read(path)?;
+pub fn _read_metadata(path: &Path) -> eyre::Result<Metadata> {
+    let bytes = fs_err::read(path)?;
     let metadata = bincode::deserialize(&bytes)?;
     Ok(metadata)
 }
