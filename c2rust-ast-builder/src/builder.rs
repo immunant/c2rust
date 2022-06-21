@@ -1,4 +1,12 @@
 //! Helpers for building AST nodes.  Normally used by calling `mk().some_node(args...)`.
+
+#![allow(
+    clippy::duplicate_underscore_argument,
+    clippy::new_without_default,
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+)]
+
 use std::str;
 
 use proc_macro2::{Span, TokenStream, TokenTree};

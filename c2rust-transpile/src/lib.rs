@@ -1,3 +1,17 @@
+#![allow(
+    clippy::borrowed_box,
+    clippy::duplicate_underscore_argument,
+    clippy::enum_variant_names,
+    clippy::large_enum_variant,
+    clippy::match_ref_pats,
+    clippy::new_without_default,
+    clippy::single_match,
+    clippy::too_many_arguments,
+    clippy::try_err,
+    clippy::type_complexity,
+    clippy::useless_format,
+)]
+
 mod diagnostics;
 
 pub mod build_files;
