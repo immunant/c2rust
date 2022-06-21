@@ -94,8 +94,8 @@ main() {
         METADATA_FILE="${metadata}" \
         "${binary_path}" "${args[@]}"
     )
-
     (cd pdg
+        RUST_BACKTRACE=full `# print sources w/ color-eyre` \
         RUST_LOG=info \
         METADATA_FILE="${metadata}" \
         cargo run \
