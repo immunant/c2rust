@@ -628,16 +628,13 @@ impl TypedAstContext {
                             to_walk.push(decl_id);
                         }
 
-                        match self.c_decls[&decl_id].kind {
-                            CDeclKind::EnumConstant { .. } => {
-                                // Special case for enums.  The enum constant is used, so the whole
-                                // enum is also used.
-                                let parent_id = self.parents[&decl_id];
-                                if wanted.insert(parent_id) {
-                                    to_walk.push(parent_id);
-                                }
+                        if let CDeclKind::EnumConstant { .. } = self.c_decls[&decl_id].kind {
+                            // Special case for enums.  The enum constant is used, so the whole
+                            // enum is also used.
+                            let parent_id = self.parents[&decl_id];
+                            if wanted.insert(parent_id) {
+                                to_walk.push(parent_id);
                             }
-                            _ => {}
                         }
                     }
 

@@ -27,14 +27,10 @@ pub fn structured_cfg(
     // If the very last statement in the vector is a `return`, we can either cut it out or replace
     // it with the returned value.
     if cut_out_trailing_ret {
-        match stmts.last().cloned() {
-            Some(Stmt::Expr(ref ret)) | Some(Stmt::Semi(ref ret, _)) => match ret {
-                Expr::Return(ExprReturn { expr: None, .. }) => {
-                    stmts.pop();
-                }
-                _ => {}
-            },
-            _ => {}
+        if let Some(Stmt::Expr(ret) | Stmt::Semi(ret, _)) = stmts.last() {
+            if let Expr::Return(ExprReturn { expr: None, .. }) = ret {
+                stmts.pop();
+            }
         }
     }
 
