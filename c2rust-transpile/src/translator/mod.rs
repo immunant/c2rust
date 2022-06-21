@@ -1051,7 +1051,7 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
     } else {
         let pragmas = t.get_pragmas();
         for (key, mut values) in pragmas {
-            values.sort();
+            values.sort_unstable();
             // generate #[key(values)]
             let value_attr_vec = values
                 .into_iter()
