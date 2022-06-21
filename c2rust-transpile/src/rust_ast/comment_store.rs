@@ -144,7 +144,7 @@ impl CommentStore {
                 .replace("/*!", "/* !")
         }
 
-        let lines: Vec<String> = lines.into_iter().map(translate_comment).collect();
+        let lines: Vec<String> = lines.iter().map(translate_comment).collect();
 
         if lines.is_empty() {
             None

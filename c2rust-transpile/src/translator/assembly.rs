@@ -733,7 +733,7 @@ impl<'c> Translation<'c> {
         let mut args = Vec::<BidirAsmOperand>::new();
 
         // Add outputs as inout if a matching input is found, else as outputs
-        for (i, output) in outputs.into_iter().enumerate() {
+        for (i, output) in outputs.iter().enumerate() {
             match parse_constraints(&output.constraints, arch) {
                 Ok((mut dir_spec, mem_only, parsed)) => {
                     // Add to args list; if a matching in_expr is found, this is
