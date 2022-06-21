@@ -249,7 +249,7 @@ target = "{self.target}"
 linker = "{self.c_target}-gcc"
 ar = "{self.c_target}-ar"
 rustflags = ["-C", "link-arg=-fuse-ld=gold"] # override any other linker
-runner = "qemu-{self.arch} -L /usr/{self.c_target}"
+runner = ["qemu-{self.arch}", "-L", "/usr/{self.c_target}"]
             """.strip() + "\n"
             cargo_config_dir = Path(self.full_path) / ".cargo"
             cargo_config_dir.mkdir(exist_ok=True)
