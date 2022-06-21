@@ -255,7 +255,7 @@ pub fn construct_pdg(events: &[Event]) -> Graphs {
 
     for ((func, local), p) in &graphs.latest_assignment {
         let func = Func(*func);
-        println!("({func:?}:_{local:?}) => {p:?}");
+        println!("({func:?}:{local:?}) => {p:?}");
     }
     graphs
 }
