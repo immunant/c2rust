@@ -165,16 +165,15 @@ impl TypeConverter {
 
     pub fn resolve_decl_suffix_name(&mut self, decl_id: CDeclId, suffix: &'static str) -> &str {
         let key = (decl_id, suffix);
-        if !self.suffix_names.contains_key(&key) {
+        self.suffix_names.entry(key).or_insert_with(|| {
             let mut suffix_name = self
-                .resolve_decl_name(decl_id)
+                .renamer
+                .get(&decl_id)
                 .unwrap_or_else(|| "C2RustUnnamed".to_string());
             suffix_name += suffix;
 
-            let suffix_name = self.renamer.pick_name(&suffix_name);
-            self.suffix_names.insert(key, suffix_name);
-        }
-        self.suffix_names.get(&key).unwrap()
+            self.renamer.pick_name(&suffix_name)
+        })
     }
 
     pub fn declare_field_name(
@@ -189,31 +188,23 @@ impl TypeConverter {
             name
         };
 
-        if !self.fields.contains_key(&record_id) {
-            self.fields.insert(record_id, Renamer::new(&RESERVED_NAMES));
-        }
-
         self.fields
-            .get_mut(&record_id)
-            .unwrap()
+            .entry(record_id)
+            .or_insert_with(|| Renamer::new(&RESERVED_NAMES))
             .insert(FieldKey::Field(field_id), name)
             .expect("Field already declared")
     }
 
     pub fn declare_padding(&mut self, record_id: CRecordId, padding_idx: usize) -> String {
-        if !self.fields.contains_key(&record_id) {
-            self.fields.insert(record_id, Renamer::new(&RESERVED_NAMES));
-        }
-
+        let field = self
+            .fields
+            .entry(record_id)
+            .or_insert_with(|| Renamer::new(&RESERVED_NAMES));
         let key = FieldKey::Padding(padding_idx);
-        if let Some(name) = self.fields.get(&record_id).unwrap().get(&key) {
+        if let Some(name) = field.get(&key) {
             name
         } else {
-            self.fields
-                .get_mut(&record_id)
-                .unwrap()
-                .insert(key, "c2rust_padding")
-                .unwrap()
+            field.insert(key, "c2rust_padding").unwrap()
         }
     }
 
