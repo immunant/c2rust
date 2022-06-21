@@ -2201,17 +2201,14 @@ impl Cfg<Label, StmtOrDecl> {
             }
 
             // A node
-            file.write_fmt(format_args!(
-                "  {} [label=\"{}:\\l-----{}{}\\l{}-----{}\"];\n",
+            writeln!(
+                file,
+                "  {} [label=\"{}:\\l-----{}{}\\l{}-----{}\"];",
                 lbl.debug_print(),
                 lbl.debug_print(),
                 if show_liveness { live } else { String::new() },
-                if show_liveness {
-                    defined
-                } else {
-                    String::new()
-                },
-                format!(
+                if show_liveness { defined } else { String::new() },
+                format_args!(
                     "-----\\l{}",
                     if bb.body.is_empty() {
                         String::from("")
@@ -2226,7 +2223,7 @@ impl Cfg<Label, StmtOrDecl> {
                     }
                 ),
                 sanitize_label(pretty_terminator),
-            ))?;
+            )?;
 
             //  Close the loops the node is part of
             for _ in 0..closing_braces {
