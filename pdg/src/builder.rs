@@ -253,9 +253,9 @@ pub fn construct_pdg(events: &[Event]) -> Graphs {
         add_node(&mut graphs, &mut provenances, event);
     }
 
-    for ((func, line), p) in &graphs.latest_assignment {
+    for ((func, local), p) in &graphs.latest_assignment {
         let func = Func(*func);
-        println!("({func:?}:_{line:?}) => {p:?}");
+        println!("({func:?}:_{local:?}) => {p:?}");
     }
     graphs
 }

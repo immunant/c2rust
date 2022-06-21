@@ -44,7 +44,7 @@ pub enum MirProjection {
 }
 
 /// See [`rustc_middle::mir::Local`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/struct.Local.html).
-#[derive(Eq, PartialEq, Hash, Copy, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Local {
     /// TODO(kkysen) change to u32 like
     /// [`rustc_middle::mir::Local`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/struct.Local.html),
