@@ -1179,12 +1179,12 @@ impl CfgBuilder {
             Some(_) => panic!("Label {:?} cannot identify two basic blocks", lbl),
         }
 
-        self.loops
-            .last_mut()
-            .map(|&mut (_, ref mut loop_vec)| loop_vec.push(lbl.clone()));
-        self.multiples
-            .last_mut()
-            .map(|&mut (_, ref mut arm_vec)| arm_vec.push(lbl.clone()));
+        if let Some((_, loop_vec)) = self.loops.last_mut() {
+            loop_vec.push(lbl.clone());
+        }
+        if let Some((_, arm_vec)) = self.multiples.last_mut() {
+            arm_vec.push(lbl);
+        }
     }
 
     /// Create a basic block from a WIP block by tacking on the right terminator. Once this is done,
@@ -1230,9 +1230,9 @@ impl CfgBuilder {
         let outer_loop_id: Option<LoopId> = self.loops.last().map(|&(i, _)| i);
 
         // Add the loop contents to the outer loop (if there is one)
-        self.loops
-            .last_mut()
-            .map(|&mut (_, ref mut outer_loop)| outer_loop.extend(loop_contents.iter().cloned()));
+        if let Some((_, outer_loop)) = self.loops.last_mut() {
+            outer_loop.extend(loop_contents.iter().cloned());
+        }
 
         self.last_per_stmt_mut().loop_info.add_loop(
             loop_id,
@@ -1251,9 +1251,9 @@ impl CfgBuilder {
         let (arm_start, arm_contents) = self.multiples.pop().expect("No arm to close.");
 
         // Add the arm contents to the outer arm (if there is one)
-        self.multiples
-            .last_mut()
-            .map(|&mut (_, ref mut outer_arm)| outer_arm.extend(arm_contents.iter().cloned()));
+        if let Some((_, outer_arm)) = self.multiples.last_mut() {
+            outer_arm.extend(arm_contents.iter().cloned());
+        }
 
         (arm_start, arm_contents.into_iter().collect())
     }
