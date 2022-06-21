@@ -152,9 +152,8 @@ impl TypedAstContext {
         }
 
         let mut include_map = vec![];
-        for fileid in 0..files.len() {
+        for (fileid, mut cur) in files.iter().enumerate() {
             let mut include_path = vec![];
-            let mut cur = &files[fileid];
             while let Some(include_loc) = &cur.include_loc {
                 include_path.push(SrcLoc {
                     fileid: fileid as u64,
