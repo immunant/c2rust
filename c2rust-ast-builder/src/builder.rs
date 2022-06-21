@@ -471,9 +471,8 @@ pub struct Builder {
     span: Span,
 }
 
-#[allow(dead_code)]
-impl Builder {
-    pub fn new() -> Builder {
+impl Default for Builder {
+    fn default() -> Self {
         Builder {
             vis: Visibility::Inherited,
             mutbl: Mutability::Immutable,
@@ -484,6 +483,13 @@ impl Builder {
             attrs: Vec::new(),
             span: Span::call_site(),
         }
+    }
+}
+
+#[allow(dead_code)]
+impl Builder {
+    pub fn new() -> Builder {
+        Builder::default()
     }
 
     // Modifier updates.
