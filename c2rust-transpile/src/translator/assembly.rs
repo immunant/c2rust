@@ -371,8 +371,7 @@ fn rewrite_reserved_reg_operands(
         }
     }
 
-    let mut n_moved = 0;
-    for (idx, reg, mods) in rewrite_idxs {
+    for (n_moved, (idx, reg, mods)) in rewrite_idxs.into_iter().enumerate() {
         let operand = &mut operands[idx];
         let name = format!("restmp{}", n_moved);
         if let Some((_idx, _in_expr)) = operand.in_expr {
@@ -401,7 +400,6 @@ fn rewrite_reserved_reg_operands(
         //let (positional, named, explicit) = split_operands(operands);
         let nth_non_positional = total_positional + n_moved;
         operands.swap(idx, nth_non_positional);
-        n_moved += 1;
     }
 
     (prolog, epilog)
