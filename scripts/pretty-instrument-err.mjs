@@ -1,5 +1,16 @@
 #!/usr/bin/env node
 
+/**
+ * Consume output from `c2rust instrument` (which invokes `cargo`)
+ * and pretty print it.
+ * 
+ * For example, `cargo` prints lots of JSONL messages,
+ * so we parse those and print their `rendered` fields if they have them,
+ * which are colored and pretty-printed already.
+ * 
+ * Stack traces we leave alone.
+ */
+
 import * as fs from "fs";
 
 const [_nodePath, _scriptPath, ...args] = process.argv;

@@ -1,5 +1,15 @@
 #!/usr/bin/env node
 
+/**
+ * Parse the output of `cargo metadata --format-version 1` (on stdin)
+ * and print all the names of all the binaries
+ * produced by the current crate or workspace.
+ * 
+ * There's 1 optional argument.  If it's "default",
+ * then use the `default-run` key in `Cargo.toml`s
+ * and only print default target binaries.
+ */
+
 import * as fs from "fs";
 import assert from "node:assert/strict";
 
