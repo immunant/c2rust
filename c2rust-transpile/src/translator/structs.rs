@@ -43,20 +43,21 @@ enum FieldType {
 }
 
 fn contains_block(expr_kind: &Expr) -> bool {
+    use Expr::*;
     match expr_kind {
-        Expr::Block(..) => true,
-        Expr::Assign(ExprAssign { left, right, .. }) => {
+        Block(..) => true,
+        Assign(ExprAssign { left, right, .. }) => {
             contains_block(left) || contains_block(right)
         }
-        Expr::AssignOp(ExprAssignOp { left, right, .. }) => {
+        AssignOp(ExprAssignOp { left, right, .. }) => {
             contains_block(left) || contains_block(right)
         }
-        Expr::Binary(ExprBinary { left, right, .. }) => {
+        Binary(ExprBinary { left, right, .. }) => {
             contains_block(left) || contains_block(right)
         }
-        Expr::Unary(ExprUnary { expr, .. }) => contains_block(expr),
-        Expr::MethodCall(ExprMethodCall { args, .. }) => args.iter().any(contains_block),
-        Expr::Cast(ExprCast { expr, .. }) => contains_block(expr),
+        Unary(ExprUnary { expr, .. }) => contains_block(expr),
+        MethodCall(ExprMethodCall { args, .. }) => args.iter().any(contains_block),
+        Cast(ExprCast { expr, .. }) => contains_block(expr),
         _ => false,
     }
 }
