@@ -1621,15 +1621,15 @@ pub enum Attribute {
 
 impl CTypeKind {
     pub fn is_pointer(&self) -> bool {
-        matches!(*self, CTypeKind::Pointer { .. })
+        matches!(*self, Self::Pointer { .. })
     }
 
     pub fn is_bool(&self) -> bool {
-        matches!(*self, CTypeKind::Bool)
+        matches!(*self, Self::Bool)
     }
 
     pub fn is_enum(&self) -> bool {
-        matches!(*self, CTypeKind::Enum { .. })
+        matches!(*self, Self::Enum { .. })
     }
 
     pub fn is_integral_type(&self) -> bool {
@@ -1637,145 +1637,104 @@ impl CTypeKind {
     }
 
     pub fn is_unsigned_integral_type(&self) -> bool {
+        use CTypeKind::*;
         matches!(
             self,
-            CTypeKind::Bool
-                | CTypeKind::UChar
-                | CTypeKind::UInt
-                | CTypeKind::UShort
-                | CTypeKind::ULong
-                | CTypeKind::ULongLong
-                | CTypeKind::UInt128
+            Bool | UChar | UInt | UShort | ULong | ULongLong | UInt128
         )
     }
 
     pub fn is_signed_integral_type(&self) -> bool {
-        matches!(
-            self,
-            CTypeKind::Char // true on the platforms we handle
-                | CTypeKind::SChar
-                | CTypeKind::Int
-                | CTypeKind::Short
-                | CTypeKind::Long
-                | CTypeKind::LongLong
-                | CTypeKind::Int128
-        )
+        use CTypeKind::*;
+        // `Char` is true on the platforms we handle
+        matches!(self, Char | SChar | Int | Short | Long | LongLong | Int128)
     }
 
     pub fn is_floating_type(&self) -> bool {
-        matches!(
-            self,
-            CTypeKind::Float | CTypeKind::Double | CTypeKind::LongDouble
-        )
+        use CTypeKind::*;
+        matches!(self, Float | Double | LongDouble)
     }
 
     pub fn as_underlying_decl(&self) -> Option<CDeclId> {
+        use CTypeKind::*;
         match *self {
-            CTypeKind::Struct(decl_id) | CTypeKind::Union(decl_id) | CTypeKind::Enum(decl_id) => {
-                Some(decl_id)
-            }
+            Struct(decl_id) | Union(decl_id) | Enum(decl_id) => Some(decl_id),
             _ => None,
         }
     }
 
     pub fn as_decl_or_typedef(&self) -> Option<CDeclId> {
+        use CTypeKind::*;
         match *self {
-            CTypeKind::Typedef(decl_id)
-            | CTypeKind::Struct(decl_id)
-            | CTypeKind::Union(decl_id)
-            | CTypeKind::Enum(decl_id) => Some(decl_id),
+            Typedef(decl_id) | Struct(decl_id) | Union(decl_id) | Enum(decl_id) => Some(decl_id),
             _ => None,
         }
     }
 
     pub fn is_vector(&self) -> bool {
-        matches!(self, CTypeKind::Vector { .. })
+        matches!(self, Self::Vector { .. })
     }
 
     /// Choose the smaller, simpler of the two types if they are cast-compatible.
     pub fn smaller_compatible_type(ty1: CTypeKind, ty2: CTypeKind) -> Option<CTypeKind> {
-        match (&ty1, &ty2) {
-            (ty, ty2) if ty == ty2 => Some(ty1),
-            (CTypeKind::Void, _) => Some(ty2),
-            (CTypeKind::Bool, ty) if ty.is_integral_type() => Some(CTypeKind::Bool),
-            (ty, CTypeKind::Bool) if ty.is_integral_type() => Some(CTypeKind::Bool),
+        let int = Self::is_integral_type;
+        let float = Self::is_floating_type;
 
-            (CTypeKind::Char, ty) if ty.is_integral_type() => Some(CTypeKind::Char),
-            (ty, CTypeKind::Char) if ty.is_integral_type() => Some(CTypeKind::Char),
-            (CTypeKind::SChar, ty) if ty.is_integral_type() => Some(CTypeKind::SChar),
-            (ty, CTypeKind::SChar) if ty.is_integral_type() => Some(CTypeKind::SChar),
-            (CTypeKind::UChar, ty) if ty.is_integral_type() => Some(CTypeKind::UChar),
-            (ty, CTypeKind::UChar) if ty.is_integral_type() => Some(CTypeKind::UChar),
+        use CTypeKind::*;
+        let ty = match (&ty1, &ty2) {
+            (ty, ty2) if ty == ty2 => ty1,
+            (Void, _) => ty2,
+            (Bool, ty) | (ty, Bool) if int(ty) => Bool,
 
-            (CTypeKind::Short, ty) if ty.is_integral_type() => Some(CTypeKind::Short),
-            (ty, CTypeKind::Short) if ty.is_integral_type() => Some(CTypeKind::Short),
-            (CTypeKind::UShort, ty) if ty.is_integral_type() => Some(CTypeKind::UShort),
-            (ty, CTypeKind::UShort) if ty.is_integral_type() => Some(CTypeKind::UShort),
+            (Char, ty) | (ty, Char) if int(ty) => Char,
+            (SChar, ty) | (ty, SChar) if int(ty) => SChar,
+            (UChar, ty) | (ty, UChar) if int(ty) => UChar,
 
-            (CTypeKind::Int, ty) if ty.is_integral_type() => Some(CTypeKind::Int),
-            (ty, CTypeKind::Int) if ty.is_integral_type() => Some(CTypeKind::Int),
-            (CTypeKind::UInt, ty) if ty.is_integral_type() => Some(CTypeKind::UInt),
-            (ty, CTypeKind::UInt) if ty.is_integral_type() => Some(CTypeKind::UInt),
+            (Short, ty) | (ty, Short) if int(ty) => Short,
+            (UShort, ty) | (ty, UShort) if int(ty) => UShort,
 
-            (CTypeKind::Float, ty) if ty.is_floating_type() || ty.is_integral_type() => {
-                Some(CTypeKind::Float)
-            }
-            (ty, CTypeKind::Float) if ty.is_floating_type() || ty.is_integral_type() => {
-                Some(CTypeKind::Float)
-            }
+            (Int, ty) | (ty, Int) if int(ty) => Int,
+            (UInt, ty) | (ty, UInt) if int(ty) => UInt,
 
-            (CTypeKind::Long, ty) if ty.is_integral_type() => Some(CTypeKind::Long),
-            (ty, CTypeKind::Long) if ty.is_integral_type() => Some(CTypeKind::Long),
-            (CTypeKind::ULong, ty) if ty.is_integral_type() => Some(CTypeKind::ULong),
-            (ty, CTypeKind::ULong) if ty.is_integral_type() => Some(CTypeKind::ULong),
+            (Float, ty) | (ty, Float) if float(ty) || int(ty) => Float,
 
-            (CTypeKind::Double, ty) if ty.is_floating_type() || ty.is_integral_type() => {
-                Some(CTypeKind::Double)
-            }
-            (ty, CTypeKind::Double) if ty.is_floating_type() || ty.is_integral_type() => {
-                Some(CTypeKind::Double)
-            }
+            (Long, ty) | (ty, Long) if int(ty) => Long,
+            (ULong, ty) | (ty, ULong) if int(ty) => ULong,
 
-            (CTypeKind::LongLong, ty) if ty.is_integral_type() => Some(CTypeKind::LongLong),
-            (ty, CTypeKind::LongLong) if ty.is_integral_type() => Some(CTypeKind::LongLong),
-            (CTypeKind::ULongLong, ty) if ty.is_integral_type() => Some(CTypeKind::ULongLong),
-            (ty, CTypeKind::ULongLong) if ty.is_integral_type() => Some(CTypeKind::ULongLong),
+            (Double, ty) | (ty, Double) if float(ty) || int(ty) => Double,
 
-            (CTypeKind::LongDouble, ty) if ty.is_floating_type() || ty.is_integral_type() => {
-                Some(CTypeKind::LongDouble)
-            }
-            (ty, CTypeKind::LongDouble) if ty.is_floating_type() || ty.is_integral_type() => {
-                Some(CTypeKind::LongDouble)
-            }
+            (LongLong, ty) | (ty, LongLong) if int(ty) => LongLong,
+            (ULongLong, ty) | (ty, ULongLong) if int(ty) => ULongLong,
 
-            (CTypeKind::Int128, ty) if ty.is_integral_type() => Some(CTypeKind::Int128),
-            (ty, CTypeKind::Int128) if ty.is_integral_type() => Some(CTypeKind::Int128),
-            (CTypeKind::UInt128, ty) if ty.is_integral_type() => Some(CTypeKind::UInt128),
-            (ty, CTypeKind::UInt128) if ty.is_integral_type() => Some(CTypeKind::UInt128),
+            (LongDouble, ty) | (ty, LongDouble) if float(ty) || int(ty) => LongDouble,
+
+            (Int128, ty) | (ty, Int128) if int(ty) => Int128,
+            (UInt128, ty) | (ty, UInt128) if int(ty) => UInt128,
 
             // Integer to pointer conversion. We want to keep the integer and
             // cast to a pointer at use.
-            (CTypeKind::Pointer(_), ty) if ty.is_integral_type() => Some(ty2),
-            (ty, CTypeKind::Pointer(_)) if ty.is_integral_type() => Some(ty1),
+            (Pointer(_), ty) if int(ty) => ty2,
+            (ty, Pointer(_)) if int(ty) => ty1,
 
             // Array to pointer decay. We want to use the array and push the
             // decay to the use of the value.
-            (CTypeKind::Pointer(ptr_ty), CTypeKind::ConstantArray(arr_ty, _))
-            | (CTypeKind::Pointer(ptr_ty), CTypeKind::IncompleteArray(arr_ty))
-            | (CTypeKind::Pointer(ptr_ty), CTypeKind::VariableArray(arr_ty, _))
+            (Pointer(ptr_ty), ConstantArray(arr_ty, _))
+            | (Pointer(ptr_ty), IncompleteArray(arr_ty))
+            | (Pointer(ptr_ty), VariableArray(arr_ty, _))
                 if ptr_ty.ctype == *arr_ty =>
             {
-                Some(ty2)
+                ty2
             }
-            (CTypeKind::ConstantArray(arr_ty, _), CTypeKind::Pointer(ptr_ty))
-            | (CTypeKind::IncompleteArray(arr_ty), CTypeKind::Pointer(ptr_ty))
-            | (CTypeKind::VariableArray(arr_ty, _), CTypeKind::Pointer(ptr_ty))
+            (ConstantArray(arr_ty, _), Pointer(ptr_ty))
+            | (IncompleteArray(arr_ty), Pointer(ptr_ty))
+            | (VariableArray(arr_ty, _), Pointer(ptr_ty))
                 if ptr_ty.ctype == *arr_ty =>
             {
-                Some(ty1)
+                ty1
             }
 
-            _ => None,
-        }
+            _ => return None,
+        };
+        Some(ty)
     }
 }
