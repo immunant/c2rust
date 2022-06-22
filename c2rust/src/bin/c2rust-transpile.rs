@@ -1,4 +1,4 @@
-use clap::{load_yaml, App, Values};
+use clap::{load_yaml, App};
 use regex::Regex;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
