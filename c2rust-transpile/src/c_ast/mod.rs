@@ -399,10 +399,7 @@ impl TypedAstContext {
     pub fn maybe_flexible_array(&self, typ: CTypeId) -> bool {
         let field_ty = self.resolve_type(typ);
         use CTypeKind::*;
-        matches!(
-            field_ty.kind,
-            IncompleteArray(_) | ConstantArray(_, 0 | 1)
-        )
+        matches!(field_ty.kind, IncompleteArray(_) | ConstantArray(_, 0 | 1))
     }
 
     pub fn get_pointee_qual_type(&self, typ: CTypeId) -> Option<CQualTypeId> {
@@ -1304,37 +1301,25 @@ impl BinOp {
     ///
     /// For example, `AssignAdd` maps to `Some(Add)` but `Add` maps to `None`.
     pub fn underlying_assignment(&self) -> Option<BinOp> {
-        match *self {
-            BinOp::AssignAdd => Some(BinOp::Add),
-            BinOp::AssignSubtract => Some(BinOp::Subtract),
-            BinOp::AssignMultiply => Some(BinOp::Multiply),
-            BinOp::AssignDivide => Some(BinOp::Divide),
-            BinOp::AssignModulus => Some(BinOp::Modulus),
-            BinOp::AssignBitXor => Some(BinOp::BitXor),
-            BinOp::AssignShiftLeft => Some(BinOp::ShiftLeft),
-            BinOp::AssignShiftRight => Some(BinOp::ShiftRight),
-            BinOp::AssignBitOr => Some(BinOp::BitOr),
-            BinOp::AssignBitAnd => Some(BinOp::BitAnd),
-            _ => None,
-        }
+        use BinOp::*;
+        Some(match *self {
+            AssignAdd => Add,
+            AssignSubtract => Subtract,
+            AssignMultiply => Multiply,
+            AssignDivide => Divide,
+            AssignModulus => Modulus,
+            AssignBitXor => BitXor,
+            AssignShiftLeft => ShiftLeft,
+            AssignShiftRight => ShiftRight,
+            AssignBitOr => BitOr,
+            AssignBitAnd => BitAnd,
+            _ => return None,
+        })
     }
 
     /// Determines whether or not this is an assignment op
     pub fn is_assignment(&self) -> bool {
-        matches!(
-            self,
-            BinOp::AssignAdd
-                | BinOp::AssignSubtract
-                | BinOp::AssignMultiply
-                | BinOp::AssignDivide
-                | BinOp::AssignModulus
-                | BinOp::AssignBitXor
-                | BinOp::AssignShiftLeft
-                | BinOp::AssignShiftRight
-                | BinOp::AssignBitOr
-                | BinOp::AssignBitAnd
-                | BinOp::Assign
-        )
+        matches!(self, Self::Assign) || self.underlying_assignment().is_some()
     }
 }
 
@@ -1356,10 +1341,11 @@ pub enum CLiteral {
 impl CLiteral {
     /// Determine the truthiness or falsiness of the literal.
     pub fn get_bool(&self) -> bool {
+        use CLiteral::*;
         match *self {
-            CLiteral::Integer(x, _) => x != 0u64,
-            CLiteral::Character(x) => x != 0u64,
-            CLiteral::Floating(x, _) => x != 0f64,
+            Integer(x, _) => x != 0u64,
+            Character(x) => x != 0u64,
+            Floating(x, _) => x != 0f64,
             _ => true,
         }
     }
