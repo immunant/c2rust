@@ -494,7 +494,6 @@ impl Default for Builder {
     }
 }
 
-#[allow(dead_code)]
 impl Builder {
     pub fn new() -> Builder {
         Builder::default()
