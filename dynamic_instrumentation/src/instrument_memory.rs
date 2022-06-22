@@ -72,7 +72,7 @@ impl InstrumentMemoryOps {
     /// Returned indices will not be sorted in any particular order, but are
     /// unique and constant across the entire lifetime of this instrumentation
     /// instance.
-    fn get_mir_loc_idx<'tcx>(&self, body_def: DefPathHash, location: Location) -> MirLocId {
+    fn get_mir_loc_idx(&self, body_def: DefPathHash, location: Location) -> MirLocId {
         let mir_loc = MirLoc {
             body_def: body_def.0.as_value().into(),
             basic_block_idx: u32::from(location.block),
@@ -291,8 +291,8 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
     }
 }
 
-fn find_instrumentation_def<'tcx>(
-    tcx: TyCtxt<'tcx>,
+fn find_instrumentation_def(
+    tcx: TyCtxt,
     runtime_crate_did: DefId,
     name: Symbol,
 ) -> Option<DefId> {
@@ -305,7 +305,7 @@ fn find_instrumentation_def<'tcx>(
     )
 }
 
-fn make_const<'tcx>(tcx: TyCtxt<'tcx>, idx: u32) -> Operand<'tcx> {
+fn make_const(tcx: TyCtxt, idx: u32) -> Operand {
     Operand::Constant(Box::new(Constant {
         span: DUMMY_SP,
         user_ty: None,
