@@ -1,6 +1,3 @@
-extern crate serde_bytes;
-extern crate serde_cbor;
-
 use serde_cbor::{from_slice, Value};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
