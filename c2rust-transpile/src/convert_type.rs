@@ -446,7 +446,7 @@ impl TypeConverter {
                 _ => panic!("Typedef decl did not point to a typedef"),
             },
 
-            ref kind @ _ => panic!("ctype parameter must be a function instead of {:?}", kind),
+            ref kind => panic!("ctype parameter must be a function instead of {:?}", kind),
         }
     }
 }
