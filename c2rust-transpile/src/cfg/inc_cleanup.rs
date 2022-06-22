@@ -132,22 +132,22 @@ impl IncCleanup {
 fn cleanup_if(stmt: Stmt) -> Stmt {
     if let Stmt::Expr(Expr::If(ExprIf {
         cond,
-        then_branch: body,
-        else_branch: Some((_token, block)),
+        then_branch,
+        else_branch: Some((_token, else_)),
         ..
     })) = &stmt
     {
-        match &**block {
+        match &**else_ {
             Expr::Block(ExprBlock {
-                block: blk,
+                block,
                 label: None,
                 ..
-            }) if blk.stmts.is_empty() => {
+            }) if block.stmts.is_empty() => {
                 return Stmt::Expr(Expr::If(ExprIf {
                     cond: cond.clone(),
-                    then_branch: body.clone(),
-                    else_branch: None,
-                    attrs: vec![],
+                    then_branch: then_branch.clone(),
+                    else_branch: Default::default(),
+                    attrs: Default::default(),
                     if_token: Default::default(),
                 }));
             }
