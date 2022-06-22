@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use crate::backend::TX;
 use crate::events::{Event, EventKind};
 use crate::mir_loc::MirLocId;
