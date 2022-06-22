@@ -42,11 +42,9 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>, log_level: log::LevelFilt
                 Level::Trace => "trace",
             };
             let target = record.target();
-            let warn_flag = if Diagnostic::from_str(target).is_ok() {
-                format!(" [-W{}]", target)
-            } else {
-                String::new()
-            };
+            let warn_flag = Diagnostic::from_str(target)
+                .map(|_| format!(" [-W{}]", target))
+                .unwrap_or_default();
             out.finish(format_args!(
                 "\x1B[{}m{}:\x1B[0m {}{}",
                 colors.get_color(&record.level()).to_fg_str(),
