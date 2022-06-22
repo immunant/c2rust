@@ -37,10 +37,11 @@ fn backend_thread(rx: Receiver<Event>) {
     let (ref lock, ref cvar) = &*FINISHED;
     let mut finished = lock.lock().unwrap();
 
-    match env::var("INSTRUMENT_BACKEND").unwrap_or_default().as_str() {
-        "log" => log(rx),
-        "debug" | _ => debug(rx),
-    }
+    (match env::var("INSTRUMENT_BACKEND").unwrap_or_default().as_str() {
+        "log" => log,
+        "debug" => debug,
+        _ => debug,
+    })(rx);
 
     *finished = true;
     cvar.notify_one();
