@@ -55,9 +55,7 @@ fn contains_block(expr_kind: &Expr) -> bool {
             contains_block(left) || contains_block(right)
         }
         Expr::Unary(ExprUnary { expr, .. }) => contains_block(expr),
-        Expr::MethodCall(ExprMethodCall { args, .. }) => {
-            args.iter().any(contains_block)
-        }
+        Expr::MethodCall(ExprMethodCall { args, .. }) => args.iter().any(contains_block),
         Expr::Cast(ExprCast { expr, .. }) => contains_block(expr),
         _ => false,
     }

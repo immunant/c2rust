@@ -209,12 +209,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
     }
 
     /// Add in information about a new loop
-    pub fn add_loop(
-        &mut self,
-        id: LoopId,
-        contents: IndexSet<Lbl>,
-        outer_id: Option<LoopId>,
-    ) {
+    pub fn add_loop(&mut self, id: LoopId, contents: IndexSet<Lbl>, outer_id: Option<LoopId>) {
         for elem in &contents {
             if !self.node_loops.contains_key(elem) {
                 self.node_loops.insert(elem.clone(), id);

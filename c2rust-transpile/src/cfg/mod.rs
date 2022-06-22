@@ -616,8 +616,7 @@ impl Cfg<Label, StmtOrDecl> {
                     ImplicitReturnType::StmtExpr(ctx, expr_id, brk_label) => {
                         let (stmts, val) = translator.convert_expr(ctx, expr_id)?.discard_unsafe();
 
-                        wip.body
-                            .extend(stmts.into_iter().map(StmtOrDecl::Stmt));
+                        wip.body.extend(stmts.into_iter().map(StmtOrDecl::Stmt));
                         wip.body.push(StmtOrDecl::Stmt(mk().semi_stmt(
                             mk().break_expr_value(Some(brk_label.pretty_print()), Some(val)),
                         )));
@@ -673,11 +672,13 @@ impl<Lbl: Clone + Ord + Hash + Debug, Stmt> Cfg<Lbl, Stmt> {
                     continue;
                 }
 
-                let blk = self.nodes.get(&lbl).unwrap_or_else(|| panic!(
-                    "prune_unreachable_blocks: block not found\n{:?}\n{:?}",
-                    lbl,
-                    self.nodes.keys().cloned().collect::<Vec<Lbl>>()
-                ));
+                let blk = self.nodes.get(&lbl).unwrap_or_else(|| {
+                    panic!(
+                        "prune_unreachable_blocks: block not found\n{:?}\n{:?}",
+                        lbl,
+                        self.nodes.keys().cloned().collect::<Vec<Lbl>>()
+                    )
+                });
                 visited.insert(lbl);
 
                 for lbl in blk.terminator.get_labels() {
@@ -1021,16 +1022,14 @@ impl DeclStmtStore {
     /// Extract _just_ the Rust statements for a declaration (without initialization). Used when you
     /// want to move just a declaration to a larger scope.
     pub fn extract_decl(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
-        let DeclStmtInfo { decl, assign, .. } = self.store
+        let DeclStmtInfo { decl, assign, .. } = self
+            .store
             .swap_remove(&decl_id)
-            .ok_or_else(|| format_err!(
-                "Cannot find information on declaration 1 {:?}", decl_id
-            ))?;
+            .ok_or_else(|| format_err!("Cannot find information on declaration 1 {:?}", decl_id))?;
 
-        let decl: Vec<Stmt> = decl.ok_or_else(|| format_err!(
-            "Declaration for {:?} has already been extracted",
-            decl_id
-        ))?;
+        let decl: Vec<Stmt> = decl.ok_or_else(|| {
+            format_err!("Declaration for {:?} has already been extracted", decl_id)
+        })?;
 
         let pruned = DeclStmtInfo {
             decl: None,
@@ -1046,16 +1045,14 @@ impl DeclStmtStore {
     /// initially attached to). Used when you've moved a declaration but now you need to also run the
     /// initializer.
     pub fn extract_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
-        let DeclStmtInfo { decl, assign, .. } = self.store
-            .swap_remove(&decl_id)
-            .ok_or_else(|| format_err!(
-                "Cannot find information on declaration 2 {:?}", decl_id,
-            ))?;
+        let DeclStmtInfo { decl, assign, .. } =
+            self.store.swap_remove(&decl_id).ok_or_else(|| {
+                format_err!("Cannot find information on declaration 2 {:?}", decl_id,)
+            })?;
 
-        let assign: Vec<Stmt> = assign.ok_or_else(|| format_err!(
-            "Assignment for {:?} has already been extracted",
-            decl_id
-        ))?;
+        let assign: Vec<Stmt> = assign.ok_or_else(|| {
+            format_err!("Assignment for {:?} has already been extracted", decl_id)
+        })?;
 
         let pruned = DeclStmtInfo {
             decl,
@@ -1075,15 +1072,17 @@ impl DeclStmtStore {
     ) -> Result<Vec<Stmt>, TranslationError> {
         let DeclStmtInfo {
             decl_and_assign, ..
-        } = self.store.swap_remove(&decl_id).ok_or_else(|| format_err!(
-            "Cannot find information on declaration 3 {:?}",
-            decl_id
-        ))?;
+        } = self
+            .store
+            .swap_remove(&decl_id)
+            .ok_or_else(|| format_err!("Cannot find information on declaration 3 {:?}", decl_id))?;
 
-        let decl_and_assign: Vec<Stmt> = decl_and_assign.ok_or_else(|| format_err!(
-            "Declaration with assignment for {:?} has already been extracted",
-            decl_id
-        ))?;
+        let decl_and_assign: Vec<Stmt> = decl_and_assign.ok_or_else(|| {
+            format_err!(
+                "Declaration with assignment for {:?} has already been extracted",
+                decl_id
+            )
+        })?;
 
         let pruned = DeclStmtInfo {
             decl: None,
@@ -1100,15 +1099,17 @@ impl DeclStmtStore {
         let &DeclStmtInfo {
             ref decl_and_assign,
             ..
-        } = self.store.get(&decl_id).ok_or_else(|| format_err!(
-            "Cannot find information on declaration 4 {:?}",
-            decl_id
-        ))?;
+        } = self
+            .store
+            .get(&decl_id)
+            .ok_or_else(|| format_err!("Cannot find information on declaration 4 {:?}", decl_id))?;
 
-        let decl_and_assign: Vec<Stmt> = decl_and_assign.clone().ok_or_else(|| format_err!(
-            "Declaration with assignment for {:?} has already been extracted",
-            decl_id
-        ))?;
+        let decl_and_assign: Vec<Stmt> = decl_and_assign.clone().ok_or_else(|| {
+            format_err!(
+                "Declaration with assignment for {:?} has already been extracted",
+                decl_id
+            )
+        })?;
 
         Ok(decl_and_assign)
     }
@@ -1801,10 +1802,12 @@ impl CfgBuilder {
                 let tgt_label = self
                     .break_labels
                     .last()
-                    .ok_or_else(|| format_err!(
-                        "Cannot find what to break from in this ({:?}) 'break' statement",
-                        stmt_id,
-                    ))?
+                    .ok_or_else(|| {
+                        format_err!(
+                            "Cannot find what to break from in this ({:?}) 'break' statement",
+                            stmt_id,
+                        )
+                    })?
                     .clone();
                 self.add_wip_block(wip, Jump(tgt_label));
 
@@ -1816,10 +1819,12 @@ impl CfgBuilder {
                 let tgt_label = self
                     .continue_labels
                     .last()
-                    .ok_or_else(|| format_err!(
-                        "Cannot find what to continue from in this ({:?}) 'continue' statement",
-                        stmt_id,
-                    ))?
+                    .ok_or_else(|| {
+                        format_err!(
+                            "Cannot find what to continue from in this ({:?}) 'continue' statement",
+                            stmt_id,
+                        )
+                    })?
                     .clone();
                 self.add_wip_block(wip, Jump(tgt_label));
 
@@ -1854,10 +1859,12 @@ impl CfgBuilder {
                 };
                 self.switch_expr_cases
                     .last_mut()
-                    .ok_or_else(|| format_err!(
-                        "Cannot find the 'switch' wrapping this ({:?}) 'case' statement",
-                        stmt_id,
-                    ))?
+                    .ok_or_else(|| {
+                        format_err!(
+                            "Cannot find the 'switch' wrapping this ({:?}) 'case' statement",
+                            stmt_id,
+                        )
+                    })?
                     .cases
                     .push((mk().lit_pat(branch), this_label.clone()));
 
@@ -2211,7 +2218,11 @@ impl Cfg<Label, StmtOrDecl> {
                 lbl.debug_print(),
                 lbl.debug_print(),
                 if show_liveness { live } else { String::new() },
-                if show_liveness { defined } else { String::new() },
+                if show_liveness {
+                    defined
+                } else {
+                    String::new()
+                },
                 format_args!(
                     "-----\\l{}",
                     if bb.body.is_empty() {

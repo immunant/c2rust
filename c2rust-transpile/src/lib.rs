@@ -9,7 +9,7 @@
     clippy::too_many_arguments,
     clippy::try_err,
     clippy::type_complexity,
-    clippy::useless_format,
+    clippy::useless_format
 )]
 
 mod diagnostics;
@@ -215,11 +215,12 @@ fn get_module_name(
 pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
     diagnostics::init(tcfg.enabled_warnings.clone(), tcfg.log_level);
 
-    let lcmds = get_compile_commands(cc_db, &tcfg.filter)
-        .unwrap_or_else(|_| panic!(
+    let lcmds = get_compile_commands(cc_db, &tcfg.filter).unwrap_or_else(|_| {
+        panic!(
             "Could not parse compile commands from {}",
             cc_db.to_string_lossy()
-        ));
+        )
+    });
 
     // Specify path to system include dir on macOS 10.14 and later. Disable the blocks extension.
     let clang_args: Vec<String> = get_extra_args_macos();
@@ -537,10 +538,9 @@ fn get_output_path(
         // Create the parent directory if it doesn't exist
         let parent = output_path.parent().unwrap();
         if !parent.exists() {
-            fs::create_dir_all(&parent).unwrap_or_else(|_| panic!(
-                "couldn't create source directory: {}",
-                parent.display()
-            ));
+            fs::create_dir_all(&parent).unwrap_or_else(|_| {
+                panic!("couldn't create source directory: {}", parent.display())
+            });
         }
         output_path
     } else {

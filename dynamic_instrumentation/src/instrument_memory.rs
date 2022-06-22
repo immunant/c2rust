@@ -291,11 +291,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
     }
 }
 
-fn find_instrumentation_def(
-    tcx: TyCtxt,
-    runtime_crate_did: DefId,
-    name: Symbol,
-) -> Option<DefId> {
+fn find_instrumentation_def(tcx: TyCtxt, runtime_crate_did: DefId, name: Symbol) -> Option<DefId> {
     Some(
         tcx.module_children(runtime_crate_did)
             .iter()
@@ -554,9 +550,7 @@ fn cast_ptr_to_usize<'tcx>(
         let ptr_ty = arg_ty.builtin_deref(false).unwrap();
         let raw_ptr_ty = tcx.mk_ptr(ptr_ty);
         let raw_ptr_local = locals.push(LocalDecl::new(raw_ptr_ty, DUMMY_SP));
-        let mut deref = arg
-            .place()
-            .expect("Can't get the address of a constant");
+        let mut deref = arg.place().expect("Can't get the address of a constant");
         let mut projs = Vec::with_capacity(deref.projection.len() + 1);
         projs.extend(deref.projection);
         projs.push(ProjectionElem::Deref);

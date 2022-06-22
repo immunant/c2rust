@@ -4,7 +4,7 @@
     clippy::duplicate_underscore_argument,
     clippy::new_without_default,
     clippy::too_many_arguments,
-    clippy::type_complexity,
+    clippy::type_complexity
 )]
 
 use std::str;
@@ -513,10 +513,7 @@ impl Builder {
 
     pub fn set_mutbl<M: Make<Mutability>>(self, mutbl: M) -> Self {
         let mutbl = mutbl.make(&self);
-        Builder {
-            mutbl,
-            ..self
-        }
+        Builder { mutbl, ..self }
     }
 
     pub fn mutbl(self) -> Self {
@@ -525,10 +522,7 @@ impl Builder {
 
     pub fn unsafety<U: Make<Unsafety>>(self, unsafety: U) -> Self {
         let unsafety = unsafety.make(&self);
-        Builder {
-            unsafety,
-            ..self
-        }
+        Builder { unsafety, ..self }
     }
 
     pub fn unsafe_(self) -> Self {
@@ -537,10 +531,7 @@ impl Builder {
 
     pub fn constness<C: Make<Constness>>(self, constness: C) -> Self {
         let constness = constness.make(&self);
-        Builder {
-            constness,
-            ..self
-        }
+        Builder { constness, ..self }
     }
 
     pub fn const_(self) -> Self {
@@ -647,10 +638,7 @@ impl Builder {
             .attribute(AttrStyle::Outer, prepared.path, prepared.tokens);
         let mut attrs = self.attrs;
         attrs.push(attr);
-        Builder {
-            attrs,
-            ..self
-        }
+        Builder { attrs, ..self }
     }
 
     pub fn str_attr<K, V>(self, key: K, value: V) -> Self
