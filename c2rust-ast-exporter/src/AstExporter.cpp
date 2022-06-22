@@ -29,7 +29,7 @@
 #include "clang/Frontend/LangStandard.h"
 #else
 #include "clang/Basic/LangStandard.h"
-#endif // CLANG_VERSION_MAJOR
+#endif // CLANG_VERSION_MAJOR < 10
 #include "clang/Tooling/Tooling.h"
 
 #include "AstExporter.hpp"
@@ -319,73 +319,97 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
     }
 
     void VisitBuiltinType(const BuiltinType *T) {
-        TypeTag tag;
         auto kind = T->getKind();
 
-        #if CLANG_VERSION_MAJOR >= 11
+#if CLANG_VERSION_MAJOR >= 10
         // Handle built-in vector types as if they're normal vector types
         if (kind >= BuiltinType::SveInt8 && kind <= BuiltinType::SveBool) {
+// Declare ElemType and ElemCount as needed by various Clang versions
+#if CLANG_VERSION_MAJOR >= 11
             auto Info = Context->getBuiltinVectorTypeInfo(T);
-            auto t = Info.ElementType;
-            auto qt = encodeQualType(t);
+            auto ElemType = Info.ElementType;
 
-            #if CLANG_VERSION_MAJOR >= 12
-            auto ElemCount = Info.EC.getKnownMinValue();
-            #else
+#if CLANG_VERSION_MAJOR >= 12
+            auto ElemCount = Info.EC.getKnownMinValue() * Info.NumVectors;
+#else // CLANG_VERSION_MAJOR >= 12
             // getKnownMinValue was added in Clang 12.
-            auto ElemCount = Info.EC.Min;
-            #endif
+            auto ElemCount = Info.EC.Min * Info.NumVectors;
+#endif // CLANG_VERSION_MAJOR >= 12
+#else // CLANG_VERSION_MAJOR >= 11
+            auto &Ctx = *Context;
+            // Copy-pasted from Type::getSveEltType introduced after Clang 10:
+            auto ElemType = [&] {
+                switch (kind) {
+                default: llvm_unreachable("Unknown builtin SVE type!");
+                case BuiltinType::SveInt8: return Ctx.SignedCharTy;
+                case BuiltinType::SveUint8: return Ctx.UnsignedCharTy;
+                case BuiltinType::SveBool: return Ctx.UnsignedCharTy;
+                case BuiltinType::SveInt16: return Ctx.ShortTy;
+                case BuiltinType::SveUint16: return Ctx.UnsignedShortTy;
+                case BuiltinType::SveInt32: return Ctx.IntTy;
+                case BuiltinType::SveUint32: return Ctx.UnsignedIntTy;
+                case BuiltinType::SveInt64: return Ctx.LongTy;
+                case BuiltinType::SveUint64: return Ctx.UnsignedLongTy;
+                case BuiltinType::SveFloat16: return Ctx.Float16Ty;
+                case BuiltinType::SveFloat32: return Ctx.FloatTy;
+                case BuiltinType::SveFloat64: return Ctx.DoubleTy;
+                }
+            }();
+            // All the SVE types present in Clang 10 are 128-bit vectors
+            // (see `AArch64SVEACLETypes.def`), so we can divide 128 
+            // by their element size to get element count.
+            auto ElemCount = 128 / Context->getTypeSize(ElemType);
+#endif // CLANG_VERSION_MAJOR >= 11
+            auto ElemTypeTag = encodeQualType(ElemType);
+            encodeType(T, TagVectorType,
+                       [&](CborEncoder *local) {
+                           cbor_encode_uint(local, ElemTypeTag);
+                           cbor_encode_uint(local, ElemCount);
+                       });
 
-            encodeType(T, TagVectorType, [T, qt, Info, ElemCount](CborEncoder *local) {
-                cbor_encode_uint(local, qt);
-                cbor_encode_uint(local, ElemCount * Info.NumVectors);
-            });
-
-            VisitQualType(t);
+            VisitQualType(ElemType);
             return;
         }
-        #endif
+#endif // CLANG_VERSION_MAJOR >= 10
 
-        // clang-format off
-        switch (kind) {
-        default: {
-            auto pol = clang::PrintingPolicy(Context->getLangOpts());
-            auto warning = std::string("Encountered unsupported BuiltinType kind ") +
-                           std::to_string((int)kind) + " for type " +
-                           T->getName(pol).str();
-            printWarning(warning, clang::FullSourceLoc());
-            tag = TagTypeUnknown;
-            break;
-        }
-
-        case BuiltinType::BuiltinFn:  tag = TagBuiltinFn;   break;
-        case BuiltinType::UInt128:    tag = TagUInt128;     break;
-        case BuiltinType::Int128:     tag = TagInt128;      break;
-        case BuiltinType::Short:      tag = TagShort;       break;
-        case BuiltinType::Int:        tag = TagInt;         break;
-        case BuiltinType::Long:       tag = TagLong;        break;
-        case BuiltinType::LongLong:   tag = TagLongLong;    break;
-        case BuiltinType::UShort:     tag = TagUShort;      break;
-        case BuiltinType::UInt:       tag = TagUInt;        break;
-        case BuiltinType::ULong:      tag = TagULong;       break;
-        case BuiltinType::ULongLong:  tag = TagULongLong;   break;
-        case BuiltinType::Half:       tag = TagHalf;        break;
-        #if CLANG_VERSION_MAJOR >= 11
-        case BuiltinType::BFloat16:   tag = TagBFloat16;    break;
-        #endif
-        case BuiltinType::Float:      tag = TagFloat;       break;
-        case BuiltinType::Double:     tag = TagDouble;      break;
-        case BuiltinType::LongDouble: tag = TagLongDouble;  break;
-        case BuiltinType::SChar:      tag = TagSChar;       break;
-        case BuiltinType::UChar:      tag = TagUChar;       break;
-        case BuiltinType::Char_U:     tag = TagChar;        break;
-        case BuiltinType::Char_S:     tag = TagChar;        break;
-        case BuiltinType::Void:       tag = TagVoid;        break;
-        case BuiltinType::Bool:       tag = TagBool;        break;
-        case BuiltinType::WChar_S:    tag = TagSWChar;      break;
-        case BuiltinType::WChar_U:    tag = TagUWChar;      break;
-        }
-        // clang-format on
+        const TypeTag tag = [&] {
+            switch (kind) {
+            default: {
+                auto pol = clang::PrintingPolicy(Context->getLangOpts());
+                auto warning = std::string("Encountered unsupported BuiltinType kind ") +
+                               std::to_string((int)kind) + " for type " +
+                               T->getName(pol).str();
+                printWarning(warning, clang::FullSourceLoc());
+                return TagTypeUnknown;
+            }
+            case BuiltinType::BuiltinFn: return TagBuiltinFn;
+            case BuiltinType::UInt128: return TagUInt128;
+            case BuiltinType::Int128: return TagInt128;
+            case BuiltinType::Short: return TagShort;
+            case BuiltinType::Int: return TagInt;
+            case BuiltinType::Long: return TagLong;
+            case BuiltinType::LongLong: return TagLongLong;
+            case BuiltinType::UShort: return TagUShort;
+            case BuiltinType::UInt: return TagUInt;
+            case BuiltinType::ULong: return TagULong;
+            case BuiltinType::ULongLong: return TagULongLong;
+            case BuiltinType::Half: return TagHalf;     
+            #if CLANG_VERSION_MAJOR >= 11
+            case BuiltinType::BFloat16: return TagBFloat16;
+            #endif
+            case BuiltinType::Float: return TagFloat;
+            case BuiltinType::Double: return TagDouble;
+            case BuiltinType::LongDouble: return TagLongDouble;
+            case BuiltinType::SChar: return TagSChar;
+            case BuiltinType::UChar: return TagUChar;
+            case BuiltinType::Char_U: return TagChar;
+            case BuiltinType::Char_S: return TagChar;
+            case BuiltinType::Void: return TagVoid;
+            case BuiltinType::Bool: return TagBool;
+            case BuiltinType::WChar_S: return TagSWChar;
+            case BuiltinType::WChar_U: return TagUWChar;
+            }
+        }();
 
         encodeType(T, tag);
     }
