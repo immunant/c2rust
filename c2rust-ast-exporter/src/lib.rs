@@ -1,4 +1,3 @@
-#![allow(non_camel_case_types)]
 extern crate serde_bytes;
 extern crate serde_cbor;
 
@@ -80,7 +79,11 @@ fn get_ast_cbors(
     hashmap
 }
 
-include!(concat!(env!("OUT_DIR"), "/cppbindings.rs"));
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+mod ffi {
+    include!(concat!(env!("OUT_DIR"), "/cppbindings.rs"));
+}
 
 extern "C" {
     // ExportResult *ast_exporter(int argc, char *argv[]);
@@ -89,15 +92,15 @@ extern "C" {
         argv: *const *const libc::c_char,
         debug: libc::c_int,
         res: *mut libc::c_int,
-    ) -> *mut ExportResult;
+    ) -> *mut ffi::ExportResult;
 
     // void drop_export_result(ExportResult *result);
-    fn drop_export_result(ptr: *mut ExportResult);
+    fn drop_export_result(ptr: *mut ffi::ExportResult);
 
     fn clang_version() -> *const libc::c_char;
 }
 
-unsafe fn marshal_result(result: *const ExportResult) -> HashMap<String, Vec<u8>> {
+unsafe fn marshal_result(result: *const ffi::ExportResult) -> HashMap<String, Vec<u8>> {
     let mut output = HashMap::new();
 
     let n = (*result).entries as isize;
