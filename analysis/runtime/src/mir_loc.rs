@@ -22,7 +22,7 @@ lazy_static! {
             .clone()
             .expect("MIR_LOC_FILE_PATH not initialized by the instrumented code");
         let file = File::open(&path)
-            .unwrap_or_else(|_| panic!("Could not open span file: {:?}", path.to_string_lossy()));
+            .unwrap_or_else(|_| panic!("Could not open span file: {:?}", path.display()));
         bincode::deserialize_from(file).expect("Error deserializing span file")
     };
 }
