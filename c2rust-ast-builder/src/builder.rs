@@ -2607,14 +2607,14 @@ pub fn mk() -> Builder {
 /// argument to a less-than operator. This is a work-around for an upstream
 /// libsyntax bug.
 fn has_rightmost_cast(expr: &Expr) -> bool {
-    match &expr {
-        &Expr::Cast(..) => true,
-        &Expr::Unary(ExprUnary {
+    match expr {
+        Expr::Cast(..) => true,
+        Expr::Unary(ExprUnary {
             attrs: _,
             op: _,
             ref expr,
         }) => has_rightmost_cast(&**expr),
-        &Expr::Binary(ExprBinary {
+        Expr::Binary(ExprBinary {
             attrs: _,
             left: _,
             op: _,
