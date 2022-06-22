@@ -126,7 +126,7 @@ impl CommentStore {
         pos: Option<BytePos>,
         //style: comments::CommentStyle,
     ) -> Option<BytePos> {
-        fn translate_comment(comment: &String) -> String {
+        fn translate_comment(comment: &str) -> String {
             comment
                 .lines()
                 .map(|line: &str| {
@@ -143,7 +143,10 @@ impl CommentStore {
                 .replace("/*!", "/* !")
         }
 
-        let lines: Vec<String> = lines.iter().map(translate_comment).collect();
+        let lines: Vec<String> = lines
+            .iter()
+            .map(|comment| translate_comment(comment))
+            .collect();
 
         if lines.is_empty() {
             None
