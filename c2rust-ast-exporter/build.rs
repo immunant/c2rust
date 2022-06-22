@@ -391,10 +391,7 @@ impl LLVMInfo {
         libs.extend(
             env::var("LLVM_SYSTEM_LIBS")
                 .ok()
-                .or_else(|| invoke_command(
-                    llvm_config.as_ref(),
-                    &["--system-libs", link_mode],
-                ))
+                .or_else(|| invoke_command(llvm_config.as_ref(), &["--system-libs", link_mode]))
                 .unwrap_or_default()
                 .split_whitespace()
                 .map(|lib| String::from(lib.trim_start_matches("-l"))),
