@@ -22,7 +22,7 @@ pub fn structured_cfg(
         debug_labels,
         current_block,
     };
-    let (mut stmts, _span) = s.into_stmt(ast, comment_store);
+    let (mut stmts, _span) = s.to_stmt(ast, comment_store);
 
     // If the very last statement in the vector is a `return`, we can either cut it out or replace
     // it with the returned value.
@@ -411,7 +411,7 @@ fn span_subst_hi(span: Span, other: Span) -> Option<Span> {
 }
 
 impl StructureState {
-    pub fn into_stmt(
+    pub fn to_stmt(
         &self,
         ast: StructuredAST<Box<Expr>, Box<Pat>, Label, Stmt>,
         comment_store: &mut comment_store::CommentStore,
@@ -437,7 +437,7 @@ impl StructureState {
                     span
                 });
 
-                let (mut stmts, stmts_span) = self.into_stmt(*rhs, comment_store);
+                let (mut stmts, stmts_span) = self.to_stmt(*rhs, comment_store);
                 let span = span_subst_hi(span, stmts_span).unwrap_or(span);
 
                 // Adjust the first and last elements of the block if this AST
@@ -455,13 +455,13 @@ impl StructureState {
             }
 
             Append(lhs, rhs) => {
-                let (mut stmts, lhs_span) = self.into_stmt(*lhs, comment_store);
+                let (mut stmts, lhs_span) = self.to_stmt(*lhs, comment_store);
                 let span = ast.span.substitute_dummy(lhs_span);
                 let span = span_subst_lo(span, lhs_span).unwrap_or_else(|| {
                     comment_store.move_comments(lhs_span.lo(), span.lo());
                     span
                 });
-                let (rhs_stmts, rhs_span) = self.into_stmt(*rhs, comment_store);
+                let (rhs_stmts, rhs_span) = self.to_stmt(*rhs, comment_store);
                 let span = span_subst_hi(span, rhs_span).unwrap_or(span);
                 stmts.extend(rhs_stmts);
                 // Adjust the first and last elements of the block if this AST
@@ -496,7 +496,7 @@ impl StructureState {
                 let arms: Vec<Arm> = cases
                     .into_iter()
                     .map(|(pat, stmts)| -> Arm {
-                        let (stmts, span) = self.into_stmt(stmts, comment_store);
+                        let (stmts, span) = self.to_stmt(stmts, comment_store);
 
                         let body = mk().block_expr(mk().span(span).block(stmts));
                         mk().arm(pat, None as Option<Box<Expr>>, body)
@@ -516,9 +516,9 @@ impl StructureState {
                 //   * `if <cond-expr> { } else { .. }` turns into `if !<cond-expr> { .. }`
                 //
 
-                let (then_stmts, then_span) = self.into_stmt(*then, comment_store);
+                let (then_stmts, then_span) = self.to_stmt(*then, comment_store);
 
-                let (mut els_stmts, els_span) = self.into_stmt(*els, comment_store);
+                let (mut els_stmts, els_span) = self.to_stmt(*els, comment_store);
 
                 let mut if_stmt = match (then_stmts.is_empty(), els_stmts.is_empty()) {
                     (true, true) => mk().semi_stmt(cond),
@@ -581,7 +581,7 @@ impl StructureState {
                 let mut arms: Vec<Arm> = cases
                     .into_iter()
                     .map(|(lbl, stmts)| -> Arm {
-                        let (stmts, stmts_span) = self.into_stmt(stmts, comment_store);
+                        let (stmts, stmts_span) = self.to_stmt(stmts, comment_store);
 
                         let lbl_expr = if self.debug_labels {
                             lbl.to_string_expr()
@@ -594,7 +594,7 @@ impl StructureState {
                     })
                     .collect();
 
-                let (then, then_span) = self.into_stmt(*then, comment_store);
+                let (then, then_span) = self.to_stmt(*then, comment_store);
 
                 arms.push(mk().arm(
                     mk().wild_pat(),
@@ -613,7 +613,7 @@ impl StructureState {
                 //   * Loops that start with an `if <cond-expr> { break; }` get converted into `while` loops
                 //
 
-                let (body, body_span) = self.into_stmt(*body, comment_store);
+                let (body, body_span) = self.to_stmt(*body, comment_store);
 
                 // TODO: this is ugly but it needn't be. We are just pattern matching on particular ASTs.
                 if let Some(stmt @ &Stmt::Expr(ref expr)) = body.first() {
