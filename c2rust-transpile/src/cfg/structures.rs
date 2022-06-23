@@ -239,9 +239,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                             structured_cfg_help(exits.clone(), next, nested, used_loop_labels)
                         }
 
-                        GoTo(to) | ExitTo(to)
-                            if next.contains(to) =>
-                        {
+                        GoTo(to) | ExitTo(to) if next.contains(to) => {
                             Ok(insert_goto(to.clone(), next))
                         }
 
@@ -287,10 +285,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                         End => S::empty(),
                         Jump(to) => branch(to)?,
                         Branch(c, t, f) => S::mk_if(c.clone(), branch(t)?, branch(f)?),
-                        Switch {
-                            expr,
-                            cases,
-                        } => {
+                        Switch { expr, cases } => {
                             let branched_cases: Vec<(Box<Pat>, S)> = cases
                                 .iter()
                                 .map(|&(ref pat, ref slbl)| Ok((pat.clone(), branch(slbl)?)))
@@ -302,11 +297,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                 );
             }
 
-            Multiple {
-                branches,
-                then,
-                ..
-            } => {
+            Multiple { branches, then, .. } => {
                 let cases = branches
                     .iter()
                     .map(|(lbl, body)| -> Result<(Label, S), TranslationError> {
@@ -321,10 +312,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                 new_rest = S::mk_append(new_rest, S::mk_goto_table(cases, then));
             }
 
-            Loop {
-                body,
-                entries,
-            } => {
+            Loop { body, entries } => {
                 let label = entries
                     .iter()
                     .next()
@@ -629,30 +617,28 @@ impl StructureState {
                         span
                     };
                     if let syn::Expr::If(ExprIf {
-                        ref cond,
-                        ref then_branch,
+                        cond,
+                        then_branch,
                         else_branch: None,
                         ..
                     }) = expr
                     {
-                        match then_branch.stmts.as_slice() {
-                            [Stmt::Semi(
-                                syn::Expr::Break(ExprBreak {
-                                    label: None,
-                                    expr: None,
-                                    ..
-                                }),
-                                _token,
-                            )] => {
-                                let e = mk().while_expr(
-                                    not(cond),
-                                    mk().span(body_span)
-                                        .block(body.iter().skip(1).cloned().collect()),
-                                    lbl.map(|l| l.pretty_print()),
-                                );
-                                return (vec![mk().span(span).expr_stmt(e)], ast.span);
-                            }
-                            _ => {}
+                        if let [Stmt::Semi(
+                            syn::Expr::Break(ExprBreak {
+                                label: None,
+                                expr: None,
+                                ..
+                            }),
+                            _token,
+                        )] = then_branch.stmts.as_slice()
+                        {
+                            let e = mk().while_expr(
+                                not(cond),
+                                mk().span(body_span)
+                                    .block(body.iter().skip(1).cloned().collect()),
+                                lbl.map(|l| l.pretty_print()),
+                            );
+                            return (vec![mk().span(span).expr_stmt(e)], ast.span);
                         }
                     }
                 }

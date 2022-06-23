@@ -598,23 +598,20 @@ impl TypedAstContext {
                 use SomeId::*;
                 match some_id {
                     Type(type_id) => {
-                        match self.c_types[&type_id].kind {
+                        if let CTypeKind::Elaborated(decl_type_id) = self.c_types[&type_id].kind {
                             // This is a reference to a previously declared type.  If we look
                             // through it we should(?) get something that looks like a declaration,
                             // which we can mark as wanted.
-                            CTypeKind::Elaborated(decl_type_id) => {
-                                let decl_id = self.c_types[&decl_type_id]
-                                    .kind
-                                    .as_decl_or_typedef()
-                                    .expect("target of CTypeKind::Elaborated isn't a decl?");
-                                if wanted.insert(decl_id) {
-                                    to_walk.push(decl_id);
-                                }
+                            let decl_id = self.c_types[&decl_type_id]
+                                .kind
+                                .as_decl_or_typedef()
+                                .expect("target of CTypeKind::Elaborated isn't a decl?");
+                            if wanted.insert(decl_id) {
+                                to_walk.push(decl_id);
                             }
-
+                        } else {
                             // For everything else (including `Struct` etc.), DFNodes will walk the
                             // corresponding declaration.
-                            _ => {}
                         }
                     }
 

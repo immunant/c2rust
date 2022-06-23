@@ -372,16 +372,14 @@ fn vec_expr(val: Box<Expr>, count: Box<Expr>) -> Box<Expr> {
 }
 
 pub fn stmts_block(mut stmts: Vec<Stmt>) -> Box<Block> {
-    match stmts.as_slice() {
-        [Stmt::Expr(Expr::Block(ExprBlock {
-            block: b,
-            label: None,
-            ..
-        }))] => return Box::new(b.clone()),
-        _ => {}
+    if let [Stmt::Expr(Expr::Block(ExprBlock {
+        block, label: None, ..
+    }))] = stmts.as_slice()
+    {
+        return Box::new(block.clone());
     }
 
-    if stmts.len() > 0 {
+    if !stmts.is_empty() {
         let n = stmts.len() - 1;
         let mut s = stmts.remove(n);
         if let Stmt::Expr(e) = s {
@@ -1332,15 +1330,18 @@ impl<'c> Translation<'c> {
                 _ => unreachable!("Found static initializer type other than expr"),
             };
 
+            use CExprKind::*;
             match self.ast_context[expr_id].kind {
-                CExprKind::DeclRef(_, _, LRValue::LValue) => return true,
-                CExprKind::ImplicitCast(_, _, cast_kind, _, _)
-                | CExprKind::ExplicitCast(_, _, cast_kind, _, _) => match cast_kind {
-                    CastKind::IntegralToPointer
-                    | CastKind::FunctionToPointerDecay
-                    | CastKind::PointerToIntegral => return true,
-                    _ => {}
-                },
+                DeclRef(_, _, LRValue::LValue) => return true,
+                ImplicitCast(_, _, cast_kind, _, _) | ExplicitCast(_, _, cast_kind, _, _) => {
+                    use CastKind::*;
+                    match cast_kind {
+                        IntegralToPointer | FunctionToPointerDecay | PointerToIntegral => {
+                            return true
+                        }
+                        _ => {}
+                    }
+                }
                 _ => {}
             }
         }
@@ -1378,14 +1379,15 @@ impl<'c> Translation<'c> {
                 _ => unreachable!("Found static initializer type other than expr"),
             };
 
+            use CExprKind::*;
             match self.ast_context[expr_id].kind {
                 // Technically we're being conservative here, but it's only the most
                 // contrived array indexing initializers that would be accepted
-                CExprKind::ArraySubscript(..) => return true,
-                CExprKind::Member(..) => return true,
+                ArraySubscript(..) => return true,
+                Member(..) => return true,
 
-                CExprKind::Conditional(..) => return true,
-                CExprKind::Unary(typ, Negate, _, _) => {
+                Conditional(..) => return true,
+                Unary(typ, Negate, _, _) => {
                     if self
                         .ast_context
                         .resolve_type(typ.ctype)
@@ -1399,10 +1401,10 @@ impl<'c> Translation<'c> {
                 // PointerToIntegral is no longer allowed, const-eval throws an
                 // error: "pointer-to-integer cast" needs an rfc before being
                 // allowed inside constants
-                CExprKind::ImplicitCast(_, _, PointerToIntegral, _, _)
-                | CExprKind::ExplicitCast(_, _, PointerToIntegral, _, _) => return true,
+                ImplicitCast(_, _, PointerToIntegral, _, _)
+                | ExplicitCast(_, _, PointerToIntegral, _, _) => return true,
 
-                CExprKind::Binary(typ, op, _, _, _, _) => {
+                Binary(typ, op, _, _, _, _) => {
                     let problematic_op = matches!(op, Add | Subtract | Multiply | Divide | Modulus);
 
                     if problematic_op {
@@ -1412,43 +1414,40 @@ impl<'c> Translation<'c> {
                         }
                     }
                 }
-                CExprKind::Unary(_, AddressOf, expr_id, _) => {
-                    if let CExprKind::Member(_, expr_id, _, _, _) = self.ast_context[expr_id].kind {
-                        if let CExprKind::DeclRef(..) = self.ast_context[expr_id].kind {
+                Unary(_, AddressOf, expr_id, _) => {
+                    if let Member(_, expr_id, _, _, _) = self.ast_context[expr_id].kind {
+                        if let DeclRef(..) = self.ast_context[expr_id].kind {
                             return true;
                         }
                     }
                 }
-                CExprKind::InitList(qtype, _, _, _) => {
+                InitList(qtype, _, _, _) => {
                     let ty = &self.ast_context.resolve_type(qtype.ctype).kind;
 
-                    match ty {
-                        CTypeKind::Struct(decl_id) => {
-                            let decl = &self.ast_context[*decl_id].kind;
+                    if let &CTypeKind::Struct(decl_id) = ty {
+                        let decl = &self.ast_context[decl_id].kind;
 
-                            if let CDeclKind::Struct {
-                                fields: Some(fields),
-                                ..
-                            } = decl
-                            {
-                                for field_id in fields {
-                                    let field_decl = &self.ast_context[*field_id].kind;
+                        if let CDeclKind::Struct {
+                            fields: Some(fields),
+                            ..
+                        } = decl
+                        {
+                            for field_id in fields {
+                                let field_decl = &self.ast_context[*field_id].kind;
 
-                                    if let CDeclKind::Field {
-                                        bitfield_width: Some(_),
-                                        ..
-                                    } = field_decl
-                                    {
-                                        return true;
-                                    }
+                                if let CDeclKind::Field {
+                                    bitfield_width: Some(_),
+                                    ..
+                                } = field_decl
+                                {
+                                    return true;
                                 }
                             }
                         }
-                        _ => {}
                     }
                 }
-                CExprKind::ImplicitCast(qtype, _, IntegralToPointer, _, _)
-                | CExprKind::ExplicitCast(qtype, _, IntegralToPointer, _, _) => {
+                ImplicitCast(qtype, _, IntegralToPointer, _, _)
+                | ExplicitCast(qtype, _, IntegralToPointer, _, _) => {
                     if let CTypeKind::Pointer(qtype) =
                         self.ast_context.resolve_type(qtype.ctype).kind
                     {
@@ -2581,50 +2580,48 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         decl_id: CDeclId,
     ) -> Result<cfg::DeclStmtInfo, TranslationError> {
-        match self.ast_context.index(decl_id).kind {
-            CDeclKind::Variable {
-                ref ident,
-                has_static_duration: true,
-                is_externally_visible: false,
-                is_defn: true,
-                initializer,
-                typ,
-                ..
-            } => {
-                if self.static_initializer_is_uncompilable(initializer, typ) {
-                    let ident2 = self
-                        .renamer
-                        .borrow_mut()
-                        .insert_root(decl_id, ident)
-                        .ok_or_else(|| {
-                            TranslationError::generic(
-                                "Unable to rename function scoped static initializer",
-                            )
-                        })?;
-                    let (ty, _, init) = self.convert_variable(ctx.static_(), initializer, typ)?;
-                    let default_init = self.implicit_default_expr(typ.ctype, true)?.to_expr();
-                    let comment = String::from("// Initialized in run_static_initializers");
-                    let span = self
-                        .comment_store
-                        .borrow_mut()
-                        .add_comments(&[comment])
-                        .map(pos_to_span)
-                        .unwrap_or(DUMMY_SP);
-                    let static_item =
-                        mk().span(span)
-                            .mutbl()
-                            .static_item(&ident2, ty, default_init);
-                    let mut init = init?;
-                    init.set_unsafe();
-                    let mut init = init.to_expr();
+        if let CDeclKind::Variable {
+            ref ident,
+            has_static_duration: true,
+            is_externally_visible: false,
+            is_defn: true,
+            initializer,
+            typ,
+            ..
+        } = self.ast_context.index(decl_id).kind
+        {
+            if self.static_initializer_is_uncompilable(initializer, typ) {
+                let ident2 = self
+                    .renamer
+                    .borrow_mut()
+                    .insert_root(decl_id, ident)
+                    .ok_or_else(|| {
+                        TranslationError::generic(
+                            "Unable to rename function scoped static initializer",
+                        )
+                    })?;
+                let (ty, _, init) = self.convert_variable(ctx.static_(), initializer, typ)?;
+                let default_init = self.implicit_default_expr(typ.ctype, true)?.to_expr();
+                let comment = String::from("// Initialized in run_static_initializers");
+                let span = self
+                    .comment_store
+                    .borrow_mut()
+                    .add_comments(&[comment])
+                    .map(pos_to_span)
+                    .unwrap_or(DUMMY_SP);
+                let static_item = mk()
+                    .span(span)
+                    .mutbl()
+                    .static_item(&ident2, ty, default_init);
+                let mut init = init?;
+                init.set_unsafe();
+                let mut init = init.to_expr();
 
-                    self.add_static_initializer_to_section(&ident2, typ, &mut init)?;
-                    self.items.borrow_mut()[&self.main_file].add_item(static_item);
+                self.add_static_initializer_to_section(&ident2, typ, &mut init)?;
+                self.items.borrow_mut()[&self.main_file].add_item(static_item);
 
-                    return Ok(cfg::DeclStmtInfo::empty());
-                }
+                return Ok(cfg::DeclStmtInfo::empty());
             }
-            _ => {}
         };
 
         match self.ast_context.index(decl_id).kind {
