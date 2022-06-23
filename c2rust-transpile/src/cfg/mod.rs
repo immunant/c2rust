@@ -2167,7 +2167,7 @@ impl Cfg<Label, StmtOrDecl> {
             };
 
             let defined = if bb.defined.is_empty() {
-                format!("")
+                "".into()
             } else {
                 format!(
                     "\\ldefined: {{{}}}",
@@ -2181,7 +2181,7 @@ impl Cfg<Label, StmtOrDecl> {
             };
 
             let live = if bb.live.is_empty() {
-                format!("")
+                "".into()
             } else {
                 format!(
                     "\\llive in: {{{}}}",
