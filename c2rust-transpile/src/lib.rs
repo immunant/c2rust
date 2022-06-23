@@ -9,7 +9,8 @@
     clippy::too_many_arguments,
     clippy::try_err,
     clippy::type_complexity,
-    clippy::useless_format
+    clippy::useless_format,
+    clippy::vec_box,
 )]
 
 mod diagnostics;
