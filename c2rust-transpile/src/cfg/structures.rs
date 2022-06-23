@@ -194,11 +194,13 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
     }
 }
 
+type Exit = (Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>);
+
 /// Recursive helper for `structured_cfg`
 ///
 /// TODO: move this into `structured_cfg`?
 fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = Label, S = Stmt>>(
-    exits: Vec<(Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>)>,
+    exits: Vec<Exit>,
     next: &IndexSet<Label>,
     root: &[Structure<Stmt>],
     used_loop_labels: &mut IndexSet<Label>,
