@@ -540,7 +540,7 @@ impl TypedAstContext {
 
         match self.index(pointed_id).kind {
             CTypeKind::Function(_, _, _, no_return, _) => no_return,
-            _ => return false,
+            _ => false,
         }
     }
 
