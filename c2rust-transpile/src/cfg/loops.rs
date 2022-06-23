@@ -147,13 +147,21 @@ pub struct LoopInfo<Lbl: Hash + Eq> {
     loops: IndexMap<LoopId, (IndexSet<Lbl>, Option<LoopId>)>,
 }
 
+/// Cannot `#[derive(Default)]` because of the `Lbl` generic.
+/// See <https://github.com/rust-lang/rust/issues/26925>.
+impl<Lbl: Hash + Eq> Default for LoopInfo<Lbl> {
+    fn default() -> Self {
+        Self {
+            node_loops: Default::default(),
+            loops: Default::default(),
+        }
+    }
+}
+
 impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
     #[allow(missing_docs)]
     pub fn new() -> Self {
-        LoopInfo {
-            node_loops: IndexMap::new(),
-            loops: IndexMap::new(),
-        }
+        Self::default()
     }
 
     /// Merge the information from another `LoopInfo` into this `LoopInfo`

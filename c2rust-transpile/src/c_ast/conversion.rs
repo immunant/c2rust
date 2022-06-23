@@ -57,7 +57,7 @@ type ImporterId = u64;
 /// We need to re-ID nodes since the mapping from Clang's AST to ours is not one-to-one. Sometimes
 /// we need to add nodes (such as 'Semi' nodes to make the lifting of expressions into statements
 /// explicit), sometimes we need to collapse (such as inlining 'FieldDecl' into the 'StructDecl').
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct IdMapper {
     new_id_source: ImporterId,
     old_to_new: HashMap<ClangId, ImporterId>,
@@ -65,12 +65,8 @@ pub struct IdMapper {
 }
 
 impl IdMapper {
-    pub fn new() -> IdMapper {
-        IdMapper {
-            new_id_source: 0,
-            old_to_new: HashMap::new(),
-            new_to_old: HashMap::new(),
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Create a fresh NEW_ID not corresponding to a CLANG_ID

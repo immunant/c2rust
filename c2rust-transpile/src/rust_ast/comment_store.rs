@@ -33,6 +33,7 @@ use syn::__private::ToTokens;
 use syn::spanned::Spanned as _;
 use syn::*;
 
+#[derive(Default)]
 pub struct CommentStore {
     /// The `BytePos` keys do _not_ correspond to the comment position. Instead, they refer to the
     /// `BytePos` of whatever is associated with the comment.
@@ -44,17 +45,13 @@ pub struct CommentStore {
 
 impl CommentStore {
     pub fn new() -> Self {
-        CommentStore {
-            output_comments: BTreeMap::new(),
-            current_position: 0,
-        }
+        Self::default()
     }
 
     pub fn into_comment_traverser(self) -> CommentTraverser {
         CommentTraverser {
             old_comments: self.output_comments,
-            old_to_new_pos: BTreeMap::new(),
-            store: CommentStore::new(),
+            ..Default::default()
         }
     }
 
@@ -211,11 +208,13 @@ impl CommentStore {
     }
 }
 
+#[derive(Default)]
 pub struct CommentTraverser {
     old_comments: BTreeMap<BytePos, SmallVec<[comments::Comment; 1]>>,
     old_to_new_pos: BTreeMap<BytePos, BytePos>,
     store: CommentStore,
 }
+
 impl CommentTraverser {
     fn reinsert_comment_at(&mut self, sp: BytePos) -> Option<BytePos> {
         if let Some(cmmts) = self.old_comments.remove(&sp) {

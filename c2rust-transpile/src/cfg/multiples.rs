@@ -65,12 +65,20 @@ pub struct MultipleInfo<Lbl: Hash + Ord> {
     >,
 }
 
+/// Cannot `#[derive(Default)]` because of the `Lbl` generic.
+/// See <https://github.com/rust-lang/rust/issues/26925>.
+impl<Lbl: Hash + Ord> Default for MultipleInfo<Lbl> {
+    fn default() -> Self {
+        Self {
+            multiples: Default::default(),
+        }
+    }
+}
+
 impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
     #[allow(missing_docs)]
     pub fn new() -> Self {
-        MultipleInfo {
-            multiples: IndexMap::new(),
-        }
+        Self::default()
     }
 
     /// Merge the information from another `MultipleInfo` into this `MultipleInfo`

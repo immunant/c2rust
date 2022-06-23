@@ -960,7 +960,7 @@ impl PerStmt {
 /// declaration, we often don't know if it is already in the right place. The fix is to punt: we
 /// put into a `DeclStmtStore` information about what to do in all possible cases and we delay
 /// choosing what to do until later.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct DeclStmtStore {
     store: IndexMap<CDeclId, DeclStmtInfo>,
 }
@@ -985,7 +985,7 @@ pub struct DeclStmtInfo {
 
 impl DeclStmtInfo {
     pub fn new(decl: Vec<Stmt>, assign: Vec<Stmt>, decl_and_assign: Vec<Stmt>) -> Self {
-        DeclStmtInfo {
+        Self {
             decl: Some(decl),
             assign: Some(assign),
             decl_and_assign: Some(decl_and_assign),
@@ -993,7 +993,7 @@ impl DeclStmtInfo {
     }
 
     pub fn empty() -> Self {
-        DeclStmtInfo {
+        Self {
             decl: Some(Vec::new()),
             assign: Some(Vec::new()),
             decl_and_assign: Some(Vec::new()),
@@ -1003,9 +1003,7 @@ impl DeclStmtInfo {
 
 impl DeclStmtStore {
     pub fn new() -> Self {
-        DeclStmtStore {
-            store: IndexMap::new(),
-        }
+        Self::default()
     }
 
     pub fn absorb(&mut self, other: DeclStmtStore) {

@@ -2,7 +2,6 @@
     clippy::borrowed_box,
     clippy::enum_variant_names,
     clippy::large_enum_variant,
-    clippy::new_without_default,
     clippy::single_match,
     clippy::too_many_arguments,
     clippy::try_err,

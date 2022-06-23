@@ -201,8 +201,8 @@ impl ExprContext {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct FunContext {
+#[derive(Clone, Debug, Default)]
+pub struct FuncContext {
     /// The name of the function we're currently translating
     name: Option<String>,
     /// The name we give to the Rust function argument corresponding
@@ -212,13 +212,9 @@ pub struct FunContext {
     va_list_decl_ids: Option<IndexSet<CDeclId>>,
 }
 
-impl FunContext {
+impl FuncContext {
     pub fn new() -> Self {
-        FunContext {
-            name: None,
-            va_list_arg_name: None,
-            va_list_decl_ids: None,
-        }
+        Self::default()
     }
 
     pub fn enter_new(&mut self, fn_name: &str) {
@@ -255,7 +251,7 @@ pub struct Translation<'c> {
     type_converter: RefCell<TypeConverter>,
     renamer: RefCell<Renamer<CDeclId>>,
     zero_inits: RefCell<IndexMap<CDeclId, WithStmts<Box<Expr>>>>,
-    function_context: RefCell<FunContext>,
+    function_context: RefCell<FuncContext>,
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
     macro_expansions: RefCell<IndexMap<CDeclId, Option<MacroExpansion>>>,
 
@@ -1216,7 +1212,7 @@ impl<'c> Translation<'c> {
                 "drop", "Some", "None", "Ok", "Err",
             ])),
             zero_inits: RefCell::new(IndexMap::new()),
-            function_context: RefCell::new(FunContext::new()),
+            function_context: RefCell::new(FuncContext::new()),
             potential_flexible_array_members: RefCell::new(IndexSet::new()),
             macro_expansions: RefCell::new(IndexMap::new()),
             comment_context,
