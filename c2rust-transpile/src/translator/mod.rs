@@ -529,16 +529,16 @@ pub fn translate(
             .prune_unwanted_decls(tcfg.preserve_unused_functions);
 
         enum Name<'a> {
-            VarName(&'a str),
-            TypeName(&'a str),
-            AnonymousType,
-            NoName,
+            Var(&'a str),
+            Type(&'a str),
+            Anonymous,
+            None,
         }
 
         fn some_type_name(s: Option<&str>) -> Name {
             match s {
-                None => Name::AnonymousType,
-                Some(r) => Name::TypeName(r),
+                None => Name::Anonymous,
+                Some(r) => Name::Type(r),
             }
         }
 
@@ -612,7 +612,7 @@ pub fn translate(
         // Populate renamer with top-level names
         for (&decl_id, decl) in t.ast_context.iter_decls() {
             let decl_name = match decl.kind {
-                _ if contains(&t.ast_context.prenamed_decls, &decl_id) => Name::NoName,
+                _ if contains(&t.ast_context.prenamed_decls, &decl_id) => Name::None,
                 CDeclKind::Struct { ref name, .. } => {
                     some_type_name(name.as_ref().map(String::as_str))
                 }
@@ -622,30 +622,30 @@ pub fn translate(
                 CDeclKind::Union { ref name, .. } => {
                     some_type_name(name.as_ref().map(String::as_str))
                 }
-                CDeclKind::Typedef { ref name, .. } => Name::TypeName(name),
-                CDeclKind::Function { ref name, .. } => Name::VarName(name),
-                CDeclKind::EnumConstant { ref name, .. } => Name::VarName(name),
+                CDeclKind::Typedef { ref name, .. } => Name::Type(name),
+                CDeclKind::Function { ref name, .. } => Name::Var(name),
+                CDeclKind::EnumConstant { ref name, .. } => Name::Var(name),
                 CDeclKind::Variable { ref ident, .. }
                     if t.ast_context.c_decls_top.contains(&decl_id) =>
                 {
-                    Name::VarName(ident)
+                    Name::Var(ident)
                 }
-                CDeclKind::MacroObject { ref name, .. } => Name::VarName(name),
-                _ => Name::NoName,
+                CDeclKind::MacroObject { ref name, .. } => Name::Var(name),
+                _ => Name::None,
             };
             match decl_name {
-                Name::NoName => (),
-                Name::AnonymousType => {
+                Name::None => (),
+                Name::Anonymous => {
                     t.type_converter
                         .borrow_mut()
                         .declare_decl_name(decl_id, "C2RustUnnamed");
                 }
-                Name::TypeName(name) => {
+                Name::Type(name) => {
                     t.type_converter
                         .borrow_mut()
                         .declare_decl_name(decl_id, name);
                 }
-                Name::VarName(name) => {
+                Name::Var(name) => {
                     t.renamer.borrow_mut().insert(decl_id, name);
                 }
             }
