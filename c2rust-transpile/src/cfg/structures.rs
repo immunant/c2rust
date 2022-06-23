@@ -211,11 +211,12 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
     for structure in root.iter().rev() {
         let mut new_rest: S = S::empty();
 
+        use Structure::*;
         match structure {
-            &Structure::Simple {
-                ref body,
-                ref terminator,
-                ref span,
+            Simple {
+                body,
+                terminator,
+                span,
                 ..
             } => {
                 for s in body.clone() {
@@ -232,18 +233,19 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                 };
 
                 let mut branch = |slbl: &StructureLabel<Stmt>| -> Result<S, TranslationError> {
+                    use StructureLabel::*;
                     match slbl {
-                        StructureLabel::Nested(ref nested) => {
+                        Nested(ref nested) => {
                             structured_cfg_help(exits.clone(), next, nested, used_loop_labels)
                         }
 
-                        StructureLabel::GoTo(to) | StructureLabel::ExitTo(to)
+                        GoTo(to) | ExitTo(to)
                             if next.contains(to) =>
                         {
                             Ok(insert_goto(to.clone(), next))
                         }
 
-                        StructureLabel::ExitTo(to) => {
+                        ExitTo(to) => {
                             let mut immediate = true;
                             for (label, local) in &exits {
                                 if let Some(&(ref follow, exit_style)) = local.get(to) {
@@ -270,7 +272,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                             )
                         }
 
-                        StructureLabel::GoTo(to) => Err(format_err!(
+                        GoTo(to) => Err(format_err!(
                             "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
                             to,
                             next
@@ -282,12 +284,12 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                 new_rest = S::mk_append(
                     new_rest,
                     match terminator {
-                        &End => S::empty(),
-                        &Jump(ref to) => branch(to)?,
-                        &Branch(ref c, ref t, ref f) => S::mk_if(c.clone(), branch(t)?, branch(f)?),
-                        &Switch {
-                            ref expr,
-                            ref cases,
+                        End => S::empty(),
+                        Jump(to) => branch(to)?,
+                        Branch(c, t, f) => S::mk_if(c.clone(), branch(t)?, branch(f)?),
+                        Switch {
+                            expr,
+                            cases,
                         } => {
                             let branched_cases: Vec<(Box<Pat>, S)> = cases
                                 .iter()
@@ -300,12 +302,12 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                 );
             }
 
-            &Structure::Multiple {
-                ref branches,
-                ref then,
+            Multiple {
+                branches,
+                then,
                 ..
             } => {
-                let cases: Vec<(Label, S)> = branches
+                let cases = branches
                     .iter()
                     .map(|(lbl, body)| -> Result<(Label, S), TranslationError> {
                         let stmts =
@@ -319,9 +321,9 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                 new_rest = S::mk_append(new_rest, S::mk_goto_table(cases, then));
             }
 
-            &Structure::Loop {
-                ref body,
-                ref entries,
+            Loop {
+                body,
+                entries,
             } => {
                 let label = entries
                     .iter()
@@ -364,18 +366,19 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
 /// Checks if there are any `Multiple` structures anywhere. Only if so will there be any need for a
 /// `current_block` variable.
 pub fn has_multiple<Stmt>(root: &[Structure<Stmt>]) -> bool {
+    use Structure::*;
     root.iter().any(|structure| match structure {
-        &Structure::Simple { ref terminator, .. } => {
+        Simple { terminator, .. } => {
             terminator
                 .get_labels()
                 .into_iter()
                 .any(|structure_label| match structure_label {
-                    &StructureLabel::Nested(ref nested) => has_multiple(nested),
+                    StructureLabel::Nested(nested) => has_multiple(nested),
                     _ => false,
                 })
         }
-        &Structure::Multiple { .. } => true,
-        &Structure::Loop { ref body, .. } => has_multiple(body),
+        Multiple { .. } => true,
+        Loop { body, .. } => has_multiple(body),
     })
 }
 

@@ -988,24 +988,19 @@ pub enum CDeclKind {
 
 impl CDeclKind {
     pub fn get_name(&self) -> Option<&String> {
-        match self {
-            &CDeclKind::Function { name: ref i, .. } => Some(i),
-            &CDeclKind::Variable { ident: ref i, .. } => Some(i),
-            &CDeclKind::Typedef { name: ref i, .. } => Some(i),
-            &CDeclKind::EnumConstant { name: ref i, .. } => Some(i),
-            &CDeclKind::Enum {
-                name: Some(ref i), ..
-            } => Some(i),
-            &CDeclKind::Struct {
-                name: Some(ref i), ..
-            } => Some(i),
-            &CDeclKind::Union {
-                name: Some(ref i), ..
-            } => Some(i),
-            &CDeclKind::Field { name: ref i, .. } => Some(i),
-            &CDeclKind::MacroObject { ref name, .. } => Some(name),
-            _ => None,
-        }
+        use CDeclKind::*;
+        Some(match self {
+            Function { name: i, .. } => i,
+            Variable { ident: i, .. } => i,
+            Typedef { name: i, .. } => i,
+            EnumConstant { name: i, .. } => i,
+            Enum { name: Some(i), .. } => i,
+            Struct { name: Some(i), .. } => i,
+            Union { name: Some(i), .. } => i,
+            Field { name: i, .. } => i,
+            MacroObject { name, .. } => name,
+            _ => return None,
+        })
     }
 }
 
@@ -1243,12 +1238,57 @@ pub enum UnOp {
     Coawait,       // [C++ Coroutines] co_await x
 }
 
+impl UnOp {
+    pub fn as_str(&self) -> &'static str {
+        use UnOp::*;
+        match self {
+            AddressOf => "&",
+            Deref => "*",
+            Plus => "+",
+            PreIncrement => "++",
+            PostIncrement => "++",
+            Negate => "-",
+            PreDecrement => "--",
+            PostDecrement => "--",
+            Complement => "~",
+            Not => "!",
+            Real => "__real",
+            Imag => "__imag",
+            Extension => "__extension__",
+            Coawait => "co_await",
+        }
+    }
+}
+
+impl Display for UnOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// Represents a unary type operator in C
 #[derive(Debug, Clone, Copy)]
 pub enum UnTypeOp {
     SizeOf,
     AlignOf,
     PreferredAlignOf,
+}
+
+impl UnTypeOp {
+    pub fn as_str(&self) -> &'static str {
+        use UnTypeOp::*;
+        match self {
+            SizeOf => "sizeof",
+            AlignOf => "alignof",
+            PreferredAlignOf => "__alignof",
+        }
+    }
+}
+
+impl Display for UnTypeOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 impl UnOp {
@@ -1293,6 +1333,52 @@ pub enum BinOp {
 
     Assign, // =
     Comma,  // ,
+}
+
+impl BinOp {
+    pub fn as_str(&self) -> &'static str {
+        use BinOp::*;
+        match self {
+            Multiply => "*",
+            Divide => "/",
+            Modulus => "%",
+            Add => "+",
+            Subtract => "-",
+            ShiftLeft => "<<",
+            ShiftRight => ">>",
+            Less => "<",
+            Greater => ">",
+            LessEqual => "<=",
+            GreaterEqual => ">=",
+            EqualEqual => "==",
+            NotEqual => "!=",
+            BitAnd => "&",
+            BitXor => "^",
+            BitOr => "|",
+            And => "&&",
+            Or => "||",
+
+            AssignAdd => "+=",
+            AssignSubtract => "-=",
+            AssignMultiply => "*=",
+            AssignDivide => "/=",
+            AssignModulus => "%=",
+            AssignBitXor => "^=",
+            AssignShiftLeft => "<<=",
+            AssignShiftRight => ">>=",
+            AssignBitOr => "|=",
+            AssignBitAnd => "&=",
+
+            Assign => "=",
+            Comma => ", ",
+        }
+    }
+}
+
+impl Display for BinOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 impl BinOp {
@@ -1589,6 +1675,41 @@ pub enum CTypeKind {
 
     Half,
     BFloat16,
+}
+
+impl CTypeKind {
+    pub fn as_str(&self) -> &'static str {
+        use CTypeKind::*;
+        match self {
+            Void => "void",
+            Bool => "_Bool",
+            Char => "char",
+            SChar => "signed char",
+            Short => "signed short",
+            Int => "int",
+            Long => "long",
+            LongLong => "long long",
+            UChar => "unsigned char",
+            UShort => "unsigned short",
+            UInt => "unsigned int",
+            ULong => "unsigned long",
+            ULongLong => "unsigned long long",
+            Float => "float",
+            Double => "double",
+            LongDouble => "long double",
+            Int128 => "__int128",
+            UInt128 => "unsigned __int128",
+            Half => "half",
+            BFloat16 => "bfloat16",
+            _ => unimplemented!("Printer::print_type({:?})", self),
+        }
+    }
+}
+
+impl Display for CTypeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 #[derive(Copy, Clone, Debug)]

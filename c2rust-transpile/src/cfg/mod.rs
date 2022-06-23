@@ -155,10 +155,11 @@ pub enum Structure<Stmt> {
 
 impl<S> Structure<S> {
     fn get_entries(&self) -> &IndexSet<Label> {
+        use Structure::*;
         match self {
-            &Structure::Simple { ref entries, .. } => entries,
-            &Structure::Loop { ref entries, .. } => entries,
-            &Structure::Multiple { ref entries, .. } => entries,
+            Simple { entries, .. } => entries,
+            Loop { entries, .. } => entries,
+            Multiple { entries, .. } => entries,
         }
     }
 }
@@ -361,18 +362,12 @@ impl<L> GenTerminator<L> {
     /// Produce a new terminator by transforming all of the labels in that terminator.
     fn map_labels<F: Fn(&L) -> N, N>(&self, func: F) -> GenTerminator<N> {
         match self {
-            &End => End,
-            &Jump(ref l) => Jump(func(l)),
-            &Branch(ref e, ref l1, ref l2) => Branch(e.clone(), func(l1), func(l2)),
-            &Switch {
-                ref expr,
-                ref cases,
-            } => Switch {
+            End => End,
+            Jump(l) => Jump(func(l)),
+            Branch(e, l1, l2) => Branch(e.clone(), func(l1), func(l2)),
+            Switch { expr, cases } => Switch {
                 expr: expr.clone(),
-                cases: cases
-                    .iter()
-                    .map(|&(ref e, ref l)| (e.clone(), func(l)))
-                    .collect(),
+                cases: cases.iter().map(|(e, l)| (e.clone(), func(l))).collect(),
             },
         }
     }
@@ -380,22 +375,20 @@ impl<L> GenTerminator<L> {
     /// Extract references to all of the labels in the terminator
     fn get_labels(&self) -> Vec<&L> {
         match self {
-            &End => vec![],
-            &Jump(ref l) => vec![l],
-            &Branch(_, ref l1, ref l2) => vec![l1, l2],
-            &Switch { ref cases, .. } => cases.iter().map(|&(_, ref l)| l).collect(),
+            End => vec![],
+            Jump(l) => vec![l],
+            Branch(_, l1, l2) => vec![l1, l2],
+            Switch { cases, .. } => cases.iter().map(|(_, l)| l).collect(),
         }
     }
 
     /// Extract mutable references to all of the labels in the terminator
     fn get_labels_mut(&mut self) -> Vec<&mut L> {
         match self {
-            &mut End => vec![],
-            &mut Jump(ref mut l) => vec![l],
-            &mut Branch(_, ref mut l1, ref mut l2) => vec![l1, l2],
-            &mut Switch { ref mut cases, .. } => {
-                cases.iter_mut().map(|&mut (_, ref mut l)| l).collect()
-            }
+            End => vec![],
+            Jump(l) => vec![l],
+            Branch(_, l1, l2) => vec![l1, l2],
+            Switch { cases, .. } => cases.iter_mut().map(|(_, l)| l).collect(),
         }
     }
 }
