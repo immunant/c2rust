@@ -1,6 +1,5 @@
 #![allow(
     clippy::borrowed_box,
-    clippy::duplicate_underscore_argument,
     clippy::enum_variant_names,
     clippy::large_enum_variant,
     clippy::match_ref_pats,
