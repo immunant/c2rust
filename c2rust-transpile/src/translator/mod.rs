@@ -2746,25 +2746,27 @@ impl<'c> Translation<'c> {
                 // TODO: We need this because we can have multiple 'extern' decls of the same variable.
                 //       When we do, we must make sure to insert into the renamer the first time, and
                 //       then skip subsequent times.
+                use CDeclKind::*;
                 let skip = match decl {
-                    &CDeclKind::Variable { .. } => !inserted,
-                    &CDeclKind::Struct { .. } => true,
-                    &CDeclKind::Union { .. } => true,
-                    &CDeclKind::Enum { .. } => true,
-                    &CDeclKind::Typedef { .. } => true,
+                    Variable { .. } => !inserted,
+                    Struct { .. } => true,
+                    Union { .. } => true,
+                    Enum { .. } => true,
+                    Typedef { .. } => true,
                     _ => false,
                 };
 
                 if skip {
                     Ok(cfg::DeclStmtInfo::new(vec![], vec![], vec![]))
                 } else {
+                    use ConvertedDecl::*;
                     let items = match self.convert_decl(ctx, decl_id)? {
-                        ConvertedDecl::Item(item) => vec![item],
-                        ConvertedDecl::ForeignItem(item) => {
+                        Item(item) => vec![item],
+                        ForeignItem(item) => {
                             vec![mk().extern_("C").foreign_items(vec![item])]
                         }
-                        ConvertedDecl::Items(items) => items,
-                        ConvertedDecl::NoItem => return Ok(cfg::DeclStmtInfo::empty()),
+                        Items(items) => items,
+                        NoItem => return Ok(cfg::DeclStmtInfo::empty()),
                     };
 
                     let item_stmt = |item| mk().item_stmt(item);
