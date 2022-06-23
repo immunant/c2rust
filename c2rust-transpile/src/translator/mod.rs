@@ -558,23 +558,24 @@ pub fn translate(
                     .kind
                     .as_underlying_decl()
                 {
+                    use CDeclKind::*;
                     let is_unnamed = match t.ast_context[subdecl_id].kind {
-                        CDeclKind::Struct { name: None, .. }
-                        | CDeclKind::Union { name: None, .. }
-                        | CDeclKind::Enum { name: None, .. } => true,
+                        Struct { name: None, .. }
+                        | Union { name: None, .. }
+                        | Enum { name: None, .. } => true,
 
                         // Detect case where typedef and struct share the same name.
                         // In this case the purpose of the typedef was simply to eliminate
                         // the need for the 'struct' tag when refering to the type name.
-                        CDeclKind::Struct {
+                        Struct {
                             name: Some(ref target_name),
                             ..
                         }
-                        | CDeclKind::Union {
+                        | Union {
                             name: Some(ref target_name),
                             ..
                         }
-                        | CDeclKind::Enum {
+                        | Enum {
                             name: Some(ref target_name),
                             ..
                         } => name == target_name,
@@ -611,26 +612,19 @@ pub fn translate(
 
         // Populate renamer with top-level names
         for (&decl_id, decl) in t.ast_context.iter_decls() {
+            use CDeclKind::*;
             let decl_name = match decl.kind {
                 _ if contains(&t.ast_context.prenamed_decls, &decl_id) => Name::None,
-                CDeclKind::Struct { ref name, .. } => {
-                    some_type_name(name.as_ref().map(String::as_str))
-                }
-                CDeclKind::Enum { ref name, .. } => {
-                    some_type_name(name.as_ref().map(String::as_str))
-                }
-                CDeclKind::Union { ref name, .. } => {
-                    some_type_name(name.as_ref().map(String::as_str))
-                }
-                CDeclKind::Typedef { ref name, .. } => Name::Type(name),
-                CDeclKind::Function { ref name, .. } => Name::Var(name),
-                CDeclKind::EnumConstant { ref name, .. } => Name::Var(name),
-                CDeclKind::Variable { ref ident, .. }
-                    if t.ast_context.c_decls_top.contains(&decl_id) =>
-                {
+                Struct { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
+                Enum { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
+                Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
+                Typedef { ref name, .. } => Name::Type(name),
+                Function { ref name, .. } => Name::Var(name),
+                EnumConstant { ref name, .. } => Name::Var(name),
+                Variable { ref ident, .. } if t.ast_context.c_decls_top.contains(&decl_id) => {
                     Name::Var(ident)
                 }
-                CDeclKind::MacroObject { ref name, .. } => Name::Var(name),
+                MacroObject { ref name, .. } => Name::Var(name),
                 _ => Name::None,
             };
             match decl_name {
@@ -658,22 +652,27 @@ pub fn translate(
                     *t.cur_file.borrow_mut() = decl_file_id;
                 }
                 match t.convert_decl(ctx, decl_id) {
-                    Ok(ConvertedDecl::Item(item)) => {
-                        t.insert_item(item, decl);
-                    }
-                    Ok(ConvertedDecl::ForeignItem(item)) => {
-                        t.insert_foreign_item(item, decl);
-                    }
-                    Ok(ConvertedDecl::Items(items)) => {
-                        for item in items {
-                            t.insert_item(item, decl);
-                        }
-                    }
-                    Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
                         let k = &t.ast_context.get_decl(&decl_id).map(|x| &x.kind);
                         let msg = format!("Skipping declaration {:?} due to error: {}", k, e);
                         translate_failure(t.tcfg, &msg);
+                    }
+                    Ok(converted_decl) => {
+                        use ConvertedDecl::*;
+                        match converted_decl {
+                            Item(item) => {
+                                t.insert_item(item, decl);
+                            }
+                            ForeignItem(item) => {
+                                t.insert_foreign_item(item, decl);
+                            }
+                            Items(items) => {
+                                for item in items {
+                                    t.insert_item(item, decl);
+                                }
+                            }
+                            NoItem => {}
+                        }
                     }
                 }
                 t.cur_file.borrow_mut().take();
@@ -687,15 +686,15 @@ pub fn translate(
 
             // Export all types
             for (&decl_id, decl) in t.ast_context.iter_decls() {
+                use CDeclKind::*;
                 let needs_export = match decl.kind {
-                    CDeclKind::Struct { .. } => true,
-                    CDeclKind::Enum { .. } => true,
-                    CDeclKind::EnumConstant { .. } => true,
-                    CDeclKind::Union { .. } => true,
-                    CDeclKind::Typedef { .. } =>
-                    // Only check the key as opposed to `contains` because the key should be the
-                    // typedef id
-                    {
+                    Struct { .. } => true,
+                    Enum { .. } => true,
+                    EnumConstant { .. } => true,
+                    Union { .. } => true,
+                    Typedef { .. } => {
+                        // Only check the key as opposed to `contains`
+                        // because the key should be the typedef id
                         !t.ast_context.prenamed_decls.contains_key(&decl_id)
                     }
                     _ => false,
@@ -708,11 +707,12 @@ pub fn translate(
 
         // Export top-level value declarations
         for top_id in &t.ast_context.c_decls_top {
+            use CDeclKind::*;
             let needs_export = match t.ast_context[*top_id].kind {
-                CDeclKind::Function { is_implicit, .. } => !is_implicit,
-                CDeclKind::Variable { .. } => true,
-                CDeclKind::MacroObject { .. } => tcfg.translate_const_macros,
-                CDeclKind::MacroFunction { .. } => tcfg.translate_fn_macros,
+                Function { is_implicit, .. } => !is_implicit,
+                Variable { .. } => true,
+                MacroObject { .. } => tcfg.translate_const_macros,
+                MacroFunction { .. } => tcfg.translate_fn_macros,
                 _ => false,
             };
             if needs_export {
@@ -726,18 +726,6 @@ pub fn translate(
                     *t.cur_file.borrow_mut() = decl_file_id;
                 }
                 match t.convert_decl(ctx, *top_id) {
-                    Ok(ConvertedDecl::Item(item)) => {
-                        t.insert_item(item, decl);
-                    }
-                    Ok(ConvertedDecl::ForeignItem(item)) => {
-                        t.insert_foreign_item(item, decl);
-                    }
-                    Ok(ConvertedDecl::Items(items)) => {
-                        for item in items {
-                            t.insert_item(item, decl);
-                        }
-                    }
-                    Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
                         let decl = &t.ast_context.get_decl(top_id);
                         let msg = match decl {
@@ -755,6 +743,23 @@ pub fn translate(
                             _ => format!("Failed to translate declaration: {}", e,),
                         };
                         translate_failure(t.tcfg, &msg);
+                    }
+                    Ok(converted_decl) => {
+                        use ConvertedDecl::*;
+                        match converted_decl {
+                            Item(item) => {
+                                t.insert_item(item, decl);
+                            }
+                            ForeignItem(item) => {
+                                t.insert_foreign_item(item, decl);
+                            }
+                            Items(items) => {
+                                for item in items {
+                                    t.insert_item(item, decl);
+                                }
+                            }
+                            NoItem => {}
+                        }
                     }
                 }
                 t.cur_file.borrow_mut().take();
@@ -890,24 +895,25 @@ pub fn translate(
 }
 
 fn item_ident(i: &Item) -> Option<&Ident> {
+    use Item::*;
     Some(match i {
-        Item::Const(ic) => &ic.ident,
-        Item::Enum(ie) => &ie.ident,
-        Item::ExternCrate(iec) => &iec.ident,
-        Item::Fn(ifn) => &ifn.sig.ident,
-        Item::ForeignMod(_ifm) => return None,
-        Item::Impl(_ii) => return None,
-        Item::Macro(im) => return im.ident.as_ref(),
-        Item::Macro2(im2) => &im2.ident,
-        Item::Mod(im) => &im.ident,
-        Item::Static(is) => &is.ident,
-        Item::Struct(is) => &is.ident,
-        Item::Trait(it) => &it.ident,
-        Item::TraitAlias(ita) => &ita.ident,
-        Item::Type(it) => &it.ident,
-        Item::Union(iu) => &iu.ident,
-        Item::Use(ItemUse { tree: _, .. }) => unimplemented!(),
-        Item::Verbatim(_tokenstream) => {
+        Const(ic) => &ic.ident,
+        Enum(ie) => &ie.ident,
+        ExternCrate(iec) => &iec.ident,
+        Fn(ifn) => &ifn.sig.ident,
+        ForeignMod(_ifm) => return None,
+        Impl(_ii) => return None,
+        Macro(im) => return im.ident.as_ref(),
+        Macro2(im2) => &im2.ident,
+        Mod(im) => &im.ident,
+        Static(is) => &is.ident,
+        Struct(is) => &is.ident,
+        Trait(it) => &it.ident,
+        TraitAlias(ita) => &ita.ident,
+        Type(it) => &it.ident,
+        Union(iu) => &iu.ident,
+        Use(ItemUse { tree: _, .. }) => unimplemented!(),
+        Verbatim(_tokenstream) => {
             warn!("cannot determine name of tokenstream item");
             return None;
         }
@@ -919,25 +925,26 @@ fn item_ident(i: &Item) -> Option<&Ident> {
 }
 
 fn item_vis(i: &Item) -> Option<Visibility> {
+    use Item::*;
     Some(
         match i {
-            Item::Const(ic) => &ic.vis,
-            Item::Enum(ie) => &ie.vis,
-            Item::ExternCrate(iec) => &iec.vis,
-            Item::Fn(ifn) => &ifn.vis,
-            Item::ForeignMod(_ifm) => return None,
-            Item::Impl(_ii) => return None,
-            Item::Macro(_im) => return None,
-            Item::Macro2(im2) => &im2.vis,
-            Item::Mod(im) => &im.vis,
-            Item::Static(is) => &is.vis,
-            Item::Struct(is) => &is.vis,
-            Item::Trait(it) => &it.vis,
-            Item::TraitAlias(ita) => &ita.vis,
-            Item::Type(it) => &it.vis,
-            Item::Union(iu) => &iu.vis,
-            Item::Use(ItemUse { vis, .. }) => vis,
-            Item::Verbatim(_tokenstream) => {
+            Const(ic) => &ic.vis,
+            Enum(ie) => &ie.vis,
+            ExternCrate(iec) => &iec.vis,
+            Fn(ifn) => &ifn.vis,
+            ForeignMod(_ifm) => return None,
+            Impl(_ii) => return None,
+            Macro(_im) => return None,
+            Macro2(im2) => &im2.vis,
+            Mod(im) => &im.vis,
+            Static(is) => &is.vis,
+            Struct(is) => &is.vis,
+            Trait(it) => &it.vis,
+            TraitAlias(ita) => &ita.vis,
+            Type(it) => &it.vis,
+            Union(iu) => &iu.vis,
+            Use(ItemUse { vis, .. }) => vis,
+            Verbatim(_tokenstream) => {
                 warn!("cannot determine visibility of tokenstream item");
                 return None;
             }
@@ -951,12 +958,13 @@ fn item_vis(i: &Item) -> Option<Visibility> {
 }
 
 fn foreign_item_ident_vis(fi: &ForeignItem) -> Option<(&Ident, Visibility)> {
+    use ForeignItem::*;
     Some(match fi {
-        ForeignItem::Fn(ifn) => (&ifn.sig.ident, ifn.vis.clone()),
-        ForeignItem::Static(is) => (&is.ident, is.vis.clone()),
-        ForeignItem::Type(it) => (&it.ident, it.vis.clone()),
-        ForeignItem::Macro(_im) => return None,
-        ForeignItem::Verbatim(_tokenstream) => {
+        Fn(ifn) => (&ifn.sig.ident, ifn.vis.clone()),
+        Static(is) => (&is.ident, is.vis.clone()),
+        Type(it) => (&it.ident, it.vis.clone()),
+        Macro(_im) => return None,
+        Verbatim(_tokenstream) => {
             warn!("cannot determine name and visibility of tokenstream foreign item");
             return None;
         }
@@ -1097,36 +1105,38 @@ fn add_src_loc_attr(attrs: &mut Vec<syn::Attribute>, src_loc: &Option<SrcLoc>) {
 
 /// Get a mutable reference to the attributes of a ForeignItem
 fn foreign_item_attrs(item: &mut ForeignItem) -> Option<&mut Vec<syn::Attribute>> {
+    use ForeignItem::*;
     Some(match item {
-        ForeignItem::Fn(ForeignItemFn { ref mut attrs, .. }) => attrs,
-        ForeignItem::Static(ForeignItemStatic { ref mut attrs, .. }) => attrs,
-        ForeignItem::Type(ForeignItemType { ref mut attrs, .. }) => attrs,
-        ForeignItem::Macro(ForeignItemMacro { ref mut attrs, .. }) => attrs,
-        ForeignItem::Verbatim(TokenStream { .. }) => return None,
+        Fn(ForeignItemFn { ref mut attrs, .. }) => attrs,
+        Static(ForeignItemStatic { ref mut attrs, .. }) => attrs,
+        Type(ForeignItemType { ref mut attrs, .. }) => attrs,
+        Macro(ForeignItemMacro { ref mut attrs, .. }) => attrs,
+        Verbatim(TokenStream { .. }) => return None,
         _ => return None,
     })
 }
 
 /// Get a mutable reference to the attributes of an Item
 fn item_attrs(item: &mut Item) -> Option<&mut Vec<syn::Attribute>> {
+    use Item::*;
     Some(match item {
-        Item::Const(ItemConst { ref mut attrs, .. }) => attrs,
-        Item::Enum(ItemEnum { ref mut attrs, .. }) => attrs,
-        Item::ExternCrate(ItemExternCrate { ref mut attrs, .. }) => attrs,
-        Item::Fn(ItemFn { ref mut attrs, .. }) => attrs,
-        Item::ForeignMod(ItemForeignMod { ref mut attrs, .. }) => attrs,
-        Item::Impl(ItemImpl { ref mut attrs, .. }) => attrs,
-        Item::Macro(ItemMacro { ref mut attrs, .. }) => attrs,
-        Item::Macro2(ItemMacro2 { ref mut attrs, .. }) => attrs,
-        Item::Mod(ItemMod { ref mut attrs, .. }) => attrs,
-        Item::Static(ItemStatic { ref mut attrs, .. }) => attrs,
-        Item::Struct(ItemStruct { ref mut attrs, .. }) => attrs,
-        Item::Trait(ItemTrait { ref mut attrs, .. }) => attrs,
-        Item::TraitAlias(ItemTraitAlias { ref mut attrs, .. }) => attrs,
-        Item::Type(ItemType { ref mut attrs, .. }) => attrs,
-        Item::Union(ItemUnion { ref mut attrs, .. }) => attrs,
-        Item::Use(ItemUse { ref mut attrs, .. }) => attrs,
-        Item::Verbatim(TokenStream { .. }) => return None,
+        Const(ItemConst { ref mut attrs, .. }) => attrs,
+        Enum(ItemEnum { ref mut attrs, .. }) => attrs,
+        ExternCrate(ItemExternCrate { ref mut attrs, .. }) => attrs,
+        Fn(ItemFn { ref mut attrs, .. }) => attrs,
+        ForeignMod(ItemForeignMod { ref mut attrs, .. }) => attrs,
+        Impl(ItemImpl { ref mut attrs, .. }) => attrs,
+        Macro(ItemMacro { ref mut attrs, .. }) => attrs,
+        Macro2(ItemMacro2 { ref mut attrs, .. }) => attrs,
+        Mod(ItemMod { ref mut attrs, .. }) => attrs,
+        Static(ItemStatic { ref mut attrs, .. }) => attrs,
+        Struct(ItemStruct { ref mut attrs, .. }) => attrs,
+        Trait(ItemTrait { ref mut attrs, .. }) => attrs,
+        TraitAlias(ItemTraitAlias { ref mut attrs, .. }) => attrs,
+        Type(ItemType { ref mut attrs, .. }) => attrs,
+        Union(ItemUnion { ref mut attrs, .. }) => attrs,
+        Use(ItemUse { ref mut attrs, .. }) => attrs,
+        Verbatim(TokenStream { .. }) => return None,
         _ => return None,
     })
 }
