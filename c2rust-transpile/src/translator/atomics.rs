@@ -340,21 +340,19 @@ impl<'c> Translation<'c> {
                     "atomic_and"
                 };
 
-                let intrinsic_name = match order {
-                    None => {
-                        unimplemented!(
-                            "Dynamic memory consistency arguments are not yet supported"
-                        );
-                    }
-
-                    Some(Ordering::SeqCst) => format!("{}", intrinsic_name),
-                    Some(Ordering::AcqRel) => format!("{}_acqrel", intrinsic_name),
-                    Some(Ordering::Acquire) => format!("{}_acq", intrinsic_name),
-                    Some(Ordering::Release) => format!("{}_rel", intrinsic_name),
-                    Some(Ordering::Relaxed) => format!("{}_relaxed", intrinsic_name),
-
+                let order = order.unwrap_or_else(|| {
+                    unimplemented!("Dynamic memory consistency arguments are not yet supported")
+                });
+                use Ordering::*;
+                let intrinsic_suffix = match order {
+                    SeqCst => "",
+                    AcqRel => "_acqrel", 
+                    Acquire => "_acq",
+                    Release => "_rel",
+                    Relaxed => "_relaxed",
                     _ => unreachable!("Unknown memory ordering"),
                 };
+                let intrinsic_name = format!("{intrinsic_name}{intrinsic_suffix}");
 
                 let fetch_first = name.starts_with("__atomic_fetch");
                 let val = val1.expect("__atomic arithmetic operations must have a val argument");
