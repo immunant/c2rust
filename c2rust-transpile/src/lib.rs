@@ -1,7 +1,6 @@
 #![allow(
     clippy::borrowed_box,
     clippy::too_many_arguments,
-    clippy::try_err,
     clippy::type_complexity,
     clippy::vec_box,
 )]
