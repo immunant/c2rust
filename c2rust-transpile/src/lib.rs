@@ -1,6 +1,5 @@
 #![allow(
     clippy::borrowed_box,
-    clippy::type_complexity,
     clippy::vec_box,
 )]
 
