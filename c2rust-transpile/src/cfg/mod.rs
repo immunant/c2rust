@@ -17,6 +17,7 @@
 
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::CLabelId;
+use crate::diagnostics::TranslationResult;
 use crate::rust_ast::{SpanExt, DUMMY_SP};
 use crate::translator::assembly::ConvertAsmArgs;
 use c2rust_ast_printer::pprust;
@@ -551,7 +552,7 @@ impl Cfg<Label, StmtOrDecl> {
         ctx: ExprContext,
         stmt_ids: &[CStmtId],
         ret: ImplicitReturnType,
-    ) -> Result<(Self, DeclStmtStore), TranslationError> {
+    ) -> TranslationResult<(Self, DeclStmtStore)> {
         let mut c_label_to_goto: IndexMap<CLabelId, IndexSet<CStmtId>> = IndexMap::new();
         for (target, x) in stmt_ids
             .iter()
@@ -576,7 +577,7 @@ impl Cfg<Label, StmtOrDecl> {
             IndexSet::new(),
         ));
 
-        translator.with_scope(|| -> Result<(), TranslationError> {
+        translator.with_scope(|| -> TranslationResult<()> {
             let body_exit = cfg_builder.convert_stmts_help(
                 translator,
                 ctx,
@@ -1013,7 +1014,7 @@ impl DeclStmtStore {
 
     /// Extract _just_ the Rust statements for a declaration (without initialization). Used when you
     /// want to move just a declaration to a larger scope.
-    pub fn extract_decl(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
+    pub fn extract_decl(&mut self, decl_id: CDeclId) -> TranslationResult<Vec<Stmt>> {
         let DeclStmtInfo { decl, assign, .. } = self
             .store
             .swap_remove(&decl_id)
@@ -1036,7 +1037,7 @@ impl DeclStmtStore {
     /// Extract _just_ the Rust statements for an initializer (without the declaration it was
     /// initially attached to). Used when you've moved a declaration but now you need to also run the
     /// initializer.
-    pub fn extract_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
+    pub fn extract_assign(&mut self, decl_id: CDeclId) -> TranslationResult<Vec<Stmt>> {
         let DeclStmtInfo { decl, assign, .. } =
             self.store.swap_remove(&decl_id).ok_or_else(|| {
                 format_err!("Cannot find information on declaration 2 {:?}", decl_id,)
@@ -1058,10 +1059,7 @@ impl DeclStmtStore {
 
     /// Extract the Rust statements for the full declaration and initializers. Used for when you
     /// didn't need to move a declaration at all.
-    pub fn extract_decl_and_assign(
-        &mut self,
-        decl_id: CDeclId,
-    ) -> Result<Vec<Stmt>, TranslationError> {
+    pub fn extract_decl_and_assign(&mut self, decl_id: CDeclId) -> TranslationResult<Vec<Stmt>> {
         let DeclStmtInfo {
             decl_and_assign, ..
         } = self
@@ -1087,7 +1085,7 @@ impl DeclStmtStore {
     }
 
     /// Extract the Rust statements for the full declaration and initializers. DEBUGGING ONLY.
-    pub fn peek_decl_and_assign(&self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
+    pub fn peek_decl_and_assign(&self, decl_id: CDeclId) -> TranslationResult<Vec<Stmt>> {
         let &DeclStmtInfo {
             ref decl_and_assign,
             ..
@@ -1339,23 +1337,20 @@ impl CfgBuilder {
         stmt_ids: &[CStmtId],                // C statements to translate
         in_tail: Option<ImplicitReturnType>, // Are we in tail position (is there anything to fallthrough to)?
         entry: Label,                        // Current WIP block
-    ) -> Result<Option<Label>, TranslationError> {
-        self.with_scope(
-            translator,
-            |slf| -> Result<Option<Label>, TranslationError> {
-                let mut lbl = Some(entry);
-                let last = stmt_ids.last();
+    ) -> TranslationResult<Option<Label>> {
+        self.with_scope(translator, |slf| -> TranslationResult<Option<Label>> {
+            let mut lbl = Some(entry);
+            let last = stmt_ids.last();
 
-                // We feed the optional output label into the entry label of the next block
-                for stmt in stmt_ids {
-                    let new_label: Label = lbl.unwrap_or_else(|| slf.fresh_label());
-                    let sub_in_tail = in_tail.clone().filter(|_| Some(stmt) == last);
-                    lbl = slf.convert_stmt_help(translator, ctx, *stmt, sub_in_tail, new_label)?;
-                }
+            // We feed the optional output label into the entry label of the next block
+            for stmt in stmt_ids {
+                let new_label: Label = lbl.unwrap_or_else(|| slf.fresh_label());
+                let sub_in_tail = in_tail.clone().filter(|_| Some(stmt) == last);
+                lbl = slf.convert_stmt_help(translator, ctx, *stmt, sub_in_tail, new_label)?;
+            }
 
-                Ok(lbl)
-            },
-        )
+            Ok(lbl)
+        })
     }
 
     /// Translate a C statement, inserting it into the CFG under the label key passed in.
@@ -1379,7 +1374,7 @@ impl CfgBuilder {
 
         // Entry label
         entry: Label,
-    ) -> Result<Option<Label>, TranslationError> {
+    ) -> TranslationResult<Option<Label>> {
         // Add to the per_stmt_stack
         let live_in: IndexSet<CDeclId> = self.currently_live.last().unwrap().clone();
         self.per_stmt_stack
@@ -1391,7 +1386,7 @@ impl CfgBuilder {
             .get_span(SomeId::Stmt(stmt_id))
             .unwrap_or(DUMMY_SP);
 
-        let out_wip: Result<Option<WipBlock>, TranslationError> = match translator
+        let out_wip: TranslationResult<Option<WipBlock>> = match translator
             .ast_context
             .index(stmt_id)
             .kind
@@ -1610,7 +1605,7 @@ impl CfgBuilder {
                 let incr_entry = self.fresh_label();
                 let next_label = self.fresh_label();
 
-                self.with_scope(translator, |slf| -> Result<(), TranslationError> {
+                self.with_scope(translator, |slf| -> TranslationResult<()> {
                     // Init
                     slf.add_wip_block(wip, Jump(init_entry.clone()));
                     let init_stuff: Option<Label> = match init {
@@ -2018,7 +2013,7 @@ impl CfgBuilder {
 
         // Exit WIP
         out_wip: Option<WipBlock>,
-    ) -> Result<Option<Label>, TranslationError> {
+    ) -> TranslationResult<Option<Label>> {
         // Close off the `wip` using a `break` terminator
         let brk_lbl: Label = self.fresh_label();
 

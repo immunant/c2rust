@@ -73,6 +73,8 @@ pub struct TranslationError {
     inner: Arc<Context<TranslationErrorKind>>,
 }
 
+pub type TranslationResult<T> = Result<T, TranslationError>;
+
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum TranslationErrorKind {
     Generic,
@@ -157,21 +159,11 @@ impl TranslationError {
     }
 
     pub fn new(loc: Option<DisplaySrcSpan>, inner: Context<TranslationErrorKind>) -> Self {
-        let mut loc_stack = vec![];
-        if let Some(loc) = loc {
-            loc_stack.push(loc);
-        }
-        TranslationError {
-            loc: loc_stack,
-            inner: Arc::new(inner),
-        }
+        Self::from(inner).add_loc(loc)
     }
 
     pub fn generic(msg: &'static str) -> Self {
-        TranslationError {
-            loc: vec![],
-            inner: Arc::new(err_msg(msg).context(TranslationErrorKind::Generic)),
-        }
+        msg.into()
     }
 
     pub fn add_loc(mut self, loc: Option<DisplaySrcSpan>) -> Self {
@@ -183,36 +175,27 @@ impl TranslationError {
 }
 
 impl From<&'static str> for TranslationError {
-    fn from(msg: &'static str) -> TranslationError {
-        TranslationError {
-            loc: vec![],
-            inner: Arc::new(err_msg(msg).context(TranslationErrorKind::Generic)),
-        }
+    fn from(msg: &'static str) -> Self {
+        err_msg(msg).context(TranslationErrorKind::Generic).into()
     }
 }
 
 impl From<Error> for TranslationError {
-    fn from(e: Error) -> TranslationError {
-        TranslationError {
-            loc: vec![],
-            inner: Arc::new(e.context(TranslationErrorKind::Generic)),
-        }
+    fn from(e: Error) -> Self {
+        e.context(TranslationErrorKind::Generic).into()
     }
 }
 
 impl From<TranslationErrorKind> for TranslationError {
-    fn from(kind: TranslationErrorKind) -> TranslationError {
-        TranslationError {
-            loc: vec![],
-            inner: Arc::new(Context::new(kind)),
-        }
+    fn from(kind: TranslationErrorKind) -> Self {
+        Context::new(kind).into()
     }
 }
 
 impl From<Context<TranslationErrorKind>> for TranslationError {
-    fn from(ctx: Context<TranslationErrorKind>) -> TranslationError {
-        TranslationError {
-            loc: vec![],
+    fn from(ctx: Context<TranslationErrorKind>) -> Self {
+        Self {
+            loc: Vec::new(),
             inner: Arc::new(ctx),
         }
     }

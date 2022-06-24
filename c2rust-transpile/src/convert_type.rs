@@ -1,12 +1,11 @@
 use crate::c_ast::CDeclId;
 use crate::c_ast::*;
-use crate::diagnostics::TranslationError;
+use crate::diagnostics::TranslationResult;
 use crate::renamer::*;
 use c2rust_ast_builder::{mk, properties::*};
 use failure::format_err;
 use std::collections::{HashMap, HashSet};
 use std::ops::Index;
-use std::result::Result;
 use syn::*;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -231,7 +230,7 @@ impl TypeConverter {
         ret: Option<CQualTypeId>,
         params: &[CQualTypeId],
         is_variadic: bool,
-    ) -> Result<Box<Type>, TranslationError> {
+    ) -> TranslationResult<Box<Type>> {
         let barefn_inputs = params
             .iter()
             .map(|x| mk().bare_arg(self.convert(ctxt, x.ctype).unwrap(), None::<Box<Ident>>))
@@ -256,7 +255,7 @@ impl TypeConverter {
         &mut self,
         ctxt: &TypedAstContext,
         qtype: CQualTypeId,
-    ) -> Result<Box<Type>, TranslationError> {
+    ) -> TranslationResult<Box<Type>> {
         let mutbl = if qtype.qualifiers.is_const {
             Mutability::Immutable
         } else {
@@ -299,7 +298,7 @@ impl TypeConverter {
         &mut self,
         ctxt: &TypedAstContext,
         ctype: CTypeId,
-    ) -> Result<Box<Type>, TranslationError> {
+    ) -> TranslationResult<Box<Type>> {
         if self.translate_valist && ctxt.is_va_list(ctype) {
             let std_or_core = if self.emit_no_std { "core" } else { "std" };
             let path = vec![std_or_core, "ffi", "VaList"];
@@ -404,7 +403,7 @@ impl TypeConverter {
         ctxt: &TypedAstContext,
         ctype: CTypeId,
         params: &Vec<CParamId>,
-    ) -> Result<Option<Box<Type>>, TranslationError> {
+    ) -> TranslationResult<Option<Box<Type>>> {
         match ctxt.index(ctype).kind {
             // ANSI/ISO C-style function
             CTypeKind::Function(.., true) => Ok(None),

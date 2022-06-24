@@ -41,7 +41,8 @@ impl IncCleanup {
                     else_branch,
                     ..
                 }) => {
-                    removed_tail_expr = removed_tail_expr || self.remove_tail_expr(&mut then_branch.stmts);
+                    removed_tail_expr =
+                        removed_tail_expr || self.remove_tail_expr(&mut then_branch.stmts);
                     if let Some((_token, else_)) = else_branch {
                         if let Expr::Block(ExprBlock { block, .. }) = &mut **else_ {
                             removed_tail_expr =
@@ -60,7 +61,7 @@ impl IncCleanup {
                     }
                 }
 
-                _ => {},
+                _ => {}
             }
         }
 
@@ -81,13 +82,11 @@ impl IncCleanup {
         match self.in_tail {
             Some(ImplicitReturnType::Main) => {
                 if let Expr::Return(ExprReturn {
-                    expr: Some(zero),
-                    ..
+                    expr: Some(zero), ..
                 }) = tail_expr
                 {
                     if let Expr::Lit(ExprLit {
-                        lit: Lit::Int(lit),
-                        ..
+                        lit: Lit::Int(lit), ..
                     }) = &**zero
                     {
                         if lit.base10_digits() == "0" {

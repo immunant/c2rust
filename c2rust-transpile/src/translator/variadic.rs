@@ -124,7 +124,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         ty: CQualTypeId,
         val_id: CExprId,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if self.tcfg.translate_valist {
             let val = self.convert_expr(ctx.expect_valistimpl().used(), val_id)?;
 

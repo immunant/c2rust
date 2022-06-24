@@ -243,9 +243,7 @@ fn display_loc(ctx: &AstContext, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan
 fn has_packed_attribute(attrs: Vec<Value>) -> bool {
     attrs
         .into_iter()
-        .map(|attr| {
-            from_value::<String>(attr).expect("Record attributes should be strings")
-        })
+        .map(|attr| from_value::<String>(attr).expect("Record attributes should be strings"))
         .any(|attr_name| attr_name == "packed")
 }
 

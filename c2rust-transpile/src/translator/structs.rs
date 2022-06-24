@@ -7,6 +7,7 @@ use std::ops::Index;
 
 use super::TranslationError;
 use crate::c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId};
+use crate::diagnostics::TranslationResult;
 use crate::translator::{ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
@@ -80,7 +81,7 @@ impl<'a> Translation<'a> {
         record_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
-    ) -> Result<Vec<FieldType>, TranslationError> {
+    ) -> TranslationResult<Vec<FieldType>> {
         let mut reorganized_fields = Vec::new();
         let mut last_bitfield_group: Option<FieldType> = None;
         let mut next_byte_pos = 0;
@@ -297,7 +298,7 @@ impl<'a> Translation<'a> {
         struct_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
-    ) -> Result<(Vec<Field>, bool), TranslationError> {
+    ) -> TranslationResult<(Vec<Field>, bool)> {
         let mut field_entries = Vec::with_capacity(field_ids.len());
         // We need to clobber bitfields in consecutive bytes together (leaving
         // regular fields alone) and add in padding as necessary
@@ -418,7 +419,7 @@ impl<'a> Translation<'a> {
         ctx: ExprContext,
         struct_id: CRecordId,
         field_expr_ids: &[CExprId],
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let name = self.resolve_decl_inner_name(struct_id);
 
         let (field_decl_ids, platform_byte_size) = match self.ast_context.index(struct_id).kind {
@@ -615,7 +616,7 @@ impl<'a> Translation<'a> {
         field_ids: &[CDeclId],
         platform_byte_size: u64,
         is_static: bool,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let reorganized_fields = self.get_field_types(struct_id, field_ids, platform_byte_size)?;
         let mut fields = Vec::with_capacity(reorganized_fields.len());
 
@@ -706,7 +707,7 @@ impl<'a> Translation<'a> {
         lhs: CExprId,
         rhs_expr: Box<Expr>,
         field_id: CDeclId,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let ctx = ctx.set_bitfield_write(true);
         let named_reference = self.name_reference_write_read(ctx, lhs)?;
         named_reference.and_then(|named_reference| {

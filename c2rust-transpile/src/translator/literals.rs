@@ -14,7 +14,7 @@ impl<'c> Translation<'c> {
         ty: CQualTypeId,
         val: u64,
         base: IntBase,
-    ) -> Result<Box<Expr>, TranslationError> {
+    ) -> TranslationResult<Box<Expr>> {
         let lit = match base {
             IntBase::Dec => mk().int_unsuffixed_lit(val.into()),
             IntBase::Hex => mk().float_unsuffixed_lit(&format!("0x{:x}", val)),
@@ -78,7 +78,7 @@ impl<'c> Translation<'c> {
         _ctx: ExprContext,
         ty: CQualTypeId,
         kind: &CLiteral,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         match *kind {
             CLiteral::Integer(val, base) => Ok(WithStmts::new_val(self.mk_int_lit(ty, val, base)?)),
 
@@ -171,7 +171,7 @@ impl<'c> Translation<'c> {
         ty: CQualTypeId,
         ids: &[CExprId],
         opt_union_field_id: Option<CFieldId>,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         match self.ast_context.resolve_type(ty.ctype).kind {
             CTypeKind::ConstantArray(ty, n) => {
                 // Convert all of the provided initializer values
@@ -221,7 +221,7 @@ impl<'c> Translation<'c> {
                             iter::repeat(self.implicit_default_expr(ty, ctx.is_static))
                                 .take(n - ids.len()),
                         )
-                        .collect::<Result<WithStmts<Vec<Box<Expr>>>, TranslationError>>()?
+                        .collect::<TranslationResult<WithStmts<Vec<Box<Expr>>>>>()?
                         .map(|vals| mk().array_expr(vals)))
                 }
             }
@@ -267,7 +267,7 @@ impl<'c> Translation<'c> {
         ids: &[CExprId],
         _ty: CQualTypeId,
         opt_union_field_id: Option<CFieldId>,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let union_field_id = opt_union_field_id.expect("union field ID");
 
         match self.ast_context.index(union_id).kind {

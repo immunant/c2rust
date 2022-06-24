@@ -2,7 +2,6 @@
 
 use super::*;
 use log::warn;
-use std::result::Result;
 use syn::{spanned::Spanned as _, ExprBreak, ExprIf, ExprParen, ExprReturn, ExprUnary, Stmt};
 
 use crate::rust_ast::{comment_store, set_span::SetSpan, BytePos, SpanExt};
@@ -14,7 +13,7 @@ pub fn structured_cfg(
     current_block: Box<Expr>,
     debug_labels: bool,
     cut_out_trailing_ret: bool,
-) -> Result<Vec<Stmt>, TranslationError> {
+) -> TranslationResult<Vec<Stmt>> {
     let ast: StructuredAST<Box<Expr>, Box<Pat>, Label, Stmt> =
         structured_cfg_help(vec![], &IndexSet::new(), root, &mut IndexSet::new())?;
 
@@ -204,7 +203,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
     next: &IndexSet<Label>,
     root: &[Structure<Stmt>],
     used_loop_labels: &mut IndexSet<Label>,
-) -> Result<S, TranslationError> {
+) -> TranslationResult<S> {
     let mut next: &IndexSet<Label> = next;
     let mut rest: S = S::empty();
 
@@ -232,7 +231,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                     }
                 };
 
-                let mut branch = |slbl: &StructureLabel<Stmt>| -> Result<S, TranslationError> {
+                let mut branch = |slbl: &StructureLabel<Stmt>| -> TranslationResult<S> {
                     use StructureLabel::*;
                     match slbl {
                         Nested(ref nested) => {
@@ -289,7 +288,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                             let branched_cases: Vec<(Box<Pat>, S)> = cases
                                 .iter()
                                 .map(|&(ref pat, ref slbl)| Ok((pat.clone(), branch(slbl)?)))
-                                .collect::<Result<Vec<(Box<Pat>, S)>, TranslationError>>()?;
+                                .collect::<TranslationResult<Vec<(Box<Pat>, S)>>>()?;
 
                             S::mk_match(expr.clone(), branched_cases)
                         }
@@ -300,12 +299,12 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
             Multiple { branches, then, .. } => {
                 let cases = branches
                     .iter()
-                    .map(|(lbl, body)| -> Result<(Label, S), TranslationError> {
+                    .map(|(lbl, body)| -> TranslationResult<(Label, S)> {
                         let stmts =
                             structured_cfg_help(exits.clone(), next, body, used_loop_labels)?;
                         Ok((lbl.clone(), stmts))
                     })
-                    .collect::<Result<Vec<(Label, S)>, TranslationError>>()?;
+                    .collect::<TranslationResult<Vec<(Label, S)>>>()?;
 
                 let then: S = structured_cfg_help(exits.clone(), next, then, used_loop_labels)?;
 

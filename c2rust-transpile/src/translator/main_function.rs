@@ -8,7 +8,7 @@ use failure::format_err;
 use proc_macro2::{TokenStream, TokenTree};
 
 impl<'c> Translation<'c> {
-    pub fn convert_main(&self, main_id: CDeclId) -> Result<Box<Item>, TranslationError> {
+    pub fn convert_main(&self, main_id: CDeclId) -> TranslationResult<Box<Item>> {
         if let CDeclKind::Function {
             ref parameters,
             typ,
@@ -19,11 +19,14 @@ impl<'c> Translation<'c> {
                 CTypeKind::Function(ret, _, _, _, _) => {
                     self.ast_context.resolve_type(ret.ctype).kind.clone()
                 }
-                ref k => return Err(format_err!(
-                    "Type of main function {:?} was not a function type, got {:?}",
-                    main_id,
-                    k
-                ).into()),
+                ref k => {
+                    return Err(format_err!(
+                        "Type of main function {:?} was not a function type, got {:?}",
+                        main_id,
+                        k
+                    )
+                    .into())
+                }
             };
 
             let main_fn_name = self
@@ -227,7 +230,8 @@ impl<'c> Translation<'c> {
                 return Err(format_err!(
                     "Main function should have 0, 2, or 3 parameters, not {}.",
                     n
-                ).into());
+                )
+                .into());
             };
 
             if let CTypeKind::Void = ret {

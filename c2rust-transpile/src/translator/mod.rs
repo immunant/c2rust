@@ -17,6 +17,7 @@ use syn::spanned::Spanned as _;
 use syn::*;
 use syn::{BinOp, UnOp}; // To override c_ast::{BinOp,UnOp} from glob import
 
+use crate::diagnostics::TranslationResult;
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::set_span::SetSpan;
@@ -1508,7 +1509,7 @@ impl<'c> Translation<'c> {
         name: &str,
         typ: CQualTypeId,
         init: &mut Box<Expr>,
-    ) -> Result<(), TranslationError> {
+    ) -> TranslationResult<()> {
         let mut default_init = self.implicit_default_expr(typ.ctype, true)?.to_expr();
 
         std::mem::swap(init, &mut default_init);
@@ -1581,11 +1582,7 @@ impl<'c> Translation<'c> {
         (fn_item, static_item)
     }
 
-    fn convert_decl(
-        &self,
-        ctx: ExprContext,
-        decl_id: CDeclId,
-    ) -> Result<ConvertedDecl, TranslationError> {
+    fn convert_decl(&self, ctx: ExprContext, decl_id: CDeclId) -> TranslationResult<ConvertedDecl> {
         let decl = self
             .ast_context
             .get_decl(&decl_id)
@@ -2206,7 +2203,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         replacements: &[CExprId],
-    ) -> Result<(Box<Expr>, CTypeId), TranslationError> {
+    ) -> TranslationResult<(Box<Expr>, CTypeId)> {
         let (val, ty) = replacements
             .iter()
             .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, id| {
@@ -2254,7 +2251,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         args: ConvertFunctionArgs,
-    ) -> Result<ConvertedDecl, TranslationError> {
+    ) -> TranslationResult<ConvertedDecl> {
         let ConvertFunctionArgs {
             span,
             is_global,
@@ -2466,7 +2463,7 @@ impl<'c> Translation<'c> {
         store: cfg::DeclStmtStore,
         live_in: IndexSet<CDeclId>,
         cut_out_trailing_ret: bool,
-    ) -> Result<Vec<Stmt>, TranslationError> {
+    ) -> TranslationResult<Vec<Stmt>> {
         if self.tcfg.dump_function_cfgs {
             graph
                 .dump_dot_graph(
@@ -2538,7 +2535,7 @@ impl<'c> Translation<'c> {
         name: &str,
         body_ids: &[CStmtId],
         ret: cfg::ImplicitReturnType,
-    ) -> Result<Vec<Stmt>, TranslationError> {
+    ) -> TranslationResult<Vec<Stmt>> {
         // Function body scope
         self.with_scope(|| {
             let (graph, store) = cfg::Cfg::from_stmts(self, ctx, body_ids, ret)?;
@@ -2552,14 +2549,14 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         target: bool,
         cond_id: CExprId,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let ty_id = self.ast_context[cond_id]
             .kind
             .get_type()
             .ok_or_else(|| format_err!("bad condition type"))?;
 
         let null_pointer_case =
-            |negated: bool, ptr: CExprId| -> Result<WithStmts<Box<Expr>>, TranslationError> {
+            |negated: bool, ptr: CExprId| -> TranslationResult<WithStmts<Box<Expr>>> {
                 let val = self.convert_expr(ctx.used().decay_ref(), ptr)?;
                 let ptr_type = self.ast_context[ptr]
                     .kind
@@ -2651,7 +2648,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         decl_id: CDeclId,
-    ) -> Result<cfg::DeclStmtInfo, TranslationError> {
+    ) -> TranslationResult<cfg::DeclStmtInfo> {
         if let CDeclKind::Variable {
             ref ident,
             has_static_duration: true,
@@ -2940,14 +2937,11 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         initializer: Option<CExprId>,
         typ: CQualTypeId,
-    ) -> Result<
-        (
-            Box<Type>,
-            Mutability,
-            Result<WithStmts<Box<Expr>>, TranslationError>,
-        ),
-        TranslationError,
-    > {
+    ) -> TranslationResult<(
+        Box<Type>,
+        Mutability,
+        TranslationResult<WithStmts<Box<Expr>>>,
+    )> {
         let init = match initializer {
             Some(x) => self.convert_expr(ctx.used(), x),
             None => self.implicit_default_expr(typ.ctype, ctx.is_static),
@@ -2976,7 +2970,7 @@ impl<'c> Translation<'c> {
         Ok((ty, mutbl, init))
     }
 
-    fn convert_type(&self, type_id: CTypeId) -> Result<Box<Type>, TranslationError> {
+    fn convert_type(&self, type_id: CTypeId) -> TranslationResult<Box<Type>> {
         if let Some(cur_file) = *self.cur_file.borrow() {
             self.import_type(type_id, cur_file);
         }
@@ -2987,7 +2981,7 @@ impl<'c> Translation<'c> {
 
     /// Construct an expression for a NULL at any type, including forward declarations,
     /// function pointers, and normal pointers.
-    fn null_ptr(&self, type_id: CTypeId, is_static: bool) -> Result<Box<Expr>, TranslationError> {
+    fn null_ptr(&self, type_id: CTypeId, is_static: bool) -> TranslationResult<Box<Expr>> {
         if self.ast_context.is_function_pointer(type_id) {
             return Ok(mk().path_expr(vec!["None"]));
         }
@@ -3016,7 +3010,7 @@ impl<'c> Translation<'c> {
         lhs: &Box<Expr>,
         lhs_type: CQualTypeId,
         rhs: Box<Expr>,
-    ) -> Result<Box<Expr>, TranslationError> {
+    ) -> TranslationResult<Box<Expr>> {
         let addr_lhs = match **lhs {
             Expr::Unary(ExprUnary {
                 op: UnOp::Deref(_),
@@ -3054,7 +3048,7 @@ impl<'c> Translation<'c> {
         &self,
         lhs: &Box<Expr>,
         lhs_type: CQualTypeId,
-    ) -> Result<Box<Expr>, TranslationError> {
+    ) -> TranslationResult<Box<Expr>> {
         let addr_lhs = match **lhs {
             Expr::Unary(ExprUnary {
                 op: UnOp::Deref(_),
@@ -3136,7 +3130,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         mut type_id: CTypeId,
-    ) -> Result<Vec<Stmt>, TranslationError> {
+    ) -> TranslationResult<Vec<Stmt>> {
         let mut stmts = vec![];
 
         loop {
@@ -3161,7 +3155,7 @@ impl<'c> Translation<'c> {
                             Some(mk().cast_expr(expr, mk().path_ty(vec!["usize"]))),
                         );
 
-                        let res: Result<WithStmts<()>, TranslationError> =
+                        let res: TranslationResult<WithStmts<()>> =
                             Ok(WithStmts::new(vec![mk().local_stmt(Box::new(local))], ()));
                         res
                     })?;
@@ -3181,7 +3175,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         type_id: CTypeId,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if let CTypeKind::VariableArray(elts, len) = self.ast_context.resolve_type(type_id).kind {
             let len = len.expect("Sizeof a VLA type with count expression omitted");
 
@@ -3198,7 +3192,7 @@ impl<'c> Translation<'c> {
         self.compute_size_of_ty(ty)
     }
 
-    fn compute_size_of_ty(&self, ty: Box<Type>) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    fn compute_size_of_ty(&self, ty: Box<Type>) -> TranslationResult<WithStmts<Box<Expr>>> {
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
         let name = "size_of";
         let params = mk().angle_bracketed_args(vec![ty]);
@@ -3216,7 +3210,7 @@ impl<'c> Translation<'c> {
         &self,
         mut type_id: CTypeId,
         preferred: bool,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         type_id = self.variable_array_base_type(type_id);
 
         let ty = self.convert_type(type_id)?;
@@ -3243,7 +3237,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         exprs: &[CExprId],
-    ) -> Result<WithStmts<Vec<Box<Expr>>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Vec<Box<Expr>>>> {
         exprs
             .iter()
             .map(|arg| self.convert_expr(ctx, *arg))
@@ -3263,7 +3257,7 @@ impl<'c> Translation<'c> {
         &self,
         mut ctx: ExprContext,
         expr_id: CExprId,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let Located {
             loc: src_loc,
             kind: expr_kind,
@@ -3305,9 +3299,7 @@ impl<'c> Translation<'c> {
                         e.context(TranslationErrorKind::OldLLVMSimd),
                     )
                 }),
-            ConvertVector(..) => {
-                Err(TranslationError::generic("convert vector not supported"))
-            }
+            ConvertVector(..) => Err(TranslationError::generic("convert vector not supported")),
 
             UnaryType(_ty, kind, opt_expr, arg_ty) => {
                 let result = match kind {
@@ -3575,7 +3567,7 @@ impl<'c> Translation<'c> {
                     let then: Box<Block> = mk().block(lhs.into_stmts());
                     let els: Box<Expr> = mk().block_expr(mk().block(rhs.into_stmts()));
 
-                    let mut res = cond.and_then(|c| -> Result<_, TranslationError> {
+                    let mut res = cond.and_then(|c| -> TranslationResult<_> {
                         Ok(WithStmts::new(
                             vec![mk().semi_stmt(mk().ifte_expr(c, then, Some(els)))],
                             self.panic_or_err("Conditional expression is not supposed to be used"),
@@ -3854,8 +3846,7 @@ impl<'c> Translation<'c> {
 
                     let args = self.convert_exprs(ctx.used(), args)?;
 
-                    let res: Result<_, TranslationError> =
-                        Ok(args.map(|args| mk().call_expr(func, args)));
+                    let res: TranslationResult<_> = Ok(args.map(|args| mk().call_expr(func, args)));
                     res
                 })?;
 
@@ -4001,7 +3992,7 @@ impl<'c> Translation<'c> {
         }
     }
 
-    pub fn convert_constant(&self, constant: ConstIntExpr) -> Result<Box<Expr>, TranslationError> {
+    pub fn convert_constant(&self, constant: ConstIntExpr) -> TranslationResult<Box<Expr>> {
         let expr = match constant {
             ConstIntExpr::U(n) => mk().lit_expr(mk().int_unsuffixed_lit(n as u128)),
 
@@ -4019,7 +4010,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         expr_id: CExprId,
-    ) -> Result<Option<WithStmts<Box<Expr>>>, TranslationError> {
+    ) -> TranslationResult<Option<WithStmts<Box<Expr>>>> {
         if let Some(macs) = self.ast_context.macro_invocations.get(&expr_id) {
             // Find the first macro after the macro we're currently
             // expanding, if any.
@@ -4114,7 +4105,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         expr: WithStmts<Box<Expr>>,
         panic_msg: &str,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if ctx.is_unused() {
             // Recall that if `used` is false, the `stmts` field of the output must contain
             // all side-effects (and a function call can always have side-effects)
@@ -4133,7 +4124,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         compound_stmt_id: CStmtId,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         fn as_semi_break_stmt(stmt: &Stmt, lbl: &cfg::Label) -> Option<Option<Box<Expr>>> {
             if let Stmt::Semi(
                 Expr::Break(ExprBreak {
@@ -4220,7 +4211,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         args: ConvertCastArgs,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let ConvertCastArgs {
             source_ty,
             ty,
@@ -4519,7 +4510,7 @@ impl<'c> Translation<'c> {
         &self,
         val: WithStmts<Box<Expr>>,
         target_ty_ctype: &CTypeKind,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         self.use_crate(ExternCrate::NumTraits);
 
         self.with_cur_file_item_store(|item_store| {
@@ -4612,7 +4603,7 @@ impl<'c> Translation<'c> {
         &self,
         ty_id: CTypeId,
         is_static: bool,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let resolved_ty_id = self.ast_context.resolve_type_id(ty_id);
         let resolved_ty = &self.ast_context.index(resolved_ty_id).kind;
 
@@ -4684,7 +4675,7 @@ impl<'c> Translation<'c> {
         decl_id: CDeclId,
         type_id: CTypeId,
         is_static: bool,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if let Some(file_id) = self.cur_file.borrow().as_ref() {
             self.import_type(type_id, *file_id);
         }

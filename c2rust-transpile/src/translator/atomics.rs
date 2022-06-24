@@ -46,7 +46,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         args: ConvertAtomicArgs,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let ConvertAtomicArgs {
             name,
             ptr_id,
@@ -232,21 +232,25 @@ impl<'c> Translation<'c> {
                             let order = static_order(order);
                             let order_fail = static_order(order_fail);
                             use Ordering::*;
-                            let intrinsic_name = (|| Some(match (order, order_fail) {
-                                (_, Release | AcqRel) => return None,
-                                (SeqCst, SeqCst) => "",
-                                (SeqCst, Acquire) => "_failacq",
-                                (SeqCst, Relaxed) => "_failrelaxed",
-                                (AcqRel, Acquire) => "_acqrel",
-                                (AcqRel, Relaxed) => "_acqrel_failrelaxed",
-                                (Release, Relaxed) => "_rel",
-                                (Acquire, Acquire) => "_acq",
-                                (Acquire, Relaxed) => "_acq_failrelaxed",
-                                (Relaxed, Relaxed) => "_relaxed",
-                                (SeqCst | AcqRel | Release | Acquire | Relaxed, _) => return None,
+                            let intrinsic_name = (|| {
+                                Some(match (order, order_fail) {
+                                    (_, Release | AcqRel) => return None,
+                                    (SeqCst, SeqCst) => "",
+                                    (SeqCst, Acquire) => "_failacq",
+                                    (SeqCst, Relaxed) => "_failrelaxed",
+                                    (AcqRel, Acquire) => "_acqrel",
+                                    (AcqRel, Relaxed) => "_acqrel_failrelaxed",
+                                    (Release, Relaxed) => "_rel",
+                                    (Acquire, Acquire) => "_acq",
+                                    (Acquire, Relaxed) => "_acq_failrelaxed",
+                                    (Relaxed, Relaxed) => "_relaxed",
+                                    (SeqCst | AcqRel | Release | Acquire | Relaxed, _) => {
+                                        return None
+                                    }
 
-                                (_, _) => unreachable!("Did we not handle a case above??"),
-                            }))()
+                                    (_, _) => unreachable!("Did we not handle a case above??"),
+                                })
+                            })()
                             .map(|suffix| {
                                 format!("atomic_cxchg{}{}", if weak { "weak" } else { "" }, suffix)
                             })
@@ -353,7 +357,7 @@ impl<'c> Translation<'c> {
         old_val: Box<Expr>,
         src_val: Box<Expr>,
         returns_val: bool,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         self.use_feature("core_intrinsics");
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
 
@@ -376,7 +380,7 @@ impl<'c> Translation<'c> {
         dst: Box<Expr>,
         src: Box<Expr>,
         fetch_first: bool,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         self.use_feature("core_intrinsics");
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
 

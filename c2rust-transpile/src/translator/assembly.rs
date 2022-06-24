@@ -1,6 +1,8 @@
 #![deny(missing_docs)]
 //! This module provides basic support for converting inline assembly statements.
 
+use crate::diagnostics::TranslationResult;
+
 use super::*;
 use log::warn;
 use proc_macro2::{TokenStream, TokenTree};
@@ -78,7 +80,7 @@ fn parse_arch(target_tuple: &str) -> Option<Arch> {
 fn parse_constraints(
     mut constraints: &str,
     arch: Arch,
-) -> Result<(ArgDirSpec, bool, String), TranslationError> {
+) -> TranslationResult<(ArgDirSpec, bool, String)> {
     let parse_error = |constraints| {
         Err(TranslationError::new(
             None,
@@ -517,7 +519,7 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
     input_op_mapper: M,
     is_mem_only: F,
     arch: Arch,
-) -> Result<String, TranslationError> {
+) -> TranslationResult<String> {
     let mut out = String::with_capacity(asm.len());
 
     let mut first = true;
@@ -646,7 +648,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         args: ConvertAsmArgs,
-    ) -> Result<Vec<Stmt>, TranslationError> {
+    ) -> TranslationResult<Vec<Stmt>> {
         let ConvertAsmArgs {
             span,
             is_volatile,

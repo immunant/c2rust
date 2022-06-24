@@ -731,7 +731,11 @@ impl<W: Write> Printer<W> {
             }
 
             Enum(enum_id) => {
-                let decl = context.c_decls.get(enum_id).map(|l| &l.kind).unwrap_or_else(|| panic!("Could not find enum decl"));
+                let decl = context
+                    .c_decls
+                    .get(enum_id)
+                    .map(|l| &l.kind)
+                    .unwrap_or_else(|| panic!("Could not find enum decl"));
                 match decl {
                     CDeclKind::Enum {
                         name: Some(ref n), ..

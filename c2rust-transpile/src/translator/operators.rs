@@ -96,7 +96,7 @@ impl<'c> Translation<'c> {
         &self,
         mut ctx: ExprContext,
         args: ConvertBinaryExprArgs,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let ConvertBinaryExprArgs {
             type_id,
             op,
@@ -231,7 +231,7 @@ impl<'c> Translation<'c> {
         bin_op_kind: BinOp,
         bin_op: c_ast::BinOp,
         args: ConvertAssignmentOperatorAuxArgs,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let ConvertAssignmentOperatorAuxArgs {
             read,
             write,
@@ -313,7 +313,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         args: ConvertAssignmentOperatorArgs,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let ConvertAssignmentOperatorArgs {
             op,
             qtype,
@@ -349,7 +349,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         args: ConvertAssignmentOperatorWithRhsArgs,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let ConvertAssignmentOperatorWithRhsArgs {
             op,
             qtype,
@@ -584,7 +584,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         args: ConvertBinaryOperatorArgs,
-    ) -> Result<Box<Expr>, TranslationError> {
+    ) -> TranslationResult<Box<Expr>> {
         let ConvertBinaryOperatorArgs {
             op,
             ty,
@@ -732,7 +732,7 @@ impl<'c> Translation<'c> {
         rhs_type_id: CQualTypeId,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
-    ) -> Result<Box<Expr>, TranslationError> {
+    ) -> TranslationResult<Box<Expr>> {
         let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
@@ -762,7 +762,7 @@ impl<'c> Translation<'c> {
         rhs_type_id: CQualTypeId,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
-    ) -> Result<Box<Expr>, TranslationError> {
+    ) -> TranslationResult<Box<Expr>> {
         let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
@@ -801,7 +801,7 @@ impl<'c> Translation<'c> {
         ty: CQualTypeId,
         up: bool,
         arg: CExprId,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let op = if up {
             c_ast::BinOp::AssignAdd
         } else {
@@ -845,7 +845,7 @@ impl<'c> Translation<'c> {
         ty: CQualTypeId,
         up: bool,
         arg: CExprId,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // If we aren't going to be using the result, may as well do a simple pre-increment
         if ctx.is_unused() {
             return self.convert_pre_increment(ctx, ty, up, arg);
@@ -941,7 +941,7 @@ impl<'c> Translation<'c> {
         cqual_type: CQualTypeId,
         arg: CExprId,
         lrvalue: LRValue,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let CQualTypeId { ctype, .. } = cqual_type;
         let ty = self.convert_type(ctype)?;
         let resolved_ctype = self.ast_context.resolve_type(ctype);
