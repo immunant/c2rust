@@ -52,17 +52,19 @@
 use super::*;
 use indexmap::{IndexMap, IndexSet};
 
+/// an entry set (a `BTreeSet` because it satisfies `Hash`)
+type MultipleKey<Lbl> = BTreeSet<Lbl>;
+
+type MultipleValue<Lbl> = (
+    Lbl,                          // label where the entries join back up
+    IndexMap<Lbl, IndexSet<Lbl>>, // for each entry, what labels to expect until join label
+);
+
 /// Information about branching in a CFG.
 #[derive(Clone, Debug)]
 pub struct MultipleInfo<Lbl: Hash + Ord> {
     /// TODO: document me
-    multiples: IndexMap<
-        BTreeSet<Lbl>, // an entry set (a `BTreeSet` because it satisfies `Hash`)
-        (
-            Lbl,                          // label where the entries join back up
-            IndexMap<Lbl, IndexSet<Lbl>>, // for each entry, what labels to expect until join label
-        ),
-    >,
+    multiples: IndexMap<MultipleKey<Lbl>, MultipleValue<Lbl>>,
 }
 
 /// Cannot `#[derive(Default)]` because of the `Lbl` generic.
