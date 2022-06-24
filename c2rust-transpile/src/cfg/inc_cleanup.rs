@@ -19,67 +19,61 @@ impl IncCleanup {
     ///
     /// Returns true if we manage to remove a tail expr.
     pub fn remove_tail_expr(&self, stmts: &mut Vec<Stmt>) -> bool {
-        if let Some(mut stmt) = stmts.pop() {
-            // If the very last stmt in our relooped output is a return/break, we can just
-            // remove that statement. We additionally know that there is definitely no need
-            // to label a block (if we were in that mode in the first place).
-            if self.is_idempotent_tail_expr(&stmt) {
-                return true;
-            }
-
-            let mut removed_tail_expr = false;
-
-            if let Stmt::Expr(ref mut expr) = stmt {
-                match expr {
-                    Expr::If(ExprIf {
-                        cond: _,
-                        then_branch: ref mut body,
-                        else_branch: ref mut sels,
-                        ..
-                    }) => {
-                        removed_tail_expr =
-                            removed_tail_expr || self.remove_tail_expr(&mut body.stmts);
-                        if let Some((_token, els)) = sels {
-                            if let Expr::Block(ExprBlock {
-                                block: ref mut blk, ..
-                            }) = **els
-                            {
-                                removed_tail_expr =
-                                    removed_tail_expr || self.remove_tail_expr(&mut blk.stmts)
-                            }
-                        }
-                    }
-
-                    Expr::Match(ExprMatch {
-                        arms: ref mut cases,
-                        ..
-                    }) => {
-                        // Block label can be removed from any arm
-                        for case in cases {
-                            if let Expr::Block(ExprBlock { block, .. }) = case.body.as_mut() {
-                                removed_tail_expr =
-                                    removed_tail_expr || self.remove_tail_expr(&mut block.stmts);
-                            }
-                        }
-                    }
-
-                    _ => (),
-                }
-            }
-
-            stmt = cleanup_if(stmt);
-
-            // In all other cases, we give up and accept that we can't get rid of the last
-            // stmt and that we might need a block label.
-            stmts.push(stmt);
-            removed_tail_expr
+        let mut stmt = if let Some(stmt) = stmts.pop() {
+            stmt
         } else {
-            false
+            return false;
+        };
+        // If the very last stmt in our relooped output is a return/break, we can just
+        // remove that statement. We additionally know that there is definitely no need
+        // to label a block (if we were in that mode in the first place).
+        if self.is_idempotent_tail_expr(&stmt) {
+            return true;
         }
+
+        let mut removed_tail_expr = false;
+
+        if let Stmt::Expr(expr) = &mut stmt {
+            match expr {
+                Expr::If(ExprIf {
+                    cond: _,
+                    then_branch,
+                    else_branch,
+                    ..
+                }) => {
+                    removed_tail_expr = removed_tail_expr || self.remove_tail_expr(&mut then_branch.stmts);
+                    if let Some((_token, else_)) = else_branch {
+                        if let Expr::Block(ExprBlock { block, .. }) = &mut **else_ {
+                            removed_tail_expr =
+                                removed_tail_expr || self.remove_tail_expr(&mut block.stmts)
+                        }
+                    }
+                }
+
+                Expr::Match(ExprMatch { arms, .. }) => {
+                    // Block label can be removed from any arm
+                    for arm in arms {
+                        if let Expr::Block(ExprBlock { block, .. }) = arm.body.as_mut() {
+                            removed_tail_expr =
+                                removed_tail_expr || self.remove_tail_expr(&mut block.stmts);
+                        }
+                    }
+                }
+
+                _ => {},
+            }
+        }
+
+        stmt = cleanup_if(stmt);
+
+        // In all other cases, we give up and accept that we can't get rid of the last
+        // stmt and that we might need a block label.
+        stmts.push(stmt);
+        removed_tail_expr
     }
 
     fn is_idempotent_tail_expr(&self, stmt: &Stmt) -> bool {
-        let tail_expr = if let Stmt::Semi(ref expr, _token) = *stmt {
+        let tail_expr = if let Stmt::Semi(expr, _token) = stmt {
             expr
         } else {
             return false;
@@ -87,16 +81,16 @@ impl IncCleanup {
         match self.in_tail {
             Some(ImplicitReturnType::Main) => {
                 if let Expr::Return(ExprReturn {
-                    expr: Some(ref zero),
+                    expr: Some(zero),
                     ..
-                }) = *tail_expr
+                }) = tail_expr
                 {
                     if let Expr::Lit(ExprLit {
-                        lit: Lit::Int(ref lit),
+                        lit: Lit::Int(lit),
                         ..
-                    }) = **zero
+                    }) = &**zero
                     {
-                        if let "0" = lit.base10_digits() {
+                        if lit.base10_digits() == "0" {
                             return true;
                         }
                     }
@@ -105,7 +99,7 @@ impl IncCleanup {
             }
 
             Some(ImplicitReturnType::Void) => {
-                if let Expr::Return(ExprReturn { expr: None, .. }) = *tail_expr {
+                if let Expr::Return(ExprReturn { expr: None, .. }) = tail_expr {
                     return true;
                 }
                 false
@@ -113,12 +107,12 @@ impl IncCleanup {
 
             _ => {
                 if let Expr::Break(ExprBreak {
-                    label: Some(ref blbl),
+                    label: Some(brk_lbl),
                     expr: None,
                     ..
-                }) = *tail_expr
+                }) = tail_expr
                 {
-                    if blbl.ident == mk().label(self.brk_lbl.pretty_print()).name.ident {
+                    if brk_lbl.ident == mk().label(self.brk_lbl.pretty_print()).name.ident {
                         return true;
                     }
                 }
@@ -140,9 +134,7 @@ fn cleanup_if(stmt: Stmt) -> Stmt {
     {
         match &**else_ {
             Expr::Block(ExprBlock {
-                block,
-                label: None,
-                ..
+                block, label: None, ..
             }) if block.stmts.is_empty() => {
                 return Stmt::Expr(Expr::If(ExprIf {
                     cond: cond.clone(),
