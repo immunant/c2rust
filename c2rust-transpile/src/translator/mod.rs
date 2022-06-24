@@ -1179,9 +1179,9 @@ pub enum ExprUse {
 /// into a single extern block at the end of translation.
 #[derive(Debug)]
 pub enum ConvertedDecl {
-    ForeignItem(ForeignItem),
-    Item(Box<Item>),
-    Items(Vec<Box<Item>>),
+    ForeignItem(ForeignItem), // 472 bytes
+    Item(Box<Item>), // 24 bytes
+    Items(Vec<Box<Item>>), // 24 bytes
     NoItem,
 }
 

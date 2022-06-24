@@ -435,10 +435,10 @@ pub struct SwitchCases {
 #[derive(Clone, Debug)]
 pub enum StmtOrDecl {
     /// Rust statement that was translated from a non-compound and non-declaration C statement.
-    Stmt(Stmt),
+    Stmt(Stmt), // 472
 
     /// C declaration
-    Decl(CDeclId),
+    Decl(CDeclId), // 8 bytes
 }
 
 impl StmtOrDecl {

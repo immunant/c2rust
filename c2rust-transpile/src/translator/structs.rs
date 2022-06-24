@@ -26,7 +26,7 @@ enum FieldType {
         field_name: String,
         bytes: u64,
         attrs: Vec<(String, Box<Type>, String)>,
-    },
+    }, // 64 bytes
     Padding {
         bytes: u64,
     },
@@ -36,10 +36,10 @@ enum FieldType {
     Regular {
         name: String,
         ctype: CTypeId,
-        field: Field,
+        field: Field, // 528 bytes
         use_inner_type: bool,
         is_va_list: bool,
-    },
+    }, // 562 bytes
 }
 
 fn contains_block(expr_kind: &Expr) -> bool {
