@@ -217,26 +217,39 @@ impl<'c> Translation<'c> {
                             let order = static_order(order);
                             let order_fail = static_order(order_fail);
                             use Ordering::*;
-                            let intrinsic_name = match (order, order_fail) {
-                                (_, AcqRel | Release) => None,
-                                (SeqCst | AcqRel | Release | Acquire | Relaxed, _) => None,
-                                (_, _) => Some(match (order, order_fail) {
-                                    (SeqCst, SeqCst) => "",
-                                    (SeqCst, Acquire) => "_failacq",
-                                    (SeqCst, Relaxed) => "_failrelaxed",
-                                    (AcqRel, Acquire) => "_acqrel",
-                                    (AcqRel, Relaxed) => "_acqrel_failrelaxed",
-                                    (Release, Relaxed) => "_rel",
-                                    (Acquire, Acquire) => "_acq",
-                                    (Acquire, Relaxed) => "_acq_failrelaxed",
-                                    (Relaxed, Relaxed) => "_relaxed",
+                            let intrinsic_name = match (weak, order, order_fail) {
+                                (_, _, Release) | (_, _, AcqRel) => None,
+                                (false, SeqCst, SeqCst) => Some("atomic_cxchg"),
+                                (false, SeqCst, Acquire) => Some("atomic_cxchg_failacq"),
+                                (false, SeqCst, Relaxed) => Some("atomic_cxchg_failrelaxed"),
+                                (false, SeqCst, _) => None,
+                                (false, AcqRel, Acquire) => Some("atomic_cxchg_acqrel"),
+                                (false, AcqRel, Relaxed) => Some("atomic_cxchg_acqrel_failrelaxed"),
+                                (false, AcqRel, _) => None,
+                                (false, Release, Relaxed) => Some("atomic_cxchg_rel"),
+                                (false, Release, _) => None,
+                                (false, Acquire, Acquire) => Some("atomic_cxchg_acq"),
+                                (false, Acquire, Relaxed) => Some("atomic_cxchg_acq_failrelaxed"),
+                                (false, Acquire, _) => None,
+                                (false, Relaxed, Relaxed) => Some("atomic_cxchg_relaxed"),
+                                (false, Relaxed, _) => None,
+                                (true, SeqCst, SeqCst) => Some("atomic_cxchgweak"),
+                                (true, SeqCst, Acquire) => Some("atomic_cxchgweak_failacq"),
+                                (true, SeqCst, Relaxed) => Some("atomic_cxchgweak_failrelaxed"),
+                                (true, SeqCst, _) => None,
+                                (true, AcqRel, Acquire) => Some("atomic_cxchgweak_acqrel"),
+                                (true, AcqRel, Relaxed) => Some("atomic_cxchgweak_acqrel_failrelaxed"),
+                                (true, AcqRel, _) => None,
+                                (true, Release, Relaxed) => Some("atomic_cxchgweak_rel"),
+                                (true, Release, _) => None,
+                                (true, Acquire, Acquire) => Some("atomic_cxchgweak_acq"),
+                                (true, Acquire, Relaxed) => Some("atomic_cxchgweak_acq_failrelaxed"),
+                                (true, Acquire, _) => None,
+                                (true, Relaxed, Relaxed) => Some("atomic_cxchgweak_relaxed"),
+                                (true, Relaxed, _) => None,
 
-                                    (_, _) => unreachable!("Did we not handle a case above??"),
-                                }),
+                                (_, _, _) => unreachable!("Did we not handle a case above??"),
                             }
-                            .map(|suffix| {
-                                format!("atomic_cxchg{}{}", if weak { "weak" } else { "" }, suffix)
-                            })
                             .ok_or_else(|| {
                                 format_translation_err!(
                                     self.ast_context
@@ -254,11 +267,8 @@ impl<'c> Translation<'c> {
                                 mk().unary_expr(UnOp::Deref(Default::default()), desired)
                             };
 
-                            let atomic_cxchg = mk().abs_path_expr(vec![
-                                std_or_core,
-                                "intrinsics",
-                                &intrinsic_name,
-                            ]);
+                            let atomic_cxchg =
+                                mk().abs_path_expr(vec![std_or_core, "intrinsics", intrinsic_name]);
                             let call =
                                 mk().call_expr(atomic_cxchg, vec![ptr, expected.clone(), desired]);
                             let res_name = self.renamer.borrow_mut().fresh();
