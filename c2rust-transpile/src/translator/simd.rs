@@ -551,6 +551,9 @@ impl<'c> Translation<'c> {
     /// excluding the first two (which are always vector exprs). These exprs contain mathematical
     /// offsets applied to a mask expr (or are otherwise a numeric constant) which we'd like to extract.
     fn get_shuffle_vector_mask(&self, expr_ids: &[CExprId]) -> Result<CExprId, TranslationError> {
+        fn unknown_mask_format(e: &CExprKind) -> Result<CExprId, TranslationError> {
+            Err(format_err!("Found unknown mask format: {:?}", e).into())
+        }
         match self.ast_context[expr_ids[0]].kind {
             // Need to unmask which looks like this most of the time: X + (((mask) >> Y) & Z):
             Binary(_, Add, _, rhs_expr_id, None, None) => {
@@ -560,7 +563,7 @@ impl<'c> Translation<'c> {
             Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
                 match self.ast_context[lhs_expr_id].kind {
                     Binary(_, ShiftRight, lhs_expr_id, _, None, None) => Ok(lhs_expr_id),
-                    ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
+                    ref e => unknown_mask_format(e),
                 }
             }
             // Sometimes you find a constant and the mask is used further down the expr list
@@ -572,15 +575,15 @@ impl<'c> Translation<'c> {
                         ImplicitCast(_, expr_id, IntegralCast, _, _) => {
                             match self.ast_context[expr_id].kind {
                                 ExplicitCast(_, expr_id, IntegralCast, _, _) => Ok(expr_id),
-                                ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
+                                ref e => unknown_mask_format(e),
                             }
                         }
-                        ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
+                        ref e => unknown_mask_format(e),
                     }
                 }
-                ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
+                ref e => unknown_mask_format(e),
             },
-            ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
+            ref e => unknown_mask_format(e),
         }
     }
 
