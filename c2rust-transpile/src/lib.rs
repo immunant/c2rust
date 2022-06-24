@@ -1,8 +1,3 @@
-#![allow(
-    clippy::borrowed_box,
-    clippy::vec_box,
-)]
-
 mod diagnostics;
 
 pub mod build_files;
