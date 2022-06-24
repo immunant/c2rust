@@ -407,10 +407,12 @@ impl<'c> Translation<'c> {
         // There are three shuffle vector functions which are actually functions, not superbuiltins/macros,
         // which do not need to be handled here: _mm_shuffle_pi8, _mm_shuffle_epi8, _mm256_shuffle_epi8
 
-        if ![4, 6, 10, 18].contains(&child_expr_ids.len()) {
+        let input_params = [4, 6, 10, 18];
+        if !input_params.contains(&child_expr_ids.len()) {
             return Err(format_err!(
-                "Unsupported shuffle vector without 4, 6, 10, or 18 input params: {}",
-                child_expr_ids.len()
+                "Unsupported shuffle vector without input params: found {}, expected one of {:?}",
+                child_expr_ids.len(),
+                input_params,
             ).into());
         };
 
