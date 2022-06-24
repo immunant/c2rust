@@ -57,7 +57,8 @@ impl IncCleanup {
                         // Block label can be removed from any arm
                         for case in cases {
                             if let Expr::Block(ExprBlock { block, .. }) = case.body.as_mut() {
-                                removed_tail_expr |= self.remove_tail_expr(&mut block.stmts);
+                                removed_tail_expr =
+                                    removed_tail_expr || self.remove_tail_expr(&mut block.stmts);
                             }
                         }
                     }
