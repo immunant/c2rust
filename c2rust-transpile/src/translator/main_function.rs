@@ -19,11 +19,11 @@ impl<'c> Translation<'c> {
                 CTypeKind::Function(ret, _, _, _, _) => {
                     self.ast_context.resolve_type(ret.ctype).kind.clone()
                 }
-                ref k => Err(format_err!(
+                ref k => return Err(format_err!(
                     "Type of main function {:?} was not a function type, got {:?}",
                     main_id,
                     k
-                ))?,
+                ).into()),
             };
 
             let main_fn_name = self
@@ -224,10 +224,10 @@ impl<'c> Translation<'c> {
 
             // Check `main` has the right form
             if n != 0 && n != 2 && n != 3 {
-                Err(format_err!(
+                return Err(format_err!(
                     "Main function should have 0, 2, or 3 parameters, not {}.",
                     n
-                ))?;
+                ).into());
             };
 
             if let CTypeKind::Void = ret {

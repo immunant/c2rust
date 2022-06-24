@@ -78,9 +78,9 @@ impl<'c> Translation<'c> {
                 // __m64 and MMX support were removed from upstream Rust.
                 // See https://github.com/immunant/c2rust/issues/369
                 if name == "__m64" {
-                    Err(format_err!(
+                    return Err(format_err!(
                         "__m64 and MMX are no longer supported, due to removed upstream support. See https://github.com/immunant/c2rust/issues/369"
-                    ))?;
+                    ).into());
                 }
 
                 self.with_cur_file_item_store(|item_store| {
@@ -167,10 +167,10 @@ impl<'c> Translation<'c> {
         if name.starts_with("_mm") {
             // REVIEW: This will do a linear lookup against all SIMD fns. Could use a lazy static hashset
             if MISSING_SIMD_FUNCTIONS.contains(&name) {
-                Err(format_err!(
+                return Err(format_err!(
                     "SIMD function {} doesn't currently have a rust counterpart",
                     name
-                ))?;
+                ).into());
             }
 
             // The majority of x86/64 SIMD is stable, however there are still some
@@ -302,11 +302,11 @@ impl<'c> Translation<'c> {
 
                 ("_mm_setzero_si64", 8)
             }
-            (kind, len) => Err(format_err!(
+            (kind, len) => return Err(format_err!(
                 "Unsupported vector default initializer: {:?} x {}",
                 kind,
                 len
-            ))?,
+            ).into()),
         };
 
         if is_static {
@@ -369,7 +369,7 @@ impl<'c> Translation<'c> {
                     (Short, 4) => "_mm_setr_pi16",
                     (Short, 8) => "_mm_setr_epi16",
                     (Short, 16) => "_mm256_setr_epi16",
-                    ref e => Err(format_err!("Unknown vector init list: {:?}", e))?,
+                    e => return Err(format_err!("Unknown vector init list: {:?}", e).into()),
                 };
 
                 self.import_simd_function(fn_call_name)?;
@@ -408,10 +408,10 @@ impl<'c> Translation<'c> {
         // which do not need to be handled here: _mm_shuffle_pi8, _mm_shuffle_epi8, _mm256_shuffle_epi8
 
         if ![4, 6, 10, 18].contains(&child_expr_ids.len()) {
-            Err(format_err!(
+            return Err(format_err!(
                 "Unsupported shuffle vector without 4, 6, 10, or 18 input params: {}",
                 child_expr_ids.len()
-            ))?
+            ).into());
         };
 
         // There is some internal explicit casting which is okay for us to strip off
@@ -461,7 +461,7 @@ impl<'c> Translation<'c> {
                 _ => new_params.push(second),
             }
 
-            let shuffle_fn_name = match (&first_vec, first_vec_len) {
+            let shuffle_fn_name = match (first_vec, first_vec_len) {
                 (Float, 4) => "_mm_shuffle_ps",
                 (Float, 8) => "_mm256_shuffle_ps",
                 (Double, 2) => "_mm_shuffle_pd",
@@ -489,7 +489,7 @@ impl<'c> Translation<'c> {
                         "_mm256_shufflelo_epi16"
                     }
                 }
-                e => Err(format_err!("Unknown shuffle vector signature: {:?}", e))?,
+                e => return Err(format_err!("Unknown shuffle vector signature: {:?}", e).into()),
             };
 
             new_params.push(third);

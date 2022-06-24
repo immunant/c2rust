@@ -205,9 +205,7 @@ impl<'c> Translation<'c> {
                 }
             })
         } else {
-            Err(format_err!(
-                "Variable argument list translation is not enabled."
-            ))?
+            Err(format_err!("Variable argument list translation is not enabled.").into())
         }
     }
 
