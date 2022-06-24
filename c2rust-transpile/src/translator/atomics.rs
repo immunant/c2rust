@@ -7,26 +7,28 @@ impl<'c> Translation<'c> {
     fn convert_constant_bool(&self, expr: CExprId) -> Option<bool> {
         let val = self.ast_context.resolve_expr(expr).1;
         match val {
-            CExprKind::Literal(_, CLiteral::Integer(0, _)) => Some(false),
-            CExprKind::Literal(_, CLiteral::Integer(_, _)) => Some(true),
+            &CExprKind::Literal(_, CLiteral::Integer(i, _)) => Some(i != 0),
             _ => None,
         }
     }
 
     fn convert_memordering(&self, expr: CExprId) -> Option<Ordering> {
         let memorder = &self.ast_context[expr];
-        match memorder.kind {
-            CExprKind::Literal(_, CLiteral::Integer(i, _)) => match i {
-                0 => Some(Ordering::Relaxed),
-                1 => Some(Ordering::Acquire),
-                2 => Some(Ordering::Acquire),
-                3 => Some(Ordering::Release),
-                4 => Some(Ordering::AcqRel),
-                5 => Some(Ordering::SeqCst),
-                _ => None,
-            },
+        let i = match memorder.kind {
+            CExprKind::Literal(_, CLiteral::Integer(i, _)) => Some(i),
             _ => None,
-        }
+        }?;
+        use Ordering::*;
+        let ordering = match i {
+            0 => Relaxed,
+            1 => Acquire,
+            2 => Acquire,
+            3 => Release,
+            4 => AcqRel,
+            5 => SeqCst,
+            _ => return None,
+        };
+        Some(ordering)
     }
 
     pub fn convert_atomic(
@@ -52,18 +54,23 @@ impl<'c> Translation<'c> {
             .transpose()?;
         let weak = weak_id.and_then(|x| self.convert_constant_bool(x));
 
+        fn static_order<T>(order: Option<T>) -> T {
+            order.unwrap_or_else(|| {
+                // We have to select which intrinsic to use at runtime
+                unimplemented!("Dynamic memory consistency arguments are not yet supported");
+            })
+        }
+
         match name {
             "__atomic_load" | "__atomic_load_n" => ptr.and_then(|ptr| {
-                let intrinsic_name = match order {
-                    None => {
-                        unimplemented!("Dynamic memory consistency arguments are not yet supported")
-                    }
-                    Some(Ordering::SeqCst) => Some("atomic_load"),
-                    Some(Ordering::AcqRel) => None,
-                    Some(Ordering::Acquire) => Some("atomic_load_acq"),
-                    Some(Ordering::Release) => None,
-                    Some(Ordering::Relaxed) => Some("atomic_load_relaxed"),
-                    Some(_) => unreachable!("Did we not handle a case above??"),
+                use Ordering::*;
+                let intrinsic_name = match static_order(order) {
+                    SeqCst => Some("atomic_load"),
+                    AcqRel => None,
+                    Acquire => Some("atomic_load_acq"),
+                    Release => None,
+                    Relaxed => Some("atomic_load_relaxed"),
+                    _ => unreachable!("Did we not handle a case above??"),
                 }
                 .ok_or_else(|| {
                     format_translation_err!(
@@ -104,16 +111,14 @@ impl<'c> Translation<'c> {
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
-                        let intrinsic_name = match order {
-                            None => unimplemented!(
-                                "Dynamic memory consistency arguments are not yet supported"
-                            ),
-                            Some(Ordering::SeqCst) => Some("atomic_store"),
-                            Some(Ordering::AcqRel) => None,
-                            Some(Ordering::Acquire) => None,
-                            Some(Ordering::Release) => Some("atomic_store_rel"),
-                            Some(Ordering::Relaxed) => Some("atomic_store_relaxed"),
-                            Some(_) => unreachable!("Did we not handle a case above??"),
+                        use Ordering::*;
+                        let intrinsic_name = match static_order(order) {
+                            SeqCst => Some("atomic_store"),
+                            AcqRel => None,
+                            Acquire => None,
+                            Release => Some("atomic_store_rel"),
+                            Relaxed => Some("atomic_store_relaxed"),
+                            _ => unreachable!("Did we not handle a case above??"),
                         }
                         .ok_or_else(|| {
                             format_translation_err!(
@@ -146,16 +151,14 @@ impl<'c> Translation<'c> {
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
-                        let intrinsic_name = match order {
-                            None => unimplemented!(
-                                "Dynamic memory consistency arguments are not yet supported"
-                            ),
-                            Some(Ordering::SeqCst) => Some("atomic_xchg"),
-                            Some(Ordering::AcqRel) => Some("atomic_xchg_acqrel"),
-                            Some(Ordering::Acquire) => Some("atomic_xchg_acq"),
-                            Some(Ordering::Release) => Some("atomic_xchg_rel"),
-                            Some(Ordering::Relaxed) => Some("atomic_xchg_relaxed"),
-                            Some(_) => unreachable!("Did we not handle a case above??"),
+                        use Ordering::*;
+                        let intrinsic_name = match static_order(order) {
+                            SeqCst => Some("atomic_xchg"),
+                            AcqRel => Some("atomic_xchg_acqrel"),
+                            Acquire => Some("atomic_xchg_acq"),
+                            Release => Some("atomic_xchg_rel"),
+                            Relaxed => Some("atomic_xchg_relaxed"),
+                            _ => unreachable!("Did we not handle a case above??"),
                         }
                         .ok_or_else(|| {
                             format_translation_err!(
@@ -210,80 +213,54 @@ impl<'c> Translation<'c> {
                 ptr.and_then(|ptr| {
                     expected.and_then(|expected| {
                         desired.and_then(|desired| {
+                            let weak = static_order(weak);
+                            let order = static_order(order);
+                            let order_fail = static_order(order_fail);
+                            use Ordering::*;
                             let intrinsic_name = match (weak, order, order_fail) {
-                                (None, _, _) | (_, None, _) | (_, _, None) => {
-                                    // We have to select which intrinsic to use at runtime
-                                    unimplemented!("Dynamic memory consistency arguments are not yet supported");
-                                }
-                                (_, _, Some(Ordering::Release)) | (_, _, Some(Ordering::AcqRel)) =>
-                                    None,
+                                (_, _, Release) | (_, _, AcqRel) => None,
+                                (false, SeqCst, SeqCst) => Some("atomic_cxchg"),
+                                (false, SeqCst, Acquire) => Some("atomic_cxchg_failacq"),
+                                (false, SeqCst, Relaxed) => Some("atomic_cxchg_failrelaxed"),
+                                (false, SeqCst, _) => None,
+                                (false, AcqRel, Acquire) => Some("atomic_cxchg_acqrel"),
+                                (false, AcqRel, Relaxed) => Some("atomic_cxchg_acqrel_failrelaxed"),
+                                (false, AcqRel, _) => None,
+                                (false, Release, Relaxed) => Some("atomic_cxchg_rel"),
+                                (false, Release, _) => None,
+                                (false, Acquire, Acquire) => Some("atomic_cxchg_acq"),
+                                (false, Acquire, Relaxed) => Some("atomic_cxchg_acq_failrelaxed"),
+                                (false, Acquire, _) => None,
+                                (false, Relaxed, Relaxed) => Some("atomic_cxchg_relaxed"),
+                                (false, Relaxed, _) => None,
+                                (true, SeqCst, SeqCst) => Some("atomic_cxchgweak"),
+                                (true, SeqCst, Acquire) => Some("atomic_cxchgweak_failacq"),
+                                (true, SeqCst, Relaxed) => Some("atomic_cxchgweak_failrelaxed"),
+                                (true, SeqCst, _) => None,
+                                (true, AcqRel, Acquire) => Some("atomic_cxchgweak_acqrel"),
+                                (true, AcqRel, Relaxed) => Some("atomic_cxchgweak_acqrel_failrelaxed"),
+                                (true, AcqRel, _) => None,
+                                (true, Release, Relaxed) => Some("atomic_cxchgweak_rel"),
+                                (true, Release, _) => None,
+                                (true, Acquire, Acquire) => Some("atomic_cxchgweak_acq"),
+                                (true, Acquire, Relaxed) => Some("atomic_cxchgweak_acq_failrelaxed"),
+                                (true, Acquire, _) => None,
+                                (true, Relaxed, Relaxed) => Some("atomic_cxchgweak_relaxed"),
+                                (true, Relaxed, _) => None,
 
-                                (Some(false), Some(Ordering::SeqCst), Some(Ordering::SeqCst)) =>
-                                    Some("atomic_cxchg"),
-                                (Some(false), Some(Ordering::SeqCst), Some(Ordering::Acquire)) =>
-                                    Some("atomic_cxchg_failacq"),
-                                (Some(false), Some(Ordering::SeqCst), Some(Ordering::Relaxed)) =>
-                                    Some("atomic_cxchg_failrelaxed"),
-                                (Some(false), Some(Ordering::SeqCst), Some(_)) =>
-                                    None,
-                                (Some(false), Some(Ordering::AcqRel), Some(Ordering::Acquire)) =>
-                                    Some("atomic_cxchg_acqrel"),
-                                (Some(false), Some(Ordering::AcqRel), Some(Ordering::Relaxed)) =>
-                                    Some("atomic_cxchg_acqrel_failrelaxed"),
-                                (Some(false), Some(Ordering::AcqRel), Some(_)) =>
-                                    None,
-                                (Some(false), Some(Ordering::Release), Some(Ordering::Relaxed)) =>
-                                    Some("atomic_cxchg_rel"),
-                                (Some(false), Some(Ordering::Release), Some(_)) =>
-                                    None,
-                                (Some(false), Some(Ordering::Acquire), Some(Ordering::Acquire)) =>
-                                    Some("atomic_cxchg_acq"),
-                                (Some(false), Some(Ordering::Acquire), Some(Ordering::Relaxed)) =>
-                                    Some("atomic_cxchg_acq_failrelaxed"),
-                                (Some(false), Some(Ordering::Acquire), Some(_)) =>
-                                    None,
-                                (Some(false), Some(Ordering::Relaxed), Some(Ordering::Relaxed)) =>
-                                    Some("atomic_cxchg_relaxed"),
-                                (Some(false), Some(Ordering::Relaxed), Some(_)) =>
-                                    None,
-
-                                (Some(true), Some(Ordering::SeqCst), Some(Ordering::SeqCst)) =>
-                                    Some("atomic_cxchgweak"),
-                                (Some(true), Some(Ordering::SeqCst), Some(Ordering::Acquire)) =>
-                                    Some("atomic_cxchgweak_failacq"),
-                                (Some(true), Some(Ordering::SeqCst), Some(Ordering::Relaxed)) =>
-                                    Some("atomic_cxchgweak_failrelaxed"),
-                                (Some(true), Some(Ordering::SeqCst), Some(_)) =>
-                                    None,
-                                (Some(true), Some(Ordering::AcqRel), Some(Ordering::Acquire)) =>
-                                    Some("atomic_cxchgweak_acqrel"),
-                                (Some(true), Some(Ordering::AcqRel), Some(Ordering::Relaxed)) =>
-                                    Some("atomic_cxchgweak_acqrel_failrelaxed"),
-                                (Some(true), Some(Ordering::AcqRel), Some(_)) =>
-                                    None,
-                                (Some(true), Some(Ordering::Release), Some(Ordering::Relaxed)) =>
-                                    Some("atomic_cxchgweak_rel"),
-                                (Some(true), Some(Ordering::Release), Some(_)) =>
-                                    None,
-                                (Some(true), Some(Ordering::Acquire), Some(Ordering::Acquire)) =>
-                                    Some("atomic_cxchgweak_acq"),
-                                (Some(true), Some(Ordering::Acquire), Some(Ordering::Relaxed)) =>
-                                    Some("atomic_cxchgweak_acq_failrelaxed"),
-                                (Some(true), Some(Ordering::Acquire), Some(_)) =>
-                                    None,
-                                (Some(true), Some(Ordering::Relaxed), Some(Ordering::Relaxed)) =>
-                                    Some("atomic_cxchgweak_relaxed"),
-                                (Some(true), Some(Ordering::Relaxed), Some(_)) =>
-                                    None,
-
-                                (Some(_), Some(_), Some(_)) => unreachable!("Did we not handle a case above??"),
-                            }.ok_or_else(|| format_translation_err!(
-                                self.ast_context.display_loc(&self.ast_context[order_fail_id.unwrap()].loc),
-                                "Invalid failure memory ordering",
-                            ))?;
+                                (_, _, _) => unreachable!("Did we not handle a case above??"),
+                            }
+                            .ok_or_else(|| {
+                                format_translation_err!(
+                                    self.ast_context
+                                        .display_loc(&self.ast_context[order_fail_id.unwrap()].loc),
+                                    "Invalid failure memory ordering",
+                                )
+                            })?;
 
                             self.use_feature("core_intrinsics");
-                            let expected = mk().unary_expr(UnOp::Deref(Default::default()), expected);
+                            let expected =
+                                mk().unary_expr(UnOp::Deref(Default::default()), expected);
                             let desired = if name == "__atomic_compare_exchange_n" {
                                 desired
                             } else {
@@ -291,8 +268,9 @@ impl<'c> Translation<'c> {
                             };
 
                             let atomic_cxchg =
-                                mk().abs_path_expr(vec![ std_or_core, "intrinsics", intrinsic_name]);
-                            let call = mk().call_expr(atomic_cxchg, vec![ptr, expected.clone(), desired]);
+                                mk().abs_path_expr(vec![std_or_core, "intrinsics", intrinsic_name]);
+                            let call =
+                                mk().call_expr(atomic_cxchg, vec![ptr, expected.clone(), desired]);
                             let res_name = self.renamer.borrow_mut().fresh();
                             let res_let = mk().local_stmt(Box::new(mk().local(
                                 mk().ident_pat(&res_name),
@@ -340,13 +318,10 @@ impl<'c> Translation<'c> {
                     "atomic_and"
                 };
 
-                let order = order.unwrap_or_else(|| {
-                    unimplemented!("Dynamic memory consistency arguments are not yet supported")
-                });
                 use Ordering::*;
-                let intrinsic_suffix = match order {
+                let intrinsic_suffix = match static_order(order) {
                     SeqCst => "",
-                    AcqRel => "_acqrel", 
+                    AcqRel => "_acqrel",
                     Acquire => "_acq",
                     Release => "_rel",
                     Relaxed => "_relaxed",
