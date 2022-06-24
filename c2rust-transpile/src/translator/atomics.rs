@@ -3,6 +3,17 @@ use crate::format_translation_err;
 use super::*;
 use std::sync::atomic::Ordering;
 
+/// Args for [`Translation::convert_atomic`].
+pub struct ConvertAtomicArgs<'a> {
+    pub name: &'a str,
+    pub ptr_id: CExprId,
+    pub order_id: CExprId,
+    pub val1_id: Option<CExprId>,
+    pub order_fail_id: Option<CExprId>,
+    pub val2_id: Option<CExprId>,
+    pub weak_id: Option<CExprId>,
+}
+
 impl<'c> Translation<'c> {
     fn convert_constant_bool(&self, expr: CExprId) -> Option<bool> {
         let val = self.ast_context.resolve_expr(expr).1;
@@ -34,14 +45,18 @@ impl<'c> Translation<'c> {
     pub fn convert_atomic(
         &self,
         ctx: ExprContext,
-        name: &str,
-        ptr_id: CExprId,
-        order_id: CExprId,
-        val1_id: Option<CExprId>,
-        order_fail_id: Option<CExprId>,
-        val2_id: Option<CExprId>,
-        weak_id: Option<CExprId>,
+        args: ConvertAtomicArgs,
     ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+        let ConvertAtomicArgs {
+            name,
+            ptr_id,
+            order_id,
+            val1_id,
+            order_fail_id,
+            val2_id,
+            weak_id,
+        } = args;
+
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
         let ptr = self.convert_expr(ctx.used(), ptr_id)?;
         let order = self.convert_memordering(order_id);

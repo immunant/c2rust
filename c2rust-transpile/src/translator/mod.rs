@@ -21,6 +21,8 @@ use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::set_span::SetSpan;
 use crate::rust_ast::{pos_to_span, SpanExt, DUMMY_SP};
+use crate::translator::atomics::ConvertAtomicArgs;
+use crate::translator::operators::ConvertBinaryExprArgs;
 use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_printer::pprust::{self};
 
@@ -34,8 +36,8 @@ use crate::{c_ast, format_translation_err};
 use crate::{ExternCrate, ExternCrateDetails, TranspilerConfig};
 use c2rust_ast_exporter::clang_ast::LRValue;
 
-mod assembly;
-mod atomics;
+pub mod assembly;
+pub mod atomics;
 mod builtins;
 mod comments;
 mod literals;
@@ -1180,9 +1182,35 @@ pub enum ExprUse {
 #[derive(Debug)]
 pub enum ConvertedDecl {
     ForeignItem(ForeignItem), // 472 bytes
-    Item(Box<Item>), // 24 bytes
-    Items(Vec<Box<Item>>), // 24 bytes
+    Item(Box<Item>),          // 24 bytes
+    Items(Vec<Box<Item>>),    // 24 bytes
     NoItem,
+}
+
+/// Args for [`Translation::convert_function`].
+struct ConvertFunctionArgs<'a> {
+    span: Span,
+    is_global: bool,
+    is_inline: bool,
+    is_main: bool,
+    is_variadic: bool,
+    is_extern: bool,
+    new_name: &'a str,
+    name: &'a str,
+    arguments: &'a [(CDeclId, String, CQualTypeId)],
+    return_type: Option<CQualTypeId>,
+    body: Option<CStmtId>,
+    attrs: &'a IndexSet<c_ast::Attribute>,
+}
+
+/// Args for [`Translation::convert_cast`].
+struct ConvertCastArgs {
+    source_ty: CQualTypeId,
+    ty: CQualTypeId,
+    val: WithStmts<Box<Expr>>,
+    expr: Option<CExprId>,
+    kind: Option<CastKind>,
+    opt_field_id: Option<CFieldId>,
 }
 
 impl<'c> Translation<'c> {
@@ -1563,7 +1591,7 @@ impl<'c> Translation<'c> {
             .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))?;
 
-        let mut s = self.get_span(SomeId::Decl(decl_id)).unwrap_or(DUMMY_SP);
+        let mut span = self.get_span(SomeId::Decl(decl_id)).unwrap_or(DUMMY_SP);
 
         match decl.kind {
             CDeclKind::Struct { fields: None, .. }
@@ -1579,7 +1607,7 @@ impl<'c> Translation<'c> {
                     .resolve_decl_name(decl_id)
                     .unwrap();
 
-                let extern_item = mk().span(s).pub_().ty_foreign_item(name);
+                let extern_item = mk().span(span).pub_().ty_foreign_item(name);
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
 
@@ -1673,7 +1701,7 @@ impl<'c> Translation<'c> {
                     let inner_ty = mk().path_ty(vec![inner_name.clone()]);
                     let inner_repr_attr = mk().meta_list("repr", reprs);
                     let inner_struct = mk()
-                        .span(s)
+                        .span(span)
                         .pub_()
                         .call_attr("derive", derives)
                         .meta_item_attr(AttrStyle::Outer, inner_repr_attr)
@@ -1689,7 +1717,7 @@ impl<'c> Translation<'c> {
                     let repr_attr = mk().meta_list("repr", outer_reprs);
                     let outer_field = mk().pub_().enum_field(mk().ident_ty(inner_name));
                     let outer_struct = mk()
-                        .span(s)
+                        .span(span)
                         .pub_()
                         .call_attr("derive", vec!["Copy", "Clone"])
                         .meta_item_attr(AttrStyle::Outer, repr_attr)
@@ -1707,7 +1735,7 @@ impl<'c> Translation<'c> {
                     let padding_value =
                         mk().binary_expr(BinOp::Sub(Default::default()), outer_size, inner_size);
                     let padding_const = mk()
-                        .span(s)
+                        .span(span)
                         .call_attr("allow", vec!["dead_code", "non_upper_case_globals"])
                         .const_item(padding_name, padding_ty, padding_value);
 
@@ -1718,7 +1746,7 @@ impl<'c> Translation<'c> {
                     let repr_attr = mk().meta_list("repr", reprs);
 
                     let mut mk_ = mk()
-                        .span(s)
+                        .span(span)
                         .pub_()
                         .call_attr("derive", derives)
                         .meta_item_attr(AttrStyle::Outer, repr_attr);
@@ -1774,7 +1802,7 @@ impl<'c> Translation<'c> {
                 Ok(if field_syns.is_empty() {
                     // Empty unions are a GNU extension, but Rust doesn't allow empty unions.
                     ConvertedDecl::Item(
-                        mk().span(s)
+                        mk().span(span)
                             .pub_()
                             .call_attr("derive", vec!["Copy", "Clone"])
                             .call_attr("repr", repr)
@@ -1782,7 +1810,7 @@ impl<'c> Translation<'c> {
                     )
                 } else {
                     ConvertedDecl::Item(
-                        mk().span(s)
+                        mk().span(span)
                             .pub_()
                             .call_attr("derive", vec!["Copy", "Clone"])
                             .call_attr("repr", repr)
@@ -1806,7 +1834,7 @@ impl<'c> Translation<'c> {
                     .expect("Enums should already be renamed");
                 let ty = self.convert_type(integral_type.ctype)?;
                 Ok(ConvertedDecl::Item(
-                    mk().span(s).pub_().type_item(enum_name, ty),
+                    mk().span(span).pub_().type_item(enum_name, ty),
                 ))
             }
 
@@ -1832,7 +1860,7 @@ impl<'c> Translation<'c> {
                 };
 
                 Ok(ConvertedDecl::Item(
-                    mk().span(s).pub_().const_item(name, ty, val),
+                    mk().span(span).pub_().const_item(name, ty, val),
                 ))
             }
 
@@ -1860,7 +1888,7 @@ impl<'c> Translation<'c> {
                     return Ok(ConvertedDecl::NoItem);
                 }
 
-                let (ret, is_var): (Option<CQualTypeId>, bool) =
+                let (ret, is_variadic): (Option<CQualTypeId>, bool) =
                     match self.ast_context.resolve_type(typ).kind {
                         CTypeKind::Function(ret, _, is_var, is_noreturn, _) => {
                             (if is_noreturn { None } else { Some(ret) }, is_var)
@@ -1891,14 +1919,40 @@ impl<'c> Translation<'c> {
                 let is_main = self.ast_context.c_main == Some(decl_id);
 
                 let converted_function = self.convert_function(
-                    ctx, s, is_global, is_inline, is_main, is_var, is_extern, new_name, name,
-                    &args, ret, body, attrs,
+                    ctx,
+                    ConvertFunctionArgs {
+                        span,
+                        is_global,
+                        is_inline,
+                        is_main,
+                        is_variadic,
+                        is_extern,
+                        new_name,
+                        name,
+                        arguments: &args,
+                        return_type: ret,
+                        body,
+                        attrs,
+                    },
                 );
 
                 converted_function.or_else(|e| match self.tcfg.replace_unsupported_decls {
                     ReplaceMode::Extern if body.is_none() => self.convert_function(
-                        ctx, s, is_global, false, is_main, is_var, is_extern, new_name, name,
-                        &args, ret, None, attrs,
+                        ctx,
+                        ConvertFunctionArgs {
+                            span,
+                            is_global,
+                            is_inline: false,
+                            is_main,
+                            is_variadic,
+                            is_extern,
+                            new_name,
+                            name,
+                            arguments: &args,
+                            return_type: ret,
+                            body: None,
+                            attrs,
+                        },
                     ),
                     _ => Err(e),
                 })
@@ -1927,7 +1981,7 @@ impl<'c> Translation<'c> {
                 self.type_converter.borrow_mut().translate_valist = translate_valist;
 
                 Ok(ConvertedDecl::Item(
-                    mk().span(s).pub_().type_item(new_name, ty),
+                    mk().span(span).pub_().type_item(new_name, ty),
                 ))
             }
 
@@ -1969,7 +2023,7 @@ impl<'c> Translation<'c> {
                     ""
                 };
                 let mut extern_item = mk_linkage(true, &new_name, ident)
-                    .span(s)
+                    .span(span)
                     .set_mutbl(mutbl)
                     .vis(visibility);
                 if has_thread_duration {
@@ -2022,8 +2076,12 @@ impl<'c> Translation<'c> {
                     let mut init = init?.to_expr();
 
                     let comment = String::from("// Initialized in run_static_initializers");
-                    let comment_pos = if s.is_dummy() { None } else { Some(s.lo()) };
-                    s = self
+                    let comment_pos = if span.is_dummy() {
+                        None
+                    } else {
+                        Some(span.lo())
+                    };
+                    span = self
                         .comment_store
                         .borrow_mut()
                         .extend_existing_comments(
@@ -2032,7 +2090,7 @@ impl<'c> Translation<'c> {
                             //CommentStyle::Isolated,
                         )
                         .map(pos_to_span)
-                        .unwrap_or(s);
+                        .unwrap_or(span);
 
                     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
 
@@ -2062,7 +2120,7 @@ impl<'c> Translation<'c> {
 
                 // Force mutability due to the potential for raw pointers occuring in the type
                 // and because we may be assigning to these variables in the external initializer
-                let mut static_def = static_def.span(s).mutbl();
+                let mut static_def = static_def.span(span).mutbl();
                 if has_thread_duration {
                     static_def = static_def.single_attr("thread_local");
                 }
@@ -2115,7 +2173,7 @@ impl<'c> Translation<'c> {
                             .insert(decl_id, Some(expansion));
                         let ty = self.convert_type(ty)?;
 
-                        Ok(ConvertedDecl::Item(mk().span(s).pub_().const_item(
+                        Ok(ConvertedDecl::Item(mk().span(span).pub_().const_item(
                             name,
                             ty,
                             replacement,
@@ -2195,19 +2253,23 @@ impl<'c> Translation<'c> {
     fn convert_function(
         &self,
         ctx: ExprContext,
-        span: Span,
-        is_global: bool,
-        is_inline: bool,
-        is_main: bool,
-        is_variadic: bool,
-        is_extern: bool,
-        new_name: &str,
-        name: &str,
-        arguments: &[(CDeclId, String, CQualTypeId)],
-        return_type: Option<CQualTypeId>,
-        body: Option<CStmtId>,
-        attrs: &IndexSet<c_ast::Attribute>,
+        args: ConvertFunctionArgs,
     ) -> Result<ConvertedDecl, TranslationError> {
+        let ConvertFunctionArgs {
+            span,
+            is_global,
+            is_inline,
+            is_main,
+            is_variadic,
+            is_extern,
+            new_name,
+            name,
+            arguments,
+            return_type,
+            body,
+            attrs,
+        } = args;
+
         self.function_context.borrow_mut().enter_new(name);
 
         self.with_scope(|| {
@@ -3227,14 +3289,15 @@ impl<'c> Translation<'c> {
             }
         }
 
+        use CExprKind::*;
         match *expr_kind {
-            CExprKind::DesignatedInitExpr(..) => {
+            DesignatedInitExpr(..) => {
                 Err(TranslationError::generic("Unexpected designated init expr"))
             }
-            CExprKind::BadExpr => Err(TranslationError::generic(
+            BadExpr => Err(TranslationError::generic(
                 "convert_expr: expression kind not supported",
             )),
-            CExprKind::ShuffleVector(_, ref child_expr_ids) => self
+            ShuffleVector(_, ref child_expr_ids) => self
                 .convert_shuffle_vector(ctx, child_expr_ids)
                 .map_err(|e| {
                     TranslationError::new(
@@ -3242,11 +3305,11 @@ impl<'c> Translation<'c> {
                         e.context(TranslationErrorKind::OldLLVMSimd),
                     )
                 }),
-            CExprKind::ConvertVector(..) => {
+            ConvertVector(..) => {
                 Err(TranslationError::generic("convert vector not supported"))
             }
 
-            CExprKind::UnaryType(_ty, kind, opt_expr, arg_ty) => {
+            UnaryType(_ty, kind, opt_expr, arg_ty) => {
                 let result = match kind {
                     UnTypeOp::SizeOf => match opt_expr {
                         None => self.compute_size_of_type(ctx, arg_ty.ctype)?,
@@ -3271,7 +3334,7 @@ impl<'c> Translation<'c> {
                 Ok(result.map(|x| mk().cast_expr(x, mk().path_ty(vec!["libc", "c_ulong"]))))
             }
 
-            CExprKind::ConstantExpr(_ty, child, value) => {
+            ConstantExpr(_ty, child, value) => {
                 if let Some(constant) = value {
                     self.convert_constant(constant).map(WithStmts::new_val)
                 } else {
@@ -3279,7 +3342,7 @@ impl<'c> Translation<'c> {
                 }
             }
 
-            CExprKind::DeclRef(qual_ty, decl_id, lrvalue) => {
+            DeclRef(qual_ty, decl_id, lrvalue) => {
                 let decl = &self
                     .ast_context
                     .get_decl(&decl_id)
@@ -3377,7 +3440,7 @@ impl<'c> Translation<'c> {
                 Ok(res)
             }
 
-            CExprKind::OffsetOf(ty, ref kind) => match kind {
+            OffsetOf(ty, ref kind) => match kind {
                 OffsetOfKind::Constant(val) => Ok(WithStmts::new_val(self.mk_int_lit(
                     ty,
                     *val,
@@ -3443,10 +3506,10 @@ impl<'c> Translation<'c> {
                 }
             },
 
-            CExprKind::Literal(ty, ref kind) => self.convert_literal(ctx, ty, kind),
+            Literal(ty, ref kind) => self.convert_literal(ctx, ty, kind),
 
-            CExprKind::ImplicitCast(ty, expr, kind, opt_field_id, _)
-            | CExprKind::ExplicitCast(ty, expr, kind, opt_field_id, _) => {
+            ImplicitCast(ty, expr, kind, opt_field_id, _)
+            | ExplicitCast(ty, expr, kind, opt_field_id, _) => {
                 let is_explicit = matches!(expr_kind, CExprKind::ExplicitCast(..));
                 // A reference must be decayed if a bitcast is required. Const casts in
                 // LLVM 8 are now NoOp casts, so we need to include it as well.
@@ -3480,20 +3543,22 @@ impl<'c> Translation<'c> {
                 }
                 self.convert_cast(
                     ctx,
-                    source_ty,
-                    ty,
-                    val,
-                    Some(expr),
-                    Some(kind),
-                    opt_field_id,
+                    ConvertCastArgs {
+                        source_ty,
+                        ty,
+                        val,
+                        expr: Some(expr),
+                        kind: Some(kind),
+                        opt_field_id,
+                    },
                 )
             }
 
-            CExprKind::Unary(type_id, op, arg, lrvalue) => {
+            Unary(type_id, op, arg, lrvalue) => {
                 self.convert_unary_operator(ctx, op, type_id, arg, lrvalue)
             }
 
-            CExprKind::Conditional(_, cond, lhs, rhs) => {
+            Conditional(_, cond, lhs, rhs) => {
                 if ctx.is_const {
                     return Err(format_translation_err!(
                         self.ast_context.display_loc(src_loc),
@@ -3534,7 +3599,7 @@ impl<'c> Translation<'c> {
                 }
             }
 
-            CExprKind::BinaryConditional(ty, lhs, rhs) => {
+            BinaryConditional(ty, lhs, rhs) => {
                 if ctx.is_unused() {
                     let mut lhs = self.convert_condition(ctx, false, lhs)?;
                     let rhs = self.convert_expr(ctx, rhs)?;
@@ -3566,11 +3631,21 @@ impl<'c> Translation<'c> {
                 }
             }
 
-            CExprKind::Binary(type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id) => self
-                .convert_binary_expr(ctx, type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id)
+            Binary(type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id) => self
+                .convert_binary_expr(
+                    ctx,
+                    ConvertBinaryExprArgs {
+                        type_id,
+                        op,
+                        lhs,
+                        rhs,
+                        opt_lhs_type_id,
+                        opt_res_type_id,
+                    },
+                )
                 .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
-            CExprKind::ArraySubscript(_, ref lhs, ref rhs, _) => {
+            ArraySubscript(_, ref lhs, ref rhs, _) => {
                 let lhs_node = &self.ast_context.index(*lhs).kind;
                 let rhs_node = &self.ast_context.index(*rhs).kind;
 
@@ -3703,7 +3778,7 @@ impl<'c> Translation<'c> {
                 })
             }
 
-            CExprKind::Call(call_expr_ty, func, ref args) => {
+            Call(call_expr_ty, func, ref args) => {
                 let fn_ty =
                     self.ast_context
                         .get_pointee_qual_type(
@@ -3791,7 +3866,7 @@ impl<'c> Translation<'c> {
                 )
             }
 
-            CExprKind::Member(qual_ty, expr, decl, kind, _) => {
+            Member(qual_ty, expr, decl, kind, _) => {
                 if ctx.is_unused() {
                     self.convert_expr(ctx, expr)
                 } else {
@@ -3861,25 +3936,25 @@ impl<'c> Translation<'c> {
                 }
             }
 
-            CExprKind::Paren(_, val) => self.convert_expr(ctx, val),
+            Paren(_, val) => self.convert_expr(ctx, val),
 
-            CExprKind::CompoundLiteral(_, val) => self.convert_expr(ctx, val),
+            CompoundLiteral(_, val) => self.convert_expr(ctx, val),
 
-            CExprKind::InitList(ty, ref ids, opt_union_field_id, _) => {
+            InitList(ty, ref ids, opt_union_field_id, _) => {
                 self.convert_init_list(ctx, ty, ids, opt_union_field_id)
             }
 
-            CExprKind::ImplicitValueInit(ty) => self.implicit_default_expr(ty.ctype, ctx.is_static),
+            ImplicitValueInit(ty) => self.implicit_default_expr(ty.ctype, ctx.is_static),
 
-            CExprKind::Predefined(_, val_id) => self.convert_expr(ctx, val_id),
+            Predefined(_, val_id) => self.convert_expr(ctx, val_id),
 
-            CExprKind::Statements(_, compound_stmt_id) => {
+            Statements(_, compound_stmt_id) => {
                 self.convert_statement_expression(ctx, compound_stmt_id)
             }
 
-            CExprKind::VAArg(ty, val_id) => self.convert_vaarg(ctx, ty, val_id),
+            VAArg(ty, val_id) => self.convert_vaarg(ctx, ty, val_id),
 
-            CExprKind::Choose(_, _cond, lhs, rhs, is_cond_true) => {
+            Choose(_, _cond, lhs, rhs, is_cond_true) => {
                 let chosen_expr = if is_cond_true {
                     self.convert_expr(ctx, lhs)?
                 } else {
@@ -3902,7 +3977,7 @@ impl<'c> Translation<'c> {
                 Ok(chosen_expr)
             }
 
-            CExprKind::Atomic {
+            Atomic {
                 ref name,
                 ptr,
                 order,
@@ -3911,7 +3986,18 @@ impl<'c> Translation<'c> {
                 val2,
                 weak,
                 ..
-            } => self.convert_atomic(ctx, name, ptr, order, val1, order_fail, val2, weak),
+            } => self.convert_atomic(
+                ctx,
+                ConvertAtomicArgs {
+                    name,
+                    ptr_id: ptr,
+                    order_id: order,
+                    val1_id: val1,
+                    order_fail_id: order_fail,
+                    val2_id: val2,
+                    weak_id: weak,
+                },
+            ),
         }
     }
 
@@ -3982,12 +4068,14 @@ impl<'c> Translation<'c> {
                     return self
                         .convert_cast(
                             ctx,
-                            CQualTypeId::new(macro_ty),
-                            expr_ty,
-                            val,
-                            None,
-                            None,
-                            None,
+                            ConvertCastArgs {
+                                source_ty: CQualTypeId::new(macro_ty),
+                                ty: expr_ty,
+                                val,
+                                expr: None,
+                                kind: None,
+                                opt_field_id: None,
+                            },
                         )
                         .map(Some);
                 } else {
@@ -4131,13 +4219,17 @@ impl<'c> Translation<'c> {
     fn convert_cast(
         &self,
         ctx: ExprContext,
-        source_ty: CQualTypeId,
-        ty: CQualTypeId,
-        val: WithStmts<Box<Expr>>,
-        expr: Option<CExprId>,
-        kind: Option<CastKind>,
-        opt_field_id: Option<CFieldId>,
+        args: ConvertCastArgs,
     ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+        let ConvertCastArgs {
+            source_ty,
+            ty,
+            val,
+            expr,
+            kind,
+            opt_field_id,
+        } = args;
+
         let source_ty_kind = &self.ast_context.resolve_type(source_ty.ctype).kind;
         let target_ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
 

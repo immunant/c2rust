@@ -37,17 +37,75 @@ impl From<c_ast::BinOp> for BinOp {
     }
 }
 
+/// Args for [`Translation::convert_binary_expr`].
+pub struct ConvertBinaryExprArgs {
+    pub type_id: CQualTypeId,
+    pub op: c_ast::BinOp,
+    pub lhs: CExprId,
+    pub rhs: CExprId,
+    pub opt_lhs_type_id: Option<CQualTypeId>,
+    pub opt_res_type_id: Option<CQualTypeId>,
+}
+
+/// Args for [`Translation::convert_assignment_operator_aux`].
+struct ConvertAssignmentOperatorAuxArgs {
+    read: Box<Expr>,
+    write: Box<Expr>,
+    rhs: Box<Expr>,
+    compute_lhs_ty: Option<CQualTypeId>,
+    compute_res_ty: Option<CQualTypeId>,
+    lhs_ty: CQualTypeId,
+    rhs_ty: CQualTypeId,
+}
+
+/// Args for [`Translation::convert_assignment_operator`].
+struct ConvertAssignmentOperatorArgs {
+    op: c_ast::BinOp,
+    qtype: CQualTypeId,
+    lhs: CExprId,
+    rhs: CExprId,
+    compute_type: Option<CQualTypeId>,
+    result_type: Option<CQualTypeId>,
+}
+
+/// Args for [`Translation::convert_assignment_operator_with_rhs`].
+struct ConvertAssignmentOperatorWithRhsArgs {
+    op: c_ast::BinOp,
+    qtype: CQualTypeId,
+    lhs: CExprId,
+    rhs_type_id: CQualTypeId,
+    rhs_translation: WithStmts<Box<Expr>>,
+    compute_type: Option<CQualTypeId>,
+    result_type: Option<CQualTypeId>,
+}
+
+/// Args for [`Translation::convert_binary_operator`].
+struct ConvertBinaryOperatorArgs {
+    op: c_ast::BinOp,
+    ty: Box<Type>,
+    ctype: CTypeId,
+    lhs_type: CQualTypeId,
+    rhs_type: CQualTypeId,
+    lhs: Box<Expr>,
+    rhs: Box<Expr>,
+    lhs_rhs_ids: Option<(CExprId, CExprId)>,
+}
+
 impl<'c> Translation<'c> {
     pub fn convert_binary_expr(
         &self,
         mut ctx: ExprContext,
-        type_id: CQualTypeId,
-        op: c_ast::BinOp,
-        lhs: CExprId,
-        rhs: CExprId,
-        opt_lhs_type_id: Option<CQualTypeId>,
-        opt_res_type_id: Option<CQualTypeId>,
+        args: ConvertBinaryExprArgs,
     ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+        let ConvertBinaryExprArgs {
+            type_id,
+            op,
+            lhs,
+            rhs,
+            opt_lhs_type_id,
+            opt_res_type_id,
+        } = args;
+
         // If we're not making an assignment, a binop will require parens
         // applied to ternary conditionals
         if !op.is_assignment() {
@@ -56,14 +114,15 @@ impl<'c> Translation<'c> {
 
         let lhs_loc = &self.ast_context[lhs].loc;
         let rhs_loc = &self.ast_context[rhs].loc;
+        use c_ast::BinOp::*;
         match op {
-            c_ast::BinOp::Comma => {
+            Comma => {
                 // The value of the LHS of a comma expression is always discarded
                 self.convert_expr(ctx.unused(), lhs)?
                     .and_then(|_| self.convert_expr(ctx, rhs))
             }
 
-            c_ast::BinOp::And | c_ast::BinOp::Or => {
+            And | Or => {
                 let lhs = self.convert_condition(ctx, true, lhs)?;
                 let rhs = self.convert_condition(ctx, true, rhs)?;
                 lhs.map(|x| bool_to_int(mk().binary_expr(BinOp::from(op), x, rhs.to_expr())))
@@ -80,24 +139,18 @@ impl<'c> Translation<'c> {
             }
 
             // No sequence-point cases
-            c_ast::BinOp::AssignAdd
-            | c_ast::BinOp::AssignSubtract
-            | c_ast::BinOp::AssignMultiply
-            | c_ast::BinOp::AssignDivide
-            | c_ast::BinOp::AssignModulus
-            | c_ast::BinOp::AssignBitXor
-            | c_ast::BinOp::AssignShiftLeft
-            | c_ast::BinOp::AssignShiftRight
-            | c_ast::BinOp::AssignBitOr
-            | c_ast::BinOp::AssignBitAnd
-            | c_ast::BinOp::Assign => self.convert_assignment_operator(
+            AssignAdd | AssignSubtract | AssignMultiply | AssignDivide | AssignModulus
+            | AssignBitXor | AssignShiftLeft | AssignShiftRight | AssignBitOr | AssignBitAnd
+            | Assign => self.convert_assignment_operator(
                 ctx,
-                op,
-                type_id,
-                lhs,
-                rhs,
-                opt_lhs_type_id,
-                opt_res_type_id,
+                ConvertAssignmentOperatorArgs {
+                    op,
+                    qtype: type_id,
+                    lhs,
+                    rhs,
+                    compute_type: opt_lhs_type_id,
+                    result_type: opt_res_type_id,
+                },
             ),
 
             _ => {
@@ -154,14 +207,16 @@ impl<'c> Translation<'c> {
                             let expr_ids = Some((lhs, rhs));
                             self.convert_binary_operator(
                                 ctx,
-                                op,
-                                ty,
-                                type_id.ctype,
-                                lhs_type_id,
-                                rhs_type_id,
-                                lhs_val,
-                                rhs_val,
-                                expr_ids,
+                                ConvertBinaryOperatorArgs {
+                                    op,
+                                    ty,
+                                    ctype: type_id.ctype,
+                                    lhs_type: lhs_type_id,
+                                    rhs_type: rhs_type_id,
+                                    lhs: lhs_val,
+                                    rhs: rhs_val,
+                                    lhs_rhs_ids: expr_ids,
+                                },
                             )
                         })
                     })
@@ -175,14 +230,18 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         bin_op_kind: BinOp,
         bin_op: c_ast::BinOp,
-        read: Box<Expr>,
-        write: Box<Expr>,
-        rhs: Box<Expr>,
-        compute_lhs_ty: Option<CQualTypeId>,
-        compute_res_ty: Option<CQualTypeId>,
-        lhs_ty: CQualTypeId,
-        rhs_ty: CQualTypeId,
+        args: ConvertAssignmentOperatorAuxArgs,
     ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+        let ConvertAssignmentOperatorAuxArgs {
+            read,
+            write,
+            rhs,
+            compute_lhs_ty,
+            compute_res_ty,
+            lhs_ty,
+            rhs_ty,
+        } = args;
+
         let compute_lhs_ty = compute_lhs_ty.unwrap();
         let compute_res_ty = compute_res_ty.unwrap();
 
@@ -212,14 +271,16 @@ impl<'c> Translation<'c> {
             let ty = self.convert_type(compute_res_ty.ctype)?;
             let val = self.convert_binary_operator(
                 ctx,
-                bin_op,
-                ty,
-                compute_res_ty.ctype,
-                compute_lhs_ty,
-                rhs_ty,
-                lhs,
-                rhs,
-                None,
+                ConvertBinaryOperatorArgs {
+                    op: bin_op,
+                    ty,
+                    ctype: compute_res_ty.ctype,
+                    lhs_type: compute_lhs_ty,
+                    rhs_type: rhs_ty,
+                    lhs,
+                    rhs,
+                    lhs_rhs_ids: None,
+                },
             )?;
 
             let is_enum_result = self.ast_context[self.ast_context.resolve_type_id(lhs_ty.ctype)]
@@ -251,13 +312,17 @@ impl<'c> Translation<'c> {
     fn convert_assignment_operator(
         &self,
         ctx: ExprContext,
-        op: c_ast::BinOp,
-        qtype: CQualTypeId,
-        lhs: CExprId,
-        rhs: CExprId,
-        compute_type: Option<CQualTypeId>,
-        result_type: Option<CQualTypeId>,
+        args: ConvertAssignmentOperatorArgs,
     ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+        let ConvertAssignmentOperatorArgs {
+            op,
+            qtype,
+            lhs,
+            rhs,
+            compute_type,
+            result_type,
+        } = args;
+
         let rhs_type_id = self
             .ast_context
             .index(rhs)
@@ -267,13 +332,15 @@ impl<'c> Translation<'c> {
         let rhs_translation = self.convert_expr(ctx.used(), rhs)?;
         self.convert_assignment_operator_with_rhs(
             ctx,
-            op,
-            qtype,
-            lhs,
-            rhs_type_id,
-            rhs_translation,
-            compute_type,
-            result_type,
+            ConvertAssignmentOperatorWithRhsArgs {
+                op,
+                qtype,
+                lhs,
+                rhs_type_id,
+                rhs_translation,
+                compute_type,
+                result_type,
+            },
         )
     }
 
@@ -281,14 +348,18 @@ impl<'c> Translation<'c> {
     fn convert_assignment_operator_with_rhs(
         &self,
         ctx: ExprContext,
-        op: c_ast::BinOp,
-        qtype: CQualTypeId,
-        lhs: CExprId,
-        rhs_type_id: CQualTypeId,
-        rhs_translation: WithStmts<Box<Expr>>,
-        compute_type: Option<CQualTypeId>,
-        result_type: Option<CQualTypeId>,
+        args: ConvertAssignmentOperatorWithRhsArgs,
     ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+        let ConvertAssignmentOperatorWithRhsArgs {
+            op,
+            qtype,
+            lhs,
+            rhs_type_id,
+            rhs_translation,
+            compute_type,
+            result_type,
+        } = args;
+
         let ty = self.convert_type(qtype.ctype)?;
 
         let result_type_id = result_type.unwrap_or(qtype);
@@ -367,12 +438,11 @@ impl<'c> Translation<'c> {
         rhs_translation.and_then(|rhs| {
             lhs_translation.and_then(|(write, read)| {
                 // Assignment expression itself
+                use c_ast::BinOp::*;
                 let assign_stmt = match op {
                     // Regular (possibly volatile) assignment
-                    c_ast::BinOp::Assign if !is_volatile => {
-                        WithStmts::new_val(mk().assign_expr(&write, rhs))
-                    }
-                    c_ast::BinOp::Assign => {
+                    Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(&write, rhs)),
+                    Assign => {
                         WithStmts::new_val(self.volatile_write(&write, initial_lhs_type_id, rhs)?)
                     }
 
@@ -386,14 +456,16 @@ impl<'c> Translation<'c> {
                         let val = if compute_lhs_type_id.ctype == initial_lhs_type_id.ctype {
                             self.convert_binary_operator(
                                 ctx,
-                                op,
-                                ty,
-                                qtype.ctype,
-                                initial_lhs_type_id,
-                                rhs_type_id,
-                                read.clone(),
-                                rhs,
-                                None,
+                                ConvertBinaryOperatorArgs {
+                                    op,
+                                    ty,
+                                    ctype: qtype.ctype,
+                                    lhs_type: initial_lhs_type_id,
+                                    rhs_type: rhs_type_id,
+                                    lhs: read.clone(),
+                                    rhs,
+                                    lhs_rhs_ids: None,
+                                },
                             )?
                         } else {
                             let lhs_type = self.convert_type(compute_type.unwrap().ctype)?;
@@ -402,14 +474,16 @@ impl<'c> Translation<'c> {
                             let ty = self.convert_type(result_type_id.ctype)?;
                             let val = self.convert_binary_operator(
                                 ctx,
-                                op,
-                                ty,
-                                result_type_id.ctype,
-                                compute_lhs_type_id,
-                                rhs_type_id,
-                                lhs,
-                                rhs,
-                                None,
+                                ConvertBinaryOperatorArgs {
+                                    op,
+                                    ty,
+                                    ctype: result_type_id.ctype,
+                                    lhs_type: compute_lhs_type_id,
+                                    rhs_type: rhs_type_id,
+                                    lhs,
+                                    rhs,
+                                    lhs_rhs_ids: None,
+                                },
                             )?;
 
                             let is_enum_result = self.ast_context
@@ -439,139 +513,62 @@ impl<'c> Translation<'c> {
                     }
 
                     // Everything else
-                    c_ast::BinOp::AssignAdd if pointer_lhs.is_some() => {
+                    AssignAdd if pointer_lhs.is_some() => {
                         let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
                         let ptr = pointer_offset(write.clone(), rhs, mul, false, false);
                         WithStmts::new_val(mk().assign_expr(&write, ptr))
                     }
-                    c_ast::BinOp::AssignSubtract if pointer_lhs.is_some() => {
+                    AssignSubtract if pointer_lhs.is_some() => {
                         let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
                         let ptr = pointer_offset(write.clone(), rhs, mul, true, false);
                         WithStmts::new_val(mk().assign_expr(&write, ptr))
                     }
 
-                    c_ast::BinOp::AssignAdd => self.convert_assignment_operator_aux(
-                        ctx,
-                        BinOp::AddEq(Default::default()),
-                        c_ast::BinOp::Add,
-                        read.clone(),
-                        write,
-                        rhs,
-                        compute_type,
-                        result_type,
-                        qtype,
-                        rhs_type_id,
-                    )?,
-                    c_ast::BinOp::AssignSubtract => self.convert_assignment_operator_aux(
-                        ctx,
-                        BinOp::SubEq(Default::default()),
-                        c_ast::BinOp::Subtract,
-                        read.clone(),
-                        write,
-                        rhs,
-                        compute_type,
-                        result_type,
-                        qtype,
-                        rhs_type_id,
-                    )?,
-                    c_ast::BinOp::AssignMultiply => self.convert_assignment_operator_aux(
-                        ctx,
-                        BinOp::MulEq(Default::default()),
-                        c_ast::BinOp::Multiply,
-                        read.clone(),
-                        write,
-                        rhs,
-                        compute_type,
-                        result_type,
-                        qtype,
-                        rhs_type_id,
-                    )?,
-                    c_ast::BinOp::AssignDivide => self.convert_assignment_operator_aux(
-                        ctx,
-                        BinOp::DivEq(Default::default()),
-                        c_ast::BinOp::Divide,
-                        read.clone(),
-                        write,
-                        rhs,
-                        compute_type,
-                        result_type,
-                        qtype,
-                        rhs_type_id,
-                    )?,
-                    c_ast::BinOp::AssignModulus => self.convert_assignment_operator_aux(
-                        ctx,
-                        BinOp::RemEq(Default::default()),
-                        c_ast::BinOp::Modulus,
-                        read.clone(),
-                        write,
-                        rhs,
-                        compute_type,
-                        result_type,
-                        qtype,
-                        rhs_type_id,
-                    )?,
-                    c_ast::BinOp::AssignBitXor => self.convert_assignment_operator_aux(
-                        ctx,
-                        BinOp::BitXorEq(Default::default()),
-                        c_ast::BinOp::BitXor,
-                        read.clone(),
-                        write,
-                        rhs,
-                        compute_type,
-                        result_type,
-                        qtype,
-                        rhs_type_id,
-                    )?,
-                    c_ast::BinOp::AssignShiftLeft => self.convert_assignment_operator_aux(
-                        ctx,
-                        BinOp::ShlEq(Default::default()),
-                        c_ast::BinOp::ShiftLeft,
-                        read.clone(),
-                        write,
-                        rhs,
-                        compute_type,
-                        result_type,
-                        qtype,
-                        rhs_type_id,
-                    )?,
-                    c_ast::BinOp::AssignShiftRight => self.convert_assignment_operator_aux(
-                        ctx,
-                        BinOp::ShrEq(Default::default()),
-                        c_ast::BinOp::ShiftRight,
-                        read.clone(),
-                        write,
-                        rhs,
-                        compute_type,
-                        result_type,
-                        qtype,
-                        rhs_type_id,
-                    )?,
-                    c_ast::BinOp::AssignBitOr => self.convert_assignment_operator_aux(
-                        ctx,
-                        BinOp::BitOrEq(Default::default()),
-                        c_ast::BinOp::BitOr,
-                        read.clone(),
-                        write,
-                        rhs,
-                        compute_type,
-                        result_type,
-                        qtype,
-                        rhs_type_id,
-                    )?,
-                    c_ast::BinOp::AssignBitAnd => self.convert_assignment_operator_aux(
-                        ctx,
-                        BinOp::BitAndEq(Default::default()),
-                        c_ast::BinOp::BitAnd,
-                        read.clone(),
-                        write,
-                        rhs,
-                        compute_type,
-                        result_type,
-                        qtype,
-                        rhs_type_id,
-                    )?,
+                    _ => {
+                        if let (AssignAdd | AssignSubtract, Some(pointer_lhs)) = (op, pointer_lhs) {
+                            let mul = self.compute_size_of_expr(pointer_lhs.ctype);
+                            let ptr = pointer_offset(
+                                write.clone(),
+                                rhs,
+                                mul,
+                                op == AssignSubtract,
+                                false,
+                            );
+                            WithStmts::new_val(mk().assign_expr(&write, ptr))
+                        } else {
+                            fn eq<Token: Default, F: Fn(Token) -> BinOp>(f: F) -> BinOp {
+                                f(Default::default())
+                            }
 
-                    _ => panic!("Cannot convert non-assignment operator"),
+                            let (bin_op, bin_op_kind) = match op {
+                                AssignAdd => (Add, eq(BinOp::AddEq)),
+                                AssignSubtract => (Subtract, eq(BinOp::SubEq)),
+                                AssignMultiply => (Multiply, eq(BinOp::MulEq)),
+                                AssignDivide => (Divide, eq(BinOp::DivEq)),
+                                AssignModulus => (Modulus, eq(BinOp::RemEq)),
+                                AssignBitXor => (BitXor, eq(BinOp::BitXorEq)),
+                                AssignShiftLeft => (ShiftLeft, eq(BinOp::ShlEq)),
+                                AssignShiftRight => (ShiftRight, eq(BinOp::ShrEq)),
+                                AssignBitOr => (BitOr, eq(BinOp::BitOrEq)),
+                                AssignBitAnd => (BitAnd, eq(BinOp::BitAndEq)),
+                                _ => panic!("Cannot convert non-assignment operator"),
+                            };
+                            self.convert_assignment_operator_aux(
+                                ctx,
+                                bin_op_kind,
+                                bin_op,
+                                ConvertAssignmentOperatorAuxArgs {
+                                    read: read.clone(),
+                                    write,
+                                    rhs,
+                                    compute_lhs_ty: compute_type,
+                                    compute_res_ty: result_type,
+                                    lhs_ty: qtype,
+                                    rhs_ty: rhs_type_id,
+                                },
+                            )?
+                        }
+                    }
                 };
 
                 assign_stmt.and_then(|assign_stmt| {
@@ -586,15 +583,19 @@ impl<'c> Translation<'c> {
     fn convert_binary_operator(
         &self,
         ctx: ExprContext,
-        op: c_ast::BinOp,
-        ty: Box<Type>,
-        ctype: CTypeId,
-        lhs_type: CQualTypeId,
-        rhs_type: CQualTypeId,
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
-        lhs_rhs_ids: Option<(CExprId, CExprId)>,
+        args: ConvertBinaryOperatorArgs,
     ) -> Result<Box<Expr>, TranslationError> {
+        let ConvertBinaryOperatorArgs {
+            op,
+            ty,
+            ctype,
+            lhs_type,
+            rhs_type,
+            lhs,
+            rhs,
+            lhs_rhs_ids,
+        } = args;
+
         let is_unsigned_integral_type = self
             .ast_context
             .index(ctype)
@@ -826,13 +827,15 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| format_err!("bad arg type"))?;
         self.convert_assignment_operator_with_rhs(
             ctx.used(),
-            op,
-            arg_type,
-            arg,
-            ty,
-            WithStmts::new_val(one),
-            Some(arg_type),
-            Some(arg_type),
+            ConvertAssignmentOperatorWithRhsArgs {
+                op,
+                qtype: arg_type,
+                lhs: arg,
+                rhs_type_id: ty,
+                rhs_translation: WithStmts::new_val(one),
+                compute_type: Some(arg_type),
+                result_type: Some(arg_type),
+            },
         )
     }
 

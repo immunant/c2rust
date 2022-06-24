@@ -623,6 +623,17 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
     Ok(out)
 }
 
+/// Args for [`Translation::convert_asm`](Translation::convert_asm).
+#[allow(missing_docs)]
+pub struct ConvertAsmArgs<'a> {
+    pub span: Span,
+    pub is_volatile: bool,
+    pub asm: &'a str,
+    pub inputs: &'a [AsmOperand],
+    pub outputs: &'a [AsmOperand],
+    pub clobbers: &'a [String],
+}
+
 impl<'c> Translation<'c> {
     /// Convert an inline-assembly statement into one or more Rust statements.
     /// If inline assembly translation is not enabled this will result in an
@@ -634,13 +645,16 @@ impl<'c> Translation<'c> {
     pub fn convert_asm(
         &self,
         ctx: ExprContext,
-        span: Span,
-        is_volatile: bool,
-        asm: &str,
-        inputs: &[AsmOperand],
-        outputs: &[AsmOperand],
-        clobbers: &[String],
+        args: ConvertAsmArgs,
     ) -> Result<Vec<Stmt>, TranslationError> {
+        let ConvertAsmArgs {
+            span,
+            is_volatile,
+            asm,
+            inputs,
+            outputs,
+            clobbers,
+        } = args;
         if !self.tcfg.translate_asm {
             return Err(TranslationError::generic(
                 "Inline assembly translation not enabled.",
