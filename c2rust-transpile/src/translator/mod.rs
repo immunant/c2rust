@@ -1140,7 +1140,7 @@ fn item_attrs(item: &mut Item) -> Option<&mut Vec<syn::Attribute>> {
 }
 
 /// Unwrap a layer of parenthesization from an Expr, if present
-fn unparen(expr: &Box<Expr>) -> &Box<Expr> {
+pub(crate) fn unparen(expr: &Box<Expr>) -> &Box<Expr> {
     match **expr {
         Expr::Paren(ExprParen { ref expr, .. }) => expr,
         _ => expr,
