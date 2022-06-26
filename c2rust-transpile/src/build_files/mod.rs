@@ -169,10 +169,8 @@ fn convert_module_list(
             // Don't add binary modules to lib.rs, these are emitted to
             // standalone, separate binary modules.
             false
-        } else if !is_binary && module_subset == ModuleSubset::Binaries {
-            false
         } else {
-            true
+            is_binary || !(module_subset == ModuleSubset::Binaries)
         }
     });
 
