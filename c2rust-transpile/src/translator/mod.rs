@@ -390,8 +390,7 @@ pub fn stmts_block(mut stmts: Vec<Stmt>) -> Box<Block> {
     mk().block(stmts)
 }
 
-/// Generate link attributes needed to ensure that the generated Rust libraries have the right symbol
-/// values.
+/// Generate link attributes needed to ensure that the generated Rust libraries have the right symbol values.
 fn mk_linkage(in_extern_block: bool, new_name: &str, old_name: &str) -> Builder {
     if new_name == old_name {
         if in_extern_block {
