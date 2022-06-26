@@ -166,13 +166,9 @@ fn convert_module_list(
     modules.retain(|m| {
         let is_binary = tcfg.is_binary(m);
         let is_mod_binary = module_subset == ModuleSubset::Binaries;
-        if is_binary && !is_mod_binary {
-            // Don't add binary modules to lib.rs, these are emitted to
-            // standalone, separate binary modules.
-            false
-        } else {
-            is_binary || !is_mod_binary
-        }
+        // Don't add binary modules to lib.rs, these are emitted to
+        // standalone, separate binary modules.
+        !(is_binary ^ is_mod_binary)
     });
 
     let mut res = vec![];
