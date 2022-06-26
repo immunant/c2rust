@@ -131,19 +131,15 @@ impl<'c> Translation<'c> {
             CLiteral::String(ref val, width) => {
                 let mut val = val.to_owned();
 
-                match self.ast_context.resolve_type(ty.ctype).kind {
-                    CTypeKind::ConstantArray(_elem_ty, size) => {
-                        // Match the literal size to the expected size padding with zeros as needed
-                        val.resize(size * (width as usize), 0)
-                    }
-
-                    // Add zero terminator
-                    _ => {
-                        for _ in 0..width {
-                            val.push(0);
-                        }
-                    }
+                let num_elems = match self.ast_context.resolve_type(ty.ctype).kind {
+                    // Match the literal size to the expected size padding with zeros as needed
+                    CTypeKind::ConstantArray(_elem_ty, size) => size,
+                    // zero terminator
+                    _ => 1,
                 };
+                let size = num_elems * (width as usize);
+                val.resize(size, 0);
+
                 let u8_ty = mk().path_ty(vec!["u8"]);
                 let width_lit = mk().lit_expr(mk().int_unsuffixed_lit(val.len() as u128));
                 let array_ty = mk().array_ty(u8_ty, width_lit);
