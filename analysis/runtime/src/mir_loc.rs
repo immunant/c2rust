@@ -21,8 +21,8 @@ lazy_static! {
             .expect("MIR_LOC_FILE_PATH was locked")
             .clone()
             .expect("MIR_LOC_FILE_PATH not initialized by the instrumented code");
-        let file =
-            File::open(&path).expect(&format!("Could not open span file: {:?}", path.to_str()));
+        let file = File::open(&path)
+            .unwrap_or_else(|_| panic!("Could not open span file: {:?}", path.display()));
         bincode::deserialize_from(file).expect("Error deserializing span file")
     };
 }

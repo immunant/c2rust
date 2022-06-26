@@ -138,18 +138,16 @@ impl<'ast> Visit<'ast> for VisitorImpls {
     fn visit_trait_item_method(&mut self, m: &TraitItemMethod) {
         let method_name = &m.sig.ident;
         let method_noop = m.default.as_ref().unwrap();
-        match &m.sig.inputs[1] {
-            FnArg::Typed(pat_ty) => match &*pat_ty.ty {
+        if let FnArg::Typed(pat_ty) = &m.sig.inputs[1] {
+            match &*pat_ty.ty {
                 Type::Reference(TypeReference {
                     mutability: Some(_),
                     elem,
                     ..
-                }) => self.generate_visit(method_name, &pat_ty.pat, &elem, method_noop),
+                }) => self.generate_visit(method_name, &pat_ty.pat, elem, method_noop),
 
-                ty => self.generate_flat_map(method_name, &pat_ty.pat, &ty, method_noop),
-            },
-
-            _ => {}
+                ty => self.generate_flat_map(method_name, &pat_ty.pat, ty, method_noop),
+            }
         }
     }
 }

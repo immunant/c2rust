@@ -12,7 +12,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         fexp: CExprId,
         args: &[CExprId],
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let expr = &self.ast_context[fexp];
         let src_loc = &expr.loc;
         let decl_id = match expr.kind {
@@ -282,7 +282,7 @@ impl<'c> Translation<'c> {
             "__builtin_va_start" => {
                 if ctx.is_unused() && args.len() == 2 {
                     if let Some(va_id) = self.match_vastart(args[0]) {
-                        if let Some(_) = self.ast_context.get_decl(&va_id) {
+                        if self.ast_context.get_decl(&va_id).is_some() {
                             let dst = self.convert_expr(ctx.expect_valistimpl().used(), args[0])?;
                             let fn_ctx = self.function_context.borrow();
                             let src = fn_ctx.get_va_list_arg_name();
@@ -661,7 +661,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         method_name: &str,
         args: &[CExprId],
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let args = self.convert_exprs(ctx.used(), args)?;
         args.and_then(|args| {
             let mut args = args.into_iter();
@@ -704,7 +704,7 @@ impl<'c> Translation<'c> {
         builtin_name: &str,
         ctx: ExprContext,
         args: &[CExprId],
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let name = &builtin_name[10..];
         let mem = mk().path_expr(vec!["libc", name]);
         let args = self.convert_exprs(ctx.used(), args)?;

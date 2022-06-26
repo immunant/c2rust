@@ -37,7 +37,7 @@ impl<'c> CommentLocator<'c> {
 
             while let Some(comment) = self
                 .comment_context
-                .peek_next_comment_on_line(last_loc.end(), &self.ast_context)
+                .peek_next_comment_on_line(last_loc.end(), self.ast_context)
             {
                 if comment.loc.unwrap().end() < cur_loc {
                     let existing_pos = self.spans.get(&last_id).map(|span| span.lo());
@@ -85,7 +85,7 @@ impl<'c> NodeVisitor for CommentLocator<'c> {
 
             let comments = self
                 .comment_context
-                .get_comments_before(loc.begin(), &self.ast_context);
+                .get_comments_before(loc.begin(), self.ast_context);
             if let SomeId::Decl(decl_id) = id {
                 let decl_kind = &self.ast_context[decl_id].kind;
                 if let CDeclKind::NonCanonicalDecl { canonical_decl } = decl_kind {
@@ -136,7 +136,7 @@ impl<'c> NodeVisitor for CommentLocator<'c> {
         if let Some(loc) = self.ast_context.get_src_loc(id) {
             let comments = self
                 .comment_context
-                .get_comments_before(loc.end(), &self.ast_context);
+                .get_comments_before(loc.end(), self.ast_context);
             if let Some(pos) = self.comment_store.add_comments(&comments) {
                 debug!(
                     "Attaching comments {:?} to end of id {:?} at pos {:?}",

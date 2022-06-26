@@ -152,9 +152,8 @@ impl TypedAstContext {
         }
 
         let mut include_map = vec![];
-        for fileid in 0..files.len() {
+        for (fileid, mut cur) in files.iter().enumerate() {
             let mut include_path = vec![];
-            let mut cur = &files[fileid];
             while let Some(include_loc) = &cur.include_loc {
                 include_path.push(SrcLoc {
                     fileid: fileid as u64,
@@ -184,7 +183,7 @@ impl TypedAstContext {
             macro_expansion_text: HashMap::new(),
             label_names: Default::default(),
 
-            comments: vec![],
+            comments: Vec::new(),
             prenamed_decls: IndexMap::new(),
             va_list_kind: BuiltinVaListKind::CharPtrBuiltinVaList,
             target: String::new(),
@@ -194,7 +193,7 @@ impl TypedAstContext {
     pub fn display_loc(&self, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan> {
         loc.as_ref().map(|loc| DisplaySrcSpan {
             file: self.files[self.file_map[loc.fileid as usize]].path.clone(),
-            loc: loc.clone(),
+            loc: *loc,
         })
     }
 
@@ -203,8 +202,8 @@ impl TypedAstContext {
             .and_then(|fileid| self.get_file_path(fileid))
     }
 
-    pub fn get_file_path<'a>(&'a self, id: FileId) -> Option<&'a Path> {
-        self.files[id].path.as_ref().map(|p| p.as_path())
+    pub fn get_file_path(&self, id: FileId) -> Option<&Path> {
+        self.files[id].path.as_deref()
     }
 
     pub fn compare_src_locs(&self, a: &SrcLoc, b: &SrcLoc) -> Ordering {
@@ -216,17 +215,18 @@ impl TypedAstContext {
         let path_b = self.include_map[self.file_map[b.fileid as usize]].clone();
         for (include_a, include_b) in path_a.iter().zip(path_b.iter()) {
             if include_a.fileid != include_b.fileid {
-                return cmp_pos(&include_a, &include_b);
+                return cmp_pos(include_a, include_b);
             }
         }
+        use Ordering::*;
         match path_a.len().cmp(&path_b.len()) {
-            Ordering::Less => {
+            Less => {
                 // compare the place b was included in a'a file with a
                 let b = path_b.get(path_a.len()).unwrap();
                 cmp_pos(a, b)
             }
-            Ordering::Equal => cmp_pos(a, b),
-            Ordering::Greater => {
+            Equal => cmp_pos(a, b),
+            Greater => {
                 // compare the place a was included in b's file with b
                 let a = path_a.get(path_b.len()).unwrap();
                 cmp_pos(a, b)
@@ -252,11 +252,12 @@ impl TypedAstContext {
     }
 
     pub fn get_src_loc(&self, id: SomeId) -> Option<SrcSpan> {
+        use SomeId::*;
         match id {
-            SomeId::Stmt(id) => self.index(id).loc,
-            SomeId::Expr(id) => self.index(id).loc,
-            SomeId::Decl(id) => self.index(id).loc,
-            SomeId::Type(id) => self.index(id).loc,
+            Stmt(id) => self.index(id).loc,
+            Expr(id) => self.index(id).loc,
+            Decl(id) => self.index(id).loc,
+            Type(id) => self.index(id).loc,
         }
     }
 
@@ -273,12 +274,13 @@ impl TypedAstContext {
     }
 
     pub fn is_null_expr(&self, expr_id: CExprId) -> bool {
+        use CExprKind::*;
         match self[expr_id].kind {
-            CExprKind::ExplicitCast(_, _, CastKind::NullToPointer, _, _)
-            | CExprKind::ImplicitCast(_, _, CastKind::NullToPointer, _, _) => true,
+            ExplicitCast(_, _, CastKind::NullToPointer, _, _)
+            | ImplicitCast(_, _, CastKind::NullToPointer, _, _) => true,
 
-            CExprKind::ExplicitCast(ty, e, CastKind::BitCast, _, _)
-            | CExprKind::ImplicitCast(ty, e, CastKind::BitCast, _, _) => {
+            ExplicitCast(ty, e, CastKind::BitCast, _, _)
+            | ImplicitCast(ty, e, CastKind::BitCast, _, _) => {
                 self.resolve_type(ty.ctype).kind.is_pointer() && self.is_null_expr(e)
             }
 
@@ -290,18 +292,21 @@ impl TypedAstContext {
     /// bodies. These forward declarations are suitable for use as
     /// the targets of pointers
     pub fn is_forward_declared_type(&self, typ: CTypeId) -> bool {
-        match self.resolve_type(typ).kind.as_underlying_decl() {
-            Some(decl_id) => match self[decl_id].kind {
-                CDeclKind::Struct { fields: None, .. } => true,
-                CDeclKind::Union { fields: None, .. } => true,
-                CDeclKind::Enum {
-                    integral_type: None,
-                    ..
-                } => true,
-                _ => false,
-            },
-            _ => false,
-        }
+        use CDeclKind::*;
+        || -> Option<()> {
+            let decl_id = self.resolve_type(typ).kind.as_underlying_decl()?;
+            matches!(
+                self[decl_id].kind,
+                Struct { fields: None, .. }
+                    | Union { fields: None, .. }
+                    | Enum {
+                        integral_type: None,
+                        ..
+                    }
+            )
+            .then(|| ())
+        }()
+        .is_some()
     }
 
     /// Follow a chain of typedefs and return true iff the last typedef is named
@@ -334,41 +339,40 @@ impl TypedAstContext {
 
         // detect `va_list`s based on type (assumes struct-based implementation)
         let resolved_ctype = self.resolve_type(typ);
+        use CTypeKind::*;
         match resolved_ctype.kind {
-            CTypeKind::Struct(record_id) => {
-                let r#struct = &self[record_id];
+            Struct(record_id) => {
                 if let CDeclKind::Struct {
                     name: Some(ref nam),
                     ..
-                } = r#struct.kind
+                } = &self[record_id].kind
                 {
-                    return nam == "__va_list_tag" || nam == "__va_list";
+                    nam == "__va_list_tag" || nam == "__va_list"
                 } else {
                     false
                 }
             }
             // va_list is a 1 element array; return true iff element type is struct __va_list_tag
-            CTypeKind::ConstantArray(typ, 1) => {
-                return self.is_va_list(typ);
-            }
+            ConstantArray(typ, 1) => self.is_va_list(typ),
             _ => false,
         }
     }
 
     /// Predicate for pointers to types that are used to implement C's `va_list`.
     pub fn is_va_list(&self, typ: CTypeId) -> bool {
+        use BuiltinVaListKind::*;
         match self.va_list_kind {
-            BuiltinVaListKind::CharPtrBuiltinVaList
-            | BuiltinVaListKind::VoidPtrBuiltinVaList
-            | BuiltinVaListKind::X86_64ABIBuiltinVaList => match self.resolve_type(typ).kind {
-                CTypeKind::Pointer(CQualTypeId { ctype, .. })
-                | CTypeKind::ConstantArray(ctype, _) => self.is_va_list_struct(ctype),
-                _ => false,
-            },
+            CharPtrBuiltinVaList | VoidPtrBuiltinVaList | X86_64ABIBuiltinVaList => {
+                match self.resolve_type(typ).kind {
+                    CTypeKind::Pointer(CQualTypeId { ctype, .. })
+                    | CTypeKind::ConstantArray(ctype, _) => self.is_va_list_struct(ctype),
+                    _ => false,
+                }
+            }
 
-            BuiltinVaListKind::AArch64ABIBuiltinVaList => self.is_va_list_struct(typ),
+            AArch64ABIBuiltinVaList => self.is_va_list_struct(typ),
 
-            BuiltinVaListKind::AAPCSABIBuiltinVaList => {
+            AAPCSABIBuiltinVaList => {
                 // The mechanism applies: va_list is a `struct __va_list { ... }` as per
                 // https://documentation-service.arm.com/static/5f201281bb903e39c84d7eae
                 // ("Procedure Call Standard for the Arm Architecture Release 2020Q2, Document
@@ -383,12 +387,9 @@ impl TypedAstContext {
     /// Predicate for function pointers
     pub fn is_function_pointer(&self, typ: CTypeId) -> bool {
         let resolved_ctype = self.resolve_type(typ);
-        if let CTypeKind::Pointer(p) = resolved_ctype.kind {
-            if let CTypeKind::Function { .. } = self.resolve_type(p.ctype).kind {
-                true
-            } else {
-                false
-            }
+        use CTypeKind::*;
+        if let Pointer(p) = resolved_ctype.kind {
+            matches!(self.resolve_type(p.ctype).kind, Function { .. })
         } else {
             false
         }
@@ -397,13 +398,8 @@ impl TypedAstContext {
     /// Can the given field decl be a flexible array member?
     pub fn maybe_flexible_array(&self, typ: CTypeId) -> bool {
         let field_ty = self.resolve_type(typ);
-        match field_ty.kind {
-            CTypeKind::IncompleteArray(_)
-            | CTypeKind::ConstantArray(_, 0)
-            | CTypeKind::ConstantArray(_, 1) => true,
-
-            _ => false,
-        }
+        use CTypeKind::*;
+        matches!(field_ty.kind, IncompleteArray(_) | ConstantArray(_, 0 | 1))
     }
 
     pub fn get_pointee_qual_type(&self, typ: CTypeId) -> Option<CQualTypeId> {
@@ -418,10 +414,11 @@ impl TypedAstContext {
     /// Resolve expression value, ignoring any casts
     pub fn resolve_expr(&self, expr_id: CExprId) -> (CExprId, &CExprKind) {
         let expr = &self.index(expr_id).kind;
+        use CExprKind::*;
         match expr {
-            CExprKind::ImplicitCast(_, subexpr, _, _, _)
-            | CExprKind::ExplicitCast(_, subexpr, _, _, _)
-            | CExprKind::Paren(_, subexpr) => self.resolve_expr(*subexpr),
+            ImplicitCast(_, subexpr, _, _, _)
+            | ExplicitCast(_, subexpr, _, _, _)
+            | Paren(_, subexpr) => self.resolve_expr(*subexpr),
             _ => (expr_id, expr),
         }
     }
@@ -431,19 +428,21 @@ impl TypedAstContext {
     pub fn resolve_expr_type_id(&self, expr_id: CExprId) -> Option<(CExprId, CTypeId)> {
         let expr = &self.index(expr_id).kind;
         let mut ty = expr.get_type();
+        use CExprKind::*;
         match expr {
-            CExprKind::ImplicitCast(_, subexpr, _, _, _)
-            | CExprKind::ExplicitCast(_, subexpr, _, _, _)
-            | CExprKind::Paren(_, subexpr) => {
+            ImplicitCast(_, subexpr, _, _, _)
+            | ExplicitCast(_, subexpr, _, _, _)
+            | Paren(_, subexpr) => {
                 return self.resolve_expr_type_id(*subexpr);
             }
-            CExprKind::DeclRef(_, decl_id, _) => {
+            DeclRef(_, decl_id, _) => {
                 let decl = self.index(*decl_id);
+                use CDeclKind::*;
                 match decl.kind {
-                    CDeclKind::Function { typ, .. } => {
+                    Function { typ, .. } => {
                         ty = Some(self.resolve_type_id(typ));
                     }
-                    CDeclKind::Variable { typ, .. } | CDeclKind::Typedef { typ, .. } => {
+                    Variable { typ, .. } | Typedef { typ, .. } => {
                         ty = Some(self.resolve_type_id(typ.ctype));
                     }
                     _ => {}
@@ -455,18 +454,20 @@ impl TypedAstContext {
     }
 
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
-        match self.index(typ).kind {
-            CTypeKind::Attributed(ty, _) => self.resolve_type_id(ty.ctype),
-            CTypeKind::Elaborated(ty) => self.resolve_type_id(ty),
-            CTypeKind::Decayed(ty) => self.resolve_type_id(ty),
-            CTypeKind::TypeOf(ty) => self.resolve_type_id(ty),
-            CTypeKind::Paren(ty) => self.resolve_type_id(ty),
-            CTypeKind::Typedef(decl) => match self.index(decl).kind {
-                CDeclKind::Typedef { typ: ty, .. } => self.resolve_type_id(ty.ctype),
+        use CTypeKind::*;
+        let ty = match self.index(typ).kind {
+            Attributed(ty, _) => ty.ctype,
+            Elaborated(ty) => ty,
+            Decayed(ty) => ty,
+            TypeOf(ty) => ty,
+            Paren(ty) => ty,
+            Typedef(decl) => match self.index(decl).kind {
+                CDeclKind::Typedef { typ: ty, .. } => ty.ctype,
                 _ => panic!("Typedef decl did not point to a typedef"),
             },
-            _ => typ,
-        }
+            _ => return typ,
+        };
+        self.resolve_type_id(ty)
     }
 
     pub fn resolve_type(&self, typ: CTypeId) -> &CType {
@@ -477,44 +478,46 @@ impl TypedAstContext {
     /// Pessimistically try to check if an expression has side effects. If it does, or we can't tell
     /// that it doesn't, return `false`.
     pub fn is_expr_pure(&self, expr: CExprId) -> bool {
+        use CExprKind::*;
+        let pure = |expr| self.is_expr_pure(expr);
         match self.index(expr).kind {
-            CExprKind::BadExpr |
-            CExprKind::ShuffleVector(..) |
-            CExprKind::ConvertVector(..) |
-            CExprKind::Call(..) |
-            CExprKind::Unary(_, UnOp::PreIncrement, _, _) |
-            CExprKind::Unary(_, UnOp::PostIncrement, _, _) |
-            CExprKind::Unary(_, UnOp::PreDecrement, _, _) |
-            CExprKind::Unary(_, UnOp::PostDecrement, _, _) |
-            CExprKind::Binary(_, BinOp::Assign, _, _, _, _) |
-            CExprKind::InitList { .. } |
-            CExprKind::ImplicitValueInit { .. } |
-            CExprKind::Predefined(..) |
-            CExprKind::Statements(..) | // TODO: more precision
-            CExprKind::VAArg(..) |
-            CExprKind::Atomic{..} => false,
+            BadExpr |
+            ShuffleVector(..) |
+            ConvertVector(..) |
+            Call(..) |
+            Unary(_, UnOp::PreIncrement, _, _) |
+            Unary(_, UnOp::PostIncrement, _, _) |
+            Unary(_, UnOp::PreDecrement, _, _) |
+            Unary(_, UnOp::PostDecrement, _, _) |
+            Binary(_, BinOp::Assign, _, _, _, _) |
+            InitList { .. } |
+            ImplicitValueInit { .. } |
+            Predefined(..) |
+            Statements(..) | // TODO: more precision
+            VAArg(..) |
+            Atomic{..} => false,
 
-            CExprKind::Literal(_, _) |
-            CExprKind::DeclRef(_, _, _) |
-            CExprKind::UnaryType(_, _, _, _) |
-            CExprKind::OffsetOf(..) |
-            CExprKind::ConstantExpr(..) => true,
+            Literal(_, _) |
+            DeclRef(_, _, _) |
+            UnaryType(_, _, _, _) |
+            OffsetOf(..) |
+            ConstantExpr(..) => true,
 
-            CExprKind::DesignatedInitExpr(_,_,e) |
-            CExprKind::ImplicitCast(_, e, _, _, _) |
-            CExprKind::ExplicitCast(_, e, _, _, _) |
-            CExprKind::Member(_, e, _, _, _) |
-            CExprKind::Paren(_, e) |
-            CExprKind::CompoundLiteral(_, e) |
-            CExprKind::Unary(_, _, e, _) => self.is_expr_pure(e),
+            DesignatedInitExpr(_,_,e) |
+            ImplicitCast(_, e, _, _, _) |
+            ExplicitCast(_, e, _, _, _) |
+            Member(_, e, _, _, _) |
+            Paren(_, e) |
+            CompoundLiteral(_, e) |
+            Unary(_, _, e, _) => pure(e),
 
-            CExprKind::Binary(_, op, _, _, _, _) if op.underlying_assignment().is_some() => false,
-            CExprKind::Binary(_, _, lhs, rhs, _, _) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
+            Binary(_, op, _, _, _, _) if op.underlying_assignment().is_some() => false,
+            Binary(_, _, lhs, rhs, _, _) => pure(lhs) && pure(rhs),
 
-            CExprKind::ArraySubscript(_, lhs, rhs, _) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
-            CExprKind::Conditional(_, c, lhs, rhs) => self.is_expr_pure(c) && self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
-            CExprKind::BinaryConditional(_, c, rhs) => self.is_expr_pure(c) && self.is_expr_pure(rhs),
-            CExprKind::Choose(_, c, lhs, rhs, _) => self.is_expr_pure(c) && self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
+            ArraySubscript(_, lhs, rhs, _) => pure(lhs) && pure(rhs),
+            Conditional(_, c, lhs, rhs) => pure(c) && pure(lhs) && pure(rhs),
+            BinaryConditional(_, c, rhs) => pure(c) && pure(rhs),
+            Choose(_, c, lhs, rhs, _) => pure(c) && pure(lhs) && pure(rhs),
         }
     }
 
@@ -556,8 +559,9 @@ impl TypedAstContext {
         // In addition, mark any other (unused) function wanted if configured.
         for &decl_id in &self.c_decls_top {
             let decl = self.index(decl_id);
+            use CDeclKind::*;
             let is_wanted = match decl.kind {
-                CDeclKind::Function {
+                Function {
                     body: Some(_),
                     is_global: true,
                     is_inline,
@@ -566,16 +570,16 @@ impl TypedAstContext {
                     // Depending on the C specification and dialect, an inlined function
                     // may be externally visible. We rely on clang to determine visibility.
                 } if !is_inline || is_inline_externally_visible => true,
-                CDeclKind::Function {
+                Function {
                     body: Some(_),
                     ..
                 } if want_unused_functions => true,
-                CDeclKind::Variable {
+                Variable {
                     is_defn: true,
                     is_externally_visible: true,
                     ..
                 } => true,
-                CDeclKind::Variable { ref attrs, .. } | CDeclKind::Function { ref attrs, .. }
+                Variable { ref attrs, .. } | Function { ref attrs, .. }
                     if attrs.contains(&Attribute::Used) => true,
                 _ => false,
             };
@@ -591,29 +595,27 @@ impl TypedAstContext {
 
         while let Some(enclosing_decl_id) = to_walk.pop() {
             for some_id in DFNodes::new(self, SomeId::Decl(enclosing_decl_id)) {
+                use SomeId::*;
                 match some_id {
-                    SomeId::Type(type_id) => {
-                        match self.c_types[&type_id].kind {
+                    Type(type_id) => {
+                        if let CTypeKind::Elaborated(decl_type_id) = self.c_types[&type_id].kind {
                             // This is a reference to a previously declared type.  If we look
                             // through it we should(?) get something that looks like a declaration,
                             // which we can mark as wanted.
-                            CTypeKind::Elaborated(decl_type_id) => {
-                                let decl_id = self.c_types[&decl_type_id]
-                                    .kind
-                                    .as_decl_or_typedef()
-                                    .expect("target of CTypeKind::Elaborated isn't a decl?");
-                                if wanted.insert(decl_id) {
-                                    to_walk.push(decl_id);
-                                }
+                            let decl_id = self.c_types[&decl_type_id]
+                                .kind
+                                .as_decl_or_typedef()
+                                .expect("target of CTypeKind::Elaborated isn't a decl?");
+                            if wanted.insert(decl_id) {
+                                to_walk.push(decl_id);
                             }
-
+                        } else {
                             // For everything else (including `Struct` etc.), DFNodes will walk the
                             // corresponding declaration.
-                            _ => {}
                         }
                     }
 
-                    SomeId::Expr(expr_id) => {
+                    Expr(expr_id) => {
                         let expr = self.index(expr_id);
                         if let Some(macs) = self.macro_invocations.get(&expr_id) {
                             for mac_id in macs {
@@ -629,27 +631,24 @@ impl TypedAstContext {
                         }
                     }
 
-                    SomeId::Decl(decl_id) => {
+                    Decl(decl_id) => {
                         if wanted.insert(decl_id) {
                             to_walk.push(decl_id);
                         }
 
-                        match self.c_decls[&decl_id].kind {
-                            CDeclKind::EnumConstant { .. } => {
-                                // Special case for enums.  The enum constant is used, so the whole
-                                // enum is also used.
-                                let parent_id = self.parents[&decl_id];
-                                if wanted.insert(parent_id) {
-                                    to_walk.push(parent_id);
-                                }
+                        if let CDeclKind::EnumConstant { .. } = self.c_decls[&decl_id].kind {
+                            // Special case for enums.  The enum constant is used, so the whole
+                            // enum is also used.
+                            let parent_id = self.parents[&decl_id];
+                            if wanted.insert(parent_id) {
+                                to_walk.push(parent_id);
                             }
-                            _ => {}
                         }
                     }
 
                     // Stmts can include decls, but we'll see the DeclId itself in a later
                     // iteration.
-                    SomeId::Stmt(_) => {}
+                    Stmt(_) => {}
                 }
             }
         }
@@ -671,14 +670,15 @@ impl TypedAstContext {
 
     pub fn sort_top_decls(&mut self) {
         // Group and sort declarations by file and by position
-        let mut decls_top = mem::replace(&mut self.c_decls_top, vec![]);
+        let mut decls_top = mem::take(&mut self.c_decls_top);
         decls_top.sort_unstable_by(|a, b| {
             let a = self.index(*a);
             let b = self.index(*b);
+            use Ordering::*;
             match (&a.loc, &b.loc) {
-                (None, None) => Ordering::Equal,
-                (None, _) => Ordering::Less,
-                (_, None) => Ordering::Greater,
+                (None, None) => Equal,
+                (None, _) => Less,
+                (_, None) => Greater,
                 (Some(a), Some(b)) => self.compare_src_locs(&a.begin(), &b.begin()),
             }
         });
@@ -686,26 +686,27 @@ impl TypedAstContext {
     }
 
     pub fn has_inner_struct_decl(&self, decl_id: CDeclId) -> bool {
-        match self.index(decl_id).kind {
+        matches!(
+            self.index(decl_id).kind,
             CDeclKind::Struct {
                 manual_alignment: Some(_),
                 ..
-            } => true,
-            _ => false,
-        }
+            }
+        )
     }
 
     pub fn is_packed_struct_decl(&self, decl_id: CDeclId) -> bool {
-        match self.index(decl_id).kind {
-            CDeclKind::Struct {
-                is_packed: true, ..
-            } => true,
-            CDeclKind::Struct {
+        use CDeclKind::*;
+        matches!(
+            self.index(decl_id).kind,
+            Struct {
+                is_packed: true,
+                ..
+            } | Struct {
                 max_field_alignment: Some(_),
                 ..
-            } => true,
-            _ => false,
-        }
+            }
+        )
     }
 
     pub fn is_aligned_struct_type(&self, typ: CTypeId) -> bool {
@@ -737,7 +738,7 @@ impl CommentContext {
         for comment in &ast_context.comments {
             // Comments without a valid FileId are probably clang
             // compiler-internal definitions
-            if let Some(file_id) = ast_context.file_id(&comment) {
+            if let Some(file_id) = ast_context.file_id(comment) {
                 comments_by_file
                     .entry(file_id)
                     .or_default()
@@ -984,24 +985,19 @@ pub enum CDeclKind {
 
 impl CDeclKind {
     pub fn get_name(&self) -> Option<&String> {
-        match self {
-            &CDeclKind::Function { name: ref i, .. } => Some(i),
-            &CDeclKind::Variable { ident: ref i, .. } => Some(i),
-            &CDeclKind::Typedef { name: ref i, .. } => Some(i),
-            &CDeclKind::EnumConstant { name: ref i, .. } => Some(i),
-            &CDeclKind::Enum {
-                name: Some(ref i), ..
-            } => Some(i),
-            &CDeclKind::Struct {
-                name: Some(ref i), ..
-            } => Some(i),
-            &CDeclKind::Union {
-                name: Some(ref i), ..
-            } => Some(i),
-            &CDeclKind::Field { name: ref i, .. } => Some(i),
-            &CDeclKind::MacroObject { ref name, .. } => Some(name),
-            _ => None,
-        }
+        use CDeclKind::*;
+        Some(match self {
+            Function { name: i, .. } => i,
+            Variable { ident: i, .. } => i,
+            Typedef { name: i, .. } => i,
+            EnumConstant { name: i, .. } => i,
+            Enum { name: Some(i), .. } => i,
+            Struct { name: Some(i), .. } => i,
+            Union { name: Some(i), .. } => i,
+            Field { name: i, .. } => i,
+            MacroObject { name, .. } => name,
+            _ => return None,
+        })
     }
 }
 
@@ -1239,6 +1235,34 @@ pub enum UnOp {
     Coawait,       // [C++ Coroutines] co_await x
 }
 
+impl UnOp {
+    pub fn as_str(&self) -> &'static str {
+        use UnOp::*;
+        match self {
+            AddressOf => "&",
+            Deref => "*",
+            Plus => "+",
+            PreIncrement => "++",
+            PostIncrement => "++",
+            Negate => "-",
+            PreDecrement => "--",
+            PostDecrement => "--",
+            Complement => "~",
+            Not => "!",
+            Real => "__real",
+            Imag => "__imag",
+            Extension => "__extension__",
+            Coawait => "co_await",
+        }
+    }
+}
+
+impl Display for UnOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// Represents a unary type operator in C
 #[derive(Debug, Clone, Copy)]
 pub enum UnTypeOp {
@@ -1247,14 +1271,27 @@ pub enum UnTypeOp {
     PreferredAlignOf,
 }
 
+impl UnTypeOp {
+    pub fn as_str(&self) -> &'static str {
+        use UnTypeOp::*;
+        match self {
+            SizeOf => "sizeof",
+            AlignOf => "alignof",
+            PreferredAlignOf => "__alignof",
+        }
+    }
+}
+
+impl Display for UnTypeOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 impl UnOp {
     /// Check is the operator is rendered before or after is operand.
     pub fn is_prefix(&self) -> bool {
-        match *self {
-            UnOp::PostIncrement => false,
-            UnOp::PostDecrement => false,
-            _ => true,
-        }
+        !matches!(*self, UnOp::PostIncrement | UnOp::PostDecrement)
     }
 }
 
@@ -1296,42 +1333,76 @@ pub enum BinOp {
 }
 
 impl BinOp {
+    pub fn as_str(&self) -> &'static str {
+        use BinOp::*;
+        match self {
+            Multiply => "*",
+            Divide => "/",
+            Modulus => "%",
+            Add => "+",
+            Subtract => "-",
+            ShiftLeft => "<<",
+            ShiftRight => ">>",
+            Less => "<",
+            Greater => ">",
+            LessEqual => "<=",
+            GreaterEqual => ">=",
+            EqualEqual => "==",
+            NotEqual => "!=",
+            BitAnd => "&",
+            BitXor => "^",
+            BitOr => "|",
+            And => "&&",
+            Or => "||",
+
+            AssignAdd => "+=",
+            AssignSubtract => "-=",
+            AssignMultiply => "*=",
+            AssignDivide => "/=",
+            AssignModulus => "%=",
+            AssignBitXor => "^=",
+            AssignShiftLeft => "<<=",
+            AssignShiftRight => ">>=",
+            AssignBitOr => "|=",
+            AssignBitAnd => "&=",
+
+            Assign => "=",
+            Comma => ", ",
+        }
+    }
+}
+
+impl Display for BinOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl BinOp {
     /// Maps compound assignment operators to operator underlying them, and returns `None` for all
     /// other operators.
     ///
     /// For example, `AssignAdd` maps to `Some(Add)` but `Add` maps to `None`.
     pub fn underlying_assignment(&self) -> Option<BinOp> {
-        match *self {
-            BinOp::AssignAdd => Some(BinOp::Add),
-            BinOp::AssignSubtract => Some(BinOp::Subtract),
-            BinOp::AssignMultiply => Some(BinOp::Multiply),
-            BinOp::AssignDivide => Some(BinOp::Divide),
-            BinOp::AssignModulus => Some(BinOp::Modulus),
-            BinOp::AssignBitXor => Some(BinOp::BitXor),
-            BinOp::AssignShiftLeft => Some(BinOp::ShiftLeft),
-            BinOp::AssignShiftRight => Some(BinOp::ShiftRight),
-            BinOp::AssignBitOr => Some(BinOp::BitOr),
-            BinOp::AssignBitAnd => Some(BinOp::BitAnd),
-            _ => None,
-        }
+        use BinOp::*;
+        Some(match *self {
+            AssignAdd => Add,
+            AssignSubtract => Subtract,
+            AssignMultiply => Multiply,
+            AssignDivide => Divide,
+            AssignModulus => Modulus,
+            AssignBitXor => BitXor,
+            AssignShiftLeft => ShiftLeft,
+            AssignShiftRight => ShiftRight,
+            AssignBitOr => BitOr,
+            AssignBitAnd => BitAnd,
+            _ => return None,
+        })
     }
 
     /// Determines whether or not this is an assignment op
     pub fn is_assignment(&self) -> bool {
-        match *self {
-            BinOp::AssignAdd
-            | BinOp::AssignSubtract
-            | BinOp::AssignMultiply
-            | BinOp::AssignDivide
-            | BinOp::AssignModulus
-            | BinOp::AssignBitXor
-            | BinOp::AssignShiftLeft
-            | BinOp::AssignShiftRight
-            | BinOp::AssignBitOr
-            | BinOp::AssignBitAnd
-            | BinOp::Assign => true,
-            _ => false,
-        }
+        matches!(self, Self::Assign) || self.underlying_assignment().is_some()
     }
 }
 
@@ -1353,10 +1424,11 @@ pub enum CLiteral {
 impl CLiteral {
     /// Determine the truthiness or falsiness of the literal.
     pub fn get_bool(&self) -> bool {
+        use CLiteral::*;
         match *self {
-            CLiteral::Integer(x, _) => x != 0u64,
-            CLiteral::Character(x) => x != 0u64,
-            CLiteral::Floating(x, _) => x != 0f64,
+            Integer(x, _) => x != 0u64,
+            Character(x) => x != 0u64,
+            Floating(x, _) => x != 0f64,
             _ => true,
         }
     }
@@ -1602,6 +1674,41 @@ pub enum CTypeKind {
     BFloat16,
 }
 
+impl CTypeKind {
+    pub fn as_str(&self) -> &'static str {
+        use CTypeKind::*;
+        match self {
+            Void => "void",
+            Bool => "_Bool",
+            Char => "char",
+            SChar => "signed char",
+            Short => "signed short",
+            Int => "int",
+            Long => "long",
+            LongLong => "long long",
+            UChar => "unsigned char",
+            UShort => "unsigned short",
+            UInt => "unsigned int",
+            ULong => "unsigned long",
+            ULongLong => "unsigned long long",
+            Float => "float",
+            Double => "double",
+            LongDouble => "long double",
+            Int128 => "__int128",
+            UInt128 => "unsigned __int128",
+            Half => "half",
+            BFloat16 => "bfloat16",
+            _ => unimplemented!("Printer::print_type({:?})", self),
+        }
+    }
+}
+
+impl Display for CTypeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum Designator {
     Index(u64),
@@ -1637,24 +1744,15 @@ pub enum Attribute {
 
 impl CTypeKind {
     pub fn is_pointer(&self) -> bool {
-        match *self {
-            CTypeKind::Pointer { .. } => true,
-            _ => false,
-        }
+        matches!(*self, Self::Pointer { .. })
     }
 
     pub fn is_bool(&self) -> bool {
-        match *self {
-            CTypeKind::Bool => true,
-            _ => false,
-        }
+        matches!(*self, Self::Bool)
     }
 
     pub fn is_enum(&self) -> bool {
-        match *self {
-            CTypeKind::Enum { .. } => true,
-            _ => false,
-        }
+        matches!(*self, Self::Enum { .. })
     }
 
     pub fn is_integral_type(&self) -> bool {
@@ -1662,150 +1760,104 @@ impl CTypeKind {
     }
 
     pub fn is_unsigned_integral_type(&self) -> bool {
-        match *self {
-            CTypeKind::Bool => true,
-            CTypeKind::UChar => true,
-            CTypeKind::UInt => true,
-            CTypeKind::UShort => true,
-            CTypeKind::ULong => true,
-            CTypeKind::ULongLong => true,
-            CTypeKind::UInt128 => true,
-            _ => false,
-        }
+        use CTypeKind::*;
+        matches!(
+            self,
+            Bool | UChar | UInt | UShort | ULong | ULongLong | UInt128
+        )
     }
 
     pub fn is_signed_integral_type(&self) -> bool {
-        match *self {
-            CTypeKind::Char => true, // true on the platforms we handle
-            CTypeKind::SChar => true,
-            CTypeKind::Int => true,
-            CTypeKind::Short => true,
-            CTypeKind::Long => true,
-            CTypeKind::LongLong => true,
-            CTypeKind::Int128 => true,
-            _ => false,
-        }
+        use CTypeKind::*;
+        // `Char` is true on the platforms we handle
+        matches!(self, Char | SChar | Int | Short | Long | LongLong | Int128)
     }
 
     pub fn is_floating_type(&self) -> bool {
-        match *self {
-            CTypeKind::Float => true,
-            CTypeKind::Double => true,
-            CTypeKind::LongDouble => true,
-            _ => false,
-        }
+        use CTypeKind::*;
+        matches!(self, Float | Double | LongDouble)
     }
 
     pub fn as_underlying_decl(&self) -> Option<CDeclId> {
+        use CTypeKind::*;
         match *self {
-            CTypeKind::Struct(decl_id) | CTypeKind::Union(decl_id) | CTypeKind::Enum(decl_id) => {
-                Some(decl_id)
-            }
+            Struct(decl_id) | Union(decl_id) | Enum(decl_id) => Some(decl_id),
             _ => None,
         }
     }
 
     pub fn as_decl_or_typedef(&self) -> Option<CDeclId> {
+        use CTypeKind::*;
         match *self {
-            CTypeKind::Typedef(decl_id)
-            | CTypeKind::Struct(decl_id)
-            | CTypeKind::Union(decl_id)
-            | CTypeKind::Enum(decl_id) => Some(decl_id),
+            Typedef(decl_id) | Struct(decl_id) | Union(decl_id) | Enum(decl_id) => Some(decl_id),
             _ => None,
         }
     }
 
     pub fn is_vector(&self) -> bool {
-        match *self {
-            CTypeKind::Vector { .. } => true,
-            _ => false,
-        }
+        matches!(self, Self::Vector { .. })
     }
 
     /// Choose the smaller, simpler of the two types if they are cast-compatible.
     pub fn smaller_compatible_type(ty1: CTypeKind, ty2: CTypeKind) -> Option<CTypeKind> {
-        match (&ty1, &ty2) {
-            (ty, ty2) if ty == ty2 => Some(ty1),
-            (CTypeKind::Void, _) => Some(ty2),
-            (CTypeKind::Bool, ty) if ty.is_integral_type() => Some(CTypeKind::Bool),
-            (ty, CTypeKind::Bool) if ty.is_integral_type() => Some(CTypeKind::Bool),
+        let int = Self::is_integral_type;
+        let float = Self::is_floating_type;
 
-            (CTypeKind::Char, ty) if ty.is_integral_type() => Some(CTypeKind::Char),
-            (ty, CTypeKind::Char) if ty.is_integral_type() => Some(CTypeKind::Char),
-            (CTypeKind::SChar, ty) if ty.is_integral_type() => Some(CTypeKind::SChar),
-            (ty, CTypeKind::SChar) if ty.is_integral_type() => Some(CTypeKind::SChar),
-            (CTypeKind::UChar, ty) if ty.is_integral_type() => Some(CTypeKind::UChar),
-            (ty, CTypeKind::UChar) if ty.is_integral_type() => Some(CTypeKind::UChar),
+        use CTypeKind::*;
+        let ty = match (&ty1, &ty2) {
+            (ty, ty2) if ty == ty2 => ty1,
+            (Void, _) => ty2,
+            (Bool, ty) | (ty, Bool) if int(ty) => Bool,
 
-            (CTypeKind::Short, ty) if ty.is_integral_type() => Some(CTypeKind::Short),
-            (ty, CTypeKind::Short) if ty.is_integral_type() => Some(CTypeKind::Short),
-            (CTypeKind::UShort, ty) if ty.is_integral_type() => Some(CTypeKind::UShort),
-            (ty, CTypeKind::UShort) if ty.is_integral_type() => Some(CTypeKind::UShort),
+            (Char, ty) | (ty, Char) if int(ty) => Char,
+            (SChar, ty) | (ty, SChar) if int(ty) => SChar,
+            (UChar, ty) | (ty, UChar) if int(ty) => UChar,
 
-            (CTypeKind::Int, ty) if ty.is_integral_type() => Some(CTypeKind::Int),
-            (ty, CTypeKind::Int) if ty.is_integral_type() => Some(CTypeKind::Int),
-            (CTypeKind::UInt, ty) if ty.is_integral_type() => Some(CTypeKind::UInt),
-            (ty, CTypeKind::UInt) if ty.is_integral_type() => Some(CTypeKind::UInt),
+            (Short, ty) | (ty, Short) if int(ty) => Short,
+            (UShort, ty) | (ty, UShort) if int(ty) => UShort,
 
-            (CTypeKind::Float, ty) if ty.is_floating_type() || ty.is_integral_type() => {
-                Some(CTypeKind::Float)
-            }
-            (ty, CTypeKind::Float) if ty.is_floating_type() || ty.is_integral_type() => {
-                Some(CTypeKind::Float)
-            }
+            (Int, ty) | (ty, Int) if int(ty) => Int,
+            (UInt, ty) | (ty, UInt) if int(ty) => UInt,
 
-            (CTypeKind::Long, ty) if ty.is_integral_type() => Some(CTypeKind::Long),
-            (ty, CTypeKind::Long) if ty.is_integral_type() => Some(CTypeKind::Long),
-            (CTypeKind::ULong, ty) if ty.is_integral_type() => Some(CTypeKind::ULong),
-            (ty, CTypeKind::ULong) if ty.is_integral_type() => Some(CTypeKind::ULong),
+            (Float, ty) | (ty, Float) if float(ty) || int(ty) => Float,
 
-            (CTypeKind::Double, ty) if ty.is_floating_type() || ty.is_integral_type() => {
-                Some(CTypeKind::Double)
-            }
-            (ty, CTypeKind::Double) if ty.is_floating_type() || ty.is_integral_type() => {
-                Some(CTypeKind::Double)
-            }
+            (Long, ty) | (ty, Long) if int(ty) => Long,
+            (ULong, ty) | (ty, ULong) if int(ty) => ULong,
 
-            (CTypeKind::LongLong, ty) if ty.is_integral_type() => Some(CTypeKind::LongLong),
-            (ty, CTypeKind::LongLong) if ty.is_integral_type() => Some(CTypeKind::LongLong),
-            (CTypeKind::ULongLong, ty) if ty.is_integral_type() => Some(CTypeKind::ULongLong),
-            (ty, CTypeKind::ULongLong) if ty.is_integral_type() => Some(CTypeKind::ULongLong),
+            (Double, ty) | (ty, Double) if float(ty) || int(ty) => Double,
 
-            (CTypeKind::LongDouble, ty) if ty.is_floating_type() || ty.is_integral_type() => {
-                Some(CTypeKind::LongDouble)
-            }
-            (ty, CTypeKind::LongDouble) if ty.is_floating_type() || ty.is_integral_type() => {
-                Some(CTypeKind::LongDouble)
-            }
+            (LongLong, ty) | (ty, LongLong) if int(ty) => LongLong,
+            (ULongLong, ty) | (ty, ULongLong) if int(ty) => ULongLong,
 
-            (CTypeKind::Int128, ty) if ty.is_integral_type() => Some(CTypeKind::Int128),
-            (ty, CTypeKind::Int128) if ty.is_integral_type() => Some(CTypeKind::Int128),
-            (CTypeKind::UInt128, ty) if ty.is_integral_type() => Some(CTypeKind::UInt128),
-            (ty, CTypeKind::UInt128) if ty.is_integral_type() => Some(CTypeKind::UInt128),
+            (LongDouble, ty) | (ty, LongDouble) if float(ty) || int(ty) => LongDouble,
+
+            (Int128, ty) | (ty, Int128) if int(ty) => Int128,
+            (UInt128, ty) | (ty, UInt128) if int(ty) => UInt128,
 
             // Integer to pointer conversion. We want to keep the integer and
             // cast to a pointer at use.
-            (CTypeKind::Pointer(_), ty) if ty.is_integral_type() => Some(ty2),
-            (ty, CTypeKind::Pointer(_)) if ty.is_integral_type() => Some(ty1),
+            (Pointer(_), ty) if int(ty) => ty2,
+            (ty, Pointer(_)) if int(ty) => ty1,
 
             // Array to pointer decay. We want to use the array and push the
             // decay to the use of the value.
-            (CTypeKind::Pointer(ptr_ty), CTypeKind::ConstantArray(arr_ty, _))
-            | (CTypeKind::Pointer(ptr_ty), CTypeKind::IncompleteArray(arr_ty))
-            | (CTypeKind::Pointer(ptr_ty), CTypeKind::VariableArray(arr_ty, _))
+            (Pointer(ptr_ty), ConstantArray(arr_ty, _))
+            | (Pointer(ptr_ty), IncompleteArray(arr_ty))
+            | (Pointer(ptr_ty), VariableArray(arr_ty, _))
                 if ptr_ty.ctype == *arr_ty =>
             {
-                Some(ty2)
+                ty2
             }
-            (CTypeKind::ConstantArray(arr_ty, _), CTypeKind::Pointer(ptr_ty))
-            | (CTypeKind::IncompleteArray(arr_ty), CTypeKind::Pointer(ptr_ty))
-            | (CTypeKind::VariableArray(arr_ty, _), CTypeKind::Pointer(ptr_ty))
+            (ConstantArray(arr_ty, _), Pointer(ptr_ty))
+            | (IncompleteArray(arr_ty), Pointer(ptr_ty))
+            | (VariableArray(arr_ty, _), Pointer(ptr_ty))
                 if ptr_ty.ctype == *arr_ty =>
             {
-                Some(ty1)
+                ty1
             }
 
-            _ => None,
-        }
+            _ => return None,
+        };
+        Some(ty)
     }
 }

@@ -1,4 +1,4 @@
-use clap::{load_yaml, App, Values};
+use clap::{load_yaml, App};
 use regex::Regex;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -25,7 +25,7 @@ fn main() {
 
     let enabled_warnings: HashSet<Diagnostic> = matches
         .values_of("warn")
-        .unwrap_or_else(|| Values::default())
+        .unwrap_or_default()
         .map(|s| Diagnostic::from_str(s).unwrap())
         .collect();
 
@@ -91,7 +91,7 @@ fn main() {
         binaries: matches
             .values_of("binary")
             .map(|values| values.map(String::from).collect())
-            .unwrap_or_else(|| vec![]),
+            .unwrap_or_default(),
         panic_on_translator_failure: {
             match matches.value_of("invalid-code") {
                 Some("panic") => true,

@@ -1,12 +1,11 @@
 use crate::c_ast::CDeclId;
 use crate::c_ast::*;
-use crate::diagnostics::TranslationError;
+use crate::diagnostics::TranslationResult;
 use crate::renamer::*;
 use c2rust_ast_builder::{mk, properties::*};
 use failure::format_err;
 use std::collections::{HashMap, HashSet};
 use std::ops::Index;
-use std::result::Result;
 use syn::*;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -165,16 +164,15 @@ impl TypeConverter {
 
     pub fn resolve_decl_suffix_name(&mut self, decl_id: CDeclId, suffix: &'static str) -> &str {
         let key = (decl_id, suffix);
-        if !self.suffix_names.contains_key(&key) {
+        self.suffix_names.entry(key).or_insert_with(|| {
             let mut suffix_name = self
-                .resolve_decl_name(decl_id)
+                .renamer
+                .get(&decl_id)
                 .unwrap_or_else(|| "C2RustUnnamed".to_string());
             suffix_name += suffix;
 
-            let suffix_name = self.renamer.pick_name(&suffix_name);
-            self.suffix_names.insert(key, suffix_name);
-        }
-        self.suffix_names.get(&key).unwrap()
+            self.renamer.pick_name(&suffix_name)
+        })
     }
 
     pub fn declare_field_name(
@@ -189,31 +187,23 @@ impl TypeConverter {
             name
         };
 
-        if !self.fields.contains_key(&record_id) {
-            self.fields.insert(record_id, Renamer::new(&RESERVED_NAMES));
-        }
-
         self.fields
-            .get_mut(&record_id)
-            .unwrap()
+            .entry(record_id)
+            .or_insert_with(|| Renamer::new(&RESERVED_NAMES))
             .insert(FieldKey::Field(field_id), name)
             .expect("Field already declared")
     }
 
     pub fn declare_padding(&mut self, record_id: CRecordId, padding_idx: usize) -> String {
-        if !self.fields.contains_key(&record_id) {
-            self.fields.insert(record_id, Renamer::new(&RESERVED_NAMES));
-        }
-
+        let field = self
+            .fields
+            .entry(record_id)
+            .or_insert_with(|| Renamer::new(&RESERVED_NAMES));
         let key = FieldKey::Padding(padding_idx);
-        if let Some(name) = self.fields.get(&record_id).unwrap().get(&key) {
+        if let Some(name) = field.get(&key) {
             name
         } else {
-            self.fields
-                .get_mut(&record_id)
-                .unwrap()
-                .insert(key, "c2rust_padding")
-                .unwrap()
+            field.insert(key, "c2rust_padding").unwrap()
         }
     }
 
@@ -238,9 +228,9 @@ impl TypeConverter {
         &mut self,
         ctxt: &TypedAstContext,
         ret: Option<CQualTypeId>,
-        params: &Vec<CQualTypeId>,
+        params: &[CQualTypeId],
         is_variadic: bool,
-    ) -> Result<Box<Type>, TranslationError> {
+    ) -> TranslationResult<Box<Type>> {
         let barefn_inputs = params
             .iter()
             .map(|x| mk().bare_arg(self.convert(ctxt, x.ctype).unwrap(), None::<Box<Ident>>))
@@ -258,14 +248,14 @@ impl TypeConverter {
             variadic,
             ReturnType::Type(Default::default(), output),
         ));
-        return Ok(mk().unsafe_().extern_("C").barefn_ty(fn_ty));
+        Ok(mk().unsafe_().extern_("C").barefn_ty(fn_ty))
     }
 
     pub fn convert_pointer(
         &mut self,
         ctxt: &TypedAstContext,
         qtype: CQualTypeId,
-    ) -> Result<Box<Type>, TranslationError> {
+    ) -> TranslationResult<Box<Type>> {
         let mutbl = if qtype.qualifiers.is_const {
             Mutability::Immutable
         } else {
@@ -308,7 +298,7 @@ impl TypeConverter {
         &mut self,
         ctxt: &TypedAstContext,
         ctype: CTypeId,
-    ) -> Result<Box<Type>, TranslationError> {
+    ) -> TranslationResult<Box<Type>> {
         if self.translate_valist && ctxt.is_va_list(ctype) {
             let std_or_core = if self.emit_no_std { "core" } else { "std" };
             let path = vec![std_or_core, "ffi", "VaList"];
@@ -396,7 +386,7 @@ impl TypeConverter {
             // K&R-style function
             CTypeKind::Function(ret, _, is_var, is_noreturn, false) => {
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
-                let fn_ty = self.convert_function(ctxt, opt_ret, &vec![], is_var)?;
+                let fn_ty = self.convert_function(ctxt, opt_ret, &[], is_var)?;
                 Ok(fn_ty)
             }
 
@@ -413,7 +403,7 @@ impl TypeConverter {
         ctxt: &TypedAstContext,
         ctype: CTypeId,
         params: &Vec<CParamId>,
-    ) -> Result<Option<Box<Type>>, TranslationError> {
+    ) -> TranslationResult<Option<Box<Type>>> {
         match ctxt.index(ctype).kind {
             // ANSI/ISO C-style function
             CTypeKind::Function(.., true) => Ok(None),
@@ -430,7 +420,7 @@ impl TypeConverter {
                             _ => panic!("parameter referenced non-variable decl."),
                         }
                     })
-                    .collect();
+                    .collect::<Vec<_>>();
 
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
                 let fn_ty = self.convert_function(ctxt, opt_ret, &params, is_var)?;
@@ -455,7 +445,7 @@ impl TypeConverter {
                 _ => panic!("Typedef decl did not point to a typedef"),
             },
 
-            ref kind @ _ => panic!("ctype parameter must be a function instead of {:?}", kind),
+            ref kind => panic!("ctype parameter must be a function instead of {:?}", kind),
         }
     }
 }

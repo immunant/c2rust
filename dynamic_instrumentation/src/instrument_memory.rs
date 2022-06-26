@@ -72,7 +72,7 @@ impl InstrumentMemoryOps {
     /// Returned indices will not be sorted in any particular order, but are
     /// unique and constant across the entire lifetime of this instrumentation
     /// instance.
-    fn get_mir_loc_idx<'tcx>(&self, body_def: DefPathHash, location: Location) -> MirLocId {
+    fn get_mir_loc_idx(&self, body_def: DefPathHash, location: Location) -> MirLocId {
         let mir_loc = MirLoc {
             body_def: body_def.0.as_value().into(),
             basic_block_idx: u32::from(location.block),
@@ -291,11 +291,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
     }
 }
 
-fn find_instrumentation_def<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    runtime_crate_did: DefId,
-    name: Symbol,
-) -> Option<DefId> {
+fn find_instrumentation_def(tcx: TyCtxt, runtime_crate_did: DefId, name: Symbol) -> Option<DefId> {
     Some(
         tcx.module_children(runtime_crate_did)
             .iter()
@@ -305,7 +301,7 @@ fn find_instrumentation_def<'tcx>(
     )
 }
 
-fn make_const<'tcx>(tcx: TyCtxt<'tcx>, idx: u32) -> Operand<'tcx> {
+fn make_const(tcx: TyCtxt, idx: u32) -> Operand {
     Operand::Constant(Box::new(Constant {
         span: DUMMY_SP,
         user_ty: None,
@@ -501,7 +497,7 @@ fn insert_call<'tcx>(
     });
 
     for arg in &mut args {
-        if let Some((cast_stmts, cast_local)) = cast_ptr_to_usize(tcx, locals, &arg) {
+        if let Some((cast_stmts, cast_local)) = cast_ptr_to_usize(tcx, locals, arg) {
             *arg = cast_local;
             blocks[block]
                 .statements
@@ -554,10 +550,7 @@ fn cast_ptr_to_usize<'tcx>(
         let ptr_ty = arg_ty.builtin_deref(false).unwrap();
         let raw_ptr_ty = tcx.mk_ptr(ptr_ty);
         let raw_ptr_local = locals.push(LocalDecl::new(raw_ptr_ty, DUMMY_SP));
-        let mut deref = arg
-            .place()
-            .expect("Can't get the address of a constant")
-            .clone();
+        let mut deref = arg.place().expect("Can't get the address of a constant");
         let mut projs = Vec::with_capacity(deref.projection.len() + 1);
         projs.extend(deref.projection);
         projs.push(ProjectionElem::Deref);

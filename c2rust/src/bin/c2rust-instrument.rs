@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use c2rust_dynamic_instrumentation::instrument;
-use clap::{load_yaml, App, Values};
+use clap::{load_yaml, App};
 
 fn main() -> anyhow::Result<()> {
     env_logger::init();
@@ -17,5 +17,5 @@ fn main() -> anyhow::Result<()> {
 
     let metadata_file_path = Path::new(matches.value_of_os("METADATA_FILE").unwrap());
     let runtime_path = fs::canonicalize(matches.value_of_os("RUNTIME_PATH").unwrap()).unwrap();
-    instrument(&metadata_file_path, &runtime_path, &extra_args)
+    instrument(metadata_file_path, &runtime_path, &extra_args)
 }

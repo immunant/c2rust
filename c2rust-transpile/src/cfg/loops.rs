@@ -85,7 +85,7 @@ pub fn heuristic_loop_body(
     body_blocks: &mut IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
     follow_blocks: &mut IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
     follow_entries: &mut IndexSet<Label>,
-) -> () {
+) {
     if follow_entries.len() > 1 {
         for follow_entry in follow_entries.clone().iter() {
             let mut following: Label = follow_entry.clone();
@@ -147,13 +147,21 @@ pub struct LoopInfo<Lbl: Hash + Eq> {
     loops: IndexMap<LoopId, (IndexSet<Lbl>, Option<LoopId>)>,
 }
 
+/// Cannot `#[derive(Default)]` because of the `Lbl` generic.
+/// See <https://github.com/rust-lang/rust/issues/26925>.
+impl<Lbl: Hash + Eq> Default for LoopInfo<Lbl> {
+    fn default() -> Self {
+        Self {
+            node_loops: Default::default(),
+            loops: Default::default(),
+        }
+    }
+}
+
 impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
     #[allow(missing_docs)]
     pub fn new() -> Self {
-        LoopInfo {
-            node_loops: IndexMap::new(),
-            loops: IndexMap::new(),
-        }
+        Self::default()
     }
 
     /// Merge the information from another `LoopInfo` into this `LoopInfo`
@@ -164,17 +172,9 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
 
     /// Find the smallest possible loop that contains all of the items
     pub fn tightest_common_loop<E: Iterator<Item = Lbl>>(&self, mut entries: E) -> Option<LoopId> {
-        let first = if let Some(f) = entries.next() {
-            f
-        } else {
-            return None;
-        };
+        let first = entries.next()?;
 
-        let mut loop_id = if let Some(i) = self.node_loops.get(&first) {
-            *i
-        } else {
-            return None;
-        };
+        let mut loop_id = *self.node_loops.get(&first)?;
 
         for entry in entries {
             // Widen the loop until it contains the `entry`, or it can no longer be widened.
@@ -196,11 +196,11 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
             }
         }
 
-        return Some(loop_id);
+        Some(loop_id)
     }
 
     /// Filter out any nodes which need to be pruned from the entire CFG due to being unreachable.
-    pub fn filter_unreachable(&mut self, reachable: &IndexSet<Lbl>) -> () {
+    pub fn filter_unreachable(&mut self, reachable: &IndexSet<Lbl>) {
         self.node_loops.retain(|lbl, _| reachable.contains(lbl));
         for (_, &mut (ref mut set, _)) in self.loops.iter_mut() {
             set.retain(|lbl| reachable.contains(lbl));
@@ -209,7 +209,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
 
     /// Rewrite nodes to take into account a node remapping. Note that the remapping is usually
     /// going to be very much _not_ injective - the whole point of remapping is to merge some nodes.
-    pub fn rewrite_blocks(&mut self, rewrites: &IndexMap<Lbl, Lbl>) -> () {
+    pub fn rewrite_blocks(&mut self, rewrites: &IndexMap<Lbl, Lbl>) {
         self.node_loops.retain(|lbl, _| rewrites.get(lbl).is_none());
         for (_, &mut (ref mut set, _)) in self.loops.iter_mut() {
             set.retain(|lbl| rewrites.get(lbl).is_none());
@@ -217,12 +217,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
     }
 
     /// Add in information about a new loop
-    pub fn add_loop(
-        &mut self,
-        id: LoopId,
-        contents: IndexSet<Lbl>,
-        outer_id: Option<LoopId>,
-    ) -> () {
+    pub fn add_loop(&mut self, id: LoopId, contents: IndexSet<Lbl>, outer_id: Option<LoopId>) {
         for elem in &contents {
             if !self.node_loops.contains_key(elem) {
                 self.node_loops.insert(elem.clone(), id);
@@ -244,11 +239,11 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
     }
 
     /// Get all of the nodes contained in a given loop
-    pub fn get_loop_contents<'a>(&'a self, id: LoopId) -> &'a IndexSet<Lbl> {
+    pub fn get_loop_contents(&self, id: LoopId) -> &IndexSet<Lbl> {
         &self
             .loops
             .get(&id)
-            .expect(&format!("There is no loop with id {:?}", id))
+            .unwrap_or_else(|| panic!("There is no loop with id {:?}", id))
             .0
     }
 }

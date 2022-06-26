@@ -161,7 +161,7 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
             typ, initializer, ..
         } => {
             let mut res = intos![typ.ctype];
-            for x in initializer {
+            if let Some(x) = initializer {
                 res.push(x.into())
             }
             res
@@ -179,8 +179,8 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
         }
         EnumConstant { .. } => vec![],
         Typedef { typ, .. } => intos![typ.ctype],
-        Struct { ref fields, .. } => fields.iter().flat_map(|x| x).map(|&x| x.into()).collect(),
-        Union { ref fields, .. } => fields.iter().flat_map(|x| x).map(|&x| x.into()).collect(),
+        Struct { ref fields, .. } => fields.iter().flatten().map(|&x| x.into()).collect(),
+        Union { ref fields, .. } => fields.iter().flatten().map(|&x| x.into()).collect(),
         Field { typ, .. } => intos![typ.ctype],
         MacroObject { .. } | MacroFunction { .. } => vec![],
         NonCanonicalDecl { canonical_decl } => intos![canonical_decl],
@@ -264,7 +264,7 @@ fn immediate_stmt_children(kind: &CStmtKind) -> Vec<SomeId> {
             ..
         } => {
             let mut res = vec![];
-            for list in vec![inputs, outputs] {
+            for list in [inputs, outputs] {
                 for elt in list {
                     res.push(elt.expression.into())
                 }
@@ -308,7 +308,7 @@ fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
 
         VariableArray(elt, cnt) => {
             let mut res = intos![elt];
-            for x in cnt {
+            if let Some(x) = cnt {
                 res.push(x.into())
             }
             res

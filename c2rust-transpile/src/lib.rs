@@ -124,7 +124,7 @@ impl ExternCrateDetails {
     fn new(name: &'static str, version: &'static str, macro_use: bool) -> Self {
         Self {
             name,
-            ident: name.replace("-", "_"),
+            ident: name.replace('-', "_"),
             macro_use,
             version,
         }
@@ -201,10 +201,12 @@ fn get_module_name(
 pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
     diagnostics::init(tcfg.enabled_warnings.clone(), tcfg.log_level);
 
-    let lcmds = get_compile_commands(cc_db, &tcfg.filter).expect(&format!(
-        "Could not parse compile commands from {}",
-        cc_db.to_string_lossy()
-    ));
+    let lcmds = get_compile_commands(cc_db, &tcfg.filter).unwrap_or_else(|_| {
+        panic!(
+            "Could not parse compile commands from {}",
+            cc_db.to_string_lossy()
+        )
+    });
 
     // Specify path to system include dir on macOS 10.14 and later. Disable the blocks extension.
     let clang_args: Vec<String> = get_extra_args_macos();
@@ -365,13 +367,13 @@ fn get_extra_args_macos() -> Vec<String> {
     args
 }
 
-fn invoke_refactor(_build_dir: &PathBuf) -> Result<(), Error> {
-    return Ok(());
+fn invoke_refactor(_build_dir: &Path) -> Result<(), Error> {
+    Ok(())
 }
 
 fn reorganize_definitions(
     tcfg: &TranspilerConfig,
-    build_dir: &PathBuf,
+    build_dir: &Path,
     crate_file: Option<PathBuf>,
 ) -> Result<(), Error> {
     // We only run the reorganization refactoring if we emitted a fresh crate file
@@ -399,7 +401,7 @@ fn transpile_single(
     cc_db: &Path,
     extra_clang_args: &[&str],
 ) -> TranspileResult {
-    let output_path = get_output_path(tcfg, &input_path, ancestor_path, build_dir);
+    let output_path = get_output_path(tcfg, input_path.clone(), ancestor_path, build_dir);
     if output_path.exists() && !tcfg.overwrite_existing {
         warn!("Skipping existing file {}", output_path.display());
         return Err(());
@@ -464,7 +466,7 @@ fn transpile_single(
 
     // Perform the translation
     let (translated_string, pragmas, crates) =
-        translator::translate(typed_context, &tcfg, input_path);
+        translator::translate(typed_context, tcfg, input_path);
 
     let mut file = match File::create(&output_path) {
         Ok(file) => file,
@@ -489,26 +491,24 @@ fn transpile_single(
 
 fn get_output_path(
     tcfg: &TranspilerConfig,
-    input_path: &PathBuf,
+    mut input_path: PathBuf,
     ancestor_path: &Path,
     build_dir: &Path,
 ) -> PathBuf {
-    let mut path_buf = input_path.clone();
-
     // When an output file name is not explictly specified, we should convert files
     // with dashes to underscores, as they are not allowed in rust file names.
-    let file_name = path_buf
+    let file_name = input_path
         .file_name()
         .unwrap()
         .to_str()
         .unwrap()
         .replace('-', "_");
 
-    path_buf.set_file_name(file_name);
-    path_buf.set_extension("rs");
+    input_path.set_file_name(file_name);
+    input_path.set_extension("rs");
 
     if tcfg.output_dir.is_some() {
-        let path_buf = path_buf
+        let path_buf = input_path
             .strip_prefix(ancestor_path)
             .expect("Couldn't strip common ancestor path");
 
@@ -517,20 +517,19 @@ fn get_output_path(
         output_path.push("src");
         for elem in path_buf.iter() {
             let path = Path::new(elem);
-            let name = get_module_name(&path, false, true, false).unwrap();
+            let name = get_module_name(path, false, true, false).unwrap();
             output_path.push(name);
         }
 
         // Create the parent directory if it doesn't exist
         let parent = output_path.parent().unwrap();
         if !parent.exists() {
-            fs::create_dir_all(&parent).expect(&format!(
-                "couldn't create source directory: {}",
-                parent.display()
-            ));
+            fs::create_dir_all(&parent).unwrap_or_else(|_| {
+                panic!("couldn't create source directory: {}", parent.display())
+            });
         }
         output_path
     } else {
-        path_buf
+        input_path
     }
 }

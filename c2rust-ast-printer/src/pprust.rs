@@ -85,10 +85,10 @@ fn strip_main_fn(s: &str) -> &str {
     s.trim_start()
         .trim_start_matches("fn main()")
         .trim_start()
-        .trim_start_matches("{")
+        .trim_start_matches('{')
         .trim_start()
         .trim_end()
-        .trim_end_matches("}")
+        .trim_end_matches('}')
         .trim_end()
 }
 
@@ -144,7 +144,7 @@ fn ret_expr() -> syn::Expr {
 
 pub fn expr_to_string(e: &syn::Expr) -> String {
     let s = to_string(move || minimal_file(syn::Stmt::Expr(e.clone())));
-    strip_main_fn(&s).trim_end_matches(";").to_owned()
+    strip_main_fn(&s).trim_end_matches(';').to_owned()
 }
 
 pub fn path_to_string(p: &syn::Path) -> String {
@@ -170,10 +170,10 @@ pub fn pat_to_string(p: &syn::Pat) -> String {
         .trim_start_matches("let")
         .trim_start()
         .trim_end()
-        .trim_end_matches(";")
+        .trim_end_matches(';')
         .trim_end_matches("return")
         .trim_end()
-        .trim_end_matches("=")
+        .trim_end_matches('=')
         .trim_end()
         .to_owned()
 }

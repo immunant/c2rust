@@ -1,6 +1,8 @@
 #![deny(missing_docs)]
 //! This module provides basic support for converting inline assembly statements.
 
+use crate::diagnostics::TranslationResult;
+
 use super::*;
 use log::warn;
 use proc_macro2::{TokenStream, TokenTree};
@@ -78,7 +80,7 @@ fn parse_arch(target_tuple: &str) -> Option<Arch> {
 fn parse_constraints(
     mut constraints: &str,
     arch: Arch,
-) -> Result<(ArgDirSpec, bool, String), TranslationError> {
+) -> TranslationResult<(ArgDirSpec, bool, String)> {
     let parse_error = |constraints| {
         Err(TranslationError::new(
             None,
@@ -175,18 +177,11 @@ fn parse_constraints(
     let mode = if mem_only {
         In
     } else {
-        if is_input {
-            if early_clobber {
-                InOut
-            } else {
-                InLateOut
-            }
-        } else {
-            if early_clobber {
-                Out
-            } else {
-                LateOut
-            }
+        match (is_input, early_clobber) {
+            (false, false) => LateOut,
+            (false, true) => Out,
+            (true, false) => InLateOut,
+            (true, true) => InOut,
         }
     };
 
@@ -360,7 +355,7 @@ fn reg_is_reserved(constraint: &str, arch: Arch) -> Option<(&str, &str)> {
 fn rewrite_reserved_reg_operands(
     att_syntax: bool,
     arch: Arch,
-    operands: &mut Vec<BidirAsmOperand>,
+    operands: &mut [BidirAsmOperand],
 ) -> (String, String) {
     let (mut prolog, mut epilog) = (String::new(), String::new());
 
@@ -378,8 +373,7 @@ fn rewrite_reserved_reg_operands(
         }
     }
 
-    let mut n_moved = 0;
-    for (idx, reg, mods) in rewrite_idxs {
+    for (n_moved, (idx, reg, mods)) in rewrite_idxs.into_iter().enumerate() {
         let operand = &mut operands[idx];
         let name = format!("restmp{}", n_moved);
         if let Some((_idx, _in_expr)) = operand.in_expr {
@@ -408,7 +402,6 @@ fn rewrite_reserved_reg_operands(
         //let (positional, named, explicit) = split_operands(operands);
         let nth_non_positional = total_positional + n_moved;
         operands.swap(idx, nth_non_positional);
-        n_moved += 1;
     }
 
     (prolog, epilog)
@@ -423,7 +416,7 @@ fn remove_comments(mut asm: &str) -> String {
         let comment_len = asm[comment_begin..]
             .find("*/")
             // Comments with no terminator extend to the end of the string
-            .unwrap_or(asm[comment_begin..].len());
+            .unwrap_or_else(|| asm[comment_begin..].len());
         let before_comment = &asm[..comment_begin];
         without_c_comments.push_str(before_comment);
         asm = &asm[comment_begin + comment_len..];
@@ -434,7 +427,7 @@ fn remove_comments(mut asm: &str) -> String {
     // Remove EOL comments from each line
     let mut without_comments = String::with_capacity(without_c_comments.len());
     for line in without_c_comments.lines() {
-        if let Some(line_comment_idx) = line.find("#") {
+        if let Some(line_comment_idx) = line.find('#') {
             without_comments.push_str(&line[..line_comment_idx]);
         } else {
             without_comments.push_str(line);
@@ -526,7 +519,7 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
     input_op_mapper: M,
     is_mem_only: F,
     arch: Arch,
-) -> Result<String, TranslationError> {
+) -> TranslationResult<String> {
     let mut out = String::with_capacity(asm.len());
 
     let mut first = true;
@@ -544,13 +537,13 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
         // Pass-through $$ as one $
         if last_empty {
             last_empty = false;
-            out.push_str("$");
+            out.push('$');
             out.push_str(chunk);
             continue;
         }
 
         // Note empty chunks
-        if chunk == "" {
+        if chunk.is_empty() {
             last_empty = true;
             continue;
         }
@@ -562,13 +555,13 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
                 let ref_str = &chunk[..end_idx];
                 if let Some(colon_idx) = ref_str.find(':') {
                     let (before_mods, _modifiers) = ref_str.split_at(colon_idx + 1);
-                    out.push_str("{");
+                    out.push('{');
                     let idx: usize = before_mods
                         .trim_matches(|c: char| !c.is_ascii_digit())
                         .parse()
                         .map_err(|_| TranslationError::generic("could not parse operand idx"))?;
                     out.push_str(input_op_mapper(idx).to_string().as_str());
-                    out.push_str(":");
+                    out.push(':');
                     let modifiers = ref_str[colon_idx + 1..].chars();
                     for modifier in modifiers {
                         if let Some(new) = translate_modifier(modifier, arch) {
@@ -616,7 +609,7 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
                 .parse()
                 .map_err(|_| TranslationError::generic("could not parse operand idx"))?;
             out.push_str(input_op_mapper(idx).to_string().as_str());
-            if new_modifiers != "" {
+            if !new_modifiers.is_empty() {
                 out.push(':');
                 out.push_str(&*new_modifiers);
             }
@@ -627,9 +620,20 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
         }
 
         // We failed to parse this operand reference
-        out.push_str(&chunk[..]);
+        out.push_str(chunk);
     }
     Ok(out)
+}
+
+/// Args for [`Translation::convert_asm`](Translation::convert_asm).
+#[allow(missing_docs)]
+pub struct ConvertAsmArgs<'a> {
+    pub span: Span,
+    pub is_volatile: bool,
+    pub asm: &'a str,
+    pub inputs: &'a [AsmOperand],
+    pub outputs: &'a [AsmOperand],
+    pub clobbers: &'a [String],
 }
 
 impl<'c> Translation<'c> {
@@ -643,13 +647,16 @@ impl<'c> Translation<'c> {
     pub fn convert_asm(
         &self,
         ctx: ExprContext,
-        span: Span,
-        is_volatile: bool,
-        asm: &str,
-        inputs: &[AsmOperand],
-        outputs: &[AsmOperand],
-        clobbers: &[String],
-    ) -> Result<Vec<Stmt>, TranslationError> {
+        args: ConvertAsmArgs,
+    ) -> TranslationResult<Vec<Stmt>> {
+        let ConvertAsmArgs {
+            span,
+            is_volatile,
+            asm,
+            inputs,
+            outputs,
+            clobbers,
+        } = args;
         if !self.tcfg.translate_asm {
             return Err(TranslationError::generic(
                 "Inline assembly translation not enabled.",
@@ -742,7 +749,7 @@ impl<'c> Translation<'c> {
         let mut args = Vec::<BidirAsmOperand>::new();
 
         // Add outputs as inout if a matching input is found, else as outputs
-        for (i, output) in outputs.into_iter().enumerate() {
+        for (i, output) in outputs.iter().enumerate() {
             match parse_constraints(&output.constraints, arch) {
                 Ok((mut dir_spec, mem_only, parsed)) => {
                     // Add to args list; if a matching in_expr is found, this is
@@ -878,7 +885,7 @@ impl<'c> Translation<'c> {
                         item_store.add_use(vec!["c2rust_asm_casts".into()], "AsmCastTrait");
                     });
 
-                    let (output_name, inner_name) = operand_renames.get(&tied_operand).unwrap();
+                    let (output_name, inner_name) = operand_renames.get(tied_operand).unwrap();
 
                     let input_name = self.renamer.borrow_mut().fresh();
                     let input_local = mk().local(

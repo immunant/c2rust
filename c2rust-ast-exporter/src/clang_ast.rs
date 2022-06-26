@@ -139,21 +139,15 @@ pub fn expect_opt_u64(val: &Value) -> Option<Option<u64>> {
 }
 
 fn import_ast_tag(tag: u64) -> ASTEntryTag {
-    unsafe {
-        return std::mem::transmute::<u32, ASTEntryTag>(tag as u32);
-    }
+    unsafe { std::mem::transmute::<u32, ASTEntryTag>(tag as u32) }
 }
 
 fn import_type_tag(tag: u64) -> TypeTag {
-    unsafe {
-        return std::mem::transmute::<u32, TypeTag>(tag as u32);
-    }
+    unsafe { std::mem::transmute::<u32, TypeTag>(tag as u32) }
 }
 
 fn import_va_list_kind(tag: u64) -> BuiltinVaListKind {
-    unsafe {
-        return std::mem::transmute::<u32, BuiltinVaListKind>(tag as u32);
-    }
+    unsafe { std::mem::transmute::<u32, BuiltinVaListKind>(tag as u32) }
 }
 
 pub fn process(items: Value) -> error::Result<AstContext> {
@@ -161,13 +155,19 @@ pub fn process(items: Value) -> error::Result<AstContext> {
     let mut types: HashMap<u64, TypeNode> = HashMap::new();
     let mut comments: Vec<CommentNode> = vec![];
 
+    type AllNode = VecDeque<Value>;
+    type TopNode = u64;
+    type File = (String, Option<(u64, u64, u64)>);
+    type RawComment = (u64, u64, u64, ByteBuf);
+    type VaListKind = u64;
+    type Target = String;
     let (all_nodes, top_nodes, files, raw_comments, va_list_kind, target): (
-        Vec<VecDeque<Value>>,
-        Vec<u64>,
-        Vec<(String, Option<(u64, u64, u64)>)>,
-        Vec<(u64, u64, u64, ByteBuf)>,
-        u64,
-        String,
+        Vec<AllNode>,
+        Vec<TopNode>,
+        Vec<File>,
+        Vec<RawComment>,
+        VaListKind,
+        Target,
     ) = from_value(items)?;
 
     let va_list_kind = import_va_list_kind(va_list_kind);
