@@ -4,17 +4,16 @@ project(ASTExporter)
 #################################################
 # TinyCBOR                                      #
 #################################################
-set(TINYCBOR_URL "https://github.com/intel/tinycbor/archive/v0.5.3.tar.gz"
-    CACHE STRING "tinycbor download URL")
-set(TINYCBOR_MD5 "2cd3af70d8749a7ddd5a8d04d09ea8f6" CACHE STRING "tinycbor archive md5 sum")
+# v0.5.3 tag, but using the commit hash instead for integrity checks (worth it?)
+set(TINYCBOR_TAG "755f9ef932f9830a63a712fd2ac971d838b131f1" CACHE STRING "tinycbor git tag/branch/commit hash")
 set(TINYCBOR_PREFIX "${CMAKE_BINARY_DIR}/tinycbor" CACHE STRING "tinycbor install prefix")
 
 include(ExternalProject)
 ExternalProject_Add(tinycbor_build
             PREFIX ${TINYCBOR_PREFIX}
             INSTALL_DIR ${CMAKE_BINARY_DIR}
-            URL ${TINYCBOR_URL}
-            URL_HASH MD5=${TINYCBOR_MD5}
+            GIT_REPOSITORY https://github.com/intel/tinycbor.git
+            GIT_TAG ${TINYCBOR_TAG}
             # the fd redirection here fails when the build run inside Cargo.
             # patch from upstream:
             # https://github.com/intel/tinycbor/commit/6176e0a28d7c5ef3a5e9cbd02521999c412de72c
