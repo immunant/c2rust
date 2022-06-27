@@ -23,7 +23,7 @@ newtype_index!(
 pub const _ROOT_NODE: NodeId = NodeId::from_u32(0);
 
 /// A pointer derivation graph, which tracks the handling of one object throughout its lifetime.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Eq, PartialEq, Hash, Clone)]
 pub struct Graph {
     /// The nodes in the graph.  Nodes are stored in increasing order by timestamp.  The first
     /// node, called the "root node", creates the object described by this graph, and all other
@@ -39,6 +39,7 @@ impl Graph {
     }
 }
 
+#[derive(Eq, PartialEq, Hash, Clone)]
 pub struct Func(pub DefPathHash);
 
 impl Debug for Func {
@@ -55,7 +56,7 @@ impl Debug for Func {
 /// Each operation occurs at a point in time, but the timestamp is not stored explicitly.  Instead,
 /// nodes in each graph are stored in sequential order, and timing relationships can be identified
 /// by comparing `NodeId`s.
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct Node {
     /// The function that contains this operation.
     ///
@@ -82,7 +83,7 @@ pub struct Node {
     pub source: Option<NodeId>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum NodeKind {
     /// A copy from one local to another.  This also covers casts such as `&mut T` to `&T` or `&T`
     /// to `*const T` that don't change the type or value of the pointer.
@@ -129,7 +130,7 @@ pub enum NodeKind {
 }
 
 /// A collection of graphs describing the handling of one or more objects within the program.
-#[derive(Default)]
+#[derive(Default, Eq, PartialEq)]
 pub struct Graphs {
     /// The graphs.  Each graph describes one object, or one group of objects that were all handled
     /// identically.

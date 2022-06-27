@@ -298,6 +298,7 @@ dependencies = [
  "env_logger",
  "fs-err",
  "indexed_vec",
+ "itertools",
  "log",
  "serde",
 ]

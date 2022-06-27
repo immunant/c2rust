@@ -19,6 +19,8 @@ extern crate rustc_target;
 
 mod builder;
 mod graph;
+mod assert;
+mod util;
 
 use builder::{construct_pdg, read_event_log};
 use c2rust_analysis_rt::{mir_loc, Runtime};
@@ -36,20 +38,22 @@ fn main() -> eyre::Result<()> {
         .expect("Expected event trace file path as the first argument");
     let events = read_event_log(Path::new(event_trace_path.as_str()))?;
 
-    for event in &events {
-        let mir_loc = mir_loc::get(event.mir_loc).unwrap();
-        let kind = &event.kind;
-        println!("{mir_loc:?} -> {kind:?}");
-    }
+    // for event in &events {
+    //     let mir_loc = mir_loc::get(event.mir_loc).unwrap();
+    //     let kind = &event.kind;
+    //     println!("{mir_loc:?} -> {kind:?}");
+    // }
 
     let pdg = construct_pdg(&events);
-    for (g, graph) in pdg.graphs.iter().enumerate() {
-        println!("-- Object {g:?} ---");
-        for (n, node) in graph.nodes.iter().enumerate() {
-            println!("{n:?}:{node:?}");
-        }
-        println!();
-    }
+    // for (g, graph) in pdg.graphs.iter().enumerate() {
+    //     println!("-- Object {g:?} ---");
+    //     for (n, node) in graph.nodes.iter().enumerate() {
+    //         println!("{n:?}:{node:?}");
+    //     }
+    //     println!();
+    // }
+
+    pdg.assert_all_tests();
 
     Ok(())
 }
