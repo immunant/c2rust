@@ -16,6 +16,7 @@ dnf install --quiet --assumeyes \
     clang-devel \
     cmake \
     diffutils \
+    git \
     libquadmath-devel \
     llvm-devel \
     make \

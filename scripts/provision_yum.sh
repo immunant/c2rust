@@ -13,7 +13,7 @@ fi
 # required to install ninja-build
 yum install --quiet --assumeyes epel-release
 # NOTE: CentOS version of cmake is too old
-yum install --quiet --assumeyes which ninja-build make cmake libquadmath-devel strace
+yum install --quiet --assumeyes which git ninja-build make cmake libquadmath-devel strace
 
 yum install --quiet --assumeyes luarocks
 
