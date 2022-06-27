@@ -21,6 +21,7 @@ mod builder;
 mod graph;
 mod assert;
 mod util;
+mod query;
 
 use builder::{construct_pdg, read_event_log};
 use c2rust_analysis_rt::{mir_loc, Runtime};
@@ -53,7 +54,14 @@ fn main() -> eyre::Result<()> {
     //     println!();
     // }
 
-    pdg.assert_all_tests();
+    // pdg.assert_all_tests();
+
+    for graph in pdg.graphs {
+        let needs_write = graph.needs_write_permission().collect::<Vec<_>>();
+        println!("{graph}");
+        println!("needs_write = {needs_write:?}");
+        println!("___________________________________________");
+    }
 
     Ok(())
 }
