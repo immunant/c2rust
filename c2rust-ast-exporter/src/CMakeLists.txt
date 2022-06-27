@@ -4,17 +4,22 @@ project(ASTExporter)
 #################################################
 # TinyCBOR                                      #
 #################################################
-set(TINYCBOR_URL "https://github.com/intel/tinycbor/archive/v0.6.0.tar.gz"
-    CACHE STRING "tinycbor download URL")
-set(TINYCBOR_MD5 "3663e683dbf03f49cb7057ed316a7563" CACHE STRING "tinycbor archive md5 sum")
+
+set(TINYCBOR_REPO "https://github.com/intel/tinycbor.git" CACHE STRING "tinycbor git repo URL")
+
+# v0.6.3 tag, but using the commit hash instead (of the tarball hash) for integrity checks
+# unlike a .tar.gz MD5 hash, this SHA-1 commit hash should stay stable regardless of compression/archiving
+# (GitHub has changed this), and still retains the integrity check
+set(TINYCBOR_TAG "d393c16f3eb30d0c47e6f9d92db62272f0ec4dc7" CACHE STRING "tinycbor git tag/branch/commit hash")
+
 set(TINYCBOR_PREFIX "${CMAKE_BINARY_DIR}/tinycbor" CACHE STRING "tinycbor install prefix")
 
 include(ExternalProject)
 ExternalProject_Add(tinycbor_build
             PREFIX ${TINYCBOR_PREFIX}
             INSTALL_DIR ${CMAKE_BINARY_DIR}
-            URL ${TINYCBOR_URL}
-            URL_HASH MD5=${TINYCBOR_MD5}
+            GIT_REPOSITORY ${TINYCBOR_REPO}
+            GIT_TAG ${TINYCBOR_TAG}
             # the fd redirection here fails when the build run inside Cargo.
             # patch from upstream:
             # https://github.com/intel/tinycbor/commit/6176e0a28d7c5ef3a5e9cbd02521999c412de72c
