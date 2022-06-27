@@ -3,9 +3,29 @@ use itertools::Itertools;
 use std::{
     cmp::min,
     collections::HashMap,
-    fmt::{self, Debug, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     hash::Hash,
 };
+
+pub struct ShortOption<T>(pub Option<T>);
+
+impl<T: Display> Display for ShortOption<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Some(this) => write!(f, "{}", this),
+            None => write!(f, "_"),
+        }
+    }
+}
+
+impl<T: Debug> Debug for ShortOption<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Some(this) => write!(f, "{:?}", this),
+            None => write!(f, "_"),
+        }
+    }
+}
 
 pub fn maybe_take<T>(iter: impl Iterator<Item = T>, n: Option<usize>) -> impl Iterator<Item = T> {
     iter.enumerate()
@@ -39,8 +59,13 @@ impl<T> Duplicates<T> {
     }
 }
 
-impl<T: Debug> Duplicates<T> {
-    pub fn fmt_up_to_n(&self, f: &mut Formatter<'_>, n: Option<usize>) -> fmt::Result {
+impl<T> Duplicates<T> {
+    pub fn fmt_up_to_n(
+        &self,
+        f: &mut Formatter<'_>,
+        n: Option<usize>,
+        to_string: impl Fn(&T) -> String,
+    ) -> fmt::Result {
         let num_remaining = |len: usize| {
             let num_printed = match n {
                 Some(n) => min(n, len),
@@ -53,7 +78,7 @@ impl<T: Debug> Duplicates<T> {
         for (_, duplicates) in maybe_take(self.duplicates.iter(), n) {
             let duplicates = duplicates
                 .iter()
-                .map(|e| format!("{:?}", e))
+                .map(|t| to_string(t))
                 .counts()
                 .into_iter()
                 .map(|(duplicate, count)| match count {
@@ -71,15 +96,30 @@ impl<T: Debug> Duplicates<T> {
 
 impl<T: Debug> Debug for Duplicates<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.fmt_up_to_n(f, 10.into())
+        self.fmt_up_to_n(f, 10.into(), |t| format!("{t:?}"))
+    }
+}
+
+impl<T: Display> Display for Duplicates<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.fmt_up_to_n(f, 10.into(), |t| format!("{t}"))
     }
 }
 
 impl<T: Debug + Eq + Hash> Duplicates<T> {
-    pub fn assert_empty(&self) {
+    pub fn assert_empty_debug(&self) {
         if self.is_empty() {
             return;
         }
         panic!("unexpected duplicates: {:?}", self);
+    }
+}
+
+impl<T: Display + Eq + Hash> Duplicates<T> {
+    pub fn assert_empty(&self) {
+        if self.is_empty() {
+            return;
+        }
+        panic!("unexpected duplicates: {}", self);
     }
 }

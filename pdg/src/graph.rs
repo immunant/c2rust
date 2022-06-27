@@ -4,10 +4,13 @@ use rustc_index::newtype_index;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BasicBlock, Field, Local};
 use rustc_span::def_id::DefPathHash;
+use std::fmt::Display;
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Formatter},
 };
+
+use crate::util::ShortOption;
 
 newtype_index!(
     /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
@@ -152,5 +155,70 @@ impl Graphs {
 impl Debug for Graphs {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{:?}", self.graphs)
+    }
+}
+
+impl Display for NodeId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "node {}", self.as_usize())
+    }
+}
+
+/// [`Node`] for [`Display`]ing using a [`Debug`] representation.
+#[derive(Debug)]
+pub struct DisplayNode<'a> {
+    func: &'a Func,
+    bb: &'a BasicBlock,
+    index_in_bb: &'a usize,
+    kind: &'a NodeKind,
+    src: ShortOption<&'a NodeId>,
+    dest: ShortOption<&'a MirPlace>,
+}
+
+impl Node {
+    pub fn display<'a>(&'a self) -> DisplayNode<'a> {
+        DisplayNode {
+            func: &self.function,
+            bb: &self.block,
+            index_in_bb: &self.index,
+            kind: &self.kind,
+            src: ShortOption(self.source.as_ref()),
+            dest: ShortOption(self.dest.as_ref()),
+        }
+    }
+}
+
+impl Display for DisplayNode<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl Display for Node {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.display())
+    }
+}
+
+impl Display for Graph {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "graph {{\n")?;
+        for (node_id, node) in self.nodes.iter_enumerated() {
+            write!(f, "\t{node_id}: {node}\n")?;
+        }
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+impl Display for Graphs {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        for (i, graph) in self.graphs.iter().enumerate() {
+            if i != 0 {
+                write!(f, "\n\n")?;
+            }
+            write!(f, "{graph}")?;
+        }
+        Ok(())
     }
 }
