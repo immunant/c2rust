@@ -1184,6 +1184,13 @@ pub enum ConvertedDecl {
     NoItem,
 }
 
+#[derive(Debug)]
+struct ConvertedVariable {
+    pub ty: Box<Type>,
+    pub mutbl: Mutability,
+    pub init: TranslationResult<WithStmts<Box<Expr>>>,
+}
+
 /// Args for [`Translation::convert_function`].
 struct ConvertFunctionArgs<'a> {
     span: Span,
@@ -2008,7 +2015,8 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .get(&decl_id)
                     .expect("Variables should already be renamed");
-                let (ty, mutbl, _) = self.convert_variable(ctx.static_(), None, typ)?;
+                let ConvertedVariable { ty, mutbl, init: _ } =
+                    self.convert_variable(ctx.static_(), None, typ)?;
                 // When putting extern statics into submodules, they need to be public to be accessible
                 let visibility = if self.tcfg.reorganize_definitions {
                     "pub"
@@ -2063,7 +2071,7 @@ impl<'c> Translation<'c> {
                 let (ty, init) = if self.static_initializer_is_uncompilable(initializer, typ) {
                     // Note: We don't pass has_static_duration through here. Extracted initializers
                     // are run outside of the static initializer.
-                    let (ty, _, init) =
+                    let ConvertedVariable { ty, mutbl: _, init } =
                         self.convert_variable(ctx.not_static(), initializer, typ)?;
 
                     let mut init = init?.to_expr();
@@ -2089,7 +2097,8 @@ impl<'c> Translation<'c> {
 
                     (ty, init)
                 } else {
-                    let (ty, _, init) = self.convert_variable(ctx.static_(), initializer, typ)?;
+                    let ConvertedVariable { ty, mutbl: _, init } =
+                        self.convert_variable(ctx.static_(), initializer, typ)?;
                     let mut init = init?;
                     // TODO: Replace this by relying entirely on
                     // WithStmts.is_unsafe() of the translated variable
@@ -2270,7 +2279,8 @@ impl<'c> Translation<'c> {
 
             // handle regular (non-variadic) arguments
             for &(decl_id, ref var, typ) in arguments {
-                let (ty, mutbl, _) = self.convert_variable(ctx, None, typ)?;
+                let ConvertedVariable { ty, mutbl, init: _ } =
+                    self.convert_variable(ctx, None, typ)?;
 
                 let pat = if var.is_empty() {
                     mk().wild_pat()
@@ -2665,7 +2675,8 @@ impl<'c> Translation<'c> {
                             "Unable to rename function scoped static initializer",
                         )
                     })?;
-                let (ty, _, init) = self.convert_variable(ctx.static_(), initializer, typ)?;
+                let ConvertedVariable { ty, mutbl: _, init } =
+                    self.convert_variable(ctx.static_(), initializer, typ)?;
                 let default_init = self.implicit_default_expr(typ.ctype, true)?.to_expr();
                 let comment = String::from("// Initialized in run_static_initializers");
                 let span = self
@@ -2736,7 +2747,8 @@ impl<'c> Translation<'c> {
 
                 let mut stmts = self.compute_variable_array_sizes(ctx, typ.ctype)?;
 
-                let (ty, mutbl, init) = self.convert_variable(ctx, initializer, typ)?;
+                let ConvertedVariable { ty, mutbl, init } =
+                    self.convert_variable(ctx, initializer, typ)?;
                 let mut init = init?;
 
                 stmts.append(init.stmts_mut());
@@ -2933,12 +2945,8 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         initializer: Option<CExprId>,
         typ: CQualTypeId,
-    ) -> TranslationResult<(
-        Box<Type>,
-        Mutability,
-        TranslationResult<WithStmts<Box<Expr>>>,
-    )> {
-        let init = match initializer {
+    ) -> TranslationResult<ConvertedVariable> {
+        let initializer = match initializer {
             Some(x) => self.convert_expr(ctx.used(), x),
             None => self.implicit_default_expr(typ.ctype, ctx.is_static),
         };
@@ -2957,13 +2965,17 @@ impl<'c> Translation<'c> {
             self.convert_type(typ.ctype)?
         };
 
-        let mutbl = if typ.qualifiers.is_const {
+        let mutability = if typ.qualifiers.is_const {
             Mutability::Immutable
         } else {
             Mutability::Mutable
         };
 
-        Ok((ty, mutbl, init))
+        Ok(ConvertedVariable {
+            ty,
+            mutbl: mutability,
+            init: initializer,
+        })
     }
 
     fn convert_type(&self, type_id: CTypeId) -> TranslationResult<Box<Type>> {
