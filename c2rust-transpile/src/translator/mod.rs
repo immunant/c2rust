@@ -3606,8 +3606,10 @@ impl<'c> Translation<'c> {
                         ))
                     })
                 } else {
-                    self.name_reference_write_read(ctx, lhs)?
-                        .result_map(|NamedReference {rvalue: lhs_val, ..}| {
+                    self.name_reference_write_read(ctx, lhs)?.result_map(
+                        |NamedReference {
+                             rvalue: lhs_val, ..
+                         }| {
                             let cond = self.match_bool(true, ty.ctype, lhs_val.clone());
                             let ite = mk().ifte_expr(
                                 cond,
@@ -3615,7 +3617,8 @@ impl<'c> Translation<'c> {
                                 Some(self.convert_expr(ctx, rhs)?.to_expr()),
                             );
                             Ok(ite)
-                        })
+                        },
+                    )
                 }
             }
 

@@ -5,8 +5,8 @@
 use std::collections::HashSet;
 use std::ops::Index;
 
-use super::TranslationError;
 use super::named_references::NamedReference;
+use super::TranslationError;
 use crate::c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId};
 use crate::diagnostics::TranslationResult;
 use crate::translator::{ExprContext, Translation, PADDING_SUFFIX};
@@ -711,101 +711,112 @@ impl<'a> Translation<'a> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let ctx = ctx.set_bitfield_write(true);
         let named_reference = self.name_reference_write_read(ctx, lhs)?;
-        named_reference.and_then(|NamedReference { lvalue: lhs_expr, .. }| {
-            let field_name = self
-                .type_converter
-                .borrow()
-                .resolve_field_name(None, field_id)
-                .ok_or("Could not find bitfield name")?;
-            let setter_name = format!("set_{}", field_name);
-            let lhs_expr_read =
-                mk().method_call_expr(lhs_expr.clone(), field_name, Vec::<Box<Expr>>::new());
-            // Allow the value of this assignment to be used as the RHS of other assignments
-            let val = lhs_expr_read.clone();
-            let param_expr = match op {
-                BinOp::AssignAdd => {
-                    mk().binary_expr(RBinOp::Add(Default::default()), lhs_expr_read, rhs_expr)
-                }
-                BinOp::AssignSubtract => {
-                    mk().binary_expr(RBinOp::Sub(Default::default()), lhs_expr_read, rhs_expr)
-                }
-                BinOp::AssignMultiply => {
-                    mk().binary_expr(RBinOp::Mul(Default::default()), lhs_expr_read, rhs_expr)
-                }
-                BinOp::AssignDivide => {
-                    mk().binary_expr(RBinOp::Div(Default::default()), lhs_expr_read, rhs_expr)
-                }
-                BinOp::AssignModulus => {
-                    mk().binary_expr(RBinOp::Rem(Default::default()), lhs_expr_read, rhs_expr)
-                }
-                BinOp::AssignBitXor => {
-                    mk().binary_expr(RBinOp::BitXor(Default::default()), lhs_expr_read, rhs_expr)
-                }
-                BinOp::AssignShiftLeft => {
-                    mk().binary_expr(RBinOp::Shl(Default::default()), lhs_expr_read, rhs_expr)
-                }
-                BinOp::AssignShiftRight => {
-                    mk().binary_expr(RBinOp::Shr(Default::default()), lhs_expr_read, rhs_expr)
-                }
-                BinOp::AssignBitOr => {
-                    mk().binary_expr(RBinOp::BitOr(Default::default()), lhs_expr_read, rhs_expr)
-                }
-                BinOp::AssignBitAnd => {
-                    mk().binary_expr(RBinOp::BitAnd(Default::default()), lhs_expr_read, rhs_expr)
-                }
-                BinOp::Assign => rhs_expr,
-                _ => panic!("Cannot convert non-assignment operator"),
-            };
+        named_reference.and_then(
+            |NamedReference {
+                 lvalue: lhs_expr, ..
+             }| {
+                let field_name = self
+                    .type_converter
+                    .borrow()
+                    .resolve_field_name(None, field_id)
+                    .ok_or("Could not find bitfield name")?;
+                let setter_name = format!("set_{}", field_name);
+                let lhs_expr_read =
+                    mk().method_call_expr(lhs_expr.clone(), field_name, Vec::<Box<Expr>>::new());
+                // Allow the value of this assignment to be used as the RHS of other assignments
+                let val = lhs_expr_read.clone();
+                let param_expr = match op {
+                    BinOp::AssignAdd => {
+                        mk().binary_expr(RBinOp::Add(Default::default()), lhs_expr_read, rhs_expr)
+                    }
+                    BinOp::AssignSubtract => {
+                        mk().binary_expr(RBinOp::Sub(Default::default()), lhs_expr_read, rhs_expr)
+                    }
+                    BinOp::AssignMultiply => {
+                        mk().binary_expr(RBinOp::Mul(Default::default()), lhs_expr_read, rhs_expr)
+                    }
+                    BinOp::AssignDivide => {
+                        mk().binary_expr(RBinOp::Div(Default::default()), lhs_expr_read, rhs_expr)
+                    }
+                    BinOp::AssignModulus => {
+                        mk().binary_expr(RBinOp::Rem(Default::default()), lhs_expr_read, rhs_expr)
+                    }
+                    BinOp::AssignBitXor => mk().binary_expr(
+                        RBinOp::BitXor(Default::default()),
+                        lhs_expr_read,
+                        rhs_expr,
+                    ),
+                    BinOp::AssignShiftLeft => {
+                        mk().binary_expr(RBinOp::Shl(Default::default()), lhs_expr_read, rhs_expr)
+                    }
+                    BinOp::AssignShiftRight => {
+                        mk().binary_expr(RBinOp::Shr(Default::default()), lhs_expr_read, rhs_expr)
+                    }
+                    BinOp::AssignBitOr => {
+                        mk().binary_expr(RBinOp::BitOr(Default::default()), lhs_expr_read, rhs_expr)
+                    }
+                    BinOp::AssignBitAnd => mk().binary_expr(
+                        RBinOp::BitAnd(Default::default()),
+                        lhs_expr_read,
+                        rhs_expr,
+                    ),
+                    BinOp::Assign => rhs_expr,
+                    _ => panic!("Cannot convert non-assignment operator"),
+                };
 
-            let mut stmts = vec![];
+                let mut stmts = vec![];
 
-            // If there's just one statement we should be able to be able to fit it into one line without issue
-            // If there's a block we can flatten it into the current scope, and if the expr contains a block it's
-            // likely complex enough to warrant putting it into a temporary variable to avoid borrowing issues
-            match *param_expr {
-                Expr::Block(ExprBlock { block, .. }) => {
-                    let last = block.stmts.len() - 1;
+                // If there's just one statement we should be able to be able to fit it into one line without issue
+                // If there's a block we can flatten it into the current scope, and if the expr contains a block it's
+                // likely complex enough to warrant putting it into a temporary variable to avoid borrowing issues
+                match *param_expr {
+                    Expr::Block(ExprBlock { block, .. }) => {
+                        let last = block.stmts.len() - 1;
 
-                    for (i, stmt) in block.stmts.iter().enumerate() {
-                        if i == last {
-                            break;
+                        for (i, stmt) in block.stmts.iter().enumerate() {
+                            if i == last {
+                                break;
+                            }
+
+                            stmts.push(stmt.clone());
                         }
 
-                        stmts.push(stmt.clone());
+                        let last_expr = match block.stmts[last] {
+                            Stmt::Expr(ref expr) => expr.clone(),
+                            _ => return Err(TranslationError::generic("Expected Expr Stmt")),
+                        };
+                        let method_call =
+                            mk().method_call_expr(lhs_expr, setter_name, vec![Box::new(last_expr)]);
+
+                        stmts.push(mk().semi_stmt(method_call));
                     }
+                    _ if contains_block(&param_expr) => {
+                        let name = self.renamer.borrow_mut().pick_name("rhs");
+                        let name_ident = mk().mutbl().ident_pat(name.clone());
+                        let temporary_stmt = mk().local(
+                            name_ident,
+                            None as Option<Box<Type>>,
+                            Some(param_expr.clone()),
+                        );
+                        let assignment_expr = mk().method_call_expr(
+                            lhs_expr,
+                            setter_name,
+                            vec![mk().ident_expr(name)],
+                        );
 
-                    let last_expr = match block.stmts[last] {
-                        Stmt::Expr(ref expr) => expr.clone(),
-                        _ => return Err(TranslationError::generic("Expected Expr Stmt")),
-                    };
-                    let method_call =
-                        mk().method_call_expr(lhs_expr, setter_name, vec![Box::new(last_expr)]);
+                        stmts.push(mk().local_stmt(Box::new(temporary_stmt)));
+                        stmts.push(mk().semi_stmt(assignment_expr));
+                    }
+                    _ => {
+                        let assignment_expr =
+                            mk().method_call_expr(lhs_expr, setter_name, vec![param_expr.clone()]);
 
-                    stmts.push(mk().semi_stmt(method_call));
-                }
-                _ if contains_block(&param_expr) => {
-                    let name = self.renamer.borrow_mut().pick_name("rhs");
-                    let name_ident = mk().mutbl().ident_pat(name.clone());
-                    let temporary_stmt = mk().local(
-                        name_ident,
-                        None as Option<Box<Type>>,
-                        Some(param_expr.clone()),
-                    );
-                    let assignment_expr =
-                        mk().method_call_expr(lhs_expr, setter_name, vec![mk().ident_expr(name)]);
+                        stmts.push(mk().semi_stmt(assignment_expr));
+                    }
+                };
 
-                    stmts.push(mk().local_stmt(Box::new(temporary_stmt)));
-                    stmts.push(mk().semi_stmt(assignment_expr));
-                }
-                _ => {
-                    let assignment_expr =
-                        mk().method_call_expr(lhs_expr, setter_name, vec![param_expr.clone()]);
-
-                    stmts.push(mk().semi_stmt(assignment_expr));
-                }
-            };
-
-            Ok(WithStmts::new(stmts, val))
-        })
+                Ok(WithStmts::new(stmts, val))
+            },
+        )
     }
 }

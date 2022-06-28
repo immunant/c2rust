@@ -433,145 +433,159 @@ impl<'c> Translation<'c> {
         };
 
         rhs_translation.and_then(|rhs| {
-            lhs_translation.and_then(|NamedReference { lvalue: write, rvalue: read }| {
-                // Assignment expression itself
-                use c_ast::BinOp::*;
-                let assign_stmt = match op {
-                    // Regular (possibly volatile) assignment
-                    Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(&write, rhs)),
-                    Assign => {
-                        WithStmts::new_val(self.volatile_write(&write, initial_lhs_type_id, rhs)?)
-                    }
+            lhs_translation.and_then(
+                |NamedReference {
+                     lvalue: write,
+                     rvalue: read,
+                 }| {
+                    // Assignment expression itself
+                    use c_ast::BinOp::*;
+                    let assign_stmt = match op {
+                        // Regular (possibly volatile) assignment
+                        Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(&write, rhs)),
+                        Assign => WithStmts::new_val(self.volatile_write(
+                            &write,
+                            initial_lhs_type_id,
+                            rhs,
+                        )?),
 
-                    // Anything volatile needs to be desugared into explicit reads and writes
-                    op if is_volatile || is_unsigned_arith => {
-                        let mut is_unsafe = false;
-                        let op = op
-                            .underlying_assignment()
-                            .expect("Cannot convert non-assignment operator");
+                        // Anything volatile needs to be desugared into explicit reads and writes
+                        op if is_volatile || is_unsigned_arith => {
+                            let mut is_unsafe = false;
+                            let op = op
+                                .underlying_assignment()
+                                .expect("Cannot convert non-assignment operator");
 
-                        let val = if compute_lhs_type_id.ctype == initial_lhs_type_id.ctype {
-                            self.convert_binary_operator(
-                                ctx,
-                                ConvertBinaryOperatorArgs {
-                                    op,
-                                    ty,
-                                    ctype: qtype.ctype,
-                                    lhs_type: initial_lhs_type_id,
-                                    rhs_type: rhs_type_id,
-                                    lhs: read.clone(),
-                                    rhs,
-                                    lhs_rhs_ids: None,
-                                },
-                            )?
-                        } else {
-                            let lhs_type = self.convert_type(compute_type.unwrap().ctype)?;
-                            let write_type = self.convert_type(qtype.ctype)?;
-                            let lhs = mk().cast_expr(read.clone(), lhs_type.clone());
-                            let ty = self.convert_type(result_type_id.ctype)?;
-                            let val = self.convert_binary_operator(
-                                ctx,
-                                ConvertBinaryOperatorArgs {
-                                    op,
-                                    ty,
-                                    ctype: result_type_id.ctype,
-                                    lhs_type: compute_lhs_type_id,
-                                    rhs_type: rhs_type_id,
-                                    lhs,
-                                    rhs,
-                                    lhs_rhs_ids: None,
-                                },
-                            )?;
-
-                            let is_enum_result = self.ast_context
-                                [self.ast_context.resolve_type_id(qtype.ctype)]
-                            .kind
-                            .is_enum();
-                            let result_type = self.convert_type(qtype.ctype)?;
-                            let val = if is_enum_result {
-                                is_unsafe = true;
-                                transmute_expr(lhs_type, result_type, val, self.tcfg.emit_no_std)
+                            let val = if compute_lhs_type_id.ctype == initial_lhs_type_id.ctype {
+                                self.convert_binary_operator(
+                                    ctx,
+                                    ConvertBinaryOperatorArgs {
+                                        op,
+                                        ty,
+                                        ctype: qtype.ctype,
+                                        lhs_type: initial_lhs_type_id,
+                                        rhs_type: rhs_type_id,
+                                        lhs: read.clone(),
+                                        rhs,
+                                        lhs_rhs_ids: None,
+                                    },
+                                )?
                             } else {
-                                mk().cast_expr(val, result_type)
+                                let lhs_type = self.convert_type(compute_type.unwrap().ctype)?;
+                                let write_type = self.convert_type(qtype.ctype)?;
+                                let lhs = mk().cast_expr(read.clone(), lhs_type.clone());
+                                let ty = self.convert_type(result_type_id.ctype)?;
+                                let val = self.convert_binary_operator(
+                                    ctx,
+                                    ConvertBinaryOperatorArgs {
+                                        op,
+                                        ty,
+                                        ctype: result_type_id.ctype,
+                                        lhs_type: compute_lhs_type_id,
+                                        rhs_type: rhs_type_id,
+                                        lhs,
+                                        rhs,
+                                        lhs_rhs_ids: None,
+                                    },
+                                )?;
+
+                                let is_enum_result = self.ast_context
+                                    [self.ast_context.resolve_type_id(qtype.ctype)]
+                                .kind
+                                .is_enum();
+                                let result_type = self.convert_type(qtype.ctype)?;
+                                let val = if is_enum_result {
+                                    is_unsafe = true;
+                                    transmute_expr(
+                                        lhs_type,
+                                        result_type,
+                                        val,
+                                        self.tcfg.emit_no_std,
+                                    )
+                                } else {
+                                    mk().cast_expr(val, result_type)
+                                };
+                                mk().cast_expr(val, write_type)
                             };
-                            mk().cast_expr(val, write_type)
-                        };
 
-                        let write = if is_volatile {
-                            self.volatile_write(&write, initial_lhs_type_id, val)?
-                        } else {
-                            mk().assign_expr(write, val)
-                        };
-                        if is_unsafe {
-                            WithStmts::new_unsafe_val(write)
-                        } else {
-                            WithStmts::new_val(write)
-                        }
-                    }
-
-                    // Everything else
-                    AssignAdd if pointer_lhs.is_some() => {
-                        let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
-                        let ptr = pointer_offset(write.clone(), rhs, mul, false, false);
-                        WithStmts::new_val(mk().assign_expr(&write, ptr))
-                    }
-                    AssignSubtract if pointer_lhs.is_some() => {
-                        let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
-                        let ptr = pointer_offset(write.clone(), rhs, mul, true, false);
-                        WithStmts::new_val(mk().assign_expr(&write, ptr))
-                    }
-
-                    _ => {
-                        if let (AssignAdd | AssignSubtract, Some(pointer_lhs)) = (op, pointer_lhs) {
-                            let mul = self.compute_size_of_expr(pointer_lhs.ctype);
-                            let ptr = pointer_offset(
-                                write.clone(),
-                                rhs,
-                                mul,
-                                op == AssignSubtract,
-                                false,
-                            );
-                            WithStmts::new_val(mk().assign_expr(&write, ptr))
-                        } else {
-                            fn eq<Token: Default, F: Fn(Token) -> BinOp>(f: F) -> BinOp {
-                                f(Default::default())
+                            let write = if is_volatile {
+                                self.volatile_write(&write, initial_lhs_type_id, val)?
+                            } else {
+                                mk().assign_expr(write, val)
+                            };
+                            if is_unsafe {
+                                WithStmts::new_unsafe_val(write)
+                            } else {
+                                WithStmts::new_val(write)
                             }
-
-                            let (bin_op, bin_op_kind) = match op {
-                                AssignAdd => (Add, eq(BinOp::AddEq)),
-                                AssignSubtract => (Subtract, eq(BinOp::SubEq)),
-                                AssignMultiply => (Multiply, eq(BinOp::MulEq)),
-                                AssignDivide => (Divide, eq(BinOp::DivEq)),
-                                AssignModulus => (Modulus, eq(BinOp::RemEq)),
-                                AssignBitXor => (BitXor, eq(BinOp::BitXorEq)),
-                                AssignShiftLeft => (ShiftLeft, eq(BinOp::ShlEq)),
-                                AssignShiftRight => (ShiftRight, eq(BinOp::ShrEq)),
-                                AssignBitOr => (BitOr, eq(BinOp::BitOrEq)),
-                                AssignBitAnd => (BitAnd, eq(BinOp::BitAndEq)),
-                                _ => panic!("Cannot convert non-assignment operator"),
-                            };
-                            self.convert_assignment_operator_aux(
-                                ctx,
-                                bin_op_kind,
-                                bin_op,
-                                ConvertAssignmentOperatorAuxArgs {
-                                    read: read.clone(),
-                                    write,
-                                    rhs,
-                                    compute_lhs_ty: compute_type,
-                                    compute_res_ty: result_type,
-                                    lhs_ty: qtype,
-                                    rhs_ty: rhs_type_id,
-                                },
-                            )?
                         }
-                    }
-                };
 
-                assign_stmt.and_then(|assign_stmt| {
-                    Ok(WithStmts::new(vec![mk().semi_stmt(assign_stmt)], read))
-                })
-            })
+                        // Everything else
+                        AssignAdd if pointer_lhs.is_some() => {
+                            let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
+                            let ptr = pointer_offset(write.clone(), rhs, mul, false, false);
+                            WithStmts::new_val(mk().assign_expr(&write, ptr))
+                        }
+                        AssignSubtract if pointer_lhs.is_some() => {
+                            let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
+                            let ptr = pointer_offset(write.clone(), rhs, mul, true, false);
+                            WithStmts::new_val(mk().assign_expr(&write, ptr))
+                        }
+
+                        _ => {
+                            if let (AssignAdd | AssignSubtract, Some(pointer_lhs)) =
+                                (op, pointer_lhs)
+                            {
+                                let mul = self.compute_size_of_expr(pointer_lhs.ctype);
+                                let ptr = pointer_offset(
+                                    write.clone(),
+                                    rhs,
+                                    mul,
+                                    op == AssignSubtract,
+                                    false,
+                                );
+                                WithStmts::new_val(mk().assign_expr(&write, ptr))
+                            } else {
+                                fn eq<Token: Default, F: Fn(Token) -> BinOp>(f: F) -> BinOp {
+                                    f(Default::default())
+                                }
+
+                                let (bin_op, bin_op_kind) = match op {
+                                    AssignAdd => (Add, eq(BinOp::AddEq)),
+                                    AssignSubtract => (Subtract, eq(BinOp::SubEq)),
+                                    AssignMultiply => (Multiply, eq(BinOp::MulEq)),
+                                    AssignDivide => (Divide, eq(BinOp::DivEq)),
+                                    AssignModulus => (Modulus, eq(BinOp::RemEq)),
+                                    AssignBitXor => (BitXor, eq(BinOp::BitXorEq)),
+                                    AssignShiftLeft => (ShiftLeft, eq(BinOp::ShlEq)),
+                                    AssignShiftRight => (ShiftRight, eq(BinOp::ShrEq)),
+                                    AssignBitOr => (BitOr, eq(BinOp::BitOrEq)),
+                                    AssignBitAnd => (BitAnd, eq(BinOp::BitAndEq)),
+                                    _ => panic!("Cannot convert non-assignment operator"),
+                                };
+                                self.convert_assignment_operator_aux(
+                                    ctx,
+                                    bin_op_kind,
+                                    bin_op,
+                                    ConvertAssignmentOperatorAuxArgs {
+                                        read: read.clone(),
+                                        write,
+                                        rhs,
+                                        compute_lhs_ty: compute_type,
+                                        compute_res_ty: result_type,
+                                        lhs_ty: qtype,
+                                        rhs_ty: rhs_type_id,
+                                    },
+                                )?
+                            }
+                        }
+                    };
+
+                    assign_stmt.and_then(|assign_stmt| {
+                        Ok(WithStmts::new(vec![mk().semi_stmt(assign_stmt)], read))
+                    })
+                },
+            )
         })
     }
 
@@ -855,8 +869,11 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad post inc type"))?;
 
-        self.name_reference_write_read(ctx, arg)?
-            .and_then(|NamedReference { lvalue: write, rvalue: read }| {
+        self.name_reference_write_read(ctx, arg)?.and_then(
+            |NamedReference {
+                 lvalue: write,
+                 rvalue: read,
+             }| {
                 let val_name = self.renamer.borrow_mut().fresh();
                 let save_old_val = mk().local_stmt(Box::new(mk().local(
                     mk().ident_pat(&val_name),
@@ -928,7 +945,8 @@ impl<'c> Translation<'c> {
                     vec![save_old_val, mk().expr_stmt(assign_stmt)],
                     mk().ident_expr(val_name),
                 ))
-            })
+            },
+        )
     }
 
     pub fn convert_unary_operator(
