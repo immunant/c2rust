@@ -168,7 +168,7 @@ fn convert_module_list(
         let is_mod_binary = module_subset == ModuleSubset::Binaries;
         // Don't add binary modules to lib.rs, these are emitted to
         // standalone, separate binary modules.
-        !(is_binary ^ is_mod_binary)
+        is_binary == is_mod_binary
     });
 
     let mut res = vec![];
