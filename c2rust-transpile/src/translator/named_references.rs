@@ -4,6 +4,36 @@
 
 use super::*;
 
+/// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
+fn is_lvalue(e: &Box<Expr>) -> bool {
+    use Expr::*;
+    matches!(
+        unparen(e).as_ref(),
+        Unary(ExprUnary {
+            op: syn::UnOp::Deref(_),
+            ..
+        }) | Path(..)
+            | Field(..)
+            | Index(..)
+    )
+}
+
+/// Check if something is a side-effect free Rust lvalue.
+fn is_simple_lvalue(e: &Box<Expr>) -> bool {
+    use Expr::*;
+    match **unparen(e) {
+        Path(..) => true,
+        Unary(ExprUnary {
+            op: syn::UnOp::Deref(_),
+            ref expr,
+            ..
+        })
+        | Field(ExprField { base: ref expr, .. })
+        | Index(ExprIndex { ref expr, .. }) => is_simple_lvalue(expr),
+        _ => false,
+    }
+}
+
 impl<'c> Translation<'c> {
     /// Get back a Rust lvalue corresponding to the expression passed in.
     ///
@@ -32,6 +62,15 @@ impl<'c> Translation<'c> {
             .map(|ws| ws.map(|(lvalue, rvalue)| (lvalue, rvalue.expect(msg))))
     }
 
+    /// Given the LHS access to a variable, produce the RHS one
+    fn read(&self, reference_ty: CQualTypeId, write: Box<Expr>) -> TranslationResult<Box<Expr>> {
+        if reference_ty.qualifiers.is_volatile {
+            self.volatile_read(&write, reference_ty)
+        } else {
+            Ok(write)
+        }
+    }
+
     /// This function transforms an expression that should refer to a memory location (a C lvalue)
     /// into a Rust lvalue for writing to that location.
     ///
@@ -52,46 +91,9 @@ impl<'c> Translation<'c> {
             .kind
             .get_qual_type()
             .ok_or_else(|| format_err!("bad reference type"))?;
+        let read = |write| self.read(reference_ty, write);
         let reference = self.convert_expr(ctx.used(), reference)?;
         reference.and_then(|reference| {
-            /// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
-            fn is_lvalue(e: &Box<Expr>) -> bool {
-                use Expr::*;
-                matches!(
-                    unparen(e).as_ref(),
-                    Unary(ExprUnary {
-                        op: syn::UnOp::Deref(_),
-                        ..
-                    }) | Path(..)
-                        | Field(..)
-                        | Index(..)
-                )
-            }
-
-            // Check if something is a side-effect free Rust lvalue.
-            fn is_simple_lvalue(e: &Box<Expr>) -> bool {
-                match **unparen(e) {
-                    Expr::Path(..) => true,
-                    Expr::Unary(ExprUnary {
-                        op: syn::UnOp::Deref(_),
-                        ref expr,
-                        ..
-                    })
-                    | Expr::Field(ExprField { base: ref expr, .. })
-                    | Expr::Index(ExprIndex { ref expr, .. }) => is_simple_lvalue(expr),
-                    _ => false,
-                }
-            }
-
-            // Given the LHS access to a variable, produce the RHS one
-            let read = |write: Box<Expr>| -> TranslationResult<Box<Expr>> {
-                if reference_ty.qualifiers.is_volatile {
-                    self.volatile_read(&write, reference_ty)
-                } else {
-                    Ok(write)
-                }
-            };
-
             if !uses_read && is_lvalue(&reference) {
                 Ok(WithStmts::new_val((reference, None)))
             } else if is_simple_lvalue(&reference) {
