@@ -33,9 +33,7 @@ fn main() -> eyre::Result<()> {
     env_logger::init();
     let _runtime = Runtime::new();
 
-    let event_trace_path = env::args()
-        .skip(1)
-        .next()
+    let event_trace_path = env::args().nth(1)
         .expect("Expected event trace file path as the first argument");
     let events = read_event_log(Path::new(event_trace_path.as_str()))?;
 
