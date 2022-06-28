@@ -1,11 +1,11 @@
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::{self, Formatter, Display};
+use std::fmt::Debug;
+use std::fmt::{self, Display, Formatter};
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::RwLock;
-use std::fmt::Debug;
 
 lazy_static! {
     static ref MIR_LOC_FILE_PATH: RwLock<Option<PathBuf>> = RwLock::new(None);
@@ -63,9 +63,10 @@ impl From<u32> for Local {
 
 impl From<usize> for Local {
     fn from(index: usize) -> Self {
-        Self {
-            index: index.try_into().unwrap(),
-        }
+        // Want it to work w/o code changes if I change the underlying type to `u32`.
+        #[allow(clippy::useless_conversion)]
+        let index = index.try_into().unwrap();
+        Self { index }
     }
 }
 
@@ -77,6 +78,8 @@ impl From<Local> for u32 {
 
 impl From<Local> for usize {
     fn from(val: Local) -> Self {
+        // Want it to work w/o code changes if I change the underlying type to `u32`.
+        #[allow(clippy::useless_conversion)]
         val.index.try_into().unwrap()
     }
 }
