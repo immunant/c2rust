@@ -78,9 +78,14 @@ impl<T> Duplicates<T> {
         for (_, duplicates) in maybe_take(self.duplicates.iter(), n) {
             let duplicates = duplicates
                 .iter()
-                .map(|t| to_string(t))
+                .map(
+                    // not redundant; otherwise would require a `Copy` bound
+                    #[allow(clippy::redundant_closure)]
+                    |t| to_string(t),
+                )
                 .counts()
                 .into_iter()
+                .map(|(duplicate, count)| (duplicate.split('\n').join("\n\t"), count))
                 .map(|(duplicate, count)| match count {
                     0 => "".into(),
                     1 => duplicate,
