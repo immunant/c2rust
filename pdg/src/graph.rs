@@ -47,8 +47,14 @@ pub struct Func(pub DefPathHash);
 
 impl Debug for Func {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let x = c2rust_analysis_rt::DefPathHash::from(self.0 .0.as_value());
-        x.fmt(f)
+        let def_path = c2rust_analysis_rt::DefPathHash::from(self.0 .0.as_value());
+        write!(f, "{:?}", def_path)
+    }
+}
+
+impl Display for Func {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
@@ -108,7 +114,7 @@ pub enum NodeKind {
     AddrOfLocal(Local),
     /// Get the address of a static.  These are treated the same as locals, with an
     /// `AddressOfStatic` attributed to the first statement.
-    _AddrOfStatic(DefPathHash),
+    AddrOfStatic(DefPathHash),
     /// Heap allocation.  The `usize` is the number of array elements allocated; for allocations of
     /// a single object, this value is 1.
     Malloc(usize),
@@ -164,39 +170,43 @@ impl Display for NodeId {
     }
 }
 
-/// [`Node`] for [`Display`]ing using a [`Debug`] representation.
-#[derive(Debug)]
-pub struct DisplayNode<'a> {
-    func: &'a Func,
-    bb: &'a BasicBlock,
-    index_in_bb: &'a usize,
-    kind: &'a NodeKind,
-    src: ShortOption<&'a NodeId>,
-    dest: ShortOption<&'a MirPlace>,
-}
-
-impl Node {
-    pub fn display<'a>(&'a self) -> DisplayNode<'a> {
-        DisplayNode {
-            func: &self.function,
-            bb: &self.block,
-            index_in_bb: &self.index,
-            kind: &self.kind,
-            src: ShortOption(self.source.as_ref()),
-            dest: ShortOption(self.dest.as_ref()),
-        }
-    }
-}
-
-impl Display for DisplayNode<'_> {
+impl Display for NodeKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        use NodeKind::*;
+        match self {
+            Copy => write!(f, "copy"),
+            Field(field) => write!(f, "field.{}", field.as_usize()),
+            Offset(offset) => write!(f, "offset[{offset}]"),
+            AddrOfLocal(local) => write!(f, "&local {local:?}"),
+            AddrOfStatic(static_) => write!(f, "&static {static_:?}"),
+            Malloc(n) => write!(f, "malloc {n}"),
+            Free => write!(f, "free"),
+            PtrToInt => write!(f, "ptr_to_int"),
+            IntToPtr => write!(f, "int_to_ptr"),
+            LoadValue => write!(f, "value.load"),
+            StoreValue => write!(f, "value.store"),
+            LoadAddr => write!(f, "addr.load"),
+            StoreAddr => write!(f, "addr.store"),
+        }
     }
 }
 
 impl Display for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.display())
+        let Self {
+            function,
+            block,
+            index,
+            dest,
+            kind,
+            source,
+        } = self;
+        let src = ShortOption(source.as_ref());
+        let dest = ShortOption(dest.as_ref());
+        let bb = block.as_usize();
+        let index_in_bb = index;
+        let fn_ = function;
+        write!(f, "(fn {fn_}) {kind} {{ src: {src}, dest: {dest}, bb: {bb}, bbi: {index_in_bb} }}")
     }
 }
 
@@ -204,7 +214,7 @@ impl Display for Graph {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "graph {{\n")?;
         for (node_id, node) in self.nodes.iter_enumerated() {
-            write!(f, "\t{node_id}: {node}\n")?;
+            write!(f, "\t{node_id}: {node},\n")?;
         }
         write!(f, "}}")?;
         Ok(())

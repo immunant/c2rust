@@ -57,9 +57,9 @@ fn main() -> eyre::Result<()> {
     // pdg.assert_all_tests();
 
     for graph in pdg.graphs {
-        let needs_write = graph.needs_write_permission().collect::<Vec<_>>();
+        let needs_write = graph.needs_write_permission().map(|node_id| node_id.as_usize()).collect::<Vec<_>>();
         println!("{graph}");
-        println!("needs_write = {needs_write:?}");
+        println!("node_that_need_write = {needs_write:?}");
         println!("___________________________________________");
     }
 

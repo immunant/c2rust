@@ -1,10 +1,11 @@
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt;
+use std::fmt::{self, Formatter, Display};
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::RwLock;
+use std::fmt::Debug;
 
 lazy_static! {
     static ref MIR_LOC_FILE_PATH: RwLock<Option<PathBuf>> = RwLock::new(None);
@@ -90,8 +91,8 @@ impl Local {
     }
 }
 
-impl fmt::Debug for Local {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for Local {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "_{}", self.index)
     }
 }
@@ -102,8 +103,8 @@ pub struct MirPlace {
     pub projection: Vec<MirProjection>,
 }
 
-impl fmt::Debug for MirPlace {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for MirPlace {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self.local)?;
         for p in &self.projection {
             write!(f, ".{:?}", p)?;
@@ -112,13 +113,19 @@ impl fmt::Debug for MirPlace {
     }
 }
 
+impl Debug for MirPlace {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 pub type MirLocId = u32;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct DefPathHash(pub u64, pub u64);
 
-impl fmt::Debug for DefPathHash {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Debug for DefPathHash {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
             "{}",
