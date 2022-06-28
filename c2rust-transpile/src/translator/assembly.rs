@@ -453,26 +453,30 @@ fn asm_is_att_syntax(asm: &str) -> bool {
     // Look for syntax directives.
     let intel_directive = asm.find(".intel_syntax");
     let att_directive = asm.find(".att_syntax");
-    if let (Some(intel_pos), Some(att_pos)) = (intel_directive, att_directive) {
-        // Both directives are present; presumably this asm switches to one at
-        // its start and restores the default at the end. Whichever comes first
-        // should be what the asm uses.
-        att_pos < intel_pos
-    } else if intel_directive.is_some() {
-        false
-    } else if att_directive.is_some() {
-        true
-    } else if asm.contains("word ptr") {
-        false
-    } else if asm.contains('$') || asm.contains('%') || asm.contains('(') {
-        // Guess based on sigils used in AT&T assembly:
-        // $ for constants, % for registers, and ( for address calculations
-        true
-    } else if asm.contains('[') {
-        false
-    } else {
-        // default to true, because AT&T is the default for gcc inline asm
-        true
+    match (intel_directive, att_directive) {
+        (Some(intel_pos), Some(att_pos)) => {
+            // Both directives are present; presumably this asm switches to one at
+            // its start and restores the default at the end. Whichever comes first
+            // should be what the asm uses.
+            att_pos < intel_pos
+        }
+        (Some(_intel), None) => false,
+        (None, Some(_att)) => true,
+        (None, None) => {
+            #[allow(clippy::needless_bool)]
+            if asm.contains("word ptr") {
+                false
+            } else if asm.contains('$') || asm.contains('%') || asm.contains('(') {
+                // Guess based on sigils used in AT&T assembly:
+                // $ for constants, % for registers, and ( for address calculations
+                true
+            } else if asm.contains('[') {
+                // default to true, because AT&T is the default for gcc inline asm
+                false
+            } else {
+                true
+            }
+        }
     }
 }
 

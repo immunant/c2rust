@@ -375,27 +375,22 @@ fn vec_expr(val: Box<Expr>, count: Box<Expr>) -> Box<Expr> {
 }
 
 pub fn stmts_block(mut stmts: Vec<Stmt>) -> Box<Block> {
-    if let [Stmt::Expr(Expr::Block(ExprBlock {
-        block, label: None, ..
-    }))] = stmts.as_slice()
-    {
-        return Box::new(block.clone());
-    }
-
-    if !stmts.is_empty() {
-        let n = stmts.len() - 1;
-        let mut s = stmts.remove(n);
-        if let Stmt::Expr(e) = s {
-            s = Stmt::Semi(e, Default::default());
+    match stmts.pop() {
+        None => {}
+        Some(Stmt::Expr(Expr::Block(ExprBlock {
+            block, label: None, ..
+        }))) if stmts.is_empty() => return Box::new(block),
+        Some(mut s) => {
+            if let Stmt::Expr(e) = s {
+                s = Stmt::Semi(e, Default::default());
+            }
+            stmts.push(s);
         }
-        stmts.push(s)
     }
-
     mk().block(stmts)
 }
 
-// Generate link attributes needed to ensure that the generated Rust libraries have the right symbol
-// values.
+/// Generate link attributes needed to ensure that the generated Rust libraries have the right symbol values.
 fn mk_linkage(in_extern_block: bool, new_name: &str, old_name: &str) -> Builder {
     if new_name == old_name {
         if in_extern_block {
@@ -1145,7 +1140,7 @@ fn item_attrs(item: &mut Item) -> Option<&mut Vec<syn::Attribute>> {
 }
 
 /// Unwrap a layer of parenthesization from an Expr, if present
-fn unparen(expr: &Box<Expr>) -> &Box<Expr> {
+pub(crate) fn unparen(expr: &Box<Expr>) -> &Box<Expr> {
     match **expr {
         Expr::Paren(ExprParen { ref expr, .. }) => expr,
         _ => expr,

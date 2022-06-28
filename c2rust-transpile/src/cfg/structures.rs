@@ -2,7 +2,7 @@
 
 use super::*;
 use log::warn;
-use syn::{spanned::Spanned as _, ExprBreak, ExprIf, ExprParen, ExprReturn, ExprUnary, Stmt};
+use syn::{spanned::Spanned as _, ExprBreak, ExprIf, ExprReturn, ExprUnary, Stmt};
 
 use crate::rust_ast::{comment_store, set_span::SetSpan, BytePos, SpanExt};
 
@@ -672,12 +672,6 @@ impl StructureState {
 ///   * Negating something of the form `!<expr>` produces `<expr>`
 ///
 fn not(bool_expr: &Box<Expr>) -> Box<Expr> {
-    fn unparen(expr: &Box<Expr>) -> &Box<Expr> {
-        match **expr {
-            Expr::Paren(ExprParen { ref expr, .. }) => expr,
-            _ => expr,
-        }
-    }
     match **bool_expr {
         Expr::Unary(ExprUnary {
             op: syn::UnOp::Not(_),
