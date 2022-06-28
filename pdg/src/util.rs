@@ -74,7 +74,7 @@ impl<T> Duplicates<T> {
             len - num_printed
         };
 
-        write!(f, "{} duplicates:\n", self.len())?;
+        writeln!(f, "{} duplicates:", self.len())?;
         for (_, duplicates) in maybe_take(self.duplicates.iter(), n) {
             let duplicates = duplicates
                 .iter()
@@ -87,7 +87,7 @@ impl<T> Duplicates<T> {
                     _ => format!("({count}x) {duplicate}"),
                 })
                 .join(", ");
-            write!(f, "\t{}\n", duplicates)?;
+            writeln!(f, "\t{}", duplicates)?;
         }
         write!(f, "and {} more...", num_remaining(self.len()))?;
         Ok(())
