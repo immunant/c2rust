@@ -427,16 +427,13 @@ impl<'c> Translation<'c> {
         {
             self.name_reference_write_read(ctx, lhs)?
         } else {
-            self.name_reference_write(ctx, lhs)?.map(|write| {
-                (
-                    write,
-                    self.panic_or_err("Volatile value is not supposed to be read"),
-                )
+            self.name_reference_write(ctx, lhs)?.map(|named_ref| {
+                named_ref.map(|()| self.panic_or_err("Volatile value is not supposed to be read"))
             })
         };
 
         rhs_translation.and_then(|rhs| {
-            lhs_translation.and_then(|(write, read)| {
+            lhs_translation.and_then(|NamedReference { lvalue: write, rvalue: read }| {
                 // Assignment expression itself
                 use c_ast::BinOp::*;
                 let assign_stmt = match op {
@@ -859,7 +856,7 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| format_err!("bad post inc type"))?;
 
         self.name_reference_write_read(ctx, arg)?
-            .and_then(|(write, read)| {
+            .and_then(|NamedReference { lvalue: write, rvalue: read }| {
                 let val_name = self.renamer.borrow_mut().fresh();
                 let save_old_val = mk().local_stmt(Box::new(mk().local(
                     mk().ident_pat(&val_name),

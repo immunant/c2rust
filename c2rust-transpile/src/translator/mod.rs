@@ -23,6 +23,7 @@ use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::set_span::SetSpan;
 use crate::rust_ast::{pos_to_span, SpanExt, DUMMY_SP};
 use crate::translator::atomics::ConvertAtomicArgs;
+use crate::translator::named_references::NamedReference;
 use crate::translator::operators::ConvertBinaryExprArgs;
 use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_printer::pprust::{self};
@@ -3606,7 +3607,7 @@ impl<'c> Translation<'c> {
                     })
                 } else {
                     self.name_reference_write_read(ctx, lhs)?
-                        .result_map(|(_, lhs_val)| {
+                        .result_map(|NamedReference {rvalue: lhs_val, ..}| {
                             let cond = self.match_bool(true, ty.ctype, lhs_val.clone());
                             let ite = mk().ifte_expr(
                                 cond,

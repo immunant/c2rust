@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::ops::Index;
 
 use super::TranslationError;
+use super::named_references::NamedReference;
 use crate::c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId};
 use crate::diagnostics::TranslationResult;
 use crate::translator::{ExprContext, Translation, PADDING_SUFFIX};
@@ -710,8 +711,7 @@ impl<'a> Translation<'a> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let ctx = ctx.set_bitfield_write(true);
         let named_reference = self.name_reference_write_read(ctx, lhs)?;
-        named_reference.and_then(|named_reference| {
-            let lhs_expr = named_reference.0;
+        named_reference.and_then(|NamedReference { lvalue: lhs_expr, .. }| {
             let field_name = self
                 .type_converter
                 .borrow()

@@ -34,6 +34,21 @@ fn is_simple_lvalue(e: &Box<Expr>) -> bool {
     }
 }
 
+pub struct NamedReference<R> {
+    pub lvalue: Box<Expr>,
+    pub rvalue: R,
+}
+
+impl<R> NamedReference<R> {
+    pub fn map<S, F: Fn(R) -> S>(self, f: F) -> NamedReference<S> {
+        let Self { lvalue, rvalue } = self;
+        NamedReference {
+            lvalue,
+            rvalue: f(rvalue),
+        }
+    }
+}
+
 impl<'c> Translation<'c> {
     /// Get back a Rust lvalue corresponding to the expression passed in.
     ///
@@ -42,9 +57,9 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         reference: CExprId,
-    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+    ) -> TranslationResult<WithStmts<NamedReference<()>>> {
         self.name_reference(ctx, reference, false)
-            .map(|ws| ws.map(|(lvalue, _)| lvalue))
+            .map(|ws| ws.map(|named_ref| named_ref.map(|_| ())))
     }
 
     /// Get back a Rust (lvalue, rvalue) pair corresponding to the expression passed in.
@@ -54,12 +69,12 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         reference: CExprId,
-    ) -> TranslationResult<WithStmts<(Box<Expr>, Box<Expr>)>> {
+    ) -> TranslationResult<WithStmts<NamedReference<Box<Expr>>>> {
         let msg: &str = "When called with `uses_read = true`, `name_reference` should always \
                          return an rvalue (something from which to read the memory location)";
 
         self.name_reference(ctx, reference, true)
-            .map(|ws| ws.map(|(lvalue, rvalue)| (lvalue, rvalue.expect(msg))))
+            .map(|ws| ws.map(|named_ref| named_ref.map(|rvalue| rvalue.expect(msg))))
     }
 
     /// Given the LHS access to a variable, produce the RHS one
@@ -84,7 +99,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         reference: CExprId,
         uses_read: bool,
-    ) -> TranslationResult<WithStmts<(Box<Expr>, Option<Box<Expr>>)>> {
+    ) -> TranslationResult<WithStmts<NamedReference<Option<Box<Expr>>>>> {
         let reference_ty = self
             .ast_context
             .index(reference)
@@ -95,12 +110,15 @@ impl<'c> Translation<'c> {
         let reference = self.convert_expr(ctx.used(), reference)?;
         reference.and_then(|reference| {
             if !uses_read && is_lvalue(&reference) {
-                Ok(WithStmts::new_val((reference, None)))
+                Ok(WithStmts::new_val(NamedReference {
+                    lvalue: reference,
+                    rvalue: None,
+                }))
             } else if is_simple_lvalue(&reference) {
-                Ok(WithStmts::new_val((
-                    reference.clone(),
-                    Some(read(reference)?),
-                )))
+                Ok(WithStmts::new_val(NamedReference {
+                    lvalue: reference.clone(),
+                    rvalue: Some(read(reference)?),
+                }))
             } else {
                 // This is the case where we explicitly need to factor out possible side-effects.
 
@@ -118,7 +136,10 @@ impl<'c> Translation<'c> {
 
                 Ok(WithStmts::new(
                     vec![compute_ref],
-                    (write.clone(), Some(read(write)?)),
+                    NamedReference {
+                        lvalue: write.clone(),
+                        rvalue: Some(read(write)?),
+                    },
                 ))
             }
         })
