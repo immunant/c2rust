@@ -24,7 +24,7 @@ mod util;
 mod query;
 
 use builder::{construct_pdg, read_event_log};
-use c2rust_analysis_rt::{mir_loc, Runtime};
+use c2rust_analysis_rt::Runtime;
 use color_eyre::eyre;
 use std::{env, path::Path};
 

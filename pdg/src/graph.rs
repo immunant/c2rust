@@ -114,7 +114,7 @@ pub enum NodeKind {
     AddrOfLocal(Local),
     /// Get the address of a static.  These are treated the same as locals, with an
     /// `AddressOfStatic` attributed to the first statement.
-    AddrOfStatic(DefPathHash),
+    _AddrOfStatic(DefPathHash),
     /// Heap allocation.  The `usize` is the number of array elements allocated; for allocations of
     /// a single object, this value is 1.
     Malloc(usize),
@@ -178,7 +178,7 @@ impl Display for NodeKind {
             Field(field) => write!(f, "field.{}", field.as_usize()),
             Offset(offset) => write!(f, "offset[{offset}]"),
             AddrOfLocal(local) => write!(f, "&local {local:?}"),
-            AddrOfStatic(static_) => write!(f, "&static {static_:?}"),
+            _AddrOfStatic(static_) => write!(f, "&static {static_:?}"),
             Malloc(n) => write!(f, "malloc {n}"),
             Free => write!(f, "free"),
             PtrToInt => write!(f, "ptr_to_int"),
@@ -212,9 +212,9 @@ impl Display for Node {
 
 impl Display for Graph {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "graph {{\n")?;
+        writeln!(f, "graph {{")?;
         for (node_id, node) in self.nodes.iter_enumerated() {
-            write!(f, "\t{node_id}: {node},\n")?;
+            writeln!(f, "\t{node_id}: {node},")?;
         }
         write!(f, "}}")?;
         Ok(())

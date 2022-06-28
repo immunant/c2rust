@@ -1,11 +1,9 @@
 use crate::graph::{Func, Graph, GraphId, Graphs, Node, NodeId, NodeKind};
-use bincode;
 use c2rust_analysis_rt::events::{Event, EventKind, Pointer};
 use c2rust_analysis_rt::mir_loc::{EventMetadata, Metadata, TransferKind};
 use c2rust_analysis_rt::{mir_loc, MirLoc};
 use color_eyre::eyre;
 use fs_err::File;
-use log;
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_hir::def_id::DefPathHash;
 use std::collections::HashMap;
@@ -59,13 +57,7 @@ impl EventKindExt for EventKind {
 
     fn has_parent(&self) -> bool {
         use EventKind::*;
-        match self {
-            Realloc { new_ptr: _, .. } => false,
-            Alloc { ptr: _, .. } => false,
-            AddrOfLocal(_ptr, _) => false,
-            Done => false,
-            _ => true,
-        }
+        !matches!(self, Realloc { new_ptr: _, .. } | Alloc { ptr: _, .. } | AddrOfLocal(_, _) | Done)
     }
 
     fn parent(&self, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)> {
@@ -141,15 +133,15 @@ pub fn add_node(
         metadata,
     } = mir_loc::get(event.mir_loc).unwrap();
 
-    let this_func_hash = DefPathHash(Fingerprint::new(body_def.0, body_def.1).into());
+    let this_func_hash = DefPathHash(Fingerprint::new(body_def.0, body_def.1));
     let (src_fn, dest_fn) = match metadata.transfer_kind {
         TransferKind::None => (this_func_hash, this_func_hash),
         TransferKind::Arg(p) => (
             this_func_hash,
-            DefPathHash(Fingerprint::new(p.0, p.1).into()),
+            DefPathHash(Fingerprint::new(p.0, p.1)),
         ),
         TransferKind::Ret(p) => (
-            DefPathHash(Fingerprint::new(p.0, p.1).into()),
+            DefPathHash(Fingerprint::new(p.0, p.1)),
             this_func_hash,
         ),
     };
@@ -162,7 +154,7 @@ pub fn add_node(
 
     let head = event
         .kind
-        .ptr(&metadata)
+        .ptr(metadata)
         .and_then(|ptr| provenances.get(&ptr).cloned());
     let ptr = head.and_then(|(gid, _last_nid_ref)| {
         graphs.graphs[gid]
@@ -178,10 +170,10 @@ pub fn add_node(
             .map(|nid| (gid, NodeId::from(nid)))
     });
 
-    let source = ptr.or(metadata.source.as_ref().and_then(|src| {
+    let source = ptr.or_else(|| metadata.source.as_ref().and_then(|src| {
         let latest_assignment = graphs
             .latest_assignment
-            .get(&(src_fn, src.local.clone()))
+            .get(&(src_fn, src.local))
             .cloned();
         if !src.projection.is_empty() {
             if let Some((gid, _)) = latest_assignment {
@@ -206,7 +198,7 @@ pub fn add_node(
     let node = Node {
         function: Func(dest_fn),
         block: basic_block_idx.into(),
-        index: statement_idx.into(),
+        index: statement_idx,
         kind: node_kind,
         source: source
             .and_then(|p| event.kind.parent(p))
@@ -225,7 +217,7 @@ pub fn add_node(
     update_provenance(provenances, &event.kind, metadata, (graph_id, node_id));
 
     if let Some(dest) = &metadata.destination {
-        let unique_place = (dest_fn, dest.local.clone());
+        let unique_place = (dest_fn, dest.local);
         let last_setting = (graph_id, node_id);
 
         if let Some(last @ (last_gid, last_nid)) =
