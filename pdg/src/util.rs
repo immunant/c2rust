@@ -60,6 +60,8 @@ impl<T> Duplicates<T> {
 }
 
 impl<T> Duplicates<T> {
+    const DEFAULT_UP_TO_N: usize = 5;
+
     pub fn fmt_up_to_n(
         &self,
         f: &mut Formatter<'_>,
@@ -101,13 +103,13 @@ impl<T> Duplicates<T> {
 
 impl<T: Debug> Debug for Duplicates<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.fmt_up_to_n(f, 10.into(), |t| format!("{t:?}"))
+        self.fmt_up_to_n(f, Self::DEFAULT_UP_TO_N.into(), |t| format!("{t:?}"))
     }
 }
 
 impl<T: Display> Display for Duplicates<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.fmt_up_to_n(f, 10.into(), |t| format!("{t}"))
+        self.fmt_up_to_n(f, Self::DEFAULT_UP_TO_N.into(), |t| format!("{t}"))
     }
 }
 
