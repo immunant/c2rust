@@ -1585,10 +1585,11 @@ impl<'c> Translation<'c> {
 
         let mut span = self.get_span(SomeId::Decl(decl_id)).unwrap_or(DUMMY_SP);
 
+        use CDeclKind::*;
         match decl.kind {
-            CDeclKind::Struct { fields: None, .. }
-            | CDeclKind::Union { fields: None, .. }
-            | CDeclKind::Enum {
+            Struct { fields: None, .. }
+            | Union { fields: None, .. }
+            | Enum {
                 integral_type: None,
                 ..
             } => {
@@ -1603,7 +1604,7 @@ impl<'c> Translation<'c> {
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
 
-            CDeclKind::Struct {
+            Struct {
                 fields: Some(ref fields),
                 is_packed,
                 manual_alignment,
@@ -1755,7 +1756,7 @@ impl<'c> Translation<'c> {
                 }
             }
 
-            CDeclKind::Union {
+            Union {
                 fields: Some(ref fields),
                 is_packed,
                 ..
@@ -1811,11 +1812,11 @@ impl<'c> Translation<'c> {
                 })
             }
 
-            CDeclKind::Field { .. } => Err(TranslationError::generic(
+            Field { .. } => Err(TranslationError::generic(
                 "Field declarations should be handled inside structs/unions",
             )),
 
-            CDeclKind::Enum {
+            Enum {
                 integral_type: Some(integral_type),
                 ..
             } => {
@@ -1830,7 +1831,7 @@ impl<'c> Translation<'c> {
                 ))
             }
 
-            CDeclKind::EnumConstant { value, .. } => {
+            EnumConstant { value, .. } => {
                 let name = self
                     .renamer
                     .borrow_mut()
@@ -1859,7 +1860,7 @@ impl<'c> Translation<'c> {
             // We can allow non top level function declarations (i.e. extern
             // declarations) without any problem. Clang doesn't support nested
             // functions, so we will never see nested function definitions.
-            CDeclKind::Function {
+            Function {
                 is_global,
                 is_inline,
                 is_extern,
@@ -1950,7 +1951,7 @@ impl<'c> Translation<'c> {
                 })
             }
 
-            CDeclKind::Typedef { ref typ, .. } => {
+            Typedef { ref typ, .. } => {
                 let new_name = &self
                     .type_converter
                     .borrow()
@@ -1978,7 +1979,7 @@ impl<'c> Translation<'c> {
             }
 
             // Externally-visible variable without initializer (definition elsewhere)
-            CDeclKind::Variable {
+            Variable {
                 is_externally_visible: true,
                 has_static_duration,
                 has_thread_duration,
@@ -2037,7 +2038,7 @@ impl<'c> Translation<'c> {
             }
 
             // Static-storage or thread-local variable with initializer (definition here)
-            CDeclKind::Variable {
+            Variable {
                 has_static_duration,
                 has_thread_duration,
                 is_externally_visible,
@@ -2133,11 +2134,11 @@ impl<'c> Translation<'c> {
                 ))
             }
 
-            CDeclKind::Variable { .. } => Err(TranslationError::generic(
+            Variable { .. } => Err(TranslationError::generic(
                 "This should be handled in 'convert_decl_stmt'",
             )),
 
-            CDeclKind::MacroObject { .. } => {
+            MacroObject { .. } => {
                 let name = self
                     .renamer
                     .borrow_mut()
@@ -2181,13 +2182,13 @@ impl<'c> Translation<'c> {
 
             // We aren't doing anything with the definitions of function-like
             // macros yet.
-            CDeclKind::MacroFunction { .. } => Ok(ConvertedDecl::NoItem),
+            MacroFunction { .. } => Ok(ConvertedDecl::NoItem),
 
             // Do not translate non-canonical decls. They will be translated at
             // their canonical declaration.
-            CDeclKind::NonCanonicalDecl { .. } => Ok(ConvertedDecl::NoItem),
+            NonCanonicalDecl { .. } => Ok(ConvertedDecl::NoItem),
 
-            CDeclKind::StaticAssert { .. } => {
+            StaticAssert { .. } => {
                 warn!("ignoring static assert during translation");
                 Ok(ConvertedDecl::NoItem)
             }
@@ -2850,10 +2851,11 @@ impl<'c> Translation<'c> {
             return false;
         }
 
+        use CTypeKind::*;
         match self.ast_context.resolve_type(ctypeid).kind {
-            CTypeKind::Pointer(CQualTypeId { ctype, .. }) => {
+            Pointer(CQualTypeId { ctype, .. }) => {
                 match self.ast_context.resolve_type(ctype).kind {
-                    CTypeKind::Function(..) => {
+                    Function(..) => {
                         // Fn pointers need to be type annotated if null
                         if initializer.is_none() {
                             return true;
@@ -2904,25 +2906,12 @@ impl<'c> Translation<'c> {
             // For some reason we don't seem to apply type suffixes when 0-initializing
             // so type annotation is need for 0-init ints and floats at the moment, but
             // they could be simplified in favor of type suffixes
-            CTypeKind::Bool
-            | CTypeKind::Char
-            | CTypeKind::SChar
-            | CTypeKind::Short
-            | CTypeKind::Int
-            | CTypeKind::Long
-            | CTypeKind::LongLong
-            | CTypeKind::UChar
-            | CTypeKind::UShort
-            | CTypeKind::UInt
-            | CTypeKind::ULong
-            | CTypeKind::ULongLong
-            | CTypeKind::LongDouble
-            | CTypeKind::Int128
-            | CTypeKind::UInt128 => initializer.is_none(),
-            CTypeKind::Float | CTypeKind::Double => initializer.is_none(),
-            CTypeKind::Struct(_) | CTypeKind::Union(_) | CTypeKind::Enum(_) => false,
-            CTypeKind::Function(..) => unreachable!("Can't have a function directly as a type"),
-            CTypeKind::Typedef(_) => unreachable!("Typedef should be expanded though resolve_type"),
+            Bool | Char | SChar | Short | Int | Long | LongLong | UChar | UShort | UInt | ULong
+            | ULongLong | LongDouble | Int128 | UInt128 => initializer.is_none(),
+            Float | Double => initializer.is_none(),
+            Struct(_) | Union(_) | Enum(_) => false,
+            Function(..) => unreachable!("Can't have a function directly as a type"),
+            Typedef(_) => unreachable!("Typedef should be expanded though resolve_type"),
             _ => true,
         }
     }
