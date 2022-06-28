@@ -83,11 +83,11 @@ impl From<Local> for usize {
 
 impl Local {
     pub fn as_u32(&self) -> u32 {
-        self.clone().into()
+        (*self).into()
     }
 
     pub fn as_usize(&self) -> usize {
-        self.clone().into()
+        (*self).into()
     }
 }
 
