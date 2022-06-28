@@ -463,14 +463,18 @@ fn asm_is_att_syntax(asm: &str) -> bool {
         (Some(_intel), None) => false,
         (None, Some(_att)) => true,
         (None, None) => {
-            match () {
-                _ if asm.contains("word ptr") => false,
+            #[allow(clippy::needless_bool)]
+            if asm.contains("word ptr") {
+                false
+            } else if asm.contains('$') || asm.contains('%') || asm.contains('(') {
                 // Guess based on sigils used in AT&T assembly:
                 // $ for constants, % for registers, and ( for address calculations
-                _ if asm.contains('$') || asm.contains('%') || asm.contains('(') => true,
-                _ if asm.contains('[') => false,
+                true
+            } else if asm.contains('[') {
                 // default to true, because AT&T is the default for gcc inline asm
-                _ => true,
+                false
+            } else {
+                true
             }
         }
     }
