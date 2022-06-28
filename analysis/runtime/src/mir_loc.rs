@@ -69,15 +69,15 @@ impl From<usize> for Local {
     }
 }
 
-impl Into<u32> for Local {
-    fn into(self) -> u32 {
-        self.index.try_into().unwrap()
+impl From<Local> for u32 {
+    fn from(val: Local) -> Self {
+        val.index.try_into().unwrap()
     }
 }
 
-impl Into<usize> for Local {
-    fn into(self) -> usize {
-        self.index.try_into().unwrap()
+impl From<Local> for usize {
+    fn from(val: Local) -> Self {
+        val.index.try_into().unwrap()
     }
 }
 
