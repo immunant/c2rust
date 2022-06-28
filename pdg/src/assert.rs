@@ -38,7 +38,7 @@ impl Graphs {
 impl Graphs {
     /// Assert all [`Graph`] tests.
     pub fn assert_all_tests(&self) {
-        // self.assert_no_duplicates();
+        self.assert_no_duplicates();
         self.assert_heads_have_no_sources();
     }
 }

@@ -4,6 +4,7 @@ use c2rust_analysis_rt::mir_loc::{EventMetadata, Metadata, TransferKind};
 use c2rust_analysis_rt::{mir_loc, MirLoc};
 use color_eyre::eyre;
 use fs_err::File;
+use itertools::Itertools;
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_hir::def_id::DefPathHash;
 use std::collections::HashMap;
@@ -245,6 +246,8 @@ pub fn construct_pdg(events: &[Event]) -> Graphs {
     for event in events {
         add_node(&mut graphs, &mut provenances, event);
     }
+    // TODO(kkysen) check if I have to remove any `GraphId`s from `graphs.latest_assignment`
+    graphs.graphs = graphs.graphs.into_iter().unique().collect();
 
     // for ((func, local), p) in &graphs.latest_assignment {
     //     let func = Func(*func);
