@@ -22,7 +22,7 @@ impl Graphs {
 impl Graph {
     /// Assert that a graph's head has no source, as the head should be the root source.
     pub fn assert_head_has_no_source(&self) {
-        todo!()
+        assert_eq!(self.nodes[0usize.into()].source, None);
     }
 }
 
