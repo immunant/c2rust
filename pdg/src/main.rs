@@ -52,7 +52,7 @@ fn main() -> eyre::Result<()> {
     //     println!();
     // }
 
-    // pdg.assert_all_tests();
+    pdg.assert_all_tests();
 
     for graph in pdg.graphs {
         let needs_write = graph.needs_write_permission().map(|node_id| node_id.as_usize()).collect::<Vec<_>>();
