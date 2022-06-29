@@ -53,5 +53,10 @@ fn main() -> eyre::Result<()> {
         println!("\n");
     }
 
+    let num_graphs = pdg.graphs.len();
+    let num_nodes = pdg.graphs.iter().map(|graph| graph.nodes.len()).sum::<usize>();
+    dbg!(num_graphs);
+    dbg!(num_nodes);
+
     Ok(())
 }
