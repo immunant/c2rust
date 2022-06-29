@@ -44,19 +44,12 @@ fn main() -> eyre::Result<()> {
     // }
 
     let pdg = construct_pdg(&events);
-    // for (g, graph) in pdg.graphs.iter().enumerate() {
-    //     println!("-- Object {g:?} ---");
-    //     for (n, node) in graph.nodes.iter().enumerate() {
-    //         println!("{n:?}:{node:?}");
-    //     }
-    //     println!();
-    // }
-
     pdg.assert_all_tests();
 
-    for graph in pdg.graphs {
+    for (graph_id, graph) in pdg.graphs.iter_enumerated() {
+        let graph_id = graph_id.as_usize();
         let needs_write = graph.needs_write_permission().map(|node_id| node_id.as_usize()).collect::<Vec<_>>();
-        println!("{graph}");
+        println!("{graph_id}: {graph}");
         println!("node_that_need_write = {needs_write:?}");
         println!("___________________________________________");
     }
