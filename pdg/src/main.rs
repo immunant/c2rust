@@ -47,11 +47,10 @@ fn main() -> eyre::Result<()> {
     pdg.assert_all_tests();
 
     for (graph_id, graph) in pdg.graphs.iter_enumerated() {
-        let graph_id = graph_id.as_usize();
         let needs_write = graph.needs_write_permission().map(|node_id| node_id.as_usize()).collect::<Vec<_>>();
         println!("{graph_id}: {graph}");
-        println!("node_that_need_write = {needs_write:?}");
-        println!("___________________________________________");
+        println!("nodes_that_need_write = {needs_write:?}");
+        println!("\n");
     }
 
     Ok(())

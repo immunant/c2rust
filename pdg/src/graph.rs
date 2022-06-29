@@ -210,9 +210,15 @@ impl Display for Node {
     }
 }
 
+impl Display for GraphId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "graph {}", self.as_usize())
+    }
+}
+
 impl Display for Graph {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        writeln!(f, "graph {{")?;
+        writeln!(f, "{{")?;
         for (node_id, node) in self.nodes.iter_enumerated() {
             writeln!(f, "\t{node_id}: {node},")?;
         }
@@ -223,11 +229,11 @@ impl Display for Graph {
 
 impl Display for Graphs {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        for (i, graph) in self.graphs.iter().enumerate() {
-            if i != 0 {
+        for (graph_id, graph) in self.graphs.iter_enumerated() {
+            if graph_id.as_usize() != 0 {
                 write!(f, "\n\n")?;
             }
-            write!(f, "{graph}")?;
+            write!(f, "{graph_id} {graph}")?;
         }
         Ok(())
     }
