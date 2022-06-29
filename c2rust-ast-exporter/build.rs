@@ -181,7 +181,7 @@ fn build_native(llvm_info: &LLVMInfo) {
     println!("cargo:rustc-link-lib=static=tinycbor");
     println!("cargo:rustc-link-lib=static=clangAstExporter");
 
-    println!("cargo:rustc-link-search=native={}", llvm_lib_dir);
+    println!("cargo:rustc-link-search=native={}", llvm_lib_dir.display());
 
     // Some distro's, including arch and Fedora, no longer build with
     // BUILD_SHARED_LIBS=ON; programs linking to clang are required to
@@ -240,20 +240,21 @@ fn build_native(llvm_info: &LLVMInfo) {
 /// Holds information about LLVM paths we have found
 struct LLVMInfo {
     /// LLVM lib dir containing libclang* and libLLVM* libraries
-    pub lib_dir: String,
+    pub lib_dir: PathBuf,
     /// LLVM cmake dir containing cmake modules
-    pub cmake_dir: String,
+    pub cmake_dir: PathBuf,
     /// Clang cmake dir containing cmake modules
-    pub clang_cmake_dir: String,
+    pub clang_cmake_dir: PathBuf,
     /// List of libs we need to link against
     pub libs: Vec<String>,
 }
 
 impl LLVMInfo {
     fn new() -> eyre::Result<Self> {
-        fn find_llvm_config() -> eyre::Result<String> {
+        fn find_llvm_config() -> eyre::Result<PathBuf> {
             // Explicitly provided path in LLVM_CONFIG_PATH
             env::var("LLVM_CONFIG_PATH")
+                .map(PathBuf::from)
                 .or_else(|e| {
                     // Relative to LLVM_LIB_DIR
                     env::var("LLVM_LIB_DIR")
@@ -261,9 +262,7 @@ impl LLVMInfo {
                         .and_then(|llvm_lib_dir| {
                             Ok(Path::new(&llvm_lib_dir)
                                 .join("../bin/llvm-config")
-                                .canonicalize()?
-                                .to_string_lossy()
-                                .into_owned())
+                                .canonicalize()?)
                         })
                         .error(e)
                 })
@@ -290,17 +289,14 @@ impl LLVMInfo {
                         "/usr/local/opt/llvm/bin/llvm-config",
                     ]
                     .iter()
-                    .find_map(|c| {
-                        if Command::new(c)
+                    .map(Path::new)
+                    .find_map(|cmd| {
+                        Command::new(cmd)
                             .stdout(Stdio::null())
                             .stderr(Stdio::null())
                             .spawn()
-                            .is_ok()
-                        {
-                            Some(String::from(*c))
-                        } else {
-                            None
-                        }
+                            .map(|_| cmd.to_path_buf())
+                            .ok()
                     })
                     .ok_or_else(|| eyre!("can't find llvm-config"))
                     .warning(e)
@@ -308,7 +304,7 @@ impl LLVMInfo {
         }
 
         /// Invoke given `command`, if any, with the specified arguments.
-        fn invoke_command<I, S>(command: &str, args: I) -> eyre::Result<String>
+        fn invoke_command<I, S>(command: &Path, args: I) -> eyre::Result<String>
         where
             I: IntoIterator<Item = S>,
             S: AsRef<OsStr>,
@@ -350,28 +346,21 @@ impl LLVMInfo {
             let path_str = env::var("LLVM_LIB_DIR")
                 .or_else(|e| invoke_command(&llvm_config, &["--libdir"]).error(e))
                 .note(llvm_config_libdir_missing)?;
-            Path::new(&path_str)
-                .canonicalize()?
-                .to_string_lossy()
-                .into_owned()
+            Path::new(&path_str).canonicalize()?
         };
         let cmake_dir = {
             let path_str = env::var("LLVM_CMAKE_DIR")
                 .or_else(|e| invoke_command(&llvm_config, &["--cmakedir"]).error(e))
                 .note(llvm_config_cmakedir_missing)?;
-            Path::new(&path_str)
-                .canonicalize()?
-                .to_string_lossy()
-                .into_owned()
+            Path::new(&path_str).canonicalize()?
         };
         let clang_cmake_dir = {
-            let path_str =
-                env::var("CLANG_CMAKE_DIR").unwrap_or_else(|_| format!("{}/../clang", cmake_dir));
+            let path_str = env::var("CLANG_CMAKE_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| cmake_dir.join("/../clang"));
             Path::new(&path_str)
                 .canonicalize()
                 .note(clang_cmakedir_missing)?
-                .to_string_lossy()
-                .into_owned()
         };
 
         let llvm_shared_libs = invoke_command(&llvm_config, &["--libs", "--link-shared"]);
@@ -397,7 +386,8 @@ impl LLVMInfo {
                 let mut dylib_file = String::from("lib");
                 dylib_file.push_str(llvm_shared_libs.trim_start_matches("-l"));
                 dylib_file.push_str(dylib_suffix);
-                let sysroot = invoke_command(&env::var("RUSTC")?, &["--print=sysroot"])?;
+                let sysroot =
+                    invoke_command(&env::var("RUSTC").map(PathBuf::from)?, &["--print=sysroot"])?;
 
                 // Does <sysroot>/lib/rustlib/<target>/lib/<dylib_file> exist?
                 let mut libllvm_path = PathBuf::new();
