@@ -30,8 +30,8 @@ stderr = stderr.split("\n")
             };
         }
     })
-    .filter(e => e.level ? e.level.includes("error") : false)
-    .map(e => e.rendered ? e.rendered : e.message)
+    .filter(e => (e.level || "").includes("error"))
+    .map(e => e.rendered ? e.rendered : e.message) // okay if `e.rendered === ""`
     .join("\n")
     ;
 console.error(stderr);
