@@ -43,12 +43,10 @@ fn check_clang_version() -> Result<(), String> {
             return Err(format!(
                 "
 Bindgen requires a matching libclang and clang installation. Bindgen is using
-libclang version ({libclang}) which does not match the autodetected clang
-version ({clang}). If you have clang version {libclang} installed, please set
+libclang version ({libclang_version_str}) which does not match the autodetected clang
+version ({clang_version_str}). If you have clang version {libclang_version_str} installed, please set
 the `CLANG_PATH` environment variable to the path of this version of the clang
-binary.",
-                libclang = libclang_version_str,
-                clang = clang_version_str,
+binary."
             ));
         }
     }
