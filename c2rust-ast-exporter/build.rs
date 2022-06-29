@@ -356,7 +356,7 @@ impl LLVMInfo {
         let clang_cmake_dir = {
             let path_str = env::var("CLANG_CMAKE_DIR")
                 .map(PathBuf::from)
-                .unwrap_or_else(|_| cmake_dir.join("/../clang"));
+                .unwrap_or_else(|_| cmake_dir.join("../clang"));
             fs_err::canonicalize(&path_str).note(clang_cmakedir_missing)?
         };
 
