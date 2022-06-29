@@ -260,9 +260,8 @@ impl LLVMInfo {
                     env::var("LLVM_LIB_DIR")
                         .map_err(Report::new)
                         .and_then(|llvm_lib_dir| {
-                            Ok(Path::new(&llvm_lib_dir)
-                                .join("../bin/llvm-config")
-                                .canonicalize()?)
+                            let path = Path::new(&llvm_lib_dir).join("../bin/llvm-config");
+                            Ok(fs_err::canonicalize(&path)?)
                         })
                         .error(e)
                 })
@@ -346,21 +345,19 @@ impl LLVMInfo {
             let path_str = env::var("LLVM_LIB_DIR")
                 .or_else(|e| invoke_command(&llvm_config, &["--libdir"]).error(e))
                 .note(llvm_config_libdir_missing)?;
-            Path::new(&path_str).canonicalize()?
+            fs_err::canonicalize(&path_str)?
         };
         let cmake_dir = {
             let path_str = env::var("LLVM_CMAKE_DIR")
                 .or_else(|e| invoke_command(&llvm_config, &["--cmakedir"]).error(e))
                 .note(llvm_config_cmakedir_missing)?;
-            Path::new(&path_str).canonicalize()?
+            fs_err::canonicalize(&path_str)?
         };
         let clang_cmake_dir = {
             let path_str = env::var("CLANG_CMAKE_DIR")
                 .map(PathBuf::from)
                 .unwrap_or_else(|_| cmake_dir.join("/../clang"));
-            Path::new(&path_str)
-                .canonicalize()
-                .note(clang_cmakedir_missing)?
+            fs_err::canonicalize(&path_str).note(clang_cmakedir_missing)?
         };
 
         let llvm_shared_libs = invoke_command(&llvm_config, &["--libs", "--link-shared"]);
