@@ -9,8 +9,6 @@
  * which are colored and pretty-printed already.
  * 
  * Stack traces we leave alone.
- * 
- * Requires a `node` that at least supports `?.` optional chaining and `??` nullish coalescing.
  */
 
 import * as fs from "fs";
@@ -30,8 +28,8 @@ stderr = stderr.split("\n")
             };
         }
     })
-    .filter(e => e.level?.includes("error"))
-    .map(e => e.rendered ?? e.message)
+    .filter(e => (e.level || "").includes("error"))
+    .map(e => e.rendered ? e.rendered : e.message) // okay if `e.rendered === ""`
     .join("\n")
     ;
 console.error(stderr);

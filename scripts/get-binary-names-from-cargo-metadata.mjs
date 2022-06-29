@@ -10,13 +10,17 @@
  * and only print default target binaries.
  * 
  * Requires a `node` that at least supports `Array.prototype.flatMap`.
+ * `node` 12 works.
  */
 
 import * as fs from "fs";
-import assert from "node:assert/strict";
+import process from "node:process";
 
 const [_nodePath, _scriptPath, ...args] = process.argv;
-assert(args.length <= 1);
+if (args.length > 1) {
+    console.error("too many arguments provided")
+    process.exit(1)
+}
 const isDefault = args[0] === "default";
 
 const cargoMetadataString = fs.readFileSync("/dev/stdin");
