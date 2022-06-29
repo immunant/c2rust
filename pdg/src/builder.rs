@@ -178,10 +178,9 @@ pub fn add_node(
             .cloned();
         if !src.projection.is_empty() {
             if let Some((gid, _)) = latest_assignment {
-                for (nid, n) in graphs.graphs[gid].nodes.iter().enumerate().rev() {
-                    match n.kind {
-                        NodeKind::Field(..) => return Some((gid, nid.into())),
-                        _ => break,
+                if let Some((nid, n)) = graphs.graphs[gid].nodes.iter_enumerated().rev().next() {
+                    if let NodeKind::Field(..) = n.kind {
+                        return Some((gid, nid))
                     }
                 }
             }
