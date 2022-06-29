@@ -962,7 +962,8 @@ fn cast_ptr_to_usize<'tcx>(
     let ptr = match arg {
         // If we were given an address as a usize, no conversion is necessary
         InstrumentationOperand::AddressUsize(_arg) => {
-            assert!(arg_ty.is_integral());
+            assert!(arg_ty.is_integral() || arg_ty.is_unit(),
+                "{:?}: {:?} is not of integral or unit type", arg, arg_ty);
             return None;
         },
         // From a reference `r`, cast through raw ptr to usize: `r as *mut _ as usize`
@@ -993,7 +994,7 @@ fn cast_ptr_to_usize<'tcx>(
         },
         // From a raw pointer `r`, cast: `r as usize`
         InstrumentationOperand::RawPtr(arg) => {
-            assert!(arg_ty.is_unsafe_ptr());
+            assert!(arg_ty.is_unsafe_ptr(), "{:?}: {:?} is not an unsafe ptr", arg, arg_ty);
             arg.to_copy()
         },
     };
