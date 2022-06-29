@@ -1,11 +1,7 @@
-// * in that lighttpd map example I have a field for source which is a NodeId type,
+// TODO(kkysen, aneksteind)
+// in that lighttpd map example I have a field for source which is a NodeId type,
 // but i'd like to confirm that the GraphId is always correct too.
 // we can go over this one if you want because it'll involve a small tweak to the pdg code
-
-// * this isn't implemented yet but when the graph deduplication is done,
-//   it would be nice to have a test case that there are no duplicate objects
-
-// * all head of objects (node lists) have a source of None
 
 use crate::{graph::{Graph, Graphs}, util::Duplicates};
 
