@@ -1,4 +1,4 @@
-use indexmap::IndexSet;
+use linked_hash_set::LinkedHashSet;
 
 use crate::graph::{Graph, NodeId, NodeKind};
 
@@ -34,8 +34,8 @@ impl Graph {
     ///   return needs_write # or query_node in needs_write
     /// ```
     pub fn needs_write_permission(&self) -> impl Iterator<Item = NodeId> {
-        let mut needs_write: IndexSet<NodeId> = IndexSet::new();
-        let mut not_needs_write: IndexSet<NodeId> = IndexSet::new();
+        let mut needs_write = LinkedHashSet::new();
+        let mut not_needs_write = LinkedHashSet::new();
         for (node_id, node) in self.nodes.iter_enumerated().rev() {
             if !needs_write.contains(&node_id) && !not_needs_write.contains(&node_id) {
                 if let NodeKind::StoreAddr = node.kind {
