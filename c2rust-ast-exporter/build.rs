@@ -153,12 +153,12 @@ fn generate_bindings() -> eyre::Result<()> {
 ///   - if `opt-level=0`                              then `CMAKE_BUILD_TYPE=Debug`
 ///   - if `opt-level={1,2,3}` and not `debug=false`, then `CMAKE_BUILD_TYPE=RelWithDebInfo`
 fn build_native(llvm_info: &LLVMInfo) {
-    // Find where the (already built) LLVM lib dir is
-    let llvm_lib_dir = &llvm_info.lib_dir;
-    // Find where the (already built) LLVM cmake module dir is
-    let llvm_cmake_dir = &llvm_info.cmake_dir;
-    // Find where the Clang cmake module dir is
-    let clang_cmake_dir = &llvm_info.clang_cmake_dir;
+    let LLVMInfo {
+        lib_dir: llvm_lib_dir,     // Find where the (already built) LLVM lib dir is
+        cmake_dir: llvm_cmake_dir, // Find where the (already built) LLVM cmake module dir is
+        clang_cmake_dir,           // Find where the Clang cmake module dir is
+        libs: _,
+    } = &llvm_info;
 
     match env::var("C2RUST_AST_EXPORTER_LIB_DIR") {
         Ok(libdir) => {
