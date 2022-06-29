@@ -22,7 +22,7 @@ fn main() -> eyre::Result<()> {
     let llvm_info = LLVMInfo::new()?;
 
     // Build the exporter library and link it (and its dependencies)
-    build_native(&llvm_info);
+    llvm_info.build_native();
     // Generate ast_tags and ExportResult bindings
     generate_bindings().with_warning(|| match check_clang_version() {
         Ok(()) => eyre!("clang version okay"),
@@ -144,102 +144,6 @@ fn generate_bindings() -> eyre::Result<()> {
         .note("Couldn't write cppbindings!")?;
 
     Ok(())
-}
-
-/// Call out to CMake, build the exporter library, and tell cargo where to look
-/// for it.  Note that `CMAKE_BUILD_TYPE` gets implicitly determined by the
-/// cmake crate according to the following:
-///
-///   - if `opt-level=0`                              then `CMAKE_BUILD_TYPE=Debug`
-///   - if `opt-level={1,2,3}` and not `debug=false`, then `CMAKE_BUILD_TYPE=RelWithDebInfo`
-fn build_native(llvm_info: &LLVMInfo) {
-    let LLVMInfo {
-        lib_dir: llvm_lib_dir,     // Find where the (already built) LLVM lib dir is
-        cmake_dir: llvm_cmake_dir, // Find where the (already built) LLVM cmake module dir is
-        clang_cmake_dir,           // Find where the Clang cmake module dir is
-        libs: _,
-    } = &llvm_info;
-
-    match env::var("C2RUST_AST_EXPORTER_LIB_DIR") {
-        Ok(libdir) => {
-            println!("cargo:rustc-link-search=native={}", libdir);
-        }
-        Err(_) => {
-            // Build libclangAstExporter.a with cmake
-            let dst = Config::new("src")
-                // Where to find LLVM/Clang CMake files
-                .define("LLVM_DIR", llvm_cmake_dir)
-                .define("Clang_DIR", clang_cmake_dir)
-                // What to build
-                .build_target("clangAstExporter")
-                .build();
-
-            let out_dir = dst.display();
-
-            // Set up search path for newly built tinycbor.a and libclangAstExporter.a
-            println!("cargo:rustc-link-search=native={}/build/lib", out_dir);
-            println!("cargo:rustc-link-search=native={}/build", out_dir);
-        }
-    };
-
-    // Statically link against 'clangAstExporter' which requires 'tinycbor'
-    println!("cargo:rustc-link-lib=static=tinycbor");
-    println!("cargo:rustc-link-lib=static=clangAstExporter");
-
-    println!("cargo:rustc-link-search=native={}", llvm_lib_dir.display());
-
-    // Some distro's, including arch and Fedora, no longer build with
-    // BUILD_SHARED_LIBS=ON; programs linking to clang are required to
-    // link to libclang-cpp.so instead of individual libraries.
-    let use_libclang = if cfg!(target_os = "macos") {
-        false
-    } else {
-        // target_os = "linux"
-        let mut libclang_path = PathBuf::new();
-        libclang_path.push(llvm_lib_dir);
-        libclang_path.push("libclang-cpp.so");
-        libclang_path.exists()
-    };
-
-    if use_libclang {
-        println!("cargo:rustc-link-lib=clang-cpp");
-    } else {
-        // Link against these Clang libs. The ordering here is important! Libraries
-        // must be listed before their dependencies when statically linking.
-        for lib in &[
-            "clangTooling",
-            "clangFrontend",
-            "clangASTMatchers",
-            "clangParse",
-            "clangSerialization",
-            "clangSema",
-            "clangEdit",
-            "clangAnalysis",
-            "clangDriver",
-            "clangFormat",
-            "clangToolingCore",
-            "clangAST",
-            "clangRewrite",
-            "clangLex",
-            "clangBasic",
-        ] {
-            println!("cargo:rustc-link-lib={}", lib);
-        }
-    }
-
-    for lib in &llvm_info.libs {
-        // IMPORTANT: We cannot specify static= or dylib= here because rustc
-        // will reorder those libs before the clang libs above which don't have
-        // static or dylib.
-        println!("cargo:rustc-link-lib={}", lib);
-    }
-
-    // Link against the C++ std library.
-    if cfg!(target_os = "macos") {
-        println!("cargo:rustc-link-lib=c++");
-    } else {
-        println!("cargo:rustc-link-lib=stdc++");
-    }
 }
 
 /// Holds information about LLVM paths we have found
@@ -468,5 +372,101 @@ impl LLVMInfo {
             clang_cmake_dir,
             libs,
         })
+    }
+
+    /// Call out to CMake, build the exporter library, and tell cargo where to look
+    /// for it.  Note that `CMAKE_BUILD_TYPE` gets implicitly determined by the
+    /// cmake crate according to the following:
+    ///
+    ///   - if `opt-level=0`                              then `CMAKE_BUILD_TYPE=Debug`
+    ///   - if `opt-level={1,2,3}` and not `debug=false`, then `CMAKE_BUILD_TYPE=RelWithDebInfo`
+    fn build_native(&self) {
+        let LLVMInfo {
+            lib_dir: llvm_lib_dir,     // Find where the (already built) LLVM lib dir is
+            cmake_dir: llvm_cmake_dir, // Find where the (already built) LLVM cmake module dir is
+            clang_cmake_dir,           // Find where the Clang cmake module dir is
+            libs: _,
+        } = &self;
+
+        match env::var("C2RUST_AST_EXPORTER_LIB_DIR") {
+            Ok(libdir) => {
+                println!("cargo:rustc-link-search=native={}", libdir);
+            }
+            Err(_) => {
+                // Build libclangAstExporter.a with cmake
+                let dst = Config::new("src")
+                    // Where to find LLVM/Clang CMake files
+                    .define("LLVM_DIR", llvm_cmake_dir)
+                    .define("Clang_DIR", clang_cmake_dir)
+                    // What to build
+                    .build_target("clangAstExporter")
+                    .build();
+
+                let out_dir = dst.display();
+
+                // Set up search path for newly built tinycbor.a and libclangAstExporter.a
+                println!("cargo:rustc-link-search=native={}/build/lib", out_dir);
+                println!("cargo:rustc-link-search=native={}/build", out_dir);
+            }
+        };
+
+        // Statically link against 'clangAstExporter' which requires 'tinycbor'
+        println!("cargo:rustc-link-lib=static=tinycbor");
+        println!("cargo:rustc-link-lib=static=clangAstExporter");
+
+        println!("cargo:rustc-link-search=native={}", llvm_lib_dir.display());
+
+        // Some distro's, including arch and Fedora, no longer build with
+        // BUILD_SHARED_LIBS=ON; programs linking to clang are required to
+        // link to libclang-cpp.so instead of individual libraries.
+        let use_libclang = if cfg!(target_os = "macos") {
+            false
+        } else {
+            // target_os = "linux"
+            let mut libclang_path = PathBuf::new();
+            libclang_path.push(llvm_lib_dir);
+            libclang_path.push("libclang-cpp.so");
+            libclang_path.exists()
+        };
+
+        if use_libclang {
+            println!("cargo:rustc-link-lib=clang-cpp");
+        } else {
+            // Link against these Clang libs. The ordering here is important! Libraries
+            // must be listed before their dependencies when statically linking.
+            for lib in &[
+                "clangTooling",
+                "clangFrontend",
+                "clangASTMatchers",
+                "clangParse",
+                "clangSerialization",
+                "clangSema",
+                "clangEdit",
+                "clangAnalysis",
+                "clangDriver",
+                "clangFormat",
+                "clangToolingCore",
+                "clangAST",
+                "clangRewrite",
+                "clangLex",
+                "clangBasic",
+            ] {
+                println!("cargo:rustc-link-lib={}", lib);
+            }
+        }
+
+        for lib in &self.libs {
+            // IMPORTANT: We cannot specify static= or dylib= here because rustc
+            // will reorder those libs before the clang libs above which don't have
+            // static or dylib.
+            println!("cargo:rustc-link-lib={}", lib);
+        }
+
+        // Link against the C++ std library.
+        if cfg!(target_os = "macos") {
+            println!("cargo:rustc-link-lib=c++");
+        } else {
+            println!("cargo:rustc-link-lib=stdc++");
+        }
     }
 }
