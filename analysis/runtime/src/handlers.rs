@@ -32,10 +32,14 @@ pub fn calloc(mir_loc: MirLocId, nmemb: u64, size: u64, ptr: usize) {
 pub fn realloc(mir_loc: MirLocId, old_ptr: usize, size: u64, new_ptr: usize) {
     TX.send(Event {
         mir_loc,
-        kind: EventKind::Realloc {
-            old_ptr,
+        kind: EventKind::Free { ptr: old_ptr },
+    })
+    .unwrap();
+    TX.send(Event {
+        mir_loc,
+        kind: EventKind::Alloc {
             size: size as usize,
-            new_ptr,
+            ptr: new_ptr,
         },
     })
     .unwrap();
@@ -52,6 +56,14 @@ pub fn reallocarray(mir_loc: MirLocId, old_ptr: usize, nmemb: u64, size: u64, ne
     .unwrap();
 }
 
+pub fn offset(mir_loc: MirLocId, ptr: usize, offset: isize, new_ptr: usize) {
+    TX.send(Event {
+        mir_loc,
+        kind: EventKind::Offset(ptr, offset, new_ptr),
+    })
+    .unwrap();
+}
+
 pub fn ptr_field(mir_loc: MirLocId, ptr: usize, field_id: u32) {
     TX.send(Event {
         mir_loc,
@@ -63,15 +75,55 @@ pub fn ptr_field(mir_loc: MirLocId, ptr: usize, field_id: u32) {
 pub fn ptr_copy(mir_loc: MirLocId, ptr: usize) {
     TX.send(Event {
         mir_loc,
-        kind: EventKind::Copy(ptr),
+        kind: EventKind::CopyPtr(ptr as usize),
     })
     .unwrap();
 }
 
-pub fn ptr_arg(mir_loc: MirLocId, ptr: usize) {
+pub fn ptr_contrive(mir_loc: MirLocId, ptr: usize) {
     TX.send(Event {
         mir_loc,
-        kind: EventKind::Arg(ptr),
+        kind: EventKind::FromInt(ptr as usize),
+    })
+    .unwrap();
+}
+
+pub fn ptr_to_int(mir_loc: MirLocId, ptr: usize) {
+    TX.send(Event {
+        mir_loc,
+        kind: EventKind::ToInt(ptr as usize),
+    })
+    .unwrap();
+}
+
+pub fn addr_of_local(mir_loc: MirLocId, ptr: usize, local: u32) {
+    TX.send(Event {
+        mir_loc,
+        kind: EventKind::AddrOfLocal(ptr, local.into()),
+    })
+    .unwrap();
+}
+
+pub fn ref_copy(mir_loc: MirLocId, _dest_local_ptr: usize) {
+    TX.send(Event {
+        mir_loc,
+        kind: EventKind::CopyRef,
+    })
+    .unwrap();
+}
+
+pub fn load_value(mir_loc: MirLocId, ptr: usize) {
+    TX.send(Event {
+        mir_loc,
+        kind: EventKind::LoadValue(ptr),
+    })
+    .unwrap();
+}
+
+pub fn store_value(mir_loc: MirLocId, ptr: usize) {
+    TX.send(Event {
+        mir_loc,
+        kind: EventKind::StoreValue(ptr),
     })
     .unwrap();
 }
