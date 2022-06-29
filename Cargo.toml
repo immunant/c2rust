@@ -10,7 +10,6 @@ members = [
     "c2rust-asm-casts",
     "analysis/runtime",
     "dynamic_instrumentation",
-    "pdg",
 ]
 exclude = [
     "cross-checks/pointer-tracer",
