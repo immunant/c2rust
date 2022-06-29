@@ -4,10 +4,13 @@ use rustc_index::newtype_index;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BasicBlock, Field, Local};
 use rustc_span::def_id::DefPathHash;
+use std::fmt::Display;
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Formatter},
 };
+
+use crate::util::ShortOption;
 
 newtype_index!(
     /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
@@ -23,7 +26,7 @@ newtype_index!(
 pub const _ROOT_NODE: NodeId = NodeId::from_u32(0);
 
 /// A pointer derivation graph, which tracks the handling of one object throughout its lifetime.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Eq, PartialEq, Hash, Clone)]
 pub struct Graph {
     /// The nodes in the graph.  Nodes are stored in increasing order by timestamp.  The first
     /// node, called the "root node", creates the object described by this graph, and all other
@@ -39,12 +42,19 @@ impl Graph {
     }
 }
 
+#[derive(Eq, PartialEq, Hash, Clone)]
 pub struct Func(pub DefPathHash);
 
 impl Debug for Func {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let x = c2rust_analysis_rt::DefPathHash::from(self.0 .0.as_value());
-        x.fmt(f)
+        let def_path = c2rust_analysis_rt::DefPathHash::from(self.0 .0.as_value());
+        write!(f, "{:?}", def_path)
+    }
+}
+
+impl Display for Func {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
@@ -55,7 +65,7 @@ impl Debug for Func {
 /// Each operation occurs at a point in time, but the timestamp is not stored explicitly.  Instead,
 /// nodes in each graph are stored in sequential order, and timing relationships can be identified
 /// by comparing `NodeId`s.
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct Node {
     /// The function that contains this operation.
     ///
@@ -71,7 +81,7 @@ pub struct Node {
     /// operation.  As in `rustc_middle::mir::Location`, an index less than the number of
     /// statements in the block refers to that statement, and an index equal to the number of
     /// statements refers to the terminator.
-    pub index: usize,
+    pub statement_idx: usize,
     /// The MIR place where this operation stores its result.  This is `None` for operations that
     /// don't store anything and for operations whose result is a temporary not visible as a MIR
     /// place.
@@ -82,7 +92,7 @@ pub struct Node {
     pub source: Option<NodeId>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum NodeKind {
     /// A copy from one local to another.  This also covers casts such as `&mut T` to `&T` or `&T`
     /// to `*const T` that don't change the type or value of the pointer.
@@ -129,7 +139,7 @@ pub enum NodeKind {
 }
 
 /// A collection of graphs describing the handling of one or more objects within the program.
-#[derive(Default)]
+#[derive(Default, Eq, PartialEq)]
 pub struct Graphs {
     /// The graphs.  Each graph describes one object, or one group of objects that were all handled
     /// identically.
@@ -151,5 +161,80 @@ impl Graphs {
 impl Debug for Graphs {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{:?}", self.graphs)
+    }
+}
+
+impl Display for NodeId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "node {}", self.as_usize())
+    }
+}
+
+impl Display for NodeKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use NodeKind::*;
+        match self {
+            Copy => write!(f, "copy"),
+            Field(field) => write!(f, "field.{}", field.as_usize()),
+            Offset(offset) => write!(f, "offset[{offset}]"),
+            AddrOfLocal(local) => write!(f, "&local {local:?}"),
+            _AddrOfStatic(static_) => write!(f, "&static {static_:?}"),
+            Malloc(n) => write!(f, "malloc(n = {n})"),
+            Free => write!(f, "free"),
+            PtrToInt => write!(f, "ptr_to_int"),
+            IntToPtr => write!(f, "int_to_ptr"),
+            LoadValue => write!(f, "value.load"),
+            StoreValue => write!(f, "value.store"),
+            LoadAddr => write!(f, "addr.load"),
+            StoreAddr => write!(f, "addr.store"),
+        }
+    }
+}
+
+impl Display for Node {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let Self {
+            function,
+            block,
+            statement_idx,
+            dest,
+            kind,
+            source,
+        } = self;
+        let src = ShortOption(source.as_ref());
+        let dest = ShortOption(dest.as_ref());
+        let bb = block.as_usize();
+        let stmt = statement_idx;
+        let fn_ = function;
+        write!(f, "(fn {fn_}) {kind} {{ src: {src}, dest: {dest}, bb: {bb}, stmt: {stmt} }}")
+    }
+}
+
+impl Display for GraphId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "graph {}", self.as_usize())
+    }
+}
+
+impl Display for Graph {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{{")?;
+        for (node_id, node) in self.nodes.iter_enumerated() {
+            writeln!(f, "\t{node_id}: {node},")?;
+        }
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
+impl Display for Graphs {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        for (graph_id, graph) in self.graphs.iter_enumerated() {
+            if graph_id.as_usize() != 0 {
+                write!(f, "\n\n")?;
+            }
+            write!(f, "{graph_id} {graph}")?;
+        }
+        Ok(())
     }
 }

@@ -19,9 +19,12 @@ extern crate rustc_target;
 
 mod builder;
 mod graph;
+mod assert;
+mod util;
+mod query;
 
 use builder::{construct_pdg, read_event_log};
-use c2rust_analysis_rt::{mir_loc, Runtime};
+use c2rust_analysis_rt::Runtime;
 use color_eyre::eyre;
 use std::{env, path::Path};
 
@@ -30,26 +33,30 @@ fn main() -> eyre::Result<()> {
     env_logger::init();
     let _runtime = Runtime::new();
 
-    let event_trace_path = env::args()
-        .skip(1)
-        .next()
+    let event_trace_path = env::args().nth(1)
         .expect("Expected event trace file path as the first argument");
     let events = read_event_log(Path::new(event_trace_path.as_str()))?;
 
-    for event in &events {
-        let mir_loc = mir_loc::get(event.mir_loc).unwrap();
-        let kind = &event.kind;
-        println!("{mir_loc:?} -> {kind:?}");
-    }
+    // for event in &events {
+    //     let mir_loc = mir_loc::get(event.mir_loc).unwrap();
+    //     let kind = &event.kind;
+    //     println!("{mir_loc:?} -> {kind:?}");
+    // }
 
     let pdg = construct_pdg(&events);
-    for (g, graph) in pdg.graphs.iter().enumerate() {
-        println!("-- Object {g:?} ---");
-        for (n, node) in graph.nodes.iter().enumerate() {
-            println!("{n:?}:{node:?}");
-        }
-        println!();
+    pdg.assert_all_tests();
+
+    for (graph_id, graph) in pdg.graphs.iter_enumerated() {
+        let needs_write = graph.needs_write_permission().map(|node_id| node_id.as_usize()).collect::<Vec<_>>();
+        println!("{graph_id} {graph}");
+        println!("nodes_that_need_write = {needs_write:?}");
+        println!("\n");
     }
+
+    let num_graphs = pdg.graphs.len();
+    let num_nodes = pdg.graphs.iter().map(|graph| graph.nodes.len()).sum::<usize>();
+    dbg!(num_graphs);
+    dbg!(num_nodes);
 
     Ok(())
 }

@@ -1,7 +1,8 @@
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt;
+use std::fmt::Debug;
+use std::fmt::{self, Display, Formatter};
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::RwLock;
@@ -62,36 +63,39 @@ impl From<u32> for Local {
 
 impl From<usize> for Local {
     fn from(index: usize) -> Self {
-        Self {
-            index: index.try_into().unwrap(),
-        }
+        // Want it to work w/o code changes if I change the underlying type to `u32`.
+        #[allow(clippy::useless_conversion)]
+        let index = index.try_into().unwrap();
+        Self { index }
     }
 }
 
-impl Into<u32> for Local {
-    fn into(self) -> u32 {
-        self.index.try_into().unwrap()
+impl From<Local> for u32 {
+    fn from(val: Local) -> Self {
+        val.index.try_into().unwrap()
     }
 }
 
-impl Into<usize> for Local {
-    fn into(self) -> usize {
-        self.index.try_into().unwrap()
+impl From<Local> for usize {
+    fn from(val: Local) -> Self {
+        // Want it to work w/o code changes if I change the underlying type to `u32`.
+        #[allow(clippy::useless_conversion)]
+        val.index.try_into().unwrap()
     }
 }
 
 impl Local {
     pub fn as_u32(&self) -> u32 {
-        self.clone().into()
+        (*self).into()
     }
 
     pub fn as_usize(&self) -> usize {
-        self.clone().into()
+        (*self).into()
     }
 }
 
-impl fmt::Debug for Local {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for Local {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "_{}", self.index)
     }
 }
@@ -102,8 +106,8 @@ pub struct MirPlace {
     pub projection: Vec<MirProjection>,
 }
 
-impl fmt::Debug for MirPlace {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for MirPlace {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self.local)?;
         for p in &self.projection {
             write!(f, ".{:?}", p)?;
@@ -112,13 +116,19 @@ impl fmt::Debug for MirPlace {
     }
 }
 
+impl Debug for MirPlace {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 pub type MirLocId = u32;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct DefPathHash(pub u64, pub u64);
 
-impl fmt::Debug for DefPathHash {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Debug for DefPathHash {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
             "{}",
