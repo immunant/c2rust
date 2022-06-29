@@ -199,7 +199,7 @@ pub fn add_node(
     let node = Node {
         function: Func(dest_fn),
         block: basic_block_idx.into(),
-        index: statement_idx,
+        statement_index: statement_idx,
         kind: node_kind,
         source: source
             .and_then(|p| event.kind.parent(p))

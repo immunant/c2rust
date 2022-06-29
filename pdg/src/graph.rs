@@ -81,7 +81,7 @@ pub struct Node {
     /// operation.  As in `rustc_middle::mir::Location`, an index less than the number of
     /// statements in the block refers to that statement, and an index equal to the number of
     /// statements refers to the terminator.
-    pub index: usize,
+    pub statement_index: usize,
     /// The MIR place where this operation stores its result.  This is `None` for operations that
     /// don't store anything and for operations whose result is a temporary not visible as a MIR
     /// place.
@@ -196,7 +196,7 @@ impl Display for Node {
         let Self {
             function,
             block,
-            index,
+            statement_index,
             dest,
             kind,
             source,
@@ -204,9 +204,9 @@ impl Display for Node {
         let src = ShortOption(source.as_ref());
         let dest = ShortOption(dest.as_ref());
         let bb = block.as_usize();
-        let index_in_bb = index;
+        let stmt = statement_index;
         let fn_ = function;
-        write!(f, "(fn {fn_}) {kind} {{ src: {src}, dest: {dest}, bb: {bb}, bbi: {index_in_bb} }}")
+        write!(f, "(fn {fn_}) {kind} {{ src: {src}, dest: {dest}, bb: {bb}, stmt: {stmt} }}")
     }
 }
 
