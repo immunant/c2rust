@@ -1,12 +1,19 @@
+//! ## Future Plans for Queries
+//! TODO(kkysen, aneksteind)
+//! 
+//! It would be nice to test properties like "an object is create in `foo`,
+//! and its object [`Graph`] contains a [`StoreAddr`] node".
+//! 
+//! [`StoreAddr`]: NodeKind::StoreAddr.
+//! 
+//! For example PDGs that we have already (manually) confirmed are correct,
+//! we want to set up snapshot testing to make sure we don't introduce any regressions,
+//! and be able to test if certain changes have any effect on the PDG output.
+//! We are thinking about using [`insta`](https://insta.rs/) for this.
+
 use linked_hash_set::LinkedHashSet;
 
 use crate::graph::{Graph, NodeId, NodeKind};
-
-// TODO(kkysen, aneksteind)
-// it would be nice to test properties like "an object is created in foo,
-// and its object graph contains a StoreAddr node".
-// essentially, if Stuart thinks the lighttpd example PDG looks good,
-// it would be nice to convert those mappings into test cases
 
 impl Graph {
     /// Query an object [`Graph`] to determine which of its [`Node`]s (returned as [`NodeId`]s)
