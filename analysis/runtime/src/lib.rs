@@ -33,6 +33,8 @@ pub fn finalize() {
 pub struct Runtime;
 
 impl Runtime {
+    /// An `impl `[`Default`] doesn't make sense when it's a RAII type that initializes a runtime.
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         initialize();
         Self
