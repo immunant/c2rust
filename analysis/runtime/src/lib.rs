@@ -6,7 +6,7 @@ pub mod mir_loc;
 use std::env;
 
 /// List of functions we want hooked for the lifetime analyis runtime.
-pub const HOOK_FUNCTIONS: &[&'static str] = &[
+pub const HOOK_FUNCTIONS: &[&str] = &[
     "malloc",
     "free",
     "calloc",

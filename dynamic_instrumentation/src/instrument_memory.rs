@@ -226,16 +226,16 @@ fn rv_place<'tcx>(rv: &'tcx Rvalue) -> Option<Place<'tcx>> {
     match rv {
         Rvalue::Use(op) => op.place(),
         Rvalue::Repeat(op, _) => op.place(),
-        Rvalue::Ref(_, _, p) => Some(p.clone()),
+        Rvalue::Ref(_, _, p) => Some(*p),
         // ThreadLocalRef
-        Rvalue::AddressOf(_, p) => Some(p.clone()),
-        Rvalue::Len(p) => Some(p.clone()),
+        Rvalue::AddressOf(_, p) => Some(*p),
+        Rvalue::Len(p) => Some(*p),
         Rvalue::Cast(_, op, _) => op.place(),
         // BinaryOp
         // CheckedBinaryOp
         // NullaryOp
         Rvalue::UnaryOp(_, op) => op.place(),
-        Rvalue::Discriminant(p) => Some(p.clone()),
+        Rvalue::Discriminant(p) => Some(*p),
         // Aggregate
         Rvalue::ShallowInitBox(op, _) => op.place(),
         _ => None,
@@ -281,7 +281,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                             false,
                             false,
                             EventMetadata {
-                                source: Some(to_mir_place(&place)),
+                                source: Some(to_mir_place(place)),
                                 destination,
                                 transfer_kind: TransferKind::None,
                             },
@@ -291,22 +291,20 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                 }
             }
 
-            if place.is_indirect() {
-                if !context.is_mutating_use() {
-                    // Place is loading from a raw ptr; trace the raw ptr
-                    self.add_instrumentation_point(
-                        location.clone(),
-                        load_fn,
-                        vec![InstrumentationOperand::RawPtr(Operand::Copy(place.local.into()))],
-                        false,
-                        false,
-                        EventMetadata {
-                            source: Some(to_mir_place(&place)),
-                            destination: None,
-                            transfer_kind: TransferKind::None,
-                        },
-                    );
-                }
+            if place.is_indirect() && !context.is_mutating_use() {
+                // Place is loading from a raw ptr; trace the raw ptr
+                self.add_instrumentation_point(
+                    location,
+                    load_fn,
+                    vec![InstrumentationOperand::RawPtr(Operand::Copy(place.local.into()))],
+                    false,
+                    false,
+                    EventMetadata {
+                        source: Some(to_mir_place(place)),
+                        destination: None,
+                        transfer_kind: TransferKind::None,
+                    },
+                );
             }
         }
     }
@@ -405,7 +403,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         {
                             // Cast from raw pointer to usize; trace the pointer being casted
                             self.add_instrumentation_point(
-                                location.clone(),
+                                location,
                                 ptr_to_int_fn,
                                 vec![InstrumentationOperand::RawPtr(Operand::Copy(p.local.into()))],
                                 false,
@@ -909,7 +907,7 @@ fn insert_call<'tcx>(
     });
 
     for arg in &mut args {
-        if let Some((cast_stmts, cast_local)) = cast_ptr_to_usize(tcx, locals, &arg) {
+        if let Some((cast_stmts, cast_local)) = cast_ptr_to_usize(tcx, locals, arg) {
             *arg = InstrumentationOperand::AddressUsize(cast_local);
             blocks[block]
                 .statements
@@ -972,8 +970,7 @@ fn cast_ptr_to_usize<'tcx>(
 
             let mut deref = arg
                 .place()
-                .expect("Can't get the address of a constant")
-                .clone();
+                .expect("Can't get the address of a constant");
             let mut projs = Vec::with_capacity(deref.projection.len() + 1);
             projs.extend(deref.projection);
             projs.push(ProjectionElem::Deref);
