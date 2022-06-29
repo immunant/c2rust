@@ -1,7 +1,7 @@
 use clang_sys::CXVersion;
 use cmake::Config;
 use color_eyre::eyre::{ensure, eyre};
-use color_eyre::{eyre, Help};
+use color_eyre::{eyre, Help, Report};
 use std::ffi::OsStr;
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
@@ -130,7 +130,7 @@ fn generate_bindings() -> eyre::Result<()> {
         .note("Unable to generate ExportResult bindings")?;
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     bindings
         .write_to_file(out_dir.join("bindings.rs"))
         .note("Couldn't write bindings!")?;
@@ -257,14 +257,13 @@ impl LLVMInfo {
                 .or_else(|e| {
                     // Relative to LLVM_LIB_DIR
                     env::var("LLVM_LIB_DIR")
-                        .map(|llvm_lib_dir| {
-                            String::from(
-                                Path::new(&llvm_lib_dir)
-                                    .join("../bin/llvm-config")
-                                    .canonicalize()
-                                    .unwrap()
-                                    .to_string_lossy(),
-                            )
+                        .map_err(Report::new)
+                        .and_then(|llvm_lib_dir| {
+                            Ok(Path::new(&llvm_lib_dir)
+                                .join("../bin/llvm-config")
+                                .canonicalize()?
+                                .to_string_lossy()
+                                .into_owned())
                         })
                         .error(e)
                 })
@@ -352,8 +351,7 @@ impl LLVMInfo {
                 .or_else(|e| invoke_command(&llvm_config, &["--libdir"]).error(e))
                 .note(llvm_config_libdir_missing)?;
             Path::new(&path_str)
-                .canonicalize()
-                .unwrap()
+                .canonicalize()?
                 .to_string_lossy()
                 .into_owned()
         };
@@ -362,8 +360,7 @@ impl LLVMInfo {
                 .or_else(|e| invoke_command(&llvm_config, &["--cmakedir"]).error(e))
                 .note(llvm_config_cmakedir_missing)?;
             Path::new(&path_str)
-                .canonicalize()
-                .unwrap()
+                .canonicalize()?
                 .to_string_lossy()
                 .into_owned()
         };
@@ -372,7 +369,7 @@ impl LLVMInfo {
                 env::var("CLANG_CMAKE_DIR").unwrap_or_else(|_| format!("{}/../clang", cmake_dir));
             Path::new(&path_str)
                 .canonicalize()
-                .expect(clang_cmakedir_missing)
+                .note(clang_cmakedir_missing)?
                 .to_string_lossy()
                 .into_owned()
         };
@@ -406,7 +403,7 @@ impl LLVMInfo {
                 let mut libllvm_path = PathBuf::new();
                 libllvm_path.push(sysroot);
                 libllvm_path.push("lib/rustlib");
-                libllvm_path.push(env::var("TARGET").unwrap());
+                libllvm_path.push(env::var("TARGET")?);
                 libllvm_path.push("lib");
                 libllvm_path.push(dylib_file);
 
@@ -460,7 +457,7 @@ impl LLVMInfo {
         }
 
         let mut libs = invoke_command(&llvm_config, &args)
-            .unwrap_or_else(|_| "-lLLVM".to_string())
+            .unwrap_or_else(|_| "-lLLVM".into())
             .split_whitespace()
             .map(|lib| lib.trim_start_matches("-l").into())
             .collect::<Vec<_>>();
