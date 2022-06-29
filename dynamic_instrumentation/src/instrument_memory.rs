@@ -525,27 +525,36 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         projection: tcx.intern_place_elems(&p.projection[..p.projection.len() - 1]),
                     })
                 }
-                // For mutable borrows (let _n = &mut place), create a parallel binding that takes
-                // a raw pointer to the same place, without involving _n
-                if let Rvalue::Ref(_, BorrowKind::Mut {..}, p) = value {
-                    // We do not increment the statement index because we want to take a raw ptr
-                    // prior to the existing stmt that takes a mutable pointer
-                    //location.statement_index += 1;
+                if let Rvalue::Ref(_, bkind, p) = value {
+                    let instr_operand = if let BorrowKind::Mut {..} = bkind {
+                        // For mutable borrows (let _n = &mut place), create a parallel binding that takes
+                        // a raw pointer to the same place, without involving _n
 
-                    // Remove outer deref if present, so we turn `&mut *x` into `addr_of!(x)` rather
-                    // than `addr_of!(*x)`
-                    let arg = match p.iter_projections().last() {
-                        Some((_, ProjectionElem::Deref)) => {
-                            let sans_proj = pop_one_projection(p, self.tcx.clone())
-                                .expect("expected but did not find deref projection");
-                            Operand::Copy(sans_proj)
-                        },
-                        _ => Operand::Copy(p.clone()),
+                        // We do not increment the statement index because we want to take a raw ptr
+                        // prior to the existing stmt that takes a mutable pointer
+                        //location.statement_index += 1;
+
+                        // Remove outer deref if present, so we turn `&mut *x` into `addr_of!(x)` rather
+                        // than `addr_of!(*x)`
+                        let arg = match p.iter_projections().last() {
+                            Some((_, ProjectionElem::Deref)) => {
+                                let sans_proj = pop_one_projection(p, self.tcx.clone())
+                                    .expect("expected but did not find deref projection");
+                                Operand::Copy(sans_proj)
+                            },
+                            _ => Operand::Copy(p.clone()),
+                        };
+                        // Instrument mutable borrows by addr_of! on the place to be borrowed
+                        InstrumentationOperand::Place(arg)
+                    } else {
+                        // Instrument immutable borrows by tracing the reference itself
+                        location.statement_index += 1;
+                        InstrumentationOperand::Reference(Operand::Copy(dest))
                     };
                     self.add_instrumentation_point(
                         location,
                         ref_copy_fn,
-                        vec![InstrumentationOperand::Place(arg)],
+                        vec![instr_operand],
                         false,
                         false,
                         EventMetadata {
