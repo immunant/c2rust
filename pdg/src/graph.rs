@@ -179,7 +179,7 @@ impl Display for NodeKind {
             Offset(offset) => write!(f, "offset[{offset}]"),
             AddrOfLocal(local) => write!(f, "&local {local:?}"),
             _AddrOfStatic(static_) => write!(f, "&static {static_:?}"),
-            Malloc(n) => write!(f, "malloc {n}"),
+            Malloc(n) => write!(f, "malloc(n = {n})"),
             Free => write!(f, "free"),
             PtrToInt => write!(f, "ptr_to_int"),
             IntToPtr => write!(f, "int_to_ptr"),
