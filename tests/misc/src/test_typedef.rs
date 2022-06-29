@@ -1,22 +1,15 @@
-extern crate libc;
+use crate::typedef::{int_ptr, my_int, rust_entry};
 
-use typedef::{rust_entry, my_int, int_ptr};
-
-use self::libc::c_int;
+use libc::c_int;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn entry() -> c_int;
 }
 
 pub fn test_typedef() {
-    let ret = unsafe {
-        entry()
-    };
-    let rust_ret = unsafe {
-        rust_entry()
-    };
+    let ret = unsafe { entry() };
+    let rust_ret = unsafe { rust_entry() };
     assert_eq!(ret, 0);
     assert_eq!(rust_ret, 0);
 

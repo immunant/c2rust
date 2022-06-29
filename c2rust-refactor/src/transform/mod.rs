@@ -59,6 +59,7 @@ transform_modules! {
     generics,
     ionize,
     items,
+    lifetime_analysis,
     linkage,
     literals,
     reorganize_definitions,

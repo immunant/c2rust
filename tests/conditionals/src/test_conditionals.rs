@@ -1,27 +1,21 @@
-extern crate libc;
-
-use conditional::rust_entry;
-use conditionals::{rust_entry2, rust_ternaries};
-use binary_conditional::rust_entry3;
-use unused_conditionals::{rust_unused_conditional1, rust_unused_conditional2, rust_unused_conditional3};
-use self::libc::{c_int, c_uint};
+use crate::binary_conditional::rust_entry3;
+use crate::conditional::rust_entry;
+use crate::conditionals::{rust_entry2, rust_ternaries};
+use crate::unused_conditionals::{
+    rust_unused_conditional1, rust_unused_conditional2, rust_unused_conditional3,
+};
+use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn entry(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn entry2(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn entry3(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn unused_conditional1() -> c_int;
-    #[no_mangle]
     fn unused_conditional2() -> c_int;
-    #[no_mangle]
     fn unused_conditional3() -> c_int;
 }
 
@@ -47,9 +41,7 @@ pub fn test_buffer2() {
     let mut buffer = [0; BUFFER_SIZE2];
     let mut rust_buffer = [0; BUFFER_SIZE2];
     let expected_buffer = [
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
 
     unsafe {
@@ -76,9 +68,9 @@ pub fn test_binary_conditionals() {
 }
 
 pub fn test_unused_conditional() {
-  unsafe {
-    assert_eq!(unused_conditional1(), rust_unused_conditional1());
-    assert_eq!(unused_conditional2(), rust_unused_conditional2());
-    assert_eq!(unused_conditional3(), rust_unused_conditional3());
-  }
+    unsafe {
+        assert_eq!(unused_conditional1(), rust_unused_conditional1());
+        assert_eq!(unused_conditional2(), rust_unused_conditional2());
+        assert_eq!(unused_conditional3(), rust_unused_conditional3());
+    }
 }

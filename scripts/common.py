@@ -97,7 +97,9 @@ class Config:
 
     CC_DB_JSON = "compile_commands.json"
 
-    CUSTOM_RUST_NAME = 'nightly-2019-12-05'
+    # Look up rust toolchain from repo root
+    with open(os.path.join(ROOT_DIR, "rust-toolchain")) as fh:
+        CUSTOM_RUST_NAME = fh.readline().strip()
 
     LLVM_SKIP_SIGNATURE_CHECKS  = False
 
@@ -144,23 +146,7 @@ class Config:
         self.RREF_BIN = None    # set in `update_args`
         self.C2RUST_BIN = None  # set in `update_args`
         self.TARGET_DIR = None  # set in `update_args`
-        self.check_rust_toolchain()
         self.update_args()
-
-    def check_rust_toolchain(self):
-        """
-        Sanity check that the value of self.CUSTOM_RUST_NAME matches
-        the contents of self.ROOT_DIR/rust-toolchain.
-        """
-        toolchain_path = os.path.join(self.ROOT_DIR, "rust-toolchain")
-        if os.path.exists(toolchain_path):
-            with open(toolchain_path) as fh:
-                toolchain_name = fh.readline().strip()
-            emesg = "Rust version mismatch.\n"
-            emesg += "\tcommon.py expects:       {}\n" \
-                     .format(self.CUSTOM_RUST_NAME)
-            emesg += "\trust-toolchain requests: {}\n".format(toolchain_name)
-            assert self.CUSTOM_RUST_NAME == toolchain_name, emesg
 
     def update_args(self, args=None):
         build_type = 'debug' if args and args.debug else 'release'
@@ -172,17 +158,21 @@ class Config:
         # update dependent variables
         self._init_llvm_ver_deps()
 
-        self.TRANSPILER = "target/{}/c2rust-transpile".format(build_type)
-        self.TRANSPILER = os.path.join(self.ROOT_DIR, self.TRANSPILER)
+        env_target_dir = os.getenv('CARGO_TARGET_DIR')
+        self.TARGET_DIR = "{}/".format(build_type)
+        if env_target_dir:
+            self.TARGET_DIR = os.path.join(env_target_dir, self.TARGET_DIR)
+        else:
+            self.TARGET_DIR = os.path.join(self.ROOT_DIR, "target", self.TARGET_DIR)
 
-        self.RREF_BIN = "target/{}/c2rust-refactor".format(build_type)
-        self.RREF_BIN = os.path.join(self.ROOT_DIR, self.RREF_BIN)
+        self.TRANSPILER = "c2rust-transpile"
+        self.TRANSPILER = os.path.join(self.TARGET_DIR, self.TRANSPILER)
 
-        self.C2RUST_BIN = "target/{}/c2rust".format(build_type)
-        self.C2RUST_BIN = os.path.join(self.ROOT_DIR, self.C2RUST_BIN)
+        self.RREF_BIN = "c2rust-refactor"
+        self.RREF_BIN = os.path.join(self.TARGET_DIR, self.RREF_BIN)
 
-        self.TARGET_DIR = "target/{}/".format(build_type)
-        self.TARGET_DIR = os.path.join(self.ROOT_DIR, self.TARGET_DIR)
+        self.C2RUST_BIN = "c2rust"
+        self.C2RUST_BIN = os.path.join(self.TARGET_DIR, self.C2RUST_BIN)
 
         has_skip_sig = args and hasattr(args, 'llvm_skip_signature_checks') 
         self.LLVM_SKIP_SIGNATURE_CHECKS = args.llvm_skip_signature_checks \

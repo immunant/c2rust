@@ -1,15 +1,10 @@
 #![allow(mutable_transmutes)]
-#![feature(libc)]
-extern crate libc;
 
 use std::slice;
 
 extern "C" {
-    #[no_mangle]
     fn strlen(_: *const libc::c_char) -> libc::c_ulong;
-    #[no_mangle]
     fn printf(_: *const libc::c_char, ...) -> libc::c_int;
-    #[no_mangle]
     fn test_mut(_: *mut libc::c_char) -> libc::c_ulong;
 }
 

@@ -1,30 +1,27 @@
 //! feature_c_variadic,
-extern crate libc;
 
-use varargs::{rust_call_printf, rust_call_vprintf, rust_my_printf, rust_simple_vacopy,
-              rust_restart_valist, rust_sample_stddev};
+use crate::varargs::{
+    rust_call_printf, rust_call_vprintf, rust_my_printf, rust_restart_valist, rust_sample_stddev,
+    rust_simple_vacopy, rust_valist_struct_member,
+};
 
+use libc::c_char;
 use std::ffi::CString;
-use self::libc::c_char;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn call_printf();
 
-    #[no_mangle]
     fn call_vprintf(_: *const c_char, ...);
 
-    #[no_mangle]
     fn my_printf(_: *const c_char, ...);
 
-    #[no_mangle]
     fn simple_vacopy(_: *const c_char, ...);
 
-    #[no_mangle]
+    fn valist_struct_member(_: *const c_char, ...);
+
     fn restart_valist(_: *const c_char, ...);
 
-    #[no_mangle]
     fn sample_stddev(count: i32, ...) -> f64;
 }
 
@@ -57,12 +54,20 @@ pub fn test_my_printf() {
 }
 
 pub fn test_simple_vacopy() {
-     let fmt_str = CString::new("%d, %f\n").unwrap();
-     unsafe {
-         simple_vacopy(fmt_str.as_ptr(), 10, 1.5);
-         rust_simple_vacopy(fmt_str.as_ptr(), 10, 1.5);
-     }
- }
+    let fmt_str = CString::new("%d, %f\n").unwrap();
+    unsafe {
+        simple_vacopy(fmt_str.as_ptr(), 10, 1.5);
+        rust_simple_vacopy(fmt_str.as_ptr(), 10, 1.5);
+    }
+}
+
+pub fn test_valist_struct_member() {
+    let fmt_str = CString::new("%d, %f\n").unwrap();
+    unsafe {
+        valist_struct_member(fmt_str.as_ptr(), 10, 1.5);
+        rust_valist_struct_member(fmt_str.as_ptr(), 10, 1.5);
+    }
+}
 
 pub fn test_restart_valist() {
     let fmt_str = CString::new("%d, %f\n").unwrap();
@@ -74,8 +79,8 @@ pub fn test_restart_valist() {
 
 pub fn test_sample_stddev() {
     unsafe {
-        let c_res= sample_stddev(4, 25.0, 27.3, 26.9, 25.7);
-        let rs_res= rust_sample_stddev(4, 25.0, 27.3, 26.9, 25.7);
+        let c_res = sample_stddev(4, 25.0, 27.3, 26.9, 25.7);
+        let rs_res = rust_sample_stddev(4, 25.0, 27.3, 26.9, 25.7);
         assert_eq!(c_res, rs_res);
     }
 }

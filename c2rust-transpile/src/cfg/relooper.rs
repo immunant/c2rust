@@ -17,7 +17,9 @@ pub fn reloop(
         .nodes
         .into_iter()
         .map(|(lbl, bb)| {
-            let terminator = bb.terminator.map_labels(|l| StructureLabel::GoTo(*l));
+            let terminator = bb
+                .terminator
+                .map_labels(|l| StructureLabel::GoTo(l.clone()));
             (
                 lbl,
                 BasicBlock {
@@ -155,7 +157,7 @@ impl RelooperState {
                     flipped_map
                         .entry(val)
                         .or_insert(IndexSet::new())
-                        .insert(lbl);
+                        .insert(lbl.clone());
                 }
             }
             flipped_map
@@ -183,12 +185,12 @@ impl RelooperState {
         // --------------------------------------
         // Simple blocks
         if none_branch_to.len() == 1 && some_branch_to.is_empty() {
-            let entry = *none_branch_to
+            let entry = none_branch_to
                 .iter()
                 .next()
                 .expect("Should find exactly one entry");
 
-            if let Some(bb) = blocks.swap_remove(&entry) {
+            if let Some(bb) = blocks.swap_remove(entry) {
                 let new_entries = bb.successors();
                 let BasicBlock {
                     body,
@@ -225,7 +227,7 @@ impl RelooperState {
                 self.relooper(new_entries, blocks, result, false);
             } else {
                 let body = vec![];
-                let terminator = Jump(StructureLabel::GoTo(entry));
+                let terminator = Jump(StructureLabel::GoTo(entry.clone()));
 
                 result.push(Structure::Simple {
                     entries,
@@ -268,16 +270,19 @@ impl RelooperState {
         // Loops
 
         // DFS transitive closure
-        fn transitive_closure<V: Copy + Hash + Eq>(
+        fn transitive_closure<V: Clone + Hash + Eq>(
             adjacency_list: &IndexMap<V, IndexSet<V>>,
         ) -> IndexMap<V, IndexSet<V>> {
             let mut edges: IndexSet<(V, V)> = IndexSet::new();
-            let mut to_visit: Vec<(V, V)> = adjacency_list.keys().map(|v| (*v, *v)).collect();
+            let mut to_visit: Vec<(V, V)> = adjacency_list
+                .keys()
+                .map(|v| (v.clone(), v.clone()))
+                .collect();
 
             while let Some((s, v)) = to_visit.pop() {
                 for i in adjacency_list.get(&v).unwrap_or(&IndexSet::new()) {
-                    if edges.insert((s, *i)) {
-                        to_visit.push((s, *i));
+                    if edges.insert((s.clone(), i.clone())) {
+                        to_visit.push((s.clone(), i.clone()));
                     }
                 }
             }
@@ -294,7 +299,7 @@ impl RelooperState {
         let (predecessor_map, strict_reachable_from) = {
             let successor_map: IndexMap<Label, IndexSet<Label>> = blocks
                 .iter()
-                .map(|(lbl, bb)| (*lbl, bb.successors()))
+                .map(|(lbl, bb)| (lbl.clone(), bb.successors()))
                 .collect();
 
             let strict_reachable_from = flip_edges(transitive_closure(&successor_map));
@@ -308,16 +313,16 @@ impl RelooperState {
         let mut recognized_c_multiple = false;
         if let Some(ref multiple_info) = self.multiple_info {
             let entries_key = entries.iter().cloned().collect();
-            if let Some(&(join, ref arms)) = multiple_info.get_multiple(&entries_key) {
+            if let Some((join, arms)) = multiple_info.get_multiple(&entries_key) {
                 recognized_c_multiple = true;
 
                 for (entry, content) in arms {
-                    let mut to_visit: Vec<Label> = vec![*entry];
+                    let mut to_visit: Vec<Label> = vec![entry.clone()];
                     let mut visited: IndexSet<Label> = IndexSet::new();
 
                     while let Some(lbl) = to_visit.pop() {
                         // Stop at things you've already seen or the join block
-                        if !visited.insert(lbl) || lbl == join {
+                        if !visited.insert(lbl.clone()) || lbl == *join {
                             continue;
                         }
 
@@ -333,8 +338,8 @@ impl RelooperState {
                     }
 
                     // Check we've actually visited all of the expected content
-                    visited.swap_remove(&join);
-                    if let Some(_) = visited.difference(content).next() {
+                    visited.swap_remove(join);
+                    if visited.difference(content).next().is_some() {
                         recognized_c_multiple = false;
                     }
                 }
@@ -346,7 +351,7 @@ impl RelooperState {
             let new_returns: IndexSet<Label> = strict_reachable_from
                 .iter()
                 .filter(|&(lbl, _)| blocks.contains_key(lbl) && entries.contains(lbl))
-                .flat_map(|(_, ref reachable)| reachable.iter())
+                .flat_map(|(_, reachable)| reachable.iter())
                 .cloned()
                 .collect();
 
@@ -401,9 +406,9 @@ impl RelooperState {
             // Rename some `GoTo`s in the loop body to `ExitTo`s
             for (_, bb) in body_blocks.iter_mut() {
                 for lbl in bb.terminator.get_labels_mut() {
-                    if let &mut StructureLabel::GoTo(label) = lbl {
+                    if let StructureLabel::GoTo(label) = lbl.clone() {
                         if entries.contains(&label) || follow_entries.contains(&label) {
-                            *lbl = StructureLabel::ExitTo(label)
+                            *lbl = StructureLabel::ExitTo(label.clone())
                         }
                     }
                 }
@@ -427,9 +432,9 @@ impl RelooperState {
         let mut reachable_from: IndexMap<Label, IndexSet<Label>> = strict_reachable_from;
         for entry in &entries {
             reachable_from
-                .entry(*entry)
+                .entry(entry.clone())
                 .or_insert(IndexSet::new())
-                .insert(*entry);
+                .insert(entry.clone());
         }
 
         // Blocks that are reached by only one label
@@ -446,8 +451,8 @@ impl RelooperState {
             .map(|(lbl, within)| {
                 let val = blocks
                     .iter()
-                    .filter(|&(k, _)| within.contains(k))
-                    .map(|(&k, v)| (k, v.clone()))
+                    .filter(|(k, _)| within.contains(*k))
+                    .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
                 (lbl, val)
             })
@@ -455,21 +460,21 @@ impl RelooperState {
 
         let unhandled_entries: IndexSet<Label> = entries
             .iter()
-            .filter(|e| !handled_entries.contains_key(*e))
             .cloned()
+            .filter(|e| !handled_entries.contains_key(e))
             .collect();
 
         let mut handled_blocks: StructuredBlocks = IndexMap::new();
         for (_, map) in &handled_entries {
             for (k, v) in map {
-                handled_blocks.entry(*k).or_insert(v.clone());
+                handled_blocks.entry(k.clone()).or_insert(v.clone());
             }
         }
         let handled_blocks = handled_blocks;
 
         let follow_blocks: StructuredBlocks = blocks
             .into_iter()
-            .filter(|&(lbl, _)| !handled_blocks.contains_key(&lbl))
+            .filter(|(lbl, _)| !handled_blocks.contains_key(lbl))
             .collect();
 
         let follow_entries: IndexSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
@@ -477,7 +482,7 @@ impl RelooperState {
         let mut all_handlers: IndexMap<Label, Vec<Structure<StmtOrDecl>>> = handled_entries
             .into_iter()
             .map(|(lbl, blocks)| {
-                let entries = indexset![lbl];
+                let entries = indexset![lbl.clone()];
 
                 let mut structs: Vec<Structure<StmtOrDecl>> = vec![];
                 self.open_scope();
@@ -490,7 +495,11 @@ impl RelooperState {
 
         let handler_keys: IndexSet<Label> = all_handlers.keys().cloned().collect();
         let (then, branches) = if handler_keys == entries {
-            let a_key = *all_handlers.keys().next().expect("no handlers found");
+            let a_key = all_handlers
+                .keys()
+                .next()
+                .expect("no handlers found")
+                .clone();
             let last_handler = all_handlers.swap_remove(&a_key).expect("just got this key");
             (last_handler, all_handlers)
         } else {
@@ -504,8 +513,6 @@ impl RelooperState {
             then,
         });
         self.relooper(follow_entries, follow_blocks, result, disable_heuristics);
-
-        return;
     }
 }
 
@@ -515,12 +522,13 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
     let structures: Vec<Structure<Stmt>> = structures
         .into_iter()
         .map(|structure: Structure<Stmt>| -> Structure<Stmt> {
+            use Structure::*;
             match structure {
-                Structure::Loop { entries, body } => {
+                Loop { entries, body } => {
                     let body = simplify_structure(body);
-                    Structure::Loop { entries, body }
+                    Loop { entries, body }
                 }
-                Structure::Multiple {
+                Multiple {
                     entries,
                     branches,
                     then,
@@ -530,7 +538,7 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                         .map(|(lbl, ss)| (lbl, simplify_structure(ss)))
                         .collect();
                     let then = simplify_structure(then);
-                    Structure::Multiple {
+                    Multiple {
                         entries,
                         branches,
                         then,
@@ -541,15 +549,15 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
         })
         .collect();
 
-    let mut acc_structures: Vec<Structure<Stmt>> = vec![];
+    let mut acc_structures = Vec::new();
 
     for structure in structures.iter().rev() {
         match structure {
-            &Structure::Simple {
-                ref entries,
-                ref body,
-                ref span,
-                ref terminator,
+            Structure::Simple {
+                entries,
+                body,
+                span,
+                terminator,
             } => {
                 // Here, we ensure that all labels in a terminator are mentioned only once in the
                 // terminator.
@@ -559,41 +567,49 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                 } = terminator
                 {
                     // Here, we group patterns by the label they go to.
-                    let mut merged_goto: IndexMap<Label, Vec<P<Pat>>> = IndexMap::new();
-                    let mut merged_exit: IndexMap<Label, Vec<P<Pat>>> = IndexMap::new();
+                    type Merged = IndexMap<Label, Vec<Box<Pat>>>;
+                    let mut merged_goto: Merged = IndexMap::new();
+                    let mut merged_exit: Merged = IndexMap::new();
 
-                    for &(ref pat, ref lbl) in cases {
-                        match lbl {
-                            &StructureLabel::GoTo(lbl) => merged_goto
-                                .entry(lbl)
-                                .or_insert(vec![])
-                                .push(pat.clone()),
-                            &StructureLabel::ExitTo(lbl) => merged_exit
-                                .entry(lbl)
-                                .or_insert(vec![])
-                                .push(pat.clone()),
+                    for (pat, lbl) in cases {
+                        let (lbl, merged) = match lbl {
+                            StructureLabel::GoTo(lbl) => (lbl, &mut merged_goto),
+                            StructureLabel::ExitTo(lbl) => (lbl, &mut merged_exit),
                             _ => panic!("simplify_structure: Nested precondition violated"),
-                        }
+                        };
+                        merged
+                            .entry(lbl.clone())
+                            .or_insert(Default::default())
+                            .push(pat.clone());
                     }
 
                     // When converting these patterns back into a vector, we have to be careful to
                     // preserve their initial order (so that the default pattern doesn't end up on
                     // top).
-                    let mut cases_new: Vec<_> = vec![];
-                    for &(_, ref lbl) in cases.iter().rev() {
+                    let mut cases_new = Vec::new();
+                    for (_, lbl) in cases.iter().rev() {
+                        use StructureLabel::*;
                         match lbl {
-                            &StructureLabel::GoTo(lbl) => match merged_goto.swap_remove(&lbl) {
+                            GoTo(lbl) => match merged_goto.swap_remove(lbl) {
                                 None => {}
-                                Some(pats) => {
-                                    let pat = if pats.len() == 1 { pats[0].clone() } else { mk().or_pat(pats) };
-                                    cases_new.push((pat, StructureLabel::GoTo(lbl)))
+                                Some(mut pats) => {
+                                    let pat = if pats.len() == 1 {
+                                        pats.pop().unwrap()
+                                    } else {
+                                        mk().or_pat(pats)
+                                    };
+                                    cases_new.push((pat, GoTo(lbl.clone())))
                                 }
                             },
-                            &StructureLabel::ExitTo(lbl) => match merged_exit.swap_remove(&lbl) {
+                            ExitTo(lbl) => match merged_exit.swap_remove(lbl) {
                                 None => {}
-                                Some(pats) => {
-                                    let pat = if pats.len() == 1 { pats[0].clone() } else { mk().or_pat(pats) };
-                                    cases_new.push((pat, StructureLabel::ExitTo(lbl)))
+                                Some(mut pats) => {
+                                    let pat = if pats.len() == 1 {
+                                        pats.pop().unwrap()
+                                    } else {
+                                        mk().or_pat(pats)
+                                    };
+                                    cases_new.push((pat, ExitTo(lbl.clone())))
                                 }
                             },
                             _ => panic!("simplify_structure: Nested precondition violated"),
@@ -612,14 +628,15 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                 match acc_structures.pop() {
                     Some(Structure::Multiple {
                         entries: _,
-                        ref branches,
-                        ref then,
+                        branches,
+                        then,
                     }) => {
+                        use StructureLabel::*;
                         let rewrite = |t: &StructureLabel<Stmt>| match t {
-                            &StructureLabel::GoTo(ref to) => {
-                                let entries: IndexSet<_> = vec![*to].into_iter().collect();
-                                let body: Vec<Stmt> = vec![];
-                                let terminator = Jump(StructureLabel::GoTo(*to));
+                            GoTo(to) => {
+                                let entries = [to.clone()].into_iter().collect();
+                                let body = Vec::new();
+                                let terminator = Jump(GoTo(to.clone()));
                                 let first_structure = Structure::Simple {
                                     entries,
                                     body,
@@ -627,12 +644,12 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                                     terminator,
                                 };
 
-                                let mut nested: Vec<Structure<Stmt>> = vec![first_structure];
-                                nested.extend(branches.get(to).cloned().unwrap_or(then.clone()));
+                                let mut nested = vec![first_structure];
+                                nested.extend(branches.get(to).unwrap_or(&then).clone());
 
-                                StructureLabel::Nested(nested)
+                                Nested(nested)
                             }
-                            &StructureLabel::ExitTo(ref to) => StructureLabel::ExitTo(*to),
+                            ExitTo(to) => ExitTo(to.clone()),
                             _ => panic!("simplify_structure: Nested precondition violated"),
                         };
 

@@ -9,7 +9,12 @@ if [[ "$EUID" -eq 0 ]]
   exit
 fi
 
-RUST_VER=${RUST_VER:-nightly-2019-12-05}
+# $RUST_VER must be set.
+if [[ -z "$RUST_VER" ]]; then
+  echo "RUST_VER must be set to the desired rust version"
+  exit
+fi
+
 if hash rustup 2>/dev/null; then # rustup is installed
   rustup toolchain install $RUST_VER
   rustup default $RUST_VER
@@ -26,7 +31,7 @@ source ~/.cargo/env
 
 # rustfmt is required for c2rust-refactor tests
 # rustc-dev was added make sure it is installed on Azure/macOS-10.15
-rustup component add rustfmt-preview rustc-dev
+rustup component add rustfmt-preview rustc-dev rust-src
 
 # Make rustup directory world-writable so other test users can install new rust
 # versions

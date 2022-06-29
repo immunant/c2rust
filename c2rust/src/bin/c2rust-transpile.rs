@@ -1,8 +1,4 @@
-#[macro_use]
-extern crate clap;
-extern crate c2rust_transpile;
-
-use clap::{App, Values};
+use clap::{load_yaml, App};
 use regex::Regex;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -16,11 +12,12 @@ fn main() {
 
     // Build a TranspilerConfig from the command line
     let cc_json_path = Path::new(matches.value_of("COMPILE_COMMANDS").unwrap());
-    let cc_json_path = cc_json_path
-        .canonicalize()
-        .unwrap_or_else(|_| {
-            panic!("Could not find compile_commands.json file at path: {}", cc_json_path.display())
-        });
+    let cc_json_path = cc_json_path.canonicalize().unwrap_or_else(|_| {
+        panic!(
+            "Could not find compile_commands.json file at path: {}",
+            cc_json_path.display()
+        )
+    });
     let extra_args: Vec<&str> = match matches.values_of("extra-clang-args") {
         Some(args) => args.collect(),
         None => Vec::new(),
@@ -28,7 +25,7 @@ fn main() {
 
     let enabled_warnings: HashSet<Diagnostic> = matches
         .values_of("warn")
-        .unwrap_or_else(|| Values::default())
+        .unwrap_or_default()
         .map(|s| Diagnostic::from_str(s).unwrap())
         .collect();
 
@@ -65,15 +62,6 @@ fn main() {
             }
         },
         debug_relooper_labels: matches.is_present("debug-labels"),
-        cross_checks: matches.is_present("cross-checks"),
-        cross_check_backend: matches
-            .value_of("cross-check-backend")
-            .map(String::from)
-            .unwrap(),
-        cross_check_configs: matches
-            .values_of("cross-check-config")
-            .map(|vals| vals.map(String::from).collect::<Vec<_>>())
-            .unwrap_or_default(),
         prefix_function_names: matches.value_of("prefix-function-names").map(String::from),
 
         // We used to guard asm translation with a command-line
@@ -103,7 +91,7 @@ fn main() {
         binaries: matches
             .values_of("binary")
             .map(|values| values.map(String::from).collect())
-            .unwrap_or_else(|| vec![]),
+            .unwrap_or_default(),
         panic_on_translator_failure: {
             match matches.value_of("invalid-code") {
                 Some("panic") => true,

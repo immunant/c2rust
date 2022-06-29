@@ -1,12 +1,9 @@
-extern crate libc;
+use crate::compound_assignment::rust_compound_assignment;
 
-use compound_assignment::rust_compound_assignment;
-
-use self::libc::{c_int, c_uint};
+use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn compound_assignment(_: c_uint, _: *mut c_int);
 }
 

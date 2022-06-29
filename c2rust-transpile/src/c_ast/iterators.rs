@@ -55,17 +55,22 @@ fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
             res
         }
         ArraySubscript(_, l, r, _) => intos![l, r],
-        Conditional(_, c, t, e)
-        | Choose(_, c, t, e, _) => intos![c, t, e],
+        Conditional(_, c, t, e) | Choose(_, c, t, e, _) => intos![c, t, e],
         BinaryConditional(_, c, t) => intos![c, t],
         InitList(_, ref xs, _, _) => xs.iter().map(|&x| x.into()).collect(),
-        Atomic { ptr, order, val1, order_fail, val2, weak, ..} => {
-            [Some(ptr), Some(order), val1, order_fail, val2, weak]
-                .iter()
-                .flatten()
-                .map(|&x| x.into())
-                .collect()
-        }
+        Atomic {
+            ptr,
+            order,
+            val1,
+            order_fail,
+            val2,
+            weak,
+            ..
+        } => [Some(ptr), Some(order), val1, order_fail, val2, weak]
+            .iter()
+            .flatten()
+            .map(|&x| x.into())
+            .collect(),
         ImplicitCast(_, e, _, _, _)
         | ExplicitCast(_, e, _, _, _)
         | Member(_, e, _, _, _)
@@ -107,17 +112,22 @@ fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
             res
         }
         ArraySubscript(_, l, r, _) => intos![l, r],
-        Conditional(_, c, t, e)
-        | Choose(_, c, t, e, _) => intos![c, t, e],
+        Conditional(_, c, t, e) | Choose(_, c, t, e, _) => intos![c, t, e],
         BinaryConditional(_, c, t) => intos![c, t],
         InitList(_, ref xs, _, _) => xs.iter().map(|&x| x.into()).collect(),
-        Atomic { ptr, order, val1, order_fail, val2, weak, ..} => {
-            [Some(ptr), Some(order), val1, order_fail, val2, weak]
-                .iter()
-                .flatten()
-                .map(|&x| x.into())
-                .collect()
-        }
+        Atomic {
+            ptr,
+            order,
+            val1,
+            order_fail,
+            val2,
+            weak,
+            ..
+        } => [Some(ptr), Some(order), val1, order_fail, val2, weak]
+            .iter()
+            .flatten()
+            .map(|&x| x.into())
+            .collect(),
         Member(_, e, _, _, _) | Predefined(_, e) => intos![e],
         // Normally we don't step into the result type annotation field, because it's not really
         // part of the expression.  But for `ExplicitCast`, the result type is actually the cast's
@@ -151,7 +161,7 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
             typ, initializer, ..
         } => {
             let mut res = intos![typ.ctype];
-            for x in initializer {
+            if let Some(x) = initializer {
                 res.push(x.into())
             }
             res
@@ -169,18 +179,21 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
         }
         EnumConstant { .. } => vec![],
         Typedef { typ, .. } => intos![typ.ctype],
-        Struct { ref fields, .. } => fields.iter().flat_map(|x| x).map(|&x| x.into()).collect(),
-        Union { ref fields, .. } => fields.iter().flat_map(|x| x).map(|&x| x.into()).collect(),
+        Struct { ref fields, .. } => fields.iter().flatten().map(|&x| x.into()).collect(),
+        Union { ref fields, .. } => fields.iter().flatten().map(|&x| x.into()).collect(),
         Field { typ, .. } => intos![typ.ctype],
         MacroObject { .. } | MacroFunction { .. } => vec![],
         NonCanonicalDecl { canonical_decl } => intos![canonical_decl],
-        StaticAssert { assert_expr, message } => {
+        StaticAssert {
+            assert_expr,
+            message,
+        } => {
             if let Some(message) = message {
                 intos![assert_expr, message]
             } else {
                 intos![assert_expr]
             }
-        },
+        }
     }
 }
 
@@ -251,13 +264,17 @@ fn immediate_stmt_children(kind: &CStmtKind) -> Vec<SomeId> {
             ..
         } => {
             let mut res = vec![];
-            for list in vec![inputs, outputs] {
+            for list in [inputs, outputs] {
                 for elt in list {
                     res.push(elt.expression.into())
                 }
             }
             res
         }
+
+        Attributed {
+            substatement: s, ..
+        } => intos![s],
     }
 }
 
@@ -267,11 +284,16 @@ fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
         Elaborated(_) => vec![], // These are references to previous definitions
         TypeOfExpr(e) => intos![e],
         Void | Bool | Short | Int | Long | LongLong | UShort | UInt | ULong | ULongLong | SChar
-        | UChar | Char | Double | LongDouble | Float | Int128 | UInt128 | BuiltinFn | Half => {
+        | UChar | Char | Double | LongDouble | Float | Int128 | UInt128 | BuiltinFn | Half
+        | BFloat16 => {
             vec![]
         }
 
-        Pointer(qtype) | Reference(qtype) | Attributed(qtype, _) | BlockPointer(qtype) | Vector(qtype, _) => {
+        Pointer(qtype)
+        | Reference(qtype)
+        | Attributed(qtype, _)
+        | BlockPointer(qtype)
+        | Vector(qtype, _) => {
             intos![qtype.ctype]
         }
 
@@ -286,7 +308,7 @@ fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
 
         VariableArray(elt, cnt) => {
             let mut res = intos![elt];
-            for x in cnt {
+            if let Some(x) = cnt {
                 res.push(x.into())
             }
             res
@@ -398,10 +420,7 @@ struct VisitNode {
 
 impl VisitNode {
     fn new(id: SomeId) -> Self {
-        Self {
-            id,
-            seen: false,
-        }
+        Self { id, seen: false }
     }
 }
 
@@ -409,7 +428,9 @@ pub trait NodeVisitor {
     /// Visit nodes in pre-order traversal. Returns true if we should traverse
     /// children. If we are not traversing children, the node will still be
     /// visited by `post`.
-    fn pre(&mut self, _id: SomeId) -> bool { true }
+    fn pre(&mut self, _id: SomeId) -> bool {
+        true
+    }
     fn post(&mut self, _id: SomeId) {}
     fn visit_tree(&mut self, context: &TypedAstContext, root: SomeId) {
         let mut stack = vec![VisitNode::new(root)];

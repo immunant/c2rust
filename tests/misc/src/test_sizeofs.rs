@@ -1,13 +1,11 @@
 //! feature_core_intrinsics,
-extern crate libc;
 
-use sizeofs::rust_sizeofs;
-use self::libc::c_int;
-use self::libc::c_uint;
+use crate::sizeofs::rust_sizeofs;
+use libc::c_int;
+use libc::c_uint;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn sizeofs(_: c_uint, _: *mut c_int);
 }
 

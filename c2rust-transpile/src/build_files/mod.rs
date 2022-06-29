@@ -1,22 +1,20 @@
-extern crate handlebars;
-extern crate pathdiff;
-
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use self::handlebars::Handlebars;
-use self::pathdiff::diff_paths;
+use handlebars::Handlebars;
+use pathdiff::diff_paths;
+use serde_derive::Serialize;
 use serde_json::json;
 
-use super::TranspilerConfig;
 use super::compile_cmds::LinkCmd;
-use crate::CrateSet;
-use crate::PragmaSet;
+use super::TranspilerConfig;
 use crate::get_module_name;
+use crate::CrateSet;
 use crate::ExternCrateDetails;
+use crate::PragmaSet;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {
@@ -48,10 +46,9 @@ pub fn get_build_dir(tcfg: &TranspilerConfig, cc_db: &Path) -> PathBuf {
         Some(dir) => {
             let output_dir = dir.clone();
             if !output_dir.exists() {
-                fs::create_dir(&output_dir).expect(&format!(
-                    "couldn't create build directory: {}",
-                    output_dir.display()
-                ));
+                fs::create_dir(&output_dir).unwrap_or_else(|_| {
+                    panic!("couldn't create build directory: {}", output_dir.display())
+                });
             }
             output_dir
         }
@@ -86,19 +83,24 @@ pub fn emit_build_files<'lcmd>(
         .unwrap();
 
     if !build_dir.exists() {
-        fs::create_dir_all(&build_dir).expect(&format!(
-            "couldn't create build directory: {}",
-            build_dir.display()
-        ));
+        fs::create_dir_all(&build_dir)
+            .unwrap_or_else(|_| panic!("couldn't create build directory: {}", build_dir.display()));
     }
 
-    emit_cargo_toml(tcfg, &reg, &build_dir, &crate_cfg, workspace_members);
+    emit_cargo_toml(tcfg, &reg, build_dir, &crate_cfg, workspace_members);
     if tcfg.translate_valist {
-        emit_rust_toolchain(tcfg, &build_dir);
+        emit_rust_toolchain(tcfg, build_dir);
     }
     crate_cfg.and_then(|ccfg| {
-        emit_build_rs(tcfg, &reg, &build_dir, ccfg.link_cmd);
-        emit_lib_rs(tcfg, &reg, &build_dir, ccfg.modules, ccfg.pragmas, &ccfg.crates)
+        emit_build_rs(tcfg, &reg, build_dir, ccfg.link_cmd);
+        emit_lib_rs(
+            tcfg,
+            &reg,
+            build_dir,
+            ccfg.modules,
+            ccfg.pragmas,
+            &ccfg.crates,
+        )
     })
 }
 
@@ -124,11 +126,26 @@ impl ModuleTree {
 
     fn linearize_internal(&self, name: &str, res: &mut Vec<Module>) {
         if self.0.is_empty() {
-            res.push(Module { name: name.to_string(), path: None, open: false, close: false });
+            res.push(Module {
+                name: name.to_string(),
+                path: None,
+                open: false,
+                close: false,
+            });
         } else {
-            res.push(Module { name: name.to_string(), path: None, open: true, close: false });
+            res.push(Module {
+                name: name.to_string(),
+                path: None,
+                open: true,
+                close: false,
+            });
             self.linearize(res);
-            res.push(Module { name: name.to_string(), path: None, open: false, close: true });
+            res.push(Module {
+                name: name.to_string(),
+                path: None,
+                open: false,
+                close: true,
+            });
         }
     }
 }
@@ -147,28 +164,23 @@ fn convert_module_list(
     module_subset: ModuleSubset,
 ) -> Vec<Module> {
     modules.retain(|m| {
-        let is_binary = tcfg.is_binary(&m);
-        if is_binary && module_subset == ModuleSubset::Libraries {
-            // Don't add binary modules to lib.rs, these are emitted to
-            // standalone, separate binary modules.
-            false
-        } else if !is_binary && module_subset == ModuleSubset::Binaries {
-            false
-        } else {
-            true
-        }
+        let is_binary = tcfg.is_binary(m);
+        let is_binary_subset = module_subset == ModuleSubset::Binaries;
+        // Don't add binary modules to lib.rs, these are emitted to
+        // standalone, separate binary modules.
+        is_binary == is_binary_subset
     });
 
     let mut res = vec![];
     let mut module_tree = ModuleTree(BTreeMap::new());
     for m in &modules {
         match m.strip_prefix(build_dir) {
-            Ok(relpath) if !tcfg.is_binary(&m) => {
+            Ok(relpath) if !tcfg.is_binary(m) => {
                 // The module is inside the build directory, use nested modules
                 let mut cur = &mut module_tree;
                 for sm in relpath.iter() {
                     let path = Path::new(sm);
-                    let name = get_module_name(&path, true, false, false).unwrap();
+                    let name = get_module_name(path, true, false, false).unwrap();
                     cur = cur.0.entry(name).or_default();
                 }
             }
@@ -176,7 +188,12 @@ fn convert_module_list(
                 let relpath = diff_paths(m, build_dir).unwrap();
                 let path = Some(relpath.to_str().unwrap().to_string());
                 let name = get_module_name(m, true, false, false).unwrap();
-                res.push(Module { path, name, open: false, close: false });
+                res.push(Module {
+                    path,
+                    name,
+                    open: false,
+                    close: false,
+                });
             }
         }
     }
@@ -221,24 +238,13 @@ fn emit_lib_rs(
     pragmas: PragmaSet,
     crates: &CrateSet,
 ) -> Option<PathBuf> {
-    let plugin_args = tcfg
-        .cross_check_configs
-        .iter()
-        .map(|ccc| format!("config_file = \"{}\"", ccc))
-        .collect::<Vec<String>>()
-        .join(", ");
-
     let modules = convert_module_list(tcfg, build_dir, modules, ModuleSubset::Libraries);
     let crates = convert_dependencies_list(crates.clone());
     let file_name = get_lib_rs_file_name(tcfg);
-    let rs_xcheck_backend = tcfg.cross_check_backend.replace("-", "_");
     let json = json!({
         "lib_rs_file": file_name,
         "reorganize_definitions": tcfg.reorganize_definitions,
         "translate_valist": tcfg.translate_valist,
-        "cross_checks": tcfg.cross_checks,
-        "cross_check_backend": rs_xcheck_backend,
-        "plugin_args": plugin_args,
         "modules": modules,
         "pragmas": pragmas,
         "crates": crates,
@@ -273,7 +279,12 @@ fn emit_cargo_toml<'lcmd>(
         "workspace_members": workspace_members.unwrap_or_default(),
     });
     if let Some(ccfg) = crate_cfg {
-        let binaries = convert_module_list(tcfg, build_dir, ccfg.modules.to_owned(), ModuleSubset::Binaries);
+        let binaries = convert_module_list(
+            tcfg,
+            build_dir,
+            ccfg.modules.to_owned(),
+            ModuleSubset::Binaries,
+        );
         let dependencies = convert_dependencies_list(ccfg.crates.clone());
         let crate_json = json!({
             "crate_name": ccfg.crate_name,
@@ -282,17 +293,15 @@ fn emit_cargo_toml<'lcmd>(
             "is_library": ccfg.link_cmd.r#type.is_library(),
             "lib_rs_file": get_lib_rs_file_name(tcfg),
             "binaries": binaries,
-            "cross_checks": tcfg.cross_checks,
-            "cross_check_backend": tcfg.cross_check_backend,
             "dependencies": dependencies,
         });
-        json.as_object_mut()
-            .unwrap()
-            .extend(crate_json
-                    .as_object()
-                    .cloned() // FIXME: we need to clone it because there's no `into_object`
-                    .unwrap()
-                    .into_iter());
+        json.as_object_mut().unwrap().extend(
+            crate_json
+                .as_object()
+                .cloned() // FIXME: we need to clone it because there's no `into_object`
+                .unwrap()
+                .into_iter(),
+        );
     }
 
     let file_name = "Cargo.toml";

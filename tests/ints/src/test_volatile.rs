@@ -1,11 +1,8 @@
-extern crate libc;
-
-use volatile::rust_entry3;
-use self::libc::{c_int, c_uint};
+use crate::volatile::rust_entry3;
+use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn entry3(_: c_uint, _: *mut c_int);
 }
 

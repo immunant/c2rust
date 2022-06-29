@@ -2,19 +2,23 @@
 members = [
     "c2rust",
     "c2rust-transpile",
-    "c2rust-refactor",
     "c2rust-ast-builder",
     "c2rust-ast-exporter",
     "c2rust-ast-printer",
-    "manual/preprocessors",
     "c2rust-bitfields",
     "c2rust-macros",
     "c2rust-asm-casts",
+    "analysis/runtime",
+    "dynamic_instrumentation",
 ]
 exclude = [
     "cross-checks/pointer-tracer",
     "cross-checks/zero-malloc",
     "cross-checks/rust-checks",
     "examples",
+    "analysis/test",
     "tests",
 ]
+
+[profile.dev.package."*"]
+opt-level = 3

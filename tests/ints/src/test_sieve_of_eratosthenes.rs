@@ -1,11 +1,8 @@
-extern crate libc;
-
-use sieve_of_eratosthenes::rust_sieve_of_eratosthenes;
-use self::libc::c_int;
+use crate::sieve_of_eratosthenes::rust_sieve_of_eratosthenes;
+use libc::c_int;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn sieve_of_eratosthenes(_: *mut c_int);
 }
 
@@ -15,17 +12,10 @@ pub fn test_buffer() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
     let expected_buffer = [
-        0, 0, 1, 1, 0, 1, 0, 1, 0, 0,
-        0, 1, 0, 1, 0, 0, 0, 1, 0, 1,
-        0, 0, 0, 1, 0, 0, 0, 0, 0, 1,
-        0, 1, 0, 0, 0, 0, 0, 1, 0, 0,
-        0, 1, 0, 1, 0, 0, 0, 1, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0, 0, 1,
-        0, 1, 0, 0, 0, 0, 0, 1, 0, 0,
-        0, 1, 0, 1, 0, 0, 0, 0, 0, 1,
-        0, 0, 0, 1, 0, 0, 0, 0, 0, 1,
-        0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
-        0, 1,
+        0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1,
+        0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1,
+        0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1,
+        0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1,
     ];
 
     unsafe {

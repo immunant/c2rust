@@ -1,7 +1,6 @@
 use c2rust_ast_builder::{mk, Builder};
 use indexmap::{IndexMap, IndexSet};
-use syntax::ast::{ForeignItem, Ident, Item};
-use syntax::ptr::P;
+use syn::{ForeignItem, Ident, Item};
 
 use std::borrow::Cow;
 use std::mem::swap;
@@ -36,24 +35,22 @@ impl MultiImport {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PathedMultiImports(IndexMap<Vec<String>, MultiImport>);
 
 impl PathedMultiImports {
     pub fn new() -> Self {
-        PathedMultiImports(IndexMap::new())
+        Self::default()
     }
 
     pub fn get_mut(&mut self, path: Vec<String>) -> &mut MultiImport {
         self.0.entry(path).or_insert(MultiImport::new())
     }
 
-    pub fn into_items(self) -> Vec<P<Item>> {
-        fn build_items((mut path, imports): (Vec<String>, MultiImport)) -> P<Item> {
+    pub fn into_items(self) -> Vec<Box<Item>> {
+        fn build_items((mut path, imports): (Vec<String>, MultiImport)) -> Box<Item> {
             let mut leaves = imports.leaves;
-            let attrs = imports
-                .attrs
-                .unwrap_or_else(|| mk());
+            let attrs = imports.attrs.unwrap_or_else(mk);
 
             if leaves.len() == 1 {
                 path.push(leaves.pop().unwrap());
@@ -68,23 +65,19 @@ impl PathedMultiImports {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ItemStore {
-    items: Vec<P<Item>>,
+    items: Vec<Box<Item>>,
     foreign_items: Vec<ForeignItem>,
     uses: PathedMultiImports,
 }
 
 impl ItemStore {
     pub fn new() -> Self {
-        ItemStore {
-            items: Vec::new(),
-            foreign_items: Vec::new(),
-            uses: PathedMultiImports::new(),
-        }
+        Self::default()
     }
 
-    pub fn add_item(&mut self, item: P<Item>) {
+    pub fn add_item(&mut self, item: Box<Item>) {
         self.items.push(item);
     }
 
@@ -100,7 +93,7 @@ impl ItemStore {
         self.uses.get_mut(path).insert_with_attr(ident, attrs)
     }
 
-    pub fn drain(&mut self) -> (Vec<P<Item>>, Vec<ForeignItem>, PathedMultiImports) {
+    pub fn drain(&mut self) -> (Vec<Box<Item>>, Vec<ForeignItem>, PathedMultiImports) {
         let mut items = Vec::new();
         let mut foreign_items = Vec::new();
         let mut uses = PathedMultiImports::new();

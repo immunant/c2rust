@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from plumbum.cmd import mv, mkdir
 from plumbum import local
 from typing import Tuple
 from common import (
@@ -9,7 +8,6 @@ from common import (
     Config,
     Command,
     die,
-    get_cmd_or_die,
     pb,
     setup_logging,
     transpile
@@ -17,11 +15,10 @@ from common import (
 
 import argparse
 import errno
-import logging
-import multiprocessing
 import os
 import re
-import sys
+
+mv = local["mv"]
 
 desc = 'transpile files in compiler_commands.json.'
 parser = argparse.ArgumentParser(description="Translates tmux into the repo/rust/src directory")
@@ -57,8 +54,9 @@ FILES_NEEDING_TRAILING_UNDERSCORE = [
     "tty_term.rs",
     "window.rs",
 ]
+# TODO(kkysen) shouldn't need `extern crate`
 MAIN_MODS = """\
-#![feature(label_break_value, ptr_wrapping_offset_from, used)]
+#![feature(label_break_value)]
 #![allow(unused_imports)]
 extern crate libc;
 
@@ -209,6 +207,7 @@ def rename_(*args) -> Tuple[Retcode, StdOut, StdErr]:
 def add_mods(path: str):
     with open(path, "r+") as file:
         text = file.read()
+        # TODO(kkysen) shouldn't need `extern crate`
         text = re.sub(r"extern crate libc;", MAIN_MODS, text, count=1)
 
         file.seek(0)
@@ -240,7 +239,7 @@ if __name__ == "__main__":
     move(plumbum_rs_glob, RUST_SRC_DIR)
 
     # Move compat files to src/compat directory
-    retcode, _, _ = move(plumbum_compat_rs_glob, RUST_COMPAT_DIR)
+    retcode, _, stderr = move(plumbum_compat_rs_glob, RUST_COMPAT_DIR)
 
     assert retcode != 1, "Could not move translated rs files:\n{}".format(stderr)
 

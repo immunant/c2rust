@@ -1,4 +1,3 @@
-#![feature(attr_literals)]
 #![register_tool(c2rust)]
 
 use std::mem;

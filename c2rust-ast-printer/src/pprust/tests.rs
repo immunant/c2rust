@@ -1,65 +1,33 @@
 use super::*;
 
-use crate::ast;
-use crate::source_map;
-use crate::with_default_globals;
-use syntax_pos;
+/// These tests mostly verify that we strip the right context from the
+/// pretty-printed files that we have to insert non-toplevel syntactic elements
+/// into in order to run them through prettyplease.
 
-fn fun_to_string(
-    decl: &ast::FnDecl, header: ast::FnHeader, name: ast::Ident, generics: &ast::Generics
-) -> String {
-    to_string(|s| {
-        s.head("");
-        s.print_fn(decl, header, Some(name),
-                   generics, &source_map::dummy_spanned(ast::VisibilityKind::Inherited));
-        s.end(); // Close the head box.
-        s.end(); // Close the outer box.
-    })
-}
-
-fn variant_to_string(var: &ast::Variant) -> String {
-    to_string(|s| s.print_variant(var))
+#[test]
+fn test_expr_to_string() {
+    assert_eq!(expr_to_string(&ret_expr()), "return");
 }
 
 #[test]
-fn test_fun_to_string() {
-    with_default_globals(|| {
-        let abba_ident = ast::Ident::from_str("abba");
-
-        let decl = ast::FnDecl {
-            inputs: Vec::new(),
-            output: ast::FunctionRetTy::Default(syntax_pos::DUMMY_SP),
-        };
-        let generics = ast::Generics::default();
-        assert_eq!(
-            fun_to_string(
-                &decl,
-                ast::FnHeader::default(),
-                abba_ident,
-                &generics
-            ),
-            "fn abba()"
-        );
-    })
+fn test_pat_to_string() {
+    let wild_pat = syn::Pat::Wild(syn::PatWild {
+        attrs: vec![],
+        underscore_token: Default::default(),
+    });
+    assert_eq!(pat_to_string(&wild_pat), "_");
 }
 
 #[test]
-fn test_variant_to_string() {
-    with_default_globals(|| {
-        let ident = ast::Ident::from_str("principal_skinner");
+fn test_path_to_string() {
+    let name = "friendly_ident_name";
+    let ident = syn::Ident::new(name, proc_macro2::Span::call_site());
+    let path = syn::Path::from(ident);
+    assert_eq!(path_to_string(&path), name);
+}
 
-        let var = ast::Variant {
-            ident,
-            vis: source_map::respan(syntax_pos::DUMMY_SP, ast::VisibilityKind::Inherited),
-            attrs: Vec::new(),
-            id: ast::DUMMY_NODE_ID,
-            data: ast::VariantData::Unit(ast::DUMMY_NODE_ID),
-            disr_expr: None,
-            span: syntax_pos::DUMMY_SP,
-            is_placeholder: false,
-        };
-
-        let varstr = variant_to_string(&var);
-        assert_eq!(varstr, "principal_skinner");
-    })
+#[test]
+fn test_stmt_to_string() {
+    let stmt = syn::Stmt::Semi(ret_expr(), Default::default());
+    assert_eq!(stmt_to_string(&stmt), "return;");
 }

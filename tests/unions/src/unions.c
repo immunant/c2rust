@@ -17,6 +17,11 @@ union union_with_anon_struct {
     };
 };
 
+union __attribute__((packed)) packed_union {
+    int as_int;
+    char as_chars[5];
+};
+
 void entry(const unsigned int buffer_size, int buffer[const])
 {
     int i = 0;
@@ -35,6 +40,7 @@ void entry(const unsigned int buffer_size, int buffer[const])
     buffer[i++] = sizeof(union my_union);
     buffer[i++] = sizeof(union my_union_flipped);
     buffer[i++] = sizeof(union empty_union);
+    buffer[i++] = sizeof(union packed_union);
     buffer[i++] = u1.as_int;
     buffer[i++] = u2.as_int;
     buffer[i++] = u3.as_chars[0];

@@ -7,17 +7,15 @@ use std::ops::Index;
 
 use super::TranslationError;
 use crate::c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId};
+use crate::diagnostics::TranslationResult;
 use crate::translator::{ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
 use c2rust_ast_printer::pprust;
-use syntax::ast::{
-    self, AttrStyle, BinOpKind, Expr, ExprKind, Lit, LitIntType, LitKind, MetaItemKind,
-    NestedMetaItem, StmtKind, StrStyle, StructField, Ty, TyKind,
+use syn::{
+    self, AttrStyle, BinOp as RBinOp, Expr, ExprAssign, ExprAssignOp, ExprBinary, ExprBlock,
+    ExprCast, ExprMethodCall, ExprUnary, Field, Meta, NestedMeta, Stmt, Type,
 };
-use syntax::ptr::P;
-use syntax::source_map::symbol::Symbol;
-use syntax_pos::DUMMY_SP;
 
 use itertools::EitherOrBoth::{Both, Right};
 use itertools::Itertools;
@@ -28,8 +26,8 @@ enum FieldType {
         start_bit: u64,
         field_name: String,
         bytes: u64,
-        attrs: Vec<(String, P<Ty>, String)>,
-    },
+        attrs: Vec<(String, Box<Type>, String)>,
+    }, // 64 bytes
     Padding {
         bytes: u64,
     },
@@ -39,37 +37,37 @@ enum FieldType {
     Regular {
         name: String,
         ctype: CTypeId,
-        field: StructField,
+        field: Field, // 528 bytes
         use_inner_type: bool,
-    },
+        is_va_list: bool,
+    }, // 562 bytes
 }
 
-fn contains_block(expr_kind: &ExprKind) -> bool {
+fn contains_block(expr_kind: &Expr) -> bool {
+    use Expr::*;
     match expr_kind {
-        ExprKind::Block(..) => true,
-        ExprKind::Assign(lhs, rhs) => contains_block(&lhs.kind) || contains_block(&rhs.kind),
-        ExprKind::AssignOp(_, lhs, rhs) => contains_block(&lhs.kind) || contains_block(&rhs.kind),
-        ExprKind::Binary(_, lhs, rhs) => contains_block(&lhs.kind) || contains_block(&rhs.kind),
-        ExprKind::Unary(_, e) => contains_block(&e.kind),
-        ExprKind::MethodCall(_, exprs) => exprs.iter().map(|e| contains_block(&e.kind)).any(|b| b),
-        ExprKind::Cast(e, _) => contains_block(&e.kind),
+        Block(..) => true,
+        Assign(ExprAssign { left, right, .. })
+        | AssignOp(ExprAssignOp { left, right, .. })
+        | Binary(ExprBinary { left, right, .. }) => {
+            [left, right].iter().any(|expr| contains_block(expr))
+        }
+        Unary(ExprUnary { expr, .. }) | Cast(ExprCast { expr, .. }) => contains_block(expr),
+        MethodCall(ExprMethodCall { args, .. }) => args.iter().any(contains_block),
         _ => false,
     }
 }
 
-fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
-    let kind = LitKind::Str(Symbol::intern(rhs), StrStyle::Cooked);
-    let token = kind.to_lit_token();
-    let meta_item = mk().meta_item(
-        vec![lhs],
-        MetaItemKind::NameValue(Lit {
-            token,
-            kind,
-            span: DUMMY_SP,
-        }),
-    );
+fn assignment_metaitem(lhs: &str, rhs: &str) -> NestedMeta {
+    use c2rust_ast_builder::Make;
+    let token = rhs.make(&mk());
+    let meta_item = Meta::NameValue(syn::MetaNameValue {
+        path: mk().path(lhs),
+        eq_token: Default::default(),
+        lit: token,
+    });
 
-    mk().nested_meta_item(NestedMetaItem::MetaItem(meta_item))
+    NestedMeta::Meta(meta_item)
 }
 
 impl<'a> Translation<'a> {
@@ -83,7 +81,7 @@ impl<'a> Translation<'a> {
         record_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
-    ) -> Result<Vec<FieldType>, TranslationError> {
+    ) -> TranslationResult<Vec<FieldType>> {
         let mut reorganized_fields = Vec::new();
         let mut last_bitfield_group: Option<FieldType> = None;
         let mut next_byte_pos = 0;
@@ -105,7 +103,27 @@ impl<'a> Translation<'a> {
                     .unwrap();
 
                 let ctype = typ.ctype;
-                let mut ty = self.convert_type(ctype)?;
+                // TODO: clean up code and avoid code duplication
+                // TODO: handle or panic on structs with more than one va_list?
+                let is_va_list = self.ast_context.is_va_list(ctype);
+                let mut ty = if is_va_list {
+                    let std_or_core = if self.type_converter.borrow().emit_no_std {
+                        "core"
+                    } else {
+                        "std"
+                    };
+                    let path = vec![
+                        mk().path_segment(std_or_core),
+                        mk().path_segment("ffi"),
+                        mk().path_segment_with_args(
+                            "VaListImpl",
+                            mk().angle_bracketed_args(vec![mk().lifetime("a")]),
+                        ),
+                    ];
+                    mk().path_ty(mk().abs_path(path))
+                } else {
+                    self.convert_type(ctype)?
+                };
                 let bitfield_width = match bitfield_width {
                     // Bitfield widths of 0 should just be markers for clang,
                     // we shouldn't need to explicitly handle it ourselves
@@ -166,6 +184,7 @@ impl<'a> Translation<'a> {
                             ctype,
                             field,
                             use_inner_type,
+                            is_va_list,
                         });
                         reorganized_fields.extend(extra_fields.into_iter());
 
@@ -262,6 +281,8 @@ impl<'a> Translation<'a> {
     /// Here we output a struct derive to generate bitfield data that looks like this:
     ///
     /// ```no_run
+    /// # use c2rust_bitfields::BitfieldStruct;
+    /// #
     /// #[derive(BitfieldStruct, Clone, Copy)]
     /// #[repr(C, align(2))]
     /// struct Foo {
@@ -277,11 +298,16 @@ impl<'a> Translation<'a> {
         struct_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
-    ) -> Result<Vec<StructField>, TranslationError> {
+    ) -> TranslationResult<(Vec<Field>, bool)> {
         let mut field_entries = Vec::with_capacity(field_ids.len());
         // We need to clobber bitfields in consecutive bytes together (leaving
         // regular fields alone) and add in padding as necessary
         let reorganized_fields = self.get_field_types(struct_id, field_ids, platform_byte_size)?;
+
+        let contains_va_list = reorganized_fields.iter().any(|field| match field {
+            FieldType::Regular { is_va_list, .. } => *is_va_list,
+            _ => false,
+        });
 
         let mut padding_count = 0;
         let mut next_padding_field = || {
@@ -303,21 +329,21 @@ impl<'a> Translation<'a> {
                 } => {
                     let ty = mk().array_ty(
                         mk().ident_ty("u8"),
-                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
                     );
                     let mut field = mk();
                     let field_attrs = attrs.iter().map(|attr| {
-                        let ty_str = match &attr.1.kind {
-                            TyKind::Path(_, path) => pprust::path_to_string(path),
+                        let ty_str = match &*attr.1 {
+                            Type::Path(syn::TypePath { path, .. }) => pprust::path_to_string(path),
                             _ => unreachable!("Found type other than path"),
                         };
                         let field_attr_items = vec![
-                            assigment_metaitem("name", &attr.0),
-                            assigment_metaitem("ty", &ty_str),
-                            assigment_metaitem("bits", &attr.2),
+                            assignment_metaitem("name", &attr.0),
+                            assignment_metaitem("ty", &ty_str),
+                            assignment_metaitem("bits", &attr.2),
                         ];
 
-                        mk().meta_item("bitfield", MetaItemKind::List(field_attr_items))
+                        mk().meta_list("bitfield", field_attr_items)
                     });
 
                     for field_attr in field_attrs {
@@ -330,15 +356,13 @@ impl<'a> Translation<'a> {
                     let field_name = next_padding_field();
                     let ty = mk().array_ty(
                         mk().ident_ty("u8"),
-                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
                     );
 
                     // Mark it with `#[bitfield(padding)]`
-                    let field_padding_inner = mk().meta_item("padding", MetaItemKind::Word);
-                    let field_padding_inner =
-                        vec![mk().nested_meta_item(NestedMetaItem::MetaItem(field_padding_inner))];
-                    let field_padding_outer =
-                        mk().meta_item("bitfield", MetaItemKind::List(field_padding_inner));
+                    let field_padding_inner = NestedMeta::Meta(mk().meta_path("padding"));
+                    let field_padding_inner = vec![mk().nested_meta_item(field_padding_inner)];
+                    let field_padding_outer = mk().meta_list("bitfield", field_padding_inner);
                     let field = mk()
                         .meta_item_attr(AttrStyle::Outer, field_padding_outer)
                         .pub_()
@@ -358,13 +382,26 @@ impl<'a> Translation<'a> {
                 FieldType::Regular { field, .. } => field_entries.push(field),
             }
         }
-        Ok(field_entries)
+        Ok((field_entries, contains_va_list))
     }
 
     /// Here we output a block to generate a struct literal initializer in.
     /// It looks like this in locals and (sectioned) statics:
     ///
     /// ```no_run
+    /// # use c2rust_bitfields::BitfieldStruct;
+    /// #
+    /// # #[derive(BitfieldStruct, Clone, Copy)]
+    /// # #[repr(C, align(2))]
+    /// # struct Foo {
+    /// #     #[bitfield(name = "bf1", ty = "libc::c_char", bits = "0..=9")]
+    /// #     #[bitfield(name = "bf2", ty = "libc::c_uchar",bits = "10..=15")]
+    /// #     bf1_bf2: [u8; 2],
+    /// #     non_bf: u64,
+    /// #     _pad: [u8; 2],
+    /// # }
+    /// #
+    /// # let _ =
     /// {
     ///     let mut init = Foo {
     ///         bf1_bf2: [0; 2],
@@ -375,13 +412,14 @@ impl<'a> Translation<'a> {
     ///     init.set_bf2(34);
     ///     init
     /// }
+    /// # ;
     /// ```
     pub fn convert_struct_literal(
         &self,
         ctx: ExprContext,
         struct_id: CRecordId,
         field_expr_ids: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let name = self.resolve_decl_inner_name(struct_id);
 
         let (field_decl_ids, platform_byte_size) = match self.ast_context.index(struct_id).kind {
@@ -421,8 +459,8 @@ impl<'a> Translation<'a> {
                     field_name, bytes, ..
                 } => {
                     let array_expr = mk().repeat_expr(
-                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
-                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(0)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
                     );
                     let field = mk().field(field_name, array_expr);
 
@@ -431,8 +469,8 @@ impl<'a> Translation<'a> {
                 FieldType::Padding { bytes } => {
                     let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
-                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
-                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(0)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
                     );
                     let field = mk().field(field_name, array_expr);
 
@@ -441,7 +479,7 @@ impl<'a> Translation<'a> {
                 FieldType::ComputedPadding { ident } => {
                     let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
-                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(0)),
                         mk().ident_expr(ident),
                     );
                     let field = mk().field(field_name, array_expr);
@@ -500,7 +538,7 @@ impl<'a> Translation<'a> {
                         // Small hack: we need a value of the inner type,
                         // but `implicit_default_expr` produced a value
                         // of the outer type, so unwrap it manually
-                        init = init.map(|fi| mk().field_expr(fi, "0"));
+                        init = init.map(|fi| mk().anon_field_expr(fi, 0));
                     }
                     let field = init.map(|init| mk().field(field_name, init));
                     fields.push(field);
@@ -516,7 +554,7 @@ impl<'a> Translation<'a> {
 
                     if use_inner_type {
                         // See comment above
-                        expr = expr.map(|fi| mk().field_expr(fi, "0"));
+                        expr = expr.map(|fi| mk().anon_field_expr(fi, 0));
                     }
 
                     if bitfield_width.is_some() {
@@ -533,11 +571,11 @@ impl<'a> Translation<'a> {
 
         fields
             .into_iter()
-            .collect::<WithStmts<Vec<ast::Field>>>()
+            .collect::<WithStmts<Vec<syn::FieldValue>>>()
             .and_then(|fields| {
                 let struct_expr = mk().struct_expr(name.as_str(), fields);
                 let local_variable =
-                    P(mk().local(local_pat, None as Option<P<Ty>>, Some(struct_expr)));
+                    Box::new(mk().local(local_pat, None as Option<Box<Type>>, Some(struct_expr)));
 
                 let mut is_unsafe = false;
                 let mut stmts = vec![mk().local_stmt(local_variable)];
@@ -552,7 +590,7 @@ impl<'a> Translation<'a> {
                         .expect("Expected no statements in bitfield initializer");
                     let expr = mk().method_call_expr(struct_ident, field_name_setter, vec![val]);
 
-                    stmts.push(mk().expr_stmt(expr));
+                    stmts.push(mk().semi_stmt(expr));
                 }
 
                 let struct_ident = mk().ident_expr("init");
@@ -578,7 +616,7 @@ impl<'a> Translation<'a> {
         field_ids: &[CDeclId],
         platform_byte_size: u64,
         is_static: bool,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let reorganized_fields = self.get_field_types(struct_id, field_ids, platform_byte_size)?;
         let mut fields = Vec::with_capacity(reorganized_fields.len());
 
@@ -598,8 +636,8 @@ impl<'a> Translation<'a> {
                     field_name, bytes, ..
                 } => {
                     let array_expr = mk().repeat_expr(
-                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
-                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(0)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
                     );
                     let field = mk().field(field_name, array_expr);
 
@@ -608,8 +646,8 @@ impl<'a> Translation<'a> {
                 FieldType::Padding { bytes } => {
                     let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
-                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
-                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(0)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
                     );
                     let field = mk().field(field_name, array_expr);
 
@@ -618,7 +656,7 @@ impl<'a> Translation<'a> {
                 FieldType::ComputedPadding { ident } => {
                     let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
-                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(0)),
                         mk().ident_expr(ident),
                     );
                     let field = mk().field(field_name, array_expr);
@@ -639,7 +677,7 @@ impl<'a> Translation<'a> {
                     }
                     if use_inner_type {
                         // See comment above
-                        field_init = field_init.map(|fi| mk().field_expr(fi, "0"));
+                        field_init = field_init.map(|fi| mk().anon_field_expr(fi, 0));
                     }
                     fields.push(field_init.map(|init| mk().field(name, init)))
                 }
@@ -648,7 +686,7 @@ impl<'a> Translation<'a> {
 
         Ok(fields
             .into_iter()
-            .collect::<WithStmts<Vec<ast::Field>>>()
+            .collect::<WithStmts<Vec<syn::FieldValue>>>()
             .map(|fields| mk().struct_expr(name.as_str(), fields)))
     }
 
@@ -667,9 +705,9 @@ impl<'a> Translation<'a> {
         ctx: ExprContext,
         op: BinOp,
         lhs: CExprId,
-        rhs_expr: P<Expr>,
+        rhs_expr: Box<Expr>,
         field_id: CDeclId,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let ctx = ctx.set_bitfield_write(true);
         let named_reference = self.name_reference_write_read(ctx, lhs)?;
         named_reference.and_then(|named_reference| {
@@ -681,22 +719,40 @@ impl<'a> Translation<'a> {
                 .ok_or("Could not find bitfield name")?;
             let setter_name = format!("set_{}", field_name);
             let lhs_expr_read =
-                mk().method_call_expr(lhs_expr.clone(), field_name, Vec::<P<Expr>>::new());
+                mk().method_call_expr(lhs_expr.clone(), field_name, Vec::<Box<Expr>>::new());
             // Allow the value of this assignment to be used as the RHS of other assignments
             let val = lhs_expr_read.clone();
             let param_expr = match op {
-                BinOp::AssignAdd => mk().binary_expr(BinOpKind::Add, lhs_expr_read, rhs_expr),
-                BinOp::AssignSubtract => mk().binary_expr(BinOpKind::Sub, lhs_expr_read, rhs_expr),
-                BinOp::AssignMultiply => mk().binary_expr(BinOpKind::Mul, lhs_expr_read, rhs_expr),
-                BinOp::AssignDivide => mk().binary_expr(BinOpKind::Div, lhs_expr_read, rhs_expr),
-                BinOp::AssignModulus => mk().binary_expr(BinOpKind::Rem, lhs_expr_read, rhs_expr),
-                BinOp::AssignBitXor => mk().binary_expr(BinOpKind::BitXor, lhs_expr_read, rhs_expr),
-                BinOp::AssignShiftLeft => mk().binary_expr(BinOpKind::Shl, lhs_expr_read, rhs_expr),
-                BinOp::AssignShiftRight => {
-                    mk().binary_expr(BinOpKind::Shr, lhs_expr_read, rhs_expr)
+                BinOp::AssignAdd => {
+                    mk().binary_expr(RBinOp::Add(Default::default()), lhs_expr_read, rhs_expr)
                 }
-                BinOp::AssignBitOr => mk().binary_expr(BinOpKind::BitOr, lhs_expr_read, rhs_expr),
-                BinOp::AssignBitAnd => mk().binary_expr(BinOpKind::BitAnd, lhs_expr_read, rhs_expr),
+                BinOp::AssignSubtract => {
+                    mk().binary_expr(RBinOp::Sub(Default::default()), lhs_expr_read, rhs_expr)
+                }
+                BinOp::AssignMultiply => {
+                    mk().binary_expr(RBinOp::Mul(Default::default()), lhs_expr_read, rhs_expr)
+                }
+                BinOp::AssignDivide => {
+                    mk().binary_expr(RBinOp::Div(Default::default()), lhs_expr_read, rhs_expr)
+                }
+                BinOp::AssignModulus => {
+                    mk().binary_expr(RBinOp::Rem(Default::default()), lhs_expr_read, rhs_expr)
+                }
+                BinOp::AssignBitXor => {
+                    mk().binary_expr(RBinOp::BitXor(Default::default()), lhs_expr_read, rhs_expr)
+                }
+                BinOp::AssignShiftLeft => {
+                    mk().binary_expr(RBinOp::Shl(Default::default()), lhs_expr_read, rhs_expr)
+                }
+                BinOp::AssignShiftRight => {
+                    mk().binary_expr(RBinOp::Shr(Default::default()), lhs_expr_read, rhs_expr)
+                }
+                BinOp::AssignBitOr => {
+                    mk().binary_expr(RBinOp::BitOr(Default::default()), lhs_expr_read, rhs_expr)
+                }
+                BinOp::AssignBitAnd => {
+                    mk().binary_expr(RBinOp::BitAnd(Default::default()), lhs_expr_read, rhs_expr)
+                }
                 BinOp::Assign => rhs_expr,
                 _ => panic!("Cannot convert non-assignment operator"),
             };
@@ -706,8 +762,8 @@ impl<'a> Translation<'a> {
             // If there's just one statement we should be able to be able to fit it into one line without issue
             // If there's a block we can flatten it into the current scope, and if the expr contains a block it's
             // likely complex enough to warrant putting it into a temporary variable to avoid borrowing issues
-            match param_expr.kind {
-                ExprKind::Block(ref block, _) => {
+            match *param_expr {
+                Expr::Block(ExprBlock { block, .. }) => {
                     let last = block.stmts.len() - 1;
 
                     for (i, stmt) in block.stmts.iter().enumerate() {
@@ -718,34 +774,38 @@ impl<'a> Translation<'a> {
                         stmts.push(stmt.clone());
                     }
 
-                    let last_expr = match block.stmts[last].kind {
-                        StmtKind::Expr(ref expr) => expr.clone(),
-                        _ => return Err(TranslationError::generic("Expected Expr StmtKind")),
+                    let last_expr = match block.stmts[last] {
+                        Stmt::Expr(ref expr) => expr.clone(),
+                        _ => return Err(TranslationError::generic("Expected Expr Stmt")),
                     };
-                    let method_call = mk().method_call_expr(lhs_expr, setter_name, vec![last_expr]);
+                    let method_call =
+                        mk().method_call_expr(lhs_expr, setter_name, vec![Box::new(last_expr)]);
 
-                    stmts.push(mk().expr_stmt(method_call));
+                    stmts.push(mk().semi_stmt(method_call));
                 }
-                _ if contains_block(&param_expr.kind) => {
+                _ if contains_block(&param_expr) => {
                     let name = self.renamer.borrow_mut().pick_name("rhs");
                     let name_ident = mk().mutbl().ident_pat(name.clone());
-                    let temporary_stmt =
-                        mk().local(name_ident, None as Option<P<Ty>>, Some(param_expr.clone()));
+                    let temporary_stmt = mk().local(
+                        name_ident,
+                        None as Option<Box<Type>>,
+                        Some(param_expr.clone()),
+                    );
                     let assignment_expr =
                         mk().method_call_expr(lhs_expr, setter_name, vec![mk().ident_expr(name)]);
 
-                    stmts.push(mk().local_stmt(P(temporary_stmt)));
-                    stmts.push(mk().expr_stmt(assignment_expr));
+                    stmts.push(mk().local_stmt(Box::new(temporary_stmt)));
+                    stmts.push(mk().semi_stmt(assignment_expr));
                 }
                 _ => {
                     let assignment_expr =
                         mk().method_call_expr(lhs_expr, setter_name, vec![param_expr.clone()]);
 
-                    stmts.push(mk().expr_stmt(assignment_expr));
+                    stmts.push(mk().semi_stmt(assignment_expr));
                 }
             };
 
-            return Ok(WithStmts::new(stmts, val));
+            Ok(WithStmts::new(stmts, val))
         })
     }
 }

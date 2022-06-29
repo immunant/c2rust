@@ -1,25 +1,34 @@
 //! feature_thread_local
 
-extern crate libc;
-
-use self::libc::{c_uint, c_int};
+use crate::thread_locals::rust_thread_entry;
+use libc::{c_int, c_uint};
 use std::thread;
-use thread_locals::rust_thread_entry;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn thread_entry(_: c_uint, _: *mut c_int);
 }
 
-#[no_mangle] static mut gesi: u32 = 71;
-#[no_mangle] static mut rust_gesi: u32 = 71;
-#[no_mangle] static mut fesi: u32 = 113;
-#[no_mangle] static mut rust_fesi: u32 = 113;
-#[no_mangle] #[thread_local] static mut geti: u32 = 147;
-#[no_mangle] #[thread_local] static mut rust_geti: u32 = 147;
-#[no_mangle] #[thread_local] static mut feti: u32 = 237;
-#[no_mangle] #[thread_local] static mut rust_feti: u32 = 237;
+#[no_mangle]
+static mut gesi: u32 = 71;
+#[no_mangle]
+static mut rust_gesi: u32 = 71;
+#[no_mangle]
+static mut fesi: u32 = 113;
+#[no_mangle]
+static mut rust_fesi: u32 = 113;
+#[no_mangle]
+#[thread_local]
+static mut geti: u32 = 147;
+#[no_mangle]
+#[thread_local]
+static mut rust_geti: u32 = 147;
+#[no_mangle]
+#[thread_local]
+static mut feti: u32 = 237;
+#[no_mangle]
+#[thread_local]
+static mut rust_feti: u32 = 237;
 
 const BUFFER_SIZE: usize = 16;
 

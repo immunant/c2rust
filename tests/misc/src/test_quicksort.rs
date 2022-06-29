@@ -1,17 +1,12 @@
-extern crate libc;
-
-use qsort::{rust_partition, rust_quickSort, rust_swap};
-use self::libc::c_int;
+use crate::qsort::{rust_partition, rust_quickSort, rust_swap};
+use libc::c_int;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn swap(_: *mut c_int, _: *mut c_int);
 
-    #[no_mangle]
     fn partition(_: *mut c_int, _: c_int, _: c_int);
 
-    #[no_mangle]
     fn quickSort(_: *mut c_int, _: c_int, _: c_int);
 }
 
@@ -25,9 +20,7 @@ pub fn test_swap() {
     assert_eq!(a, 2);
     assert_eq!(b, 1);
 
-    unsafe {
-        rust_swap(&mut a, &mut b)
-    }
+    unsafe { rust_swap(&mut a, &mut b) }
 
     assert_eq!(a, 1);
     assert_eq!(b, 2);

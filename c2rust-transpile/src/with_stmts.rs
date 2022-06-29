@@ -1,7 +1,6 @@
 use c2rust_ast_builder::mk;
 use std::iter::FromIterator;
-use syntax::ast::{Block, Expr, Stmt};
-use syntax::ptr::P;
+use syn::{Block, Expr, Stmt};
 
 #[derive(Clone, Debug)]
 pub struct WithStmts<T> {
@@ -109,9 +108,9 @@ impl<T> WithStmts<T> {
     }
 }
 
-impl WithStmts<P<Expr>> {
+impl WithStmts<Box<Expr>> {
     /// Package a series of statements and an expression into one block expression
-    pub fn to_expr(self) -> P<Expr> {
+    pub fn to_expr(self) -> Box<Expr> {
         if self.stmts.is_empty() {
             self.val
         } else {
@@ -120,28 +119,23 @@ impl WithStmts<P<Expr>> {
     }
 
     /// Package a series of statements and an expression into one block
-    pub fn to_block(mut self) -> P<Block> {
+    pub fn to_block(mut self) -> Box<Block> {
         self.stmts.push(mk().expr_stmt(self.val));
         mk().block(self.stmts)
     }
 
-    pub fn to_unsafe_pure_expr(self) -> Option<P<Expr>> {
+    pub fn to_unsafe_pure_expr(self) -> Option<Box<Expr>> {
         let is_unsafe = self.is_unsafe;
-        self.to_pure_expr()
-            .map(|expr| {
-                if is_unsafe {
-                    mk().block_expr(
-                        mk().unsafe_().block(
-                            vec![mk().expr_stmt(expr)]
-                        )
-                    )
-                } else {
-                    expr
-                }
-            })
+        self.to_pure_expr().map(|expr| {
+            if is_unsafe {
+                mk().unsafe_block_expr(mk().unsafe_block(vec![mk().expr_stmt(expr)]))
+            } else {
+                expr
+            }
+        })
     }
 
-    pub fn to_pure_expr(self) -> Option<P<Expr>> {
+    pub fn to_pure_expr(self) -> Option<Box<Expr>> {
         if self.stmts.is_empty() {
             Some(self.val)
         } else {
@@ -161,8 +155,7 @@ impl WithStmts<P<Expr>> {
     }
 }
 
-impl<T> FromIterator<WithStmts<T>> for WithStmts<Vec<T>>
-{
+impl<T> FromIterator<WithStmts<T>> for WithStmts<Vec<T>> {
     fn from_iter<I: IntoIterator<Item = WithStmts<T>>>(value: I) -> Self {
         let mut stmts = vec![];
         let mut res = vec![];

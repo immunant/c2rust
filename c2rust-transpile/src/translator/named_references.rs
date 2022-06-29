@@ -12,7 +12,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         reference: CExprId,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         self.name_reference(ctx, reference, false)
             .map(|ws| ws.map(|(lvalue, _)| lvalue))
     }
@@ -24,7 +24,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         reference: CExprId,
-    ) -> Result<WithStmts<(P<Expr>, P<Expr>)>, TranslationError> {
+    ) -> TranslationResult<WithStmts<(Box<Expr>, Box<Expr>)>> {
         let msg: &str = "When called with `uses_read = true`, `name_reference` should always \
                          return an rvalue (something from which to read the memory location)";
 
@@ -45,7 +45,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         reference: CExprId,
         uses_read: bool,
-    ) -> Result<WithStmts<(P<Expr>, Option<P<Expr>>)>, TranslationError> {
+    ) -> TranslationResult<WithStmts<(Box<Expr>, Option<Box<Expr>>)>> {
         let reference_ty = self
             .ast_context
             .index(reference)
@@ -55,29 +55,36 @@ impl<'c> Translation<'c> {
         let reference = self.convert_expr(ctx.used(), reference)?;
         reference.and_then(|reference| {
             /// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
-            fn is_lvalue(e: &Expr) -> bool {
-                match e.kind {
-                    ExprKind::Path(..)
-                        | ExprKind::Unary(ast::UnOp::Deref, _)
-                        | ExprKind::Field(..)
-                        | ExprKind::Index(..) => true,
-                    _ => false,
-                }
+            fn is_lvalue(e: &Box<Expr>) -> bool {
+                use Expr::*;
+                matches!(
+                    unparen(e).as_ref(),
+                    Unary(ExprUnary {
+                        op: syn::UnOp::Deref(_),
+                        ..
+                    }) | Path(..)
+                        | Field(..)
+                        | Index(..)
+                )
             }
 
             // Check if something is a side-effect free Rust lvalue.
-            fn is_simple_lvalue(e: &Expr) -> bool {
-                match e.kind {
-                    ExprKind::Path(..) => true,
-                    ExprKind::Unary(ast::UnOp::Deref, ref e)
-                        | ExprKind::Field(ref e, _)
-                        | ExprKind::Index(ref e, _) => is_simple_lvalue(e),
+            fn is_simple_lvalue(e: &Box<Expr>) -> bool {
+                match **unparen(e) {
+                    Expr::Path(..) => true,
+                    Expr::Unary(ExprUnary {
+                        op: syn::UnOp::Deref(_),
+                        ref expr,
+                        ..
+                    })
+                    | Expr::Field(ExprField { base: ref expr, .. })
+                    | Expr::Index(ExprIndex { ref expr, .. }) => is_simple_lvalue(expr),
                     _ => false,
                 }
             }
 
             // Given the LHS access to a variable, produce the RHS one
-            let read = |write: P<Expr>| -> Result<P<Expr>, TranslationError> {
+            let read = |write: Box<Expr>| -> TranslationResult<Box<Expr>> {
                 if reference_ty.qualifiers.is_volatile {
                     self.volatile_read(&write, reference_ty)
                 } else {
@@ -85,23 +92,27 @@ impl<'c> Translation<'c> {
                 }
             };
 
-            if !uses_read && is_lvalue(&*reference) {
+            if !uses_read && is_lvalue(&reference) {
                 Ok(WithStmts::new_val((reference, None)))
-            } else if is_simple_lvalue(&*reference) {
-                Ok(WithStmts::new_val((reference.clone(), Some(read(reference)?))))
+            } else if is_simple_lvalue(&reference) {
+                Ok(WithStmts::new_val((
+                    reference.clone(),
+                    Some(read(reference)?),
+                )))
             } else {
                 // This is the case where we explicitly need to factor out possible side-effects.
 
                 let ptr_name = self.renamer.borrow_mut().fresh();
 
                 // let ref mut p = lhs;
-                let compute_ref = mk().local_stmt(P(mk().local(
+                let compute_ref = mk().local_stmt(Box::new(mk().local(
                     mk().mutbl().ident_ref_pat(&ptr_name),
-                    None as Option<P<Ty>>,
+                    None as Option<Box<Type>>,
                     Some(reference),
                 )));
 
-                let write = mk().unary_expr(ast::UnOp::Deref, mk().ident_expr(&ptr_name));
+                let write =
+                    mk().unary_expr(UnOp::Deref(Default::default()), mk().ident_expr(&ptr_name));
 
                 Ok(WithStmts::new(
                     vec![compute_ref],

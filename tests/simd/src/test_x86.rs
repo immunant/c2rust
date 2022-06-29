@@ -1,57 +1,52 @@
-extern crate libc;
-
-use x86::{
-    ShuffleVectors, VectorInitLists, rust_unpack_128_2x128, rust_zero_init_all, rust_call_all, rust_call_all_used, rust_vector_init_lists, rust_vector_init_lists_used,
-    rust_static_m128, rust_static_m256, rust_static_m128d, rust_static_m256d, rust_static_m128i, rust_static_m256i, rust_simd_fn_codegen,
-    rust_static_uninit_m128, rust_static_uninit_m256, rust_static_uninit_m128d, rust_static_uninit_m256d, rust_static_uninit_m128i, rust_static_uninit_m256i,
+use crate::x86::{
+    rust_call_all, rust_call_all_used, rust_simd_fn_codegen, rust_static_m128, rust_static_m128d,
+    rust_static_m128i, rust_static_m256, rust_static_m256d, rust_static_m256i,
+    rust_static_uninit_m128, rust_static_uninit_m128d, rust_static_uninit_m128i,
+    rust_static_uninit_m256, rust_static_uninit_m256d, rust_static_uninit_m256i,
+    rust_unpack_128_2x128, rust_vector_init_lists, rust_vector_init_lists_used, rust_zero_init_all,
+    ShuffleVectors, VectorInitLists,
 };
 
 #[cfg(target_arch = "x86")]
-use std::arch::x86::{__m128, __m128i, __m128d, __m256, __m256d, __m256i, _mm_setzero_si128, _mm_set_epi32};
+use std::arch::x86::{
+    __m128, __m128d, __m128i, __m256, __m256d, __m256i, _mm_set_epi32, _mm_setzero_si128,
+};
 #[cfg(target_arch = "x86_64")]
-use std::arch::x86_64::{__m128, __m128i, __m128d, __m256, __m256d, __m256i, _mm_setzero_si128, _mm_set_epi32};
+use std::arch::x86_64::{
+    __m128, __m128d, __m128i, __m256, __m256d, __m256i, _mm_set_epi32, _mm_setzero_si128,
+};
+use std::fmt::{Debug, Error, Formatter};
 use std::mem::transmute;
-use std::fmt::{Debug, Formatter, Error};
 
 // Our travis-ci machines don't support AVX2 so we conditionally compile those bits out
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn unpack_128_2x128(data: __m128i, data_lo: *mut __m128i, data_hi: *mut __m128i);
 
-    #[no_mangle]
     fn call_all() -> ShuffleVectors;
 
-    #[no_mangle]
     fn call_all_used() -> ShuffleVectors;
 
-    #[no_mangle]
     fn vector_init_lists() -> VectorInitLists;
 
-    #[no_mangle]
     fn vector_init_lists_used() -> VectorInitLists;
 
-    #[no_mangle]
     static static_m128: __m128;
 
-    #[no_mangle]
     static static_m256: __m256;
 
-    #[no_mangle]
     static static_m128d: __m128d;
 
-    #[no_mangle]
     static static_m256d: __m256d;
 
-    #[no_mangle]
     static static_m128i: __m128i;
 
-    #[no_mangle]
     static static_m256i: __m256i;
 }
 
-static UNSAFETY_ERROR: &str = "Prevented unsafe calling of SIMD functions when architecture support doesn't exist";
+static UNSAFETY_ERROR: &str =
+    "Prevented unsafe calling of SIMD functions when architecture support doesn't exist";
 
 macro_rules! cmp_vector_fields {
     ($this: ident, $other: ident: [
@@ -75,6 +70,7 @@ macro_rules! cmp_vector_fields {
 impl PartialEq for ShuffleVectors {
     fn eq(&self, other: &ShuffleVectors) -> bool {
         cmp_vector_fields!(self, other: [
+            #[cfg(target_feature = "mmx")]
             a: u64,
             b: u128,
             c: u128,
@@ -89,6 +85,7 @@ impl PartialEq for ShuffleVectors {
             j: (u128, u128),
             #[cfg(target_feature = "avx2")]
             k: (u128, u128),
+            #[cfg(target_feature = "mmx")]
             l: u64,
             m: u128,
             #[cfg(target_feature = "avx2")]
@@ -112,7 +109,7 @@ impl Debug for ShuffleVectors {
 }
 
 pub fn test_unpack_128_2x128() {
-    assert!(is_x86_feature_detected!("sse2"), UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse2"), "{}", UNSAFETY_ERROR);
 
     unsafe {
         let data = _mm_setzero_si128();
@@ -142,10 +139,10 @@ pub fn test_unpack_128_2x128() {
 }
 
 pub fn test_zero_initializers() {
-    assert!(is_x86_feature_detected!("sse"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("sse2"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("avx"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("mmx"), UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse2"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("avx"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("mmx"), "{}", UNSAFETY_ERROR);
 
     unsafe {
         rust_zero_init_all();
@@ -153,8 +150,8 @@ pub fn test_zero_initializers() {
 }
 
 pub fn test_shuffle_vectors() {
-    assert!(is_x86_feature_detected!("sse4.2"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("ssse3"), UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse4.2"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("ssse3"), "{}", UNSAFETY_ERROR);
 
     let c1 = unsafe { call_all() };
     let c2 = unsafe { call_all_used() };
@@ -187,9 +184,9 @@ impl Debug for VectorInitLists {
 }
 
 pub fn test_vector_init_lists() {
-    assert!(is_x86_feature_detected!("sse"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("sse2"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("avx"), UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse2"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("avx"), "{}", UNSAFETY_ERROR);
 
     let c1 = unsafe { vector_init_lists() };
     let c2 = unsafe { vector_init_lists_used() };
@@ -201,9 +198,9 @@ pub fn test_vector_init_lists() {
 }
 
 pub fn test_static_init_lists() {
-    assert!(is_x86_feature_detected!("sse"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("sse2"), UNSAFETY_ERROR);
-    assert!(is_x86_feature_detected!("avx"), UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("sse2"), "{}", UNSAFETY_ERROR);
+    assert!(is_x86_feature_detected!("avx"), "{}", UNSAFETY_ERROR);
 
     // These should have been transmuted due to being in statics
     let rust_static_init_lists = unsafe {

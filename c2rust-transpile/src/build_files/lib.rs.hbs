@@ -3,28 +3,20 @@
 {{/each}}
 
 {{#each crates~}}
+{{!-- TODO(kkysen) `#[macro_use]` shouldn't be needed. --}}
+{{!-- Waiting on fix for https://github.com/immunant/c2rust/issues/426. --}}
 {{#if this.macro_use~}}#[macro_use]{{~/if}}
 extern crate {{this.ident}};
 {{~/each}}
-
-{{#if cross_checks~}}
-#![plugin(c2rust_xcheck_plugin({{plugin_args}}))]
-#[macro_use] extern crate c2rust_xcheck_derive;
-#[macro_use] extern crate c2rust_xcheck_runtime;
-extern crate c2rust_xcheck_backend_{{cross_check_backend}};
-
-#[global_allocator]
-static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;
-{{~/if}}
 
 {{#each modules~}}
 {{~#if this.path~}}
 #[path = "{{this.path}}"]
 {{/if~}}
-{{~#unless this.close~}}
+{{#unless this.close~}}
 pub mod {{this.name}}
 {{~#if this.open}} { {{~else~}};{{~/if}}
-{{~else~}}
+{{else~}}
 } // mod {{this.name}}
-{{~/unless}}
+{{/unless}}
 {{/each}}

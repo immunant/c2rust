@@ -1,8 +1,4 @@
 #![recursion_limit = "128"]
-extern crate proc_macro;
-extern crate proc_macro2;
-extern crate quote;
-extern crate syn;
 
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
@@ -17,13 +13,7 @@ struct VisitorImpls {
 }
 
 impl VisitorImpls {
-    fn generate_visit(
-        &mut self,
-        method_name: &Ident,
-        arg_pat: &Pat,
-        ty: &Type,
-        walk: &Block,
-    ) {
+    fn generate_visit(&mut self, method_name: &Ident, arg_pat: &Pat, ty: &Type, walk: &Block) {
         self.tokens.extend(quote! {
             impl MutVisit for #ty {
                 fn visit<F: MutVisitor>(&mut self, f: &mut F) {
@@ -76,13 +66,7 @@ impl VisitorImpls {
         self.count += 1;
     }
 
-    fn generate_flat_map(
-        &mut self,
-        method_name: &Ident,
-        arg_pat: &Pat,
-        ty: &Type,
-        walk: &Block,
-    ) {
+    fn generate_flat_map(&mut self, method_name: &Ident, arg_pat: &Pat, ty: &Type, walk: &Block) {
         self.tokens.extend(quote! {
             impl MutVisit for #ty {
                 fn visit<F: MutVisitor>(&mut self, f: &mut F) {
@@ -154,18 +138,16 @@ impl<'ast> Visit<'ast> for VisitorImpls {
     fn visit_trait_item_method(&mut self, m: &TraitItemMethod) {
         let method_name = &m.sig.ident;
         let method_noop = m.default.as_ref().unwrap();
-        match &m.sig.inputs[1] {
-            FnArg::Typed(pat_ty) => match &*pat_ty.ty {
+        if let FnArg::Typed(pat_ty) = &m.sig.inputs[1] {
+            match &*pat_ty.ty {
                 Type::Reference(TypeReference {
                     mutability: Some(_),
                     elem,
                     ..
-                }) => self.generate_visit(method_name, &pat_ty.pat, &elem, method_noop),
+                }) => self.generate_visit(method_name, &pat_ty.pat, elem, method_noop),
 
-                ty => self.generate_flat_map(method_name, &pat_ty.pat, &ty, method_noop),
-            },
-
-            _ => {}
+                ty => self.generate_flat_map(method_name, &pat_ty.pat, ty, method_noop),
+            }
         }
     }
 }

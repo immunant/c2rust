@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use failure::Error;
+use log::warn;
 use regex::Regex;
+use serde_derive::Deserialize;
 
 #[derive(Deserialize, Debug, Default, Clone)]
 pub struct CompileCmd {
@@ -20,10 +22,11 @@ pub struct CompileCmd {
     /// to rerun the exact compilation step for the translation unit in the environment
     /// the build system uses. Parameters use shell quoting and shell escaping of quotes,
     /// with ‘"’ and ‘\’ being the only special characters. Shell expansion is not supported.
-    command: Option<String>,
+    #[serde(skip_deserializing)]
+    _command: Option<String>,
     /// The compile command executed as list of strings. Either arguments or command is required.
-    #[serde(default)]
-    arguments: Vec<String>,
+    #[serde(default, skip_deserializing)]
+    _arguments: Vec<String>,
     /// The name of the output created by this compilation step. This field is optional. It can
     /// be used to distinguish different processing modes of the same input file.
     output: Option<String>,
@@ -37,7 +40,7 @@ impl CompileCmd {
                 let path = self.directory.join(&self.file);
                 let e = format!("could not canonicalize {}", path.display());
                 path.canonicalize().expect(&e)
-            },
+            }
         }
     }
 }
@@ -102,7 +105,7 @@ fn build_link_commands(mut v: Vec<Rc<CompileCmd>>) -> Result<Vec<LinkCmd>, Error
     for (idx, ccmd) in v.iter().enumerate() {
         let lcmd = match ccmd.file.strip_prefix("/c2rust/link/") {
             Ok(lcmd) => lcmd.to_str().unwrap(),
-            Err(_) => continue
+            Err(_) => continue,
         };
         let mut lcmd: LinkCmd = serde_bencode::from_str(lcmd)?;
 
@@ -124,7 +127,10 @@ fn build_link_commands(mut v: Vec<Rc<CompileCmd>>) -> Result<Vec<LinkCmd>, Error
     // Check if we have left-over compile commands; if we do,
     // bind them to the crate itself (which becomes a `staticlib` or `rlib`)
     let mut idx = 0;
-    v.retain(|_| { idx += 1; !seen_ccmds.contains(&(idx - 1)) });
+    v.retain(|_| {
+        idx += 1;
+        !seen_ccmds.contains(&(idx - 1))
+    });
     if !v.is_empty() {
         let lcmd = LinkCmd {
             // FIXME: this doesn't catch all of them; do we need to???
@@ -167,7 +173,7 @@ pub fn get_compile_commands(
     compile_commands: &Path,
     filter: &Option<Regex>,
 ) -> Result<Vec<LinkCmd>, Error> {
-    let f = File::open(compile_commands)?; // open read-only
+    let f = std::io::BufReader::new(File::open(compile_commands)?); // open read-only
 
     // Read the JSON contents of the file as an instance of `Value`
     let v: Vec<Rc<CompileCmd>> = serde_json::from_reader(f)?;
@@ -184,7 +190,7 @@ pub fn get_compile_commands(
     let mut lcmds = build_link_commands(v)?;
 
     for lcmd in &mut lcmds {
-        let inputs = std::mem::replace(&mut lcmd.cmd_inputs, vec![]);
+        let inputs = std::mem::take(&mut lcmd.cmd_inputs);
         let inputs = filter_duplicate_cmds(inputs);
         lcmd.cmd_inputs = inputs;
     }

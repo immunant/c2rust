@@ -1,6 +1,4 @@
-extern crate libc;
-
-use fn_attrs::{rust_ensure_use, rust_noinline_nonstatic, rust_inline_extern};
+use crate::fn_attrs::{rust_ensure_use, rust_inline_extern, rust_noinline_nonstatic};
 
 pub fn test_fn_attrs() {
     // There's no way to directly test that a function is inlined or not
@@ -43,15 +41,23 @@ pub fn test_fn_attrs() {
     // extern void inline __attribute__((always_inline)) always_inline_extern(void) {}
     // extern void inline __attribute__((__gnu_inline__)) gnu_inline_extern(void) {}
     // extern void inline __attribute__((gnu_inline, always_inline)) always_inline_gnu_inline_extern(void) {}
-    assert!(src.contains("#[inline]\n#[linkage = \"external\"]\npub unsafe extern \"C\" fn rust_inline_extern"));
+    assert!(src.contains(
+        "#[inline]\n#[linkage = \"external\"]\npub unsafe extern \"C\" fn rust_inline_extern"
+    ));
     assert!(src.contains("#[inline]\n#[linkage = \"external\"]\npub unsafe extern \"C\" fn rust_alt_kw_inline_extern"));
     assert!(src.contains("#[inline(always)]\npub unsafe extern \"C\" fn rust_always_inline_extern"));
     assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_gnu_inline_extern"));
-    assert!(src.contains("#[inline(always)]\nunsafe extern \"C\" fn rust_always_inline_gnu_inline_extern"));
-    assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_gnu_inline_non_canonical_definition_extern"));
+    assert!(src.contains(
+        "#[inline(always)]\nunsafe extern \"C\" fn rust_always_inline_gnu_inline_extern"
+    ));
+    assert!(src.contains(
+        "#[inline]\nunsafe extern \"C\" fn rust_gnu_inline_non_canonical_definition_extern"
+    ));
 
     if cfg!(not(target_os = "macos")) {
         // aliased_fn is aliased to the inline_extern function
-        assert!(src.contains("#[no_mangle]\n    #[link_name = \"inline_extern\"]\n    fn aliased_fn();"));
+        assert!(src.contains(
+            "extern \"C\" {\n    #[link_name = \"inline_extern\"]\n    fn aliased_fn();"
+        ));
     }
 }

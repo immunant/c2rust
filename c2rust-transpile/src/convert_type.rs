@@ -1,12 +1,12 @@
 use crate::c_ast::CDeclId;
 use crate::c_ast::*;
+use crate::diagnostics::TranslationResult;
 use crate::renamer::*;
-use crate::diagnostics::TranslationError;
-use c2rust_ast_builder::mk;
+use c2rust_ast_builder::{mk, properties::*};
+use failure::format_err;
 use std::collections::{HashMap, HashSet};
 use std::ops::Index;
-use syntax::ast::*;
-use syntax::ptr::P;
+use syn::*;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 enum FieldKey {
@@ -20,7 +20,7 @@ pub struct TypeConverter {
     fields: HashMap<CDeclId, Renamer<FieldKey>>,
     suffix_names: HashMap<(CDeclId, &'static str), String>,
     features: HashSet<&'static str>,
-    emit_no_std: bool,
+    pub emit_no_std: bool,
 }
 
 pub const RESERVED_NAMES: [&str; 103] = [
@@ -164,15 +164,15 @@ impl TypeConverter {
 
     pub fn resolve_decl_suffix_name(&mut self, decl_id: CDeclId, suffix: &'static str) -> &str {
         let key = (decl_id, suffix);
-        if !self.suffix_names.contains_key(&key) {
-            let mut suffix_name = self.resolve_decl_name(decl_id)
+        self.suffix_names.entry(key).or_insert_with(|| {
+            let mut suffix_name = self
+                .renamer
+                .get(&decl_id)
                 .unwrap_or_else(|| "C2RustUnnamed".to_string());
             suffix_name += suffix;
 
-            let suffix_name = self.renamer.pick_name(&suffix_name);
-            self.suffix_names.insert(key, suffix_name);
-        }
-        self.suffix_names.get(&key).unwrap()
+            self.renamer.pick_name(&suffix_name)
+        })
     }
 
     pub fn declare_field_name(
@@ -181,37 +181,29 @@ impl TypeConverter {
         field_id: CFieldId,
         name: &str,
     ) -> String {
-        let name = if name.is_empty() { "c2rust_unnamed" } else { name };
-
-        if !self.fields.contains_key(&record_id) {
-            self.fields.insert(record_id, Renamer::new(&RESERVED_NAMES));
-        }
+        let name = if name.is_empty() {
+            "c2rust_unnamed"
+        } else {
+            name
+        };
 
         self.fields
-            .get_mut(&record_id)
-            .unwrap()
+            .entry(record_id)
+            .or_insert_with(|| Renamer::new(&RESERVED_NAMES))
             .insert(FieldKey::Field(field_id), name)
             .expect("Field already declared")
     }
 
-    pub fn declare_padding(
-        &mut self,
-        record_id: CRecordId,
-        padding_idx: usize,
-    ) -> String {
-        if !self.fields.contains_key(&record_id) {
-            self.fields.insert(record_id, Renamer::new(&RESERVED_NAMES));
-        }
-
+    pub fn declare_padding(&mut self, record_id: CRecordId, padding_idx: usize) -> String {
+        let field = self
+            .fields
+            .entry(record_id)
+            .or_insert_with(|| Renamer::new(&RESERVED_NAMES));
         let key = FieldKey::Padding(padding_idx);
-        if let Some(name) = self.fields.get(&record_id).unwrap().get(&key) {
+        if let Some(name) = field.get(&key) {
             name
         } else {
-            self.fields
-                .get_mut(&record_id)
-                .unwrap()
-                .insert(key, "c2rust_padding")
-                .unwrap()
+            field.insert(key, "c2rust_padding").unwrap()
         }
     }
 
@@ -236,33 +228,34 @@ impl TypeConverter {
         &mut self,
         ctxt: &TypedAstContext,
         ret: Option<CQualTypeId>,
-        params: &Vec<CQualTypeId>,
+        params: &[CQualTypeId],
         is_variadic: bool,
-    ) -> Result<P<Ty>, TranslationError> {
-        let mut inputs = params
+    ) -> TranslationResult<Box<Type>> {
+        let barefn_inputs = params
             .iter()
-            .map(|x| mk().arg(self.convert(ctxt, x.ctype).unwrap(), mk().wild_pat()))
-            .collect::<Vec<_>>();
+            .map(|x| mk().bare_arg(self.convert(ctxt, x.ctype).unwrap(), None::<Box<Ident>>))
+            .collect::<Vec<BareFnArg>>();
 
         let output = match ret {
             None => mk().never_ty(),
             Some(ret) => self.convert(ctxt, ret.ctype)?,
         };
 
-        if is_variadic {
-            // For variadic functions, we need to add `_: ...` as an explicit argument
-            inputs.push(mk().arg(mk().cvar_args_ty(), mk().wild_pat()))
-        };
+        let variadic = is_variadic.then(|| mk().variadic_arg(vec![]));
 
-        let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output));
-        return Ok(mk().unsafe_().extern_("C").barefn_ty(fn_ty));
+        let fn_ty = Box::new((
+            barefn_inputs,
+            variadic,
+            ReturnType::Type(Default::default(), output),
+        ));
+        Ok(mk().unsafe_().extern_("C").barefn_ty(fn_ty))
     }
 
     pub fn convert_pointer(
         &mut self,
         ctxt: &TypedAstContext,
         qtype: CQualTypeId,
-    ) -> Result<P<Ty>, TranslationError> {
+    ) -> TranslationResult<Box<Type>> {
         let mutbl = if qtype.qualifiers.is_const {
             Mutability::Immutable
         } else {
@@ -272,11 +265,9 @@ impl TypeConverter {
         match ctxt.resolve_type(qtype.ctype).kind {
             // While void converts to () in function returns, it converts to c_void
             // in the case of pointers.
-            CTypeKind::Void => {
-                Ok(mk()
-                    .set_mutbl(mutbl)
-                    .ptr_ty(mk().path_ty(vec!["libc", "c_void"])))
-            }
+            CTypeKind::Void => Ok(mk()
+                .set_mutbl(mutbl)
+                .ptr_ty(mk().path_ty(vec!["libc", "c_void"]))),
 
             CTypeKind::VariableArray(mut elt, _len) => {
                 while let CTypeKind::VariableArray(elt_, _) = ctxt.resolve_type(elt).kind {
@@ -307,16 +298,16 @@ impl TypeConverter {
         &mut self,
         ctxt: &TypedAstContext,
         ctype: CTypeId,
-    ) -> Result<P<Ty>, TranslationError> {
+    ) -> TranslationResult<Box<Type>> {
         if self.translate_valist && ctxt.is_va_list(ctype) {
             let std_or_core = if self.emit_no_std { "core" } else { "std" };
-            let path = vec!["", std_or_core, "ffi", "VaList"];
-            let ty = mk().path_ty(path);
+            let path = vec![std_or_core, "ffi", "VaList"];
+            let ty = mk().path_ty(mk().abs_path(path));
             return Ok(ty);
         }
 
         match ctxt.index(ctype).kind {
-            CTypeKind::Void => Ok(mk().tuple_ty(vec![] as Vec<P<Ty>>)),
+            CTypeKind::Void => Ok(mk().tuple_ty(vec![] as Vec<Box<Type>>)),
             CTypeKind::Bool => Ok(mk().path_ty(mk().path(vec!["bool"]))),
             CTypeKind::Short => Ok(mk().path_ty(mk().path(vec!["libc", "c_short"]))),
             CTypeKind::Int => Ok(mk().path_ty(mk().path(vec!["libc", "c_int"]))),
@@ -333,7 +324,7 @@ impl TypeConverter {
             CTypeKind::LongDouble => Ok(mk().path_ty(mk().path(vec!["f128", "f128"]))),
             CTypeKind::Float => Ok(mk().path_ty(mk().path(vec!["libc", "c_float"]))),
             CTypeKind::Int128 => Ok(mk().path_ty(mk().path(vec!["i128"]))),
-            CTypeKind::UInt128 => Ok(mk().path_ty(mk().path(vec!["u128"]))),
+            CTypeKind::UInt128 => Ok(mk().path_ty(mk().path(vec!["bf16"]))),
 
             CTypeKind::Pointer(qtype) => self.convert_pointer(ctxt, qtype),
 
@@ -365,15 +356,12 @@ impl TypeConverter {
 
             CTypeKind::ConstantArray(element, count) => {
                 let ty = self.convert(ctxt, element)?;
-                Ok(mk().array_ty(
-                    ty,
-                    mk().lit_expr(mk().int_lit(count as u128, LitIntType::Unsuffixed)),
-                ))
+                Ok(mk().array_ty(ty, mk().lit_expr(mk().int_unsuffixed_lit(count as u128))))
             }
 
             CTypeKind::IncompleteArray(element) => {
                 let ty = self.convert(ctxt, element)?;
-                let zero_lit = mk().int_lit(0, LitIntType::Unsuffixed);
+                let zero_lit = mk().int_unsuffixed_lit(0);
                 let zero = mk().lit_expr(zero_lit);
                 Ok(mk().array_ty(ty, zero))
             }
@@ -398,7 +386,7 @@ impl TypeConverter {
             // K&R-style function
             CTypeKind::Function(ret, _, is_var, is_noreturn, false) => {
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
-                let fn_ty = self.convert_function(ctxt, opt_ret, &vec![], is_var)?;
+                let fn_ty = self.convert_function(ctxt, opt_ret, &[], is_var)?;
                 Ok(fn_ty)
             }
 
@@ -414,8 +402,8 @@ impl TypeConverter {
         &mut self,
         ctxt: &TypedAstContext,
         ctype: CTypeId,
-        params: &Vec<CParamId>
-    ) -> Result<Option<P<Ty>>, TranslationError> {
+        params: &Vec<CParamId>,
+    ) -> TranslationResult<Option<Box<Type>>> {
         match ctxt.index(ctype).kind {
             // ANSI/ISO C-style function
             CTypeKind::Function(.., true) => Ok(None),
@@ -428,28 +416,36 @@ impl TypeConverter {
                     .map(|p| {
                         let decl = &ctxt.get_decl(p).unwrap().kind;
                         match decl {
-                            CDeclKind::Variable { typ, ..} => *typ,
-                            _ => panic!("parameter referenced non-variable decl.")
+                            CDeclKind::Variable { typ, .. } => *typ,
+                            _ => panic!("parameter referenced non-variable decl."),
                         }
                     })
-                    .collect();
+                    .collect::<Vec<_>>();
 
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
                 let fn_ty = self.convert_function(ctxt, opt_ret, &params, is_var)?;
                 Ok(Some(fn_ty))
             }
 
-            CTypeKind::Elaborated(ref ctype) => self.knr_function_type_with_parameters(ctxt, *ctype, params),
-            CTypeKind::Decayed(ref ctype) => self.knr_function_type_with_parameters(ctxt, *ctype, params),
-            CTypeKind::Paren(ref ctype) => self.knr_function_type_with_parameters(ctxt, *ctype, params),
+            CTypeKind::Elaborated(ref ctype) => {
+                self.knr_function_type_with_parameters(ctxt, *ctype, params)
+            }
+            CTypeKind::Decayed(ref ctype) => {
+                self.knr_function_type_with_parameters(ctxt, *ctype, params)
+            }
+            CTypeKind::Paren(ref ctype) => {
+                self.knr_function_type_with_parameters(ctxt, *ctype, params)
+            }
             CTypeKind::TypeOf(ty) => self.knr_function_type_with_parameters(ctxt, ty, params),
 
             CTypeKind::Typedef(decl) => match &ctxt.index(decl).kind {
-                CDeclKind::Typedef { typ, .. } => self.knr_function_type_with_parameters(ctxt, typ.ctype, params),
+                CDeclKind::Typedef { typ, .. } => {
+                    self.knr_function_type_with_parameters(ctxt, typ.ctype, params)
+                }
                 _ => panic!("Typedef decl did not point to a typedef"),
-            }
+            },
 
-            ref kind @ _ => panic!("ctype parameter must be a function instead of {:?}", kind)
+            ref kind => panic!("ctype parameter must be a function instead of {:?}", kind),
         }
     }
 }

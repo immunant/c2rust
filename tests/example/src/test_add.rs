@@ -1,11 +1,8 @@
-extern crate libc;
-
-use add::rust_add;
-use self::libc::c_uint;
+use crate::add::rust_add;
+use libc::c_uint;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn add(left: c_uint, right: c_uint) -> c_uint;
 }
 

@@ -1,8 +1,6 @@
-extern crate libc;
+use crate::stmt_expr::rust_stmt_expr_func;
 
-use stmt_expr::rust_stmt_expr_func;
-
-use self::libc::c_int;
+use libc::c_int;
 
 pub fn test_stmt_expr_relooper() {
     unsafe {

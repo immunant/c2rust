@@ -10,7 +10,7 @@ use crate::c_ast::CTypeKind::{Char, Double, Float, Int, LongLong, Short};
 use crate::c_ast::CastKind::{BitCast, IntegralCast};
 
 /// As of rustc 1.29, rust is known to be missing some SIMD functions.
-/// See https://github.com/rust-lang-nursery/stdsimd/issues/579
+/// See <https://github.com/rust-lang-nursery/stdsimd/issues/579>
 static MISSING_SIMD_FUNCTIONS: [&str; 36] = [
     "_mm_and_si64",
     "_mm_andnot_si64",
@@ -71,21 +71,41 @@ impl<'c> Translation<'c> {
     /// Given the name of a typedef check if its one of the SIMD types.
     /// This function returns `true` when the name of the type is one that
     /// it knows how to implement and no further translation should be done.
-    pub fn import_simd_typedef(&self, name: &str) -> bool {
-        match name {
+    pub fn import_simd_typedef(&self, name: &str) -> TranslationResult<bool> {
+        Ok(match name {
             // Public API SIMD typedefs:
             "__m128i" | "__m128" | "__m128d" | "__m64" | "__m256" | "__m256d" | "__m256i" => {
-                // __m64 is still behind a feature gate
+                // __m64 and MMX support were removed from upstream Rust.
+                // See https://github.com/immunant/c2rust/issues/369
                 if name == "__m64" {
-                    self.use_feature("stdsimd");
+                    return Err(format_err!(
+                        "__m64 and MMX are no longer supported, due to removed upstream support. See https://github.com/immunant/c2rust/issues/369"
+                    ).into());
                 }
 
                 self.with_cur_file_item_store(|item_store| {
-                    let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
-                    let x86_64_attr = mk()
-                        .call_attr("cfg", vec!["target_arch = \"x86_64\""])
+                    let x86_attr = mk()
+                        .meta_item_attr(
+                            AttrStyle::Outer,
+                            mk().meta_list(
+                                "cfg",
+                                vec![NestedMeta::Meta(mk().meta_namevalue("target_arch", "x86"))],
+                            ),
+                        )
                         .pub_();
-                    let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
+                    let x86_64_attr = mk()
+                        .meta_item_attr(
+                            AttrStyle::Outer,
+                            mk().meta_list(
+                                "cfg",
+                                vec![NestedMeta::Meta(
+                                    mk().meta_namevalue("target_arch", "x86_64"),
+                                )],
+                            ),
+                        )
+                        .pub_();
+                    let std_or_core =
+                        if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
 
                     item_store.add_use_with_attr(
                         vec![std_or_core.clone(), "arch".into(), "x86".into()],
@@ -138,19 +158,20 @@ impl<'c> Translation<'c> {
             | "__mm_loadh_pi_v2f32"
             | "__mm_loadl_pi_v2f32" => true,
             _ => false,
-        }
+        })
     }
 
     /// Determine if a particular function name is an SIMD primitive. If so an appropriate
     /// use statement is generated, `true` is returned, and no further processing will need to be done.
-    pub fn import_simd_function(&self, name: &str) -> Result<bool, TranslationError> {
+    pub fn import_simd_function(&self, name: &str) -> TranslationResult<bool> {
         if name.starts_with("_mm") {
             // REVIEW: This will do a linear lookup against all SIMD fns. Could use a lazy static hashset
             if MISSING_SIMD_FUNCTIONS.contains(&name) {
-                Err(format_err!(
+                return Err(format_err!(
                     "SIMD function {} doesn't currently have a rust counterpart",
                     name
-                ))?;
+                )
+                .into());
             }
 
             // The majority of x86/64 SIMD is stable, however there are still some
@@ -162,7 +183,15 @@ impl<'c> Translation<'c> {
 
                 // REVIEW: Also a linear lookup
                 if !SIMD_X86_64_ONLY.contains(&name) {
-                    let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
+                    let x86_attr = mk()
+                        .meta_item_attr(
+                            AttrStyle::Outer,
+                            mk().meta_list(
+                                "cfg",
+                                vec![NestedMeta::Meta(mk().meta_namevalue("target_arch", "x86"))],
+                            ),
+                        )
+                        .pub_();
 
                     item_store.add_use_with_attr(
                         vec![std_or_core.clone(), "arch".into(), "x86".into()],
@@ -172,7 +201,15 @@ impl<'c> Translation<'c> {
                 }
 
                 let x86_64_attr = mk()
-                    .call_attr("cfg", vec!["target_arch = \"x86_64\""])
+                    .meta_item_attr(
+                        AttrStyle::Outer,
+                        mk().meta_list(
+                            "cfg",
+                            vec![NestedMeta::Meta(
+                                mk().meta_namevalue("target_arch", "x86_64"),
+                            )],
+                        ),
+                    )
                     .pub_();
 
                 item_store.add_use_with_attr(
@@ -216,13 +253,17 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         fn_name: &str,
         args: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         self.import_simd_function(fn_name)?;
 
         let mut processed_args = vec![];
         let (_, first_expr_id, _) = self.strip_vector_explicit_cast(args[0]);
         processed_args.push(first_expr_id);
-        processed_args.extend(args[1..].iter().map(|arg| self.clean_int_or_vector_param(*arg)));
+        processed_args.extend(
+            args[1..]
+                .iter()
+                .map(|arg| self.clean_int_or_vector_param(*arg)),
+        );
 
         let param_translation = self.convert_exprs(ctx.used(), &processed_args)?;
         param_translation.and_then(|call_params| {
@@ -232,7 +273,7 @@ impl<'c> Translation<'c> {
                 Ok(WithStmts::new_val(call))
             } else {
                 Ok(WithStmts::new(
-                    vec![mk().expr_stmt(call)],
+                    vec![mk().semi_stmt(call)],
                     self.panic_or_err("No value for unused shuffle vector return"),
                 ))
             }
@@ -246,7 +287,7 @@ impl<'c> Translation<'c> {
         ctype: CTypeId,
         len: usize,
         is_static: bool,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // NOTE: This is only for x86/_64, and so support for other architectures
         // might need some sort of disambiguation to be exported
         let (fn_name, bytes) = match (&self.ast_context[ctype].kind, len) {
@@ -262,16 +303,17 @@ impl<'c> Translation<'c> {
 
                 ("_mm_setzero_si64", 8)
             }
-            (kind, len) => Err(format_err!(
-                "Unsupported vector default initializer: {:?} x {}",
-                kind,
-                len
-            ))?,
+            (kind, len) => {
+                return Err(format_err!(
+                    "Unsupported vector default initializer: {:?} x {}",
+                    kind,
+                    len
+                )
+                .into())
+            }
         };
 
         if is_static {
-            self.use_feature("const_transmute");
-
             let zero_expr = mk().lit_expr(mk().int_lit(0, "u8"));
             let n_bytes_expr = mk().lit_expr(mk().int_lit(bytes, ""));
             let expr = mk().repeat_expr(zero_expr, n_bytes_expr);
@@ -286,7 +328,10 @@ impl<'c> Translation<'c> {
             self.import_simd_function(fn_name)
                 .expect("None of these fns should be unsupported in rust");
 
-            Ok(WithStmts::new_val(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<P<Expr>>)))
+            Ok(WithStmts::new_val(mk().call_expr(
+                mk().ident_expr(fn_name),
+                Vec::new() as Vec<Box<Expr>>,
+            )))
         }
     }
 
@@ -297,23 +342,20 @@ impl<'c> Translation<'c> {
         ids: &[CExprId],
         ctype: CTypeId,
         len: usize,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let param_translation = self.convert_exprs(ctx, ids)?;
         param_translation.and_then(|mut params| {
             // When used in a static, we cannot call the standard functions since they
             // are not const and so we are forced to transmute
             let call = if ctx.is_static {
                 let tuple = mk().tuple_expr(params);
-                let transmute = transmute_expr(
+
+                transmute_expr(
                     mk().infer_ty(),
                     mk().infer_ty(),
                     tuple,
                     self.tcfg.emit_no_std,
-                );
-
-                self.use_feature("const_transmute");
-
-                transmute
+                )
             } else {
                 let fn_call_name = match (&self.ast_context[ctype].kind, len) {
                     (Float, 4) => "_mm_setr_ps",
@@ -331,7 +373,7 @@ impl<'c> Translation<'c> {
                     (Short, 4) => "_mm_setr_pi16",
                     (Short, 8) => "_mm_setr_epi16",
                     (Short, 16) => "_mm256_setr_epi16",
-                    ref e => Err(format_err!("Unknown vector init list: {:?}", e))?,
+                    e => return Err(format_err!("Unknown vector init list: {:?}", e).into()),
                 };
 
                 self.import_simd_function(fn_call_name)?;
@@ -365,15 +407,18 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         child_expr_ids: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // There are three shuffle vector functions which are actually functions, not superbuiltins/macros,
         // which do not need to be handled here: _mm_shuffle_pi8, _mm_shuffle_epi8, _mm256_shuffle_epi8
 
-        if ![4, 6, 10, 18].contains(&child_expr_ids.len()) {
-            Err(format_err!(
-                "Unsupported shuffle vector without 4, 6, 10, or 18 input params: {}",
-                child_expr_ids.len()
-            ))?
+        let input_params = [4, 6, 10, 18];
+        if !input_params.contains(&child_expr_ids.len()) {
+            return Err(format_err!(
+                "Unsupported shuffle vector without input params: found {}, expected one of {:?}",
+                child_expr_ids.len(),
+                input_params,
+            )
+            .into());
         };
 
         // There is some internal explicit casting which is okay for us to strip off
@@ -390,16 +435,19 @@ impl<'c> Translation<'c> {
         }
 
         let mask_expr_id = self.get_shuffle_vector_mask(&child_expr_ids[2..])?;
-        let param_translation = self.convert_exprs(ctx.used(), &[
-            first_expr_id,
-            second_expr_id,
-            mask_expr_id,
-        ])?;
+        let param_translation =
+            self.convert_exprs(ctx.used(), &[first_expr_id, second_expr_id, mask_expr_id])?;
         param_translation.and_then(|params| {
             let mut params = params.into_iter();
-            let first = params.next().ok_or("Missing first param in convert_shuffle_vector")?;
-            let second = params.next().ok_or("Missing second param in convert_shuffle_vector")?;
-            let third = params.next().ok_or("Missing third param in convert_shuffle_vector")?;
+            let first = params
+                .next()
+                .ok_or("Missing first param in convert_shuffle_vector")?;
+            let second = params
+                .next()
+                .ok_or("Missing second param in convert_shuffle_vector")?;
+            let third = params
+                .next()
+                .ok_or("Missing third param in convert_shuffle_vector")?;
             let mut new_params = vec![first];
 
             // Some don't take a second param, but the expr is still there for some reason
@@ -420,7 +468,7 @@ impl<'c> Translation<'c> {
                 _ => new_params.push(second),
             }
 
-            let shuffle_fn_name = match (&first_vec, first_vec_len) {
+            let shuffle_fn_name = match (first_vec, first_vec_len) {
                 (Float, 4) => "_mm_shuffle_ps",
                 (Float, 8) => "_mm256_shuffle_ps",
                 (Double, 2) => "_mm_shuffle_pd",
@@ -432,8 +480,7 @@ impl<'c> Translation<'c> {
                     // _mm_shufflehi_epi16 mask params start with const int,
                     // _mm_shufflelo_epi16 does not
                     let expr_id = &child_expr_ids[2];
-                    if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context[*expr_id].kind
-                    {
+                    if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context[*expr_id].kind {
                         "_mm_shufflehi_epi16"
                     } else {
                         "_mm_shufflelo_epi16"
@@ -443,14 +490,13 @@ impl<'c> Translation<'c> {
                     // _mm256_shufflehi_epi16 mask params start with const int,
                     // _mm256_shufflelo_epi16 does not
                     let expr_id = &child_expr_ids[2];
-                    if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context[*expr_id].kind
-                    {
+                    if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context[*expr_id].kind {
                         "_mm256_shufflehi_epi16"
                     } else {
                         "_mm256_shufflelo_epi16"
                     }
                 }
-                e => Err(format_err!("Unknown shuffle vector signature: {:?}", e))?,
+                e => return Err(format_err!("Unknown shuffle vector signature: {:?}", e).into()),
             };
 
             new_params.push(third);
@@ -511,7 +557,10 @@ impl<'c> Translation<'c> {
     /// This function takes the expr ids belonging to a shuffle vector "super builtin" call,
     /// excluding the first two (which are always vector exprs). These exprs contain mathematical
     /// offsets applied to a mask expr (or are otherwise a numeric constant) which we'd like to extract.
-    fn get_shuffle_vector_mask(&self, expr_ids: &[CExprId]) -> Result<CExprId, TranslationError> {
+    fn get_shuffle_vector_mask(&self, expr_ids: &[CExprId]) -> TranslationResult<CExprId> {
+        fn unknown_mask_format(e: &CExprKind) -> Result<CExprId, TranslationError> {
+            Err(format_err!("Found unknown mask format: {:?}", e).into())
+        }
         match self.ast_context[expr_ids[0]].kind {
             // Need to unmask which looks like this most of the time: X + (((mask) >> Y) & Z):
             Binary(_, Add, _, rhs_expr_id, None, None) => {
@@ -521,31 +570,27 @@ impl<'c> Translation<'c> {
             Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
                 match self.ast_context[lhs_expr_id].kind {
                     Binary(_, ShiftRight, lhs_expr_id, _, None, None) => Ok(lhs_expr_id),
-                    ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
+                    ref e => unknown_mask_format(e),
                 }
             }
             // Sometimes you find a constant and the mask is used further down the expr list
             Literal(_, Integer(0, IntBase::Dec)) => self.get_shuffle_vector_mask(&[expr_ids[4]]),
             // format: ((char)(mask) & A) ?  B : C - (char)(mask)
-            Conditional(_, lhs_expr_id, _, _) => {
-                match self.ast_context[lhs_expr_id].kind {
-                    Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
-                        match self.ast_context[lhs_expr_id].kind {
-                            ImplicitCast(_, expr_id, IntegralCast, _, _) => {
-                                match self.ast_context[expr_id].kind {
-                                    ExplicitCast(_, expr_id, IntegralCast, _, _) => Ok(expr_id),
-                                    ref e => {
-                                        Err(format_err!("Found unknown mask format: {:?}", e))?
-                                    }
-                                }
+            Conditional(_, lhs_expr_id, _, _) => match self.ast_context[lhs_expr_id].kind {
+                Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
+                    match self.ast_context[lhs_expr_id].kind {
+                        ImplicitCast(_, expr_id, IntegralCast, _, _) => {
+                            match self.ast_context[expr_id].kind {
+                                ExplicitCast(_, expr_id, IntegralCast, _, _) => Ok(expr_id),
+                                ref e => unknown_mask_format(e),
                             }
-                            ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
                         }
+                        ref e => unknown_mask_format(e),
                     }
-                    ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
                 }
-            }
-            ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
+                ref e => unknown_mask_format(e),
+            },
+            ref e => unknown_mask_format(e),
         }
     }
 

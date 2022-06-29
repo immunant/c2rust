@@ -1,14 +1,10 @@
-extern crate libc;
-
-use shadowing::{rust_shadow, rust_twice};
-use self::libc::{c_int, c_uint};
+use crate::shadowing::{rust_shadow, rust_twice};
+use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn twice(_: c_int) -> c_int;
 
-    #[no_mangle]
     fn shadow(_: c_uint, _: *mut c_int);
 }
 
@@ -16,12 +12,8 @@ const BUFFER_SIZE: usize = 10;
 
 pub fn test_twice() {
     for i in 0..20 {
-        let double = unsafe {
-            twice(i)
-        };
-        let rust_double = unsafe {
-            rust_twice(i)
-        };
+        let double = unsafe { twice(i) };
+        let rust_double = unsafe { rust_twice(i) };
 
         assert_eq!(double, rust_double);
     }

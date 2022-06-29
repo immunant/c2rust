@@ -67,6 +67,19 @@ void simple_vacopy(const char *fmt, ...) {
   va_end(ap);
 }
 
+struct vastruct {
+    va_list args;
+};
+
+// pattern first seen in apache (util_script.c)
+void valist_struct_member(const char *fmt, ...) {
+  struct vastruct thestruct;
+
+  va_start(thestruct.args, fmt);
+  vprintf(fmt, thestruct.args);
+  va_end(thestruct.args);
+}
+
 // mirrors pattern from json-c's sprintbuf
 void restart_valist(const char *fmt, ...) {
     va_list ap;

@@ -1,20 +1,15 @@
-extern crate libc;
+use crate::goto_linear_cf::rust_goto_linear;
+use crate::goto_loop_cf::rust_goto_loop;
+use crate::goto_switch_cf::rust_goto_switch;
 
-use goto_linear_cf::rust_goto_linear;
-use goto_loop_cf::rust_goto_loop;
-use goto_switch_cf::rust_goto_switch;
-
-use self::libc::{c_int, c_uint};
+use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn goto_linear(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn goto_loop(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn goto_switch(_: c_uint, _: *mut c_int);
 }
 
@@ -25,7 +20,7 @@ const BUFFER_SIZE3: usize = 6;
 pub fn test_goto_linear() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
-    let expected_buffer = [0, 1, 3, 2,];
+    let expected_buffer = [0, 1, 3, 2];
 
     unsafe {
         goto_linear(BUFFER_SIZE as u32, buffer.as_mut_ptr());
@@ -38,7 +33,7 @@ pub fn test_goto_linear() {
 pub fn test_goto_loop() {
     let mut buffer = [0; BUFFER_SIZE2];
     let mut rust_buffer = [0; BUFFER_SIZE2];
-    let expected_buffer = [0, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1,];
+    let expected_buffer = [0, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1];
 
     unsafe {
         goto_loop(BUFFER_SIZE2 as u32, buffer.as_mut_ptr());
@@ -51,7 +46,7 @@ pub fn test_goto_loop() {
 pub fn test_goto_switch() {
     let mut buffer = [0; BUFFER_SIZE3];
     let mut rust_buffer = [0; BUFFER_SIZE3];
-    let expected_buffer = [0, 1, 1, 1, 2, 3,];
+    let expected_buffer = [0, 1, 1, 1, 2, 3];
 
     unsafe {
         goto_switch(BUFFER_SIZE3 as u32, buffer.as_mut_ptr());

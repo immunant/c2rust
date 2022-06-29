@@ -1,5 +1,4 @@
-use syntax::ast::*;
-use syntax::ptr;
+use syn::*;
 
 /// Traverse the AST in pre-order, which also happens to be the order of subtrees in the
 /// pretty-printed output.
@@ -32,15 +31,15 @@ pub trait Traversal: Sized {
         traverse_arm_def(self, a)
     }
 
-    fn traverse_field(&mut self, f: Field) -> Field {
+    fn traverse_field(&mut self, f: FieldValue) -> FieldValue {
         traverse_field_def(self, f)
     }
 
-    fn traverse_mod(&mut self, m: Mod) -> Mod {
+    fn traverse_mod(&mut self, m: ItemMod) -> ItemMod {
         traverse_mod_def(self, m)
     }
 
-    fn traverse_foreign_mod(&mut self, m: ForeignMod) -> ForeignMod {
+    fn traverse_foreign_mod(&mut self, m: ItemForeignMod) -> ItemForeignMod {
         traverse_foreign_mod_def(self, m)
     }
 
@@ -75,9 +74,9 @@ traversable_impl!(ImplItem, traverse_impl_item);
 traversable_impl!(Block, traverse_block);
 traversable_impl!(Local, traverse_local);
 traversable_impl!(Arm, traverse_arm);
-traversable_impl!(Field, traverse_field);
-traversable_impl!(Mod, traverse_mod);
-traversable_impl!(ForeignMod, traverse_foreign_mod);
+traversable_impl!(FieldValue, traverse_field);
+traversable_impl!(ItemMod, traverse_mod);
+traversable_impl!(ItemForeignMod, traverse_foreign_mod);
 traversable_impl!(Item, traverse_item);
 traversable_impl!(ForeignItem, traverse_foreign_item);
 
@@ -87,104 +86,232 @@ impl<A: Traversable> Traversable for Vec<A> {
     }
 }
 
+impl<A: Clone + Traversable, B> Traversable for syn::punctuated::Punctuated<A, B> {
+    fn traverse<T: Traversal>(mut self, t: &mut T) -> Self {
+        self.iter_mut().for_each(|x| *x = x.clone().traverse(t));
+        self
+    }
+}
+
 impl<A: Traversable> Traversable for Option<A> {
     fn traverse<T: Traversal>(self, t: &mut T) -> Self {
         self.map(|x| x.traverse(t))
     }
 }
 
-impl<A: Traversable + 'static> Traversable for ptr::P<A> {
+impl<A, B: Traversable> Traversable for Option<(A, B)> {
     fn traverse<T: Traversal>(self, t: &mut T) -> Self {
-        self.map(|x| x.traverse(t))
+        self.map(|x| (x.0, x.1.traverse(t)))
     }
 }
 
-pub fn traverse_stmt_def<W: Traversal>(walk: &mut W, mut s: Stmt) -> Stmt {
-    s.kind = match s.kind {
-        StmtKind::Local(p_local) => StmtKind::Local(p_local.traverse(walk)),
-        StmtKind::Item(p_item) => StmtKind::Item(p_item.traverse(walk)),
-        StmtKind::Expr(p_expr) => StmtKind::Expr(p_expr.traverse(walk)),
-        StmtKind::Semi(p_expr) => StmtKind::Semi(p_expr.traverse(walk)),
-        StmtKind::Mac(m) => StmtKind::Mac(m),
-    };
-    s
+impl<A: Traversable + 'static> Traversable for Box<A> {
+    fn traverse<T: Traversal>(self, t: &mut T) -> Self {
+        Box::new((*self).traverse(t))
+    }
 }
 
-pub fn traverse_expr_def<W: Traversal>(walk: &mut W, mut e: Expr) -> Expr {
-    e.kind = match e.kind {
-        ExprKind::Box(p_expr) => ExprKind::Box(p_expr.map(|expr| walk.traverse_expr(expr))),
-        ExprKind::Array(elems) => ExprKind::Array(elems.traverse(walk)),
-        ExprKind::Call(func, args) => ExprKind::Call(func.traverse(walk), args.traverse(walk)),
-        ExprKind::MethodCall(meth, args) => ExprKind::MethodCall(meth, args.traverse(walk)),
-        ExprKind::Tup(elems) => ExprKind::Tup(elems.traverse(walk)),
-        ExprKind::Binary(op, lhs, rhs) => {
-            ExprKind::Binary(op, lhs.traverse(walk), rhs.traverse(walk))
-        }
-        ExprKind::Unary(op, arg) => ExprKind::Unary(op, arg.traverse(walk)),
-        ExprKind::Cast(arg, t) => ExprKind::Cast(arg.traverse(walk), t),
-        ExprKind::Type(arg, t) => ExprKind::Type(arg.traverse(walk), t),
-        ExprKind::Let(pat, e) => ExprKind::Let(pat, e.traverse(walk)),
-        ExprKind::If(cond, thn, els) => {
-            ExprKind::If(cond.traverse(walk), thn.traverse(walk), els.traverse(walk))
-        }
-        ExprKind::While(cond, block, lbl) => {
-            ExprKind::While(cond.traverse(walk), block.traverse(walk), lbl)
-        }
-        ExprKind::ForLoop(pat, cond, block, lbl) => {
-            ExprKind::ForLoop(pat, cond.traverse(walk), block.traverse(walk), lbl)
-        }
-        ExprKind::Loop(block, lbl) => ExprKind::Loop(block.traverse(walk), lbl),
-        ExprKind::Match(cond, arm) => ExprKind::Match(cond.traverse(walk), arm.traverse(walk)),
-        ExprKind::Closure(cap, isasync, mov, fn_decl, expr, s) => {
-            ExprKind::Closure(cap, isasync, mov, fn_decl, expr.traverse(walk), s)
-        }
-        ExprKind::Block(block, lbl) => ExprKind::Block(block.traverse(walk), lbl),
-        ExprKind::Assign(lhs, rhs) => ExprKind::Assign(lhs.traverse(walk), rhs.traverse(walk)),
-        ExprKind::AssignOp(op, lhs, rhs) => {
-            ExprKind::AssignOp(op, lhs.traverse(walk), rhs.traverse(walk))
-        }
-        ExprKind::Field(expr, f) => ExprKind::Field(expr.traverse(walk), f),
-        ExprKind::Index(lhs, rhs) => ExprKind::Index(lhs.traverse(walk), rhs.traverse(walk)),
-        ExprKind::Range(lhs, rhs, l) => ExprKind::Range(lhs.traverse(walk), rhs.traverse(walk), l),
-        ExprKind::Path(qself, p) => ExprKind::Path(qself, p),
-        ExprKind::AddrOf(borrow, m, expr) => ExprKind::AddrOf(borrow, m, expr.traverse(walk)),
-        ExprKind::Break(lbl, arg) => ExprKind::Break(lbl, arg.traverse(walk)),
-        ExprKind::Continue(lbl) => ExprKind::Continue(lbl),
-        ExprKind::Ret(expr) => ExprKind::Ret(expr.traverse(walk)),
-        ExprKind::InlineAsm(asm) => ExprKind::InlineAsm(asm),
-        ExprKind::Mac(mac) => ExprKind::Mac(mac),
-        ExprKind::Struct(p, flds, d) => ExprKind::Struct(p, flds.traverse(walk), d.traverse(walk)),
-        ExprKind::Repeat(expr, c) => ExprKind::Repeat(expr.traverse(walk), c),
-        ExprKind::Paren(arg) => ExprKind::Paren(arg.traverse(walk)),
-        ExprKind::Try(arg) => ExprKind::Try(arg.traverse(walk)),
-        ExprKind::Yield(arg) => ExprKind::Yield(arg.traverse(walk)),
-        ExprKind::Lit(l) => ExprKind::Lit(l),
-        ExprKind::Async(cap, nod, block) => ExprKind::Async(cap, nod, block.traverse(walk)),
-        ExprKind::TryBlock(blk) => ExprKind::TryBlock(blk.traverse(walk)),
-        ExprKind::Err => unimplemented!(),
-        ExprKind::Await(_) => unimplemented!(),
-    };
-    e
+pub fn traverse_stmt_def<W: Traversal>(walk: &mut W, s: Stmt) -> Stmt {
+    match s {
+        Stmt::Local(p_local) => Stmt::Local(p_local.traverse(walk)),
+        Stmt::Item(p_item) => Stmt::Item(p_item.traverse(walk)),
+        Stmt::Expr(p_expr) => Stmt::Expr(p_expr.traverse(walk)),
+        Stmt::Semi(p_expr, semi) => Stmt::Semi(p_expr.traverse(walk), semi),
+    }
 }
 
-pub fn traverse_trait_item_def<W: Traversal>(walk: &mut W, mut ti: TraitItem) -> TraitItem {
-    ti.kind = match ti.kind {
-        TraitItemKind::Const(ty, arg) => TraitItemKind::Const(ty, arg.traverse(walk)),
-        TraitItemKind::Method(sig, block) => TraitItemKind::Method(sig, block.traverse(walk)),
-        TraitItemKind::Type(bds, t) => TraitItemKind::Type(bds, t),
-        TraitItemKind::Macro(mac) => TraitItemKind::Macro(mac),
-    };
-    ti
+pub fn traverse_expr_def<W: Traversal>(walk: &mut W, e: Expr) -> Expr {
+    match e {
+        Expr::Box(e) => Expr::Box(ExprBox {
+            expr: Box::new(walk.traverse_expr(*e.expr)),
+            ..e
+        }),
+        Expr::Array(e) => Expr::Array(ExprArray {
+            elems: e.elems.traverse(walk),
+            ..e
+        }),
+        Expr::Call(e) => Expr::Call(ExprCall {
+            func: e.func.traverse(walk),
+            args: e.args.traverse(walk),
+            ..e
+        }),
+        Expr::MethodCall(e) => Expr::MethodCall(ExprMethodCall {
+            receiver: e.receiver.traverse(walk),
+            args: e.args.traverse(walk),
+            ..e
+        }),
+        Expr::Tuple(e) => Expr::Tuple(ExprTuple {
+            elems: e.elems.traverse(walk),
+            ..e
+        }),
+        Expr::Binary(e) => Expr::Binary(ExprBinary {
+            left: e.left.traverse(walk),
+            right: e.right.traverse(walk),
+            ..e
+        }),
+        Expr::Unary(e) => Expr::Unary(ExprUnary {
+            expr: e.expr.traverse(walk),
+            ..e
+        }),
+        Expr::Cast(e) => Expr::Cast(ExprCast {
+            expr: e.expr.traverse(walk),
+            ..e
+        }),
+        Expr::Type(e) => Expr::Type(ExprType {
+            expr: e.expr.traverse(walk),
+            ..e
+        }),
+        Expr::Let(e) => Expr::Let(ExprLet {
+            expr: e.expr.traverse(walk),
+            ..e
+        }),
+        Expr::If(e) => Expr::If(ExprIf {
+            cond: e.cond.traverse(walk),
+            then_branch: e.then_branch.traverse(walk),
+            else_branch: e.else_branch.traverse(walk),
+            ..e
+        }),
+        Expr::While(e) => Expr::While(ExprWhile {
+            cond: e.cond.traverse(walk),
+            body: e.body.traverse(walk),
+            ..e
+        }),
+        Expr::ForLoop(e) => Expr::ForLoop(ExprForLoop {
+            expr: e.expr.traverse(walk),
+            body: e.body.traverse(walk),
+            ..e
+        }),
+        Expr::Loop(e) => Expr::Loop(ExprLoop {
+            body: e.body.traverse(walk),
+            ..e
+        }),
+        Expr::Match(e) => Expr::Match(ExprMatch {
+            expr: e.expr.traverse(walk),
+            arms: e.arms.traverse(walk),
+            ..e
+        }),
+        Expr::Closure(e) => Expr::Closure(ExprClosure {
+            body: e.body.traverse(walk),
+            ..e
+        }),
+        Expr::Block(e) => Expr::Block(ExprBlock {
+            block: e.block.traverse(walk),
+            ..e
+        }),
+        Expr::Assign(e) => Expr::Assign(ExprAssign {
+            left: e.left.traverse(walk),
+            right: e.right.traverse(walk),
+            ..e
+        }),
+        Expr::AssignOp(e) => Expr::AssignOp(ExprAssignOp {
+            left: e.left.traverse(walk),
+            right: e.right.traverse(walk),
+            ..e
+        }),
+        Expr::Field(e) => Expr::Field(ExprField {
+            base: e.base.traverse(walk),
+            ..e
+        }),
+        Expr::Index(e) => Expr::Index(ExprIndex {
+            expr: e.expr.traverse(walk),
+            index: e.index.traverse(walk),
+            ..e
+        }),
+        Expr::Range(e) => Expr::Range(ExprRange {
+            from: e.from.traverse(walk),
+            to: e.to.traverse(walk),
+            ..e
+        }),
+        Expr::Path(e) => Expr::Path(ExprPath { ..e }),
+        Expr::Reference(e) => Expr::Reference(ExprReference {
+            expr: e.expr.traverse(walk),
+            ..e
+        }),
+        Expr::Break(e) => Expr::Break(ExprBreak {
+            expr: e.expr.traverse(walk),
+            ..e
+        }),
+        Expr::Continue(e) => Expr::Continue(ExprContinue { ..e }),
+        Expr::Return(e) => Expr::Return(ExprReturn {
+            expr: e.expr.traverse(walk),
+            ..e
+        }),
+        //Expr::InlineAsm(e) => Expr::InlineAsm(ExprInlineAsm { asm, ..e }),
+        Expr::Macro(e) => Expr::Macro(ExprMacro { ..e }),
+        Expr::Struct(e) => Expr::Struct(ExprStruct {
+            fields: e.fields.traverse(walk),
+            rest: e.rest.traverse(walk),
+            ..e
+        }),
+        Expr::Repeat(e) => Expr::Repeat(ExprRepeat {
+            expr: e.expr.traverse(walk),
+            len: e.len.traverse(walk),
+            ..e
+        }),
+        Expr::Paren(e) => Expr::Paren(ExprParen {
+            expr: e.expr.traverse(walk),
+            ..e
+        }),
+        Expr::Try(e) => Expr::Try(ExprTry {
+            expr: e.expr.traverse(walk),
+            ..e
+        }),
+        Expr::Yield(e) => Expr::Yield(ExprYield {
+            expr: e.expr.traverse(walk),
+            ..e
+        }),
+        Expr::Lit(e) => Expr::Lit(ExprLit { ..e }),
+        Expr::Async(e) => Expr::Async(ExprAsync {
+            block: e.block.traverse(walk),
+            ..e
+        }),
+        Expr::TryBlock(e) => Expr::TryBlock(ExprTryBlock {
+            block: e.block.traverse(walk),
+            ..e
+        }),
+        Expr::Unsafe(e) => Expr::Unsafe(ExprUnsafe {
+            block: e.block.traverse(walk),
+            ..e
+        }),
+        Expr::Verbatim(_tokens) => unimplemented!(),
+        Expr::Await(e) => Expr::Await(ExprAwait {
+            base: e.base.traverse(walk),
+            ..e
+        }),
+        _ => unimplemented!(),
+    }
 }
 
-pub fn traverse_impl_item_def<W: Traversal>(walk: &mut W, mut ii: ImplItem) -> ImplItem {
-    ii.kind = match ii.kind {
-        ImplItemKind::Const(ty, expr) => ImplItemKind::Const(ty, expr.traverse(walk)),
-        ImplItemKind::Method(sig, block) => ImplItemKind::Method(sig, block.traverse(walk)),
-        ImplItemKind::TyAlias(t) => ImplItemKind::TyAlias(t),
-        ImplItemKind::Macro(mac) => ImplItemKind::Macro(mac),
-    };
-    ii
+pub fn traverse_trait_item_def<W: Traversal>(walk: &mut W, ti: TraitItem) -> TraitItem {
+    match ti {
+        TraitItem::Const(ti) => TraitItem::Const(TraitItemConst {
+            default: ti.default.traverse(walk),
+            ..ti
+        }),
+        TraitItem::Method(ti) => TraitItem::Method(TraitItemMethod {
+            default: ti.default.traverse(walk),
+            ..ti
+        }),
+        TraitItem::Type(ti) => TraitItem::Type(TraitItemType { ..ti }),
+        TraitItem::Macro(ti) => TraitItem::Macro(TraitItemMacro { ..ti }),
+        _ => unimplemented!(),
+    }
+}
+
+pub fn traverse_impl_item_def<W: Traversal>(walk: &mut W, ii: ImplItem) -> ImplItem {
+    match ii {
+        ImplItem::Const(ii) => ImplItem::Const(ImplItemConst {
+            expr: ii.expr.traverse(walk),
+            ..ii
+        }),
+        ImplItem::Method(ii) => ImplItem::Method(ImplItemMethod {
+            block: ii.block.traverse(walk),
+            ..ii
+        }),
+        ImplItem::Type(ii) => ImplItem::Type(ImplItemType { ..ii }),
+        ImplItem::Macro(ii) => ImplItem::Macro(ImplItemMacro { ..ii }),
+        _ => unimplemented!(),
+    }
 }
 
 pub fn traverse_block_def<W: Traversal>(walk: &mut W, mut b: Block) -> Block {
@@ -203,42 +330,64 @@ pub fn traverse_arm_def<W: Traversal>(walk: &mut W, mut a: Arm) -> Arm {
     a
 }
 
-pub fn traverse_field_def<W: Traversal>(walk: &mut W, mut f: Field) -> Field {
+pub fn traverse_field_def<W: Traversal>(walk: &mut W, mut f: FieldValue) -> FieldValue {
     f.expr = f.expr.traverse(walk);
     f
 }
 
-pub fn traverse_mod_def<W: Traversal>(walk: &mut W, mut m: Mod) -> Mod {
+pub fn traverse_mod_def<W: Traversal>(walk: &mut W, mut m: ItemMod) -> ItemMod {
+    m.content = m.content.traverse(walk);
+    m
+}
+
+pub fn traverse_foreign_mod_def<W: Traversal>(
+    walk: &mut W,
+    mut m: ItemForeignMod,
+) -> ItemForeignMod {
     m.items = m.items.traverse(walk);
     m
 }
 
-pub fn traverse_foreign_mod_def<W: Traversal>(walk: &mut W, mut m: ForeignMod) -> ForeignMod {
-    m.items = m.items.traverse(walk);
-    m
-}
-
-pub fn traverse_item_def<W: Traversal>(walk: &mut W, mut i: Item) -> Item {
-    i.kind = match i.kind {
-        ItemKind::Static(ty, mu, p_expr) => ItemKind::Static(ty, mu, p_expr.traverse(walk)),
-        ItemKind::Const(ty, p_expr) => ItemKind::Const(ty, p_expr.traverse(walk)),
-        ItemKind::Fn(f, g, blk) => ItemKind::Fn(f, g, blk.traverse(walk)),
-        ItemKind::Mod(m) => ItemKind::Mod(m.traverse(walk)),
-        ItemKind::ForeignMod(fm) => ItemKind::ForeignMod(fm.traverse(walk)),
-        ItemKind::Trait(a, u, gen, bds, tis) => ItemKind::Trait(a, u, gen, bds, tis.traverse(walk)),
-        ItemKind::Impl(u, p, d, gen, tr, ty, iis) => {
-            ItemKind::Impl(u, p, d, gen, tr, ty, iis.traverse(walk))
-        }
-        ItemKind::Use(u) => ItemKind::Use(u),
-        ItemKind::ExternCrate(u) => ItemKind::ExternCrate(u),
-        ItemKind::GlobalAsm(u) => ItemKind::GlobalAsm(u),
-        ItemKind::TyAlias(l, r) => ItemKind::TyAlias(l, r),
-        ItemKind::Enum(l, r) => ItemKind::Enum(l, r),
-        ItemKind::Struct(l, r) => ItemKind::Struct(l, r),
-        ItemKind::Union(l, r) => ItemKind::Union(l, r),
-        ItemKind::TraitAlias(l, r) => ItemKind::TraitAlias(l, r),
-        ItemKind::Mac(m) => ItemKind::Mac(m),
-        ItemKind::MacroDef(m) => ItemKind::MacroDef(m),
-    };
-    i
+pub fn traverse_item_def<W: Traversal>(walk: &mut W, i: Item) -> Item {
+    match i {
+        Item::Static(item) => Item::Static(ItemStatic {
+            expr: item.expr.traverse(walk),
+            ..item
+        }),
+        Item::Const(item) => Item::Const(ItemConst {
+            expr: item.expr.traverse(walk),
+            ..item
+        }),
+        Item::Fn(item) => Item::Fn(ItemFn {
+            block: item.block.traverse(walk),
+            ..item
+        }),
+        Item::Mod(item) => Item::Mod(ItemMod {
+            content: item.content.traverse(walk),
+            ..item
+        }),
+        Item::ForeignMod(item) => Item::ForeignMod(ItemForeignMod {
+            items: item.items.traverse(walk),
+            ..item
+        }),
+        Item::Trait(item) => Item::Trait(ItemTrait {
+            items: item.items.traverse(walk),
+            ..item
+        }),
+        Item::Impl(item) => Item::Impl(ItemImpl {
+            items: item.items.traverse(walk),
+            ..item
+        }),
+        Item::Use(item) => Item::Use(ItemUse { ..item }),
+        Item::ExternCrate(item) => Item::ExternCrate(ItemExternCrate { ..item }),
+        //Item::GlobalAsm(ItemGlobalAsm { u}) => Item::GlobalAsm(ItemGlobalAsm { u}),
+        Item::Type(item) => Item::Type(ItemType { ..item }),
+        Item::Enum(item) => Item::Enum(ItemEnum { ..item }),
+        Item::Struct(item) => Item::Struct(ItemStruct { ..item }),
+        Item::Union(item) => Item::Union(ItemUnion { ..item }),
+        Item::TraitAlias(item) => Item::TraitAlias(ItemTraitAlias { ..item }),
+        Item::Macro(item) => Item::Macro(ItemMacro { ..item }),
+        Item::Macro2(item) => Item::Macro2(ItemMacro2 { ..item }),
+        _ => unimplemented!(),
+    }
 }

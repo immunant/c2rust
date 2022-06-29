@@ -1,8 +1,8 @@
 [package]
 name = "c2rust-macros"
-version = "0.15.0"
+version = "0.16.0"
 authors = ["Stephen Crane <sjc@immunant.com>", "The C2Rust Project Developers <c2rust@immunant.com>"]
-edition = "2018"
+edition = "2021"
 description = "Procedural macro support crate for C2Rust"
 license = "BSD-3-Clause"
 homepage = "https://c2rust.com/"

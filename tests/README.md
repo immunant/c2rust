@@ -11,15 +11,12 @@ void example(unsigned buffer_size, int buffer[]) {
 Then create a new `.rs` file with the following skeleton (_does not need to be a buffer, can check return values as well_):
 
 ```rust
-extern crate libc;
+use crate::c_file::rust_example;
 
-use c_file::rust_example;
-
-use self::libc::c_int;
+use libc::c_int;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn example(_: c_uint, _: *mut c_int);
 }
 
@@ -47,7 +44,7 @@ To completely skip the translation of a C file, you must add the comment `//! sk
 
 You can also mark a Rust file as unexpected to compile, by adding `//! xfail` to the top of the file, or just expect an individual test function to fail to run by adding `// xfail` prior to the function definition.
 
-Adding `//! extern_crate_X` to the top of a test file will ensure `extern crate X;` gets added to the main binary driver. Be sure to also add the `X` crate to the test directory's `Cargo.toml`.
+Adding `//! extern_crate_X` to the top of a test file will ensure `extern crate X;` gets added to the main binary driver.
 
 Similarly, `//! feature_X` adds `#![feature(X)]` to the top of the main driver file.
 
@@ -56,7 +53,7 @@ Similarly, `//! feature_X` adds `#![feature(X)]` to the top of the main driver f
 _From the project root_, run `./scripts/test_translator.py tests` to run all of the tests in the
 `tests` folder. Here are a couple other handy options:
 
-```bash
+```shell
 # run a subset of the tests
 $ ./scripts/test_translator.py --only-directories="loops" tests
 # show output of failed tests
@@ -77,6 +74,6 @@ This `tests` directory contains regression, feature, and unit tests. A test dire
 
   3. This CBOR data is fed to the `c2rust-transpile` to produce a Rust source file supposedly preserving the semantics of the initial C source file.
 
-  4. Rust test files (test_xyz.rs) are compiled into a single main wrapper and main test binary and are automatically linked against other Rust and C files thanks to `cargo`.
+  4. Rust test files (`test_xyz.rs`) are compiled into a single main wrapper and main test binary and are automatically linked against other Rust and C files thanks to `cargo`.
 
   5. The executable from the previous step is run one or more times parameterized to a specific test function.
