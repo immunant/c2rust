@@ -9,8 +9,6 @@
  * which are colored and pretty-printed already.
  * 
  * Stack traces we leave alone.
- * 
- * Requires a `node` that at least supports `?.` optional chaining and `??` nullish coalescing.
  */
 
 import * as fs from "fs";

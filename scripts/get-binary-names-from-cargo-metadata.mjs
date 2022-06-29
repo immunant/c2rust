@@ -10,6 +10,7 @@
  * and only print default target binaries.
  * 
  * Requires a `node` that at least supports `Array.prototype.flatMap`.
+ * `node` 12 works.
  */
 
 import * as fs from "fs";
