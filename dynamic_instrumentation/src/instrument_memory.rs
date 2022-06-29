@@ -252,12 +252,12 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
             .find_instrumentation_def(Symbol::intern("ptr_load"))
             .expect("Could not find pointer load hook");
 
-        // Instrument each field projection that produces a raw-ptr place
+        // Instrument field projections on raw-ptr places
         if self.should_instrument(place.local, context)
             && self.body.local_decls[place.local].ty.is_unsafe_ptr()
             && !place.projection.is_empty()
         {
-            for (pid, (base, elem)) in place.iter_projections().enumerate() {
+            for (pid, (_base, elem)) in place.iter_projections().enumerate() {
                 match elem {
                     PlaceElem::Field(field, _) => {
                         let field_fn = self
@@ -270,16 +270,12 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                             None
                         };
 
-                        // Trace the base and field idx of each field projection
+                        // Projecting a field; trace the local of the original place as well as the field idx
                         self.add_instrumentation_point(
                             location,
                             field_fn,
                             vec![
-                                // XXX(fw): I don't understand what the type of `base` will be:
-                                // it has fields, so it should be a value rather than a pointer...
-                                // but it could be any type (e.g. a struct that cannot be cast to an
-                                // integer),so how can we always pass it to `ptr_field`?
-                                InstrumentationOperand::RawPtr(Operand::Copy(base.local.into())),
+                                InstrumentationOperand::RawPtr(Operand::Copy(place.local.into())),
                                 InstrumentationOperand::AddressUsize(make_const(self.tcx, field.as_u32())),
                             ],
                             false,
@@ -297,7 +293,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
 
             if place.is_indirect() {
                 if !context.is_mutating_use() {
-                    // Place producing a raw ptr; trace the raw ptr
+                    // Place is loading from a raw ptr; trace the raw ptr
                     self.add_instrumentation_point(
                         location.clone(),
                         load_fn,
