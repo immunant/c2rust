@@ -288,7 +288,7 @@ impl LLVMInfo {
         let lib_dir = {
             let path_str = env::var("LLVM_LIB_DIR")
                 .ok()
-                .or(invoke_command(llvm_config.as_ref(), &["--libdir"]))
+                .or_else(|| invoke_command(llvm_config.as_ref(), &["--libdir"]))
                 .expect(llvm_config_missing);
             String::from(
                 Path::new(&path_str)
@@ -358,7 +358,7 @@ impl LLVMInfo {
                 invoke_command(llvm_config.as_ref(), &["--version"]).expect(llvm_config_missing);
             let emsg = format!("invalid version string {}", version);
             version
-                .split(".")
+                .split('.')
                 .next()
                 .expect(&emsg)
                 .parse::<u32>()
@@ -383,7 +383,7 @@ impl LLVMInfo {
         }
 
         let mut libs: Vec<String> = invoke_command(llvm_config.as_ref(), &args)
-            .unwrap_or("-lLLVM".to_string())
+            .unwrap_or_else(|| "-lLLVM".to_string())
             .split_whitespace()
             .map(|lib| String::from(lib.trim_start_matches("-l")))
             .collect();
@@ -391,11 +391,8 @@ impl LLVMInfo {
         libs.extend(
             env::var("LLVM_SYSTEM_LIBS")
                 .ok()
-                .or(invoke_command(
-                    llvm_config.as_ref(),
-                    &["--system-libs", link_mode],
-                ))
-                .unwrap_or(String::new())
+                .or_else(|| invoke_command(llvm_config.as_ref(), &["--system-libs", link_mode]))
+                .unwrap_or_default()
                 .split_whitespace()
                 .map(|lib| String::from(lib.trim_start_matches("-l"))),
         );

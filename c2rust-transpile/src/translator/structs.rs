@@ -7,6 +7,7 @@ use std::ops::Index;
 
 use super::TranslationError;
 use crate::c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId};
+use crate::diagnostics::TranslationResult;
 use crate::translator::{ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
@@ -26,7 +27,7 @@ enum FieldType {
         field_name: String,
         bytes: u64,
         attrs: Vec<(String, Box<Type>, String)>,
-    },
+    }, // 64 bytes
     Padding {
         bytes: u64,
     },
@@ -36,29 +37,23 @@ enum FieldType {
     Regular {
         name: String,
         ctype: CTypeId,
-        field: Field,
+        field: Field, // 528 bytes
         use_inner_type: bool,
         is_va_list: bool,
-    },
+    }, // 562 bytes
 }
 
 fn contains_block(expr_kind: &Expr) -> bool {
+    use Expr::*;
     match expr_kind {
-        Expr::Block(..) => true,
-        Expr::Assign(ExprAssign { left, right, .. }) => {
-            contains_block(&left) || contains_block(&right)
+        Block(..) => true,
+        Assign(ExprAssign { left, right, .. })
+        | AssignOp(ExprAssignOp { left, right, .. })
+        | Binary(ExprBinary { left, right, .. }) => {
+            [left, right].iter().any(|expr| contains_block(expr))
         }
-        Expr::AssignOp(ExprAssignOp { left, right, .. }) => {
-            contains_block(&left) || contains_block(&right)
-        }
-        Expr::Binary(ExprBinary { left, right, .. }) => {
-            contains_block(&left) || contains_block(&right)
-        }
-        Expr::Unary(ExprUnary { expr, .. }) => contains_block(&expr),
-        Expr::MethodCall(ExprMethodCall { args, .. }) => {
-            args.iter().map(|e| contains_block(&e)).any(|b| b)
-        }
-        Expr::Cast(ExprCast { expr, .. }) => contains_block(&expr),
+        Unary(ExprUnary { expr, .. }) | Cast(ExprCast { expr, .. }) => contains_block(expr),
+        MethodCall(ExprMethodCall { args, .. }) => args.iter().any(contains_block),
         _ => false,
     }
 }
@@ -86,7 +81,7 @@ impl<'a> Translation<'a> {
         record_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
-    ) -> Result<Vec<FieldType>, TranslationError> {
+    ) -> TranslationResult<Vec<FieldType>> {
         let mut reorganized_fields = Vec::new();
         let mut last_bitfield_group: Option<FieldType> = None;
         let mut next_byte_pos = 0;
@@ -125,8 +120,7 @@ impl<'a> Translation<'a> {
                             mk().angle_bracketed_args(vec![mk().lifetime("a")]),
                         ),
                     ];
-                    let ty = mk().path_ty(mk().abs_path(path));
-                    ty
+                    mk().path_ty(mk().abs_path(path))
                 } else {
                     self.convert_type(ctype)?
                 };
@@ -304,7 +298,7 @@ impl<'a> Translation<'a> {
         struct_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
-    ) -> Result<(Vec<Field>, bool), TranslationError> {
+    ) -> TranslationResult<(Vec<Field>, bool)> {
         let mut field_entries = Vec::with_capacity(field_ids.len());
         // We need to clobber bitfields in consecutive bytes together (leaving
         // regular fields alone) and add in padding as necessary
@@ -425,7 +419,7 @@ impl<'a> Translation<'a> {
         ctx: ExprContext,
         struct_id: CRecordId,
         field_expr_ids: &[CExprId],
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let name = self.resolve_decl_inner_name(struct_id);
 
         let (field_decl_ids, platform_byte_size) = match self.ast_context.index(struct_id).kind {
@@ -622,7 +616,7 @@ impl<'a> Translation<'a> {
         field_ids: &[CDeclId],
         platform_byte_size: u64,
         is_static: bool,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let reorganized_fields = self.get_field_types(struct_id, field_ids, platform_byte_size)?;
         let mut fields = Vec::with_capacity(reorganized_fields.len());
 
@@ -713,7 +707,7 @@ impl<'a> Translation<'a> {
         lhs: CExprId,
         rhs_expr: Box<Expr>,
         field_id: CDeclId,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let ctx = ctx.set_bitfield_write(true);
         let named_reference = self.name_reference_write_read(ctx, lhs)?;
         named_reference.and_then(|named_reference| {
@@ -811,7 +805,7 @@ impl<'a> Translation<'a> {
                 }
             };
 
-            return Ok(WithStmts::new(stmts, val));
+            Ok(WithStmts::new(stmts, val))
         })
     }
 }

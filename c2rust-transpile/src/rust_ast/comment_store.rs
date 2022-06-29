@@ -33,6 +33,7 @@ use syn::__private::ToTokens;
 use syn::spanned::Spanned as _;
 use syn::*;
 
+#[derive(Default)]
 pub struct CommentStore {
     /// The `BytePos` keys do _not_ correspond to the comment position. Instead, they refer to the
     /// `BytePos` of whatever is associated with the comment.
@@ -44,17 +45,13 @@ pub struct CommentStore {
 
 impl CommentStore {
     pub fn new() -> Self {
-        CommentStore {
-            output_comments: BTreeMap::new(),
-            current_position: 0,
-        }
+        Self::default()
     }
 
     pub fn into_comment_traverser(self) -> CommentTraverser {
         CommentTraverser {
             old_comments: self.output_comments,
-            old_to_new_pos: BTreeMap::new(),
-            store: CommentStore::new(),
+            ..Default::default()
         }
     }
 
@@ -62,8 +59,7 @@ impl CommentStore {
     pub fn into_comments(self) -> Vec<comments::Comment> {
         self.output_comments
             .into_iter()
-            .map(|(_, v)| v)
-            .flatten()
+            .flat_map(|(_, v)| v)
             .collect()
     }
 
@@ -127,7 +123,7 @@ impl CommentStore {
         pos: Option<BytePos>,
         //style: comments::CommentStyle,
     ) -> Option<BytePos> {
-        fn translate_comment(comment: &String) -> String {
+        fn translate_comment(comment: &str) -> String {
             comment
                 .lines()
                 .map(|line: &str| {
@@ -144,14 +140,17 @@ impl CommentStore {
                 .replace("/*!", "/* !")
         }
 
-        let lines: Vec<String> = lines.into_iter().map(translate_comment).collect();
+        let lines: Vec<String> = lines
+            .iter()
+            .map(|comment| translate_comment(comment))
+            .collect();
 
         if lines.is_empty() {
             None
         } else {
             let new_comment = comments::Comment {
                 //style,
-                lines: lines,
+                lines,
                 pos: BytePos(0), // overwritten in `add_comment`
             };
             Some(self.insert_comments(smallvec![new_comment], pos))
@@ -166,7 +165,7 @@ impl CommentStore {
         if let Some(comments) = self.output_comments.remove(&old) {
             self.output_comments
                 .entry(new)
-                .or_insert(SmallVec::new())
+                .or_default()
                 .extend(comments);
         }
     }
@@ -190,7 +189,7 @@ impl CommentStore {
                 };
                 self.output_comments
                     .entry(span.lo())
-                    .or_insert(SmallVec::new())
+                    .or_default()
                     .extend(new_comments);
                 span.shrink_to_lo()
             }
@@ -209,21 +208,21 @@ impl CommentStore {
     }
 }
 
+#[derive(Default)]
 pub struct CommentTraverser {
     old_comments: BTreeMap<BytePos, SmallVec<[comments::Comment; 1]>>,
     old_to_new_pos: BTreeMap<BytePos, BytePos>,
     store: CommentStore,
 }
+
 impl CommentTraverser {
     fn reinsert_comment_at(&mut self, sp: BytePos) -> Option<BytePos> {
         if let Some(cmmts) = self.old_comments.remove(&sp) {
             let new_pos = self.store.insert_comments(cmmts, None);
             self.old_to_new_pos.insert(sp, new_pos);
             Some(new_pos)
-        } else if let Some(new_pos) = self.old_to_new_pos.get(&sp) {
-            Some(*new_pos)
         } else {
-            None
+            self.old_to_new_pos.get(&sp).copied()
         }
     }
 

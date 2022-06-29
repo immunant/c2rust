@@ -673,11 +673,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
     }
 }
 
-fn find_instrumentation_def<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    runtime_crate_did: DefId,
-    name: Symbol,
-) -> Option<DefId> {
+fn find_instrumentation_def(tcx: TyCtxt, runtime_crate_did: DefId, name: Symbol) -> Option<DefId> {
     Some(
         tcx.module_children(runtime_crate_did)
             .iter()
@@ -687,7 +683,7 @@ fn find_instrumentation_def<'tcx>(
     )
 }
 
-fn make_const<'tcx>(tcx: TyCtxt<'tcx>, idx: u32) -> Operand<'tcx> {
+fn make_const(tcx: TyCtxt, idx: u32) -> Operand {
     Operand::Constant(Box::new(Constant {
         span: DUMMY_SP,
         user_ty: None,

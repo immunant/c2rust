@@ -111,13 +111,19 @@ impl_triple_list! {u32: [usize: (<>u32, <>i32),
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
+    /// `#[allow(clippy::zero_ptr)]` is used so `0 as $ty2`
+    /// can be used for both integer and pointer types.
+    /// Otherwise for pointer types, `rustc` suggests using `core::ptr::null::<T>()`.
+    /// That should be needed for such a simple test;
+    /// it would make the test code a lot more verbose and duplicated.
+    #[allow(clippy::zero_ptr)]
     #[test]
     fn test_coverage() {
         macro_rules! test_combo {
             ($ty1:ty, [$($ty2:ty),*]) => {
                 $({
+                    use super::{AsmCast, AsmCastTrait};
+
                     let x = 42usize as $ty1;
                     let mut y: $ty2 = 0 as $ty2;
                     let z = AsmCast::cast_in(&mut y, x) + 1;

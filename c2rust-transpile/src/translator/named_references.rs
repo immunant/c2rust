@@ -12,7 +12,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         reference: CExprId,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         self.name_reference(ctx, reference, false)
             .map(|ws| ws.map(|(lvalue, _)| lvalue))
     }
@@ -24,7 +24,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         reference: CExprId,
-    ) -> Result<WithStmts<(Box<Expr>, Box<Expr>)>, TranslationError> {
+    ) -> TranslationResult<WithStmts<(Box<Expr>, Box<Expr>)>> {
         let msg: &str = "When called with `uses_read = true`, `name_reference` should always \
                          return an rvalue (something from which to read the memory location)";
 
@@ -45,7 +45,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         reference: CExprId,
         uses_read: bool,
-    ) -> Result<WithStmts<(Box<Expr>, Option<Box<Expr>>)>, TranslationError> {
+    ) -> TranslationResult<WithStmts<(Box<Expr>, Option<Box<Expr>>)>> {
         let reference_ty = self
             .ast_context
             .index(reference)
@@ -56,16 +56,16 @@ impl<'c> Translation<'c> {
         reference.and_then(|reference| {
             /// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
             fn is_lvalue(e: &Box<Expr>) -> bool {
-                match **unparen(e) {
-                    Expr::Path(..)
-                    | Expr::Unary(ExprUnary {
+                use Expr::*;
+                matches!(
+                    unparen(e).as_ref(),
+                    Unary(ExprUnary {
                         op: syn::UnOp::Deref(_),
                         ..
-                    })
-                    | Expr::Field(..)
-                    | Expr::Index(..) => true,
-                    _ => false,
-                }
+                    }) | Path(..)
+                        | Field(..)
+                        | Index(..)
+                )
             }
 
             // Check if something is a side-effect free Rust lvalue.
@@ -84,7 +84,7 @@ impl<'c> Translation<'c> {
             }
 
             // Given the LHS access to a variable, produce the RHS one
-            let read = |write: Box<Expr>| -> Result<Box<Expr>, TranslationError> {
+            let read = |write: Box<Expr>| -> TranslationResult<Box<Expr>> {
                 if reference_ty.qualifiers.is_volatile {
                     self.volatile_read(&write, reference_ty)
                 } else {

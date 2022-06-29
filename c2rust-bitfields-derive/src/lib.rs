@@ -107,13 +107,13 @@ fn filter_and_parse_fields(field: &Field) -> Vec<Result<BFFieldAttr, Error>> {
         .filter(|attr| attr.path.segments.last().unwrap().ident == "bitfield")
         .collect();
 
-    if attrs.len() == 0 {
+    if attrs.is_empty() {
         return Vec::new();
     }
 
     attrs
         .into_iter()
-        .map(|attr| parse_bitfield_attr(attr, &field.ident.as_ref().unwrap()))
+        .map(|attr| parse_bitfield_attr(attr, field.ident.as_ref().unwrap()))
         .flat_map(Result::transpose) // Remove the Ok(None) values
         .collect()
 }

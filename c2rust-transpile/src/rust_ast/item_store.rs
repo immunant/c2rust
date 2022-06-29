@@ -35,12 +35,12 @@ impl MultiImport {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PathedMultiImports(IndexMap<Vec<String>, MultiImport>);
 
 impl PathedMultiImports {
     pub fn new() -> Self {
-        PathedMultiImports(IndexMap::new())
+        Self::default()
     }
 
     pub fn get_mut(&mut self, path: Vec<String>) -> &mut MultiImport {
@@ -50,7 +50,7 @@ impl PathedMultiImports {
     pub fn into_items(self) -> Vec<Box<Item>> {
         fn build_items((mut path, imports): (Vec<String>, MultiImport)) -> Box<Item> {
             let mut leaves = imports.leaves;
-            let attrs = imports.attrs.unwrap_or_else(|| mk());
+            let attrs = imports.attrs.unwrap_or_else(mk);
 
             if leaves.len() == 1 {
                 path.push(leaves.pop().unwrap());
@@ -65,7 +65,7 @@ impl PathedMultiImports {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ItemStore {
     items: Vec<Box<Item>>,
     foreign_items: Vec<ForeignItem>,
@@ -74,11 +74,7 @@ pub struct ItemStore {
 
 impl ItemStore {
     pub fn new() -> Self {
-        ItemStore {
-            items: Vec::new(),
-            foreign_items: Vec::new(),
-            uses: PathedMultiImports::new(),
-        }
+        Self::default()
     }
 
     pub fn add_item(&mut self, item: Box<Item>) {

@@ -190,7 +190,7 @@ pub fn get_compile_commands(
     let mut lcmds = build_link_commands(v)?;
 
     for lcmd in &mut lcmds {
-        let inputs = std::mem::replace(&mut lcmd.cmd_inputs, vec![]);
+        let inputs = std::mem::take(&mut lcmd.cmd_inputs);
         let inputs = filter_duplicate_cmds(inputs);
         lcmd.cmd_inputs = inputs;
     }

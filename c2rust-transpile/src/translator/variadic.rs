@@ -124,7 +124,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         ty: CQualTypeId,
         val_id: CExprId,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if self.tcfg.translate_valist {
             let val = self.convert_expr(ctx.expect_valistimpl().used(), val_id)?;
 
@@ -205,9 +205,7 @@ impl<'c> Translation<'c> {
                 }
             })
         } else {
-            Err(format_err!(
-                "Variable argument list translation is not enabled."
-            ))?
+            Err(format_err!("Variable argument list translation is not enabled.").into())
         }
     }
 
@@ -223,8 +221,7 @@ impl<'c> Translation<'c> {
         // collect `va_list` variables that are `va_start`ed, `va_end`ed, or `va_copied`.
         let mut va_list_decl_ids: IndexSet<CDeclId> = IndexSet::new();
 
-        let mut iter = DFExpr::new(&self.ast_context, body.into());
-        while let Some(s) = iter.next() {
+        for s in DFExpr::new(&self.ast_context, body.into()) {
             if let SomeId::Expr(e) = s {
                 if let Some(part) = self.match_vapart(e) {
                     let id = match part {

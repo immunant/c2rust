@@ -57,7 +57,7 @@ type ImporterId = u64;
 /// We need to re-ID nodes since the mapping from Clang's AST to ours is not one-to-one. Sometimes
 /// we need to add nodes (such as 'Semi' nodes to make the lifting of expressions into statements
 /// explicit), sometimes we need to collapse (such as inlining 'FieldDecl' into the 'StructDecl').
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct IdMapper {
     new_id_source: ImporterId,
     old_to_new: HashMap<ClangId, ImporterId>,
@@ -65,12 +65,8 @@ pub struct IdMapper {
 }
 
 impl IdMapper {
-    pub fn new() -> IdMapper {
-        IdMapper {
-            new_id_source: 0,
-            old_to_new: HashMap::new(),
-            new_to_old: HashMap::new(),
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Create a fresh NEW_ID not corresponding to a CLANG_ID
@@ -81,7 +77,7 @@ impl IdMapper {
 
     /// Lookup the NEW_ID corresponding to a CLANG_ID
     pub fn get_new(&mut self, old_id: ClangId) -> Option<ImporterId> {
-        self.old_to_new.get(&old_id).map(|o| *o)
+        self.old_to_new.get(&old_id).copied()
     }
 
     /// Lookup (or create if not a found) a NEW_ID corresponding to a CLANG_ID
@@ -103,7 +99,7 @@ impl IdMapper {
 
     /// Lookup the CLANG_ID corresponding to a NEW_ID
     pub fn get_old(&mut self, new_id: ImporterId) -> Option<ClangId> {
-        self.new_to_old.get(&new_id).map(|n| *n)
+        self.new_to_old.get(&new_id).copied()
     }
 
     /// If the `old_id` is present in the mapper, make `other_old_id` map to the same value. Note
@@ -124,7 +120,7 @@ impl IdMapper {
 /// Transfer location information off of an `AstNode` and onto something that is `Located`
 fn located<T>(node: &AstNode, t: T) -> Located<T> {
     Located {
-        loc: Some(node.loc.clone()),
+        loc: Some(node.loc),
         kind: t,
     }
 }
@@ -240,22 +236,15 @@ pub struct ConversionContext {
 fn display_loc(ctx: &AstContext, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan> {
     loc.as_ref().map(|loc| DisplaySrcSpan {
         file: ctx.files[loc.fileid as usize].path.clone(),
-        loc: loc.clone(),
+        loc: *loc,
     })
 }
 
 fn has_packed_attribute(attrs: Vec<Value>) -> bool {
-    for attr in attrs {
-        match from_value::<String>(attr.clone())
-            .expect("Record attributes should be strings")
-            .as_str()
-        {
-            "packed" => return true,
-            _ => {}
-        }
-    }
-
-    return false;
+    attrs
+        .into_iter()
+        .map(|attr| from_value::<String>(attr).expect("Record attributes should be strings"))
+        .any(|attr_name| attr_name == "packed")
 }
 
 impl ConversionContext {
@@ -266,7 +255,7 @@ impl ConversionContext {
         // This starts out as all of the top-level nodes, which we expect to be 'DECL's
         let mut visit_as: Vec<(ClangId, NodeType)> = Vec::new();
         for top_node in untyped_context.top_nodes.iter().rev() {
-            if untyped_context.ast_nodes.contains_key(&top_node) {
+            if untyped_context.ast_nodes.contains_key(top_node) {
                 visit_as.push((*top_node, node_types::DECL));
             } else {
                 diag!(
@@ -385,22 +374,22 @@ impl ConversionContext {
     }
 
     /// Add a `CType`node into the `TypedAstContext`
-    fn add_type(&mut self, id: ImporterId, typ: CType) -> () {
+    fn add_type(&mut self, id: ImporterId, typ: CType) {
         self.typed_context.c_types.insert(CTypeId(id), typ);
     }
 
     /// Add a `CStmt` node into the `TypedAstContext`
-    fn add_stmt(&mut self, id: ImporterId, stmt: CStmt) -> () {
+    fn add_stmt(&mut self, id: ImporterId, stmt: CStmt) {
         self.typed_context.c_stmts.insert(CStmtId(id), stmt);
     }
 
     /// Add a `CExpr` node into the `TypedAstContext`
-    fn add_expr(&mut self, id: ImporterId, expr: CExpr) -> () {
+    fn add_expr(&mut self, id: ImporterId, expr: CExpr) {
         self.typed_context.c_exprs.insert(CExprId(id), expr);
     }
 
     /// Add a `CDecl` node into the `TypedAstContext`
-    fn add_decl(&mut self, id: ImporterId, decl: CDecl) -> () {
+    fn add_decl(&mut self, id: ImporterId, decl: CDecl) {
         self.typed_context.c_decls.insert(CDeclId(id), decl);
     }
 
@@ -413,7 +402,7 @@ impl ConversionContext {
         new_id: ImporterId,
         node: &AstNode,
         expr: CExprKind,
-    ) -> () {
+    ) {
         if expected_ty & node_types::STMT != 0 {
             // This is going to be an extra node not present in the Clang AST
             let new_expr_id = self.id_mapper.fresh_id();
@@ -437,7 +426,7 @@ impl ConversionContext {
     /// into the `ConversionContext` on creation.
     ///
     /// This populates the `typed_context` of the `ConversionContext` it is called on.
-    fn convert(&mut self, untyped_context: &AstContext) -> () {
+    fn convert(&mut self, untyped_context: &AstContext) {
         for raw_comment in &untyped_context.comments {
             let comment = Located {
                 loc: Some(raw_comment.loc.into()),
@@ -497,7 +486,7 @@ impl ConversionContext {
         node_id: ClangId,      // Clang ID of node to visit
         new_id: ImporterId,    // New ID of node to visit
         expected_ty: NodeType, // Expected type of node to visit
-    ) -> () {
+    ) {
         use self::node_types::*;
 
         if expected_ty & TYPE != 0 {
@@ -675,9 +664,8 @@ impl ConversionContext {
                             .map(|cbor| {
                                 let arg =
                                     from_value(cbor.clone()).expect("Bad function type child id");
-                                let arg_new = self.visit_qualified_type(arg);
 
-                                arg_new
+                                self.visit_qualified_type(arg)
                             })
                             .collect();
                     let ret = arguments.remove(0);
@@ -1603,8 +1591,8 @@ impl ConversionContext {
                     let designators = designator_cbors
                         .into_iter()
                         .map(|x| {
-                            let entry = from_value::<Vec<Value>>(x.clone())
-                                .expect("expected designator array");
+                            let entry =
+                                from_value::<Vec<Value>>(x).expect("expected designator array");
                             match from_value(entry[0].clone()).expect("expected designator tag") {
                                 1 => Designator::Index(
                                     from_value(entry[1].clone()).expect("expected array index"),

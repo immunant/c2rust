@@ -37,13 +37,11 @@ fn backend_thread(rx: Receiver<Event>) {
     let (ref lock, ref cvar) = &*FINISHED;
     let mut finished = lock.lock().unwrap();
 
-    match env::var("INSTRUMENT_BACKEND")
-        .unwrap_or(String::default())
-        .as_str()
-    {
-        "log" => log(rx),
-        "debug" | _ => debug(rx),
-    }
+    (match env::var("INSTRUMENT_BACKEND").unwrap_or_default().as_str() {
+        "log" => log,
+        "debug" => debug,
+        _ => debug,
+    })(rx);
 
     *finished = true;
     cvar.notify_one();
@@ -53,7 +51,7 @@ fn log(rx: Receiver<Event>) {
     let path = env::var("INSTRUMENT_OUTPUT")
         .expect("Instrumentation requires the INSTRUMENT_OUTPUT environment variable be set");
     let mut out = BufWriter::new(
-        File::create(&path).expect(&format!("Could not open output file: {:?}", path)),
+        File::create(&path).unwrap_or_else(|_| panic!("Could not open output file: {:?}", path)),
     );
 
     for event in rx {

@@ -1,7 +1,3 @@
-#![allow(non_camel_case_types)]
-extern crate serde_bytes;
-extern crate serde_cbor;
-
 use serde_cbor::{from_slice, Value};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
@@ -29,10 +25,10 @@ pub fn get_untyped_ast(
     debug: bool,
 ) -> Result<clang_ast::AstContext, Error> {
     let cbors = get_ast_cbors(file_path, cc_db, extra_args, debug);
-    let buffer = cbors.values().next().ok_or(Error::new(
-        ErrorKind::InvalidData,
-        "Could not parse input file",
-    ))?;
+    let buffer = cbors
+        .values()
+        .next()
+        .ok_or_else(|| Error::new(ErrorKind::InvalidData, "Could not parse input file"))?;
 
     // let cbor_path = file_path.with_extension("cbor");
     // let mut cbor_file = File::create(&cbor_path)?;
@@ -80,7 +76,11 @@ fn get_ast_cbors(
     hashmap
 }
 
-include!(concat!(env!("OUT_DIR"), "/cppbindings.rs"));
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+mod ffi {
+    include!(concat!(env!("OUT_DIR"), "/cppbindings.rs"));
+}
 
 extern "C" {
     // ExportResult *ast_exporter(int argc, char *argv[]);
@@ -89,20 +89,20 @@ extern "C" {
         argv: *const *const libc::c_char,
         debug: libc::c_int,
         res: *mut libc::c_int,
-    ) -> *mut ExportResult;
+    ) -> *mut ffi::ExportResult;
 
     // void drop_export_result(ExportResult *result);
-    fn drop_export_result(ptr: *mut ExportResult);
+    fn drop_export_result(ptr: *mut ffi::ExportResult);
 
     fn clang_version() -> *const libc::c_char;
 }
 
-unsafe fn marshal_result(result: *const ExportResult) -> HashMap<String, Vec<u8>> {
+unsafe fn marshal_result(result: *const ffi::ExportResult) -> HashMap<String, Vec<u8>> {
     let mut output = HashMap::new();
 
     let n = (*result).entries as isize;
     for i in 0..n {
-        let ref res = *result;
+        let res = &*result;
 
         // Convert name field
         let cname = CStr::from_ptr(*res.names.offset(i));
