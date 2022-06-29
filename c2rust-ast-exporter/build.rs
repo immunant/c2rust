@@ -318,7 +318,7 @@ impl LLVMInfo {
             Ok(output)
         }
 
-        // no need to avoid the llvm_config error here since we unconditionally use it for llvm_shared_libs
+        // no need to avoid the llvm_config error here since we unconditionally use it later
         let llvm_config = find_llvm_config()?;
         let llvm_config_missing = "
         Couldn't find `llvm-config`. Make sure `llvm-config` is on $PATH then
