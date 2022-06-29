@@ -365,11 +365,13 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     }
                     place_ref = cur_ref;
                 }
+
                 // Storing a raw pointer in an indirect destination; trace the destination
+                let base_dest_ty = base_dest.ty(&self.body.local_decls, self.tcx).ty;
                 self.add_instrumentation_point(
                     location,
                     store_fn,
-                    vec![InstrumentationOperand::RawPtr(Operand::Copy(base_dest))],
+                    vec![InstrumentationOperand::from_type(Operand::Copy(base_dest), &base_dest_ty)],
                     false,
                     false,
                     EventMetadata {
