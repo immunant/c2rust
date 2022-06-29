@@ -3,7 +3,10 @@
 // but i'd like to confirm that the GraphId is always correct too.
 // we can go over this one if you want because it'll involve a small tweak to the pdg code
 
-use crate::{graph::{Graph, Graphs}, util::Duplicates};
+use crate::{
+    graph::{Graph, Graphs},
+    util::Duplicates,
+};
 
 impl Graphs {
     /// Assert that a graph has no duplicate objects.

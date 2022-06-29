@@ -1,5 +1,5 @@
 use anyhow::Context;
-use c2rust_analysis_rt::mir_loc::{EventMetadata, TransferKind, self};
+use c2rust_analysis_rt::mir_loc::{self, EventMetadata, TransferKind};
 use c2rust_analysis_rt::HOOK_FUNCTIONS;
 use c2rust_analysis_rt::{Metadata, MirLoc, MirLocId, MirPlace, MirProjection};
 use indexmap::IndexSet;
@@ -98,14 +98,15 @@ enum InstrumentationOperand<'tcx> {
     RawPtr(Operand<'tcx>),
 }
 
-impl <'tcx> InstrumentationOperand<'tcx> {
+impl<'tcx> InstrumentationOperand<'tcx> {
     fn inner(&self) -> Operand<'tcx> {
         use InstrumentationOperand::*;
         match self {
             AddressUsize(x) => x,
             Reference(x) => x,
             RawPtr(x) => x,
-        }.clone()
+        }
+        .clone()
     }
 
     fn from_type(op: Operand<'tcx>, ty: &ty::Ty<'tcx>) -> Self {
@@ -120,7 +121,6 @@ impl <'tcx> InstrumentationOperand<'tcx> {
             panic!("operand is not of integer-castable type: {:?}", op)
         })(op)
     }
-
 }
 
 struct InstrumentationPoint<'tcx> {
@@ -276,7 +276,10 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                             field_fn,
                             vec![
                                 InstrumentationOperand::RawPtr(Operand::Copy(place.local.into())),
-                                InstrumentationOperand::AddressUsize(make_const(self.tcx, field.as_u32())),
+                                InstrumentationOperand::AddressUsize(make_const(
+                                    self.tcx,
+                                    field.as_u32(),
+                                )),
                             ],
                             false,
                             false,
@@ -296,7 +299,9 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                 self.add_instrumentation_point(
                     location,
                     load_fn,
-                    vec![InstrumentationOperand::RawPtr(Operand::Copy(place.local.into()))],
+                    vec![InstrumentationOperand::RawPtr(Operand::Copy(
+                        place.local.into(),
+                    ))],
                     false,
                     false,
                     EventMetadata {
@@ -369,7 +374,10 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                 self.add_instrumentation_point(
                     location,
                     store_fn,
-                    vec![InstrumentationOperand::from_type(Operand::Copy(base_dest), &base_dest_ty)],
+                    vec![InstrumentationOperand::from_type(
+                        Operand::Copy(base_dest),
+                        &base_dest_ty,
+                    )],
                     false,
                     false,
                     EventMetadata {
@@ -405,7 +413,9 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                             self.add_instrumentation_point(
                                 location,
                                 ptr_to_int_fn,
-                                vec![InstrumentationOperand::RawPtr(Operand::Copy(p.local.into()))],
+                                vec![InstrumentationOperand::RawPtr(Operand::Copy(
+                                    p.local.into(),
+                                ))],
                                 false,
                                 false,
                                 EventMetadata {
@@ -489,7 +499,13 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     self.add_instrumentation_point(
                         location,
                         addr_local_fn,
-                        vec![InstrumentationOperand::RawPtr(Operand::Copy(dest)), InstrumentationOperand::AddressUsize(make_const(self.tcx, p.local.as_u32()))],
+                        vec![
+                            InstrumentationOperand::RawPtr(Operand::Copy(dest)),
+                            InstrumentationOperand::AddressUsize(make_const(
+                                self.tcx,
+                                p.local.as_u32(),
+                            )),
+                        ],
                         false,
                         false,
                         EventMetadata {
@@ -549,7 +565,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                 destination,
                 ..
             } => {
-                let mut arg_local = mir_loc::Local {index: 1};
+                let mut arg_local = mir_loc::Local { index: 1 };
                 let is_hook = {
                     if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
                         let fn_name = self.tcx.item_name(*def_id);
@@ -608,8 +624,14 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                             self.add_instrumentation_point(
                                 location,
                                 func_def_id,
-                                args.iter().map(|arg| InstrumentationOperand::from_type(arg.clone(),
-                                    &arg.ty(self.body, self.tcx))).collect(),
+                                args.iter()
+                                    .map(|arg| {
+                                        InstrumentationOperand::from_type(
+                                            arg.clone(),
+                                            &arg.ty(self.body, self.tcx),
+                                        )
+                                    })
+                                    .collect(),
                                 false,
                                 /* after_call: */ true,
                                 EventMetadata {
@@ -637,7 +659,9 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                             self.add_instrumentation_point(
                                 location,
                                 arg_fn,
-                                vec![InstrumentationOperand::RawPtr(Operand::Copy(destination.unwrap().0))],
+                                vec![InstrumentationOperand::RawPtr(Operand::Copy(
+                                    destination.unwrap().0,
+                                ))],
                                 false,
                                 false,
                                 EventMetadata {
@@ -802,7 +826,10 @@ fn apply_instrumentation<'tcx>(
 
         // Add the MIR location as the first argument to the instrumentation function
         let loc_idx = state.get_mir_loc_idx(body_def, loc, metadata);
-        args.insert(0, InstrumentationOperand::AddressUsize(make_const(tcx, loc_idx)));
+        args.insert(
+            0,
+            InstrumentationOperand::AddressUsize(make_const(tcx, loc_idx)),
+        );
 
         let (blocks, locals) = body.basic_blocks_and_local_decls_mut();
         let mut extra_statements = None;
@@ -956,10 +983,14 @@ fn cast_ptr_to_usize<'tcx>(
     let ptr = match arg {
         // If we were given an address as a usize, no conversion is necessary
         InstrumentationOperand::AddressUsize(_arg) => {
-            assert!(arg_ty.is_integral() || arg_ty.is_unit(),
-                "{:?}: {:?} is not of integral or unit type", arg, arg_ty);
+            assert!(
+                arg_ty.is_integral() || arg_ty.is_unit(),
+                "{:?}: {:?} is not of integral or unit type",
+                arg,
+                arg_ty
+            );
             return None;
-        },
+        }
         // From a reference `r`, cast through raw ptr to usize: `r as *mut _ as usize`
         InstrumentationOperand::Reference(arg) => {
             assert!(arg_ty.is_region_ptr());
@@ -968,9 +999,7 @@ fn cast_ptr_to_usize<'tcx>(
             let raw_ptr_ty = tcx.mk_ptr(inner_ty);
             let raw_ptr_local = locals.push(LocalDecl::new(raw_ptr_ty, DUMMY_SP));
 
-            let mut deref = arg
-                .place()
-                .expect("Can't get the address of a constant");
+            let mut deref = arg.place().expect("Can't get the address of a constant");
             let mut projs = Vec::with_capacity(deref.projection.len() + 1);
             projs.extend(deref.projection);
             projs.push(ProjectionElem::Deref);
@@ -984,12 +1013,17 @@ fn cast_ptr_to_usize<'tcx>(
             };
             new_stmts.push(cast_stmt);
             Operand::Move(raw_ptr_local.into())
-        },
+        }
         // From a raw pointer `r`, cast: `r as usize`
         InstrumentationOperand::RawPtr(arg) => {
-            assert!(arg_ty.is_unsafe_ptr(), "{:?}: {:?} is not an unsafe ptr", arg, arg_ty);
+            assert!(
+                arg_ty.is_unsafe_ptr(),
+                "{:?}: {:?} is not an unsafe ptr",
+                arg,
+                arg_ty
+            );
             arg.to_copy()
-        },
+        }
     };
 
     // Cast the raw ptr to a usize before passing to the

@@ -1,4 +1,4 @@
-use crate::mir_loc::{self, MirLocId, Local};
+use crate::mir_loc::{self, Local, MirLocId};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 

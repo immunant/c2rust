@@ -1,11 +1,11 @@
 //! ## Future Plans for Queries
 //! TODO(kkysen, aneksteind)
-//! 
+//!
 //! It would be nice to test properties like "an object is create in `foo`,
 //! and its object [`Graph`] contains a [`StoreAddr`] node".
-//! 
+//!
 //! [`StoreAddr`]: NodeKind::StoreAddr.
-//! 
+//!
 //! For example PDGs that we have already (manually) confirmed are correct,
 //! we want to set up snapshot testing to make sure we don't introduce any regressions,
 //! and be able to test if certain changes have any effect on the PDG output.
@@ -25,7 +25,7 @@ impl Graph {
     ///
     /// The way the PDG/[`Graph`]s is/are represented, it is actually easiest to work backwards from [`StoreAddr`] nodes
     /// and mark all ancestor nodes as needing write permissions.
-    /// 
+    ///
     /// [`StoreAddr`]: NodeKind::StoreAddr
     /// [`Node`]: crate::graph::Node
     pub fn needs_write_permission(&self) -> impl Iterator<Item = NodeId> {

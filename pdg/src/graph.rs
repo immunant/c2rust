@@ -206,7 +206,10 @@ impl Display for Node {
         let bb = block.as_usize();
         let stmt = statement_idx;
         let fn_ = function;
-        write!(f, "(fn {fn_}) {kind} {{ src: {src}, dest: {dest}, bb: {bb}, stmt: {stmt} }}")
+        write!(
+            f,
+            "(fn {fn_}) {kind} {{ src: {src}, dest: {dest}, bb: {bb}, stmt: {stmt} }}"
+        )
     }
 }
 

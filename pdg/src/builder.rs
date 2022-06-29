@@ -58,7 +58,10 @@ impl EventKindExt for EventKind {
 
     fn has_parent(&self) -> bool {
         use EventKind::*;
-        !matches!(self, Realloc { new_ptr: _, .. } | Alloc { ptr: _, .. } | AddrOfLocal(_, _) | Done)
+        !matches!(
+            self,
+            Realloc { new_ptr: _, .. } | Alloc { ptr: _, .. } | AddrOfLocal(_, _) | Done
+        )
     }
 
     fn parent(&self, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)> {
@@ -137,14 +140,8 @@ pub fn add_node(
     let this_func_hash = DefPathHash(Fingerprint::new(body_def.0, body_def.1));
     let (src_fn, dest_fn) = match metadata.transfer_kind {
         TransferKind::None => (this_func_hash, this_func_hash),
-        TransferKind::Arg(p) => (
-            this_func_hash,
-            DefPathHash(Fingerprint::new(p.0, p.1)),
-        ),
-        TransferKind::Ret(p) => (
-            DefPathHash(Fingerprint::new(p.0, p.1)),
-            this_func_hash,
-        ),
+        TransferKind::Arg(p) => (this_func_hash, DefPathHash(Fingerprint::new(p.0, p.1))),
+        TransferKind::Ret(p) => (DefPathHash(Fingerprint::new(p.0, p.1)), this_func_hash),
     };
 
     if let TransferKind::Arg(_) = metadata.transfer_kind {
@@ -171,29 +168,29 @@ pub fn add_node(
             .map(|nid| (gid, NodeId::from(nid)))
     });
 
-    let source = ptr.or_else(|| metadata.source.as_ref().and_then(|src| {
-        let latest_assignment = graphs
-            .latest_assignment
-            .get(&(src_fn, src.local))
-            .cloned();
-        if !src.projection.is_empty() {
-            if let Some((gid, _)) = latest_assignment {
-                if let Some((nid, n)) = graphs.graphs[gid].nodes.iter_enumerated().rev().next() {
-                    if let NodeKind::Field(..) = n.kind {
-                        return Some((gid, nid))
+    let source = ptr.or_else(|| {
+        metadata.source.as_ref().and_then(|src| {
+            let latest_assignment = graphs.latest_assignment.get(&(src_fn, src.local)).cloned();
+            if !src.projection.is_empty() {
+                if let Some((gid, _)) = latest_assignment {
+                    if let Some((nid, n)) = graphs.graphs[gid].nodes.iter_enumerated().rev().next()
+                    {
+                        if let NodeKind::Field(..) = n.kind {
+                            return Some((gid, nid));
+                        }
                     }
                 }
             }
-        }
 
-        if src.projection.is_empty() {
-            latest_assignment
-        } else if let EventKind::Field(..) = event.kind {
-            latest_assignment
-        } else {
-            head
-        }
-    }));
+            if src.projection.is_empty() {
+                latest_assignment
+            } else if let EventKind::Field(..) = event.kind {
+                latest_assignment
+            } else {
+                head
+            }
+        })
+    });
 
     let node = Node {
         function: Func(dest_fn),
