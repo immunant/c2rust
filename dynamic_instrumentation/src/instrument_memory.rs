@@ -74,7 +74,7 @@ impl InstrumentMemoryOps {
     /// Returned indices will not be sorted in any particular order, but are
     /// unique and constant across the entire lifetime of this instrumentation
     /// instance.
-    fn get_mir_loc_idx<'tcx>(
+    fn get_mir_loc_idx(
         &self,
         body_def: DefPathHash,
         location: Location,
@@ -205,7 +205,7 @@ impl<'a, 'tcx: 'a> CollectFunctionInstrumentationPoints<'a, 'tcx> {
     }
 }
 
-fn to_mir_place<'tcx>(place: &Place<'tcx>) -> MirPlace {
+fn to_mir_place(place: &Place) -> MirPlace {
     MirPlace {
         local: place.local.as_u32().into(),
         projection: place
@@ -258,39 +258,36 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
             && !place.projection.is_empty()
         {
             for (pid, (_base, elem)) in place.iter_projections().enumerate() {
-                match elem {
-                    PlaceElem::Field(field, _) => {
-                        let field_fn = self
-                            .find_instrumentation_def(Symbol::intern("ptr_field"))
-                            .expect("Could not find pointer field hook");
+                if let PlaceElem::Field(field, _) = elem {
+                    let field_fn = self
+                        .find_instrumentation_def(Symbol::intern("ptr_field"))
+                        .expect("Could not find pointer field hook");
 
-                        let destination = if pid == place.projection.len() - 1 {
-                            self.rvalue_dest.as_ref().map(to_mir_place)
-                        } else {
-                            None
-                        };
+                    let destination = if pid == place.projection.len() - 1 {
+                        self.rvalue_dest.as_ref().map(to_mir_place)
+                    } else {
+                        None
+                    };
 
-                        // Projecting a field; trace the local of the original place as well as the field idx
-                        self.add_instrumentation_point(
-                            location,
-                            field_fn,
-                            vec![
-                                InstrumentationOperand::RawPtr(Operand::Copy(place.local.into())),
-                                InstrumentationOperand::AddressUsize(make_const(
-                                    self.tcx,
-                                    field.as_u32(),
-                                )),
-                            ],
-                            false,
-                            false,
-                            EventMetadata {
-                                source: Some(to_mir_place(place)),
-                                destination,
-                                transfer_kind: TransferKind::None,
-                            },
-                        );
-                    }
-                    _ => (),
+                    // Projecting a field; trace the local of the original place as well as the field idx
+                    self.add_instrumentation_point(
+                        location,
+                        field_fn,
+                        vec![
+                            InstrumentationOperand::RawPtr(Operand::Copy(place.local.into())),
+                            InstrumentationOperand::AddressUsize(make_const(
+                                self.tcx,
+                                field.as_u32(),
+                            )),
+                        ],
+                        false,
+                        false,
+                        EventMetadata {
+                            source: Some(to_mir_place(place)),
+                            destination,
+                            transfer_kind: TransferKind::None,
+                        },
+                    );
                 }
             }
 
@@ -810,18 +807,15 @@ fn apply_instrumentation<'tcx>(
         } = point;
         let mut args = args.clone();
 
-        match metadata.transfer_kind {
-            TransferKind::Arg((a, b)) => {
-                let callee_id = tcx
-                    .def_path_hash_to_def_id(DefPathHash(Fingerprint::new(a, b)), &mut || {
-                        panic!("cannot find DefId of callee func hash")
-                    });
-                state.functions.lock().unwrap().insert(
-                    tcx.def_path_hash(callee_id).0.as_value().into(),
-                    tcx.item_name(callee_id).to_string(),
-                );
-            }
-            _ => (),
+        if let TransferKind::Arg((a, b)) = metadata.transfer_kind {
+            let callee_id = tcx
+                .def_path_hash_to_def_id(DefPathHash(Fingerprint::new(a, b)), &mut || {
+                    panic!("cannot find DefId of callee func hash")
+                });
+            state.functions.lock().unwrap().insert(
+                tcx.def_path_hash(callee_id).0.as_value().into(),
+                tcx.item_name(callee_id).to_string(),
+            );
         }
 
         // Add the MIR location as the first argument to the instrumentation function
