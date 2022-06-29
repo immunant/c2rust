@@ -1,60 +1,99 @@
+use clang_sys::CXVersion;
 use cmake::Config;
-use std::env;
+use color_eyre::eyre::{ensure, eyre};
+use color_eyre::{eyre, Help};
 use std::ffi::OsStr;
+use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
-use std::process::{self, Command, Stdio};
+use std::process::{Command, Stdio};
+use std::{env, fmt};
 
 // Use `cargo build -vv` to get detailed output on this script's progress.
 
-fn main() {
+fn main() -> eyre::Result<()> {
+    color_eyre::install()?;
     env_logger::init();
 
-    let llvm_info = LLVMInfo::new();
+    let llvm_info = LLVMInfo::new()?;
 
     // Build the exporter library and link it (and its dependencies)
     build_native(&llvm_info);
-
     // Generate ast_tags and ExportResult bindings
-    if let Err(e) = generate_bindings() {
-        eprintln!("{}", e);
-        if let Err(e) = check_clang_version() {
-            eprintln!("{}", e);
-        }
-        process::exit(1);
+    generate_bindings().with_warning(|| match check_clang_version() {
+        Ok(()) => eyre!("clang version okay"),
+        Err(e) => e,
+    })?;
+    Ok(())
+}
+
+struct LibClangVersion((u32, u32));
+
+impl LibClangVersion {
+    pub fn as_major_minor(&self) -> (i32, i32) {
+        let (major, minor) = self.0;
+        (major.try_into().unwrap(), minor.try_into().unwrap())
     }
 }
 
-fn check_clang_version() -> Result<(), String> {
+impl Display for LibClangVersion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let (major, minor) = self.0;
+        write!(f, "{major}.{minor}")
+    }
+}
+
+struct ClangVersion(CXVersion);
+
+impl ClangVersion {
+    pub fn as_major_minor(&self) -> (i32, i32) {
+        let CXVersion {
+            Major: major,
+            Minor: minor,
+            Subminor: _,
+        } = self.0;
+        (major, minor)
+    }
+}
+
+impl Display for ClangVersion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let CXVersion {
+            Major: major,
+            Minor: minor,
+            Subminor: _,
+        } = self.0;
+        write!(f, "{major}.{minor}")
+    }
+}
+
+fn check_clang_version() -> eyre::Result<()> {
     // Check that bindgen is using the same version of libclang and the clang
     // invocation that it pulls -isystem from. See Bindings::generate() for the
     // -isystem construction.
     if let Some(clang) = clang_sys::support::Clang::find(None, &[]) {
         let libclang_version = bindgen::clang_version()
             .parsed
-            .ok_or("Could not parse version of libclang in bindgen")?;
-        let clang_version = clang
-            .version
-            .ok_or("Could not parse version of clang executable in clang-sys")?;
-        let libclang_version_str = format!("{}.{}", libclang_version.0, libclang_version.1,);
-        let clang_version_str = format!("{}.{}", clang_version.Major, clang_version.Minor,);
-        if libclang_version.0 != clang_version.Major as u32
-            || libclang_version.1 != clang_version.Minor as u32
-        {
-            return Err(format!(
-                "
-Bindgen requires a matching libclang and clang installation. Bindgen is using
-libclang version ({libclang_version_str}) which does not match the autodetected clang
-version ({clang_version_str}). If you have clang version {libclang_version_str} installed, please set
-the `CLANG_PATH` environment variable to the path of this version of the clang
-binary."
-            ));
-        }
+            .map(LibClangVersion)
+            .ok_or(eyre!("Could not parse version of libclang in bindgen"))?;
+        let clang_version = clang.version.map(ClangVersion).ok_or(eyre!(
+            "Could not parse version of clang executable in clang-sys"
+        ))?;
+        ensure!(
+            libclang_version.as_major_minor() == clang_version.as_major_minor(),
+            "
+        Bindgen requires a matching libclang and clang installation. 
+        Bindgen is using libclang version ({libclang_version}), 
+        which does not match the autodetected clang version ({clang_version}). 
+        If you have clang version {libclang_version} installed, 
+        please set the `CLANG_PATH` environment variable 
+        to the path of this version of the clang binary."
+        );
     }
 
     Ok(())
 }
 
-fn generate_bindings() -> Result<(), &'static str> {
+fn generate_bindings() -> eyre::Result<()> {
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
     // the resulting bindings.
@@ -76,7 +115,7 @@ fn generate_bindings() -> Result<(), &'static str> {
         .clang_arg("-xc++")
         // Finish the builder and generate the bindings.
         .generate()
-        .or(Err("Unable to generate AST bindings"))?;
+        .note("Unable to generate AST bin")?;
 
     let cppbindings = bindgen::Builder::default()
         .header("src/ExportResult.hpp")
@@ -88,16 +127,16 @@ fn generate_bindings() -> Result<(), &'static str> {
         .clang_arg("-std=c++11")
         // Finish the builder and generate the bindings.
         .generate()
-        .or(Err("Unable to generate ExportResult bindings"))?;
+        .note("Unable to generate ExportResult bindings")?;
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
         .write_to_file(out_dir.join("bindings.rs"))
-        .expect("Couldn't write bindings!");
+        .note("Couldn't write bindings!")?;
     cppbindings
         .write_to_file(out_dir.join("cppbindings.rs"))
-        .expect("Couldn't write cppbindings!");
+        .note("Couldn't write cppbindings!")?;
 
     Ok(())
 }
@@ -120,7 +159,7 @@ fn build_native(llvm_info: &LLVMInfo) {
         Ok(libdir) => {
             println!("cargo:rustc-link-search=native={}", libdir);
         }
-        _ => {
+        Err(_) => {
             // Build libclangAstExporter.a with cmake
             let dst = Config::new("src")
                 // Where to find LLVM/Clang CMake files
@@ -206,30 +245,30 @@ struct LLVMInfo {
     pub cmake_dir: String,
     /// Clang cmake dir containing cmake modules
     pub clang_cmake_dir: String,
-
     /// List of libs we need to link against
     pub libs: Vec<String>,
 }
 
 impl LLVMInfo {
-    fn new() -> Self {
-        fn find_llvm_config() -> Option<String> {
+    fn new() -> eyre::Result<Self> {
+        fn find_llvm_config() -> eyre::Result<String> {
             // Explicitly provided path in LLVM_CONFIG_PATH
             env::var("LLVM_CONFIG_PATH")
-                .ok()
-                .or_else(|| {
+                .or_else(|e| {
                     // Relative to LLVM_LIB_DIR
-                    env::var("LLVM_LIB_DIR").ok().map(|d| {
-                        String::from(
-                            Path::new(&d)
-                                .join("../bin/llvm-config")
-                                .canonicalize()
-                                .unwrap()
-                                .to_string_lossy(),
-                        )
-                    })
+                    env::var("LLVM_LIB_DIR")
+                        .map(|llvm_lib_dir| {
+                            String::from(
+                                Path::new(&llvm_lib_dir)
+                                    .join("../bin/llvm-config")
+                                    .canonicalize()
+                                    .unwrap()
+                                    .to_string_lossy(),
+                            )
+                        })
+                        .error(e)
                 })
-                .or_else(|| {
+                .or_else(|e| {
                     // In PATH
                     [
                         "llvm-config-14",
@@ -264,27 +303,28 @@ impl LLVMInfo {
                             None
                         }
                     })
+                    .ok_or_else(|| eyre!("can't find llvm-config"))
+                    .warning(e)
                 })
         }
 
         /// Invoke given `command`, if any, with the specified arguments.
-        fn invoke_command<I, S>(command: Option<&String>, args: I) -> Option<String>
+        fn invoke_command<I, S>(command: &str, args: I) -> eyre::Result<String>
         where
             I: IntoIterator<Item = S>,
             S: AsRef<OsStr>,
         {
-            command.and_then(|c| {
-                Command::new(c).args(args).output().ok().and_then(|output| {
-                    if output.status.success() {
-                        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
-                    } else {
-                        None
-                    }
-                })
-            })
+            let output = Command::new(command).args(args).output()?;
+            let output = if output.status.success() {
+                Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+            } else {
+                Err(eyre!("empty output"))
+            }?;
+            Ok(output)
         }
 
-        let llvm_config = find_llvm_config();
+        // no need to avoid the llvm_config error here since we unconditionally use it for llvm_shared_libs
+        let llvm_config = find_llvm_config()?;
         let llvm_config_missing = "
         Couldn't find `llvm-config`. Make sure `llvm-config` is on $PATH then
         re-build.
@@ -309,43 +349,37 @@ impl LLVMInfo {
         ";
         let lib_dir = {
             let path_str = env::var("LLVM_LIB_DIR")
-                .ok()
-                .or_else(|| invoke_command(llvm_config.as_ref(), &["--libdir"]))
-                .expect(llvm_config_libdir_missing);
-            String::from(
-                Path::new(&path_str)
-                    .canonicalize()
-                    .unwrap()
-                    .to_string_lossy(),
-            )
+                .or_else(|e| invoke_command(&llvm_config, &["--libdir"]).error(e))
+                .note(llvm_config_libdir_missing)?;
+            Path::new(&path_str)
+                .canonicalize()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
         };
         let cmake_dir = {
             let path_str = env::var("LLVM_CMAKE_DIR")
-                .ok()
-                .or(invoke_command(llvm_config.as_ref(), &["--cmakedir"]))
-                .expect(llvm_config_cmakedir_missing);
-            String::from(
-                Path::new(&path_str)
-                    .canonicalize()
-                    .unwrap()
-                    .to_string_lossy(),
-            )
+                .or_else(|e| invoke_command(&llvm_config, &["--cmakedir"]).error(e))
+                .note(llvm_config_cmakedir_missing)?;
+            Path::new(&path_str)
+                .canonicalize()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
         };
         let clang_cmake_dir = {
-            let path_str = env::var("CLANG_CMAKE_DIR")
-                .ok()
-                .unwrap_or(format!("{}/../clang", cmake_dir));
-            String::from(
-                Path::new(&path_str)
-                    .canonicalize()
-                    .expect(clang_cmakedir_missing)
-                    .to_string_lossy(),
-            )
+            let path_str =
+                env::var("CLANG_CMAKE_DIR").unwrap_or_else(|_| format!("{}/../clang", cmake_dir));
+            Path::new(&path_str)
+                .canonicalize()
+                .expect(clang_cmakedir_missing)
+                .to_string_lossy()
+                .into_owned()
         };
 
-        let llvm_shared_libs = invoke_command(llvm_config.as_ref(), &["--libs", "--link-shared"]);
+        let llvm_shared_libs = invoke_command(&llvm_config, &["--libs", "--link-shared"]);
 
-        // <sysroot>/lib/rustlib/<target>/lib/ contains a libLLVM DSO for the
+        // `<sysroot>/lib/rustlib/<target>/lib/` contains a libLLVM DSO for the
         // rust compiler. On MacOS, this lib is named libLLVM.dylib, which will
         // always conflict with the dylib we are trying to link against. On
         // Linux we generally will not hit this issue because the prebuilt lib
@@ -355,7 +389,7 @@ impl LLVMInfo {
         // We check here if the lib we want to link against will conflict with
         // the rustlib version. If so we can't dynamically link against libLLVM.
         let conflicts_with_rustlib_llvm = {
-            if let Some(llvm_shared_libs) = llvm_shared_libs.as_ref() {
+            if let Ok(llvm_shared_libs) = llvm_shared_libs.as_ref() {
                 let dylib_suffix = {
                     if cfg!(target_os = "macos") {
                         ".dylib"
@@ -366,8 +400,7 @@ impl LLVMInfo {
                 let mut dylib_file = String::from("lib");
                 dylib_file.push_str(llvm_shared_libs.trim_start_matches("-l"));
                 dylib_file.push_str(dylib_suffix);
-                let sysroot =
-                    invoke_command(env::var("RUSTC").ok().as_ref(), &["--print=sysroot"]).unwrap();
+                let sysroot = invoke_command(&env::var("RUSTC")?, &["--print=sysroot"])?;
 
                 // Does <sysroot>/lib/rustlib/<target>/lib/<dylib_file> exist?
                 let mut libllvm_path = PathBuf::new();
@@ -389,7 +422,7 @@ impl LLVMInfo {
             } else {
                 vec!["--shared-mode"]
             };
-            invoke_command(llvm_config.as_ref(), &args).map_or(false, |c| c == "static")
+            invoke_command(&llvm_config, &args).map_or(false, |c| c == "static")
         };
 
         let link_mode = if link_statically {
@@ -399,15 +432,14 @@ impl LLVMInfo {
         };
 
         let llvm_major_version = {
-            let version =
-                invoke_command(llvm_config.as_ref(), &["--version"]).expect(llvm_config_missing);
-            let emsg = format!("invalid version string {}", version);
+            let version = invoke_command(&llvm_config, &["--version"]).note(llvm_config_missing)?;
+            let msg = || eyre!("invalid version string {}", &version);
             version
                 .split('.')
                 .next()
-                .expect(&emsg)
+                .ok_or_else(msg)?
                 .parse::<u32>()
-                .expect(&emsg)
+                .with_note(msg)?
         };
 
         // Construct the list of libs we need to link against
@@ -427,26 +459,25 @@ impl LLVMInfo {
             args.push("FrontendOpenMP");
         }
 
-        let mut libs: Vec<String> = invoke_command(llvm_config.as_ref(), &args)
-            .unwrap_or_else(|| "-lLLVM".to_string())
+        let mut libs = invoke_command(&llvm_config, &args)
+            .unwrap_or_else(|_| "-lLLVM".to_string())
             .split_whitespace()
-            .map(|lib| String::from(lib.trim_start_matches("-l")))
-            .collect();
+            .map(|lib| lib.trim_start_matches("-l").into())
+            .collect::<Vec<_>>();
 
         libs.extend(
             env::var("LLVM_SYSTEM_LIBS")
-                .ok()
-                .or_else(|| invoke_command(llvm_config.as_ref(), &["--system-libs", link_mode]))
+                .or_else(|e| invoke_command(&llvm_config, &["--system-libs", link_mode]).error(e))
                 .unwrap_or_default()
                 .split_whitespace()
-                .map(|lib| String::from(lib.trim_start_matches("-l"))),
+                .map(|lib| lib.trim_start_matches("-l").into()),
         );
 
-        Self {
+        Ok(Self {
             lib_dir,
             cmake_dir,
             clang_cmake_dir,
             libs,
-        }
+        })
     }
 }
