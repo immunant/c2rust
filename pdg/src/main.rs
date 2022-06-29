@@ -48,7 +48,7 @@ fn main() -> eyre::Result<()> {
 
     for (graph_id, graph) in pdg.graphs.iter_enumerated() {
         let needs_write = graph.needs_write_permission().map(|node_id| node_id.as_usize()).collect::<Vec<_>>();
-        println!("{graph_id}: {graph}");
+        println!("{graph_id} {graph}");
         println!("nodes_that_need_write = {needs_write:?}");
         println!("\n");
     }
