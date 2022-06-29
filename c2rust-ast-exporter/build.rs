@@ -11,6 +11,11 @@ use std::{env, fmt};
 // Use `cargo build -vv` to get detailed output on this script's progress.
 
 fn main() -> eyre::Result<()> {
+    // Safety: At the top of `main`, only 1 thread.
+    #[allow(unused_unsafe)]
+    unsafe {
+        env::set_var("RUST_BACKTRACE", "full");
+    }
     color_eyre::install()?;
     env_logger::init();
 
