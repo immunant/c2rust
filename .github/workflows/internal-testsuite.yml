@@ -9,6 +9,8 @@ on:
     branches: [ master, feature/ci-dev ]
   pull_request:
     branches: [ master ]
+  pull_request_target:
+    branches: [ master ]
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -29,7 +31,6 @@ jobs:
       uses: actions/checkout@v2
       with:
         repository: immunant/c2rust-testsuite
-        token: ${{ secrets.GH_ACTIONS_CONTROL_PRIV_REPOS }}
         path: testsuite
         submodules: true
 
