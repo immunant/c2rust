@@ -58,7 +58,7 @@ impl<'c> Translation<'c> {
             fn is_lvalue(e: &Box<Expr>) -> bool {
                 use Expr::*;
                 matches!(
-                    unparen(e).as_ref(),
+                    unparen(e),
                     Unary(ExprUnary {
                         op: syn::UnOp::Deref(_),
                         ..
@@ -70,15 +70,16 @@ impl<'c> Translation<'c> {
 
             // Check if something is a side-effect free Rust lvalue.
             fn is_simple_lvalue(e: &Box<Expr>) -> bool {
-                match **unparen(e) {
-                    Expr::Path(..) => true,
-                    Expr::Unary(ExprUnary {
+                use Expr::*;
+                match *unparen(e) {
+                    Path(..) => true,
+                    Unary(ExprUnary {
                         op: syn::UnOp::Deref(_),
                         ref expr,
                         ..
                     })
-                    | Expr::Field(ExprField { base: ref expr, .. })
-                    | Expr::Index(ExprIndex { ref expr, .. }) => is_simple_lvalue(expr),
+                    | Field(ExprField { base: ref expr, .. })
+                    | Index(ExprIndex { ref expr, .. }) => is_simple_lvalue(expr),
                     _ => false,
                 }
             }
