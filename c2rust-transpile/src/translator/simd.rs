@@ -104,16 +104,14 @@ impl<'c> Translation<'c> {
                             ),
                         )
                         .pub_();
-                    let std_or_core =
-                        if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
 
                     item_store.add_use_with_attr(
-                        vec![std_or_core.clone(), "arch".into(), "x86".into()],
+                        vec![self.std_or_core().into(), "arch".into(), "x86".into()],
                         name,
                         x86_attr,
                     );
                     item_store.add_use_with_attr(
-                        vec![std_or_core, "arch".into(), "x86_64".into()],
+                        vec![self.std_or_core().into(), "arch".into(), "x86_64".into()],
                         name,
                         x86_64_attr,
                     );
@@ -179,8 +177,6 @@ impl<'c> Translation<'c> {
             self.use_feature("stdsimd");
 
             self.with_cur_file_item_store(|item_store| {
-                let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
-
                 // REVIEW: Also a linear lookup
                 if !SIMD_X86_64_ONLY.contains(&name) {
                     let x86_attr = mk()
@@ -194,7 +190,7 @@ impl<'c> Translation<'c> {
                         .pub_();
 
                     item_store.add_use_with_attr(
-                        vec![std_or_core.clone(), "arch".into(), "x86".into()],
+                        vec![self.std_or_core().into(), "arch".into(), "x86".into()],
                         name,
                         x86_attr,
                     );
@@ -213,7 +209,7 @@ impl<'c> Translation<'c> {
                     .pub_();
 
                 item_store.add_use_with_attr(
-                    vec![std_or_core, "arch".into(), "x86_64".into()],
+                    vec![self.std_or_core().into(), "arch".into(), "x86_64".into()],
                     name,
                     x86_64_attr,
                 );

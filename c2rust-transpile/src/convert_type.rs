@@ -2,6 +2,7 @@ use crate::c_ast::CDeclId;
 use crate::c_ast::*;
 use crate::diagnostics::TranslationResult;
 use crate::renamer::*;
+use crate::translator::std_or_core;
 use c2rust_ast_builder::{mk, properties::*};
 use failure::format_err;
 use std::collections::{HashMap, HashSet};
@@ -300,8 +301,7 @@ impl TypeConverter {
         ctype: CTypeId,
     ) -> TranslationResult<Box<Type>> {
         if self.translate_valist && ctxt.is_va_list(ctype) {
-            let std_or_core = if self.emit_no_std { "core" } else { "std" };
-            let path = vec![std_or_core, "ffi", "VaList"];
+            let path = vec![std_or_core(self.emit_no_std), "ffi", "VaList"];
             let ty = mk().path_ty(mk().abs_path(path));
             return Ok(ty);
         }

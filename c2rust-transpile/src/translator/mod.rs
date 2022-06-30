@@ -279,6 +279,16 @@ pub struct Translation<'c> {
     cur_file: RefCell<Option<FileId>>,
 }
 
+pub fn std_or_core(emit_no_std: bool) -> &'static str {
+    if emit_no_std { "core" } else { "std" }
+}
+
+impl Translation<'_> {
+    pub fn std_or_core(&self) -> &'static str {
+        std_or_core(self.tcfg.emit_no_std)
+    }
+}
+
 fn simple_metaitem(name: &str) -> NestedMeta {
     let meta_item = mk().meta_path(name);
 
@@ -357,8 +367,7 @@ fn transmute_expr(
         (Type::Infer(_), Type::Infer(_)) => Vec::new(),
         _ => vec![source_ty, target_ty],
     };
-    let std_or_core = if no_std { "core" } else { "std" };
-    let mut path = vec![mk().path_segment(std_or_core), mk().path_segment("mem")];
+    let mut path = vec![mk().path_segment(std_or_core(no_std)), mk().path_segment("mem")];
 
     if type_args.is_empty() {
         path.push(mk().path_segment("transmute"));
@@ -2715,8 +2724,7 @@ impl<'c> Translation<'c> {
                     // translate `va_list` variables to `VaListImpl`s and omit the initializer.
                     let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name);
                     let ty = {
-                        let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
-                        let path = vec![std_or_core, "ffi", "VaListImpl"];
+                        let path = vec![self.std_or_core(), "ffi", "VaListImpl"];
                         mk().path_ty(mk().abs_path(path))
                     };
                     let local_mut = mk().local::<_, _, Box<Expr>>(pat_mut, Some(ty), None);
@@ -3019,10 +3027,9 @@ impl<'c> Translation<'c> {
                 mk().cast_expr(addr_lhs, ty)
             }
         };
-        let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
 
         Ok(mk().call_expr(
-            mk().abs_path_expr(vec![std_or_core, "ptr", "write_volatile"]),
+            mk().abs_path_expr(vec![self.std_or_core(), "ptr", "write_volatile"]),
             vec![addr_lhs, rhs],
         ))
     }
@@ -3057,13 +3064,12 @@ impl<'c> Translation<'c> {
                 mk().cast_expr(addr_lhs, ty)
             }
         };
-        let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
 
         // We explicitly annotate the type of pointer we're reading from
         // in order to avoid omitted bit-casts to const from causing the
         // wrong type to be inferred via the result of the pointer.
         let mut path_parts: Vec<PathSegment> = vec![];
-        for elt in [std_or_core, "ptr"] {
+        for elt in [self.std_or_core(), "ptr"] {
             path_parts.push(mk().path_segment(elt))
         }
         let elt_ty = self.convert_type(lhs_type.ctype)?;
@@ -3177,11 +3183,10 @@ impl<'c> Translation<'c> {
     }
 
     fn compute_size_of_ty(&self, ty: Box<Type>) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
         let name = "size_of";
         let params = mk().angle_bracketed_args(vec![ty]);
         let path = vec![
-            mk().path_segment(std_or_core),
+            mk().path_segment(self.std_or_core()),
             mk().path_segment("mem"),
             mk().path_segment_with_args(name, params),
         ];
@@ -4593,10 +4598,9 @@ impl<'c> Translation<'c> {
 
         if self.ast_context.is_va_list(resolved_ty_id) {
             // generate MaybeUninit::uninit().assume_init()
-            let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
             let name = "uninit";
             let path = vec![
-                mk().path_segment(std_or_core),
+                mk().path_segment(self.std_or_core()),
                 mk().path_segment("mem"),
                 mk().path_segment("MaybeUninit"),
                 mk().path_segment(name),
