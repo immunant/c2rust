@@ -2,7 +2,7 @@ use std::cell::Cell;
 use bitflags::bitflags;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{Local, Place, PlaceRef, ProjectionElem};
-use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::{TyCtxt, TyKind};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 
 
@@ -138,8 +138,18 @@ impl<'tcx> TypeOf<'tcx> for PlaceRef<'tcx> {
         let mut ty = acx.type_of(self.local);
         for proj in self.projection {
             match *proj {
-                ProjectionElem::Deref => todo!("type_of Deref"),
-                ProjectionElem::Field(..) => todo!("type_of Field"),
+                ProjectionElem::Deref => {
+                    assert!(matches!(ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)));
+                    assert_eq!(ty.args.len(), 1);
+                    ty = ty.args[0];
+                },
+                ProjectionElem::Field(f, _) => match ty.kind() {
+                    TyKind::Tuple(_) => {
+                        ty = ty.args[f.index()];
+                    },
+                    TyKind::Adt(..) => todo!("type_of Field(Adt)"),
+                    _ => panic!("Field projection is unsupported on type {:?}", ty),
+                }
                 ProjectionElem::Index(..) |
                 ProjectionElem::ConstantIndex { .. } => todo!("type_of Index"),
                 ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
