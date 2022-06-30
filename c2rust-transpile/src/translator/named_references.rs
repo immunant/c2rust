@@ -55,7 +55,7 @@ impl<'c> Translation<'c> {
         let reference = self.convert_expr(ctx.used(), reference)?;
         reference.and_then(|reference| {
             /// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
-            fn is_lvalue(e: &Box<Expr>) -> bool {
+            fn is_lvalue(e: &Expr) -> bool {
                 use Expr::*;
                 matches!(
                     unparen(e),
@@ -69,7 +69,7 @@ impl<'c> Translation<'c> {
             }
 
             // Check if something is a side-effect free Rust lvalue.
-            fn is_simple_lvalue(e: &Box<Expr>) -> bool {
+            fn is_simple_lvalue(e: &Expr) -> bool {
                 use Expr::*;
                 match *unparen(e) {
                     Path(..) => true,
