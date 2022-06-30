@@ -2988,22 +2988,26 @@ impl<'c> Translation<'c> {
         Ok(mk().cast_expr(zero, ty))
     }
 
-    /// Write to a `lhs` that is volatile
-    pub fn volatile_write(
+    fn addr_lhs(
         &self,
         lhs: &Box<Expr>,
         lhs_type: CQualTypeId,
-        rhs: Box<Expr>,
+        write: bool,
     ) -> TranslationResult<Box<Expr>> {
+        let mutbl = if write {
+            Mutability::Mutable
+        } else {
+            Mutability::Immutable
+        };
         let addr_lhs = match **lhs {
             Expr::Unary(ExprUnary {
                 op: UnOp::Deref(_),
                 expr: ref e,
                 ..
             }) => {
-                if lhs_type.qualifiers.is_const {
+                if write == lhs_type.qualifiers.is_const {
                     let lhs_type = self.convert_type(lhs_type.ctype)?;
-                    let ty = mk().mutbl().ptr_ty(lhs_type);
+                    let ty = mk().set_mutbl(mutbl).ptr_ty(lhs_type);
 
                     mk().cast_expr(e, ty)
                 } else {
@@ -3011,14 +3015,25 @@ impl<'c> Translation<'c> {
                 }
             }
             _ => {
-                let addr_lhs = mk().mutbl().addr_of_expr(lhs);
+                let addr_lhs = mk().set_mutbl(mutbl).addr_of_expr(lhs);
 
                 let lhs_type = self.convert_type(lhs_type.ctype)?;
-                let ty = mk().mutbl().ptr_ty(lhs_type);
+                let ty = mk().set_mutbl(mutbl).ptr_ty(lhs_type);
 
                 mk().cast_expr(addr_lhs, ty)
             }
         };
+        Ok(addr_lhs)
+    }
+
+    /// Write to a `lhs` that is volatile
+    pub fn volatile_write(
+        &self,
+        lhs: &Box<Expr>,
+        lhs_type: CQualTypeId,
+        rhs: Box<Expr>,
+    ) -> TranslationResult<Box<Expr>> {
+        let addr_lhs = self.addr_lhs(lhs, lhs_type, true)?;
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
 
         Ok(mk().call_expr(
@@ -3033,30 +3048,7 @@ impl<'c> Translation<'c> {
         lhs: &Box<Expr>,
         lhs_type: CQualTypeId,
     ) -> TranslationResult<Box<Expr>> {
-        let addr_lhs = match **lhs {
-            Expr::Unary(ExprUnary {
-                op: UnOp::Deref(_),
-                expr: ref e,
-                ..
-            }) => {
-                if !lhs_type.qualifiers.is_const {
-                    let lhs_type = self.convert_type(lhs_type.ctype)?;
-                    let ty = mk().ptr_ty(lhs_type);
-
-                    mk().cast_expr(e, ty)
-                } else {
-                    e.clone()
-                }
-            }
-            _ => {
-                let addr_lhs = mk().addr_of_expr(lhs);
-
-                let lhs_type = self.convert_type(lhs_type.ctype)?;
-                let ty = mk().ptr_ty(lhs_type);
-
-                mk().cast_expr(addr_lhs, ty)
-            }
-        };
+        let addr_lhs = self.addr_lhs(lhs, lhs_type, false)?;
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
 
         // We explicitly annotate the type of pointer we're reading from
