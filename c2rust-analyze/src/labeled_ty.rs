@@ -32,6 +32,12 @@ pub struct LabeledTyS<'tcx, L: 'tcx> {
     pub label: L,
 }
 
+impl<'tcx, L> LabeledTyS<'tcx, L> {
+    pub fn kind(&self) -> &'tcx TyKind<'tcx> {
+        self.ty.kind()
+    }
+}
+
 /// A labeled type.  Like `rustc::ty::Ty`, this is a reference to some arena-allocated data.
 pub type LabeledTy<'tcx, L> = &'tcx LabeledTyS<'tcx, L>;
 
