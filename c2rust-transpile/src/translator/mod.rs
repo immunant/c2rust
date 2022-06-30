@@ -2990,7 +2990,7 @@ impl<'c> Translation<'c> {
 
     fn addr_lhs(
         &self,
-        lhs: &Box<Expr>,
+        lhs: Box<Expr>,
         lhs_type: CQualTypeId,
         write: bool,
     ) -> TranslationResult<Box<Expr>> {
@@ -2999,10 +2999,10 @@ impl<'c> Translation<'c> {
         } else {
             Mutability::Immutable
         };
-        let addr_lhs = match **lhs {
+        let addr_lhs = match *lhs {
             Expr::Unary(ExprUnary {
                 op: UnOp::Deref(_),
-                expr: ref e,
+                expr: e,
                 ..
             }) => {
                 if write == lhs_type.qualifiers.is_const {
@@ -3011,7 +3011,7 @@ impl<'c> Translation<'c> {
 
                     mk().cast_expr(e, ty)
                 } else {
-                    e.clone()
+                    e
                 }
             }
             _ => {
@@ -3029,7 +3029,7 @@ impl<'c> Translation<'c> {
     /// Write to a `lhs` that is volatile
     pub fn volatile_write(
         &self,
-        lhs: &Box<Expr>,
+        lhs: Box<Expr>,
         lhs_type: CQualTypeId,
         rhs: Box<Expr>,
     ) -> TranslationResult<Box<Expr>> {
@@ -3045,7 +3045,7 @@ impl<'c> Translation<'c> {
     /// Read from a `lhs` that is volatile
     pub fn volatile_read(
         &self,
-        lhs: &Box<Expr>,
+        lhs: Box<Expr>,
         lhs_type: CQualTypeId,
     ) -> TranslationResult<Box<Expr>> {
         let addr_lhs = self.addr_lhs(lhs, lhs_type, false)?;
@@ -3352,7 +3352,7 @@ impl<'c> Translation<'c> {
                 // If the variable is volatile and used as something that isn't an LValue, this
                 // constitutes a volatile read.
                 if lrvalue.is_rvalue() && qual_ty.qualifiers.is_volatile {
-                    val = self.volatile_read(&val, qual_ty)?;
+                    val = self.volatile_read(val, qual_ty)?;
                 }
 
                 // If the variable is actually an `EnumConstant`, we need to add a cast to the

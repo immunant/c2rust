@@ -443,7 +443,7 @@ impl<'c> Translation<'c> {
                     // Regular (possibly volatile) assignment
                     Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(&write, rhs)),
                     Assign => {
-                        WithStmts::new_val(self.volatile_write(&write, initial_lhs_type_id, rhs)?)
+                        WithStmts::new_val(self.volatile_write(write, initial_lhs_type_id, rhs)?)
                     }
 
                     // Anything volatile needs to be desugared into explicit reads and writes
@@ -501,7 +501,7 @@ impl<'c> Translation<'c> {
                         };
 
                         let write = if is_volatile {
-                            self.volatile_write(&write, initial_lhs_type_id, val)?
+                            self.volatile_write(write, initial_lhs_type_id, val)?
                         } else {
                             mk().assign_expr(write, val)
                         };
@@ -922,7 +922,7 @@ impl<'c> Translation<'c> {
 
                 // *p = *p + rhs
                 let assign_stmt = if ty.qualifiers.is_volatile {
-                    self.volatile_write(&write, ty, val)?
+                    self.volatile_write(write, ty, val)?
                 } else {
                     mk().assign_expr(&write, val)
                 };
@@ -1040,7 +1040,7 @@ impl<'c> Translation<'c> {
                                     // If the type on the other side of the pointer we are dereferencing is volatile and
                                     // this whole expression is not an LValue, we should make this a volatile read
                                     if lrvalue.is_rvalue() && cqual_type.qualifiers.is_volatile {
-                                        val = self.volatile_read(&val, cqual_type)?
+                                        val = self.volatile_read(val, cqual_type)?
                                     }
                                     Ok(val)
                                 }
