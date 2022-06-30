@@ -671,13 +671,13 @@ impl StructureState {
 ///
 ///   * Negating something of the form `!<expr>` produces `<expr>`
 ///
-fn not(bool_expr: &Box<Expr>) -> Box<Expr> {
-    match **bool_expr {
+fn not(bool_expr: &Expr) -> Box<Expr> {
+    match *bool_expr {
         Expr::Unary(ExprUnary {
             op: syn::UnOp::Not(_),
             ref expr,
             ..
-        }) => unparen(expr).clone(),
-        _ => mk().unary_expr("!", bool_expr.clone()),
+        }) => Box::new(unparen(expr).clone()),
+        _ => mk().unary_expr("!", Box::new(bool_expr.clone())),
     }
 }

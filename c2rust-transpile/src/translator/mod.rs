@@ -1140,8 +1140,8 @@ fn item_attrs(item: &mut Item) -> Option<&mut Vec<syn::Attribute>> {
 }
 
 /// Unwrap a layer of parenthesization from an Expr, if present
-pub(crate) fn unparen(expr: &Box<Expr>) -> &Box<Expr> {
-    match **expr {
+pub(crate) fn unparen(expr: &Expr) -> &Expr {
+    match *expr {
         Expr::Paren(ExprParen { ref expr, .. }) => expr,
         _ => expr,
     }
@@ -4557,7 +4557,7 @@ impl<'c> Translation<'c> {
             // we are casting to. Here, we can just remove the extraneous cast instead of generating
             // a new one.
             CExprKind::DeclRef(_, decl_id, _) if variants.contains(&decl_id) => {
-                return val.map(|x| match **unparen(&x) {
+                return val.map(|x| match *unparen(&x) {
                     Expr::Cast(ExprCast { ref expr, .. }) => expr.clone(),
                     _ => panic!("DeclRef {:?} of enum {:?} is not cast", expr, enum_decl),
                 })
@@ -4818,8 +4818,8 @@ impl<'c> Translation<'c> {
             // One simplification we can make at the cost of inspecting `val` more closely: if `val`
             // is already in the form `(x <op> y) as <ty>` where `<op>` is a Rust operator
             // that returns a boolean, we can simple output `x <op> y` or `!(x <op> y)`.
-            if let Expr::Cast(ExprCast { expr: ref arg, .. }) = **unparen(&val) {
-                if let Expr::Binary(ExprBinary { op, .. }) = **unparen(arg) {
+            if let Expr::Cast(ExprCast { expr: ref arg, .. }) = *unparen(&val) {
+                if let Expr::Binary(ExprBinary { op, .. }) = *unparen(arg) {
                     match op {
                         BinOp::Or(_)
                         | BinOp::And(_)
@@ -4831,12 +4831,12 @@ impl<'c> Translation<'c> {
                         | BinOp::Ge(_) => {
                             if target {
                                 // If target == true, just return the argument
-                                return unparen(arg).clone();
+                                return Box::new(unparen(arg).clone());
                             } else {
                                 // If target == false, return !arg
                                 return mk().unary_expr(
                                     UnOp::Not(Default::default()),
-                                    unparen(arg).clone(),
+                                    Box::new(unparen(arg).clone()),
                                 );
                             }
                         }
