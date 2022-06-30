@@ -32,7 +32,7 @@ pub enum Quantity {
     OffsetPtr,
 }
 
-fn perms_to_desc(
+pub fn perms_to_desc(
     perms: PermissionSet,
     flags: FlagSet,
 ) -> (Ownership, Quantity) {

@@ -35,7 +35,7 @@ use rustc_middle::mir::pretty;
 use rustc_middle::ty::{TyCtxt, Ty, TyKind, RegionKind, WithOptConstParam, List};
 use rustc_middle::ty::query::{Providers, ExternProviders};
 use rustc_session::Session;
-use rustc_span::DUMMY_SP;
+use rustc_span::{Span, DUMMY_SP};
 use rustc_span::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX};
 use rustc_span::symbol::Ident;
 use rustc_target::abi::Align;
@@ -45,6 +45,7 @@ use crate::context::{AnalysisCtxt, PointerId, PermissionSet, FlagSet, LTy};
 mod borrowck;
 mod context;
 mod dataflow;
+mod expr_rewrite;
 mod labeled_ty;
 mod type_desc;
 mod util;
@@ -133,6 +134,18 @@ fn inspect_mir<'tcx>(
             ty,
         );
     }
+
+    eprintln!("");
+    let rewrites = expr_rewrite::gen_expr_rewrites(&acx, &hypothesis, &flags, mir);
+    for rw in &rewrites {
+        eprintln!(
+            "at {:?} ({}, {:?}):",
+            rw.loc.stmt, describe_span(tcx, rw.loc.span), rw.loc.sub,
+        );
+        for kind in &rw.kinds {
+            eprintln!("  {:?}", kind);
+        }
+    }
 }
 
 fn assign_pointer_ids<'tcx>(
@@ -156,7 +169,10 @@ fn describe_local(tcx: TyCtxt, decl: &LocalDecl) -> String {
             }
         }
     }
+    describe_span(tcx, span)
+}
 
+fn describe_span(tcx: TyCtxt, span: Span) -> String {
     let s = tcx.sess.source_map().span_to_snippet(span).unwrap();
     let s = {
         let mut s2 = String::new();
