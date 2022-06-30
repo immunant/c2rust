@@ -87,7 +87,7 @@ impl<'c> Translation<'c> {
             // Given the LHS access to a variable, produce the RHS one
             let read = |write: Box<Expr>| -> TranslationResult<Box<Expr>> {
                 if reference_ty.qualifiers.is_volatile {
-                    self.volatile_read(&write, reference_ty)
+                    self.volatile_read(write, reference_ty)
                 } else {
                     Ok(write)
                 }
