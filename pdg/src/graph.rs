@@ -47,7 +47,7 @@ pub struct Node {
 
 impl Display for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let Node {
+        let Self {
             function,
             block,
             statement_idx,
@@ -57,13 +57,10 @@ impl Display for Node {
         } = self;
         let src = ShortOption(source.as_ref());
         let dest = ShortOption(dest.as_ref());
-        let bb = block.as_usize();
+        let bb = block;
         let stmt = statement_idx;
         let fn_ = function;
-        write!(
-            f,
-            "(fn {fn_}) {kind} {{ src: {src}, dest: {dest}, bb: {bb}, stmt: {stmt} }}"
-        )
+        write!(f, "(fn {fn_} @ {bb:?}[{stmt}]) {kind} {src} => {dest}")
     }
 }
 
@@ -147,7 +144,6 @@ impl Display for NodeKind {
         }
     }
 }
-
 /// A pointer derivation graph, which tracks the handling of one object throughout its lifetime.
 #[derive(Debug, Default, Eq, PartialEq, Hash, Clone)]
 pub struct Graph {
