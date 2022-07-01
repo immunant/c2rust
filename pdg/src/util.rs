@@ -158,10 +158,10 @@ impl<T: Debug> Debug for Padded<T> {
     }
 }
 
-pub fn pad_columns(lines: &[String], split_char: char) -> Vec<String> {
+pub fn pad_columns(lines: &[String], split_sep: char, join_sep: &str) -> Vec<String> {
     let rows = lines
         .iter()
-        .map(|line| line.split(split_char).collect::<Vec<_>>())
+        .map(|line| line.split(split_sep).collect::<Vec<_>>())
         .collect::<Vec<_>>();
     let num_columns = rows.iter().map(|line| line.len()).max().unwrap_or_default();
     let column_max_lengths = (0..num_columns)
@@ -182,7 +182,7 @@ pub fn pad_columns(lines: &[String], split_char: char) -> Vec<String> {
                     to_pad: cell,
                     pad_len: max_length - cell.len(),
                 })
-                .join(" ")
+                .join(join_sep)
         })
         .collect::<Vec<_>>()
 }
