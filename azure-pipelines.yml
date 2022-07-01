@@ -41,9 +41,23 @@ jobs:
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      cargo build --release
+      cargo build --release --all-features
     displayName: 'Fast build against host clang/LLVM'
 
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      cargo test --release --all-features
+    displayName: 'cargo test'
+
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      RUSTDOCFLAGS='-D warnings' cargo doc --all-features --document-private-items
+    displayName: 'cargo doc'
+  
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
@@ -73,8 +87,18 @@ jobs:
 
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      cargo build --release
+      cargo build --release --all-features
     displayName: 'Fast build against host clang/LLVM'
+  
+  - script: |
+      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+      cargo test --release --all-features
+    displayName: 'cargo test'
+
+  - script: |
+      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+      RUSTDOCFLAGS='-D warnings' cargo doc --all-features --document-private-items
+    displayName: 'cargo doc'
 
   - script: python3 ./scripts/test_translator.py  ./tests
     displayName: 'Test translator (fast build)'
