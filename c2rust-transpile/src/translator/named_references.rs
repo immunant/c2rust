@@ -4,6 +4,51 @@
 
 use super::*;
 
+/// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
+fn is_lvalue(e: &Expr) -> bool {
+    use Expr::*;
+    matches!(
+        unparen(e),
+        Unary(ExprUnary {
+            op: syn::UnOp::Deref(_),
+            ..
+        }) | Path(..)
+            | Field(..)
+            | Index(..)
+    )
+}
+
+/// Check if something is a side-effect free Rust lvalue.
+fn is_simple_lvalue(e: &Expr) -> bool {
+    use Expr::*;
+    match *unparen(e) {
+        Path(..) => true,
+        Unary(ExprUnary {
+            op: syn::UnOp::Deref(_),
+            ref expr,
+            ..
+        })
+        | Field(ExprField { base: ref expr, .. })
+        | Index(ExprIndex { ref expr, .. }) => is_simple_lvalue(expr),
+        _ => false,
+    }
+}
+
+pub struct NamedReference<R> {
+    pub lvalue: Box<Expr>,
+    pub rvalue: R,
+}
+
+impl<R> NamedReference<R> {
+    pub fn map_rvalue<S, F: Fn(R) -> S>(self, f: F) -> NamedReference<S> {
+        let Self { lvalue, rvalue } = self;
+        NamedReference {
+            lvalue,
+            rvalue: f(rvalue),
+        }
+    }
+}
+
 impl<'c> Translation<'c> {
     /// Get back a Rust lvalue corresponding to the expression passed in.
     ///
@@ -12,9 +57,9 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         reference: CExprId,
-    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+    ) -> TranslationResult<WithStmts<NamedReference<()>>> {
         self.name_reference(ctx, reference, false)
-            .map(|ws| ws.map(|(lvalue, _)| lvalue))
+            .map(|ws| ws.map(|named_ref| named_ref.map_rvalue(|_| ())))
     }
 
     /// Get back a Rust (lvalue, rvalue) pair corresponding to the expression passed in.
@@ -24,12 +69,21 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         reference: CExprId,
-    ) -> TranslationResult<WithStmts<(Box<Expr>, Box<Expr>)>> {
+    ) -> TranslationResult<WithStmts<NamedReference<Box<Expr>>>> {
         let msg: &str = "When called with `uses_read = true`, `name_reference` should always \
                          return an rvalue (something from which to read the memory location)";
 
         self.name_reference(ctx, reference, true)
-            .map(|ws| ws.map(|(lvalue, rvalue)| (lvalue, rvalue.expect(msg))))
+            .map(|ws| ws.map(|named_ref| named_ref.map_rvalue(|rvalue| rvalue.expect(msg))))
+    }
+
+    /// Given the LHS access to a variable, produce the RHS one
+    fn read(&self, reference_ty: CQualTypeId, write: Box<Expr>) -> TranslationResult<Box<Expr>> {
+        if reference_ty.qualifiers.is_volatile {
+            self.volatile_read(write, reference_ty)
+        } else {
+            Ok(write)
+        }
     }
 
     /// This function transforms an expression that should refer to a memory location (a C lvalue)
@@ -45,61 +99,26 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         reference: CExprId,
         uses_read: bool,
-    ) -> TranslationResult<WithStmts<(Box<Expr>, Option<Box<Expr>>)>> {
+    ) -> TranslationResult<WithStmts<NamedReference<Option<Box<Expr>>>>> {
         let reference_ty = self
             .ast_context
             .index(reference)
             .kind
             .get_qual_type()
             .ok_or_else(|| format_err!("bad reference type"))?;
+        let read = |write| self.read(reference_ty, write);
         let reference = self.convert_expr(ctx.used(), reference)?;
         reference.and_then(|reference| {
-            /// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
-            fn is_lvalue(e: &Expr) -> bool {
-                use Expr::*;
-                matches!(
-                    unparen(e),
-                    Unary(ExprUnary {
-                        op: syn::UnOp::Deref(_),
-                        ..
-                    }) | Path(..)
-                        | Field(..)
-                        | Index(..)
-                )
-            }
-
-            // Check if something is a side-effect free Rust lvalue.
-            fn is_simple_lvalue(e: &Expr) -> bool {
-                use Expr::*;
-                match *unparen(e) {
-                    Path(..) => true,
-                    Unary(ExprUnary {
-                        op: syn::UnOp::Deref(_),
-                        ref expr,
-                        ..
-                    })
-                    | Field(ExprField { base: ref expr, .. })
-                    | Index(ExprIndex { ref expr, .. }) => is_simple_lvalue(expr),
-                    _ => false,
-                }
-            }
-
-            // Given the LHS access to a variable, produce the RHS one
-            let read = |write: Box<Expr>| -> TranslationResult<Box<Expr>> {
-                if reference_ty.qualifiers.is_volatile {
-                    self.volatile_read(write, reference_ty)
-                } else {
-                    Ok(write)
-                }
-            };
-
             if !uses_read && is_lvalue(&reference) {
-                Ok(WithStmts::new_val((reference, None)))
+                Ok(WithStmts::new_val(NamedReference {
+                    lvalue: reference,
+                    rvalue: None,
+                }))
             } else if is_simple_lvalue(&reference) {
-                Ok(WithStmts::new_val((
-                    reference.clone(),
-                    Some(read(reference)?),
-                )))
+                Ok(WithStmts::new_val(NamedReference {
+                    lvalue: reference.clone(),
+                    rvalue: Some(read(reference)?),
+                }))
             } else {
                 // This is the case where we explicitly need to factor out possible side-effects.
 
@@ -117,7 +136,10 @@ impl<'c> Translation<'c> {
 
                 Ok(WithStmts::new(
                     vec![compute_ref],
-                    (write.clone(), Some(read(write)?)),
+                    NamedReference {
+                        lvalue: write.clone(),
+                        rvalue: Some(read(write)?),
+                    },
                 ))
             }
         })
