@@ -40,7 +40,7 @@ pub struct NamedReference<R> {
 }
 
 impl<R> NamedReference<R> {
-    pub fn map<S, F: Fn(R) -> S>(self, f: F) -> NamedReference<S> {
+    pub fn map_rvalue<S, F: Fn(R) -> S>(self, f: F) -> NamedReference<S> {
         let Self { lvalue, rvalue } = self;
         NamedReference {
             lvalue,
@@ -59,7 +59,7 @@ impl<'c> Translation<'c> {
         reference: CExprId,
     ) -> TranslationResult<WithStmts<NamedReference<()>>> {
         self.name_reference(ctx, reference, false)
-            .map(|ws| ws.map(|named_ref| named_ref.map(|_| ())))
+            .map(|ws| ws.map(|named_ref| named_ref.map_rvalue(|_| ())))
     }
 
     /// Get back a Rust (lvalue, rvalue) pair corresponding to the expression passed in.
@@ -74,7 +74,7 @@ impl<'c> Translation<'c> {
                          return an rvalue (something from which to read the memory location)";
 
         self.name_reference(ctx, reference, true)
-            .map(|ws| ws.map(|named_ref| named_ref.map(|rvalue| rvalue.expect(msg))))
+            .map(|ws| ws.map(|named_ref| named_ref.map_rvalue(|rvalue| rvalue.expect(msg))))
     }
 
     /// Given the LHS access to a variable, produce the RHS one
