@@ -4608,13 +4608,7 @@ impl<'c> Translation<'c> {
 
         if self.ast_context.is_va_list(resolved_ty_id) {
             // generate MaybeUninit::uninit().assume_init()
-            let name = "uninit";
-            let path = vec![
-                mk().path_segment(self.std_or_core()),
-                mk().path_segment("mem"),
-                mk().path_segment("MaybeUninit"),
-                mk().path_segment(name),
-            ];
+            let path = vec![self.std_or_core(), "mem", "MaybeUninit", "uninit"];
             let call = mk().call_expr(mk().abs_path_expr(path), vec![] as Vec<Box<Expr>>);
             let call = mk().method_call_expr(call, "assume_init", vec![] as Vec<Box<Expr>>);
             return Ok(WithStmts::new_val(call));
