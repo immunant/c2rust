@@ -511,6 +511,8 @@ impl<'c> Translation<'c> {
                             WithStmts::new_unsafe_val(write)
                         } else {
                             WithStmts::new_val(write)
+                        }
+                    }
 
                         // Everything else
                         AssignAdd if pointer_lhs.is_some() => {
