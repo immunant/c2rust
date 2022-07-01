@@ -2935,7 +2935,7 @@ impl<'c> Translation<'c> {
         initializer: Option<CExprId>,
         typ: CQualTypeId,
     ) -> TranslationResult<ConvertedVariable> {
-        let initializer = match initializer {
+        let init = match initializer {
             Some(x) => self.convert_expr(ctx.used(), x),
             None => self.implicit_default_expr(typ.ctype, ctx.is_static),
         };
@@ -2954,7 +2954,7 @@ impl<'c> Translation<'c> {
             self.convert_type(typ.ctype)?
         };
 
-        let mutability = if typ.qualifiers.is_const {
+        let mutbl = if typ.qualifiers.is_const {
             Mutability::Immutable
         } else {
             Mutability::Mutable
@@ -2962,8 +2962,8 @@ impl<'c> Translation<'c> {
 
         Ok(ConvertedVariable {
             ty,
-            mutbl: mutability,
-            init: initializer,
+            mutbl,
+            init,
         })
     }
 
