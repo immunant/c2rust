@@ -111,6 +111,11 @@ fn generate_bindings() -> Result<(), &'static str> {
 ///   - if `opt-level=0`                              then `CMAKE_BUILD_TYPE=Debug`
 ///   - if `opt-level={1,2,3}` and not `debug=false`, then `CMAKE_BUILD_TYPE=RelWithDebInfo`
 fn build_native(llvm_info: &LLVMInfo) {
+    if env::var("DOCS_RS").is_ok() {
+        // Don't build `cmake` things because it downloads `tinycbor`,
+        // and docs.rs has no network access
+        return;
+    }
     // Find where the (already built) LLVM lib dir is
     let llvm_lib_dir = &llvm_info.lib_dir;
 
@@ -119,12 +124,6 @@ fn build_native(llvm_info: &LLVMInfo) {
             println!("cargo:rustc-link-search=native={}", libdir);
         }
         _ => {
-            if env::var("DOCS_RS").is_ok() {
-                // Don't build `cmake` things because it downloads `tinycbor`, 
-                // and docs.rs has no network access
-                return;
-            }
-
             // Build libclangAstExporter.a with cmake
             let dst = Config::new("src")
                 // Where to find LLVM/Clang CMake files
