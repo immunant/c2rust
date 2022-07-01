@@ -19,7 +19,7 @@ pub mod properties {
         fn to_token(&self) -> Option<Self::Token>;
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Copy, Clone)]
     pub enum Mutability {
         Mutable,
         Immutable,

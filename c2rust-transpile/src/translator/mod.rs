@@ -23,6 +23,7 @@ use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::set_span::SetSpan;
 use crate::rust_ast::{pos_to_span, SpanExt, DUMMY_SP};
 use crate::translator::atomics::ConvertAtomicArgs;
+use crate::translator::named_references::NamedReference;
 use crate::translator::operators::ConvertBinaryExprArgs;
 use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_printer::pprust::{self};
@@ -1149,8 +1150,8 @@ fn item_attrs(item: &mut Item) -> Option<&mut Vec<syn::Attribute>> {
 }
 
 /// Unwrap a layer of parenthesization from an Expr, if present
-pub(crate) fn unparen(expr: &Box<Expr>) -> &Box<Expr> {
-    match **expr {
+pub(crate) fn unparen(expr: &Expr) -> &Expr {
+    match *expr {
         Expr::Paren(ExprParen { ref expr, .. }) => expr,
         _ => expr,
     }
@@ -1190,6 +1191,12 @@ pub enum ConvertedDecl {
     Item(Box<Item>),          // 24 bytes
     Items(Vec<Box<Item>>),    // 24 bytes
     NoItem,
+}
+
+struct ConvertedVariable {
+    pub ty: Box<Type>,
+    pub mutbl: Mutability,
+    pub init: TranslationResult<WithStmts<Box<Expr>>>,
 }
 
 /// Args for [`Translation::convert_function`].
@@ -2017,7 +2024,8 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .get(&decl_id)
                     .expect("Variables should already be renamed");
-                let (ty, mutbl, _) = self.convert_variable(ctx.static_(), None, typ)?;
+                let ConvertedVariable { ty, mutbl, init: _ } =
+                    self.convert_variable(ctx.static_(), None, typ)?;
                 // When putting extern statics into submodules, they need to be public to be accessible
                 let visibility = if self.tcfg.reorganize_definitions {
                     "pub"
@@ -2072,7 +2080,7 @@ impl<'c> Translation<'c> {
                 let (ty, init) = if self.static_initializer_is_uncompilable(initializer, typ) {
                     // Note: We don't pass has_static_duration through here. Extracted initializers
                     // are run outside of the static initializer.
-                    let (ty, _, init) =
+                    let ConvertedVariable { ty, mutbl: _, init } =
                         self.convert_variable(ctx.not_static(), initializer, typ)?;
 
                     let mut init = init?.to_expr();
@@ -2098,7 +2106,8 @@ impl<'c> Translation<'c> {
 
                     (ty, init)
                 } else {
-                    let (ty, _, init) = self.convert_variable(ctx.static_(), initializer, typ)?;
+                    let ConvertedVariable { ty, mutbl: _, init } =
+                        self.convert_variable(ctx.static_(), initializer, typ)?;
                     let mut init = init?;
                     // TODO: Replace this by relying entirely on
                     // WithStmts.is_unsafe() of the translated variable
@@ -2279,7 +2288,8 @@ impl<'c> Translation<'c> {
 
             // handle regular (non-variadic) arguments
             for &(decl_id, ref var, typ) in arguments {
-                let (ty, mutbl, _) = self.convert_variable(ctx, None, typ)?;
+                let ConvertedVariable { ty, mutbl, init: _ } =
+                    self.convert_variable(ctx, None, typ)?;
 
                 let pat = if var.is_empty() {
                     mk().wild_pat()
@@ -2674,7 +2684,8 @@ impl<'c> Translation<'c> {
                             "Unable to rename function scoped static initializer",
                         )
                     })?;
-                let (ty, _, init) = self.convert_variable(ctx.static_(), initializer, typ)?;
+                let ConvertedVariable { ty, mutbl: _, init } =
+                    self.convert_variable(ctx.static_(), initializer, typ)?;
                 let default_init = self.implicit_default_expr(typ.ctype, true)?.to_expr();
                 let comment = String::from("// Initialized in run_static_initializers");
                 let span = self
@@ -2744,7 +2755,8 @@ impl<'c> Translation<'c> {
 
                 let mut stmts = self.compute_variable_array_sizes(ctx, typ.ctype)?;
 
-                let (ty, mutbl, init) = self.convert_variable(ctx, initializer, typ)?;
+                let ConvertedVariable { ty, mutbl, init } =
+                    self.convert_variable(ctx, initializer, typ)?;
                 let mut init = init?;
 
                 stmts.append(init.stmts_mut());
@@ -2929,11 +2941,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         initializer: Option<CExprId>,
         typ: CQualTypeId,
-    ) -> TranslationResult<(
-        Box<Type>,
-        Mutability,
-        TranslationResult<WithStmts<Box<Expr>>>,
-    )> {
+    ) -> TranslationResult<ConvertedVariable> {
         let init = match initializer {
             Some(x) => self.convert_expr(ctx.used(), x),
             None => self.implicit_default_expr(typ.ctype, ctx.is_static),
@@ -2959,7 +2967,11 @@ impl<'c> Translation<'c> {
             Mutability::Mutable
         };
 
-        Ok((ty, mutbl, init))
+        Ok(ConvertedVariable {
+            ty,
+            mutbl,
+            init,
+        })
     }
 
     fn convert_type(&self, type_id: CTypeId) -> TranslationResult<Box<Type>> {
@@ -2996,37 +3008,52 @@ impl<'c> Translation<'c> {
         Ok(mk().cast_expr(zero, ty))
     }
 
-    /// Write to a `lhs` that is volatile
-    pub fn volatile_write(
+    fn addr_lhs(
         &self,
-        lhs: &Box<Expr>,
+        lhs: Box<Expr>,
         lhs_type: CQualTypeId,
-        rhs: Box<Expr>,
+        write: bool,
     ) -> TranslationResult<Box<Expr>> {
-        let addr_lhs = match **lhs {
+        let mutbl = if write {
+            Mutability::Mutable
+        } else {
+            Mutability::Immutable
+        };
+        let addr_lhs = match *lhs {
             Expr::Unary(ExprUnary {
                 op: UnOp::Deref(_),
-                expr: ref e,
+                expr: e,
                 ..
             }) => {
-                if lhs_type.qualifiers.is_const {
+                if write == lhs_type.qualifiers.is_const {
                     let lhs_type = self.convert_type(lhs_type.ctype)?;
-                    let ty = mk().mutbl().ptr_ty(lhs_type);
+                    let ty = mk().set_mutbl(mutbl).ptr_ty(lhs_type);
 
                     mk().cast_expr(e, ty)
                 } else {
-                    e.clone()
+                    e
                 }
             }
             _ => {
-                let addr_lhs = mk().mutbl().addr_of_expr(lhs);
+                let addr_lhs = mk().set_mutbl(mutbl).addr_of_expr(lhs);
 
                 let lhs_type = self.convert_type(lhs_type.ctype)?;
-                let ty = mk().mutbl().ptr_ty(lhs_type);
+                let ty = mk().set_mutbl(mutbl).ptr_ty(lhs_type);
 
                 mk().cast_expr(addr_lhs, ty)
             }
         };
+        Ok(addr_lhs)
+    }
+
+    /// Write to a `lhs` that is volatile
+    pub fn volatile_write(
+        &self,
+        lhs: Box<Expr>,
+        lhs_type: CQualTypeId,
+        rhs: Box<Expr>,
+    ) -> TranslationResult<Box<Expr>> {
+        let addr_lhs = self.addr_lhs(lhs, lhs_type, true)?;
 
         Ok(mk().call_expr(
             mk().abs_path_expr(vec![self.std_or_core(), "ptr", "write_volatile"]),
@@ -3037,33 +3064,10 @@ impl<'c> Translation<'c> {
     /// Read from a `lhs` that is volatile
     pub fn volatile_read(
         &self,
-        lhs: &Box<Expr>,
+        lhs: Box<Expr>,
         lhs_type: CQualTypeId,
     ) -> TranslationResult<Box<Expr>> {
-        let addr_lhs = match **lhs {
-            Expr::Unary(ExprUnary {
-                op: UnOp::Deref(_),
-                expr: ref e,
-                ..
-            }) => {
-                if !lhs_type.qualifiers.is_const {
-                    let lhs_type = self.convert_type(lhs_type.ctype)?;
-                    let ty = mk().ptr_ty(lhs_type);
-
-                    mk().cast_expr(e, ty)
-                } else {
-                    e.clone()
-                }
-            }
-            _ => {
-                let addr_lhs = mk().addr_of_expr(lhs);
-
-                let lhs_type = self.convert_type(lhs_type.ctype)?;
-                let ty = mk().ptr_ty(lhs_type);
-
-                mk().cast_expr(addr_lhs, ty)
-            }
-        };
+        let addr_lhs = self.addr_lhs(lhs, lhs_type, false)?;
 
         // We explicitly annotate the type of pointer we're reading from
         // in order to avoid omitted bit-casts to const from causing the
@@ -3365,7 +3369,7 @@ impl<'c> Translation<'c> {
                 // If the variable is volatile and used as something that isn't an LValue, this
                 // constitutes a volatile read.
                 if lrvalue.is_rvalue() && qual_ty.qualifiers.is_volatile {
-                    val = self.volatile_read(&val, qual_ty)?;
+                    val = self.volatile_read(val, qual_ty)?;
                 }
 
                 // If the variable is actually an `EnumConstant`, we need to add a cast to the
@@ -3599,8 +3603,10 @@ impl<'c> Translation<'c> {
                         ))
                     })
                 } else {
-                    self.name_reference_write_read(ctx, lhs)?
-                        .result_map(|(_, lhs_val)| {
+                    self.name_reference_write_read(ctx, lhs)?.result_map(
+                        |NamedReference {
+                             rvalue: lhs_val, ..
+                         }| {
                             let cond = self.match_bool(true, ty.ctype, lhs_val.clone());
                             let ite = mk().ifte_expr(
                                 cond,
@@ -3608,7 +3614,8 @@ impl<'c> Translation<'c> {
                                 Some(self.convert_expr(ctx, rhs)?.to_expr()),
                             );
                             Ok(ite)
-                        })
+                        },
+                    )
                 }
             }
 
@@ -4562,7 +4569,7 @@ impl<'c> Translation<'c> {
             // we are casting to. Here, we can just remove the extraneous cast instead of generating
             // a new one.
             CExprKind::DeclRef(_, decl_id, _) if variants.contains(&decl_id) => {
-                return val.map(|x| match **unparen(&x) {
+                return val.map(|x| match *unparen(&x) {
                     Expr::Cast(ExprCast { ref expr, .. }) => expr.clone(),
                     _ => panic!("DeclRef {:?} of enum {:?} is not cast", expr, enum_decl),
                 })
@@ -4822,8 +4829,8 @@ impl<'c> Translation<'c> {
             // One simplification we can make at the cost of inspecting `val` more closely: if `val`
             // is already in the form `(x <op> y) as <ty>` where `<op>` is a Rust operator
             // that returns a boolean, we can simple output `x <op> y` or `!(x <op> y)`.
-            if let Expr::Cast(ExprCast { expr: ref arg, .. }) = **unparen(&val) {
-                if let Expr::Binary(ExprBinary { op, .. }) = **unparen(arg) {
+            if let Expr::Cast(ExprCast { expr: ref arg, .. }) = *unparen(&val) {
+                if let Expr::Binary(ExprBinary { op, .. }) = *unparen(arg) {
                     match op {
                         BinOp::Or(_)
                         | BinOp::And(_)
@@ -4835,12 +4842,12 @@ impl<'c> Translation<'c> {
                         | BinOp::Ge(_) => {
                             if target {
                                 // If target == true, just return the argument
-                                return unparen(arg).clone();
+                                return Box::new(unparen(arg).clone());
                             } else {
                                 // If target == false, return !arg
                                 return mk().unary_expr(
                                     UnOp::Not(Default::default()),
-                                    unparen(arg).clone(),
+                                    Box::new(unparen(arg).clone()),
                                 );
                             }
                         }
