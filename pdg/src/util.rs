@@ -134,3 +134,55 @@ impl<T: Display + Eq + Hash> Duplicates<T> {
         panic!("unexpected duplicates: {}", self);
     }
 }
+
+pub struct Padded<T> {
+    to_pad: T,
+    pad_len: usize,
+}
+
+impl<T: Display> Display for Padded<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{:padding$}", self.to_pad, "", padding = self.pad_len)
+    }
+}
+
+impl<T: Debug> Debug for Padded<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:?}{:padding$}",
+            self.to_pad,
+            "",
+            padding = self.pad_len
+        )
+    }
+}
+
+pub fn pad_columns(lines: &[String], split_char: char) -> Vec<String> {
+    let rows = lines
+        .iter()
+        .map(|line| line.split(split_char).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let num_columns = rows.iter().map(|line| line.len()).max().unwrap_or_default();
+    let column_max_lengths = (0..num_columns)
+        .map(|column| {
+            rows.iter()
+                .map(|cells| cells.get(column).copied().unwrap_or_default())
+                .map(|cell| cell.len())
+                .max()
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>();
+    rows.iter()
+        .map(|cells| {
+            cells
+                .iter()
+                .zip(column_max_lengths.iter())
+                .map(|(&cell, &max_length)| Padded {
+                    to_pad: cell,
+                    pad_len: max_length - cell.len(),
+                })
+                .join(" ")
+        })
+        .collect::<Vec<_>>()
+}
