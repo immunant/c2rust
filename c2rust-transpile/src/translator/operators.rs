@@ -433,70 +433,64 @@ impl<'c> Translation<'c> {
         };
 
         rhs_translation.and_then(|rhs| {
-            lhs_translation.and_then(
-                |NamedReference {
-                     lvalue: write,
-                     rvalue: read,
-                 }| {
-                    // Assignment expression itself
-                    use c_ast::BinOp::*;
-                    let assign_stmt = match op {
-                        // Regular (possibly volatile) assignment
-                        Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(&write, rhs)),
-                        Assign => WithStmts::new_val(self.volatile_write(
-                            &write,
-                            initial_lhs_type_id,
-                            rhs,
-                        )?),
+            lhs_translation.and_then(|NamedReference { lvalue: write, rvalue: read }| {
+                // Assignment expression itself
+                use c_ast::BinOp::*;
+                let assign_stmt = match op {
+                    // Regular (possibly volatile) assignment
+                    Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(&write, rhs)),
+                    Assign => {
+                        WithStmts::new_val(self.volatile_write(write, initial_lhs_type_id, rhs)?)
+                    }
 
-                        // Anything volatile needs to be desugared into explicit reads and writes
-                        op if is_volatile || is_unsigned_arith => {
-                            let mut is_unsafe = false;
-                            let op = op
-                                .underlying_assignment()
-                                .expect("Cannot convert non-assignment operator");
+                    // Anything volatile needs to be desugared into explicit reads and writes
+                    op if is_volatile || is_unsigned_arith => {
+                        let mut is_unsafe = false;
+                        let op = op
+                            .underlying_assignment()
+                            .expect("Cannot convert non-assignment operator");
 
-                            let val = if compute_lhs_type_id.ctype == initial_lhs_type_id.ctype {
-                                self.convert_binary_operator(
-                                    ctx,
-                                    ConvertBinaryOperatorArgs {
-                                        op,
-                                        ty,
-                                        ctype: qtype.ctype,
-                                        lhs_type: initial_lhs_type_id,
-                                        rhs_type: rhs_type_id,
-                                        lhs: read.clone(),
-                                        rhs,
-                                        lhs_rhs_ids: None,
-                                    },
-                                )?
-                            } else {
-                                let lhs_type = self.convert_type(compute_type.unwrap().ctype)?;
-                                let write_type = self.convert_type(qtype.ctype)?;
-                                let lhs = mk().cast_expr(read.clone(), lhs_type.clone());
-                                let ty = self.convert_type(result_type_id.ctype)?;
-                                let val = self.convert_binary_operator(
-                                    ctx,
-                                    ConvertBinaryOperatorArgs {
-                                        op,
-                                        ty,
-                                        ctype: result_type_id.ctype,
-                                        lhs_type: compute_lhs_type_id,
-                                        rhs_type: rhs_type_id,
-                                        lhs,
-                                        rhs,
-                                        lhs_rhs_ids: None,
-                                    },
-                                )?;
+                        let val = if compute_lhs_type_id.ctype == initial_lhs_type_id.ctype {
+                            self.convert_binary_operator(
+                                ctx,
+                                ConvertBinaryOperatorArgs {
+                                    op,
+                                    ty,
+                                    ctype: qtype.ctype,
+                                    lhs_type: initial_lhs_type_id,
+                                    rhs_type: rhs_type_id,
+                                    lhs: read.clone(),
+                                    rhs,
+                                    lhs_rhs_ids: None,
+                                },
+                            )?
+                        } else {
+                            let lhs_type = self.convert_type(compute_type.unwrap().ctype)?;
+                            let write_type = self.convert_type(qtype.ctype)?;
+                            let lhs = mk().cast_expr(read.clone(), lhs_type.clone());
+                            let ty = self.convert_type(result_type_id.ctype)?;
+                            let val = self.convert_binary_operator(
+                                ctx,
+                                ConvertBinaryOperatorArgs {
+                                    op,
+                                    ty,
+                                    ctype: result_type_id.ctype,
+                                    lhs_type: compute_lhs_type_id,
+                                    rhs_type: rhs_type_id,
+                                    lhs,
+                                    rhs,
+                                    lhs_rhs_ids: None,
+                                },
+                            )?;
 
-                                let is_enum_result = self.ast_context
-                                    [self.ast_context.resolve_type_id(qtype.ctype)]
-                                .kind
-                                .is_enum();
-                                let result_type = self.convert_type(qtype.ctype)?;
-                                let val = if is_enum_result {
-                                    is_unsafe = true;
-                                    transmute_expr(
+                            let is_enum_result = self.ast_context
+                                [self.ast_context.resolve_type_id(qtype.ctype)]
+                            .kind
+                            .is_enum();
+                            let result_type = self.convert_type(qtype.ctype)?;
+                            let val = if is_enum_result {
+                                is_unsafe = true;
+                                transmute_expr(
                                         lhs_type,
                                         result_type,
                                         val,
@@ -507,18 +501,16 @@ impl<'c> Translation<'c> {
                                 };
                                 mk().cast_expr(val, write_type)
                             };
-
-                            let write = if is_volatile {
-                                self.volatile_write(&write, initial_lhs_type_id, val)?
-                            } else {
-                                mk().assign_expr(write, val)
-                            };
-                            if is_unsafe {
-                                WithStmts::new_unsafe_val(write)
-                            } else {
-                                WithStmts::new_val(write)
-                            }
-                        }
+                        
+                        let write = if is_volatile {
+                            self.volatile_write(write, initial_lhs_type_id, val)?
+                        } else {
+                            mk().assign_expr(write, val)
+                        };
+                        if is_unsafe {
+                            WithStmts::new_unsafe_val(write)
+                        } else {
+                            WithStmts::new_val(write)
 
                         // Everything else
                         AssignAdd if pointer_lhs.is_some() => {
@@ -936,7 +928,7 @@ impl<'c> Translation<'c> {
 
                 // *p = *p + rhs
                 let assign_stmt = if ty.qualifiers.is_volatile {
-                    self.volatile_write(&write, ty, val)?
+                    self.volatile_write(write, ty, val)?
                 } else {
                     mk().assign_expr(&write, val)
                 };
@@ -1055,7 +1047,7 @@ impl<'c> Translation<'c> {
                                     // If the type on the other side of the pointer we are dereferencing is volatile and
                                     // this whole expression is not an LValue, we should make this a volatile read
                                     if lrvalue.is_rvalue() && cqual_type.qualifiers.is_volatile {
-                                        val = self.volatile_read(&val, cqual_type)?
+                                        val = self.volatile_read(val, cqual_type)?
                                     }
                                     Ok(val)
                                 }

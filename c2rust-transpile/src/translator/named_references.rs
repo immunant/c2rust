@@ -5,10 +5,10 @@
 use super::*;
 
 /// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
-fn is_lvalue(e: &Box<Expr>) -> bool {
+fn is_lvalue(e: &Expr) -> bool {
     use Expr::*;
     matches!(
-        unparen(e).as_ref(),
+        unparen(e),
         Unary(ExprUnary {
             op: syn::UnOp::Deref(_),
             ..
@@ -19,9 +19,9 @@ fn is_lvalue(e: &Box<Expr>) -> bool {
 }
 
 /// Check if something is a side-effect free Rust lvalue.
-fn is_simple_lvalue(e: &Box<Expr>) -> bool {
+fn is_simple_lvalue(e: &Expr) -> bool {
     use Expr::*;
-    match **unparen(e) {
+    match *unparen(e) {
         Path(..) => true,
         Unary(ExprUnary {
             op: syn::UnOp::Deref(_),
@@ -81,7 +81,7 @@ impl<'c> Translation<'c> {
     /// Given the LHS access to a variable, produce the RHS one
     fn read(&self, reference_ty: CQualTypeId, write: Box<Expr>) -> TranslationResult<Box<Expr>> {
         if reference_ty.qualifiers.is_volatile {
-            self.volatile_read(&write, reference_ty)
+            self.volatile_read(write, reference_ty)
         } else {
             Ok(write)
         }

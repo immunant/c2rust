@@ -1,0 +1,22 @@
+[package]
+name = "c2rust-pdg"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bincode = "1.0.1"
+c2rust-analysis-rt = { path = "../analysis/runtime"}
+indexed_vec = "1.2.1"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+env_logger = "0.9"
+color-eyre = "0.6"
+fs-err = "2"
+itertools = "0.10"
+linked_hash_set = "0.1"
+
+[build-dependencies]
+color-eyre = "0.6"
+
+[package.metadata.rust-analyzer] 
+rustc_private = true

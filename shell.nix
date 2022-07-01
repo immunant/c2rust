@@ -11,7 +11,7 @@ stdenv.mkDerivation {
     pkgs.llvm
     pkgs.openssl
     pkgs.pkgconfig
-    pkgs.python35
+    pkgs.python3
     pkgs.rustup
     pkgs.zlib
   ];

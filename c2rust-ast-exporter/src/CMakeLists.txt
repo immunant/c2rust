@@ -19,7 +19,7 @@ ExternalProject_Add(tinycbor_build
             # patch from upstream:
             # https://github.com/intel/tinycbor/commit/6176e0a28d7c5ef3a5e9cbd02521999c412de72c
             PATCH_COMMAND patch --forward -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/tinycbor_fix_build.patch || true
-            CONFIGURE_COMMAND ""
+            CONFIGURE_COMMAND make .config && cat ${CMAKE_CURRENT_SOURCE_DIR}/tinycbor.config >> .config
             BUILD_COMMAND make --quiet prefix=<INSTALL_DIR> CFLAGS=-fPIC
             INSTALL_COMMAND make --quiet prefix=<INSTALL_DIR> install            
             BUILD_IN_SOURCE 1
