@@ -11,8 +11,12 @@ fn main() {
 
     let llvm_info = LLVMInfo::new();
 
-    // Build the exporter library and link it (and its dependencies)
-    build_native(&llvm_info);
+    if env::var("DOCS_RS").is_err() {
+        // Build the exporter library and link it (and its dependencies)
+        // But only when not in `docs.rs`, as it has no network access
+        // and will try to download `tinycbor` and fail.
+        build_native(&llvm_info);
+    }
 
     // Generate ast_tags and ExportResult bindings
     if let Err(e) = generate_bindings() {
@@ -111,11 +115,6 @@ fn generate_bindings() -> Result<(), &'static str> {
 ///   - if `opt-level=0`                              then `CMAKE_BUILD_TYPE=Debug`
 ///   - if `opt-level={1,2,3}` and not `debug=false`, then `CMAKE_BUILD_TYPE=RelWithDebInfo`
 fn build_native(llvm_info: &LLVMInfo) {
-    if env::var("DOCS_RS").is_ok() {
-        // Don't build `cmake` things because it downloads `tinycbor`,
-        // and docs.rs has no network access
-        return;
-    }
     // Find where the (already built) LLVM lib dir is
     let llvm_lib_dir = &llvm_info.lib_dir;
 
