@@ -119,6 +119,12 @@ fn build_native(llvm_info: &LLVMInfo) {
             println!("cargo:rustc-link-search=native={}", libdir);
         }
         _ => {
+            if env::var("DOCS_RS").is_ok() {
+                // Don't build `cmake` things because it downloads `tinycbor`, 
+                // and docs.rs has no network access
+                return;
+            }
+
             // Build libclangAstExporter.a with cmake
             let dst = Config::new("src")
                 // Where to find LLVM/Clang CMake files
