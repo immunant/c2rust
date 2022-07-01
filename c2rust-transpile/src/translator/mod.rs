@@ -1184,7 +1184,6 @@ pub enum ConvertedDecl {
     NoItem,
 }
 
-#[derive(Debug)]
 struct ConvertedVariable {
     pub ty: Box<Type>,
     pub mutbl: Mutability,

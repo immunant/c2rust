@@ -34,7 +34,6 @@ fn is_simple_lvalue(e: &Expr) -> bool {
     }
 }
 
-#[derive(Debug)]
 pub struct NamedReference<R> {
     pub lvalue: Box<Expr>,
     pub rvalue: R,
