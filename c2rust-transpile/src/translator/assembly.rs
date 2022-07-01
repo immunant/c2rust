@@ -1018,8 +1018,7 @@ impl<'c> Translation<'c> {
         }
 
         self.with_cur_file_item_store(|item_store| {
-            let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
-            item_store.add_use(vec![std_or_core, "arch".into()], "asm");
+            item_store.add_use(vec![self.std_or_core().into(), "arch".into()], "asm");
         });
 
         let mac = mk().mac(
