@@ -281,7 +281,11 @@ pub struct Translation<'c> {
 }
 
 pub fn std_or_core(emit_no_std: bool) -> &'static str {
-    if emit_no_std { "core" } else { "std" }
+    if emit_no_std {
+        "core"
+    } else {
+        "std"
+    }
 }
 
 impl Translation<'_> {
@@ -368,7 +372,10 @@ fn transmute_expr(
         (Type::Infer(_), Type::Infer(_)) => Vec::new(),
         _ => vec![source_ty, target_ty],
     };
-    let mut path = vec![mk().path_segment(std_or_core(no_std)), mk().path_segment("mem")];
+    let mut path = vec![
+        mk().path_segment(std_or_core(no_std)),
+        mk().path_segment("mem"),
+    ];
 
     if type_args.is_empty() {
         path.push(mk().path_segment("transmute"));
@@ -2967,11 +2974,7 @@ impl<'c> Translation<'c> {
             Mutability::Mutable
         };
 
-        Ok(ConvertedVariable {
-            ty,
-            mutbl,
-            init,
-        })
+        Ok(ConvertedVariable { ty, mutbl, init })
     }
 
     fn convert_type(&self, type_id: CTypeId) -> TranslationResult<Box<Type>> {

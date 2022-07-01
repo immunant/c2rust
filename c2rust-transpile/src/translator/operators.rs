@@ -428,7 +428,8 @@ impl<'c> Translation<'c> {
             self.name_reference_write_read(ctx, lhs)?
         } else {
             self.name_reference_write(ctx, lhs)?.map(|named_ref| {
-                named_ref.map_rvalue(|()| self.panic_or_err("Volatile value is not supposed to be read"))
+                named_ref
+                    .map_rvalue(|()| self.panic_or_err("Volatile value is not supposed to be read"))
             })
         };
 
