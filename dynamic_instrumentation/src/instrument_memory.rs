@@ -530,10 +530,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         // For mutable borrows (let _n = &mut place), create a parallel binding that takes
                         // a raw pointer to the same place, without involving _n
 
-                        // We do not increment the statement index because we want to take a raw ptr
-                        // prior to the existing stmt that takes a mutable pointer
-                        //location.statement_index += 1;
-
                         // Remove outer deref if present, so we turn `&mut *x` into `addr_of!(x)` rather
                         // than `addr_of!(*x)`
                         let arg = match p.iter_projections().last() {
@@ -544,6 +540,11 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                             },
                             _ => Operand::Copy(p.clone()),
                         };
+
+                        // We do not increment the statement index because we want to take a raw ptr
+                        // prior to the existing stmt that takes a mutable pointer
+                        // location.statement_index += 1;
+
                         // Instrument mutable borrows by addr_of! on the place to be borrowed
                         InstrumentationOperand::Place(arg)
                     } else {
