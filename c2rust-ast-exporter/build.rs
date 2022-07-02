@@ -11,8 +11,12 @@ fn main() {
 
     let llvm_info = LLVMInfo::new();
 
-    // Build the exporter library and link it (and its dependencies)
-    build_native(&llvm_info);
+    if env::var("DOCS_RS").is_err() {
+        // Build the exporter library and link it (and its dependencies)
+        // But only when not in `docs.rs`, as it has no network access
+        // and will try to download `tinycbor` and fail.
+        build_native(&llvm_info);
+    }
 
     // Generate ast_tags and ExportResult bindings
     if let Err(e) = generate_bindings() {
