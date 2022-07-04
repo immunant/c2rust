@@ -132,6 +132,12 @@ pub const RESERVED_NAMES: [&str; 103] = [
 ];
 
 impl TypeConverter {
+    // We don't provide a `Default` impl to simplify future compatibility:
+    // if `TypeConverter` ever gets fields incompatible with `Default`, then
+    // cleaning out the uses of `impl Default for TypeConverter` can be a pain.
+    // More practically, there is a single use of `TypeConverter::new` and no
+    // current plans to use a `Default` impl, so providing it isn't worth the
+    // potential breakage.
     #[allow(clippy::new_without_default)]
     pub fn new() -> TypeConverter {
         TypeConverter {
