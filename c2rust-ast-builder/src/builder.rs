@@ -7,6 +7,42 @@ use std::default::Default;
 use std::iter::FromIterator;
 use syn::{__private::ToTokens, punctuated::Punctuated, *};
 
+/// Produces an item corresponding to the provided path.
+///
+/// This macro can output any type `T` which has `impl Make<T> for Path`.
+/// In particular, it can produce types and expressions which correspond
+/// to the given path. The path may be both relative and absolute. The
+/// `crate`, `self` and `super` path specifiers are also supported.
+///
+/// The macro cannot produce qualified paths, e.g. any paths with generic
+/// parameters, or paths which start with a `<Type as Trait>` construct.
+///
+/// At the moment, the path must be written literally. Variable interpolation
+/// is not supported.
+///
+/// # Example
+///
+/// ```rust
+/// # use c2rust_ast_builder::{syn, path};
+/// let p: syn::Path = path![::core::ptr::null_mut];
+/// let e: Box<syn::Expr> = path![Vec::new];
+/// let t: syn::Type = path![::libc::c_char];
+/// ```
+#[macro_export]
+macro_rules! path {
+    (:: $($seg: ident)::+) => {{
+        let path = $crate::syn::Path {
+            leading_colon: Some(Default::default()),
+            ..path!( $($seg)::+ )
+        };
+        $crate::Make::make(path, &$crate::mk())
+    }};
+
+    ($($seg: ident)::+) => {
+        $crate::Make::make([ $( stringify!($seg) ),+ ], &$crate::mk())
+    };
+}
+
 /// a MetaItem that has already been turned into tokens in preparation for being added as an attribute
 pub struct PreparedMetaItem {
     pub path: Path,
@@ -200,13 +236,6 @@ impl<L: Make<Ident>> Make<Label> for L {
     }
 }
 
-impl<'a> Make<Path> for &'a str {
-    fn make(self, mk: &Builder) -> Path {
-        let v = vec![self];
-        Make::<Path>::make(v, mk)
-    }
-}
-
 impl<'a> Make<Visibility> for &'a str {
     fn make(self, mk_: &Builder) -> Visibility {
         let kind = match self {
@@ -316,22 +345,87 @@ impl<I: Make<Ident>> Make<PathSegment> for I {
     }
 }
 
-impl<S: Make<PathSegment>> Make<Path> for Vec<S> {
+impl<'a> Make<Path> for &'a str {
     fn make(self, mk: &Builder) -> Path {
-        let mut segments = Punctuated::new();
-        for s in self {
-            let segment = s.make(mk);
-            let has_params = !segment.arguments.is_empty();
-            segments.push(segment);
-            // separate params from their segment with ::
-            if has_params {
-                segments.push_punct(Default::default());
-            }
+        let v = vec![self];
+        Make::<Path>::make(v, mk)
+    }
+}
+
+impl<S> Make<Path> for Vec<S>
+where
+    S: Make<PathSegment>,
+{
+    fn make(self, mk: &Builder) -> Path {
+        path_from_iter(mk, self)
+    }
+}
+
+impl<S> Make<Path> for &[S]
+where
+    for<'a> &'a S: Make<PathSegment>,
+{
+    fn make(self, mk: &Builder) -> Path {
+        path_from_iter(mk, self)
+    }
+}
+
+impl<S, const N: usize> Make<Path> for [S; N]
+where
+    S: Make<PathSegment>,
+{
+    fn make(self, mk: &Builder) -> Path {
+        path_from_iter(mk, self)
+    }
+}
+
+fn path_from_iter<S>(mk: &Builder, it: impl IntoIterator<Item = S>) -> Path
+where
+    S: Make<PathSegment>,
+{
+    let mut segments = Punctuated::new();
+    for s in it {
+        let segment = s.make(mk);
+        let has_params = !segment.arguments.is_empty();
+        segments.push(segment);
+        // separate params from their segment with ::
+        if has_params {
+            segments.push_punct(Default::default());
         }
-        Path {
-            leading_colon: None,
-            segments,
-        }
+    }
+    Path {
+        leading_colon: None,
+        segments,
+    }
+}
+
+impl<T: Make<Path>> Make<Box<Path>> for T {
+    fn make(self, mk: &Builder) -> Box<Path> {
+        Box::new(self.make(mk))
+    }
+}
+
+impl<T: Make<Path>> Make<Box<Expr>> for T {
+    fn make(self, mk: &Builder) -> Box<Expr> {
+        mk.clone().path_expr(self)
+    }
+}
+
+impl<T: Make<Path>> Make<Box<Type>> for T {
+    fn make(self, mk: &Builder) -> Box<Type> {
+        mk.clone().path_ty(self)
+    }
+}
+
+impl<T: Make<Path>> Make<Expr> for T {
+    fn make(self, mk: &Builder) -> Expr {
+        *mk.clone().path_expr(self)
+    }
+}
+
+impl<T: Make<Path>> Make<Type> for T {
+    fn make(self, mk: &Builder) -> Type {
+        *mk.clone().path_ty(self)
     }
 }
 
@@ -440,16 +534,6 @@ impl Make<Signature> for Box<FnDecl> {
 
 pub trait LitStringable {
     fn lit_string(self, _: &Builder) -> String;
-}
-
-impl<T> LitStringable for T
-where
-    T: Make<Type>,
-{
-    fn lit_string(self, b: &Builder) -> String {
-        let ty: Type = self.make(b);
-        ty.to_token_stream().to_string()
-    }
 }
 
 impl LitStringable for &str {
