@@ -113,15 +113,6 @@ impl<T: Display> Display for Duplicates<T> {
     }
 }
 
-impl<T: Debug + Eq + Hash> Duplicates<T> {
-    pub fn assert_empty_debug(&self) {
-        if self.is_empty() {
-            return;
-        }
-        panic!("unexpected duplicates: {:?}", self);
-    }
-}
-
 impl<T: Display + Eq + Hash> Duplicates<T> {
     pub fn assert_empty(&self) {
         if self.is_empty() {

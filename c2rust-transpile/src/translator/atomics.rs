@@ -96,8 +96,7 @@ impl<'c> Translation<'c> {
 
                 self.use_feature("core_intrinsics");
 
-                let atomic_load =
-                    mk().abs_path_expr(vec![self.std_or_core(), "intrinsics", intrinsic_name]);
+                let atomic_load = mk().abs_path_expr(vec!["core", "intrinsics", intrinsic_name]);
                 let call = mk().call_expr(atomic_load, vec![ptr]);
                 if name == "__atomic_load" {
                     let ret = val1.expect("__atomic_load should have a ret argument");
@@ -144,11 +143,8 @@ impl<'c> Translation<'c> {
 
                         self.use_feature("core_intrinsics");
 
-                        let atomic_store = mk().abs_path_expr(vec![
-                            self.std_or_core(),
-                            "intrinsics",
-                            intrinsic_name,
-                        ]);
+                        let atomic_store =
+                            mk().abs_path_expr(vec!["core", "intrinsics", intrinsic_name]);
                         let val = if name == "__atomic_store" {
                             mk().unary_expr(UnOp::Deref(Default::default()), val)
                         } else {
@@ -187,11 +183,8 @@ impl<'c> Translation<'c> {
 
                         self.use_feature("core_intrinsics");
 
-                        let fn_path = mk().abs_path_expr(vec![
-                            self.std_or_core(),
-                            "intrinsics",
-                            intrinsic_name,
-                        ]);
+                        let fn_path =
+                            mk().abs_path_expr(vec!["core", "intrinsics", intrinsic_name]);
                         let val = if name == "__atomic_exchange" {
                             mk().unary_expr(UnOp::Deref(Default::default()), val)
                         } else {
@@ -276,11 +269,8 @@ impl<'c> Translation<'c> {
                                 mk().unary_expr(UnOp::Deref(Default::default()), desired)
                             };
 
-                            let atomic_cxchg = mk().abs_path_expr(vec![
-                                self.std_or_core(),
-                                "intrinsics",
-                                &intrinsic_name,
-                            ]);
+                            let atomic_cxchg =
+                                mk().abs_path_expr(vec!["core", "intrinsics", &intrinsic_name]);
                             let call =
                                 mk().call_expr(atomic_cxchg, vec![ptr, expected.clone(), desired]);
                             let res_name = self.renamer.borrow_mut().fresh();
@@ -366,8 +356,7 @@ impl<'c> Translation<'c> {
         self.use_feature("core_intrinsics");
 
         // Emit `atomic_cxchg(a0, a1, a2).idx`
-        let atomic_cxchg =
-            mk().abs_path_expr(vec![self.std_or_core(), "intrinsics", intrinsic_name]);
+        let atomic_cxchg = mk().abs_path_expr(vec!["core", "intrinsics", intrinsic_name]);
         let call = mk().call_expr(atomic_cxchg, vec![dst, old_val, src_val]);
         let field_idx = if returns_val { 0 } else { 1 };
         let call_expr = mk().anon_field_expr(call, field_idx);
@@ -389,7 +378,7 @@ impl<'c> Translation<'c> {
         self.use_feature("core_intrinsics");
 
         // Emit `atomic_func(a0, a1) (op a1)?`
-        let atomic_func = mk().abs_path_expr(vec![self.std_or_core(), "intrinsics", func_name]);
+        let atomic_func = mk().abs_path_expr(vec!["core", "intrinsics", func_name]);
 
         if fetch_first {
             let call_expr = mk().call_expr(atomic_func, vec![dst, src]);
