@@ -174,7 +174,7 @@ impl<'c> Translation<'c> {
             "__builtin_bzero" => {
                 let ptr_stmts = self.convert_expr(ctx.used(), args[0])?;
                 let n_stmts = self.convert_expr(ctx.used(), args[1])?;
-                let write_bytes = mk().abs_path_expr(vec!["std", "ptr", "write_bytes"]);
+                let write_bytes = mk().abs_path_expr(vec!["core", "ptr", "write_bytes"]);
                 let zero = mk().lit_expr(mk().int_lit(0, "u8"));
                 ptr_stmts.and_then(|ptr| {
                     Ok(n_stmts.map(|n| mk().call_expr(write_bytes, vec![ptr, zero, n])))
