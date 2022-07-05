@@ -183,7 +183,7 @@ fn make_cast<'a, 'tcx>(
     }
 
     if needs_transmute {
-        mk().call_expr(mk().path_expr(vec!["", "std", "mem", "transmute"]), vec![expr])
+        mk().call_expr(mk().path_expr(vec!["", "core", "mem", "transmute"]), vec![expr])
     } else {
         let expr = if let ExprKind::AddrOf(_, mutability, _) = expr.kind {
             // We have to cast to *T where &T is the type of expr before casting
