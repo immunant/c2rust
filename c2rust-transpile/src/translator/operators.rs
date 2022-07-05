@@ -261,7 +261,7 @@ impl<'c> Translation<'c> {
             let lhs = if *resolved_computed_kind == CTypeKind::LongDouble {
                 self.use_crate(ExternCrate::F128);
 
-                let fn_path = mk().path_expr(vec!["f128", "f128", "from"]);
+                let fn_path = path![::f128::f128::from];
                 let args = vec![read];
 
                 mk().call_expr(fn_path, args)
@@ -818,7 +818,7 @@ impl<'c> Translation<'c> {
             CTypeKind::LongDouble => {
                 self.use_crate(ExternCrate::F128);
 
-                let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
+                let fn_path = path![::f128::f128::new];
                 let args = vec![mk().lit_expr(mk().float_unsuffixed_lit("1."))];
 
                 mk().call_expr(fn_path, args)
@@ -883,10 +883,10 @@ impl<'c> Translation<'c> {
                     CTypeKind::LongDouble => {
                         self.use_crate(ExternCrate::F128);
 
-                        let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
-                        let args = vec![mk().lit_expr(mk().float_unsuffixed_lit("1."))];
-
-                        mk().call_expr(fn_path, args)
+                        mk().call_expr(
+                            path![::f128::f128::new],
+                            vec![mk().lit_expr(mk().float_unsuffixed_lit("1."))],
+                        )
                     }
                     _ => mk().lit_expr(mk().int_unsuffixed_lit(1)),
                 };
@@ -1078,7 +1078,7 @@ impl<'c> Translation<'c> {
 
             c_ast::UnOp::Not => {
                 let val = self.convert_condition(ctx, false, arg)?;
-                Ok(val.map(|x| mk().cast_expr(x, mk().path_ty(vec!["libc", "c_int"]))))
+                Ok(val.map(|x| mk().cast_expr(x, path![::libc::c_int])))
             }
             c_ast::UnOp::Extension => {
                 let arg = self.convert_expr(ctx, arg)?;

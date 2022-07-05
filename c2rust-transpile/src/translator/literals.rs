@@ -85,11 +85,7 @@ impl<'c> Translation<'c> {
             CLiteral::Character(val) => {
                 let val = val as u32;
                 let expr = match char::from_u32(val) {
-                    Some(c) => {
-                        let expr = mk().lit_expr(c);
-                        let i32_type = mk().path_ty(vec!["i32"]);
-                        mk().cast_expr(expr, i32_type)
-                    }
+                    Some(c) => mk().cast_expr(mk().lit_expr(c), path![i32]),
                     None => {
                         // Fallback for characters outside of the valid Unicode range
                         if (val as i32) < 0 {
@@ -116,7 +112,7 @@ impl<'c> Translation<'c> {
                     CTypeKind::LongDouble => {
                         self.use_crate(ExternCrate::F128);
 
-                        let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
+                        let fn_path: Box<Expr> = path![::f128::f128::new];
                         let args = vec![mk().lit_expr(mk().float_unsuffixed_lit(&str))];
 
                         mk().call_expr(fn_path, args)

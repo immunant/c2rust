@@ -175,7 +175,7 @@ impl<'c> Translation<'c> {
                 })
             {
                 real_arg_ty = Some(arg_ty.clone());
-                arg_ty = mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_void"]));
+                arg_ty = mk().mutbl().ptr_ty(path![::libc::c_void]);
             }
 
             val.and_then(|val| {

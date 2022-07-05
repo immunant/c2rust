@@ -270,9 +270,7 @@ impl TypeConverter {
         match ctxt.resolve_type(qtype.ctype).kind {
             // While void converts to () in function returns, it converts to c_void
             // in the case of pointers.
-            CTypeKind::Void => Ok(mk()
-                .set_mutbl(mutbl)
-                .ptr_ty(mk().path_ty(vec!["libc", "c_void"]))),
+            CTypeKind::Void => Ok(mk().set_mutbl(mutbl).ptr_ty(path![::libc::c_void])),
 
             CTypeKind::VariableArray(mut elt, _len) => {
                 while let CTypeKind::VariableArray(elt_, _) = ctxt.resolve_type(elt).kind {

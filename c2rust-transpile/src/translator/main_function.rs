@@ -57,30 +57,20 @@ impl<'c> Translation<'c> {
                     mk().mutbl().ident_pat("args"),
                     Some(mk().path_ty([mk().path_segment_with_args(
                         "Vec",
-                        mk().angle_bracketed_args(vec![
-                            mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_char"])),
-                        ]),
+                        mk().angle_bracketed_args(vec![mk().mutbl().ptr_ty(path![::libc::c_char])]),
                     )])),
-                    Some(
-                        mk().call_expr(
-                            mk().path_expr(vec!["Vec", "new"]),
-                            vec![] as Vec<Box<Expr>>,
-                        ),
-                    ),
+                    Some(mk().call_expr(path![Vec::new], vec![])),
                 ))));
                 stmts.push(mk().semi_stmt(mk().for_expr(
                     mk().ident_pat("arg"),
                     mk().call_expr(args_fn, vec![]),
                     mk().block(vec![mk().semi_stmt(mk().method_call_expr(
-                        mk().path_expr(vec!["args"]),
+                        path![args],
                         "push",
                         vec![mk().method_call_expr(
                             mk().method_call_expr(
-                                mk().call_expr(
-                                    // TODO(kkysen) change `"std"` to `"alloc"` after `#![feature(alloc_c_string)]` is stabilized in `1.63.0`
-                                    mk().abs_path_expr(vec!["std", "ffi", "CString", "new"]),
-                                    vec![mk().path_expr(vec!["arg"])],
-                                ),
+                                // TODO(kkysen) change `"std"` to `"alloc"` after `#![feature(alloc_c_string)]` is stabilized in `1.63.0`
+                                mk().call_expr(path![::std::ffi::CString::new], vec![path![arg]]),
                                 "expect",
                                 vec![mk().lit_expr("Failed to convert argument into CString.")],
                             ),
@@ -91,12 +81,9 @@ impl<'c> Translation<'c> {
                     None as Option<Ident>,
                 )));
                 stmts.push(mk().semi_stmt(mk().method_call_expr(
-                    mk().path_expr(vec!["args"]),
+                    path![args],
                     "push",
-                    vec![mk().call_expr(
-                        mk().abs_path_expr(vec!["core", "ptr", "null_mut"]),
-                        vec![] as Vec<Box<Expr>>,
-                    )],
+                    vec![mk().call_expr(path![::core::ptr::null_mut], vec![])],
                 )));
 
                 let argc_ty: Box<Type> = match self.ast_context.index(parameters[0]).kind {
@@ -131,16 +118,9 @@ impl<'c> Translation<'c> {
                     mk().mutbl().ident_pat("vars"),
                     Some(mk().path_ty([mk().path_segment_with_args(
                         "Vec",
-                        mk().angle_bracketed_args(vec![
-                            mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_char"])),
-                        ]),
+                        mk().angle_bracketed_args(vec![mk().mutbl().ptr_ty(path![::libc::c_char])]),
                     )])),
-                    Some(
-                        mk().call_expr(
-                            mk().path_expr(vec!["Vec", "new"]),
-                            vec![] as Vec<Box<Expr>>,
-                        ),
-                    ),
+                    Some(mk().call_expr(path![Vec::new], vec![])),
                 ))));
                 let var_name_ident = mk().ident("var_name");
                 let var_value_ident = mk().ident("var_value");
@@ -154,7 +134,7 @@ impl<'c> Translation<'c> {
                                 mk().local_stmt(Box::new(
                                     mk().local(
                                         mk().ident_pat("var"),
-                                        Some(mk().path_ty(vec!["String"])),
+                                        Some(path![String]),
                                         Some(
                                             mk().mac_expr(
                                                 mk().mac(
@@ -183,16 +163,14 @@ impl<'c> Translation<'c> {
                                     ),
                                 )),
                                 mk().semi_stmt(mk().method_call_expr(
-                                    mk().path_expr(vec!["vars"]),
+                                    path![vars],
                                     "push",
                                     vec![mk().method_call_expr(
                                         mk().method_call_expr(
                                             mk().call_expr(
-                                                mk().abs_path_expr(vec![
-                                                    // TODO(kkysen) change `"std"` to `"alloc"` after `#![feature(alloc_c_string)]` is stabilized in `1.63.0`
-                                                    "std", "ffi", "CString", "new",
-                                                ]),
-                                                vec![mk().path_expr(vec!["var"])],
+                                                // TODO(kkysen) change `"std"` to `"alloc"` after `#![feature(alloc_c_string)]` is stabilized in `1.63.0`
+                                                path![::std::ffi::CString::new],
+                                                vec![path![var]],
                                             ),
                                             "expect",
                                             vec![mk().lit_expr(
@@ -207,12 +185,9 @@ impl<'c> Translation<'c> {
                     None as Option<Ident>,
                 )));
                 stmts.push(mk().semi_stmt(mk().method_call_expr(
-                    mk().path_expr(vec!["vars"]),
+                    path![vars],
                     "push",
-                    vec![mk().call_expr(
-                        mk().abs_path_expr(vec!["core", "ptr", "null_mut"]),
-                        vec![] as Vec<Box<Expr>>,
-                    )],
+                    vec![mk().call_expr(path![::core::ptr::null_mut], vec![])],
                 )));
 
                 let envp_ty: Box<Type> = match self.ast_context.index(parameters[2]).kind {
@@ -247,10 +222,7 @@ impl<'c> Translation<'c> {
 
                 stmts.push(mk().semi_stmt(call_exit));
             } else {
-                let call_main = mk().cast_expr(
-                    mk().call_expr(main_fn, main_args),
-                    mk().path_ty(vec!["i32"]),
-                );
+                let call_main = mk().cast_expr(mk().call_expr(main_fn, main_args), path![i32]);
 
                 let call_exit = mk().call_expr(exit_fn, vec![call_main]);
                 let unsafe_block = mk().unsafe_block(vec![mk().expr_stmt(call_exit)]);

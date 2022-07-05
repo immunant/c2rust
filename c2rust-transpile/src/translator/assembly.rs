@@ -893,16 +893,20 @@ impl<'c> Translation<'c> {
 
                     // Replace `in_expr` with
                     // `c2rust_asm_casts::AsmCast::cast_in(output, input)`
-                    let path_expr = mk().path_expr(vec!["c2rust_asm_casts", "AsmCast", "cast_in"]);
                     let output = mk().ident_expr(output_name);
                     let input = mk().ident_expr(input_name);
-                    in_expr = mk().call_expr(path_expr, vec![output.clone(), input.clone()]);
+                    in_expr = mk().call_expr(
+                        path![::c2rust_asm_casts::AsmCast::cast_in],
+                        vec![output.clone(), input.clone()],
+                    );
 
                     // Append the cast-out call after the assembly macro:
                     // `c2rust_asm_casts::AsmCast::cast_out(output, input, inner);`
-                    let path_expr = mk().path_expr(vec!["c2rust_asm_casts", "AsmCast", "cast_out"]);
                     let inner = mk().ident_expr(inner_name);
-                    let cast_out = mk().call_expr(path_expr, vec![output, input, inner]);
+                    let cast_out = mk().call_expr(
+                        path![::c2rust_asm_casts::AsmCast::cast_out],
+                        vec![output, input, inner],
+                    );
                     post_stmts.push(mk().semi_stmt(cast_out));
                 }
                 Some(in_expr)
