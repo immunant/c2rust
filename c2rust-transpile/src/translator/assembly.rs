@@ -850,18 +850,14 @@ impl<'c> Translation<'c> {
                     let output_name = self.renamer.borrow_mut().fresh();
                     let output_local = mk().local(
                         mk().ident_pat(&output_name),
-                        None as Option<Box<Type>>,
+                        None,
                         Some(mk().mutbl().addr_of_expr(out_expr)),
                     );
                     stmts.push(mk().local_stmt(Box::new(output_local)));
 
                     // `let mut freshN;`
                     let inner_name = self.renamer.borrow_mut().fresh();
-                    let inner_local = mk().local(
-                        mk().ident_pat(&inner_name),
-                        None as Option<Box<Type>>,
-                        None as Option<Box<Expr>>,
-                    );
+                    let inner_local = mk().local(mk().ident_pat(&inner_name), None, None);
                     stmts.push(mk().local_stmt(Box::new(inner_local)));
 
                     out_expr = mk().ident_expr(&inner_name);
@@ -892,11 +888,7 @@ impl<'c> Translation<'c> {
                     let (output_name, inner_name) = operand_renames.get(tied_operand).unwrap();
 
                     let input_name = self.renamer.borrow_mut().fresh();
-                    let input_local = mk().local(
-                        mk().ident_pat(&input_name),
-                        None as Option<Box<Type>>,
-                        Some(in_expr),
-                    );
+                    let input_local = mk().local(mk().ident_pat(&input_name), None, Some(in_expr));
                     stmts.push(mk().local_stmt(Box::new(input_local)));
 
                     // Replace `in_expr` with

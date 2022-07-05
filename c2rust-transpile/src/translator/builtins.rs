@@ -60,8 +60,7 @@ impl<'c> Translation<'c> {
                 let val = self.convert_expr(ctx.used(), args[0])?;
 
                 Ok(val.map(|v| {
-                    let val =
-                        mk().method_call_expr(v, "is_sign_negative", vec![] as Vec<Box<Expr>>);
+                    let val = mk().method_call_expr(v, "is_sign_negative", vec![]);
 
                     mk().cast_expr(val, mk().path_ty(vec!["libc", "c_int"]))
                 }))
@@ -104,11 +103,11 @@ impl<'c> Translation<'c> {
             }
             "__builtin_bswap16" | "__builtin_bswap32" | "__builtin_bswap64" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
-                Ok(val.map(|x| mk().method_call_expr(x, "swap_bytes", vec![] as Vec<Box<Expr>>)))
+                Ok(val.map(|x| mk().method_call_expr(x, "swap_bytes", vec![])))
             }
             "__builtin_fabs" | "__builtin_fabsf" | "__builtin_fabsl" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
-                Ok(val.map(|x| mk().method_call_expr(x, "abs", vec![] as Vec<Box<Expr>>)))
+                Ok(val.map(|x| mk().method_call_expr(x, "abs", vec![])))
             }
             "__builtin_isfinite" | "__builtin_isnan" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
@@ -127,11 +126,7 @@ impl<'c> Translation<'c> {
                 // isinf_sign(x) -> fabs(x) == infinity ? (signbit(x) ? -1 : 1) : 0
                 let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| {
-                    let inner_cond = mk().method_call_expr(
-                        x.clone(),
-                        "is_sign_positive",
-                        vec![] as Vec<Box<Expr>>,
-                    );
+                    let inner_cond = mk().method_call_expr(x.clone(), "is_sign_positive", vec![]);
                     let one = mk().lit_expr(mk().int_lit(1, ""));
                     let minus_one = mk().unary_expr(
                         UnOp::Neg(Default::default()),
@@ -140,8 +135,7 @@ impl<'c> Translation<'c> {
                     let one_block = mk().block(vec![mk().expr_stmt(one)]);
                     let inner_ifte = mk().ifte_expr(inner_cond, one_block, Some(minus_one));
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
-                    let outer_cond =
-                        mk().method_call_expr(x, "is_infinite", vec![] as Vec<Box<Expr>>);
+                    let outer_cond = mk().method_call_expr(x, "is_infinite", vec![]);
                     let inner_ifte_block = mk().block(vec![mk().expr_stmt(inner_ifte)]);
                     mk().ifte_expr(outer_cond, inner_ifte_block, Some(zero))
                 }))
@@ -262,11 +256,8 @@ impl<'c> Translation<'c> {
                             let fn_ctx = self.function_context.borrow();
                             let src = fn_ctx.get_va_list_arg_name();
 
-                            let call_expr = mk().method_call_expr(
-                                mk().ident_expr(src),
-                                "clone",
-                                vec![] as Vec<Box<Expr>>,
-                            );
+                            let call_expr =
+                                mk().method_call_expr(mk().ident_expr(src), "clone", vec![]);
                             let assign_expr = mk().assign_expr(dst.to_expr(), call_expr);
                             let stmt = mk().semi_stmt(assign_expr);
 
@@ -285,8 +276,7 @@ impl<'c> Translation<'c> {
                         let dst = self.convert_expr(ctx.expect_valistimpl().used(), args[0])?;
                         let src = self.convert_expr(ctx.expect_valistimpl().used(), args[1])?;
 
-                        let call_expr =
-                            mk().method_call_expr(src.to_expr(), "clone", vec![] as Vec<Box<Expr>>);
+                        let call_expr = mk().method_call_expr(src.to_expr(), "clone", vec![]);
                         let assign_expr = mk().assign_expr(dst.to_expr(), call_expr);
                         let stmt = mk().semi_stmt(assign_expr);
 
@@ -316,14 +306,10 @@ impl<'c> Translation<'c> {
                     Ok(WithStmts::new(
                         vec![mk().local_stmt(Box::new(mk().local(
                             mk().mutbl().ident_pat(&alloca_name),
-                            None as Option<Box<Type>>,
+                            None,
                             Some(vec_expr(zero_elem, cast_int(count, "usize", false))),
                         )))],
-                        mk().method_call_expr(
-                            mk().ident_expr(&alloca_name),
-                            "as_mut_ptr",
-                            vec![] as Vec<Box<Expr>>,
-                        ),
+                        mk().method_call_expr(mk().ident_expr(&alloca_name), "as_mut_ptr", vec![]),
                     ))
                 })
             }
@@ -654,7 +640,7 @@ impl<'c> Translation<'c> {
                     mk().ident_pat(&sum_name),
                     mk().ident_pat(over_name.clone()),
                 ]),
-                None as Option<Box<Type>>,
+                None,
                 Some(overflowing),
             )));
 

@@ -127,7 +127,7 @@ impl<'c> Translation<'c> {
                 // let ref mut p = lhs;
                 let compute_ref = mk().local_stmt(Box::new(mk().local(
                     mk().mutbl().ident_ref_pat(&ptr_name),
-                    None as Option<Box<Type>>,
+                    None,
                     Some(reference),
                 )));
 

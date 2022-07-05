@@ -365,8 +365,7 @@ fn transmute_expr(source_ty: Box<Type>, target_ty: Box<Type>, expr: Box<Expr>) -
 }
 
 fn vec_expr(val: Box<Expr>, count: Box<Expr>) -> Box<Expr> {
-    let from_elem = mk().abs_path_expr(vec!["std", "vec", "from_elem"]);
-    mk().call_expr(from_elem, vec![val, count])
+    mk().call_expr(path![::std::vec::from_elem], vec![val, count])
 }
 
 pub fn stmts_block(mut stmts: Vec<Stmt>) -> Box<Block> {
@@ -1084,7 +1083,7 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
 
 /// Convert a boolean expression to a c_int
 fn bool_to_int(val: Box<Expr>) -> Box<Expr> {
-    mk().cast_expr(val, mk().path_ty(vec!["libc", "c_int"]))
+    mk().cast_expr(val, path![::libc::c_int])
 }
 
 /// Add a src_loc = "line:col" attribute to an item/foreign_item
@@ -1328,12 +1327,16 @@ impl<'c> Translation<'c> {
     }
 
     fn panic_or_err_helper(&self, msg: &str, panic: bool) -> Box<Expr> {
-        let macro_name = if panic { "panic" } else { "compile_error" };
+        let macro_name = if panic {
+            path![panic]
+        } else {
+            path![compile_error]
+        };
         let macro_msg = vec![TokenTree::Literal(proc_macro2::Literal::string(msg))]
             .into_iter()
             .collect::<TokenStream>();
         mk().mac_expr(mk().mac(
-            vec![macro_name],
+            macro_name,
             macro_msg,
             MacroDelimiter::Paren(Default::default()),
         ))
@@ -2509,9 +2512,9 @@ impl<'c> Translation<'c> {
             }
 
             let current_block_ty = if self.tcfg.debug_relooper_labels {
-                mk().ref_lt_ty("static", mk().path_ty(vec!["str"]))
+                mk().ref_lt_ty("static", path![str])
             } else {
-                mk().path_ty(vec!["u64"])
+                path![u64]
             };
 
             let local = mk().local(
@@ -2568,12 +2571,12 @@ impl<'c> Translation<'c> {
                 Ok(val.map(|e| {
                     if self.ast_context.is_function_pointer(ptr_type) {
                         if negated {
-                            mk().method_call_expr(e, "is_some", vec![] as Vec<Box<Expr>>)
+                            mk().method_call_expr(e, "is_some", vec![])
                         } else {
-                            mk().method_call_expr(e, "is_none", vec![] as Vec<Box<Expr>>)
+                            mk().method_call_expr(e, "is_none", vec![])
                         }
                     } else {
-                        let is_null = mk().method_call_expr(e, "is_null", vec![] as Vec<Box<Expr>>);
+                        let is_null = mk().method_call_expr(e, "is_null", vec![]);
                         if negated {
                             mk().unary_expr(UnOp::Not(Default::default()), is_null)
                         } else {
@@ -2722,11 +2725,7 @@ impl<'c> Translation<'c> {
                 if self.ast_context.is_va_list(typ.ctype) {
                     // translate `va_list` variables to `VaListImpl`s and omit the initializer.
                     let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name);
-                    let ty = {
-                        let path = vec!["core", "ffi", "VaListImpl"];
-                        mk().path_ty(mk().abs_path(path))
-                    };
-                    let local_mut = mk().local::<_, _, Box<Expr>>(pat_mut, Some(ty), None);
+                    let local_mut = mk().local(pat_mut, Some(path![::core::ffi::VaListImpl]), None);
 
                     return Ok(cfg::DeclStmtInfo::new(
                         vec![],                                     // decl
@@ -3037,10 +3036,7 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<Box<Expr>> {
         let addr_lhs = self.addr_lhs(lhs, lhs_type, true)?;
 
-        Ok(mk().call_expr(
-            mk().abs_path_expr(vec!["core", "ptr", "write_volatile"]),
-            vec![addr_lhs, rhs],
-        ))
+        Ok(mk().call_expr(path![::core::ptr::write_volatile], vec![addr_lhs, rhs]))
     }
 
     /// Read from a `lhs` that is volatile
@@ -3127,8 +3123,8 @@ impl<'c> Translation<'c> {
 
                         let local = mk().local(
                             mk().ident_pat(name),
-                            None as Option<Box<Type>>,
-                            Some(mk().cast_expr(expr, mk().path_ty(vec!["usize"]))),
+                            None,
+                            Some(mk().cast_expr(expr, path![usize])),
                         );
 
                         let res: TranslationResult<WithStmts<()>> =
@@ -3176,7 +3172,7 @@ impl<'c> Translation<'c> {
             mk().path_segment("mem"),
             mk().path_segment_with_args(name, params),
         ];
-        let call = mk().call_expr(mk().abs_path_expr(path), vec![] as Vec<Box<Expr>>);
+        let call = mk().call_expr(mk().abs_path_expr(path), vec![]);
 
         Ok(WithStmts::new_val(call))
     }
@@ -3199,7 +3195,7 @@ impl<'c> Translation<'c> {
             path.push(mk().path_segment("mem"));
             path.push(mk().path_segment_with_args("align_of", mk().angle_bracketed_args(tys)));
         }
-        let call = mk().call_expr(mk().abs_path_expr(path), vec![] as Vec<Box<Expr>>);
+        let call = mk().call_expr(mk().abs_path_expr(path), vec![]);
         Ok(WithStmts::new_val(call))
     }
 
@@ -3295,7 +3291,7 @@ impl<'c> Translation<'c> {
                     UnTypeOp::PreferredAlignOf => self.compute_align_of_type(arg_ty.ctype, true)?,
                 };
 
-                Ok(result.map(|x| mk().cast_expr(x, mk().path_ty(vec!["libc", "c_ulong"]))))
+                Ok(result.map(|x| mk().cast_expr(x, path![::libc::c_ulong])))
             }
 
             ConstantExpr(_ty, child, value) => {
@@ -3396,7 +3392,7 @@ impl<'c> Translation<'c> {
                 if let CTypeKind::VariableArray(..) =
                     self.ast_context.resolve_type(qual_ty.ctype).kind
                 {
-                    val = mk().method_call_expr(val, "as_mut_ptr", vec![] as Vec<Box<Expr>>);
+                    val = mk().method_call_expr(val, "as_mut_ptr", vec![]);
                 }
 
                 let mut res = WithStmts::new_val(val);
@@ -3455,7 +3451,7 @@ impl<'c> Translation<'c> {
                             index_expr,
                         )),
                     ];
-                    let path = mk().path("offset_of");
+                    let path: Path = path![offset_of];
                     let mac = mk().mac_expr(mk().mac(
                         path,
                         macro_body,
@@ -3882,9 +3878,7 @@ impl<'c> Translation<'c> {
                         // to and will have to be handled elsewhere, IE `bf.set_a(1)`
                         if !ctx.is_bitfield_write {
                             // Cases A and B above
-                            val = val.map(|v| {
-                                mk().method_call_expr(v, field_name, vec![] as Vec<Box<Expr>>)
-                            });
+                            val = val.map(|v| mk().method_call_expr(v, field_name, vec![]));
                         }
                     } else {
                         val = val.map(|v| mk().field_expr(v, field_name));
@@ -4297,10 +4291,11 @@ impl<'c> Translation<'c> {
             CastKind::IntegralToPointer if self.ast_context.is_function_pointer(ty.ctype) => {
                 let target_ty = self.convert_type(ty.ctype)?;
                 val.and_then(|x| {
-                    let intptr_t = mk().path_ty(vec!["libc", "intptr_t"]);
-                    let intptr = mk().cast_expr(x, intptr_t.clone());
+                    let intptr = mk().cast_expr(x, path![::libc::intptr_t]);
                     Ok(WithStmts::new_unsafe_val(transmute_expr(
-                        intptr_t, target_ty, intptr,
+                        path![::libc::intptr_t],
+                        target_ty,
+                        intptr,
                     )))
                 })
             }
@@ -4320,7 +4315,7 @@ impl<'c> Translation<'c> {
                 if let CTypeKind::LongDouble = target_ty_ctype {
                     self.use_crate(ExternCrate::F128);
 
-                    let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
+                    let fn_path = path![::f128::f128::new];
                     Ok(val.map(|val| mk().call_expr(fn_path, vec![val])))
                 } else if let CTypeKind::LongDouble = self.ast_context[source_ty_ctype_id].kind {
                     self.f128_cast_to(val, target_ty_ctype)
@@ -4375,8 +4370,7 @@ impl<'c> Translation<'c> {
                         let mut bytes = bytes.to_owned();
                         bytes.push(0);
                         let byte_literal = mk().lit_expr(bytes);
-                        let val =
-                            mk().cast_expr(byte_literal, mk().ptr_ty(mk().path_ty(vec!["u8"])));
+                        let val = mk().cast_expr(byte_literal, mk().ptr_ty(path![u8]));
                         let val = mk().cast_expr(val, target_ty);
                         Ok(WithStmts::new_val(val))
                     }
@@ -4393,9 +4387,7 @@ impl<'c> Translation<'c> {
                                 "as_mut_ptr"
                             };
 
-                            let call = val.map(|x| {
-                                mk().method_call_expr(x, method, vec![] as Vec<Box<Expr>>)
-                            });
+                            let call = val.map(|x| mk().method_call_expr(x, method, vec![]));
 
                             // Static arrays can now use as_ptr. Can also cast that const ptr to a
                             // mutable pointer as we do here:
@@ -4575,9 +4567,11 @@ impl<'c> Translation<'c> {
 
         if self.ast_context.is_va_list(resolved_ty_id) {
             // generate MaybeUninit::uninit().assume_init()
-            let path = vec!["core", "mem", "MaybeUninit", "uninit"];
-            let call = mk().call_expr(mk().abs_path_expr(path), vec![] as Vec<Box<Expr>>);
-            let call = mk().method_call_expr(call, "assume_init", vec![] as Vec<Box<Expr>>);
+            let call = mk().method_call_expr(
+                mk().call_expr(path![::core::mem::MaybeUninit::uninit], vec![]),
+                "assume_init",
+                vec![],
+            );
             return Ok(WithStmts::new_val(call));
         }
 
@@ -4589,9 +4583,7 @@ impl<'c> Translation<'c> {
             ))
         } else if resolved_ty.is_floating_type() {
             match self.ast_context[ty_id].kind {
-                CTypeKind::LongDouble => Ok(WithStmts::new_val(
-                    mk().path_expr(vec!["f128", "f128", "ZERO"]),
-                )),
+                CTypeKind::LongDouble => Ok(WithStmts::new_val(path![::f128::f128::ZERO])),
                 _ => Ok(WithStmts::new_val(
                     mk().lit_expr(mk().float_unsuffixed_lit("0.")),
                 )),
@@ -4606,9 +4598,7 @@ impl<'c> Translation<'c> {
                 .map(|elt| mk().repeat_expr(elt, sz)))
         } else if let &CTypeKind::IncompleteArray(_) = resolved_ty {
             // Incomplete arrays are translated to zero length arrays
-            Ok(WithStmts::new_val(
-                mk().array_expr(vec![] as Vec<Box<Expr>>),
-            ))
+            Ok(WithStmts::new_val(mk().array_expr(vec![])))
         } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
             self.zero_initializer(decl_id, ty_id, is_static)
         } else if let &CTypeKind::VariableArray(elt, _) = resolved_ty {
@@ -4773,12 +4763,12 @@ impl<'c> Translation<'c> {
 
         if self.ast_context.is_function_pointer(ty_id) {
             if target {
-                mk().method_call_expr(val, "is_some", vec![] as Vec<Box<Expr>>)
+                mk().method_call_expr(val, "is_some", vec![])
             } else {
-                mk().method_call_expr(val, "is_none", vec![] as Vec<Box<Expr>>)
+                mk().method_call_expr(val, "is_none", vec![])
             }
         } else if ty.is_pointer() {
-            let mut res = mk().method_call_expr(val, "is_null", vec![] as Vec<Box<Expr>>);
+            let mut res = mk().method_call_expr(val, "is_null", vec![]);
             if target {
                 res = mk().unary_expr(UnOp::Not(Default::default()), res)
             }
@@ -4821,7 +4811,7 @@ impl<'c> Translation<'c> {
             }
 
             let val = if ty.is_enum() {
-                mk().cast_expr(val, mk().path_ty(vec!["u64"]))
+                mk().cast_expr(val, path![u64])
             } else {
                 val
             };

@@ -309,7 +309,7 @@ impl TypeConverter {
         }
 
         match ctxt.index(ctype).kind {
-            CTypeKind::Void => Ok(mk().tuple_ty(vec![] as Vec<Box<Type>>)),
+            CTypeKind::Void => Ok(mk().tuple_ty(vec![])),
             CTypeKind::Bool => Ok(path![bool]),
             CTypeKind::Short => Ok(path![::libc::c_short]),
             CTypeKind::Int => Ok(path![::libc::c_int]),

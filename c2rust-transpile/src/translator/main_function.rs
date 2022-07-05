@@ -70,7 +70,7 @@ impl<'c> Translation<'c> {
                 ))));
                 stmts.push(mk().semi_stmt(mk().for_expr(
                     mk().ident_pat("arg"),
-                    mk().call_expr(args_fn, vec![] as Vec<Box<Expr>>),
+                    mk().call_expr(args_fn, vec![]),
                     mk().block(vec![mk().semi_stmt(mk().method_call_expr(
                         mk().path_expr(vec!["args"]),
                         "push",
@@ -85,7 +85,7 @@ impl<'c> Translation<'c> {
                                 vec![mk().lit_expr("Failed to convert argument into CString.")],
                             ),
                             "into_raw",
-                            vec![] as Vec<Box<Expr>>,
+                            vec![],
                         )],
                     ))]),
                     None as Option<Ident>,
@@ -149,7 +149,7 @@ impl<'c> Translation<'c> {
                         mk().ident_pat("var_name"),
                         mk().ident_pat("var_value"),
                     ]),
-                    mk().call_expr(vars_fn, vec![] as Vec<Box<Expr>>),
+                    mk().call_expr(vars_fn, vec![]),
                     mk().block(vec![
                                 mk().local_stmt(Box::new(
                                     mk().local(
@@ -200,7 +200,7 @@ impl<'c> Translation<'c> {
                                         )],
                                         ),
                                         "into_raw",
-                                        vec![] as Vec<Box<Expr>>,
+                                        vec![],
                                     )],
                                 )),
                             ]),

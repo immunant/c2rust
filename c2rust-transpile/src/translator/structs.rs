@@ -572,8 +572,7 @@ impl<'a> Translation<'a> {
             .collect::<WithStmts<Vec<syn::FieldValue>>>()
             .and_then(|fields| {
                 let struct_expr = mk().struct_expr(name.as_str(), fields);
-                let local_variable =
-                    Box::new(mk().local(local_pat, None as Option<Box<Type>>, Some(struct_expr)));
+                let local_variable = Box::new(mk().local(local_pat, None, Some(struct_expr)));
 
                 let mut is_unsafe = false;
                 let mut stmts = vec![mk().local_stmt(local_variable)];
@@ -790,11 +789,7 @@ impl<'a> Translation<'a> {
                     _ if contains_block(&param_expr) => {
                         let name = self.renamer.borrow_mut().pick_name("rhs");
                         let name_ident = mk().mutbl().ident_pat(name.clone());
-                        let temporary_stmt = mk().local(
-                            name_ident,
-                            None as Option<Box<Type>>,
-                            Some(param_expr.clone()),
-                        );
+                        let temporary_stmt = mk().local(name_ident, None, Some(param_expr.clone()));
                         let assignment_expr = mk().method_call_expr(
                             lhs_expr,
                             setter_name,
