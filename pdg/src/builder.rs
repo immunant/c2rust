@@ -104,7 +104,7 @@ fn update_provenance(
         CopyPtr(ptr) => {
             // only insert if not already there
             if let Err(..) = provenances.try_insert(ptr, mapping) {
-                log::warn!("{:x} doesn't have a source", ptr);
+                log::warn!("0x{:x} doesn't have a source", ptr);
             }
         }
         Realloc { new_ptr, .. } => {
