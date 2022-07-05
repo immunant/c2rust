@@ -309,7 +309,7 @@ fn cast_int(val: Box<Expr>, name: &str, need_lit_suffix: bool) -> Box<Expr> {
     match opt_literal_val {
         Some(i) if !need_lit_suffix => mk().lit_expr(mk().int_unsuffixed_lit(i)),
         Some(i) => mk().lit_expr(mk().int_lit(i, name)),
-        None => mk().cast_expr(val, mk().path_ty(vec![name])),
+        None => mk().cast_expr(val, mk().path_ty([name])),
     }
 }
 
@@ -1513,7 +1513,7 @@ impl<'c> Translation<'c> {
 
         std::mem::swap(init, &mut default_init);
 
-        let root_lhs_expr = mk().path_expr(vec![name]);
+        let root_lhs_expr = mk().path_expr([name]);
         let assign_expr = mk().assign_expr(root_lhs_expr, default_init);
         let stmt = mk().expr_stmt(assign_expr);
 
@@ -1575,7 +1575,7 @@ impl<'c> Translation<'c> {
             mk().unsafe_().extern_("C").barefn_ty(fn_bare_decl),
             static_array_size,
         );
-        let static_val = mk().array_expr(vec![mk().path_expr(vec![fn_name])]);
+        let static_val = mk().array_expr(vec![mk().path_expr([fn_name])]);
         let static_item = static_attributes.static_item("INIT_ARRAY", static_ty, static_val);
 
         (fn_item, static_item)
@@ -1695,7 +1695,7 @@ impl<'c> Translation<'c> {
                     // would significantly complicate the implementation
                     assert!(self.ast_context.has_inner_struct_decl(decl_id));
                     let inner_name = self.resolve_decl_inner_name(decl_id);
-                    let inner_ty = mk().path_ty(vec![inner_name.clone()]);
+                    let inner_ty = mk().path_ty([inner_name.clone()]);
                     let inner_repr_attr = mk().meta_list("repr", reprs);
                     let inner_struct = mk()
                         .span(span)
@@ -1705,7 +1705,7 @@ impl<'c> Translation<'c> {
                         .struct_item(inner_name.clone(), field_entries, false);
 
                     // https://github.com/rust-lang/rust/issues/33626
-                    let outer_ty = mk().path_ty(vec![name.clone()]);
+                    let outer_ty = mk().path_ty([name.clone()]);
                     let outer_reprs = vec![
                         simple_metaitem("C"),
                         int_arg_metaitem("align", alignment as u128),
@@ -1850,7 +1850,7 @@ impl<'c> Translation<'c> {
                 if let Some(cur_file) = *self.cur_file.borrow() {
                     self.add_import(cur_file, enum_id, &enum_name);
                 }
-                let ty = mk().path_ty(mk().path(vec![enum_name]));
+                let ty = mk().path_ty(mk().path([enum_name]));
                 let val = match value {
                     ConstIntExpr::I(value) => signed_int_expr(value),
                     ConstIntExpr::U(value) => mk().lit_expr(mk().int_unsuffixed_lit(value as u128)),
@@ -2942,9 +2942,7 @@ impl<'c> Translation<'c> {
         {
             elt = self.variable_array_base_type(elt);
             let ty = self.convert_type(elt)?;
-            mk().path_ty(vec![
-                mk().path_segment_with_args("Vec", mk().angle_bracketed_args(vec![ty]))
-            ])
+            mk().path_ty([mk().path_segment_with_args("Vec", mk().angle_bracketed_args(vec![ty]))])
         } else {
             self.convert_type(typ.ctype)?
         };
@@ -3080,7 +3078,7 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .get(&CDeclId(counts.0))
                     .expect("Failed to lookup VLA expression");
-                let csize = mk().path_expr(vec![csize_name]);
+                let csize = mk().path_expr([csize_name]);
 
                 let val = match opt_esize {
                     None => csize,
@@ -3345,7 +3343,7 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                let mut val = mk().path_expr(vec![rustname]);
+                let mut val = mk().path_expr([rustname]);
 
                 // If the variable is volatile and used as something that isn't an LValue, this
                 // constitutes a volatile read.
@@ -4029,7 +4027,7 @@ impl<'c> Translation<'c> {
                     self.add_import(*cur_file, *macro_id, &rustname);
                 }
 
-                let val = WithStmts::new_val(mk().path_expr(vec![rustname]));
+                let val = WithStmts::new_val(mk().path_expr([rustname]));
 
                 let expr_kind = &self.ast_context[expr_id].kind;
                 if let Some(expr_ty) = expr_kind.get_qual_type() {
@@ -4436,7 +4434,7 @@ impl<'c> Translation<'c> {
                     .expect("field name required");
 
                 Ok(val.map(|x| {
-                    mk().struct_expr(mk().path(vec![union_name]), vec![mk().field(field_name, x)])
+                    mk().struct_expr(mk().path([union_name]), vec![mk().field(field_name, x)])
                 }))
             }
 
@@ -4737,7 +4735,7 @@ impl<'c> Translation<'c> {
                 .resolve_decl_name(name_decl_id)
                 .unwrap();
 
-            let outer_path = mk().path_expr(vec![outer_name]);
+            let outer_path = mk().path_expr([outer_name]);
             init = init.map(|i| mk().call_expr(outer_path, vec![i]));
         };
 

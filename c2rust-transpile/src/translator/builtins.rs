@@ -688,7 +688,7 @@ impl<'c> Translation<'c> {
         args: &[CExprId],
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let name = &builtin_name[10..];
-        let mem = mk().path_expr(vec!["libc", name]);
+        let mem: Box<Expr> = mk().path_expr(["libc", name]);
         let args = self.convert_exprs(ctx.used(), args)?;
         args.and_then(|args| {
             let mut args = args.into_iter();

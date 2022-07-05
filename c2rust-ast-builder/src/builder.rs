@@ -1176,7 +1176,7 @@ impl Builder {
     where
         I: Make<Ident>,
     {
-        self.path_expr(vec![name])
+        self.path_expr([name])
     }
 
     pub fn addr_of_expr<E>(self, e: E) -> Box<Expr>
@@ -1698,7 +1698,7 @@ impl Builder {
     where
         I: Make<Ident>,
     {
-        self.path_ty(vec![name])
+        self.path_ty([name])
     }
 
     pub fn infer_ty(self) -> Box<Type> {

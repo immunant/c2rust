@@ -37,7 +37,7 @@ impl<'c> Translation<'c> {
 
             let decl = mk().fn_decl("main", vec![], None, ReturnType::Default);
 
-            let main_fn = mk().path_expr(vec![main_fn_name]);
+            let main_fn = mk().path_expr([main_fn_name]);
 
             let exit_fn = mk().abs_path_expr(vec!["std", "process", "exit"]);
             let args_fn = mk().abs_path_expr(vec!["std", "env", "args"]);
@@ -55,7 +55,7 @@ impl<'c> Translation<'c> {
 
                 stmts.push(mk().local_stmt(Box::new(mk().local(
                     mk().mutbl().ident_pat("args"),
-                    Some(mk().path_ty(vec![mk().path_segment_with_args(
+                    Some(mk().path_ty([mk().path_segment_with_args(
                         "Vec",
                         mk().angle_bracketed_args(vec![
                             mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_char"])),
@@ -129,7 +129,7 @@ impl<'c> Translation<'c> {
 
                 stmts.push(mk().local_stmt(Box::new(mk().local(
                     mk().mutbl().ident_pat("vars"),
-                    Some(mk().path_ty(vec![mk().path_segment_with_args(
+                    Some(mk().path_ty([mk().path_segment_with_args(
                         "Vec",
                         mk().angle_bracketed_args(vec![
                             mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_char"])),

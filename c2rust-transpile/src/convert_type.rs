@@ -287,7 +287,7 @@ impl TypeConverter {
             CTypeKind::Function(..) => {
                 let fn_ty = self.convert(ctxt, qtype.ctype)?;
                 let param = mk().angle_bracketed_args(vec![fn_ty]);
-                Ok(mk().path_ty(vec![mk().path_segment_with_args("Option", param)]))
+                Ok(mk().path_ty([mk().path_segment_with_args("Option", param)]))
             }
 
             _ => {
@@ -341,22 +341,22 @@ impl TypeConverter {
                 let new_name = self
                     .resolve_decl_name(decl_id)
                     .ok_or_else(|| format_err!("Unknown decl id {:?}", decl_id))?;
-                Ok(mk().path_ty(mk().path(vec![new_name])))
+                Ok(mk().path_ty(mk().path([new_name])))
             }
 
             CTypeKind::Union(decl_id) => {
                 let new_name = self.resolve_decl_name(decl_id).unwrap();
-                Ok(mk().path_ty(mk().path(vec![new_name])))
+                Ok(mk().path_ty(mk().path([new_name])))
             }
 
             CTypeKind::Enum(decl_id) => {
                 let new_name = self.resolve_decl_name(decl_id).unwrap();
-                Ok(mk().path_ty(mk().path(vec![new_name])))
+                Ok(mk().path_ty(mk().path([new_name])))
             }
 
             CTypeKind::Typedef(decl_id) => {
                 let new_name = self.resolve_decl_name(decl_id).unwrap();
-                Ok(mk().path_ty(mk().path(vec![new_name])))
+                Ok(mk().path_ty(mk().path([new_name])))
             }
 
             CTypeKind::ConstantArray(element, count) => {
