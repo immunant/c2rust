@@ -100,7 +100,7 @@ main() {
         cargo run \
             "${profile_args[@]}" \
             -- "../${test_dir}/log.bc" \
-        &> "../${test_dir}/pdg.log"
+        > "../${test_dir}/pdg.log"
     )
 }
 
