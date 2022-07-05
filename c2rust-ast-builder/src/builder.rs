@@ -1,11 +1,13 @@
 //! Helpers for building AST nodes.  Normally used by calling `mk().some_node(args...)`.
 
+use std::default::Default;
+use std::iter::FromIterator;
 use std::str;
 
 use proc_macro2::{Span, TokenStream, TokenTree};
-use std::default::Default;
-use std::iter::FromIterator;
 use syn::{__private::ToTokens, punctuated::Punctuated, *};
+
+use self::properties::*;
 
 /// Produces an item corresponding to the provided path.
 ///
@@ -146,8 +148,6 @@ pub mod properties {
     }
 }
 
-use self::properties::*;
-
 pub type FnDecl = (Ident, Vec<FnArg>, Option<Variadic>, ReturnType);
 pub type BareFnTyParts = (Vec<BareFnArg>, Option<Variadic>, ReturnType);
 
@@ -197,12 +197,6 @@ pub trait Make<T> {
 impl<T> Make<T> for T {
     fn make(self, _mk: &Builder) -> T {
         self
-    }
-}
-
-impl<'a, T: Clone> Make<T> for &'a T {
-    fn make(self, _mk: &Builder) -> T {
-        self.clone()
     }
 }
 

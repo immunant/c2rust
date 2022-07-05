@@ -438,7 +438,9 @@ impl<'c> Translation<'c> {
                     use c_ast::BinOp::*;
                     let assign_stmt = match op {
                         // Regular (possibly volatile) assignment
-                        Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(&write, rhs)),
+                        Assign if !is_volatile => {
+                            WithStmts::new_val(mk().assign_expr(write.clone(), rhs))
+                        }
                         Assign => WithStmts::new_val(self.volatile_write(
                             write,
                             initial_lhs_type_id,
@@ -515,12 +517,12 @@ impl<'c> Translation<'c> {
                         AssignAdd if pointer_lhs.is_some() => {
                             let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
                             let ptr = pointer_offset(write.clone(), rhs, mul, false, false);
-                            WithStmts::new_val(mk().assign_expr(&write, ptr))
+                            WithStmts::new_val(mk().assign_expr(write.clone(), ptr))
                         }
                         AssignSubtract if pointer_lhs.is_some() => {
                             let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
                             let ptr = pointer_offset(write.clone(), rhs, mul, true, false);
-                            WithStmts::new_val(mk().assign_expr(&write, ptr))
+                            WithStmts::new_val(mk().assign_expr(write.clone(), ptr))
                         }
 
                         _ => {
@@ -535,7 +537,7 @@ impl<'c> Translation<'c> {
                                     op == AssignSubtract,
                                     false,
                                 );
-                                WithStmts::new_val(mk().assign_expr(&write, ptr))
+                                WithStmts::new_val(mk().assign_expr(write.clone(), ptr))
                             } else {
                                 fn eq<Token: Default, F: Fn(Token) -> BinOp>(f: F) -> BinOp {
                                     f(Default::default())
@@ -929,7 +931,7 @@ impl<'c> Translation<'c> {
                 let assign_stmt = if ty.qualifiers.is_volatile {
                     self.volatile_write(write, ty, val)?
                 } else {
-                    mk().assign_expr(&write, val)
+                    mk().assign_expr(write.clone(), val)
                 };
 
                 Ok(WithStmts::new(
