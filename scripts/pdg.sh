@@ -88,15 +88,15 @@ main() {
             fi
         fi
         
-        INSTRUMENT_BACKEND=log \
-        INSTRUMENT_OUTPUT=log.bc \
-        METADATA_FILE="${metadata}" \
+        export INSTRUMENT_BACKEND=log
+        export INSTRUMENT_OUTPUT=log.bc
+        export METADATA_FILE="${metadata}"
         "${binary_path}" "${args[@]}"
     )
     (cd pdg
-        RUST_BACKTRACE=full `# print sources w/ color-eyre` \
-        RUST_LOG=info \
-        METADATA_FILE="${metadata}" \
+        export RUST_BACKTRACE=full # print sources w/ color-eyre
+        export RUST_LOG=info
+        export METADATA_FILE="${metadata}"
         cargo run \
             "${profile_args[@]}" \
             -- "../${test_dir}/log.bc" \
