@@ -4067,7 +4067,7 @@ impl<'c> Translation<'c> {
 
         let ts: TokenStream = syn::parse_str(args).ok()?;
         Some(WithStmts::new_val(mk().mac_expr(mk().mac(
-            ident,
+            mk().path(ident),
             ts,
             MacroDelimiter::Paren(Default::default()),
         ))))

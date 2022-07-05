@@ -158,7 +158,7 @@ impl<'c> Translation<'c> {
                                         Some(
                                             mk().mac_expr(
                                                 mk().mac(
-                                                    vec!["format"],
+                                                    path![format],
                                                     vec![
                                                         TokenTree::Literal(
                                                             proc_macro2::Literal::string("{}={}"),
