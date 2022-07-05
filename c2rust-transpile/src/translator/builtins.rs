@@ -34,30 +34,20 @@ impl<'c> Translation<'c> {
         };
 
         match builtin_name {
-            "__builtin_huge_valf" => Ok(WithStmts::new_val(
-                mk().abs_path_expr(vec!["core", "f32", "INFINITY"]),
-            )),
-            "__builtin_huge_val" | "__builtin_huge_vall" => Ok(WithStmts::new_val(
-                mk().abs_path_expr(vec!["core", "f64", "INFINITY"]),
-            )),
-            "__builtin_inff" => Ok(WithStmts::new_val(
-                mk().abs_path_expr(vec!["core", "f32", "INFINITY"]),
-            )),
-            "__builtin_inf" | "__builtin_infl" => Ok(WithStmts::new_val(
-                mk().abs_path_expr(vec!["core", "f64", "INFINITY"]),
-            )),
-            "__builtin_nanf" => Ok(WithStmts::new_val(
-                mk().abs_path_expr(vec!["core", "f32", "NAN"]),
-            )),
-            "__builtin_nan" => Ok(WithStmts::new_val(
-                mk().abs_path_expr(vec!["core", "f64", "NAN"]),
-            )),
+            "__builtin_huge_valf" => Ok(WithStmts::new_val(path![::core::f32::INFINITY])),
+            "__builtin_huge_val" | "__builtin_huge_vall" => {
+                Ok(WithStmts::new_val(path![::core::f64::INFINITY]))
+            }
+            "__builtin_inff" => Ok(WithStmts::new_val(path![::core::f32::INFINITY])),
+            "__builtin_inf" | "__builtin_infl" => {
+                Ok(WithStmts::new_val(path![::core::f64::INFINITY]))
+            }
+            "__builtin_nanf" => Ok(WithStmts::new_val(path![::core::f32::NAN])),
+            "__builtin_nan" => Ok(WithStmts::new_val(path![::core::f64::NAN])),
             "__builtin_nanl" => {
                 self.use_crate(ExternCrate::F128);
 
-                Ok(WithStmts::new_val(
-                    mk().path_expr(vec!["f128", "f128", "NAN"]),
-                ))
+                Ok(WithStmts::new_val(path![::f128::f128::NAN]))
             }
             "__builtin_signbit" | "__builtin_signbitf" | "__builtin_signbitl" => {
                 // Long doubles require the Float trait from num_traits to call this method

@@ -244,13 +244,13 @@ impl<'a> Make<Visibility> for &'a str {
                 pub_token: token::Pub(mk_.span),
                 paren_token: token::Paren(mk_.span),
                 in_token: None,
-                path: Box::new(mk().path("crate")),
+                path: path![crate],
             }),
             "pub(super)" => Visibility::Restricted(VisRestricted {
                 pub_token: token::Pub(mk_.span),
                 paren_token: token::Paren(mk_.span),
                 in_token: None,
-                path: Box::new(mk().path("super")),
+                path: path![super],
             }),
             _ => panic!("unrecognized string for Visibility: {:?}", self),
         };

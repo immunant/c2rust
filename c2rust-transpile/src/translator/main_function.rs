@@ -39,9 +39,9 @@ impl<'c> Translation<'c> {
 
             let main_fn = mk().path_expr([main_fn_name]);
 
-            let exit_fn = mk().abs_path_expr(vec!["std", "process", "exit"]);
-            let args_fn = mk().abs_path_expr(vec!["std", "env", "args"]);
-            let vars_fn = mk().abs_path_expr(vec!["std", "env", "vars"]);
+            let exit_fn: Box<Expr> = path![::std::process::exit];
+            let args_fn: Box<Expr> = path![::std::env::args];
+            let vars_fn: Box<Expr> = path![::std::env::vars];
 
             let no_args: Vec<Box<Expr>> = vec![];
 

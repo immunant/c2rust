@@ -2,7 +2,7 @@ use crate::c_ast::CDeclId;
 use crate::c_ast::*;
 use crate::diagnostics::TranslationResult;
 use crate::renamer::*;
-use c2rust_ast_builder::{mk, properties::*};
+use c2rust_ast_builder::{mk, path, properties::*};
 use failure::format_err;
 use std::collections::{HashMap, HashSet};
 use std::ops::Index;
@@ -305,31 +305,29 @@ impl TypeConverter {
         ctype: CTypeId,
     ) -> TranslationResult<Box<Type>> {
         if self.translate_valist && ctxt.is_va_list(ctype) {
-            let path = vec!["core", "ffi", "VaList"];
-            let ty = mk().path_ty(mk().abs_path(path));
-            return Ok(ty);
+            return Ok(path![::core::ffi::VaList]);
         }
 
         match ctxt.index(ctype).kind {
             CTypeKind::Void => Ok(mk().tuple_ty(vec![] as Vec<Box<Type>>)),
-            CTypeKind::Bool => Ok(mk().path_ty(mk().path(vec!["bool"]))),
-            CTypeKind::Short => Ok(mk().path_ty(mk().path(vec!["libc", "c_short"]))),
-            CTypeKind::Int => Ok(mk().path_ty(mk().path(vec!["libc", "c_int"]))),
-            CTypeKind::Long => Ok(mk().path_ty(mk().path(vec!["libc", "c_long"]))),
-            CTypeKind::LongLong => Ok(mk().path_ty(mk().path(vec!["libc", "c_longlong"]))),
-            CTypeKind::UShort => Ok(mk().path_ty(mk().path(vec!["libc", "c_ushort"]))),
-            CTypeKind::UInt => Ok(mk().path_ty(mk().path(vec!["libc", "c_uint"]))),
-            CTypeKind::ULong => Ok(mk().path_ty(mk().path(vec!["libc", "c_ulong"]))),
-            CTypeKind::ULongLong => Ok(mk().path_ty(mk().path(vec!["libc", "c_ulonglong"]))),
-            CTypeKind::SChar => Ok(mk().path_ty(mk().path(vec!["libc", "c_schar"]))),
-            CTypeKind::UChar => Ok(mk().path_ty(mk().path(vec!["libc", "c_uchar"]))),
-            CTypeKind::Char => Ok(mk().path_ty(mk().path(vec!["libc", "c_char"]))),
-            CTypeKind::Double => Ok(mk().path_ty(mk().path(vec!["libc", "c_double"]))),
-            CTypeKind::LongDouble => Ok(mk().path_ty(mk().path(vec!["f128", "f128"]))),
-            CTypeKind::Float => Ok(mk().path_ty(mk().path(vec!["libc", "c_float"]))),
-            CTypeKind::Int128 => Ok(mk().path_ty(mk().path(vec!["i128"]))),
-            CTypeKind::UInt128 => Ok(mk().path_ty(mk().path(vec!["u128"]))),
-            CTypeKind::BFloat16 => Ok(mk().path_ty(mk().path(vec!["bf16"]))),
+            CTypeKind::Bool => Ok(path![bool]),
+            CTypeKind::Short => Ok(path![::libc::c_short]),
+            CTypeKind::Int => Ok(path![::libc::c_int]),
+            CTypeKind::Long => Ok(path![::libc::c_long]),
+            CTypeKind::LongLong => Ok(path![::libc::c_longlong]),
+            CTypeKind::UShort => Ok(path![::libc::c_ushort]),
+            CTypeKind::UInt => Ok(path![::libc::c_uint]),
+            CTypeKind::ULong => Ok(path![::libc::c_ulong]),
+            CTypeKind::ULongLong => Ok(path![::libc::c_ulonglong]),
+            CTypeKind::SChar => Ok(path![::libc::c_schar]),
+            CTypeKind::UChar => Ok(path![::libc::c_uchar]),
+            CTypeKind::Char => Ok(path![::libc::c_char]),
+            CTypeKind::Double => Ok(path![::libc::c_double]),
+            CTypeKind::LongDouble => Ok(path![::f128::f128]),
+            CTypeKind::Float => Ok(path![::libc::c_float]),
+            CTypeKind::Int128 => Ok(path![i128]),
+            CTypeKind::UInt128 => Ok(path![u128]),
+            CTypeKind::BFloat16 => Ok(path![bf16]),
 
             CTypeKind::Pointer(qtype) => self.convert_pointer(ctxt, qtype),
 

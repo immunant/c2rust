@@ -140,7 +140,7 @@ impl<'c> Translation<'c> {
                 let size = num_elems * (width as usize);
                 val.resize(size, 0);
 
-                let u8_ty = mk().path_ty(vec!["u8"]);
+                let u8_ty: Box<Type> = path![u8];
                 let width_lit = mk().lit_expr(mk().int_unsuffixed_lit(val.len() as u128));
                 let array_ty = mk().array_ty(u8_ty, width_lit);
                 let source_ty = mk().ref_ty(array_ty);

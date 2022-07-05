@@ -25,7 +25,7 @@ use crate::rust_ast::{pos_to_span, SpanExt, DUMMY_SP};
 use crate::translator::atomics::ConvertAtomicArgs;
 use crate::translator::named_references::NamedReference;
 use crate::translator::operators::ConvertBinaryExprArgs;
-use c2rust_ast_builder::{mk, properties::*, Builder};
+use c2rust_ast_builder::{mk, path, properties::*, Builder};
 use c2rust_ast_printer::pprust::{self};
 
 use crate::c_ast::iterators::{DFExpr, SomeId};
@@ -1726,7 +1726,7 @@ impl<'c> Translation<'c> {
                         .borrow_mut()
                         .resolve_decl_suffix_name(decl_id, PADDING_SUFFIX)
                         .to_owned();
-                    let padding_ty = mk().path_ty(vec!["usize"]);
+                    let padding_ty: Box<Type> = path![usize];
                     let outer_size = self.compute_size_of_ty(outer_ty)?.to_expr();
                     let inner_size = self.compute_size_of_ty(inner_ty)?.to_expr();
                     let padding_value =
@@ -2969,7 +2969,7 @@ impl<'c> Translation<'c> {
     /// function pointers, and normal pointers.
     fn null_ptr(&self, type_id: CTypeId, is_static: bool) -> TranslationResult<Box<Expr>> {
         if self.ast_context.is_function_pointer(type_id) {
-            return Ok(mk().path_expr(vec!["None"]));
+            return Ok(path![None]);
         }
 
         let pointee = match self.ast_context.resolve_type(type_id).kind {

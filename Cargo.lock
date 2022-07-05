@@ -262,6 +262,7 @@ dependencies = [
 name = "c2rust-bitfields-derive"
 version = "0.2.1"
 dependencies = [
+ "itertools",
  "proc-macro2",
  "quote",
  "syn",
@@ -315,8 +316,6 @@ dependencies = [
  "c2rust-ast-builder",
  "c2rust-ast-exporter",
  "c2rust-ast-printer",
- "c2rust-bitfields",
- "clap 2.34.0",
  "colored 2.0.0",
  "dtoa",
  "failure",

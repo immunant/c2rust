@@ -1,14 +1,12 @@
 #![recursion_limit = "512"]
 
-use proc_macro::{Span, TokenStream};
-use quote::quote;
+use proc_macro::TokenStream;
+
+use itertools::Itertools;
+use quote::{format_ident, quote};
 use syn::parse::Error;
-use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{
-    parse_macro_input, Attribute, Field, Fields, Ident, ItemStruct, Lit, Meta, NestedMeta, Path,
-    PathArguments, PathSegment, Token,
-};
+use syn::{Attribute, Field, Fields, Ident, ItemStruct, Lit, Meta, NestedMeta, Type};
 
 #[cfg(target_endian = "big")]
 compile_error!("Big endian architectures are not currently supported");
@@ -30,7 +28,6 @@ fn parse_bitfield_attr(
     let mut name = None;
     let mut ty = None;
     let mut bits = None;
-    let mut bits_span = None;
 
     if let Meta::List(meta_list) = attr.parse_meta()? {
         for nested_meta in meta_list.nested {
@@ -50,8 +47,7 @@ fn parse_bitfield_attr(
                         "name" => name = Some(rhs_string),
                         "ty" => ty = Some(rhs_string),
                         "bits" => {
-                            bits = Some(rhs_string);
-                            bits_span = Some(meta_name_value.path.span());
+                            bits = Some((rhs_string, meta_name_value.path.span()));
                         }
                         // This one shouldn't ever occur here,
                         // but we're handling it just to be safe
@@ -71,94 +67,53 @@ fn parse_bitfield_attr(
         }
     }
 
-    if name.is_none() || ty.is_none() || bits.is_none() {
-        let mut missing_fields = Vec::new();
+    let mut missing_fields = Vec::new();
 
-        if name.is_none() {
-            missing_fields.push("name");
-        }
+    if name.is_none() {
+        missing_fields.push("name");
+    }
 
-        if ty.is_none() {
-            missing_fields.push("ty");
-        }
+    if ty.is_none() {
+        missing_fields.push("ty");
+    }
 
-        if bits.is_none() {
-            missing_fields.push("bits");
-        }
+    if bits.is_none() {
+        missing_fields.push("bits");
+    }
 
+    if let (Some(name), Some(ty), Some(bits)) = (name, ty, bits) {
+        Ok(Some(BFFieldAttr {
+            field_name: field_ident.clone(),
+            name,
+            ty,
+            bits,
+        }))
+    } else {
         let err_str = format!("Missing bitfield params: {:?}", missing_fields);
         let span = attr.path.segments.span();
 
-        return Err(Error::new(span, err_str));
+        Err(Error::new(span, err_str))
     }
-
-    Ok(Some(BFFieldAttr {
-        field_name: field_ident.clone(),
-        name: name.unwrap(),
-        ty: ty.unwrap(),
-        bits: (bits.unwrap(), bits_span.unwrap()),
-    }))
 }
 
 fn filter_and_parse_fields(field: &Field) -> Vec<Result<BFFieldAttr, Error>> {
-    let attrs: Vec<_> = field
+    field
         .attrs
         .iter()
-        .filter(|attr| attr.path.segments.last().unwrap().ident == "bitfield")
-        .collect();
-
-    if attrs.is_empty() {
-        return Vec::new();
-    }
-
-    attrs
-        .into_iter()
-        .map(|attr| parse_bitfield_attr(attr, field.ident.as_ref().unwrap()))
-        .flat_map(Result::transpose) // Remove the Ok(None) values
+        .filter_map(|attr| {
+            (attr.path.segments.last().unwrap().ident == "bitfield")
+                .then(|| parse_bitfield_attr(attr, field.ident.as_ref().unwrap()).transpose())
+                .flatten()
+        })
         .collect()
 }
 
-fn parse_bitfield_ty_path(field: &BFFieldAttr) -> Path {
-    let leading_colon = if field.ty.starts_with("::") {
-        Some(Token![::]([
-            Span::call_site().into(),
-            Span::call_site().into(),
-        ]))
-    } else {
-        None
-    };
-
-    let mut segments = Punctuated::new();
-    let mut segment_strings = field.ty.split("::").peekable();
-
-    while let Some(segment_string) = segment_strings.next() {
-        segments.push_value(PathSegment {
-            ident: Ident::new(segment_string, Span::call_site().into()),
-            arguments: PathArguments::None,
-        });
-
-        if segment_strings.peek().is_some() {
-            segments.push_punct(Token![::]([
-                Span::call_site().into(),
-                Span::call_site().into(),
-            ]));
-        }
-    }
-
-    Path {
-        leading_colon,
-        segments,
-    }
-}
-
-#[proc_macro_derive(BitfieldStruct, attributes(bitfield))]
-pub fn bitfield_struct(input: TokenStream) -> TokenStream {
-    let struct_item = parse_macro_input!(input as ItemStruct);
-
-    match bitfield_struct_impl(struct_item) {
-        Ok(ts) => ts,
-        Err(error) => error.to_compile_error().into(),
-    }
+fn parse_bit_params(field: &BFFieldAttr) -> syn::Result<(usize, usize)> {
+    let (bit_string, span) = &field.bits;
+    bit_string
+        .split_once("..=")
+        .and_then(|(lo, hi)| Some((lo.parse().ok()?, hi.parse().ok()?)))
+        .ok_or_else(|| Error::new(*span, "bits param must be in the format \"lo..=hi\""))
 }
 
 fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
@@ -180,54 +135,36 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
             return Err(Error::new(span, err_str));
         }
     };
-    let bitfields: Result<Vec<BFFieldAttr>, Error> =
-        fields.iter().flat_map(filter_and_parse_fields).collect();
-    let bitfields = bitfields?;
-    let field_types: Vec<_> = bitfields.iter().map(parse_bitfield_ty_path).collect();
-    let field_types_return = &field_types;
-    let field_types_typedef = &field_types;
-    let field_types_setter_arg = &field_types;
+
+    let bitfields: Vec<_> = fields
+        .iter()
+        .flat_map(filter_and_parse_fields)
+        .try_collect()?;
+
+    let field_types: Vec<Type> = bitfields
+        .iter()
+        .map(|bf| syn::parse_str(&bf.ty))
+        .try_collect()?;
+
     let method_names: Vec<_> = bitfields
         .iter()
-        .map(|field| Ident::new(&field.name, Span::call_site().into()))
+        .map(|field| format_ident!("{}", field.name))
         .collect();
+
     let field_names: Vec<_> = bitfields.iter().map(|field| &field.field_name).collect();
-    let field_names_setters = &field_names;
-    let field_names_getters = &field_names;
+
     let method_name_setters: Vec<_> = method_names
         .iter()
-        .map(|field_ident| {
-            let span = Span::call_site().into();
-            let setter_name = &format!("set_{}", field_ident);
-
-            Ident::new(setter_name, span)
-        })
+        .map(|field_ident| format_ident!("set_{}", field_ident))
         .collect();
-    let field_bit_info: Result<Vec<_>, Error> = bitfields
+
+    let field_bit_info: Vec<_> = bitfields
         .iter()
         .map(|field| {
-            let bit_string = &field.bits.0;
-            let nums: Vec<_> = bit_string.split("..=").collect();
-            let err_str = "bits param must be in the format \"1..=4\"";
-
-            if nums.len() != 2 {
-                return Err(Error::new(field.bits.1, err_str));
-            }
-
-            let lhs = nums[0].parse::<usize>();
-            let rhs = nums[1].parse::<usize>();
-
-            let (lhs, rhs) = match (lhs, rhs) {
-                (Err(_), _) | (_, Err(_)) => return Err(Error::new(field.bits.1, err_str)),
-                (Ok(lhs), Ok(rhs)) => (lhs, rhs),
-            };
-
-            Ok(quote! { (#lhs, #rhs) })
+            let (lo, hi) = parse_bit_params(field)?;
+            Ok::<_, Error>(quote! { (#lo, #hi) })
         })
-        .collect();
-    let field_bit_info = field_bit_info?;
-    let field_bit_info_setters = &field_bit_info;
-    let field_bit_info_getters = &field_bit_info;
+        .try_collect()?;
 
     // TODO: Method visibility determined by struct field visibility?
     let q = quote! {
@@ -235,22 +172,22 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
         impl #struct_ident {
             #(
                 /// This method allows you to write to a bitfield with a value
-                pub fn #method_name_setters(&mut self, int: #field_types_setter_arg) {
+                pub fn #method_name_setters(&mut self, int: #field_types) {
                     use c2rust_bitfields::FieldType;
 
-                    let field = &mut self.#field_names_setters;
-                    let (lhs_bit, rhs_bit) = #field_bit_info_setters;
+                    let field = &mut self.#field_names;
+                    let (lhs_bit, rhs_bit) = #field_bit_info;
                     int.set_field(field, (lhs_bit, rhs_bit));
                 }
 
                 /// This method allows you to read from a bitfield to a value
-                pub fn #method_names(&self) -> #field_types_return {
+                pub fn #method_names(&self) -> #field_types {
                     use c2rust_bitfields::FieldType;
 
-                    type IntType = #field_types_typedef;
+                    type IntType = #field_types;
 
-                    let field = &self.#field_names_getters;
-                    let (lhs_bit, rhs_bit) = #field_bit_info_getters;
+                    let field = &self.#field_names;
+                    let (lhs_bit, rhs_bit) = #field_bit_info;
                     <IntType as FieldType>::get_field(field, (lhs_bit, rhs_bit))
                 }
             )*
@@ -258,4 +195,14 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
     };
 
     Ok(q.into())
+}
+
+#[proc_macro_derive(BitfieldStruct, attributes(bitfield))]
+pub fn bitfield_struct(input: TokenStream) -> TokenStream {
+    let struct_item = syn::parse_macro_input!(input as ItemStruct);
+
+    match bitfield_struct_impl(struct_item) {
+        Ok(ts) => ts,
+        Err(error) => error.to_compile_error().into(),
+    }
 }
