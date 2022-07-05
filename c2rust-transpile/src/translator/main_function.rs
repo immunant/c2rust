@@ -131,57 +131,56 @@ impl<'c> Translation<'c> {
                     ]),
                     mk().call_expr(vars_fn, vec![]),
                     mk().block(vec![
-                                mk().local_stmt(Box::new(
-                                    mk().local(
-                                        mk().ident_pat("var"),
-                                        Some(path![String]),
-                                        Some(
-                                            mk().mac_expr(
-                                                mk().mac(
-                                                    path![format],
-                                                    vec![
-                                                        TokenTree::Literal(
-                                                            proc_macro2::Literal::string("{}={}"),
-                                                        ),
-                                                        TokenTree::Punct(Punct::new(
-                                                            ',',
-                                                            proc_macro2::Spacing::Alone,
-                                                        )),
-                                                        TokenTree::Ident(var_name_ident),
-                                                        TokenTree::Punct(Punct::new(
-                                                            ',',
-                                                            proc_macro2::Spacing::Alone,
-                                                        )),
-                                                        TokenTree::Ident(var_value_ident),
-                                                    ]
-                                                    .into_iter()
-                                                    .collect::<TokenStream>(),
-                                                    MacroDelimiter::Paren(Default::default()),
+                        mk().local_stmt(Box::new(
+                            mk().local(
+                                mk().ident_pat("var"),
+                                Some(path![String]),
+                                Some(
+                                    mk().mac_expr(
+                                        mk().mac(
+                                            path![format],
+                                            vec![
+                                                TokenTree::Literal(
+                                                    proc_macro2::Literal::string("{}={}"),
                                                 ),
-                                            ),
+                                                TokenTree::Punct(Punct::new(
+                                                    ',',
+                                                    proc_macro2::Spacing::Alone,
+                                                )),
+                                                TokenTree::Ident(var_name_ident),
+                                                TokenTree::Punct(Punct::new(
+                                                    ',',
+                                                    proc_macro2::Spacing::Alone,
+                                                )),
+                                                TokenTree::Ident(var_value_ident),
+                                            ]
+                                            .into_iter()
+                                            .collect::<TokenStream>(),
+                                            MacroDelimiter::Paren(Default::default()),
                                         ),
                                     ),
-                                )),
-                                mk().semi_stmt(mk().method_call_expr(
-                                    path![vars],
-                                    "push",
-                                    vec![mk().method_call_expr(
-                                        mk().method_call_expr(
-                                            mk().call_expr(
-                                                // TODO(kkysen) change `"std"` to `"alloc"` after `#![feature(alloc_c_string)]` is stabilized in `1.63.0`
-                                                path![::std::ffi::CString::new],
-                                                vec![path![var]],
-                                            ),
-                                            "expect",
-                                            vec![mk().lit_expr(
-                                            "Failed to convert environment variable into CString."
-                                        )],
-                                        ),
-                                        "into_raw",
-                                        vec![],
+                                ),
+                            ),
+                        )),
+                        mk().semi_stmt(mk().method_call_expr(
+                            path![vars],
+                            "push",
+                            vec![mk().method_call_expr(
+                                mk().method_call_expr(
+                                    mk().call_expr(
+                                        path![::std::ffi::CString::new],
+                                        vec![path![var]],
+                                    ),
+                                    "expect",
+                                    vec![mk().lit_expr(
+                                        "Failed to convert environment variable into CString."
                                     )],
-                                )),
-                            ]),
+                                ),
+                                "into_raw",
+                                vec![],
+                            )],
+                        )),
+                    ]),
                     None as Option<Ident>,
                 )));
                 stmts.push(mk().semi_stmt(mk().method_call_expr(
