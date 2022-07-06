@@ -1,4 +1,4 @@
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use std::env;
 use std::fs::File;
 use std::io::BufWriter;
@@ -12,14 +12,13 @@ use bincode;
 use crate::events::{Event, EventKind};
 use crate::metadata::{IWithMetadata, Metadata};
 
-lazy_static! {
-    pub static ref TX: SyncSender<Event> = {
-        let (tx, rx) = mpsc::sync_channel(1024);
-        thread::spawn(|| backend_thread(rx));
-        tx
-    };
-    static ref FINISHED: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
-}
+pub static TX: Lazy<SyncSender<Event>> = Lazy::new(|| {
+    let (tx, rx) = mpsc::sync_channel(1024);
+    thread::spawn(|| backend_thread(rx));
+    tx
+});
+
+static FINISHED: Lazy<(Mutex<bool>, Condvar)> = Lazy::new(|| (Mutex::new(false), Condvar::new()));
 
 pub fn init() {}
 
