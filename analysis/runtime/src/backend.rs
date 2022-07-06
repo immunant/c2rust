@@ -28,7 +28,7 @@ pub fn finalize() {
     TX.send(Event::done()).unwrap();
 
     // Wait for the backend thread to finish
-    let (ref lock, ref cvar) = &*FINISHED;
+    let (lock, cvar) = &*FINISHED;
     let mut finished = lock.lock().unwrap();
     while !*finished {
         finished = cvar.wait(finished).unwrap();
@@ -36,7 +36,7 @@ pub fn finalize() {
 }
 
 fn backend_thread(rx: Receiver<Event>) {
-    let (ref lock, ref cvar) = &*FINISHED;
+    let (lock, cvar) = &*FINISHED;
     let mut finished = lock.lock().unwrap();
 
     (match env::var("INSTRUMENT_BACKEND").unwrap_or_default().as_str() {
