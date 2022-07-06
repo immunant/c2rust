@@ -1,4 +1,4 @@
-use c2rust_analysis_rt::mir_loc::DebugFromFn;
+use c2rust_analysis_rt::metadata::DebugFromFn;
 use itertools::Itertools;
 
 use std::{
@@ -121,9 +121,10 @@ impl<T> Duplicates<T> {
         if self.is_empty() {
             return;
         }
-        panic!("unexpected duplicates: {:?}", DebugFromFn(|f| {
-            self.fmt_up_to_n(f, Self::DEFAULT_UP_TO_N.into(), to_string)
-        }));
+        panic!(
+            "unexpected duplicates: {:?}",
+            DebugFromFn(|f| { self.fmt_up_to_n(f, Self::DEFAULT_UP_TO_N.into(), to_string) })
+        );
     }
 }
 

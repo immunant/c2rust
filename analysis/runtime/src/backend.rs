@@ -9,9 +9,8 @@ use std::thread;
 
 use bincode;
 
-use crate::Metadata;
 use crate::events::{Event, EventKind};
-use crate::mir_loc::IWithMetadata;
+use crate::metadata::{IWithMetadata, Metadata};
 
 lazy_static! {
     pub static ref TX: SyncSender<Event> = {

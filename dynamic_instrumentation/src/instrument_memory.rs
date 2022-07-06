@@ -1,7 +1,9 @@
 use anyhow::Context;
-use c2rust_analysis_rt::mir_loc::{self, EventMetadata, TransferKind};
+use c2rust_analysis_rt::metadata::Metadata;
+use c2rust_analysis_rt::mir_loc::{
+    self, EventMetadata, MirLoc, MirLocId, MirPlace, MirProjection, TransferKind,
+};
 use c2rust_analysis_rt::HOOK_FUNCTIONS;
-use c2rust_analysis_rt::{Metadata, MirLoc, MirLocId, MirPlace, MirProjection};
 use indexmap::IndexSet;
 use log::debug;
 use rustc_data_structures::fingerprint::Fingerprint;
@@ -24,7 +26,7 @@ use std::sync::Mutex;
 
 pub struct InstrumentMemoryOps {
     mir_locs: Mutex<IndexSet<MirLoc>>,
-    functions: Mutex<HashMap<c2rust_analysis_rt::DefPathHash, String>>,
+    functions: Mutex<HashMap<c2rust_analysis_rt::mir_loc::DefPathHash, String>>,
 }
 
 impl InstrumentMemoryOps {
@@ -58,9 +60,8 @@ impl InstrumentMemoryOps {
     pub fn finalize(&self, metadata_file_path: &Path) -> anyhow::Result<()> {
         let mut locs = self.mir_locs.lock().unwrap();
         let mut functions = self.functions.lock().unwrap();
-        let locs: Vec<MirLoc> = locs.drain(..).collect();
-        let functions: HashMap<c2rust_analysis_rt::DefPathHash, String> =
-            functions.drain().collect();
+        let locs = locs.drain(..).collect::<Vec<_>>();
+        let functions = functions.drain().collect::<HashMap<_, _>>();
         let metadata_file =
             File::create(metadata_file_path).context("Could not open metadata file")?;
         let metadata = Metadata { locs, functions };
@@ -514,9 +515,13 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         },
                     );
                 }
-            } else if value.ty(&self.body.local_decls, self.tcx).is_region_ptr() { // Rhs is a ref
+            } else if value.ty(&self.body.local_decls, self.tcx).is_region_ptr() {
+                // Rhs is a ref
                 /// Used to strip initital deref from projection sequences
-                fn pop_one_projection<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Place<'tcx>> {
+                fn pop_one_projection<'tcx>(
+                    p: &Place<'tcx>,
+                    tcx: TyCtxt<'tcx>,
+                ) -> Option<Place<'tcx>> {
                     if p.projection.is_empty() {
                         return None;
                     }
@@ -526,7 +531,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     })
                 }
                 if let Rvalue::Ref(_, bkind, p) = value {
-                    let instr_operand = if let BorrowKind::Mut {..} = bkind {
+                    let instr_operand = if let BorrowKind::Mut { .. } = bkind {
                         // For mutable borrows (let _n = &mut place), create a parallel binding that takes
                         // a raw pointer to the same place, without involving _n
 
@@ -537,7 +542,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                                 let sans_proj = pop_one_projection(p, self.tcx.clone())
                                     .expect("expected but did not find deref projection");
                                 Operand::Copy(sans_proj)
-                            },
+                            }
                             _ => Operand::Copy(p.clone()),
                         };
 

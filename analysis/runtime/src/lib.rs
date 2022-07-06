@@ -1,7 +1,10 @@
 pub mod backend;
 pub mod events;
 mod handlers;
+pub mod metadata;
 pub mod mir_loc;
+
+pub use handlers::*;
 
 /// List of functions we want hooked for the lifetime analyis runtime.
 pub const HOOK_FUNCTIONS: &[&str] = &[
@@ -12,10 +15,6 @@ pub const HOOK_FUNCTIONS: &[&str] = &[
     "reallocarray",
     "offset",
 ];
-
-pub use self::mir_loc::{DefPathHash, Metadata, MirLoc, MirLocId, MirPlace, MirProjection};
-
-pub use self::handlers::*;
 
 pub fn initialize() {
     backend::init();

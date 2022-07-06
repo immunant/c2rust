@@ -1,8 +1,8 @@
 use c2rust_analysis_rt::decl_with_metadata;
+use c2rust_analysis_rt::metadata::DebugFromFn;
+use c2rust_analysis_rt::metadata::Metadata;
 use c2rust_analysis_rt::mir_loc;
-use c2rust_analysis_rt::mir_loc::DebugFromFn;
-use c2rust_analysis_rt::Metadata;
-use c2rust_analysis_rt::MirPlace;
+use c2rust_analysis_rt::mir_loc::MirPlace;
 use rustc_index::newtype_index;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BasicBlock, Field, Local};
@@ -15,36 +15,6 @@ use std::{
 
 use crate::util::ShortOption;
 
-newtype_index!(
-    /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
-    pub struct GraphId { DEBUG_FORMAT = "GraphId({})" }
-);
-
-newtype_index!(
-    /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
-    pub struct NodeId { DEBUG_FORMAT = "NodeId({})" }
-);
-
-/// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
-pub const _ROOT_NODE: NodeId = NodeId::from_u32(0);
-
-/// A pointer derivation graph, which tracks the handling of one object throughout its lifetime.
-#[derive(Default, Eq, PartialEq, Hash, Clone)]
-pub struct Graph {
-    /// The nodes in the graph.  Nodes are stored in increasing order by timestamp.  The first
-    /// node, called the "root node", creates the object described by this graph, and all other
-    /// nodes are derived from it.
-    pub nodes: IndexVec<NodeId, Node>,
-}
-
-impl Graph {
-    pub fn new() -> Graph {
-        Graph {
-            nodes: IndexVec::new(),
-        }
-    }
-}
-
 #[derive(Eq, PartialEq, Hash, Clone)]
 pub struct Func(pub DefPathHash);
 
@@ -54,8 +24,8 @@ impl IWithMetadata for Func {}
 
 impl Debug for WithMetadata<'_, Func> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use c2rust_analysis_rt::mir_loc::IWithMetadata;
-        use c2rust_analysis_rt::DefPathHash;
+        use c2rust_analysis_rt::metadata::IWithMetadata;
+        use c2rust_analysis_rt::mir_loc::DefPathHash;
         let def_path_hash = DefPathHash::from(self.inner.0 .0.as_value());
         let def_path = def_path_hash.with_metadata(self.metadata);
         write!(f, "{def_path:?}")
@@ -147,6 +117,20 @@ impl Display for WithMetadata<'_, Node> {
     }
 }
 
+newtype_index!(
+    /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
+    pub struct NodeId { DEBUG_FORMAT = "NodeId({})" }
+);
+
+/// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
+pub const _ROOT_NODE: NodeId = NodeId::from_u32(0);
+
+impl Display for NodeId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "node {}", self.as_usize())
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum NodeKind {
     /// A copy from one local to another.  This also covers casts such as `&mut T` to `&T` or `&T`
@@ -193,32 +177,6 @@ pub enum NodeKind {
     StoreValue,
 }
 
-/// A collection of graphs describing the handling of one or more objects within the program.
-#[derive(Default, Eq, PartialEq)]
-pub struct Graphs {
-    /// The graphs.  Each graph describes one object, or one group of objects that were all handled
-    /// identically.
-    pub graphs: IndexVec<GraphId, Graph>,
-
-    /// Lookup table for finding all nodes in all graphs that store to a particular MIR local.
-    pub latest_assignment: HashMap<(DefPathHash, mir_loc::Local), (GraphId, NodeId)>,
-}
-
-impl Graphs {
-    pub fn new() -> Graphs {
-        Graphs {
-            graphs: IndexVec::new(),
-            latest_assignment: HashMap::new(),
-        }
-    }
-}
-
-impl Display for NodeId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "node {}", self.as_usize())
-    }
-}
-
 impl Display for NodeKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use NodeKind::*;
@@ -240,9 +198,18 @@ impl Display for NodeKind {
     }
 }
 
-impl Display for GraphId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "graph {}", self.as_usize())
+/// A pointer derivation graph, which tracks the handling of one object throughout its lifetime.
+#[derive(Default, Eq, PartialEq, Hash, Clone)]
+pub struct Graph {
+    /// The nodes in the graph.  Nodes are stored in increasing order by timestamp.  The first
+    /// node, called the "root node", creates the object described by this graph, and all other
+    /// nodes are derived from it.
+    pub nodes: IndexVec<NodeId, Node>,
+}
+
+impl Graph {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -271,6 +238,34 @@ impl Display for WithMetadata<'_, Graph> {
         }
         write!(f, "}}")?;
         Ok(())
+    }
+}
+
+newtype_index!(
+    /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
+    pub struct GraphId { DEBUG_FORMAT = "GraphId({})" }
+);
+
+impl Display for GraphId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "graph {}", self.as_usize())
+    }
+}
+
+/// A collection of graphs describing the handling of one or more objects within the program.
+#[derive(Default, Eq, PartialEq)]
+pub struct Graphs {
+    /// The graphs.  Each graph describes one object, or one group of objects that were all handled
+    /// identically.
+    pub graphs: IndexVec<GraphId, Graph>,
+
+    /// Lookup table for finding all nodes in all graphs that store to a particular MIR local.
+    pub latest_assignment: HashMap<(DefPathHash, mir_loc::Local), (GraphId, NodeId)>,
+}
+
+impl Graphs {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 

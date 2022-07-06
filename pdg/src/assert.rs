@@ -15,7 +15,7 @@ impl Graphs {
     ///
     /// This is not necessary, but helps minimize the graphs.
     /// Once when graph deduplication is implemented, we should implement and test this as well.
-    /// 
+    ///
     /// This is the same as [`WithMetadata<'_, Graphs>::assert_no_duplicates`]
     /// except this only checks the deduplicated count is the same.
     pub fn assert_no_duplicates(&self) {
@@ -30,7 +30,7 @@ impl WithMetadata<'_, Graphs> {
     ///
     /// This is not necessary, but helps minimize the graphs.
     /// Once when graph deduplication is implemented, we should implement and test this as well.
-    /// 
+    ///
     /// This is the same as [`Graphs::assert_no_duplicates`]
     /// except this prints nice debug output.
     pub fn assert_no_duplicates(&self) {
@@ -57,7 +57,7 @@ impl Graphs {
 
 impl Graphs {
     /// Assert all [`Graph`] tests.
-    /// 
+    ///
     /// This is the same as [`Graphs::assert_all_tests`]
     /// except it does not print nice debug output.
     // Used for debugging.
@@ -70,7 +70,7 @@ impl Graphs {
 
 impl WithMetadata<'_, Graphs> {
     /// Assert all [`Graph`] tests.
-    /// 
+    ///
     /// This is the same as [`Graphs::assert_all_tests`]
     /// except this prints nice debug output.
     // Used for debugging.

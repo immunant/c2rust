@@ -1,4 +1,5 @@
-use crate::mir_loc::{IWithMetadata, Local, MirLocId, WithMetadata};
+use crate::metadata::{IWithMetadata, WithMetadata};
+use crate::mir_loc::{Local, MirLocId};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fmt::Debug;

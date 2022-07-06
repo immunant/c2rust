@@ -35,7 +35,9 @@ fn main() -> eyre::Result<()> {
     env_logger::init();
     let _runtime = Runtime::new();
 
-    let metadata_path = env::args_os().nth(2).expect("Expected metadata file path as the 1st argument");
+    let metadata_path = env::args_os()
+        .nth(2)
+        .expect("Expected metadata file path as the 1st argument");
     let event_trace_path = env::args_os()
         .nth(1)
         .expect("Expected event trace file path as the 2nd argument");

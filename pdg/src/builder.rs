@@ -1,7 +1,7 @@
 use crate::graph::{Func, Graph, GraphId, Graphs, Node, NodeId, NodeKind};
 use c2rust_analysis_rt::events::{Event, EventKind, Pointer};
-use c2rust_analysis_rt::mir_loc::{EventMetadata, Metadata, TransferKind};
-use c2rust_analysis_rt::MirLoc;
+use c2rust_analysis_rt::metadata::Metadata;
+use c2rust_analysis_rt::mir_loc::{EventMetadata, MirLoc, TransferKind};
 use color_eyre::eyre;
 use fs_err::File;
 use itertools::Itertools;
