@@ -1,40 +1,7 @@
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fmt::{self, Display, Formatter};
-use std::fs::File;
-use std::path::PathBuf;
-use std::sync::RwLock;
-
-lazy_static! {
-    static ref MIR_LOC_FILE_PATH: RwLock<Option<PathBuf>> = RwLock::new(None);
-}
-
-pub fn set_file(file_path: &str) {
-    *MIR_LOC_FILE_PATH.write().unwrap() = Some(PathBuf::from(file_path));
-}
-
-lazy_static! {
-    pub(crate) static ref MIR_LOCS: Metadata = {
-        let path = MIR_LOC_FILE_PATH
-            .read()
-            .expect("MIR_LOC_FILE_PATH was locked")
-            .clone()
-            .expect("MIR_LOC_FILE_PATH not initialized by the instrumented code");
-        let file = File::open(&path)
-            .unwrap_or_else(|_| panic!("Could not open span file: {:?}", path.display()));
-        bincode::deserialize_from(file).expect("Error deserializing span file")
-    };
-}
-
-pub fn get(index: MirLocId) -> Option<&'static MirLoc> {
-    if MIR_LOC_FILE_PATH.read().unwrap().is_some() {
-        Some(&MIR_LOCS.locs[index as usize])
-    } else {
-        None
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Hash, Eq, PartialEq)]
 pub enum MirProjection {
@@ -127,20 +94,6 @@ pub type MirLocId = u32;
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct DefPathHash(pub u64, pub u64);
 
-impl Debug for DefPathHash {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            MIR_LOCS
-                .functions
-                .get(self)
-                .map(|s| s.as_str())
-                .unwrap_or("unknown")
-        )
-    }
-}
-
 impl From<(u64, u64)> for DefPathHash {
     fn from(other: (u64, u64)) -> Self {
         Self(other.0, other.1)
@@ -188,18 +141,97 @@ pub struct MirLoc {
     pub metadata: EventMetadata,
 }
 
-impl<'tcx> fmt::Debug for MirLoc {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{:?}:{}:{}",
-            self.body_def, self.basic_block_idx, self.statement_idx
-        )
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Metadata {
     pub locs: Vec<MirLoc>,
     pub functions: HashMap<DefPathHash, String>,
+}
+
+impl Metadata {
+    pub fn get(&self, index: MirLocId) -> &MirLoc {
+        &self.locs[index as usize]
+    }
+}
+
+/// Implemented as a macro because of the orphan rule.
+/// It's a simple implementation so it's easiest just to copy and paste it with a macro.
+#[macro_export]
+macro_rules! decl_with_metadata {
+    () => {
+        pub struct WithMetadata<'a, T> {
+            pub inner: &'a T,
+            pub metadata: &'a Metadata,
+        }
+        
+        pub trait IWithMetadata where Self: Sized {
+            fn with_metadata<'a>(&'a self, metadata: &'a Metadata) -> WithMetadata<'a, Self> {
+                WithMetadata { inner: self, metadata }
+            }
+        }
+    };
+}
+
+decl_with_metadata!();
+
+impl IWithMetadata for DefPathHash {}
+
+impl Debug for WithMetadata<'_, DefPathHash> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let func_name = self
+            .metadata
+            .functions
+            .get(self.inner)
+            .map(|s| s.as_str())
+            .unwrap_or("unknown");
+        write!(f, "{func_name}")
+    }
+}
+
+impl IWithMetadata for MirLoc {}
+
+impl Debug for WithMetadata<'_, MirLoc> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let MirLoc {
+            body_def,
+            basic_block_idx,
+            statement_idx,
+            metadata: _,
+        } = self.inner;
+        let body_def = body_def.with_metadata(self.metadata);
+        write!(f, "{body_def:?}:{basic_block_idx}:{statement_idx}")
+    }
+}
+
+pub struct DebugFromFn<F>(pub F)
+where
+    F: Copy + FnOnce(&mut Formatter) -> fmt::Result;
+
+impl<F> Debug for DebugFromFn<F>
+where
+    F: Copy + FnOnce(&mut Formatter) -> fmt::Result,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.0(f)
+    }
+}
+
+impl Debug for Metadata {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        // f.debug_map().entries(entries)
+        let locs = DebugFromFn(|f| {
+            let locs = self.locs.iter().map(|loc| loc.with_metadata(self));
+            f.debug_list().entries(locs).finish()
+        });
+        let functions = DebugFromFn(|f| {
+            let functions = self
+                .functions
+                .iter()
+                .map(|(def_path_hash, func)| (def_path_hash.with_metadata(self), func));
+            f.debug_map().entries(functions).finish()
+        });
+        f.debug_struct("Metadata")
+            .field("locs", &locs)
+            .field("functions", &functions)
+            .finish()
+    }
 }

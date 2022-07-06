@@ -3,8 +3,6 @@ pub mod events;
 mod handlers;
 pub mod mir_loc;
 
-use std::env;
-
 /// List of functions we want hooked for the lifetime analyis runtime.
 pub const HOOK_FUNCTIONS: &[&str] = &[
     "malloc",
@@ -20,9 +18,6 @@ pub use self::mir_loc::{DefPathHash, Metadata, MirLoc, MirLocId, MirPlace, MirPr
 pub use self::handlers::*;
 
 pub fn initialize() {
-    let span_filename = env::var("METADATA_FILE")
-        .expect("Instrumentation requires the METADATA_FILE environment variable be set");
-    mir_loc::set_file(&span_filename);
     backend::init();
 }
 

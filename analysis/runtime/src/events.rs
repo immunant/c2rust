@@ -1,6 +1,8 @@
-use crate::mir_loc::{self, Local, MirLocId};
+use crate::mir_loc::{IWithMetadata, Local, MirLocId, WithMetadata};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::fmt::Debug;
+use std::fmt::Formatter;
 
 pub type Pointer = usize;
 
@@ -10,14 +12,16 @@ pub struct Event {
     pub kind: EventKind,
 }
 
-impl fmt::Debug for Event {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(mir_loc) = mir_loc::get(self.mir_loc) {
-            mir_loc.fmt(f)?;
-        } else {
-            self.mir_loc.fmt(f)?;
-        }
-        write!(f, " {:?}", self.kind)
+impl IWithMetadata for Event {}
+
+impl Debug for WithMetadata<'_, Event> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let Self {
+            inner: Event { mir_loc, kind },
+            metadata,
+        } = self;
+        let mir_loc = metadata.get(*mir_loc).with_metadata(metadata);
+        write!(f, "{mir_loc:?} {kind:?}")
     }
 }
 
@@ -82,8 +86,8 @@ pub enum EventKind {
     Done,
 }
 
-impl fmt::Debug for EventKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Debug for EventKind {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         use EventKind::*;
         match *self {
             CopyPtr(ptr) => write!(f, "copy(0x{:x})", ptr),

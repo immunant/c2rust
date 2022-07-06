@@ -1,3 +1,4 @@
+use c2rust_analysis_rt::mir_loc::DebugFromFn;
 use itertools::Itertools;
 
 use std::{
@@ -113,7 +114,22 @@ impl<T: Display> Display for Duplicates<T> {
     }
 }
 
+impl<T> Duplicates<T> {
+    // Used for debugging.
+    #[allow(dead_code)]
+    pub fn assert_empty_with(&self, to_string: impl Copy + Fn(&T) -> String) {
+        if self.is_empty() {
+            return;
+        }
+        panic!("unexpected duplicates: {:?}", DebugFromFn(|f| {
+            self.fmt_up_to_n(f, Self::DEFAULT_UP_TO_N.into(), to_string)
+        }));
+    }
+}
+
 impl<T: Debug + Eq + Hash> Duplicates<T> {
+    // Used for debugging.
+    #[allow(dead_code)]
     pub fn assert_empty_debug(&self) {
         if self.is_empty() {
             return;
@@ -123,7 +139,9 @@ impl<T: Debug + Eq + Hash> Duplicates<T> {
 }
 
 impl<T: Display + Eq + Hash> Duplicates<T> {
-    pub fn assert_empty(&self) {
+    // Used for debugging.
+    #[allow(dead_code)]
+    pub fn assert_empty_display(&self) {
         if self.is_empty() {
             return;
         }

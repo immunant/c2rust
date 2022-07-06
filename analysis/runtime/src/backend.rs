@@ -2,13 +2,16 @@ use lazy_static::lazy_static;
 use std::env;
 use std::fs::File;
 use std::io::BufWriter;
+use std::path::Path;
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Condvar, Mutex};
 use std::thread;
 
 use bincode;
 
+use crate::Metadata;
 use crate::events::{Event, EventKind};
+use crate::mir_loc::IWithMetadata;
 
 lazy_static! {
     pub static ref TX: SyncSender<Event> = {
@@ -63,8 +66,16 @@ fn log(rx: Receiver<Event>) {
 }
 
 fn debug(rx: Receiver<Event>) {
+    let metadata: Metadata = {
+        let path = env::var_os("METADATA_FILE")
+            .expect("Instrumentation requires the METADATA_FILE environment variable be set");
+        let path = Path::new(&path);
+        let file = File::open(path)
+            .unwrap_or_else(|_| panic!("Could not open span file: {:?}", path.display()));
+        bincode::deserialize_from(file).expect("Error deserializing span file")
+    };
     for event in rx {
-        eprintln!("{:?}", event);
+        eprintln!("{:?}", event.with_metadata(&metadata));
         if let EventKind::Done = event.kind {
             return;
         }

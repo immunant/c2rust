@@ -1,7 +1,7 @@
 use crate::graph::{Func, Graph, GraphId, Graphs, Node, NodeId, NodeKind};
 use c2rust_analysis_rt::events::{Event, EventKind, Pointer};
 use c2rust_analysis_rt::mir_loc::{EventMetadata, Metadata, TransferKind};
-use c2rust_analysis_rt::{mir_loc, MirLoc};
+use c2rust_analysis_rt::MirLoc;
 use color_eyre::eyre;
 use fs_err::File;
 use itertools::Itertools;
@@ -19,7 +19,7 @@ pub fn read_event_log(path: &Path) -> io::Result<Vec<Event>> {
     Ok(events)
 }
 
-pub fn _read_metadata(path: &Path) -> eyre::Result<Metadata> {
+pub fn read_metadata(path: &Path) -> eyre::Result<Metadata> {
     let bytes = fs_err::read(path)?;
     let metadata = bincode::deserialize(&bytes)?;
     Ok(metadata)
@@ -127,6 +127,7 @@ pub fn add_node(
     graphs: &mut Graphs,
     provenances: &mut HashMap<Pointer, (GraphId, NodeId)>,
     event: &Event,
+    metadata: &Metadata,
 ) -> Option<NodeId> {
     let node_kind = event.kind.to_node_kind()?;
 
@@ -135,7 +136,7 @@ pub fn add_node(
         mut basic_block_idx,
         mut statement_idx,
         metadata,
-    } = mir_loc::get(event.mir_loc).unwrap();
+    } = metadata.get(event.mir_loc);
 
     let this_func_hash = DefPathHash(Fingerprint::new(body_def.0, body_def.1));
     let (src_fn, dest_fn) = match metadata.transfer_kind {
@@ -236,11 +237,11 @@ pub fn add_node(
     Some(node_id)
 }
 
-pub fn construct_pdg(events: &[Event]) -> Graphs {
+pub fn construct_pdg(events: &[Event], metadata: &Metadata) -> Graphs {
     let mut graphs = Graphs::new();
     let mut provenances = HashMap::new();
     for event in events {
-        add_node(&mut graphs, &mut provenances, event);
+        add_node(&mut graphs, &mut provenances, event, metadata);
     }
     // TODO(kkysen) check if I have to remove any `GraphId`s from `graphs.latest_assignment`
     graphs.graphs = graphs.graphs.into_iter().unique().collect();
