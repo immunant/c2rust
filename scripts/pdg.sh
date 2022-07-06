@@ -99,7 +99,7 @@ main() {
         export METADATA_FILE="${metadata}"
         cargo run \
             "${profile_args[@]}" \
-            -- "../${test_dir}/log.bc" \
+            -- "../${test_dir}/log.bc" "${metadata}" \
         > "../${test_dir}/pdg.log"
     )
 }
