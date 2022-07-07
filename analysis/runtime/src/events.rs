@@ -84,38 +84,31 @@ pub enum EventKind {
 
 impl fmt::Debug for EventKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use EventKind::*;
         match *self {
-            EventKind::CopyPtr(ptr) => write!(f, "copy({:p})", ptr as *const u8),
-            EventKind::Field(ptr, id) => write!(f, "field({:p}, {})", ptr as *const u8, id),
-            EventKind::Alloc { size, ptr } => {
-                write!(f, "malloc({}) -> {:p}", size, ptr as *const u8)
+            CopyPtr(ptr) => write!(f, "copy(0x{:x})", ptr),
+            Field(ptr, id) => write!(f, "field(0x{:x}, {})", ptr, id),
+            Alloc { size, ptr } => {
+                write!(f, "malloc({}) -> 0x{:x}", size, ptr)
             }
-            EventKind::Free { ptr } => write!(f, "free({:p})", ptr as *const u8),
-            EventKind::Realloc {
+            Free { ptr } => write!(f, "free(0x{:x})", ptr),
+            Realloc {
                 old_ptr,
                 size,
                 new_ptr,
-            } => write!(
-                f,
-                "realloc({:p}, {}) -> {:p}",
-                old_ptr as *const u8, size, new_ptr as *const u8
-            ),
-            EventKind::Ret(ptr) => write!(f, "ret({:p})", ptr as *const u8),
-            EventKind::Done => write!(f, "done"),
-            EventKind::LoadAddr(ptr) => write!(f, "load({:p})", ptr as *const u8),
-            EventKind::StoreAddr(ptr) => write!(f, "store({:p})", ptr as *const u8),
-            EventKind::CopyRef => write!(f, "copy_ref"),
-            EventKind::AddrOfLocal(ptr, _) => write!(f, "addr_of_local = {:p}", ptr as *const u8),
-            EventKind::ToInt(ptr) => write!(f, "to_int({:p})", ptr as *const u8),
-            EventKind::FromInt(ptr) => write!(f, "from_int({:p})", ptr as *const u8),
-            EventKind::LoadValue(ptr) => write!(f, "load_value({:p})", ptr as *const u8),
-            EventKind::StoreValue(ptr) => write!(f, "store_value({:p})", ptr as *const u8),
-            EventKind::Offset(ptr, offset, new_ptr) => {
-                write!(
-                    f,
-                    "offset({:p}, {:?}, {:p})",
-                    ptr as *const u8, offset, new_ptr as *const u8
-                )
+            } => write!(f, "realloc(0x{:x}, {}) -> 0x{:x}", old_ptr, size, new_ptr),
+            Ret(ptr) => write!(f, "ret(0x{:x})", ptr),
+            Done => write!(f, "done"),
+            LoadAddr(ptr) => write!(f, "load(0x{:x})", ptr),
+            StoreAddr(ptr) => write!(f, "store(0x{:x})", ptr),
+            CopyRef => write!(f, "copy_ref"),
+            AddrOfLocal(ptr, _) => write!(f, "addr_of_local = 0x{:x}", ptr),
+            ToInt(ptr) => write!(f, "to_int(0x{:x})", ptr),
+            FromInt(ptr) => write!(f, "from_int(0x{:x})", ptr),
+            LoadValue(ptr) => write!(f, "load_value(0x{:x})", ptr),
+            StoreValue(ptr) => write!(f, "store_value(0x{:x})", ptr),
+            Offset(ptr, offset, new_ptr) => {
+                write!(f, "offset(0x{:x}, {:?}, 0x{:x})", ptr, offset, new_ptr)
             }
         }
     }
