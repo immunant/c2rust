@@ -1,6 +1,6 @@
 use enum_dispatch::enum_dispatch;
+use fs_err::File;
 use std::env;
-use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
 use std::sync::mpsc::Receiver;

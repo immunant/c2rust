@@ -209,6 +209,7 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "enum_dispatch",
+ "fs-err",
  "once_cell",
  "serde",
 ]
