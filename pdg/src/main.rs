@@ -42,6 +42,18 @@ struct Args {
     metadata: PathBuf,
 }
 
+/// Construct and query a PDG from an instrumented program's event log.
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    /// Path to an event log from a run of an instrumented program.
+    #[clap(long, value_parser)]
+    event_log: PathBuf,
+    /// Path to the instrumented program's metadata generated at compile/instrumentation time.
+    #[clap(long, value_parser)]
+    metadata: PathBuf,
+}
+
 fn main() -> eyre::Result<()> {
     color_eyre::install()?;
     env_logger::init();
