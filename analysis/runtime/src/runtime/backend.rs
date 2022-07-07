@@ -1,5 +1,5 @@
 use enum_dispatch::enum_dispatch;
-use fs_err::File;
+use fs_err::{File, OpenOptions};
 use std::env;
 use std::io::BufWriter;
 use std::sync::mpsc::Receiver;
@@ -76,7 +76,7 @@ impl LogBackend {
     pub fn detect() -> Result<Self, AnyError> {
         let path = env::var_os("INSTRUMENT_OUTPUT")
             .ok_or("Instrumentation requires the INSTRUMENT_OUTPUT environment variable be set")?;
-        let file = File::create(&path)?;
+        let file = OpenOptions::new().create(true).append(true).open(&path)?;
         let writer = BufWriter::new(file);
         Ok(Self { writer })
     }
