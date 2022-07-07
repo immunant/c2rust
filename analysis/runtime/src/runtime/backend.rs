@@ -2,7 +2,6 @@ use enum_dispatch::enum_dispatch;
 use fs_err::File;
 use std::env;
 use std::io::BufWriter;
-use std::path::Path;
 use std::sync::mpsc::Receiver;
 
 use bincode;
@@ -65,9 +64,10 @@ impl DebugBackend {
     pub fn detect() -> Result<Self, AnyError> {
         let path = env::var_os("METADATA_FILE")
             .ok_or("Instrumentation requires the METADATA_FILE environment variable be set")?;
-        let path = Path::new(&path);
-        let file = File::open(path)?;
-        let metadata: Metadata = bincode::deserialize_from(file)?;
+        // TODO may want to deduplicate this with [`pdg::builder::read_metadata`] in [`Metadata::read`],
+        // but that may require adding `color-eyre`/`eyre` as a dependency
+        let bytes = fs_err::read(path)?;
+        let metadata = bincode::deserialize(&bytes)?;
         Ok(Self { metadata })
     }
 }
