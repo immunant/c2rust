@@ -247,7 +247,10 @@ pub fn construct_pdg(events: &[Event], metadata: &Metadata) -> Graphs {
     graphs.graphs = graphs.graphs.into_iter().unique().collect();
 
     // for ((func, local), p) in &graphs.latest_assignment {
+    //     use crate::graph::IWithMetadata;
+
     //     let func = Func(*func);
+    //     let func = func.with_metadata(metadata);
     //     println!("({func:?}:{local:?}) => {p:?}");
     // }
     graphs
