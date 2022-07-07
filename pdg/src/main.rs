@@ -27,7 +27,7 @@ use builder::{construct_pdg, read_event_log};
 use color_eyre::eyre;
 use std::{env, path::Path};
 
-use crate::{builder::read_metadata, graph::IWithMetadata};
+use crate::{builder::read_metadata};
 
 fn main() -> eyre::Result<()> {
     color_eyre::install()?;
@@ -60,7 +60,6 @@ fn main() -> eyre::Result<()> {
             .needs_write_permission()
             .map(|node_id| node_id.as_usize())
             .collect::<Vec<_>>();
-        let graph = graph.with_metadata(&metadata);
         println!("{graph_id} {graph}");
         println!("nodes_that_need_write = {needs_write:?}");
         println!("\n");

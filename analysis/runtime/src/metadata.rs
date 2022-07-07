@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fmt::{self, Debug, Formatter},
+    fmt::{self, Debug, Formatter, Display},
 };
 
 use serde::{Deserialize, Serialize};
@@ -47,7 +47,7 @@ decl_with_metadata!();
 
 impl IWithMetadata for DefPathHash {}
 
-impl Debug for WithMetadata<'_, DefPathHash> {
+impl Display for WithMetadata<'_, DefPathHash> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let func_name = self
             .metadata
@@ -56,6 +56,12 @@ impl Debug for WithMetadata<'_, DefPathHash> {
             .map(|s| s.as_str())
             .unwrap_or("unknown");
         write!(f, "{func_name}")
+    }
+}
+
+impl Debug for WithMetadata<'_, DefPathHash> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
     }
 }
 

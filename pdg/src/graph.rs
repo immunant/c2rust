@@ -1,6 +1,5 @@
-use c2rust_analysis_rt::decl_with_metadata;
-use c2rust_analysis_rt::metadata::DebugFromFn;
-use c2rust_analysis_rt::metadata::Metadata;
+use c2rust_analysis_rt::metadata::IWithMetadata;
+use c2rust_analysis_rt::metadata::WithMetadata;
 use c2rust_analysis_rt::mir_loc;
 use c2rust_analysis_rt::mir_loc::MirPlace;
 use rustc_index::newtype_index;
@@ -16,25 +15,31 @@ use std::{
 use crate::util::ShortOption;
 
 #[derive(Eq, PartialEq, Hash, Clone)]
-pub struct Func(pub DefPathHash);
+pub struct Func {
+    pub def_path_hash: DefPathHash,
+    pub name: String,
+}
 
-decl_with_metadata!();
-
-impl IWithMetadata for Func {}
-
-impl Debug for WithMetadata<'_, Func> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use c2rust_analysis_rt::metadata::IWithMetadata;
-        use c2rust_analysis_rt::mir_loc::DefPathHash;
-        let def_path_hash = DefPathHash::from(self.inner.0 .0.as_value());
-        let def_path = def_path_hash.with_metadata(self.metadata);
-        write!(f, "{def_path:?}")
+impl<'a> From<WithMetadata<'a, DefPathHash>> for Func {
+    fn from(this: WithMetadata<'a, DefPathHash>) -> Self {
+        let def_path_hash = c2rust_analysis_rt::mir_loc::DefPathHash::from(this.inner.0.as_value());
+        let name = def_path_hash.with_metadata(this.metadata).to_string();
+        Self {
+            def_path_hash: *this.inner,
+            name,
+        }
     }
 }
 
-impl Display for WithMetadata<'_, Func> {
+impl Display for Func {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
+        write!(f, "{}", self.name)
+    }
+}
+
+impl Debug for Func {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
     }
 }
 
@@ -45,7 +50,7 @@ impl Display for WithMetadata<'_, Func> {
 /// Each operation occurs at a point in time, but the timestamp is not stored explicitly.  Instead,
 /// nodes in each graph are stored in sequential order, and timing relationships can be identified
 /// by comparing `NodeId`s.
-#[derive(Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct Node {
     /// The function that contains this operation.
     ///
@@ -72,9 +77,7 @@ pub struct Node {
     pub source: Option<NodeId>,
 }
 
-impl IWithMetadata for Node {}
-
-impl Debug for WithMetadata<'_, Node> {
+impl Display for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let Node {
             function,
@@ -83,33 +86,12 @@ impl Debug for WithMetadata<'_, Node> {
             dest,
             kind,
             source,
-        } = self.inner;
-        f.debug_struct("Node")
-            .field("function", &function.with_metadata(self.metadata))
-            .field("block", block)
-            .field("statement_idx", statement_idx)
-            .field("dest", dest)
-            .field("kind", kind)
-            .field("source", source)
-            .finish()
-    }
-}
-
-impl Display for WithMetadata<'_, Node> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let Node {
-            function,
-            block,
-            statement_idx,
-            dest,
-            kind,
-            source,
-        } = self.inner;
+        } = self;
         let src = ShortOption(source.as_ref());
         let dest = ShortOption(dest.as_ref());
         let bb = block.as_usize();
         let stmt = statement_idx;
-        let fn_ = function.with_metadata(self.metadata);
+        let fn_ = function;
         write!(
             f,
             "(fn {fn_}) {kind} {{ src: {src}, dest: {dest}, bb: {bb}, stmt: {stmt} }}"
@@ -199,7 +181,7 @@ impl Display for NodeKind {
 }
 
 /// A pointer derivation graph, which tracks the handling of one object throughout its lifetime.
-#[derive(Default, Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Default, Eq, PartialEq, Hash, Clone)]
 pub struct Graph {
     /// The nodes in the graph.  Nodes are stored in increasing order by timestamp.  The first
     /// node, called the "root node", creates the object described by this graph, and all other
@@ -213,27 +195,10 @@ impl Graph {
     }
 }
 
-impl IWithMetadata for Graph {}
-
-impl Debug for WithMetadata<'_, Graph> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let nodes = DebugFromFn(|f| {
-            let nodes = self
-                .inner
-                .nodes
-                .iter()
-                .map(|node| node.with_metadata(self.metadata));
-            f.debug_list().entries(nodes).finish()
-        });
-        f.debug_struct("Graph").field("nodes", &nodes).finish()
-    }
-}
-
-impl Display for WithMetadata<'_, Graph> {
+impl Display for Graph {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "{{")?;
-        for (node_id, node) in self.inner.nodes.iter_enumerated() {
-            let node = node.with_metadata(self.metadata);
+        for (node_id, node) in self.nodes.iter_enumerated() {
             writeln!(f, "\t{node_id}: {node},")?;
         }
         write!(f, "}}")?;
@@ -253,7 +218,7 @@ impl Display for GraphId {
 }
 
 /// A collection of graphs describing the handling of one or more objects within the program.
-#[derive(Default, Eq, PartialEq)]
+#[derive(Debug, Default, Eq, PartialEq)]
 pub struct Graphs {
     /// The graphs.  Each graph describes one object, or one group of objects that were all handled
     /// identically.
@@ -269,27 +234,9 @@ impl Graphs {
     }
 }
 
-impl IWithMetadata for Graphs {}
-
-impl Debug for WithMetadata<'_, Graphs> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let graphs = DebugFromFn(|f| {
-            let graphs = self
-                .inner
-                .graphs
-                .iter()
-                .map(|graph| graph.with_metadata(self.metadata));
-            f.debug_list().entries(graphs).finish()
-        });
-        // skip `latest_assignments`
-        f.debug_struct("Graphs").field("graphs", &graphs).finish()
-    }
-}
-
-impl Display for WithMetadata<'_, Graphs> {
+impl Display for Graphs {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        for (graph_id, graph) in self.inner.graphs.iter_enumerated() {
-            let graph = graph.with_metadata(self.metadata);
+        for (graph_id, graph) in self.graphs.iter_enumerated() {
             if graph_id.as_usize() != 0 {
                 write!(f, "\n\n")?;
             }

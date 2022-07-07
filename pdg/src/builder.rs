@@ -1,6 +1,6 @@
-use crate::graph::{Func, Graph, GraphId, Graphs, Node, NodeId, NodeKind};
+use crate::graph::{Graph, GraphId, Graphs, Node, NodeId, NodeKind};
 use c2rust_analysis_rt::events::{Event, EventKind, Pointer};
-use c2rust_analysis_rt::metadata::Metadata;
+use c2rust_analysis_rt::metadata::{Metadata, WithMetadata};
 use c2rust_analysis_rt::mir_loc::{EventMetadata, MirLoc, TransferKind};
 use color_eyre::eyre;
 use fs_err::File;
@@ -135,17 +135,17 @@ pub fn add_node(
         body_def,
         mut basic_block_idx,
         mut statement_idx,
-        metadata,
+        metadata: event_metadata,
     } = metadata.get(event.mir_loc);
 
     let this_func_hash = DefPathHash(Fingerprint::new(body_def.0, body_def.1));
-    let (src_fn, dest_fn) = match metadata.transfer_kind {
+    let (src_fn, dest_fn) = match event_metadata.transfer_kind {
         TransferKind::None => (this_func_hash, this_func_hash),
         TransferKind::Arg(p) => (this_func_hash, DefPathHash(Fingerprint::new(p.0, p.1))),
         TransferKind::Ret(p) => (DefPathHash(Fingerprint::new(p.0, p.1)), this_func_hash),
     };
 
-    if let TransferKind::Arg(_) = metadata.transfer_kind {
+    if let TransferKind::Arg(_) = event_metadata.transfer_kind {
         // FIXME: this is a special case for arguments
         basic_block_idx = 0;
         statement_idx = 0;
@@ -153,14 +153,14 @@ pub fn add_node(
 
     let head = event
         .kind
-        .ptr(metadata)
+        .ptr(event_metadata)
         .and_then(|ptr| provenances.get(&ptr).cloned());
     let ptr = head.and_then(|(gid, _last_nid_ref)| {
         graphs.graphs[gid]
             .nodes
             .iter()
             .rposition(|n| {
-                if let (Some(d), Some(s)) = (&n.dest, &metadata.source) {
+                if let (Some(d), Some(s)) = (&n.dest, &event_metadata.source) {
                     d == s
                 } else {
                     false
@@ -170,7 +170,7 @@ pub fn add_node(
     });
 
     let source = ptr.or_else(|| {
-        metadata.source.as_ref().and_then(|src| {
+        event_metadata.source.as_ref().and_then(|src| {
             let latest_assignment = graphs.latest_assignment.get(&(src_fn, src.local)).cloned();
             if !src.projection.is_empty() {
                 if let Some((gid, _)) = latest_assignment {
@@ -194,14 +194,18 @@ pub fn add_node(
     });
 
     let node = Node {
-        function: Func(dest_fn),
+        function: WithMetadata {
+            inner: &dest_fn,
+            metadata,
+        }
+        .into(),
         block: basic_block_idx.into(),
         statement_idx,
         kind: node_kind,
         source: source
             .and_then(|p| event.kind.parent(p))
             .map(|(_, nid)| nid),
-        dest: metadata.destination.clone(),
+        dest: event_metadata.destination.clone(),
     };
 
     let graph_id = source
@@ -212,9 +216,14 @@ pub fn add_node(
         .unwrap_or_else(|| graphs.graphs.push(Graph::new()));
     let node_id = graphs.graphs[graph_id].nodes.push(node);
 
-    update_provenance(provenances, &event.kind, metadata, (graph_id, node_id));
+    update_provenance(
+        provenances,
+        &event.kind,
+        event_metadata,
+        (graph_id, node_id),
+    );
 
-    if let Some(dest) = &metadata.destination {
+    if let Some(dest) = &event_metadata.destination {
         let unique_place = (dest_fn, dest.local);
         let last_setting = (graph_id, node_id);
 
@@ -247,11 +256,10 @@ pub fn construct_pdg(events: &[Event], metadata: &Metadata) -> Graphs {
     graphs.graphs = graphs.graphs.into_iter().unique().collect();
 
     // for ((func, local), p) in &graphs.latest_assignment {
-    //     use crate::graph::IWithMetadata;
+    //     use crate::graph::Func;
 
-    //     let func = Func(*func);
-    //     let func = func.with_metadata(metadata);
-    //     println!("({func:?}:{local:?}) => {p:?}");
+    //     let func = Func::from(WithMetadata {inner: func, metadata});
+    //     println!("({func}:{local:?}) => {p:?}");
     // }
     graphs
 }

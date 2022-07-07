@@ -1,4 +1,3 @@
-use c2rust_analysis_rt::metadata::DebugFromFn;
 use itertools::Itertools;
 
 use std::{
@@ -111,20 +110,6 @@ impl<T: Debug> Debug for Duplicates<T> {
 impl<T: Display> Display for Duplicates<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.fmt_up_to_n(f, Self::DEFAULT_UP_TO_N.into(), |t| format!("{t}"))
-    }
-}
-
-impl<T> Duplicates<T> {
-    // Used for debugging.
-    #[allow(dead_code)]
-    pub fn assert_empty_with(&self, to_string: impl Copy + Fn(&T) -> String) {
-        if self.is_empty() {
-            return;
-        }
-        panic!(
-            "unexpected duplicates: {:?}",
-            DebugFromFn(|f| { self.fmt_up_to_n(f, Self::DEFAULT_UP_TO_N.into(), to_string) })
-        );
     }
 }
 
