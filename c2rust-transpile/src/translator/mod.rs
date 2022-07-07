@@ -3437,24 +3437,22 @@ impl<'c> Translation<'c> {
                         .ok_or_else(|| {
                             format_err!("Expected Variable offsetof to be a side-effect free")
                         })?;
-                    let expr = mk().cast_expr(expr, mk().ident_ty("usize"));
+                    let expr = mk().cast_expr(expr, path![usize]);
                     use syn::__private::ToTokens;
                     let index_expr = expr.to_token_stream();
 
                     // offset_of!(Struct, field[expr as usize]) as ty
-                    let macro_body = vec![
-                        TokenTree::Ident(ty_ident),
-                        TokenTree::Punct(Punct::new(',', Alone)),
-                        TokenTree::Ident(field_ident),
-                        TokenTree::Group(proc_macro2::Group::new(
-                            proc_macro2::Delimiter::Bracket,
-                            index_expr,
-                        )),
-                    ];
-                    let path: Path = path![offset_of];
                     let mac = mk().mac_expr(mk().mac(
-                        path,
-                        macro_body,
+                        path![::memoffset::offset_of],
+                        vec![
+                            TokenTree::Ident(ty_ident),
+                            TokenTree::Punct(Punct::new(',', Alone)),
+                            TokenTree::Ident(field_ident),
+                            TokenTree::Group(proc_macro2::Group::new(
+                                proc_macro2::Delimiter::Bracket,
+                                index_expr,
+                            )),
+                        ],
                         MacroDelimiter::Paren(Default::default()),
                     ));
 
@@ -4340,7 +4338,7 @@ impl<'c> Translation<'c> {
             CastKind::LValueToRValue | CastKind::ToVoid | CastKind::ConstCast => Ok(val),
 
             CastKind::FunctionToPointerDecay | CastKind::BuiltinFnToFnPtr => {
-                Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
+                Ok(val.map(|x| mk().call_expr(path![Some], vec![x])))
             }
 
             CastKind::ArrayToPointerDecay => {

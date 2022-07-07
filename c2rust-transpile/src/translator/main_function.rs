@@ -59,7 +59,7 @@ impl<'c> Translation<'c> {
                         "Vec",
                         mk().angle_bracketed_args(vec![mk().mutbl().ptr_ty(path![::libc::c_char])]),
                     )])),
-                    Some(mk().call_expr(path![Vec::new], vec![])),
+                    Some(mk().call_expr(path![::alloc::vec::Vec::new], vec![])),
                 ))));
                 stmts.push(mk().semi_stmt(mk().for_expr(
                     mk().ident_pat("arg"),
@@ -120,7 +120,7 @@ impl<'c> Translation<'c> {
                         "Vec",
                         mk().angle_bracketed_args(vec![mk().mutbl().ptr_ty(path![::libc::c_char])]),
                     )])),
-                    Some(mk().call_expr(path![Vec::new], vec![])),
+                    Some(mk().call_expr(path![::alloc::vec::Vec::new], vec![])),
                 ))));
                 let var_name_ident = mk().ident("var_name");
                 let var_value_ident = mk().ident("var_value");
@@ -134,7 +134,7 @@ impl<'c> Translation<'c> {
                         mk().local_stmt(Box::new(
                             mk().local(
                                 mk().ident_pat("var"),
-                                Some(path![String]),
+                                Some(path![::alloc::string::String]),
                                 Some(
                                     mk().mac_expr(
                                         mk().mac(
