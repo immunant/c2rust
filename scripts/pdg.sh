@@ -101,6 +101,9 @@ main() {
             -- \
             --event-log "../${test_dir}/log.bc" \
             --metadata "${metadata}" \
+            --print graphs \
+            --print write-permissions \
+            --print counts \
         > "../${test_dir}/pdg.log"
     )
 }

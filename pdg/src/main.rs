@@ -24,34 +24,46 @@ mod query;
 mod util;
 
 use builder::{construct_pdg, read_event_log};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use color_eyre::eyre;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashSet,
+    fmt::{self, Display, Formatter},
+    path::{Path, PathBuf},
+};
 
 use crate::builder::read_metadata;
 
-/// Construct and query a PDG from an instrumented program's event log.
-#[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
-struct Args {
-    /// Path to an event log from a run of an instrumented program.
-    #[clap(long, value_parser)]
-    event_log: PathBuf,
-    /// Path to the instrumented program's metadata generated at compile/instrumentation time.
-    #[clap(long, value_parser)]
-    metadata: PathBuf,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ValueEnum)]
+enum ToPrint {
+    Graphs,
+    Counts,
+    Events,
+    LatestAssignments,
+    WritePermissions,
+}
+
+impl Display for ToPrint {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(self.to_possible_value().unwrap().get_name())
+    }
 }
 
 /// Construct and query a PDG from an instrumented program's event log.
-#[derive(Parser, Debug)]
+#[derive(Debug, Parser)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
     /// Path to an event log from a run of an instrumented program.
     #[clap(long, value_parser)]
     event_log: PathBuf,
+
     /// Path to the instrumented program's metadata generated at compile/instrumentation time.
     #[clap(long, value_parser)]
     metadata: PathBuf,
+
+    /// What to print.
+    #[clap(long, value_parser)]
+    print: Vec<ToPrint>,
 }
 
 fn main() -> eyre::Result<()> {
@@ -59,36 +71,57 @@ fn main() -> eyre::Result<()> {
     env_logger::init();
     let args = Args::parse();
 
+    let print = args.print.iter().collect::<HashSet<_>>();
+    let print = |to_print| print.contains(&to_print);
+
     let events = read_event_log(Path::new(&args.event_log))?;
     let metadata = read_metadata(Path::new(&args.metadata))?;
+    let metadata = &metadata;
 
-    // for event in &events {
-    //     let mir_loc = metadata.get(event.mir_loc);
-    //     let kind = &event.kind;
-    //     println!("{mir_loc:?} -> {kind:?}");
-    // }
+    if print(ToPrint::Events) {
+        for event in &events {
+            let mir_loc = metadata.get(event.mir_loc);
+            let kind = &event.kind;
+            println!("{mir_loc:?} -> {kind:?}");
+        }
+    }
 
-    let pdg = construct_pdg(&events, &metadata);
+    let pdg = construct_pdg(&events, metadata);
     pdg.assert_all_tests();
+
+    if print(ToPrint::LatestAssignments) {
+        for ((func_hash, local), p) in &pdg.latest_assignment {
+            let func = &metadata.functions[func_hash];
+            println!("({func}:{local:?}) => {p:?}");
+        }
+    }
 
     for (graph_id, graph) in pdg.graphs.iter_enumerated() {
         let needs_write = graph
             .needs_write_permission()
             .map(|node_id| node_id.as_usize())
             .collect::<Vec<_>>();
-        println!("{graph_id} {graph}");
-        println!("nodes_that_need_write = {needs_write:?}");
-        println!("\n");
+        if print(ToPrint::Graphs) {
+            println!("{graph_id} {graph}");
+        }
+        if print(ToPrint::WritePermissions) {
+            println!("nodes_that_need_write = {needs_write:?}");
+        }
+        if print(ToPrint::Graphs) || print(ToPrint::WritePermissions) {
+            println!();
+        }
     }
 
-    let num_graphs = pdg.graphs.len();
-    let num_nodes = pdg
-        .graphs
-        .iter()
-        .map(|graph| graph.nodes.len())
-        .sum::<usize>();
-    dbg!(num_graphs);
-    dbg!(num_nodes);
+    if print(ToPrint::Counts) {
+        let num_graphs = pdg.graphs.len();
+        let num_nodes = pdg
+            .graphs
+            .iter()
+            .map(|graph| graph.nodes.len())
+            .sum::<usize>();
+        println!("num_graphs = {num_graphs}");
+        println!("num_nodes = {num_nodes}");
+    }
 
     Ok(())
 }
