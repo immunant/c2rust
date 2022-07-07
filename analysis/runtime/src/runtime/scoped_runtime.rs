@@ -7,7 +7,7 @@ use once_cell::sync::OnceCell;
 
 use crate::events::Event;
 
-use super::{AnyError, backend::Backend, FINISHED};
+use super::{AnyError, backend::Backend, FINISHED, skip::{skip_event, SkipReason}};
 
 pub struct Runtime {
     tx: SyncSender<Event>,
@@ -68,6 +68,7 @@ impl Runtime {
             }
             Some(()) => {
                 // Silently drop the [`Event`] as the [`Runtime`] has already been [`Runtime::finalize`]d.
+                skip_event(event, SkipReason::AfterMain);
             }
         }
     }

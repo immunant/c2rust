@@ -2,7 +2,7 @@ use once_cell::sync::OnceCell;
 
 use crate::events::Event;
 
-use super::{scoped_runtime::Runtime, AnyError};
+use super::{scoped_runtime::Runtime, AnyError, skip::{skip_event, SkipReason}};
 
 pub struct GlobalRuntime {
     runtime: OnceCell<Runtime>,
@@ -38,6 +38,7 @@ impl GlobalRuntime {
         match self.runtime.get() {
             None => {
                 // Silently drop the [`Event`] as the [`Runtime`] isn't ready/initialized yet.
+                skip_event(event, SkipReason::BeforeMain);
             }
             Some(runtime) => {
                 runtime.send_event(event);

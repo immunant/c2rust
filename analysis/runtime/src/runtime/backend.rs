@@ -11,7 +11,7 @@ use crate::events::{Event, EventKind};
 use crate::metadata::{IWithMetadata, Metadata};
 
 #[enum_dispatch]
-trait IBackend {
+pub(super) trait IBackend {
     fn write(&mut self, event: Event);
 }
 

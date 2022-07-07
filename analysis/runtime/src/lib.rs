@@ -6,7 +6,7 @@ pub mod mir_loc;
 
 
 pub use handlers::*;
-use runtime::global_runtime::RUNTIME;
+use runtime::{global_runtime::RUNTIME, skip::notify_if_events_were_skipped_before_main};
 
 /// List of functions we want hooked for the lifetime analyis runtime.
 pub const HOOK_FUNCTIONS: &[&str] = &[
@@ -19,6 +19,7 @@ pub const HOOK_FUNCTIONS: &[&str] = &[
 ];
 
 pub fn initialize() {
+    notify_if_events_were_skipped_before_main();
     RUNTIME.init();
 }
 
