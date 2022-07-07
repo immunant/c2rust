@@ -1,5 +1,9 @@
 //! Helpers for building AST nodes.  Normally used by calling `mk().some_node(args...)`.
 
+// Clippy incorrectly treats boxed function parameters as boxed locals, even though
+// unboxing them would change the function's API and cause errors at use sites.
+#![allow(clippy::boxed_local)]
+
 use std::default::Default;
 use std::iter::FromIterator;
 use std::str;
@@ -866,11 +870,6 @@ impl Builder {
     {
         let seg = seg.make(&self);
 
-        let mut arg_vals = Vec::with_capacity(args.len());
-        for arg in args {
-            arg_vals.push(arg.make(&self));
-        }
-
         // Convert ::<> if present in seg
         fn generic_arg_to_method_generic_arg(a: GenericArgument) -> GenericMethodArgument {
             match a {
@@ -907,7 +906,7 @@ impl Builder {
                 turbofish,
                 receiver: expr,
                 method: seg.ident,
-                args: punct_box(arg_vals),
+                args: punct_box(args),
             },
         )))
     }
@@ -1154,7 +1153,6 @@ impl Builder {
     }
 
     pub fn anon_field_expr(self, val: Box<Expr>, field: u32) -> Box<Expr> {
-        let field = field.make(&self);
         Box::new(parenthesize_if_necessary(Expr::Field(ExprField {
             attrs: self.attrs,
             dot_token: token::Dot(self.span),
@@ -1411,7 +1409,6 @@ impl Builder {
     // Types
 
     pub fn barefn_ty(self, decl: Box<BareFnTyParts>) -> Box<Type> {
-        let decl = decl.make(&self);
         let (inputs, variadic, output) = *decl;
         let abi = self.get_abi_opt();
 
@@ -1724,7 +1721,7 @@ impl Builder {
     }
 
     pub fn mod_(self, items: Vec<Box<Item>>) -> Vec<Item> {
-        items.into_iter().map(|i| *i.make(&self)).collect()
+        items.into_iter().map(|i| *i).collect()
     }
 
     pub fn mac_item(self, mac: Macro) -> Box<Item> {
@@ -2440,7 +2437,7 @@ fn binop_precedence(b: &BinOp) -> u8 {
 
 /// Wrap an expression in parentheses
 fn parenthesize_mut(e: &mut Box<Expr>) {
-    let mut temp = mk().tuple_expr(Vec::<Box<Expr>>::new());
+    let mut temp = mk().tuple_expr(vec![]);
     std::mem::swap(e, &mut temp);
     *e = Box::new(Expr::Paren(ExprParen {
         attrs: vec![],

@@ -717,8 +717,7 @@ impl<'a> Translation<'a> {
                     .resolve_field_name(None, field_id)
                     .ok_or("Could not find bitfield name")?;
                 let setter_name = format!("set_{}", field_name);
-                let lhs_expr_read =
-                    mk().method_call_expr(lhs_expr.clone(), field_name, Vec::<Box<Expr>>::new());
+                let lhs_expr_read = mk().method_call_expr(lhs_expr.clone(), field_name, vec![]);
                 // Allow the value of this assignment to be used as the RHS of other assignments
                 let val = lhs_expr_read.clone();
                 let param_expr = match op {
