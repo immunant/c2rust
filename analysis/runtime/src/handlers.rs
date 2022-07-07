@@ -1,6 +1,6 @@
-use crate::backend::RUNTIME;
 use crate::events::{Event, EventKind};
 use crate::mir_loc::MirLocId;
+use crate::runtime::global_runtime::RUNTIME;
 
 pub fn malloc(mir_loc: MirLocId, size: u64, ptr: usize) {
     RUNTIME.send_event(Event {

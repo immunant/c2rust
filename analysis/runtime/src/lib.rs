@@ -1,10 +1,12 @@
-pub mod backend;
+pub mod runtime;
 pub mod events;
 mod handlers;
 pub mod metadata;
 pub mod mir_loc;
 
+
 pub use handlers::*;
+use runtime::global_runtime::RUNTIME;
 
 /// List of functions we want hooked for the lifetime analyis runtime.
 pub const HOOK_FUNCTIONS: &[&str] = &[
@@ -17,11 +19,11 @@ pub const HOOK_FUNCTIONS: &[&str] = &[
 ];
 
 pub fn initialize() {
-    backend::RUNTIME.init();
+    RUNTIME.init();
 }
 
 pub fn finalize() {
-    backend::RUNTIME.finalize();
+    RUNTIME.finalize();
 }
 
 pub struct Runtime;
