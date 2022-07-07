@@ -2405,9 +2405,7 @@ impl<'c> Translation<'c> {
                 // Only add linkage attributes if the function is `extern`
                 let mut mk_ = if is_main {
                     mk()
-                } else if is_global && !is_inline {
-                    mk_linkage(false, new_name, name).extern_("C").pub_()
-                } else if is_extern_inline {
+                } else if (is_global && !is_inline) || is_extern_inline {
                     mk_linkage(false, new_name, name).extern_("C").pub_()
                 } else if self.cur_file.borrow().is_some() {
                     mk().extern_("C").pub_()
