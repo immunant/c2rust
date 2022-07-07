@@ -89,7 +89,6 @@ where
 
 impl Debug for Metadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        // f.debug_map().entries(entries)
         let locs = DebugFromFn(|f| {
             let locs = self.locs.iter().map(|loc| loc.with_metadata(self));
             f.debug_list().entries(locs).finish()
