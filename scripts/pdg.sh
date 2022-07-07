@@ -96,7 +96,6 @@ main() {
     (cd pdg
         export RUST_BACKTRACE=full # print sources w/ color-eyre
         export RUST_LOG=info
-        export METADATA_FILE="${metadata}"
         cargo run \
             "${profile_args[@]}" \
             -- "../${test_dir}/log.bc" "${metadata}" \
