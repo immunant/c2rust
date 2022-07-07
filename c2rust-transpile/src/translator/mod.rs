@@ -657,7 +657,7 @@ pub fn translate(
                                 t.insert_item(item, decl);
                             }
                             ForeignItem(item) => {
-                                t.insert_foreign_item(item, decl);
+                                t.insert_foreign_item(*item, decl);
                             }
                             Items(items) => {
                                 for item in items {
@@ -744,7 +744,7 @@ pub fn translate(
                                 t.insert_item(item, decl);
                             }
                             ForeignItem(item) => {
-                                t.insert_foreign_item(item, decl);
+                                t.insert_foreign_item(*item, decl);
                             }
                             Items(items) => {
                                 for item in items {
@@ -1174,7 +1174,8 @@ pub enum ExprUse {
 /// into a single extern block at the end of translation.
 #[derive(Debug)]
 pub enum ConvertedDecl {
-    ForeignItem(ForeignItem), // 472 bytes
+    /// [`ForeignItem`] is large (472 bytes), so [`Box`] it.
+    ForeignItem(Box<ForeignItem>), // 472 bytes
     Item(Box<Item>),          // 24 bytes
     Items(Vec<Box<Item>>),    // 24 bytes
     NoItem,
@@ -2828,7 +2829,7 @@ impl<'c> Translation<'c> {
                     let items = match self.convert_decl(ctx, decl_id)? {
                         Item(item) => vec![item],
                         ForeignItem(item) => {
-                            vec![mk().extern_("C").foreign_items(vec![item])]
+                            vec![mk().extern_("C").foreign_items(vec![*item])]
                         }
                         Items(items) => items,
                         NoItem => return Ok(cfg::DeclStmtInfo::empty()),

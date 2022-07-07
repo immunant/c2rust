@@ -2120,7 +2120,8 @@ impl Builder {
 
     // Foreign Items
 
-    pub fn fn_foreign_item<D>(self, decl: D) -> ForeignItem
+    /// [`ForeignItem`] is large (472 bytes), so [`Box`] it.
+    pub fn fn_foreign_item<D>(self, decl: D) -> Box<ForeignItem>
     where
         D: Make<Box<FnDecl>>,
     {
@@ -2131,22 +2132,23 @@ impl Builder {
             generics: self.generics.clone(),
             ..decl.make(&self)
         };
-        ForeignItem::Fn(ForeignItemFn {
+        Box::new(ForeignItem::Fn(ForeignItemFn {
             attrs: self.attrs,
             vis: self.vis,
             sig,
             semi_token: token::Semi(self.span),
-        })
+        }))
     }
 
-    pub fn static_foreign_item<I, T>(self, name: I, ty: T) -> ForeignItem
+    /// [`ForeignItem`] is large (472 bytes), so [`Box`] it.
+    pub fn static_foreign_item<I, T>(self, name: I, ty: T) -> Box<ForeignItem>
     where
         I: Make<Ident>,
         T: Make<Box<Type>>,
     {
         let name = name.make(&self);
         let ty = ty.make(&self);
-        ForeignItem::Static(ForeignItemStatic {
+        Box::new(ForeignItem::Static(ForeignItemStatic {
             attrs: self.attrs,
             vis: self.vis,
             mutability: self.mutbl.to_token(),
@@ -2155,21 +2157,22 @@ impl Builder {
             static_token: token::Static(self.span),
             colon_token: token::Colon(self.span),
             semi_token: token::Semi(self.span),
-        })
+        }))
     }
 
-    pub fn ty_foreign_item<I>(self, name: I) -> ForeignItem
+    /// [`ForeignItem`] is large (472 bytes), so [`Box`] it.
+    pub fn ty_foreign_item<I>(self, name: I) -> Box<ForeignItem>
     where
         I: Make<Ident>,
     {
         let name = name.make(&self);
-        ForeignItem::Type(ForeignItemType {
+        Box::new(ForeignItem::Type(ForeignItemType {
             attrs: self.attrs,
             vis: self.vis,
             ident: name,
             type_token: token::Type(self.span),
             semi_token: token::Semi(self.span),
-        })
+        }))
     }
 
     pub fn mac_foreign_item<M>(self, mac: M) -> ForeignItem
