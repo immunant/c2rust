@@ -17,11 +17,11 @@ pub const HOOK_FUNCTIONS: &[&str] = &[
 ];
 
 pub fn initialize() {
-    backend::init();
+    backend::RUNTIME.init();
 }
 
 pub fn finalize() {
-    backend::finalize();
+    backend::RUNTIME.finalize();
 }
 
 pub struct Runtime;
