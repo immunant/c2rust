@@ -61,10 +61,10 @@ impl Runtime {
 
     /// Send an [`Event`] to the [`Runtime`].
     ///
-    /// If the [`Runtime`] has already been [`Runtime::finalized`]d, 
+    /// If the [`Runtime`] has already been [`Runtime::finalize`]d, 
     /// then the [`Event`] is silently dropped.
     /// Otherwise, it sends the [`Event`] to the channel,
-    /// panicking if there is a [`SendError`].
+    /// panicking if there is a [`SendError`](std::sync::mpsc::SendError).
     pub fn send_event(&self, event: Event) {
         match self.finalized.get() {
             None => {
@@ -93,7 +93,7 @@ trait IBackend {
     fn write(&mut self, event: Event);
 }
 
-struct DebugBackend {
+pub struct DebugBackend {
     metadata: Metadata,
 }
 
@@ -103,7 +103,7 @@ impl IBackend for DebugBackend {
     }
 }
 
-struct LogBackend {
+pub struct LogBackend {
     writer: BufWriter<File>,
 }
 
@@ -114,7 +114,7 @@ impl IBackend for LogBackend {
 }
 
 #[enum_dispatch(IBackend)]
-enum Backend {
+pub enum Backend {
     Debug(DebugBackend),
     Log(LogBackend),
 }
@@ -188,10 +188,10 @@ impl GlobalRuntime {
     /// Send an [`Event`] to the [`GlobalRuntime`].
     ///
     /// If the [`Runtime`] has been initialized, then it sends the [`Event`] to it,
-    /// panicking if there is a [`SendError`].
+    /// panicking if there is a [`SendError`](std::sync::mpsc::SendError).
     ///
     /// If the [`Runtime`] has not yet been initialized,
-    /// which is done so by [`c2rust_analysis_rt::initialize`],
+    /// which is done so by [`crate::initialize`],
     /// which is called at the start of `main`,
     /// then this means we are executing pre-`main`,
     /// perhaps in an `.init_array` or `.ctors` section,
@@ -199,7 +199,7 @@ impl GlobalRuntime {
     /// Therefore, we silently drop the [`Event`].
     /// 
     /// It also silently drops the [`Event`] if the [`Runtime`]
-    /// has been [`Runtime::finalized`]d/[`GlobalRuntime::finalize`]d.
+    /// has been [`Runtime::finalize`]d/[`GlobalRuntime::finalize`]d.
     pub fn send_event(&self, event: Event) {
         match self.runtime.get() {
             None => {
