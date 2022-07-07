@@ -1051,6 +1051,8 @@ fn make_submodule(
 
 // TODO(kkysen) shouldn't need `extern crate`
 /// Pretty-print the leading pragmas and extern crate declarations
+// Fixing this would require major refactors for marginal benefit.
+#[allow(clippy::vec_box)]
 fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec<Box<Item>>) {
     let mut out_attrs = vec![];
     let mut out_items = vec![];
@@ -3229,6 +3231,8 @@ impl<'c> Translation<'c> {
         Ok(WithStmts::new_val(call))
     }
 
+    // Fixing this would require major refactors for marginal benefit.
+    #[allow(clippy::vec_box)]
     fn convert_exprs(
         &self,
         ctx: ExprContext,
