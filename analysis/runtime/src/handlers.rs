@@ -12,7 +12,7 @@ pub fn malloc(mir_loc: MirLocId, size: u64, ptr: usize) {
     })
     .unwrap();
 }
-pub fn free(mir_loc: MirLocId, ptr: usize, _ptr: ()) {
+pub fn free(mir_loc: MirLocId, ptr: usize, _third_arg_that_is_usually_a_ptr: ()) {
     TX.send(Event {
         mir_loc,
         kind: EventKind::Free { ptr },
