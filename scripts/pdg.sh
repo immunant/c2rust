@@ -90,6 +90,7 @@ main() {
         
         export INSTRUMENT_BACKEND=log
         export INSTRUMENT_OUTPUT=log.bc
+        rm -f "${INSTRUMENT_OUTPUT}"
         export METADATA_FILE="${metadata}"
         "${binary_path}" "${args[@]}"
     )
