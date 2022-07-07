@@ -44,10 +44,11 @@ pub enum Backend {
 impl Backend {
     fn write_all(&mut self, rx: Receiver<Event>) {
         for event in rx {
-            if matches!(event.kind, EventKind::Done) {
+            let done = matches!(event.kind, EventKind::Done);
+            self.write(event);
+            if done {
                 return;
             }
-            self.write(event);
         }
     }
 
