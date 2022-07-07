@@ -2,7 +2,7 @@ use once_cell::sync::OnceCell;
 
 use crate::events::Event;
 
-use super::{runtime::Runtime, AnyError};
+use super::{scoped_runtime::Runtime, AnyError};
 
 pub struct GlobalRuntime {
     runtime: OnceCell<Runtime>,

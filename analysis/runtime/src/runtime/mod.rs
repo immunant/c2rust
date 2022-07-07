@@ -1,6 +1,6 @@
 pub mod backend;
 pub mod global_runtime;
-pub mod runtime;
+pub mod scoped_runtime;
 
 use std::{error::Error, sync::{Mutex, Condvar}};
 
