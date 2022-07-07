@@ -24,7 +24,6 @@ mod query;
 mod util;
 
 use builder::{construct_pdg, read_event_log};
-use c2rust_analysis_rt::Runtime;
 use color_eyre::eyre;
 use std::{env, path::Path};
 
@@ -33,7 +32,6 @@ use crate::{builder::read_metadata, graph::IWithMetadata};
 fn main() -> eyre::Result<()> {
     color_eyre::install()?;
     env_logger::init();
-    let _runtime = Runtime::new();
 
     let metadata_path = env::args_os()
         .nth(2)
