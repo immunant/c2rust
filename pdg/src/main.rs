@@ -27,7 +27,7 @@ use builder::{construct_pdg, read_event_log};
 use color_eyre::eyre;
 use std::{env, path::Path};
 
-use crate::{builder::read_metadata};
+use crate::builder::read_metadata;
 
 fn main() -> eyre::Result<()> {
     color_eyre::install()?;
@@ -44,7 +44,6 @@ fn main() -> eyre::Result<()> {
     let events = read_event_log(Path::new(&event_trace_path))?;
 
     // for event in &events {
-    //     use c2rust_analysis_rt::metadata::IWithMetadata;
 
     //     let mir_loc = metadata.get(event.mir_loc);
     //     let mir_loc = mir_loc.with_metadata(&metadata);

@@ -1,6 +1,6 @@
-use crate::graph::{Graph, GraphId, Graphs, Node, NodeId, NodeKind};
+use crate::graph::{Func, Graph, GraphId, Graphs, Node, NodeId, NodeKind};
 use c2rust_analysis_rt::events::{Event, EventKind, Pointer};
-use c2rust_analysis_rt::metadata::{Metadata, WithMetadata};
+use c2rust_analysis_rt::metadata::Metadata;
 use c2rust_analysis_rt::mir_loc::{EventMetadata, MirLoc, TransferKind};
 use color_eyre::eyre;
 use fs_err::File;
@@ -136,6 +136,7 @@ pub fn add_node(
         mut basic_block_idx,
         mut statement_idx,
         metadata: event_metadata,
+        fn_name,
     } = metadata.get(event.mir_loc);
 
     let this_func_hash = DefPathHash(Fingerprint::new(body_def.0, body_def.1));
@@ -194,9 +195,9 @@ pub fn add_node(
     });
 
     let node = Node {
-        function: WithMetadata {
-            inner: &dest_fn,
-            metadata,
+        function: Func {
+            def_path_hash: dest_fn,
+            name: fn_name.clone(),
         }
         .into(),
         block: basic_block_idx.into(),
@@ -258,7 +259,6 @@ pub fn construct_pdg(events: &[Event], metadata: &Metadata) -> Graphs {
     // for ((func, local), p) in &graphs.latest_assignment {
     //     use crate::graph::Func;
 
-    //     let func = Func::from(WithMetadata {inner: func, metadata});
     //     println!("({func}:{local:?}) => {p:?}");
     // }
     graphs

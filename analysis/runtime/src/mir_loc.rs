@@ -90,7 +90,7 @@ impl Debug for MirPlace {
 
 pub type MirLocId = u32;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Debug)]
 pub struct DefPathHash(pub u64, pub u64);
 
 impl From<(u64, u64)> for DefPathHash {
@@ -138,4 +138,5 @@ pub struct MirLoc {
     pub basic_block_idx: usize,
     pub statement_idx: usize,
     pub metadata: EventMetadata,
+    pub fn_name: String,
 }

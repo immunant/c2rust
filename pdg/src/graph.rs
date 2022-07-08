@@ -1,5 +1,3 @@
-use c2rust_analysis_rt::metadata::IWithMetadata;
-use c2rust_analysis_rt::metadata::WithMetadata;
 use c2rust_analysis_rt::mir_loc;
 use c2rust_analysis_rt::mir_loc::MirPlace;
 use rustc_index::newtype_index;
@@ -18,17 +16,6 @@ use crate::util::ShortOption;
 pub struct Func {
     pub def_path_hash: DefPathHash,
     pub name: String,
-}
-
-impl<'a> From<WithMetadata<'a, DefPathHash>> for Func {
-    fn from(this: WithMetadata<'a, DefPathHash>) -> Self {
-        let def_path_hash = c2rust_analysis_rt::mir_loc::DefPathHash::from(this.inner.0.as_value());
-        let name = def_path_hash.with_metadata(this.metadata).to_string();
-        Self {
-            def_path_hash: *this.inner,
-            name,
-        }
-    }
 }
 
 impl Display for Func {

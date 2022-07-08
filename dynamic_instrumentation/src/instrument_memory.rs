@@ -81,10 +81,19 @@ impl InstrumentMemoryOps {
         location: Location,
         metadata: &EventMetadata,
     ) -> MirLocId {
+        let body_def = body_def.0.as_value().into();
+        let fn_name = self
+            .functions
+            .lock()
+            .unwrap()
+            .get(&body_def)
+            .unwrap()
+            .clone();
         let mir_loc = MirLoc {
-            body_def: body_def.0.as_value().into(),
+            body_def,
             basic_block_idx: location.block.index(),
             statement_idx: location.statement_index,
+            fn_name,
             metadata: metadata.clone(),
         };
         let (idx, _) = self.mir_locs.lock().unwrap().insert_full(mir_loc);

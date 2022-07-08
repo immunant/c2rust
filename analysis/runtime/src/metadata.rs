@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fmt::{self, Debug, Formatter, Display},
+    fmt::{self, Debug, Formatter},
 };
 
 use serde::{Deserialize, Serialize};
@@ -19,64 +19,16 @@ impl Metadata {
     }
 }
 
-/// Implemented as a macro because of the orphan rule.
-/// It's a simple implementation so it's easiest just to copy and paste it with a macro.
-#[macro_export]
-macro_rules! decl_with_metadata {
-    () => {
-        pub struct WithMetadata<'a, T> {
-            pub inner: &'a T,
-            pub metadata: &'a Metadata,
-        }
-
-        pub trait IWithMetadata
-        where
-            Self: Sized,
-        {
-            fn with_metadata<'a>(&'a self, metadata: &'a Metadata) -> WithMetadata<'a, Self> {
-                WithMetadata {
-                    inner: self,
-                    metadata,
-                }
-            }
-        }
-    };
-}
-
-decl_with_metadata!();
-
-impl IWithMetadata for DefPathHash {}
-
-impl Display for WithMetadata<'_, DefPathHash> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let func_name = self
-            .metadata
-            .functions
-            .get(self.inner)
-            .map(|s| s.as_str())
-            .unwrap_or("unknown");
-        write!(f, "{func_name}")
-    }
-}
-
-impl Debug for WithMetadata<'_, DefPathHash> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
-    }
-}
-
-impl IWithMetadata for MirLoc {}
-
-impl Debug for WithMetadata<'_, MirLoc> {
+impl Debug for MirLoc {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let MirLoc {
-            body_def,
+            body_def: _,
             basic_block_idx,
             statement_idx,
             metadata: _,
-        } = self.inner;
-        let body_def = body_def.with_metadata(self.metadata);
-        write!(f, "{body_def:?}:{basic_block_idx}:{statement_idx}")
+            fn_name,
+        } = self;
+        write!(f, "{fn_name}:{basic_block_idx}:{statement_idx}")
     }
 }
 
@@ -96,14 +48,14 @@ where
 impl Debug for Metadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let locs = DebugFromFn(|f| {
-            let locs = self.locs.iter().map(|loc| loc.with_metadata(self));
+            let locs = self.locs.iter().map(|loc| loc);
             f.debug_list().entries(locs).finish()
         });
         let functions = DebugFromFn(|f| {
             let functions = self
                 .functions
                 .iter()
-                .map(|(def_path_hash, func)| (def_path_hash.with_metadata(self), func));
+                .map(|(def_path_hash, func)| (def_path_hash, func));
             f.debug_map().entries(functions).finish()
         });
         f.debug_struct("Metadata")
