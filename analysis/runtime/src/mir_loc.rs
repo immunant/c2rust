@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::fmt::{self, Display, Formatter};
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Hash, Eq, PartialEq)]
 pub enum MirProjection {
@@ -90,39 +91,85 @@ impl Debug for MirPlace {
 
 pub type MirLocId = u32;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Debug)]
-pub struct DefPathHash(pub u64, pub u64);
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Copy, Clone, Debug)]
+pub struct Fingerprint(pub u64, pub u64);
 
-impl From<(u64, u64)> for DefPathHash {
+impl From<(u64, u64)> for Fingerprint {
     fn from(other: (u64, u64)) -> Self {
         Self(other.0, other.1)
     }
 }
 
+impl From<Fingerprint> for (u64, u64) {
+    fn from(other: Fingerprint) -> Self {
+        (other.0, other.1)
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Copy, Clone, Debug)]
+
+pub struct DefPathHash(pub Fingerprint);
+
+impl From<(u64, u64)> for DefPathHash {
+    fn from(other: (u64, u64)) -> Self {
+        Self(other.into())
+    }
+}
+
 impl From<DefPathHash> for (u64, u64) {
     fn from(other: DefPathHash) -> Self {
-        (other.0, other.1)
+        other.0.into()
+    }
+}
+
+#[derive(Serialize, Deserialize, Eq, Clone)]
+pub struct Func {
+    pub def_path_hash: DefPathHash,
+    pub name: String,
+}
+
+impl PartialEq for Func {
+    fn eq(&self, other: &Self) -> bool {
+        self.def_path_hash == other.def_path_hash
+    }
+}
+
+impl Hash for Func {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.def_path_hash.hash(state);
+    }
+}
+
+impl Display for Func {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+impl Debug for Func {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TransferKind {
     None,
-    Arg((u64, u64)),
-    Ret((u64, u64)),
+    Arg(DefPathHash),
+    Ret(DefPathHash),
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct EventMetadata {
-    // input Locals for an event
+    /// Input [`Local`]s for an [`Event`](crate::events::Event).
     pub source: Option<MirPlace>,
-    // destination Local for an event
+    /// Destination [`Local`] for an [`Event`](crate::events::Event).
     pub destination: Option<MirPlace>,
-    // destination func DefPathHash of event
+    /// Destination func [`DefPathHash`] of [`Event`](crate::events::Event).
     pub transfer_kind: TransferKind,
 }
 
-impl<'tcx> Default for EventMetadata {
+impl Default for EventMetadata {
     fn default() -> Self {
         Self {
             source: None,
@@ -134,9 +181,8 @@ impl<'tcx> Default for EventMetadata {
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct MirLoc {
-    pub body_def: DefPathHash,
+    pub func: Func,
     pub basic_block_idx: usize,
     pub statement_idx: usize,
     pub metadata: EventMetadata,
-    pub fn_name: String,
 }

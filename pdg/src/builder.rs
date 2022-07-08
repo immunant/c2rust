@@ -1,12 +1,10 @@
-use crate::graph::{Func, Graph, GraphId, Graphs, Node, NodeId, NodeKind};
+use crate::graph::{Graph, GraphId, Graphs, Node, NodeId, NodeKind};
 use c2rust_analysis_rt::events::{Event, EventKind, Pointer};
 use c2rust_analysis_rt::metadata::Metadata;
-use c2rust_analysis_rt::mir_loc::{EventMetadata, MirLoc, TransferKind};
+use c2rust_analysis_rt::mir_loc::{EventMetadata, Func, MirLoc, TransferKind};
 use color_eyre::eyre;
 use fs_err::File;
 use itertools::Itertools;
-use rustc_data_structures::fingerprint::Fingerprint;
-use rustc_hir::def_id::DefPathHash;
 use std::collections::HashMap;
 use std::io::{self, BufReader};
 use std::iter;
@@ -132,18 +130,17 @@ pub fn add_node(
     let node_kind = event.kind.to_node_kind()?;
 
     let MirLoc {
-        body_def,
+        func,
         mut basic_block_idx,
         mut statement_idx,
         metadata: event_metadata,
-        fn_name,
     } = metadata.get(event.mir_loc);
 
-    let this_func_hash = DefPathHash(Fingerprint::new(body_def.0, body_def.1));
+    let this_func_hash = func.def_path_hash;
     let (src_fn, dest_fn) = match event_metadata.transfer_kind {
         TransferKind::None => (this_func_hash, this_func_hash),
-        TransferKind::Arg(p) => (this_func_hash, DefPathHash(Fingerprint::new(p.0, p.1))),
-        TransferKind::Ret(p) => (DefPathHash(Fingerprint::new(p.0, p.1)), this_func_hash),
+        TransferKind::Arg(p) => (this_func_hash, p),
+        TransferKind::Ret(p) => (p, this_func_hash),
     };
 
     if let TransferKind::Arg(_) = event_metadata.transfer_kind {
@@ -197,11 +194,7 @@ pub fn add_node(
     let node = Node {
         function: Func {
             def_path_hash: dest_fn,
-            name: metadata
-                .functions
-                .get(&dest_fn.0.as_value().into())
-                .cloned()
-                .unwrap(),
+            name: metadata.functions.get(&dest_fn).cloned().unwrap(),
         },
         block: basic_block_idx.into(),
         statement_idx,

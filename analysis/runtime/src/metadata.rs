@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::mir_loc::{DefPathHash, MirLoc, MirLocId};
+use crate::mir_loc::{DefPathHash, Func, MirLoc, MirLocId};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Metadata {
@@ -22,11 +22,14 @@ impl Metadata {
 impl Debug for MirLoc {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let MirLoc {
-            body_def: _,
+            func:
+                Func {
+                    def_path_hash: _,
+                    name: fn_name,
+                },
             basic_block_idx,
             statement_idx,
             metadata: _,
-            fn_name,
         } = self;
         write!(f, "{fn_name}:{basic_block_idx}:{statement_idx}")
     }
