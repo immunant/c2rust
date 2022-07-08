@@ -12,13 +12,6 @@ pub struct Event {
     pub kind: EventKind,
 }
 
-impl Debug for Event {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let Event { mir_loc: _, kind } = self;
-        write!(f, "{kind:?}")
-    }
-}
-
 impl Event {
     pub fn done() -> Self {
         Self {

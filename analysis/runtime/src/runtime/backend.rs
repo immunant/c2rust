@@ -22,7 +22,7 @@ pub struct DebugBackend {
 impl IBackend for DebugBackend {
     fn write(&mut self, event: Event) {
         let mir_loc = self.metadata.get(event.mir_loc);
-        eprintln!("{:?}: {:?}", mir_loc, event);
+        eprintln!("{:?}: {:?}", mir_loc, event.kind);
     }
 }
 
