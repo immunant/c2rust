@@ -197,7 +197,11 @@ pub fn add_node(
     let node = Node {
         function: Func {
             def_path_hash: dest_fn,
-            name: fn_name.clone(),
+            name: metadata
+                .functions
+                .get(&dest_fn.0.as_value().into())
+                .cloned()
+                .unwrap(),
         },
         block: basic_block_idx.into(),
         statement_idx,
