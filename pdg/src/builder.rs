@@ -1,12 +1,10 @@
 use crate::graph::{Graph, GraphId, Graphs, Node, NodeId, NodeKind};
 use c2rust_analysis_rt::events::{Event, EventKind, Pointer};
-use c2rust_analysis_rt::metadata::{Metadata, WithMetadata};
-use c2rust_analysis_rt::mir_loc::{EventMetadata, MirLoc, TransferKind};
+use c2rust_analysis_rt::metadata::Metadata;
+use c2rust_analysis_rt::mir_loc::{EventMetadata, Func, MirLoc, TransferKind};
 use color_eyre::eyre;
 use fs_err::File;
 use itertools::Itertools;
-use rustc_data_structures::fingerprint::Fingerprint;
-use rustc_hir::def_id::DefPathHash;
 use std::collections::HashMap;
 use std::io::{self, BufReader};
 use std::iter;
@@ -132,17 +130,17 @@ pub fn add_node(
     let node_kind = event.kind.to_node_kind()?;
 
     let MirLoc {
-        body_def,
+        func,
         mut basic_block_idx,
         mut statement_idx,
         metadata: event_metadata,
     } = metadata.get(event.mir_loc);
 
-    let this_func_hash = DefPathHash(Fingerprint::new(body_def.0, body_def.1));
+    let this_func_hash = func.def_path_hash;
     let (src_fn, dest_fn) = match event_metadata.transfer_kind {
         TransferKind::None => (this_func_hash, this_func_hash),
-        TransferKind::Arg(p) => (this_func_hash, DefPathHash(Fingerprint::new(p.0, p.1))),
-        TransferKind::Ret(p) => (DefPathHash(Fingerprint::new(p.0, p.1)), this_func_hash),
+        TransferKind::Arg(p) => (this_func_hash, p),
+        TransferKind::Ret(p) => (p, this_func_hash),
     };
 
     if let TransferKind::Arg(_) = event_metadata.transfer_kind {
@@ -193,12 +191,13 @@ pub fn add_node(
         })
     });
 
+    let function = Func {
+        def_path_hash: dest_fn,
+        name: metadata.functions[&dest_fn].clone(),
+    };
+
     let node = Node {
-        function: WithMetadata {
-            inner: &dest_fn,
-            metadata,
-        }
-        .into(),
+        function,
         block: basic_block_idx.into(),
         statement_idx,
         kind: node_kind,
@@ -255,10 +254,8 @@ pub fn construct_pdg(events: &[Event], metadata: &Metadata) -> Graphs {
     // TODO(kkysen) check if I have to remove any `GraphId`s from `graphs.latest_assignment`
     graphs.graphs = graphs.graphs.into_iter().unique().collect();
 
-    // for ((func, local), p) in &graphs.latest_assignment {
-    //     use crate::graph::Func;
-
-    //     let func = Func::from(WithMetadata {inner: func, metadata});
+    // for ((func_hash, local), p) in &graphs.latest_assignment {
+    //     let func = &metadata.functions[func_hash];
     //     println!("({func}:{local:?}) => {p:?}");
     // }
     graphs

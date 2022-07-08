@@ -2,7 +2,11 @@ use once_cell::sync::OnceCell;
 
 use crate::events::Event;
 
-use super::{scoped_runtime::Runtime, AnyError, skip::{skip_event, SkipReason}};
+use super::{
+    scoped_runtime::Runtime,
+    skip::{skip_event, SkipReason},
+    AnyError,
+};
 
 pub struct GlobalRuntime {
     runtime: OnceCell<Runtime>,
@@ -31,7 +35,7 @@ impl GlobalRuntime {
     /// perhaps in an `.init_array` or `.ctors` section,
     /// and we cannot use threads yet as the Rust runtime is not fully initialized yet.
     /// Therefore, we silently drop the [`Event`].
-    /// 
+    ///
     /// It also silently drops the [`Event`] if the [`Runtime`]
     /// has been [`Runtime::finalize`]d/[`GlobalRuntime::finalize`]d.
     pub fn send_event(&self, event: Event) {
@@ -47,14 +51,14 @@ impl GlobalRuntime {
     }
 
     /// Try to initialize the [`GlobalRuntime`] with `Runtime::try_init`.
-    /// 
+    ///
     /// This (or [`GlobalRuntime::init`]), on [`RUNTIME`], should be called at the top of `main`.
     pub fn try_init(&self) -> Result<&Runtime, AnyError> {
         self.runtime.get_or_try_init(Runtime::try_init)
     }
 
     /// Same as [`GlobalRuntime::try_init`] except the [`Result`] is `.unwrap()`ed.
-    /// 
+    ///
     /// This (or [`GlobalRuntime::try_init`]), on [`RUNTIME`], should be called at the top of `main`.
     pub fn init(&self) {
         self.try_init().unwrap();

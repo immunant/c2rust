@@ -8,7 +8,7 @@ use bincode;
 
 use super::{AnyError, FINISHED};
 use crate::events::{Event, EventKind};
-use crate::metadata::{IWithMetadata, Metadata};
+use crate::metadata::Metadata;
 
 #[enum_dispatch]
 pub(super) trait IBackend {
@@ -21,7 +21,8 @@ pub struct DebugBackend {
 
 impl IBackend for DebugBackend {
     fn write(&mut self, event: Event) {
-        eprintln!("{:?}", event.with_metadata(&self.metadata));
+        let mir_loc = self.metadata.get(event.mir_loc);
+        eprintln!("{:?}: {:?}", mir_loc, event.kind);
     }
 }
 

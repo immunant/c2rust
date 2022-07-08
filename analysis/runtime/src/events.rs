@@ -1,4 +1,3 @@
-use crate::metadata::{IWithMetadata, WithMetadata};
 use crate::mir_loc::{Local, MirLocId};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -11,19 +10,6 @@ pub type Pointer = usize;
 pub struct Event {
     pub mir_loc: MirLocId,
     pub kind: EventKind,
-}
-
-impl IWithMetadata for Event {}
-
-impl Debug for WithMetadata<'_, Event> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let Self {
-            inner: Event { mir_loc, kind },
-            metadata,
-        } = self;
-        let mir_loc = metadata.get(*mir_loc).with_metadata(metadata);
-        write!(f, "{mir_loc:?} {kind:?}")
-    }
 }
 
 impl Event {

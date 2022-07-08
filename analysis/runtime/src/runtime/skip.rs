@@ -1,4 +1,7 @@
-use std::{sync::atomic::{AtomicU64, Ordering}, fmt::{Display, Formatter, self}};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use once_cell::sync::OnceCell;
 
@@ -25,7 +28,7 @@ static EVENTS_SKIPPED_BEFORE_MAIN: AtomicU64 = AtomicU64::new(0);
 static WARNED_AFTER_MAIN: OnceCell<()> = OnceCell::new();
 
 /// Notify the user if any [`Event`]s were skipped before `main`.
-/// 
+///
 /// # Safety
 /// Must not be called before `main`.
 pub fn notify_if_events_were_skipped_before_main() {
@@ -43,7 +46,7 @@ pub(super) fn skip_event(event: Event, reason: SkipReason) {
     match reason {
         BeforeMain => {
             EVENTS_SKIPPED_BEFORE_MAIN.fetch_add(1, Ordering::Relaxed);
-        },
+        }
         AfterMain => {
             // This is after `main`, so it's safe to use things like `eprintln!`,
             // which uses `ReentrantMutex` internally, which may use `pthread` mutexes.
@@ -51,6 +54,6 @@ pub(super) fn skip_event(event: Event, reason: SkipReason) {
                 eprintln!("skipping {reason}");
             });
             eprintln!("skipped event after `main`: {:?}", event.kind);
-        },
+        }
     };
 }

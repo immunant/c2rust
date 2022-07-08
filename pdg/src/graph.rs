@@ -1,11 +1,8 @@
-use c2rust_analysis_rt::metadata::IWithMetadata;
-use c2rust_analysis_rt::metadata::WithMetadata;
-use c2rust_analysis_rt::mir_loc;
 use c2rust_analysis_rt::mir_loc::MirPlace;
+use c2rust_analysis_rt::mir_loc::{self, DefPathHash, Func};
 use rustc_index::newtype_index;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BasicBlock, Field, Local};
-use rustc_span::def_id::DefPathHash;
 use std::fmt::Display;
 use std::{
     collections::HashMap,
@@ -13,35 +10,6 @@ use std::{
 };
 
 use crate::util::ShortOption;
-
-#[derive(Eq, PartialEq, Hash, Clone)]
-pub struct Func {
-    pub def_path_hash: DefPathHash,
-    pub name: String,
-}
-
-impl<'a> From<WithMetadata<'a, DefPathHash>> for Func {
-    fn from(this: WithMetadata<'a, DefPathHash>) -> Self {
-        let def_path_hash = c2rust_analysis_rt::mir_loc::DefPathHash::from(this.inner.0.as_value());
-        let name = def_path_hash.with_metadata(this.metadata).to_string();
-        Self {
-            def_path_hash: *this.inner,
-            name,
-        }
-    }
-}
-
-impl Display for Func {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.name)
-    }
-}
-
-impl Debug for Func {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
-    }
-}
 
 /// A node in the graph represents an operation on pointers.  It may produce a pointer from
 /// nothing, derive a pointer from another pointer, or consume a pointer without producing any
@@ -225,7 +193,7 @@ pub struct Graphs {
     pub graphs: IndexVec<GraphId, Graph>,
 
     /// Lookup table for finding all nodes in all graphs that store to a particular MIR local.
-    pub latest_assignment: HashMap<(DefPathHash, mir_loc::Local), (GraphId, NodeId)>,
+    pub latest_assignment: HashMap<(mir_loc::DefPathHash, mir_loc::Local), (GraphId, NodeId)>,
 }
 
 impl Graphs {
