@@ -14,24 +14,21 @@ pub enum MirProjection {
 /// See [`rustc_middle::mir::Local`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/struct.Local.html).
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Local {
-    /// TODO(kkysen) change to u32 like
     /// [`rustc_middle::mir::Local`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/struct.Local.html),
     /// but need to keep bincode binary format.
-    pub index: usize,
+    pub index: u32,
 }
 
 impl From<u32> for Local {
     fn from(index: u32) -> Self {
         Self {
-            index: index.try_into().unwrap(),
+            index,
         }
     }
 }
 
 impl From<usize> for Local {
     fn from(index: usize) -> Self {
-        // Want it to work w/o code changes if I change the underlying type to `u32`.
-        #[allow(clippy::useless_conversion)]
         let index = index.try_into().unwrap();
         Self { index }
     }
@@ -39,14 +36,12 @@ impl From<usize> for Local {
 
 impl From<Local> for u32 {
     fn from(val: Local) -> Self {
-        val.index.try_into().unwrap()
+        val.index
     }
 }
 
 impl From<Local> for usize {
     fn from(val: Local) -> Self {
-        // Want it to work w/o code changes if I change the underlying type to `u32`.
-        #[allow(clippy::useless_conversion)]
         val.index.try_into().unwrap()
     }
 }
