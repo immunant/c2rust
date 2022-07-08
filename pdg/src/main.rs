@@ -71,14 +71,14 @@ fn main() -> eyre::Result<()> {
     env_logger::init();
     let args = Args::parse();
 
-    let print = args.print.iter().collect::<HashSet<_>>();
-    let print = |to_print| print.contains(&to_print);
+    let print_args = args.print.iter().collect::<HashSet<_>>();
+    let should_print = |to_print| print_args.contains(&to_print);
 
     let events = read_event_log(Path::new(&args.event_log))?;
     let metadata = read_metadata(Path::new(&args.metadata))?;
     let metadata = &metadata;
 
-    if print(ToPrint::Events) {
+    if should_print(ToPrint::Events) {
         for event in &events {
             let mir_loc = metadata.get(event.mir_loc);
             let kind = &event.kind;
@@ -89,7 +89,7 @@ fn main() -> eyre::Result<()> {
     let pdg = construct_pdg(&events, metadata);
     pdg.assert_all_tests();
 
-    if print(ToPrint::LatestAssignments) {
+    if should_print(ToPrint::LatestAssignments) {
         for ((func_hash, local), p) in &pdg.latest_assignment {
             let func = &metadata.functions[func_hash];
             println!("({func}:{local:?}) => {p:?}");
@@ -101,18 +101,18 @@ fn main() -> eyre::Result<()> {
             .needs_write_permission()
             .map(|node_id| node_id.as_usize())
             .collect::<Vec<_>>();
-        if print(ToPrint::Graphs) {
+        if should_print(ToPrint::Graphs) {
             println!("{graph_id} {graph}");
         }
-        if print(ToPrint::WritePermissions) {
+        if should_print(ToPrint::WritePermissions) {
             println!("nodes_that_need_write = {needs_write:?}");
         }
-        if print(ToPrint::Graphs) || print(ToPrint::WritePermissions) {
+        if should_print(ToPrint::Graphs) || should_print(ToPrint::WritePermissions) {
             println!();
         }
     }
 
-    if print(ToPrint::Counts) {
+    if should_print(ToPrint::Counts) {
         let num_graphs = pdg.graphs.len();
         let num_nodes = pdg
             .graphs
