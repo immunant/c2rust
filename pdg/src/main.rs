@@ -62,7 +62,7 @@ struct Args {
     metadata: PathBuf,
 
     /// What to print.
-    #[clap(long, value_parser)]
+    #[clap(long, value_parser, default_value = "graphs")]
     print: Vec<ToPrint>,
 }
 
