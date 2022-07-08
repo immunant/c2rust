@@ -3,7 +3,10 @@ pub mod global_runtime;
 pub mod scoped_runtime;
 pub mod skip;
 
-use std::{error::Error, sync::{Mutex, Condvar}};
+use std::{
+    error::Error,
+    sync::{Condvar, Mutex},
+};
 
 use once_cell::sync::Lazy;
 

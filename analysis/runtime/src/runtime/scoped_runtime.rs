@@ -7,7 +7,11 @@ use once_cell::sync::OnceCell;
 
 use crate::events::Event;
 
-use super::{AnyError, backend::Backend, FINISHED, skip::{skip_event, SkipReason}};
+use super::{
+    backend::Backend,
+    skip::{skip_event, SkipReason},
+    AnyError, FINISHED,
+};
 
 pub struct Runtime {
     tx: SyncSender<Event>,
@@ -18,7 +22,7 @@ impl Runtime {
     /// Initialize the [`Runtime`], which includes [`thread::spawn`]ing, so it must be run post-`main`.
     ///
     /// It returns an error if [`Backend::detect`] returns an error.
-    /// 
+    ///
     /// It's only `pub(super)` as `super` is the scope of the global [`super::FINISHED`],
     /// which we have to prevent from being used multiple times.
     pub(super) fn try_init() -> Result<Self, AnyError> {

@@ -1,9 +1,8 @@
-pub mod runtime;
 pub mod events;
 mod handlers;
 pub mod metadata;
 pub mod mir_loc;
-
+pub mod runtime;
 
 pub use handlers::*;
 use runtime::{global_runtime::RUNTIME, skip::notify_if_events_were_skipped_before_main};
