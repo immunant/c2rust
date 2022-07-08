@@ -198,8 +198,7 @@ pub fn add_node(
         function: Func {
             def_path_hash: dest_fn,
             name: fn_name.clone(),
-        }
-        .into(),
+        },
         block: basic_block_idx.into(),
         statement_idx,
         kind: node_kind,
