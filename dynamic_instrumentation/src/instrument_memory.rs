@@ -577,11 +577,11 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         // than `addr_of!(*x)`
                         let arg = match p.iter_projections().last() {
                             Some((_, ProjectionElem::Deref)) => {
-                                let sans_proj = pop_one_projection(p, self.tcx.clone())
+                                let sans_proj = pop_one_projection(p, self.tcx)
                                     .expect("expected but did not find deref projection");
                                 Operand::Copy(sans_proj)
-                            }
-                            _ => Operand::Copy(p.clone()),
+                            },
+                            _ => Operand::Copy(*p),
                         };
 
                         // We do not increment the statement index because we want to take a raw ptr
@@ -602,7 +602,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         false,
                         false,
                         EventMetadata {
-                            source: Some(to_mir_place(&p)),
+                            source: Some(to_mir_place(p)),
                             destination: Some(to_mir_place(&dest)),
                             transfer_kind: TransferKind::None,
                         },
@@ -1101,8 +1101,7 @@ fn cast_ptr_to_usize<'tcx>(
 
             let arg_place = arg
                 .place()
-                .expect("Can't get the address of a constant")
-                .clone();
+                .expect("Can't get the address of a constant");
             let addr_of_stmt = Statement {
                 source_info: SourceInfo::outermost(DUMMY_SP),
                 kind: StatementKind::Assign(Box::new((
