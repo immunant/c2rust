@@ -44,9 +44,7 @@ fn main() -> eyre::Result<()> {
     let events = read_event_log(Path::new(&event_trace_path))?;
 
     // for event in &events {
-
     //     let mir_loc = metadata.get(event.mir_loc);
-    //     let mir_loc = mir_loc.with_metadata(&metadata);
     //     let kind = &event.kind;
     //     println!("{mir_loc:?} -> {kind:?}");
     // }

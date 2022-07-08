@@ -191,11 +191,13 @@ pub fn add_node(
         })
     });
 
+    let function = Func {
+        def_path_hash: dest_fn,
+        name: metadata.functions[&dest_fn].clone(),
+    };
+
     let node = Node {
-        function: Func {
-            def_path_hash: dest_fn,
-            name: metadata.functions.get(&dest_fn).cloned().unwrap(),
-        },
+        function,
         block: basic_block_idx.into(),
         statement_idx,
         kind: node_kind,
@@ -252,9 +254,8 @@ pub fn construct_pdg(events: &[Event], metadata: &Metadata) -> Graphs {
     // TODO(kkysen) check if I have to remove any `GraphId`s from `graphs.latest_assignment`
     graphs.graphs = graphs.graphs.into_iter().unique().collect();
 
-    // for ((func, local), p) in &graphs.latest_assignment {
-    //     use crate::graph::Func;
-
+    // for ((func_hash, local), p) in &graphs.latest_assignment {
+    //     let func = &metadata.functions[func_hash];
     //     println!("({func}:{local:?}) => {p:?}");
     // }
     graphs

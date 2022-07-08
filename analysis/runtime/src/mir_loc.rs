@@ -107,7 +107,6 @@ impl From<Fingerprint> for (u64, u64) {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Copy, Clone, Debug)]
-
 pub struct DefPathHash(pub Fingerprint);
 
 impl From<(u64, u64)> for DefPathHash {
