@@ -288,12 +288,7 @@ impl<'c> Translation<'c> {
                 .is_enum();
             let result_type = self.convert_type(lhs_ty.ctype)?;
             let val = if is_enum_result {
-                WithStmts::new_unsafe_val(transmute_expr(
-                    lhs_type,
-                    result_type,
-                    val,
-                    self.tcfg.emit_no_std,
-                ))
+                WithStmts::new_unsafe_val(transmute_expr(lhs_type, result_type, val))
             } else {
                 // We can't as-cast from a non primitive like f128 back to the result_type
                 if *resolved_computed_kind == CTypeKind::LongDouble {
@@ -497,12 +492,7 @@ impl<'c> Translation<'c> {
                                 let result_type = self.convert_type(qtype.ctype)?;
                                 let val = if is_enum_result {
                                     is_unsafe = true;
-                                    transmute_expr(
-                                        lhs_type,
-                                        result_type,
-                                        val,
-                                        self.tcfg.emit_no_std,
-                                    )
+                                    transmute_expr(lhs_type, result_type, val)
                                 } else {
                                     mk().cast_expr(val, result_type)
                                 };

@@ -2,7 +2,6 @@ use crate::c_ast::CDeclId;
 use crate::c_ast::*;
 use crate::diagnostics::TranslationResult;
 use crate::renamer::*;
-use crate::translator::std_or_core;
 use c2rust_ast_builder::{mk, properties::*};
 use failure::format_err;
 use std::collections::{HashMap, HashSet};
@@ -21,7 +20,6 @@ pub struct TypeConverter {
     fields: HashMap<CDeclId, Renamer<FieldKey>>,
     suffix_names: HashMap<(CDeclId, &'static str), String>,
     features: HashSet<&'static str>,
-    pub emit_no_std: bool,
 }
 
 pub const RESERVED_NAMES: [&str; 103] = [
@@ -134,14 +132,20 @@ pub const RESERVED_NAMES: [&str; 103] = [
 ];
 
 impl TypeConverter {
-    pub fn new(emit_no_std: bool) -> TypeConverter {
+    // We don't provide a `Default` impl to simplify future compatibility:
+    // if `TypeConverter` ever gets fields incompatible with `Default`, then
+    // cleaning out the uses of `impl Default for TypeConverter` can be a pain.
+    // More practically, there is a single use of `TypeConverter::new` and no
+    // current plans to use a `Default` impl, so providing it isn't worth the
+    // potential breakage.
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> TypeConverter {
         TypeConverter {
             translate_valist: false,
             renamer: Renamer::new(&RESERVED_NAMES),
             fields: HashMap::new(),
             suffix_names: HashMap::new(),
             features: HashSet::new(),
-            emit_no_std,
         }
     }
 
@@ -301,7 +305,7 @@ impl TypeConverter {
         ctype: CTypeId,
     ) -> TranslationResult<Box<Type>> {
         if self.translate_valist && ctxt.is_va_list(ctype) {
-            let path = vec![std_or_core(self.emit_no_std), "ffi", "VaList"];
+            let path = vec!["core", "ffi", "VaList"];
             let ty = mk().path_ty(mk().abs_path(path));
             return Ok(ty);
         }

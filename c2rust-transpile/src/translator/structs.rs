@@ -108,13 +108,8 @@ impl<'a> Translation<'a> {
                 // TODO: handle or panic on structs with more than one va_list?
                 let is_va_list = self.ast_context.is_va_list(ctype);
                 let mut ty = if is_va_list {
-                    let std_or_core = if self.type_converter.borrow().emit_no_std {
-                        "core"
-                    } else {
-                        "std"
-                    };
                     let path = vec![
-                        mk().path_segment(std_or_core),
+                        mk().path_segment("core"),
                         mk().path_segment("ffi"),
                         mk().path_segment_with_args(
                             "VaListImpl",

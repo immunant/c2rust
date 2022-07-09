@@ -151,8 +151,7 @@ impl<'c> Translation<'c> {
                 };
                 let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype)?);
                 let byte_literal = mk().lit_expr(val);
-                let pointer =
-                    transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);
+                let pointer = transmute_expr(source_ty, target_ty, byte_literal);
                 let array = mk().unary_expr(UnOp::Deref(Default::default()), pointer);
                 Ok(WithStmts::new_unsafe_val(array))
             }

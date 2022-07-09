@@ -77,6 +77,7 @@ impl<'c> Translation<'c> {
                         vec![mk().method_call_expr(
                             mk().method_call_expr(
                                 mk().call_expr(
+                                    // TODO(kkysen) change `"std"` to `"alloc"` after `#![feature(alloc_c_string)]` is stabilized in `1.63.0`
                                     mk().abs_path_expr(vec!["std", "ffi", "CString", "new"]),
                                     vec![mk().path_expr(vec!["arg"])],
                                 ),
@@ -93,7 +94,7 @@ impl<'c> Translation<'c> {
                     mk().path_expr(vec!["args"]),
                     "push",
                     vec![mk().call_expr(
-                        mk().abs_path_expr(vec!["std", "ptr", "null_mut"]),
+                        mk().abs_path_expr(vec!["core", "ptr", "null_mut"]),
                         vec![] as Vec<Box<Expr>>,
                     )],
                 )));
@@ -188,6 +189,7 @@ impl<'c> Translation<'c> {
                                         mk().method_call_expr(
                                             mk().call_expr(
                                                 mk().abs_path_expr(vec![
+                                                    // TODO(kkysen) change `"std"` to `"alloc"` after `#![feature(alloc_c_string)]` is stabilized in `1.63.0`
                                                     "std", "ffi", "CString", "new",
                                                 ]),
                                                 vec![mk().path_expr(vec!["var"])],
@@ -208,7 +210,7 @@ impl<'c> Translation<'c> {
                     mk().path_expr(vec!["vars"]),
                     "push",
                     vec![mk().call_expr(
-                        mk().abs_path_expr(vec!["std", "ptr", "null_mut"]),
+                        mk().abs_path_expr(vec!["core", "ptr", "null_mut"]),
                         vec![] as Vec<Box<Expr>>,
                     )],
                 )));
