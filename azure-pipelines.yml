@@ -34,29 +34,55 @@ jobs:
         containerImage: immunant/c2rust:ubuntu-bionic-latest
   container: $[ variables['containerImage'] ]
   steps:
+
+  # rust was installed for the `docker` user, not the user azure creates
+  # but cargo and rustup can be controlled via $CARGO_HOME and $RUSTUP_HOME.
+  # NOTE: $HOME is not set correctly for the azure user; don't rely on it.
+
   - script: |
-      # rust was installed for the `docker` user, not the user azure creates
-      # but cargo and rustup can be controlled via $CARGO_HOME and $RUSTUP_HOME.
-      # NOTE: $HOME is not set correctly for the azure user; don't rely on it.
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      export RUSTFLAGS="-D warnings"
+      export RUSTDOCFLAGS="-D warnings"
+      cargo fmt --check
+    displayName: 'cargo fmt --check'
+  
+  # - script: |
+  #     export PATH="/home/docker/.cargo/bin:$PATH"
+  #     export RUSTUP_HOME=/home/docker/.rustup
+  #     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+  #     export RUSTFLAGS="-D warnings"
+  #     export RUSTDOCFLAGS="-D warnings"
+  #     cargo clippy --tests --all --all-features
+  #   displayName: 'cargo clippy'
+
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      export RUSTFLAGS="-D warnings"
+      export RUSTDOCFLAGS="-D warnings"
       cargo build --release --all-features
-    displayName: 'Fast build against host clang/LLVM'
+    displayName: 'cargo build against host clang/LLVM (fast build)'
 
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      cargo test --release --all-features
-    displayName: 'cargo test'
-
-  - script: |
-      export PATH="/home/docker/.cargo/bin:$PATH"
-      export RUSTUP_HOME=/home/docker/.rustup
-      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      RUSTDOCFLAGS='-D warnings' cargo doc --all-features --document-private-items
+      export RUSTFLAGS="-D warnings"
+      export RUSTDOCFLAGS="-D warnings"
+      cargo doc --all-features --document-private-items
     displayName: 'cargo doc'
+
+  # - script: |
+  #     export PATH="/home/docker/.cargo/bin:$PATH"
+  #     export RUSTUP_HOME=/home/docker/.rustup
+  #     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+  #     export RUSTFLAGS="-D warnings"
+  #     export RUSTDOCFLAGS="-D warnings"
+  #     cargo test --release --all-features
+  #   displayName: 'cargo test'
   
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
@@ -87,18 +113,38 @@ jobs:
 
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      cargo build --release --all-features
-    displayName: 'Fast build against host clang/LLVM'
+      export RUSTFLAGS="-D warnings"
+      export RUSTDOCFLAGS="-D warnings"
+      cargo fmt --check
+    displayName: 'cargo fmt --check'
   
-  - script: |
-      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      cargo test --release --all-features
-    displayName: 'cargo test'
+  # - script: |
+  #     export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+  #     export RUSTFLAGS="-D warnings"
+  #     export RUSTDOCFLAGS="-D warnings"
+  #     cargo clippy --tests --all --all-features
+  #   displayName: 'cargo clippy'
 
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      RUSTDOCFLAGS='-D warnings' cargo doc --all-features --document-private-items
+      export RUSTFLAGS="-D warnings"
+      export RUSTDOCFLAGS="-D warnings"
+      cargo build --release --all-features
+    displayName: 'cargo build against host clang/LLVM (fast build)'
+
+  - script: |
+      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+      export RUSTFLAGS="-D warnings"
+      export RUSTDOCFLAGS="-D warnings"
+      cargo doc --all-features --document-private-items
     displayName: 'cargo doc'
 
-  - script: python3 ./scripts/test_translator.py  ./tests
+  # - script: |
+  #     export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+  #     export RUSTFLAGS="-D warnings"
+  #     export RUSTDOCFLAGS="-D warnings"
+  #     cargo test --release --all-features
+  #   displayName: 'cargo test'
+
+  - script: python3 ./scripts/test_translator.py ./tests
     displayName: 'Test translator (fast build)'
