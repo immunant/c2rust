@@ -48,6 +48,15 @@ jobs:
       cargo fmt --check
     displayName: 'cargo fmt --check'
   
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      export RUSTFLAGS="-D warnings"
+      export RUSTDOCFLAGS="-D warnings"
+      cargo check --all-features
+    displayName: 'cargo check'
+  
   # - script: |
   #     export PATH="/home/docker/.cargo/bin:$PATH"
   #     export RUSTUP_HOME=/home/docker/.rustup
@@ -117,6 +126,13 @@ jobs:
       export RUSTDOCFLAGS="-D warnings"
       cargo fmt --check
     displayName: 'cargo fmt --check'
+  
+  - script: |
+      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+      export RUSTFLAGS="-D warnings"
+      export RUSTDOCFLAGS="-D warnings"
+      cargo check --all-features
+    displayName: 'cargo check'
   
   # - script: |
   #     export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
