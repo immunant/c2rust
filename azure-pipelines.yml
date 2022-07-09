@@ -75,15 +75,6 @@ jobs:
       cargo build --release
     displayName: 'cargo build against host clang/LLVM (fast build)'
 
-  - script: |
-      export PATH="/home/docker/.cargo/bin:$PATH"
-      export RUSTUP_HOME=/home/docker/.rustup
-      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      export RUSTFLAGS="-D warnings"
-      export RUSTDOCFLAGS="-D warnings"
-      cargo doc --all-features --document-private-items
-    displayName: 'cargo doc'
-
   # - script: |
   #     export PATH="/home/docker/.cargo/bin:$PATH"
   #     export RUSTUP_HOME=/home/docker/.rustup
@@ -99,6 +90,15 @@ jobs:
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       python3 ./scripts/test_translator.py ./tests
     displayName: 'Test translator (fast build)'
+
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      export RUSTFLAGS="-D warnings"
+      export RUSTDOCFLAGS="-D warnings"
+      cargo doc --all-features --document-private-items
+    displayName: 'cargo doc'
 
 - job: Darwin
   timeoutInMinutes: 180
@@ -152,15 +152,15 @@ jobs:
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
-      cargo doc --all-features --document-private-items
-    displayName: 'cargo doc'
-
-  - script: |
-      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      export RUSTFLAGS="-D warnings"
-      export RUSTDOCFLAGS="-D warnings"
       cargo test --release --all-features
     displayName: 'cargo test'
 
   - script: python3 ./scripts/test_translator.py ./tests
     displayName: 'Test translator (fast build)'
+
+  - script: |
+      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+      export RUSTFLAGS="-D warnings"
+      export RUSTDOCFLAGS="-D warnings"
+      cargo doc --all-features --document-private-items
+    displayName: 'cargo doc'
