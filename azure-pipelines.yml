@@ -75,14 +75,14 @@ jobs:
       cargo build --release
     displayName: 'cargo build against host clang/LLVM (fast build)'
 
-  # - script: |
-  #     export PATH="/home/docker/.cargo/bin:$PATH"
-  #     export RUSTUP_HOME=/home/docker/.rustup
-  #     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-  #     export RUSTFLAGS="-D warnings"
-  #     export RUSTDOCFLAGS="-D warnings"
-  #     cargo test --release --all-features
-  #   displayName: 'cargo test'
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      export RUSTFLAGS="-D warnings"
+      export RUSTDOCFLAGS="-D warnings"
+      cargo test --release --all-features
+    displayName: 'cargo test'
   
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
