@@ -14,7 +14,6 @@ C2RUST_HOME="$(dirname "$SCRIPT_DIR")"
 # NOTE: ssh forwarding does not work with Docker for Mac ATM.
 # More info here https://github.com/docker/for-mac/issues/483
 docker run \
-    --name $CONTAINER_NAME \
     --hostname docker \
     -it \
     --volume $C2RUST_HOME:/home/docker/C2Rust \
