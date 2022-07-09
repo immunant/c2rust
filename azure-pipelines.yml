@@ -72,7 +72,7 @@ jobs:
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
-      cargo build --release
+      cargo build --release --features dynamic-instrumentation
     displayName: 'cargo build against host clang/LLVM (fast build)'
 
   - script: |
@@ -81,7 +81,7 @@ jobs:
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
-      cargo test --release
+      cargo test --release --features dynamic-instrumentation
     displayName: 'cargo test'
   
   - script: |
@@ -145,14 +145,14 @@ jobs:
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
-      cargo build --release --all-features
+      cargo build --release --features dynamic-instrumentation
     displayName: 'cargo build against host clang/LLVM (fast build)'
 
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
-      cargo test --release --all-features
+      cargo test --release --features dynamic-instrumentation
     displayName: 'cargo test'
 
   - script: python3 ./scripts/test_translator.py ./tests
