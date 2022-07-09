@@ -328,7 +328,7 @@ impl TypeConverter {
             CTypeKind::LongDouble => Ok(mk().path_ty(mk().path(vec!["f128", "f128"]))),
             CTypeKind::Float => Ok(mk().path_ty(mk().path(vec!["libc", "c_float"]))),
             CTypeKind::Int128 => Ok(mk().path_ty(mk().path(vec!["i128"]))),
-            CTypeKind::UInt128 => Ok(mk().path_ty(mk().path(vec!["bf16"]))),
+            CTypeKind::UInt128 => Ok(mk().path_ty(mk().path(vec!["u128"]))),
 
             CTypeKind::Pointer(qtype) => self.convert_pointer(ctxt, qtype),
 
