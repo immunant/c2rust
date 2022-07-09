@@ -81,7 +81,7 @@ jobs:
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
-      cargo test --release --all-features
+      cargo test --release
     displayName: 'cargo test'
   
   - script: |
