@@ -139,12 +139,12 @@ jobs:
       cargo doc --all-features --document-private-items
     displayName: 'cargo doc'
 
-  # - script: |
-  #     export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-  #     export RUSTFLAGS="-D warnings"
-  #     export RUSTDOCFLAGS="-D warnings"
-  #     cargo test --release --all-features
-  #   displayName: 'cargo test'
+  - script: |
+      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+      export RUSTFLAGS="-D warnings"
+      export RUSTDOCFLAGS="-D warnings"
+      cargo test --release --all-features
+    displayName: 'cargo test'
 
   - script: python3 ./scripts/test_translator.py ./tests
     displayName: 'Test translator (fast build)'
