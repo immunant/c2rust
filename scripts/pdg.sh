@@ -93,8 +93,6 @@ main() {
         local binary_path="${profile_dir}/${binary_name}"
         
         if [[ "${c2rust_instrument}" -nt "${metadata}" ]]; then
-            cargo clean --profile dev # always dev/debug for now
-
             if ! "${c2rust}" instrument \
                 "${metadata}" "${runtime}" \
                 -- "${profile_args[@]}"  \

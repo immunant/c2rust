@@ -209,6 +209,6 @@ impl Executor for InstrumentationExecutor {
     }
 
     fn force_rebuild(&self, unit: &Unit) -> bool {
-        self.building_rt.load(Ordering::Relaxed) || self.default.force_rebuild(unit)
+        self.default.force_rebuild(unit)
     }
 }
