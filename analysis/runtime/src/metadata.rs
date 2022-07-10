@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{self, Debug, Formatter},
 };
 
@@ -16,6 +16,18 @@ pub struct Metadata {
 impl Metadata {
     pub fn get(&self, index: MirLocId) -> &MirLoc {
         &self.locs[index as usize]
+    }
+
+    pub fn update(&mut self, updates: Self) {
+        let old_locs = self.locs.iter().collect::<HashSet<_>>();
+        let new_locs = updates
+            .locs
+            .into_iter()
+            .filter(|loc| !old_locs.contains(loc))
+            // `.drain_filter()` would be better but it's unstable
+            .collect::<Vec<_>>();
+        self.locs.extend(new_locs);
+        self.functions.extend(updates.functions);
     }
 }
 
