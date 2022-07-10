@@ -41,6 +41,7 @@ enum ToPrint {
     Events,
     LatestAssignments,
     WritePermissions,
+    Metadata,
 }
 
 impl Display for ToPrint {
@@ -77,6 +78,10 @@ fn main() -> eyre::Result<()> {
     let events = read_event_log(Path::new(&args.event_log))?;
     let metadata = read_metadata(Path::new(&args.metadata))?;
     let metadata = &metadata;
+
+    if should_print(ToPrint::Metadata) {
+        println!("{metadata:#?}");
+    }
 
     if should_print(ToPrint::Events) {
         for event in &events {
