@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::mir_loc::{DefPathHash, Func, MirLoc, MirLocId};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Metadata {
     pub locs: Vec<MirLoc>,
     pub functions: HashMap<DefPathHash, String>,

@@ -19,7 +19,8 @@ use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
 use rustc_span::{Symbol, DUMMY_SP};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::OpenOptions;
+use std::io::{Read, Seek, Write};
 use std::mem;
 use std::path::Path;
 use std::sync::Mutex;
@@ -92,11 +93,29 @@ impl InstrumentMemoryOps {
         let mut functions = self.functions.lock().unwrap();
         let locs = locs.drain(..).collect::<Vec<_>>();
         let functions = functions.drain().collect::<HashMap<_, _>>();
-        let metadata_file =
-            File::create(metadata_file_path).context("Could not open metadata file")?;
-        let metadata = Metadata { locs, functions };
-        bincode::serialize_into(metadata_file, &metadata)
+        let mut metadata_file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(metadata_file_path)
+            .context("Could not open metadata file")?;
+        let mut metadata_bytes = Vec::new();
+        metadata_file.read_to_end(&mut metadata_bytes)?;
+        let old_len = metadata_bytes.len();
+        let mut metadata = match metadata_bytes.as_slice() {
+            &[] => Metadata::default(),
+            bytes => bincode::deserialize(bytes)?,
+        };
+        metadata.update(Metadata { locs, functions });
+        metadata_bytes.clear();
+        bincode::serialize_into(&mut metadata_bytes, &metadata)
             .context("Location serialization failed")?;
+        metadata_file.rewind()?;
+        metadata_file.write_all(&metadata_bytes)?;
+        if metadata_bytes.len() < old_len {
+            metadata_file.set_len(metadata_bytes.len().try_into().unwrap())?;
+        }
         Ok(())
     }
 
