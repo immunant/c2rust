@@ -11,7 +11,7 @@ use crate::events::{Event, EventKind};
 use crate::metadata::Metadata;
 
 #[enum_dispatch]
-pub(super) trait IBackend {
+pub(super) trait WriteEvent {
     fn write(&mut self, event: Event);
 }
 
@@ -19,7 +19,7 @@ pub struct DebugBackend {
     metadata: Metadata,
 }
 
-impl IBackend for DebugBackend {
+impl WriteEvent for DebugBackend {
     fn write(&mut self, event: Event) {
         let mir_loc = self.metadata.get(event.mir_loc);
         eprintln!("{:?}: {:?}", mir_loc, event.kind);
@@ -30,13 +30,13 @@ pub struct LogBackend {
     writer: BufWriter<File>,
 }
 
-impl IBackend for LogBackend {
+impl WriteEvent for LogBackend {
     fn write(&mut self, event: Event) {
         bincode::serialize_into(&mut self.writer, &event).unwrap();
     }
 }
 
-#[enum_dispatch(IBackend)]
+#[enum_dispatch(WriteEvent)]
 pub enum Backend {
     Debug(DebugBackend),
     Log(LogBackend),
