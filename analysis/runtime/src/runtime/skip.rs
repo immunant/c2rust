@@ -14,7 +14,7 @@ pub enum SkipReason {
 }
 
 impl Display for SkipReason {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let (before_or_after, array, tors) = match self {
             Self::BeforeMain => ("before", "init_array", "ctors"),
             Self::AfterMain => ("after", "fini_array", "dtors"),

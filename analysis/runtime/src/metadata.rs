@@ -20,7 +20,7 @@ impl Metadata {
 }
 
 impl Debug for MirLoc {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let MirLoc {
             func:
                 Func {

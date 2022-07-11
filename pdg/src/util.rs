@@ -10,7 +10,7 @@ use std::{
 pub struct ShortOption<T>(pub Option<T>);
 
 impl<T: Display> Display for ShortOption<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match &self.0 {
             Some(this) => write!(f, "{}", this),
             None => write!(f, "_"),
@@ -19,7 +19,7 @@ impl<T: Display> Display for ShortOption<T> {
 }
 
 impl<T: Debug> Debug for ShortOption<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match &self.0 {
             Some(this) => write!(f, "{:?}", this),
             None => write!(f, "_"),
@@ -64,7 +64,7 @@ impl<T> Duplicates<T> {
 
     pub fn fmt_up_to_n(
         &self,
-        f: &mut Formatter<'_>,
+        f: &mut Formatter,
         n: Option<usize>,
         to_string: impl Fn(&T) -> String,
     ) -> fmt::Result {
@@ -102,13 +102,13 @@ impl<T> Duplicates<T> {
 }
 
 impl<T: Debug> Debug for Duplicates<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         self.fmt_up_to_n(f, Self::DEFAULT_UP_TO_N.into(), |t| format!("{t:?}"))
     }
 }
 
 impl<T: Display> Display for Duplicates<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         self.fmt_up_to_n(f, Self::DEFAULT_UP_TO_N.into(), |t| format!("{t}"))
     }
 }
@@ -141,13 +141,13 @@ pub struct Padded<T> {
 }
 
 impl<T: Display> Display for Padded<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}{:padding$}", self.to_pad, "", padding = self.pad_len)
     }
 }
 
 impl<T: Debug> Debug for Padded<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
             "{:?}{:padding$}",

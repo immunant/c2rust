@@ -53,7 +53,7 @@ impl Local {
 }
 
 impl Debug for Local {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "_{}", self.index)
     }
 }
@@ -65,7 +65,7 @@ pub struct MirPlace {
 }
 
 impl Display for MirPlace {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{:?}", self.local)?;
         for p in &self.projection {
             write!(f, ".{:?}", p)?;
@@ -75,7 +75,7 @@ impl Display for MirPlace {
 }
 
 impl Debug for MirPlace {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self)
     }
 }
@@ -131,13 +131,13 @@ impl Hash for Func {
 }
 
 impl Display for Func {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self.name)
     }
 }
 
 impl Debug for Func {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{self}")
     }
 }

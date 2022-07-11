@@ -45,7 +45,7 @@ enum ToPrint {
 }
 
 impl Display for ToPrint {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.write_str(self.to_possible_value().unwrap().get_name())
     }
 }

@@ -59,7 +59,7 @@ pub enum NodeKind {
 }
 
 impl Display for NodeKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         use NodeKind::*;
         match self {
             Copy => write!(f, "copy"),
@@ -119,7 +119,7 @@ struct BlockStatement<'a> {
 }
 
 impl Display for BlockStatement<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let Self {
             block: bb,
             statement_idx: stmt,
@@ -129,7 +129,7 @@ impl Display for BlockStatement<'_> {
 }
 
 impl Node {
-    fn fmt_with_sep(&self, f: &mut Formatter<'_>, sep: char) -> fmt::Result {
+    fn fmt_with_sep(&self, f: &mut Formatter, sep: char) -> fmt::Result {
         let Self {
             function,
             block,
@@ -153,7 +153,7 @@ impl Node {
 }
 
 impl Display for Node {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         self.fmt_with_sep(f, ' ')
     }
 }
@@ -167,7 +167,7 @@ newtype_index!(
 pub const _ROOT_NODE: NodeId = NodeId::from_u32(0);
 
 impl Display for NodeId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "n[{}]", self.as_usize())
     }
 }
@@ -179,7 +179,7 @@ struct DisplayNode<'a> {
 }
 
 impl Display for DisplayNode<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let Self { id, node, sep } = *self;
         write!(f, "{id}:{sep}")?;
         node.fmt_with_sep(f, sep)?;
@@ -203,7 +203,7 @@ impl Graph {
 }
 
 impl Display for Graph {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let sep = '|';
         let lines = self
             .nodes
@@ -232,7 +232,7 @@ newtype_index!(
 );
 
 impl Display for GraphId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "g[{}]", self.as_usize())
     }
 }
@@ -255,7 +255,7 @@ impl Graphs {
 }
 
 impl Display for Graphs {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         for (graph_id, graph) in self.graphs.iter_enumerated() {
             if graph_id.as_usize() != 0 {
                 write!(f, "\n\n")?;
