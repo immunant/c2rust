@@ -74,18 +74,26 @@ pub fn offset(mir_loc: MirLocId, ptr: usize, offset: isize, new_ptr: usize) {
     .unwrap();
 }
 
+macro_rules! hook_fn {
+    ($name:ident) => {{
+        // Ensure it exists and allow rust-analyzer to see through it.
+        let _ = self::$name;
+        stringify!($name)
+    }};
+}
+
 /// List of functions we want hooked for the lifetime analyis runtime.
-/// 
-/// For functions in [`HOOK_FUNCTIONS`], the tracing passes 
+///
+/// For functions in [`HOOK_FUNCTIONS`], the tracing passes
 /// the return value of the traced function as the last argument to the trace hook for it.
 /// See the `if after_call` block in `apply_instrumentation` in `dynamic_instrumentation/src/instrument_memory.rs`.
 pub const HOOK_FUNCTIONS: &[&str] = &[
-    "malloc",
-    "free",
-    "calloc",
-    "realloc",
-    "reallocarray",
-    "offset",
+    hook_fn!(malloc),
+    hook_fn!(free),
+    hook_fn!(calloc),
+    hook_fn!(realloc),
+    hook_fn!(reallocarray),
+    hook_fn!(offset),
 ];
 
 pub fn ptr_field(mir_loc: MirLocId, ptr: usize, field_id: u32) {
