@@ -2376,15 +2376,14 @@ impl<'c> Translation<'c> {
                     block.set_span(span);
                 }
 
+                // c99 extern inline functions should be pub, but not gnu_inline attributed
+                // extern inlines, which become subject to their gnu89 visibility (private)
+                let is_extern_inline = is_inline && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline);
+
                 // Only add linkage attributes if the function is `extern`
                 let mut mk_ = if is_main {
                     mk()
-                } else if is_global && !is_inline {
-                    mk_linkage(false, new_name, name).extern_("C").pub_()
-                } else if is_inline && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline) {
-                    // c99 extern inline functions should be pub, but not gnu_inline attributed
-                    // extern inlines, which become subject to their gnu89 visibility (private)
-
+                } else if (is_global && !is_inline) || is_extern_inline {
                     mk_linkage(false, new_name, name).extern_("C").pub_()
                 } else if self.cur_file.borrow().is_some() {
                     mk().extern_("C").pub_()
