@@ -12,9 +12,8 @@ impl Graphs {
     /// Assert that a graph has no duplicate objects.
     ///
     /// This is not necessary, but helps minimize the graphs.
-    /// Once when graph deduplication is implemented, we should implement and test this as well.
     pub fn assert_no_duplicates(&self) {
-        Duplicates::find(&self.graphs).assert_empty();
+        Duplicates::find(&self.graphs).assert_empty_display();
     }
 }
 

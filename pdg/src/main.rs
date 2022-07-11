@@ -24,27 +24,32 @@ mod query;
 mod util;
 
 use builder::{construct_pdg, read_event_log};
-use c2rust_analysis_rt::Runtime;
 use color_eyre::eyre;
 use std::{env, path::Path};
+
+use crate::builder::read_metadata;
 
 fn main() -> eyre::Result<()> {
     color_eyre::install()?;
     env_logger::init();
-    let _runtime = Runtime::new();
 
-    let event_trace_path = env::args()
+    let metadata_path = env::args_os()
+        .nth(2)
+        .expect("Expected metadata file path as the 1st argument");
+    let event_trace_path = env::args_os()
         .nth(1)
-        .expect("Expected event trace file path as the first argument");
-    let events = read_event_log(Path::new(event_trace_path.as_str()))?;
+        .expect("Expected event trace file path as the 2nd argument");
+
+    let metadata = read_metadata(Path::new(&metadata_path))?;
+    let events = read_event_log(Path::new(&event_trace_path))?;
 
     // for event in &events {
-    //     let mir_loc = mir_loc::get(event.mir_loc).unwrap();
+    //     let mir_loc = metadata.get(event.mir_loc);
     //     let kind = &event.kind;
     //     println!("{mir_loc:?} -> {kind:?}");
     // }
 
-    let pdg = construct_pdg(&events);
+    let pdg = construct_pdg(&events, &metadata);
     pdg.assert_all_tests();
 
     for (graph_id, graph) in pdg.graphs.iter_enumerated() {

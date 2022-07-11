@@ -1,6 +1,8 @@
-use crate::mir_loc::{self, Local, MirLocId};
+use crate::mir_loc::{Local, MirLocId};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::fmt::Debug;
+use std::fmt::Formatter;
 
 pub type Pointer = usize;
 
@@ -8,17 +10,6 @@ pub type Pointer = usize;
 pub struct Event {
     pub mir_loc: MirLocId,
     pub kind: EventKind,
-}
-
-impl fmt::Debug for Event {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(mir_loc) = mir_loc::get(self.mir_loc) {
-            mir_loc.fmt(f)?;
-        } else {
-            self.mir_loc.fmt(f)?;
-        }
-        write!(f, " {:?}", self.kind)
-    }
 }
 
 impl Event {
@@ -82,8 +73,8 @@ pub enum EventKind {
     Done,
 }
 
-impl fmt::Debug for EventKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Debug for EventKind {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         use EventKind::*;
         match *self {
             CopyPtr(ptr) => write!(f, "copy(0x{:x})", ptr),

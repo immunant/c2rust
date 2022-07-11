@@ -114,7 +114,7 @@ impl<T: Display> Display for Duplicates<T> {
 }
 
 impl<T: Debug + Eq + Hash> Duplicates<T> {
-    // This function is sometimes used during debugging.
+    // Used for debugging.
     #[allow(dead_code)]
     pub fn assert_empty_debug(&self) {
         if self.is_empty() {
@@ -125,7 +125,9 @@ impl<T: Debug + Eq + Hash> Duplicates<T> {
 }
 
 impl<T: Display + Eq + Hash> Duplicates<T> {
-    pub fn assert_empty(&self) {
+    // Used for debugging.
+    #[allow(dead_code)]
+    pub fn assert_empty_display(&self) {
         if self.is_empty() {
             return;
         }
