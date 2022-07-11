@@ -150,6 +150,6 @@ impl Backend {
 
 impl DetectBackend for Backend {
     fn detect() -> Result<Self, AnyError> {
-        Ok(Self::detect_kind(BackendKind::detect()?)?)
+        Self::detect_kind(BackendKind::detect()?)
     }
 }
