@@ -11,4 +11,3 @@ edition = "2021"
 serde = { version = "1.0", features = ["derive"] }
 bincode = "1.0.1"
 lazy_static = "1.4.0"
-libc = "0.2"
