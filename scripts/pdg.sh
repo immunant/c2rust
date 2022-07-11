@@ -99,7 +99,9 @@ main() {
         export RUST_LOG=info
         cargo run \
             "${profile_args[@]}" \
-            -- "../${test_dir}/log.bc" "${metadata}" \
+            -- \
+            --event-log "../${test_dir}/log.bc" \
+            --metadata "${metadata}" \
         > "../${test_dir}/pdg.log"
     )
 }

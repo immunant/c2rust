@@ -24,24 +24,31 @@ mod query;
 mod util;
 
 use builder::{construct_pdg, read_event_log};
+use clap::Parser;
 use color_eyre::eyre;
-use std::{env, path::Path};
+use std::path::{Path, PathBuf};
 
 use crate::builder::read_metadata;
+
+/// Construct and query a PDG from an instrumented program's event log.
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    /// Path to an event log from a run of an instrumented program.
+    #[clap(long, value_parser)]
+    event_log: PathBuf,
+    /// Path to the instrumented program's metadata generated at compile/instrumentation time.
+    #[clap(long, value_parser)]
+    metadata: PathBuf,
+}
 
 fn main() -> eyre::Result<()> {
     color_eyre::install()?;
     env_logger::init();
+    let args = Args::parse();
 
-    let metadata_path = env::args_os()
-        .nth(2)
-        .expect("Expected metadata file path as the 1st argument");
-    let event_trace_path = env::args_os()
-        .nth(1)
-        .expect("Expected event trace file path as the 2nd argument");
-
-    let metadata = read_metadata(Path::new(&metadata_path))?;
-    let events = read_event_log(Path::new(&event_trace_path))?;
+    let events = read_event_log(Path::new(&args.event_log))?;
+    let metadata = read_metadata(Path::new(&args.metadata))?;
 
     // for event in &events {
     //     let mir_loc = metadata.get(event.mir_loc);
