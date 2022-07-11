@@ -67,6 +67,8 @@ impl PathedMultiImports {
 
 #[derive(Debug, Default)]
 pub struct ItemStore {
+    // Fixing this would require major refactors for marginal benefit.
+    #[allow(clippy::vec_box)]
     items: Vec<Box<Item>>,
     foreign_items: Vec<ForeignItem>,
     uses: PathedMultiImports,
