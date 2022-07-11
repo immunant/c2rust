@@ -15,6 +15,13 @@ pub(super) trait WriteEvent {
     fn write(&mut self, event: Event);
 }
 
+pub(super) trait DetectBackend
+where
+    Self: Sized,
+{
+    fn detect() -> Result<Self, AnyError>;
+}
+
 pub struct DebugBackend {
     metadata: Metadata,
 }
@@ -62,8 +69,8 @@ impl Backend {
     }
 }
 
-impl DebugBackend {
-    pub fn detect() -> Result<Self, AnyError> {
+impl DetectBackend for DebugBackend {
+    fn detect() -> Result<Self, AnyError> {
         let path = {
             let var = "METADATA_FILE";
             env::var_os(var).ok_or_else(|| {
@@ -78,8 +85,8 @@ impl DebugBackend {
     }
 }
 
-impl LogBackend {
-    pub fn detect() -> Result<Self, AnyError> {
+impl DetectBackend for LogBackend {
+    fn detect() -> Result<Self, AnyError> {
         let path = {
             let var = "INSTRUMENT_OUTPUT";
             env::var_os(var).ok_or_else(|| {
@@ -108,14 +115,41 @@ impl LogBackend {
     }
 }
 
-impl Backend {
-    pub fn detect() -> Result<Self, AnyError> {
+pub enum BackendKind {
+    Debug,
+    Log,
+}
+
+impl Default for BackendKind {
+    fn default() -> Self {
+        Self::Debug
+    }
+}
+
+impl DetectBackend for BackendKind {
+    fn detect() -> Result<Self, AnyError> {
         let var = "INSTRUMENT_BACKEND";
         let this = match env::var(var).unwrap_or_default().as_str() {
-            "log" => Self::Log(LogBackend::detect()?),
-            "debug" => Self::Debug(DebugBackend::detect()?),
-            _ => Self::Debug(DebugBackend::detect()?),
+            "log" => Self::Log,
+            "debug" => Self::Debug,
+            _ => Self::default(),
         };
         Ok(this)
+    }
+}
+
+impl Backend {
+    pub fn detect_kind(kind: BackendKind) -> Result<Self, AnyError> {
+        let this = match kind {
+            BackendKind::Debug => Self::Debug(DebugBackend::detect()?),
+            BackendKind::Log => Self::Log(LogBackend::detect()?),
+        };
+        Ok(this)
+    }
+}
+
+impl DetectBackend for Backend {
+    fn detect() -> Result<Self, AnyError> {
+        Ok(Self::detect_kind(BackendKind::detect()?)?)
     }
 }

@@ -8,7 +8,7 @@ use once_cell::sync::OnceCell;
 use crate::events::Event;
 
 use super::{
-    backend::Backend,
+    backend::{Backend, DetectBackend},
     skip::{skip_event, SkipReason},
     AnyError, FINISHED,
 };
