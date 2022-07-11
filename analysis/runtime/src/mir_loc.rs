@@ -19,9 +19,7 @@ pub struct Local {
 
 impl From<u32> for Local {
     fn from(index: u32) -> Self {
-        Self {
-            index,
-        }
+        Self { index }
     }
 }
 

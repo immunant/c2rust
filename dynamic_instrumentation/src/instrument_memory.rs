@@ -580,7 +580,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                                 let sans_proj = pop_one_projection(p, self.tcx)
                                     .expect("expected but did not find deref projection");
                                 Operand::Copy(sans_proj)
-                            },
+                            }
                             _ => Operand::Copy(*p),
                         };
 
@@ -1099,9 +1099,7 @@ fn cast_ptr_to_usize<'tcx>(
             let raw_ptr_ty = tcx.mk_ptr(inner_ty);
             let raw_ptr_local = locals.push(LocalDecl::new(raw_ptr_ty, DUMMY_SP));
 
-            let arg_place = arg
-                .place()
-                .expect("Can't get the address of a constant");
+            let arg_place = arg.place().expect("Can't get the address of a constant");
             let addr_of_stmt = Statement {
                 source_info: SourceInfo::outermost(DUMMY_SP),
                 kind: StatementKind::Assign(Box::new((

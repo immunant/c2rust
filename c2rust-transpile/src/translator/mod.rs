@@ -2380,7 +2380,8 @@ impl<'c> Translation<'c> {
 
                 // c99 extern inline functions should be pub, but not gnu_inline attributed
                 // extern inlines, which become subject to their gnu89 visibility (private)
-                let is_extern_inline = is_inline && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline);
+                let is_extern_inline =
+                    is_inline && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline);
 
                 // Only add linkage attributes if the function is `extern`
                 let mut mk_ = if is_main {
