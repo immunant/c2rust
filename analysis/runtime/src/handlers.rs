@@ -2,6 +2,7 @@ use crate::backend::TX;
 use crate::events::{Event, EventKind};
 use crate::mir_loc::MirLocId;
 
+/// A hook function (see [`HOOK_FUNCTIONS`]).
 pub fn malloc(mir_loc: MirLocId, size: u64, ptr: usize) {
     TX.send(Event {
         mir_loc,
@@ -12,6 +13,8 @@ pub fn malloc(mir_loc: MirLocId, size: u64, ptr: usize) {
     })
     .unwrap();
 }
+
+/// A hook function (see [`HOOK_FUNCTIONS`]).
 pub fn free(mir_loc: MirLocId, ptr: usize, _free_ret_val: ()) {
     TX.send(Event {
         mir_loc,
@@ -19,6 +22,8 @@ pub fn free(mir_loc: MirLocId, ptr: usize, _free_ret_val: ()) {
     })
     .unwrap();
 }
+
+/// A hook function (see [`HOOK_FUNCTIONS`]).
 pub fn calloc(mir_loc: MirLocId, nmemb: u64, size: u64, ptr: usize) {
     TX.send(Event {
         mir_loc,
@@ -29,6 +34,8 @@ pub fn calloc(mir_loc: MirLocId, nmemb: u64, size: u64, ptr: usize) {
     })
     .unwrap();
 }
+
+/// A hook function (see [`HOOK_FUNCTIONS`]).
 pub fn realloc(mir_loc: MirLocId, old_ptr: usize, size: u64, new_ptr: usize) {
     TX.send(Event {
         mir_loc,
@@ -44,6 +51,8 @@ pub fn realloc(mir_loc: MirLocId, old_ptr: usize, size: u64, new_ptr: usize) {
     })
     .unwrap();
 }
+
+/// A hook function (see [`HOOK_FUNCTIONS`]).
 pub fn reallocarray(mir_loc: MirLocId, old_ptr: usize, nmemb: u64, size: u64, new_ptr: usize) {
     TX.send(Event {
         mir_loc,
@@ -56,6 +65,7 @@ pub fn reallocarray(mir_loc: MirLocId, old_ptr: usize, nmemb: u64, size: u64, ne
     .unwrap();
 }
 
+/// A hook function (see [`HOOK_FUNCTIONS`]).
 pub fn offset(mir_loc: MirLocId, ptr: usize, offset: isize, new_ptr: usize) {
     TX.send(Event {
         mir_loc,
@@ -63,6 +73,20 @@ pub fn offset(mir_loc: MirLocId, ptr: usize, offset: isize, new_ptr: usize) {
     })
     .unwrap();
 }
+
+/// List of functions we want hooked for the lifetime analyis runtime.
+/// 
+/// For functions in [`HOOK_FUNCTIONS`], the tracing passes 
+/// the return value of the traced function as the last argument to the trace hook for it.
+/// See the `if after_call` block in `apply_instrumentation` in `dynamic_instrumentation/src/instrument_memory.rs`.
+pub const HOOK_FUNCTIONS: &[&str] = &[
+    "malloc",
+    "free",
+    "calloc",
+    "realloc",
+    "reallocarray",
+    "offset",
+];
 
 pub fn ptr_field(mir_loc: MirLocId, ptr: usize, field_id: u32) {
     TX.send(Event {

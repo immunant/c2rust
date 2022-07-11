@@ -5,16 +5,6 @@ pub mod mir_loc;
 
 use std::env;
 
-/// List of functions we want hooked for the lifetime analyis runtime.
-pub const HOOK_FUNCTIONS: &[&str] = &[
-    "malloc",
-    "free",
-    "calloc",
-    "realloc",
-    "reallocarray",
-    "offset",
-];
-
 pub use self::mir_loc::{DefPathHash, Metadata, MirLoc, MirLocId, MirPlace, MirProjection};
 
 pub use self::handlers::*;
