@@ -3,6 +3,8 @@ use crate::events::{Event, EventKind};
 use crate::mir_loc::MirLocId;
 
 /// A hook function (see [`HOOK_FUNCTIONS`]).
+///
+/// Instruments 64-bit `c2rust transpile`d `malloc`, which is similar to `libc::malloc`.
 pub fn malloc(mir_loc: MirLocId, size: u64, ptr: usize) {
     TX.send(Event {
         mir_loc,
@@ -15,6 +17,8 @@ pub fn malloc(mir_loc: MirLocId, size: u64, ptr: usize) {
 }
 
 /// A hook function (see [`HOOK_FUNCTIONS`]).
+///
+/// Instruments 64-bit `c2rust transpile`d `free`, which is similar to `libc::free`.
 pub fn free(mir_loc: MirLocId, ptr: usize, _free_ret_val: ()) {
     TX.send(Event {
         mir_loc,
@@ -24,6 +28,8 @@ pub fn free(mir_loc: MirLocId, ptr: usize, _free_ret_val: ()) {
 }
 
 /// A hook function (see [`HOOK_FUNCTIONS`]).
+///
+/// Instruments 64-bit `c2rust transpile`d `calloc`, which is similar to `libc::calloc`.
 pub fn calloc(mir_loc: MirLocId, nmemb: u64, size: u64, ptr: usize) {
     TX.send(Event {
         mir_loc,
@@ -36,6 +42,8 @@ pub fn calloc(mir_loc: MirLocId, nmemb: u64, size: u64, ptr: usize) {
 }
 
 /// A hook function (see [`HOOK_FUNCTIONS`]).
+///
+/// Instruments 64-bit `c2rust transpile`d `realloc`, which is similar to `libc::realloc`.
 pub fn realloc(mir_loc: MirLocId, old_ptr: usize, size: u64, new_ptr: usize) {
     TX.send(Event {
         mir_loc,
@@ -53,6 +61,10 @@ pub fn realloc(mir_loc: MirLocId, old_ptr: usize, size: u64, new_ptr: usize) {
 }
 
 /// A hook function (see [`HOOK_FUNCTIONS`]).
+///
+/// Instruments 64-bit `c2rust transpile`d `reallocarray`, which is similar to `libc::reallocarray`.
+///
+/// Note that this is Linux-like-only.
 pub fn reallocarray(mir_loc: MirLocId, old_ptr: usize, nmemb: u64, size: u64, new_ptr: usize) {
     TX.send(Event {
         mir_loc,
@@ -66,6 +78,8 @@ pub fn reallocarray(mir_loc: MirLocId, old_ptr: usize, nmemb: u64, size: u64, ne
 }
 
 /// A hook function (see [`HOOK_FUNCTIONS`]).
+///
+/// Instruments [`pointer::offset`](std::primitive::pointer::offset).
 pub fn offset(mir_loc: MirLocId, ptr: usize, offset: isize, new_ptr: usize) {
     TX.send(Event {
         mir_loc,
