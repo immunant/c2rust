@@ -12,6 +12,73 @@ use std::{
 use crate::util::pad_columns;
 use crate::util::ShortOption;
 
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+pub enum NodeKind {
+    /// A copy from one local to another.  This also covers casts such as `&mut T` to `&T` or `&T`
+    /// to `*const T` that don't change the type or value of the pointer.
+    Copy,
+
+    /// Field projection.  Used for operations like `_2 = &(*_1).0`.  Nested field accesses like
+    /// `_4 = &(*_1).x.y.z` are broken into multiple `Node`s, each covering one level.
+    Field(Field),
+    /// Pointer arithmetic.  The `isize` is the concrete offset distance.  We use this to detect
+    /// when two pointers always refer to different indices.
+    Offset(isize),
+
+    // Operations that can't have a `source`.
+    /// Get the address of a local.  For address-taken locals, the root node is an `AddrOfLocal`
+    /// attributed to the first statement of the function.  Taking the address of the local, as in
+    /// `_2 = &_1`, appears as a copy of that root pointer, and reading or writing from the local
+    /// shows up as a `LoadAddr` or `StoreAddr`.  This allows us to track uses of the local that
+    /// interfere with an existing reference, even when those uses don't go through a pointer.
+    AddrOfLocal(Local),
+    /// Get the address of a static.  These are treated the same as locals, with an
+    /// `AddressOfStatic` attributed to the first statement.
+    _AddrOfStatic(DefPathHash),
+    /// Heap allocation.  The `usize` is the number of array elements allocated; for allocations of
+    /// a single object, this value is 1.
+    Malloc(usize),
+    /// Int to pointer conversion.  Details TBD.
+    IntToPtr,
+    /// The result of loading a value through some other pointer.  Details TBD.
+    LoadValue,
+
+    // Operations that can't be the `source` of any other operation.
+    /// Heap deallocation.  The object described by the current graph is no longer valid after this
+    /// point.  Correct programs will only `Free` pointers produced by `Malloc`, and will no longer
+    /// `LoadAddr` or `StoreAddr` any pointers derived from that `Malloc` afterward.
+    Free,
+    /// Pointer to int conversion.  Details TBD.
+    PtrToInt,
+    /// The pointer appears as the address of a load operation.
+    LoadAddr,
+    /// The pointer appears as the address of a store operation.
+    StoreAddr,
+    /// The pointer is stored through some other pointer.  Details TBD.
+    StoreValue,
+}
+
+impl Display for NodeKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use NodeKind::*;
+        match self {
+            Copy => write!(f, "copy"),
+            Field(field) => write!(f, "field.{}", field.as_usize()),
+            Offset(offset) => write!(f, "offset[{offset}]"),
+            AddrOfLocal(local) => write!(f, "&{local:?}"),
+            _AddrOfStatic(static_) => write!(f, "&'static {static_:?}"),
+            Malloc(n) => write!(f, "malloc(n = {n})"),
+            Free => write!(f, "free"),
+            PtrToInt => write!(f, "ptr_to_int"),
+            IntToPtr => write!(f, "int_to_ptr"),
+            LoadValue => write!(f, "value.load"),
+            StoreValue => write!(f, "value.store"),
+            LoadAddr => write!(f, "addr.load"),
+            StoreAddr => write!(f, "addr.store"),
+        }
+    }
+}
+
 /// A node in the graph represents an operation on pointers.  It may produce a pointer from
 /// nothing, derive a pointer from another pointer, or consume a pointer without producing any
 /// output.
@@ -117,73 +184,6 @@ impl Display for DisplayNode<'_> {
         write!(f, "{id}:{sep}")?;
         node.fmt_with_sep(f, sep)?;
         Ok(())
-    }
-}
-
-#[derive(Debug, Eq, PartialEq, Hash, Clone)]
-pub enum NodeKind {
-    /// A copy from one local to another.  This also covers casts such as `&mut T` to `&T` or `&T`
-    /// to `*const T` that don't change the type or value of the pointer.
-    Copy,
-
-    /// Field projection.  Used for operations like `_2 = &(*_1).0`.  Nested field accesses like
-    /// `_4 = &(*_1).x.y.z` are broken into multiple `Node`s, each covering one level.
-    Field(Field),
-    /// Pointer arithmetic.  The `isize` is the concrete offset distance.  We use this to detect
-    /// when two pointers always refer to different indices.
-    Offset(isize),
-
-    // Operations that can't have a `source`.
-    /// Get the address of a local.  For address-taken locals, the root node is an `AddrOfLocal`
-    /// attributed to the first statement of the function.  Taking the address of the local, as in
-    /// `_2 = &_1`, appears as a copy of that root pointer, and reading or writing from the local
-    /// shows up as a `LoadAddr` or `StoreAddr`.  This allows us to track uses of the local that
-    /// interfere with an existing reference, even when those uses don't go through a pointer.
-    AddrOfLocal(Local),
-    /// Get the address of a static.  These are treated the same as locals, with an
-    /// `AddressOfStatic` attributed to the first statement.
-    _AddrOfStatic(DefPathHash),
-    /// Heap allocation.  The `usize` is the number of array elements allocated; for allocations of
-    /// a single object, this value is 1.
-    Malloc(usize),
-    /// Int to pointer conversion.  Details TBD.
-    IntToPtr,
-    /// The result of loading a value through some other pointer.  Details TBD.
-    LoadValue,
-
-    // Operations that can't be the `source` of any other operation.
-    /// Heap deallocation.  The object described by the current graph is no longer valid after this
-    /// point.  Correct programs will only `Free` pointers produced by `Malloc`, and will no longer
-    /// `LoadAddr` or `StoreAddr` any pointers derived from that `Malloc` afterward.
-    Free,
-    /// Pointer to int conversion.  Details TBD.
-    PtrToInt,
-    /// The pointer appears as the address of a load operation.
-    LoadAddr,
-    /// The pointer appears as the address of a store operation.
-    StoreAddr,
-    /// The pointer is stored through some other pointer.  Details TBD.
-    StoreValue,
-}
-
-impl Display for NodeKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use NodeKind::*;
-        match self {
-            Copy => write!(f, "copy"),
-            Field(field) => write!(f, "field.{}", field.as_usize()),
-            Offset(offset) => write!(f, "offset[{offset}]"),
-            AddrOfLocal(local) => write!(f, "&{local:?}"),
-            _AddrOfStatic(static_) => write!(f, "&'static {static_:?}"),
-            Malloc(n) => write!(f, "malloc(n = {n})"),
-            Free => write!(f, "free"),
-            PtrToInt => write!(f, "ptr_to_int"),
-            IntToPtr => write!(f, "int_to_ptr"),
-            LoadValue => write!(f, "value.load"),
-            StoreValue => write!(f, "value.store"),
-            LoadAddr => write!(f, "addr.load"),
-            StoreAddr => write!(f, "addr.store"),
-        }
     }
 }
 
