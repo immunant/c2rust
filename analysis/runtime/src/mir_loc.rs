@@ -14,8 +14,6 @@ pub enum MirProjection {
 /// See [`rustc_middle::mir::Local`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/struct.Local.html).
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Local {
-    /// [`rustc_middle::mir::Local`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/struct.Local.html),
-    /// but need to keep bincode binary format.
     pub index: u32,
 }
 
