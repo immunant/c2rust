@@ -77,8 +77,8 @@ main() {
         if [[ "${c2rust_instrument}" -nt "${metadata}" ]]; then
             cargo clean --profile dev # always dev/debug for now
 
-            if ! LD_LIBRARY_PATH="${toolchain_dir}/lib" \
-            "${c2rust}" instrument \
+            export LD_LIBRARY_PATH="${toolchain_dir}/lib"
+            if ! "${c2rust}" instrument \
                 "${metadata}" "${runtime}" \
                 -- "${profile_args[@]}"  \
             1> instrument.out.log \
@@ -90,6 +90,7 @@ main() {
         
         export INSTRUMENT_BACKEND=log
         export INSTRUMENT_OUTPUT=log.bc
+        export INSTRUMENT_OUTPUT_APPEND=false
         export METADATA_FILE="${metadata}"
         "${binary_path}" "${args[@]}"
     )

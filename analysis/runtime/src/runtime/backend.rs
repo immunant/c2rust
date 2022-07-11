@@ -1,5 +1,5 @@
 use enum_dispatch::enum_dispatch;
-use fs_err::File;
+use fs_err::{File, OpenOptions};
 use std::env;
 use std::io::BufWriter;
 use std::sync::mpsc::Receiver;
@@ -45,10 +45,11 @@ pub enum Backend {
 impl Backend {
     fn write_all(&mut self, rx: Receiver<Event>) {
         for event in rx {
-            if matches!(event.kind, EventKind::Done) {
+            let done = matches!(event.kind, EventKind::Done);
+            self.write(event);
+            if done {
                 return;
             }
-            self.write(event);
         }
     }
 
@@ -77,7 +78,20 @@ impl LogBackend {
     pub fn detect() -> Result<Self, AnyError> {
         let path = env::var_os("INSTRUMENT_OUTPUT")
             .ok_or("Instrumentation requires the INSTRUMENT_OUTPUT environment variable be set")?;
-        let file = File::create(&path)?;
+        let append = env::var("INSTRUMENT_OUTPUT_APPEND").ok().ok_or(
+            "Instrumentation requires the INSTRUMENT_OUTPUT_APPEND environment variable be set",
+        )?;
+        let append = match append.as_str() {
+            "true" => true,
+            "false" => false,
+            _ => return Err("INSTRUMENT_OUTPUT_APPEND must be 'true' or 'false'".into()),
+        };
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(append)
+            .truncate(!append)
+            .open(&path)?;
         let writer = BufWriter::new(file);
         Ok(Self { writer })
     }
