@@ -64,8 +64,12 @@ impl Backend {
 
 impl DebugBackend {
     pub fn detect() -> Result<Self, AnyError> {
-        let path = env::var_os("METADATA_FILE")
-            .ok_or("Instrumentation requires the METADATA_FILE environment variable be set")?;
+        let path = {
+            let var = "METADATA_FILE";
+            env::var_os(var).ok_or_else(|| {
+                format!("Instrumentation requires the {var} environment variable be set")
+            })?
+        };
         // TODO may want to deduplicate this with [`pdg::builder::read_metadata`] in [`Metadata::read`],
         // but that may require adding `color-eyre`/`eyre` as a dependency
         let bytes = fs_err::read(path)?;
@@ -76,15 +80,22 @@ impl DebugBackend {
 
 impl LogBackend {
     pub fn detect() -> Result<Self, AnyError> {
-        let path = env::var_os("INSTRUMENT_OUTPUT")
-            .ok_or("Instrumentation requires the INSTRUMENT_OUTPUT environment variable be set")?;
-        let append = env::var("INSTRUMENT_OUTPUT_APPEND").ok().ok_or(
-            "Instrumentation requires the INSTRUMENT_OUTPUT_APPEND environment variable be set",
-        )?;
-        let append = match append.as_str() {
-            "true" => true,
-            "false" => false,
-            _ => return Err("INSTRUMENT_OUTPUT_APPEND must be 'true' or 'false'".into()),
+        let path = {
+            let var = "INSTRUMENT_OUTPUT";
+            env::var_os(var).ok_or_else(|| {
+                format!("Instrumentation requires the {var} environment variable be set")
+            })?
+        };
+        let append = {
+            let var = "INSTRUMENT_OUTPUT_APPEND";
+            let append = env::var(var).ok().ok_or_else(|| {
+                format!("Instrumentation requires the {var} environment variable be set")
+            })?;
+            match append.as_str() {
+                "true" => true,
+                "false" => false,
+                _ => return Err(format!("{var} must be 'true' or 'false'").into()),
+            }
         };
         let file = OpenOptions::new()
             .create(true)
@@ -99,7 +110,8 @@ impl LogBackend {
 
 impl Backend {
     pub fn detect() -> Result<Self, AnyError> {
-        let this = match env::var("INSTRUMENT_BACKEND").unwrap_or_default().as_str() {
+        let var = "INSTRUMENT_BACKEND";
+        let this = match env::var(var).unwrap_or_default().as_str() {
             "log" => Self::Log(LogBackend::detect()?),
             "debug" => Self::Debug(DebugBackend::detect()?),
             _ => Self::Debug(DebugBackend::detect()?),
