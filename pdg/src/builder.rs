@@ -253,10 +253,5 @@ pub fn construct_pdg(events: &[Event], metadata: &Metadata) -> Graphs {
     }
     // TODO(kkysen) check if I have to remove any `GraphId`s from `graphs.latest_assignment`
     graphs.graphs = graphs.graphs.into_iter().unique().collect();
-
-    // for ((func_hash, local), p) in &graphs.latest_assignment {
-    //     let func = &metadata.functions[func_hash];
-    //     println!("({func}:{local:?}) => {p:?}");
-    // }
     graphs
 }
