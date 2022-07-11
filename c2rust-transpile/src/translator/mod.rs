@@ -280,20 +280,6 @@ pub struct Translation<'c> {
     cur_file: RefCell<Option<FileId>>,
 }
 
-pub fn std_or_core(emit_no_std: bool) -> &'static str {
-    if emit_no_std {
-        "core"
-    } else {
-        "std"
-    }
-}
-
-impl Translation<'_> {
-    pub fn std_or_core(&self) -> &'static str {
-        std_or_core(self.tcfg.emit_no_std)
-    }
-}
-
 fn simple_metaitem(name: &str) -> NestedMeta {
     let meta_item = mk().meta_path(name);
 
@@ -362,20 +348,12 @@ fn unwrap_function_pointer(ptr: Box<Expr>) -> Box<Expr> {
     mk().method_call_expr(ptr, "expect", vec![err_msg])
 }
 
-fn transmute_expr(
-    source_ty: Box<Type>,
-    target_ty: Box<Type>,
-    expr: Box<Expr>,
-    no_std: bool,
-) -> Box<Expr> {
+fn transmute_expr(source_ty: Box<Type>, target_ty: Box<Type>, expr: Box<Expr>) -> Box<Expr> {
     let type_args = match (&*source_ty, &*target_ty) {
         (Type::Infer(_), Type::Infer(_)) => Vec::new(),
         _ => vec![source_ty, target_ty],
     };
-    let mut path = vec![
-        mk().path_segment(std_or_core(no_std)),
-        mk().path_segment("mem"),
-    ];
+    let mut path = vec![mk().path_segment("core"), mk().path_segment("mem")];
 
     if type_args.is_empty() {
         path.push(mk().path_segment("transmute"));
@@ -1051,6 +1029,8 @@ fn make_submodule(
 
 // TODO(kkysen) shouldn't need `extern crate`
 /// Pretty-print the leading pragmas and extern crate declarations
+// Fixing this would require major refactors for marginal benefit.
+#[allow(clippy::vec_box)]
 fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec<Box<Item>>) {
     let mut out_attrs = vec![];
     let mut out_items = vec![];
@@ -1239,7 +1219,7 @@ impl<'c> Translation<'c> {
         main_file: &path::Path,
     ) -> Self {
         let comment_context = CommentContext::new(&mut ast_context);
-        let mut type_converter = TypeConverter::new(tcfg.emit_no_std);
+        let mut type_converter = TypeConverter::new();
 
         if tcfg.translate_valist {
             type_converter.translate_valist = true
@@ -1394,7 +1374,7 @@ impl<'c> Translation<'c> {
                     use CastKind::*;
                     match cast_kind {
                         IntegralToPointer | FunctionToPointerDecay | PointerToIntegral => {
-                            return true
+                            return true;
                         }
                         _ => {}
                     }
@@ -1805,7 +1785,7 @@ impl<'c> Translation<'c> {
                         _ => {
                             return Err(TranslationError::generic(
                                 "Found non-field in record field list",
-                            ))
+                            ));
                         }
                     }
                 }
@@ -1915,7 +1895,7 @@ impl<'c> Translation<'c> {
                                 decl_id,
                                 k
                             )
-                            .into())
+                            .into());
                         }
                     };
 
@@ -2398,15 +2378,14 @@ impl<'c> Translation<'c> {
                     block.set_span(span);
                 }
 
+                // c99 extern inline functions should be pub, but not gnu_inline attributed
+                // extern inlines, which become subject to their gnu89 visibility (private)
+                let is_extern_inline = is_inline && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline);
+
                 // Only add linkage attributes if the function is `extern`
                 let mut mk_ = if is_main {
                     mk()
-                } else if is_global && !is_inline {
-                    mk_linkage(false, new_name, name).extern_("C").pub_()
-                } else if is_inline && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline) {
-                    // c99 extern inline functions should be pub, but not gnu_inline attributed
-                    // extern inlines, which become subject to their gnu89 visibility (private)
-
+                } else if (is_global && !is_inline) || is_extern_inline {
                     mk_linkage(false, new_name, name).extern_("C").pub_()
                 } else if self.cur_file.borrow().is_some() {
                     mk().extern_("C").pub_()
@@ -2742,7 +2721,7 @@ impl<'c> Translation<'c> {
                     // translate `va_list` variables to `VaListImpl`s and omit the initializer.
                     let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name);
                     let ty = {
-                        let path = vec![self.std_or_core(), "ffi", "VaListImpl"];
+                        let path = vec!["core", "ffi", "VaListImpl"];
                         mk().path_ty(mk().abs_path(path))
                     };
                     let local_mut = mk().local::<_, _, Box<Expr>>(pat_mut, Some(ty), None);
@@ -3059,7 +3038,7 @@ impl<'c> Translation<'c> {
         let addr_lhs = self.addr_lhs(lhs, lhs_type, true)?;
 
         Ok(mk().call_expr(
-            mk().abs_path_expr(vec![self.std_or_core(), "ptr", "write_volatile"]),
+            mk().abs_path_expr(vec!["core", "ptr", "write_volatile"]),
             vec![addr_lhs, rhs],
         ))
     }
@@ -3076,7 +3055,7 @@ impl<'c> Translation<'c> {
         // in order to avoid omitted bit-casts to const from causing the
         // wrong type to be inferred via the result of the pointer.
         let mut path_parts: Vec<PathSegment> = vec![];
-        for elt in [self.std_or_core(), "ptr"] {
+        for elt in ["core", "ptr"] {
             path_parts.push(mk().path_segment(elt))
         }
         let elt_ty = self.convert_type(lhs_type.ctype)?;
@@ -3193,7 +3172,7 @@ impl<'c> Translation<'c> {
         let name = "size_of";
         let params = mk().angle_bracketed_args(vec![ty]);
         let path = vec![
-            mk().path_segment(self.std_or_core()),
+            mk().path_segment("core"),
             mk().path_segment("mem"),
             mk().path_segment_with_args(name, params),
         ];
@@ -3211,12 +3190,7 @@ impl<'c> Translation<'c> {
 
         let ty = self.convert_type(type_id)?;
         let tys = vec![ty];
-        let mut path = vec![];
-        if self.tcfg.emit_no_std {
-            path.push(mk().path_segment("core"));
-        } else {
-            path.push(mk().path_segment("std"));
-        }
+        let mut path = vec![mk().path_segment("core")];
         if preferred {
             self.use_feature("core_intrinsics");
             path.push(mk().path_segment("intrinsics"));
@@ -3229,6 +3203,8 @@ impl<'c> Translation<'c> {
         Ok(WithStmts::new_val(call))
     }
 
+    // Fixing this would require major refactors for marginal benefit.
+    #[allow(clippy::vec_box)]
     fn convert_exprs(
         &self,
         ctx: ExprContext,
@@ -3409,7 +3385,7 @@ impl<'c> Translation<'c> {
                             if let Some(cur_file) = *self.cur_file.borrow() {
                                 self.import_type(qual_ty.ctype, cur_file);
                             }
-                            val = transmute_expr(actual_ty, ty, val, self.tcfg.emit_no_std);
+                            val = transmute_expr(actual_ty, ty, val);
                             set_unsafe = true;
                         } else {
                             val = mk().cast_expr(val, ty);
@@ -3758,7 +3734,7 @@ impl<'c> Translation<'c> {
                                             "Subscript applied to non-pointer: {:?}",
                                             lhs
                                         )
-                                        .into())
+                                        .into());
                                     }
                                 };
 
@@ -3785,16 +3761,16 @@ impl<'c> Translation<'c> {
                 let func = match self.ast_context[func].kind {
                     // Direct function call
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _, _)
-                        // Only a direct function call with pointer decay if the
-                        // callee is a declref
-                        if matches!(self.ast_context[fexp].kind, CExprKind::DeclRef(..)) =>
-                    {
-                        self.convert_expr(ctx.used(), fexp)?
-                    }
+                    // Only a direct function call with pointer decay if the
+                    // callee is a declref
+                    if matches!(self.ast_context[fexp].kind, CExprKind::DeclRef(..)) =>
+                        {
+                            self.convert_expr(ctx.used(), fexp)?
+                        }
 
                     // Builtin function call
                     CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _, _) => {
-                        return self.convert_builtin(ctx, fexp, args)
+                        return self.convert_builtin(ctx, fexp, args);
                     }
 
                     // Function pointer call
@@ -3802,10 +3778,10 @@ impl<'c> Translation<'c> {
                         let callee = self.convert_expr(ctx.used(), func)?;
                         let make_fn_ty = |ret_ty: Box<Type>| {
                             let ret_ty = match *ret_ty {
-                                Type::Tuple(TypeTuple {elems: ref v, ..}) if v.is_empty() => ReturnType::Default,
+                                Type::Tuple(TypeTuple { elems: ref v, .. }) if v.is_empty() => ReturnType::Default,
                                 _ => ReturnType::Type(Default::default(), ret_ty),
                             };
-                            let bare_ty : (Vec<BareFnArg>, Option<Variadic>, ReturnType) = (
+                            let bare_ty: (Vec<BareFnArg>, Option<Variadic>, ReturnType) = (
                                 vec![mk().bare_arg(mk().infer_ty(), None::<Box<Ident>>); args.len()],
                                 None,
                                 ret_ty
@@ -3820,7 +3796,7 @@ impl<'c> Translation<'c> {
                                 let target_ty = make_fn_ty(ret_ty);
                                 callee.map(|fn_ptr| {
                                     let fn_ptr = unwrap_function_pointer(fn_ptr);
-                                    transmute_expr(mk().infer_ty(), target_ty, fn_ptr, self.tcfg.emit_no_std)
+                                    transmute_expr(mk().infer_ty(), target_ty, fn_ptr)
                                 })
                             }
                             None => {
@@ -3828,7 +3804,7 @@ impl<'c> Translation<'c> {
                                 let ret_ty = self.convert_type(call_expr_ty.ctype)?;
                                 let target_ty = make_fn_ty(ret_ty);
                                 callee.map(|fn_ptr| {
-                                    transmute_expr(mk().infer_ty(), target_ty, fn_ptr, self.tcfg.emit_no_std)
+                                    transmute_expr(mk().infer_ty(), target_ty, fn_ptr)
                                 })
                             }
                             Some(_) => {
@@ -4308,10 +4284,7 @@ impl<'c> Translation<'c> {
                         let source_ty = self.convert_type(source_ty.ctype)?;
                         let target_ty = self.convert_type(ty.ctype)?;
                         Ok(WithStmts::new_unsafe_val(transmute_expr(
-                            source_ty,
-                            target_ty,
-                            x,
-                            self.tcfg.emit_no_std,
+                            source_ty, target_ty, x,
                         )))
                     } else {
                         // Normal case
@@ -4327,10 +4300,7 @@ impl<'c> Translation<'c> {
                     let intptr_t = mk().path_ty(vec!["libc", "intptr_t"]);
                     let intptr = mk().cast_expr(x, intptr_t.clone());
                     Ok(WithStmts::new_unsafe_val(transmute_expr(
-                        intptr_t,
-                        target_ty,
-                        intptr,
-                        self.tcfg.emit_no_std,
+                        intptr_t, target_ty, intptr,
                     )))
                 })
             }
@@ -4365,10 +4335,7 @@ impl<'c> Translation<'c> {
                     val.and_then(|x| {
                         if self.ast_context.is_function_pointer(source_ty_ctype_id) {
                             Ok(WithStmts::new_unsafe_val(transmute_expr(
-                                source_ty,
-                                target_ty,
-                                x,
-                                self.tcfg.emit_no_std,
+                                source_ty, target_ty, x,
                             )))
                         } else {
                             Ok(WithStmts::new_val(mk().cast_expr(x, target_ty)))
@@ -4535,7 +4502,7 @@ impl<'c> Translation<'c> {
                     "Tried casting long double to unsupported type: {:?}",
                     target_ty_ctype
                 )
-                .into())
+                .into());
             }
         };
 
@@ -4575,7 +4542,7 @@ impl<'c> Translation<'c> {
                 return val.map(|x| match *unparen(&x) {
                     Expr::Cast(ExprCast { ref expr, .. }) => expr.clone(),
                     _ => panic!("DeclRef {:?} of enum {:?} is not cast", expr, enum_decl),
-                })
+                });
             }
 
             CExprKind::Literal(_, CLiteral::Integer(i, _)) => {
@@ -4608,7 +4575,7 @@ impl<'c> Translation<'c> {
 
         if self.ast_context.is_va_list(resolved_ty_id) {
             // generate MaybeUninit::uninit().assume_init()
-            let path = vec![self.std_or_core(), "mem", "MaybeUninit", "uninit"];
+            let path = vec!["core", "mem", "MaybeUninit", "uninit"];
             let call = mk().call_expr(mk().abs_path_expr(path), vec![] as Vec<Box<Expr>>);
             let call = mk().method_call_expr(call, "assume_init", vec![] as Vec<Box<Expr>>);
             return Ok(WithStmts::new_val(call));
@@ -4703,7 +4670,7 @@ impl<'c> Translation<'c> {
             CDeclKind::Struct { fields: None, .. } => {
                 return Err(TranslationError::generic(
                     "Attempted to zero-initialize forward-declared struct",
-                ))
+                ));
             }
 
             // Zero initialize the first field
@@ -4719,7 +4686,7 @@ impl<'c> Translation<'c> {
                     None => {
                         return Err(TranslationError::generic(
                             "Attempted to zero-initialize forward-declared struct",
-                        ))
+                        ));
                     }
                 };
 
@@ -4742,7 +4709,7 @@ impl<'c> Translation<'c> {
                     _ => {
                         return Err(TranslationError::generic(
                             "Found non-field in record field list",
-                        ))
+                        ));
                     }
                 };
 
@@ -4755,7 +4722,7 @@ impl<'c> Translation<'c> {
             _ => {
                 return Err(TranslationError::generic(
                     "Declaration is not associated with a type",
-                ))
+                ));
             }
         };
 

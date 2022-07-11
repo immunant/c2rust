@@ -1,9 +1,8 @@
-use c2rust_analysis_rt::mir_loc;
-use c2rust_analysis_rt::MirPlace;
+use c2rust_analysis_rt::mir_loc::MirPlace;
+use c2rust_analysis_rt::mir_loc::{self, DefPathHash, Func};
 use rustc_index::newtype_index;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BasicBlock, Field, Local};
-use rustc_span::def_id::DefPathHash;
 use std::fmt::Display;
 use std::{
     collections::HashMap,
@@ -11,52 +10,6 @@ use std::{
 };
 
 use crate::util::ShortOption;
-
-newtype_index!(
-    /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
-    pub struct GraphId { DEBUG_FORMAT = "GraphId({})" }
-);
-
-newtype_index!(
-    /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
-    pub struct NodeId { DEBUG_FORMAT = "NodeId({})" }
-);
-
-/// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
-pub const _ROOT_NODE: NodeId = NodeId::from_u32(0);
-
-/// A pointer derivation graph, which tracks the handling of one object throughout its lifetime.
-#[derive(Debug, Default, Eq, PartialEq, Hash, Clone)]
-pub struct Graph {
-    /// The nodes in the graph.  Nodes are stored in increasing order by timestamp.  The first
-    /// node, called the "root node", creates the object described by this graph, and all other
-    /// nodes are derived from it.
-    pub nodes: IndexVec<NodeId, Node>,
-}
-
-impl Graph {
-    pub fn new() -> Graph {
-        Graph {
-            nodes: IndexVec::new(),
-        }
-    }
-}
-
-#[derive(Eq, PartialEq, Hash, Clone)]
-pub struct Func(pub DefPathHash);
-
-impl Debug for Func {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let def_path = c2rust_analysis_rt::DefPathHash::from(self.0 .0.as_value());
-        write!(f, "{:?}", def_path)
-    }
-}
-
-impl Display for Func {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
 
 /// A node in the graph represents an operation on pointers.  It may produce a pointer from
 /// nothing, derive a pointer from another pointer, or consume a pointer without producing any
@@ -90,6 +43,42 @@ pub struct Node {
     pub kind: NodeKind,
     /// The `Node` that produced the input to this operation.
     pub source: Option<NodeId>,
+}
+
+impl Display for Node {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let Node {
+            function,
+            block,
+            statement_idx,
+            dest,
+            kind,
+            source,
+        } = self;
+        let src = ShortOption(source.as_ref());
+        let dest = ShortOption(dest.as_ref());
+        let bb = block.as_usize();
+        let stmt = statement_idx;
+        let fn_ = function;
+        write!(
+            f,
+            "(fn {fn_}) {kind} {{ src: {src}, dest: {dest}, bb: {bb}, stmt: {stmt} }}"
+        )
+    }
+}
+
+newtype_index!(
+    /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
+    pub struct NodeId { DEBUG_FORMAT = "NodeId({})" }
+);
+
+/// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
+pub const _ROOT_NODE: NodeId = NodeId::from_u32(0);
+
+impl Display for NodeId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "node {}", self.as_usize())
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
@@ -138,38 +127,6 @@ pub enum NodeKind {
     StoreValue,
 }
 
-/// A collection of graphs describing the handling of one or more objects within the program.
-#[derive(Default, Eq, PartialEq)]
-pub struct Graphs {
-    /// The graphs.  Each graph describes one object, or one group of objects that were all handled
-    /// identically.
-    pub graphs: IndexVec<GraphId, Graph>,
-
-    /// Lookup table for finding all nodes in all graphs that store to a particular MIR local.
-    pub latest_assignment: HashMap<(DefPathHash, mir_loc::Local), (GraphId, NodeId)>,
-}
-
-impl Graphs {
-    pub fn new() -> Graphs {
-        Graphs {
-            graphs: IndexVec::new(),
-            latest_assignment: HashMap::new(),
-        }
-    }
-}
-
-impl Debug for Graphs {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.graphs)
-    }
-}
-
-impl Display for NodeId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "node {}", self.as_usize())
-    }
-}
-
 impl Display for NodeKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use NodeKind::*;
@@ -191,31 +148,18 @@ impl Display for NodeKind {
     }
 }
 
-impl Display for Node {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let Self {
-            function,
-            block,
-            statement_idx,
-            dest,
-            kind,
-            source,
-        } = self;
-        let src = ShortOption(source.as_ref());
-        let dest = ShortOption(dest.as_ref());
-        let bb = block.as_usize();
-        let stmt = statement_idx;
-        let fn_ = function;
-        write!(
-            f,
-            "(fn {fn_}) {kind} {{ src: {src}, dest: {dest}, bb: {bb}, stmt: {stmt} }}"
-        )
-    }
+/// A pointer derivation graph, which tracks the handling of one object throughout its lifetime.
+#[derive(Debug, Default, Eq, PartialEq, Hash, Clone)]
+pub struct Graph {
+    /// The nodes in the graph.  Nodes are stored in increasing order by timestamp.  The first
+    /// node, called the "root node", creates the object described by this graph, and all other
+    /// nodes are derived from it.
+    pub nodes: IndexVec<NodeId, Node>,
 }
 
-impl Display for GraphId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "graph {}", self.as_usize())
+impl Graph {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -227,6 +171,34 @@ impl Display for Graph {
         }
         write!(f, "}}")?;
         Ok(())
+    }
+}
+
+newtype_index!(
+    /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
+    pub struct GraphId { DEBUG_FORMAT = "GraphId({})" }
+);
+
+impl Display for GraphId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "graph {}", self.as_usize())
+    }
+}
+
+/// A collection of graphs describing the handling of one or more objects within the program.
+#[derive(Debug, Default, Eq, PartialEq)]
+pub struct Graphs {
+    /// The graphs.  Each graph describes one object, or one group of objects that were all handled
+    /// identically.
+    pub graphs: IndexVec<GraphId, Graph>,
+
+    /// Lookup table for finding all nodes in all graphs that store to a particular MIR local.
+    pub latest_assignment: HashMap<(mir_loc::DefPathHash, mir_loc::Local), (GraphId, NodeId)>,
+}
+
+impl Graphs {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 

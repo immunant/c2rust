@@ -302,6 +302,7 @@ impl CastType {
                 // CStr::from_ptr(e as *const libc::c_char).to_str().unwrap()
                 let e = mk().cast_expr(e, mk().ptr_ty(mk().path_ty(vec!["libc", "c_char"])));
                 let cs = mk().call_expr(
+                    // TODO(kkysen) change `"std"` to `"core"` after `#![feature(core_c_str)]` is stabilized in `1.63.0`
                     mk().path_expr(vec!["std", "ffi", "CStr", "from_ptr"]),
                     vec![e]);
                 let s = mk().method_call_expr(cs, "to_str", Vec::<P<Expr>>::new());

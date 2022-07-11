@@ -106,12 +106,12 @@ impl<'c> Translation<'c> {
                         .pub_();
 
                     item_store.add_use_with_attr(
-                        vec![self.std_or_core().into(), "arch".into(), "x86".into()],
+                        vec!["core".into(), "arch".into(), "x86".into()],
                         name,
                         x86_attr,
                     );
                     item_store.add_use_with_attr(
-                        vec![self.std_or_core().into(), "arch".into(), "x86_64".into()],
+                        vec!["core".into(), "arch".into(), "x86_64".into()],
                         name,
                         x86_64_attr,
                     );
@@ -190,7 +190,7 @@ impl<'c> Translation<'c> {
                         .pub_();
 
                     item_store.add_use_with_attr(
-                        vec![self.std_or_core().into(), "arch".into(), "x86".into()],
+                        vec!["core".into(), "arch".into(), "x86".into()],
                         name,
                         x86_attr,
                     );
@@ -209,7 +209,7 @@ impl<'c> Translation<'c> {
                     .pub_();
 
                 item_store.add_use_with_attr(
-                    vec![self.std_or_core().into(), "arch".into(), "x86_64".into()],
+                    vec!["core".into(), "arch".into(), "x86_64".into()],
                     name,
                     x86_64_attr,
                 );
@@ -318,7 +318,6 @@ impl<'c> Translation<'c> {
                 mk().infer_ty(),
                 mk().infer_ty(),
                 expr,
-                self.tcfg.emit_no_std,
             )))
         } else {
             self.import_simd_function(fn_name)
@@ -346,12 +345,7 @@ impl<'c> Translation<'c> {
             let call = if ctx.is_static {
                 let tuple = mk().tuple_expr(params);
 
-                transmute_expr(
-                    mk().infer_ty(),
-                    mk().infer_ty(),
-                    tuple,
-                    self.tcfg.emit_no_std,
-                )
+                transmute_expr(mk().infer_ty(), mk().infer_ty(), tuple)
             } else {
                 let fn_call_name = match (&self.ast_context[ctype].kind, len) {
                     (Float, 4) => "_mm_setr_ps",

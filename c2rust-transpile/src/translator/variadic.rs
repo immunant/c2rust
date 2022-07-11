@@ -196,7 +196,7 @@ impl<'c> Translation<'c> {
                 } else {
                     let val = if have_fn_ptr {
                         // transmute result of call to `arg` when expecting a function pointer
-                        transmute_expr(mk().infer_ty(), mk().infer_ty(), val, self.tcfg.emit_no_std)
+                        transmute_expr(mk().infer_ty(), mk().infer_ty(), val)
                     } else {
                         val
                     };

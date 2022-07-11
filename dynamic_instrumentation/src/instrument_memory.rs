@@ -1,7 +1,9 @@
 use anyhow::Context;
-use c2rust_analysis_rt::mir_loc::{self, EventMetadata, TransferKind};
+use c2rust_analysis_rt::metadata::Metadata;
+use c2rust_analysis_rt::mir_loc::{
+    self, EventMetadata, Func, MirLoc, MirLocId, MirPlace, MirProjection, TransferKind,
+};
 use c2rust_analysis_rt::HOOK_FUNCTIONS;
-use c2rust_analysis_rt::{Metadata, MirLoc, MirLocId, MirPlace, MirProjection};
 use indexmap::IndexSet;
 use log::debug;
 use rustc_data_structures::fingerprint::Fingerprint;
@@ -22,9 +24,39 @@ use std::mem;
 use std::path::Path;
 use std::sync::Mutex;
 
+/// Like [`From`] and [`Into`], but can't `impl` those because of the orphan rule.
+trait Convert<T> {
+    fn convert(self) -> T;
+}
+
+impl Convert<Fingerprint> for mir_loc::Fingerprint {
+    fn convert(self) -> Fingerprint {
+        let Self(a, b) = self;
+        Fingerprint::new(a, b)
+    }
+}
+
+impl Convert<mir_loc::Fingerprint> for Fingerprint {
+    fn convert(self) -> mir_loc::Fingerprint {
+        self.as_value().into()
+    }
+}
+
+impl Convert<DefPathHash> for mir_loc::DefPathHash {
+    fn convert(self) -> DefPathHash {
+        DefPathHash(self.0.convert())
+    }
+}
+
+impl Convert<mir_loc::DefPathHash> for DefPathHash {
+    fn convert(self) -> mir_loc::DefPathHash {
+        mir_loc::DefPathHash(self.0.convert())
+    }
+}
+
 pub struct InstrumentMemoryOps {
     mir_locs: Mutex<IndexSet<MirLoc>>,
-    functions: Mutex<HashMap<c2rust_analysis_rt::DefPathHash, String>>,
+    functions: Mutex<HashMap<mir_loc::DefPathHash, String>>,
 }
 
 impl InstrumentMemoryOps {
@@ -46,7 +78,7 @@ impl InstrumentMemoryOps {
         debug!("Instrumenting function {}", function_name);
 
         self.functions.lock().unwrap().insert(
-            tcx.def_path_hash(body_did).0.as_value().into(),
+            tcx.def_path_hash(body_did).convert(),
             tcx.item_name(body_did).to_string(),
         );
         debug!("Body before instrumentation: {:#?}", body);
@@ -58,9 +90,8 @@ impl InstrumentMemoryOps {
     pub fn finalize(&self, metadata_file_path: &Path) -> anyhow::Result<()> {
         let mut locs = self.mir_locs.lock().unwrap();
         let mut functions = self.functions.lock().unwrap();
-        let locs: Vec<MirLoc> = locs.drain(..).collect();
-        let functions: HashMap<c2rust_analysis_rt::DefPathHash, String> =
-            functions.drain().collect();
+        let locs = locs.drain(..).collect::<Vec<_>>();
+        let functions = functions.drain().collect::<HashMap<_, _>>();
         let metadata_file =
             File::create(metadata_file_path).context("Could not open metadata file")?;
         let metadata = Metadata { locs, functions };
@@ -78,16 +109,27 @@ impl InstrumentMemoryOps {
         &self,
         body_def: DefPathHash,
         location: Location,
-        metadata: &EventMetadata,
+        metadata: EventMetadata,
     ) -> MirLocId {
+        let body_def = body_def.convert();
+        let fn_name = self
+            .functions
+            .lock()
+            .unwrap()
+            .get(&body_def)
+            .unwrap()
+            .clone();
         let mir_loc = MirLoc {
-            body_def: body_def.0.as_value().into(),
+            func: Func {
+                def_path_hash: body_def,
+                name: fn_name,
+            },
             basic_block_idx: location.block.index(),
             statement_idx: location.statement_index,
-            metadata: metadata.clone(),
+            metadata,
         };
         let (idx, _) = self.mir_locs.lock().unwrap().insert_full(mir_loc);
-        u32::try_from(idx).unwrap()
+        idx.try_into().unwrap()
     }
 }
 
@@ -199,11 +241,8 @@ impl<'a, 'tcx: 'a> CollectFunctionInstrumentationPoints<'a, 'tcx> {
         is_unsafe_ptr && context.is_use()
     }
 
-    fn func_hash(&self) -> (u64, u64) {
-        self.tcx
-            .def_path_hash(self.body.source.def_id())
-            .0
-            .as_value()
+    fn func_hash(&self) -> mir_loc::DefPathHash {
+        self.tcx.def_path_hash(self.body.source.def_id()).convert()
     }
 }
 
@@ -514,9 +553,13 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         },
                     );
                 }
-            } else if value.ty(&self.body.local_decls, self.tcx).is_region_ptr() { // Rhs is a ref
+            } else if value.ty(&self.body.local_decls, self.tcx).is_region_ptr() {
+                // Rhs is a ref
                 /// Used to strip initital deref from projection sequences
-                fn pop_one_projection<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Place<'tcx>> {
+                fn pop_one_projection<'tcx>(
+                    p: &Place<'tcx>,
+                    tcx: TyCtxt<'tcx>,
+                ) -> Option<Place<'tcx>> {
                     if p.projection.is_empty() {
                         return None;
                     }
@@ -526,7 +569,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     })
                 }
                 if let Rvalue::Ref(_, bkind, p) = value {
-                    let instr_operand = if let BorrowKind::Mut {..} = bkind {
+                    let instr_operand = if let BorrowKind::Mut { .. } = bkind {
                         // For mutable borrows (let _n = &mut place), create a parallel binding that takes
                         // a raw pointer to the same place, without involving _n
 
@@ -599,8 +642,8 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     }
                 };
                 let transfer_kind =
-                    if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
-                        TransferKind::Arg(self.tcx.def_path_hash(*def_id).0.as_value())
+                    if let &ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
+                        TransferKind::Arg(self.tcx.def_path_hash(def_id).convert())
                     } else {
                         TransferKind::None
                     };
@@ -630,10 +673,10 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         arg_local.index += 1;
                     }
                 }
-                if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
+                if let &ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
                     if destination.is_some() {
                         println!("term: {:?}", terminator.kind);
-                        let fn_name = self.tcx.item_name(*def_id);
+                        let fn_name = self.tcx.item_name(def_id);
                         // println!(
                         //     "visiting func {:?}, {:?}",
                         //     fn_name,
@@ -692,7 +735,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                                     source: Some(to_mir_place(&Local::from_u32(0).into())),
                                     destination: destination.map(|d| to_mir_place(&d.0)),
                                     transfer_kind: TransferKind::Ret(
-                                        self.tcx.def_path_hash(*def_id).0.as_value(),
+                                        self.tcx.def_path_hash(def_id).convert(),
                                     ),
                                 },
                             );
@@ -834,19 +877,18 @@ fn apply_instrumentation<'tcx>(
         } = point;
         let mut args = args.clone();
 
-        if let TransferKind::Arg((a, b)) = metadata.transfer_kind {
-            let callee_id = tcx
-                .def_path_hash_to_def_id(DefPathHash(Fingerprint::new(a, b)), &mut || {
-                    panic!("cannot find DefId of callee func hash")
-                });
+        if let TransferKind::Arg(def_path_hash) = metadata.transfer_kind {
+            let callee_id = tcx.def_path_hash_to_def_id(def_path_hash.convert(), &mut || {
+                panic!("cannot find DefId of callee func hash")
+            });
             state.functions.lock().unwrap().insert(
-                tcx.def_path_hash(callee_id).0.as_value().into(),
+                tcx.def_path_hash(callee_id).convert(),
                 tcx.item_name(callee_id).to_string(),
             );
         }
 
         // Add the MIR location as the first argument to the instrumentation function
-        let loc_idx = state.get_mir_loc_idx(body_def, loc, metadata);
+        let loc_idx = state.get_mir_loc_idx(body_def, loc, metadata.clone());
         args.insert(
             0,
             InstrumentationOperand::AddressUsize(make_const(tcx, loc_idx)),

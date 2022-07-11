@@ -1,12 +1,10 @@
-use crate::graph::{Func, Graph, GraphId, Graphs, Node, NodeId, NodeKind};
+use crate::graph::{Graph, GraphId, Graphs, Node, NodeId, NodeKind};
 use c2rust_analysis_rt::events::{Event, EventKind, Pointer};
-use c2rust_analysis_rt::mir_loc::{EventMetadata, Metadata, TransferKind};
-use c2rust_analysis_rt::{mir_loc, MirLoc};
+use c2rust_analysis_rt::metadata::Metadata;
+use c2rust_analysis_rt::mir_loc::{EventMetadata, Func, MirLoc, TransferKind};
 use color_eyre::eyre;
 use fs_err::File;
 use itertools::Itertools;
-use rustc_data_structures::fingerprint::Fingerprint;
-use rustc_hir::def_id::DefPathHash;
 use std::collections::HashMap;
 use std::io::{self, BufReader};
 use std::iter;
@@ -19,7 +17,7 @@ pub fn read_event_log(path: &Path) -> io::Result<Vec<Event>> {
     Ok(events)
 }
 
-pub fn _read_metadata(path: &Path) -> eyre::Result<Metadata> {
+pub fn read_metadata(path: &Path) -> eyre::Result<Metadata> {
     let bytes = fs_err::read(path)?;
     let metadata = bincode::deserialize(&bytes)?;
     Ok(metadata)
@@ -127,24 +125,25 @@ pub fn add_node(
     graphs: &mut Graphs,
     provenances: &mut HashMap<Pointer, (GraphId, NodeId)>,
     event: &Event,
+    metadata: &Metadata,
 ) -> Option<NodeId> {
     let node_kind = event.kind.to_node_kind()?;
 
     let MirLoc {
-        body_def,
+        func,
         mut basic_block_idx,
         mut statement_idx,
-        metadata,
-    } = mir_loc::get(event.mir_loc).unwrap();
+        metadata: event_metadata,
+    } = metadata.get(event.mir_loc);
 
-    let this_func_hash = DefPathHash(Fingerprint::new(body_def.0, body_def.1));
-    let (src_fn, dest_fn) = match metadata.transfer_kind {
+    let this_func_hash = func.def_path_hash;
+    let (src_fn, dest_fn) = match event_metadata.transfer_kind {
         TransferKind::None => (this_func_hash, this_func_hash),
-        TransferKind::Arg(p) => (this_func_hash, DefPathHash(Fingerprint::new(p.0, p.1))),
-        TransferKind::Ret(p) => (DefPathHash(Fingerprint::new(p.0, p.1)), this_func_hash),
+        TransferKind::Arg(p) => (this_func_hash, p),
+        TransferKind::Ret(p) => (p, this_func_hash),
     };
 
-    if let TransferKind::Arg(_) = metadata.transfer_kind {
+    if let TransferKind::Arg(_) = event_metadata.transfer_kind {
         // FIXME: this is a special case for arguments
         basic_block_idx = 0;
         statement_idx = 0;
@@ -152,14 +151,14 @@ pub fn add_node(
 
     let head = event
         .kind
-        .ptr(metadata)
+        .ptr(event_metadata)
         .and_then(|ptr| provenances.get(&ptr).cloned());
     let ptr = head.and_then(|(gid, _last_nid_ref)| {
         graphs.graphs[gid]
             .nodes
             .iter()
             .rposition(|n| {
-                if let (Some(d), Some(s)) = (&n.dest, &metadata.source) {
+                if let (Some(d), Some(s)) = (&n.dest, &event_metadata.source) {
                     d == s
                 } else {
                     false
@@ -169,7 +168,7 @@ pub fn add_node(
     });
 
     let source = ptr.or_else(|| {
-        metadata.source.as_ref().and_then(|src| {
+        event_metadata.source.as_ref().and_then(|src| {
             let latest_assignment = graphs.latest_assignment.get(&(src_fn, src.local)).cloned();
             if !src.projection.is_empty() {
                 if let Some((gid, _)) = latest_assignment {
@@ -192,15 +191,20 @@ pub fn add_node(
         })
     });
 
+    let function = Func {
+        def_path_hash: dest_fn,
+        name: metadata.functions[&dest_fn].clone(),
+    };
+
     let node = Node {
-        function: Func(dest_fn),
+        function,
         block: basic_block_idx.into(),
         statement_idx,
         kind: node_kind,
         source: source
             .and_then(|p| event.kind.parent(p))
             .map(|(_, nid)| nid),
-        dest: metadata.destination.clone(),
+        dest: event_metadata.destination.clone(),
     };
 
     let graph_id = source
@@ -211,9 +215,14 @@ pub fn add_node(
         .unwrap_or_else(|| graphs.graphs.push(Graph::new()));
     let node_id = graphs.graphs[graph_id].nodes.push(node);
 
-    update_provenance(provenances, &event.kind, metadata, (graph_id, node_id));
+    update_provenance(
+        provenances,
+        &event.kind,
+        event_metadata,
+        (graph_id, node_id),
+    );
 
-    if let Some(dest) = &metadata.destination {
+    if let Some(dest) = &event_metadata.destination {
         let unique_place = (dest_fn, dest.local);
         let last_setting = (graph_id, node_id);
 
@@ -236,18 +245,18 @@ pub fn add_node(
     Some(node_id)
 }
 
-pub fn construct_pdg(events: &[Event]) -> Graphs {
+pub fn construct_pdg(events: &[Event], metadata: &Metadata) -> Graphs {
     let mut graphs = Graphs::new();
     let mut provenances = HashMap::new();
     for event in events {
-        add_node(&mut graphs, &mut provenances, event);
+        add_node(&mut graphs, &mut provenances, event, metadata);
     }
     // TODO(kkysen) check if I have to remove any `GraphId`s from `graphs.latest_assignment`
     graphs.graphs = graphs.graphs.into_iter().unique().collect();
 
-    // for ((func, local), p) in &graphs.latest_assignment {
-    //     let func = Func(*func);
-    //     println!("({func:?}:{local:?}) => {p:?}");
+    // for ((func_hash, local), p) in &graphs.latest_assignment {
+    //     let func = &metadata.functions[func_hash];
+    //     println!("({func}:{local:?}) => {p:?}");
     // }
     graphs
 }

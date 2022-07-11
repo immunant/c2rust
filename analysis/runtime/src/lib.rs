@@ -1,38 +1,17 @@
-pub mod backend;
 pub mod events;
 mod handlers;
+pub mod metadata;
 pub mod mir_loc;
+pub mod runtime;
 
-use std::env;
-
-pub use self::mir_loc::{DefPathHash, Metadata, MirLoc, MirLocId, MirPlace, MirProjection};
-
-pub use self::handlers::*;
+pub use handlers::*;
+use runtime::{global_runtime::RUNTIME, skip::notify_if_events_were_skipped_before_main};
 
 pub fn initialize() {
-    let span_filename = env::var("METADATA_FILE")
-        .expect("Instrumentation requires the METADATA_FILE environment variable be set");
-    mir_loc::set_file(&span_filename);
-    backend::init();
+    notify_if_events_were_skipped_before_main();
+    RUNTIME.init();
 }
 
 pub fn finalize() {
-    backend::finalize();
-}
-
-pub struct Runtime;
-
-impl Runtime {
-    /// An `impl `[`Default`] doesn't make sense when it's a RAII type that initializes a runtime.
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        initialize();
-        Self
-    }
-}
-
-impl Drop for Runtime {
-    fn drop(&mut self) {
-        finalize();
-    }
+    RUNTIME.finalize();
 }
