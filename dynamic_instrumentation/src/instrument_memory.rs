@@ -105,7 +105,8 @@ impl InstrumentMemoryOps {
         let old_len = metadata_bytes.len();
         let mut metadata = match metadata_bytes.as_slice() {
             &[] => Metadata::default(),
-            bytes => bincode::deserialize(bytes)?,
+            bytes => bincode::deserialize(bytes)
+                .context("metadata deserialization error; metadata format likely out-of-date; delete and regenerate")?,
         };
         metadata.update(Metadata { locs, functions });
         metadata_bytes.clear();
