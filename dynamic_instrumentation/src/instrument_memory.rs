@@ -1068,7 +1068,7 @@ fn cast_ptr_to_usize<'tcx>(
             let mut projs = Vec::with_capacity(deref.projection.len() + 1);
             projs.extend(deref.projection);
             projs.push(ProjectionElem::Deref);
-            deref.projection = tcx.intern_place_elems(&*projs);
+            deref.projection = tcx.intern_place_elems(&projs);
             let cast_stmt = Statement {
                 source_info: SourceInfo::outermost(DUMMY_SP),
                 kind: StatementKind::Assign(Box::new((

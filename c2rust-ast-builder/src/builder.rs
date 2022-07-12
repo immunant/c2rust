@@ -178,13 +178,13 @@ impl Make<Ident> for &str {
 
 impl Make<Ident> for String {
     fn make(self, mk: &Builder) -> Ident {
-        Ident::new(&*self, mk.span)
+        Ident::new(&self, mk.span)
     }
 }
 
 impl Make<Ident> for &String {
     fn make(self, mk: &Builder) -> Ident {
-        Ident::new(&*self, mk.span)
+        Ident::new(self, mk.span)
     }
 }
 
@@ -209,7 +209,8 @@ impl<'a> Make<Path> for &'a str {
 
 impl<'a> Make<Visibility> for &'a str {
     fn make(self, mk_: &Builder) -> Visibility {
-        let kind = match self {
+        
+        match self {
             "pub" => Visibility::Public(VisPublic {
                 pub_token: token::Pub(mk_.span),
             }),
@@ -230,8 +231,7 @@ impl<'a> Make<Visibility> for &'a str {
                 path: Box::new(mk().path("super")),
             }),
             _ => panic!("unrecognized string for Visibility: {:?}", self),
-        };
-        kind
+        }
     }
 }
 
@@ -379,13 +379,13 @@ impl Make<NestedMeta> for Lit {
 
 impl Make<Lit> for String {
     fn make(self, mk: &Builder) -> Lit {
-        Lit::Str(LitStr::new(&*self, mk.span))
+        Lit::Str(LitStr::new(&self, mk.span))
     }
 }
 
 impl Make<Lit> for &String {
     fn make(self, mk: &Builder) -> Lit {
-        Lit::Str(LitStr::new(&*self, mk.span))
+        Lit::Str(LitStr::new(self, mk.span))
     }
 }
 
@@ -884,7 +884,7 @@ impl Builder {
         let rhs = rhs.make(&self);
 
         match op {
-            BinOp::Lt(_) | BinOp::Shl(_) if has_rightmost_cast(&*lhs) => lhs = mk().paren_expr(lhs),
+            BinOp::Lt(_) | BinOp::Shl(_) if has_rightmost_cast(&lhs) => lhs = mk().paren_expr(lhs),
             _ => {}
         }
 
@@ -2596,13 +2596,13 @@ fn has_rightmost_cast(expr: &Expr) -> bool {
             attrs: _,
             op: _,
             ref expr,
-        }) => has_rightmost_cast(&**expr),
+        }) => has_rightmost_cast(expr),
         Expr::Binary(ExprBinary {
             attrs: _,
             left: _,
             op: _,
             ref right,
-        }) => has_rightmost_cast(&**right),
+        }) => has_rightmost_cast(right),
         _ => false,
     }
 }
