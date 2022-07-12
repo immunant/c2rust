@@ -209,7 +209,6 @@ impl<'a> Make<Path> for &'a str {
 
 impl<'a> Make<Visibility> for &'a str {
     fn make(self, mk_: &Builder) -> Visibility {
-        
         match self {
             "pub" => Visibility::Public(VisPublic {
                 pub_token: token::Pub(mk_.span),
@@ -251,7 +250,7 @@ impl<'a> Make<Extern> for &'a str {
     }
 }
 
-impl<'a> Make<Extern> for Abi {
+impl Make<Extern> for Abi {
     fn make(self, _mk: &Builder) -> Extern {
         Extern::Explicit(self.name.to_token_stream().to_string())
     }

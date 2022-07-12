@@ -157,7 +157,7 @@ fn parse_constraints(
             if !(is_explicit_reg || is_tied) {
                 // Attempt to parse machine-specific constraints
                 if let Some((machine_constraints, is_mem)) =
-                    translate_machine_constraint(&*constraints, arch)
+                    translate_machine_constraint(&constraints, arch)
                 {
                     constraints = machine_constraints.into();
                     mem_only = is_mem;
@@ -368,7 +368,7 @@ fn rewrite_reserved_reg_operands(
     for (i, operand) in operands.iter().enumerate() {
         if operand.is_positional() {
             total_positional += 1;
-        } else if let Some((reg, mods)) = reg_is_reserved(&*operand.constraints, arch) {
+        } else if let Some((reg, mods)) = reg_is_reserved(&operand.constraints, arch) {
             rewrite_idxs.push((i, reg.to_owned(), mods.to_owned()));
         }
     }
@@ -615,7 +615,7 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
             out.push_str(input_op_mapper(idx).to_string().as_str());
             if !new_modifiers.is_empty() {
                 out.push(':');
-                out.push_str(&*new_modifiers);
+                out.push_str(&new_modifiers);
             }
             out.push_str(if mem_only { "}]" } else { "}" });
             // Push the rest of the chunk
@@ -739,7 +739,7 @@ impl<'c> Translation<'c> {
         for (i, input) in inputs.iter().enumerate() {
             let (_dir_spec, _mem_only, parsed) = parse_constraints(&input.constraints, arch)?;
             // Only pair operands with an explicit register or index
-            if is_regname_or_int(&*parsed) {
+            if is_regname_or_int(&parsed) {
                 inputs_by_register.insert(parsed, (i, input.clone()));
             } else {
                 other_inputs.push((parsed, (i, input.clone())));
@@ -807,7 +807,7 @@ impl<'c> Translation<'c> {
 
         // Determine whether the assembly is in AT&T syntax
         let att_syntax = match arch {
-            Arch::X86OrX86_64 => asm_is_att_syntax(&*rewritten_asm),
+            Arch::X86OrX86_64 => asm_is_att_syntax(&rewritten_asm),
             _ => false,
         };
 
@@ -926,7 +926,7 @@ impl<'c> Translation<'c> {
 
             // Emit dir_spec(constraint), quoting constraint if needed
             push_expr(&mut tokens, mk().ident_expr(operand.dir_spec.to_string()));
-            let constraints_ident = if is_regname_or_int(&*operand.constraints) {
+            let constraints_ident = if is_regname_or_int(&operand.constraints) {
                 mk().lit_expr(operand.constraints.trim_matches('"'))
             } else {
                 mk().ident_expr(operand.constraints)

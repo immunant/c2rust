@@ -294,7 +294,7 @@ pub fn insert_comment_attrs(attrs: &mut Vec<Attribute>, new_comments: SmallVec<[
     }
 
     for c in new_comments {
-        let lit = Lit::new(proc_macro2::Literal::string(&*c));
+        let lit = Lit::new(proc_macro2::Literal::string(c));
         let mut tokens = TokenStream::new();
         eq.to_tokens(&mut tokens);
         lit.to_tokens(&mut tokens);

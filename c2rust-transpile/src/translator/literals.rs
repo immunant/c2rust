@@ -95,7 +95,9 @@ impl<'c> Translation<'c> {
                         if (val as i32) < 0 {
                             mk().unary_expr(
                                 "-",
-                                mk().lit_expr(mk().int_lit((val as i32).abs() as u128, "i32")),
+                                mk().lit_expr(
+                                    mk().int_lit((val as i32).unsigned_abs() as u128, "i32"),
+                                ),
                             )
                         } else {
                             mk().lit_expr(mk().int_lit(val as u128, "i32"))
@@ -121,8 +123,8 @@ impl<'c> Translation<'c> {
 
                         mk().call_expr(fn_path, args)
                     }
-                    CTypeKind::Double => mk().lit_expr(mk().float_lit(&*str, "f64")),
-                    CTypeKind::Float => mk().lit_expr(mk().float_lit(&*str, "f32")),
+                    CTypeKind::Double => mk().lit_expr(mk().float_lit(&str, "f64")),
+                    CTypeKind::Float => mk().lit_expr(mk().float_lit(&str, "f32")),
                     ref k => panic!("Unsupported floating point literal type {:?}", k),
                 };
                 Ok(WithStmts::new_val(val))

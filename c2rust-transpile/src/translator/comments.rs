@@ -166,7 +166,7 @@ impl<'c> Translation<'c> {
             let mut visitor = CommentLocator {
                 ast_context: &self.ast_context,
                 comment_context: &self.comment_context,
-                comment_store: &mut *self.comment_store.borrow_mut(),
+                comment_store: &mut self.comment_store.borrow_mut(),
                 spans: &mut spans,
                 top_decls: &top_decls,
                 last_id: None,
