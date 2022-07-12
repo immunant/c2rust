@@ -434,8 +434,8 @@ pub struct SwitchCases {
 }
 
 /// A Rust statement, or a C declaration, or a comment
-/// 
-/// `#[allow(clippy::large_enum_variant)]`ed instead of [`Box`]ing the large variant, 
+///
+/// `#[allow(clippy::large_enum_variant)]`ed instead of [`Box`]ing the large variant,
 /// [`Stmt`] (472 bytes), as doing so would cause a lot of code churn and refactoring.
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]

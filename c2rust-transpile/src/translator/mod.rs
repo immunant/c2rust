@@ -1176,8 +1176,8 @@ pub enum ExprUse {
 pub enum ConvertedDecl {
     /// [`ForeignItem`] is large (472 bytes), so [`Box`] it.
     ForeignItem(Box<ForeignItem>), // would be 472 bytes
-    Item(Box<Item>),          // 24 bytes
-    Items(Vec<Box<Item>>),    // 24 bytes
+    Item(Box<Item>),       // 24 bytes
+    Items(Vec<Box<Item>>), // 24 bytes
     NoItem,
 }
 
