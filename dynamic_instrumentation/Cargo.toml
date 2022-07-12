@@ -12,6 +12,7 @@ cargo-util = "0.1"
 indexmap = "1.8"
 lazy_static = "1.4"
 log = "0.4"
+semver = "1.0.12" # needed b/c cargo 0.62 > semver 1.0.10 fails `cargo doc`
 
 [build-dependencies]
 rustc-private-link = { path = "../rustc-private-link" }
