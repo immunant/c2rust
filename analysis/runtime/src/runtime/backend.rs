@@ -1,17 +1,16 @@
 use enum_dispatch::enum_dispatch;
 use fs_err::{File, OpenOptions};
-use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::Debug;
 use std::io::BufWriter;
-use std::marker::PhantomData;
 use std::sync::mpsc::Receiver;
-use std::{env, fmt};
+use std::env;
 
 use bincode;
 
 use super::{AnyError, FINISHED};
 use crate::events::{Event, EventKind};
 use crate::metadata::Metadata;
+use crate::parse::{AsStr, Choices, self};
 
 #[enum_dispatch]
 pub(super) trait WriteEvent {
@@ -23,34 +22,6 @@ where
     Self: Sized,
 {
     fn detect() -> Result<Self, AnyError>;
-}
-
-// Don't want a huge depedency on `clap`.
-
-trait AsStr {
-    fn as_str(&self) -> &'static str;
-}
-
-trait Choices
-where
-    Self: Sized,
-{
-    fn choices() -> &'static [Self];
-}
-
-impl AsStr for bool {
-    fn as_str(&self) -> &'static str {
-        match self {
-            true => "true",
-            false => "false",
-        }
-    }
-}
-
-impl Choices for bool {
-    fn choices() -> &'static [Self] {
-        &[true, false]
-    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -78,38 +49,6 @@ impl Default for BackendKind {
     fn default() -> Self {
         Self::Debug
     }
-}
-
-struct ChoiceError<T> {
-    found: String,
-    _phantom: PhantomData<T>,
-}
-
-impl<T: Choices + AsStr + 'static> Display for ChoiceError<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "found {}, but expected one of ", &self.found)?;
-        f.debug_list()
-            .entries(T::choices().iter().map(|choice| choice.as_str()));
-        Ok(())
-    }
-}
-
-impl<T: Choices + AsStr + 'static> Debug for ChoiceError<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
-    }
-}
-
-impl<T: Choices + AsStr + 'static> Error for ChoiceError<T> {}
-
-fn parse_one_of<T: Choices + AsStr + 'static>(s: String) -> Result<&'static T, ChoiceError<T>> {
-    T::choices()
-        .iter()
-        .find(|choice| choice.as_str() == s.as_str())
-        .ok_or(ChoiceError {
-            found: s,
-            _phantom: Default::default(),
-        })
 }
 
 pub struct DebugBackend {
@@ -189,7 +128,7 @@ impl DetectBackend for LogBackend {
             let append = env::var(var).ok().ok_or_else(|| {
                 format!("Instrumentation requires the {var} environment variable be set to one of {choices:?}")
             })?;
-            *parse_one_of::<bool>(append)?
+            *parse::one_of::<bool>(append)?
         };
         let file = OpenOptions::new()
             .create(true)
@@ -206,7 +145,7 @@ impl DetectBackend for BackendKind {
     fn detect() -> Result<Self, AnyError> {
         let var = "INSTRUMENT_BACKEND";
         let backend = env::var(var).unwrap_or_default();
-        let this = parse_one_of(backend).cloned().unwrap_or_default();
+        let this = parse::one_of(backend).cloned().unwrap_or_default();
         Ok(this)
     }
 }
