@@ -434,10 +434,15 @@ pub struct SwitchCases {
 }
 
 /// A Rust statement, or a C declaration, or a comment
+/// 
+/// `#[allow(clippy::large_enum_variant)]`ed instead of [`Box`]ing the large variant, 
+/// [`Stmt`] (472 bytes), as doing so would cause a lot of code churn and refactoring.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub enum StmtOrDecl {
     /// Rust statement that was translated from a non-compound and non-declaration C statement.
-    Stmt(Stmt), // 472
+    // TODO(kkysen): See if this should be boxed.
+    Stmt(Stmt), // 472 bytes, not [`Box`]ed yet as it would cause a lot of code churn
 
     /// C declaration
     Decl(CDeclId), // 8 bytes
