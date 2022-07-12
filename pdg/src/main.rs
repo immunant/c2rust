@@ -130,3 +130,21 @@ fn main() -> eyre::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{env, path::Path, process::Command};
+
+    use color_eyre::eyre;
+
+    #[test]
+    fn analysis_test_pdg_snapshot() -> eyre::Result<()> {
+        color_eyre::install()?;
+        env::set_current_dir("..")?;
+        let dir = Path::new("analysis/test");
+        Command::new("scripts/pdg.sh").arg(dir).status()?;
+        let pdg = fs_err::read_to_string(dir.join("pdg.log"))?;
+        insta::assert_display_snapshot!(pdg);
+        Ok(())
+    }
+}
