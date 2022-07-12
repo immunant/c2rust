@@ -65,9 +65,9 @@ pub fn one_of<T: GetChoices + AsStr + 'static>(s: &OsStr) -> Result<&'static T, 
         .iter()
         .find(|choice| s == OsStr::new(choice.as_str()))
         .ok_or_else(|| {
-            let s = s.to_string_lossy().into_owned();
+            let s = s.to_string_lossy();
             let choices = Choices::<T>::default();
-            format!("found {s}, but expected {choices}")
+            format!("found \"{s}\", but expected {choices}")
         })
 }
 
@@ -88,7 +88,7 @@ pub mod env {
         var: K,
     ) -> Result<&'static T, String> {
         let value = env::var_os(var.as_ref()).ok_or_else(|| {
-            let var = var.as_ref().to_string_lossy().into_owned();
+            let var = var.as_ref().to_string_lossy();
             let choices = Choices::<T>::default();
             format!("missing ${var}, must be {choices}")
         })?;
