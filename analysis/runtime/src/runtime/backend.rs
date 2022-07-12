@@ -125,9 +125,7 @@ impl DetectBackend for LogBackend {
 
 impl DetectBackend for BackendKind {
     fn detect() -> Result<Self, AnyError> {
-        Ok(parse::env::one_of("INSTRUMENT_BACKEND")
-            .cloned()
-            .unwrap_or_default())
+        Ok(parse::env::one_of("INSTRUMENT_BACKEND").cloned()?)
     }
 }
 
