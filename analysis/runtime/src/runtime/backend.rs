@@ -99,8 +99,7 @@ impl Backend {
 
 impl DetectBackend for DebugBackend {
     fn detect() -> Result<Self, AnyError> {
-        let path =
-            parse::env::path("METADATA_FILE").map_err(|s| format!("instrumentation: {s}"))?;
+        let path = parse::env::path("METADATA_FILE")?;
         // TODO may want to deduplicate this with [`pdg::builder::read_metadata`] in [`Metadata::read`],
         // but that may require adding `color-eyre`/`eyre` as a dependency
         let bytes = fs_err::read(path)?;
@@ -111,10 +110,8 @@ impl DetectBackend for DebugBackend {
 
 impl DetectBackend for LogBackend {
     fn detect() -> Result<Self, AnyError> {
-        let path =
-            parse::env::path("INSTRUMENT_OUTPUT").map_err(|s| format!("instrumentation: {s}"))?;
-        let append: bool = *parse::env::one_of("INSTRUMENT_OUTPUT_APPEND")
-            .map_err(|s| format!("instrumentation: {s}"))?;
+        let path = parse::env::path("INSTRUMENT_OUTPUT")?;
+        let append: bool = *parse::env::one_of("INSTRUMENT_OUTPUT_APPEND")?;
         let file = OpenOptions::new()
             .create(true)
             .write(true)
