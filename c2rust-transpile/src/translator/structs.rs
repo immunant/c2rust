@@ -21,6 +21,7 @@ use syn::{
 use itertools::EitherOrBoth::{Both, Right};
 use itertools::Itertools;
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 enum FieldType {
     BitfieldGroup {
@@ -35,13 +36,14 @@ enum FieldType {
     ComputedPadding {
         ident: String,
     },
+    /// [`Field`] is is 528 bytes, so [`Box`] it.
     Regular {
         name: String,
         ctype: CTypeId,
-        field: Field, // 528 bytes
+        field: Box<Field>, // would be 528 bytes
         use_inner_type: bool,
         is_va_list: bool,
-    }, // 562 bytes
+    }, // would be 562 bytes
 }
 
 fn contains_block(expr_kind: &Expr) -> bool {
@@ -178,7 +180,7 @@ impl<'a> Translation<'a> {
                         reorganized_fields.push(FieldType::Regular {
                             name: field_name,
                             ctype,
-                            field,
+                            field: Box::new(field),
                             use_inner_type,
                             is_va_list,
                         });
@@ -375,7 +377,7 @@ impl<'a> Translation<'a> {
 
                     field_entries.push(field);
                 }
-                FieldType::Regular { field, .. } => field_entries.push(field),
+                FieldType::Regular { field, .. } => field_entries.push(*field),
             }
         }
         Ok((field_entries, contains_va_list))
