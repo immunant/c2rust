@@ -56,6 +56,8 @@ pub struct PreparedMetaItem {
 }
 
 pub mod properties {
+    use syn::Token;
+
     pub trait ToToken {
         type Token;
         fn to_token(&self) -> Option<Self::Token>;
@@ -67,7 +69,7 @@ pub mod properties {
         Immutable,
     }
     impl ToToken for Mutability {
-        type Token = syn::token::Mut;
+        type Token = Token![mut];
         fn to_token(&self) -> Option<Self::Token> {
             match self {
                 Mutability::Mutable => Some(Default::default()),
@@ -82,7 +84,7 @@ pub mod properties {
         Unsafe,
     }
     impl ToToken for Unsafety {
-        type Token = syn::token::Unsafe;
+        type Token = Token![unsafe];
         fn to_token(&self) -> Option<Self::Token> {
             match self {
                 Unsafety::Normal => None,
@@ -97,7 +99,7 @@ pub mod properties {
         NotConst,
     }
     impl ToToken for Constness {
-        type Token = syn::token::Const;
+        type Token = Token![const];
         fn to_token(&self) -> Option<Self::Token> {
             match self {
                 Constness::NotConst => None,
@@ -112,7 +114,7 @@ pub mod properties {
         Immovable,
     }
     impl ToToken for Movability {
-        type Token = syn::token::Static;
+        type Token = Token![static];
         fn to_token(&self) -> Option<Self::Token> {
             match self {
                 Movability::Immovable => Some(Default::default()),
@@ -127,7 +129,7 @@ pub mod properties {
         NotAsync,
     }
     impl ToToken for IsAsync {
-        type Token = syn::token::Async;
+        type Token = Token![async];
         fn to_token(&self) -> Option<Self::Token> {
             match self {
                 IsAsync::NotAsync => None,
@@ -142,7 +144,7 @@ pub mod properties {
         Default,
     }
     impl ToToken for Defaultness {
-        type Token = syn::token::Default;
+        type Token = Token![default];
         fn to_token(&self) -> Option<Self::Token> {
             match self {
                 Defaultness::Final => None,
@@ -225,7 +227,7 @@ impl<L: Make<Ident>> Make<Label> for L {
                 apostrophe: mk.span,
                 ident: self.make(mk),
             },
-            colon_token: token::Colon(mk.span),
+            colon_token: Token![:](mk.span),
         }
     }
 }
@@ -234,20 +236,20 @@ impl<'a> Make<Visibility> for &'a str {
     fn make(self, mk_: &Builder) -> Visibility {
         let kind = match self {
             "pub" => Visibility::Public(VisPublic {
-                pub_token: token::Pub(mk_.span),
+                pub_token: Token![pub](mk_.span),
             }),
             "priv" | "" | "inherit" => Visibility::Inherited,
             "crate" => Visibility::Crate(VisCrate {
-                crate_token: token::Crate(mk_.span),
+                crate_token: Token![crate](mk_.span),
             }),
             "pub(crate)" => Visibility::Restricted(VisRestricted {
-                pub_token: token::Pub(mk_.span),
+                pub_token: Token![pub](mk_.span),
                 paren_token: token::Paren(mk_.span),
                 in_token: None,
                 path: path![crate],
             }),
             "pub(super)" => Visibility::Restricted(VisRestricted {
-                pub_token: token::Pub(mk_.span),
+                pub_token: Token![pub](mk_.span),
                 paren_token: token::Paren(mk_.span),
                 in_token: None,
                 path: path![super],
@@ -261,7 +263,7 @@ impl<'a> Make<Visibility> for &'a str {
 impl<'a> Make<Abi> for &'a str {
     fn make(self, mk: &Builder) -> Abi {
         Abi {
-            extern_token: token::Extern(mk.span),
+            extern_token: Token![extern](mk.span),
             name: Some(LitStr::new(self, mk.span)),
         }
         // TODO: validate string: format!("unrecognized string for Abi: {:?}", self))
@@ -514,7 +516,7 @@ impl Make<Signature> for Box<FnDecl> {
             unsafety: mk.unsafety.to_token(),
             asyncness: IsAsync::NotAsync.to_token(),
             constness: mk.constness.to_token(),
-            fn_token: token::Fn(mk.span),
+            fn_token: Token![fn](mk.span),
             paren_token: Default::default(),
             generics: mk.generics.clone(),
             abi: mk.get_abi_opt(),
@@ -569,7 +571,7 @@ impl Builder {
     }
 
     pub fn pub_(self) -> Self {
-        let pub_token = token::Pub(self.span);
+        let pub_token = Token![pub](self.span);
         self.vis(Visibility::Public(VisPublic { pub_token }))
     }
 
@@ -628,7 +630,7 @@ impl Builder {
 
     pub fn prepare_meta_list(&self, list: MetaList) -> PreparedMetaItem {
         let mut tokens = TokenStream::new();
-        let comma_token = token::Comma(self.span);
+        let comma_token = Token![,](self.span);
         let mut it = list.nested.into_iter();
         tokens.extend(
             Some(proc_macro2::TokenTree::Punct(proc_macro2::Punct::new(
@@ -712,7 +714,7 @@ impl Builder {
 
         let mnv = MetaNameValue {
             path: key,
-            eq_token: token::Eq(self.span),
+            eq_token: Token![=](self.span),
             lit: value,
         };
         let prepared = self.prepare_meta_namevalue(mnv);
@@ -776,10 +778,10 @@ impl Builder {
     {
         let args = args.into_iter().map(|arg| arg.make(&self)).collect();
         AngleBracketedGenericArguments {
-            colon2_token: Some(token::Colon2(self.span)), // Always include a colon2 for turbofish
-            lt_token: token::Lt(self.span),
+            colon2_token: Some(Token![::](self.span)), // Always include a colon2 for turbofish
+            lt_token: Token![<](self.span),
             args,
-            gt_token: token::Gt(self.span),
+            gt_token: Token![>](self.span),
         }
     }
 
@@ -821,7 +823,7 @@ impl Builder {
         for seg in path.segments {
             tree = UseTree::Path(UsePath {
                 ident: seg.ident,
-                colon2_token: token::Colon2(self.span),
+                colon2_token: Token![::](self.span),
                 tree: Box::new(tree),
             });
         }
@@ -833,7 +835,7 @@ impl Builder {
         Pa: Make<Path>,
     {
         let mut path = path.make(&self);
-        path.leading_colon = Some(token::Colon2(self.span));
+        path.leading_colon = Some(Token![::](self.span));
         path
     }
 
@@ -896,7 +898,7 @@ impl Builder {
         Box::new(parenthesize_if_necessary(Expr::MethodCall(
             ExprMethodCall {
                 attrs: self.attrs,
-                dot_token: token::Dot(self.span),
+                dot_token: Token![.](self.span),
                 paren_token: token::Paren(self.span),
                 turbofish,
                 receiver: expr,
@@ -956,7 +958,7 @@ impl Builder {
     pub fn cast_expr(self, e: Box<Expr>, t: Box<Type>) -> Box<Expr> {
         Box::new(parenthesize_if_necessary(Expr::Cast(ExprCast {
             attrs: self.attrs,
-            as_token: token::As(self.span),
+            as_token: Token![as](self.span),
             expr: e,
             ty: t,
         })))
@@ -965,7 +967,7 @@ impl Builder {
     pub fn type_expr(self, e: Box<Expr>, t: Box<Type>) -> Box<Expr> {
         Box::new(Expr::Type(ExprType {
             attrs: self.attrs,
-            colon_token: token::Colon(self.span),
+            colon_token: Token![:](self.span),
             expr: e,
             ty: t,
         }))
@@ -1002,7 +1004,7 @@ impl Builder {
     pub fn assign_expr(self, lhs: Box<Expr>, rhs: Box<Expr>) -> Box<Expr> {
         Box::new(Expr::Assign(ExprAssign {
             attrs: self.attrs,
-            eq_token: token::Eq(self.span),
+            eq_token: Token![=](self.span),
             left: lhs,
             right: rhs,
         }))
@@ -1059,7 +1061,7 @@ impl Builder {
         Box::new(Expr::Repeat(ExprRepeat {
             attrs: self.attrs,
             bracket_token: token::Bracket(self.span),
-            semi_token: token::Semi(self.span),
+            semi_token: Token![;](self.span),
             expr,
             len: n,
         }))
@@ -1084,7 +1086,7 @@ impl Builder {
     pub fn addr_of_expr(self, e: Box<Expr>) -> Box<Expr> {
         Box::new(Expr::Reference(ExprReference {
             attrs: self.attrs,
-            and_token: token::And(self.span),
+            and_token: Token![&](self.span),
             raw: Default::default(),
             mutability: self.mutbl.to_token(),
             expr: e,
@@ -1127,7 +1129,7 @@ impl Builder {
         Box::new(Expr::Struct(ExprStruct {
             attrs: self.attrs,
             brace_token: token::Brace(self.span),
-            dot2_token: Some(token::Dot2(self.span)),
+            dot2_token: Some(Token![..](self.span)),
             path,
             fields: Punctuated::from_iter(fields),
             rest: base,
@@ -1141,7 +1143,7 @@ impl Builder {
         let field = field.make(&self);
         Box::new(parenthesize_if_necessary(Expr::Field(ExprField {
             attrs: self.attrs,
-            dot_token: token::Dot(self.span),
+            dot_token: Token![.](self.span),
             base: val,
             member: Member::Named(field),
         })))
@@ -1150,7 +1152,7 @@ impl Builder {
     pub fn anon_field_expr(self, val: Box<Expr>, field: u32) -> Box<Expr> {
         Box::new(parenthesize_if_necessary(Expr::Field(ExprField {
             attrs: self.attrs,
-            dot_token: token::Dot(self.span),
+            dot_token: Token![.](self.span),
             base: val,
             member: Member::Unnamed(Index {
                 index: field,
@@ -1167,7 +1169,7 @@ impl Builder {
         FieldValue {
             member: Member::Named(ident),
             expr: *expr,
-            colon_token: Some(token::Colon(self.span)),
+            colon_token: Some(Token![:](self.span)),
             attrs: self.attrs,
         }
     }
@@ -1176,7 +1178,7 @@ impl Builder {
         let arms = arms.into_iter().collect();
         Box::new(Expr::Match(ExprMatch {
             attrs: self.attrs,
-            match_token: token::Match(self.span),
+            match_token: Token![match](self.span),
             brace_token: token::Brace(self.span),
             expr: cond,
             arms,
@@ -1184,14 +1186,14 @@ impl Builder {
     }
 
     pub fn arm(self, pat: Box<Pat>, guard: Option<Box<Expr>>, body: Box<Expr>) -> Arm {
-        let guard = guard.map(|g| (token::If(self.span), g));
+        let guard = guard.map(|g| (Token![if](self.span), g));
         Arm {
             attrs: self.attrs,
             pat: *pat,
             guard,
             body,
-            fat_arrow_token: token::FatArrow(self.span),
-            comma: Some(token::Comma(self.span)),
+            fat_arrow_token: Token![=>](self.span),
+            comma: Some(Token![,](self.span)),
         }
     }
 
@@ -1230,7 +1232,7 @@ impl Builder {
             // The else branch in libsyntax must be one of these three cases,
             // otherwise we have to manually add the block around the else expression
             (
-                token::Else(self.span),
+                Token![else](self.span),
                 match &*e {
                     Expr::If(..)
                     | Expr::Block(ExprBlock {
@@ -1245,7 +1247,7 @@ impl Builder {
 
         Box::new(Expr::If(ExprIf {
             attrs: self.attrs,
-            if_token: token::If(self.span),
+            if_token: Token![if](self.span),
             cond,
             then_branch: *then_case,
             else_branch: else_case,
@@ -1261,12 +1263,12 @@ impl Builder {
                 ident: l.make(&self),
                 apostrophe: self.span,
             },
-            colon_token: token::Colon(self.span),
+            colon_token: Token![:](self.span),
         });
 
         Box::new(Expr::While(ExprWhile {
             attrs: self.attrs,
-            while_token: token::While(self.span),
+            while_token: Token![while](self.span),
             cond,
             body: *body,
             label,
@@ -1282,12 +1284,12 @@ impl Builder {
                 ident: l.make(&self),
                 apostrophe: self.span,
             },
-            colon_token: token::Colon(self.span),
+            colon_token: Token![:](self.span),
         });
 
         Box::new(Expr::Loop(ExprLoop {
             attrs: self.attrs,
-            loop_token: token::Loop(self.span),
+            loop_token: Token![loop](self.span),
             body: *body,
             label,
         }))
@@ -1308,13 +1310,13 @@ impl Builder {
                 ident: l.make(&self),
                 apostrophe: self.span,
             },
-            colon_token: token::Colon(self.span),
+            colon_token: Token![:](self.span),
         });
 
         Box::new(Expr::ForLoop(ExprForLoop {
             attrs: self.attrs,
-            for_token: token::For(self.span),
-            in_token: token::In(self.span),
+            for_token: Token![for](self.span),
+            in_token: Token![in](self.span),
             pat: *pat,
             expr,
             body: *body,
@@ -1361,7 +1363,7 @@ impl Builder {
     pub fn wild_pat(self) -> Box<Pat> {
         Box::new(Pat::Wild(PatWild {
             attrs: self.attrs,
-            underscore_token: token::Underscore(self.span),
+            underscore_token: Token![_](self.span),
         }))
     }
 
@@ -1386,7 +1388,7 @@ impl Builder {
         let name = name.make(&self);
         Box::new(Pat::Ident(PatIdent {
             attrs: self.attrs,
-            by_ref: Some(token::Ref(self.span)),
+            by_ref: Some(Token![ref](self.span)),
             mutability: self.mutbl.to_token(),
             ident: name,
             subpat: None,
@@ -1408,7 +1410,7 @@ impl Builder {
         let abi = self.get_abi_opt();
 
         let barefn = TypeBareFn {
-            fn_token: token::Fn(self.span),
+            fn_token: Token![fn](self.span),
             paren_token: token::Paren(self.span),
             unsafety: self.unsafety.to_token(),
             abi,
@@ -1424,7 +1426,7 @@ impl Builder {
     pub fn array_ty(self, ty: Box<Type>, len: Box<Expr>) -> Box<Type> {
         Box::new(Type::Array(TypeArray {
             bracket_token: token::Bracket(self.span),
-            semi_token: token::Semi(self.span),
+            semi_token: Token![;](self.span),
             elem: ty,
             len: *len,
         }))
@@ -1439,7 +1441,7 @@ impl Builder {
 
     pub fn ptr_ty(self, ty: Box<Type>) -> Box<Type> {
         let const_token = if self.mutbl.to_token().is_none() {
-            Some(token::Const(self.span))
+            Some(Token![const](self.span))
         } else {
             None
         };
@@ -1447,7 +1449,7 @@ impl Builder {
             elem: ty,
             mutability: self.mutbl.to_token(),
             const_token,
-            star_token: token::Star(self.span),
+            star_token: Token![*](self.span),
         }))
     }
 
@@ -1456,7 +1458,7 @@ impl Builder {
             lifetime: None,
             elem: ty,
             mutability: self.mutbl.to_token(),
-            and_token: token::And(self.span),
+            and_token: Token![&](self.span),
         }))
     }
 
@@ -1466,7 +1468,7 @@ impl Builder {
     {
         let lt = lt.make(&self);
         Box::new(Type::Reference(TypeReference {
-            and_token: token::And(self.span),
+            and_token: Token![&](self.span),
             lifetime: Some(lt),
             mutability: self.mutbl.to_token(),
             elem: ty,
@@ -1475,7 +1477,7 @@ impl Builder {
 
     pub fn never_ty(self) -> Box<Type> {
         Box::new(Type::Never(TypeNever {
-            bang_token: token::Bang(self.span),
+            bang_token: Token![!](self.span),
         }))
     }
 
@@ -1510,7 +1512,7 @@ impl Builder {
 
     pub fn infer_ty(self) -> Box<Type> {
         Box::new(Type::Infer(TypeInfer {
-            underscore_token: token::Underscore(self.span),
+            underscore_token: Token![_](self.span),
         }))
     }
 
@@ -1535,7 +1537,7 @@ impl Builder {
     }
 
     pub fn semi_stmt(self, expr: Box<Expr>) -> Stmt {
-        Stmt::Semi(*expr, token::Semi(self.span))
+        Stmt::Semi(*expr, Token![;](self.span))
     }
 
     pub fn item_stmt(self, item: Box<Item>) -> Stmt {
@@ -1558,10 +1560,10 @@ impl Builder {
             vis: self.vis,
             mutability: self.mutbl.to_token(),
             ident: name,
-            static_token: token::Static(self.span),
-            colon_token: token::Colon(self.span),
-            eq_token: token::Eq(self.span),
-            semi_token: token::Semi(self.span),
+            static_token: Token![static](self.span),
+            colon_token: Token![:](self.span),
+            eq_token: Token![=](self.span),
+            semi_token: Token![;](self.span),
             expr: init,
             ty,
         }))
@@ -1575,10 +1577,10 @@ impl Builder {
         Box::new(Item::Const(ItemConst {
             attrs: self.attrs,
             vis: self.vis,
-            const_token: token::Const(self.span),
-            colon_token: token::Colon(self.span),
-            eq_token: token::Eq(self.span),
-            semi_token: token::Semi(self.span),
+            const_token: Token![const](self.span),
+            colon_token: Token![:](self.span),
+            eq_token: Token![=](self.span),
+            semi_token: Token![;](self.span),
             ident: name,
             ty,
             expr: init,
@@ -1600,7 +1602,7 @@ impl Builder {
 
     pub fn variadic_arg(self, variadic_attrs: Vec<Attribute>) -> Variadic {
         Variadic {
-            dots: token::Dot3(self.span),
+            dots: Token![...](self.span),
             attrs: variadic_attrs,
         }
     }
@@ -1638,7 +1640,7 @@ impl Builder {
         Box::new(Item::Struct(ItemStruct {
             attrs: self.attrs,
             vis: self.vis,
-            struct_token: token::Struct(self.span),
+            struct_token: Token![struct](self.span),
             semi_token: None,
             ident: name,
             generics: self.generics,
@@ -1660,7 +1662,7 @@ impl Builder {
             vis: self.vis,
             ident: name,
             fields,
-            union_token: token::Union(self.span),
+            union_token: Token![union](self.span),
             generics: self.generics,
         }))
     }
@@ -1674,7 +1676,7 @@ impl Builder {
             attrs: self.attrs,
             vis: self.vis,
             ident: name,
-            enum_token: token::Enum(self.span),
+            enum_token: Token![enum](self.span),
             brace_token: token::Brace(self.span),
             variants: Punctuated::from_iter(fields),
             generics: self.generics,
@@ -1691,9 +1693,9 @@ impl Builder {
             vis: self.vis,
             ident: name,
             generics: self.generics,
-            type_token: token::Type(self.span),
-            eq_token: token::Eq(self.span),
-            semi_token: token::Semi(self.span),
+            type_token: Token![type](self.span),
+            eq_token: Token![=](self.span),
+            semi_token: Token![;](self.span),
             ty,
         }))
     }
@@ -1708,7 +1710,7 @@ impl Builder {
             attrs: self.attrs,
             vis: self.vis,
             ident: name,
-            mod_token: token::Mod(self.span),
+            mod_token: Token![mod](self.span),
             semi: None,
             content: items,
         }))
@@ -1721,7 +1723,7 @@ impl Builder {
     pub fn mac_item(self, mac: Macro) -> Box<Item> {
         Box::new(Item::Macro(ItemMacro {
             attrs: self.attrs,
-            semi_token: Some(token::Semi(self.span)), // Untested
+            semi_token: Some(Token![;](self.span)), // Untested
             ident: None,
             mac,
         }))
@@ -1748,7 +1750,7 @@ impl Builder {
         Variant {
             ident: name,
             fields: Fields::Unit,
-            discriminant: disc.map(|e| (token::Eq(self.span), *e)),
+            discriminant: disc.map(|e| (Token![=](self.span), *e)),
             attrs: self.attrs,
         }
     }
@@ -1761,7 +1763,7 @@ impl Builder {
             generics: self.generics,
             trait_: None, // not a trait implementation, no ! on said trait name
             self_ty: ty,
-            impl_token: token::Impl(self.span),
+            impl_token: Token![impl](self.span),
             brace_token: token::Brace(self.span),
             items,
         }))
@@ -1772,13 +1774,13 @@ impl Builder {
         I: Make<Ident>,
     {
         let name = name.make(&self);
-        let rename = rename.map(|n| (token::As(self.span), n.make(&self)));
+        let rename = rename.map(|n| (Token![as](self.span), n.make(&self)));
         Box::new(Item::ExternCrate(ItemExternCrate {
             attrs: self.attrs,
             vis: self.vis,
-            crate_token: token::Crate(self.span),
-            extern_token: token::Extern(self.span),
-            semi_token: token::Semi(self.span),
+            crate_token: Token![crate](self.span),
+            extern_token: Token![extern](self.span),
+            semi_token: Token![;](self.span),
             ident: name,
             rename,
         }))
@@ -1788,9 +1790,9 @@ impl Builder {
         Box::new(Item::Use(ItemUse {
             attrs: self.attrs,
             vis: self.vis,
-            use_token: token::Use(self.span),
+            use_token: Token![use](self.span),
             leading_colon: None,
-            semi_token: token::Semi(self.span),
+            semi_token: Token![;](self.span),
             tree,
         }))
     }
@@ -1819,7 +1821,7 @@ impl Builder {
                 prefix,
                 UseTree::Rename(UseRename {
                     ident,
-                    as_token: token::As(self.span),
+                    as_token: Token![as](self.span),
                     rename,
                 }),
             )
@@ -1829,9 +1831,9 @@ impl Builder {
         Box::new(Item::Use(ItemUse {
             attrs: self.attrs,
             vis: self.vis,
-            use_token: token::Use(self.span),
+            use_token: Token![use](self.span),
             leading_colon,
-            semi_token: token::Semi(self.span),
+            semi_token: Token![;](self.span),
             tree,
         }))
     }
@@ -1861,9 +1863,9 @@ impl Builder {
         Box::new(Item::Use(ItemUse {
             attrs: self.attrs,
             vis: self.vis,
-            use_token: token::Use(self.span),
+            use_token: Token![use](self.span),
             leading_colon,
-            semi_token: token::Semi(self.span),
+            semi_token: Token![;](self.span),
             tree,
         }))
     }
@@ -1877,15 +1879,15 @@ impl Builder {
         let tree = use_tree_with_prefix(
             path,
             UseTree::Glob(UseGlob {
-                star_token: token::Star(self.span),
+                star_token: Token![*](self.span),
             }),
         );
         Box::new(Item::Use(ItemUse {
             attrs: self.attrs,
             vis: self.vis,
-            use_token: token::Use(self.span),
+            use_token: Token![use](self.span),
             leading_colon,
-            semi_token: token::Semi(self.span),
+            semi_token: Token![;](self.span),
             tree,
         }))
     }
@@ -1903,7 +1905,7 @@ impl Builder {
 
     pub fn get_abi(&self) -> Abi {
         Abi {
-            extern_token: token::Extern(self.span),
+            extern_token: Token![extern](self.span),
             name: match self.ext {
                 Extern::None | Extern::Implicit => None,
                 Extern::Explicit(ref s) => Some(LitStr::new(s, self.span)),
@@ -1918,7 +1920,7 @@ impl Builder {
             Extern::Explicit(ref s) => Some(LitStr::new(s, self.span)),
         };
         Some(Abi {
-            extern_token: token::Extern(self.span),
+            extern_token: Token![extern](self.span),
             name,
         })
     }
@@ -1957,7 +1959,7 @@ impl Builder {
             attrs: self.attrs,
             vis: self.vis,
             sig,
-            semi_token: token::Semi(self.span),
+            semi_token: Token![;](self.span),
         }))
     }
 
@@ -1973,9 +1975,9 @@ impl Builder {
             mutability: self.mutbl.to_token(),
             ident: name,
             ty,
-            static_token: token::Static(self.span),
-            colon_token: token::Colon(self.span),
-            semi_token: token::Semi(self.span),
+            static_token: Token![static](self.span),
+            colon_token: Token![:](self.span),
+            semi_token: Token![;](self.span),
         }))
     }
 
@@ -1989,8 +1991,8 @@ impl Builder {
             attrs: self.attrs,
             vis: self.vis,
             ident: name,
-            type_token: token::Type(self.span),
-            semi_token: token::Semi(self.span),
+            type_token: Token![type](self.span),
+            semi_token: Token![;](self.span),
         }))
     }
 
@@ -2014,7 +2016,7 @@ impl Builder {
             vis: self.vis,
             attrs: self.attrs,
             ty: *ty,
-            colon_token: Some(token::Colon(self.span)),
+            colon_token: Some(Token![:](self.span)),
         }
     }
 
@@ -2037,7 +2039,7 @@ impl Builder {
         };
         ExprUnsafe {
             attrs: self.attrs,
-            unsafe_token: token::Unsafe(self.span),
+            unsafe_token: Token![unsafe](self.span),
             block: blk,
         }
     }
@@ -2063,7 +2065,7 @@ impl Builder {
         let label = label.map(|l| l.make(&self).name);
         Box::new(Expr::Break(ExprBreak {
             attrs: self.attrs,
-            break_token: token::Break(self.span),
+            break_token: Token![break](self.span),
             label,
             expr: value,
         }))
@@ -2073,7 +2075,7 @@ impl Builder {
     where
         I: Make<Box<Ident>>,
     {
-        let name = name.map(|n| (*n.make(&self), token::Colon(self.span)));
+        let name = name.map(|n| (*n.make(&self), Token![:](self.span)));
         BareFnArg {
             attrs: Vec::new(),
             name,
@@ -2086,7 +2088,7 @@ impl Builder {
             attrs: Vec::new(),
             ty,
             pat,
-            colon_token: token::Colon(self.span),
+            colon_token: Token![:](self.span),
         })
     }
 
@@ -2098,7 +2100,7 @@ impl Builder {
         let (reference, mutability) = match eself {
             SelfKind::Value(mutability) => (None, mutability),
             SelfKind::Region(lt, mutability) => {
-                (Some((token::And(self.span), Some(lt))), mutability)
+                (Some((Token![&](self.span), Some(lt))), mutability)
             }
         };
         let attrs = Vec::new();
@@ -2106,7 +2108,7 @@ impl Builder {
             attrs,
             reference,
             mutability: mutability.to_token(),
-            self_token: token::SelfValue(self.span),
+            self_token: Token![self](self.span),
         })
     }
 
@@ -2157,7 +2159,7 @@ impl Builder {
             style,
             path,
             tokens: args,
-            pound_token: token::Pound(self.span),
+            pound_token: Token![#](self.span),
             bracket_token: token::Bracket(self.span),
         }
     }
@@ -2203,7 +2205,7 @@ impl Builder {
 
         Meta::NameValue(MetaNameValue {
             path: key,
-            eq_token: token::Eq(self.span),
+            eq_token: Token![=](self.span),
             lit: value,
         })
     }
@@ -2240,7 +2242,7 @@ impl Builder {
         Macro {
             path,
             tokens: TokenStream::new(),
-            bang_token: token::Bang(self.span),
+            bang_token: Token![!](self.span),
             delimiter: delim,
         }
     }
@@ -2253,7 +2255,7 @@ impl Builder {
         Macro {
             path: func,
             tokens,
-            bang_token: token::Bang(self.span),
+            bang_token: Token![!](self.span),
             delimiter: delim,
         }
     }
@@ -2265,7 +2267,7 @@ impl Builder {
             Pat::Type(PatType {
                 attrs: vec![],
                 pat,
-                colon_token: token::Colon(self.span),
+                colon_token: Token![:](self.span),
                 ty,
             })
         } else {
@@ -2273,8 +2275,8 @@ impl Builder {
         };
         Local {
             attrs: self.attrs,
-            let_token: token::Let(self.span),
-            semi_token: token::Semi(self.span),
+            let_token: Token![let](self.span),
+            semi_token: Token![;](self.span),
             pat,
             init,
         }
@@ -2283,7 +2285,7 @@ impl Builder {
     pub fn return_expr(self, val: Option<Box<Expr>>) -> Box<Expr> {
         Box::new(Expr::Return(ExprReturn {
             attrs: self.attrs,
-            return_token: token::Return(self.span),
+            return_token: Token![return](self.span),
             expr: val,
         }))
     }
@@ -2299,7 +2301,7 @@ impl Builder {
 
         Box::new(Expr::Continue(ExprContinue {
             attrs: self.attrs,
-            continue_token: token::Continue(self.span),
+            continue_token: Token![continue](self.span),
             label,
         }))
     }
@@ -2315,7 +2317,7 @@ impl Builder {
 
         Box::new(Expr::Break(ExprBreak {
             attrs: self.attrs,
-            break_token: token::Break(self.span),
+            break_token: Token![break](self.span),
             label,
             expr: None,
         }))
@@ -2342,8 +2344,8 @@ impl Builder {
         };
         Box::new(Expr::Closure(ExprClosure {
             attrs: self.attrs,
-            or1_token: token::Or(self.span),
-            or2_token: token::Or(self.span),
+            or1_token: Token![|](self.span),
+            or2_token: Token![|](self.span),
             capture,
             asyncness: IsAsync::NotAsync.to_token(),
             movability: mov.to_token(),
