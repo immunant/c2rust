@@ -496,23 +496,22 @@ fn map_input_op_idx(
     if let Some(adj_idx) = idx.checked_sub(num_output_operands) {
         // will only be Some(idx) if it was an input operand
         match tied_operands.get(&(adj_idx, false)) {
-            Some(&out_idx) => {
-                return out_idx;
-            }
+            Some(&out_idx) => out_idx,
             None => {
                 // get number of tied inputs before this index
                 // TODO: can calculate this once before the call, not once for each input
                 let num_tied_before = tied_operands
                     .keys()
-                    .filter(|&&(iidx, is_out)| !is_out && iidx < adj_idx)
+                    .copied()
+                    .filter(|&(iidx, is_out)| !is_out && iidx < adj_idx)
                     .count();
                 // shift the original index by the number of tied input operands prior to the current one
-                return idx - num_tied_before;
+                idx - num_tied_before
             }
-        };
+        }
+    } else {
+        idx
     }
-
-    idx
 }
 
 /// Rewrite a LLVM inline assembly template string into an asm!-compatible one
