@@ -1,4 +1,4 @@
-//! Don't want a huge depedency on `clap`.
+//! Don't want a huge dependency on `clap`.
 
 use std::{
     ffi::OsStr,
