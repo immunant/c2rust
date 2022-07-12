@@ -73,7 +73,16 @@ pub fn reallocarray(mir_loc: MirLocId, old_ptr: usize, nmemb: u64, size: u64, ne
 
 /// A hook function (see [`HOOK_FUNCTIONS`]).
 ///
-/// Instruments [`pointer::offset`](std::primitive::pointer::offset).
+/// Instruments [`pointer::offset`](https://doc.rust-lang.org/std/primitive.pointer.html#method.offset).
+///
+/// Note that we link to the public docs because `#![feature(intra_doc_pointers)]` is unstable:
+///
+/// ```shell
+/// error[E0658]: linking to associated items of raw pointers is experimental
+///   = note: see issue #80896 <https://github.com/rust-lang/rust/issues/80896> for more information
+///   = help: add `#![feature(intra_doc_pointers)]` to the crate attributes to enable
+///   = note: rustdoc does not allow disambiguating between `*const` and `*mut`, and pointers are unstable until it does
+/// ```
 pub fn offset(mir_loc: MirLocId, ptr: usize, offset: isize, new_ptr: usize) {
     RUNTIME.send_event(Event {
         mir_loc,
