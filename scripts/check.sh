@@ -7,8 +7,9 @@ export RUSTDOCFLAGS="-D warnings"
 
 cargo fmt --check
 cargo check --all-features
-cargo build --features dynamic-instrumentation
+# cargo clippy --tests --all --all-features
 cargo doc --all-features --document-private-items
-cargo test --features dynamic-instrumentation
-cargo clippy --tests --all --all-features
+cargo build --features dynamic-instrumentation --release
+cargo test --features dynamic-instrumentation --release
+unset RUSTFLAGS # transpiled code has tons of warnings; don't allow `-D warnings`
 ./scripts/test_translator.py tests/

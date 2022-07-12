@@ -95,6 +95,7 @@ main() {
         if [[ "${c2rust_instrument}" -nt "${metadata}" ]]; then
             cargo clean --profile dev # always dev/debug for now
 
+            unset RUSTFLAGS # transpiled code has tons of warnings; don't allow `-D warnings`
             if ! "${c2rust}" instrument \
                 "${metadata}" "${runtime}" \
                 -- "${profile_args[@]}"  \
