@@ -1,8 +1,11 @@
 use enum_dispatch::enum_dispatch;
 use fs_err::{File, OpenOptions};
-use std::env;
+use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
 use std::io::BufWriter;
+use std::marker::PhantomData;
 use std::sync::mpsc::Receiver;
+use std::{env, fmt};
 
 use bincode;
 
@@ -20,6 +23,93 @@ where
     Self: Sized,
 {
     fn detect() -> Result<Self, AnyError>;
+}
+
+// Don't want a huge depedency on `clap`.
+
+trait AsStr {
+    fn as_str(&self) -> &'static str;
+}
+
+trait Choices
+where
+    Self: Sized,
+{
+    fn choices() -> &'static [Self];
+}
+
+impl AsStr for bool {
+    fn as_str(&self) -> &'static str {
+        match self {
+            true => "true",
+            false => "false",
+        }
+    }
+}
+
+impl Choices for bool {
+    fn choices() -> &'static [Self] {
+        &[true, false]
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum BackendKind {
+    Debug,
+    Log,
+}
+
+impl AsStr for BackendKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Debug => "debug",
+            Self::Log => "log",
+        }
+    }
+}
+
+impl Choices for BackendKind {
+    fn choices() -> &'static [Self] {
+        &[Self::Debug, Self::Log]
+    }
+}
+
+impl Default for BackendKind {
+    fn default() -> Self {
+        Self::Debug
+    }
+}
+
+struct ChoiceError<T> {
+    found: String,
+    _phantom: PhantomData<T>,
+}
+
+impl<T: Choices + AsStr + 'static> Display for ChoiceError<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "found {}, but expected one of ", &self.found)?;
+        f.debug_list()
+            .entries(T::choices().iter().map(|choice| choice.as_str()));
+        Ok(())
+    }
+}
+
+impl<T: Choices + AsStr + 'static> Debug for ChoiceError<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
+impl<T: Choices + AsStr + 'static> Error for ChoiceError<T> {}
+
+fn parse_one_of<T: Choices + AsStr + 'static>(s: String) -> Result<&'static T, ChoiceError<T>> {
+    T::choices()
+        .iter()
+        .find(|choice| choice.as_str() == s.as_str())
+        .ok_or(ChoiceError {
+            found: s,
+            _phantom: Default::default(),
+        })
 }
 
 pub struct DebugBackend {
@@ -74,7 +164,7 @@ impl DetectBackend for DebugBackend {
         let path = {
             let var = "METADATA_FILE";
             env::var_os(var).ok_or_else(|| {
-                format!("Instrumentation requires the {var} environment variable be set")
+                format!("Instrumentation requires the {var} environment variable be set to a path")
             })?
         };
         // TODO may want to deduplicate this with [`pdg::builder::read_metadata`] in [`Metadata::read`],
@@ -90,19 +180,16 @@ impl DetectBackend for LogBackend {
         let path = {
             let var = "INSTRUMENT_OUTPUT";
             env::var_os(var).ok_or_else(|| {
-                format!("Instrumentation requires the {var} environment variable be set")
+                format!("Instrumentation requires the {var} environment variable be set to a path")
             })?
         };
         let append = {
             let var = "INSTRUMENT_OUTPUT_APPEND";
+            let choices = bool::choices();
             let append = env::var(var).ok().ok_or_else(|| {
-                format!("Instrumentation requires the {var} environment variable be set")
+                format!("Instrumentation requires the {var} environment variable be set to one of {choices:?}")
             })?;
-            match append.as_str() {
-                "true" => true,
-                "false" => false,
-                _ => return Err(format!("{var} must be 'true' or 'false'").into()),
-            }
+            *parse_one_of::<bool>(append)?
         };
         let file = OpenOptions::new()
             .create(true)
@@ -115,25 +202,11 @@ impl DetectBackend for LogBackend {
     }
 }
 
-pub enum BackendKind {
-    Debug,
-    Log,
-}
-
-impl Default for BackendKind {
-    fn default() -> Self {
-        Self::Debug
-    }
-}
-
 impl DetectBackend for BackendKind {
     fn detect() -> Result<Self, AnyError> {
         let var = "INSTRUMENT_BACKEND";
-        let this = match env::var(var).unwrap_or_default().as_str() {
-            "log" => Self::Log,
-            "debug" => Self::Debug,
-            _ => Self::default(),
-        };
+        let backend = env::var(var).unwrap_or_default();
+        let this = parse_one_of(backend).cloned().unwrap_or_default();
         Ok(this)
     }
 }
