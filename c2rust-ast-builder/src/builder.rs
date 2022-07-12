@@ -186,10 +186,6 @@ fn use_tree_with_prefix(prefix: Path, leaf: UseTree) -> UseTree {
     out
 }
 
-fn punct<T, P: Default>(x: Vec<T>) -> Punctuated<T, P> {
-    Punctuated::from_iter(x.into_iter())
-}
-
 fn punct_box<T, P: Default>(x: Vec<Box<T>>) -> Punctuated<T, P> {
     Punctuated::from_iter(x.into_iter().map(|x| *x))
 }
@@ -523,7 +519,7 @@ impl Make<Signature> for Box<FnDecl> {
             generics: mk.generics.clone(),
             abi: mk.get_abi_opt(),
             ident: name,
-            inputs: punct(inputs),
+            inputs: Punctuated::from_iter(inputs),
             variadic,
             output,
         }
@@ -745,7 +741,7 @@ impl Builder {
         let metalist = MetaList {
             path: func,
             paren_token: token::Paren(self.span),
-            nested: punct(arguments),
+            nested: Punctuated::from_iter(arguments),
         };
         let prepared = self.prepare_meta_list(metalist);
         self.prepared_attr(prepared)
@@ -855,12 +851,11 @@ impl Builder {
     }
 
     pub fn call_expr(self, func: Box<Expr>, args: Vec<Box<Expr>>) -> Box<Expr> {
-        let args = args.into_iter().map(|a| *a).collect();
         Box::new(parenthesize_if_necessary(Expr::Call(ExprCall {
             attrs: self.attrs,
             paren_token: token::Paren(self.span),
             func,
-            args,
+            args: punct_box(args),
         })))
     }
 
@@ -1113,7 +1108,7 @@ impl Builder {
             brace_token: token::Brace(self.span),
             dot2_token: None,
             path,
-            fields: punct(fields),
+            fields: Punctuated::from_iter(fields),
             rest: None,
         }))
     }
@@ -1134,7 +1129,7 @@ impl Builder {
             brace_token: token::Brace(self.span),
             dot2_token: Some(token::Dot2(self.span)),
             path,
-            fields: punct(fields),
+            fields: Punctuated::from_iter(fields),
             rest: base,
         }))
     }
@@ -1417,7 +1412,7 @@ impl Builder {
             paren_token: token::Paren(self.span),
             unsafety: self.unsafety.to_token(),
             abi,
-            inputs: punct(inputs),
+            inputs: Punctuated::from_iter(inputs),
             output,
             variadic,
             lifetimes: None,
@@ -1485,10 +1480,9 @@ impl Builder {
     }
 
     pub fn tuple_ty(self, elem_tys: Vec<Box<Type>>) -> Box<Type> {
-        let elem_tys = punct(elem_tys.into_iter().map(|ty| *ty).collect());
         Box::new(Type::Tuple(TypeTuple {
             paren_token: token::Paren(self.span),
-            elems: elem_tys,
+            elems: punct_box(elem_tys),
         }))
     }
 
@@ -1659,7 +1653,7 @@ impl Builder {
         let name = name.make(&self);
         let fields = FieldsNamed {
             brace_token: token::Brace(self.span),
-            named: punct(fields),
+            named: Punctuated::from_iter(fields),
         };
         Box::new(Item::Union(ItemUnion {
             attrs: self.attrs,
@@ -1682,7 +1676,7 @@ impl Builder {
             ident: name,
             enum_token: token::Enum(self.span),
             brace_token: token::Brace(self.span),
-            variants: punct(fields),
+            variants: Punctuated::from_iter(fields),
             generics: self.generics,
         }))
     }
@@ -2124,7 +2118,7 @@ impl Builder {
         GenericParam::Type(TypeParam {
             attrs: self.attrs,
             ident,
-            bounds: punct(vec![]),
+            bounds: Punctuated::new(),
             colon_token: None,
             eq_token: None,
             default: None,
@@ -2144,7 +2138,7 @@ impl Builder {
             attrs: self.attrs,
             lifetime,
             colon_token: None,
-            bounds: punct(vec![]),
+            bounds: Punctuated::new(),
         })
     }
 
@@ -2195,7 +2189,7 @@ impl Builder {
         Meta::List(MetaList {
             path,
             paren_token: token::Paren(self.span),
-            nested: punct(args),
+            nested: Punctuated::from_iter(args),
         })
     }
 
