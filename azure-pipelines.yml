@@ -63,7 +63,7 @@ jobs:
   #     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
   #     export RUSTFLAGS="-D warnings"
   #     export RUSTDOCFLAGS="-D warnings"
-  #     cargo clippy --tests --all --all-features
+  #     cargo clippy --tests --all-features
   #   displayName: 'cargo clippy'
 
   - script: |
@@ -138,7 +138,7 @@ jobs:
   #     export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
   #     export RUSTFLAGS="-D warnings"
   #     export RUSTDOCFLAGS="-D warnings"
-  #     cargo clippy --tests --all --all-features
+  #     cargo clippy --tests --all-features
   #   displayName: 'cargo clippy'
 
   - script: |
