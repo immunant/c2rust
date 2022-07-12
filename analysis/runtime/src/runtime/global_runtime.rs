@@ -1,3 +1,5 @@
+use std::process;
+
 use once_cell::sync::OnceCell;
 
 use crate::events::Event;
@@ -57,11 +59,15 @@ impl GlobalRuntime {
         self.runtime.get_or_try_init(Runtime::try_init)
     }
 
-    /// Same as [`GlobalRuntime::try_init`] except the [`Result`] is `.unwrap()`ed.
+    /// Same as [`GlobalRuntime::try_init`], if there is an error,
+    /// it is [`eprintln!`]ed [`std::process::exit`] called.
     ///
     /// This (or [`GlobalRuntime::try_init`]), on [`RUNTIME`], should be called at the top of `main`.
     pub fn init(&self) {
-        self.try_init().unwrap();
+        if let Err(e) = self.try_init() {
+            eprintln!("{e}");
+            process::exit(1);
+        }
     }
 
     /// Finalize the [`GlobalRuntime`] by finalizing the [`Runtime`] if it has been initialized.

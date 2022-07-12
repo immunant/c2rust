@@ -1,6 +1,6 @@
 use enum_dispatch::enum_dispatch;
 use fs_err::{File, OpenOptions};
-use std::env;
+use std::fmt::Debug;
 use std::io::BufWriter;
 use std::sync::mpsc::Receiver;
 
@@ -9,6 +9,7 @@ use bincode;
 use super::{AnyError, FINISHED};
 use crate::events::{Event, EventKind};
 use crate::metadata::Metadata;
+use crate::parse::{self, AsStr, GetChoices};
 
 #[enum_dispatch]
 pub(super) trait WriteEvent {
@@ -20,6 +21,33 @@ where
     Self: Sized,
 {
     fn detect() -> Result<Self, AnyError>;
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum BackendKind {
+    Debug,
+    Log,
+}
+
+impl AsStr for BackendKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Debug => "debug",
+            Self::Log => "log",
+        }
+    }
+}
+
+impl GetChoices for BackendKind {
+    fn choices() -> &'static [Self] {
+        &[Self::Debug, Self::Log]
+    }
+}
+
+impl Default for BackendKind {
+    fn default() -> Self {
+        Self::Debug
+    }
 }
 
 pub struct DebugBackend {
@@ -71,12 +99,7 @@ impl Backend {
 
 impl DetectBackend for DebugBackend {
     fn detect() -> Result<Self, AnyError> {
-        let path = {
-            let var = "METADATA_FILE";
-            env::var_os(var).ok_or_else(|| {
-                format!("Instrumentation requires the {var} environment variable be set")
-            })?
-        };
+        let path = parse::env::path("METADATA_FILE")?;
         // TODO may want to deduplicate this with [`pdg::builder::read_metadata`] in [`Metadata::read`],
         // but that may require adding `color-eyre`/`eyre` as a dependency
         let bytes = fs_err::read(path)?;
@@ -87,23 +110,8 @@ impl DetectBackend for DebugBackend {
 
 impl DetectBackend for LogBackend {
     fn detect() -> Result<Self, AnyError> {
-        let path = {
-            let var = "INSTRUMENT_OUTPUT";
-            env::var_os(var).ok_or_else(|| {
-                format!("Instrumentation requires the {var} environment variable be set")
-            })?
-        };
-        let append = {
-            let var = "INSTRUMENT_OUTPUT_APPEND";
-            let append = env::var(var).ok().ok_or_else(|| {
-                format!("Instrumentation requires the {var} environment variable be set")
-            })?;
-            match append.as_str() {
-                "true" => true,
-                "false" => false,
-                _ => return Err(format!("{var} must be 'true' or 'false'").into()),
-            }
-        };
+        let path = parse::env::path("INSTRUMENT_OUTPUT")?;
+        let append: bool = *parse::env::one_of("INSTRUMENT_OUTPUT_APPEND")?;
         let file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -115,26 +123,11 @@ impl DetectBackend for LogBackend {
     }
 }
 
-pub enum BackendKind {
-    Debug,
-    Log,
-}
-
-impl Default for BackendKind {
-    fn default() -> Self {
-        Self::Debug
-    }
-}
-
 impl DetectBackend for BackendKind {
     fn detect() -> Result<Self, AnyError> {
-        let var = "INSTRUMENT_BACKEND";
-        let this = match env::var(var).unwrap_or_default().as_str() {
-            "log" => Self::Log,
-            "debug" => Self::Debug,
-            _ => Self::default(),
-        };
-        Ok(this)
+        Ok(parse::env::one_of("INSTRUMENT_BACKEND")
+            .cloned()
+            .unwrap_or_default())
     }
 }
 
