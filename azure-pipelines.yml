@@ -54,7 +54,7 @@ jobs:
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
-      cargo check --all-features
+      cargo check --tests --all-features
     displayName: 'cargo check'
   
   # - script: |
@@ -131,7 +131,7 @@ jobs:
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
-      cargo check --all-features
+      cargo check --tests --all-features
     displayName: 'cargo check'
   
   # - script: |

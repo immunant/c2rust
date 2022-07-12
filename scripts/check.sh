@@ -6,7 +6,7 @@ export RUSTFLAGS="-D warnings"
 export RUSTDOCFLAGS="-D warnings"
 
 cargo fmt --check
-cargo check --all-features
+cargo check --tests --all-features
 # cargo clippy --tests --all --all-features
 cargo doc --all-features --document-private-items
 cargo build --features dynamic-instrumentation --release
