@@ -2,6 +2,9 @@ use crate::events::{Event, EventKind};
 use crate::mir_loc::MirLocId;
 use crate::runtime::global_runtime::RUNTIME;
 
+/// A hook function (see [`HOOK_FUNCTIONS`]).
+///
+/// Instruments 64-bit `c2rust transpile`d `malloc`, which is similar to `libc::malloc`.
 pub fn malloc(mir_loc: MirLocId, size: u64, ptr: usize) {
     RUNTIME.send_event(Event {
         mir_loc,
@@ -12,13 +15,19 @@ pub fn malloc(mir_loc: MirLocId, size: u64, ptr: usize) {
     });
 }
 
-pub fn free(mir_loc: MirLocId, ptr: usize, _ptr: ()) {
+/// A hook function (see [`HOOK_FUNCTIONS`]).
+///
+/// Instruments 64-bit `c2rust transpile`d `free`, which is similar to `libc::free`.
+pub fn free(mir_loc: MirLocId, ptr: usize, _free_ret_val: ()) {
     RUNTIME.send_event(Event {
         mir_loc,
         kind: EventKind::Free { ptr },
     });
 }
 
+/// A hook function (see [`HOOK_FUNCTIONS`]).
+///
+/// Instruments 64-bit `c2rust transpile`d `calloc`, which is similar to `libc::calloc`.
 pub fn calloc(mir_loc: MirLocId, nmemb: u64, size: u64, ptr: usize) {
     RUNTIME.send_event(Event {
         mir_loc,
@@ -29,6 +38,9 @@ pub fn calloc(mir_loc: MirLocId, nmemb: u64, size: u64, ptr: usize) {
     });
 }
 
+/// A hook function (see [`HOOK_FUNCTIONS`]).
+///
+/// Instruments 64-bit `c2rust transpile`d `realloc`, which is similar to `libc::realloc`.
 pub fn realloc(mir_loc: MirLocId, old_ptr: usize, size: u64, new_ptr: usize) {
     RUNTIME.send_event(Event {
         mir_loc,
@@ -43,6 +55,11 @@ pub fn realloc(mir_loc: MirLocId, old_ptr: usize, size: u64, new_ptr: usize) {
     });
 }
 
+/// A hook function (see [`HOOK_FUNCTIONS`]).
+///
+/// Instruments 64-bit `c2rust transpile`d `reallocarray`, which is similar to `libc::reallocarray`.
+///
+/// Note that this is Linux-like-only.
 pub fn reallocarray(mir_loc: MirLocId, old_ptr: usize, nmemb: u64, size: u64, new_ptr: usize) {
     RUNTIME.send_event(Event {
         mir_loc,
@@ -54,12 +71,37 @@ pub fn reallocarray(mir_loc: MirLocId, old_ptr: usize, nmemb: u64, size: u64, ne
     });
 }
 
+/// A hook function (see [`HOOK_FUNCTIONS`]).
+///
+/// Instruments [`pointer::offset`](std::primitive::pointer::offset).
 pub fn offset(mir_loc: MirLocId, ptr: usize, offset: isize, new_ptr: usize) {
     RUNTIME.send_event(Event {
         mir_loc,
         kind: EventKind::Offset(ptr, offset, new_ptr),
     });
 }
+
+macro_rules! hook_fn {
+    ($name:ident) => {{
+        // Ensure it exists and allow rust-analyzer to see through it.
+        let _ = self::$name;
+        stringify!($name)
+    }};
+}
+
+/// List of functions we want hooked for the lifetime analyis runtime.
+///
+/// For functions in [`HOOK_FUNCTIONS`], the tracing passes
+/// the return value of the traced function as the last argument to the trace hook for it.
+/// See the `if after_call` block in `apply_instrumentation` in `dynamic_instrumentation/src/instrument_memory.rs`.
+pub const HOOK_FUNCTIONS: &[&str] = &[
+    hook_fn!(malloc),
+    hook_fn!(free),
+    hook_fn!(calloc),
+    hook_fn!(realloc),
+    hook_fn!(reallocarray),
+    hook_fn!(offset),
+];
 
 pub fn ptr_field(mir_loc: MirLocId, ptr: usize, field_id: u32) {
     RUNTIME.send_event(Event {
