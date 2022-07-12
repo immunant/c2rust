@@ -299,18 +299,17 @@ fn int_arg_metaitem(name: &str, arg: u128) -> NestedMeta {
 }
 
 fn cast_int(val: Box<Expr>, name: &str, need_lit_suffix: bool) -> Box<Expr> {
-    let opt_literal_val = match &*val {
-        Expr::Lit(ref l) => match &l.lit {
-            Lit::Int(i) => Some(i.base10_digits().parse().unwrap()),
-            _ => None,
-        },
-        _ => None,
-    };
-    match opt_literal_val {
-        Some(i) if !need_lit_suffix => mk().lit_expr(mk().int_unsuffixed_lit(i)),
-        Some(i) => mk().lit_expr(mk().int_lit(i, name)),
-        None => mk().cast_expr(val, mk().path_ty([name])),
+    if let Expr::Lit(l) = &*val {
+        if let Lit::Int(i) = &l.lit {
+            let lit = i.base10_digits().parse().unwrap();
+            return if need_lit_suffix {
+                mk().lit_expr(mk().int_lit(lit, name))
+            } else {
+                val
+            };
+        }
     }
+    mk().cast_expr(val, mk().path_ty([name]))
 }
 
 /// Pointer offset that casts its argument to isize
