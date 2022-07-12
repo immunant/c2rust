@@ -3,14 +3,13 @@ use fs_err::{File, OpenOptions};
 use std::fmt::Debug;
 use std::io::BufWriter;
 use std::sync::mpsc::Receiver;
-use std::env;
 
 use bincode;
 
 use super::{AnyError, FINISHED};
 use crate::events::{Event, EventKind};
 use crate::metadata::Metadata;
-use crate::parse::{AsStr, Choices, self};
+use crate::parse::{self, AsStr, GetChoices};
 
 #[enum_dispatch]
 pub(super) trait WriteEvent {
@@ -39,7 +38,7 @@ impl AsStr for BackendKind {
     }
 }
 
-impl Choices for BackendKind {
+impl GetChoices for BackendKind {
     fn choices() -> &'static [Self] {
         &[Self::Debug, Self::Log]
     }
@@ -100,12 +99,8 @@ impl Backend {
 
 impl DetectBackend for DebugBackend {
     fn detect() -> Result<Self, AnyError> {
-        let path = {
-            let var = "METADATA_FILE";
-            env::var_os(var).ok_or_else(|| {
-                format!("Instrumentation requires the {var} environment variable be set to a path")
-            })?
-        };
+        let path =
+            parse::env::path("METADATA_FILE").map_err(|s| format!("instrumentation: {s}"))?;
         // TODO may want to deduplicate this with [`pdg::builder::read_metadata`] in [`Metadata::read`],
         // but that may require adding `color-eyre`/`eyre` as a dependency
         let bytes = fs_err::read(path)?;
@@ -116,20 +111,10 @@ impl DetectBackend for DebugBackend {
 
 impl DetectBackend for LogBackend {
     fn detect() -> Result<Self, AnyError> {
-        let path = {
-            let var = "INSTRUMENT_OUTPUT";
-            env::var_os(var).ok_or_else(|| {
-                format!("Instrumentation requires the {var} environment variable be set to a path")
-            })?
-        };
-        let append = {
-            let var = "INSTRUMENT_OUTPUT_APPEND";
-            let choices = bool::choices();
-            let append = env::var(var).ok().ok_or_else(|| {
-                format!("Instrumentation requires the {var} environment variable be set to one of {choices:?}")
-            })?;
-            *parse::one_of::<bool>(append)?
-        };
+        let path =
+            parse::env::path("INSTRUMENT_OUTPUT").map_err(|s| format!("instrumentation: {s}"))?;
+        let append: bool = *parse::env::one_of("INSTRUMENT_OUTPUT_APPEND")
+            .map_err(|s| format!("instrumentation: {s}"))?;
         let file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -143,10 +128,9 @@ impl DetectBackend for LogBackend {
 
 impl DetectBackend for BackendKind {
     fn detect() -> Result<Self, AnyError> {
-        let var = "INSTRUMENT_BACKEND";
-        let backend = env::var(var).unwrap_or_default();
-        let this = parse::one_of(backend).cloned().unwrap_or_default();
-        Ok(this)
+        Ok(parse::env::one_of("INSTRUMENT_BACKEND")
+            .cloned()
+            .unwrap_or_default())
     }
 }
 
