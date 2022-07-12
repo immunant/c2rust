@@ -19,5 +19,8 @@ clap = { version = "3.2", features = ["derive"] }
 [build-dependencies]
 color-eyre = "0.6"
 
+[dev-dependencies]
+insta = "1.15"
+
 [package.metadata.rust-analyzer] 
 rustc_private = true
