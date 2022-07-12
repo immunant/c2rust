@@ -686,13 +686,7 @@ impl<'c> Translation<'c> {
         let mut tokens: Vec<TokenTree> = vec![];
 
         let mut tied_operands = HashMap::new();
-        for (
-            input_idx,
-            &AsmOperand {
-                ref constraints, ..
-            },
-        ) in inputs.iter().enumerate()
-        {
+        for (input_idx, AsmOperand { constraints, .. }) in inputs.iter().enumerate() {
             let constraints_digits = constraints.trim_matches(|c: char| !c.is_ascii_digit());
             if let Ok(output_idx) = constraints_digits.parse::<usize>() {
                 let output_key = (output_idx, true);
@@ -721,10 +715,9 @@ impl<'c> Translation<'c> {
                 if let Ok(idx) = ref_str.parse::<usize>() {
                     outputs
                         .iter()
-                        .chain(inputs.iter())
+                        .chain(inputs)
                         .nth(idx)
-                        .map(operand_is_mem_only)
-                        .unwrap_or(false)
+                        .map_or(false, operand_is_mem_only)
                 } else {
                     false
                 }
@@ -757,13 +750,12 @@ impl<'c> Translation<'c> {
                 Ok((mut dir_spec, mem_only, parsed)) => {
                     // Add to args list; if a matching in_expr is found, this is
                     // an inout and we remove the output from the outputs list
-                    let mut in_expr = inputs_by_register.remove(&parsed);
-                    if in_expr.is_none() {
+                    let in_expr = inputs_by_register
+                        .remove(&parsed)
                         // Also check for by-index references to this output
-                        in_expr = inputs_by_register.remove(&i.to_string());
-                    }
-                    // Extract expression
-                    let in_expr = in_expr.map(|(i, operand)| (i, operand.expression));
+                        .or_else(|| inputs_by_register.remove(&i.to_string()))
+                        // Extract expression
+                        .map(|(i, operand)| (i, operand.expression));
 
                     // For inouts, change the dirspec to include 'in'
                     if in_expr.is_some() {
@@ -1026,7 +1018,7 @@ impl<'c> Translation<'c> {
         stmts.push(mac);
 
         // Push the post-macro statements
-        stmts.extend(post_stmts.into_iter());
+        stmts.extend(post_stmts);
 
         Ok(stmts)
     }

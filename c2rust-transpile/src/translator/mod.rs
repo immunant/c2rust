@@ -456,10 +456,10 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&path
     let mut file_path: String = path.map_or("internal".to_string(), path_to_str);
     let path = path.unwrap_or_else(|| path::Path::new(""));
     let mut mod_names = mod_names.borrow_mut();
-    if !mod_names.contains_key(&file_path.clone()) {
+    if !mod_names.contains_key(&file_path) {
         mod_names.insert(file_path.clone(), path.to_path_buf());
     } else {
-        let mod_path = mod_names.get(&file_path.clone()).unwrap();
+        let mod_path = mod_names.get(&file_path).unwrap();
         // A collision in the module names has occured.
         // Ex: types.h can be included from
         // /usr/include/bits and /usr/include/sys
