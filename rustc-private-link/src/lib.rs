@@ -13,6 +13,7 @@ impl SysRoot {
             .expect("could not invoke `rustc` to find rust sysroot");
         let path = String::from_utf8(output.stdout)
             .expect("`rustc --print sysroot` is not UTF-8")
+            .trim_end()
             .into();
         Self { path }
     }
