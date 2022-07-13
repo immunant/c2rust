@@ -52,6 +52,8 @@ impl SysRoot {
     }
 
     pub fn link_rustc_private(&self) {
-        println!("cargo:rustc-link-search={}", self.lib().display());
+        let lib = self.lib();
+        println!("cargo:rustc-link-search={}", lib.display());
+        println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib.display());
     }
 }
