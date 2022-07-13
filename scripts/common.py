@@ -17,6 +17,8 @@ from typing import List, Callable
 
 import plumbum as pb
 
+from scripts.query_toml import query_toml
+
 
 class Colors:
     # Terminal escape codes
@@ -99,11 +101,7 @@ class Config:
 
     CC_DB_JSON = "compile_commands.json"
 
-    # Look up rust toolchain from repo root
-    rust_toolchain_str = Path(ROOT_DIR).joinpath("rust-toolchain.toml").read_text()
-    rust = toml.loads(rust_toolchain_str)
-    CUSTOM_RUST_NAME = rust["toolchain"]["channel"]
-
+    CUSTOM_RUST_NAME = query_toml(path=Path(ROOT_DIR).joinpath("rust-toolchain.toml"), query=("toolchain", "channel"))
 
     LLVM_SKIP_SIGNATURE_CHECKS  = False
 

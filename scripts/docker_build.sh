@@ -29,7 +29,7 @@ build_image() {
 
     # pull the rust version out of ../rust-toolchain.toml to keep things synced
     RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain.toml"
-    RUST_VER=$(cat $RUST_TOOLCHAIN_FILE | tr -d '\n')
+    RUST_VER=$($SCRIPT_DIR/query_toml.py toolchain.channel $RUST_TOOLCHAIN_FILE)
 
     docker pull "$BASE_IMAGE"
     docker build -f $SCRIPT_DIR/../docker/Dockerfile \
