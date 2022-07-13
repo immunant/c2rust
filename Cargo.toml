@@ -11,6 +11,7 @@ members = [
     "analysis/runtime",
     "dynamic_instrumentation",
     "pdg",
+    "rustc-private-link",
 ]
 exclude = [
     "cross-checks/pointer-tracer",
