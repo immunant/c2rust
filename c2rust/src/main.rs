@@ -38,11 +38,6 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let mut ld_library_path = String::from(env!("RUSTLIB"));
-    if let Ok(old_library_path) = env::var("LD_LIBRARY_PATH") {
-        ld_library_path = format!("{}:{}", ld_library_path, old_library_path);
-    }
-
     // Assumes the subcommand executable is in the same directory as this driver
     // program.
     let cmd_path = std::env::current_exe().expect("Cannot get current executable path");
@@ -53,7 +48,6 @@ where
     exit(
         Command::new(cmd_path.into_os_string())
             .args(args)
-            .env("LD_LIBRARY_PATH", ld_library_path)
             .status()
             .expect("SubCommand failed to start")
             .code()
