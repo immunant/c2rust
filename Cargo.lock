@@ -1533,6 +1533,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "print_bytes"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3057e36886667c470305bb076abc7f2f77a5662cb8de4124a4f5e6206ad2acd7"
+dependencies = [
+ "windows-sys",
+]
+
+[[package]]
 name = "proc-macro-error"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1645,6 +1654,9 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 [[package]]
 name = "rustc-private-link"
 version = "0.1.0"
+dependencies = [
+ "print_bytes",
+]
 
 [[package]]
 name = "rustc-workspace-hack"

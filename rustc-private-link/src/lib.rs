@@ -1,8 +1,17 @@
 use std::{
     env,
+    ffi::OsStr,
     path::{Path, PathBuf},
     process::Command,
+    str,
 };
+
+use print_bytes::println_bytes;
+
+fn print_cargo_path(name: &str, path: &Path) {
+    print!("cargo:{name}");
+    println_bytes(path);
+}
 
 pub struct SysRoot {
     path: PathBuf,
@@ -15,10 +24,23 @@ impl SysRoot {
             .args(&["--print", "sysroot"])
             .output()
             .expect("could not invoke `rustc` to find rust sysroot");
-        let path = String::from_utf8(output.stdout)
-            .expect("`rustc --print sysroot` is not UTF-8")
-            .trim_end()
-            .into();
+        // trim, but `str::trim` doesn't exist on `[u8]`
+        let path = output
+            .stdout
+            .as_slice()
+            .split(|c| c.is_ascii_whitespace())
+            .next()
+            .unwrap_or_default();
+        let path = if cfg!(unix) {
+            use std::os::unix::ffi::OsStrExt;
+
+            OsStr::from_bytes(path)
+        } else {
+            // Windows is hard, so just require UTF-8
+            let path = str::from_utf8(path).expect("`rustc --print sysroot` is not UTF-8");
+            OsStr::new(path)
+        };
+        let path = Path::new(path).to_owned();
         Self { path }
     }
 
@@ -44,16 +66,16 @@ impl SysRoot {
     }
 
     pub fn set_env_rust_sysroot(&self) {
-        println!("cargo:rustc-env=RUST_SYSROOT={}", self.sysroot().display());
+        print_cargo_path("rustc-env=RUST_SYSROOT=", self.sysroot());
     }
 
     pub fn set_env_rustlib(&self) {
-        println!("cargo:rustc-env=RUSTLIB={}", self.rustlib().display());
+        print_cargo_path("rustc-env=RUSTLIB=", &self.rustlib());
     }
 
     pub fn link_rustc_private(&self) {
         let lib = self.lib();
-        println!("cargo:rustc-link-search={}", lib.display());
-        println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib.display());
+        print_cargo_path("rustc-link-search=", &lib);
+        print_cargo_path("rustc-link-arg=-Wl,-rpath,", &lib);
     }
 }
