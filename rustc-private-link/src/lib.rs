@@ -1,4 +1,8 @@
-use std::{env, path::PathBuf, process::Command};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 pub struct SysRoot {
     path: PathBuf,
@@ -18,12 +22,36 @@ impl SysRoot {
         Self { path }
     }
 
-    pub fn set_env(&self) {
-        println!("cargo:rustc-env=RUST_SYSROOT={}", self.path.display());
+    pub fn sysroot(&self) -> &Path {
+        self.path.as_path()
+    }
+
+    pub fn lib(&self) -> PathBuf {
+        self.sysroot().join("lib")
+    }
+
+    pub fn rustlib(&self) -> PathBuf {
+        let target = env::var_os("TARGET").expect("cargo should set $TARGET");
+        [
+            self.sysroot(),
+            Path::new("lib"),
+            Path::new("rustlib"),
+            Path::new(&target),
+            Path::new("lib"),
+        ]
+        .iter()
+        .collect()
+    }
+
+    pub fn set_env_rust_sysroot(&self) {
+        println!("cargo:rustc-env=RUST_SYSROOT={}", self.sysroot().display());
+    }
+
+    pub fn set_env_rustlib(&self) {
+        println!("cargo:rustc-env=RUSTLIB={}", self.rustlib().display());
     }
 
     pub fn link_rustc_private(&self) {
-        let lib_dir = self.path.join("lib");
-        println!("cargo:rustc-link-search={}", lib_dir.display());
+        println!("cargo:rustc-link-search={}", self.lib().display());
     }
 }
