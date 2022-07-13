@@ -27,7 +27,7 @@ build_image() {
     BASE_IMAGE=${1}
     IMAGE_TAG=$(echo ${BASE_IMAGE} | tr -s :/ - ) # replace colons and slashes with hyphens
 
-    # pull the rust version out of ../rust-toolchain.toml to keep things synched
+    # pull the rust version out of ../rust-toolchain.toml to keep things synced
     RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain.toml"
     RUST_VER=$(cat $RUST_TOOLCHAIN_FILE | tr -d '\n')
 
