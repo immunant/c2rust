@@ -70,8 +70,9 @@ impl SysRoot {
     }
 
     pub fn link_rustc_private(&self) {
-        let lib = self.lib();
-        print_cargo_path("rustc-link-search=", &lib);
-        print_cargo_path("rustc-link-arg=-Wl,-rpath,", &lib);
+        for lib in [self.lib(), self.rustlib()] {
+            print_cargo_path("rustc-link-search=", &lib);
+            print_cargo_path("rustc-link-arg=-Wl,-rpath,", &lib);
+        }
     }
 }
