@@ -13,5 +13,8 @@ indexmap = "1.8"
 lazy_static = "1.4"
 log = "0.4"
 
+[build-dependencies]
+rustc-private-link = { path = "../rustc-private-link" }
+
 [package.metadata.rust-analyzer] 
 rustc_private=true
