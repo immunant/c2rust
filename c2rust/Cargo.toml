@@ -27,6 +27,8 @@ shlex = "1.1"
 c2rust-transpile = { version = "0.16.0", path = "../c2rust-transpile" }
 c2rust-dynamic-instrumentation = { version = "0.1.0", path = "../dynamic_instrumentation", optional = true }
 
+[build-dependencies]
+rustc-private-link = { path = "../rustc-private-link" }
 
 [[bin]]
 name = "c2rust-instrument"

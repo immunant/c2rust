@@ -200,6 +200,7 @@ dependencies = [
  "git-testament",
  "log",
  "regex",
+ "rustc-private-link",
  "shlex",
 ]
 
