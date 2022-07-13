@@ -17,7 +17,7 @@ linked_hash_set = "0.1"
 clap = { version = "3.2", features = ["derive"] }
 
 [build-dependencies]
-color-eyre = "0.6"
+rustc-private-link = { path = "../rustc-private-link" }
 
 [dev-dependencies]
 insta = "1.15"
