@@ -10,6 +10,8 @@ use std::{
 };
 
 use crate::util::pad_columns;
+use crate::util::DisplayHash;
+use crate::util::HashSize;
 use crate::util::ShortOption;
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
@@ -168,7 +170,8 @@ pub const _ROOT_NODE: NodeId = NodeId::from_u32(0);
 
 impl Display for NodeId {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "n[{}]", self.as_usize())
+        let id = self.as_usize();
+        write!(f, "n[{id}]")
     }
 }
 
@@ -217,7 +220,8 @@ impl Display for Graph {
                 .to_string()
             })
             .collect::<Vec<_>>();
-        writeln!(f, "{{")?;
+        let id = DisplayHash::new(self, HashSize::U32);
+        writeln!(f, "g[{id}] {{")?;
         for line in pad_columns(&lines, sep, " ") {
             writeln!(f, "\t{line}")?;
         }
@@ -233,7 +237,8 @@ newtype_index!(
 
 impl Display for GraphId {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "g[{}]", self.as_usize())
+        let id = self.as_usize();
+        write!(f, "g[{id}]")
     }
 }
 
@@ -256,11 +261,11 @@ impl Graphs {
 
 impl Display for Graphs {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        for (graph_id, graph) in self.graphs.iter_enumerated() {
-            if graph_id.as_usize() != 0 {
+        for (i, graph) in self.graphs.iter().enumerate() {
+            if i != 0 {
                 write!(f, "\n\n")?;
             }
-            write!(f, "{graph_id} {graph}")?;
+            write!(f, "{graph}")?;
         }
         Ok(())
     }

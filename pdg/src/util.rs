@@ -1,5 +1,7 @@
 use itertools::Itertools;
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hasher;
 use std::{
     cmp::min,
     collections::HashMap,
@@ -185,4 +187,65 @@ pub fn pad_columns(lines: &[String], split_sep: char, join_sep: &str) -> Vec<Str
                 .join(join_sep)
         })
         .collect::<Vec<_>>()
+}
+
+pub enum HashSize {
+    U32,
+    U64,
+}
+
+impl Default for HashSize {
+    fn default() -> Self {
+        Self::U64
+    }
+}
+
+/// Lazily [`Display`] the hash value of an `impl `[`Hash`] using [`DefaultHasher`].
+pub struct DisplayHash<'a, T: Hash> {
+    inner: &'a T,
+    hash_size: HashSize,
+}
+
+impl<'a, T: Hash> DisplayHash<'a, T> {
+    pub fn new(inner: &'a T, hash_size: HashSize) -> Self {
+        Self { inner, hash_size }
+    }
+
+    pub fn to_u64(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.inner.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    pub fn to_u32(&self) -> u32 {
+        let h = self.to_u64();
+        let lo = h as u32;
+        let hi = (h >> 32) as u32;
+        lo ^ hi
+    }
+
+    pub fn u64_bytes(&self) -> [u8; 8] {
+        self.to_u64().to_le_bytes()
+    }
+
+    pub fn u32_bytes(&self) -> [u8; 4] {
+        self.to_u32().to_le_bytes()
+    }
+
+    pub fn base64(&self) -> String {
+        match self.hash_size {
+            HashSize::U32 => base64::encode(&self.u32_bytes()),
+            HashSize::U64 => base64::encode(&self.u64_bytes()),
+        }
+    }
+
+    pub fn base64_short(&self) -> String {
+        self.base64().trim_end_matches('=').into()
+    }
+}
+
+impl<T: Hash> Display for DisplayHash<'_, T> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}", self.base64_short())
+    }
 }
