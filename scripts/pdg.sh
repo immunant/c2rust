@@ -60,9 +60,6 @@ main() {
     export RUST_BACKTRACE=1
     unset RUSTC_WRAPPER
 
-    local rustc_path="$(rustup which rustc)"
-    local toolchain_dir="$(dirname "$(dirname "${rustc_path}")")"
-
     local c2rust="${cwd}/${profile_dir}/c2rust"
     local c2rust_instrument="${cwd}/${profile_dir}/c2rust-instrument"
     local runtime="${cwd}/analysis/runtime/"
@@ -77,7 +74,6 @@ main() {
         if [[ "${c2rust_instrument}" -nt "${metadata}" ]]; then
             cargo clean --profile dev # always dev/debug for now
 
-            export LD_LIBRARY_PATH="${toolchain_dir}/lib"
             if ! "${c2rust}" instrument \
                 "${metadata}" "${runtime}" \
                 -- "${profile_args[@]}"  \

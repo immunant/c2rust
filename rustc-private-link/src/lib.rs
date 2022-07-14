@@ -9,7 +9,7 @@ use std::{
 use print_bytes::println_bytes;
 
 fn print_cargo_path(name: &str, path: &Path) {
-    print!("cargo:{name}=");
+    print!("cargo:{name}");
     println_bytes(path);
 }
 
@@ -66,14 +66,12 @@ impl SysRoot {
     }
 
     pub fn set_env_rust_sysroot(&self) {
-        print_cargo_path("rustc-env=RUST_SYSROOT", self.sysroot());
-    }
-
-    pub fn set_env_rustlib(&self) {
-        print_cargo_path("rustc-env=RUSTLIB", &self.rustlib());
+        print_cargo_path("rustc-env=RUST_SYSROOT=", self.sysroot());
     }
 
     pub fn link_rustc_private(&self) {
-        print_cargo_path("rustc-link-search", &self.lib());
+        let lib = self.lib();
+        print_cargo_path("rustc-link-search=", &lib);
+        print_cargo_path("rustc-link-arg=-Wl,-rpath,", &lib);
     }
 }
