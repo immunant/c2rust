@@ -90,6 +90,9 @@ main() {
                 -- "${profile_args[@]}"  \
             1> instrument.out.log \
             2> instrument.err.jsonl; then
+                # delete so that we'll re-compile next time
+                # instead of thinking it's already done
+                rm -f "${metadata}"
                 "${script_dir}/pretty-instrument-err.mjs" < instrument.err.jsonl
                 return 1;
             fi
