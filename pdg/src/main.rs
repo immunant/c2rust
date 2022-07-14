@@ -142,7 +142,10 @@ mod tests {
         color_eyre::install()?;
         env::set_current_dir("..")?;
         let dir = Path::new("analysis/test");
-        Command::new("scripts/pdg.sh").arg(dir).status()?;
+        Command::new("scripts/pdg.sh")
+            .arg(dir)
+            .env("BINARY", "c2rust-analysis-test")
+            .status()?;
         let pdg = fs_err::read_to_string(dir.join("pdg.log"))?;
         insta::assert_display_snapshot!(pdg);
         Ok(())
