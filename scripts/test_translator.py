@@ -63,11 +63,11 @@ class CStaticLibrary:
 
 
 class CFile:
-    def __init__(self, logLevel: str, path: str, flags: Set[str] = None) -> None:
+    def __init__(self, log_level: str, path: str, flags: Set[str] = None) -> None:
         if not flags:
             flags = set()
 
-        self.logLevel = logLevel
+        self.log_level = log_level
         self.path = path
         self.disable_incremental_relooper = "disable_incremental_relooper" in flags
         self.disallow_current_block = "disallow_current_block" in flags
@@ -99,7 +99,7 @@ class CFile:
         if self.emit_build_files:
             args.append("--emit-build-files")
 
-        if self.logLevel == 'DEBUG':
+        if self.log_level == 'DEBUG':
             args.append("--log-level=debug")
 
         args.append("--")
@@ -210,7 +210,7 @@ class TestFile(RustFile):
 
 
 class TestDirectory:
-    def __init__(self, full_path: str, files: str, keep: List[str], logLevel: str) -> None:
+    def __init__(self, full_path: str, files: str, keep: List[str], log_level: str) -> None:
         self.c_files = []
         self.rs_test_files = []
         self.full_path = full_path
@@ -218,7 +218,7 @@ class TestDirectory:
         self.files = files
         self.name = os.path.basename(full_path)
         self.keep = keep
-        self.logLevel = logLevel
+        self.log_level = log_level
         self.generated_files = {
             "rust_src": [],
             "c_obj": [],
@@ -272,7 +272,7 @@ class TestDirectory:
         if "skip_translation" in file_flags:
             return
 
-        return CFile(self.logLevel, path, file_flags)
+        return CFile(self.log_level, path, file_flags)
 
     def _read_rust_test_file(self, path: str) -> TestFile:
         with open(path, 'r', encoding="utf-8") as file:
@@ -605,14 +605,14 @@ def get_testdirectories(
         directory: str,
         files: str,
         keep: List[str],
-        logLevel: str,
+        log_level: str,
 ) -> Generator[TestDirectory, None, None]:
     dir = Path(directory)
     for path in dir.iterdir():
         if path.is_dir():
             if path.name == "longdouble" and on_mac():
                 continue
-            yield TestDirectory(str(path.absolute()), files, keep, logLevel)
+            yield TestDirectory(str(path.absolute()), files, keep, log_level)
 
 
 def main() -> None:
@@ -628,7 +628,7 @@ def main() -> None:
         default='.*', help="Regular expression to filter which tests to run"
     )
     parser.add_argument(
-        '--log', dest='logLevel',
+        '--log', dest='log_level',
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
         default='CRITICAL', help="Set the logging level"
     )
@@ -644,8 +644,8 @@ def main() -> None:
     test_directories = get_testdirectories(args.directory,
                                            args.regex_files,
                                            args.keep,
-                                           args.logLevel)
-    setup_logging(args.logLevel)
+                                           args.log_level)
+    setup_logging(args.log_level)
 
     logging.debug("args: %s", " ".join(sys.argv))
 
