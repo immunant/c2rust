@@ -4,6 +4,12 @@ set -euox pipefail
 
 # Usage: `./pdg.sh <test crate dir> <test binary args...>`
 # 
+# Environment Variables:
+# * `PROFILE` (default `release`):
+#       a `cargo` profile as in `target/$PROFILE`
+# * `BINARY` (default calculated by `get-binary-names-from-cargo-metadata.mjs`, require node):
+#       the name of the binary produced by the test crate
+# 
 # Instrument and run a test crate and create its PDG.
 # 
 # 1. Compile the whole `c2rust` workspace, including `c2rust instrument`.
@@ -66,8 +72,13 @@ main() {
     local metadata="${cwd}/${test_dir}/metadata.bc"
 
     (cd "${test_dir}"
-        local binary_name="$(command cargo metadata --format-version 1 \
-            | "${script_dir}/get-binary-names-from-cargo-metadata.mjs" default)"
+        local binary_name
+        if [[ "${BINARY:-}" != "" ]]; then
+            binary_name="${BINARY}"
+        else
+            binary_name="$(command cargo metadata --format-version 1 \
+                | "${script_dir}/get-binary-names-from-cargo-metadata.mjs" default)"
+        fi
         local profile_dir="target/debug" # always dev/debug for now
         local binary_path="${profile_dir}/${binary_name}"
         
