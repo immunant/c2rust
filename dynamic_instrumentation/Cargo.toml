@@ -17,4 +17,4 @@ log = "0.4"
 rustc-private-link = { path = "../rustc-private-link" }
 
 [package.metadata.rust-analyzer] 
-rustc_private=true
+rustc_private = true
