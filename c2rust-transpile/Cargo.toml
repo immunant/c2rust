@@ -16,8 +16,6 @@ edition = "2021"
 c2rust-ast-builder = { version = "0.16.0", path = "../c2rust-ast-builder" }
 c2rust-ast-exporter = { version = "0.16.0", path = "../c2rust-ast-exporter" }
 c2rust-ast-printer = { version = "0.16.0", path = "../c2rust-ast-printer" }
-c2rust-bitfields = { version = "0.3.0", path = "../c2rust-bitfields" }
-clap = {version = "2.34", features = ["yaml"]}
 colored = "2.0"
 dtoa = "1.0"
 failure = "0.1.5"
@@ -39,7 +37,7 @@ serde_json = "1.0"
 smallvec = "1.0"
 strum = "0.24"
 strum_macros = "0.24"
-syn = { version = "1.0", features = ["full", "extra-traits", "parsing", "printing"]}
+syn = { version = "1.0", features = ["full", "extra-traits", "parsing", "printing"], default-features = false}
 
 [features]
 # Force static linking of LLVM
