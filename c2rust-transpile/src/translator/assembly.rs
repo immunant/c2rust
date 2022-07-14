@@ -496,23 +496,22 @@ fn map_input_op_idx(
     if let Some(adj_idx) = idx.checked_sub(num_output_operands) {
         // will only be Some(idx) if it was an input operand
         match tied_operands.get(&(adj_idx, false)) {
-            Some(&out_idx) => {
-                return out_idx;
-            }
+            Some(&out_idx) => out_idx,
             None => {
                 // get number of tied inputs before this index
                 // TODO: can calculate this once before the call, not once for each input
                 let num_tied_before = tied_operands
                     .keys()
-                    .filter(|&&(iidx, is_out)| !is_out && iidx < adj_idx)
+                    .copied()
+                    .filter(|&(iidx, is_out)| !is_out && iidx < adj_idx)
                     .count();
                 // shift the original index by the number of tied input operands prior to the current one
-                return idx - num_tied_before;
+                idx - num_tied_before
             }
-        };
+        }
+    } else {
+        idx
     }
-
-    idx
 }
 
 /// Rewrite a LLVM inline assembly template string into an asm!-compatible one
@@ -687,13 +686,7 @@ impl<'c> Translation<'c> {
         let mut tokens: Vec<TokenTree> = vec![];
 
         let mut tied_operands = HashMap::new();
-        for (
-            input_idx,
-            &AsmOperand {
-                ref constraints, ..
-            },
-        ) in inputs.iter().enumerate()
-        {
+        for (input_idx, AsmOperand { constraints, .. }) in inputs.iter().enumerate() {
             let constraints_digits = constraints.trim_matches(|c: char| !c.is_ascii_digit());
             if let Ok(output_idx) = constraints_digits.parse::<usize>() {
                 let output_key = (output_idx, true);
@@ -722,10 +715,9 @@ impl<'c> Translation<'c> {
                 if let Ok(idx) = ref_str.parse::<usize>() {
                     outputs
                         .iter()
-                        .chain(inputs.iter())
+                        .chain(inputs)
                         .nth(idx)
-                        .map(operand_is_mem_only)
-                        .unwrap_or(false)
+                        .map_or(false, operand_is_mem_only)
                 } else {
                     false
                 }
@@ -758,13 +750,12 @@ impl<'c> Translation<'c> {
                 Ok((mut dir_spec, mem_only, parsed)) => {
                     // Add to args list; if a matching in_expr is found, this is
                     // an inout and we remove the output from the outputs list
-                    let mut in_expr = inputs_by_register.remove(&parsed);
-                    if in_expr.is_none() {
+                    let in_expr = inputs_by_register
+                        .remove(&parsed)
                         // Also check for by-index references to this output
-                        in_expr = inputs_by_register.remove(&i.to_string());
-                    }
-                    // Extract expression
-                    let in_expr = in_expr.map(|(i, operand)| (i, operand.expression));
+                        .or_else(|| inputs_by_register.remove(&i.to_string()))
+                        // Extract expression
+                        .map(|(i, operand)| (i, operand.expression));
 
                     // For inouts, change the dirspec to include 'in'
                     if in_expr.is_some() {
@@ -784,10 +775,7 @@ impl<'c> Translation<'c> {
             }
         }
         // Add unmatched inputs
-        for (_, (i, input)) in inputs_by_register
-            .into_iter()
-            .chain(other_inputs.into_iter())
-        {
+        for (_, (i, input)) in inputs_by_register.into_iter().chain(other_inputs) {
             let (dir_spec, mem_only, parsed) = match parse_constraints(&input.constraints, arch) {
                 Ok(x) => x,
                 Err(e) => {
@@ -1031,7 +1019,7 @@ impl<'c> Translation<'c> {
         stmts.push(mac);
 
         // Push the post-macro statements
-        stmts.extend(post_stmts.into_iter());
+        stmts.extend(post_stmts);
 
         Ok(stmts)
     }

@@ -13,6 +13,7 @@ use indexmap::indexmap;
 use indexmap::{IndexMap, IndexSet};
 use log::{error, info, trace, warn};
 use proc_macro2::{Punct, Spacing::*, Span, TokenStream, TokenTree};
+use syn::punctuated::Punctuated;
 use syn::spanned::Spanned as _;
 use syn::*;
 use syn::{BinOp, UnOp}; // To override c_ast::{BinOp,UnOp} from glob import
@@ -291,26 +292,23 @@ fn int_arg_metaitem(name: &str, arg: u128) -> NestedMeta {
     let inner = Meta::List(MetaList {
         path: mk().path(name),
         paren_token: Default::default(),
-        nested: FromIterator::from_iter(
-            vec![mk().nested_meta_item(NestedMeta::Lit(lit))].into_iter(),
-        ),
+        nested: Punctuated::from_iter([mk().nested_meta_item(NestedMeta::Lit(lit))]),
     });
     NestedMeta::Meta(inner)
 }
 
 fn cast_int(val: Box<Expr>, name: &str, need_lit_suffix: bool) -> Box<Expr> {
-    let opt_literal_val = match &*val {
-        Expr::Lit(ref l) => match &l.lit {
-            Lit::Int(i) => Some(i.base10_digits().parse().unwrap()),
-            _ => None,
-        },
-        _ => None,
-    };
-    match opt_literal_val {
-        Some(i) if !need_lit_suffix => mk().lit_expr(mk().int_unsuffixed_lit(i)),
-        Some(i) => mk().lit_expr(mk().int_lit(i, name)),
-        None => mk().cast_expr(val, mk().path_ty(vec![name])),
+    if let Expr::Lit(l) = &*val {
+        if let Lit::Int(i) = &l.lit {
+            return if need_lit_suffix {
+                let lit = i.base10_digits().parse().unwrap();
+                mk().lit_expr(mk().int_lit(lit, name))
+            } else {
+                val
+            };
+        }
     }
+    mk().cast_expr(val, mk().path_ty(vec![name]))
 }
 
 /// Pointer offset that casts its argument to isize
@@ -458,10 +456,10 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&path
     let mut file_path: String = path.map_or("internal".to_string(), path_to_str);
     let path = path.unwrap_or_else(|| path::Path::new(""));
     let mut mod_names = mod_names.borrow_mut();
-    if !mod_names.contains_key(&file_path.clone()) {
+    if !mod_names.contains_key(&file_path) {
         mod_names.insert(file_path.clone(), path.to_path_buf());
     } else {
-        let mod_path = mod_names.get(&file_path.clone()).unwrap();
+        let mod_path = mod_names.get(&file_path).unwrap();
         // A collision in the module names has occured.
         // Ex: types.h can be included from
         // /usr/include/bits and /usr/include/sys
@@ -982,7 +980,7 @@ fn make_submodule(
         .unwrap_or(0);
     let mod_name = clean_path(mod_names, file_path);
 
-    for item in items.iter() {
+    for item in &items {
         let ident_name = match item_ident(item) {
             Some(i) => i.to_string(),
             None => continue,
@@ -998,7 +996,7 @@ fn make_submodule(
         use_item_store.add_use_with_attr(use_path, &ident_name, vis);
     }
 
-    for foreign_item in foreign_items.iter() {
+    for foreign_item in &foreign_items {
         let ident_name = match foreign_item_ident_vis(foreign_item) {
             Some((ident, _vis)) => ident.to_string(),
             None => continue,
@@ -1008,9 +1006,7 @@ fn make_submodule(
         use_item_store.add_use(use_path, &ident_name);
     }
 
-    for item in uses.into_items() {
-        items.push(item);
-    }
+    items.extend(uses.into_items());
 
     if !foreign_items.is_empty() {
         items.push(mk().extern_("C").foreign_items(foreign_items));
@@ -4990,7 +4986,7 @@ impl<'c> Translation<'c> {
             CDeclKind::Struct { ref fields, .. } | CDeclKind::Union { ref fields, .. } => {
                 let field_ids = fields.as_ref().map(|vec| vec.as_slice()).unwrap_or(&[]);
 
-                for field_id in field_ids.iter() {
+                for field_id in field_ids {
                     match self.ast_context[*field_id].kind {
                         CDeclKind::Field { typ, .. } => self.import_type(typ.ctype, decl_file_id),
                         _ => unreachable!("Found something in a struct other than a field"),

@@ -16,9 +16,8 @@ fn raise_span_limit(_new_limit: u32) {
     if new_limit >= limit {
         let delta = new_limit - limit;
         let s = str::repeat("        ", (delta as usize + 7) / 8);
-        use std::str::FromStr;
         /* used only for its side-effect of expanding the source map */
-        let _ = proc_macro2::TokenStream::from_str(&s);
+        let _ = s.parse::<proc_macro2::TokenStream>();
         SPAN_LIMIT.store(new_limit, Ordering::Relaxed);
     }
 }
@@ -139,9 +138,9 @@ struct SpanRepr {
 /// On the plus side, the `fallback::Span` payload is a POD pair of two u32s, so that case is trivial.
 fn validate_repr() {
     let repr: SpanRepr = unsafe { std::mem::transmute(Span::call_site()) };
-    assert!(repr.compiler_or_fallback == 1);
-    assert!(repr.lo == 0);
-    assert!(repr.hi == 0);
+    assert_eq!(repr.compiler_or_fallback, 1);
+    assert_eq!(repr.lo, 0);
+    assert_eq!(repr.hi, 0);
 }
 
 /** return a pair of mutable references to s.lo and s.hi */

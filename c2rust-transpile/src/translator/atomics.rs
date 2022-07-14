@@ -26,9 +26,9 @@ impl<'c> Translation<'c> {
     fn convert_memordering(&self, expr: CExprId) -> Option<Ordering> {
         let memorder = &self.ast_context[expr];
         let i = match memorder.kind {
-            CExprKind::Literal(_, CLiteral::Integer(i, _)) => Some(i),
-            _ => None,
-        }?;
+            CExprKind::Literal(_, CLiteral::Integer(i, _)) => i,
+            _ => return None,
+        };
         use Ordering::*;
         let ordering = match i {
             0 => Relaxed,

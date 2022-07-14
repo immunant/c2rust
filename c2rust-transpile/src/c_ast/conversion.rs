@@ -172,7 +172,7 @@ fn parse_attributes(attributes: Vec<Value>) -> IndexSet<Attribute> {
     let mut expect_alias_value = false;
     let mut expect_visibility_value = false;
 
-    for attr in attributes.into_iter() {
+    for attr in attributes {
         let attr_str = from_value::<String>(attr).expect("Decl attributes should be strings");
 
         match attr_str.as_str() {
@@ -1928,13 +1928,11 @@ impl ConversionContext {
                         ident
                     );
 
-                    let initializer = node
-                        .children
-                        .get(0)
-                        .into_iter()
-                        .flatten()
-                        .map(|id| self.visit_expr(*id))
-                        .next();
+                    let initializer = if let Some(Some(id)) = node.children.get(0) {
+                        Some(self.visit_expr(*id))
+                    } else {
+                        None
+                    };
 
                     let typ_id = node
                         .type_id

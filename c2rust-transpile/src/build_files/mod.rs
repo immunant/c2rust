@@ -119,7 +119,7 @@ impl ModuleTree {
     /// Convert the tree representation into a linear vector
     /// and push it into `res`
     fn linearize(&self, res: &mut Vec<Module>) {
-        for (name, child) in self.0.iter() {
+        for (name, child) in &self.0 {
             child.linearize_internal(name, res);
         }
     }
@@ -299,8 +299,7 @@ fn emit_cargo_toml<'lcmd>(
             crate_json
                 .as_object()
                 .cloned() // FIXME: we need to clone it because there's no `into_object`
-                .unwrap()
-                .into_iter(),
+                .unwrap(),
         );
     }
 

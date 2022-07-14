@@ -160,7 +160,7 @@ impl<T> FromIterator<WithStmts<T>> for WithStmts<Vec<T>> {
         let mut stmts = vec![];
         let mut res = vec![];
         let mut is_unsafe = false;
-        for mut val in value.into_iter() {
+        for mut val in value {
             is_unsafe |= val.is_unsafe();
             stmts.append(val.stmts_mut());
             res.push(val.into_value());

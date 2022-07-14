@@ -3,6 +3,7 @@
 //! requires the use of the c2rust-bitfields crate.
 
 use std::collections::HashSet;
+use std::fmt::Write;
 use std::ops::Index;
 
 use super::named_references::NamedReference;
@@ -175,16 +176,14 @@ impl<'a> Translation<'a> {
                             })
                         }
 
-                        let field = mk().pub_().struct_field(field_name.clone(), ty);
-
                         reorganized_fields.push(FieldType::Regular {
-                            name: field_name,
+                            name: field_name.clone(),
                             ctype,
-                            field: Box::new(field),
+                            field: Box::new(mk().pub_().struct_field(field_name, ty)),
                             use_inner_type,
                             is_va_list,
                         });
-                        reorganized_fields.extend(extra_fields.into_iter());
+                        reorganized_fields.extend(extra_fields);
 
                         next_byte_pos = (platform_bit_offset + platform_type_bitwidth) / 8;
 
@@ -206,8 +205,7 @@ impl<'a> Translation<'a> {
                         ref mut bytes,
                         ref mut attrs,
                     }) => {
-                        name.push('_');
-                        name.push_str(&field_name);
+                        write!(name, "_{}", field_name).ok();
 
                         let end_bit = platform_bit_offset + bitfield_width;
 
@@ -216,9 +214,8 @@ impl<'a> Translation<'a> {
                         for bit in platform_bit_offset..end_bit {
                             let byte = bit / 8;
 
-                            if !encountered_bytes.contains(&byte) {
+                            if encountered_bytes.insert(byte) {
                                 *bytes += 1;
-                                encountered_bytes.insert(byte);
                             }
                         }
 
@@ -226,9 +223,11 @@ impl<'a> Translation<'a> {
                         let bit_end = bit_start + bitfield_width - 1;
                         let bit_range = format!("{}..={}", bit_start, bit_end);
 
-                        attrs.push((field_name.clone(), ty, bit_range));
+                        attrs.push((field_name, ty, bit_range));
                     }
+
                     Some(_) => unreachable!("Found last bitfield group which is not a group"),
+
                     None => {
                         let mut bytes = 0;
                         let end_bit = platform_bit_offset + bitfield_width;
@@ -238,20 +237,18 @@ impl<'a> Translation<'a> {
                         for bit in platform_bit_offset..end_bit {
                             let byte = bit / 8;
 
-                            if !encountered_bytes.contains(&byte) {
+                            if encountered_bytes.insert(byte) {
                                 bytes += 1;
-                                encountered_bytes.insert(byte);
                             }
                         }
 
                         let bit_range = format!("0..={}", bitfield_width - 1);
-                        let attrs = vec![(field_name.clone(), ty, bit_range)];
 
                         last_bitfield_group = Some(FieldType::BitfieldGroup {
                             start_bit: platform_bit_offset,
-                            field_name,
+                            field_name: field_name.clone(),
                             bytes,
-                            attrs,
+                            attrs: vec![(field_name, ty, bit_range)],
                         });
                     }
                 }

@@ -147,7 +147,7 @@ fn use_tree_with_prefix(prefix: Path, leaf: UseTree) -> UseTree {
 }
 
 fn punct<T, P: Default>(x: Vec<T>) -> Punctuated<T, P> {
-    Punctuated::from_iter(x.into_iter())
+    Punctuated::from_iter(x)
 }
 
 fn punct_box<T, P: Default>(x: Vec<Box<T>>) -> Punctuated<T, P> {
@@ -562,13 +562,9 @@ impl Builder {
         let mut tokens = TokenStream::new();
         let comma_token = token::Comma(self.span);
         let mut it = list.nested.into_iter();
-        tokens.extend(
-            Some(proc_macro2::TokenTree::Punct(proc_macro2::Punct::new(
-                '(',
-                proc_macro2::Spacing::Alone,
-            )))
-            .into_iter(),
-        );
+        tokens.extend(Some(proc_macro2::TokenTree::Punct(
+            proc_macro2::Punct::new('(', proc_macro2::Spacing::Alone),
+        )));
         if let Some(value) = it.next() {
             value.to_tokens(&mut tokens);
         }
@@ -576,13 +572,9 @@ impl Builder {
             comma_token.to_tokens(&mut tokens);
             value.to_tokens(&mut tokens);
         }
-        tokens.extend(
-            Some(proc_macro2::TokenTree::Punct(proc_macro2::Punct::new(
-                ')',
-                proc_macro2::Spacing::Alone,
-            )))
-            .into_iter(),
-        );
+        tokens.extend(Some(proc_macro2::TokenTree::Punct(
+            proc_macro2::Punct::new(')', proc_macro2::Spacing::Alone),
+        )));
         PreparedMetaItem {
             path: list.path,
             tokens,
@@ -1640,7 +1632,7 @@ impl Builder {
     pub fn cvar_args_ty(self) -> Box<Type> {
         let dot = TokenTree::Punct(proc_macro2::Punct::new('.', proc_macro2::Spacing::Joint));
         let dots = vec![dot.clone(), dot.clone(), dot];
-        Box::new(Type::Verbatim(TokenStream::from_iter(dots.into_iter())))
+        Box::new(Type::Verbatim(TokenStream::from_iter(dots)))
     }
 
     // Stmts

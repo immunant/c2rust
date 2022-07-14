@@ -5,7 +5,6 @@ use log::Level;
 use std::collections::HashSet;
 use std::fmt::{self, Display};
 use std::io;
-use std::str::FromStr;
 use std::sync::Arc;
 use strum_macros::{Display, EnumString};
 
@@ -42,7 +41,8 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>, log_level: log::LevelFilt
                 Level::Trace => "trace",
             };
             let target = record.target();
-            let warn_flag = Diagnostic::from_str(target)
+            let warn_flag = target
+                .parse::<Diagnostic>()
                 .map(|_| format!(" [-W{}]", target))
                 .unwrap_or_default();
             out.finish(format_args!(
@@ -56,11 +56,12 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>, log_level: log::LevelFilt
         .level(log_level)
         .filter(move |metadata| {
             if enabled_warnings.contains(&Diagnostic::All) {
-                return true;
+                true
+            } else if let Ok(d) = metadata.target().parse::<Diagnostic>() {
+                enabled_warnings.contains(&d)
+            } else {
+                true
             }
-            Diagnostic::from_str(metadata.target())
-                .map(|d| enabled_warnings.contains(&d))
-                .unwrap_or(true)
         })
         .chain(io::stderr())
         .into_log();

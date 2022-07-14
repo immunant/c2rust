@@ -87,9 +87,7 @@ pub fn heuristic_loop_body(
     follow_entries: &mut IndexSet<Label>,
 ) {
     if follow_entries.len() > 1 {
-        for follow_entry in follow_entries.clone().iter() {
-            let mut following: Label = follow_entry.clone();
-
+        for mut following in follow_entries.clone() {
             loop {
                 // If this block might have come from 2 places, give up
                 if predecessor_map[&following].len() != 1 {
@@ -202,7 +200,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
     /// Filter out any nodes which need to be pruned from the entire CFG due to being unreachable.
     pub fn filter_unreachable(&mut self, reachable: &IndexSet<Lbl>) {
         self.node_loops.retain(|lbl, _| reachable.contains(lbl));
-        for (_, &mut (ref mut set, _)) in self.loops.iter_mut() {
+        for (_, (set, _)) in &mut self.loops {
             set.retain(|lbl| reachable.contains(lbl));
         }
     }
@@ -211,7 +209,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
     /// going to be very much _not_ injective - the whole point of remapping is to merge some nodes.
     pub fn rewrite_blocks(&mut self, rewrites: &IndexMap<Lbl, Lbl>) {
         self.node_loops.retain(|lbl, _| rewrites.get(lbl).is_none());
-        for (_, &mut (ref mut set, _)) in self.loops.iter_mut() {
+        for (_, (set, _)) in &mut self.loops {
             set.retain(|lbl| rewrites.get(lbl).is_none());
         }
     }

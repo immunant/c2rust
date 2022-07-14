@@ -1133,7 +1133,7 @@ struct WipBlock {
 
 impl Extend<Stmt> for WipBlock {
     fn extend<T: IntoIterator<Item = Stmt>>(&mut self, iter: T) {
-        for stmt in iter.into_iter() {
+        for stmt in iter {
             self.body.push(StmtOrDecl::Stmt(stmt))
         }
     }
@@ -2153,7 +2153,7 @@ impl Cfg<Label, StmtOrDecl> {
         file.write_fmt(format_args!("  entry -> {};\n", self.entries.debug_print()))?;
 
         // Rest of graph
-        for (lbl, bb) in self.nodes.iter() {
+        for (lbl, bb) in &self.nodes {
             let pretty_terminator = match bb.terminator {
                 End | Jump(_) => String::from(""),
                 Branch(ref cond, _, _) => format!("\n{}", pprust::expr_to_string(cond.deref())),

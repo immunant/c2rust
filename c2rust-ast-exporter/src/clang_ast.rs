@@ -202,7 +202,7 @@ pub fn process(items: Value) -> error::Result<AstContext> {
         })
         .collect::<Vec<_>>();
 
-    for mut entry in all_nodes.into_iter() {
+    for mut entry in all_nodes {
         let entry_id: u64 = from_value(entry.pop_front().unwrap()).unwrap();
         let tag = from_value(entry.pop_front().unwrap()).unwrap();
 

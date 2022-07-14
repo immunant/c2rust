@@ -56,7 +56,7 @@ impl<W: Write> Printer<W> {
     }
 
     pub fn print(&mut self, context: &TypedAstContext) -> Result<()> {
-        for top_decl in context.c_decls_top.iter() {
+        for top_decl in &context.c_decls_top {
             self.print_decl(*top_decl, true, true, context)?;
             self.writer.write_all(b"\n")?;
         }
