@@ -61,14 +61,7 @@ pub fn realloc(mir_loc: MirLocId, old_ptr: usize, size: u64, new_ptr: usize) {
 ///
 /// Note that this is Linux-like-only.
 pub fn reallocarray(mir_loc: MirLocId, old_ptr: usize, nmemb: u64, size: u64, new_ptr: usize) {
-    RUNTIME.send_event(Event {
-        mir_loc,
-        kind: EventKind::Realloc {
-            old_ptr,
-            size: (nmemb * size) as usize,
-            new_ptr,
-        },
-    });
+    realloc(mir_loc, old_ptr, size * nmemb, new_ptr)
 }
 
 /// A hook function (see [`HOOK_FUNCTIONS`]).
