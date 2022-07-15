@@ -260,7 +260,7 @@ fn pop_last_projection<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Place
     })
 }
 
-/// Get the inner-most dereferenced place.
+/// Get the inner-most dereferenced [`Place`].
 fn strip_all_deref<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
     let mut base_dest = *p;
     let mut place_ref = base_dest.as_ref();
