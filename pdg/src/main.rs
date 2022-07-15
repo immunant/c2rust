@@ -101,13 +101,13 @@ fn main() -> eyre::Result<()> {
         }
     }
 
-    for (graph_id, graph) in pdg.graphs.iter_enumerated() {
+    for graph in &pdg.graphs {
         let needs_write = graph
             .needs_write_permission()
             .map(|node_id| node_id.as_usize())
             .collect::<Vec<_>>();
         if should_print(ToPrint::Graphs) {
-            println!("{graph_id} {graph}");
+            println!("{graph}");
         }
         if should_print(ToPrint::WritePermissions) {
             println!("nodes_that_need_write = {needs_write:?}");

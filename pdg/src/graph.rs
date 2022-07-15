@@ -217,7 +217,7 @@ impl Display for Graph {
                 .to_string()
             })
             .collect::<Vec<_>>();
-        writeln!(f, "{{")?;
+        writeln!(f, "g {{")?;
         for line in pad_columns(&lines, sep, " ") {
             writeln!(f, "\t{line}")?;
         }
@@ -256,11 +256,11 @@ impl Graphs {
 
 impl Display for Graphs {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        for (graph_id, graph) in self.graphs.iter_enumerated() {
-            if graph_id.as_usize() != 0 {
+        for (i, graph) in self.graphs.iter().enumerate() {
+            if i != 0 {
                 write!(f, "\n\n")?;
             }
-            write!(f, "{graph_id} {graph}")?;
+            write!(f, "{graph}")?;
         }
         Ok(())
     }
