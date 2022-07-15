@@ -236,8 +236,12 @@ impl<'a, 'tcx: 'a> CollectFunctionInstrumentationPoints<'a, 'tcx> {
         find_instrumentation_def(self.tcx, self.runtime_crate_did, name)
     }
 
+    fn is_shared_ptr(&self, ty: &TyS<'tcx>) -> bool {
+        ty.is_region_ptr() && !ty.is_mutable_ptr()
+    }
+
     fn is_shared_or_unsafe_ptr(&self, ty: &TyS<'tcx>) -> bool {
-        ty.is_unsafe_ptr() || (ty.is_region_ptr() && !ty.is_mutable_ptr())
+        ty.is_unsafe_ptr() || self.is_shared_ptr(ty)
     }
 
     fn func_hash(&self) -> mir_loc::DefPathHash {
@@ -252,7 +256,7 @@ fn has_outer_deref(p: &Place) -> bool {
     )
 }
 
-fn pop_last_projection<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Place<'tcx>> {
+fn sans_last_projection<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Place<'tcx>> {
     let Place { local, projection } = p;
     projection.split_last().map(|(_last, rest)| Place {
         local,
@@ -277,13 +281,13 @@ fn strip_all_deref<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
     base_dest
 }
 
-/// Used to strip initital deref from projection sequences
+/// Used to strip initital [`Deref`](ProjectionElem::Deref) from projection sequences.
 fn remove_outer_deref<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
     // Remove outer deref if present
     match p.as_ref().last_projection() {
         Some((_, ProjectionElem::Deref)) => {
             let sans_proj =
-                pop_last_projection(p, tcx).expect("expected but did not find deref projection");
+                sans_last_projection(p, tcx).expect("expected but did not find deref projection");
             sans_proj
         }
         _ => p,
