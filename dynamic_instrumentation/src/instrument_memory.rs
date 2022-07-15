@@ -236,17 +236,17 @@ impl<'a, 'tcx: 'a> CollectFunctionInstrumentationPoints<'a, 'tcx> {
         find_instrumentation_def(self.tcx, self.runtime_crate_did, name)
     }
 
-    fn is_shared_ptr(&self, ty: &TyS<'tcx>) -> bool {
-        ty.is_region_ptr() && !ty.is_mutable_ptr()
-    }
-
-    fn is_shared_or_unsafe_ptr(&self, ty: &TyS<'tcx>) -> bool {
-        ty.is_unsafe_ptr() || self.is_shared_ptr(ty)
-    }
-
     fn func_hash(&self) -> mir_loc::DefPathHash {
         self.tcx.def_path_hash(self.body.source.def_id()).convert()
     }
+}
+
+fn is_shared_ptr(ty: &TyS) -> bool {
+    ty.is_region_ptr() && !ty.is_mutable_ptr()
+}
+
+fn is_shared_or_unsafe_ptr(ty: &TyS) -> bool {
+    ty.is_unsafe_ptr() || is_shared_ptr(ty)
 }
 
 fn has_outer_deref(p: &Place) -> bool {
@@ -343,8 +343,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
 
         let base_ty = self.body.local_decls[place.local].ty;
         // Instrument field projections on raw-ptr places
-        if self.is_shared_or_unsafe_ptr(base_ty) && context.is_use() && !place.projection.is_empty()
-        {
+        if is_shared_or_unsafe_ptr(base_ty) && context.is_use() && !place.projection.is_empty() {
             for (pid, (_base, elem)) in place.iter_projections().enumerate() {
                 if let PlaceElem::Field(field, _) = elem {
                     let field_fn = self
@@ -476,7 +475,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         transfer_kind: TransferKind::None,
                     },
                 );
-                if self.is_shared_or_unsafe_ptr(value_ty) {
+                if is_shared_or_unsafe_ptr(value_ty) {
                     let mut loc = location;
                     loc.statement_index += 1;
                     // Stored value is a raw pointer; trace the destination
@@ -500,8 +499,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                 if let Rvalue::Cast(_, op, _) = value {
                     if let Some(p) = op.place() {
                         if !p.is_indirect()
-                            && self
-                                .is_shared_or_unsafe_ptr(p.ty(&self.body.local_decls, self.tcx).ty)
+                            && is_shared_or_unsafe_ptr(p.ty(&self.body.local_decls, self.tcx).ty)
                         {
                             // Cast from raw pointer to usize; trace the pointer being casted
                             self.add_instrumentation_point(
@@ -522,7 +520,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         }
                     }
                 }
-            } else if self.is_shared_or_unsafe_ptr(value_ty) {
+            } else if is_shared_or_unsafe_ptr(value_ty) {
                 match value {
                     Rvalue::Use(Operand::Copy(p))
                     | Rvalue::Use(Operand::Move(p))
@@ -698,7 +696,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                 if !is_hook {
                     for arg in args {
                         if let Some(place) = arg.place() {
-                            if self.is_shared_or_unsafe_ptr(place.ty(self.body, self.tcx).ty) {
+                            if is_shared_or_unsafe_ptr(place.ty(self.body, self.tcx).ty) {
                                 println!(
                                     "visiting terminator arg {:?}, {:?}, {:?}, {:?}",
                                     place,
@@ -773,7 +771,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                                     transfer_kind: TransferKind::Ret(self.func_hash()),
                                 },
                             );
-                        } else if self.is_shared_or_unsafe_ptr(
+                        } else if is_shared_or_unsafe_ptr(
                             destination
                                 .unwrap()
                                 .0
@@ -810,7 +808,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
             }
             TerminatorKind::Return => {
                 let place = Place::return_place();
-                if self.is_shared_or_unsafe_ptr(self.body.local_decls[place.local].ty) {
+                if is_shared_or_unsafe_ptr(self.body.local_decls[place.local].ty) {
                     // Function returned raw ptr; trace the return place
                     self.add_instrumentation_point(
                         location,
