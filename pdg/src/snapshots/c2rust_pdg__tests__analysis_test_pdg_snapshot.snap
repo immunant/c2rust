@@ -2,91 +2,91 @@
 source: pdg/src/main.rs
 expression: pdg
 ---
-g[0] {
+g {
 	n[0]: copy _ => _10 @ bb5[4]: fn main;
 }
 nodes_that_need_write = []
 
-g[1] {
+g {
 	n[0]: copy _ => _9 @ bb5[5]: fn main;
 }
 nodes_that_need_write = []
 
-g[2] {
+g {
 	n[0]: copy _ => _19 @ bb8[11]: fn main;
 }
 nodes_that_need_write = []
 
-g[3] {
+g {
 	n[0]: copy _ => _18 @ bb8[12]: fn main;
 }
 nodes_that_need_write = []
 
-g[4] {
+g {
 	n[0]: copy _ => _27 @ bb8[22]: fn main;
 }
 nodes_that_need_write = []
 
-g[5] {
+g {
 	n[0]: copy _ => _26 @ bb8[23]: fn main;
 }
 nodes_that_need_write = []
 
-g[6] {
+g {
 	n[0]: copy _ => _23 @ bb13[4]: fn main;
 }
 nodes_that_need_write = []
 
-g[7] {
+g {
 	n[0]: copy _ => _22 @ bb13[5]: fn main;
 }
 nodes_that_need_write = []
 
-g[8] {
+g {
 	n[0]: copy _ => _29 @ bb15[11]: fn main;
 }
 nodes_that_need_write = []
 
-g[9] {
+g {
 	n[0]: copy _ => _34 @ bb16[5]: fn main;
 }
 nodes_that_need_write = []
 
-g[10] {
+g {
 	n[0]: copy _    => _30 @ bb18[0]: fn main;
 	n[1]: copy n[0] => _2  @ bb0[0]:  fn push;
 }
 nodes_that_need_write = []
 
-g[11] {
+g {
 	n[0]: copy _ => _37 @ bb27[4]: fn main;
 }
 nodes_that_need_write = []
 
-g[12] {
+g {
 	n[0]: copy        _    => _38       @ bb28[0]: fn main;   
 	n[1]: copy        n[0] => _2        @ bb0[0]:  fn push;   
 	n[2]: value.store _    => _20.Deref @ bb4[8]:  fn invalid;
 }
 nodes_that_need_write = []
 
-g[13] {
+g {
 	n[0]: copy _ => _43 @ bb29[9]: fn main;
 }
 nodes_that_need_write = []
 
-g[14] {
+g {
 	n[0]: copy _ => _46 @ bb31[6]: fn main;
 }
 nodes_that_need_write = []
 
-g[15] {
+g {
 	n[0]: copy _    => _45 @ bb32[0]: fn main;  
 	n[1]: copy n[0] => _2  @ bb0[0]:  fn main_0;
 }
 nodes_that_need_write = []
 
-g[16] {
+g {
 	n[0]: malloc(n = 1) _    => _2 @ bb1[2]: fn simple;
 	n[1]: copy          n[0] => _1 @ bb2[2]: fn simple;
 	n[2]: field.0       n[1] => _9 @ bb4[5]: fn simple;
@@ -94,7 +94,7 @@ g[16] {
 }
 nodes_that_need_write = []
 
-g[17] {
+g {
 	n[0]:  malloc(n = 1) _     => _6  @ bb3[2]:  fn simple;
 	n[1]:  copy          n[0]  => _5  @ bb4[2]:  fn simple;
 	n[2]:  copy          n[1]  => _10 @ bb4[9]:  fn simple;
@@ -131,17 +131,17 @@ g[17] {
 }
 nodes_that_need_write = [18, 17, 11, 10, 9, 8, 5, 4, 3, 2, 1, 0]
 
-g[18] {
+g {
 	n[0]: &_1 _ => _9 @ bb4[6]: fn simple;
 }
 nodes_that_need_write = []
 
-g[19] {
+g {
 	n[0]: &_1 _ => _13 @ bb4[22]: fn simple;
 }
 nodes_that_need_write = []
 
-g[20] {
+g {
 	n[0]: &_1         _    => _14               @ bb4[25]: fn simple;
 	n[1]: value.store n[0] => _1.Deref.Field(2) @ bb4[26]: fn simple;
 	n[2]: addr.load   n[0] => _                 @ bb5[3]:  fn simple;
@@ -149,7 +149,7 @@ g[20] {
 }
 nodes_that_need_write = [3, 0]
 
-g[21] {
+g {
 	n[0]: malloc(n = 1) _    => _2  @ bb1[2]:  fn exercise_allocator;
 	n[1]: copy          n[0] => _1  @ bb2[2]:  fn exercise_allocator;
 	n[2]: field.0       n[1] => _   @ bb2[5]:  fn exercise_allocator;
@@ -162,7 +162,7 @@ g[21] {
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
-g[22] {
+g {
 	n[0]: &_9  _    => _8 @ bb2[13]: fn exercise_allocator;
 	n[1]: copy n[0] => _7 @ bb2[14]: fn exercise_allocator;
 	n[2]: copy n[1] => _6 @ bb2[16]: fn exercise_allocator;
@@ -170,7 +170,7 @@ g[22] {
 }
 nodes_that_need_write = []
 
-g[23] {
+g {
 	n[0]:  malloc(n = 1) _     => _11 @ bb5[2]:   fn exercise_allocator;
 	n[1]:  copy          n[0]  => _1  @ bb6[3]:   fn exercise_allocator;
 	n[2]:  copy          n[1]  => _19 @ bb6[7]:   fn exercise_allocator;
@@ -195,7 +195,7 @@ g[23] {
 }
 nodes_that_need_write = [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
 
-g[24] {
+g {
 	n[0]: &_31 _    => _30 @ bb11[7]:  fn exercise_allocator;
 	n[1]: copy n[0] => _29 @ bb11[8]:  fn exercise_allocator;
 	n[2]: copy n[1] => _28 @ bb11[10]: fn exercise_allocator;
@@ -203,7 +203,7 @@ g[24] {
 }
 nodes_that_need_write = []
 
-g[25] {
+g {
 	n[0]:  malloc(n = 1) _     => _41 @ bb22[2]:  fn exercise_allocator;
 	n[1]:  copy          n[0]  => _1  @ bb23[4]:  fn exercise_allocator;
 	n[2]:  copy          n[1]  => _48 @ bb23[8]:  fn exercise_allocator;
@@ -236,7 +236,7 @@ g[25] {
 }
 nodes_that_need_write = [13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
 
-g[26] {
+g {
 	n[0]: &_61 _    => _60 @ bb29[7]:  fn exercise_allocator;
 	n[1]: copy n[0] => _59 @ bb29[8]:  fn exercise_allocator;
 	n[2]: copy n[1] => _58 @ bb29[10]: fn exercise_allocator;
@@ -244,7 +244,7 @@ g[26] {
 }
 nodes_that_need_write = []
 
-g[27] {
+g {
 	n[0]:  malloc(n = 1) _     => _74  @ bb41[2]:  fn exercise_allocator;
 	n[1]:  copy          n[0]  => _1   @ bb42[3]:  fn exercise_allocator;
 	n[2]:  copy          n[1]  => _79  @ bb42[7]:  fn exercise_allocator;
@@ -285,7 +285,7 @@ g[27] {
 }
 nodes_that_need_write = [17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
 
-g[28] {
+g {
 	n[0]: &_94 _    => _93 @ bb49[7]:  fn exercise_allocator;
 	n[1]: copy n[0] => _92 @ bb49[8]:  fn exercise_allocator;
 	n[2]: copy n[1] => _91 @ bb49[10]: fn exercise_allocator;
@@ -293,7 +293,7 @@ g[28] {
 }
 nodes_that_need_write = []
 
-g[29] {
+g {
 	n[0]: malloc(n = 1) _    => _2  @ bb1[2]:  fn simple_analysis;
 	n[1]: copy          n[0] => _1  @ bb2[2]:  fn simple_analysis;
 	n[2]: field.0       n[1] => _   @ bb2[5]:  fn simple_analysis;
@@ -306,7 +306,7 @@ g[29] {
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
-g[30] {
+g {
 	n[0]: &_9  _    => _8 @ bb2[13]: fn simple_analysis;
 	n[1]: copy n[0] => _7 @ bb2[14]: fn simple_analysis;
 	n[2]: copy n[1] => _6 @ bb2[16]: fn simple_analysis;
@@ -314,7 +314,7 @@ g[30] {
 }
 nodes_that_need_write = []
 
-g[31] {
+g {
 	n[0]:  malloc(n = 1) _    => _2 @ bb1[2]:  fn analysis2;       
 	n[1]:  copy          n[0] => _1 @ bb2[2]:  fn analysis2;       
 	n[2]:  field.0       n[1] => _  @ bb2[5]:  fn analysis2;       
@@ -329,7 +329,7 @@ g[31] {
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
-g[32] {
+g {
 	n[0]: &_6  _    => _5 @ bb0[7]:  fn analysis2_helper;
 	n[1]: copy n[0] => _4 @ bb0[8]:  fn analysis2_helper;
 	n[2]: copy n[1] => _3 @ bb0[10]: fn analysis2_helper;
@@ -337,7 +337,7 @@ g[32] {
 }
 nodes_that_need_write = []
 
-g[33] {
+g {
 	n[0]: malloc(n = 1) _    => _0  @ bb0[2]:  fn malloc_wrapper;         
 	n[1]: copy          n[0] => _2  @ bb2[0]:  fn inter_function_analysis;
 	n[2]: copy          n[1] => _1  @ bb2[2]:  fn inter_function_analysis;
@@ -351,7 +351,7 @@ g[33] {
 }
 nodes_that_need_write = [4, 3, 2, 1, 0]
 
-g[34] {
+g {
 	n[0]: &_9  _    => _8 @ bb2[13]: fn inter_function_analysis;
 	n[1]: copy n[0] => _7 @ bb2[14]: fn inter_function_analysis;
 	n[2]: copy n[1] => _6 @ bb2[16]: fn inter_function_analysis;
@@ -359,13 +359,13 @@ g[34] {
 }
 nodes_that_need_write = []
 
-g[35] {
+g {
 	n[0]: malloc(n = 1) _    => _2       @ bb1[2]: fn no_owner;
 	n[1]: value.store   n[0] => _5.Deref @ bb2[4]: fn no_owner;
 }
 nodes_that_need_write = []
 
-g[36] {
+g {
 	n[0]:  copy       _    => _5  @ bb2[3]:  fn no_owner;
 	n[1]:  addr.store n[0] => _   @ bb2[3]:  fn no_owner;
 	n[2]:  copy       _    => _5  @ bb2[3]:  fn no_owner;
@@ -382,7 +382,7 @@ g[36] {
 }
 nodes_that_need_write = [12, 7, 3, 1, 0]
 
-g[37] {
+g {
 	n[0]: malloc(n = 1) _    => _2       @ bb1[2]: fn no_owner;
 	n[1]: value.store   n[0] => _5.Deref @ bb2[4]: fn no_owner;
 	n[2]: value.load    _    => _11      @ bb3[6]: fn no_owner;
@@ -391,7 +391,7 @@ g[37] {
 }
 nodes_that_need_write = []
 
-g[38] {
+g {
 	n[0]:  malloc(n = 1) _    => _2       @ bb1[2]:  fn invalid;
 	n[1]:  copy          n[0] => _1       @ bb2[2]:  fn invalid;
 	n[2]:  field.0       n[1] => _        @ bb2[5]:  fn invalid;
@@ -406,7 +406,7 @@ g[38] {
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
-g[39] {
+g {
 	n[0]: &_11 _    => _10 @ bb2[20]: fn invalid;
 	n[1]: copy n[0] => _9  @ bb2[21]: fn invalid;
 	n[2]: copy n[1] => _8  @ bb2[23]: fn invalid;
@@ -414,7 +414,7 @@ g[39] {
 }
 nodes_that_need_write = []
 
-g[40] {
+g {
 	n[0]: &_17 _    => _16 @ bb3[11]: fn invalid;
 	n[1]: copy n[0] => _15 @ bb3[12]: fn invalid;
 	n[2]: copy n[1] => _14 @ bb3[14]: fn invalid;
@@ -422,34 +422,34 @@ g[40] {
 }
 nodes_that_need_write = []
 
-g[41] {
+g {
 	n[0]: copy _ => _4 @ bb0[8]: fn testing;
 }
 nodes_that_need_write = []
 
-g[42] {
+g {
 	n[0]: &_4  _    => _3 @ bb0[10]: fn testing;
 	n[1]: copy n[0] => _5 @ bb0[13]: fn testing;
 }
 nodes_that_need_write = []
 
-g[43] {
+g {
 	n[0]: copy _ => _7 @ bb0[16]: fn testing;
 }
 nodes_that_need_write = []
 
-g[44] {
+g {
 	n[0]: &_7         _    => _6       @ bb0[18]: fn testing;
 	n[1]: value.store n[0] => _5.Deref @ bb0[19]: fn testing;
 }
 nodes_that_need_write = []
 
-g[45] {
+g {
 	n[0]: addr.store _ => _ @ bb0[18]: fn testing;
 }
 nodes_that_need_write = [0]
 
-g[46] {
+g {
 	n[0]: malloc(n = 1) _    => _2  @ bb1[2]:  fn simple1;
 	n[1]: copy          n[0] => _1  @ bb2[2]:  fn simple1;
 	n[2]: copy          n[1] => _8  @ bb2[9]:  fn simple1;
@@ -463,7 +463,7 @@ g[46] {
 }
 nodes_that_need_write = []
 
-g[47] {
+g {
 	n[0]: malloc(n = 1) _    => _6  @ bb3[2]:  fn simple1;
 	n[1]: copy          n[0] => _5  @ bb4[3]:  fn simple1;
 	n[2]: copy          n[1] => _11 @ bb4[7]:  fn simple1;
@@ -475,19 +475,19 @@ g[47] {
 }
 nodes_that_need_write = [4, 3, 2, 1, 0]
 
-g[48] {
+g {
 	n[0]: &_13 _ => _14 @ bb4[17]: fn simple1;
 }
 nodes_that_need_write = []
 
-g[49] {
+g {
 	n[0]: malloc(n = 1) _    => _1 @ bb1[2]: fn test_malloc_free;
 	n[1]: copy          n[0] => _5 @ bb2[5]: fn test_malloc_free;
 	n[2]: free          n[1] => _4 @ bb2[5]: fn test_malloc_free;
 }
 nodes_that_need_write = []
 
-g[50] {
+g {
 	n[0]: malloc(n = 1) _    => _2 @ bb1[2]:  fn test_malloc_free_cast;
 	n[1]: copy          n[0] => _1 @ bb2[2]:  fn test_malloc_free_cast;
 	n[2]: copy          n[1] => _7 @ bb2[8]:  fn test_malloc_free_cast;
@@ -496,7 +496,7 @@ g[50] {
 }
 nodes_that_need_write = []
 
-g[51] {
+g {
 	n[0]: malloc(n = 1) _    => _1 @ bb1[2]: fn test_arg;
 	n[1]: copy          n[0] => _5 @ bb2[5]: fn test_arg;
 	n[2]: copy          n[1] => _1 @ bb0[0]: fn foo;     
@@ -505,7 +505,7 @@ g[51] {
 }
 nodes_that_need_write = []
 
-g[52] {
+g {
 	n[0]:  malloc(n = 1) _     => _1  @ bb1[2]: fn test_arg_rec;
 	n[1]:  copy          n[0]  => _5  @ bb2[5]: fn test_arg_rec;
 	n[2]:  copy          n[1]  => _2  @ bb0[0]: fn foo_rec;     
@@ -529,14 +529,14 @@ g[52] {
 }
 nodes_that_need_write = []
 
-g[53] {
+g {
 	n[0]: malloc(n = 1) _    => _1 @ bb1[2]: fn test_realloc_reassign;
 	n[1]: copy          n[0] => _5 @ bb2[5]: fn test_realloc_reassign;
 	n[2]: free          n[1] => _4 @ bb4[2]: fn test_realloc_reassign;
 }
 nodes_that_need_write = []
 
-g[54] {
+g {
 	n[0]: malloc(n = 1) _    => _4  @ bb4[2]: fn test_realloc_reassign;
 	n[1]: copy          n[0] => _1  @ bb5[3]: fn test_realloc_reassign;
 	n[2]: copy          n[1] => _11 @ bb5[7]: fn test_realloc_reassign;
@@ -544,21 +544,21 @@ g[54] {
 }
 nodes_that_need_write = []
 
-g[55] {
+g {
 	n[0]: malloc(n = 1) _    => _1 @ bb1[2]: fn test_realloc_fresh;
 	n[1]: copy          n[0] => _5 @ bb2[5]: fn test_realloc_fresh;
 	n[2]: free          n[1] => _4 @ bb3[2]: fn test_realloc_fresh;
 }
 nodes_that_need_write = []
 
-g[56] {
+g {
 	n[0]: malloc(n = 1) _    => _4 @ bb3[2]: fn test_realloc_fresh;
 	n[1]: copy          n[0] => _9 @ bb4[6]: fn test_realloc_fresh;
 	n[2]: free          n[1] => _8 @ bb4[6]: fn test_realloc_fresh;
 }
 nodes_that_need_write = []
 
-g[57] {
+g {
 	n[0]: malloc(n = 1) _    => _2 @ bb1[2]:  fn test_load_addr;
 	n[1]: copy          n[0] => _1 @ bb2[2]:  fn test_load_addr;
 	n[2]: addr.load     n[0] => _  @ bb2[5]:  fn test_load_addr;
@@ -568,12 +568,12 @@ g[57] {
 }
 nodes_that_need_write = []
 
-g[58] {
+g {
 	n[0]: malloc(n = 1) _ => _1 @ bb1[2]: fn test_overwrite;
 }
 nodes_that_need_write = []
 
-g[59] {
+g {
 	n[0]: malloc(n = 1) _    => _4 @ bb3[2]: fn test_overwrite;
 	n[1]: copy          n[0] => _7 @ bb4[4]: fn test_overwrite;
 	n[2]: copy          n[1] => _1 @ bb4[5]: fn test_overwrite;
@@ -582,7 +582,7 @@ g[59] {
 }
 nodes_that_need_write = []
 
-g[60] {
+g {
 	n[0]: malloc(n = 1) _    => _2 @ bb1[2]:  fn test_store_addr;
 	n[1]: copy          n[0] => _1 @ bb2[2]:  fn test_store_addr;
 	n[2]: field.0       n[1] => _  @ bb2[4]:  fn test_store_addr;
@@ -593,7 +593,7 @@ g[60] {
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
-g[61] {
+g {
 	n[0]: malloc(n = 1) _    => _2  @ bb1[2]:  fn test_load_other_store_self;
 	n[1]: copy          n[0] => _1  @ bb2[2]:  fn test_load_other_store_self;
 	n[2]: field.0       n[1] => _   @ bb4[4]:  fn test_load_other_store_self;
@@ -606,7 +606,7 @@ g[61] {
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
-g[62] {
+g {
 	n[0]: malloc(n = 1) _    => _6  @ bb3[2]: fn test_load_other_store_self;
 	n[1]: copy          n[0] => _5  @ bb4[2]: fn test_load_other_store_self;
 	n[2]: field.0       n[1] => _   @ bb4[7]: fn test_load_other_store_self;
@@ -617,7 +617,7 @@ g[62] {
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
-g[63] {
+g {
 	n[0]:  malloc(n = 1) _    => _2 @ bb1[2]:  fn test_load_self_store_self;
 	n[1]:  copy          n[0] => _1 @ bb2[3]:  fn test_load_self_store_self;
 	n[2]:  field.3       n[1] => _  @ bb2[6]:  fn test_load_self_store_self;
@@ -632,7 +632,7 @@ g[63] {
 }
 nodes_that_need_write = [7, 6, 5, 1, 0]
 
-g[64] {
+g {
 	n[0]: malloc(n = 1) _    => _2  @ bb1[2]:  fn test_load_self_store_self_inter;
 	n[1]: copy          n[0] => _1  @ bb2[3]:  fn test_load_self_store_self_inter;
 	n[2]: field.0       n[1] => _6  @ bb2[6]:  fn test_load_self_store_self_inter;
@@ -645,7 +645,7 @@ g[64] {
 }
 nodes_that_need_write = [5, 4, 1, 0]
 
-g[65] {
+g {
 	n[0]: malloc(n = 1) _    => _1 @ bb1[2]:  fn test_ptr_int_ptr;
 	n[1]: copy          n[0] => _5 @ bb2[5]:  fn test_ptr_int_ptr;
 	n[2]: ptr_to_int    n[1] => _  @ bb2[5]:  fn test_ptr_int_ptr;
@@ -655,20 +655,20 @@ g[65] {
 }
 nodes_that_need_write = []
 
-g[66] {
+g {
 	n[0]: malloc(n = 1) _    => _1 @ bb1[2]: fn test_load_value;
 	n[1]: value.load    _    => _6 @ bb2[8]: fn test_load_value;
 	n[2]: free          n[1] => _5 @ bb2[8]: fn test_load_value;
 }
 nodes_that_need_write = []
 
-g[67] {
+g {
 	n[0]: &_1       _    => _4 @ bb2[4]: fn test_load_value;
 	n[1]: addr.load n[0] => _  @ bb2[7]: fn test_load_value;
 }
 nodes_that_need_write = []
 
-g[68] {
+g {
 	n[0]: malloc(n = 1) _    => _1       @ bb1[2]:  fn test_store_value;
 	n[1]: copy          n[0] => _4       @ bb2[4]:  fn test_store_value;
 	n[2]: copy          n[1] => _6       @ bb2[10]: fn test_store_value;
@@ -678,13 +678,13 @@ g[68] {
 }
 nodes_that_need_write = []
 
-g[69] {
+g {
 	n[0]: &_1        _    => _5 @ bb2[7]:  fn test_store_value;
 	n[1]: addr.store n[0] => _  @ bb2[10]: fn test_store_value;
 }
 nodes_that_need_write = [1, 0]
 
-g[70] {
+g {
 	n[0]:  malloc(n = 1) _    => _2                @ bb1[2]:  fn test_store_value_field;
 	n[1]:  copy          n[0] => _1                @ bb2[2]:  fn test_store_value_field;
 	n[2]:  copy          n[1] => _9                @ bb4[6]:  fn test_store_value_field;
@@ -699,7 +699,7 @@ g[70] {
 }
 nodes_that_need_write = [6, 5, 1, 0]
 
-g[71] {
+g {
 	n[0]: malloc(n = 1) _    => _6  @ bb3[2]: fn test_store_value_field;
 	n[1]: copy          n[0] => _5  @ bb4[2]: fn test_store_value_field;
 	n[2]: field.2       n[1] => _   @ bb4[6]: fn test_store_value_field;
@@ -709,7 +709,7 @@ g[71] {
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
-g[72] {
+g {
 	n[0]: malloc(n = 1) _    => _1       @ bb1[2]:  fn test_load_value_store_value;
 	n[1]: value.load    _    => _5       @ bb2[7]:  fn test_load_value_store_value;
 	n[2]: value.store   n[1] => _4.Deref @ bb2[8]:  fn test_load_value_store_value;
@@ -718,7 +718,7 @@ g[72] {
 }
 nodes_that_need_write = []
 
-g[73] {
+g {
 	n[0]: &_1        _    => _4 @ bb2[4]:  fn test_load_value_store_value;
 	n[1]: addr.load  n[0] => _  @ bb2[6]:  fn test_load_value_store_value;
 	n[2]: addr.store n[0] => _  @ bb2[7]:  fn test_load_value_store_value;
@@ -726,17 +726,17 @@ g[73] {
 }
 nodes_that_need_write = [2, 0]
 
-g[74] {
+g {
 	n[0]: copy _ => _31 @ bb27[4]: fn main_0;
 }
 nodes_that_need_write = []
 
-g[75] {
+g {
 	n[0]: copy _ => _37 @ bb27[12]: fn main_0;
 }
 nodes_that_need_write = []
 
-g[76] {
+g {
 	n[0]:  &_31       _     => _39 @ bb28[6]:  fn main_0;        
 	n[1]:  copy       n[0]  => _38 @ bb28[7]:  fn main_0;        
 	n[2]:  copy       n[1]  => _2  @ bb0[0]:   fn insertion_sort;
