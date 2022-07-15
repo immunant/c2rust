@@ -252,7 +252,7 @@ fn has_outer_deref(p: &Place) -> bool {
     )
 }
 
-fn pop_last_projection<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Place<'tcx>> {
+fn sans_last_projection<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Place<'tcx>> {
     let Place { local, projection } = *p;
     projection.split_last().map(|(_last, rest)| Place {
         local,
@@ -283,7 +283,7 @@ fn remove_outer_deref<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
     match p.as_ref().last_projection() {
         Some((_, ProjectionElem::Deref)) => {
             let sans_proj =
-                pop_last_projection(p, tcx).expect("expected but did not find deref projection");
+                sans_last_projection(p, tcx).expect("expected but did not find deref projection");
             sans_proj
         }
         _ => *p,
