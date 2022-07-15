@@ -1,7 +1,6 @@
 use crate::events::{Event, EventKind};
 use crate::mir_loc::MirLocId;
 use crate::runtime::global_runtime::RUNTIME;
-use log::error;
 
 /// A hook function (see [`HOOK_FUNCTIONS`]).
 ///
@@ -62,11 +61,6 @@ pub fn realloc(mir_loc: MirLocId, old_ptr: usize, size: u64, new_ptr: usize) {
 ///
 /// Note that this is Linux-like-only.
 pub fn reallocarray(mir_loc: MirLocId, old_ptr: usize, nmemb: u64, size: u64, new_ptr: usize) {
-    if let Some(total_size) = size.checked_mul(nmemb) {
-        realloc(mir_loc, old_ptr, total_size, new_ptr)
-    }
-
-    error!("Detected an overflow in reallocated size");
     realloc(mir_loc, old_ptr, size * nmemb, new_ptr)
 }
 
