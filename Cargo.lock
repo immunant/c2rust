@@ -211,6 +211,7 @@ dependencies = [
  "bincode",
  "enum_dispatch",
  "fs-err",
+ "log",
  "once_cell",
  "serde",
 ]
