@@ -252,8 +252,8 @@ fn has_outer_deref(p: &Place) -> bool {
     )
 }
 
-fn pop_last_projection<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Place<'tcx>> {
-    let Place { local, projection } = *p;
+fn pop_last_projection<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Place<'tcx>> {
+    let Place { local, projection } = p;
     projection.split_last().map(|(_last, rest)| Place {
         local,
         projection: tcx.intern_place_elems(rest),
@@ -278,7 +278,7 @@ fn strip_all_deref<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
 }
 
 /// Used to strip initital deref from projection sequences
-fn remove_outer_deref<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
+fn remove_outer_deref<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
     // Remove outer deref if present
     match p.as_ref().last_projection() {
         Some((_, ProjectionElem::Deref)) => {
@@ -286,7 +286,7 @@ fn remove_outer_deref<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
                 pop_last_projection(p, tcx).expect("expected but did not find deref projection");
             sans_proj
         }
-        _ => *p,
+        _ => p,
     }
 }
 
@@ -546,7 +546,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                             let source = if has_outer_deref(p) {
                                 // this statement is a reborrow, i.e. _2 = &(*_1),
                                 // so count this as a copy with _1 as a source
-                                remove_outer_deref(p, self.tcx)
+                                remove_outer_deref(*p, self.tcx)
                             } else {
                                 *p
                             };
@@ -1156,7 +1156,7 @@ fn cast_ptr_to_usize<'tcx>(
         // ptr with `addr_of!`
         InstrumentationOperand::Place(arg) => {
             let arg_place = arg.place().expect("Can't get the address of a constant");
-            let arg_place = remove_outer_deref(&arg_place, tcx);
+            let arg_place = remove_outer_deref(arg_place, tcx);
 
             let arg_ty = arg_place.ty(locals, tcx).ty;
             let inner_ty = ty::TypeAndMut {
