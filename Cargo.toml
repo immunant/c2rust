@@ -6,7 +6,6 @@ members = [
     "c2rust-ast-exporter",
     "c2rust-ast-printer",
     "c2rust-bitfields",
-    "c2rust-macros",
     "c2rust-asm-casts",
     "analysis/runtime",
     "dynamic_instrumentation",
@@ -14,6 +13,7 @@ members = [
     "rustc-private-link",
 ]
 exclude = [
+    "c2rust-macros",
     "cross-checks/pointer-tracer",
     "cross-checks/zero-malloc",
     "cross-checks/rust-checks",
