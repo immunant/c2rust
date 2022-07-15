@@ -253,12 +253,10 @@ fn has_outer_deref(p: &Place) -> bool {
 }
 
 fn pop_last_projection<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Place<'tcx>> {
-    if p.projection.is_empty() {
-        return None;
-    }
-    Some(Place {
-        local: p.local,
-        projection: tcx.intern_place_elems(&p.projection[..p.projection.len() - 1]),
+    let Place { local, projection } = *p;
+    projection.split_last().map(|(_last, rest)| Place {
+        local,
+        projection: tcx.intern_place_elems(rest),
     })
 }
 
