@@ -236,8 +236,12 @@ impl<'a, 'tcx: 'a> CollectFunctionInstrumentationPoints<'a, 'tcx> {
         find_instrumentation_def(self.tcx, self.runtime_crate_did, name)
     }
 
+    fn is_shared_ptr(&self, ty: &TyS<'tcx>) -> bool {
+        ty.is_region_ptr() && !ty.is_mutable_ptr()
+    }
+
     fn is_shared_or_unsafe_ptr(&self, ty: &TyS<'tcx>) -> bool {
-        ty.is_unsafe_ptr() || (ty.is_region_ptr() && !ty.is_mutable_ptr())
+        ty.is_unsafe_ptr() || self.is_shared_ptr(ty)
     }
 
     fn func_hash(&self) -> mir_loc::DefPathHash {
