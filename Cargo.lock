@@ -284,15 +284,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "c2rust-macros"
-version = "0.16.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "c2rust-pdg"
 version = "0.1.0"
 dependencies = [
