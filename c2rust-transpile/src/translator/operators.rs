@@ -611,11 +611,6 @@ impl<'c> Translation<'c> {
             }
 
             c_ast::BinOp::Multiply if is_unsigned_integral_type => {
-                if ctx.is_const {
-                    return Err(TranslationError::generic(
-                        "Cannot use wrapping multiply in a const expression",
-                    ));
-                }
                 Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_mul"), vec![rhs]))
             }
             c_ast::BinOp::Multiply => {
@@ -623,21 +618,11 @@ impl<'c> Translation<'c> {
             }
 
             c_ast::BinOp::Divide if is_unsigned_integral_type => {
-                if ctx.is_const {
-                    return Err(TranslationError::generic(
-                        "Cannot use wrapping division in a const expression",
-                    ));
-                }
                 Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_div"), vec![rhs]))
             }
             c_ast::BinOp::Divide => Ok(mk().binary_expr(BinOp::Div(Default::default()), lhs, rhs)),
 
             c_ast::BinOp::Modulus if is_unsigned_integral_type => {
-                if ctx.is_const {
-                    return Err(TranslationError::generic(
-                        "Cannot use wrapping remainder in a const expression",
-                    ));
-                }
                 Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_rem"), vec![rhs]))
             }
             c_ast::BinOp::Modulus => Ok(mk().binary_expr(BinOp::Rem(Default::default()), lhs, rhs)),
@@ -745,11 +730,6 @@ impl<'c> Translation<'c> {
             let mul = self.compute_size_of_expr(pointee.ctype);
             Ok(pointer_offset(rhs, lhs, mul, false, false))
         } else if lhs_type.is_unsigned_integral_type() {
-            if ctx.is_const {
-                return Err(TranslationError::generic(
-                    "Cannot use wrapping add in a const expression",
-                ));
-            }
             Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_add"), vec![rhs]))
         } else {
             Ok(mk().binary_expr(BinOp::Add(Default::default()), lhs, rhs))
@@ -786,11 +766,6 @@ impl<'c> Translation<'c> {
             let mul = self.compute_size_of_expr(pointee.ctype);
             Ok(pointer_offset(lhs, rhs, mul, true, false))
         } else if lhs_type.is_unsigned_integral_type() {
-            if ctx.is_const {
-                return Err(TranslationError::generic(
-                    "Cannot use wrapping subtract in a const expression",
-                ));
-            }
             Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_sub"), vec![rhs]))
         } else {
             Ok(mk().binary_expr(BinOp::Sub(Default::default()), lhs, rhs))
@@ -909,11 +884,6 @@ impl<'c> Translation<'c> {
                     .kind
                     .is_unsigned_integral_type()
                 {
-                    if ctx.is_const {
-                        return Err(TranslationError::generic(
-                            "Cannot use wrapping add or sub in a const expression",
-                        ));
-                    }
                     let m = if up { "wrapping_add" } else { "wrapping_sub" };
                     mk().method_call_expr(read, m, vec![one])
                 } else {
@@ -1060,11 +1030,6 @@ impl<'c> Translation<'c> {
                 let val = self.convert_expr(ctx.used(), arg)?;
 
                 if resolved_ctype.kind.is_unsigned_integral_type() {
-                    if ctx.is_const {
-                        return Err(TranslationError::generic(
-                            "Cannot use wrapping negate in a const expression",
-                        ));
-                    }
                     Ok(val.map(wrapping_neg_expr))
                 } else {
                     Ok(val.map(neg_expr))
