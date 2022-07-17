@@ -232,7 +232,7 @@ impl RelooperState {
                 result.push(Structure::Simple {
                     entries,
                     body,
-                    span: DUMMY_SP,
+                    span: Span::call_site(),
                     terminator,
                 });
             };
@@ -640,7 +640,7 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                                 let first_structure = Structure::Simple {
                                     entries,
                                     body,
-                                    span: DUMMY_SP,
+                                    span: Span::call_site(),
                                     terminator,
                                 };
 

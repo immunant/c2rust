@@ -21,7 +21,7 @@ use crate::diagnostics::TranslationResult;
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::set_span::SetSpan;
-use crate::rust_ast::{pos_to_span, SpanExt, DUMMY_SP};
+use crate::rust_ast::{pos_to_span, SpanExt};
 use crate::translator::atomics::ConvertAtomicArgs;
 use crate::translator::named_references::NamedReference;
 use crate::translator::operators::ConvertBinaryExprArgs;
@@ -1587,7 +1587,9 @@ impl<'c> Translation<'c> {
             .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))?;
 
-        let mut span = self.get_span(SomeId::Decl(decl_id)).unwrap_or(DUMMY_SP);
+        let mut span = self
+            .get_span(SomeId::Decl(decl_id))
+            .unwrap_or_else(Span::call_site);
 
         use CDeclKind::*;
         match decl.kind {
@@ -2681,7 +2683,7 @@ impl<'c> Translation<'c> {
                     .borrow_mut()
                     .add_comments(&[comment])
                     .map(pos_to_span)
-                    .unwrap_or(DUMMY_SP);
+                    .unwrap_or_else(Span::call_site);
                 let static_item = mk()
                     .span(span)
                     .mutbl()

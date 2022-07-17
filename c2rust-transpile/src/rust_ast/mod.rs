@@ -28,14 +28,6 @@ pub fn pos_to_span(pos: BytePos) -> Span {
     SpanExt::new(pos.0, pos.0)
 }
 
-pub const DUMMY_SP: Span = unsafe {
-    std::mem::transmute(SpanRepr {
-        compiler_or_fallback: 1,
-        lo: 0,
-        hi: 0,
-    })
-};
-
 pub trait SpanExt: Sized {
     fn is_dummy(&self) -> bool;
 
@@ -181,12 +173,11 @@ fn synthesize(lo: u32, hi: u32) -> Span {
 
 impl SpanExt for Span {
     fn is_dummy(&self) -> bool {
-        self.eq(&Self::dummy())
+        self.eq(&Span::dummy())
     }
 
     fn dummy() -> Self {
-        //Span::call_site()
-        synthesize(0, 0)
+        Span::call_site()
     }
 
     fn eq(&self, other: &Self) -> bool {
