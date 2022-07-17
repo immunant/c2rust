@@ -142,7 +142,7 @@ impl<'c> NodeVisitor for CommentLocator<'c> {
                     "Attaching comments {:?} to end of id {:?} at pos {:?}",
                     comments, id, pos
                 );
-                let span = self.spans.entry(id).or_insert(Span::call_site());
+                let span = self.spans.entry(id).or_insert_with(Span::call_site);
                 *span = span.with_hi(pos);
             }
 

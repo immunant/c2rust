@@ -1389,7 +1389,7 @@ impl CfgBuilder {
 
         wip.span = translator
             .get_span(SomeId::Stmt(stmt_id))
-            .unwrap_or(Span::call_site());
+            .unwrap_or_else(Span::call_site);
 
         let out_wip: TranslationResult<Option<WipBlock>> = match translator
             .ast_context

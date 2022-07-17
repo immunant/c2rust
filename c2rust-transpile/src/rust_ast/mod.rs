@@ -173,7 +173,7 @@ fn synthesize(lo: u32, hi: u32) -> Span {
 
 impl SpanExt for Span {
     fn is_dummy(&self) -> bool {
-        self.eq(&Span::dummy())
+        self.eq(&Self::dummy())
     }
 
     fn dummy() -> Self {
