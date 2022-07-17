@@ -655,6 +655,7 @@ impl Cfg<Label, StmtOrDecl> {
     }
 }
 
+use itertools::Itertools;
 use std::fmt::Debug;
 use std::rc::Rc;
 
@@ -2167,9 +2168,7 @@ impl Cfg<Label, StmtOrDecl> {
                     "\\ldefined: {{{}}}",
                     bb.defined
                         .iter()
-                        .filter_map(|decl| ctx.index(*decl).kind.get_name())
-                        .cloned()
-                        .collect::<Vec<_>>()
+                        .filter_map(|decl| ctx.index(*decl).kind.get_name().cloned())
                         .join(", "),
                 )
             };
@@ -2181,9 +2180,7 @@ impl Cfg<Label, StmtOrDecl> {
                     "\\llive in: {{{}}}",
                     bb.live
                         .iter()
-                        .filter_map(|decl| ctx.index(*decl).kind.get_name())
-                        .cloned()
-                        .collect::<Vec<_>>()
+                        .filter_map(|decl| ctx.index(*decl).kind.get_name().cloned())
                         .join(", "),
                 )
             };
@@ -2226,7 +2223,6 @@ impl Cfg<Label, StmtOrDecl> {
                             bb.body
                                 .iter()
                                 .flat_map(|sd: &StmtOrDecl| -> Vec<String> { sd.to_string(store) })
-                                .collect::<Vec<String>>()
                                 .join("\n"),
                         )
                     }
