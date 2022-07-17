@@ -1,5 +1,6 @@
 use c2rust_ast_exporter::clang_ast::LRValue;
 use indexmap::{IndexMap, IndexSet};
+use itertools::izip;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -211,9 +212,9 @@ impl TypedAstContext {
         fn cmp_pos(a: &SrcLoc, b: &SrcLoc) -> Ordering {
             (a.line, a.column).cmp(&(b.line, b.column))
         }
-        let path_a = self.include_map[self.file_map[a.fileid as usize]].clone();
-        let path_b = self.include_map[self.file_map[b.fileid as usize]].clone();
-        for (include_a, include_b) in path_a.iter().zip(path_b.iter()) {
+        let path_a = &self.include_map[self.file_map[a.fileid as usize]];
+        let path_b = &self.include_map[self.file_map[b.fileid as usize]];
+        for (include_a, include_b) in izip!(path_a, path_b) {
             if include_a.fileid != include_b.fileid {
                 return cmp_pos(include_a, include_b);
             }

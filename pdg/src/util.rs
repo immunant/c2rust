@@ -1,4 +1,4 @@
-use itertools::Itertools;
+use itertools::{izip, Itertools};
 
 use std::{
     cmp::min,
@@ -175,9 +175,7 @@ pub fn pad_columns(lines: &[String], split_sep: char, join_sep: &str) -> Vec<Str
         .collect::<Vec<_>>();
     rows.iter()
         .map(|cells| {
-            cells
-                .iter()
-                .zip(column_max_lengths.iter())
+            izip!(cells, &column_max_lengths)
                 .map(|(&cell, &max_length)| Padded {
                     to_pad: cell,
                     pad_len: max_length - cell.len(),

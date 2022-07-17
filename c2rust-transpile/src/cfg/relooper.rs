@@ -2,6 +2,7 @@
 //! simplifying the latter.
 
 use super::*;
+use itertools::chain;
 
 /// Convert the CFG into a sequence of structures
 pub fn reloop(
@@ -364,7 +365,7 @@ impl RelooperState {
             // Try to match an existing loop (from the initial C)
             let mut matched_existing_loop = false;
             if let Some(ref loop_info) = self.loop_info {
-                let must_be_in_loop = entries.iter().chain(new_returns.iter()).cloned();
+                let must_be_in_loop = chain!(&entries, &new_returns).cloned();
                 if let Some(loop_id) = loop_info.tightest_common_loop(must_be_in_loop) {
                     // Construct the target group of labels
                     let mut desired_body: IndexSet<Label> =

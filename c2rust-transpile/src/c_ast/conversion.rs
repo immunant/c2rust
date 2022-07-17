@@ -2,6 +2,7 @@ use crate::c_ast::*;
 use crate::diagnostics::diag;
 use c2rust_ast_exporter::clang_ast::*;
 use failure::err_msg;
+use itertools::izip;
 use serde_bytes::ByteBuf;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -1091,9 +1092,7 @@ impl ConversionContext {
                     let (input_children, output_children) =
                         node.children.split_at(raw_inputs.len());
 
-                    let inputs: Vec<AsmOperand> = raw_inputs
-                        .into_iter()
-                        .zip(input_children)
+                    let inputs: Vec<AsmOperand> = izip!(raw_inputs, input_children)
                         .map(|(c, e)| {
                             let constraints = from_value(c).expect("constraint string");
                             let expression = self.visit_expr(e.expect("expression"));
@@ -1104,9 +1103,7 @@ impl ConversionContext {
                         })
                         .collect();
 
-                    let outputs: Vec<AsmOperand> = raw_outputs
-                        .into_iter()
-                        .zip(output_children)
+                    let outputs: Vec<AsmOperand> = izip!(raw_outputs, output_children)
                         .map(|(c, e)| {
                             let constraints = from_value(c).expect("constraint string");
                             let expression = self.visit_expr(e.expect("expression"));

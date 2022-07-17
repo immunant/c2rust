@@ -2,6 +2,7 @@
 //! This module provides basic support for converting inline assembly statements.
 
 use crate::diagnostics::TranslationResult;
+use itertools::chain;
 
 use super::*;
 use log::warn;
@@ -713,9 +714,7 @@ impl<'c> Translation<'c> {
             |idx: usize| map_input_op_idx(idx, outputs.len(), &tied_operands),
             |ref_str: &str| {
                 if let Ok(idx) = ref_str.parse::<usize>() {
-                    outputs
-                        .iter()
-                        .chain(inputs)
+                    chain!(outputs, inputs)
                         .nth(idx)
                         .map_or(false, operand_is_mem_only)
                 } else {
