@@ -187,8 +187,7 @@ impl RelooperState {
         // Simple blocks
         if none_branch_to.len() == 1 && some_branch_to.is_empty() {
             let entry = none_branch_to
-                .iter()
-                .next()
+                .first()
                 .expect("Should find exactly one entry");
 
             if let Some(bb) = blocks.swap_remove(entry) {

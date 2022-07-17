@@ -111,7 +111,7 @@ pub fn heuristic_loop_body(
                     break;
                 }
 
-                following = succs.iter().next().unwrap().clone();
+                following = succs.first().unwrap().clone();
             }
         }
     }

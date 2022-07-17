@@ -313,8 +313,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
 
             Loop { body, entries } => {
                 let label = entries
-                    .iter()
-                    .next()
+                    .first()
                     .ok_or_else(|| format_err!("The loop {:?} has no entry", structure))?;
 
                 let mut these_exits = IndexMap::new();
