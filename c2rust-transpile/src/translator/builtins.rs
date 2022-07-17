@@ -646,16 +646,9 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let args = self.convert_exprs(ctx.used(), args)?;
         args.and_then(|args| {
-            let mut args = args.into_iter();
-            let a = args
-                .next()
-                .ok_or("Missing first argument to convert_overflow_arith")?;
-            let b = args
-                .next()
-                .ok_or("Missing second argument to convert_overflow_arith")?;
-            let c = args
-                .next()
-                .ok_or("Missing third argument to convert_overflow_arith")?;
+            let [a, b, c]: [_; 3] = args
+                .try_into()
+                .map_err(|_| "`convert_overflow_arith` must have exactly 3 arguments")?;
             let overflowing = mk().method_call_expr(a, method_name, vec![b]);
             let sum_name = self.renamer.borrow_mut().fresh();
             let over_name = self.renamer.borrow_mut().fresh();
@@ -691,16 +684,9 @@ impl<'c> Translation<'c> {
         let mem = mk().path_expr(vec!["libc", name]);
         let args = self.convert_exprs(ctx.used(), args)?;
         args.and_then(|args| {
-            let mut args = args.into_iter();
-            let dst = args
-                .next()
-                .ok_or("Missing dst argument to convert_libc_fns")?;
-            let c = args
-                .next()
-                .ok_or("Missing c argument to convert_libc_fns")?;
-            let len = args
-                .next()
-                .ok_or("Missing len argument to convert_libc_fns")?;
+            let [dst, c, len]: [_; 3] = args
+                .try_into()
+                .map_err(|_| "`convert_libc_fns` must have exactly 3 arguments: [dst, c, len]")?;
             let size_t = mk().path_ty(vec!["libc", "size_t"]);
             let len1 = mk().cast_expr(len, size_t);
             let mem_expr = mk().call_expr(mem, vec![dst, c, len1]);
