@@ -749,11 +749,6 @@ impl<'c> Translation<'c> {
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
         if let &CTypeKind::Pointer(pointee) = rhs_type {
-            if ctx.is_const {
-                return Err(TranslationError::generic(
-                    "Cannot use wrapping offset from in a const expression",
-                ));
-            }
             let mut offset = mk().method_call_expr(lhs, "offset_from", vec![rhs]);
 
             if let Some(sz) = self.compute_size_of_expr(pointee.ctype) {
