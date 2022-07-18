@@ -1,10 +1,9 @@
 use std::mem;
 
+use crate::context::{AnalysisCtxt, FlagSet, PermissionSet, PointerId};
 use rustc_middle::mir::Body;
-use crate::context::{PermissionSet, FlagSet, PointerId, AnalysisCtxt};
 
 mod type_check;
-
 
 #[derive(Clone, Debug)]
 enum Constraint {
@@ -22,27 +21,15 @@ pub struct DataflowConstraints {
 }
 
 impl DataflowConstraints {
-    fn add_subset(
-        &mut self,
-        a: PointerId,
-        b: PointerId,
-    ) {
+    fn add_subset(&mut self, a: PointerId, b: PointerId) {
         self.constraints.push(Constraint::Subset(a, b));
     }
 
-    fn add_all_perms(
-        &mut self,
-        ptr: PointerId,
-        perms: PermissionSet,
-    ) {
+    fn add_all_perms(&mut self, ptr: PointerId, perms: PermissionSet) {
         self.constraints.push(Constraint::AllPerms(ptr, perms));
     }
 
-    fn add_no_perms(
-        &mut self,
-        ptr: PointerId,
-        perms: PermissionSet,
-    ) {
+    fn add_no_perms(&mut self, ptr: PointerId, perms: PermissionSet) {
         self.constraints.push(Constraint::NoPerms(ptr, perms));
     }
 
@@ -76,16 +63,14 @@ impl DataflowConstraints {
                 // Permissions that should be propagated "down": if the superset (`b`)
                 // doesn't have it, then the subset (`a`) should have it removed.
                 #[allow(bad_style)]
-                let PROPAGATE_DOWN =
-                    PermissionSet::UNIQUE;
+                let PROPAGATE_DOWN = PermissionSet::UNIQUE;
                 // Permissions that should be propagated "up": if the subset (`a`) has it,
                 // then the superset (`b`) should be given it.
                 #[allow(bad_style)]
-                let PROPAGATE_UP =
-                    PermissionSet::READ |
-                    PermissionSet::WRITE |
-                    PermissionSet::OFFSET_ADD |
-                    PermissionSet::OFFSET_SUB;
+                let PROPAGATE_UP = PermissionSet::READ
+                    | PermissionSet::WRITE
+                    | PermissionSet::OFFSET_ADD
+                    | PermissionSet::OFFSET_SUB;
 
                 (
                     old_a & !(!old_b & PROPAGATE_DOWN),
@@ -116,12 +101,15 @@ impl DataflowConstraints {
             Ok(changed) => changed,
             Err(msg) => {
                 panic!("{}", msg);
-            },
+            }
         }
     }
 
     fn propagate_inner<T, R>(&self, xs: &mut [T], rules: &mut R) -> Result<bool, String>
-    where T: PartialEq, R: PropagateRules<T> {
+    where
+        T: PartialEq,
+        R: PropagateRules<T>,
+    {
         let mut xs = TrackedSlice::new(xs);
 
         let mut changed = false;
@@ -144,7 +132,7 @@ impl DataflowConstraints {
                         let (new_a, new_b) = rules.subset(a, old_a, b, old_b);
                         xs.set(a.index(), new_a);
                         xs.set(b.index(), new_b);
-                    },
+                    }
 
                     Constraint::AllPerms(ptr, perms) => {
                         if !xs.dirty(ptr.index()) {
@@ -154,7 +142,7 @@ impl DataflowConstraints {
                         let old = xs.get(ptr.index());
                         let new = rules.all_perms(ptr, perms, old);
                         xs.set(ptr.index(), new);
-                    },
+                    }
 
                     Constraint::NoPerms(ptr, perms) => {
                         if !xs.dirty(ptr.index()) {
@@ -164,7 +152,7 @@ impl DataflowConstraints {
                         let old = xs.get(ptr.index());
                         let new = rules.no_perms(ptr, perms, old);
                         xs.set(ptr.index(), new);
-                    },
+                    }
                 }
             }
 
@@ -238,14 +226,13 @@ impl DataflowConstraints {
         }
 
         match self.propagate_inner(flags, &mut Rules { perms }) {
-            Ok(_changed) => {},
+            Ok(_changed) => {}
             Err(msg) => {
                 panic!("{}", msg);
-            },
+            }
         }
     }
 }
-
 
 struct TrackedSlice<'a, T> {
     xs: &'a mut [T],
@@ -296,13 +283,11 @@ impl<'a, T: PartialEq> TrackedSlice<'a, T> {
     }
 }
 
-
 trait PropagateRules<T> {
     fn subset(&mut self, a_ptr: PointerId, a_val: &T, b_ptr: PointerId, b_val: &T) -> (T, T);
     fn all_perms(&mut self, ptr: PointerId, perms: PermissionSet, val: &T) -> T;
     fn no_perms(&mut self, ptr: PointerId, perms: PermissionSet, val: &T) -> T;
 }
-
 
 pub fn generate_constraints<'tcx>(
     acx: &AnalysisCtxt<'tcx>,

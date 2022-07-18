@@ -1,8 +1,8 @@
 use rustc_hir::def::{DefKind, Res};
 
-use rustc_middle::ty::{Ty, TyCtxt, ReErased};
+use crate::context::{AnalysisCtxt, FlagSet, LTy, PermissionSet, PointerId};
 use rustc_middle::ty::subst::GenericArg;
-use crate::context::{PermissionSet, FlagSet, AnalysisCtxt, LTy, PointerId};
+use rustc_middle::ty::{ReErased, Ty, TyCtxt};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Ownership {
@@ -32,10 +32,7 @@ pub enum Quantity {
     OffsetPtr,
 }
 
-pub fn perms_to_desc(
-    perms: PermissionSet,
-    flags: FlagSet,
-) -> (Ownership, Quantity) {
+pub fn perms_to_desc(perms: PermissionSet, flags: FlagSet) -> (Ownership, Quantity) {
     let own = if perms.contains(PermissionSet::UNIQUE | PermissionSet::WRITE) {
         Ownership::Mut
     } else if flags.contains(FlagSet::CELL) {
@@ -59,11 +56,16 @@ pub fn perms_to_desc(
 }
 
 fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Ty<'tcx> {
-    let core_crate = tcx.crates(()).iter().cloned()
+    let core_crate = tcx
+        .crates(())
+        .iter()
+        .cloned()
         .find(|&krate| tcx.crate_name(krate).as_str() == "core")
         .expect("failed to find crate `core`");
 
-    let cell_mod_child = tcx.module_children(core_crate.as_def_id()).iter()
+    let cell_mod_child = tcx
+        .module_children(core_crate.as_def_id())
+        .iter()
         .find(|child| child.ident.as_str() == "cell")
         .expect("failed to find module `core::cell`");
     let cell_mod = match cell_mod_child.res {
@@ -71,7 +73,9 @@ fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Ty<'tcx> {
         ref r => panic!("unexpected resolution {:?} for `core::cell`", r),
     };
 
-    let cell_struct_child = tcx.module_children(cell_mod).iter()
+    let cell_struct_child = tcx
+        .module_children(cell_mod)
+        .iter()
         .find(|child| child.ident.as_str() == "Cell")
         .expect("failed to find struct `core::cell::Cell`");
     let cell_struct = match cell_struct_child.res {

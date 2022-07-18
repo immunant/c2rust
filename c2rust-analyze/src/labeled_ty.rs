@@ -2,14 +2,14 @@
 //! use this, for example, to attach a Polonius `Origin` to every reference type.  Labeled type
 //! data is manipulated by reference, the same as with `Ty`s, and the data is stored in the same
 //! arena as the underlying `Ty`s.
+use rustc_arena::DroplessArena;
 use std::convert::TryInto;
 use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Deref;
-use rustc_arena::DroplessArena;
 
-use rustc_middle::ty::{TyCtxt, Ty, TyKind, TypeAndMut};
 use rustc_middle::ty::subst::{GenericArg, GenericArgKind};
+use rustc_middle::ty::{Ty, TyCtxt, TyKind, TypeAndMut};
 
 /// The actual data for a labeled type.
 ///
@@ -100,20 +100,12 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
         args: &'tcx [LabeledTy<'tcx, L>],
         label: L,
     ) -> LabeledTy<'tcx, L> {
-        self.arena().alloc(LabeledTyS {
-            ty,
-            args,
-            label,
-        })
+        self.arena().alloc(LabeledTyS { ty, args, label })
     }
 
     /// Label a `Ty` using a callback.  The callback runs at every type constructor to produce a
     /// label for that node in the tree.
-    pub fn label<F: FnMut(Ty<'tcx>) -> L>(
-        &self,
-        ty: Ty<'tcx>,
-        f: &mut F,
-    ) -> LabeledTy<'tcx, L> {
+    pub fn label<F: FnMut(Ty<'tcx>) -> L>(&self, ty: Ty<'tcx>, f: &mut F) -> LabeledTy<'tcx, L> {
         use rustc_middle::ty::TyKind::*;
         let label = f(ty);
         match ty.kind() {
@@ -160,22 +152,18 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                 self.mk(ty, self.mk_slice(&args), label)
             }
             Tuple(ref elems) => {
-                let args = elems.types().map(|ty| self.label(ty, f)).collect::<Vec<_>>();
+                let args = elems
+                    .types()
+                    .map(|ty| self.label(ty, f))
+                    .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
 
             // Types that aren't actually supported by this code yet
-            Dynamic(..)
-            | Closure(..)
-            | Generator(..)
-            | GeneratorWitness(..)
-            | Projection(..)
-            | Opaque(..)
-            | Param(..)
-            | Bound(..)
-            | Placeholder(..)
-            | Infer(..)
-            | Error(..) => self.mk(ty, &[], label),
+            Dynamic(..) | Closure(..) | Generator(..) | GeneratorWitness(..) | Projection(..)
+            | Opaque(..) | Param(..) | Bound(..) | Placeholder(..) | Infer(..) | Error(..) => {
+                self.mk(ty, &[], label)
+            }
         }
     }
 
@@ -228,11 +216,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
     }
 
     /// Run a callback to replace the labels on a type.
-    pub fn relabel<L2, F>(
-        &self,
-        lty: LabeledTy<'tcx, L2>,
-        func: &mut F,
-    ) -> LabeledTy<'tcx, L>
+    pub fn relabel<L2, F>(&self, lty: LabeledTy<'tcx, L2>, func: &mut F) -> LabeledTy<'tcx, L>
     where
         F: FnMut(LabeledTy<'tcx, L2>) -> L,
     {
@@ -259,28 +243,32 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
 
     /// Perform a bottom-up rewrite on a type and convert it to unlabeled form.
     pub fn rewrite_unlabeled<F>(&self, lty: LabeledTy<'tcx, L>, func: &mut F) -> Ty<'tcx>
-    where F: FnMut(Ty<'tcx>, &[Ty<'tcx>], L) -> Ty<'tcx> {
+    where
+        F: FnMut(Ty<'tcx>, &[Ty<'tcx>], L) -> Ty<'tcx>,
+    {
         use rustc_middle::ty::TyKind::*;
-        let args = lty.args.iter()
+        let args = lty
+            .args
+            .iter()
             .map(|&lty| self.rewrite_unlabeled(lty, func))
             .collect::<Vec<_>>();
 
         let ty = match *lty.ty.kind() {
-            Bool | Char | Int(_) | Uint(_) | Float(_) | Str | Foreign(_) | Never => {
-                lty.ty
-            },
+            Bool | Char | Int(_) | Uint(_) | Float(_) | Str | Foreign(_) | Never => lty.ty,
 
             Adt(adt, substs) => {
                 // Copy `substs`, but replace all types with those from `args`.
                 let mut it = args.iter().cloned();
-                let substs = self.tcx.mk_substs(substs.iter().map(|arg| match arg.unpack() {
-                    GenericArgKind::Type(_) => it.next().unwrap().into(),
-                    GenericArgKind::Lifetime(rg) => GenericArg::from(rg),
-                    GenericArgKind::Const(cn) => GenericArg::from(cn),
-                }));
+                let substs = self
+                    .tcx
+                    .mk_substs(substs.iter().map(|arg| match arg.unpack() {
+                        GenericArgKind::Type(_) => it.next().unwrap().into(),
+                        GenericArgKind::Lifetime(rg) => GenericArg::from(rg),
+                        GenericArgKind::Const(cn) => GenericArg::from(cn),
+                    }));
                 assert!(it.next().is_none());
                 self.tcx.mk_adt(adt, substs)
-            },
+            }
             Array(_, len) => {
                 let &[elem]: &[_; 1] = args[..].try_into().unwrap();
                 self.tcx.mk_ty(Array(elem, len))
@@ -291,7 +279,10 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
             }
             RawPtr(mty) => {
                 let &[target]: &[_; 1] = args[..].try_into().unwrap();
-                self.tcx.mk_ptr(TypeAndMut { ty: target, mutbl: mty.mutbl })
+                self.tcx.mk_ptr(TypeAndMut {
+                    ty: target,
+                    mutbl: mty.mutbl,
+                })
             }
             Ref(rg, _, mutbl) => {
                 let &[target]: &[_; 1] = args[..].try_into().unwrap();
@@ -300,11 +291,13 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
             FnDef(def_id, substs) => {
                 // Copy `substs`, but replace all types with those from `args`.
                 let mut it = args.iter().cloned();
-                let substs = self.tcx.mk_substs(substs.iter().map(|arg| match arg.unpack() {
-                    GenericArgKind::Type(_) => it.next().unwrap().into(),
-                    GenericArgKind::Lifetime(rg) => GenericArg::from(rg),
-                    GenericArgKind::Const(cn) => GenericArg::from(cn),
-                }));
+                let substs = self
+                    .tcx
+                    .mk_substs(substs.iter().map(|arg| match arg.unpack() {
+                        GenericArgKind::Type(_) => it.next().unwrap().into(),
+                        GenericArgKind::Lifetime(rg) => GenericArg::from(rg),
+                        GenericArgKind::Const(cn) => GenericArg::from(cn),
+                    }));
                 assert!(it.next().is_none());
                 self.tcx.mk_fn_def(def_id, substs)
             }
@@ -312,22 +305,13 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                 // TODO: replace all the types under the binder
                 todo!()
             }
-            Tuple(_) => {
-                self.tcx.mk_tup(args.iter().cloned())
-            }
+            Tuple(_) => self.tcx.mk_tup(args.iter().cloned()),
 
             // Types that aren't actually supported by this code yet
-            Dynamic(..)
-            | Closure(..)
-            | Generator(..)
-            | GeneratorWitness(..)
-            | Projection(..)
-            | Opaque(..)
-            | Param(..)
-            | Bound(..)
-            | Placeholder(..)
-            | Infer(..)
-            | Error(..) => lty.ty,
+            Dynamic(..) | Closure(..) | Generator(..) | GeneratorWitness(..) | Projection(..)
+            | Opaque(..) | Param(..) | Bound(..) | Placeholder(..) | Infer(..) | Error(..) => {
+                lty.ty
+            }
         };
 
         func(ty, &args, lty.label)

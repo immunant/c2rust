@@ -1,14 +1,14 @@
+use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Output, Path, Point, Variable};
+use rustc_hash::{FxHashMap, FxHashSet};
 /// Copied partly from rustc `compiler/rustc_borrowck/src/facts.rs`, which is dual-licensed MIT and
 /// Apache 2.0.
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
-use std::fmt::{Write as _};
+use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::hash::Hash;
 use std::io::{BufWriter, Write};
 use std::path;
-use rustc_hash::{FxHashMap, FxHashSet};
-use crate::borrowck::atoms::{AllFacts, Output, AtomMaps, Origin, Loan, Point, Variable, Path};
 
 pub fn dump_facts_to_dir(
     facts: &AllFacts,
@@ -130,19 +130,11 @@ impl FactWriter<'_, '_> {
 }
 
 trait FactRow {
-    fn write(
-        &self,
-        out: &mut dyn Write,
-        maps: &AtomMaps,
-    ) -> Result<(), Box<dyn Error>>;
+    fn write(&self, out: &mut dyn Write, maps: &AtomMaps) -> Result<(), Box<dyn Error>>;
 }
 
 impl FactRow for Origin {
-    fn write(
-        &self,
-        out: &mut dyn Write,
-        maps: &AtomMaps,
-    ) -> Result<(), Box<dyn Error>> {
+    fn write(&self, out: &mut dyn Write, maps: &AtomMaps) -> Result<(), Box<dyn Error>> {
         write_row(out, maps, &[self])
     }
 }
@@ -152,11 +144,7 @@ where
     A: Render,
     B: Render,
 {
-    fn write(
-        &self,
-        out: &mut dyn Write,
-        maps: &AtomMaps,
-    ) -> Result<(), Box<dyn Error>> {
+    fn write(&self, out: &mut dyn Write, maps: &AtomMaps) -> Result<(), Box<dyn Error>> {
         write_row(out, maps, &[&self.0, &self.1])
     }
 }
@@ -167,11 +155,7 @@ where
     B: Render,
     C: Render,
 {
-    fn write(
-        &self,
-        out: &mut dyn Write,
-        maps: &AtomMaps,
-    ) -> Result<(), Box<dyn Error>> {
+    fn write(&self, out: &mut dyn Write, maps: &AtomMaps) -> Result<(), Box<dyn Error>> {
         write_row(out, maps, &[&self.0, &self.1, &self.2])
     }
 }
@@ -183,11 +167,7 @@ where
     C: Render,
     D: Render,
 {
-    fn write(
-        &self,
-        out: &mut dyn Write,
-        maps: &AtomMaps,
-    ) -> Result<(), Box<dyn Error>> {
+    fn write(&self, out: &mut dyn Write, maps: &AtomMaps) -> Result<(), Box<dyn Error>> {
         write_row(out, maps, &[&self.0, &self.1, &self.2, &self.3])
     }
 }
@@ -198,27 +178,22 @@ fn write_row(
     columns: &[&dyn Render],
 ) -> Result<(), Box<dyn Error>> {
     for (index, c) in columns.iter().enumerate() {
-        let tail = if index == columns.len() - 1 { "\n" } else { "\t" };
+        let tail = if index == columns.len() - 1 {
+            "\n"
+        } else {
+            "\t"
+        };
         write!(out, "{:?}{}", c.to_string(maps), tail)?;
     }
     Ok(())
 }
 
-
 trait OutputTable {
-    fn write(
-        &self,
-        out: &mut dyn Write,
-        maps: &AtomMaps,
-    ) -> Result<(), Box<dyn Error>>;
+    fn write(&self, out: &mut dyn Write, maps: &AtomMaps) -> Result<(), Box<dyn Error>>;
 }
 
 impl<K: Render + Ord, V: Render> OutputTable for FxHashMap<K, V> {
-    fn write(
-        &self,
-        out: &mut dyn Write,
-        maps: &AtomMaps,
-    ) -> Result<(), Box<dyn Error>> {
+    fn write(&self, out: &mut dyn Write, maps: &AtomMaps) -> Result<(), Box<dyn Error>> {
         let mut entries = self.iter().collect::<Vec<_>>();
         entries.sort_by_key(|&(k, _)| k);
         for (k, v) in entries {
@@ -229,16 +204,11 @@ impl<K: Render + Ord, V: Render> OutputTable for FxHashMap<K, V> {
 }
 
 impl OutputTable for bool {
-    fn write(
-        &self,
-        out: &mut dyn Write,
-        _maps: &AtomMaps,
-    ) -> Result<(), Box<dyn Error>> {
+    fn write(&self, out: &mut dyn Write, _maps: &AtomMaps) -> Result<(), Box<dyn Error>> {
         writeln!(out, "{}", self)?;
         Ok(())
     }
 }
-
 
 trait Render {
     fn to_string(&self, maps: &AtomMaps) -> String;

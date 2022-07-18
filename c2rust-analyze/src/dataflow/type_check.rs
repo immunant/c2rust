@@ -1,15 +1,12 @@
-
-
-use rustc_middle::mir::{
-    Body, Statement, StatementKind, Terminator, TerminatorKind, Rvalue, BinOp, Place, PlaceRef,
-    Operand, ProjectionElem, Mutability,
-};
-use rustc_middle::mir::visit::{PlaceContext, NonMutatingUseContext, MutatingUseContext};
-use rustc_middle::ty::TyKind;
-use crate::context::{PermissionSet, PointerId, AnalysisCtxt, LTy};
-use crate::util::{self, describe_rvalue, RvalueDesc, Callee};
 use super::DataflowConstraints;
-
+use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
+use crate::util::{self, describe_rvalue, Callee, RvalueDesc};
+use rustc_middle::mir::visit::{MutatingUseContext, NonMutatingUseContext, PlaceContext};
+use rustc_middle::mir::{
+    BinOp, Body, Mutability, Operand, Place, PlaceRef, ProjectionElem, Rvalue, Statement,
+    StatementKind, Terminator, TerminatorKind,
+};
+use rustc_middle::ty::TyKind;
 
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
 /// constraints as a side effect.
@@ -32,11 +29,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
         match mutbl {
             Mutability::Mut => {
-                self.constraints.add_all_perms(ptr, PermissionSet::READ | PermissionSet::WRITE);
-            },
+                self.constraints
+                    .add_all_perms(ptr, PermissionSet::READ | PermissionSet::WRITE);
+            }
             Mutability::Not => {
                 self.constraints.add_all_perms(ptr, PermissionSet::READ);
-            },
+            }
         }
     }
 
@@ -59,15 +57,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     prev_deref_ptr = Some(lty.label);
                     assert_eq!(lty.args.len(), 1);
                     lty = lty.args[0];
-                },
+                }
 
-                ProjectionElem::Field(f, _field_ty) => {
-                    match lty.ty.kind() {
-                        TyKind::Tuple(..) => {
-                            lty = lty.args[f.as_usize()];
-                        },
-                        _ => todo!("field of {:?}", lty),
+                ProjectionElem::Field(f, _field_ty) => match lty.ty.kind() {
+                    TyKind::Tuple(..) => {
+                        lty = lty.args[f.as_usize()];
                     }
+                    _ => todo!("field of {:?}", lty),
                 },
 
                 ref proj => panic!("unsupported projection {:?} in {:?}", proj, pl),
@@ -78,11 +74,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             match ctx {
                 PlaceContext::NonMutatingUse(..) => {
                     self.record_access(ptr, Mutability::Not);
-                },
+                }
                 PlaceContext::MutatingUse(..) => {
                     self.record_access(ptr, Mutability::Mut);
-                },
-                PlaceContext::NonUse(..) => {},
+                }
+                PlaceContext::NonUse(..) => {}
             }
         }
 
@@ -97,10 +93,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let ctx = PlaceContext::NonMutatingUse(NonMutatingUseContext::Copy);
                 let base_ty = self.visit_place_ref(base, ctx);
                 base_ty.label
-            },
-            Some(RvalueDesc::AddrOfLocal { local, proj: _ }) => {
-                self.acx.addr_of_local[local]
-            },
+            }
+            Some(RvalueDesc::AddrOfLocal { local, proj: _ }) => self.acx.addr_of_local[local],
             None => match *rv {
                 Rvalue::Use(ref op) => self.visit_operand(op).label,
                 Rvalue::BinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
@@ -110,30 +104,27 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 Rvalue::Cast(_, _, ty) => {
                     assert!(!matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)));
                     PointerId::NONE
-                },
+                }
                 _ => panic!("TODO: handle assignment of {:?}", rv),
             },
-        }        
+        }
     }
 
-    pub fn visit_operand(
-        &mut self,
-        op: &Operand<'tcx>,
-    ) -> LTy<'tcx> {
+    pub fn visit_operand(&mut self, op: &Operand<'tcx>) -> LTy<'tcx> {
         match *op {
             Operand::Copy(pl) => {
                 let ctx = PlaceContext::NonMutatingUse(NonMutatingUseContext::Copy);
                 self.visit_place(pl, ctx)
-            },
+            }
             Operand::Move(pl) => {
                 let ctx = PlaceContext::NonMutatingUse(NonMutatingUseContext::Move);
                 self.visit_place(pl, ctx)
-            },
+            }
             Operand::Constant(ref c) => {
                 let ty = c.ty();
                 // TODO
                 self.acx.lcx.label(ty, &mut |_| PointerId::NONE)
-            },
+            }
         }
     }
 
@@ -157,8 +148,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let rv_ptr = self.visit_rvalue(rv);
 
                 self.do_assign(pl_ptr, rv_ptr);
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 
@@ -166,7 +157,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         eprintln!("visit_terminator({:?})", term.kind);
         let tcx = self.acx.tcx;
         match term.kind {
-            TerminatorKind::Call { ref func, ref args, destination, .. } => {
+            TerminatorKind::Call {
+                ref func,
+                ref args,
+                destination,
+                ..
+            } => {
                 let func_ty = func.ty(self.mir, tcx);
                 eprintln!("callee = {:?}", util::ty_callee(tcx, func_ty));
                 match util::ty_callee(tcx, func_ty) {
@@ -182,19 +178,16 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         self.do_assign(pl_lty.label, rv_lty.label);
                         let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
                         self.constraints.add_all_perms(rv_lty.label, perms);
-                    },
-                    None => {},
+                    }
+                    None => {}
                 }
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 }
 
-pub fn visit<'tcx>(
-    acx: &AnalysisCtxt<'tcx>,
-    mir: &Body<'tcx>,
-) -> DataflowConstraints {
+pub fn visit<'tcx>(acx: &AnalysisCtxt<'tcx>, mir: &Body<'tcx>) -> DataflowConstraints {
     let mut tc = TypeChecker {
         acx,
         mir,
@@ -210,5 +203,3 @@ pub fn visit<'tcx>(
 
     tc.constraints
 }
-
-

@@ -1,8 +1,8 @@
-use std::collections::hash_map::{HashMap, Entry};
-use std::hash::Hash;
 use polonius_engine::{self, Atom, FactTypes};
 use rustc_middle::mir::{BasicBlock, Local, Location, Place, PlaceElem};
 use rustc_middle::ty::TyCtxt;
+use std::collections::hash_map::{Entry, HashMap};
+use std::hash::Hash;
 
 macro_rules! define_atom_type {
     ($Atom:ident) => {
@@ -22,7 +22,9 @@ macro_rules! define_atom_type {
         }
 
         impl Atom for $Atom {
-            fn index(self) -> usize { self.0 }
+            fn index(self) -> usize {
+                self.0
+            }
         }
     };
 }
@@ -32,7 +34,6 @@ define_atom_type!(Loan);
 define_atom_type!(Point);
 define_atom_type!(Variable);
 define_atom_type!(Path);
-
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AnalysisFactTypes;
@@ -46,8 +47,6 @@ impl FactTypes for AnalysisFactTypes {
 
 pub type AllFacts = polonius_engine::AllFacts<AnalysisFactTypes>;
 pub type Output = polonius_engine::Output<AnalysisFactTypes>;
-
-
 
 #[derive(Clone, Debug)]
 struct AtomMap<T, A> {
@@ -74,29 +73,25 @@ impl<T: Hash + Eq + Clone, A: Atom> AtomMap<T, A> {
 
     pub fn add(&mut self, x: T) -> A {
         match self.thing_to_atom.entry(x.clone()) {
-            Entry::Occupied(e) => {
-                *e.get()
-            },
+            Entry::Occupied(e) => *e.get(),
             Entry::Vacant(e) => {
                 let atom = A::from(self.atom_to_thing.len());
                 self.atom_to_thing.push(x);
                 e.insert(atom);
                 atom
-            },
+            }
         }
     }
 
     pub fn add_new(&mut self, x: T) -> (A, bool) {
         match self.thing_to_atom.entry(x.clone()) {
-            Entry::Occupied(e) => {
-                (*e.get(), false)
-            },
+            Entry::Occupied(e) => (*e.get(), false),
             Entry::Vacant(e) => {
                 let atom = A::from(self.atom_to_thing.len());
                 self.atom_to_thing.push(x);
                 e.insert(atom);
                 (atom, true)
-            },
+            }
         }
     }
 
@@ -105,13 +100,11 @@ impl<T: Hash + Eq + Clone, A: Atom> AtomMap<T, A> {
     }
 }
 
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum SubPoint {
     Start,
     Mid,
 }
-
 
 #[derive(Clone, Debug, Default)]
 pub struct AtomMaps<'tcx> {
@@ -148,7 +141,10 @@ impl<'tcx> AtomMaps<'tcx> {
 
     pub fn get_point_location(&self, x: Point) -> Location {
         let (block, statement_index, _) = self.get_point(x);
-        Location { block, statement_index }
+        Location {
+            block,
+            statement_index,
+        }
     }
 
     pub fn variable(&mut self, l: Local) -> Variable {
@@ -175,7 +171,7 @@ impl<'tcx> AtomMaps<'tcx> {
                 let var = self.variable(local);
                 facts.path_is_var.push((path, var));
             } else {
-                let parent = self.path_slice(facts, local, &projection[.. projection.len() - 1]);
+                let parent = self.path_slice(facts, local, &projection[..projection.len() - 1]);
                 // TODO: check ordering of arguments here
                 facts.child_path.push((parent, path));
             }
@@ -194,5 +190,3 @@ impl<'tcx> AtomMaps<'tcx> {
         projection
     }
 }
-
-

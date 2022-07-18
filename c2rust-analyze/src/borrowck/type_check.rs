@@ -1,15 +1,14 @@
-use std::collections::HashMap;
+use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubPoint};
+use crate::borrowck::{LTy, LTyCtxt, Label};
+use crate::context::PermissionSet;
+use crate::util::{self, Callee};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    Body, Statement, StatementKind, Terminator, TerminatorKind, Rvalue, BinOp, Place, Operand,
-    BorrowKind, Local, LocalDecl, Location, ProjectionElem,
+    BinOp, Body, BorrowKind, Local, LocalDecl, Location, Operand, Place, ProjectionElem, Rvalue,
+    Statement, StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::{TyCtxt, TyKind};
-use crate::borrowck::{LTy, LTyCtxt, Label};
-use crate::borrowck::atoms::{AllFacts, AtomMaps, Point, SubPoint, Path, Loan, Origin};
-use crate::context::{PermissionSet};
-use crate::util::{self, Callee};
-
+use std::collections::HashMap;
 
 struct TypeChecker<'tcx, 'a> {
     tcx: TyCtxt<'tcx>,
@@ -39,15 +38,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 ProjectionElem::Deref => {
                     assert_eq!(lty.args.len(), 1);
                     lty = lty.args[0];
-                },
+                }
 
-                ProjectionElem::Field(f, _field_ty) => {
-                    match lty.ty.kind() {
-                        TyKind::Tuple(..) => {
-                            lty = lty.args[f.as_usize()];
-                        },
-                        _ => todo!("field of {:?}", lty),
+                ProjectionElem::Field(f, _field_ty) => match lty.ty.kind() {
+                    TyKind::Tuple(..) => {
+                        lty = lty.args[f.as_usize()];
                     }
+                    _ => todo!("field of {:?}", lty),
                 },
 
                 ref proj => panic!("unsupported projection {:?} in {:?}", proj, pl),
@@ -58,27 +55,25 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_operand(&mut self, op: &Operand<'tcx>) -> LTy<'tcx> {
         match *op {
-            Operand::Copy(pl) |
-            Operand::Move(pl) => self.visit_place(pl),
+            Operand::Copy(pl) | Operand::Move(pl) => self.visit_place(pl),
             Operand::Constant(ref c) => {
                 let ty = c.ty();
                 self.ltcx.label(ty, &mut |_| Label::default())
-            },
+            }
         }
     }
 
     /// Create a new origin and issue an associated loan.  The loan is issued at
     /// `self.current_location`.
-    fn issue_loan(
-        &mut self,
-        pl: Place<'tcx>,
-        borrow_kind: BorrowKind,
-    ) -> Origin {
+    fn issue_loan(&mut self, pl: Place<'tcx>, borrow_kind: BorrowKind) -> Origin {
         // Create a new origin and issue an associated loan.
         let origin = self.maps.origin();
         let path = self.maps.path(self.facts, pl);
         let loan = self.maps.loan();
-        self.loans.entry(pl.local).or_default().push((path, loan, borrow_kind));
+        self.loans
+            .entry(pl.local)
+            .or_default()
+            .push((path, loan, borrow_kind));
         let point = self.current_point(SubPoint::Mid);
         self.facts.loan_issued_at.push((origin, loan, point));
         eprintln!("issued loan {:?} = {:?} ({:?})", loan, pl, borrow_kind);
@@ -87,12 +82,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, expect_ty: LTy<'tcx>) -> LTy<'tcx> {
         match *rv {
-            Rvalue::Use(Operand::Move(pl)) |
-            Rvalue::Use(Operand::Copy(pl)) if matches!(expect_ty.ty.kind(), TyKind::RawPtr(_)) => {
+            Rvalue::Use(Operand::Move(pl)) | Rvalue::Use(Operand::Copy(pl))
+                if matches!(expect_ty.ty.kind(), TyKind::RawPtr(_)) =>
+            {
                 // Copy of a raw pointer.  We treat this as a reborrow.
                 let perm = expect_ty.label.perm;
                 let borrow_kind = if perm.contains(PermissionSet::UNIQUE) {
-                    BorrowKind::Mut { allow_two_phase_borrow: false }
+                    BorrowKind::Mut {
+                        allow_two_phase_borrow: false,
+                    }
                 } else {
                     BorrowKind::Shared
                 };
@@ -103,11 +101,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // Return a type with the new loan on the outermost `ref`.
                 let ty = rv.ty(self.local_decls, *self.ltcx);
                 let pl_lty = self.visit_place(pl_deref);
-                let label = Label { origin: Some(origin), perm };
+                let label = Label {
+                    origin: Some(origin),
+                    perm,
+                };
                 let lty = self.ltcx.mk(ty, self.ltcx.mk_slice(&[pl_lty]), label);
                 lty
-
-            },
+            }
 
             Rvalue::Use(ref op) => self.visit_operand(op),
 
@@ -118,15 +118,20 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // Return a type with the new loan on the outermost `ref`.
                 let ty = rv.ty(self.local_decls, *self.ltcx);
                 let pl_lty = self.visit_place(pl);
-                let label = Label { origin: Some(origin), perm };
+                let label = Label {
+                    origin: Some(origin),
+                    perm,
+                };
                 let lty = self.ltcx.mk(ty, self.ltcx.mk_slice(&[pl_lty]), label);
                 lty
-            },
+            }
 
             Rvalue::AddressOf(_, pl) => {
                 let perm = expect_ty.label.perm;
                 let borrow_kind = if perm.contains(PermissionSet::UNIQUE) {
-                    BorrowKind::Mut { allow_two_phase_borrow: false }
+                    BorrowKind::Mut {
+                        allow_two_phase_borrow: false,
+                    }
                 } else {
                     BorrowKind::Shared
                 };
@@ -136,28 +141,29 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // Return a type with the new loan on the outermost `ref`.
                 let ty = rv.ty(self.local_decls, *self.ltcx);
                 let pl_lty = self.visit_place(pl);
-                let label = Label { origin: Some(origin), perm };
+                let label = Label {
+                    origin: Some(origin),
+                    perm,
+                };
                 let lty = self.ltcx.mk(ty, self.ltcx.mk_slice(&[pl_lty]), label);
                 lty
-            },
+            }
 
-            Rvalue::BinaryOp(BinOp::Offset, _) |
-            Rvalue::CheckedBinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
-            Rvalue::BinaryOp(_, ref _ab) |
-            Rvalue::CheckedBinaryOp(_, ref _ab) => {
+            Rvalue::BinaryOp(BinOp::Offset, _) | Rvalue::CheckedBinaryOp(BinOp::Offset, _) => {
+                todo!("visit_rvalue BinOp::Offset")
+            }
+            Rvalue::BinaryOp(_, ref _ab) | Rvalue::CheckedBinaryOp(_, ref _ab) => {
                 let ty = rv.ty(self.local_decls, *self.ltcx);
                 self.ltcx.label(ty, &mut |ty| {
                     assert!(!matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)));
                     Label::default()
                 })
-            },
+            }
 
-            Rvalue::Cast(_, _, ty) => {
-                self.ltcx.label(ty, &mut |ty| {
-                    assert!(!matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)));
-                    Label::default()
-                })
-            },
+            Rvalue::Cast(_, _, ty) => self.ltcx.label(ty, &mut |ty| {
+                assert!(!matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)));
+                Label::default()
+            }),
 
             ref rv => panic!("unsupported rvalue {:?}", rv),
         }
@@ -181,15 +187,20 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let pl_lty = self.visit_place(pl);
                 let rv_lty = self.visit_rvalue(rv, pl_lty);
                 self.do_assign(pl_lty, rv_lty);
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 
     pub fn visit_terminator(&mut self, term: &Terminator<'tcx>) {
         eprintln!("borrowck: visit_terminator({:?})", term.kind);
         match term.kind {
-            TerminatorKind::Call { ref func, ref args, destination, .. } => {
+            TerminatorKind::Call {
+                ref func,
+                ref args,
+                destination,
+                ..
+            } => {
                 let func_ty = func.ty(self.local_decls, *self.ltcx);
                 eprintln!("callee = {:?}", util::ty_callee(*self.ltcx, func_ty));
                 match util::ty_callee(*self.ltcx, func_ty) {
@@ -202,11 +213,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         assert!(args.len() == 2);
                         let rv_lty = self.visit_operand(&args[0]);
                         self.do_assign(pl_lty, rv_lty);
-                    },
-                    None => {},
+                    }
+                    None => {}
                 }
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 }
@@ -247,5 +258,3 @@ pub fn visit<'tcx>(
         tc.visit_terminator(bb_data.terminator());
     }
 }
-
-
