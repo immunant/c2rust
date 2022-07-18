@@ -13,12 +13,22 @@ extern "C" {
     #[no_mangle]
     fn realloc(_: *mut libc::c_void, _: libc::c_ulong) -> *mut libc::c_void;
     #[no_mangle]
-    fn reallocarray(__ptr: *mut libc::c_void, __nmemb: size_t, __size: size_t)
-        -> *mut libc::c_void;
-    #[no_mangle]
     fn free(__ptr: *mut libc::c_void);
     #[no_mangle]
     fn printf(_: *const libc::c_char, _: ...) -> libc::c_int;
+}
+
+/// Hidden from instrumentation so that we can polyfill [`reallocarray`] with it.
+const REALLOC: unsafe extern "C" fn(*mut libc::c_void, libc::c_ulong) -> *mut libc::c_void = realloc;
+
+/// Polyfill [`reallocarray`] as macOS does not have [`reallocarray`].
+/// 
+/// Normally we'd only polyfill it on macOS, but then we'd need a different snapshot file for macOS,
+/// as polyfilling results in a couple of extra copies.
+/// Thus, we just polyfill always.
+#[no_mangle]
+unsafe fn reallocarray(ptr: *mut libc::c_void, nmemb: size_t, size: size_t) -> *mut libc::c_void {
+    REALLOC(ptr, nmemb * size)
 }
 
 use libc::*;
