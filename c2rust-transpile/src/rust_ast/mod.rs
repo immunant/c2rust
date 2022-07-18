@@ -205,35 +205,3 @@ impl SpanExt for Span {
         get_inner_mut(self)
     }
 }
-
-#[derive(PartialEq, Eq, Debug, Clone)]
-pub struct MySpan {
-    pub lo: u32,
-    pub hi: u32,
-}
-
-impl SpanExt for MySpan {
-    fn is_dummy(&self) -> bool {
-        self.lo == 0 && self.hi == 0
-    }
-
-    fn dummy() -> Self {
-        MySpan { lo: 0, hi: 0 }
-    }
-
-    fn eq(&self, other: &Self) -> bool {
-        self == other
-    }
-
-    fn new(lo: u32, hi: u32) -> Self {
-        MySpan { lo, hi }
-    }
-
-    fn inner(&self) -> (u32, u32) {
-        (self.lo, self.hi)
-    }
-
-    fn inner_mut(&mut self) -> (&mut u32, &mut u32) {
-        (&mut self.lo, &mut self.hi)
-    }
-}
