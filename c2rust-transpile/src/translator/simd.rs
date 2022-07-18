@@ -428,16 +428,9 @@ impl<'c> Translation<'c> {
         let param_translation =
             self.convert_exprs(ctx.used(), &[first_expr_id, second_expr_id, mask_expr_id])?;
         param_translation.and_then(|params| {
-            let mut params = params.into_iter();
-            let first = params
-                .next()
-                .ok_or("Missing first param in convert_shuffle_vector")?;
-            let second = params
-                .next()
-                .ok_or("Missing second param in convert_shuffle_vector")?;
-            let third = params
-                .next()
-                .ok_or("Missing third param in convert_shuffle_vector")?;
+            let [first, second, third]: [_; 3] = params
+                .try_into()
+                .map_err(|_| "`convert_shuffle_vector` must have exactly 3 parameters")?;
             let mut new_params = vec![first];
 
             // Some don't take a second param, but the expr is still there for some reason
