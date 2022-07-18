@@ -140,13 +140,6 @@ pub fn addr_of_local(mir_loc: MirLocId, ptr: usize, local: u32) {
     });
 }
 
-pub fn ref_copy(mir_loc: MirLocId, _dest_local_ptr: usize) {
-    RUNTIME.send_event(Event {
-        mir_loc,
-        kind: EventKind::CopyRef,
-    });
-}
-
 pub fn load_value(mir_loc: MirLocId, ptr: usize) {
     RUNTIME.send_event(Event {
         mir_loc,

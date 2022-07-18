@@ -414,9 +414,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
         let copy_fn = self
             .find_instrumentation_def(Symbol::intern("ptr_copy"))
             .expect("Could not find pointer copy hook");
-        let ref_copy_fn = self
-            .find_instrumentation_def(Symbol::intern("ref_copy"))
-            .expect("Could not find ref copy hook");
         let addr_local_fn = self
             .find_instrumentation_def(Symbol::intern("addr_of_local"))
             .expect("Could not find addr_of_local hook");
@@ -668,34 +665,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         }
                     }
                     _ => (),
-                }
-            } else if value_ty.is_region_ptr() {
-                if let Rvalue::Ref(_, bkind, p) = value {
-                    let instr_operand = if let BorrowKind::Mut { .. } = bkind {
-                        InstrumentationOperand::Place(Operand::Copy(*p))
-                    } else {
-                        // Instrument immutable borrows by tracing the reference itself
-                        location.statement_index += 1;
-                        InstrumentationOperand::Reference(Operand::Copy(dest))
-                    };
-                    self.add_instrumentation_point(
-                        location,
-                        addr_local_fn,
-                        vec![
-                            instr_operand,
-                            InstrumentationOperand::AddressUsize(make_const(
-                                self.tcx,
-                                p.local.as_u32(),
-                            )),
-                        ],
-                        false,
-                        false,
-                        EventMetadata {
-                            source: Some(to_mir_place(p)),
-                            destination: Some(to_mir_place(&dest)),
-                            transfer_kind: TransferKind::None,
-                        },
-                    );
                 }
             }
         } else {
