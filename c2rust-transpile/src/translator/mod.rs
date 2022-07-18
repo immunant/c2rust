@@ -1333,7 +1333,7 @@ impl<'c> Translation<'c> {
             .into_iter()
             .collect::<TokenStream>();
         mk().mac_expr(mk().mac(
-            vec![macro_name],
+            mk().path(vec![macro_name]),
             macro_msg,
             MacroDelimiter::Paren(Default::default()),
         ))
@@ -2728,7 +2728,7 @@ impl<'c> Translation<'c> {
                         let path = vec!["core", "ffi", "VaListImpl"];
                         mk().path_ty(mk().abs_path(path))
                     };
-                    let local_mut = mk().local::<_, _, Box<Expr>>(pat_mut, Some(ty), None);
+                    let local_mut = mk().local(pat_mut, Some(ty), None);
 
                     return Ok(cfg::DeclStmtInfo::new(
                         vec![],                                     // decl
@@ -4071,7 +4071,7 @@ impl<'c> Translation<'c> {
 
         let ts: TokenStream = syn::parse_str(args).ok()?;
         Some(WithStmts::new_val(mk().mac_expr(mk().mac(
-            ident,
+            mk().path(ident),
             ts,
             MacroDelimiter::Paren(Default::default()),
         ))))

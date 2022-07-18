@@ -599,7 +599,7 @@ impl<'c> Translation<'c> {
             "__builtin_unwind_init" => Ok(WithStmts::new_val(self.panic_or_err("no value"))),
             "__builtin_unreachable" => Ok(WithStmts::new(
                 vec![mk().semi_stmt(mk().mac_expr(mk().mac(
-                    vec!["unreachable"],
+                    mk().path(vec!["unreachable"]),
                     vec![],
                     MacroDelimiter::Paren(Default::default()),
                 )))],

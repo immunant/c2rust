@@ -1022,7 +1022,7 @@ impl<'c> Translation<'c> {
         });
 
         let mac = mk().mac(
-            vec!["asm"],
+            mk().path(vec!["asm"]),
             tokens.into_iter().collect::<TokenStream>(),
             MacroDelimiter::Paren(Default::default()),
         );

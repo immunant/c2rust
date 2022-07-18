@@ -518,8 +518,7 @@ impl Builder {
         Builder { span, ..self }
     }
 
-    pub fn generic_over<P: Make<GenericParam>>(mut self, param: P) -> Self {
-        let param = param.make(&self);
+    pub fn generic_over(mut self, param: GenericParam) -> Self {
         self.generics.params.push(param);
         self
     }
@@ -577,11 +576,7 @@ impl Builder {
         }
     }
 
-    pub fn prepare_meta<K>(&self, kind: K) -> PreparedMetaItem
-    where
-        K: Make<Meta>,
-    {
-        let kind: Meta = kind.make(self);
+    pub fn prepare_meta(&self, kind: Meta) -> PreparedMetaItem {
         match kind {
             Meta::List(ml) => self.prepare_meta_list(ml),
             Meta::NameValue(mnv) => self.prepare_meta_namevalue(mnv),
@@ -589,13 +584,11 @@ impl Builder {
         }
     }
 
-    pub fn prepare_nested_meta_item<I, K>(&self, path: I, kind: K) -> PreparedMetaItem
+    pub fn prepare_nested_meta_item<I>(&self, path: I, kind: Meta) -> PreparedMetaItem
     where
         I: Make<Path>,
-        K: Make<Meta>,
     {
         let path = path.make(self);
-        let kind = kind.make(self);
         PreparedMetaItem {
             path,
             tokens: kind.to_token_stream(),
@@ -671,11 +664,7 @@ impl Builder {
         }
     }
 
-    pub fn parenthesized_args<Ts>(self, tys: Ts) -> ParenthesizedGenericArguments
-    where
-        Ts: Make<Vec<Box<Type>>>,
-    {
-        let tys = tys.make(&self);
+    pub fn parenthesized_args(self, tys: Vec<Box<Type>>) -> ParenthesizedGenericArguments {
         ParenthesizedGenericArguments {
             paren_token: token::Paren(self.span),
             inputs: punct_box(tys),
@@ -726,13 +715,11 @@ impl Builder {
         path.make(&self)
     }
 
-    pub fn use_tree<Pa, K>(self, prefix: Pa, kind: K) -> UseTree
+    pub fn use_tree<Pa>(self, prefix: Pa, mut tree: UseTree) -> UseTree
     where
         Pa: Make<Path>,
-        K: Make<UseTree>,
     {
         let path: Path = prefix.make(&self);
-        let mut tree = kind.make(&self);
         for seg in path.segments {
             tree = UseTree::Path(UsePath {
                 ident: seg.ident,
@@ -756,11 +743,8 @@ impl Builder {
     // These are sorted in the same order as the corresponding ExprKind variants, with additional
     // variant-specific details following each variant.
 
-    pub fn array_expr<A>(self, args: Vec<A>) -> Box<Expr>
-    where
-        A: Make<Box<Expr>>,
-    {
-        let args = args.into_iter().map(|a| *a.make(&self)).collect();
+    pub fn array_expr(self, args: Vec<Box<Expr>>) -> Box<Expr> {
+        let args = args.into_iter().map(|a| *a).collect();
         Box::new(Expr::Array(ExprArray {
             attrs: self.attrs,
             bracket_token: token::Bracket(self.span),
@@ -768,13 +752,8 @@ impl Builder {
         }))
     }
 
-    pub fn call_expr<F, A>(self, func: F, args: Vec<A>) -> Box<Expr>
-    where
-        F: Make<Box<Expr>>,
-        A: Make<Box<Expr>>,
-    {
-        let func = func.make(&self);
-        let args = args.into_iter().map(|a| *a.make(&self)).collect();
+    pub fn call_expr(self, func: Box<Expr>, args: Vec<Box<Expr>>) -> Box<Expr> {
+        let args = args.into_iter().map(|a| *a).collect();
         Box::new(parenthesize_if_necessary(Expr::Call(ExprCall {
             attrs: self.attrs,
             paren_token: token::Paren(self.span),
@@ -783,13 +762,10 @@ impl Builder {
         })))
     }
 
-    pub fn method_call_expr<E, S, A>(self, expr: E, seg: S, args: Vec<A>) -> Box<Expr>
+    pub fn method_call_expr<S>(self, expr: Box<Expr>, seg: S, args: Vec<Box<Expr>>) -> Box<Expr>
     where
-        E: Make<Box<Expr>>,
         S: Make<PathSegment>,
-        A: Make<Box<Expr>>,
     {
-        let expr = expr.make(&self);
         let seg = seg.make(&self);
 
         let mut arg_vals = Vec::with_capacity(args.len());
@@ -838,11 +814,7 @@ impl Builder {
         )))
     }
 
-    pub fn tuple_expr<E>(self, exprs: Vec<E>) -> Box<Expr>
-    where
-        E: Make<Box<Expr>>,
-    {
-        let exprs: Vec<Box<Expr>> = exprs.into_iter().map(|x| x.make(&self)).collect();
+    pub fn tuple_expr(self, exprs: Vec<Box<Expr>>) -> Box<Expr> {
         Box::new(Expr::Tuple(ExprTuple {
             attrs: self.attrs,
             paren_token: token::Paren(self.span),
@@ -850,16 +822,7 @@ impl Builder {
         }))
     }
 
-    pub fn binary_expr<O, E>(self, op: O, lhs: E, rhs: E) -> Box<Expr>
-    where
-        O: Make<BinOp>,
-        E: Make<Box<Expr>>,
-    {
-        let op = op.make(&self);
-        // FIXME: set span for op
-        let mut lhs = lhs.make(&self);
-        let rhs = rhs.make(&self);
-
+    pub fn binary_expr(self, op: BinOp, mut lhs: Box<Expr>, rhs: Box<Expr>) -> Box<Expr> {
         match op {
             BinOp::Lt(_) | BinOp::Shl(_) if has_rightmost_cast(&*lhs) => lhs = mk().paren_expr(lhs),
             _ => {}
@@ -873,14 +836,12 @@ impl Builder {
         })))
     }
 
-    pub fn unary_expr<O, E>(self, op: O, a: E) -> Box<Expr>
+    pub fn unary_expr<O>(self, op: O, a: Box<Expr>) -> Box<Expr>
     where
         O: Make<UnOp>,
-        E: Make<Box<Expr>>,
     {
         let op = op.make(&self);
         // FIXME: set span for op
-        let a = a.make(&self);
         Box::new(parenthesize_if_necessary(Expr::Unary(ExprUnary {
             attrs: self.attrs,
             op,
@@ -900,14 +861,7 @@ impl Builder {
         }))
     }
 
-    pub fn cast_expr<E, T>(self, e: E, t: T) -> Box<Expr>
-    where
-        E: Make<Box<Expr>>,
-        T: Make<Box<Type>>,
-    {
-        let e = e.make(&self);
-        let t = t.make(&self);
-
+    pub fn cast_expr(self, e: Box<Expr>, t: Box<Type>) -> Box<Expr> {
         Box::new(parenthesize_if_necessary(Expr::Cast(ExprCast {
             attrs: self.attrs,
             as_token: Token![as](self.span),
@@ -916,13 +870,7 @@ impl Builder {
         })))
     }
 
-    pub fn type_expr<E, T>(self, e: E, t: T) -> Box<Expr>
-    where
-        E: Make<Box<Expr>>,
-        T: Make<Box<Type>>,
-    {
-        let e = e.make(&self);
-        let t = t.make(&self);
+    pub fn type_expr(self, e: Box<Expr>, t: Box<Type>) -> Box<Expr> {
         Box::new(Expr::Type(ExprType {
             attrs: self.attrs,
             colon_token: Token![:](self.span),
@@ -931,19 +879,11 @@ impl Builder {
         }))
     }
 
-    pub fn unsafe_block_expr<B>(self, unsafe_blk: B) -> Box<Expr>
-    where
-        B: Make<ExprUnsafe>,
-    {
-        let unsafe_blk = unsafe_blk.make(&self);
+    pub fn unsafe_block_expr(self, unsafe_blk: ExprUnsafe) -> Box<Expr> {
         Box::new(Expr::Unsafe(unsafe_blk))
     }
 
-    pub fn block_expr<B>(self, blk: B) -> Box<Expr>
-    where
-        B: Make<Box<Block>>,
-    {
-        let blk = blk.make(&self);
+    pub fn block_expr(self, blk: Box<Block>) -> Box<Expr> {
         Box::new(Expr::Block(ExprBlock {
             attrs: self.attrs,
             block: *blk,
@@ -951,12 +891,10 @@ impl Builder {
         }))
     }
 
-    pub fn labelled_block_expr<B, L>(self, blk: B, lbl: L) -> Box<Expr>
+    pub fn labelled_block_expr<L>(self, blk: Box<Block>, lbl: L) -> Box<Expr>
     where
-        B: Make<Box<Block>>,
         L: Make<Label>,
     {
-        let blk = blk.make(&self);
         let lbl = lbl.make(&self);
         Box::new(Expr::Block(ExprBlock {
             attrs: self.attrs,
@@ -965,13 +903,7 @@ impl Builder {
         }))
     }
 
-    pub fn assign_expr<E1, E2>(self, lhs: E1, rhs: E2) -> Box<Expr>
-    where
-        E1: Make<Box<Expr>>,
-        E2: Make<Box<Expr>>,
-    {
-        let lhs = lhs.make(&self);
-        let rhs = rhs.make(&self);
+    pub fn assign_expr(self, lhs: Box<Expr>, rhs: Box<Expr>) -> Box<Expr> {
         Box::new(Expr::Assign(ExprAssign {
             attrs: self.attrs,
             eq_token: Token![=](self.span),
@@ -980,16 +912,7 @@ impl Builder {
         }))
     }
 
-    pub fn assign_op_expr<O, E1, E2>(self, op: O, lhs: E1, rhs: E2) -> Box<Expr>
-    where
-        O: Make<BinOp>,
-        E1: Make<Box<Expr>>,
-        E2: Make<Box<Expr>>,
-    {
-        let op = op.make(&self);
-        // FIXME: set span for op
-        let lhs = lhs.make(&self);
-        let rhs = rhs.make(&self);
+    pub fn assign_op_expr(self, op: BinOp, lhs: Box<Expr>, rhs: Box<Expr>) -> Box<Expr> {
         Box::new(Expr::AssignOp(ExprAssignOp {
             attrs: self.attrs,
             op,
@@ -998,13 +921,7 @@ impl Builder {
         }))
     }
 
-    pub fn index_expr<E1, E2>(self, lhs: E1, rhs: E2) -> Box<Expr>
-    where
-        E1: Make<Box<Expr>>,
-        E2: Make<Box<Expr>>,
-    {
-        let lhs = lhs.make(&self);
-        let rhs = rhs.make(&self);
+    pub fn index_expr(self, lhs: Box<Expr>, rhs: Box<Expr>) -> Box<Expr> {
         Box::new(parenthesize_if_necessary(Expr::Index(ExprIndex {
             attrs: self.attrs,
             bracket_token: token::Bracket(self.span),
@@ -1042,13 +959,7 @@ impl Builder {
 
     /// An array literal constructed from one repeated element.
     /// `[expr; n]`
-    pub fn repeat_expr<E, N>(self, expr: E, n: N) -> Box<Expr>
-    where
-        E: Make<Box<Expr>>,
-        N: Make<Box<Expr>>,
-    {
-        let expr = expr.make(&self);
-        let n = n.make(&self);
+    pub fn repeat_expr(self, expr: Box<Expr>, n: Box<Expr>) -> Box<Expr> {
         Box::new(Expr::Repeat(ExprRepeat {
             attrs: self.attrs,
             bracket_token: token::Bracket(self.span),
@@ -1058,11 +969,7 @@ impl Builder {
         }))
     }
 
-    pub fn paren_expr<E>(self, e: E) -> Box<Expr>
-    where
-        E: Make<Box<Expr>>,
-    {
-        let e = e.make(&self);
+    pub fn paren_expr(self, e: Box<Expr>) -> Box<Expr> {
         Box::new(Expr::Paren(ExprParen {
             attrs: self.attrs,
             paren_token: token::Paren(self.span),
@@ -1078,11 +985,7 @@ impl Builder {
         self.path_expr(vec![name])
     }
 
-    pub fn addr_of_expr<E>(self, e: E) -> Box<Expr>
-    where
-        E: Make<Box<Expr>>,
-    {
-        let e = e.make(&self);
+    pub fn addr_of_expr(self, e: Box<Expr>) -> Box<Expr> {
         Box::new(Expr::Reference(ExprReference {
             attrs: self.attrs,
             and_token: Token![&](self.span),
@@ -1092,11 +995,7 @@ impl Builder {
         }))
     }
 
-    pub fn mac_expr<M>(self, mac: M) -> Box<Expr>
-    where
-        M: Make<Macro>,
-    {
-        let mac = mac.make(&self);
+    pub fn mac_expr(self, mac: Macro) -> Box<Expr> {
         Box::new(Expr::Macro(ExprMacro {
             attrs: self.attrs,
             mac,
@@ -1119,18 +1018,16 @@ impl Builder {
     }
 
     // struct_expr, but with optional base expression
-    pub fn struct_expr_base<Pa, E>(
+    pub fn struct_expr_base<Pa>(
         self,
         path: Pa,
         fields: Vec<FieldValue>,
-        base: Option<E>,
+        base: Option<Box<Expr>>,
     ) -> Box<Expr>
     where
         Pa: Make<Path>,
-        E: Make<Box<Expr>>,
     {
         let path = path.make(&self);
-        let base = base.map(|e| e.make(&self));
         Box::new(Expr::Struct(ExprStruct {
             attrs: self.attrs,
             brace_token: token::Brace(self.span),
@@ -1141,12 +1038,10 @@ impl Builder {
         }))
     }
 
-    pub fn field_expr<E, F>(self, val: E, field: F) -> Box<Expr>
+    pub fn field_expr<F>(self, val: Box<Expr>, field: F) -> Box<Expr>
     where
-        E: Make<Box<Expr>>,
         F: Make<Ident>,
     {
-        let val = val.make(&self);
         let field = field.make(&self);
         Box::new(parenthesize_if_necessary(Expr::Field(ExprField {
             attrs: self.attrs,
@@ -1156,12 +1051,7 @@ impl Builder {
         })))
     }
 
-    pub fn anon_field_expr<E>(self, val: E, field: u32) -> Box<Expr>
-    where
-        E: Make<Box<Expr>>,
-    {
-        let val = val.make(&self);
-        let field = field.make(&self);
+    pub fn anon_field_expr(self, val: Box<Expr>, field: u32) -> Box<Expr> {
         Box::new(parenthesize_if_necessary(Expr::Field(ExprField {
             attrs: self.attrs,
             dot_token: Token![.](self.span),
@@ -1173,13 +1063,11 @@ impl Builder {
         })))
     }
 
-    pub fn field<I, E>(self, ident: I, expr: E) -> FieldValue
+    pub fn field<I>(self, ident: I, expr: Box<Expr>) -> FieldValue
     where
         I: Make<Ident>,
-        E: Make<Box<Expr>>,
     {
         let ident = ident.make(&self);
-        let expr = expr.make(&self);
         FieldValue {
             member: Member::Named(ident),
             expr: *expr,
@@ -1188,12 +1076,8 @@ impl Builder {
         }
     }
 
-    pub fn match_expr<E>(self, cond: E, arms: Vec<Arm>) -> Box<Expr>
-    where
-        E: Make<Box<Expr>>,
-    {
-        let cond = cond.make(&self);
-        let arms = arms.into_iter().map(|arm| arm.make(&self)).collect();
+    pub fn match_expr(self, cond: Box<Expr>, arms: Vec<Arm>) -> Box<Expr> {
+        let arms = arms.into_iter().collect();
         Box::new(Expr::Match(ExprMatch {
             attrs: self.attrs,
             match_token: Token![match](self.span),
@@ -1203,17 +1087,11 @@ impl Builder {
         }))
     }
 
-    pub fn arm<Pa, E>(self, pat: Pa, guard: Option<E>, body: E) -> Arm
-    where
-        E: Make<Box<Expr>>,
-        Pa: Make<Box<Pat>>,
-    {
-        let pat = *pat.make(&self);
-        let guard = guard.map(|g| (Token![if](self.span), g.make(&self)));
-        let body = body.make(&self);
+    pub fn arm(self, pat: Box<Pat>, guard: Option<Box<Expr>>, body: Box<Expr>) -> Arm {
+        let guard = guard.map(|g| (Token![if](self.span), g));
         Arm {
             attrs: self.attrs,
-            pat,
+            pat: *pat,
             guard,
             body,
             fat_arrow_token: Token![=>](self.span),
@@ -1246,17 +1124,13 @@ impl Builder {
         })
     }
 
-    pub fn ifte_expr<C, T, E>(self, cond: C, then_case: T, else_case: Option<E>) -> Box<Expr>
-    where
-        C: Make<Box<Expr>>,
-        T: Make<Box<Block>>,
-        E: Make<Box<Expr>>,
-    {
-        let cond = cond.make(&self);
-        let then_case = *then_case.make(&self);
-        let else_case = else_case.map(|x| {
-            let e = x.make(&self);
-
+    pub fn ifte_expr(
+        self,
+        cond: Box<Expr>,
+        then_case: Box<Block>,
+        else_case: Option<Box<Expr>>,
+    ) -> Box<Expr> {
+        let else_case = else_case.map(|e| {
             // The else branch in libsyntax must be one of these three cases,
             // otherwise we have to manually add the block around the else expression
             (
@@ -1277,19 +1151,15 @@ impl Builder {
             attrs: self.attrs,
             if_token: Token![if](self.span),
             cond,
-            then_branch: then_case,
+            then_branch: *then_case,
             else_branch: else_case,
         }))
     }
 
-    pub fn while_expr<C, B, I>(self, cond: C, body: B, label: Option<I>) -> Box<Expr>
+    pub fn while_expr<I>(self, cond: Box<Expr>, body: Box<Block>, label: Option<I>) -> Box<Expr>
     where
-        C: Make<Box<Expr>>,
-        B: Make<Box<Block>>,
         I: Make<Ident>,
     {
-        let cond = cond.make(&self);
-        let body = *body.make(&self);
         let label = label.map(|l| Label {
             name: Lifetime {
                 ident: l.make(&self),
@@ -1302,17 +1172,15 @@ impl Builder {
             attrs: self.attrs,
             while_token: Token![while](self.span),
             cond,
-            body,
+            body: *body,
             label,
         }))
     }
 
-    pub fn loop_expr<B, I>(self, body: B, label: Option<I>) -> Box<Expr>
+    pub fn loop_expr<I>(self, body: Box<Block>, label: Option<I>) -> Box<Expr>
     where
-        B: Make<Box<Block>>,
         I: Make<Ident>,
     {
-        let body = *body.make(&self);
         let label = label.map(|l| Label {
             name: Lifetime {
                 ident: l.make(&self),
@@ -1324,21 +1192,21 @@ impl Builder {
         Box::new(Expr::Loop(ExprLoop {
             attrs: self.attrs,
             loop_token: Token![loop](self.span),
-            body,
+            body: *body,
             label,
         }))
     }
 
-    pub fn for_expr<Pa, E, B, I>(self, pat: Pa, expr: E, body: B, label: Option<I>) -> Box<Expr>
+    pub fn for_expr<I>(
+        self,
+        pat: Box<Pat>,
+        expr: Box<Expr>,
+        body: Box<Block>,
+        label: Option<I>,
+    ) -> Box<Expr>
     where
-        Pa: Make<Box<Pat>>,
-        E: Make<Box<Expr>>,
-        B: Make<Box<Block>>,
         I: Make<Ident>,
     {
-        let pat = *pat.make(&self);
-        let expr = expr.make(&self);
-        let body = *body.make(&self);
         let label = label.map(|l| Label {
             name: Lifetime {
                 ident: l.make(&self),
@@ -1351,9 +1219,9 @@ impl Builder {
             attrs: self.attrs,
             for_token: Token![for](self.span),
             in_token: Token![in](self.span),
-            pat,
+            pat: *pat,
             expr,
-            body,
+            body: *body,
             label,
         }))
     }
@@ -1374,11 +1242,7 @@ impl Builder {
         }))
     }
 
-    pub fn tuple_pat<Pa>(self, pats: Vec<Pa>) -> Box<Pat>
-    where
-        Pa: Make<Box<Pat>>,
-    {
-        let pats: Vec<Box<Pat>> = pats.into_iter().map(|x| x.make(&self)).collect();
+    pub fn tuple_pat(self, pats: Vec<Box<Pat>>) -> Box<Pat> {
         Box::new(Pat::Tuple(PatTuple {
             attrs: self.attrs,
             paren_token: token::Paren(self.span),
@@ -1405,22 +1269,14 @@ impl Builder {
         }))
     }
 
-    pub fn lit_pat<L>(self, lit: L) -> Box<Pat>
-    where
-        L: Make<Box<Expr>>,
-    {
-        let lit = lit.make(&self);
+    pub fn lit_pat(self, lit: Box<Expr>) -> Box<Pat> {
         Box::new(Pat::Lit(PatLit {
             attrs: self.attrs,
             expr: lit,
         }))
     }
 
-    pub fn mac_pat<M>(self, mac: M) -> Box<Pat>
-    where
-        M: Make<Macro>,
-    {
-        let mac = mac.make(&self);
+    pub fn mac_pat(self, mac: Macro) -> Box<Pat> {
         Box::new(Pat::Macro(PatMacro {
             attrs: self.attrs,
             mac,
@@ -1441,11 +1297,7 @@ impl Builder {
         }))
     }
 
-    pub fn or_pat<Pa>(self, pats: Vec<Pa>) -> Box<Pat>
-    where
-        Pa: Make<Box<Pat>>,
-    {
-        let pats: Vec<Box<Pat>> = pats.into_iter().map(|p| p.make(&self)).collect();
+    pub fn or_pat(self, pats: Vec<Box<Pat>>) -> Box<Pat> {
         Box::new(Pat::Or(PatOr {
             attrs: self.attrs,
             leading_vert: None, // Untested
@@ -1455,11 +1307,7 @@ impl Builder {
 
     // Types
 
-    pub fn barefn_ty<T>(self, decl: T) -> Box<Type>
-    where
-        T: Make<Box<BareFnTyParts>>,
-    {
-        let decl = decl.make(&self);
+    pub fn barefn_ty(self, decl: Box<BareFnTyParts>) -> Box<Type> {
         let (inputs, variadic, output) = *decl;
         let abi = self.get_abi_opt();
 
@@ -1477,37 +1325,23 @@ impl Builder {
         Box::new(Type::BareFn(barefn))
     }
 
-    pub fn array_ty<T, E>(self, ty: T, len: E) -> Box<Type>
-    where
-        T: Make<Box<Type>>,
-        E: Make<Box<Expr>>,
-    {
-        let ty = ty.make(&self);
-        let len = *len.make(&self);
+    pub fn array_ty(self, ty: Box<Type>, len: Box<Expr>) -> Box<Type> {
         Box::new(Type::Array(TypeArray {
             bracket_token: token::Bracket(self.span),
             semi_token: Token![;](self.span),
             elem: ty,
-            len,
+            len: *len,
         }))
     }
 
-    pub fn slice_ty<T>(self, ty: T) -> Box<Type>
-    where
-        T: Make<Box<Type>>,
-    {
-        let ty = ty.make(&self);
+    pub fn slice_ty(self, ty: Box<Type>) -> Box<Type> {
         Box::new(Type::Slice(TypeSlice {
             elem: ty,
             bracket_token: token::Bracket(self.span),
         }))
     }
 
-    pub fn ptr_ty<T>(self, ty: T) -> Box<Type>
-    where
-        T: Make<Box<Type>>,
-    {
-        let ty = ty.make(&self);
+    pub fn ptr_ty(self, ty: Box<Type>) -> Box<Type> {
         let const_token = if self.mutbl.to_token().is_none() {
             Some(Token![const](self.span))
         } else {
@@ -1521,11 +1355,7 @@ impl Builder {
         }))
     }
 
-    pub fn ref_ty<T>(self, ty: T) -> Box<Type>
-    where
-        T: Make<Box<Type>>,
-    {
-        let ty = ty.make(&self);
+    pub fn ref_ty(self, ty: Box<Type>) -> Box<Type> {
         Box::new(Type::Reference(TypeReference {
             lifetime: None,
             elem: ty,
@@ -1534,13 +1364,11 @@ impl Builder {
         }))
     }
 
-    pub fn ref_lt_ty<L, T>(self, lt: L, ty: T) -> Box<Type>
+    pub fn ref_lt_ty<L>(self, lt: L, ty: Box<Type>) -> Box<Type>
     where
         L: Make<Lifetime>,
-        T: Make<Box<Type>>,
     {
         let lt = lt.make(&self);
-        let ty = ty.make(&self);
         Box::new(Type::Reference(TypeReference {
             and_token: Token![&](self.span),
             lifetime: Some(lt),
@@ -1555,11 +1383,8 @@ impl Builder {
         }))
     }
 
-    pub fn tuple_ty<T>(self, elem_tys: Vec<T>) -> Box<Type>
-    where
-        T: Make<Box<Type>>,
-    {
-        let elem_tys = punct(elem_tys.into_iter().map(|ty| *ty.make(&self)).collect());
+    pub fn tuple_ty(self, elem_tys: Vec<Box<Type>>) -> Box<Type> {
+        let elem_tys = punct(elem_tys.into_iter().map(|ty| *ty).collect());
         Box::new(Type::Tuple(TypeTuple {
             paren_token: token::Paren(self.span),
             elems: elem_tys,
@@ -1594,11 +1419,7 @@ impl Builder {
         }))
     }
 
-    pub fn mac_ty<M>(self, mac: M) -> Box<Type>
-    where
-        M: Make<Macro>,
-    {
-        let mac = mac.make(&self);
+    pub fn mac_ty(self, mac: Macro) -> Box<Type> {
         Box::new(Type::Macro(TypeMacro { mac }))
     }
 
@@ -1610,57 +1431,33 @@ impl Builder {
 
     // Stmts
 
-    pub fn local_stmt<L>(self, local: L) -> Stmt
-    where
-        L: Make<Box<Local>>,
-    {
-        let local = *local.make(&self);
-        Stmt::Local(local)
+    pub fn local_stmt(self, local: Box<Local>) -> Stmt {
+        Stmt::Local(*local)
     }
 
-    pub fn expr_stmt<E>(self, expr: E) -> Stmt
-    where
-        E: Make<Box<Expr>>,
-    {
-        let expr = *expr.make(&self);
-        Stmt::Expr(expr)
+    pub fn expr_stmt(self, expr: Box<Expr>) -> Stmt {
+        Stmt::Expr(*expr)
     }
 
-    pub fn semi_stmt<E>(self, expr: E) -> Stmt
-    where
-        E: Make<Box<Expr>>,
-    {
-        let expr = *expr.make(&self);
-        Stmt::Semi(expr, Token![;](self.span))
+    pub fn semi_stmt(self, expr: Box<Expr>) -> Stmt {
+        Stmt::Semi(*expr, Token![;](self.span))
     }
 
-    pub fn item_stmt<I>(self, item: I) -> Stmt
-    where
-        I: Make<Box<Item>>,
-    {
-        let item = *item.make(&self);
-        Stmt::Item(item)
+    pub fn item_stmt(self, item: Box<Item>) -> Stmt {
+        Stmt::Item(*item)
     }
 
-    pub fn mac_stmt<M>(self, mac: M) -> Stmt
-    where
-        M: Make<Macro>,
-    {
-        let mac = mac.make(&self);
+    pub fn mac_stmt(self, mac: Macro) -> Stmt {
         self.semi_stmt(mk().mac_expr(mac))
     }
 
     // Items
 
-    pub fn static_item<I, T, E>(self, name: I, ty: T, init: E) -> Box<Item>
+    pub fn static_item<I>(self, name: I, ty: Box<Type>, init: Box<Expr>) -> Box<Item>
     where
         I: Make<Ident>,
-        T: Make<Box<Type>>,
-        E: Make<Box<Expr>>,
     {
         let name = name.make(&self);
-        let ty = ty.make(&self);
-        let init = init.make(&self);
         Box::new(Item::Static(ItemStatic {
             attrs: self.attrs,
             vis: self.vis,
@@ -1675,15 +1472,11 @@ impl Builder {
         }))
     }
 
-    pub fn const_item<I, T, E>(self, name: I, ty: T, init: E) -> Box<Item>
+    pub fn const_item<I>(self, name: I, ty: Box<Type>, init: Box<Expr>) -> Box<Item>
     where
         I: Make<Ident>,
-        T: Make<Box<Type>>,
-        E: Make<Box<Expr>>,
     {
         let name = name.make(&self);
-        let ty = ty.make(&self);
-        let init = init.make(&self);
         Box::new(Item::Const(ItemConst {
             attrs: self.attrs,
             vis: self.vis,
@@ -1697,13 +1490,11 @@ impl Builder {
         }))
     }
 
-    pub fn fn_item<S, B>(self, sig: S, block: B) -> Box<Item>
+    pub fn fn_item<S>(self, sig: S, block: Box<Block>) -> Box<Item>
     where
         S: Make<Signature>,
-        B: Make<Box<Block>>,
     {
         let sig = sig.make(&self);
-        let block = block.make(&self);
         Box::new(Item::Fn(ItemFn {
             attrs: self.attrs,
             vis: self.vis,
@@ -1795,12 +1586,10 @@ impl Builder {
         }))
     }
 
-    pub fn type_item<I, T>(self, name: I, ty: T) -> Box<Item>
+    pub fn type_item<I>(self, name: I, ty: Box<Type>) -> Box<Item>
     where
         I: Make<Ident>,
-        T: Make<Box<Type>>,
     {
-        let ty = ty.make(&self);
         let name = name.make(&self);
         Box::new(Item::Type(ItemType {
             attrs: self.attrs,
@@ -1830,18 +1619,11 @@ impl Builder {
         }))
     }
 
-    pub fn mod_<I>(self, items: Vec<I>) -> Vec<Item>
-    where
-        I: Make<Box<Item>>,
-    {
-        items.into_iter().map(|i| *i.make(&self)).collect()
+    pub fn mod_(self, items: Vec<Box<Item>>) -> Vec<Item> {
+        items.into_iter().map(|i| *i).collect()
     }
 
-    pub fn mac_item<M>(self, mac: M) -> Box<Item>
-    where
-        M: Make<Macro>,
-    {
-        let mac = mac.make(&self);
+    pub fn mac_item(self, mac: Macro) -> Box<Item> {
         Box::new(Item::Macro(ItemMacro {
             attrs: self.attrs,
             semi_token: Some(Token![;](self.span)), // Untested
@@ -1863,25 +1645,20 @@ impl Builder {
         }
     }
 
-    pub fn unit_variant<I, E>(self, name: I, disc: Option<E>) -> Variant
+    pub fn unit_variant<I>(self, name: I, disc: Option<Box<Expr>>) -> Variant
     where
         I: Make<Ident>,
-        E: Make<Box<Expr>>,
     {
         let name = name.make(&self);
         Variant {
             ident: name,
             fields: Fields::Unit,
-            discriminant: disc.map(|e| (Token![=](self.span), *e.make(&self))),
+            discriminant: disc.map(|e| (Token![=](self.span), *e)),
             attrs: self.attrs,
         }
     }
 
-    pub fn impl_item<T>(self, ty: T, items: Vec<ImplItem>) -> Box<Item>
-    where
-        T: Make<Box<Type>>,
-    {
-        let ty = ty.make(&self);
+    pub fn impl_item(self, ty: Box<Type>, items: Vec<ImplItem>) -> Box<Item> {
         Box::new(Item::Impl(ItemImpl {
             attrs: self.attrs,
             unsafety: self.unsafety.to_token(),
@@ -1912,11 +1689,7 @@ impl Builder {
         }))
     }
 
-    pub fn use_item<U>(self, tree: U) -> Box<Item>
-    where
-        U: Make<UseTree>,
-    {
-        let tree = tree.make(&self);
+    pub fn use_item(self, tree: UseTree) -> Box<Item> {
         Box::new(Item::Use(ItemUse {
             attrs: self.attrs,
             vis: self.vis,
@@ -2057,11 +1830,7 @@ impl Builder {
 
     // Impl Items
 
-    pub fn mac_impl_item<M>(self, mac: M) -> ImplItem
-    where
-        M: Make<Macro>,
-    {
-        let mac = mac.make(&self);
+    pub fn mac_impl_item(self, mac: Macro) -> ImplItem {
         ImplItem::Macro(ImplItemMacro {
             attrs: self.attrs,
             semi_token: None,
@@ -2071,11 +1840,7 @@ impl Builder {
 
     // Trait Items
 
-    pub fn mac_trait_item<M>(self, mac: M) -> TraitItem
-    where
-        M: Make<Macro>,
-    {
-        let mac = mac.make(&self);
+    pub fn mac_trait_item(self, mac: Macro) -> TraitItem {
         TraitItem::Macro(TraitItemMacro {
             attrs: self.attrs,
             semi_token: None,
@@ -2086,11 +1851,7 @@ impl Builder {
     // Foreign Items
 
     /// [`ForeignItem`] is large (472 bytes), so [`Box`] it.
-    pub fn fn_foreign_item<D>(self, decl: D) -> Box<ForeignItem>
-    where
-        D: Make<Box<FnDecl>>,
-    {
-        let decl = decl.make(&self);
+    pub fn fn_foreign_item(self, decl: Box<FnDecl>) -> Box<ForeignItem> {
         let sig = Signature {
             constness: None,
             asyncness: None,
@@ -2106,13 +1867,11 @@ impl Builder {
     }
 
     /// [`ForeignItem`] is large (472 bytes), so [`Box`] it.
-    pub fn static_foreign_item<I, T>(self, name: I, ty: T) -> Box<ForeignItem>
+    pub fn static_foreign_item<I>(self, name: I, ty: Box<Type>) -> Box<ForeignItem>
     where
         I: Make<Ident>,
-        T: Make<Box<Type>>,
     {
         let name = name.make(&self);
-        let ty = ty.make(&self);
         Box::new(ForeignItem::Static(ForeignItemStatic {
             attrs: self.attrs,
             vis: self.vis,
@@ -2140,11 +1899,7 @@ impl Builder {
         }))
     }
 
-    pub fn mac_foreign_item<M>(self, mac: M) -> ForeignItem
-    where
-        M: Make<Macro>,
-    {
-        let mac = mac.make(&self);
+    pub fn mac_foreign_item(self, mac: Macro) -> ForeignItem {
         ForeignItem::Macro(ForeignItemMacro {
             attrs: self.attrs,
             mac,
@@ -2154,31 +1909,25 @@ impl Builder {
 
     // struct fields
 
-    pub fn struct_field<I, T>(self, ident: I, ty: T) -> Field
+    pub fn struct_field<I>(self, ident: I, ty: Box<Type>) -> Field
     where
         I: Make<Ident>,
-        T: Make<Box<Type>>,
     {
         let ident = ident.make(&self);
-        let ty = *ty.make(&self);
         Field {
             ident: Some(ident),
             vis: self.vis,
             attrs: self.attrs,
-            ty,
+            ty: *ty,
             colon_token: Some(Token![:](self.span)),
         }
     }
 
-    pub fn enum_field<T>(self, ty: T) -> Field
-    where
-        T: Make<Box<Type>>,
-    {
-        let ty = *ty.make(&self);
+    pub fn enum_field(self, ty: Box<Type>) -> Field {
         Field {
             ident: None,
             vis: self.vis,
-            ty,
+            ty: *ty,
             attrs: self.attrs,
             colon_token: None,
         }
@@ -2186,11 +1935,7 @@ impl Builder {
 
     // Misc nodes
 
-    pub fn unsafe_block<S>(self, stmts: Vec<S>) -> ExprUnsafe
-    where
-        S: Make<Stmt>,
-    {
-        let stmts = stmts.into_iter().map(|s| s.make(&self)).collect();
+    pub fn unsafe_block(self, stmts: Vec<Stmt>) -> ExprUnsafe {
         let blk = Block {
             stmts,
             brace_token: token::Brace(self.span),
@@ -2202,11 +1947,7 @@ impl Builder {
         }
     }
 
-    pub fn block<S>(self, stmts: Vec<S>) -> Box<Block>
-    where
-        S: Make<Stmt>,
-    {
-        let stmts = stmts.into_iter().map(|s| s.make(&self)).collect();
+    pub fn block(self, stmts: Vec<Stmt>) -> Box<Block> {
         Box::new(Block {
             stmts,
             brace_token: token::Brace(self.span),
@@ -2220,13 +1961,11 @@ impl Builder {
         lbl.make(&self)
     }
 
-    pub fn break_expr_value<L, E>(self, label: Option<L>, value: Option<E>) -> Box<Expr>
+    pub fn break_expr_value<L>(self, label: Option<L>, value: Option<Box<Expr>>) -> Box<Expr>
     where
         L: Make<Label>,
-        E: Make<Box<Expr>>,
     {
         let label = label.map(|l| l.make(&self).name);
-        let value = value.map(|v| v.make(&self));
         Box::new(Expr::Break(ExprBreak {
             attrs: self.attrs,
             break_token: Token![break](self.span),
@@ -2235,27 +1974,19 @@ impl Builder {
         }))
     }
 
-    pub fn bare_arg<T, I>(self, ty: T, name: Option<I>) -> BareFnArg
+    pub fn bare_arg<I>(self, ty: Box<Type>, name: Option<I>) -> BareFnArg
     where
-        T: Make<Box<Type>>,
         I: Make<Box<Ident>>,
     {
-        let ty = *ty.make(&self);
         let name = name.map(|n| (*n.make(&self), Token![:](self.span)));
         BareFnArg {
             attrs: Vec::new(),
             name,
-            ty,
+            ty: *ty,
         }
     }
 
-    pub fn arg<T, Pt>(self, ty: T, pat: Pt) -> FnArg
-    where
-        T: Make<Box<Type>>,
-        Pt: Make<Box<Pat>>,
-    {
-        let ty = ty.make(&self);
-        let pat = pat.make(&self);
+    pub fn arg(self, ty: Box<Type>, pat: Box<Pat>) -> FnArg {
         FnArg::Typed(PatType {
             attrs: Vec::new(),
             ty,
@@ -2264,12 +1995,8 @@ impl Builder {
         })
     }
 
-    pub fn self_arg<S>(self, kind: S) -> FnArg
-    where
-        S: Make<SelfKind>,
-    {
-        let eself = kind.make(&self);
-        let (reference, mutability) = match eself {
+    pub fn self_arg(self, kind: SelfKind) -> FnArg {
+        let (reference, mutability) = match kind {
             SelfKind::Value(mutability) => (None, mutability),
             SelfKind::Region(lt, mutability) => {
                 (Some((Token![&](self.span), Some(lt))), mutability)
@@ -2419,12 +2146,10 @@ impl Builder {
         }
     }
 
-    pub fn mac<Pa, Ts>(self, func: Pa, arguments: Ts, delim: MacroDelimiter) -> Macro
+    pub fn mac<Ts>(self, func: Path, arguments: Ts, delim: MacroDelimiter) -> Macro
     where
-        Pa: Make<Path>,
         Ts: Make<TokenStream>,
     {
-        let func: Path = func.make(&self);
         let tokens = arguments.make(&self);
         Macro {
             path: func,
@@ -2435,15 +2160,8 @@ impl Builder {
     }
 
     /// Create a local variable
-    pub fn local<V, T, E>(self, pat: V, ty: Option<T>, init: Option<E>) -> Local
-    where
-        V: Make<Box<Pat>>,
-        T: Make<Box<Type>>,
-        E: Make<Box<Expr>>,
-    {
-        let pat = pat.make(&self);
-        let ty = ty.map(|x| x.make(&self));
-        let init = init.map(|x| (Default::default(), x.make(&self)));
+    pub fn local(self, pat: Box<Pat>, ty: Option<Box<Type>>, init: Option<Box<Expr>>) -> Local {
+        let init = init.map(|x| (Default::default(), x));
         let pat = if let Some(ty) = ty {
             Pat::Type(PatType {
                 attrs: vec![],
@@ -2463,11 +2181,7 @@ impl Builder {
         }
     }
 
-    pub fn return_expr<E>(self, val: Option<E>) -> Box<Expr>
-    where
-        E: Make<Box<Expr>>,
-    {
-        let val = val.map(|x| x.make(&self));
+    pub fn return_expr(self, val: Option<Box<Expr>>) -> Box<Expr> {
         Box::new(Expr::Return(ExprReturn {
             attrs: self.attrs,
             return_token: Token![return](self.span),
@@ -2508,19 +2222,13 @@ impl Builder {
         }))
     }
 
-    pub fn closure_expr<D, E>(
+    pub fn closure_expr(
         self,
         capture: CaptureBy,
         mov: Movability,
-        decl: D,
-        body: E,
-    ) -> Box<Expr>
-    where
-        D: Make<Box<FnDecl>>,
-        E: Make<Box<Expr>>,
-    {
-        let decl = decl.make(&self);
-        let body = body.make(&self);
+        decl: Box<FnDecl>,
+        body: Box<Expr>,
+    ) -> Box<Expr> {
         let (_name, inputs, _variadic, output) = *decl;
         let inputs = inputs
             .into_iter()
