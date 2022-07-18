@@ -241,12 +241,12 @@ impl<'a, 'tcx: 'a> CollectFunctionInstrumentationPoints<'a, 'tcx> {
     }
 }
 
-fn is_shared_ptr(ty: &TyS) -> bool {
-    ty.is_region_ptr() && !ty.is_mutable_ptr()
+fn is_shared_or_unsafe_ptr(ty: &TyS) -> bool {
+    ty.is_unsafe_ptr() || (ty.is_region_ptr() && !ty.is_mutable_ptr())
 }
 
-fn is_shared_or_unsafe_ptr(ty: &TyS) -> bool {
-    ty.is_unsafe_ptr() || is_shared_ptr(ty)
+fn is_region_or_unsafe_ptr(ty: &TyS) -> bool {
+    ty.is_unsafe_ptr() || ty.is_region_ptr()
 }
 
 fn has_outer_deref(p: &Place) -> bool {
@@ -343,7 +343,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
 
         let base_ty = self.body.local_decls[place.local].ty;
         // Instrument field projections on raw-ptr places
-        if is_shared_or_unsafe_ptr(base_ty) && context.is_use() && !place.projection.is_empty() {
+        if is_region_or_unsafe_ptr(base_ty) && context.is_use() && !place.projection.is_empty() {
             for (pid, (_base, elem)) in place.iter_projections().enumerate() {
                 if let PlaceElem::Field(field, _) = elem {
                     let field_fn = self
@@ -475,7 +475,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         transfer_kind: TransferKind::None,
                     },
                 );
-                if is_shared_or_unsafe_ptr(value_ty) {
+                if is_region_or_unsafe_ptr(value_ty) {
                     let mut loc = location;
                     loc.statement_index += 1;
                     // Stored value is a raw pointer; trace the destination
@@ -499,7 +499,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                 if let Rvalue::Cast(_, op, _) = value {
                     if let Some(p) = op.place() {
                         if !p.is_indirect()
-                            && is_shared_or_unsafe_ptr(p.ty(&self.body.local_decls, self.tcx).ty)
+                            && is_region_or_unsafe_ptr(p.ty(&self.body.local_decls, self.tcx).ty)
                         {
                             // Cast from raw pointer to usize; trace the pointer being casted
                             self.add_instrumentation_point(
@@ -520,13 +520,11 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         }
                     }
                 }
-            } else if is_shared_or_unsafe_ptr(value_ty) {
+            } else if is_region_or_unsafe_ptr(value_ty) {
                 match value {
-                    Rvalue::Use(Operand::Copy(p))
-                    | Rvalue::Use(Operand::Move(p))
-                    | Rvalue::Ref(_, _, p) => {
+                    Rvalue::Use(Operand::Copy(p)) | Rvalue::Use(Operand::Move(p)) => {
                         location.statement_index += 1;
-                        if p.is_indirect() && !matches!(value, Rvalue::Ref(..)) {
+                        if p.is_indirect() {
                             // We're dereferencing something, the result of which is another pointer;
                             // trace the destination
                             self.add_instrumentation_point(
@@ -545,14 +543,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                                 },
                             );
                         } else {
-                            let source = if has_outer_deref(p) {
-                                // this statement is a reborrow, i.e. _2 = &(*_1),
-                                // so count this as a copy with _1 as a source
-                                remove_outer_deref(*p, self.tcx)
-                            } else {
-                                *p
-                            };
-                            // Copying a pointer or reference to another place; trace the destination
+                            // Copying a pointer to another place; trace the destination
                             self.add_instrumentation_point(
                                 location,
                                 copy_fn,
@@ -563,7 +554,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                                 false,
                                 false,
                                 EventMetadata {
-                                    source: Some(to_mir_place(&source)),
+                                    source: Some(to_mir_place(p)),
                                     destination: Some(to_mir_place(&dest)),
                                     transfer_kind: TransferKind::None,
                                 },
@@ -615,7 +606,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                             location,
                             addr_local_fn,
                             vec![
-                                InstrumentationOperand::RawPtr(Operand::Copy(dest)),
+                                InstrumentationOperand::from_type(Operand::Copy(dest), &dest_ty),
                                 InstrumentationOperand::AddressUsize(make_const(
                                     self.tcx,
                                     p.local.as_u32(),
@@ -630,6 +621,55 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                             },
                         );
                     }
+                    Rvalue::Ref(_, bkind, p) => {
+                        // Instrument which local's address is taken
+                        let instr_operand = if let BorrowKind::Mut { .. } = bkind {
+                            InstrumentationOperand::Place(Operand::Copy(*p))
+                        } else {
+                            // Instrument immutable borrows by tracing the reference itself
+                            location.statement_index += 1;
+                            InstrumentationOperand::Reference(Operand::Copy(dest))
+                        };
+                        if has_outer_deref(p) {
+                            // this is a reborrow or field reference, i.e.
+                            // _2 = &(*_1) or _2 = &((*_1).0)
+                            let source = remove_outer_deref(*p, self.tcx);
+                            self.add_instrumentation_point(
+                                location,
+                                copy_fn,
+                                vec![instr_operand],
+                                false,
+                                false,
+                                EventMetadata {
+                                    source: Some(to_mir_place(&source)),
+                                    destination: Some(to_mir_place(&dest)),
+                                    transfer_kind: TransferKind::None,
+                                },
+                            );
+                        } else if !p.is_indirect() {
+                            self.add_instrumentation_point(
+                                location,
+                                addr_local_fn,
+                                vec![
+                                    InstrumentationOperand::from_type(
+                                        Operand::Copy(dest),
+                                        &dest_ty,
+                                    ),
+                                    InstrumentationOperand::AddressUsize(make_const(
+                                        self.tcx,
+                                        p.local.as_u32(),
+                                    )),
+                                ],
+                                false,
+                                false,
+                                EventMetadata {
+                                    source: Some(to_mir_place(p)),
+                                    destination: Some(to_mir_place(&dest)),
+                                    transfer_kind: TransferKind::None,
+                                },
+                            );
+                        }
+                    }
                     _ => (),
                 }
             } else if value_ty.is_region_ptr() {
@@ -643,8 +683,14 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     };
                     self.add_instrumentation_point(
                         location,
-                        ref_copy_fn,
-                        vec![instr_operand],
+                        addr_local_fn,
+                        vec![
+                            instr_operand,
+                            InstrumentationOperand::AddressUsize(make_const(
+                                self.tcx,
+                                p.local.as_u32(),
+                            )),
+                        ],
                         false,
                         false,
                         EventMetadata {
@@ -771,7 +817,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                                     transfer_kind: TransferKind::Ret(self.func_hash()),
                                 },
                             );
-                        } else if is_shared_or_unsafe_ptr(
+                        } else if is_region_or_unsafe_ptr(
                             destination
                                 .unwrap()
                                 .0
@@ -808,7 +854,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
             }
             TerminatorKind::Return => {
                 let place = Place::return_place();
-                if is_shared_or_unsafe_ptr(self.body.local_decls[place.local].ty) {
+                if is_region_or_unsafe_ptr(self.body.local_decls[place.local].ty) {
                     // Function returned raw ptr; trace the return place
                     self.add_instrumentation_point(
                         location,
