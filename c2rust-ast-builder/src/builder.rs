@@ -166,12 +166,6 @@ impl<T> Make<T> for T {
     }
 }
 
-impl<'a, T: Clone> Make<T> for &'a T {
-    fn make(self, _mk: &Builder) -> T {
-        self.clone()
-    }
-}
-
 impl Make<Ident> for &str {
     fn make(self, mk: &Builder) -> Ident {
         Ident::new(self, mk.span)
@@ -440,25 +434,6 @@ impl Make<Signature> for Box<FnDecl> {
     }
 }
 
-pub trait LitStringable {
-    fn lit_string(self, _: &Builder) -> String;
-}
-
-impl<T> LitStringable for T
-where
-    T: Make<Type>,
-{
-    fn lit_string(self, b: &Builder) -> String {
-        let ty: Type = self.make(b);
-        ty.to_token_stream().to_string()
-    }
-}
-
-impl LitStringable for &str {
-    fn lit_string(self, _: &Builder) -> String {
-        self.to_string()
-    }
-}
 #[derive(Clone, Debug)]
 pub struct Builder {
     // The builder holds a set of "modifiers", such as visibility and mutability.  Functions for
@@ -1248,28 +1223,16 @@ impl Builder {
 
     // Literals
 
-    pub fn int_lit<T>(self, i: u128, ty: T) -> Lit
-    where
-        T: LitStringable,
-    {
-        Lit::Int(LitInt::new(
-            &format!("{}{}", i, ty.lit_string(&self)),
-            self.span,
-        ))
+    pub fn int_lit(self, i: u128, ty: &str) -> Lit {
+        Lit::Int(LitInt::new(&format!("{}{}", i, ty), self.span))
     }
 
     pub fn int_unsuffixed_lit(self, i: u128) -> Lit {
         Lit::Int(LitInt::new(&format!("{}", i), self.span))
     }
 
-    pub fn float_lit<T>(self, s: &str, ty: T) -> Lit
-    where
-        T: LitStringable,
-    {
-        Lit::Float(LitFloat::new(
-            &format!("{}{}", s, ty.lit_string(&self)),
-            self.span,
-        ))
+    pub fn float_lit(self, s: &str, ty: &str) -> Lit {
+        Lit::Float(LitFloat::new(&format!("{}{}", s, ty), self.span))
     }
 
     pub fn float_unsuffixed_lit(self, s: &str) -> Lit {
