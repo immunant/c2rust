@@ -21,7 +21,7 @@
 //!
 //! Comments cannot currently be attached before the close of a Block, or after all Items in a File.
 
-use crate::rust_ast::{pos_to_span, set_span::SetSpan, traverse, BytePos, SpanExt, DUMMY_SP};
+use crate::rust_ast::{pos_to_span, set_span::SetSpan, traverse, BytePos, SpanExt};
 use c2rust_ast_printer::pprust::comments;
 use itertools::Itertools;
 use log::warn;
@@ -284,7 +284,7 @@ pub fn insert_comment_attrs(attrs: &mut Vec<Attribute>, new_comments: SmallVec<[
     fn make_comment_path() -> Path {
         let mut segments = punctuated::Punctuated::new();
         segments.push(PathSegment {
-            ident: Ident::new("comment", DUMMY_SP),
+            ident: Ident::new("comment", Span::call_site()),
             arguments: PathArguments::None,
         });
         Path {
