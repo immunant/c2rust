@@ -3,17 +3,17 @@ source: pdg/src/main.rs
 expression: pdg
 ---
 g {
-	n[0]: copy _ => _10 @ bb5[4]: fn main;
+	n[0]: &_5 _ => _10 @ bb5[4]: fn main;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _9 @ bb5[5]: fn main;
+	n[0]: &_10 _ => _9 @ bb5[5]: fn main;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _    => _19 @ bb8[11]: fn main;  
+	n[0]: &_20 _    => _19 @ bb8[11]: fn main;  
 	n[1]: copy n[0] => _18 @ bb8[12]: fn main;  
 	n[2]: copy n[1] => _17 @ bb8[13]: fn main;  
 	n[3]: copy n[2] => _1  @ bb0[0]:  fn new_v1;
@@ -21,14 +21,14 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _    => _27 @ bb8[22]: fn main;     
+	n[0]: &_13 _    => _27 @ bb8[22]: fn main;     
 	n[1]: copy n[0] => _26 @ bb8[23]: fn main;     
 	n[2]: copy n[1] => _1  @ bb0[0]:  fn new_debug;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _    => _23 @ bb13[4]: fn main;  
+	n[0]: &_24 _    => _23 @ bb13[4]: fn main;  
 	n[1]: copy n[0] => _22 @ bb13[5]: fn main;  
 	n[2]: copy n[1] => _21 @ bb13[6]: fn main;  
 	n[3]: copy n[2] => _2  @ bb0[0]:  fn new_v1;
@@ -36,7 +36,7 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _29 @ bb15[11]: fn main;
+	n[0]: &_1 _ => _29 @ bb15[11]: fn main;
 }
 nodes_that_need_write = []
 
@@ -53,7 +53,7 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _37 @ bb27[4]: fn main;
+	n[0]: &_1 _ => _37 @ bb27[4]: fn main;
 }
 nodes_that_need_write = []
 
@@ -61,17 +61,18 @@ g {
 	n[0]: copy        _    => _38       @ bb28[0]: fn main;   
 	n[1]: copy        n[0] => _2        @ bb0[0]:  fn push;   
 	n[2]: value.store _    => _20.Deref @ bb4[8]:  fn invalid;
+	n[3]: int_to_ptr  _    => _20       @ bb15[4]: fn main_0; 
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _    => _43 @ bb29[9]: fn main;
+	n[0]: &_1  _    => _43 @ bb29[9]: fn main;
 	n[1]: copy n[0] => _1  @ bb0[0]:  fn len; 
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _46 @ bb31[6]: fn main;
+	n[0]: &_1 _ => _46 @ bb31[6]: fn main;
 }
 nodes_that_need_write = []
 
@@ -431,18 +432,23 @@ g {
 nodes_that_need_write = [0]
 
 g {
-	n[0]: copy _ => _4 @ bb0[8]: fn testing;
+	n[0]: &_1 _ => _4 @ bb0[8]: fn testing;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: &_4  _    => _3 @ bb0[10]: fn testing;
-	n[1]: copy n[0] => _5 @ bb0[13]: fn testing;
+	n[0]: &_4 _ => _3 @ bb0[10]: fn testing;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _7 @ bb0[16]: fn testing;
+	n[0]: &_3        _    => _5 @ bb0[13]: fn testing;
+	n[1]: addr.store n[0] => _  @ bb0[18]: fn testing;
+}
+nodes_that_need_write = [1, 0]
+
+g {
+	n[0]: &_1 _ => _7 @ bb0[16]: fn testing;
 }
 nodes_that_need_write = []
 
@@ -451,11 +457,6 @@ g {
 	n[1]: value.store n[0] => _5.Deref @ bb0[19]: fn testing;
 }
 nodes_that_need_write = []
-
-g {
-	n[0]: addr.store _ => _ @ bb0[18]: fn testing;
-}
-nodes_that_need_write = [0]
 
 g {
 	n[0]: malloc(n = 1) _    => _2  @ bb1[2]:  fn simple1;
@@ -538,12 +539,23 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _    => _2 @ bb0[5]:  fn test_shared_ref;
+	n[0]: &_1  _    => _2 @ bb0[5]:  fn test_shared_ref;
 	n[1]: copy n[0] => _3 @ bb0[8]:  fn test_shared_ref;
 	n[2]: copy n[1] => _5 @ bb0[12]: fn test_shared_ref;
 	n[3]: copy n[2] => _1 @ bb0[0]:  fn shared_ref_foo; 
 	n[4]: copy n[3] => _0 @ bb0[1]:  fn shared_ref_foo; 
 	n[5]: copy n[4] => _4 @ bb1[0]:  fn test_shared_ref;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1     _    => _2 @ bb0[2]: fn test_borrow_struct;
+	n[1]: field.0 n[0] => _3 @ bb0[3]: fn test_borrow_struct;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1 _ => _2 @ bb0[2]: fn test_borrow_field;
 }
 nodes_that_need_write = []
 
@@ -745,16 +757,16 @@ g {
 nodes_that_need_write = [2, 0]
 
 g {
-	n[0]: copy _    => _32 @ bb28[4]:  fn main_0;
-	n[1]: copy n[0] => _38 @ bb28[12]: fn main_0;
-	n[2]: copy n[1] => _37 @ bb28[13]: fn main_0;
+	n[0]: &_39 _    => _38 @ bb30[4]:  fn main_0;
+	n[1]: copy n[0] => _44 @ bb30[12]: fn main_0;
+	n[2]: copy n[1] => _43 @ bb30[13]: fn main_0;
 	n[3]: copy n[2] => _1  @ bb0[0]:   fn len;   
 }
 nodes_that_need_write = []
 
 g {
-	n[0]:  &_32       _     => _40 @ bb29[6]:  fn main_0;        
-	n[1]:  copy       n[0]  => _39 @ bb29[7]:  fn main_0;        
+	n[0]:  &_38       _     => _46 @ bb31[6]:  fn main_0;        
+	n[1]:  copy       n[0]  => _45 @ bb31[7]:  fn main_0;        
 	n[2]:  copy       n[1]  => _2  @ bb0[0]:   fn insertion_sort;
 	n[3]:  copy       n[2]  => _10 @ bb3[4]:   fn insertion_sort;
 	n[4]:  offset[1]  n[3]  => _9  @ bb3[9]:   fn insertion_sort;
@@ -828,6 +840,6 @@ g {
 }
 nodes_that_need_write = [71, 70, 69, 62, 61, 60, 59, 58, 57, 50, 49, 48, 41, 40, 39, 29, 28, 27, 23, 22, 21, 11, 10, 9, 2, 1, 0]
 
-num_graphs = 79
-num_nodes = 510
+num_graphs = 81
+num_nodes = 514
 
