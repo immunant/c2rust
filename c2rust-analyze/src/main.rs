@@ -13,32 +13,31 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 
-use std::collections::HashMap;
+
 use std::env;
-use std::hash::Hash;
-use std::mem;
-use polonius_engine::{self, Atom, FactTypes};
-use rustc_ast::ast::{Item, ItemKind, Visibility, VisibilityKind};
-use rustc_ast::node_id::NodeId;
-use rustc_ast::ptr::P;
-use rustc_driver::Compilation;
+
+
+use polonius_engine::{self, Atom};
+
+
+
+
 use rustc_index::vec::IndexVec;
-use rustc_interface::Queries;
-use rustc_interface::interface::Compiler;
+
+
 use rustc_middle::mir::{
-    Body, BasicBlock, BasicBlockData, START_BLOCK, Terminator, TerminatorKind, SourceInfo, Local,
-    LocalDecl, LocalKind, LocalInfo, BindingForm, Mutability, Rvalue, AggregateKind, Place,
-    Operand, Statement, StatementKind, BorrowKind, Constant, ConstantKind,
+    Body,
+    LocalDecl, LocalInfo, BindingForm,
 };
-use rustc_middle::mir::interpret::{Allocation, ConstValue};
-use rustc_middle::mir::pretty;
-use rustc_middle::ty::{TyCtxt, Ty, TyKind, RegionKind, WithOptConstParam, List};
+
+
+use rustc_middle::ty::{TyCtxt, Ty, TyKind, WithOptConstParam};
 use rustc_middle::ty::query::{Providers, ExternProviders};
 use rustc_session::Session;
-use rustc_span::{Span, DUMMY_SP};
-use rustc_span::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX};
-use rustc_span::symbol::Ident;
-use rustc_target::abi::Align;
+use rustc_span::{Span};
+use rustc_span::def_id::{LocalDefId};
+
+
 use crate::context::{AnalysisCtxt, PointerId, PermissionSet, FlagSet, LTy};
 
 
@@ -204,9 +203,9 @@ impl rustc_driver::Callbacks for AnalysisCallbacks {
 }
 
 fn override_queries(
-    sess: &Session,
+    _sess: &Session,
     providers: &mut Providers,
-    extern_providers: &mut ExternProviders,
+    _extern_providers: &mut ExternProviders,
 ) {
     providers.mir_built = |tcx, def: WithOptConstParam<LocalDefId>| {
         let mut providers = Providers::default();
@@ -220,6 +219,6 @@ fn override_queries(
 }
 
 fn main() -> rustc_interface::interface::Result<()> {
-    let mut args = env::args().collect::<Vec<_>>();
+    let args = env::args().collect::<Vec<_>>();
     rustc_driver::RunCompiler::new(&args, &mut AnalysisCallbacks).run()
 }

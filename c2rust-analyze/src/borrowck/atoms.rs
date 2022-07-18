@@ -189,8 +189,8 @@ impl<'tcx> AtomMaps<'tcx> {
         Place { local, projection }
     }
 
-    pub fn get_path_projection(&self, tcx: TyCtxt<'tcx>, x: Path) -> &'tcx [PlaceElem<'tcx>] {
-        let (local, projection) = self.path.get(x);
+    pub fn get_path_projection(&self, _tcx: TyCtxt<'tcx>, x: Path) -> &'tcx [PlaceElem<'tcx>] {
+        let (_local, projection) = self.path.get(x);
         projection
     }
 }

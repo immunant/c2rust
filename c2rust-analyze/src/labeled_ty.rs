@@ -7,7 +7,7 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use rustc_arena::DroplessArena;
-use rustc_middle::arena::Arena;
+
 use rustc_middle::ty::{TyCtxt, Ty, TyKind, TypeAndMut};
 use rustc_middle::ty::subst::{GenericArg, GenericArgKind};
 
@@ -308,7 +308,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                 assert!(it.next().is_none());
                 self.tcx.mk_fn_def(def_id, substs)
             }
-            FnPtr(ref sig) => {
+            FnPtr(ref _sig) => {
                 // TODO: replace all the types under the binder
                 todo!()
             }

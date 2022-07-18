@@ -1,5 +1,5 @@
 use rustc_hir::def::{DefKind, Res};
-use rustc_middle::mir::Mutability;
+
 use rustc_middle::ty::{Ty, TyCtxt, ReErased};
 use rustc_middle::ty::subst::GenericArg;
 use crate::context::{PermissionSet, FlagSet, AnalysisCtxt, LTy, PointerId};

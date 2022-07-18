@@ -1,6 +1,6 @@
 use rustc_middle::mir::{
     Body, BasicBlock, Location, Statement, StatementKind, Terminator, TerminatorKind, Rvalue,
-    Operand, Place,
+    Operand,
 };
 use rustc_span::{Span, DUMMY_SP};
 use crate::context::{AnalysisCtxt, PointerId, PermissionSet, FlagSet, LTy};
@@ -180,7 +180,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 let poly_sig = func_ty.fn_sig(tcx);
                 let sig = tcx.erase_late_bound_regions(poly_sig);
 
-                for (i, op) in args.iter().enumerate() {
+                for (i, _op) in args.iter().enumerate() {
                     if i >= sig.inputs().len() {
                         // This is a call to a variadic function, and we've gone past the end of
                         // the declared arguments.  
@@ -209,41 +209,41 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             Rvalue::Use(ref op) => {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, expect_ty));
             },
-            Rvalue::Repeat(ref op, _) => {
+            Rvalue::Repeat(ref _op, _) => {
                 // TODO
             },
-            Rvalue::Ref(rg, kind, pl) => {
+            Rvalue::Ref(_rg, _kind, _pl) => {
                 // TODO
             },
-            Rvalue::ThreadLocalRef(def_id) => {
+            Rvalue::ThreadLocalRef(_def_id) => {
                 // TODO
             },
-            Rvalue::AddressOf(mutbl, pl) => {
+            Rvalue::AddressOf(_mutbl, _pl) => {
                 // TODO
             },
-            Rvalue::Len(pl) => {
+            Rvalue::Len(_pl) => {
                 // TODO
             },
-            Rvalue::Cast(kind, ref op, ty) => {
+            Rvalue::Cast(_kind, ref _op, _ty) => {
                 // TODO
             },
-            Rvalue::BinaryOp(bop, ref ops) => {
+            Rvalue::BinaryOp(_bop, ref _ops) => {
                 // TODO
             },
-            Rvalue::CheckedBinaryOp(bop, ref ops) => {
+            Rvalue::CheckedBinaryOp(_bop, ref _ops) => {
                 // TODO
             },
             Rvalue::NullaryOp(..) => {},
-            Rvalue::UnaryOp(uop, ref op) => {
+            Rvalue::UnaryOp(_uop, ref _op) => {
                 // TODO
             },
-            Rvalue::Discriminant(pl) => {
+            Rvalue::Discriminant(_pl) => {
                 // TODO
             },
-            Rvalue::Aggregate(ref kind, ref ops) => {
+            Rvalue::Aggregate(ref _kind, ref _ops) => {
                 // TODO
             },
-            Rvalue::ShallowInitBox(ref op, ty) => {
+            Rvalue::ShallowInitBox(ref _op, _ty) => {
                 // TODO
             },
         }
@@ -289,7 +289,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         let (result_own, result_qty) = type_desc::perms_to_desc(
             self.perms[result_ptr.index()], self.flags[result_ptr.index()]);
 
-        let arg_expect_own = result_own;
+        let _arg_expect_own = result_own;
         // TODO: infer `arg_expect_qty` based on the type of offset this is (positive / unknown)
         let arg_expect_qty = match result_qty {
             Quantity::Single => Quantity::Slice,

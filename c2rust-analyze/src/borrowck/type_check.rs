@@ -7,7 +7,7 @@ use rustc_middle::mir::{
 use rustc_middle::ty::{TyCtxt, TyKind};
 use crate::borrowck::{LTy, LTyCtxt, Label};
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Point, SubPoint, Path, Loan, Origin};
-use crate::context::{PermissionSet, PointerId};
+use crate::context::{PermissionSet};
 use crate::util::{self, Callee};
 
 
@@ -143,8 +143,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
             Rvalue::BinaryOp(BinOp::Offset, _) |
             Rvalue::CheckedBinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
-            Rvalue::BinaryOp(_, ref ab) |
-            Rvalue::CheckedBinaryOp(_, ref ab) => {
+            Rvalue::BinaryOp(_, ref _ab) |
+            Rvalue::CheckedBinaryOp(_, ref _ab) => {
                 let ty = rv.ty(self.local_decls, *self.ltcx);
                 self.ltcx.label(ty, &mut |ty| {
                     assert!(!matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)));

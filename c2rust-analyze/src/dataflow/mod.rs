@@ -62,9 +62,9 @@ impl DataflowConstraints {
         impl PropagateRules<PermissionSet> for PropagatePerms {
             fn subset(
                 &mut self,
-                a_ptr: PointerId,
+                _a_ptr: PointerId,
                 a_val: &PermissionSet,
-                b_ptr: PointerId,
+                _b_ptr: PointerId,
                 b_val: &PermissionSet,
             ) -> (PermissionSet, PermissionSet) {
                 let old_a = *a_val;
@@ -95,7 +95,7 @@ impl DataflowConstraints {
 
             fn all_perms(
                 &mut self,
-                ptr: PointerId,
+                _ptr: PointerId,
                 perms: PermissionSet,
                 val: &PermissionSet,
             ) -> PermissionSet {
@@ -104,7 +104,7 @@ impl DataflowConstraints {
 
             fn no_perms(
                 &mut self,
-                ptr: PointerId,
+                _ptr: PointerId,
                 perms: PermissionSet,
                 val: &PermissionSet,
             ) -> PermissionSet {
@@ -193,7 +193,7 @@ impl DataflowConstraints {
         impl PropagateRules<FlagSet> for Rules<'_> {
             fn subset(
                 &mut self,
-                a_ptr: PointerId,
+                _a_ptr: PointerId,
                 a_val: &FlagSet,
                 b_ptr: PointerId,
                 b_val: &FlagSet,
@@ -220,8 +220,8 @@ impl DataflowConstraints {
 
             fn all_perms(
                 &mut self,
-                ptr: PointerId,
-                perms: PermissionSet,
+                _ptr: PointerId,
+                _perms: PermissionSet,
                 val: &FlagSet,
             ) -> FlagSet {
                 *val
@@ -229,8 +229,8 @@ impl DataflowConstraints {
 
             fn no_perms(
                 &mut self,
-                ptr: PointerId,
-                perms: PermissionSet,
+                _ptr: PointerId,
+                _perms: PermissionSet,
                 val: &FlagSet,
             ) -> FlagSet {
                 *val

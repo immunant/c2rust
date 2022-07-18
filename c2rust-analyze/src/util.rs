@@ -58,13 +58,13 @@ pub enum Callee<'tcx> {
 }
 
 pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> {
-    let (did, substs) = match *ty.kind() {
+    let (did, _substs) = match *ty.kind() {
         TyKind::FnDef(did, substs) => (did, substs),
         _ => return None,
     };
     let name = tcx.item_name(did);
     let poly_sig = tcx.fn_sig(did);
-    let sig = poly_sig.skip_binder();
+    let _sig = poly_sig.skip_binder();
 
     match name.as_str() {
         "offset" => {
