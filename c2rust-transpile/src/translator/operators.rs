@@ -206,7 +206,6 @@ impl<'c> Translation<'c> {
                         self.convert_expr(rhs_ctx, rhs)?.result_map(|rhs_val| {
                             let expr_ids = Some((lhs, rhs));
                             self.convert_binary_operator(
-                                ctx,
                                 ConvertBinaryOperatorArgs {
                                     op,
                                     ty,
@@ -227,7 +226,6 @@ impl<'c> Translation<'c> {
 
     fn convert_assignment_operator_aux(
         &self,
-        ctx: ExprContext,
         bin_op_kind: BinOp,
         bin_op: c_ast::BinOp,
         args: ConvertAssignmentOperatorAuxArgs,
@@ -270,7 +268,6 @@ impl<'c> Translation<'c> {
             };
             let ty = self.convert_type(compute_res_ty.ctype)?;
             let val = self.convert_binary_operator(
-                ctx,
                 ConvertBinaryOperatorArgs {
                     op: bin_op,
                     ty,
@@ -454,7 +451,6 @@ impl<'c> Translation<'c> {
 
                             let val = if compute_lhs_type_id.ctype == initial_lhs_type_id.ctype {
                                 self.convert_binary_operator(
-                                    ctx,
                                     ConvertBinaryOperatorArgs {
                                         op,
                                         ty,
@@ -472,7 +468,6 @@ impl<'c> Translation<'c> {
                                 let lhs = mk().cast_expr(read.clone(), lhs_type.clone());
                                 let ty = self.convert_type(result_type_id.ctype)?;
                                 let val = self.convert_binary_operator(
-                                    ctx,
                                     ConvertBinaryOperatorArgs {
                                         op,
                                         ty,
@@ -555,7 +550,6 @@ impl<'c> Translation<'c> {
                                     _ => panic!("Cannot convert non-assignment operator"),
                                 };
                                 self.convert_assignment_operator_aux(
-                                    ctx,
                                     bin_op_kind,
                                     bin_op,
                                     ConvertAssignmentOperatorAuxArgs {
@@ -584,7 +578,6 @@ impl<'c> Translation<'c> {
     /// arguments be usable as rvalues.
     fn convert_binary_operator(
         &self,
-        ctx: ExprContext,
         args: ConvertBinaryOperatorArgs,
     ) -> TranslationResult<Box<Expr>> {
         let ConvertBinaryOperatorArgs {
@@ -605,10 +598,8 @@ impl<'c> Translation<'c> {
             .is_unsigned_integral_type();
 
         match op {
-            c_ast::BinOp::Add => self.convert_addition(ctx, lhs_type, rhs_type, lhs, rhs),
-            c_ast::BinOp::Subtract => {
-                self.convert_subtraction(ctx, ty, lhs_type, rhs_type, lhs, rhs)
-            }
+            c_ast::BinOp::Add => self.convert_addition(lhs_type, rhs_type, lhs, rhs),
+            c_ast::BinOp::Subtract => self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs),
 
             c_ast::BinOp::Multiply if is_unsigned_integral_type => {
                 Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_mul"), vec![rhs]))
@@ -714,7 +705,6 @@ impl<'c> Translation<'c> {
 
     fn convert_addition(
         &self,
-        ctx: ExprContext,
         lhs_type_id: CQualTypeId,
         rhs_type_id: CQualTypeId,
         lhs: Box<Expr>,
@@ -738,7 +728,6 @@ impl<'c> Translation<'c> {
 
     fn convert_subtraction(
         &self,
-        ctx: ExprContext,
         ty: Box<Type>,
         lhs_type_id: CQualTypeId,
         rhs_type_id: CQualTypeId,
