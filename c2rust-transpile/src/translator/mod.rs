@@ -2519,7 +2519,7 @@ impl<'c> Translation<'c> {
             let local = mk().local(
                 mk().mutbl().ident_pat(current_block_ident),
                 Some(current_block_ty),
-                None as Option<Box<Expr>>,
+                None,
             );
             stmts.push(mk().local_stmt(Box::new(local)))
         }
@@ -2570,12 +2570,12 @@ impl<'c> Translation<'c> {
                 Ok(val.map(|e| {
                     if self.ast_context.is_function_pointer(ptr_type) {
                         if negated {
-                            mk().method_call_expr(e, "is_some", vec![] as Vec<Box<Expr>>)
+                            mk().method_call_expr(e, "is_some", vec![])
                         } else {
-                            mk().method_call_expr(e, "is_none", vec![] as Vec<Box<Expr>>)
+                            mk().method_call_expr(e, "is_none", vec![])
                         }
                     } else {
-                        let is_null = mk().method_call_expr(e, "is_null", vec![] as Vec<Box<Expr>>);
+                        let is_null = mk().method_call_expr(e, "is_null", vec![]);
                         if negated {
                             mk().unary_expr(UnOp::Not(Default::default()), is_null)
                         } else {
@@ -3131,7 +3131,7 @@ impl<'c> Translation<'c> {
 
                         let local = mk().local(
                             mk().ident_pat(name),
-                            None as Option<Box<Type>>,
+                            None,
                             Some(mk().cast_expr(expr, mk().path_ty(vec!["usize"]))),
                         );
 
@@ -3180,7 +3180,7 @@ impl<'c> Translation<'c> {
             mk().path_segment("mem"),
             mk().path_segment_with_args(name, params),
         ];
-        let call = mk().call_expr(mk().abs_path_expr(path), vec![] as Vec<Box<Expr>>);
+        let call = mk().call_expr(mk().abs_path_expr(path), vec![]);
 
         Ok(WithStmts::new_val(call))
     }
@@ -3203,7 +3203,7 @@ impl<'c> Translation<'c> {
             path.push(mk().path_segment("mem"));
             path.push(mk().path_segment_with_args("align_of", mk().angle_bracketed_args(tys)));
         }
-        let call = mk().call_expr(mk().abs_path_expr(path), vec![] as Vec<Box<Expr>>);
+        let call = mk().call_expr(mk().abs_path_expr(path), vec![]);
         Ok(WithStmts::new_val(call))
     }
 
@@ -3400,7 +3400,7 @@ impl<'c> Translation<'c> {
                 if let CTypeKind::VariableArray(..) =
                     self.ast_context.resolve_type(qual_ty.ctype).kind
                 {
-                    val = mk().method_call_expr(val, "as_mut_ptr", vec![] as Vec<Box<Expr>>);
+                    val = mk().method_call_expr(val, "as_mut_ptr", vec![]);
                 }
 
                 let mut res = WithStmts::new_val(val);
@@ -3578,7 +3578,7 @@ impl<'c> Translation<'c> {
                             vec![mk().semi_stmt(mk().ifte_expr(
                                 val,
                                 mk().block(rhs.into_stmts()),
-                                None as Option<Box<Expr>>,
+                                None,
                             ))],
                             self.panic_or_err(
                                 "Binary conditional expression is not supposed to be used",
@@ -3886,9 +3886,7 @@ impl<'c> Translation<'c> {
                         // to and will have to be handled elsewhere, IE `bf.set_a(1)`
                         if !ctx.is_bitfield_write {
                             // Cases A and B above
-                            val = val.map(|v| {
-                                mk().method_call_expr(v, field_name, vec![] as Vec<Box<Expr>>)
-                            });
+                            val = val.map(|v| mk().method_call_expr(v, field_name, vec![]));
                         }
                     } else {
                         val = val.map(|v| mk().field_expr(v, field_name));
@@ -4397,9 +4395,7 @@ impl<'c> Translation<'c> {
                                 "as_mut_ptr"
                             };
 
-                            let call = val.map(|x| {
-                                mk().method_call_expr(x, method, vec![] as Vec<Box<Expr>>)
-                            });
+                            let call = val.map(|x| mk().method_call_expr(x, method, vec![]));
 
                             // Static arrays can now use as_ptr. Can also cast that const ptr to a
                             // mutable pointer as we do here:
@@ -4580,8 +4576,8 @@ impl<'c> Translation<'c> {
         if self.ast_context.is_va_list(resolved_ty_id) {
             // generate MaybeUninit::uninit().assume_init()
             let path = vec!["core", "mem", "MaybeUninit", "uninit"];
-            let call = mk().call_expr(mk().abs_path_expr(path), vec![] as Vec<Box<Expr>>);
-            let call = mk().method_call_expr(call, "assume_init", vec![] as Vec<Box<Expr>>);
+            let call = mk().call_expr(mk().abs_path_expr(path), vec![]);
+            let call = mk().method_call_expr(call, "assume_init", vec![]);
             return Ok(WithStmts::new_val(call));
         }
 
@@ -4610,9 +4606,7 @@ impl<'c> Translation<'c> {
                 .map(|elt| mk().repeat_expr(elt, sz)))
         } else if let &CTypeKind::IncompleteArray(_) = resolved_ty {
             // Incomplete arrays are translated to zero length arrays
-            Ok(WithStmts::new_val(
-                mk().array_expr(vec![] as Vec<Box<Expr>>),
-            ))
+            Ok(WithStmts::new_val(mk().array_expr(vec![])))
         } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
             self.zero_initializer(decl_id, ty_id, is_static)
         } else if let &CTypeKind::VariableArray(elt, _) = resolved_ty {
@@ -4777,12 +4771,12 @@ impl<'c> Translation<'c> {
 
         if self.ast_context.is_function_pointer(ty_id) {
             if target {
-                mk().method_call_expr(val, "is_some", vec![] as Vec<Box<Expr>>)
+                mk().method_call_expr(val, "is_some", vec![])
             } else {
-                mk().method_call_expr(val, "is_none", vec![] as Vec<Box<Expr>>)
+                mk().method_call_expr(val, "is_none", vec![])
             }
         } else if ty.is_pointer() {
-            let mut res = mk().method_call_expr(val, "is_null", vec![] as Vec<Box<Expr>>);
+            let mut res = mk().method_call_expr(val, "is_null", vec![]);
             if target {
                 res = mk().unary_expr(UnOp::Not(Default::default()), res)
             }

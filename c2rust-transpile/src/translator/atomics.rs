@@ -276,7 +276,7 @@ impl<'c> Translation<'c> {
                             let res_name = self.renamer.borrow_mut().fresh();
                             let res_let = mk().local_stmt(Box::new(mk().local(
                                 mk().ident_pat(&res_name),
-                                None as Option<Box<Type>>,
+                                None,
                                 Some(call),
                             )));
                             let assignment = mk().semi_stmt(mk().assign_expr(
@@ -410,14 +410,14 @@ impl<'c> Translation<'c> {
             let arg0_name = self.renamer.borrow_mut().fresh();
             let arg0_let = mk().local_stmt(Box::new(mk().local(
                 mk().ident_pat(&arg0_name),
-                None as Option<Box<Type>>,
+                None,
                 Some(dst),
             )));
 
             let arg1_name = self.renamer.borrow_mut().fresh();
             let arg1_let = mk().local_stmt(Box::new(mk().local(
                 mk().ident_pat(&arg1_name),
-                None as Option<Box<Type>>,
+                None,
                 Some(src),
             )));
 

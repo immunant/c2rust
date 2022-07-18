@@ -491,7 +491,7 @@ impl StructureState {
                         let (stmts, span) = self.to_stmt(stmts, comment_store);
 
                         let body = mk().block_expr(mk().span(span).block(stmts));
-                        mk().arm(pat, None as Option<Box<Expr>>, body)
+                        mk().arm(pat, None, body)
                     })
                     .collect();
 
@@ -515,11 +515,8 @@ impl StructureState {
                 let mut if_stmt = match (then_stmts.is_empty(), els_stmts.is_empty()) {
                     (true, true) => mk().semi_stmt(cond),
                     (false, true) => {
-                        let if_expr = mk().ifte_expr(
-                            cond,
-                            mk().span(then_span).block(then_stmts),
-                            None as Option<Box<Expr>>,
-                        );
+                        let if_expr =
+                            mk().ifte_expr(cond, mk().span(then_span).block(then_stmts), None);
                         mk().expr_stmt(if_expr)
                     }
                     (true, false) => {
@@ -527,7 +524,7 @@ impl StructureState {
                         let if_expr = mk().ifte_expr(
                             negated_cond,
                             mk().span(els_span).block(els_stmts),
-                            None as Option<Box<Expr>>,
+                            None,
                         );
                         mk().expr_stmt(if_expr)
                     }
@@ -582,7 +579,7 @@ impl StructureState {
                         };
                         let pat = mk().lit_pat(lbl_expr);
                         let body = mk().block_expr(mk().span(stmts_span).block(stmts));
-                        mk().arm(pat, None as Option<Box<Expr>>, body)
+                        mk().arm(pat, None, body)
                     })
                     .collect();
 
@@ -590,7 +587,7 @@ impl StructureState {
 
                 arms.push(mk().arm(
                     mk().wild_pat(),
-                    None as Option<Box<Expr>>,
+                    None,
                     mk().block_expr(mk().span(then_span).block(then)),
                 ));
 
