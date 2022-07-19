@@ -11,6 +11,7 @@ use std::{
 
 use crate::util::pad_columns;
 use crate::util::ShortOption;
+use crate::info::NodeInfo;
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum NodeKind {
@@ -111,6 +112,8 @@ pub struct Node {
     pub kind: NodeKind,
     /// The `Node` that produced the input to this operation.
     pub source: Option<NodeId>,
+    /// Additional information generated from the graphs
+    pub node_info: Option<NodeInfo>,
 }
 
 struct BlockStatement<'a> {
@@ -137,6 +140,7 @@ impl Node {
             dest,
             kind,
             source,
+            node_info: _
         } = self;
         let src = ShortOption(source.as_ref());
         let dest = ShortOption(dest.as_ref());
