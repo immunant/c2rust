@@ -1,11 +1,7 @@
 ```sh
-rustc --crate-type rlib instrument_support.rs
-cargo run -- fib.rs -L ~/.rustup/toolchains/nightly-2022-02-14-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/lib/
-./fib
+cargo run --bin c2rust-analyze -- tests/filecheck/insertion_sort.rs -L "$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/lib" --crate-type rlib
 ```
 
-The final `./fib` command should print several lines like
-```
-[CALL] fib(5,)
-```
-which come from the injected calls to `instrument_support::handle_call`.
+This should produce a large amount of debug output, including a table at the
+end listing the type and expression rewrites the analysis has inferred for the
+`insertion_sort` function.
