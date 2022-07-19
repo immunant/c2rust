@@ -283,7 +283,7 @@ impl<'c> Translation<'c> {
 
             Ok(WithStmts::new_val(mk().call_expr(
                 mk().ident_expr(fn_name),
-                Vec::new() as Vec<Box<Expr>>,
+                Vec::new(),
             )))
         }
     }

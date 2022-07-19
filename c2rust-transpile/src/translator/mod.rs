@@ -3366,7 +3366,7 @@ impl<'c> Translation<'c> {
                 // Most references to the va_list should refer to the VaList
                 // type, not VaListImpl
                 if !ctx.expecting_valistimpl && self.ast_context.is_va_list(qual_ty.ctype) {
-                    val = mk().method_call_expr(val, "as_va_list", Vec::<Box<Expr>>::new());
+                    val = mk().method_call_expr(val, "as_va_list", Vec::new());
                 }
 
                 // If we are referring to a function and need its address, we
@@ -4507,9 +4507,9 @@ impl<'c> Translation<'c> {
         };
 
         Ok(val.map(|val| {
-            let to_call = mk().method_call_expr(val, to_method_name, Vec::<Box<Expr>>::new());
+            let to_call = mk().method_call_expr(val, to_method_name, Vec::new());
 
-            mk().method_call_expr(to_call, "unwrap", Vec::<Box<Expr>>::new())
+            mk().method_call_expr(to_call, "unwrap", Vec::new())
         }))
     }
 

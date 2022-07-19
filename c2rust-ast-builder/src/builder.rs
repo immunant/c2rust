@@ -2332,7 +2332,7 @@ fn binop_precedence(b: &BinOp) -> u8 {
 
 /// Wrap an expression in parentheses
 fn parenthesize_mut(e: &mut Box<Expr>) {
-    let mut temp = mk().tuple_expr(Vec::<Box<Expr>>::new());
+    let mut temp = mk().tuple_expr(Vec::new());
     std::mem::swap(e, &mut temp);
     *e = Box::new(Expr::Paren(ExprParen {
         attrs: vec![],
