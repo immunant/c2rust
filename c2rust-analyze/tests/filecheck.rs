@@ -1,9 +1,7 @@
 use std::env;
 use std::fs;
 use std::os::unix::io::{AsRawFd, FromRawFd};
-use std::path::Path;
 use std::process::{Command, Stdio};
-use std::str;
 
 #[test]
 fn filecheck() {
