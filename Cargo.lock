@@ -221,7 +221,9 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "polonius-engine",
+ "print_bytes",
  "rustc-hash",
+ "rustc-private-link",
 ]
 
 [[package]]
