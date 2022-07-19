@@ -635,7 +635,7 @@ impl Builder {
         V: Make<Ident>,
     {
         let func: Path = vec![func].make(&self);
-        let arguments: Vec<_> = arguments
+        let arguments = arguments
             .into_iter()
             .map(|x| NestedMeta::Meta(Meta::Path(vec![x.make(&self)].make(&self))))
             .collect();
@@ -643,7 +643,7 @@ impl Builder {
         let metalist = MetaList {
             path: func,
             paren_token: token::Paren(self.span),
-            nested: punct(arguments),
+            nested: arguments,
         };
         let prepared = self.prepare_meta_list(metalist);
         self.prepared_attr(prepared)
@@ -767,11 +767,11 @@ impl Builder {
         S: Make<PathSegment>,
     {
         let seg = seg.make(&self);
-
-        let mut arg_vals = Vec::with_capacity(args.len());
-        for arg in args {
-            arg_vals.push(arg.make(&self));
-        }
+        let args = args
+            .into_iter()
+            .map(|arg| *arg)
+            .map(|arg| arg.make(&self))
+            .collect();
 
         // Convert ::<> if present in seg
         fn generic_arg_to_method_generic_arg(a: GenericArgument) -> GenericMethodArgument {
@@ -809,7 +809,7 @@ impl Builder {
                 turbofish,
                 receiver: expr,
                 method: seg.ident,
-                args: punct_box(arg_vals),
+                args,
             },
         )))
     }
@@ -1384,7 +1384,7 @@ impl Builder {
     }
 
     pub fn tuple_ty(self, elem_tys: Vec<Box<Type>>) -> Box<Type> {
-        let elem_tys = punct(elem_tys.into_iter().map(|ty| *ty).collect());
+        let elem_tys = elem_tys.into_iter().map(|ty| *ty).collect();
         Box::new(Type::Tuple(TypeTuple {
             paren_token: token::Paren(self.span),
             elems: elem_tys,
