@@ -239,7 +239,7 @@ impl TypeConverter {
         let barefn_inputs = params
             .iter()
             .map(|x| mk().bare_arg(self.convert(ctxt, x.ctype).unwrap(), None::<Box<Ident>>))
-            .collect::<Vec<BareFnArg>>();
+            .collect::<Vec<_>>();
 
         let output = match ret {
             None => mk().never_ty(),

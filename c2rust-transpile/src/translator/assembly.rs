@@ -750,7 +750,7 @@ impl<'c> Translation<'c> {
         // of operands with explicit arg dir specs (asm!-style)
 
         // The unified arg list
-        let mut args = Vec::<BidirAsmOperand>::new();
+        let mut args = Vec::new();
 
         // Add outputs as inout if a matching input is found, else as outputs
         for (i, output) in outputs.iter().enumerate() {
