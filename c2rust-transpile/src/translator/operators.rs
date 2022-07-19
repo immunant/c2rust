@@ -431,9 +431,7 @@ impl<'c> Translation<'c> {
                     use c_ast::BinOp::*;
                     let assign_stmt = match op {
                         // Regular (possibly volatile) assignment
-                        Assign if !is_volatile => {
-                            WithStmts::new_val(mk().assign_expr(write, rhs))
-                        }
+                        Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(write, rhs)),
                         Assign => WithStmts::new_val(self.volatile_write(
                             write,
                             initial_lhs_type_id,
