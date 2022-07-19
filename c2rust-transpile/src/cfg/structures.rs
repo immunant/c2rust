@@ -288,7 +288,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label,
                             let branched_cases = cases
                                 .iter()
                                 .map(|&(ref pat, ref slbl)| Ok((pat.clone(), branch(slbl)?)))
-                                .collect::<TranslationResult<Vec<(Pat, S)>>>()?;
+                                .collect::<TranslationResult<_>>()?;
 
                             S::mk_match(expr.clone(), branched_cases)
                         }
@@ -299,12 +299,12 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label,
             Multiple { branches, then, .. } => {
                 let cases = branches
                     .iter()
-                    .map(|(lbl, body)| -> TranslationResult<(Label, S)> {
+                    .map(|(lbl, body)| {
                         let stmts =
                             structured_cfg_help(exits.clone(), next, body, used_loop_labels)?;
                         Ok((lbl.clone(), stmts))
                     })
-                    .collect::<TranslationResult<Vec<(Label, S)>>>()?;
+                    .collect::<TranslationResult<_>>()?;
 
                 let then: S = structured_cfg_help(exits.clone(), next, then, used_loop_labels)?;
 
