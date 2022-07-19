@@ -22,6 +22,7 @@ mod builder;
 mod graph;
 mod query;
 mod util;
+mod info;
 
 use builder::{construct_pdg, read_event_log};
 use clap::{Parser, ValueEnum};
@@ -31,6 +32,7 @@ use std::{
     fmt::{self, Display, Formatter},
     path::{Path, PathBuf},
 };
+use info::augment_with_info;
 
 use crate::builder::read_metadata;
 
@@ -91,7 +93,8 @@ fn main() -> eyre::Result<()> {
         }
     }
 
-    let pdg = construct_pdg(&events, metadata);
+    let mut pdg = construct_pdg(&events, metadata);
+    augment_with_info(&mut pdg);
     pdg.assert_all_tests();
 
     if should_print(ToPrint::LatestAssignments) {
