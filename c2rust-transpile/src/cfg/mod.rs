@@ -602,9 +602,8 @@ impl Cfg<Label, StmtOrDecl> {
                             .push(StmtOrDecl::Stmt(mk().semi_stmt(mk().return_expr(ret_expr))));
                     }
                     ImplicitReturnType::Void => {
-                        wip.body.push(StmtOrDecl::Stmt(
-                            mk().semi_stmt(mk().return_expr(None as Option<Box<Expr>>)),
-                        ));
+                        wip.body
+                            .push(StmtOrDecl::Stmt(mk().semi_stmt(mk().return_expr(None))));
                     }
                     ImplicitReturnType::NoImplicitReturnType => {
                         // NOTE: emitting `ret_expr` is not necessarily an error. For instance,
@@ -2028,10 +2027,10 @@ impl CfgBuilder {
                 false,
             ),
 
-            Some(ImplicitReturnType::Void) => (mk().return_expr(None as Option<Box<Expr>>), false),
+            Some(ImplicitReturnType::Void) => (mk().return_expr(None), false),
 
             _ => (
-                mk().break_expr_value(Some(brk_lbl.pretty_print()), None as Option<Box<Expr>>),
+                mk().break_expr_value(Some(brk_lbl.pretty_print()), None),
                 true,
             ),
         };

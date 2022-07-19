@@ -239,7 +239,7 @@ impl TypeConverter {
         let barefn_inputs = params
             .iter()
             .map(|x| mk().bare_arg(self.convert(ctxt, x.ctype).unwrap(), None::<Box<Ident>>))
-            .collect::<Vec<BareFnArg>>();
+            .collect::<Vec<_>>();
 
         let output = match ret {
             None => mk().never_ty(),
@@ -311,7 +311,7 @@ impl TypeConverter {
         }
 
         match ctxt.index(ctype).kind {
-            CTypeKind::Void => Ok(mk().tuple_ty(vec![] as Vec<Box<Type>>)),
+            CTypeKind::Void => Ok(mk().tuple_ty(vec![])),
             CTypeKind::Bool => Ok(mk().path_ty(mk().path(vec!["bool"]))),
             CTypeKind::Short => Ok(mk().path_ty(mk().path(vec!["libc", "c_short"]))),
             CTypeKind::Int => Ok(mk().path_ty(mk().path(vec!["libc", "c_int"]))),

@@ -183,7 +183,7 @@ impl<'c> Translation<'c> {
                     mk().ident("arg"),
                     mk().angle_bracketed_args(vec![arg_ty]),
                 );
-                let mut val = mk().method_call_expr(val, path, vec![] as Vec<Box<Expr>>);
+                let mut val = mk().method_call_expr(val, path, vec![]);
                 if let Some(ty) = real_arg_ty {
                     val = mk().cast_expr(val, ty);
                 }
