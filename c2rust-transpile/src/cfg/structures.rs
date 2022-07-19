@@ -14,7 +14,7 @@ pub fn structured_cfg(
     debug_labels: bool,
     cut_out_trailing_ret: bool,
 ) -> TranslationResult<Vec<Stmt>> {
-    let ast: StructuredAST<Box<Expr>, Box<Pat>, Label, Stmt> =
+    let ast: StructuredAST<Box<Expr>, Pat, Label, Stmt> =
         structured_cfg_help(vec![], &IndexSet::new(), root, &mut IndexSet::new())?;
 
     let s = StructureState {
@@ -198,7 +198,7 @@ type Exit = (Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>);
 /// Recursive helper for `structured_cfg`
 ///
 /// TODO: move this into `structured_cfg`?
-fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = Label, S = Stmt>>(
+fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stmt>>(
     exits: Vec<Exit>,
     next: &IndexSet<Label>,
     root: &[Structure<Stmt>],
@@ -285,10 +285,10 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                         Jump(to) => branch(to)?,
                         Branch(c, t, f) => S::mk_if(c.clone(), branch(t)?, branch(f)?),
                         Switch { expr, cases } => {
-                            let branched_cases: Vec<(Box<Pat>, S)> = cases
+                            let branched_cases = cases
                                 .iter()
                                 .map(|&(ref pat, ref slbl)| Ok((pat.clone(), branch(slbl)?)))
-                                .collect::<TranslationResult<Vec<(Box<Pat>, S)>>>()?;
+                                .collect::<TranslationResult<Vec<(Pat, S)>>>()?;
 
                             S::mk_match(expr.clone(), branched_cases)
                         }
@@ -405,7 +405,7 @@ fn span_subst_hi(span: Span, other: Span) -> Option<Span> {
 impl StructureState {
     pub fn to_stmt(
         &self,
-        ast: StructuredAST<Box<Expr>, Box<Pat>, Label, Stmt>,
+        ast: StructuredAST<Box<Expr>, Pat, Label, Stmt>,
         comment_store: &mut comment_store::CommentStore,
     ) -> (Vec<Stmt>, Span) {
         use crate::cfg::structures::StructuredASTKind::*;
