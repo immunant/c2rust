@@ -7,7 +7,7 @@ fn neg_expr(arg: Box<Expr>) -> Box<Expr> {
 }
 
 fn wrapping_neg_expr(arg: Box<Expr>) -> Box<Expr> {
-    mk().method_call_expr(arg, "wrapping_neg", vec![] as Vec<Box<Expr>>)
+    mk().method_call_expr(arg, "wrapping_neg", vec![])
 }
 
 impl From<c_ast::BinOp> for BinOp {
@@ -634,9 +634,9 @@ impl<'c> Translation<'c> {
                         && self.ast_context.is_null_expr(lhs_expr_id);
 
                     if fn_eq_null {
-                        mk().method_call_expr(lhs, "is_none", vec![] as Vec<Box<Expr>>)
+                        mk().method_call_expr(lhs, "is_none", vec![])
                     } else if null_eq_fn {
-                        mk().method_call_expr(rhs, "is_none", vec![] as Vec<Box<Expr>>)
+                        mk().method_call_expr(rhs, "is_none", vec![])
                     } else {
                         mk().binary_expr(BinOp::Eq(Default::default()), lhs, rhs)
                     }
@@ -656,9 +656,9 @@ impl<'c> Translation<'c> {
                         && self.ast_context.is_null_expr(lhs_expr_id);
 
                     if fn_eq_null {
-                        mk().method_call_expr(lhs, "is_some", vec![] as Vec<Box<Expr>>)
+                        mk().method_call_expr(lhs, "is_some", vec![])
                     } else if null_eq_fn {
-                        mk().method_call_expr(rhs, "is_some", vec![] as Vec<Box<Expr>>)
+                        mk().method_call_expr(rhs, "is_some", vec![])
                     } else {
                         mk().binary_expr(BinOp::Ne(Default::default()), lhs, rhs)
                     }
@@ -822,7 +822,7 @@ impl<'c> Translation<'c> {
                 let val_name = self.renamer.borrow_mut().fresh();
                 let save_old_val = mk().local_stmt(Box::new(mk().local(
                     mk().ident_pat(&val_name),
-                    None as Option<Box<Type>>,
+                    None,
                     Some(read.clone()),
                 )));
 
