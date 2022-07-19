@@ -1038,7 +1038,7 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
         for c in t.extern_crates.borrow().iter() {
             out_items.push(mk().use_simple_item(
                 mk().abs_path(vec![ExternCrateDetails::from(*c).ident]),
-                None as Option<Ident>,
+                None::<Ident>,
             ))
         }
     } else {

@@ -83,7 +83,7 @@ impl<'c> Translation<'c> {
                             vec![],
                         )],
                     ))]),
-                    None as Option<Ident>,
+                    None::<Ident>,
                 )));
                 stmts.push(mk().semi_stmt(mk().method_call_expr(
                     mk().path_expr(vec!["args"]),
