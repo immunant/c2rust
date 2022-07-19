@@ -1,30 +1,9 @@
 use std::collections::HashMap;
-use std::env;
 use std::hash::Hash;
-use std::mem;
-use either::{Either, Left, Right};
-use polonius_engine::{self, Atom, FactTypes};
-use rustc_ast::ast::{Item, ItemKind, Visibility, VisibilityKind};
-use rustc_ast::node_id::NodeId;
-use rustc_ast::ptr::P;
-use rustc_driver::Compilation;
-use rustc_interface::Queries;
-use rustc_interface::interface::Compiler;
-use rustc_middle::mir::{
-    Body, BasicBlock, BasicBlockData, START_BLOCK, Terminator, TerminatorKind, SourceInfo, Local,
-    LocalDecl, LocalKind, Mutability, Rvalue, AggregateKind, Place,
-    PlaceRef, PlaceElem, Operand, Statement, StatementKind, BorrowKind, Constant, ConstantKind,
-};
-use rustc_middle::mir::interpret::{Allocation, ConstValue};
-use rustc_middle::mir::pretty;
-use rustc_middle::ty::{TyCtxt, Ty, TyKind, RegionKind, WithOptConstParam, List};
-use rustc_middle::ty::query::{Providers, ExternProviders};
-use rustc_session::Session;
-use rustc_span::DUMMY_SP;
-use rustc_span::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX};
-use rustc_span::symbol::Ident;
-use rustc_target::abi::Align;
-use crate::context::{AnalysisCtxt, PermissionSet, PointerId};
+use polonius_engine;
+use rustc_middle::mir::{Body, START_BLOCK, Local, LocalKind, Place, StatementKind, BorrowKind};
+use rustc_middle::ty::{TyKind, List};
+use crate::context::{AnalysisCtxt, PermissionSet};
 use crate::dataflow::DataflowConstraints;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::util::{describe_rvalue, RvalueDesc};
@@ -38,9 +17,9 @@ mod type_check;
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
-struct Label {
-    origin: Option<Origin>,
-    perm: PermissionSet,
+pub struct Label {
+    pub origin: Option<Origin>,
+    pub perm: PermissionSet,
 }
 
 pub type LTy<'tcx> = LabeledTy<'tcx, Label>;
@@ -214,7 +193,7 @@ fn run_polonius<'tcx>(
 fn assign_origins<'tcx>(
     ltcx: LTyCtxt<'tcx>,
     hypothesis: &[PermissionSet],
-    facts: &mut AllFacts,
+    _facts: &mut AllFacts,
     maps: &mut AtomMaps<'tcx>,
     lty: crate::LTy<'tcx>,
 ) -> LTy<'tcx> {

@@ -2,7 +2,7 @@
 /// Apache 2.0.
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
-use std::fmt::{Debug, Write as _};
+use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::hash::Hash;
 use std::io::{BufWriter, Write};
@@ -232,7 +232,7 @@ impl OutputTable for bool {
     fn write(
         &self,
         out: &mut dyn Write,
-        maps: &AtomMaps,
+        _maps: &AtomMaps,
     ) -> Result<(), Box<dyn Error>> {
         writeln!(out, "{}", self)?;
         Ok(())
@@ -348,13 +348,13 @@ impl<A: Render, B: Render> Render for (A, B) {
 }
 
 impl Render for Origin {
-    fn to_string(&self, maps: &AtomMaps) -> String {
+    fn to_string(&self, _maps: &AtomMaps) -> String {
         format!("'_#{}r", usize::from(*self))
     }
 }
 
 impl Render for Loan {
-    fn to_string(&self, maps: &AtomMaps) -> String {
+    fn to_string(&self, _maps: &AtomMaps) -> String {
         format!("bw{}", usize::from(*self))
     }
 }
@@ -367,13 +367,13 @@ impl Render for Point {
 }
 
 impl Render for Variable {
-    fn to_string(&self, maps: &AtomMaps) -> String {
+    fn to_string(&self, _maps: &AtomMaps) -> String {
         format!("_{}", usize::from(*self))
     }
 }
 
 impl Render for Path {
-    fn to_string(&self, maps: &AtomMaps) -> String {
+    fn to_string(&self, _maps: &AtomMaps) -> String {
         format!("mp{}", usize::from(*self))
     }
 }

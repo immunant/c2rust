@@ -7,7 +7,6 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use rustc_arena::DroplessArena;
-use rustc_middle::arena::Arena;
 use rustc_middle::ty::{TyCtxt, Ty, TyKind, TypeAndMut};
 use rustc_middle::ty::subst::{GenericArg, GenericArgKind};
 
@@ -180,7 +179,8 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
     }
 
     /// Label multiple `Ty`s using a callback.
-    pub fn label_slice<F>(&self, tys: &[Ty<'tcx>], f: &mut F) -> &'tcx [LabeledTy<'tcx, L>]
+    #[allow(dead_code)]
+    pub fn _label_slice<F>(&self, tys: &[Ty<'tcx>], f: &mut F) -> &'tcx [LabeledTy<'tcx, L>]
     where
         F: FnMut(Ty<'tcx>) -> L,
     {
@@ -195,6 +195,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
     /// substitution on the underlying `Ty`s!  This means if you substitute `u32` for `T`, you can
     /// end up with a `LabeledTy` whose `ty` is `S<T>`, but whose args are `[u32]`.  By some
     /// miracle, this hasn't broken anything yet, but we may need to fix it eventually.
+    #[allow(dead_code)]
     pub fn subst(
         &self,
         lty: LabeledTy<'tcx, L>,
@@ -308,7 +309,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                 assert!(it.next().is_none());
                 self.tcx.mk_fn_def(def_id, substs)
             }
-            FnPtr(ref sig) => {
+            FnPtr(ref _sig) => {
                 // TODO: replace all the types under the binder
                 todo!()
             }

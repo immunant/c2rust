@@ -1,6 +1,6 @@
 use rustc_middle::mir::{
     Body, BasicBlock, Location, Statement, StatementKind, Terminator, TerminatorKind, Rvalue,
-    Operand, Place,
+    Operand,
 };
 use rustc_span::{Span, DUMMY_SP};
 use crate::context::{AnalysisCtxt, PointerId, PermissionSet, FlagSet, LTy};
@@ -85,7 +85,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         r
     }
 
-    fn enter_dest<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+    #[allow(dead_code)]
+    fn _enter_dest<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
         self.enter(SubLoc::Dest, f)
     }
 
@@ -101,11 +102,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         self.enter(SubLoc::RvalueOperand(i), f)
     }
 
-    fn enter_operand_place<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+    #[allow(dead_code)]
+    fn _enter_operand_place<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
         self.enter(SubLoc::OperandPlace, f)
     }
 
-    fn enter_place_pointer<F: FnOnce(&mut Self) -> R, R>(&mut self, i: usize, f: F) -> R {
+    #[allow(dead_code)]
+    fn _enter_place_pointer<F: FnOnce(&mut Self) -> R, R>(&mut self, i: usize, f: F) -> R {
         self.enter(SubLoc::PlacePointer(i), f)
     }
 
@@ -162,15 +165,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     let pl_ty = pl_ty.unwrap();
                     match callee {
                         Callee::PtrOffset { .. } => {
-                            // TODO
-                            // - get own,qty for output (pl_ty)
-                            // - increase qty to Quantity::Slice for own2,qty2
-                            // - cast argument to own2,qty2
-                            // - emit OffsetSlice
-                            // - if output is not Slice, emit SliceFirst
                             self.visit_ptr_offset(&args[0], pl_ty);
-
-
                             return;
                         },
                     }
@@ -180,7 +175,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 let poly_sig = func_ty.fn_sig(tcx);
                 let sig = tcx.erase_late_bound_regions(poly_sig);
 
-                for (i, op) in args.iter().enumerate() {
+                for (i, _op) in args.iter().enumerate() {
                     if i >= sig.inputs().len() {
                         // This is a call to a variadic function, and we've gone past the end of
                         // the declared arguments.  
@@ -209,41 +204,41 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             Rvalue::Use(ref op) => {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, expect_ty));
             },
-            Rvalue::Repeat(ref op, _) => {
+            Rvalue::Repeat(ref _op, _) => {
                 // TODO
             },
-            Rvalue::Ref(rg, kind, pl) => {
+            Rvalue::Ref(_rg, _kind, _pl) => {
                 // TODO
             },
-            Rvalue::ThreadLocalRef(def_id) => {
+            Rvalue::ThreadLocalRef(_def_id) => {
                 // TODO
             },
-            Rvalue::AddressOf(mutbl, pl) => {
+            Rvalue::AddressOf(_mutbl, _pl) => {
                 // TODO
             },
-            Rvalue::Len(pl) => {
+            Rvalue::Len(_pl) => {
                 // TODO
             },
-            Rvalue::Cast(kind, ref op, ty) => {
+            Rvalue::Cast(_kind, ref _op, _ty) => {
                 // TODO
             },
-            Rvalue::BinaryOp(bop, ref ops) => {
+            Rvalue::BinaryOp(_bop, ref _ops) => {
                 // TODO
             },
-            Rvalue::CheckedBinaryOp(bop, ref ops) => {
+            Rvalue::CheckedBinaryOp(_bop, ref _ops) => {
                 // TODO
             },
             Rvalue::NullaryOp(..) => {},
-            Rvalue::UnaryOp(uop, ref op) => {
+            Rvalue::UnaryOp(_uop, ref _op) => {
                 // TODO
             },
-            Rvalue::Discriminant(pl) => {
+            Rvalue::Discriminant(_pl) => {
                 // TODO
             },
-            Rvalue::Aggregate(ref kind, ref ops) => {
+            Rvalue::Aggregate(ref _kind, ref _ops) => {
                 // TODO
             },
-            Rvalue::ShallowInitBox(ref op, ty) => {
+            Rvalue::ShallowInitBox(ref _op, _ty) => {
                 // TODO
             },
         }
@@ -297,7 +292,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             Quantity::OffsetPtr => todo!("OffsetPtr"),
         };
 
-        self.enter_call_arg(0, |v| v.visit_operand_desc(op, result_own, arg_expect_qty));
+        self.enter_call_arg(0, |v| v.visit_operand_desc(op, arg_expect_own, arg_expect_qty));
 
         // Emit `OffsetSlice` for the offset itself.
         let mutbl = match result_own {

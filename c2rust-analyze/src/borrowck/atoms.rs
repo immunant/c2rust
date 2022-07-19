@@ -65,6 +65,7 @@ impl<T, A> Default for AtomMap<T, A> {
 }
 
 impl<T: Hash + Eq + Clone, A: Atom> AtomMap<T, A> {
+    #[allow(dead_code)]
     pub fn new() -> AtomMap<T, A> {
         AtomMap {
             atom_to_thing: Vec::new(),
@@ -155,7 +156,7 @@ impl<'tcx> AtomMaps<'tcx> {
         Variable(l.as_usize())
     }
 
-    pub fn get_variable(&self, x: Variable) -> Local {
+    pub fn _get_variable(&self, x: Variable) -> Local {
         Local::from_usize(x.0)
     }
 
@@ -183,14 +184,14 @@ impl<'tcx> AtomMaps<'tcx> {
         path
     }
 
-    pub fn get_path(&self, tcx: TyCtxt<'tcx>, x: Path) -> Place<'tcx> {
+    pub fn _get_path(&self, tcx: TyCtxt<'tcx>, x: Path) -> Place<'tcx> {
         let (local, projection) = self.path.get(x);
         let projection = tcx.intern_place_elems(projection);
         Place { local, projection }
     }
 
-    pub fn get_path_projection(&self, tcx: TyCtxt<'tcx>, x: Path) -> &'tcx [PlaceElem<'tcx>] {
-        let (local, projection) = self.path.get(x);
+    pub fn get_path_projection(&self, _tcx: TyCtxt<'tcx>, x: Path) -> &'tcx [PlaceElem<'tcx>] {
+        let (_local, projection) = self.path.get(x);
         projection
     }
 }

@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
     Body, Statement, StatementKind, Terminator, TerminatorKind, Rvalue, BinOp, Place, PlaceRef,
-    Operand, BorrowKind, Local, LocalDecl, Location, ProjectionElem, Mutability,
+    Operand, ProjectionElem, Mutability,
 };
 use rustc_middle::mir::visit::{PlaceContext, NonMutatingUseContext, MutatingUseContext};
 use rustc_middle::ty::TyKind;
@@ -201,8 +199,8 @@ pub fn visit<'tcx>(
         constraints: DataflowConstraints::default(),
     };
 
-    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
-        for (idx, stmt) in bb_data.statements.iter().enumerate() {
+    for bb_data in mir.basic_blocks().iter() {
+        for stmt in bb_data.statements.iter() {
             tc.visit_statement(stmt);
         }
         tc.visit_terminator(bb_data.terminator());
