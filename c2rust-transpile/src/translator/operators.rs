@@ -432,7 +432,7 @@ impl<'c> Translation<'c> {
                     let assign_stmt = match op {
                         // Regular (possibly volatile) assignment
                         Assign if !is_volatile => {
-                            WithStmts::new_val(mk().assign_expr(write.clone(), rhs))
+                            WithStmts::new_val(mk().assign_expr(write, rhs))
                         }
                         Assign => WithStmts::new_val(self.volatile_write(
                             write,
@@ -505,12 +505,12 @@ impl<'c> Translation<'c> {
                         AssignAdd if pointer_lhs.is_some() => {
                             let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
                             let ptr = pointer_offset(write.clone(), rhs, mul, false, false);
-                            WithStmts::new_val(mk().assign_expr(write.clone(), ptr))
+                            WithStmts::new_val(mk().assign_expr(write, ptr))
                         }
                         AssignSubtract if pointer_lhs.is_some() => {
                             let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
                             let ptr = pointer_offset(write.clone(), rhs, mul, true, false);
-                            WithStmts::new_val(mk().assign_expr(write.clone(), ptr))
+                            WithStmts::new_val(mk().assign_expr(write, ptr))
                         }
 
                         _ => {
@@ -525,7 +525,7 @@ impl<'c> Translation<'c> {
                                     op == AssignSubtract,
                                     false,
                                 );
-                                WithStmts::new_val(mk().assign_expr(write.clone(), ptr))
+                                WithStmts::new_val(mk().assign_expr(write, ptr))
                             } else {
                                 fn eq<Token: Default, F: Fn(Token) -> BinOp>(f: F) -> BinOp {
                                     f(Default::default())
