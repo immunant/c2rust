@@ -429,8 +429,14 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
 
         if let StatementKind::Assign(assign) = &statement.kind {
             println!("statement: {:?}", statement);
-            let dest = assign.0;
-            let value = &assign.1;
+            let (dest, value) = (assign.0, &assign.1);
+            
+            self.assignment = Some(*assign.to_owned());
+            self.visit_rvalue(value, location);
+            self.assignment = None;
+
+            let dest_ty = dest.ty(&self.body.local_decls, self.tcx).ty;
+            let value_ty = value.ty(&self.body.local_decls, self.tcx);
 
             self.visit_place(
                 &dest,
@@ -438,12 +444,31 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                 location,
             );
 
-            self.assignment = Some(*assign.to_owned());
-            self.visit_rvalue(value, location);
-            self.assignment = None;
-
-            let dest_ty = dest.ty(&self.body.local_decls, self.tcx).ty;
-            let value_ty = value.ty(&self.body.local_decls, self.tcx);
+            match value {
+                Rvalue::AddressOf(_, p) => {
+                    // Instrument which local's address is taken
+                    location.statement_index += 1;
+                    self.add_instrumentation_point(
+                        location,
+                        addr_local_fn,
+                        vec![
+                            InstrumentationOperand::from_type(Operand::Copy(dest), &dest_ty),
+                            InstrumentationOperand::AddressUsize(make_const(
+                                self.tcx,
+                                p.local.as_u32(),
+                            )),
+                        ],
+                        false,
+                        false,
+                        EventMetadata {
+                            source: Some(to_mir_place(p)),
+                            destination: Some(to_mir_place(&dest)),
+                            transfer_kind: TransferKind::None,
+                        },
+                    );
+                }
+                _ => ()
+            }
 
             if dest.is_indirect() {
                 // Strip all derefs to set base_dest to the pointer that is deref'd
@@ -586,28 +611,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                                 },
                             );
                         }
-                    }
-                    Rvalue::AddressOf(_, p) => {
-                        // Instrument which local's address is taken
-                        location.statement_index += 1;
-                        self.add_instrumentation_point(
-                            location,
-                            addr_local_fn,
-                            vec![
-                                InstrumentationOperand::from_type(Operand::Copy(dest), &dest_ty),
-                                InstrumentationOperand::AddressUsize(make_const(
-                                    self.tcx,
-                                    p.local.as_u32(),
-                                )),
-                            ],
-                            false,
-                            false,
-                            EventMetadata {
-                                source: Some(to_mir_place(p)),
-                                destination: Some(to_mir_place(&dest)),
-                                transfer_kind: TransferKind::None,
-                            },
-                        );
                     }
                     Rvalue::Ref(_, bkind, p) => {
                         // Instrument which local's address is taken
