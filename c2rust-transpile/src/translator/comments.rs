@@ -2,7 +2,7 @@ use super::Translation;
 use crate::c_ast::iterators::{NodeVisitor, SomeId};
 use crate::c_ast::{CDeclId, CDeclKind, CommentContext, SrcLoc, TypedAstContext};
 use crate::rust_ast::comment_store::CommentStore;
-use crate::rust_ast::{pos_to_span, SpanExt, DUMMY_SP};
+use crate::rust_ast::{pos_to_span, SpanExt};
 use log::debug;
 use proc_macro2::Span;
 use std::collections::{HashMap, HashSet};
@@ -142,7 +142,7 @@ impl<'c> NodeVisitor for CommentLocator<'c> {
                     "Attaching comments {:?} to end of id {:?} at pos {:?}",
                     comments, id, pos
                 );
-                let span = self.spans.entry(id).or_insert(DUMMY_SP);
+                let span = self.spans.entry(id).or_insert_with(Span::call_site);
                 *span = span.with_hi(pos);
             }
 

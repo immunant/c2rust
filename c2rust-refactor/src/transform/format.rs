@@ -305,8 +305,8 @@ impl CastType {
                     // TODO(kkysen) change `"std"` to `"core"` after `#![feature(core_c_str)]` is stabilized in `1.63.0`
                     mk().path_expr(vec!["std", "ffi", "CStr", "from_ptr"]),
                     vec![e]);
-                let s = mk().method_call_expr(cs, "to_str", Vec::<P<Expr>>::new());
-                let call = mk().method_call_expr(s, "unwrap", Vec::<P<Expr>>::new());
+                let s = mk().method_call_expr(cs, "to_str", Vec::new());
+                let call = mk().method_call_expr(s, "unwrap", Vec::new());
                 let b = mk().unsafe_().block(vec![mk().expr_stmt(call)]);
                 mk().span(span).block_expr(b)
             },

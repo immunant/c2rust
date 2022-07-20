@@ -11,6 +11,18 @@ pub enum MirProjection {
     Unsupported,
 }
 
+impl Display for MirProjection {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use MirProjection::*;
+        match self {
+            Deref => write!(f, "*"),
+            Field(i) => write!(f, "{i}"),
+            Index(i) => write!(f, "[{i}]"),
+            Unsupported => write!(f, "unsupported"),
+        }
+    }
+}
+
 /// See [`rustc_middle::mir::Local`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/struct.Local.html).
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Local {
@@ -68,7 +80,7 @@ impl Display for MirPlace {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{:?}", self.local)?;
         for p in &self.projection {
-            write!(f, ".{:?}", p)?;
+            write!(f, ".{}", p)?;
         }
         Ok(())
     }

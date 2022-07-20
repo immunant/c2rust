@@ -281,10 +281,9 @@ impl<'c> Translation<'c> {
             self.import_simd_function(fn_name)
                 .expect("None of these fns should be unsupported in rust");
 
-            Ok(WithStmts::new_val(mk().call_expr(
-                mk().ident_expr(fn_name),
-                Vec::new() as Vec<Box<Expr>>,
-            )))
+            Ok(WithStmts::new_val(
+                mk().call_expr(mk().ident_expr(fn_name), Vec::new()),
+            ))
         }
     }
 

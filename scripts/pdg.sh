@@ -2,6 +2,20 @@
 
 set -euox pipefail
 
+CWD="${PWD}"
+SCRIPT_PATH="${0}"
+SCRIPT_DIR="${CWD}/$(dirname "${SCRIPT_PATH}")"
+
+on-instrument-failure() {
+    local metadata="${1}"
+
+    # delete so that we'll re-compile next time
+    # instead of thinking it's already done
+    rm -f "${metadata}"
+    "${SCRIPT_DIR}/pretty-instrument-err.mjs" < instrument.err.jsonl
+    return 1;
+}
+
 # Usage: `./pdg.sh <test crate dir> <test binary args...>`
 # 
 # Environment Variables:
@@ -45,14 +59,10 @@ set -euox pipefail
 # Requirements:
 # * A recent node for some scripts.  `node@18.2.0` works.
 main() {
-    local script_path="${0}"
     local test_dir="${1}"
     local args=("${@:2}")
 
     local profile_dir_name="${PROFILE:-release}"
-    local cwd="${PWD}"
-
-    local script_dir="${cwd}/$(dirname "${script_path}")"
 
     local profile_dir="target/${profile_dir_name}"
     local profile="${profile_dir_name}"
@@ -66,10 +76,10 @@ main() {
     export RUST_BACKTRACE=1
     unset RUSTC_WRAPPER
 
-    local c2rust="${cwd}/${profile_dir}/c2rust"
-    local c2rust_instrument="${cwd}/${profile_dir}/c2rust-instrument"
-    local runtime="${cwd}/analysis/runtime/"
-    local metadata="${cwd}/${test_dir}/metadata.bc"
+    local c2rust="${CWD}/${profile_dir}/c2rust"
+    local c2rust_instrument="${CWD}/${profile_dir}/c2rust-instrument"
+    local runtime="${CWD}/analysis/runtime/"
+    local metadata="${CWD}/${test_dir}/metadata.bc"
 
     (cd "${test_dir}"
         local binary_name
@@ -77,7 +87,7 @@ main() {
             binary_name="${BINARY}"
         else
             binary_name="$(command cargo metadata --format-version 1 \
-                | "${script_dir}/get-binary-names-from-cargo-metadata.mjs" default)"
+                | "${SCRIPT_DIR}/get-binary-names-from-cargo-metadata.mjs" default)"
         fi
         local profile_dir="target/debug" # always dev/debug for now
         local binary_path="${profile_dir}/${binary_name}"
@@ -90,11 +100,11 @@ main() {
                 -- "${profile_args[@]}"  \
             1> instrument.out.log \
             2> instrument.err.jsonl; then
-                # delete so that we'll re-compile next time
-                # instead of thinking it's already done
-                rm -f "${metadata}"
-                "${script_dir}/pretty-instrument-err.mjs" < instrument.err.jsonl
-                return 1;
+                on-instrument-failure "${metadata}"
+            fi
+
+            if ! [[ -x "${binary_path}" ]]; then
+                on-instrument-failure "${metadata}"
             fi
         fi
         

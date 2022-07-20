@@ -252,7 +252,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
                 mk().ident_pat("c2rust_analysis_ctx"), None, Some(
                     mk().call_expr(
                         mk().path_expr(vec!["c2rust_analysis_rt", "context"]),
-                        vec![] as Vec<P<ast::Expr>>,
+                        vec![],
                     )
                 )
             ))

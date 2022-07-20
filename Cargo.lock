@@ -307,6 +307,7 @@ dependencies = [
  "c2rust-ast-builder",
  "c2rust-ast-exporter",
  "c2rust-ast-printer",
+ "c2rust-bitfields",
  "colored 2.0.0",
  "dtoa",
  "failure",
