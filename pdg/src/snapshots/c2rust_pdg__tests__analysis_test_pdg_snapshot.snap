@@ -64,9 +64,10 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]: copy        _    => _38       @ bb28[0]: fn main;   
-	n[1]: copy        n[0] => _2        @ bb0[0]:  fn push;   
-	n[2]: value.store _    => _20.Deref @ bb4[8]:  fn invalid;
+	n[0]: copy        _    => _38       @ bb28[0]: fn main;              
+	n[1]: copy        n[0] => _2        @ bb0[0]:  fn push;              
+	n[2]: value.store _    => _20.Deref @ bb4[8]:  fn invalid;           
+	n[3]: value.store _    => _17.Deref @ bb8[5]:  fn fdevent_unregister;
 }
 nodes_that_need_write = []
 
@@ -481,6 +482,151 @@ g {
 nodes_that_need_write = []
 
 g {
+	n[0]:  malloc(n = 1) _     => _2                @ bb1[2]:  fn lighttpd_test;     
+	n[1]:  copy          n[0]  => _1                @ bb2[2]:  fn lighttpd_test;     
+	n[2]:  copy          n[1]  => _9                @ bb4[6]:  fn lighttpd_test;     
+	n[3]:  value.store   n[2]  => _5.Deref.Field(0) @ bb4[7]:  fn lighttpd_test;     
+	n[4]:  value.load    _     => _8                @ bb0[3]:  fn fdevent_register;  
+	n[5]:  offset[0]     n[4]  => _7                @ bb0[8]:  fn fdevent_register;  
+	n[6]:  addr.store    n[5]  => _                 @ bb2[0]:  fn fdevent_register;  
+	n[7]:  value.load    _     => _5                @ bb0[4]:  fn fdevent_unregister;
+	n[8]:  offset[0]     n[7]  => _4                @ bb0[9]:  fn fdevent_unregister;
+	n[9]:  addr.load     n[8]  => _                 @ bb1[2]:  fn fdevent_unregister;
+	n[10]: value.load    _     => _19               @ bb7[5]:  fn fdevent_unregister;
+	n[11]: offset[0]     n[10] => _18               @ bb7[10]: fn fdevent_unregister;
+	n[12]: addr.store    n[11] => _                 @ bb8[4]:  fn fdevent_unregister;
+	n[13]: copy          n[1]  => _20               @ bb6[7]:  fn lighttpd_test;     
+	n[14]: copy          n[13] => _19               @ bb6[8]:  fn lighttpd_test;     
+	n[15]: free          n[14] => _18               @ bb6[9]:  fn lighttpd_test;     
+}
+nodes_that_need_write = [12, 11, 10, 6, 5, 4]
+
+g {
+	n[0]:  malloc(n = 1) _     => _6  @ bb3[2]:  fn lighttpd_test;                
+	n[1]:  copy          n[0]  => _5  @ bb4[2]:  fn lighttpd_test;                
+	n[2]:  field.0       n[1]  => _   @ bb4[6]:  fn lighttpd_test;                
+	n[3]:  addr.store    n[2]  => _   @ bb4[6]:  fn lighttpd_test;                
+	n[4]:  copy          n[1]  => _12 @ bb4[11]: fn lighttpd_test;                
+	n[5]:  value.load    _     => _10 @ bb2[11]: fn connection_accepted;          
+	n[6]:  copy          n[5]  => _1  @ bb0[0]:  fn fdevent_register;             
+	n[7]:  field.0       n[6]  => _8  @ bb0[2]:  fn fdevent_register;             
+	n[8]:  addr.load     n[7]  => _   @ bb0[2]:  fn fdevent_register;             
+	n[9]:  value.load    _     => _4  @ bb0[3]:  fn connection_close;             
+	n[10]: copy          n[9]  => _1  @ bb0[0]:  fn fdevent_fdnode_event_del;     
+	n[11]: copy          n[10] => _7  @ bb2[3]:  fn fdevent_fdnode_event_del;     
+	n[12]: copy          n[11] => _1  @ bb0[0]:  fn fdevent_fdnode_event_unsetter;
+	n[13]: value.load    _     => _7  @ bb1[6]:  fn connection_close;             
+	n[14]: copy          n[13] => _1  @ bb0[0]:  fn fdevent_unregister;           
+	n[15]: field.0       n[14] => _5  @ bb0[3]:  fn fdevent_unregister;           
+	n[16]: addr.load     n[15] => _   @ bb0[3]:  fn fdevent_unregister;           
+	n[17]: field.0       n[14] => _19 @ bb7[4]:  fn fdevent_unregister;           
+	n[18]: addr.load     n[17] => _   @ bb7[4]:  fn fdevent_unregister;           
+	n[19]: copy          n[15] => _23 @ bb7[6]:  fn lighttpd_test;                
+	n[20]: copy          n[19] => _22 @ bb7[7]:  fn lighttpd_test;                
+	n[21]: free          n[20] => _21 @ bb7[8]:  fn lighttpd_test;                
+}
+nodes_that_need_write = [3, 2, 1, 0]
+
+g {
+	n[0]: copy _ => _10 @ bb4[14]: fn lighttpd_test;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_10      _    => _14 @ bb4[18]: fn lighttpd_test;      
+	n[1]: copy      n[0] => _1  @ bb0[0]:  fn connection_accepted;
+	n[2]: field.0   n[1] => _10 @ bb2[10]: fn connection_accepted;
+	n[3]: addr.load n[2] => _   @ bb2[10]: fn connection_accepted;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]:  malloc(n = 1) _     => _5                 @ bb1[2]:  fn connection_accepted;
+	n[1]:  copy          n[0]  => _4                 @ bb2[2]:  fn connection_accepted;
+	n[2]:  field.0       n[1]  => _                  @ bb2[6]:  fn connection_accepted;
+	n[3]:  addr.store    n[2]  => _                  @ bb2[6]:  fn connection_accepted;
+	n[4]:  field.0       n[1]  => _11                @ bb2[12]: fn connection_accepted;
+	n[5]:  addr.load     n[4]  => _                  @ bb2[12]: fn connection_accepted;
+	n[6]:  copy          n[1]  => _15                @ bb2[21]: fn connection_accepted;
+	n[7]:  copy          n[6]  => _14                @ bb2[22]: fn connection_accepted;
+	n[8]:  copy          n[7]  => _4                 @ bb0[0]:  fn fdevent_register;   
+	n[9]:  copy          n[8]  => _15                @ bb2[16]: fn fdevent_register;   
+	n[10]: value.store   n[9]  => _12.Deref.Field(1) @ bb2[17]: fn fdevent_register;   
+	n[11]: field.1       n[1]  => _                  @ bb3[4]:  fn connection_accepted;
+	n[12]: addr.store    n[11] => _                  @ bb3[4]:  fn connection_accepted;
+	n[13]: copy          n[8]  => _0                 @ bb3[7]:  fn connection_accepted;
+	n[14]: copy          n[13] => _13                @ bb5[0]:  fn lighttpd_test;      
+	n[15]: copy          n[14] => _17                @ bb5[7]:  fn lighttpd_test;      
+	n[16]: copy          n[15] => _2                 @ bb0[0]:  fn connection_close;   
+	n[17]: field.1       n[16] => _5                 @ bb0[4]:  fn connection_close;   
+	n[18]: addr.load     n[17] => _                  @ bb0[4]:  fn connection_close;   
+	n[19]: field.0       n[16] => _8                 @ bb1[7]:  fn connection_close;   
+	n[20]: addr.load     n[19] => _                  @ bb1[7]:  fn connection_close;   
+}
+nodes_that_need_write = [12, 11, 3, 2, 1, 0]
+
+g {
+	n[0]: copy _ => _6 @ bb1[3]: fn fdevent_register;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]:  malloc(n = 1) _     => _3                @ bb1[2]:  fn fdnode_init;                  
+	n[1]:  copy          n[0]  => _2                @ bb2[3]:  fn fdnode_init;                  
+	n[2]:  copy          n[1]  => _10               @ bb2[10]: fn fdnode_init;                  
+	n[3]:  copy          n[2]  => _1                @ bb0[0]:  fn is_null;                      
+	n[4]:  copy          n[1]  => _0                @ bb9[3]:  fn fdnode_init;                  
+	n[5]:  copy          n[4]  => _11               @ bb2[0]:  fn fdevent_register;             
+	n[6]:  value.store   n[5]  => _6.Deref          @ bb2[1]:  fn fdevent_register;             
+	n[7]:  value.load    _     => _12               @ bb2[4]:  fn fdevent_register;             
+	n[8]:  field.0       n[7]  => _                 @ bb2[8]:  fn fdevent_register;             
+	n[9]:  addr.store    n[8]  => _                 @ bb2[8]:  fn fdevent_register;             
+	n[10]: field.2       n[7]  => _                 @ bb2[12]: fn fdevent_register;             
+	n[11]: addr.store    n[10] => _                 @ bb2[12]: fn fdevent_register;             
+	n[12]: field.1       n[7]  => _                 @ bb2[16]: fn fdevent_register;             
+	n[13]: addr.store    n[12] => _                 @ bb2[16]: fn fdevent_register;             
+	n[14]: field.3       n[7]  => _                 @ bb2[20]: fn fdevent_register;             
+	n[15]: addr.store    n[14] => _                 @ bb2[20]: fn fdevent_register;             
+	n[16]: field.4       n[7]  => _                 @ bb3[0]:  fn fdevent_register;             
+	n[17]: addr.store    n[16] => _                 @ bb3[0]:  fn fdevent_register;             
+	n[18]: copy          n[7]  => _0                @ bb3[3]:  fn fdevent_register;             
+	n[19]: copy          n[18] => _9                @ bb3[0]:  fn connection_accepted;          
+	n[20]: value.store   n[19] => _4.Deref.Field(1) @ bb3[5]:  fn connection_accepted;          
+	n[21]: value.load    _     => _5                @ bb0[5]:  fn connection_close;             
+	n[22]: copy          n[21] => _2                @ bb0[0]:  fn fdevent_fdnode_event_del;     
+	n[23]: copy          n[22] => _5                @ bb0[4]:  fn fdevent_fdnode_event_del;     
+	n[24]: copy          n[23] => _1                @ bb0[0]:  fn is_null;                      
+	n[25]: copy          n[22] => _8                @ bb2[5]:  fn fdevent_fdnode_event_del;     
+	n[26]: copy          n[25] => _2                @ bb0[0]:  fn fdevent_fdnode_event_unsetter;
+	n[27]: field.4       n[26] => _8                @ bb1[3]:  fn fdevent_fdnode_event_unsetter;
+	n[28]: addr.load     n[27] => _                 @ bb1[3]:  fn fdevent_fdnode_event_unsetter;
+	n[29]: value.load    _     => _3                @ bb1[3]:  fn fdevent_unregister;           
+	n[30]: copy          n[29] => _12               @ bb1[12]: fn fdevent_unregister;           
+	n[31]: ptr_to_int    n[30] => _                 @ bb1[12]: fn fdevent_unregister;           
+	n[32]: copy          n[29] => _23               @ bb8[8]:  fn fdevent_unregister;           
+	n[33]: copy          n[32] => _1                @ bb0[0]:  fn fdnode_free;                  
+	n[34]: copy          n[33] => _4                @ bb0[4]:  fn fdnode_free;                  
+	n[35]: copy          n[34] => _3                @ bb0[5]:  fn fdnode_free;                  
+	n[36]: free          n[35] => _2                @ bb0[6]:  fn fdnode_free;                  
+}
+nodes_that_need_write = [17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7]
+
+g {
+	n[0]: &_10      _    => _16 @ bb5[5]: fn lighttpd_test;   
+	n[1]: copy      n[0] => _1  @ bb0[0]: fn connection_close;
+	n[2]: field.0   n[1] => _4  @ bb0[2]: fn connection_close;
+	n[3]: addr.load n[2] => _   @ bb0[2]: fn connection_close;
+	n[4]: field.0   n[1] => _7  @ bb1[5]: fn connection_close;
+	n[5]: addr.load n[4] => _   @ bb1[5]: fn connection_close;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _17 @ bb8[3]: fn fdevent_unregister;
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: malloc(n = 1) _    => _1 @ bb1[2]: fn test_malloc_free;
 	n[1]: copy          n[0] => _5 @ bb2[5]: fn test_malloc_free;
 	n[2]: free          n[1] => _4 @ bb2[5]: fn test_malloc_free;
@@ -727,18 +873,18 @@ g {
 nodes_that_need_write = [2, 0]
 
 g {
-	n[0]: copy _ => _31 @ bb27[4]: fn main_0;
+	n[0]: copy _ => _32 @ bb28[4]: fn main_0;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _37 @ bb27[12]: fn main_0;
+	n[0]: copy _ => _38 @ bb28[12]: fn main_0;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]:  &_31       _     => _39 @ bb28[6]:  fn main_0;        
-	n[1]:  copy       n[0]  => _38 @ bb28[7]:  fn main_0;        
+	n[0]:  &_32       _     => _40 @ bb29[6]:  fn main_0;        
+	n[1]:  copy       n[0]  => _39 @ bb29[7]:  fn main_0;        
 	n[2]:  copy       n[1]  => _2  @ bb0[0]:   fn insertion_sort;
 	n[3]:  copy       n[2]  => _10 @ bb3[4]:   fn insertion_sort;
 	n[4]:  offset[1]  n[3]  => _9  @ bb3[9]:   fn insertion_sort;
@@ -812,6 +958,6 @@ g {
 }
 nodes_that_need_write = [71, 70, 69, 62, 61, 60, 59, 58, 57, 50, 49, 48, 41, 40, 39, 29, 28, 27, 23, 22, 21, 11, 10, 9, 2, 1, 0]
 
-num_graphs = 77
-num_nodes = 502
+num_graphs = 86
+num_nodes = 612
 
