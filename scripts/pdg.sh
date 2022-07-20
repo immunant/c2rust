@@ -102,10 +102,6 @@ main() {
             2> instrument.err.jsonl; then
                 on-instrument-failure "${metadata}"
             fi
-
-            if ! [[ -x "${binary_path}" ]]; then
-                on-instrument-failure "${metadata}"
-            fi
         fi
         
         export INSTRUMENT_BACKEND=log
