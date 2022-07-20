@@ -192,7 +192,9 @@ g {
 	n[17]: addr.load  n[16] => _   @ bb13[2]:  fn exercise_allocator;
 	n[18]: copy       n[1]  => _43 @ bb21[7]:  fn exercise_allocator;
 	n[19]: copy       n[18] => _42 @ bb21[8]:  fn exercise_allocator;
-	n[20]: free       n[19] => _41 @ bb22[2]:  fn exercise_allocator;
+	n[20]: copy       n[1]  => _4  @ bb0[2]:   fn reallocarray;      
+	n[21]: copy       n[20] => _1  @ bb1[3]:   fn reallocarray;      
+	n[22]: free       n[19] => _41 @ bb22[2]:  fn exercise_allocator;
 }
 nodes_that_need_write = [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
 
@@ -959,5 +961,5 @@ g {
 nodes_that_need_write = [71, 70, 69, 62, 61, 60, 59, 58, 57, 50, 49, 48, 41, 40, 39, 29, 28, 27, 23, 22, 21, 11, 10, 9, 2, 1, 0]
 
 num_graphs = 86
-num_nodes = 612
+num_nodes = 614
 
