@@ -39,7 +39,6 @@ fn filecheck() {
             .arg(entry.path())
             .arg("-L").arg(lib_dir)
             .arg("--crate-type").arg("rlib")
-            .arg("--cfg").arg("compiling_for_test")
             .stdout(unsafe { Stdio::from_raw_fd(pipe_fd) })
             .stderr(unsafe { Stdio::from_raw_fd(pipe_fd) });
         let mut analyze = analyze_cmd.spawn().unwrap();

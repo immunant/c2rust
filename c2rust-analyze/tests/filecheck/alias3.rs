@@ -26,14 +26,14 @@ pub unsafe fn alias3_copy_bad2(x: *mut i32) {
     *p = *q;
 }
 
-#[cfg(not(compiling_for_test))]
+#[cfg(debug_polonius_facts)]
 pub unsafe fn alias3_addr_of_bad1(x: *mut i32) {
     let p = ptr::addr_of_mut!(*x);
     let q = ptr::addr_of_mut!(*x);
     *q = *p;
 }
 
-#[cfg(not(compiling_for_test))]
+#[cfg(debug_polonius_facts)]
 pub unsafe fn alias3_addr_of_bad2(x: *mut i32) {
     let p = ptr::addr_of_mut!(*x);
     let q = ptr::addr_of_mut!(*x);

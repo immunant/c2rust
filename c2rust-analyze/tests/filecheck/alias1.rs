@@ -25,7 +25,9 @@ pub unsafe fn alias1_bad() {
 }
 
 
-#[cfg(not(compiling_for_test))]
+// The safe versions of these functions are useful for debugging Polonius fact generation, but
+// aren't checked when running tests.
+#[cfg(debug_polonius_facts)]
 pub fn safe_alias1_good() {
     let mut x = 0;
     let p = &mut x;
@@ -33,7 +35,7 @@ pub fn safe_alias1_good() {
     *q = 1;
 }
 
-#[cfg(not(compiling_for_test))]
+#[cfg(debug_polonius_facts)]
 pub fn safe_alias1_bad() {
     let mut x = 0;
     let p = &mut x;
