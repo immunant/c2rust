@@ -401,7 +401,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     false,
                     false,
                     EventMetadata {
-                        source: Some(to_mir_place(place)),
+                        source: Some(to_mir_place(&remove_outer_deref(*place, self.tcx))),
                         destination: None,
                         transfer_kind: TransferKind::None,
                     },
@@ -467,7 +467,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     false,
                     false,
                     EventMetadata {
-                        source: Some(to_mir_place(&dest)),
+                        source: Some(to_mir_place(&remove_outer_deref(dest, self.tcx))),
                         destination: None,
                         transfer_kind: TransferKind::None,
                     },
