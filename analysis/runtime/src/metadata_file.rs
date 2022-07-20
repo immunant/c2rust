@@ -53,15 +53,15 @@ impl MetadataFile {
                 self.metadata = Some(updates);
             }
         };
-        let old_len = self.bytes.len();
         self.bytes.clear();
         bincode::serialize_into(&mut self.bytes, &self.metadata)
             .expect("error shouldn't occur in `bincode::serialize_into` a `Vec`");
         self.file.rewind()?;
         self.file.write_all(&self.bytes)?;
-        if self.bytes.len() < old_len {
-            self.file.set_len(self.bytes.len().try_into().unwrap())?;
-        }
+        // Do this unconditionally (i.e. don't skip when `self.bytes.len() > ` the old `self.bytes.len()`)
+        // in case there are any concurrent accesses to the same file.
+        // Maybe we should just use a proper file lock, though.
+        self.file.set_len(self.bytes.len().try_into().unwrap())?;
         Ok(())
     }
 }
