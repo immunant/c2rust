@@ -3,52 +3,43 @@ source: pdg/src/main.rs
 expression: pdg
 ---
 g {
-	n[0]: copy _ => _10 @ bb5[4]: fn main;
+	n[0]: &_5  _    => _10 @ bb5[4]: fn main;
+	n[1]: copy n[0] => _9  @ bb5[5]: fn main;
+	n[2]: copy n[0] => _9  @ bb5[5]: fn main;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _9 @ bb5[5]: fn main;
+	n[0]: &_20 _    => _19 @ bb8[11]: fn main;  
+	n[1]: copy n[0] => _18 @ bb8[12]: fn main;  
+	n[2]: copy n[1] => _17 @ bb8[13]: fn main;  
+	n[3]: copy n[2] => _1  @ bb0[0]:  fn new_v1;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _19 @ bb8[11]: fn main;
+	n[0]: &_13 _    => _27 @ bb8[22]: fn main;     
+	n[1]: copy n[0] => _26 @ bb8[23]: fn main;     
+	n[2]: copy n[1] => _1  @ bb0[0]:  fn new_debug;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _18 @ bb8[12]: fn main;
+	n[0]: &_24 _    => _23 @ bb13[4]: fn main;  
+	n[1]: copy n[0] => _22 @ bb13[5]: fn main;  
+	n[2]: copy n[1] => _21 @ bb13[6]: fn main;  
+	n[3]: copy n[2] => _2  @ bb0[0]:  fn new_v1;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _27 @ bb8[22]: fn main;
+	n[0]: &_1 _ => _29 @ bb15[11]: fn main;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _26 @ bb8[23]: fn main;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: copy _ => _23 @ bb13[4]: fn main;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: copy _ => _22 @ bb13[5]: fn main;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: copy _ => _29 @ bb15[11]: fn main;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: copy _ => _34 @ bb16[5]: fn main;
+	n[0]: copy _    => _34 @ bb16[5]: fn main;  
+	n[1]: copy n[0] => _2  @ bb0[0]:  fn expect;
 }
 nodes_that_need_write = []
 
@@ -59,7 +50,12 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _37 @ bb27[4]: fn main;
+	n[0]: &_5 _ => _10 @ bb5[4]: fn main;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1 _ => _37 @ bb27[4]: fn main;
 }
 nodes_that_need_write = []
 
@@ -72,12 +68,13 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _43 @ bb29[9]: fn main;
+	n[0]: &_1  _    => _43 @ bb29[9]: fn main;
+	n[1]: copy n[0] => _1  @ bb0[0]:  fn len; 
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _46 @ bb31[6]: fn main;
+	n[0]: &_1 _ => _46 @ bb31[6]: fn main;
 }
 nodes_that_need_write = []
 
@@ -369,21 +366,9 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]:  copy       _    => _5  @ bb2[3]:  fn no_owner;
-	n[1]:  addr.store n[0] => _   @ bb2[3]:  fn no_owner;
-	n[2]:  copy       _    => _5  @ bb2[3]:  fn no_owner;
-	n[3]:  addr.store n[0] => _   @ bb2[3]:  fn no_owner;
-	n[4]:  copy       _    => _12 @ bb3[5]:  fn no_owner;
-	n[5]:  addr.load  n[0] => _   @ bb3[5]:  fn no_owner;
-	n[6]:  copy       _    => _6  @ bb2[10]: fn invalid; 
-	n[7]:  addr.store n[0] => _   @ bb2[10]: fn invalid; 
-	n[8]:  copy       _    => _19 @ bb3[18]: fn invalid; 
-	n[9]:  field.0    n[8] => _18 @ bb3[18]: fn invalid; 
-	n[10]: addr.load  n[9] => _   @ bb3[18]: fn invalid; 
-	n[11]: copy       _    => _20 @ bb4[7]:  fn invalid; 
-	n[12]: addr.store n[0] => _   @ bb4[7]:  fn invalid; 
+	n[0]: addr.store _ => _ @ bb2[3]: fn no_owner;
 }
-nodes_that_need_write = [12, 7, 3, 1, 0]
+nodes_that_need_write = [0]
 
 g {
 	n[0]: alloc       _    => _2   @ bb1[2]: fn no_owner;
@@ -391,6 +376,11 @@ g {
 	n[2]: value.load  _    => _11  @ bb3[6]: fn no_owner;
 	n[3]: copy        n[2] => _10  @ bb3[7]: fn no_owner;
 	n[4]: free        n[3] => _9   @ bb3[8]: fn no_owner;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: addr.load _ => _ @ bb3[5]: fn no_owner;
 }
 nodes_that_need_write = []
 
@@ -410,6 +400,11 @@ g {
 nodes_that_need_write = [3, 2, 1, 0]
 
 g {
+	n[0]: addr.store _ => _ @ bb2[10]: fn invalid;
+}
+nodes_that_need_write = [0]
+
+g {
 	n[0]: &_11 _    => _10 @ bb2[20]: fn invalid;
 	n[1]: copy n[0] => _9  @ bb2[21]: fn invalid;
 	n[2]: copy n[1] => _8  @ bb2[23]: fn invalid;
@@ -426,18 +421,38 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _4 @ bb0[8]: fn testing;
+	n[0]: field.0 _ => _18 @ bb3[18]: fn invalid;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: &_4  _    => _3 @ bb0[10]: fn testing;
-	n[1]: copy n[0] => _5 @ bb0[13]: fn testing;
+	n[0]: addr.load _ => _ @ bb3[18]: fn invalid;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _7 @ bb0[16]: fn testing;
+	n[0]: addr.store _ => _ @ bb4[7]: fn invalid;
+}
+nodes_that_need_write = [0]
+
+g {
+	n[0]: &_1 _ => _4 @ bb0[8]: fn testing;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_4 _ => _3 @ bb0[10]: fn testing;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_3        _    => _5 @ bb0[13]: fn testing;
+	n[1]: addr.store n[0] => _  @ bb0[18]: fn testing;
+}
+nodes_that_need_write = [1, 0]
+
+g {
+	n[0]: &_1 _ => _7 @ bb0[16]: fn testing;
 }
 nodes_that_need_write = []
 
@@ -446,11 +461,6 @@ g {
 	n[1]: value.store n[0] => _5.* @ bb0[19]: fn testing;
 }
 nodes_that_need_write = []
-
-g {
-	n[0]: addr.store _ => _ @ bb0[18]: fn testing;
-}
-nodes_that_need_write = [0]
 
 g {
 	n[0]: alloc      _    => _2  @ bb1[2]:  fn simple1;
@@ -490,18 +500,21 @@ g {
 	n[3]:  value.store n[2]  => _5.*.0 @ bb4[7]:  fn lighttpd_test;     
 	n[4]:  value.load  _     => _8     @ bb0[3]:  fn fdevent_register;  
 	n[5]:  offset[0]   n[4]  => _7     @ bb0[8]:  fn fdevent_register;  
-	n[6]:  addr.store  n[5]  => _      @ bb2[0]:  fn fdevent_register;  
-	n[7]:  value.load  _     => _5     @ bb0[4]:  fn fdevent_unregister;
-	n[8]:  offset[0]   n[7]  => _4     @ bb0[9]:  fn fdevent_unregister;
-	n[9]:  addr.load   n[8]  => _      @ bb1[2]:  fn fdevent_unregister;
-	n[10]: value.load  _     => _19    @ bb7[5]:  fn fdevent_unregister;
-	n[11]: offset[0]   n[10] => _18    @ bb7[10]: fn fdevent_unregister;
-	n[12]: addr.store  n[11] => _      @ bb8[4]:  fn fdevent_unregister;
-	n[13]: copy        n[1]  => _20    @ bb6[7]:  fn lighttpd_test;     
-	n[14]: copy        n[13] => _19    @ bb6[8]:  fn lighttpd_test;     
-	n[15]: free        n[14] => _18    @ bb6[9]:  fn lighttpd_test;     
+	n[6]:  copy        n[5]  => _6     @ bb1[3]:  fn fdevent_register;  
+	n[7]:  addr.store  n[5]  => _      @ bb2[0]:  fn fdevent_register;  
+	n[8]:  addr.load   n[5]  => _      @ bb2[3]:  fn fdevent_register;  
+	n[9]:  value.load  _     => _5     @ bb0[4]:  fn fdevent_unregister;
+	n[10]: offset[0]   n[9]  => _4     @ bb0[9]:  fn fdevent_unregister;
+	n[11]: addr.load   n[10] => _      @ bb1[2]:  fn fdevent_unregister;
+	n[12]: value.load  _     => _19    @ bb7[5]:  fn fdevent_unregister;
+	n[13]: offset[0]   n[12] => _18    @ bb7[10]: fn fdevent_unregister;
+	n[14]: copy        n[13] => _17    @ bb8[3]:  fn fdevent_unregister;
+	n[15]: addr.store  n[13] => _      @ bb8[4]:  fn fdevent_unregister;
+	n[16]: copy        n[1]  => _20    @ bb6[7]:  fn lighttpd_test;     
+	n[17]: copy        n[16] => _19    @ bb6[8]:  fn lighttpd_test;     
+	n[18]: free        n[17] => _18    @ bb6[9]:  fn lighttpd_test;     
 }
-nodes_that_need_write = [12, 11, 10, 6, 5, 4]
+nodes_that_need_write = [15, 13, 12, 7, 5, 4]
 
 g {
 	n[0]:  alloc      _     => _6  @ bb3[2]:  fn lighttpd_test;                
@@ -530,7 +543,7 @@ g {
 nodes_that_need_write = [3, 2, 1, 0]
 
 g {
-	n[0]: copy _ => _10 @ bb4[14]: fn lighttpd_test;
+	n[0]: &_11 _ => _10 @ bb4[14]: fn lighttpd_test;
 }
 nodes_that_need_write = []
 
@@ -566,11 +579,6 @@ g {
 	n[20]: addr.load   n[19] => _       @ bb1[7]:  fn connection_close;   
 }
 nodes_that_need_write = [12, 11, 3, 2, 1, 0]
-
-g {
-	n[0]: copy _ => _6 @ bb1[3]: fn fdevent_register;
-}
-nodes_that_need_write = []
 
 g {
 	n[0]:  alloc       _     => _3     @ bb1[2]:  fn fdnode_init;                  
@@ -624,11 +632,6 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _17 @ bb8[3]: fn fdevent_unregister;
-}
-nodes_that_need_write = []
-
-g {
 	n[0]: alloc _    => _1 @ bb1[2]: fn test_malloc_free;
 	n[1]: copy  n[0] => _5 @ bb2[5]: fn test_malloc_free;
 	n[2]: free  n[1] => _4 @ bb2[5]: fn test_malloc_free;
@@ -674,6 +677,43 @@ g {
 	n[17]: copy  n[16] => _12 @ bb4[5]: fn foo_rec;     
 	n[18]: copy  n[17] => _0  @ bb4[7]: fn foo_rec;     
 	n[19]: copy  n[18] => _4  @ bb3[0]: fn test_arg_rec;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1  _    => _2 @ bb0[5]:  fn test_shared_ref;
+	n[1]: copy n[0] => _3 @ bb0[8]:  fn test_shared_ref;
+	n[2]: copy n[1] => _5 @ bb0[12]: fn test_shared_ref;
+	n[3]: copy n[2] => _1 @ bb0[0]:  fn shared_ref_foo; 
+	n[4]: copy n[3] => _0 @ bb0[1]:  fn shared_ref_foo; 
+	n[5]: copy n[4] => _4 @ bb1[0]:  fn test_shared_ref;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1 _ => _4 @ bb0[8]: fn test_unique_ref;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_4 _ => _3 @ bb0[10]: fn test_unique_ref;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_3        _    => _5 @ bb0[13]: fn test_unique_ref;
+	n[1]: addr.store n[0] => _  @ bb0[18]: fn test_unique_ref;
+}
+nodes_that_need_write = [1, 0]
+
+g {
+	n[0]: &_1 _ => _7 @ bb0[16]: fn test_unique_ref;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_7         _    => _6   @ bb0[18]: fn test_unique_ref;
+	n[1]: value.store n[0] => _5.* @ bb0[19]: fn test_unique_ref;
 }
 nodes_that_need_write = []
 
@@ -875,18 +915,16 @@ g {
 nodes_that_need_write = [2, 0]
 
 g {
-	n[0]: copy _ => _32 @ bb28[4]: fn main_0;
+	n[0]: &_35 _    => _34 @ bb30[4]:  fn main_0;
+	n[1]: copy n[0] => _40 @ bb30[12]: fn main_0;
+	n[2]: copy n[1] => _39 @ bb30[13]: fn main_0;
+	n[3]: copy n[2] => _1  @ bb0[0]:   fn len;   
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _38 @ bb28[12]: fn main_0;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]:  &_32       _     => _40 @ bb29[6]:  fn main_0;        
-	n[1]:  copy       n[0]  => _39 @ bb29[7]:  fn main_0;        
+	n[0]:  &_34       _     => _42 @ bb31[6]:  fn main_0;        
+	n[1]:  copy       n[0]  => _41 @ bb31[7]:  fn main_0;        
 	n[2]:  copy       n[1]  => _2  @ bb0[0]:   fn insertion_sort;
 	n[3]:  copy       n[2]  => _10 @ bb3[4]:   fn insertion_sort;
 	n[4]:  offset[1]  n[3]  => _9  @ bb3[9]:   fn insertion_sort;
@@ -960,6 +998,6 @@ g {
 }
 nodes_that_need_write = [71, 70, 69, 62, 61, 60, 59, 58, 57, 50, 49, 48, 41, 40, 39, 29, 28, 27, 23, 22, 21, 11, 10, 9, 2, 1, 0]
 
-num_graphs = 86
-num_nodes = 614
+num_graphs = 91
+num_nodes = 632
 
