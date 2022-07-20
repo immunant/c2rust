@@ -1,5 +1,5 @@
-use anyhow::Context;
 use c2rust_analysis_rt::metadata::Metadata;
+use c2rust_analysis_rt::metadata_file::MetadataFile;
 use c2rust_analysis_rt::mir_loc::{
     self, EventMetadata, Func, MirLoc, MirLocId, MirPlace, MirProjection, TransferKind,
 };
@@ -19,10 +19,7 @@ use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
 use rustc_span::{Symbol, DUMMY_SP};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fs::OpenOptions;
-use std::io::{Read, Seek, Write};
-use std::mem;
-use std::path::Path;
+use std::{mem, io};
 use std::sync::Mutex;
 
 /// Like [`From`] and [`Into`], but can't `impl` those because of the orphan rule.
@@ -88,35 +85,12 @@ impl InstrumentMemoryOps {
     }
 
     /// Finish instrumentation and write out metadata to `metadata_file_path`.
-    pub fn finalize(&self, metadata_file_path: &Path) -> anyhow::Result<()> {
+    pub fn finalize(&self, metadata_file: &mut MetadataFile) -> io::Result<()> {
         let mut locs = self.mir_locs.lock().unwrap();
         let mut functions = self.functions.lock().unwrap();
         let locs = locs.drain(..).collect::<Vec<_>>();
         let functions = functions.drain().collect::<HashMap<_, _>>();
-        let mut metadata_file = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(metadata_file_path)
-            .context("Could not open metadata file")?;
-        let mut metadata_bytes = Vec::new();
-        metadata_file.read_to_end(&mut metadata_bytes)?;
-        let old_len = metadata_bytes.len();
-        let mut metadata = match metadata_bytes.as_slice() {
-            &[] => Metadata::default(),
-            bytes => bincode::deserialize(bytes)
-                .context("metadata deserialization error; metadata format likely out-of-date; delete and regenerate")?,
-        };
-        metadata.update(Metadata { locs, functions });
-        metadata_bytes.clear();
-        bincode::serialize_into(&mut metadata_bytes, &metadata)
-            .context("Location serialization failed")?;
-        metadata_file.rewind()?;
-        metadata_file.write_all(&metadata_bytes)?;
-        if metadata_bytes.len() < old_len {
-            metadata_file.set_len(metadata_bytes.len().try_into().unwrap())?;
-        }
+        metadata_file.update(Metadata { locs, functions })?;
         Ok(())
     }
 

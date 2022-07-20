@@ -1,10 +1,10 @@
-use std::fs;
+use std::{fs, io};
 use std::path::Path;
 
 use c2rust_dynamic_instrumentation::instrument;
 use clap::{load_yaml, App};
 
-fn main() -> anyhow::Result<()> {
+fn main() -> io::Result<()> {
     env_logger::init();
     let yaml = load_yaml!("../instrument.yaml");
     let matches = App::from_yaml(yaml).get_matches();

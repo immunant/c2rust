@@ -13,6 +13,7 @@ extern crate rustc_span;
 extern crate rustc_target;
 
 mod instrument_memory;
+use c2rust_analysis_rt::metadata_file::MetadataFile;
 use instrument_memory::InstrumentMemoryOps;
 
 use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
@@ -41,7 +42,7 @@ use rustc_span::DUMMY_SP;
 
 use anyhow::anyhow;
 use lazy_static::lazy_static;
-use std::env;
+use std::{env, io};
 use std::ffi::OsString;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -118,7 +119,7 @@ pub fn instrument(
     metadata_file_path: &Path,
     rt_path: &Path,
     _args: &[String],
-) -> anyhow::Result<()> {
+) -> io::Result<()> {
     let config = Config::default().unwrap();
     config.shell().set_verbosity(Verbosity::Quiet);
     let mode = CompileMode::Build;
@@ -131,11 +132,16 @@ pub fn instrument(
     let mut rt_ws = Workspace::new(&rt_manifest_path, &config).unwrap();
     rt_ws.set_target_dir(ws.target_dir());
 
+    // Open this before instrumentation and write at the end
+    // to ensure we're using an up-to-date version of the incremental [`Metadata`].
+    let mut metadata_file = MetadataFile::open(metadata_file_path)?;
+
     let exec = Arc::new(InstrumentationExecutor {
         default: DefaultExecutor,
         target_pkg: ws.current().unwrap().package_id(),
         rt_crate_path: Mutex::new(String::new()),
         building_rt: AtomicBool::new(true),
+        has_existing_metadata: metadata_file.has_existing_metadata(),
     });
     let exec_dyn: Arc<dyn Executor> = exec.clone();
 
@@ -148,13 +154,14 @@ pub fn instrument(
     env::set_current_dir(cwd).unwrap();
     let _ = ops::compile_with_exec(&ws, &compile_opts, &exec_dyn);
 
-    INSTRUMENTER.finalize(metadata_file_path)
+    INSTRUMENTER.finalize(&mut metadata_file)
 }
 struct InstrumentationExecutor {
     default: DefaultExecutor,
     target_pkg: PackageId,
     rt_crate_path: Mutex<String>,
     building_rt: AtomicBool,
+    has_existing_metadata: bool,
 }
 
 impl Executor for InstrumentationExecutor {
@@ -209,6 +216,14 @@ impl Executor for InstrumentationExecutor {
     }
 
     fn force_rebuild(&self, unit: &Unit) -> bool {
-        self.default.force_rebuild(unit)
+        if self.default.force_rebuild(unit) {
+            return true;
+        }
+        if !self.has_existing_metadata && self.building_rt.load(Ordering::Relaxed) {
+            // If there's no existing [`Metadata`], then we can't incrementally compile,
+            // and so we have to recompile everything to regenerate the [`Metadata`].
+            return true;
+        }
+        false
     }
 }
