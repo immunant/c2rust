@@ -67,7 +67,15 @@ impl Display for NodeKind {
             Offset(offset) => write!(f, "offset[{offset}]"),
             AddrOfLocal(local) => write!(f, "&{local:?}"),
             _AddrOfStatic(static_) => write!(f, "&'static {static_:?}"),
-            Alloc(n) => write!(f, "alloc(n = {n})"),
+            Alloc(n) => {
+                // Right now we only create `Alloc(1)`, so special case it,
+                // as the increased readability helps.
+                write!(f, "alloc")?;
+                if *n != 1 {
+                    write!(f, "(n = {n})")?;
+                }
+                Ok(())
+            },
             Free => write!(f, "free"),
             PtrToInt => write!(f, "ptr_to_int"),
             IntToPtr => write!(f, "int_to_ptr"),
