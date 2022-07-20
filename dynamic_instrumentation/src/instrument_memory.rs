@@ -330,20 +330,17 @@ fn rv_place<'tcx>(rv: &'tcx Rvalue) -> Option<Place<'tcx>> {
 impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 'tcx> {
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         self.super_place(place, context, location);
-        let _field_fn = self
+
+        let field_fn = self
             .find_instrumentation_def(Symbol::intern("ptr_field"))
             .expect("Could not find pointer field hook");
-        let load_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_load"))
-            .expect("Could not find pointer load hook");
 
         let base_ty = self.body.local_decls[place.local].ty;
-        if is_region_or_unsafe_ptr(base_ty) && context.is_use() && !place.projection.is_empty() {
+
+        // Instrument field projections on raw-ptr places
+        if is_region_or_unsafe_ptr(base_ty) && context.is_use() {
             for (pid, (_base, elem)) in place.iter_projections().enumerate() {
                 if let PlaceElem::Field(field, _) = elem {
-                    let field_fn = self
-                        .find_instrumentation_def(Symbol::intern("ptr_field"))
-                        .expect("Could not find pointer field hook");
 
                     let destination = if pid == place.projection.len() - 1 {
                         self.assignment
@@ -377,30 +374,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     );
                 }
             }
-
-            if place.is_indirect()
-                && !context.is_mutating_use()
-                // reborrows do not apply, i.e. _2 = &(*_1)
-                && !matches!(self.assignment, Some((_, Rvalue::Ref(..))))
-                // copying address of dereferenced value does not apply, i.e. _2 = &raw (*_1)
-                && !matches!(self.assignment, Some((_, Rvalue::AddressOf(..))) if base_ty.is_region_ptr())
-            {
-                self.add_instrumentation_point(
-                    location,
-                    load_fn,
-                    vec![InstrumentationOperand::from_type(
-                        Operand::Copy(place.local.into()),
-                        &self.body.local_decls[place.local].ty,
-                    )],
-                    false,
-                    false,
-                    EventMetadata {
-                        source: Some(to_mir_place(&remove_outer_deref(*place, self.tcx))),
-                        destination: None,
-                        transfer_kind: TransferKind::None,
-                    },
-                );
-            }
         }
     }
 
@@ -426,6 +399,9 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
         let store_fn = self
             .find_instrumentation_def(Symbol::intern("ptr_store"))
             .expect("Could not find pointer store hook");
+        let load_fn = self
+            .find_instrumentation_def(Symbol::intern("ptr_load"))
+            .expect("Could not find pointer load hook");
 
         let dest = *dest;
 
@@ -433,14 +409,49 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
         self.visit_rvalue(value, location);
         self.assignment = None;
 
-        let dest_ty = dest.ty(&self.body.local_decls, self.tcx).ty;
         let value_ty = value.ty(&self.body.local_decls, self.tcx);
+        let locals = self.body.local_decls.clone();
+        let ctx = self.tcx;
+        let place_ty = |p: &Place<'tcx>| { p.ty(&locals, ctx).ty };
+        let local_ty = |p: &Place| place_ty(&p.local.into());
+        let dest_ty = place_ty(&dest);
 
         self.visit_place(
             &dest,
             PlaceContext::MutatingUse(MutatingUseContext::Store),
             location,
         );
+
+        let add_load_instr = |p: &Place<'tcx>| {
+            self.add_instrumentation_point(
+                location,
+                load_fn,
+                vec![InstrumentationOperand::from_type(
+                    Operand::Copy(p.local.into()),
+                    &local_ty(p),
+                )],
+                false,
+                false,
+                EventMetadata {
+                    source: Some(to_mir_place(&remove_outer_deref(*p, ctx))),
+                    destination: None,
+                    transfer_kind: TransferKind::None,
+                },
+            );
+        };
+
+        // add instrumentation for load-from-address operations
+        match value {
+            Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) if p.is_indirect() => {
+                add_load_instr(p)
+            }
+            Rvalue::AddressOf(_, p)
+                if !self.body.local_decls[p.local].ty.is_region_ptr() && p.is_indirect() =>
+            {
+                add_load_instr(p)
+            }
+            _ => (),
+        }
 
         match value {
             _ if dest.is_indirect() => {
@@ -607,7 +618,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
             }
             Rvalue::Ref(_, bkind, p) if has_outer_deref(p) => {
                 // this is a reborrow or field reference, i.e. _2 = &(*_1)
-                
+
                 // Instrument which local's address is taken
                 let instr_operand = if let BorrowKind::Mut { .. } = bkind {
                     InstrumentationOperand::Place(Operand::Copy(*p))
@@ -616,7 +627,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     location.statement_index += 1;
                     InstrumentationOperand::Reference(Operand::Copy(dest))
                 };
-                
+
                 let source = remove_outer_deref(*p, self.tcx);
                 self.add_instrumentation_point(
                     location,
