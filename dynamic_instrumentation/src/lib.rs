@@ -142,11 +142,11 @@ pub fn instrument(
     let cwd = env::current_dir().unwrap();
 
     env::set_current_dir(rt_ws.root()).unwrap();
-    let _ = ops::compile_with_exec(&rt_ws, &compile_opts, &exec_dyn);
+    ops::compile_with_exec(&rt_ws, &compile_opts, &exec_dyn)?;
 
     exec.building_rt.store(false, Ordering::Relaxed);
     env::set_current_dir(cwd).unwrap();
-    let _ = ops::compile_with_exec(&ws, &compile_opts, &exec_dyn);
+    ops::compile_with_exec(&ws, &compile_opts, &exec_dyn)?;
 
     INSTRUMENTER.finalize(metadata_file_path)
 }
