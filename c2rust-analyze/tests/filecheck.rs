@@ -3,12 +3,52 @@ use std::fs;
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::process::{Command, Stdio};
 
+fn detect_filecheck() -> Option<&'static str> {
+    let candidates = [
+        "FileCheck",
+        "/usr/local/opt/llvm/bin/FileCheck",
+        "FileCheck-14",
+        "/usr/local/opt/llvm@14/bin/FileCheck",
+        "FileCheck-13",
+        "/usr/local/opt/llvm@13/bin/FileCheck",
+        "FileCheck-12",
+        "/usr/local/opt/llvm@12/bin/FileCheck",
+        "FileCheck-11",
+        "/usr/local/opt/llvm@11/bin/FileCheck",
+        "FileCheck-10",
+        "/usr/local/opt/llvm@10/bin/FileCheck",
+        "FileCheck-9",
+        "/usr/local/opt/llvm@9/bin/FileCheck",
+        "FileCheck-8",
+        "/usr/local/opt/llvm@8/bin/FileCheck",
+        "FileCheck-7",
+        "FileCheck-7.0",
+        "/usr/local/opt/llvm@7/bin/FileCheck",
+    ];
+
+    for filecheck in candidates {
+        let result = Command::new(filecheck)
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        if result.is_ok() {
+            return Some(filecheck);
+        }
+    }
+    None
+}
+
 #[test]
 fn filecheck() {
     let lib_dir = env::var("C2RUST_TARGET_LIB_DIR").unwrap();
     let lib_dir = &lib_dir;
 
-    let filecheck_bin = env::var("FILECHECK").unwrap_or_else(|_| "FileCheck".into());
+    let filecheck_bin = env::var("FILECHECK")
+        .ok()
+        .or_else(|| detect_filecheck().map(|s| s.to_owned()))
+        .unwrap_or_else(|| panic!("FileCheck not found - set FILECHECK=/path/to/FileCheck"));
+    eprintln!("detected FILECHECK={}", filecheck_bin);
 
     for entry in fs::read_dir("tests/filecheck").unwrap() {
         let entry = entry.unwrap();
