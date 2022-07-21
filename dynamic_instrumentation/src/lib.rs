@@ -15,7 +15,7 @@ extern crate rustc_target;
 mod instrument_memory;
 use instrument_memory::InstrumentMemoryOps;
 
-use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
+use cargo::core::compiler::{CompileMode, Context, Executor, Unit};
 use cargo::core::{PackageId, Target, Verbosity, Workspace};
 use cargo::ops;
 use cargo::ops::CompileOptions;
@@ -132,7 +132,6 @@ pub fn instrument(
     rt_ws.set_target_dir(ws.target_dir());
 
     let exec = Arc::new(InstrumentationExecutor {
-        default: DefaultExecutor,
         target_pkg: ws.current().unwrap().package_id(),
         rt_crate_path: Mutex::new(String::new()),
         building_rt: AtomicBool::new(true),
@@ -151,7 +150,6 @@ pub fn instrument(
     INSTRUMENTER.finalize(metadata_file_path)
 }
 struct InstrumentationExecutor {
-    default: DefaultExecutor,
     target_pkg: PackageId,
     rt_crate_path: Mutex<String>,
     building_rt: AtomicBool,
@@ -166,7 +164,6 @@ impl Executor for InstrumentationExecutor {
                 .unwrap()
                 .to_owned();
         }
-        self.default.init(cx, unit);
     }
 
     fn exec(
@@ -208,7 +205,7 @@ impl Executor for InstrumentationExecutor {
         }
     }
 
-    fn force_rebuild(&self, unit: &Unit) -> bool {
-        self.building_rt.load(Ordering::Relaxed) || self.default.force_rebuild(unit)
+    fn force_rebuild(&self, _unit: &Unit) -> bool {
+        self.building_rt.load(Ordering::Relaxed)
     }
 }
