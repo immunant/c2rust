@@ -32,6 +32,10 @@ struct Args {
     #[clap(long, value_parser)]
     metadata: PathBuf,
 
+    /// Set the current working directory.
+    #[clap(long, value_parser)]
+    cwd: Option<PathBuf>,
+
     /// `cargo` args.
     cargo_args: Vec<OsString>,
 }
@@ -385,10 +389,15 @@ fn main() -> eyre::Result<()> {
     } else {
         let Args {
             metadata,
+            cwd,
             cargo_args,
         } = Args::parse();
 
-        let cargo_metadata = MetadataCommand::new().exec()?;
+        let cwd = cwd.as_deref().unwrap_or_else(|| Path::new("."));
+        // In case we change the cwd.
+        let metadata = fs_err::canonicalize(metadata)?;
+
+        let cargo_metadata = MetadataCommand::new().current_dir(cwd).exec()?;
         let crate_targets = CrateTarget::from_metadata(&cargo_metadata)?;
         let info = InstrumentInfo {
             crate_targets,
