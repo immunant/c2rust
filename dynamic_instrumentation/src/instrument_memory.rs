@@ -6,8 +6,10 @@ use c2rust_analysis_rt::mir_loc::{
 use c2rust_analysis_rt::HOOK_FUNCTIONS;
 use indexmap::IndexSet;
 use log::debug;
+use rustc_ast::ptr::P;
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_index::vec::IndexVec;
+use rustc_middle::mir::coverage::Op;
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Constant, Local, LocalDecl, Location,
@@ -327,6 +329,49 @@ fn rv_place<'tcx>(rv: &'tcx Rvalue) -> Option<Place<'tcx>> {
     }
 }
 
+struct EventMetadataBuilder {
+    inner: EventMetadata,
+}
+
+impl EventMetadataBuilder {
+    fn new() -> Self {
+        Self {
+            inner: EventMetadata::default(),
+        }
+    }
+
+    fn source(mut self, p: &Place) -> Self {
+        self.inner.source = Some(to_mir_place(p));
+        self
+    }
+
+    fn source_op(mut self, op: &Operand) -> Self {
+        self.inner.source = op.place().as_ref().map(to_mir_place);
+        self
+    }
+
+    fn source_rv(mut self, rv: &Rvalue) -> Self {
+        self.inner.source = rv_place(rv).as_ref().map(to_mir_place);
+        self
+    }
+
+    fn dest(mut self, p: &Place) -> Self {
+        self.inner.destination = Some(to_mir_place(p));
+        self
+    }
+
+    fn transfer(mut self, t: TransferKind) -> Self {
+        self.inner.transfer_kind = t;
+        self
+    }
+}
+
+impl From<EventMetadataBuilder> for EventMetadata {
+    fn from(b: EventMetadataBuilder) -> EventMetadata {
+        b.inner
+    }
+}
+
 impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 'tcx> {
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         self.super_place(place, context, location);
@@ -341,13 +386,13 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
         if is_region_or_unsafe_ptr(base_ty) && context.is_use() {
             for (pid, (_base, elem)) in place.iter_projections().enumerate() {
                 if let PlaceElem::Field(field, _) = elem {
-
-                    let destination = if pid == place.projection.len() - 1 {
-                        self.assignment
-                            .as_ref()
-                            .map(|(dest, _rval)| to_mir_place(dest))
-                    } else {
-                        None
+                    let mut metadata = EventMetadataBuilder::new().source(place);
+                    // Only the last field projection gets a destination
+                    match self.assignment {
+                        Some((ref dest, _)) if pid == place.projection.len() - 1 => {
+                            metadata = metadata.dest(dest)
+                        }
+                        _ => (),
                     };
 
                     // Projecting a field; trace the local of the original place as well as the field idx
@@ -357,7 +402,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         vec![
                             InstrumentationOperand::from_type(
                                 Operand::Copy(place.local.into()),
-                                &self.body.local_decls[place.local].ty,
+                                &base_ty,
                             ),
                             InstrumentationOperand::AddressUsize(make_const(
                                 self.tcx,
@@ -366,11 +411,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         ],
                         false,
                         false,
-                        EventMetadata {
-                            source: Some(to_mir_place(place)),
-                            destination,
-                            transfer_kind: TransferKind::None,
-                        },
+                        metadata.into(),
                     );
                 }
             }
@@ -409,12 +450,14 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
         self.visit_rvalue(value, location);
         self.assignment = None;
 
-        let value_ty = value.ty(&self.body.local_decls, self.tcx);
         let locals = self.body.local_decls.clone();
         let ctx = self.tcx;
-        let place_ty = |p: &Place<'tcx>| { p.ty(&locals, ctx).ty };
+
+        let op_ty = |op: &Operand<'tcx>| op.ty(&locals, ctx);
+        let place_ty = |p: &Place<'tcx>| p.ty(&locals, ctx).ty;
         let local_ty = |p: &Place| place_ty(&p.local.into());
         let dest_ty = place_ty(&dest);
+        let value_ty = value.ty(&self.body.local_decls, self.tcx);
 
         self.visit_place(
             &dest,
@@ -432,11 +475,9 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                 )],
                 false,
                 false,
-                EventMetadata {
-                    source: Some(to_mir_place(&remove_outer_deref(*p, ctx))),
-                    destination: None,
-                    transfer_kind: TransferKind::None,
-                },
+                EventMetadataBuilder::new()
+                    .source(&remove_outer_deref(*p, ctx))
+                    .into(),
             );
         };
 
@@ -445,9 +486,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) if p.is_indirect() => {
                 add_load_instr(p)
             }
-            Rvalue::AddressOf(_, p)
-                if !self.body.local_decls[p.local].ty.is_region_ptr() && p.is_indirect() =>
-            {
+            Rvalue::AddressOf(_, p) if !local_ty(p).is_region_ptr() && p.is_indirect() => {
                 add_load_instr(p)
             }
             _ => (),
@@ -457,8 +496,8 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
             _ if dest.is_indirect() => {
                 // Strip all derefs to set base_dest to the pointer that is deref'd
                 let base_dest = strip_all_deref(&dest, self.tcx);
+                let base_dest_ty = place_ty(&base_dest);
 
-                let base_dest_ty = base_dest.ty(&self.body.local_decls, self.tcx).ty;
                 self.add_instrumentation_point(
                     location,
                     store_fn,
@@ -468,11 +507,9 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     )],
                     false,
                     false,
-                    EventMetadata {
-                        source: Some(to_mir_place(&remove_outer_deref(dest, self.tcx))),
-                        destination: None,
-                        transfer_kind: TransferKind::None,
-                    },
+                    EventMetadataBuilder::new()
+                        .source(&remove_outer_deref(dest, self.tcx))
+                        .into(),
                 );
                 if is_region_or_unsafe_ptr(value_ty) {
                     let mut loc = location;
@@ -486,11 +523,10 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         )],
                         false,
                         false,
-                        EventMetadata {
-                            source: rv_place(value).map(|p| to_mir_place(&p)),
-                            destination: Some(to_mir_place(&dest)),
-                            transfer_kind: TransferKind::None,
-                        },
+                        EventMetadataBuilder::new()
+                            .source_rv(value)
+                            .dest(&dest)
+                            .into(),
                     );
                 }
             }
@@ -508,11 +544,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         )],
                         false,
                         false,
-                        EventMetadata {
-                            source: Some(to_mir_place(p)),
-                            destination: None,
-                            transfer_kind: TransferKind::None,
-                        },
+                        EventMetadataBuilder::new().source(p).into(),
                     );
                 }
             }
@@ -532,11 +564,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     ],
                     false,
                     false,
-                    EventMetadata {
-                        source: Some(to_mir_place(p)),
-                        destination: Some(to_mir_place(&dest)),
-                        transfer_kind: TransferKind::None,
-                    },
+                    EventMetadataBuilder::new().source(p).dest(&dest).into(),
                 );
             }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) if p.is_indirect() => {
@@ -552,11 +580,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     )],
                     false,
                     false,
-                    EventMetadata {
-                        source: None,
-                        destination: Some(to_mir_place(&dest)),
-                        transfer_kind: TransferKind::None,
-                    },
+                    EventMetadataBuilder::new().dest(&dest).into(),
                 );
             }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) => {
@@ -571,15 +595,15 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     )],
                     false,
                     false,
-                    EventMetadata {
-                        source: Some(to_mir_place(p)),
-                        destination: Some(to_mir_place(&dest)),
-                        transfer_kind: TransferKind::None,
-                    },
+                    EventMetadataBuilder::new().source(p).dest(&dest).into(),
                 );
             }
-            Rvalue::Cast(_, p, _) if p.ty(&self.body.local_decls, self.tcx).is_integral() => {
+            Rvalue::Cast(_, op, _) if op_ty(op).is_integral() => {
                 location.statement_index += 1;
+                let mut metadata = EventMetadataBuilder::new().dest(&dest);
+                if let Some(p) = op.place() {
+                    metadata = metadata.source(&p)
+                }
                 // Casting integer to a pointer; trace the destination
                 self.add_instrumentation_point(
                     location,
@@ -590,15 +614,15 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     )],
                     false,
                     false,
-                    EventMetadata {
-                        source: p.place().as_ref().map(to_mir_place),
-                        destination: Some(to_mir_place(&dest)),
-                        transfer_kind: TransferKind::None,
-                    },
+                    metadata.into(),
                 );
             }
-            Rvalue::Cast(_, p, _) => {
+            Rvalue::Cast(_, op, _) => {
                 location.statement_index += 1;
+                let mut metadata = EventMetadataBuilder::new().dest(&dest);
+                if let Some(p) = op.place() {
+                    metadata = metadata.source(&p)
+                }
                 // Casting between pointer types; trace the destination
                 self.add_instrumentation_point(
                     location,
@@ -609,11 +633,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     )],
                     false,
                     false,
-                    EventMetadata {
-                        source: p.place().as_ref().map(to_mir_place),
-                        destination: Some(to_mir_place(&dest)),
-                        transfer_kind: TransferKind::None,
-                    },
+                    metadata.into(),
                 );
             }
             Rvalue::Ref(_, bkind, p) if has_outer_deref(p) => {
@@ -635,11 +655,10 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     vec![instr_operand],
                     false,
                     false,
-                    EventMetadata {
-                        source: Some(to_mir_place(&source)),
-                        destination: Some(to_mir_place(&dest)),
-                        transfer_kind: TransferKind::None,
-                    },
+                    EventMetadataBuilder::new()
+                        .source(&source)
+                        .dest(&dest)
+                        .into(),
                 );
             }
             Rvalue::Ref(_, bkind, p) if !p.is_indirect() => {
@@ -664,11 +683,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                     ],
                     false,
                     false,
-                    EventMetadata {
-                        source: Some(to_mir_place(p)),
-                        destination: Some(to_mir_place(&dest)),
-                        transfer_kind: TransferKind::None,
-                    },
+                    EventMetadataBuilder::new().source(p).dest(&dest).into(),
                 );
             }
             _ => (),
@@ -693,7 +708,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                 destination,
                 ..
             } => {
-                let mut arg_local = mir_loc::Local { index: 1 };
+                let mut callee_arg: Place = Local::from_u32(1).into();
                 let is_hook = {
                     if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
                         let fn_name = self.tcx.item_name(*def_id);
@@ -711,43 +726,32 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                 if !is_hook {
                     for arg in args {
                         if let Some(place) = arg.place() {
-                            if is_shared_or_unsafe_ptr(place.ty(self.body, self.tcx).ty) {
-                                println!(
-                                    "visiting terminator arg {:?}, {:?}, {:?}, {:?}",
-                                    place,
-                                    place.ty(self.body, self.tcx).ty,
-                                    InstrumentationOperand::from_type(
-                                        Operand::Copy(place),
-                                        &place.ty(self.body, self.tcx).ty,
-                                    ),
-                                    terminator
-                                );
+                            let place_ty = place.ty(self.body, self.tcx).ty;
+                            if is_shared_or_unsafe_ptr(place_ty) {
                                 // Block terminator is a non-hook fn call; trace any raw-ptr args
                                 self.add_instrumentation_point(
                                     location,
                                     arg_fn,
                                     vec![InstrumentationOperand::from_type(
                                         Operand::Copy(place),
-                                        &place.ty(self.body, self.tcx).ty,
+                                        &place_ty,
                                     )],
                                     false,
                                     false,
-                                    EventMetadata {
-                                        source: Some(to_mir_place(&place)),
-                                        destination: Some(MirPlace {
-                                            local: arg_local,
-                                            projection: vec![],
-                                        }),
-                                        transfer_kind,
-                                    },
+                                    EventMetadataBuilder::new()
+                                        .source(&place)
+                                        .dest(&callee_arg)
+                                        .transfer(transfer_kind)
+                                        .into(),
                                 );
                             }
                         }
-                        arg_local.index += 1;
+                        callee_arg = Local::from(callee_arg.local.as_u32() + 1).into();
                     }
                 }
                 if let &ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
                     if destination.is_some() {
+                        let (dest_place, dest_block) = destination.unwrap();
                         println!("term: {:?}", terminator.kind);
                         let fn_name = self.tcx.item_name(def_id);
                         if HOOK_FUNCTIONS.contains(&fn_name.as_str()) {
@@ -769,47 +773,33 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                                     .collect(),
                                 false,
                                 /* after_call: */ true,
-                                EventMetadata {
-                                    // TODO: hook-specific sources
-                                    source: args
-                                        .clone()
-                                        .iter()
-                                        .map(|op| to_mir_place(&op.place().unwrap()))
-                                        .next(),
-                                    // FIXME: hooks have sources
-                                    destination: destination.map(|d| to_mir_place(&d.0)),
-                                    transfer_kind: TransferKind::Ret(self.func_hash()),
-                                },
+                                EventMetadataBuilder::new()
+                                    .source_op(args.first().unwrap())
+                                    .dest(&dest_place)
+                                    .transfer(TransferKind::Ret(self.func_hash()))
+                                    .into(),
                             );
                         } else if is_region_or_unsafe_ptr(
-                            destination
-                                .unwrap()
-                                .0
-                                .ty(&self.body.local_decls, self.tcx)
-                                .ty,
+                            dest_place.ty(&self.body.local_decls, self.tcx).ty,
                         ) {
                             location.statement_index = 0;
-                            location.block = destination.unwrap().1;
+                            location.block = dest_block;
                             self.add_instrumentation_point(
                                 location,
                                 arg_fn,
                                 vec![InstrumentationOperand::from_type(
                                     Operand::Copy(destination.unwrap().0),
-                                    &destination
-                                        .unwrap()
-                                        .0
-                                        .ty(&self.body.local_decls, self.tcx)
-                                        .ty,
+                                    &dest_place.ty(&self.body.local_decls, self.tcx).ty,
                                 )],
                                 false,
                                 false,
-                                EventMetadata {
-                                    source: Some(to_mir_place(&Local::from_u32(0).into())),
-                                    destination: destination.map(|d| to_mir_place(&d.0)),
-                                    transfer_kind: TransferKind::Ret(
+                                EventMetadataBuilder::new()
+                                    .source(&Local::from_u32(0).into())
+                                    .dest(&dest_place)
+                                    .transfer(TransferKind::Ret(
                                         self.tcx.def_path_hash(def_id).convert(),
-                                    ),
-                                },
+                                    ))
+                                    .into(),
                             );
                         }
                     }
