@@ -5,18 +5,15 @@
     non_snake_case,
     non_upper_case_globals,
     unused_assignments,
-    unused_mut
+    unused_mut,
+    unused_variables,
+    unused_parens,
 )]
 extern "C" {
-    #[no_mangle]
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
-    #[no_mangle]
     fn calloc(_: libc::c_ulong, _: libc::c_ulong) -> *mut libc::c_void;
-    #[no_mangle]
     fn realloc(_: *mut libc::c_void, _: libc::c_ulong) -> *mut libc::c_void;
-    #[no_mangle]
     fn free(__ptr: *mut libc::c_void);
-    #[no_mangle]
     fn printf(_: *const libc::c_char, _: ...) -> libc::c_int;
 }
 

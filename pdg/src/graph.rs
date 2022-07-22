@@ -75,7 +75,7 @@ impl Display for NodeKind {
                     write!(f, "(n = {n})")?;
                 }
                 Ok(())
-            },
+            }
             Free => write!(f, "free"),
             PtrToInt => write!(f, "ptr_to_int"),
             IntToPtr => write!(f, "int_to_ptr"),
