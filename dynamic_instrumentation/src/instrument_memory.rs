@@ -11,7 +11,7 @@ use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Constant, Local, LocalDecl, Location,
-    Mutability, Operand, Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo, Statement,
+    Mutability, Operand, Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue, SourceInfo, Statement,
     StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, ParamEnv, TyCtxt, TyS};
@@ -256,14 +256,6 @@ fn has_outer_deref(p: &Place) -> bool {
     )
 }
 
-fn sans_last_projection<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Place<'tcx>> {
-    let Place { local, projection } = *p;
-    projection.split_last().map(|(_last, rest)| Place {
-        local,
-        projection: tcx.intern_place_elems(rest),
-    })
-}
-
 /// Get the inner-most dereferenced [`Place`].
 fn strip_all_deref<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
     let mut base_dest = p.as_ref();
@@ -284,14 +276,18 @@ fn strip_all_deref<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
 /// Used to strip initital deref from projection sequences
 fn remove_outer_deref<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
     // Remove outer deref if present
-    match p.as_ref().last_projection() {
-        Some((_, ProjectionElem::Deref)) => {
-            let sans_proj =
-                sans_last_projection(&p, tcx).expect("expected but did not find deref projection");
-            sans_proj
-        }
-        _ => p,
+    if let PlaceRef {
+        local,
+        projection: &[ref base @ .., ProjectionElem::Deref],
+    } = p.as_ref()
+    {
+        return Place {
+            local,
+            projection: tcx.intern_place_elems(base),
+        };
     }
+
+    p
 }
 
 fn to_mir_place(place: &Place) -> MirPlace {
