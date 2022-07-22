@@ -13,7 +13,7 @@ use std::{
 };
 
 use c2rust_dynamic_instrumentation::{MirTransformCallbacks, INSTRUMENTER};
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8Path;
 use cargo_metadata::{Metadata, MetadataCommand, Package, Target};
 use clap::Parser;
 use color_eyre::eyre;
@@ -302,10 +302,7 @@ fn main() -> eyre::Result<()> {
             // from where this binary was compiled and where it is running
             // (it could be on a different machine with a different `$RUSTUP_HOME`).
             let sysroot: &Utf8Path = sysroot.as_path().try_into()?;
-            at_args.extend([
-                "--sysroot".into(),
-                sysroot.as_str().into(),
-            ]);
+            at_args.extend(["--sysroot".into(), sysroot.as_str().into()]);
             RunCompiler::new(&at_args, &mut MirTransformCallbacks)
                 .run()
                 .map_err(|_| eyre!("`rustc` failed"))?;
