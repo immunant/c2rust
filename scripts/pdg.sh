@@ -89,7 +89,6 @@ main() {
             binary_name="$(command cargo metadata --format-version 1 \
                 | "${SCRIPT_DIR}/get-binary-names-from-cargo-metadata.mjs" default)"
         fi
-        local profile_dir="target/debug" # always dev/debug for now
         local binary_path="${profile_dir}/${binary_name}"
         
         if [[ "${c2rust_instrument}" -nt "${metadata}" ]]; then
