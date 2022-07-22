@@ -297,15 +297,16 @@ fn instrument_rustc(mut at_args: Vec<String>, sysroot: &Path, metadata: &Path) -
     RunCompiler::new(&at_args, &mut MirTransformCallbacks)
         .run()
         .map_err(|_| eyre!("`rustc` failed"))?;
-    INSTRUMENTER
-        .finalize(metadata)
-        .map_err(|e| eyre!(e))?;
+    INSTRUMENTER.finalize(metadata).map_err(|e| eyre!(e))?;
     Ok(())
 }
 
 /// Delete all files that we want to be regenerated
 /// so that we always have fully-up-to-date, non-incremental metadata.
-fn delete_metadata_and_dependencies(info: &InstrumentInfo, cargo_metadata: &Metadata) -> eyre::Result<()> {
+fn delete_metadata_and_dependencies(
+    info: &InstrumentInfo,
+    cargo_metadata: &Metadata,
+) -> eyre::Result<()> {
     if let Err(e) = fs_err::remove_file(&info.metadata) {
         if e.kind() != ErrorKind::NotFound {
             return Err(e.into());
@@ -394,9 +395,9 @@ fn main() -> eyre::Result<()> {
 
         let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
         let status = Command::new(cargo)
+            .args(cargo_args)
             .env(rustc_wrapper_var, &own_exe)
             .env(instrument_info_var, info)
-            .args(cargo_args)
             .status()?;
         exit_with_status(status);
     }
