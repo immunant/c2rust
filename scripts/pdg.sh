@@ -81,9 +81,6 @@ main() {
         fi
         local binary_path="${profile_dir}/${binary_name}"
 
-        rm -f "${metadata}"
-        fd "^${binary_name//-/_}-[a-f0-9]+$" ${profile_dir}/deps/ --exec rm
-
         time "${c2rust_instrument}" \
             --metadata "${metadata}" \
             -- build "${profile_args[@]}" \

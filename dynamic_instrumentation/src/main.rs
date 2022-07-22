@@ -7,6 +7,7 @@ use std::{
     env,
     ffi::OsString,
     hash::Hash,
+    io::ErrorKind,
     path::PathBuf,
     process::{self, Command, ExitStatus},
     str::FromStr,
@@ -18,6 +19,7 @@ use cargo_metadata::{Metadata, MetadataCommand, Package, Target};
 use clap::Parser;
 use color_eyre::eyre;
 use color_eyre::eyre::eyre;
+use is_executable::IsExecutable;
 use rustc_driver::RunCompiler;
 use rustc_session::config::Options;
 use serde::{Deserialize, Serialize};
@@ -323,6 +325,48 @@ fn main() -> eyre::Result<()> {
             crate_targets,
             metadata,
         };
+
+        if let Err(e) = fs_err::remove_file(&info.metadata) {
+            if e.kind() != ErrorKind::NotFound {
+                return Err(e.into());
+            }
+        }
+
+        // TODO(kkysen) Figure out a way to know which profile is being used
+        // Until then, just search them all and delete all of them.
+
+        // TODO(kkysen) We probably have to delete binaries that have different names from the crates.
+
+        // Delete all executables in `target/${profile}/deps/` starting with the crate name + `-`.
+        for profile_dir in cargo_metadata.target_directory.read_dir()? {
+            let profile_dir = profile_dir?;
+            if !profile_dir.file_type()?.is_dir() {
+                continue;
+            }
+            for artifact in profile_dir.path().join("deps").read_dir()? {
+                let artifact = artifact?;
+                if !artifact.file_type()?.is_file() {
+                    continue;
+                }
+                let file_name = artifact.file_name();
+                let file_name = file_name.to_str();
+                for crate_target in &info.crate_targets {
+                    let prefix = format!("{}-", crate_target.crate_name.as_str());
+                    // [`Path::starts_with`] only checks whole components at once,
+                    // and `OsStr::starts_with` doesn't exist yet.
+                    if file_name
+                        .map(|name| name.starts_with(&prefix))
+                        .unwrap_or_default()
+                    {
+                        let artifact = artifact.path();
+                        if artifact.is_executable() {
+                            fs_err::remove_file(&artifact)?;
+                        }
+                    }
+                }
+            }
+        }
+
         // We could binary encode this, but it's likely very short,
         // so just json encode it, so it's also human readable and inspectable.
         let info = serde_json::to_string(&info)?;
