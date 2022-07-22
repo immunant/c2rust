@@ -356,6 +356,24 @@ pub unsafe extern "C" fn test_arg_rec() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
     let t = foo_rec(3, s);
 }
+pub fn shared_ref_foo(x: &u8) -> &u8 {
+    x
+}
+#[no_mangle]
+pub unsafe extern "C" fn test_shared_ref() {
+    let x = 2;
+    let y = &x;
+    let z = y;
+    let foo = shared_ref_foo(z);
+}
+#[no_mangle]
+pub unsafe extern "C" fn test_unique_ref() {
+    let mut x = 10i32;
+    let mut y = 32i32;
+    let mut ptr = &mut x as *mut i32;
+    let ref mut fresh1 = ptr;
+    *fresh1 = &mut x as *mut i32;
+}
 #[no_mangle]
 pub unsafe extern "C" fn test_realloc_reassign() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
@@ -483,6 +501,8 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     test_malloc_free_cast();
     test_arg();
     test_arg_rec();
+    test_shared_ref();
+    test_unique_ref();
     test_realloc_reassign();
     test_realloc_fresh();
     test_load_addr();
