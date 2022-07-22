@@ -319,7 +319,15 @@ fn delete_metadata_and_dependencies(
     // TODO(kkysen) We probably have to delete binaries that have different names from the crates.
 
     // Delete all executables in `target/${profile}/deps/` starting with the crate name + `-`.
-    for profile_dir in cargo_metadata.target_directory.read_dir()? {
+    let target_read_dir = match cargo_metadata.target_directory.read_dir() {
+        Ok(read_dir) => Ok(read_dir),
+        Err(e) => if e.kind() == ErrorKind::NotFound {
+            return Ok(());
+        } else {
+            Err(e)
+        }
+    }?;
+    for profile_dir in target_read_dir {
         let profile_dir = profile_dir?;
         if !profile_dir.file_type()?.is_dir() {
             continue;
