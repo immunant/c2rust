@@ -338,7 +338,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
             .expect("Could not find pointer load hook");
 
         let base_ty = self.body.local_decls[place.local].ty;
-        // Instrument field projections on raw-ptr places
         if is_region_or_unsafe_ptr(base_ty) && context.is_use() && !place.projection.is_empty() {
             for (pid, (_base, elem)) in place.iter_projections().enumerate() {
                 if let PlaceElem::Field(field, _) = elem {
@@ -386,7 +385,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                 // copying address of dereferenced value does not apply, i.e. _2 = &raw (*_1)
                 && !matches!(self.assignment, Some((_, Rvalue::AddressOf(..))) if base_ty.is_region_ptr())
             {
-                // Place is loading from a raw ptr; trace the raw ptr
                 self.add_instrumentation_point(
                     location,
                     load_fn,
@@ -451,7 +449,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                 // Strip all derefs to set base_dest to the pointer that is deref'd
                 let base_dest = strip_all_deref(&dest, self.tcx);
 
-                // Storing a raw pointer in an indirect destination; trace the destination
                 let base_dest_ty = base_dest.ty(&self.body.local_decls, self.tcx).ty;
                 self.add_instrumentation_point(
                     location,
@@ -471,7 +468,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                 if is_region_or_unsafe_ptr(value_ty) {
                     let mut loc = location;
                     loc.statement_index += 1;
-                    // Stored value is a raw pointer; trace the destination
                     self.add_instrumentation_point(
                         loc,
                         store_value_fn,
@@ -494,7 +490,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         if !p.is_indirect()
                             && is_region_or_unsafe_ptr(p.ty(&self.body.local_decls, self.tcx).ty)
                         {
-                            // Cast from raw pointer to usize; trace the pointer being casted
                             self.add_instrumentation_point(
                                 location,
                                 ptr_to_int_fn,
@@ -788,7 +783,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
                         ) {
                             location.statement_index = 0;
                             location.block = destination.unwrap().1;
-                            // Non-hooked fn with raw-ptr result called; trace destination
                             self.add_instrumentation_point(
                                 location,
                                 arg_fn,
@@ -817,7 +811,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for CollectFunctionInstrumentationPoints<'a, 't
             TerminatorKind::Return => {
                 let place = Place::return_place();
                 if is_region_or_unsafe_ptr(self.body.local_decls[place.local].ty) {
-                    // Function returned raw ptr; trace the return place
                     self.add_instrumentation_point(
                         location,
                         ret_fn,
@@ -982,7 +975,7 @@ fn apply_instrumentation<'tcx>(
                 args.iter_mut().for_each(|arg| *arg = arg.to_copy());
 
                 let place_ty = &place.ty(locals, tcx).ty;
-                // The return type of a hooked fn is always a raw ptr or unit
+                // The return type of a hooked fn is always a raw ptr, reference, or unit
                 if place_ty.is_unit() {
                     // It's somewhat wrong to call unit an AddressUsize, but it has the pass-through
                     // semantics we want
