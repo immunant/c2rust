@@ -11,8 +11,6 @@ SCRIPT_DIR="${CWD}/$(dirname "${SCRIPT_PATH}")"
 # Environment Variables:
 # * `PROFILE` (default `release`):
 #       a `cargo` profile as in `target/$PROFILE`
-# * `BINARY` (default calculated by `get-binary-names-from-cargo-metadata.mjs`, require node):
-#       the name of the binary produced by the test crate
 # 
 # Instrument and run a test crate and create its PDG.
 # 
@@ -38,16 +36,6 @@ SCRIPT_DIR="${CWD}/$(dirname "${SCRIPT_PATH}")"
 #    Except for the `=>`-containing lines, 
 #    which are from the `latest_assignments` `HashMap`,
 #    we want this output to remain stable.
-#
-# A couple of other notes:
-# * `c2rust instrument` can only run the default `cargo` profile and settings right now.
-#   See https://github.com/immunant/c2rust/issues/448 for why.
-#   Thus, the instrumented binary is always in `dev`/`debug`` mode.
-#   The other crates are compiled in `release` mode by default,
-#   though that can be overridden by setting `PROFILE=debug` or another `cargo` profile.
-#
-# Requirements:
-# * A recent node for some scripts.  `node@18.2.0` works.
 main() {
     local test_dir="${1}"
     local args=("${@:2}")
