@@ -266,19 +266,19 @@ fn sans_last_projection<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Plac
 
 /// Get the inner-most dereferenced [`Place`].
 fn strip_all_deref<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
-    let mut base_dest = *p;
-    let mut place_ref = base_dest.as_ref();
+    let mut base_dest = p.as_ref();
+    let mut place_ref = p.clone().as_ref();
     while let Some((cur_ref, proj)) = place_ref.last_projection() {
         if let ProjectionElem::Deref = proj {
-            base_dest = Place {
-                local: cur_ref.local,
-                projection: tcx.intern_place_elems(cur_ref.projection),
-            };
+            base_dest = cur_ref;
         }
         place_ref = cur_ref;
     }
 
-    base_dest
+    Place {
+        local: base_dest.local,
+        projection: tcx.intern_place_elems(base_dest.projection),
+    }
 }
 
 /// Used to strip initital deref from projection sequences
