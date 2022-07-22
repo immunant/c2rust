@@ -72,15 +72,6 @@ main() {
     local metadata="${CWD}/${test_dir}/metadata.bc"
 
     (cd "${test_dir}"
-        local binary_name
-        if [[ "${BINARY:-}" != "" ]]; then
-            binary_name="${BINARY}"
-        else
-            binary_name="$(command cargo metadata --format-version 1 \
-                | "${SCRIPT_DIR}/get-binary-names-from-cargo-metadata.mjs" default)"
-        fi
-        local binary_path="${profile_dir}/${binary_name}"
-
         export INSTRUMENT_BACKEND=log
         export INSTRUMENT_OUTPUT=log.bc
         export INSTRUMENT_OUTPUT_APPEND=false
