@@ -52,7 +52,6 @@ main() {
     cargo build "${profile_args[@]}" --features dynamic-instrumentation
 
     export RUST_BACKTRACE=1
-    unset RUSTC_WRAPPER
 
     local c2rust="${CWD}/${profile_dir}/c2rust"
     local c2rust_instrument="${CWD}/${profile_dir}/c2rust-dynamic-instrumentation"
