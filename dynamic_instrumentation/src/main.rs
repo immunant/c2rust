@@ -8,7 +8,7 @@ use std::{
     ffi::OsString,
     hash::Hash,
     io::ErrorKind,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{self, Command, ExitStatus},
     str::FromStr,
 };
@@ -195,6 +195,7 @@ impl CrateTarget {
         let src_path = match free_matches {
             [src_path] => {
                 if src_path == "-" {
+                    // We don't actually ever read from this, so I think this is a fine translation to a real [`Path`].
                     "/dev/stdin".into()
                 } else {
                     fs_err::canonicalize(src_path)?
@@ -260,6 +261,95 @@ fn get_sysroot_slow() -> eyre::Result<PathBuf> {
     todo!("use `rustc --print sysroot` to support non-`rustup` cases, which @fw-immunant uses")
 }
 
+fn get_sysroot() -> eyre::Result<PathBuf> {
+    get_sysroot_fast()
+        .ok_or(())
+        .or_else(|()| get_sysroot_slow())
+}
+
+fn passthrough_rustc(at_args: &[String], sysroot: &Path) -> eyre::Result<ExitStatus> {
+    // We can skip a `rustup` `rustc` -> real `rustc` resolution by just invoking the real `rustc` ourselves.
+    // TODO(kkysen) this might not work without `rustup`
+    let rustc = sysroot.join("bin/rustc");
+    let status = Command::new(rustc).args(at_args.iter().skip(1)).status()?;
+    Ok(status)
+}
+
+fn instrument_rustc(mut at_args: Vec<String>, sysroot: &Path, metadata: &Path) -> eyre::Result<()> {
+    // Normally, `rustc` looks up the sysroot by the location of its own binary.
+    // This works because the `rustc` on `$PATH` is actually `rustup`,
+    // and `rustup` invokes the real `rustc`, which is in a location relative to the sysroot.
+    // As we invoke `rustc_driver` directly here, we are `rustc`,
+    // and thus we have to explicitly specify the sysroot that the real `rustc` would normally use.
+    //
+    // Note that the sysroot contains the toolchain and host target name,
+    // but this has no effect on cross-compiling.
+    // Every toolchain's `rustc` is able to itself cross-compile.
+    // I'm not sure why the host target needs to be in the sysroot directory name, but it is.
+    //
+    // Also note that this sysroot lookup should be done at runtime,
+    // not at compile-time in the `build.rs`,
+    // as the toolchain locations could be different
+    // from where this binary was compiled and where it is running
+    // (it could be on a different machine with a different `$RUSTUP_HOME`).
+    let sysroot: &Utf8Path = sysroot.try_into()?;
+    at_args.extend(["--sysroot".into(), sysroot.as_str().into()]);
+    RunCompiler::new(&at_args, &mut MirTransformCallbacks)
+        .run()
+        .map_err(|_| eyre!("`rustc` failed"))?;
+    INSTRUMENTER
+        .finalize(metadata)
+        .map_err(|e| eyre!(e))?;
+    Ok(())
+}
+
+/// Delete all files that we want to be regenerated
+/// so that we always have fully-up-to-date, non-incremental metadata.
+fn delete_metadata_and_dependencies(info: &InstrumentInfo, cargo_metadata: &Metadata) -> eyre::Result<()> {
+    if let Err(e) = fs_err::remove_file(&info.metadata) {
+        if e.kind() != ErrorKind::NotFound {
+            return Err(e.into());
+        }
+    }
+
+    // TODO(kkysen) Figure out a way to know which profile is being used
+    // Until then, just search them all and delete all of them.
+
+    // TODO(kkysen) We probably have to delete binaries that have different names from the crates.
+
+    // Delete all executables in `target/${profile}/deps/` starting with the crate name + `-`.
+    for profile_dir in cargo_metadata.target_directory.read_dir()? {
+        let profile_dir = profile_dir?;
+        if !profile_dir.file_type()?.is_dir() {
+            continue;
+        }
+        for artifact in profile_dir.path().join("deps").read_dir()? {
+            let artifact = artifact?;
+            if !artifact.file_type()?.is_file() {
+                continue;
+            }
+            let file_name = artifact.file_name();
+            let file_name = file_name.to_str();
+            for crate_target in &info.crate_targets {
+                let prefix = format!("{}-", crate_target.crate_name.as_str());
+                // [`Path::starts_with`] only checks whole components at once,
+                // and `OsStr::starts_with` doesn't exist yet.
+                if file_name
+                    .map(|name| name.starts_with(&prefix))
+                    .unwrap_or_default()
+                {
+                    let artifact = artifact.path();
+                    if artifact.is_executable() {
+                        fs_err::remove_file(&artifact)?;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn main() -> eyre::Result<()> {
     color_eyre::install()?;
     env_logger::init();
@@ -268,56 +358,26 @@ fn main() -> eyre::Result<()> {
     let instrument_info_var = "C2RUST_INSTRUMENT_INFO";
 
     let own_exe = env::current_exe()?;
-    let own_exe = own_exe.as_path();
 
     let wrapping_rustc = env::var_os(rustc_wrapper_var).as_deref() == Some(own_exe.as_os_str());
     if wrapping_rustc {
-        let sysroot = get_sysroot_fast()
-            .ok_or(())
-            .or_else(|()| get_sysroot_slow())?;
-        let mut at_args = env::args().skip(1).collect::<Vec<_>>();
+        let sysroot = get_sysroot()?;
+        let at_args = env::args().skip(1).collect::<Vec<_>>();
         let crate_target = CrateTarget::from_rustc_args(&at_args)?;
         let info = env::var(instrument_info_var)?;
         let info = serde_json::from_str::<InstrumentInfo>(&info)?;
         let should_instrument = info.crate_targets.contains(&crate_target);
-        if !should_instrument {
-            // We can skip a `rustup` `rustc` -> real `rustc` resolution by just invoking the real `rustc` ourselves.
-            // TODO(kkysen) this might not work without `rustup`
-            let rustc = sysroot.join("bin/rustc");
-            let status = Command::new(rustc).args(at_args.iter().skip(1)).status()?;
-            exit_with_status(status);
+        if should_instrument {
+            instrument_rustc(at_args, &sysroot, &info.metadata)?;
         } else {
-            // Normally, `rustc` looks up the sysroot by the location of its own binary.
-            // This works because the `rustc` on `$PATH` is actually `rustup`,
-            // and `rustup` invokes the real `rustc`, which is in a location relative to the sysroot.
-            // As we invoke `rustc_driver` directly here, we are `rustc`,
-            // and thus we have to explicitly specify the sysroot that the real `rustc` would normally use.
-            //
-            // Note that the sysroot contains the toolchain and host target name,
-            // but this has no effect on cross-compiling.
-            // Every toolchain's `rustc` is able to itself cross-compile.
-            // I'm not sure why the host target needs to be in the sysroot directory name, but it is.
-            //
-            // Also note that this sysroot lookup should be done at runtime,
-            // not at compile-time in the `build.rs`,
-            // as the toolchain locations could be different
-            // from where this binary was compiled and where it is running
-            // (it could be on a different machine with a different `$RUSTUP_HOME`).
-            let sysroot: &Utf8Path = sysroot.as_path().try_into()?;
-            at_args.extend(["--sysroot".into(), sysroot.as_str().into()]);
-            RunCompiler::new(&at_args, &mut MirTransformCallbacks)
-                .run()
-                .map_err(|_| eyre!("`rustc` failed"))?;
-            INSTRUMENTER
-                .finalize(&info.metadata)
-                .map_err(|e| eyre!(e))?;
+            let status = passthrough_rustc(&at_args, &sysroot)?;
+            exit_with_status(status);
         }
     } else {
-        let args = Args::parse();
         let Args {
             metadata,
             cargo_args,
-        } = args;
+        } = Args::parse();
 
         let cargo_metadata = MetadataCommand::new().exec()?;
         let crate_targets = CrateTarget::from_metadata(&cargo_metadata)?;
@@ -326,46 +386,7 @@ fn main() -> eyre::Result<()> {
             metadata,
         };
 
-        if let Err(e) = fs_err::remove_file(&info.metadata) {
-            if e.kind() != ErrorKind::NotFound {
-                return Err(e.into());
-            }
-        }
-
-        // TODO(kkysen) Figure out a way to know which profile is being used
-        // Until then, just search them all and delete all of them.
-
-        // TODO(kkysen) We probably have to delete binaries that have different names from the crates.
-
-        // Delete all executables in `target/${profile}/deps/` starting with the crate name + `-`.
-        for profile_dir in cargo_metadata.target_directory.read_dir()? {
-            let profile_dir = profile_dir?;
-            if !profile_dir.file_type()?.is_dir() {
-                continue;
-            }
-            for artifact in profile_dir.path().join("deps").read_dir()? {
-                let artifact = artifact?;
-                if !artifact.file_type()?.is_file() {
-                    continue;
-                }
-                let file_name = artifact.file_name();
-                let file_name = file_name.to_str();
-                for crate_target in &info.crate_targets {
-                    let prefix = format!("{}-", crate_target.crate_name.as_str());
-                    // [`Path::starts_with`] only checks whole components at once,
-                    // and `OsStr::starts_with` doesn't exist yet.
-                    if file_name
-                        .map(|name| name.starts_with(&prefix))
-                        .unwrap_or_default()
-                    {
-                        let artifact = artifact.path();
-                        if artifact.is_executable() {
-                            fs_err::remove_file(&artifact)?;
-                        }
-                    }
-                }
-            }
-        }
+        delete_metadata_and_dependencies(&info, &cargo_metadata)?;
 
         // We could binary encode this, but it's likely very short,
         // so just json encode it, so it's also human readable and inspectable.
@@ -373,7 +394,7 @@ fn main() -> eyre::Result<()> {
 
         let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
         let status = Command::new(cargo)
-            .env(rustc_wrapper_var, own_exe)
+            .env(rustc_wrapper_var, &own_exe)
             .env(instrument_info_var, info)
             .args(cargo_args)
             .status()?;
