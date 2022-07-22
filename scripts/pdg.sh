@@ -55,7 +55,6 @@ main() {
 
     local c2rust="${CWD}/${profile_dir}/c2rust"
     local c2rust_instrument="${CWD}/${profile_dir}/c2rust-dynamic-instrumentation"
-    local runtime="${CWD}/analysis/runtime/"
     local metadata="${CWD}/${test_dir}/metadata.bc"
 
     (cd "${test_dir}"
