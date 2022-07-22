@@ -6,16 +6,6 @@ CWD="${PWD}"
 SCRIPT_PATH="${0}"
 SCRIPT_DIR="${CWD}/$(dirname "${SCRIPT_PATH}")"
 
-on-instrument-failure() {
-    local metadata="${1}"
-
-    # delete so that we'll re-compile next time
-    # instead of thinking it's already done
-    rm -f "${metadata}"
-    "${SCRIPT_DIR}/pretty-instrument-err.mjs" < instrument.err.jsonl
-    return 1;
-}
-
 # Usage: `./pdg.sh <test crate dir> <test binary args...>`
 # 
 # Environment Variables:
