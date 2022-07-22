@@ -36,38 +36,36 @@ main() {
     local profile_args=(--profile "${profile}")
 
     local instrument="c2rust-dynamic-instrumentation"
-    cargo build "${profile_args[@]}" --bin "${instrument}"
-
     local c2rust="${CWD}/${profile_dir}/c2rust"
     local c2rust_instrument="${CWD}/${profile_dir}/${instrument}"
-    local metadata="${CWD}/${test_dir}/metadata.bc"
+    local metadata="${test_dir}/metadata.bc"
+    local event_log="${CWD}/${test_dir}/log.bc"
+    local pdg_log="${test_dir}/pdg.log"
 
-    (cd "${test_dir}"
-        export RUST_BACKTRACE=1
-        export INSTRUMENT_BACKEND=log
-        export INSTRUMENT_OUTPUT=log.bc
-        export INSTRUMENT_OUTPUT_APPEND=false
-        export METADATA_FILE="${metadata}"
+    export RUST_BACKTRACE=1
+    export INSTRUMENT_BACKEND=log
+    export INSTRUMENT_OUTPUT="${event_log}"
+    export INSTRUMENT_OUTPUT_APPEND=false
+    export METADATA_FILE="${metadata}"
 
-        time "${c2rust_instrument}" \
-            --metadata "${metadata}" \
-            -- run "${profile_args[@]}" \
-            -- "${args[@]}" \
-            1> instrument.out.log
-    )
-    (cd pdg
-        export RUST_BACKTRACE=full # print sources w/ color-eyre
-        export RUST_LOG=error
-        cargo run \
-            "${profile_args[@]}" \
-            -- \
-            --event-log "../${test_dir}/log.bc" \
-            --metadata "${metadata}" \
-            --print graphs \
-            --print write-permissions \
-            --print counts \
-        > "../${test_dir}/pdg.log"
-    )
+    time "${c2rust_instrument}" \
+        --metadata "${metadata}" \
+        --cwd "${test_dir}" \
+        -- run "${profile_args[@]}" \
+        -- "${args[@]}" \
+        1> instrument.out.log
+    
+    export RUST_BACKTRACE=full # print sources w/ color-eyre
+    export RUST_LOG=error
+    cargo run -p c2rust-pdg \
+        "${profile_args[@]}" \
+        -- \
+        --event-log "${event_log}" \
+        --metadata "${metadata}" \
+        --print graphs \
+        --print write-permissions \
+        --print counts \
+    > "${pdg_log}"
 }
 
 main "${@}"
