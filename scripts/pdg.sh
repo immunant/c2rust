@@ -90,15 +90,14 @@ main() {
                 | "${SCRIPT_DIR}/get-binary-names-from-cargo-metadata.mjs" default)"
         fi
         local binary_path="${profile_dir}/${binary_name}"
-        
-        if [[ "${c2rust_instrument}" -nt "${metadata}" ]]; then
-            cargo clean "${profile_args[@]}"
 
-            "${c2rust_instrument}" \
-                --metadata "${metadata}" \
-                -- build "${profile_args[@]}" \
-                1> instrument.out.log
-        fi
+        rm -f "${metadata}"
+        fd "^${binary_name//-/_}-[a-f0-9]+$" ${profile_dir}/deps/ --exec rm
+
+        time "${c2rust_instrument}" \
+            --metadata "${metadata}" \
+            -- build "${profile_args[@]}" \
+            1> instrument.out.log
         
         export INSTRUMENT_BACKEND=log
         export INSTRUMENT_OUTPUT=log.bc
@@ -108,7 +107,7 @@ main() {
     )
     (cd pdg
         export RUST_BACKTRACE=full # print sources w/ color-eyre
-        export RUST_LOG=info
+        export RUST_LOG=error
         cargo run \
             "${profile_args[@]}" \
             -- \
