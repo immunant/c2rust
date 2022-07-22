@@ -30,10 +30,6 @@ struct Args {
     #[clap(long, value_parser)]
     metadata: PathBuf,
 
-    /// Path to the `c2rust-analysis-rt` crate.
-    #[clap(long, value_parser)]
-    runtime: Utf8PathBuf,
-
     /// `cargo` args.
     cargo_args: Vec<OsString>,
 }
@@ -245,7 +241,6 @@ impl CrateTarget {
 struct InstrumentInfo {
     crate_targets: Vec<CrateTarget>,
     metadata: PathBuf,
-    runtime: Utf8PathBuf,
 }
 
 fn get_sysroot_fast() -> Option<PathBuf> {
@@ -310,8 +305,6 @@ fn main() -> eyre::Result<()> {
             at_args.extend([
                 "--sysroot".into(),
                 sysroot.as_str().into(),
-                // "--extern".into(),
-                // format!("c2rust_analysis_rt={}", info.runtime),
             ]);
             RunCompiler::new(&at_args, &mut MirTransformCallbacks)
                 .run()
@@ -324,7 +317,6 @@ fn main() -> eyre::Result<()> {
         let args = Args::parse();
         let Args {
             metadata,
-            runtime,
             cargo_args,
         } = args;
 
@@ -333,7 +325,6 @@ fn main() -> eyre::Result<()> {
         let info = InstrumentInfo {
             crate_targets,
             metadata,
-            runtime,
         };
         // We could binary encode this, but it's likely very short,
         // so just json encode it, so it's also human readable and inspectable.

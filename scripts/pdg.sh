@@ -97,7 +97,6 @@ main() {
 
             "${c2rust_instrument}" \
                 --metadata "${metadata}" \
-                --runtime "${runtime}" \
                 -- build "${profile_args[@]}" \
                 1> instrument.out.log
         fi
