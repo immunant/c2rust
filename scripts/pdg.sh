@@ -81,16 +81,16 @@ main() {
         fi
         local binary_path="${profile_dir}/${binary_name}"
 
-        time "${c2rust_instrument}" \
-            --metadata "${metadata}" \
-            -- build "${profile_args[@]}" \
-            1> instrument.out.log
-        
         export INSTRUMENT_BACKEND=log
         export INSTRUMENT_OUTPUT=log.bc
         export INSTRUMENT_OUTPUT_APPEND=false
         export METADATA_FILE="${metadata}"
-        "${binary_path}" "${args[@]}"
+
+        time "${c2rust_instrument}" \
+            --metadata "${metadata}" \
+            -- run "${profile_args[@]}" \
+            -- "${args[@]}" \
+            1> instrument.out.log
     )
     (cd pdg
         export RUST_BACKTRACE=full # print sources w/ color-eyre
