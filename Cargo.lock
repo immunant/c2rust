@@ -273,12 +273,20 @@ dependencies = [
  "anyhow",
  "bincode",
  "c2rust-analysis-rt",
+ "camino",
  "cargo",
  "cargo-util",
+ "cargo_metadata",
+ "clap 3.2.8",
+ "color-eyre",
+ "env_logger",
+ "fs-err",
  "indexmap",
  "lazy_static",
  "log",
  "rustc-private-link",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -330,6 +338,15 @@ dependencies = [
  "strum",
  "strum_macros",
  "syn",
+]
+
+[[package]]
+name = "camino"
+version = "1.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "869119e97797867fd90f5e22af7d0bd274bd4635ebb9eb68c04f3f513ae6c412"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -419,6 +436,19 @@ dependencies = [
  "tempfile",
  "walkdir",
  "winapi",
+]
+
+[[package]]
+name = "cargo_metadata"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3abb7553d5b9b8421c6de7cb02606ff15e0c6eea7d8eadd75ef013fd636bec36"
+dependencies = [
+ "camino",
+ "cargo-platform",
+ "semver",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

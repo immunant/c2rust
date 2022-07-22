@@ -48,14 +48,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 lazy_static! {
-    static ref INSTRUMENTER: InstrumentMemoryOps = InstrumentMemoryOps::new();
+    pub static ref INSTRUMENTER: InstrumentMemoryOps = InstrumentMemoryOps::new();
 }
 
-struct NullCallbacks;
+pub struct NullCallbacks;
 
 impl rustc_driver::Callbacks for NullCallbacks {}
 
-struct MirTransformCallbacks;
+pub struct MirTransformCallbacks;
 
 impl rustc_driver::Callbacks for MirTransformCallbacks {
     fn config(&mut self, config: &mut rustc_interface::Config) {

@@ -77,7 +77,7 @@ main() {
     unset RUSTC_WRAPPER
 
     local c2rust="${CWD}/${profile_dir}/c2rust"
-    local c2rust_instrument="${CWD}/${profile_dir}/c2rust-instrument"
+    local c2rust_instrument="${CWD}/${profile_dir}/c2rust-dynamic-instrumentation"
     local runtime="${CWD}/analysis/runtime/"
     local metadata="${CWD}/${test_dir}/metadata.bc"
 
@@ -93,15 +93,13 @@ main() {
         local binary_path="${profile_dir}/${binary_name}"
         
         if [[ "${c2rust_instrument}" -nt "${metadata}" ]]; then
-            cargo clean --profile dev # always dev/debug for now
+            cargo clean "${profile_args[@]}"
 
-            if ! "${c2rust}" instrument \
-                "${metadata}" "${runtime}" \
-                -- "${profile_args[@]}"  \
-            1> instrument.out.log \
-            2> instrument.err.jsonl; then
-                on-instrument-failure "${metadata}"
-            fi
+            "${c2rust_instrument}" \
+                --metadata "${metadata}" \
+                --runtime "${runtime}" \
+                -- build "${profile_args[@]}" \
+                1> instrument.out.log
         fi
         
         export INSTRUMENT_BACKEND=log
