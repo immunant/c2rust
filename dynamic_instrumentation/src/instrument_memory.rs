@@ -341,7 +341,7 @@ trait Source {
     fn source(&self) -> Option<MirPlace>;
 }
 
-impl<'tcx> Source for Place<'tcx> {
+impl Source for Place<'_> {
     fn source(&self) -> Option<MirPlace> {
         Some(to_mir_place(self))
     }
