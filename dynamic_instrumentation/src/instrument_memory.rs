@@ -336,9 +336,9 @@ impl Source for u32 {
     }
 }
 
-impl<'a, 'tcx: 'a> InstrumentationPoint<'tcx> {
-    fn new(loc: Location, func: DefId) -> InstrumentationPoint<'tcx> {
-        InstrumentationPoint {
+impl<'tcx> InstrumentationPoint<'tcx> {
+    fn new(loc: Location, func: DefId) -> Self {
+        Self {
             id: 0,
             loc,
             func,
@@ -349,42 +349,42 @@ impl<'a, 'tcx: 'a> InstrumentationPoint<'tcx> {
         }
     }
 
-    fn offset(&mut self, i: usize) -> &mut Self {
+    fn offset(mut self, i: usize) -> Self {
         self.loc.statement_index = i;
         self
     }
 
-    fn arg(&mut self, a: InstrumentationArg<'tcx>) -> &mut Self {
+    fn arg(mut self, a: InstrumentationArg<'tcx>) -> Self {
         self.args.push(a);
         self
     }
 
-    fn args<I: IntoIterator<Item = InstrumentationArg<'tcx>>>(&mut self, args: I) -> &mut Self {
+    fn args<I: IntoIterator<Item = InstrumentationArg<'tcx>>>(mut self, args: I) -> Self {
         self.args.extend(args);
         self
     }
 
-    fn cleanup(&mut self) -> &mut Self {
+    fn cleanup(mut self) -> Self {
         self.is_cleanup = true;
         self
     }
 
-    fn after_call(&mut self) -> &mut Self {
+    fn after_call(mut self) -> Self {
         self.after_call = true;
         self
     }
 
-    fn source<T: Source>(&mut self, s: &T) -> &mut Self {
+    fn source<T: Source>(mut self, s: &T) -> Self {
         self.metadata.source = s.source();
         self
     }
 
-    fn dest(&mut self, p: &Place) -> &mut Self {
+    fn dest(mut self, p: &Place) -> Self {
         self.metadata.destination = Some(to_mir_place(p));
         self
     }
 
-    fn dest_from<'b, F>(&mut self, pred: F) -> &mut Self
+    fn dest_from<'b, F>(mut self, pred: F) -> Self
     where
         F: Fn() -> Option<Place<'b>>,
     {
@@ -394,7 +394,7 @@ impl<'a, 'tcx: 'a> InstrumentationPoint<'tcx> {
         self
     }
 
-    fn transfer(&mut self, t: TransferKind) -> &mut Self {
+    fn transfer(mut self, t: TransferKind) -> Self {
         self.metadata.transfer_kind = t;
         self
     }
@@ -406,12 +406,12 @@ impl<'a, 'tcx: 'a> InstrumentationPoint<'tcx> {
     /// the call will be inserted at the end of the block.
     ///
     /// `func` must not unwind, as it will have no cleanup destination.
-    fn add(&'a mut self, points: &CollectFunctionInstrumentationPoints<'a, 'tcx>) {
+    fn add(mut self, points: &CollectFunctionInstrumentationPoints<'_, 'tcx>) {
         self.id = points.instrumentation_points.borrow().len();
         points
             .instrumentation_points
             .borrow_mut()
-            .push(self.clone())
+            .push(self)
     }
 }
 
