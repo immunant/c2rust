@@ -17,7 +17,6 @@ use rustc_middle::mir::{
 use rustc_middle::ty::{self, ParamEnv, TyCtxt, TyS};
 use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
 use rustc_span::{Symbol, DUMMY_SP};
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
 use std::mem;
