@@ -352,7 +352,7 @@ impl Source for Operand<'_> {
     }
 }
 
-impl<'tcx> Source for Vec<Operand<'tcx>> {
+impl Source for Vec<Operand<'_>> {
     fn source(&self) -> Option<MirPlace> {
         // TODO: have hook-specific sources
         self.first()
