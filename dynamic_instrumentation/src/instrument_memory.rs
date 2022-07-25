@@ -497,7 +497,7 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
     ///
     /// [`func`]: Self::func
     /// [`statement_idx`]: Location::statement_index
-    fn add(&mut self, adder: &mut InstrumentationAdder<'a, 'tcx>) {
+    fn add_to(&mut self, adder: &mut InstrumentationAdder<'a, 'tcx>) {
         self.state.point.id = adder.instrumentation_points.len();
         adder.instrumentation_points.push(self.state.point.clone());
     }
@@ -535,7 +535,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                         .arg_var(field.as_u32())
                         .source(place)
                         .dest_from(proj_dest)
-                        .add(self);
+                        .add_to(self);
                 }
             }
         }
@@ -595,7 +595,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
             self.loc(location, load_fn)
                 .arg_var(p.local)
                 .source(&remove_outer_deref(*p, ctx))
-                .add(self);
+                .add_to(self);
         };
 
         // add instrumentation for load-from-address operations
@@ -617,7 +617,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                 self.loc(location, store_fn)
                     .arg_var(base_dest)
                     .source(&remove_outer_deref(dest, self.tcx))
-                    .add(self);
+                    .add_to(self);
 
                 if is_region_or_unsafe_ptr(value_ty) {
                     location.statement_index += 1;
@@ -625,7 +625,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                         .arg_var(dest)
                         .source(value)
                         .dest(&dest)
-                        .add(self);
+                        .add_to(self);
                 }
             }
             Rvalue::Cast(_, Operand::Copy(p) | Operand::Move(p), _)
@@ -635,7 +635,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                     self.loc(location, ptr_to_int_fn)
                         .arg_var(p.local)
                         .source(p)
-                        .add(self);
+                        .add_to(self);
                 }
             }
             _ if !is_region_or_unsafe_ptr(value_ty) => {}
@@ -647,7 +647,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                     .arg_var(p.local.as_u32())
                     .source(p)
                     .dest(&dest)
-                    .add(self);
+                    .add_to(self);
             }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) if p.is_indirect() => {
                 location.statement_index += 1;
@@ -655,7 +655,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                 self.loc(location, load_value_fn)
                     .arg_var(dest)
                     .dest(&dest)
-                    .add(self);
+                    .add_to(self);
             }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) => {
                 location.statement_index += 1;
@@ -663,7 +663,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                     .arg_var(dest)
                     .source(p)
                     .dest(&dest)
-                    .add(self);
+                    .add_to(self);
             }
             Rvalue::Cast(_, op, _) => {
                 let func = if op_ty(op).is_integral() {
@@ -676,7 +676,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                     .arg_var(dest)
                     .source(op)
                     .dest(&dest)
-                    .add(self);
+                    .add_to(self);
             }
             Rvalue::Ref(_, bkind, p) if has_outer_deref(p) => {
                 // this is a reborrow or field reference, i.e. _2 = &(*_1)
@@ -687,7 +687,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                         .arg_addr_of(*p)
                         .source(&source)
                         .dest(&dest)
-                        .add(self);
+                        .add_to(self);
                 } else {
                     // Instrument immutable borrows by tracing the reference itself
                     location.statement_index += 1;
@@ -695,7 +695,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                         .arg_var(dest)
                         .source(&source)
                         .dest(&dest)
-                        .add(self);
+                        .add_to(self);
                 };
             }
             Rvalue::Ref(_, bkind, p) if !p.is_indirect() => {
@@ -708,7 +708,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                         .arg_var(p.local.as_u32())
                         .source(&source)
                         .dest(&dest)
-                        .add(self);
+                        .add_to(self);
                 } else {
                     // Instrument immutable borrows by tracing the reference itself
                     location.statement_index += 1;
@@ -717,7 +717,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                         .arg_var(p.local.as_u32())
                         .source(&source)
                         .dest(&dest)
-                        .add(self);
+                        .add_to(self);
                 };
             }
             _ => (),
@@ -767,7 +767,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                                     .source(&place)
                                     .dest(&callee_arg)
                                     .transfer(transfer_kind)
-                                    .add(self);
+                                    .add_to(self);
                             }
                         }
                         callee_arg.local.increment_by(1);
@@ -790,7 +790,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                                 .after_call()
                                 .transfer(TransferKind::Ret(self.func_hash()))
                                 .args(args)
-                                .add(self);
+                                .add_to(self);
                         } else if is_region_or_unsafe_ptr(
                             dest_place.ty(&self.body.local_decls, self.tcx).ty,
                         ) {
@@ -804,7 +804,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                                     self.tcx.def_path_hash(def_id).convert(),
                                 ))
                                 .arg_var(destination.unwrap().0)
-                                .add(self);
+                                .add_to(self);
                         }
                     }
                 }
@@ -812,7 +812,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
             TerminatorKind::Return => {
                 let place = Place::return_place();
                 if is_region_or_unsafe_ptr(self.body.local_decls[place.local].ty) {
-                    self.loc(location, ret_fn).arg_var(place).add(self);
+                    self.loc(location, ret_fn).arg_var(place).add_to(self);
                 }
             }
             _ => (),
