@@ -1,9 +1,14 @@
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
+use crate::pointer_id::{
+    GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
+    PointerTableMut,
+};
 use bitflags::bitflags;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{Local, Place, PlaceRef, ProjectionElem};
 use rustc_middle::ty::{TyCtxt, TyKind};
 use std::cell::Cell;
+use std::iter;
 
 bitflags! {
     #[derive(Default)]
@@ -43,20 +48,7 @@ bitflags! {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub struct PointerId(u32);
-
-impl PointerId {
-    pub const NONE: PointerId = PointerId(u32::MAX);
-
-    pub fn index(self) -> usize {
-        self.0 as usize
-    }
-
-    pub fn is_none(self) -> bool {
-        self == Self::NONE
-    }
-}
+pub use crate::pointer_id::PointerId;
 
 pub type LTy<'tcx> = LabeledTy<'tcx, PointerId>;
 pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, PointerId>;
@@ -64,6 +56,8 @@ pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, PointerId>;
 pub struct GlobalAnalysisCtxt<'tcx> {
     pub tcx: TyCtxt<'tcx>,
     pub lcx: LTyCtxt<'tcx>,
+
+    next_ptr_id: NextGlobalPointerId,
 }
 
 pub struct AnalysisCtxt<'a, 'tcx> {
@@ -72,7 +66,7 @@ pub struct AnalysisCtxt<'a, 'tcx> {
     pub local_tys: IndexVec<Local, LTy<'tcx>>,
     pub addr_of_local: IndexVec<Local, PointerId>,
 
-    next_ptr_id: Cell<u32>,
+    next_ptr_id: NextLocalPointerId,
 }
 
 impl<'tcx> GlobalAnalysisCtxt<'tcx> {
@@ -80,11 +74,20 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         GlobalAnalysisCtxt {
             tcx,
             lcx: LabeledTyCtxt::new(tcx),
+            next_ptr_id: NextGlobalPointerId::new(),
         }
     }
 
     pub fn enter_function<'a>(&'a mut self) -> AnalysisCtxt<'a, 'tcx> {
         AnalysisCtxt::new(self)
+    }
+
+    pub fn new_pointer(&self) -> PointerId {
+        self.next_ptr_id.next()
+    }
+
+    pub fn num_pointers(&self) -> usize {
+        self.next_ptr_id.num_pointers()
     }
 }
 
@@ -94,7 +97,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             gacx,
             local_tys: IndexVec::new(),
             addr_of_local: IndexVec::new(),
-            next_ptr_id: Cell::new(0),
+            next_ptr_id: NextLocalPointerId::new(),
         }
     }
 
@@ -107,13 +110,11 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     }
 
     pub fn new_pointer(&self) -> PointerId {
-        let next = self.next_ptr_id.get();
-        self.next_ptr_id.set(next + 1);
-        PointerId(next)
+        self.next_ptr_id.next()
     }
 
     pub fn num_pointers(&self) -> usize {
-        self.next_ptr_id.get() as usize
+        self.next_ptr_id.num_pointers()
     }
 
     pub fn type_of<T: TypeOf<'tcx>>(&self, x: T) -> LTy<'tcx> {
@@ -177,5 +178,78 @@ impl<'tcx> TypeOf<'tcx> for PlaceRef<'tcx> {
             }
         }
         ty
+    }
+}
+
+pub struct GlobalAssignment {
+    pub perms: GlobalPointerTable<PermissionSet>,
+    pub flags: GlobalPointerTable<FlagSet>,
+}
+
+impl GlobalAssignment {
+    pub fn new(
+        len: usize,
+        default_perms: PermissionSet,
+        default_flags: FlagSet,
+    ) -> GlobalAssignment {
+        GlobalAssignment {
+            perms: GlobalPointerTable::from_raw(vec![default_perms; len]),
+            flags: GlobalPointerTable::from_raw(vec![default_flags; len]),
+        }
+    }
+
+    pub fn and<'a>(&'a mut self, local: &'a mut LocalAssignment) -> Assignment<'a> {
+        Assignment {
+            global: self,
+            local,
+        }
+    }
+}
+
+pub struct LocalAssignment {
+    pub perms: LocalPointerTable<PermissionSet>,
+    pub flags: LocalPointerTable<FlagSet>,
+}
+
+impl LocalAssignment {
+    pub fn new(
+        len: usize,
+        default_perms: PermissionSet,
+        default_flags: FlagSet,
+    ) -> LocalAssignment {
+        LocalAssignment {
+            perms: LocalPointerTable::from_raw(vec![default_perms; len]),
+            flags: LocalPointerTable::from_raw(vec![default_flags; len]),
+        }
+    }
+}
+
+pub struct Assignment<'a> {
+    global: &'a mut GlobalAssignment,
+    local: &'a mut LocalAssignment,
+}
+
+impl Assignment<'_> {
+    pub fn perms(&self) -> PointerTable<PermissionSet> {
+        self.global.perms.and(&self.local.perms)
+    }
+
+    pub fn perms_mut(&mut self) -> PointerTableMut<PermissionSet> {
+        self.global.perms.and_mut(&mut self.local.perms)
+    }
+
+    pub fn flags(&self) -> PointerTable<FlagSet> {
+        self.global.flags.and(&self.local.flags)
+    }
+
+    pub fn flags_mut(&mut self) -> PointerTableMut<FlagSet> {
+        self.global.flags.and_mut(&mut self.local.flags)
+    }
+
+    pub fn all_mut(&mut self) -> (PointerTableMut<PermissionSet>, PointerTableMut<FlagSet>) {
+        (
+            self.global.perms.and_mut(&mut self.local.perms),
+            self.global.flags.and_mut(&mut self.local.flags),
+        )
     }
 }

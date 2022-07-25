@@ -13,7 +13,10 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 
-use crate::context::{AnalysisCtxt, FlagSet, GlobalAnalysisCtxt, LTy, PermissionSet, PointerId};
+use crate::context::{
+    AnalysisCtxt, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LTy, LocalAssignment,
+    PermissionSet, PointerId,
+};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BindingForm, Body, LocalDecl, LocalInfo};
 use rustc_middle::ty::query::{ExternProviders, Providers};
@@ -28,11 +31,13 @@ mod context;
 mod dataflow;
 mod expr_rewrite;
 mod labeled_ty;
+mod pointer_id;
 mod type_desc;
 mod util;
 
 fn inspect_mir<'tcx>(
     gacx: &mut GlobalAnalysisCtxt<'tcx>,
+    gasn: &mut GlobalAssignment,
     def: WithOptConstParam<LocalDefId>,
     mir: &Body<'tcx>,
 ) {
@@ -58,27 +63,25 @@ fn inspect_mir<'tcx>(
 
     let dataflow = self::dataflow::generate_constraints(&acx, mir);
 
-    let mut hypothesis = Vec::with_capacity(acx.num_pointers());
-    for _ in 0..acx.num_pointers() {
-        hypothesis.push(PermissionSet::UNIQUE);
-    }
-    dataflow.propagate(&mut hypothesis);
+    let mut lasn =
+        LocalAssignment::new(acx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
+    let mut asn = gasn.and(&mut lasn);
+    dataflow.propagate(&mut asn.perms_mut());
 
-    borrowck::borrowck_mir(&acx, &dataflow, &mut hypothesis, name.as_str(), mir);
+    borrowck::borrowck_mir(&acx, &dataflow, &mut asn.perms_mut(), name.as_str(), mir);
 
-    let mut flags = vec![FlagSet::empty(); acx.num_pointers()];
-    dataflow.propagate_cell(&hypothesis, &mut flags);
+    dataflow.propagate_cell(&mut asn);
 
     eprintln!("final labeling for {:?}:", name);
     let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
     let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
     for (local, decl) in mir.local_decls.iter_enumerated() {
-        let addr_of1 = hypothesis[acx.addr_of_local[local].index()];
+        let addr_of1 = asn.perms()[acx.addr_of_local[local]];
         let ty1 = lcx1.relabel(acx.local_tys[local], &mut |lty| {
             if lty.label == PointerId::NONE {
                 PermissionSet::empty()
             } else {
-                hypothesis[lty.label.index()]
+                asn.perms()[lty.label]
             }
         });
         eprintln!(
@@ -89,12 +92,12 @@ fn inspect_mir<'tcx>(
             ty1,
         );
 
-        let addr_of2 = flags[acx.addr_of_local[local].index()];
+        let addr_of2 = asn.flags()[acx.addr_of_local[local]];
         let ty2 = lcx2.relabel(acx.local_tys[local], &mut |lty| {
             if lty.label == PointerId::NONE {
                 FlagSet::empty()
             } else {
-                flags[lty.label.index()]
+                asn.flags()[lty.label]
             }
         });
         eprintln!(
@@ -109,12 +112,12 @@ fn inspect_mir<'tcx>(
     eprintln!("\ntype assignment for {:?}:", name);
     for (local, decl) in mir.local_decls.iter_enumerated() {
         // TODO: apply `Cell` if `addr_of_local` indicates it's needed
-        let ty = type_desc::convert_type(&acx, acx.local_tys[local], &hypothesis, &flags);
+        let ty = type_desc::convert_type(&acx, acx.local_tys[local], &asn);
         eprintln!("{:?} ({}): {:?}", local, describe_local(tcx, decl), ty,);
     }
 
     eprintln!();
-    let rewrites = expr_rewrite::gen_expr_rewrites(&acx, &hypothesis, &flags, mir);
+    let rewrites = expr_rewrite::gen_expr_rewrites(&acx, &asn, mir);
     for rw in &rewrites {
         eprintln!(
             "at {:?} ({}, {:?}):",
@@ -180,11 +183,12 @@ impl rustc_driver::Callbacks for AnalysisCallbacks {
     ) -> rustc_driver::Compilation {
         queries.global_ctxt().unwrap().peek_mut().enter(|tcx| {
             let mut gacx = GlobalAnalysisCtxt::new(tcx);
+            let mut gasn = GlobalAssignment::new(0, PermissionSet::UNIQUE, FlagSet::empty());
             for ldid in tcx.hir().body_owners() {
                 eprintln!("\n\n ===== analyze {:?} =====", ldid);
                 let ldid_const = WithOptConstParam::unknown(ldid);
                 let mir = tcx.mir_built(ldid_const);
-                inspect_mir(&mut gacx, ldid_const, &mir.borrow());
+                inspect_mir(&mut gacx, &mut gasn, ldid_const, &mir.borrow());
             }
         });
         rustc_driver::Compilation::Continue

@@ -1,6 +1,7 @@
 use std::mem;
 
-use crate::context::{AnalysisCtxt, FlagSet, PermissionSet, PointerId};
+use crate::context::{AnalysisCtxt, Assignment, FlagSet, PermissionSet, PointerId};
+use crate::pointer_id::{OwnedPointerTable, PointerTable, PointerTableMut};
 use rustc_middle::mir::Body;
 
 mod type_check;
@@ -35,15 +36,15 @@ impl DataflowConstraints {
     }
 
     /// Update the pointer permissions in `hypothesis` to satisfy these constraints.
-    pub fn propagate(&self, hypothesis: &mut [PermissionSet]) -> bool {
+    pub fn propagate(&self, hypothesis: &mut PointerTableMut<PermissionSet>) -> bool {
         eprintln!("=== propagating ===");
         eprintln!("constraints:");
         for c in &self.constraints {
             eprintln!("  {:?}", c);
         }
         eprintln!("hypothesis:");
-        for (i, p) in hypothesis.iter().enumerate() {
-            eprintln!("  {}: {:?}", i, p);
+        for (id, p) in hypothesis.iter() {
+            eprintln!("  {}: {:?}", id, p);
         }
 
         struct PropagatePerms;
@@ -106,12 +107,16 @@ impl DataflowConstraints {
         }
     }
 
-    fn propagate_inner<T, R>(&self, xs: &mut [T], rules: &mut R) -> Result<bool, String>
+    fn propagate_inner<T, R>(
+        &self,
+        xs: &mut PointerTableMut<T>,
+        rules: &mut R,
+    ) -> Result<bool, String>
     where
         T: PartialEq,
         R: PropagateRules<T>,
     {
-        let mut xs = TrackedSlice::new(xs);
+        let mut xs = TrackedPointerTable::new(xs.borrow_mut());
 
         let mut changed = false;
         let mut i = 0;
@@ -124,35 +129,35 @@ impl DataflowConstraints {
             for c in &self.constraints {
                 match *c {
                     Constraint::Subset(a, b) => {
-                        if !xs.dirty(a.index()) && !xs.dirty(b.index()) {
+                        if !xs.dirty(a) && !xs.dirty(b) {
                             continue;
                         }
 
-                        let old_a = xs.get(a.index());
-                        let old_b = xs.get(b.index());
+                        let old_a = xs.get(a);
+                        let old_b = xs.get(b);
                         let (new_a, new_b) = rules.subset(a, old_a, b, old_b);
-                        xs.set(a.index(), new_a);
-                        xs.set(b.index(), new_b);
+                        xs.set(a, new_a);
+                        xs.set(b, new_b);
                     }
 
                     Constraint::AllPerms(ptr, perms) => {
-                        if !xs.dirty(ptr.index()) {
+                        if !xs.dirty(ptr) {
                             continue;
                         }
 
-                        let old = xs.get(ptr.index());
+                        let old = xs.get(ptr);
                         let new = rules.all_perms(ptr, perms, old);
-                        xs.set(ptr.index(), new);
+                        xs.set(ptr, new);
                     }
 
                     Constraint::NoPerms(ptr, perms) => {
-                        if !xs.dirty(ptr.index()) {
+                        if !xs.dirty(ptr) {
                             continue;
                         }
 
-                        let old = xs.get(ptr.index());
+                        let old = xs.get(ptr);
                         let new = rules.no_perms(ptr, perms, old);
-                        xs.set(ptr.index(), new);
+                        xs.set(ptr, new);
                     }
                 }
             }
@@ -168,16 +173,19 @@ impl DataflowConstraints {
     }
 
     /// Update the pointer permissions in `hypothesis` to satisfy these constraints.
-    pub fn propagate_cell(&self, perms: &[PermissionSet], flags: &mut [FlagSet]) {
+    pub fn propagate_cell(&self, asn: &mut Assignment) {
+        let (perms, mut flags) = asn.all_mut();
+        let perms = perms.borrow();
+
         // All pointers that are WRITE and not UNIQUE must have a type like `&Cell<_>`.
-        for (p, f) in perms.iter().zip(flags.iter_mut()) {
+        for ((_, p), (_, f)) in perms.iter().zip(flags.iter_mut()) {
             if p.contains(PermissionSet::WRITE) && !p.contains(PermissionSet::UNIQUE) {
                 f.insert(FlagSet::CELL);
             }
         }
 
         struct Rules<'a> {
-            perms: &'a [PermissionSet],
+            perms: PointerTable<'a, PermissionSet>,
         }
         impl PropagateRules<FlagSet> for Rules<'_> {
             fn subset(
@@ -199,7 +207,7 @@ impl DataflowConstraints {
                     a_flags.insert(FlagSet::CELL);
                 }
 
-                let b_perms = self.perms[b_ptr.index()];
+                let b_perms = self.perms[b_ptr];
                 if b_perms.contains(PermissionSet::WRITE | PermissionSet::UNIQUE) {
                     b_flags.remove(FlagSet::CELL);
                 }
@@ -226,7 +234,7 @@ impl DataflowConstraints {
             }
         }
 
-        match self.propagate_inner(flags, &mut Rules { perms }) {
+        match self.propagate_inner(&mut flags, &mut Rules { perms }) {
             Ok(_changed) => {}
             Err(msg) => {
                 panic!("{}", msg);
@@ -235,20 +243,23 @@ impl DataflowConstraints {
     }
 }
 
-struct TrackedSlice<'a, T> {
-    xs: &'a mut [T],
-    dirty: Vec<bool>,
-    new_dirty: Vec<bool>,
+struct TrackedPointerTable<'a, T> {
+    xs: PointerTableMut<'a, T>,
+    dirty: OwnedPointerTable<bool>,
+    new_dirty: OwnedPointerTable<bool>,
     any_new_dirty: bool,
 }
 
-impl<'a, T: PartialEq> TrackedSlice<'a, T> {
-    pub fn new(xs: &'a mut [T]) -> TrackedSlice<'a, T> {
-        let n = xs.len();
-        TrackedSlice {
+impl<'a, T: PartialEq> TrackedPointerTable<'a, T> {
+    pub fn new(xs: PointerTableMut<'a, T>) -> TrackedPointerTable<'a, T> {
+        let mut dirty = OwnedPointerTable::with_len_of(&xs.borrow());
+        let mut new_dirty = OwnedPointerTable::with_len_of(&xs.borrow());
+        dirty.fill(true);
+        new_dirty.fill(false);
+        TrackedPointerTable {
             xs,
-            dirty: vec![true; n],
-            new_dirty: vec![false; n],
+            dirty,
+            new_dirty,
             any_new_dirty: false,
         }
     }
@@ -257,22 +268,22 @@ impl<'a, T: PartialEq> TrackedSlice<'a, T> {
         self.xs.len()
     }
 
-    pub fn get(&self, i: usize) -> &T {
-        &self.xs[i]
+    pub fn get(&self, id: PointerId) -> &T {
+        &self.xs[id]
     }
 
-    pub fn dirty(&self, i: usize) -> bool {
-        self.dirty[i]
+    pub fn dirty(&self, id: PointerId) -> bool {
+        self.dirty[id]
     }
 
     pub fn any_new_dirty(&self) -> bool {
         self.any_new_dirty
     }
 
-    pub fn set(&mut self, i: usize, x: T) {
-        if x != self.xs[i] {
-            self.xs[i] = x;
-            self.new_dirty[i] = true;
+    pub fn set(&mut self, id: PointerId, x: T) {
+        if x != self.xs[id] {
+            self.xs[id] = x;
+            self.new_dirty[id] = true;
             self.any_new_dirty = true;
         }
     }
