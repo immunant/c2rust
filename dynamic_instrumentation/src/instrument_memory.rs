@@ -519,14 +519,11 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                 if let PlaceElem::Field(field, _) = elem {
                     let proj_dest = || {
                         // Only the last field projection gets a destination
-                        match self.assignment {
-                            Some((dest, _))
-                                if base.projection.len() == place.projection.len() - 1 =>
-                            {
-                                Some(dest)
-                            }
-                            _ => None,
-                        }
+                        self.assignment
+                            .as_ref()
+                            .map(|(dest, _)| dest)
+                            .copied()
+                            .filter(|_| base.projection.len() == place.projection.len() - 1)
                     };
                     self.loc(location, field_fn)
                         .arg_var(place.local)
