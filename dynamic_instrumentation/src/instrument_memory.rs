@@ -366,9 +366,15 @@ impl Source for Rvalue<'_> {
     }
 }
 
+impl Source for Local {
+    fn source(&self) -> Option<MirPlace> {
+        Place::from(*self).source()
+    }
+}
+
 impl Source for u32 {
     fn source(&self) -> Option<MirPlace> {
-        Place::from(Local::from_u32(*self)).source()
+        Local::from_u32(*self).source()
     }
 }
 
