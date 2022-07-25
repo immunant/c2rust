@@ -208,17 +208,25 @@ struct InstrumentationBuilder<'a, 'tcx: 'a, S: 'tcx> {
 }
 
 impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
-    fn new(
-        tcx: TyCtxt<'tcx>,
-        body: &'a Body<'tcx>,
-        runtime_crate_did: DefId,
-    ) -> InstrumentationAdder<'a, 'tcx> {
-        InstrumentationAdder {
-            tcx,
-            body,
-            runtime_crate_did,
-            instrumentation_points: vec![],
-            assignment: None,
+    fn loc(
+        &self,
+        loc: Location,
+        func: DefId,
+    ) -> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
+        InstrumentationBuilder {
+            tcx: self.tcx,
+            body: self.body,
+            state: ReadyToInstrument {
+                point: InstrumentationPoint {
+                    id: 0,
+                    loc,
+                    func,
+                    args: vec![],
+                    is_cleanup: false,
+                    after_call: false,
+                    metadata: EventMetadata::default(),
+                },
+            },
         }
     }
 
@@ -402,30 +410,6 @@ impl<'tcx> IntoOperand<'tcx> for Local {
 impl<'tcx> IntoOperand<'tcx> for Operand<'tcx> {
     fn op(&self, _tcx: TyCtxt<'tcx>) -> Self {
         self.clone()
-    }
-}
-
-impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
-    fn loc(
-        &self,
-        loc: Location,
-        func: DefId,
-    ) -> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
-        InstrumentationBuilder {
-            tcx: self.tcx,
-            body: self.body,
-            state: ReadyToInstrument {
-                point: InstrumentationPoint {
-                    id: 0,
-                    loc,
-                    func,
-                    args: vec![],
-                    is_cleanup: false,
-                    after_call: false,
-                    metadata: EventMetadata::default(),
-                },
-            },
-        }
     }
 }
 
@@ -869,7 +853,13 @@ fn instrument_body<'a, 'tcx>(
         index: CRATE_DEF_INDEX,
     };
 
-    let mut collect_points = InstrumentationAdder::new(tcx, body, runtime_crate_did);
+    let mut collect_points = InstrumentationAdder {
+        tcx,
+        body,
+        runtime_crate_did,
+        instrumentation_points: vec![],
+        assignment: None,
+    };
     collect_points.visit_body(body);
 
     apply_instrumentation(
