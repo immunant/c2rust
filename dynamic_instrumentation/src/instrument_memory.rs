@@ -348,7 +348,7 @@ impl Source for Place<'_> {
 
 impl Source for Operand<'_> {
     fn source(&self) -> Option<MirPlace> {
-        self.place().as_ref().map(to_mir_place)
+        self.place().as_ref().and_then(Place::source)
     }
 }
 
