@@ -23,7 +23,7 @@ pub type LTy<'tcx> = LabeledTy<'tcx, Label>;
 pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, Label>;
 
 pub fn borrowck_mir<'tcx>(
-    acx: &AnalysisCtxt<'tcx>,
+    acx: &AnalysisCtxt<'_, 'tcx>,
     dataflow: &DataflowConstraints,
     hypothesis: &mut [PermissionSet],
     name: &str,
@@ -102,12 +102,12 @@ pub fn borrowck_mir<'tcx>(
 }
 
 fn run_polonius<'tcx>(
-    acx: &AnalysisCtxt<'tcx>,
+    acx: &AnalysisCtxt<'_, 'tcx>,
     hypothesis: &[PermissionSet],
     name: &str,
     mir: &Body<'tcx>,
 ) -> (AllFacts, AtomMaps<'tcx>, Output) {
-    let tcx = acx.tcx;
+    let tcx = acx.tcx();
     let mut facts = AllFacts::default();
     let mut maps = AtomMaps::default();
 
@@ -202,7 +202,7 @@ fn run_polonius<'tcx>(
     );
 
     // Populate `loan_invalidated_at`
-    def_use::visit_loan_invalidated_at(acx.tcx, &mut facts, &mut maps, &loans, mir);
+    def_use::visit_loan_invalidated_at(acx.tcx(), &mut facts, &mut maps, &loans, mir);
 
     // Populate `var_defined/used/dropped_at` and `path_assigned/accessed_at_base`.
     def_use::visit(&mut facts, &mut maps, mir);

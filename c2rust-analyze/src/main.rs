@@ -13,7 +13,7 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 
-use crate::context::{AnalysisCtxt, FlagSet, LTy, PermissionSet, PointerId};
+use crate::context::{AnalysisCtxt, FlagSet, GlobalAnalysisCtxt, LTy, PermissionSet, PointerId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BindingForm, Body, LocalDecl, LocalInfo};
 use rustc_middle::ty::query::{ExternProviders, Providers};
@@ -31,11 +31,16 @@ mod labeled_ty;
 mod type_desc;
 mod util;
 
-fn inspect_mir<'tcx>(tcx: TyCtxt<'tcx>, def: WithOptConstParam<LocalDefId>, mir: &Body<'tcx>) {
+fn inspect_mir<'tcx>(
+    gacx: &mut GlobalAnalysisCtxt<'tcx>,
+    def: WithOptConstParam<LocalDefId>,
+    mir: &Body<'tcx>,
+) {
+    let tcx = gacx.tcx;
     let name = tcx.item_name(def.to_global().did);
     eprintln!("\nprocessing function {:?}", name);
 
-    let mut acx = AnalysisCtxt::new(tcx);
+    let mut acx = gacx.enter_function();
 
     // Label all pointers in local variables.
     // TODO: also label pointers in Rvalue::Cast (and ShallowInitBox?)
@@ -65,8 +70,8 @@ fn inspect_mir<'tcx>(tcx: TyCtxt<'tcx>, def: WithOptConstParam<LocalDefId>, mir:
     dataflow.propagate_cell(&hypothesis, &mut flags);
 
     eprintln!("final labeling for {:?}:", name);
-    let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(acx.tcx);
-    let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(acx.tcx);
+    let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
+    let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
     for (local, decl) in mir.local_decls.iter_enumerated() {
         let addr_of1 = hypothesis[acx.addr_of_local[local].index()];
         let ty1 = lcx1.relabel(acx.local_tys[local], &mut |lty| {
@@ -79,7 +84,7 @@ fn inspect_mir<'tcx>(tcx: TyCtxt<'tcx>, def: WithOptConstParam<LocalDefId>, mir:
         eprintln!(
             "{:?} ({}): addr_of = {:?}, type = {:?}",
             local,
-            describe_local(acx.tcx, decl),
+            describe_local(tcx, decl),
             addr_of1,
             ty1,
         );
@@ -95,7 +100,7 @@ fn inspect_mir<'tcx>(tcx: TyCtxt<'tcx>, def: WithOptConstParam<LocalDefId>, mir:
         eprintln!(
             "{:?} ({}): addr_of flags = {:?}, type flags = {:?}",
             local,
-            describe_local(acx.tcx, decl),
+            describe_local(tcx, decl),
             addr_of2,
             ty2,
         );
@@ -105,7 +110,7 @@ fn inspect_mir<'tcx>(tcx: TyCtxt<'tcx>, def: WithOptConstParam<LocalDefId>, mir:
     for (local, decl) in mir.local_decls.iter_enumerated() {
         // TODO: apply `Cell` if `addr_of_local` indicates it's needed
         let ty = type_desc::convert_type(&acx, acx.local_tys[local], &hypothesis, &flags);
-        eprintln!("{:?} ({}): {:?}", local, describe_local(acx.tcx, decl), ty,);
+        eprintln!("{:?} ({}): {:?}", local, describe_local(tcx, decl), ty,);
     }
 
     eprintln!();
@@ -123,8 +128,8 @@ fn inspect_mir<'tcx>(tcx: TyCtxt<'tcx>, def: WithOptConstParam<LocalDefId>, mir:
     }
 }
 
-fn assign_pointer_ids<'tcx>(acx: &AnalysisCtxt<'tcx>, ty: Ty<'tcx>) -> LTy<'tcx> {
-    acx.lcx.label(ty, &mut |ty| match ty.kind() {
+fn assign_pointer_ids<'tcx>(acx: &AnalysisCtxt<'_, 'tcx>, ty: Ty<'tcx>) -> LTy<'tcx> {
+    acx.lcx().label(ty, &mut |ty| match ty.kind() {
         TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => acx.new_pointer(),
         _ => PointerId::NONE,
     })
@@ -174,11 +179,12 @@ impl rustc_driver::Callbacks for AnalysisCallbacks {
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> rustc_driver::Compilation {
         queries.global_ctxt().unwrap().peek_mut().enter(|tcx| {
+            let mut gacx = GlobalAnalysisCtxt::new(tcx);
             for ldid in tcx.hir().body_owners() {
                 eprintln!("\n\n ===== analyze {:?} =====", ldid);
                 let ldid_const = WithOptConstParam::unknown(ldid);
                 let mir = tcx.mir_built(ldid_const);
-                inspect_mir(tcx, ldid_const, &mir.borrow());
+                inspect_mir(&mut gacx, ldid_const, &mir.borrow());
             }
         });
         rustc_driver::Compilation::Continue

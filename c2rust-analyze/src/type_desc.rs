@@ -92,13 +92,13 @@ fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Ty<'tcx> {
 }
 
 pub fn convert_type<'tcx>(
-    acx: &AnalysisCtxt<'tcx>,
+    acx: &AnalysisCtxt<'_, 'tcx>,
     lty: LTy<'tcx>,
     perms: &[PermissionSet],
     flags: &[FlagSet],
 ) -> Ty<'tcx> {
-    let tcx = acx.tcx;
-    acx.lcx.rewrite_unlabeled(lty, &mut |ty, args, label| {
+    let tcx = acx.tcx();
+    acx.lcx().rewrite_unlabeled(lty, &mut |ty, args, label| {
         if label == PointerId::NONE {
             return ty;
         }

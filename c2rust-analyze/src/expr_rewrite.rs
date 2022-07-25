@@ -47,7 +47,7 @@ pub struct ExprRewrite {
 }
 
 struct ExprRewriteVisitor<'a, 'tcx> {
-    acx: &'a AnalysisCtxt<'tcx>,
+    acx: &'a AnalysisCtxt<'a, 'tcx>,
     perms: &'a [PermissionSet],
     flags: &'a [FlagSet],
     rewrites: &'a mut Vec<ExprRewrite>,
@@ -57,7 +57,7 @@ struct ExprRewriteVisitor<'a, 'tcx> {
 
 impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     pub fn new(
-        acx: &'a AnalysisCtxt<'tcx>,
+        acx: &'a AnalysisCtxt<'a, 'tcx>,
         perms: &'a [PermissionSet],
         flags: &'a [FlagSet],
         rewrites: &'a mut Vec<ExprRewrite>,
@@ -141,7 +141,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     }
 
     fn visit_terminator(&mut self, term: &Terminator<'tcx>, loc: Location) {
-        let tcx = self.acx.tcx;
+        let tcx = self.acx.tcx();
         self.loc = ExprLoc {
             stmt: loc,
             span: term.source_info.span,
@@ -364,7 +364,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 }
 
 pub fn gen_expr_rewrites<'tcx>(
-    acx: &AnalysisCtxt<'tcx>,
+    acx: &AnalysisCtxt<'_, 'tcx>,
     perms: &[PermissionSet],
     flags: &[FlagSet],
     mir: &Body<'tcx>,

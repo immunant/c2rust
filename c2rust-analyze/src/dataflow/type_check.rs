@@ -11,7 +11,7 @@ use rustc_middle::ty::TyKind;
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
 /// constraints as a side effect.
 struct TypeChecker<'tcx, 'a> {
-    acx: &'a AnalysisCtxt<'tcx>,
+    acx: &'a AnalysisCtxt<'a, 'tcx>,
     mir: &'a Body<'tcx>,
     constraints: DataflowConstraints,
 }
@@ -123,7 +123,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Operand::Constant(ref c) => {
                 let ty = c.ty();
                 // TODO
-                self.acx.lcx.label(ty, &mut |_| PointerId::NONE)
+                self.acx.lcx().label(ty, &mut |_| PointerId::NONE)
             }
         }
     }
@@ -158,7 +158,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_terminator(&mut self, term: &Terminator<'tcx>) {
         eprintln!("visit_terminator({:?})", term.kind);
-        let tcx = self.acx.tcx;
+        let tcx = self.acx.tcx();
         // TODO(spernsteiner): other `TerminatorKind`s will be handled in the future
         #[allow(clippy::single_match)]
         match term.kind {
@@ -193,7 +193,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 }
 
-pub fn visit<'tcx>(acx: &AnalysisCtxt<'tcx>, mir: &Body<'tcx>) -> DataflowConstraints {
+pub fn visit<'tcx>(acx: &AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) -> DataflowConstraints {
     let mut tc = TypeChecker {
         acx,
         mir,

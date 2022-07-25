@@ -291,7 +291,7 @@ trait PropagateRules<T> {
 }
 
 pub fn generate_constraints<'tcx>(
-    acx: &AnalysisCtxt<'tcx>,
+    acx: &AnalysisCtxt<'_, 'tcx>,
     mir: &Body<'tcx>,
 ) -> DataflowConstraints {
     self::type_check::visit(acx, mir)
