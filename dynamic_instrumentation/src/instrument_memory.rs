@@ -7,7 +7,7 @@ use c2rust_analysis_rt::HOOK_FUNCTIONS;
 use indexmap::IndexSet;
 use log::debug;
 use rustc_data_structures::fingerprint::Fingerprint;
-use rustc_index::vec::IndexVec;
+use rustc_index::vec::{Idx, IndexVec};
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Constant, Local, LocalDecl, Location,
@@ -495,7 +495,7 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
     /// the call will be inserted at the end of the block.
     ///
     /// [`func`] must not unwind, as it will have no cleanup destination.
-    /// 
+    ///
     /// [`func`]: Self::func
     /// [`statement_idx`]: Location::statement_index
     fn add(&mut self, adder: &mut InstrumentationAdder<'a, 'tcx>) {
