@@ -355,8 +355,7 @@ impl Source for Operand<'_> {
 impl Source for Vec<Operand<'_>> {
     fn source(&self) -> Option<MirPlace> {
         // TODO: have hook-specific sources
-        self.first()
-            .and_then(|op| op.place().as_ref().map(to_mir_place))
+        self.first().and_then(Operand::source)
     }
 }
 
