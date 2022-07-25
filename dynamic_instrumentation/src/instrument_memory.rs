@@ -346,7 +346,7 @@ impl Source for Place<'_> {
     }
 }
 
-impl<'tcx> Source for Operand<'tcx> {
+impl Source for Operand<'_> {
     fn source(&self) -> Option<MirPlace> {
         self.place().as_ref().map(to_mir_place)
     }
