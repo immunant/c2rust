@@ -3,7 +3,6 @@ use crate::context::{AnalysisCtxt, PermissionSet};
 use crate::dataflow::DataflowConstraints;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::util::{describe_rvalue, RvalueDesc};
-
 use rustc_middle::mir::{Body, BorrowKind, Local, LocalKind, Place, StatementKind, START_BLOCK};
 use rustc_middle::ty::{List, TyKind};
 use std::collections::HashMap;

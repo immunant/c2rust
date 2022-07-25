@@ -168,25 +168,21 @@ fn describe_span(tcx: TyCtxt, span: Span) -> String {
 struct AnalysisCallbacks;
 
 impl rustc_driver::Callbacks for AnalysisCallbacks {
-    fn config(&mut self, config: &mut rustc_interface::Config) {
-        config.override_queries = Some(override_queries);
+    fn after_expansion<'tcx>(
+        &mut self,
+        compiler: &rustc_interface::interface::Compiler,
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) -> rustc_driver::Compilation {
+        queries.global_ctxt().unwrap().peek_mut().enter(|tcx| {
+            for ldid in tcx.hir().body_owners() {
+                eprintln!("\n\n ===== analyze {:?} =====", ldid);
+                let ldid_const = WithOptConstParam::unknown(ldid);
+                let mir = tcx.mir_built(ldid_const);
+                inspect_mir(tcx, ldid_const, &mir.borrow());
+            }
+        });
+        rustc_driver::Compilation::Continue
     }
-}
-
-fn override_queries(
-    _sess: &Session,
-    providers: &mut Providers,
-    _extern_providers: &mut ExternProviders,
-) {
-    providers.mir_built = |tcx, def: WithOptConstParam<LocalDefId>| {
-        let mut providers = Providers::default();
-        rustc_mir_build::provide(&mut providers);
-        let steal_mir = (providers.mir_built)(tcx, def);
-
-        inspect_mir(tcx, def, &steal_mir.borrow());
-
-        steal_mir
-    };
 }
 
 fn main() -> rustc_interface::interface::Result<()> {
