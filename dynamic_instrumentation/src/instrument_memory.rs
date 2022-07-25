@@ -771,7 +771,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                                     .add(self);
                             }
                         }
-                        callee_arg = Local::from(callee_arg.local.as_u32() + 1).into();
+                        callee_arg.local.increment_by(1);
                     }
                 }
                 if let &ty::FnDef(def_id, _) = func_kind {
