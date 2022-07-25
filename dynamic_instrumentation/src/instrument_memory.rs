@@ -362,7 +362,7 @@ impl Source for Vec<Operand<'_>> {
 
 impl Source for Rvalue<'_> {
     fn source(&self) -> Option<MirPlace> {
-        rv_place(self).as_ref().map(to_mir_place)
+        rv_place(self).as_ref().and_then(Place::source)
     }
 }
 
