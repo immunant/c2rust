@@ -360,7 +360,7 @@ impl Source for Vec<Operand<'_>> {
     }
 }
 
-impl<'tcx> Source for Rvalue<'tcx> {
+impl Source for Rvalue<'_> {
     fn source(&self) -> Option<MirPlace> {
         rv_place(self).as_ref().map(to_mir_place)
     }
