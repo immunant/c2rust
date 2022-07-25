@@ -743,7 +743,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                 destination,
                 ..
             } => {
-                let mut callee_arg: Place = Local::from_u32(1).into();
+                let mut callee_arg: Place = Local::new(1).into();
                 let is_hook = {
                     if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
                         let fn_name = self.tcx.item_name(*def_id);
