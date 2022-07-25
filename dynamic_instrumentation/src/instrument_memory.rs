@@ -481,13 +481,17 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
         self
     }
 
-    /// Queues insertion of a call to `func`
+    /// Queue insertion of a call to [`func`].
     ///
-    /// The call will be inserted before the statement at index `statement_idx`
-    /// in `block`. If `statement_idx` is the number of statements in the block,
+    /// The call will be inserted before the statement
+    /// at index [`statement_idx`] in `block`.
+    /// If [`statement_idx`] is the number of statements in the block,
     /// the call will be inserted at the end of the block.
     ///
-    /// `func` must not unwind, as it will have no cleanup destination.
+    /// [`func`] must not unwind, as it will have no cleanup destination.
+    /// 
+    /// [`func`]: Self::func
+    /// [`statement_idx`]: Location::statement_index
     fn add(&mut self, adder: &mut InstrumentationAdder<'a, 'tcx>) {
         self.state.point.id = adder.instrumentation_points.len();
         adder.instrumentation_points.push(self.state.point.clone());
