@@ -421,14 +421,14 @@ impl<'tcx> IntoOperand<'tcx> for Operand<'tcx> {
 }
 
 impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
-    fn arg_addr_of(mut self, a: impl IntoOperand<'tcx>) -> Self {
-        let op = a.op(self.tcx);
+    fn arg_addr_of(mut self, arg: impl IntoOperand<'tcx>) -> Self {
+        let op = arg.op(self.tcx);
         self.state.point.args.push(InstrumentationArg::AddrOf(op));
         self
     }
 
-    fn arg_var(mut self, a: impl IntoOperand<'tcx>) -> Self {
-        let op = a.op(self.tcx);
+    fn arg_var(mut self, arg: impl IntoOperand<'tcx>) -> Self {
+        let op = arg.op(self.tcx);
         let op_ty = op.ty(self.body, self.tcx);
         self.state
             .point
