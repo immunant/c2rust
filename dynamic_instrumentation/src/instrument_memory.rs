@@ -437,7 +437,7 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
         self
     }
 
-    fn args(mut self, args: impl IntoIterator<Item = impl IntoOperand<'tcx>>) -> Self {
+    fn arg_vars(mut self, args: impl IntoIterator<Item = impl IntoOperand<'tcx>>) -> Self {
         for arg in args {
             self = self.arg_var(arg);
         }
@@ -747,7 +747,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                             .dest(&dest_place)
                             .after_call()
                             .transfer(TransferKind::Ret(self.func_hash()))
-                            .args(args.iter().cloned())
+                            .arg_vars(args.iter().cloned())
                             .add_to(self);
                     } else if is_region_or_unsafe_ptr(
                         dest_place.ty(&self.body.local_decls, self.tcx).ty,
