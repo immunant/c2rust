@@ -287,7 +287,8 @@ fn strip_all_deref<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
     }
 }
 
-/// Used to strip initital deref from projection sequences
+/// Strip the initital [`Deref`](ProjectionElem::Deref)
+/// from a [`projection`](PlaceRef::projection) sequence.
 fn remove_outer_deref<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
     // Remove outer deref if present
     if let PlaceRef {
