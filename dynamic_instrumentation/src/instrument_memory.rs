@@ -474,8 +474,8 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
         self
     }
 
-    fn source<T: Source>(mut self, s: &T) -> Self {
-        self.state.point.metadata.source = s.source();
+    fn source<S: Source>(mut self, source: &S) -> Self {
+        self.state.point.metadata.source = source.source();
         self
     }
 
@@ -494,8 +494,8 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
         self
     }
 
-    fn transfer(mut self, t: TransferKind) -> Self {
-        self.state.point.metadata.transfer_kind = t;
+    fn transfer(mut self, transfer_kind: TransferKind) -> Self {
+        self.state.point.metadata.transfer_kind = transfer_kind;
         self
     }
 
