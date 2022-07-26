@@ -245,6 +245,11 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
         find_instrumentation_def(self.tcx, self.runtime_crate_did, name)
     }
 
+    fn find_hook(&self, name: &str) -> DefId {
+        self.find_instrumentation_def(Symbol::intern(name))
+            .unwrap_or_else(|| panic!("could not find `{name}` hook"))
+    }
+
     fn func_hash(&self) -> mir_loc::DefPathHash {
         self.tcx.def_path_hash(self.body.source.def_id()).convert()
     }
@@ -282,56 +287,60 @@ fn strip_all_deref<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
     }
 }
 
-/// Used to strip initital deref from projection sequences
+/// Strip the initital [`Deref`](ProjectionElem::Deref)
+/// from a [`projection`](PlaceRef::projection) sequence.
 fn remove_outer_deref<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
     // Remove outer deref if present
-    if let PlaceRef {
-        local,
-        projection: &[ref base @ .., ProjectionElem::Deref],
-    } = p.as_ref()
-    {
-        return Place {
+    match p.as_ref() {
+        PlaceRef {
+            local,
+            projection: &[ref base @ .., ProjectionElem::Deref],
+        } => Place {
             local,
             projection: tcx.intern_place_elems(base),
-        };
-    }
-
-    p
-}
-
-fn to_mir_place(place: &Place) -> MirPlace {
-    MirPlace {
-        local: place.local.as_u32().into(),
-        projection: place
-            .projection
-            .iter()
-            .map(|p| match p {
-                ProjectionElem::Deref => MirProjection::Deref,
-                ProjectionElem::Field(field_id, _) => MirProjection::Field(field_id.into()),
-                ProjectionElem::Index(local) => MirProjection::Index(local.into()),
-                _ => MirProjection::Unsupported,
-            })
-            .collect(),
+        },
+        _ => p,
     }
 }
 
-// gets the one and only input Place, if applicable
+impl Convert<MirProjection> for PlaceElem<'_> {
+    fn convert(self) -> MirProjection {
+        match self {
+            Self::Deref => MirProjection::Deref,
+            Self::Field(field_id, _) => MirProjection::Field(field_id.into()),
+            Self::Index(local) => MirProjection::Index(local.into()),
+            _ => MirProjection::Unsupported,
+        }
+    }
+}
+
+impl Convert<MirPlace> for Place<'_> {
+    fn convert(self) -> MirPlace {
+        MirPlace {
+            local: self.local.as_u32().into(),
+            projection: self.projection.iter().map(PlaceElem::convert).collect(),
+        }
+    }
+}
+
+/// Get the one and only input [`Place`], if applicable.
 fn rv_place<'tcx>(rv: &'tcx Rvalue) -> Option<Place<'tcx>> {
+    use Rvalue::*;
     match rv {
-        Rvalue::Use(op) => op.place(),
-        Rvalue::Repeat(op, _) => op.place(),
-        Rvalue::Ref(_, _, p) => Some(*p),
+        Use(op) => op.place(),
+        Repeat(op, _) => op.place(),
+        Ref(_, _, p) => Some(*p),
         // ThreadLocalRef
-        Rvalue::AddressOf(_, p) => Some(*p),
-        Rvalue::Len(p) => Some(*p),
-        Rvalue::Cast(_, op, _) => op.place(),
+        AddressOf(_, p) => Some(*p),
+        Len(p) => Some(*p),
+        Cast(_, op, _) => op.place(),
         // BinaryOp
         // CheckedBinaryOp
         // NullaryOp
-        Rvalue::UnaryOp(_, op) => op.place(),
-        Rvalue::Discriminant(p) => Some(*p),
+        UnaryOp(_, op) => op.place(),
+        Discriminant(p) => Some(*p),
         // Aggregate
-        Rvalue::ShallowInitBox(op, _) => op.place(),
+        ShallowInitBox(op, _) => op.place(),
         _ => None,
     }
 }
@@ -342,7 +351,7 @@ trait Source {
 
 impl Source for Place<'_> {
     fn source(&self) -> Option<MirPlace> {
-        Some(to_mir_place(self))
+        Some(self.convert())
     }
 }
 
@@ -432,9 +441,9 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
         self
     }
 
-    fn args(mut self, args: &Vec<Operand<'tcx>>) -> Self {
-        for a in args {
-            self = self.arg_var(a.clone());
+    fn args(mut self, args: impl IntoIterator<Item = impl IntoOperand<'tcx>>) -> Self {
+        for arg in args {
+            self = self.arg_var(arg);
         }
         self
     }
@@ -450,7 +459,7 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
     }
 
     fn dest(mut self, p: &Place) -> Self {
-        self.state.point.metadata.destination = Some(to_mir_place(p));
+        self.state.point.metadata.destination = Some(p.convert());
         self
     }
 
@@ -459,7 +468,7 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
         F: Fn() -> Option<Place<'tcx>>,
     {
         if let Some(p) = f() {
-            self.state.point.metadata.destination = Some(to_mir_place(&p));
+            self.state.point.metadata.destination = Some(p.convert());
         }
         self
     }
@@ -490,9 +499,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         self.super_place(place, context, location);
 
-        let field_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_field"))
-            .expect("Could not find pointer field hook");
+        let field_fn = self.find_hook("ptr_field");
 
         let base_ty = self.body.local_decls[place.local].ty;
 
@@ -520,30 +527,14 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
     }
 
     fn visit_assign(&mut self, dest: &Place<'tcx>, value: &Rvalue<'tcx>, mut location: Location) {
-        let copy_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_copy"))
-            .expect("Could not find pointer copy hook");
-        let addr_local_fn = self
-            .find_instrumentation_def(Symbol::intern("addr_of_local"))
-            .expect("Could not find addr_of_local hook");
-        let ptr_contrive_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_contrive"))
-            .expect("Could not find addr_of_local hook");
-        let ptr_to_int_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_to_int"))
-            .expect("Could not find addr_of_local hook");
-        let load_value_fn = self
-            .find_instrumentation_def(Symbol::intern("load_value"))
-            .expect("Could not find pointer load hook");
-        let store_value_fn = self
-            .find_instrumentation_def(Symbol::intern("store_value"))
-            .expect("Could not find pointer load hook");
-        let store_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_store"))
-            .expect("Could not find pointer store hook");
-        let load_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_load"))
-            .expect("Could not find pointer load hook");
+        let copy_fn = self.find_hook("ptr_copy");
+        let addr_local_fn = self.find_hook("addr_of_local");
+        let ptr_contrive_fn = self.find_hook("ptr_contrive");
+        let ptr_to_int_fn = self.find_hook("ptr_to_int");
+        let load_value_fn = self.find_hook("load_value");
+        let store_value_fn = self.find_hook("store_value");
+        let store_fn = self.find_hook("ptr_store");
+        let load_fn = self.find_hook("ptr_load");
 
         let dest = *dest;
         self.assignment = Some((dest, value.clone()));
@@ -700,13 +691,8 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
     fn visit_terminator(&mut self, terminator: &Terminator<'tcx>, mut location: Location) {
         self.super_terminator(terminator, location);
 
-        let arg_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_copy"))
-            .expect("Could not find pointer arg hook");
-
-        let ret_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_ret"))
-            .expect("Could not find pointer ret hook");
+        let arg_fn = self.find_hook("ptr_copy");
+        let ret_fn = self.find_hook("ptr_ret");
 
         match &terminator.kind {
             TerminatorKind::Call {
@@ -746,39 +732,39 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                         callee_arg.local.increment_by(1);
                     }
                 }
-                if let &ty::FnDef(def_id, _) = func_kind {
-                    if destination.is_some() {
-                        let (dest_place, dest_block) = destination.unwrap();
-                        println!("term: {:?}", terminator.kind);
-                        let fn_name = self.tcx.item_name(def_id);
-                        if HOOK_FUNCTIONS.contains(&fn_name.as_str()) {
-                            let func_def_id = self
-                                .find_instrumentation_def(fn_name)
-                                .expect("Could not find instrumentation hook function");
+                if let (&ty::FnDef(def_id, _), &Some(destination)) = (func_kind, destination) {
+                    let (dest_place, dest_block) = destination;
+                    println!("term: {:?}", terminator.kind);
+                    let fn_name = self.tcx.item_name(def_id);
+                    if HOOK_FUNCTIONS.contains(&fn_name.as_str()) {
+                        let func_def_id =
+                            self.find_instrumentation_def(fn_name).unwrap_or_else(|| {
+                                panic!(
+                                    "could not find instrumentation hook function: {}",
+                                    fn_name.as_str()
+                                )
+                            });
 
-                            // Hooked function called; trace args
-                            self.loc(location, func_def_id)
-                                .source(args)
-                                .dest(&dest_place)
-                                .after_call()
-                                .transfer(TransferKind::Ret(self.func_hash()))
-                                .args(args)
-                                .add_to(self);
-                        } else if is_region_or_unsafe_ptr(
-                            dest_place.ty(&self.body.local_decls, self.tcx).ty,
-                        ) {
-                            location.statement_index = 0;
-                            location.block = dest_block;
+                        // Hooked function called; trace args
+                        self.loc(location, func_def_id)
+                            .source(args)
+                            .dest(&dest_place)
+                            .after_call()
+                            .transfer(TransferKind::Ret(self.func_hash()))
+                            .args(args.iter().cloned())
+                            .add_to(self);
+                    } else if is_region_or_unsafe_ptr(
+                        dest_place.ty(&self.body.local_decls, self.tcx).ty,
+                    ) {
+                        location.statement_index = 0;
+                        location.block = dest_block;
 
-                            self.loc(location, arg_fn)
-                                .source(&0)
-                                .dest(&dest_place)
-                                .transfer(TransferKind::Ret(
-                                    self.tcx.def_path_hash(def_id).convert(),
-                                ))
-                                .arg_var(destination.unwrap().0)
-                                .add_to(self);
-                        }
+                        self.loc(location, arg_fn)
+                            .source(&0)
+                            .dest(&dest_place)
+                            .transfer(TransferKind::Ret(self.tcx.def_path_hash(def_id).convert()))
+                            .arg_var(dest_place)
+                            .add_to(self);
                     }
                 }
             }
