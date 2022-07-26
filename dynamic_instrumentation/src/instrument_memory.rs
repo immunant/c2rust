@@ -53,6 +53,7 @@ impl Convert<mir_loc::DefPathHash> for DefPathHash {
     }
 }
 
+#[derive(Default)]
 pub struct InstrumentMemoryOps {
     mir_locs: Mutex<IndexSet<MirLoc>>,
     functions: Mutex<HashMap<mir_loc::DefPathHash, String>>,
@@ -61,14 +62,11 @@ pub struct InstrumentMemoryOps {
 impl InstrumentMemoryOps {
     /// Create a new instrumentation object.
     ///
-    /// A single `InstrumentMemoryOps` instance should be shared across the
+    /// A single [`InstrumentMemoryOps`] instance should be shared across the
     /// entire crate being instrumented, as the indexed source locations are
     /// shared and should be global.
     pub fn new() -> Self {
-        Self {
-            mir_locs: Mutex::new(IndexSet::new()),
-            functions: Mutex::new(HashMap::new()),
-        }
+        Self::default()
     }
 
     /// Instrument memory operations in-place in the function `body`.
