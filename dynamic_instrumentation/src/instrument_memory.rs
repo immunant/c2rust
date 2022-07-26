@@ -412,8 +412,7 @@ impl<'tcx> IntoOperand<'tcx> for u32 {
 
 impl<'tcx> IntoOperand<'tcx> for Local {
     fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx> {
-        let p: Place = self.into();
-        p.op(tcx)
+        Place::from(self).op(tcx)
     }
 }
 
