@@ -486,7 +486,7 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
     ///
     /// [`func`] must not unwind, as it will have no cleanup destination.
     ///
-    /// [`func`]: Self::func
+    /// [`func`]: InstrumentationPoint::func
     /// [`statement_idx`]: Location::statement_index
     fn add_to(mut self, adder: &mut InstrumentationAdder<'_, 'tcx>) {
         self.state.point.id = adder.instrumentation_points.len();
