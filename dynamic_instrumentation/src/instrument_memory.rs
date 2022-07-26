@@ -389,42 +389,42 @@ impl<'tcx> InstrumentationState for ReadyToInstrument<'tcx> {}
 impl InstrumentationState for Uninitialized {}
 
 trait IntoOperand<'tcx> {
-    fn op<'a>(&'a self, tcx: TyCtxt<'tcx>) -> Operand<'tcx>;
+    fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx>;
 }
 
 impl<'tcx> IntoOperand<'tcx> for Place<'tcx> {
-    fn op<'a>(self: &'a Place<'tcx>, _tcx: TyCtxt) -> Operand<'tcx> {
-        Operand::Copy(self.clone())
+    fn op(self: Place<'tcx>, _tcx: TyCtxt) -> Operand<'tcx> {
+        Operand::Copy(self)
     }
 }
 
 impl<'tcx> IntoOperand<'tcx> for u32 {
-    fn op<'a>(&'a self, tcx: TyCtxt<'tcx>) -> Operand<'tcx> {
-        make_const(tcx, self.clone())
+    fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx> {
+        make_const(tcx, self)
     }
 }
 
 impl<'tcx> IntoOperand<'tcx> for Local {
-    fn op<'a>(&'a self, tcx: TyCtxt<'tcx>) -> Operand<'tcx> {
-        let p: Place = self.clone().into();
+    fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx> {
+        let p: Place = self.into();
         p.op(tcx)
     }
 }
 
 impl<'tcx> IntoOperand<'tcx> for Operand<'tcx> {
-    fn op(&self, _tcx: TyCtxt<'tcx>) -> Self {
-        self.clone()
+    fn op(self, _tcx: TyCtxt<'tcx>) -> Self {
+        self
     }
 }
 
 impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
-    fn arg_addr_of(&mut self, a: impl IntoOperand<'tcx>) -> &mut Self {
+    fn arg_addr_of(mut self, a: impl IntoOperand<'tcx>) -> Self {
         let op = a.op(self.tcx);
         self.state.point.args.push(InstrumentationArg::AddrOf(op));
         self
     }
 
-    fn arg_var<'c>(&'c mut self, a: impl IntoOperand<'tcx>) -> &'c mut Self {
+    fn arg_var(mut self, a: impl IntoOperand<'tcx>) -> Self {
         let op = a.op(self.tcx);
         let op_ty = op.ty(self.body, self.tcx);
         self.state
@@ -434,44 +434,29 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
         self
     }
 
-    fn args<'c>(&'c mut self, args: &Vec<Operand<'tcx>>) -> &'c mut Self {
+    fn args(mut self, args: &Vec<Operand<'tcx>>) -> Self {
         for a in args {
-            self.arg_var(a.clone());
+            self = self.arg_var(a.clone());
         }
         self
     }
 
-    fn cleanup<'c>(&'c mut self) -> &'c mut Self {
-        self.state.point.is_cleanup = true;
-        self
-    }
-
-    fn after_call<'c>(&'c mut self) -> &'c mut Self {
+    fn after_call(mut self) -> Self {
         self.state.point.after_call = true;
         self
     }
 
-    fn source<'c, T: Source>(&'c mut self, s: &T) -> &'c mut Self {
+    fn source<T: Source>(mut self, s: &T) -> Self {
         self.state.point.metadata.source = s.source();
         self
     }
 
-    fn source_from<'c, F, S: Source>(&'c mut self, f: F) -> &'c mut Self
-    where
-        F: Fn() -> Option<S>,
-    {
-        if let Some(s) = f() {
-            self.state.point.metadata.source = s.source();
-        }
-        self
-    }
-
-    fn dest<'c>(&'c mut self, p: &Place) -> &'c mut Self {
+    fn dest(mut self, p: &Place) -> Self {
         self.state.point.metadata.destination = Some(to_mir_place(p));
         self
     }
 
-    fn dest_from<'c, F>(&'c mut self, f: F) -> &'c mut Self
+    fn dest_from<F>(mut self, f: F) -> Self
     where
         F: Fn() -> Option<Place<'tcx>>,
     {
@@ -481,7 +466,7 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
         self
     }
 
-    fn transfer<'c>(&'c mut self, t: TransferKind) -> &'c mut Self {
+    fn transfer(mut self, t: TransferKind) -> Self {
         self.state.point.metadata.transfer_kind = t;
         self
     }
@@ -497,19 +482,14 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
     ///
     /// [`func`]: Self::func
     /// [`statement_idx`]: Location::statement_index
-    fn add_to(&mut self, adder: &mut InstrumentationAdder<'a, 'tcx>) {
+    fn add_to(mut self, adder: &mut InstrumentationAdder<'a, 'tcx>) {
         self.state.point.id = adder.instrumentation_points.len();
         adder.instrumentation_points.push(self.state.point.clone());
     }
 }
 
 impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
-    fn visit_place<'v>(
-        &'v mut self,
-        place: &Place<'tcx>,
-        context: PlaceContext,
-        location: Location,
-    ) {
+    fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         self.super_place(place, context, location);
 
         let field_fn = self
@@ -541,12 +521,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
         }
     }
 
-    fn visit_assign<'v>(
-        &'v mut self,
-        dest: &Place<'tcx>,
-        value: &Rvalue<'tcx>,
-        mut location: Location,
-    ) {
+    fn visit_assign(&mut self, dest: &Place<'tcx>, value: &Rvalue<'tcx>, mut location: Location) {
         let copy_fn = self
             .find_instrumentation_def(Symbol::intern("ptr_copy"))
             .expect("Could not find pointer copy hook");
