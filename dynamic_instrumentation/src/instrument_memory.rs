@@ -437,7 +437,7 @@ macro_rules! derive_u32_index {
 derive_u32_index!(Local);
 derive_u32_index!(Field);
 
-impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
+impl<'tcx> InstrumentationBuilder<'_, 'tcx, ReadyToInstrument<'tcx>> {
     /// Add an argument to this [`InstrumentationPoint`].
     fn arg_var(mut self, arg: impl IntoOperand<'tcx>) -> Self {
         let op = arg.op(self.tcx);
@@ -516,7 +516,7 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
     }
 }
 
-impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
+impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         self.super_place(place, context, location);
 
