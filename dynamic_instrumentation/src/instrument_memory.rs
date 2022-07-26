@@ -324,7 +324,7 @@ impl Convert<MirPlace> for Place<'_> {
     }
 }
 
-// gets the one and only input Place, if applicable
+/// Get the one and only input [`Place`], if applicable.
 fn rv_place<'tcx>(rv: &'tcx Rvalue) -> Option<Place<'tcx>> {
     use Rvalue::*;
     match rv {
