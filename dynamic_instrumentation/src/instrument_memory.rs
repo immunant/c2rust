@@ -392,7 +392,7 @@ struct ReadyToInstrument<'tcx> {
     point: InstrumentationPoint<'tcx>,
 }
 impl InstrumentationState for NeedsLoc {}
-impl<'tcx> InstrumentationState for ReadyToInstrument<'tcx> {}
+impl InstrumentationState for ReadyToInstrument<'_> {}
 
 trait IntoOperand<'tcx> {
     fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx>;
