@@ -245,6 +245,11 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
         find_instrumentation_def(self.tcx, self.runtime_crate_did, name)
     }
 
+    fn find_hook(&self, name: &str) -> DefId {
+        self.find_instrumentation_def(Symbol::intern(name))
+            .unwrap_or_else(|| panic!("could not find `{name}` hook"))
+    }
+
     fn func_hash(&self) -> mir_loc::DefPathHash {
         self.tcx.def_path_hash(self.body.source.def_id()).convert()
     }
@@ -495,9 +500,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         self.super_place(place, context, location);
 
-        let field_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_field"))
-            .expect("Could not find pointer field hook");
+        let field_fn = self.find_hook("ptr_field");
 
         let base_ty = self.body.local_decls[place.local].ty;
 
@@ -525,30 +528,14 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
     }
 
     fn visit_assign(&mut self, dest: &Place<'tcx>, value: &Rvalue<'tcx>, mut location: Location) {
-        let copy_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_copy"))
-            .expect("Could not find pointer copy hook");
-        let addr_local_fn = self
-            .find_instrumentation_def(Symbol::intern("addr_of_local"))
-            .expect("Could not find addr_of_local hook");
-        let ptr_contrive_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_contrive"))
-            .expect("Could not find addr_of_local hook");
-        let ptr_to_int_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_to_int"))
-            .expect("Could not find addr_of_local hook");
-        let load_value_fn = self
-            .find_instrumentation_def(Symbol::intern("load_value"))
-            .expect("Could not find pointer load hook");
-        let store_value_fn = self
-            .find_instrumentation_def(Symbol::intern("store_value"))
-            .expect("Could not find pointer load hook");
-        let store_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_store"))
-            .expect("Could not find pointer store hook");
-        let load_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_load"))
-            .expect("Could not find pointer load hook");
+        let copy_fn = self.find_hook("ptr_copy");
+        let addr_local_fn = self.find_hook("addr_of_local");
+        let ptr_contrive_fn = self.find_hook("ptr_contrive");
+        let ptr_to_int_fn = self.find_hook("ptr_to_int");
+        let load_value_fn = self.find_hook("load_value");
+        let store_value_fn = self.find_hook("store_value");
+        let store_fn = self.find_hook("ptr_store");
+        let load_fn = self.find_hook("ptr_load");
 
         let dest = *dest;
         self.assignment = Some((dest, value.clone()));
@@ -705,13 +692,8 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
     fn visit_terminator(&mut self, terminator: &Terminator<'tcx>, mut location: Location) {
         self.super_terminator(terminator, location);
 
-        let arg_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_copy"))
-            .expect("Could not find pointer arg hook");
-
-        let ret_fn = self
-            .find_instrumentation_def(Symbol::intern("ptr_ret"))
-            .expect("Could not find pointer ret hook");
+        let arg_fn = self.find_hook("ptr_copy");
+        let ret_fn = self.find_hook("ptr_ret");
 
         match &terminator.kind {
             TerminatorKind::Call {
@@ -759,7 +741,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                         if HOOK_FUNCTIONS.contains(&fn_name.as_str()) {
                             let func_def_id = self
                                 .find_instrumentation_def(fn_name)
-                                .expect("Could not find instrumentation hook function");
+                                .unwrap_or_else(|| panic!("could not find instrumentation hook function: {}", fn_name.as_str()));
 
                             // Hooked function called; trace args
                             self.loc(location, func_def_id)
