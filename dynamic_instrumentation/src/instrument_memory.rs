@@ -399,7 +399,7 @@ trait IntoOperand<'tcx> {
 }
 
 impl<'tcx> IntoOperand<'tcx> for Place<'tcx> {
-    fn op(self: Place<'tcx>, _tcx: TyCtxt) -> Operand<'tcx> {
+    fn op(self, _tcx: TyCtxt) -> Operand<'tcx> {
         Operand::Copy(self)
     }
 }
