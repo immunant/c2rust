@@ -232,11 +232,9 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
     fn into_instrumentation_points(mut self) -> Vec<InstrumentationPoint<'tcx>> {
         // Sort by reverse location so that we can split blocks without
         // perturbing future statement indices
-        self.instrumentation_points.sort_unstable_by(|a, b| {
-            (a.loc, a.after_call, a.id)
-                .cmp(&(b.loc, b.after_call, b.id))
-                .reverse()
-        });
+        let key = |p: &InstrumentationPoint| (p.loc, p.after_call, p.id);
+        self.instrumentation_points
+            .sort_unstable_by(|a, b| key(a).cmp(&key(b)).reverse());
         self.instrumentation_points
     }
 
