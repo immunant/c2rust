@@ -733,39 +733,39 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                         callee_arg.local.increment_by(1);
                     }
                 }
-                if let &ty::FnDef(def_id, _) = func_kind {
-                    if let Some(destination) = *destination {
-                        let (dest_place, dest_block) = destination;
-                        println!("term: {:?}", terminator.kind);
-                        let fn_name = self.tcx.item_name(def_id);
-                        if HOOK_FUNCTIONS.contains(&fn_name.as_str()) {
-                            let func_def_id = self
-                                .find_instrumentation_def(fn_name)
-                                .unwrap_or_else(|| panic!("could not find instrumentation hook function: {}", fn_name.as_str()));
+                if let (&ty::FnDef(def_id, _), &Some(destination)) = (func_kind, destination) {
+                    let (dest_place, dest_block) = destination;
+                    println!("term: {:?}", terminator.kind);
+                    let fn_name = self.tcx.item_name(def_id);
+                    if HOOK_FUNCTIONS.contains(&fn_name.as_str()) {
+                        let func_def_id =
+                            self.find_instrumentation_def(fn_name).unwrap_or_else(|| {
+                                panic!(
+                                    "could not find instrumentation hook function: {}",
+                                    fn_name.as_str()
+                                )
+                            });
 
-                            // Hooked function called; trace args
-                            self.loc(location, func_def_id)
-                                .source(args)
-                                .dest(&dest_place)
-                                .after_call()
-                                .transfer(TransferKind::Ret(self.func_hash()))
-                                .args(args.iter().cloned())
-                                .add_to(self);
-                        } else if is_region_or_unsafe_ptr(
-                            dest_place.ty(&self.body.local_decls, self.tcx).ty,
-                        ) {
-                            location.statement_index = 0;
-                            location.block = dest_block;
+                        // Hooked function called; trace args
+                        self.loc(location, func_def_id)
+                            .source(args)
+                            .dest(&dest_place)
+                            .after_call()
+                            .transfer(TransferKind::Ret(self.func_hash()))
+                            .args(args.iter().cloned())
+                            .add_to(self);
+                    } else if is_region_or_unsafe_ptr(
+                        dest_place.ty(&self.body.local_decls, self.tcx).ty,
+                    ) {
+                        location.statement_index = 0;
+                        location.block = dest_block;
 
-                            self.loc(location, arg_fn)
-                                .source(&0)
-                                .dest(&dest_place)
-                                .transfer(TransferKind::Ret(
-                                    self.tcx.def_path_hash(def_id).convert(),
-                                ))
-                                .arg_var(dest_place)
-                                .add_to(self);
-                        }
+                        self.loc(location, arg_fn)
+                            .source(&0)
+                            .dest(&dest_place)
+                            .transfer(TransferKind::Ret(self.tcx.def_path_hash(def_id).convert()))
+                            .arg_var(dest_place)
+                            .add_to(self);
                     }
                 }
             }
