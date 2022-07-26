@@ -402,6 +402,7 @@ impl Source for u32 {
     }
 }
 
+/// Types that can be passed as an argument to instrumentation hook functions.
 trait IntoOperand<'tcx> {
     fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx>;
 }
