@@ -190,6 +190,14 @@ struct InstrumentationPoint<'tcx> {
     metadata: EventMetadata,
 }
 
+#[derive(Default)]
+struct InstrumentationPointBuilder<'tcx> {
+    args: Vec<InstrumentationArg<'tcx>>,
+    is_cleanup: bool,
+    after_call: bool,
+    metadata: EventMetadata,
+}
+
 struct InstrumentationAdder<'a, 'tcx: 'a> {
     tcx: TyCtxt<'tcx>,
     body: &'a Body<'tcx>,
@@ -200,10 +208,33 @@ struct InstrumentationAdder<'a, 'tcx: 'a> {
     assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
 }
 
+impl<'tcx> InstrumentationAdder<'_, 'tcx> {
+    fn add(&mut self, point: InstrumentationPointBuilder<'tcx>, loc: Location, func: DefId) {
+        let id = self.instrumentation_points.len();
+        let InstrumentationPointBuilder {
+            args,
+            is_cleanup,
+            after_call,
+            metadata,
+        } = point;
+        self.instrumentation_points.push(InstrumentationPoint {
+            id,
+            loc,
+            func,
+            args,
+            is_cleanup,
+            after_call,
+            metadata,
+        });
+    }
+}
+
 struct InstrumentationBuilder<'a, 'tcx: 'a> {
     tcx: TyCtxt<'tcx>,
     body: &'a Body<'tcx>,
-    point: InstrumentationPoint<'tcx>,
+    loc: Location,
+    func: DefId,
+    point: InstrumentationPointBuilder<'tcx>,
 }
 
 impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
@@ -215,15 +246,9 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
         InstrumentationBuilder {
             tcx: self.tcx,
             body: self.body,
-            point: InstrumentationPoint {
-                id: 0,
-                loc,
-                func,
-                args: vec![],
-                is_cleanup: false,
-                after_call: false,
-                metadata: EventMetadata::default(),
-            },
+            loc,
+            func,
+            point: Default::default(),
         }
     }
 
@@ -498,9 +523,8 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     ///
     /// [`func`]: InstrumentationPoint::func
     /// [`statement_idx`]: Location::statement_index
-    fn add_to(mut self, adder: &mut InstrumentationAdder<'_, 'tcx>) {
-        self.point.id = adder.instrumentation_points.len();
-        adder.instrumentation_points.push(self.point);
+    fn add_to(self, adder: &mut InstrumentationAdder<'_, 'tcx>) {
+        adder.add(self.point, self.loc, self.func);
     }
 }
 
