@@ -233,10 +233,9 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
         // Sort by reverse location so that we can split blocks without
         // perturbing future statement indices
         self.instrumentation_points.sort_unstable_by(|a, b| {
-            b.loc
-                .cmp(&a.loc)
-                .then(b.after_call.cmp(&a.after_call))
-                .then(b.id.cmp(&a.id))
+            (a.loc, a.after_call, a.id)
+                .cmp(&(b.loc, b.after_call, b.id))
+                .reverse()
         });
         self.instrumentation_points
     }
