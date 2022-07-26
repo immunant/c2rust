@@ -317,21 +317,22 @@ fn to_mir_place(place: &Place) -> MirPlace {
 
 // gets the one and only input Place, if applicable
 fn rv_place<'tcx>(rv: &'tcx Rvalue) -> Option<Place<'tcx>> {
+    use Rvalue::*;
     match rv {
-        Rvalue::Use(op) => op.place(),
-        Rvalue::Repeat(op, _) => op.place(),
-        Rvalue::Ref(_, _, p) => Some(*p),
+        Use(op) => op.place(),
+        Repeat(op, _) => op.place(),
+        Ref(_, _, p) => Some(*p),
         // ThreadLocalRef
-        Rvalue::AddressOf(_, p) => Some(*p),
-        Rvalue::Len(p) => Some(*p),
-        Rvalue::Cast(_, op, _) => op.place(),
+        AddressOf(_, p) => Some(*p),
+        Len(p) => Some(*p),
+        Cast(_, op, _) => op.place(),
         // BinaryOp
         // CheckedBinaryOp
         // NullaryOp
-        Rvalue::UnaryOp(_, op) => op.place(),
-        Rvalue::Discriminant(p) => Some(*p),
+        UnaryOp(_, op) => op.place(),
+        Discriminant(p) => Some(*p),
         // Aggregate
-        Rvalue::ShallowInitBox(op, _) => op.place(),
+        ShallowInitBox(op, _) => op.place(),
         _ => None,
     }
 }
