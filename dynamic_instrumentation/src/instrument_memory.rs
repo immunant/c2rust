@@ -299,19 +299,23 @@ fn remove_outer_deref<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
     p
 }
 
-fn to_mir_place(place: &Place) -> MirPlace {
-    MirPlace {
-        local: place.local.as_u32().into(),
-        projection: place
-            .projection
-            .iter()
-            .map(|p| match p {
-                ProjectionElem::Deref => MirProjection::Deref,
-                ProjectionElem::Field(field_id, _) => MirProjection::Field(field_id.into()),
-                ProjectionElem::Index(local) => MirProjection::Index(local.into()),
-                _ => MirProjection::Unsupported,
-            })
-            .collect(),
+impl Convert<MirProjection> for PlaceElem<'_> {
+    fn convert(self) -> MirProjection {
+        match self {
+            Self::Deref => MirProjection::Deref,
+            Self::Field(field_id, _) => MirProjection::Field(field_id.into()),
+            Self::Index(local) => MirProjection::Index(local.into()),
+            _ => MirProjection::Unsupported,
+        }
+    }
+}
+
+impl Convert<MirPlace> for Place<'_> {
+    fn convert(self) -> MirPlace {
+        MirPlace {
+            local: self.local.as_u32().into(),
+            projection: self.projection.iter().map(PlaceElem::convert).collect(),
+        }
     }
 }
 
@@ -343,7 +347,7 @@ trait Source {
 
 impl Source for Place<'_> {
     fn source(&self) -> Option<MirPlace> {
-        Some(to_mir_place(self))
+        Some(self.convert())
     }
 }
 
@@ -451,7 +455,7 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
     }
 
     fn dest(mut self, p: &Place) -> Self {
-        self.state.point.metadata.destination = Some(to_mir_place(p));
+        self.state.point.metadata.destination = Some(p.convert());
         self
     }
 
@@ -460,7 +464,7 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
         F: Fn() -> Option<Place<'tcx>>,
     {
         if let Some(p) = f() {
-            self.state.point.metadata.destination = Some(to_mir_place(&p));
+            self.state.point.metadata.destination = Some(p.convert());
         }
         self
     }
