@@ -10,7 +10,7 @@ use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_index::vec::{Idx, IndexVec};
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Constant, Field, Local, LocalDecl,
+    BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Constant, Local, LocalDecl,
     Location, Mutability, Operand, Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue, SourceInfo,
     Statement, StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
@@ -238,11 +238,7 @@ struct InstrumentationBuilder<'a, 'tcx: 'a> {
 }
 
 impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
-    fn loc(
-        &self,
-        loc: Location,
-        func: DefId,
-    ) -> InstrumentationBuilder<'a, 'tcx> {
+    fn loc(&self, loc: Location, func: DefId) -> InstrumentationBuilder<'a, 'tcx> {
         InstrumentationBuilder {
             tcx: self.tcx,
             body: self.body,
@@ -434,23 +430,6 @@ impl<'tcx> IntoOperand<'tcx> for Operand<'tcx> {
     }
 }
 
-trait U32Index {
-    fn index(self) -> u32;
-}
-
-macro_rules! derive_u32_index {
-    ($T:ty) => {
-        impl U32Index for $T {
-            fn index(self) -> u32 {
-                self.as_u32()
-            }
-        }
-    };
-}
-
-derive_u32_index!(Local);
-derive_u32_index!(Field);
-
 impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     /// Add an argument to this [`InstrumentationPoint`].
     fn arg_var(mut self, arg: impl IntoOperand<'tcx>) -> Self {
@@ -471,8 +450,9 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     }
 
     /// Add an argument to this [`InstrumentationPoint`] that is the index of the argument.
-    fn arg_index_of(self, arg: impl U32Index) -> Self {
-        self.arg_var(arg.index())
+    fn arg_index_of(self, arg: impl Idx) -> Self {
+        let index: u32 = arg.index().try_into().expect("`rustc_index::vec::newtype_index!` should use `u32` as the underlying index type, so this shouldn't fail unless that changes");
+        self.arg_var(index)
     }
 
     /// Add an argument to this [`InstrumentationPoint`] that is the address of the argument.
