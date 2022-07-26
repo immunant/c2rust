@@ -138,7 +138,7 @@ enum ArgKind<'tcx> {
 }
 
 impl<'tcx> ArgKind<'tcx> {
-    fn inner(&self) -> &Operand<'tcx> {
+    pub fn inner(&self) -> &Operand<'tcx> {
         use ArgKind::*;
         match self {
             AddressUsize(x) => x,
@@ -147,7 +147,7 @@ impl<'tcx> ArgKind<'tcx> {
         }
     }
 
-    fn from_type(op: Operand<'tcx>, ty: &ty::Ty<'tcx>) -> Self {
+    pub fn from_type(op: Operand<'tcx>, ty: &ty::Ty<'tcx>) -> Self {
         use ArgKind::*;
         (if ty.is_unsafe_ptr() {
             RawPtr
@@ -168,7 +168,7 @@ enum InstrumentationArg<'tcx> {
 }
 
 impl<'tcx> InstrumentationArg<'tcx> {
-    fn inner(&self) -> &Operand<'tcx> {
+    pub fn inner(&self) -> &Operand<'tcx> {
         use InstrumentationArg::*;
         match self {
             AddrOf(x) => x,
@@ -190,10 +190,10 @@ struct InstrumentationPoint<'tcx> {
 
 #[derive(Default)]
 struct InstrumentationPointBuilder<'tcx> {
-    args: Vec<InstrumentationArg<'tcx>>,
-    is_cleanup: bool,
-    after_call: bool,
-    metadata: EventMetadata,
+    pub args: Vec<InstrumentationArg<'tcx>>,
+    pub is_cleanup: bool,
+    pub after_call: bool,
+    pub metadata: EventMetadata,
 }
 
 struct InstrumentationAdder<'a, 'tcx: 'a> {
@@ -207,7 +207,7 @@ struct InstrumentationAdder<'a, 'tcx: 'a> {
 }
 
 impl<'tcx> InstrumentationAdder<'_, 'tcx> {
-    fn add(&mut self, point: InstrumentationPointBuilder<'tcx>, loc: Location, func: DefId) {
+    pub fn add(&mut self, point: InstrumentationPointBuilder<'tcx>, loc: Location, func: DefId) {
         let id = self.instrumentation_points.len();
         let InstrumentationPointBuilder {
             args,
@@ -236,7 +236,7 @@ struct InstrumentationBuilder<'a, 'tcx: 'a> {
 }
 
 impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
-    fn loc(&self, loc: Location, func: DefId) -> InstrumentationBuilder<'a, 'tcx> {
+    pub fn loc(&self, loc: Location, func: DefId) -> InstrumentationBuilder<'a, 'tcx> {
         InstrumentationBuilder {
             tcx: self.tcx,
             body: self.body,
@@ -246,7 +246,7 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
         }
     }
 
-    fn into_instrumentation_points(mut self) -> Vec<InstrumentationPoint<'tcx>> {
+    pub fn into_instrumentation_points(mut self) -> Vec<InstrumentationPoint<'tcx>> {
         // Sort by reverse location so that we can split blocks without
         // perturbing future statement indices
         let key = |p: &InstrumentationPoint| (p.loc, p.after_call, p.id);
@@ -431,7 +431,7 @@ impl<'tcx> IntoOperand<'tcx> for Operand<'tcx> {
 
 impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     /// Add an argument to this [`InstrumentationPoint`].
-    fn arg_var(mut self, arg: impl IntoOperand<'tcx>) -> Self {
+    pub fn arg_var(mut self, arg: impl IntoOperand<'tcx>) -> Self {
         let op = arg.op(self.tcx);
         let op_ty = op.ty(self.body, self.tcx);
         self.point
@@ -441,7 +441,7 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     }
 
     /// Add multiple arguments to this [`InstrumentationPoint`], using `Self::arg_var`.
-    fn arg_vars(mut self, args: impl IntoIterator<Item = impl IntoOperand<'tcx>>) -> Self {
+    pub fn arg_vars(mut self, args: impl IntoIterator<Item = impl IntoOperand<'tcx>>) -> Self {
         for arg in args {
             self = self.arg_var(arg);
         }
@@ -452,35 +452,35 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     /// 
     /// TODO(kkysen, aneksteind) Currently `Idx`/`u32` types are the only types we support passing as arguments as is,
     /// but we eventually want to be able to pass other serializable types as well.
-    fn arg_index_of(self, arg: impl Idx) -> Self {
+    pub fn arg_index_of(self, arg: impl Idx) -> Self {
         let index: u32 = arg.index().try_into()
             .expect("`rustc_index::vec::newtype_index!` should use `u32` as the underlying index type, so this shouldn't fail unless that changes");
         self.arg_var(index)
     }
 
     /// Add an argument to this [`InstrumentationPoint`] that is the address of the argument.
-    fn arg_addr_of(mut self, arg: impl IntoOperand<'tcx>) -> Self {
+    pub fn arg_addr_of(mut self, arg: impl IntoOperand<'tcx>) -> Self {
         let op = arg.op(self.tcx);
         self.point.args.push(InstrumentationArg::AddrOf(op));
         self
     }
 
-    fn after_call(mut self) -> Self {
+    pub fn after_call(mut self) -> Self {
         self.point.after_call = true;
         self
     }
 
-    fn source<S: Source>(mut self, source: &S) -> Self {
+    pub fn source<S: Source>(mut self, source: &S) -> Self {
         self.point.metadata.source = source.source();
         self
     }
 
-    fn dest(mut self, p: &Place) -> Self {
+    pub fn dest(mut self, p: &Place) -> Self {
         self.point.metadata.destination = Some(p.convert());
         self
     }
 
-    fn dest_from<F>(mut self, f: F) -> Self
+    pub fn dest_from<F>(mut self, f: F) -> Self
     where
         F: Fn() -> Option<Place<'tcx>>,
     {
@@ -490,7 +490,7 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
         self
     }
 
-    fn transfer(mut self, transfer_kind: TransferKind) -> Self {
+    pub fn transfer(mut self, transfer_kind: TransferKind) -> Self {
         self.point.metadata.transfer_kind = transfer_kind;
         self
     }
@@ -506,7 +506,7 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     ///
     /// [`func`]: InstrumentationPoint::func
     /// [`statement_idx`]: Location::statement_index
-    fn add_to(self, adder: &mut InstrumentationAdder<'_, 'tcx>) {
+    pub fn add_to(self, adder: &mut InstrumentationAdder<'_, 'tcx>) {
         adder.add(self.point, self.loc, self.func);
     }
 }
