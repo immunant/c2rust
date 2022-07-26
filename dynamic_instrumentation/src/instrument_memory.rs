@@ -10,9 +10,9 @@ use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_index::vec::{Idx, IndexVec};
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Constant, Local, LocalDecl,
-    Location, Mutability, Operand, Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue, SourceInfo,
-    Statement, StatementKind, Terminator, TerminatorKind, START_BLOCK,
+    BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Constant, Local, LocalDecl, Location,
+    Mutability, Operand, Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue, SourceInfo, Statement,
+    StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, ParamEnv, TyCtxt, TyS};
 use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
@@ -452,7 +452,8 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
 
     /// Add an argument to this [`InstrumentationPoint`] that is the index of the argument.
     fn arg_index_of(self, arg: impl Idx) -> Self {
-        let index: u32 = arg.index().try_into().expect("`rustc_index::vec::newtype_index!` should use `u32` as the underlying index type, so this shouldn't fail unless that changes");
+        let index: u32 = arg.index().try_into()
+            .expect("`rustc_index::vec::newtype_index!` should use `u32` as the underlying index type, so this shouldn't fail unless that changes");
         self.arg_var(index)
     }
 
