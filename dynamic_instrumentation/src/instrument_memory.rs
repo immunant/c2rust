@@ -438,6 +438,7 @@ derive_u32_index!(Local);
 derive_u32_index!(Field);
 
 impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
+    /// Add an argument to this [`InstrumentationPoint`].
     fn arg_var(mut self, arg: impl IntoOperand<'tcx>) -> Self {
         let op = arg.op(self.tcx);
         let op_ty = op.ty(self.body, self.tcx);
@@ -448,6 +449,7 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
         self
     }
 
+    /// Add multiple arguments to this [`InstrumentationPoint`], using `Self::arg_var`.
     fn arg_vars(mut self, args: impl IntoIterator<Item = impl IntoOperand<'tcx>>) -> Self {
         for arg in args {
             self = self.arg_var(arg);
@@ -455,10 +457,12 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
         self
     }
 
+    /// Add an argument to this [`InstrumentationPoint`] that is the index of the argument.
     fn arg_index_of(self, arg: impl U32Index) -> Self {
         self.arg_var(arg.index())
     }
     
+    /// Add an argument to this [`InstrumentationPoint`] that is the address of the argument.
     fn arg_addr_of(mut self, arg: impl IntoOperand<'tcx>) -> Self {
         let op = arg.op(self.tcx);
         self.state.point.args.push(InstrumentationArg::AddrOf(op));
