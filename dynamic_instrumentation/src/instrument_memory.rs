@@ -451,6 +451,9 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     }
 
     /// Add an argument to this [`InstrumentationPoint`] that is the index of the argument.
+    /// 
+    /// TODO(kkysen, aneksteind) Currently `Idx`/`u32` types are the only types we support passing as arguments as is,
+    /// but we eventually want to be able to pass other serializable types as well.
     fn arg_index_of(self, arg: impl Idx) -> Self {
         let index: u32 = arg.index().try_into()
             .expect("`rustc_index::vec::newtype_index!` should use `u32` as the underlying index type, so this shouldn't fail unless that changes");
