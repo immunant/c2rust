@@ -734,8 +734,8 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                     }
                 }
                 if let &ty::FnDef(def_id, _) = func_kind {
-                    if destination.is_some() {
-                        let (dest_place, dest_block) = destination.unwrap();
+                    if let Some(destination) = *destination {
+                        let (dest_place, dest_block) = destination;
                         println!("term: {:?}", terminator.kind);
                         let fn_name = self.tcx.item_name(def_id);
                         if HOOK_FUNCTIONS.contains(&fn_name.as_str()) {
@@ -763,7 +763,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                                 .transfer(TransferKind::Ret(
                                     self.tcx.def_path_hash(def_id).convert(),
                                 ))
-                                .arg_var(destination.unwrap().0)
+                                .arg_var(dest_place)
                                 .add_to(self);
                         }
                     }
