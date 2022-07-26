@@ -1004,13 +1004,12 @@ fn apply_instrumentation<'a, 'tcx>(
 
 /// Inserts a call to `func`.
 ///
-/// The call will be inserted before the statement at index `statement_idx`
-/// in `block`. If `statement_idx` is the number of statements in the block,
+/// The call will be inserted before the statement at index `statement_index` in `block`.
+/// If `statement_index` is the number of statements in the block,
 /// the call will be inserted at the end of the block.
 ///
-/// `func` must not unwind, as it will have no cleanup destination. Returns
-/// the successor basic block and the local slot for the inserted call's
-/// return value.
+/// `func` must not unwind, as it will have no cleanup destination.
+/// Returns the successor basic block and the local slot for the inserted call's return value.
 fn insert_call<'tcx>(
     tcx: TyCtxt<'tcx>,
     body: &mut Body<'tcx>,
@@ -1061,13 +1060,13 @@ fn insert_call<'tcx>(
     (successor_block, ret_local)
 }
 
-/// Cast an argument from pointer to usize, if needed.
+/// Cast an argument from pointer to `usize`, if needed.
 ///
 /// Casts `arg` to `usize` if needed, returning the cast statement and new,
-/// `usize` typed operand if the cast was needed. This cast statement must be
-/// inserted into the function's body before the new operand is used. `arg` will
-/// be used as a copy in the new statement, so this statement must be inserted
-/// in a position where `arg` is alive.
+/// `usize`-typed operand if the cast was needed. This cast statement must be
+/// inserted into the function's body before the new operand is used.
+/// `arg` will be used as a copy in the new statement,
+/// so this statement must be inserted in a position where `arg` is alive.
 fn cast_ptr_to_usize<'tcx>(
     tcx: TyCtxt<'tcx>,
     locals: &mut IndexVec<Local, LocalDecl<'tcx>>,
