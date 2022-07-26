@@ -291,18 +291,16 @@ fn strip_all_deref<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
 /// from a [`projection`](PlaceRef::projection) sequence.
 fn remove_outer_deref<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
     // Remove outer deref if present
-    if let PlaceRef {
-        local,
-        projection: &[ref base @ .., ProjectionElem::Deref],
-    } = p.as_ref()
-    {
-        return Place {
+    match p.as_ref() {
+        PlaceRef {
+            local,
+            projection: &[ref base @ .., ProjectionElem::Deref],
+        } => Place {
             local,
             projection: tcx.intern_place_elems(base),
-        };
+        },
+        _ => p,
     }
-
-    p
 }
 
 impl Convert<MirProjection> for PlaceElem<'_> {
