@@ -12,7 +12,7 @@ use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Constant, Local, LocalDecl, Location,
     Mutability, Operand, Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue, SourceInfo, Statement,
-    StatementKind, Terminator, TerminatorKind, START_BLOCK,
+    StatementKind, Terminator, TerminatorKind, START_BLOCK, Field,
 };
 use rustc_middle::ty::{self, ParamEnv, TyCtxt, TyS};
 use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
@@ -420,6 +420,23 @@ impl<'tcx> IntoOperand<'tcx> for Operand<'tcx> {
     }
 }
 
+trait U32Index {
+    fn index(self) -> u32;
+}
+
+macro_rules! derive_u32_index {
+    ($T:ty) => {
+        impl U32Index for $T {
+            fn index(self) -> u32 {
+                self.as_u32()
+            }
+        }
+    };
+}
+
+derive_u32_index!(Local);
+derive_u32_index!(Field);
+
 impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
     fn arg_addr_of(mut self, arg: impl IntoOperand<'tcx>) -> Self {
         let op = arg.op(self.tcx);
@@ -435,6 +452,10 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
             .args
             .push(InstrumentationArg::Op(ArgKind::from_type(op, &op_ty)));
         self
+    }
+
+    fn arg_index_of(self, arg: impl U32Index) -> Self {
+        self.arg_var(arg.index())
     }
 
     fn arg_vars(mut self, args: impl IntoIterator<Item = impl IntoOperand<'tcx>>) -> Self {
@@ -513,7 +534,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                     };
                     self.loc(location, field_fn)
                         .arg_var(place.local)
-                        .arg_var(field.as_u32())
+                        .arg_index_of(field)
                         .source(place)
                         .dest_from(proj_dest)
                         .add_to(self);
@@ -604,7 +625,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                 // Instrument which local's address is taken
                 self.loc(location, addr_local_fn)
                     .arg_var(dest)
-                    .arg_var(p.local.as_u32())
+                    .arg_index_of(p.local)
                     .source(p)
                     .dest(&dest)
                     .add_to(self);
@@ -665,7 +686,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                     // Instrument which local's address is taken
                     self.loc(location, addr_local_fn)
                         .arg_addr_of(*p)
-                        .arg_var(p.local.as_u32())
+                        .arg_index_of(p.local)
                         .source(&source)
                         .dest(&dest)
                         .add_to(self);
@@ -674,7 +695,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for InstrumentationAdder<'a, 'tcx> {
                     location.statement_index += 1;
                     self.loc(location, addr_local_fn)
                         .arg_var(dest)
-                        .arg_var(p.local.as_u32())
+                        .arg_index_of(p.local)
                         .source(&source)
                         .dest(&dest)
                         .add_to(self);
