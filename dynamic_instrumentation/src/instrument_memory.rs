@@ -200,7 +200,7 @@ struct InstrumentationAdder<'a, 'tcx: 'a> {
     assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
 }
 
-struct InstrumentationBuilder<'a, 'tcx: 'a, S: 'tcx> {
+struct InstrumentationBuilder<'a, 'tcx: 'a, S: InstrumentationState + 'tcx> {
     tcx: TyCtxt<'tcx>,
     body: &'a Body<'tcx>,
     state: S,
