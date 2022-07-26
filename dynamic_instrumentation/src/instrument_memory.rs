@@ -490,7 +490,7 @@ impl<'a, 'tcx: 'a> InstrumentationBuilder<'a, 'tcx, ReadyToInstrument<'tcx>> {
     /// [`statement_idx`]: Location::statement_index
     fn add_to(mut self, adder: &mut InstrumentationAdder<'_, 'tcx>) {
         self.state.point.id = adder.instrumentation_points.len();
-        adder.instrumentation_points.push(self.state.point.clone());
+        adder.instrumentation_points.push(self.state.point);
     }
 }
 
