@@ -379,14 +379,12 @@ impl Source for u32 {
 
 trait InstrumentationState {}
 
-struct Uninitialized {}
 struct NeedsLoc {}
 struct ReadyToInstrument<'tcx> {
     point: InstrumentationPoint<'tcx>,
 }
 impl InstrumentationState for NeedsLoc {}
 impl<'tcx> InstrumentationState for ReadyToInstrument<'tcx> {}
-impl InstrumentationState for Uninitialized {}
 
 trait IntoOperand<'tcx> {
     fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx>;
