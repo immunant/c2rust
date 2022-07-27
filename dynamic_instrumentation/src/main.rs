@@ -10,12 +10,11 @@ use std::{
     process::{self, Command, ExitStatus},
 };
 
+use anyhow::anyhow;
 use c2rust_dynamic_instrumentation::{MirTransformCallbacks, INSTRUMENTER};
 use camino::Utf8Path;
 use cargo_metadata::MetadataCommand;
 use clap::Parser;
-use color_eyre::eyre;
-use color_eyre::eyre::eyre;
 use rustc_driver::RunCompiler;
 
 /// Instrument memory accesses for dynamic analysis.
@@ -45,17 +44,17 @@ fn get_sysroot_fast() -> Option<PathBuf> {
     Some(sysroot)
 }
 
-fn get_sysroot_slow() -> eyre::Result<PathBuf> {
+fn get_sysroot_slow() -> anyhow::Result<PathBuf> {
     todo!("use `rustc --print sysroot` to support non-`rustup` cases, which @fw-immunant uses")
 }
 
-fn get_sysroot() -> eyre::Result<PathBuf> {
+fn get_sysroot() -> anyhow::Result<PathBuf> {
     get_sysroot_fast()
         .ok_or(())
         .or_else(|()| get_sysroot_slow())
 }
 
-fn passthrough_rustc(at_args: &[String], sysroot: &Path) -> eyre::Result<ExitStatus> {
+fn passthrough_rustc(at_args: &[String], sysroot: &Path) -> anyhow::Result<ExitStatus> {
     // We can skip a `rustup` `rustc` -> real `rustc` resolution by just invoking the real `rustc` ourselves.
     // TODO(kkysen) this might not work without `rustup`
     let rustc = sysroot.join("bin/rustc");
@@ -63,7 +62,11 @@ fn passthrough_rustc(at_args: &[String], sysroot: &Path) -> eyre::Result<ExitSta
     Ok(status)
 }
 
-fn instrument_rustc(mut at_args: Vec<String>, sysroot: &Path, metadata: &Path) -> eyre::Result<()> {
+fn instrument_rustc(
+    mut at_args: Vec<String>,
+    sysroot: &Path,
+    metadata: &Path,
+) -> anyhow::Result<()> {
     // Normally, `rustc` looks up the sysroot by the location of its own binary.
     // This works because the `rustc` on `$PATH` is actually `rustup`,
     // and `rustup` invokes the real `rustc`, which is in a location relative to the sysroot.
@@ -84,14 +87,12 @@ fn instrument_rustc(mut at_args: Vec<String>, sysroot: &Path, metadata: &Path) -
     at_args.extend(["--sysroot".into(), sysroot.as_str().into()]);
     RunCompiler::new(&at_args, &mut MirTransformCallbacks)
         .run()
-        .map_err(|_| eyre!("`rustc` failed"))?;
-    INSTRUMENTER.finalize(metadata).map_err(|e| eyre!(e))?;
+        .map_err(|_| anyhow!("`rustc` failed"))?;
+    INSTRUMENTER.finalize(metadata).map_err(|e| anyhow!(e))?;
     Ok(())
 }
 
-fn main() -> eyre::Result<()> {
-    color_eyre::install()?;
-
+fn main() -> anyhow::Result<()> {
     let rustc_wrapper_var = "RUSTC_WRAPPER";
     let metadata_var = "C2RUST_INSTRUMENT_METADATA_PATH";
 
@@ -104,7 +105,7 @@ fn main() -> eyre::Result<()> {
         let is_primary_package = env::var("CARGO_PRIMARY_PACKAGE").is_ok();
         if is_primary_package {
             let metadata =
-                env::var_os(metadata_var).ok_or_else(|| eyre!("we should've set this"))?;
+                env::var_os(metadata_var).ok_or_else(|| anyhow!("we should've set this"))?;
             instrument_rustc(at_args, &sysroot, Path::new(&metadata))?;
         } else {
             let status = passthrough_rustc(&at_args, &sysroot)?;
@@ -122,7 +123,7 @@ fn main() -> eyre::Result<()> {
 
         let root_package = cargo_metadata
             .root_package()
-            .ok_or_else(|| eyre!("no root package found by `cargo`"))?;
+            .ok_or_else(|| anyhow!("no root package found by `cargo`"))?;
         let status = Command::new(&cargo)
             .args(&["clean", "--package", root_package.name.as_str()])
             .status()?;
