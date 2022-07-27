@@ -127,7 +127,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 if let PlaceElem::Field(field, _) = elem {
                     let proj_dest = || {
                         // Only the last field projection gets a destination
-                        self.assignment
+                        self.assignment()
                             .as_ref()
                             .map(|(dest, _)| dest)
                             .copied()
@@ -155,9 +155,9 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
         let load_fn = self.find_hook("ptr_load");
 
         let dest = *dest;
-        self.assignment = Some((dest, value.clone()));
-        self.visit_rvalue(value, location);
-        self.assignment = None;
+        self.with_assignment((dest, value.clone()), |this| {
+            this.visit_rvalue(value, location)
+        });
 
         let locals = self.body.local_decls.clone();
         let ctx = self.tcx;

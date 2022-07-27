@@ -40,7 +40,7 @@ pub struct InstrumentationAdder<'a, 'tcx: 'a> {
 
     instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
 
-    pub assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
+    assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
 }
 
 impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
@@ -52,6 +52,16 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
             instrumentation_points: Default::default(),
             assignment: Default::default(),
         }
+    }
+
+    pub fn assignment(&self) -> Option<&(Place<'tcx>, Rvalue<'tcx>)> {
+        self.assignment.as_ref()
+    }
+
+    pub fn with_assignment(&mut self, assignment: (Place<'tcx>, Rvalue<'tcx>), f: impl Fn(&mut Self)) {
+        let old_assignment = self.assignment.replace(assignment);
+        f(self);
+        self.assignment = old_assignment;
     }
 
     fn add(&mut self, point: InstrumentationPointBuilder<'tcx>, loc: Location, func: DefId) {
