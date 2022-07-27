@@ -57,6 +57,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 lazy_static! {
+    /// TODO(kkysen) can be made non-lazy when `Mutex::new` is `const` in rust 1.63
     static ref INSTRUMENTER: Instrumenter = Instrumenter::new();
 }
 
