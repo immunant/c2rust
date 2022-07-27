@@ -58,6 +58,15 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
         self.tcx
     }
 
+}
+
+impl<'a, 'tcx: 'a> HasLocalDecls<'tcx> for InstrumentationAdder<'a, 'tcx> {
+    fn local_decls(&self) -> &'a LocalDecls<'tcx> {
+        self.body.local_decls()
+    }
+}
+
+impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
     pub fn assignment(&self) -> Option<&(Place<'tcx>, Rvalue<'tcx>)> {
         self.assignment.as_ref()
     }
@@ -89,12 +98,6 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
             after_call,
             metadata,
         });
-    }
-}
-
-impl<'a, 'tcx: 'a> HasLocalDecls<'tcx> for InstrumentationAdder<'a, 'tcx> {
-    fn local_decls(&self) -> &'a LocalDecls<'tcx> {
-        self.body.local_decls()
     }
 }
 
