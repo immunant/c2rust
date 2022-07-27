@@ -38,7 +38,7 @@ impl Instrumenter {
     /// A single [`Instrumenter`] instance should be shared across the
     /// entire crate being instrumented, as the indexed source locations are
     /// shared and should be global.
-    /// 
+    ///
     /// TODO(kkysen) can be made `const` when `Mutex::new` is `const` in rust 1.63
     pub fn new() -> Self {
         Self::default()
@@ -397,7 +397,11 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
     }
 }
 
-pub fn find_instrumentation_def(tcx: TyCtxt, runtime_crate_did: DefId, name: Symbol) -> Option<DefId> {
+pub fn find_instrumentation_def(
+    tcx: TyCtxt,
+    runtime_crate_did: DefId,
+    name: Symbol,
+) -> Option<DefId> {
     Some(
         tcx.module_children(runtime_crate_did)
             .iter()

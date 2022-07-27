@@ -113,6 +113,7 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
     }
 
     pub fn find_instrumentation_def(&self, name: Symbol) -> Option<DefId> {
+        // TODO(kkysen) inline, but move this method to a new `struct` more generic than `InstrumentationAdder`
         find_instrumentation_def(self.tcx, self.runtime_crate_did, name)
     }
 
