@@ -10,11 +10,11 @@ use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_index::vec::{Idx, IndexVec};
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Constant, Local, LocalDecl, Location,
+    BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Local, LocalDecl, Location,
     Mutability, Operand, Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue, SourceInfo, Statement,
     StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
-use rustc_middle::ty::{self, ParamEnv, TyCtxt, TyS};
+use rustc_middle::ty::{self, TyCtxt, TyS};
 use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
 use rustc_span::{Symbol, DUMMY_SP};
 use std::collections::HashMap;
@@ -23,6 +23,7 @@ use std::mem;
 use std::path::Path;
 use std::sync::Mutex;
 
+use crate::into_operand::IntoOperand;
 use crate::source::Source;
 use crate::util::Convert;
 
@@ -312,35 +313,6 @@ fn remove_outer_deref<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
             projection: tcx.intern_place_elems(base),
         },
         _ => p,
-    }
-}
-
-/// Types that can be passed as an argument to instrumentation hook functions.
-trait IntoOperand<'tcx> {
-    fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx>;
-}
-
-impl<'tcx> IntoOperand<'tcx> for Place<'tcx> {
-    fn op(self, _tcx: TyCtxt) -> Operand<'tcx> {
-        Operand::Copy(self)
-    }
-}
-
-impl<'tcx> IntoOperand<'tcx> for u32 {
-    fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx> {
-        make_const(tcx, self)
-    }
-}
-
-impl<'tcx> IntoOperand<'tcx> for Local {
-    fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx> {
-        Place::from(self).op(tcx)
-    }
-}
-
-impl<'tcx> IntoOperand<'tcx> for Operand<'tcx> {
-    fn op(self, _tcx: TyCtxt<'tcx>) -> Self {
-        self
     }
 }
 
@@ -718,14 +690,6 @@ fn find_instrumentation_def(tcx: TyCtxt, runtime_crate_did: DefId, name: Symbol)
             .res
             .def_id(),
     )
-}
-
-fn make_const(tcx: TyCtxt, idx: u32) -> Operand {
-    Operand::Constant(Box::new(Constant {
-        span: DUMMY_SP,
-        user_ty: None,
-        literal: ty::Const::from_bits(tcx, idx.into(), ParamEnv::empty().and(tcx.types.u32)).into(),
-    }))
 }
 
 fn instrument_body<'a, 'tcx>(
