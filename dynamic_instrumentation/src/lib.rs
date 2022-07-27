@@ -13,6 +13,7 @@ extern crate rustc_span;
 extern crate rustc_target;
 
 mod arg;
+mod cast;
 mod deref;
 mod instrument_memory;
 mod into_operand;
