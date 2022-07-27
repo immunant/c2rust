@@ -11,7 +11,7 @@ use rustc_index::vec::{Idx, IndexVec};
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Local, LocalDecl, Location,
-    Mutability, Operand, Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue, SourceInfo, Statement,
+    Mutability, Operand, Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo, Statement,
     StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, TyCtxt, TyS};
@@ -23,6 +23,7 @@ use std::mem;
 use std::path::Path;
 use std::sync::Mutex;
 
+use crate::deref::{remove_outer_deref, strip_all_deref, has_outer_deref};
 use crate::into_operand::IntoOperand;
 use crate::source::Source;
 use crate::util::Convert;
@@ -274,46 +275,6 @@ fn is_shared_or_unsafe_ptr(ty: &TyS) -> bool {
 
 fn is_region_or_unsafe_ptr(ty: &TyS) -> bool {
     ty.is_unsafe_ptr() || ty.is_region_ptr()
-}
-
-fn has_outer_deref(p: &Place) -> bool {
-    matches!(
-        p.iter_projections().last(),
-        Some((_, ProjectionElem::Deref))
-    )
-}
-
-/// Get the inner-most dereferenced [`Place`].
-fn strip_all_deref<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
-    let mut base_dest = p.as_ref();
-    let mut place_ref = p.clone().as_ref();
-    while let Some((cur_ref, proj)) = place_ref.last_projection() {
-        if let ProjectionElem::Deref = proj {
-            base_dest = cur_ref;
-        }
-        place_ref = cur_ref;
-    }
-
-    Place {
-        local: base_dest.local,
-        projection: tcx.intern_place_elems(base_dest.projection),
-    }
-}
-
-/// Strip the initital [`Deref`](ProjectionElem::Deref)
-/// from a [`projection`](PlaceRef::projection) sequence.
-fn remove_outer_deref<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
-    // Remove outer deref if present
-    match p.as_ref() {
-        PlaceRef {
-            local,
-            projection: &[ref base @ .., ProjectionElem::Deref],
-        } => Place {
-            local,
-            projection: tcx.intern_place_elems(base),
-        },
-        _ => p,
-    }
 }
 
 impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
