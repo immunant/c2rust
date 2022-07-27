@@ -13,6 +13,7 @@ extern crate rustc_span;
 extern crate rustc_target;
 
 mod instrument_memory;
+mod source;
 mod util;
 
 use instrument_memory::InstrumentMemoryOps;
