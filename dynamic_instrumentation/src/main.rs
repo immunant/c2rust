@@ -320,9 +320,9 @@ fn main() -> eyre::Result<()> {
             cargo_args,
         } = Args::parse();
 
-        let cargo_metadata = MetadataCommand::new().exec()?;
-
         let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+
+        let cargo_metadata = MetadataCommand::new().cargo_path(&cargo).exec()?;
 
         let root_package = cargo_metadata
             .root_package()
