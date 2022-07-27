@@ -839,7 +839,7 @@ fn apply_instrumentation<'a, 'tcx>(
         let loc_idx = state.get_mir_loc_idx(body_def, loc, metadata.clone());
         args.insert(
             0,
-            InstrumentationArg::Op(ArgKind::AddressUsize(make_const(tcx, loc_idx))),
+            InstrumentationArg::Op(ArgKind::AddressUsize(loc_idx.op(tcx))),
         );
 
         let (blocks, locals) = body.basic_blocks_and_local_decls_mut();
