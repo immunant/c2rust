@@ -25,14 +25,6 @@ pub struct InstrumentationPoint<'tcx> {
     pub metadata: EventMetadata,
 }
 
-#[derive(Default)]
-struct InstrumentationPointBuilder<'tcx> {
-    pub args: Vec<InstrumentationArg<'tcx>>,
-    pub is_cleanup: bool,
-    pub after_call: bool,
-    pub metadata: EventMetadata,
-}
-
 pub struct InstrumentationAdder<'a, 'tcx: 'a> {
     hooks: Hooks<'tcx>,
     body: &'a Body<'tcx>,
@@ -80,6 +72,20 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
         self.assignment = old_assignment;
     }
 
+    pub fn func_hash(&self) -> mir_loc::DefPathHash {
+        self.tcx().def_path_hash(self.body.source.def_id()).convert()
+    }
+}
+
+#[derive(Default)]
+struct InstrumentationPointBuilder<'tcx> {
+    pub args: Vec<InstrumentationArg<'tcx>>,
+    pub is_cleanup: bool,
+    pub after_call: bool,
+    pub metadata: EventMetadata,
+}
+
+impl<'tcx> InstrumentationAdder<'_, 'tcx> {
     fn add(&mut self, point: InstrumentationPointBuilder<'tcx>, loc: Location, func: DefId) {
         let id = self.instrumentation_points.len();
         let InstrumentationPointBuilder {
@@ -126,10 +132,6 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
         self.instrumentation_points
             .sort_unstable_by(|a, b| key(a).cmp(&key(b)).reverse());
         self.instrumentation_points
-    }
-
-    pub fn func_hash(&self) -> mir_loc::DefPathHash {
-        self.tcx().def_path_hash(self.body.source.def_id()).convert()
     }
 }
 
