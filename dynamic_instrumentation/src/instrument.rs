@@ -444,7 +444,6 @@ fn instrument_entry_fn<'tcx>(tcx: TyCtxt<'tcx>, hooks: Hooks, body: &mut Body<'t
     }
 }
 
-
 /// Inserts a call to `func`.
 ///
 /// The call will be inserted before the statement at index `statement_index` in `block`.
