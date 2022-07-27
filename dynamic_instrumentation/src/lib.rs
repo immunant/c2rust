@@ -17,6 +17,7 @@ mod cast;
 mod deref;
 mod instrument_memory;
 mod into_operand;
+mod point;
 mod runtime_conversions;
 mod source;
 mod util;

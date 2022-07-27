@@ -23,7 +23,7 @@ use crate::arg::{ArgKind, InstrumentationArg};
 use crate::cast::cast_ptr_to_usize;
 use crate::deref::{has_outer_deref, remove_outer_deref, strip_all_deref};
 use crate::into_operand::IntoOperand;
-use crate::source::Source;
+use crate::point::{InstrumentationAdder, InstrumentationPoint};
 use crate::util::Convert;
 
 #[derive(Default)]
@@ -103,186 +103,12 @@ impl InstrumentMemoryOps {
     }
 }
 
-#[derive(Clone)]
-struct InstrumentationPoint<'tcx> {
-    id: usize,
-    loc: Location,
-    func: DefId,
-    args: Vec<InstrumentationArg<'tcx>>,
-    is_cleanup: bool,
-    after_call: bool,
-    metadata: EventMetadata,
-}
-
-#[derive(Default)]
-struct InstrumentationPointBuilder<'tcx> {
-    pub args: Vec<InstrumentationArg<'tcx>>,
-    pub is_cleanup: bool,
-    pub after_call: bool,
-    pub metadata: EventMetadata,
-}
-
-struct InstrumentationAdder<'a, 'tcx: 'a> {
-    tcx: TyCtxt<'tcx>,
-    body: &'a Body<'tcx>,
-    runtime_crate_did: DefId,
-
-    instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
-
-    assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
-}
-
-impl<'tcx> InstrumentationAdder<'_, 'tcx> {
-    pub fn add(&mut self, point: InstrumentationPointBuilder<'tcx>, loc: Location, func: DefId) {
-        let id = self.instrumentation_points.len();
-        let InstrumentationPointBuilder {
-            args,
-            is_cleanup,
-            after_call,
-            metadata,
-        } = point;
-        self.instrumentation_points.push(InstrumentationPoint {
-            id,
-            loc,
-            func,
-            args,
-            is_cleanup,
-            after_call,
-            metadata,
-        });
-    }
-}
-
-struct InstrumentationBuilder<'a, 'tcx: 'a> {
-    tcx: TyCtxt<'tcx>,
-    body: &'a Body<'tcx>,
-    loc: Location,
-    func: DefId,
-    point: InstrumentationPointBuilder<'tcx>,
-}
-
-impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
-    pub fn loc(&self, loc: Location, func: DefId) -> InstrumentationBuilder<'a, 'tcx> {
-        InstrumentationBuilder {
-            tcx: self.tcx,
-            body: self.body,
-            loc,
-            func,
-            point: Default::default(),
-        }
-    }
-
-    pub fn into_instrumentation_points(mut self) -> Vec<InstrumentationPoint<'tcx>> {
-        // Sort by reverse location so that we can split blocks without
-        // perturbing future statement indices
-        let key = |p: &InstrumentationPoint| (p.loc, p.after_call, p.id);
-        self.instrumentation_points
-            .sort_unstable_by(|a, b| key(a).cmp(&key(b)).reverse());
-        self.instrumentation_points
-    }
-
-    fn find_instrumentation_def(&self, name: Symbol) -> Option<DefId> {
-        find_instrumentation_def(self.tcx, self.runtime_crate_did, name)
-    }
-
-    fn find_hook(&self, name: &str) -> DefId {
-        self.find_instrumentation_def(Symbol::intern(name))
-            .unwrap_or_else(|| panic!("could not find `{name}` hook"))
-    }
-
-    fn func_hash(&self) -> mir_loc::DefPathHash {
-        self.tcx.def_path_hash(self.body.source.def_id()).convert()
-    }
-}
-
 fn is_shared_or_unsafe_ptr(ty: &TyS) -> bool {
     ty.is_unsafe_ptr() || (ty.is_region_ptr() && !ty.is_mutable_ptr())
 }
 
 fn is_region_or_unsafe_ptr(ty: &TyS) -> bool {
     ty.is_unsafe_ptr() || ty.is_region_ptr()
-}
-
-impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
-    /// Add an argument to this [`InstrumentationPoint`].
-    pub fn arg_var(mut self, arg: impl IntoOperand<'tcx>) -> Self {
-        let op = arg.op(self.tcx);
-        let op_ty = op.ty(self.body, self.tcx);
-        self.point
-            .args
-            .push(InstrumentationArg::Op(ArgKind::from_type(op, &op_ty)));
-        self
-    }
-
-    /// Add multiple arguments to this [`InstrumentationPoint`], using `Self::arg_var`.
-    pub fn arg_vars(mut self, args: impl IntoIterator<Item = impl IntoOperand<'tcx>>) -> Self {
-        for arg in args {
-            self = self.arg_var(arg);
-        }
-        self
-    }
-
-    /// Add an argument to this [`InstrumentationPoint`] that is the index of the argument.
-    ///
-    /// TODO(kkysen, aneksteind) Currently `Idx`/`u32` types are the only types we support passing as arguments as is,
-    /// but we eventually want to be able to pass other serializable types as well.
-    pub fn arg_index_of(self, arg: impl Idx) -> Self {
-        let index: u32 = arg.index().try_into()
-            .expect("`rustc_index::vec::newtype_index!` should use `u32` as the underlying index type, so this shouldn't fail unless that changes");
-        self.arg_var(index)
-    }
-
-    /// Add an argument to this [`InstrumentationPoint`] that is the address of the argument.
-    pub fn arg_addr_of(mut self, arg: impl IntoOperand<'tcx>) -> Self {
-        let op = arg.op(self.tcx);
-        self.point.args.push(InstrumentationArg::AddrOf(op));
-        self
-    }
-
-    pub fn after_call(mut self) -> Self {
-        self.point.after_call = true;
-        self
-    }
-
-    pub fn source<S: Source>(mut self, source: &S) -> Self {
-        self.point.metadata.source = source.source();
-        self
-    }
-
-    pub fn dest(mut self, p: &Place) -> Self {
-        self.point.metadata.destination = Some(p.convert());
-        self
-    }
-
-    pub fn dest_from<F>(mut self, f: F) -> Self
-    where
-        F: Fn() -> Option<Place<'tcx>>,
-    {
-        if let Some(p) = f() {
-            self.point.metadata.destination = Some(p.convert());
-        }
-        self
-    }
-
-    pub fn transfer(mut self, transfer_kind: TransferKind) -> Self {
-        self.point.metadata.transfer_kind = transfer_kind;
-        self
-    }
-
-    /// Queue insertion of a call to [`func`].
-    ///
-    /// The call will be inserted before the statement
-    /// at index [`statement_idx`] in `block`.
-    /// If [`statement_idx`] is the number of statements in the block,
-    /// the call will be inserted at the end of the block.
-    ///
-    /// [`func`] must not unwind, as it will have no cleanup destination.
-    ///
-    /// [`func`]: InstrumentationPoint::func
-    /// [`statement_idx`]: Location::statement_index
-    pub fn add_to(self, adder: &mut InstrumentationAdder<'_, 'tcx>) {
-        adder.add(self.point, self.loc, self.func);
-    }
 }
 
 impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
@@ -569,7 +395,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
     }
 }
 
-fn find_instrumentation_def(tcx: TyCtxt, runtime_crate_did: DefId, name: Symbol) -> Option<DefId> {
+pub fn find_instrumentation_def(tcx: TyCtxt, runtime_crate_did: DefId, name: Symbol) -> Option<DefId> {
     Some(
         tcx.module_children(runtime_crate_did)
             .iter()
@@ -599,13 +425,7 @@ fn instrument_body<'a, 'tcx>(
         index: CRATE_DEF_INDEX,
     };
 
-    let mut collect_points = InstrumentationAdder {
-        tcx,
-        body,
-        runtime_crate_did,
-        instrumentation_points: vec![],
-        assignment: None,
-    };
+    let mut collect_points = InstrumentationAdder::new(tcx, body, runtime_crate_did);
     collect_points.visit_body(body);
 
     apply_instrumentation(
@@ -666,13 +486,13 @@ fn apply_instrumentation<'a, 'tcx>(
 ) {
     for point in points {
         let &InstrumentationPoint {
-            id: _id,
             loc,
             func,
             ref args,
             is_cleanup,
             after_call,
             ref metadata,
+            ..
         } = point;
         let mut args = args.clone();
 
