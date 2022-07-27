@@ -4,11 +4,11 @@ use rustc_middle::{
     mir::{Body, HasLocalDecls, LocalDecls, Location, Place, Rvalue},
     ty::TyCtxt,
 };
-use rustc_span::{def_id::DefId, Symbol};
+use rustc_span::def_id::DefId;
 
 use crate::{
     arg::{ArgKind, InstrumentationArg},
-    instrument::find_instrumentation_def,
+    hooks::Hooks,
     into_operand::IntoOperand,
     source::Source,
     util::Convert,
@@ -34,30 +34,25 @@ struct InstrumentationPointBuilder<'tcx> {
 }
 
 pub struct InstrumentationAdder<'a, 'tcx: 'a> {
-    tcx: TyCtxt<'tcx>,
+    hooks: Hooks<'tcx>,
     body: &'a Body<'tcx>,
-    runtime_crate_did: DefId,
-
     instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
-
     assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
 }
 
 impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>, body: &'a Body<'tcx>, runtime_crate_did: DefId) -> Self {
+    pub fn new(hooks: Hooks<'tcx>, body: &'a Body<'tcx>) -> Self {
         Self {
-            tcx,
+            hooks,
             body,
-            runtime_crate_did,
             instrumentation_points: Default::default(),
             assignment: Default::default(),
         }
     }
 
     pub fn tcx(&self) -> TyCtxt<'tcx> {
-        self.tcx
+        self.hooks.tcx()
     }
-
 }
 
 impl<'a, 'tcx: 'a> HasLocalDecls<'tcx> for InstrumentationAdder<'a, 'tcx> {
@@ -67,6 +62,10 @@ impl<'a, 'tcx: 'a> HasLocalDecls<'tcx> for InstrumentationAdder<'a, 'tcx> {
 }
 
 impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
+    pub fn hooks(&self) -> &Hooks<'tcx> {
+        &self.hooks
+    }
+    
     pub fn assignment(&self) -> Option<&(Place<'tcx>, Rvalue<'tcx>)> {
         self.assignment.as_ref()
     }
@@ -112,7 +111,7 @@ pub struct InstrumentationBuilder<'a, 'tcx: 'a> {
 impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
     pub fn loc(&self, loc: Location, func: DefId) -> InstrumentationBuilder<'a, 'tcx> {
         InstrumentationBuilder {
-            tcx: self.tcx,
+            tcx: self.tcx(),
             body: self.body,
             loc,
             func,
@@ -129,18 +128,8 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
         self.instrumentation_points
     }
 
-    pub fn find_instrumentation_def(&self, name: Symbol) -> Option<DefId> {
-        // TODO(kkysen) inline, but move this method to a new `struct` more generic than `InstrumentationAdder`
-        find_instrumentation_def(self.tcx, self.runtime_crate_did, name)
-    }
-
-    pub fn find_hook(&self, name: &str) -> DefId {
-        self.find_instrumentation_def(Symbol::intern(name))
-            .unwrap_or_else(|| panic!("could not find `{name}` hook"))
-    }
-
     pub fn func_hash(&self) -> mir_loc::DefPathHash {
-        self.tcx.def_path_hash(self.body.source.def_id()).convert()
+        self.tcx().def_path_hash(self.body.source.def_id()).convert()
     }
 }
 

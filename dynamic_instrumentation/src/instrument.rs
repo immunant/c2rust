@@ -11,8 +11,8 @@ use rustc_middle::mir::{
     Operand, Place, PlaceElem, Rvalue, SourceInfo, Terminator, TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, TyCtxt, TyS};
-use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
-use rustc_span::{Symbol, DUMMY_SP};
+use rustc_span::def_id::{DefId, DefPathHash};
+use rustc_span::DUMMY_SP;
 use std::collections::HashMap;
 use std::fs::File;
 use std::mem;
@@ -22,6 +22,7 @@ use std::sync::Mutex;
 use crate::arg::{ArgKind, InstrumentationArg};
 use crate::cast::cast_ptr_to_usize;
 use crate::deref::{has_outer_deref, remove_outer_deref, strip_all_deref};
+use crate::hooks::Hooks;
 use crate::into_operand::IntoOperand;
 use crate::point::{InstrumentationAdder, InstrumentationPoint};
 use crate::util::Convert;
@@ -117,7 +118,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         self.super_place(place, context, location);
 
-        let field_fn = self.find_hook("ptr_field");
+        let field_fn = self.hooks().find("ptr_field");
 
         let base_ty = self.local_decls()[place.local].ty;
 
@@ -145,14 +146,14 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
     }
 
     fn visit_assign(&mut self, dest: &Place<'tcx>, value: &Rvalue<'tcx>, mut location: Location) {
-        let copy_fn = self.find_hook("ptr_copy");
-        let addr_local_fn = self.find_hook("addr_of_local");
-        let ptr_contrive_fn = self.find_hook("ptr_contrive");
-        let ptr_to_int_fn = self.find_hook("ptr_to_int");
-        let load_value_fn = self.find_hook("load_value");
-        let store_value_fn = self.find_hook("store_value");
-        let store_fn = self.find_hook("ptr_store");
-        let load_fn = self.find_hook("ptr_load");
+        let copy_fn = self.hooks().find("ptr_copy");
+        let addr_local_fn = self.hooks().find("addr_of_local");
+        let ptr_contrive_fn = self.hooks().find("ptr_contrive");
+        let ptr_to_int_fn = self.hooks().find("ptr_to_int");
+        let load_value_fn = self.hooks().find("load_value");
+        let store_value_fn = self.hooks().find("store_value");
+        let store_fn = self.hooks().find("ptr_store");
+        let load_fn = self.hooks().find("ptr_load");
 
         let dest = *dest;
         self.with_assignment((dest, value.clone()), |this| {
@@ -309,8 +310,8 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
     fn visit_terminator(&mut self, terminator: &Terminator<'tcx>, mut location: Location) {
         self.super_terminator(terminator, location);
 
-        let arg_fn = self.find_hook("ptr_copy");
-        let ret_fn = self.find_hook("ptr_ret");
+        let arg_fn = self.hooks().find("ptr_copy");
+        let ret_fn = self.hooks().find("ptr_ret");
 
         match &terminator.kind {
             TerminatorKind::Call {
@@ -355,13 +356,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                     println!("term: {:?}", terminator.kind);
                     let fn_name = self.tcx().item_name(def_id);
                     if HOOK_FUNCTIONS.contains(&fn_name.as_str()) {
-                        let func_def_id =
-                            self.find_instrumentation_def(fn_name).unwrap_or_else(|| {
-                                panic!(
-                                    "could not find instrumentation hook function: {}",
-                                    fn_name.as_str()
-                                )
-                            });
+                        let func_def_id = self.hooks().find_from_symbol(fn_name);
 
                         // Hooked function called; trace args
                         self.loc(location, func_def_id)
@@ -378,7 +373,9 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                         self.loc(location, arg_fn)
                             .source(&0)
                             .dest(&dest_place)
-                            .transfer(TransferKind::Ret(self.tcx().def_path_hash(def_id).convert()))
+                            .transfer(TransferKind::Ret(
+                                self.tcx().def_path_hash(def_id).convert(),
+                            ))
                             .arg_var(dest_place)
                             .add_to(self);
                     }
@@ -395,20 +392,6 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
     }
 }
 
-pub fn find_instrumentation_def(
-    tcx: TyCtxt,
-    runtime_crate_did: DefId,
-    name: Symbol,
-) -> Option<DefId> {
-    Some(
-        tcx.module_children(runtime_crate_did)
-            .iter()
-            .find(|child| child.ident.name == name)?
-            .res
-            .def_id(),
-    )
-}
-
 fn instrument_body<'a, 'tcx>(
     state: &Instrumenter,
     tcx: TyCtxt<'tcx>,
@@ -417,19 +400,8 @@ fn instrument_body<'a, 'tcx>(
 ) {
     let body_def_hash = tcx.def_path_hash(body_did);
 
-    let runtime_crate = tcx
-        .crates(())
-        .iter()
-        .cloned()
-        .find(|&krate| tcx.crate_name(krate).as_str() == "c2rust_analysis_rt")
-        .unwrap();
-
-    let runtime_crate_did = DefId {
-        krate: runtime_crate,
-        index: CRATE_DEF_INDEX,
-    };
-
-    let mut collect_points = InstrumentationAdder::new(tcx, body, runtime_crate_did);
+    let hooks = Hooks::new(tcx);
+    let mut collect_points = InstrumentationAdder::new(hooks, body);
     collect_points.visit_body(body);
 
     apply_instrumentation(
@@ -443,18 +415,14 @@ fn instrument_body<'a, 'tcx>(
     // Apply `main`-specific instrumentation if this fn is main
     let main_did = tcx.entry_fn(()).map(|(def_id, _)| def_id);
     if Some(body_did) == main_did {
-        instrument_entry_fn(tcx, runtime_crate_did, body);
+        instrument_entry_fn(tcx, hooks, body);
     }
 }
 
 /// Add initialization code to the body of a function known to be the binary entrypoint
-fn instrument_entry_fn<'tcx>(tcx: TyCtxt<'tcx>, runtime_crate_did: DefId, body: &mut Body<'tcx>) {
-    let init_fn_did =
-        find_instrumentation_def(tcx, runtime_crate_did, Symbol::intern("initialize"))
-            .expect("Could not find instrumentation context constructor definition");
-
-    let fini_fn_did = find_instrumentation_def(tcx, runtime_crate_did, Symbol::intern("finalize"))
-        .expect("Could not find instrumentation context constructor definition");
+fn instrument_entry_fn<'tcx>(tcx: TyCtxt<'tcx>, hooks: Hooks, body: &mut Body<'tcx>) {
+    let init_fn_did = hooks.find("initialize");
+    let fini_fn_did = hooks.find("finalize");
 
     let _ = insert_call(tcx, body, START_BLOCK, 0, init_fn_did, vec![]);
 
