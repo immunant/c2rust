@@ -91,7 +91,6 @@ fn instrument_rustc(mut at_args: Vec<String>, sysroot: &Path, metadata: &Path) -
 
 fn main() -> eyre::Result<()> {
     color_eyre::install()?;
-    env_logger::init();
 
     let rustc_wrapper_var = "RUSTC_WRAPPER";
     let metadata_var = "C2RUST_INSTRUMENT_METADATA_PATH";

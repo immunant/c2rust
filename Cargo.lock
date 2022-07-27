@@ -279,7 +279,6 @@ dependencies = [
  "cargo_metadata",
  "clap 3.2.8",
  "color-eyre",
- "env_logger",
  "fs-err",
  "indexmap",
  "lazy_static",
