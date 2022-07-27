@@ -7,7 +7,6 @@ use std::{
     env,
     ffi::OsString,
     hash::Hash,
-    io::ErrorKind,
     path::{Path, PathBuf},
     process::{self, Command, ExitStatus},
     str::FromStr,
@@ -15,11 +14,10 @@ use std::{
 
 use c2rust_dynamic_instrumentation::{MirTransformCallbacks, INSTRUMENTER};
 use camino::Utf8Path;
-use cargo_metadata::{Metadata, MetadataCommand, Package, Target};
+use cargo_metadata::{MetadataCommand, Package, Target};
 use clap::Parser;
 use color_eyre::eyre;
 use color_eyre::eyre::eyre;
-use is_executable::IsExecutable;
 use rustc_driver::RunCompiler;
 use rustc_session::config::Options;
 use serde::{Deserialize, Serialize};
@@ -222,14 +220,6 @@ impl CrateTarget {
         })
     }
 
-    pub fn from_metadata(metadata: &Metadata) -> eyre::Result<Vec<Self>> {
-        Self::from_metadata_package(
-            metadata
-                .root_package()
-                .ok_or_else(|| eyre!("no root package found by `cargo`"))?,
-        )
-    }
-
     pub fn from_rustc_args(at_args: &[String]) -> eyre::Result<Self> {
         let args = rustc_driver::args::arg_expand_all(at_args);
         let matches = rustc_driver::handle_options(&args)
@@ -301,64 +291,6 @@ fn instrument_rustc(mut at_args: Vec<String>, sysroot: &Path, metadata: &Path) -
     Ok(())
 }
 
-/// Delete all files that we want to be regenerated
-/// so that we always have fully-up-to-date, non-incremental metadata.
-fn delete_metadata_and_dependencies(
-    info: &InstrumentInfo,
-    cargo_metadata: &Metadata,
-) -> eyre::Result<()> {
-    if let Err(e) = fs_err::remove_file(&info.metadata) {
-        if e.kind() != ErrorKind::NotFound {
-            return Err(e.into());
-        }
-    }
-
-    // TODO(kkysen) Figure out a way to know which profile is being used
-    // Until then, just search them all and delete all of them.
-
-    // TODO(kkysen) We probably have to delete binaries that have different names from the crates.
-
-    // Delete all executables in `target/${profile}/deps/` starting with the crate name + `-`.
-    let target_read_dir = match cargo_metadata.target_directory.read_dir() {
-        Ok(read_dir) => Ok(read_dir),
-        Err(e) => if e.kind() == ErrorKind::NotFound {
-            return Ok(());
-        } else {
-            Err(e)
-        }
-    }?;
-    for profile_dir in target_read_dir {
-        let profile_dir = profile_dir?;
-        if !profile_dir.file_type()?.is_dir() {
-            continue;
-        }
-        for artifact in profile_dir.path().join("deps").read_dir()? {
-            let artifact = artifact?;
-            if !artifact.file_type()?.is_file() {
-                continue;
-            }
-            let file_name = artifact.file_name();
-            let file_name = file_name.to_str();
-            for crate_target in &info.crate_targets {
-                let prefix = format!("{}-", crate_target.crate_name.as_str());
-                // [`Path::starts_with`] only checks whole components at once,
-                // and `OsStr::starts_with` doesn't exist yet.
-                if file_name
-                    .map(|name| name.starts_with(&prefix))
-                    .unwrap_or_default()
-                {
-                    let artifact = artifact.path();
-                    if artifact.is_executable() {
-                        fs_err::remove_file(&artifact)?;
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
 fn main() -> eyre::Result<()> {
     color_eyre::install()?;
     env_logger::init();
@@ -389,20 +321,30 @@ fn main() -> eyre::Result<()> {
         } = Args::parse();
 
         let cargo_metadata = MetadataCommand::new().exec()?;
-        let crate_targets = CrateTarget::from_metadata(&cargo_metadata)?;
+
+        let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+
+        let root_package = cargo_metadata
+            .root_package()
+            .ok_or_else(|| eyre!("no root package found by `cargo`"))?;
+        let status = Command::new(&cargo)
+            .args(&["clean", "--package", root_package.name.as_str()])
+            .status()?;
+        if !status.success() {
+            exit_with_status(status);
+        }
+
+        let crate_targets = CrateTarget::from_metadata_package(root_package)?;
         let info = InstrumentInfo {
             crate_targets,
             metadata,
         };
 
-        delete_metadata_and_dependencies(&info, &cargo_metadata)?;
-
         // We could binary encode this, but it's likely very short,
         // so just json encode it, so it's also human readable and inspectable.
         let info = serde_json::to_string(&info)?;
 
-        let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-        let status = Command::new(cargo)
+        let status = Command::new(&cargo)
             .args(cargo_args)
             .env(rustc_wrapper_var, &own_exe)
             .env(instrument_info_var, info)

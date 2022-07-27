@@ -282,7 +282,6 @@ dependencies = [
  "env_logger",
  "fs-err",
  "indexmap",
- "is_executable",
  "lazy_static",
  "log",
  "rustc-private-link",
@@ -1153,15 +1152,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a5bbe824c507c5da5956355e86a746d82e0e1464f65d862cc5e71da70e94b2c"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "is_executable"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa9acdc6d67b75e626ad644734e8bc6df893d9cd2a834129065d3dd6158ea9c8"
-dependencies = [
- "winapi",
 ]
 
 [[package]]
