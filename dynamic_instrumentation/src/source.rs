@@ -1,5 +1,5 @@
-use c2rust_analysis_rt::mir_loc::{MirPlace, MirProjection};
-use rustc_middle::mir::{Local, Operand, Place, PlaceElem, Rvalue};
+use c2rust_analysis_rt::mir_loc::MirPlace;
+use rustc_middle::mir::{Local, Operand, Place, Rvalue};
 
 use crate::util::Convert;
 
@@ -41,26 +41,6 @@ impl Source for Local {
 impl Source for u32 {
     fn source(&self) -> Option<MirPlace> {
         Local::from_u32(*self).source()
-    }
-}
-
-impl Convert<MirProjection> for PlaceElem<'_> {
-    fn convert(self) -> MirProjection {
-        match self {
-            Self::Deref => MirProjection::Deref,
-            Self::Field(field_id, _) => MirProjection::Field(field_id.into()),
-            Self::Index(local) => MirProjection::Index(local.into()),
-            _ => MirProjection::Unsupported,
-        }
-    }
-}
-
-impl Convert<MirPlace> for Place<'_> {
-    fn convert(self) -> MirPlace {
-        MirPlace {
-            local: self.local.as_u32().into(),
-            projection: self.projection.iter().map(PlaceElem::convert).collect(),
-        }
     }
 }
 

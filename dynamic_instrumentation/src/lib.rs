@@ -15,6 +15,7 @@ extern crate rustc_target;
 mod deref;
 mod instrument_memory;
 mod into_operand;
+mod runtime_conversions;
 mod source;
 mod util;
 

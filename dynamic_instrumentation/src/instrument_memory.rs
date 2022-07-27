@@ -4,7 +4,6 @@ use c2rust_analysis_rt::mir_loc::{self, EventMetadata, Func, MirLoc, MirLocId, T
 use c2rust_analysis_rt::HOOK_FUNCTIONS;
 use indexmap::IndexSet;
 use log::debug;
-use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_index::vec::{Idx, IndexVec};
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
@@ -25,31 +24,6 @@ use crate::deref::{has_outer_deref, remove_outer_deref, strip_all_deref};
 use crate::into_operand::IntoOperand;
 use crate::source::Source;
 use crate::util::Convert;
-
-impl Convert<Fingerprint> for mir_loc::Fingerprint {
-    fn convert(self) -> Fingerprint {
-        let Self(a, b) = self;
-        Fingerprint::new(a, b)
-    }
-}
-
-impl Convert<mir_loc::Fingerprint> for Fingerprint {
-    fn convert(self) -> mir_loc::Fingerprint {
-        self.as_value().into()
-    }
-}
-
-impl Convert<DefPathHash> for mir_loc::DefPathHash {
-    fn convert(self) -> DefPathHash {
-        DefPathHash(self.0.convert())
-    }
-}
-
-impl Convert<mir_loc::DefPathHash> for DefPathHash {
-    fn convert(self) -> mir_loc::DefPathHash {
-        mir_loc::DefPathHash(self.0.convert())
-    }
-}
 
 #[derive(Default)]
 pub struct InstrumentMemoryOps {
