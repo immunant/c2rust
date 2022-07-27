@@ -23,10 +23,7 @@ use std::mem;
 use std::path::Path;
 use std::sync::Mutex;
 
-/// Like [`From`] and [`Into`], but can't `impl` those because of the orphan rule.
-trait Convert<T> {
-    fn convert(self) -> T;
-}
+use crate::util::Convert;
 
 impl Convert<Fingerprint> for mir_loc::Fingerprint {
     fn convert(self) -> Fingerprint {

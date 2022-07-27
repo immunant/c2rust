@@ -13,6 +13,8 @@ extern crate rustc_span;
 extern crate rustc_target;
 
 mod instrument_memory;
+mod util;
+
 use instrument_memory::InstrumentMemoryOps;
 
 use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
