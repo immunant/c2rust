@@ -7,7 +7,6 @@ use rustc_span::def_id::DefId;
 
 use crate::{arg::InstrumentationArg, hooks::Hooks, util::Convert};
 
-#[derive(Clone)]
 pub struct InstrumentationPoint<'tcx> {
     id: usize,
     pub loc: Location,
