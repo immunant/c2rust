@@ -6,20 +6,17 @@ extern crate rustc_span;
 use std::{
     env,
     ffi::OsString,
-    hash::Hash,
     path::{Path, PathBuf},
     process::{self, Command, ExitStatus},
-    str::FromStr,
 };
 
 use c2rust_dynamic_instrumentation::{MirTransformCallbacks, INSTRUMENTER};
 use camino::Utf8Path;
-use cargo_metadata::{MetadataCommand, Package, Target};
+use cargo_metadata::MetadataCommand;
 use clap::Parser;
 use color_eyre::eyre;
 use color_eyre::eyre::eyre;
 use rustc_driver::RunCompiler;
-use rustc_session::config::Options;
 use serde::{Deserialize, Serialize};
 
 /// Instrument memory accesses for dynamic analysis.
@@ -38,201 +35,8 @@ fn exit_with_status(status: ExitStatus) {
     process::exit(status.code().unwrap_or(1))
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
-enum CrateType {
-    Bin,
-    RLib,
-    DyLib,
-    CDyLib,
-    StaticLib,
-    ProcMacro,
-}
-
-impl FromStr for CrateType {
-    type Err = eyre::Report;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        use CrateType::*;
-        Ok(match s {
-            "bin" => Bin,
-            // `rustc_session::config::CrateType` doesn't have a separate [`Lib`] variant.
-            "lib" | "rlib" => RLib,
-            "dylib" => DyLib,
-            "cdylib" => CDyLib,
-            "staticlib" => StaticLib,
-            "proc-macro" => ProcMacro,
-            _ => return Err(eyre!("unknown crate type: {s}")),
-        })
-    }
-}
-
-impl From<rustc_session::config::CrateType> for CrateType {
-    fn from(crate_type: rustc_session::config::CrateType) -> Self {
-        use rustc_session::config::CrateType::*;
-        match crate_type {
-            Executable => Self::Bin,
-            Dylib => Self::DyLib,
-            Rlib => Self::RLib,
-            Staticlib => Self::StaticLib,
-            Cdylib => Self::CDyLib,
-            ProcMacro => Self::ProcMacro,
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
-enum CrateEdition {
-    E2015,
-    E2018,
-    E2021,
-}
-
-impl From<cargo_metadata::Edition> for CrateEdition {
-    fn from(edition: cargo_metadata::Edition) -> Self {
-        use cargo_metadata::Edition::*;
-        match edition {
-            E2015 => Self::E2015,
-            E2018 => Self::E2018,
-            E2021 => Self::E2021,
-            _ => todo!("when `rustc_span::edition::Edition` gets a new edition, it'll cause a compile error"),
-        }
-    }
-}
-
-impl From<rustc_span::edition::Edition> for CrateEdition {
-    fn from(edition: rustc_span::edition::Edition) -> Self {
-        use rustc_span::edition::Edition::*;
-        match edition {
-            Edition2015 => Self::E2015,
-            Edition2018 => Self::E2018,
-            Edition2021 => Self::E2021,
-        }
-    }
-}
-
-/// A `crate` name, canonicalized to an identifier (i.e. `-`s are replaced with `_`).
-#[derive(PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
-struct CrateName {
-    name: String,
-}
-
-impl CrateName {
-    pub fn as_str(&self) -> &str {
-        self.name.as_str()
-    }
-}
-
-impl From<&str> for CrateName {
-    fn from(name: &str) -> Self {
-        Self {
-            name: name.replace('-', "_"),
-        }
-    }
-}
-
-#[derive(Eq, Debug, Serialize, Deserialize)]
-struct CrateTarget {
-    crate_name: CrateName,
-    src_path: PathBuf,
-    crate_types: Vec<CrateType>,
-    edition: CrateEdition,
-}
-
-impl CrateTarget {
-    /// A set of stable parts of a [`CrateTarget`] that are meant to be checked for equality.
-    fn stable_parts(&self) -> impl Eq + Hash + '_ {
-        // Sometimes the [`CrateType`]s can change to `[]` depending on if tests are being built,
-        // so exclude that from equality checks.
-        (
-            self.crate_name.as_str(),
-            self.src_path.as_path(),
-            self.edition,
-        )
-    }
-}
-
-impl PartialEq for CrateTarget {
-    fn eq(&self, other: &Self) -> bool {
-        self.stable_parts() == other.stable_parts()
-    }
-}
-
-impl Hash for CrateTarget {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.stable_parts().hash(state);
-    }
-}
-
-impl CrateTarget {
-    pub fn from_metadata_target(package: &Package, target: &Target) -> eyre::Result<Self> {
-        Ok(Self {
-            crate_name: package.name.as_str().into(),
-            src_path: target.src_path.clone().into(),
-            crate_types: target
-                .crate_types
-                .iter()
-                .map(|s| s.as_str())
-                .map(CrateType::from_str)
-                .collect::<Result<Vec<_>, _>>()?,
-            edition: target.edition.clone().into(),
-        })
-    }
-
-    pub fn from_metadata_package(package: &Package) -> eyre::Result<Vec<Self>> {
-        package
-            .targets
-            .iter()
-            .map(|target| Self::from_metadata_target(package, target))
-            .collect()
-    }
-
-    pub fn from_session_options(
-        session_options: Options,
-        free_matches: &[String],
-    ) -> eyre::Result<Self> {
-        let src_path = match free_matches {
-            [src_path] => {
-                if src_path == "-" {
-                    // We don't actually ever read from this, so I think this is a fine translation to a real [`Path`].
-                    "/dev/stdin".into()
-                } else {
-                    fs_err::canonicalize(src_path)?
-                }
-            }
-            free_matches => {
-                return Err(eyre!(
-                    "`rustc` args `matches.free` is not a single source path: {free_matches:?}"
-                ))
-            }
-        };
-        let Options {
-            crate_name,
-            crate_types,
-            edition,
-            ..
-        } = session_options;
-        let crate_name = crate_name.ok_or_else(|| eyre!("no crate_name specified by `cargo`"))?;
-        Ok(Self {
-            crate_name: crate_name.as_str().into(),
-            src_path,
-            crate_types: crate_types.into_iter().map(CrateType::from).collect(),
-            edition: edition.into(),
-        })
-    }
-
-    pub fn from_rustc_args(at_args: &[String]) -> eyre::Result<Self> {
-        let args = rustc_driver::args::arg_expand_all(at_args);
-        let matches = rustc_driver::handle_options(&args)
-            .ok_or_else(|| eyre!("failed to parse `rustc` args"))?;
-        let session_options = rustc_session::config::build_session_options(&matches);
-        let crate_target = CrateTarget::from_session_options(session_options, &matches.free)?;
-        Ok(crate_target)
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 struct InstrumentInfo {
-    crate_targets: Vec<CrateTarget>,
     metadata: PathBuf,
 }
 
@@ -304,13 +108,10 @@ fn main() -> eyre::Result<()> {
     if wrapping_rustc {
         let sysroot = get_sysroot()?;
         let at_args = env::args().skip(1).collect::<Vec<_>>();
-        let crate_target = CrateTarget::from_rustc_args(&at_args)?;
         let info = env::var(instrument_info_var)?;
         let info = serde_json::from_str::<InstrumentInfo>(&info)?;
         let is_primary_package = env::var("CARGO_PRIMARY_PACKAGE").is_ok();
-        assert_eq!(is_primary_package, info.crate_targets.contains(&crate_target));
-        let should_instrument = is_primary_package;
-        if should_instrument {
+        if is_primary_package {
             instrument_rustc(at_args, &sysroot, &info.metadata)?;
         } else {
             let status = passthrough_rustc(&at_args, &sysroot)?;
@@ -336,9 +137,7 @@ fn main() -> eyre::Result<()> {
             exit_with_status(status);
         }
 
-        let crate_targets = CrateTarget::from_metadata_package(root_package)?;
         let info = InstrumentInfo {
-            crate_targets,
             metadata,
         };
 
