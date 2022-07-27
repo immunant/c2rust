@@ -421,10 +421,10 @@ fn instrument_body<'a, 'tcx>(
 
 /// Add initialization code to the body of a function known to be the binary entrypoint
 fn instrument_entry_fn<'tcx>(tcx: TyCtxt<'tcx>, hooks: Hooks, body: &mut Body<'tcx>) {
-    let init_fn_did = hooks.find("initialize");
-    let fini_fn_did = hooks.find("finalize");
+    let init_fn = hooks.find("initialize");
+    let fini_fn = hooks.find("finalize");
 
-    let _ = insert_call(tcx, body, START_BLOCK, 0, init_fn_did, vec![]);
+    let _ = insert_call(tcx, body, START_BLOCK, 0, init_fn, vec![]);
 
     let mut return_blocks = vec![];
     let mut resume_blocks = vec![];
@@ -441,10 +441,10 @@ fn instrument_entry_fn<'tcx>(tcx: TyCtxt<'tcx>, hooks: Hooks, body: &mut Body<'t
     }
 
     for block in return_blocks {
-        let _ = insert_call(tcx, body, block, 0, fini_fn_did, vec![]);
+        let _ = insert_call(tcx, body, block, 0, fini_fn, vec![]);
     }
     for block in resume_blocks {
-        let _ = insert_call(tcx, body, block, 0, fini_fn_did, vec![]);
+        let _ = insert_call(tcx, body, block, 0, fini_fn, vec![]);
     }
 }
 
