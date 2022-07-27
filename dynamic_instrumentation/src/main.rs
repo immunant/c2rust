@@ -88,7 +88,7 @@ fn instrument_rustc(
     RunCompiler::new(&at_args, &mut MirTransformCallbacks)
         .run()
         .map_err(|_| anyhow!("`rustc` failed"))?;
-    INSTRUMENTER.finalize(metadata).map_err(|e| anyhow!(e))?;
+    INSTRUMENTER.finalize(metadata)?;
     Ok(())
 }
 
