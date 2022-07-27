@@ -285,8 +285,6 @@ dependencies = [
  "lazy_static",
  "log",
  "rustc-private-link",
- "serde",
- "serde_json",
 ]
 
 [[package]]

@@ -17,7 +17,6 @@ use clap::Parser;
 use color_eyre::eyre;
 use color_eyre::eyre::eyre;
 use rustc_driver::RunCompiler;
-use serde::{Deserialize, Serialize};
 
 /// Instrument memory accesses for dynamic analysis.
 #[derive(Debug, Parser)]
@@ -33,11 +32,6 @@ struct Args {
 
 fn exit_with_status(status: ExitStatus) {
     process::exit(status.code().unwrap_or(1))
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct InstrumentInfo {
-    metadata: PathBuf,
 }
 
 fn get_sysroot_fast() -> Option<PathBuf> {
@@ -100,7 +94,7 @@ fn main() -> eyre::Result<()> {
     env_logger::init();
 
     let rustc_wrapper_var = "RUSTC_WRAPPER";
-    let instrument_info_var = "C2RUST_INSTRUMENT_INFO";
+    let metadata_var = "C2RUST_INSTRUMENT_METADATA_PATH";
 
     let own_exe = env::current_exe()?;
 
@@ -108,11 +102,11 @@ fn main() -> eyre::Result<()> {
     if wrapping_rustc {
         let sysroot = get_sysroot()?;
         let at_args = env::args().skip(1).collect::<Vec<_>>();
-        let info = env::var(instrument_info_var)?;
-        let info = serde_json::from_str::<InstrumentInfo>(&info)?;
         let is_primary_package = env::var("CARGO_PRIMARY_PACKAGE").is_ok();
         if is_primary_package {
-            instrument_rustc(at_args, &sysroot, &info.metadata)?;
+            let metadata =
+                env::var_os(metadata_var).ok_or_else(|| eyre!("we should've set this"))?;
+            instrument_rustc(at_args, &sysroot, Path::new(&metadata))?;
         } else {
             let status = passthrough_rustc(&at_args, &sysroot)?;
             exit_with_status(status);
@@ -137,18 +131,10 @@ fn main() -> eyre::Result<()> {
             exit_with_status(status);
         }
 
-        let info = InstrumentInfo {
-            metadata,
-        };
-
-        // We could binary encode this, but it's likely very short,
-        // so just json encode it, so it's also human readable and inspectable.
-        let info = serde_json::to_string(&info)?;
-
         let status = Command::new(&cargo)
             .args(cargo_args)
             .env(rustc_wrapper_var, &own_exe)
-            .env(instrument_info_var, info)
+            .env(metadata_var, metadata)
             .status()?;
         exit_with_status(status);
     }
