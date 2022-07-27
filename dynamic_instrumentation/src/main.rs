@@ -307,7 +307,9 @@ fn main() -> eyre::Result<()> {
         let crate_target = CrateTarget::from_rustc_args(&at_args)?;
         let info = env::var(instrument_info_var)?;
         let info = serde_json::from_str::<InstrumentInfo>(&info)?;
-        let should_instrument = info.crate_targets.contains(&crate_target);
+        let is_primary_package = env::var("CARGO_PRIMARY_PACKAGE").is_ok();
+        assert_eq!(is_primary_package, info.crate_targets.contains(&crate_target));
+        let should_instrument = is_primary_package;
         if should_instrument {
             instrument_rustc(at_args, &sysroot, &info.metadata)?;
         } else {
