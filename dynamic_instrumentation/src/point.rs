@@ -8,7 +8,7 @@ use rustc_span::{def_id::DefId, Symbol};
 
 use crate::{
     arg::{ArgKind, InstrumentationArg},
-    instrument_memory::find_instrumentation_def,
+    instrument::find_instrumentation_def,
     into_operand::IntoOperand,
     source::Source,
     util::Convert,

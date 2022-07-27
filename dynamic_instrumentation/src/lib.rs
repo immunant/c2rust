@@ -15,14 +15,14 @@ extern crate rustc_target;
 mod arg;
 mod cast;
 mod deref;
-mod instrument_memory;
+mod instrument;
 mod into_operand;
 mod point;
 mod runtime_conversions;
 mod source;
 mod util;
 
-use instrument_memory::InstrumentMemoryOps;
+use instrument::InstrumentMemoryOps;
 
 use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
 use cargo::core::{PackageId, Target, Verbosity, Workspace};
