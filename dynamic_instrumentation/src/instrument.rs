@@ -27,15 +27,15 @@ use crate::point::{InstrumentationAdder, InstrumentationPoint};
 use crate::util::Convert;
 
 #[derive(Default)]
-pub struct InstrumentMemoryOps {
+pub struct Instrumenter {
     mir_locs: Mutex<IndexSet<MirLoc>>,
     functions: Mutex<HashMap<mir_loc::DefPathHash, String>>,
 }
 
-impl InstrumentMemoryOps {
+impl Instrumenter {
     /// Create a new instrumentation object.
     ///
-    /// A single [`InstrumentMemoryOps`] instance should be shared across the
+    /// A single [`Instrumenter`] instance should be shared across the
     /// entire crate being instrumented, as the indexed source locations are
     /// shared and should be global.
     pub fn new() -> Self {
@@ -406,7 +406,7 @@ pub fn find_instrumentation_def(tcx: TyCtxt, runtime_crate_did: DefId, name: Sym
 }
 
 fn instrument_body<'a, 'tcx>(
-    state: &InstrumentMemoryOps,
+    state: &Instrumenter,
     tcx: TyCtxt<'tcx>,
     body: &'a mut Body<'tcx>,
     body_did: DefId,
@@ -478,7 +478,7 @@ fn instrument_entry_fn<'tcx>(tcx: TyCtxt<'tcx>, runtime_crate_did: DefId, body: 
 
 /// Rewrite the body to apply the specified instrumentation points
 fn apply_instrumentation<'a, 'tcx>(
-    state: &InstrumentMemoryOps,
+    state: &Instrumenter,
     points: &[InstrumentationPoint<'tcx>],
     tcx: TyCtxt<'tcx>,
     body: &'a mut Body<'tcx>,

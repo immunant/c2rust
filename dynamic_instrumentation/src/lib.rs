@@ -22,7 +22,7 @@ mod runtime_conversions;
 mod source;
 mod util;
 
-use instrument::InstrumentMemoryOps;
+use instrument::Instrumenter;
 
 use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
 use cargo::core::{PackageId, Target, Verbosity, Workspace};
@@ -57,7 +57,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 lazy_static! {
-    static ref INSTRUMENTER: InstrumentMemoryOps = InstrumentMemoryOps::new();
+    static ref INSTRUMENTER: Instrumenter = Instrumenter::new();
 }
 
 struct NullCallbacks;
