@@ -1,4 +1,7 @@
-use rustc_middle::{ty::{TyCtxt, self, ParamEnv}, mir::{Operand, Place, Local, Constant}};
+use rustc_middle::{
+    mir::{Constant, Local, Operand, Place},
+    ty::{self, ParamEnv, TyCtxt},
+};
 use rustc_span::DUMMY_SP;
 
 /// Types that can be passed as an argument to instrumentation hook functions.

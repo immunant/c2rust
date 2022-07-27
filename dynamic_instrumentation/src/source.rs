@@ -1,5 +1,5 @@
 use c2rust_analysis_rt::mir_loc::{MirPlace, MirProjection};
-use rustc_middle::mir::{Place, Operand, Rvalue, Local, PlaceElem};
+use rustc_middle::mir::{Local, Operand, Place, PlaceElem, Rvalue};
 
 use crate::util::Convert;
 

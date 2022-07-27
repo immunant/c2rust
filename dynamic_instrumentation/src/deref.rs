@@ -1,4 +1,7 @@
-use rustc_middle::{mir::{Place, ProjectionElem, PlaceRef}, ty::TyCtxt};
+use rustc_middle::{
+    mir::{Place, PlaceRef, ProjectionElem},
+    ty::TyCtxt,
+};
 
 pub fn has_outer_deref(p: &Place) -> bool {
     matches!(

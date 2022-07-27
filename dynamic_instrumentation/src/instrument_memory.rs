@@ -1,8 +1,6 @@
 use anyhow::Context;
 use c2rust_analysis_rt::metadata::Metadata;
-use c2rust_analysis_rt::mir_loc::{
-    self, EventMetadata, Func, MirLoc, MirLocId, TransferKind,
-};
+use c2rust_analysis_rt::mir_loc::{self, EventMetadata, Func, MirLoc, MirLocId, TransferKind};
 use c2rust_analysis_rt::HOOK_FUNCTIONS;
 use indexmap::IndexSet;
 use log::debug;
@@ -10,9 +8,9 @@ use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_index::vec::{Idx, IndexVec};
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Local, LocalDecl, Location,
-    Mutability, Operand, Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo, Statement,
-    StatementKind, Terminator, TerminatorKind, START_BLOCK,
+    BasicBlock, BasicBlockData, Body, BorrowKind, CastKind, Local, LocalDecl, Location, Mutability,
+    Operand, Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo, Statement, StatementKind,
+    Terminator, TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, TyCtxt, TyS};
 use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
@@ -23,7 +21,7 @@ use std::mem;
 use std::path::Path;
 use std::sync::Mutex;
 
-use crate::deref::{remove_outer_deref, strip_all_deref, has_outer_deref};
+use crate::deref::{has_outer_deref, remove_outer_deref, strip_all_deref};
 use crate::into_operand::IntoOperand;
 use crate::source::Source;
 use crate::util::Convert;
@@ -297,7 +295,7 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     }
 
     /// Add an argument to this [`InstrumentationPoint`] that is the index of the argument.
-    /// 
+    ///
     /// TODO(kkysen, aneksteind) Currently `Idx`/`u32` types are the only types we support passing as arguments as is,
     /// but we eventually want to be able to pass other serializable types as well.
     pub fn arg_index_of(self, arg: impl Idx) -> Self {
