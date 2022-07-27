@@ -160,12 +160,12 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
         });
 
         let locals = self.local_decls().clone();
-        let ctx = self.tcx;
+        let ctx = self.tcx();
 
         let op_ty = |op: &Operand<'tcx>| op.ty(&locals, ctx);
         let place_ty = |p: &Place<'tcx>| p.ty(&locals, ctx).ty;
         let local_ty = |p: &Place| place_ty(&p.local.into());
-        let value_ty = value.ty(self, self.tcx);
+        let value_ty = value.ty(self, self.tcx());
 
         self.visit_place(
             &dest,
@@ -194,11 +194,11 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
         match value {
             _ if dest.is_indirect() => {
                 // Strip all derefs to set base_dest to the pointer that is deref'd
-                let base_dest = strip_all_deref(&dest, self.tcx);
+                let base_dest = strip_all_deref(&dest, self.tcx());
 
                 self.loc(location, store_fn)
                     .arg_var(base_dest)
-                    .source(&remove_outer_deref(dest, self.tcx))
+                    .source(&remove_outer_deref(dest, self.tcx()))
                     .add_to(self);
 
                 if is_region_or_unsafe_ptr(value_ty) {
@@ -262,7 +262,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
             }
             Rvalue::Ref(_, bkind, p) if has_outer_deref(p) => {
                 // this is a reborrow or field reference, i.e. _2 = &(*_1)
-                let source = remove_outer_deref(*p, self.tcx);
+                let source = remove_outer_deref(*p, self.tcx());
                 if let BorrowKind::Mut { .. } = bkind {
                     // Instrument which local's address is taken
                     self.loc(location, copy_fn)
@@ -282,7 +282,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
             }
             Rvalue::Ref(_, bkind, p) if !p.is_indirect() => {
                 // this is a reborrow or field reference, i.e. _2 = &(*_1)
-                let source = remove_outer_deref(*p, self.tcx);
+                let source = remove_outer_deref(*p, self.tcx());
                 if let BorrowKind::Mut { .. } = bkind {
                     // Instrument which local's address is taken
                     self.loc(location, addr_local_fn)
@@ -321,23 +321,23 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
             } => {
                 let mut callee_arg: Place = Local::new(1).into();
                 let is_hook = {
-                    if let ty::FnDef(def_id, _) = func.ty(self, self.tcx).kind() {
-                        let fn_name = self.tcx.item_name(*def_id);
+                    if let ty::FnDef(def_id, _) = func.ty(self, self.tcx()).kind() {
+                        let fn_name = self.tcx().item_name(*def_id);
                         HOOK_FUNCTIONS.contains(&fn_name.as_str())
                     } else {
                         false
                     }
                 };
-                let func_kind = func.ty(self, self.tcx).kind();
+                let func_kind = func.ty(self, self.tcx()).kind();
                 let transfer_kind = if let &ty::FnDef(def_id, _) = func_kind {
-                    TransferKind::Arg(self.tcx.def_path_hash(def_id).convert())
+                    TransferKind::Arg(self.tcx().def_path_hash(def_id).convert())
                 } else {
                     TransferKind::None
                 };
                 if !is_hook {
                     for arg in args {
                         if let Some(place) = arg.place() {
-                            let place_ty = place.ty(self, self.tcx).ty;
+                            let place_ty = place.ty(self, self.tcx()).ty;
                             if is_shared_or_unsafe_ptr(place_ty) {
                                 self.loc(location, arg_fn)
                                     .arg_var(place)
@@ -353,7 +353,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 if let (&ty::FnDef(def_id, _), &Some(destination)) = (func_kind, destination) {
                     let (dest_place, dest_block) = destination;
                     println!("term: {:?}", terminator.kind);
-                    let fn_name = self.tcx.item_name(def_id);
+                    let fn_name = self.tcx().item_name(def_id);
                     if HOOK_FUNCTIONS.contains(&fn_name.as_str()) {
                         let func_def_id =
                             self.find_instrumentation_def(fn_name).unwrap_or_else(|| {
@@ -371,14 +371,14 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                             .transfer(TransferKind::Ret(self.func_hash()))
                             .arg_vars(args.iter().cloned())
                             .add_to(self);
-                    } else if is_region_or_unsafe_ptr(dest_place.ty(self, self.tcx).ty) {
+                    } else if is_region_or_unsafe_ptr(dest_place.ty(self, self.tcx()).ty) {
                         location.statement_index = 0;
                         location.block = dest_block;
 
                         self.loc(location, arg_fn)
                             .source(&0)
                             .dest(&dest_place)
-                            .transfer(TransferKind::Ret(self.tcx.def_path_hash(def_id).convert()))
+                            .transfer(TransferKind::Ret(self.tcx().def_path_hash(def_id).convert()))
                             .arg_var(dest_place)
                             .add_to(self);
                     }

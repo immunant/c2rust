@@ -34,7 +34,7 @@ struct InstrumentationPointBuilder<'tcx> {
 }
 
 pub struct InstrumentationAdder<'a, 'tcx: 'a> {
-    pub tcx: TyCtxt<'tcx>,
+    tcx: TyCtxt<'tcx>,
     body: &'a Body<'tcx>,
     runtime_crate_did: DefId,
 
@@ -52,6 +52,10 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
             instrumentation_points: Default::default(),
             assignment: Default::default(),
         }
+    }
+
+    pub fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
     }
 
     pub fn assignment(&self) -> Option<&(Place<'tcx>, Rvalue<'tcx>)> {
