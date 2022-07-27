@@ -1,7 +1,7 @@
 use c2rust_analysis_rt::mir_loc::{self, EventMetadata, TransferKind};
 use rustc_index::vec::Idx;
 use rustc_middle::{
-    mir::{Body, Location, Place, Rvalue},
+    mir::{Body, HasLocalDecls, LocalDecls, Location, Place, Rvalue},
     ty::TyCtxt,
 };
 use rustc_span::{def_id::DefId, Symbol};
@@ -35,7 +35,7 @@ struct InstrumentationPointBuilder<'tcx> {
 
 pub struct InstrumentationAdder<'a, 'tcx: 'a> {
     pub tcx: TyCtxt<'tcx>,
-    pub body: &'a Body<'tcx>,
+    body: &'a Body<'tcx>,
     runtime_crate_did: DefId,
 
     instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
@@ -58,7 +58,11 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
         self.assignment.as_ref()
     }
 
-    pub fn with_assignment(&mut self, assignment: (Place<'tcx>, Rvalue<'tcx>), f: impl Fn(&mut Self)) {
+    pub fn with_assignment(
+        &mut self,
+        assignment: (Place<'tcx>, Rvalue<'tcx>),
+        f: impl Fn(&mut Self),
+    ) {
         let old_assignment = self.assignment.replace(assignment);
         f(self);
         self.assignment = old_assignment;
@@ -81,6 +85,12 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
             after_call,
             metadata,
         });
+    }
+}
+
+impl<'a, 'tcx: 'a> HasLocalDecls<'tcx> for InstrumentationAdder<'a, 'tcx> {
+    fn local_decls(&self) -> &'a LocalDecls<'tcx> {
+        self.body.local_decls()
     }
 }
 

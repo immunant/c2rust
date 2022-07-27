@@ -7,8 +7,8 @@ use log::debug;
 use rustc_index::vec::Idx;
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, BorrowKind, Local, LocalDecl, Location, Operand, Place,
-    PlaceElem, Rvalue, SourceInfo, Terminator, TerminatorKind, START_BLOCK,
+    BasicBlock, BasicBlockData, Body, BorrowKind, HasLocalDecls, Local, LocalDecl, Location,
+    Operand, Place, PlaceElem, Rvalue, SourceInfo, Terminator, TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, TyCtxt, TyS};
 use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
@@ -119,7 +119,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
 
         let field_fn = self.find_hook("ptr_field");
 
-        let base_ty = self.body.local_decls[place.local].ty;
+        let base_ty = self.local_decls()[place.local].ty;
 
         // Instrument field projections on raw-ptr places
         if is_region_or_unsafe_ptr(base_ty) && context.is_use() {
@@ -159,13 +159,13 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
             this.visit_rvalue(value, location)
         });
 
-        let locals = self.body.local_decls.clone();
+        let locals = self.local_decls().clone();
         let ctx = self.tcx;
 
         let op_ty = |op: &Operand<'tcx>| op.ty(&locals, ctx);
         let place_ty = |p: &Place<'tcx>| p.ty(&locals, ctx).ty;
         let local_ty = |p: &Place| place_ty(&p.local.into());
-        let value_ty = value.ty(&self.body.local_decls, self.tcx);
+        let value_ty = value.ty(self, self.tcx);
 
         self.visit_place(
             &dest,
@@ -321,14 +321,14 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
             } => {
                 let mut callee_arg: Place = Local::new(1).into();
                 let is_hook = {
-                    if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
+                    if let ty::FnDef(def_id, _) = func.ty(self, self.tcx).kind() {
                         let fn_name = self.tcx.item_name(*def_id);
                         HOOK_FUNCTIONS.contains(&fn_name.as_str())
                     } else {
                         false
                     }
                 };
-                let func_kind = func.ty(self.body, self.tcx).kind();
+                let func_kind = func.ty(self, self.tcx).kind();
                 let transfer_kind = if let &ty::FnDef(def_id, _) = func_kind {
                     TransferKind::Arg(self.tcx.def_path_hash(def_id).convert())
                 } else {
@@ -337,7 +337,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 if !is_hook {
                     for arg in args {
                         if let Some(place) = arg.place() {
-                            let place_ty = place.ty(self.body, self.tcx).ty;
+                            let place_ty = place.ty(self, self.tcx).ty;
                             if is_shared_or_unsafe_ptr(place_ty) {
                                 self.loc(location, arg_fn)
                                     .arg_var(place)
@@ -371,9 +371,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                             .transfer(TransferKind::Ret(self.func_hash()))
                             .arg_vars(args.iter().cloned())
                             .add_to(self);
-                    } else if is_region_or_unsafe_ptr(
-                        dest_place.ty(&self.body.local_decls, self.tcx).ty,
-                    ) {
+                    } else if is_region_or_unsafe_ptr(dest_place.ty(self, self.tcx).ty) {
                         location.statement_index = 0;
                         location.block = dest_block;
 
@@ -388,7 +386,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
             }
             TerminatorKind::Return => {
                 let place = Place::return_place();
-                if is_region_or_unsafe_ptr(self.body.local_decls[place.local].ty) {
+                if is_region_or_unsafe_ptr(self.local_decls()[place.local].ty) {
                     self.loc(location, ret_fn).arg_var(place).add_to(self);
                 }
             }
