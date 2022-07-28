@@ -174,7 +174,7 @@ impl DataflowConstraints {
 
     /// Update the pointer permissions in `hypothesis` to satisfy these constraints.
     pub fn propagate_cell(&self, asn: &mut Assignment) {
-        let (perms, mut flags) = asn.all_mut();
+        let (perms, mut flags, _) = asn.all_mut();
         let perms = perms.borrow();
 
         // All pointers that are WRITE and not UNIQUE must have a type like `&Cell<_>`.
@@ -304,6 +304,6 @@ trait PropagateRules<T> {
 pub fn generate_constraints<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     mir: &Body<'tcx>,
-) -> DataflowConstraints {
+) -> (DataflowConstraints, Vec<(PointerId, PointerId)>) {
     self::type_check::visit(acx, mir)
 }

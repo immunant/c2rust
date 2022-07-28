@@ -4,12 +4,24 @@ use rustc_middle::ty::{DefIdTree, Ty, TyCtxt, TyKind};
 
 #[derive(Debug)]
 pub enum RvalueDesc<'tcx> {
+    /// A pointer projection, such as `&(*x.y).z`.  The rvalue is split into a base pointer
+    /// expression (in this case `x.y`) and a projection (`.z`).  The `&` and `*` are implicit.
     Project {
+        /// The base pointer of the projection.  This is guaranteed to evaluate to a pointer or
+        /// reference type.
+        ///
+        /// This may contain derefs, indicating that the pointer was loaded through another
+        /// pointer.  Only the outermost deref is implicit.  For example, `&(**x).y` has a `base`
+        /// of `*x` and a `proj` of `.y`.
         base: PlaceRef<'tcx>,
+        /// The projection applied to the pointer.  This contains no `Deref` projections.
         proj: &'tcx [PlaceElem<'tcx>],
     },
+    /// The address of a local or one of its fields, such as `&x.y`.  The rvalue is split into a
+    /// base local (in this case `x`) and a projection (`.y`).  The `&` is implicit.
     AddrOfLocal {
         local: Local,
+        /// The projection applied to the local.  This contains no `Deref` projections.
         proj: &'tcx [PlaceElem<'tcx>],
     },
 }

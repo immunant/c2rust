@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::ops::{Index, IndexMut};
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PointerId(u32);
 const GLOBAL_BIT: u32 = 0x8000_0000;
 
@@ -18,6 +18,10 @@ impl PointerId {
 
     pub fn local(x: u32) -> PointerId {
         assert!(x & GLOBAL_BIT == 0);
+        PointerId(x)
+    }
+
+    pub fn from_raw(x: u32) -> PointerId {
         PointerId(x)
     }
 
@@ -48,6 +52,12 @@ impl fmt::Display for PointerId {
             debug_assert!(self.is_global());
             write!(fmt, "g{}", self.index())
         }
+    }
+}
+
+impl fmt::Debug for PointerId {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{}", self)
     }
 }
 

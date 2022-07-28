@@ -29,6 +29,7 @@ use std::env;
 mod borrowck;
 mod context;
 mod dataflow;
+mod equiv;
 mod expr_rewrite;
 mod labeled_ty;
 mod pointer_id;
@@ -45,7 +46,7 @@ fn inspect_mir<'tcx>(
     let name = tcx.item_name(def.to_global().did);
     eprintln!("\nprocessing function {:?}", name);
 
-    let mut acx = gacx.enter_function();
+    let mut acx = gacx.enter_function(mir);
 
     // Label all pointers in local variables.
     // TODO: also label pointers in Rvalue::Cast (and ShallowInitBox?)
@@ -61,11 +62,19 @@ fn inspect_mir<'tcx>(
         assert_eq!(local, l);
     }
 
-    let dataflow = self::dataflow::generate_constraints(&acx, mir);
+    let (dataflow, equiv_constraints) = self::dataflow::generate_constraints(&acx, mir);
 
     let mut lasn =
         LocalAssignment::new(acx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
     let mut asn = gasn.and(&mut lasn);
+
+    {
+        let mut equiv = asn.equiv_mut();
+        for (a, b) in equiv_constraints {
+            equiv.unify(a, b);
+        }
+    }
+
     dataflow.propagate(&mut asn.perms_mut());
 
     borrowck::borrowck_mir(&acx, &dataflow, &mut asn.perms_mut(), name.as_str(), mir);
@@ -75,6 +84,7 @@ fn inspect_mir<'tcx>(
     eprintln!("final labeling for {:?}:", name);
     let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
     let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
+    let lcx3 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
     for (local, decl) in mir.local_decls.iter_enumerated() {
         let addr_of1 = asn.perms()[acx.addr_of_local[local]];
         let ty1 = lcx1.relabel(acx.local_tys[local], &mut |lty| {
@@ -106,6 +116,22 @@ fn inspect_mir<'tcx>(
             describe_local(tcx, decl),
             addr_of2,
             ty2,
+        );
+
+        let addr_of3 = asn.equiv_mut().rep(acx.addr_of_local[local]);
+        let ty3 = lcx3.relabel(acx.local_tys[local], &mut |lty| {
+            if lty.label == PointerId::NONE {
+                PointerId::NONE
+            } else {
+                asn.equiv_mut().rep(lty.label)
+            }
+        });
+        eprintln!(
+            "{:?} ({}): addr_of = {:?}, type = {:?}",
+            local,
+            describe_local(tcx, decl),
+            addr_of3,
+            ty3,
         );
     }
 

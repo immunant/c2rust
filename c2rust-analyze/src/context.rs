@@ -1,12 +1,17 @@
+use crate::equiv::{EquivSet, GlobalEquivSet, LocalEquivSet};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::{
     GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
     PointerTableMut,
 };
+use crate::util::{describe_rvalue, RvalueDesc};
 use bitflags::bitflags;
 use rustc_index::vec::IndexVec;
-use rustc_middle::mir::{Local, Place, PlaceRef, ProjectionElem};
-use rustc_middle::ty::{TyCtxt, TyKind};
+use rustc_middle::mir::{
+    Body, HasLocalDecls, Local, LocalDecls, Operand, Place, PlaceElem, PlaceRef, ProjectionElem,
+    Rvalue,
+};
+use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use std::cell::Cell;
 use std::iter;
 
@@ -63,6 +68,7 @@ pub struct GlobalAnalysisCtxt<'tcx> {
 pub struct AnalysisCtxt<'a, 'tcx> {
     pub gacx: &'a mut GlobalAnalysisCtxt<'tcx>,
 
+    pub local_decls: &'a LocalDecls<'tcx>,
     pub local_tys: IndexVec<Local, LTy<'tcx>>,
     pub addr_of_local: IndexVec<Local, PointerId>,
 
@@ -78,8 +84,8 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         }
     }
 
-    pub fn enter_function<'a>(&'a mut self) -> AnalysisCtxt<'a, 'tcx> {
-        AnalysisCtxt::new(self)
+    pub fn enter_function<'a>(&'a mut self, mir: &'a Body<'tcx>) -> AnalysisCtxt<'a, 'tcx> {
+        AnalysisCtxt::new(self, mir)
     }
 
     pub fn new_pointer(&self) -> PointerId {
@@ -92,9 +98,13 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
 }
 
 impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
-    pub fn new(gacx: &'a mut GlobalAnalysisCtxt<'tcx>) -> AnalysisCtxt<'a, 'tcx> {
+    pub fn new(
+        gacx: &'a mut GlobalAnalysisCtxt<'tcx>,
+        mir: &'a Body<'tcx>,
+    ) -> AnalysisCtxt<'a, 'tcx> {
         AnalysisCtxt {
             gacx,
+            local_decls: &mir.local_decls,
             local_tys: IndexVec::new(),
             addr_of_local: IndexVec::new(),
             next_ptr_id: NextLocalPointerId::new(),
@@ -129,6 +139,32 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             Some(ptr)
         }
     }
+
+    fn project(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
+        match *proj {
+            ProjectionElem::Deref => {
+                assert!(matches!(lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)));
+                assert_eq!(lty.args.len(), 1);
+                lty.args[0]
+            }
+            ProjectionElem::Field(f, _) => match lty.kind() {
+                TyKind::Tuple(_) => lty.args[f.index()],
+                TyKind::Adt(..) => todo!("type_of Field(Adt)"),
+                _ => panic!("Field projection is unsupported on type {:?}", lty),
+            },
+            ProjectionElem::Index(..) | ProjectionElem::ConstantIndex { .. } => {
+                todo!("type_of Index")
+            }
+            ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
+            ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
+        }
+    }
+}
+
+impl<'tcx> HasLocalDecls<'tcx> for AnalysisCtxt<'_, 'tcx> {
+    fn local_decls(&self) -> &LocalDecls<'tcx> {
+        self.local_decls
+    }
 }
 
 pub trait TypeOf<'tcx> {
@@ -157,33 +193,131 @@ impl<'tcx> TypeOf<'tcx> for PlaceRef<'tcx> {
     fn type_of(&self, acx: &AnalysisCtxt<'_, 'tcx>) -> LTy<'tcx> {
         let mut ty = acx.type_of(self.local);
         for proj in self.projection {
-            match *proj {
-                ProjectionElem::Deref => {
-                    assert!(matches!(ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)));
-                    assert_eq!(ty.args.len(), 1);
-                    ty = ty.args[0];
-                }
-                ProjectionElem::Field(f, _) => match ty.kind() {
-                    TyKind::Tuple(_) => {
-                        ty = ty.args[f.index()];
-                    }
-                    TyKind::Adt(..) => todo!("type_of Field(Adt)"),
-                    _ => panic!("Field projection is unsupported on type {:?}", ty),
-                },
-                ProjectionElem::Index(..) | ProjectionElem::ConstantIndex { .. } => {
-                    todo!("type_of Index")
-                }
-                ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
-                ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
-            }
+            ty = acx.project(ty, proj);
         }
         ty
     }
 }
 
+impl<'tcx> TypeOf<'tcx> for Operand<'tcx> {
+    fn type_of(&self, acx: &AnalysisCtxt<'_, 'tcx>) -> LTy<'tcx> {
+        match *self {
+            Operand::Move(pl) | Operand::Copy(pl) => acx.type_of(pl),
+            Operand::Constant(ref c) => label_no_pointers(acx, c.ty()),
+        }
+    }
+}
+
+impl<'tcx> TypeOf<'tcx> for Rvalue<'tcx> {
+    fn type_of(&self, acx: &AnalysisCtxt<'_, 'tcx>) -> LTy<'tcx> {
+        if let Some(desc) = describe_rvalue(self) {
+            let ty = self.ty(acx, acx.tcx());
+            if matches!(ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)) {
+                let (pointee_lty, proj, ptr) = match desc {
+                    RvalueDesc::Project { base, proj } => {
+                        let base_lty = acx.type_of(base);
+                        eprintln!(
+                            "rvalue = {:?}, desc = {:?}, base_lty = {:?}",
+                            self, desc, base_lty
+                        );
+                        (
+                            acx.project(base_lty, &PlaceElem::Deref),
+                            proj,
+                            base_lty.label,
+                        )
+                    }
+                    RvalueDesc::AddrOfLocal { local, proj } => {
+                        (acx.type_of(local), proj, acx.addr_of_local[local])
+                    }
+                };
+
+                let mut pointee_lty = pointee_lty;
+                for p in proj {
+                    pointee_lty = acx.project(pointee_lty, p);
+                }
+
+                let ty = self.ty(acx, acx.tcx());
+                let pointee_ty = match *ty.kind() {
+                    TyKind::Ref(_, ty, _) => ty,
+                    TyKind::RawPtr(tm) => tm.ty,
+                    _ => unreachable!(
+                        "got RvalueDesc for non-pointer Rvalue {:?} (of type {:?})",
+                        self, ty,
+                    ),
+                };
+                assert_eq!(pointee_ty, pointee_lty.ty);
+
+                let args = acx.lcx().mk_slice(&[pointee_lty]);
+                return acx.lcx().mk(pointee_ty, args, ptr);
+            }
+        }
+
+        match *self {
+            Rvalue::Use(ref op) => acx.type_of(op),
+            Rvalue::Repeat(ref op, _) => {
+                let op_lty = acx.type_of(op);
+                let ty = self.ty(acx, acx.tcx());
+                assert!(matches!(ty.kind(), TyKind::Array(..)));
+                let args = acx.lcx().mk_slice(&[op_lty]);
+                acx.lcx().mk(ty, args, PointerId::NONE)
+            }
+            Rvalue::Ref(..) | Rvalue::AddressOf(..) => {
+                unreachable!("should be handled by describe_rvalue case above")
+            }
+            Rvalue::ThreadLocalRef(..) => todo!("type_of ThreadLocalRef"),
+            Rvalue::Cast(_, ref op, ty) => {
+                let op_lty = acx.type_of(op);
+
+                // We support this category of pointer casts as a special case.
+                let op_is_ptr = matches!(op_lty.ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
+                let op_pointee = op_is_ptr.then(|| op_lty.args[0]);
+                let ty_pointee = match *ty.kind() {
+                    TyKind::Ref(_, ty, _) => Some(ty),
+                    TyKind::RawPtr(tm) => Some(tm.ty),
+                    _ => None,
+                };
+                if op_pointee.is_some() && op_pointee.map(|lty| lty.ty) == ty_pointee {
+                    // The source and target types are both pointers, and they have identical
+                    // pointee types.  We label the target type with the same `PointerId`s as the
+                    // source type in all positions.  This works because the two types have the
+                    // same structure.
+                    return acx.lcx().mk(ty, op_lty.args, op_lty.label);
+                }
+
+                label_no_pointers(acx, ty)
+            }
+            Rvalue::Len(..)
+            | Rvalue::BinaryOp(..)
+            | Rvalue::CheckedBinaryOp(..)
+            | Rvalue::NullaryOp(..)
+            | Rvalue::UnaryOp(..)
+            | Rvalue::Discriminant(..) => {
+                let ty = self.ty(acx, acx.tcx());
+                label_no_pointers(acx, ty)
+            }
+            Rvalue::Aggregate(ref kind, ref vals) => todo!("type_of Aggregate"),
+            Rvalue::ShallowInitBox(ref op, ty) => todo!("type_of ShallowInitBox"),
+        }
+    }
+}
+
+/// Label a type that contains no pointer types by applying `PointerId::NONE` everywhere.  Panics
+/// if the type does contain pointers.
+fn label_no_pointers<'tcx>(acx: &AnalysisCtxt<'_, 'tcx>, ty: Ty<'tcx>) -> LTy<'tcx> {
+    acx.lcx().label(ty, &mut |inner_ty| {
+        assert!(
+            !matches!(inner_ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)),
+            "unexpected pointer type in {:?}",
+            ty,
+        );
+        PointerId::NONE
+    })
+}
+
 pub struct GlobalAssignment {
     pub perms: GlobalPointerTable<PermissionSet>,
     pub flags: GlobalPointerTable<FlagSet>,
+    pub equiv: GlobalEquivSet,
 }
 
 impl GlobalAssignment {
@@ -195,6 +329,7 @@ impl GlobalAssignment {
         GlobalAssignment {
             perms: GlobalPointerTable::from_raw(vec![default_perms; len]),
             flags: GlobalPointerTable::from_raw(vec![default_flags; len]),
+            equiv: GlobalEquivSet::new(len),
         }
     }
 
@@ -209,6 +344,7 @@ impl GlobalAssignment {
 pub struct LocalAssignment {
     pub perms: LocalPointerTable<PermissionSet>,
     pub flags: LocalPointerTable<FlagSet>,
+    pub equiv: LocalEquivSet,
 }
 
 impl LocalAssignment {
@@ -220,6 +356,7 @@ impl LocalAssignment {
         LocalAssignment {
             perms: LocalPointerTable::from_raw(vec![default_perms; len]),
             flags: LocalPointerTable::from_raw(vec![default_flags; len]),
+            equiv: LocalEquivSet::new(len),
         }
     }
 }
@@ -246,10 +383,21 @@ impl Assignment<'_> {
         self.global.flags.and_mut(&mut self.local.flags)
     }
 
-    pub fn all_mut(&mut self) -> (PointerTableMut<PermissionSet>, PointerTableMut<FlagSet>) {
+    pub fn equiv_mut(&mut self) -> EquivSet {
+        self.global.equiv.and_mut(&mut self.local.equiv)
+    }
+
+    pub fn all_mut(
+        &mut self,
+    ) -> (
+        PointerTableMut<PermissionSet>,
+        PointerTableMut<FlagSet>,
+        EquivSet,
+    ) {
         (
             self.global.perms.and_mut(&mut self.local.perms),
             self.global.flags.and_mut(&mut self.local.flags),
+            self.global.equiv.and_mut(&mut self.local.equiv),
         )
     }
 }

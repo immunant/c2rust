@@ -9,6 +9,7 @@ use std::convert::TryInto;
 use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Deref;
+use std::slice;
 
 /// The actual data for a labeled type.
 ///
@@ -51,6 +52,53 @@ impl<'tcx, L: Copy> LabeledTyS<'tcx, L> {
         callback(self.label);
         for &arg in self.args {
             arg.for_each_label(callback);
+        }
+    }
+}
+
+impl<'tcx, L> LabeledTyS<'tcx, L> {
+    pub fn iter(&'tcx self) -> LabeledTyIter<'tcx, L> {
+        LabeledTyIter::new(self)
+    }
+}
+
+pub struct LabeledTyIter<'tcx, L> {
+    root: Option<LabeledTy<'tcx, L>>,
+    stack: Vec<slice::Iter<'tcx, LabeledTy<'tcx, L>>>,
+}
+
+impl<'tcx, L> LabeledTyIter<'tcx, L> {
+    fn new(lty: LabeledTy<'tcx, L>) -> LabeledTyIter<'tcx, L> {
+        LabeledTyIter {
+            root: Some(lty),
+            stack: Vec::new(),
+        }
+    }
+}
+
+impl<'tcx, L> Iterator for LabeledTyIter<'tcx, L> {
+    type Item = LabeledTy<'tcx, L>;
+
+    fn next(&mut self) -> Option<LabeledTy<'tcx, L>> {
+        if let Some(lty) = self.root.take() {
+            if lty.args.len() > 0 {
+                self.stack.push(lty.args.iter());
+            }
+            return Some(lty);
+        }
+
+        loop {
+            match self.stack.last_mut()?.next() {
+                Some(lty) => {
+                    if lty.args.len() > 0 {
+                        self.stack.push(lty.args.iter());
+                    }
+                    return Some(lty);
+                }
+                None => {
+                    self.stack.pop();
+                }
+            }
         }
     }
 }
