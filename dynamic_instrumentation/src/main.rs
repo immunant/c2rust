@@ -11,11 +11,11 @@ use std::{
 };
 
 use anyhow::anyhow;
-use c2rust_dynamic_instrumentation::{MirTransformCallbacks, NullCallbacks, INSTRUMENTER};
+use c2rust_dynamic_instrumentation::{MirTransformCallbacks, INSTRUMENTER};
 use camino::Utf8Path;
 use cargo_metadata::MetadataCommand;
 use clap::Parser;
-use rustc_driver::RunCompiler;
+use rustc_driver::{RunCompiler, TimePassesCallbacks};
 
 /// Instrument memory accesses for dynamic analysis.
 #[derive(Debug, Parser)]
@@ -94,7 +94,7 @@ fn main() -> anyhow::Result<()> {
             // Furthermore, we can't accidentally load the wrong `librustc_driver-{hash}.so`,
             // as it contains its hash.
             // This also avoids an extra `rustc` (and potentially `rustup` `rustc`) invocation.
-            RunCompiler::new(&at_args, &mut NullCallbacks).run()
+            RunCompiler::new(&at_args, &mut TimePassesCallbacks::default()).run()
         };
         // `ErrorReported` means the error has already been reported to the user,
         // so we just have to fail/exit with a failing exit code.
