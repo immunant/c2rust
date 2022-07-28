@@ -182,64 +182,73 @@ impl Cargo {
     }
 }
 
-fn main() -> anyhow::Result<()> {
-    let rustc_wrapper_var = "RUSTC_WRAPPER";
-    let metadata_var = "C2RUST_INSTRUMENT_METADATA_PATH";
+const RUSTC_WRAPPER_VAR: &str = "RUSTC_WRAPPER";
+const METADATA_VAR: &str = "C2RUST_INSTRUMENT_METADATA_PATH";
 
-    let own_exe = env::current_exe()?;
-
-    let wrapping_rustc = env::var_os(rustc_wrapper_var).as_deref() == Some(own_exe.as_os_str());
-    if wrapping_rustc {
-        let is_primary_package = env::var("CARGO_PRIMARY_PACKAGE").is_ok();
-        let should_instrument = is_primary_package;
-        let mut at_args = env::args().skip(1).collect::<Vec<_>>();
-        let sysroot = get_sysroot()?;
-        let sysroot: &Utf8Path = sysroot.as_path().try_into()?;
-        at_args.extend(["--sysroot".into(), sysroot.as_str().into()]);
-        let result = if should_instrument {
-            RunCompiler::new(&at_args, &mut MirTransformCallbacks).run()
-        } else {
-            // Always use the dynamically linked `librustc_driver-{hash}.so`,
-            // as it is guaranteed to be the same version as the instrumented version.
-            // Furthermore, we can't accidentally load the wrong `librustc_driver-{hash}.so`,
-            // as it contains its hash.
-            // This also avoids an extra `rustc` (and potentially `rustup` `rustc`) invocation.
-            RunCompiler::new(&at_args, &mut TimePassesCallbacks::default()).run()
-        };
-        // `ErrorReported` means the error has already been reported to the user,
-        // so we just have to fail/exit with a failing exit code.
-        // There is no `impl Error for ErrorReported`.
-        result.map_err(|_| anyhow!("`rustc` failed"))?;
-        if should_instrument {
-            let metadata =
-                env::var_os(metadata_var).ok_or_else(|| anyhow!("we should've set this"))?;
-            INSTRUMENTER.finalize(Path::new(&metadata))?;
-        }
+fn rustc_wrapper() -> anyhow::Result<()> {
+    let is_primary_package = env::var("CARGO_PRIMARY_PACKAGE").is_ok();
+    let should_instrument = is_primary_package;
+    let mut at_args = env::args().skip(1).collect::<Vec<_>>();
+    let sysroot = get_sysroot()?;
+    let sysroot: &Utf8Path = sysroot.as_path().try_into()?;
+    at_args.extend(["--sysroot".into(), sysroot.as_str().into()]);
+    let result = if should_instrument {
+        RunCompiler::new(&at_args, &mut MirTransformCallbacks).run()
     } else {
-        let Args {
-            metadata,
-            mut cargo_args,
-        } = Args::parse();
-
-        let cargo = Cargo::new();
-
-        let cargo_metadata = cargo.metadata().exec()?;
-        let root_package = cargo_metadata
-            .root_package()
-            .ok_or_else(|| anyhow!("no root package found by `cargo`"))?;
-
-        cargo.run(|cmd| {
-            cmd.args(&["clean", "--package", root_package.name.as_str()]);
-        })?;
-
-        cargo.run(|cmd| {
-            add_runtime_feature(&mut cargo_args);
-            cmd.args(cargo_args)
-                .env(rustc_wrapper_var, &own_exe)
-                .env(metadata_var, metadata);
-        })?;
+        // Always use the dynamically linked `librustc_driver-{hash}.so`,
+        // as it is guaranteed to be the same version as the instrumented version.
+        // Furthermore, we can't accidentally load the wrong `librustc_driver-{hash}.so`,
+        // as it contains its hash.
+        // This also avoids an extra `rustc` (and potentially `rustup` `rustc`) invocation.
+        RunCompiler::new(&at_args, &mut TimePassesCallbacks::default()).run()
+    };
+    // `ErrorReported` means the error has already been reported to the user,
+    // so we just have to fail/exit with a failing exit code.
+    // There is no `impl Error for ErrorReported`.
+    result.map_err(|_| anyhow!("`rustc` failed"))?;
+    if should_instrument {
+        let metadata = env::var_os(METADATA_VAR).ok_or_else(|| anyhow!("we should've set this"))?;
+        INSTRUMENTER.finalize(Path::new(&metadata))?;
     }
     Ok(())
+}
+
+fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
+    let Args {
+        metadata,
+        mut cargo_args,
+    } = Args::parse();
+
+    let cargo = Cargo::new();
+
+    let cargo_metadata = cargo.metadata().exec()?;
+    let root_package = cargo_metadata
+        .root_package()
+        .ok_or_else(|| anyhow!("no root package found by `cargo`"))?;
+
+    cargo.run(|cmd| {
+        cmd.args(&["clean", "--package", root_package.name.as_str()]);
+    })?;
+
+    cargo.run(|cmd| {
+        add_runtime_feature(&mut cargo_args);
+        cmd.args(cargo_args)
+            .env(RUSTC_WRAPPER_VAR, rustc_wrapper)
+            .env(METADATA_VAR, metadata);
+    })?;
+
+    Ok(())
+}
+
+fn main() -> anyhow::Result<()> {
+    let own_exe = env::current_exe()?;
+
+    let wrapping_rustc = env::var_os(RUSTC_WRAPPER_VAR).as_deref() == Some(own_exe.as_os_str());
+    if wrapping_rustc {
+        rustc_wrapper()
+    } else {
+        cargo_wrapper(&own_exe)
+    }
 }
 
 lazy_static! {
