@@ -7,8 +7,6 @@ edition = "2021"
 anyhow = "1.0"
 bincode = "1.0.1"
 c2rust-analysis-rt = { path = "../analysis/runtime"}
-cargo = "0.62"
-cargo-util = "0.1"
 indexmap = "1.8"
 lazy_static = "1.4"
 log = "0.4"
