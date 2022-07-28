@@ -17,7 +17,7 @@ use instrument_memory::InstrumentMemoryOps;
 
 use std::{
     env,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     path::{Path, PathBuf},
     process::{self, Command, ExitStatus},
 };
@@ -38,7 +38,7 @@ use rustc_span::def_id::LocalDefId;
 use rustc_span::symbol::Ident;
 use rustc_span::DUMMY_SP;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use camino::Utf8Path;
 use cargo_metadata::MetadataCommand;
 use clap::Parser;
@@ -60,6 +60,7 @@ fn exit_with_status(status: ExitStatus) {
     process::exit(status.code().unwrap_or(1))
 }
 
+/// Lookup the sysroot fast using `rustup` environment variables.
 fn get_sysroot_fast() -> Option<PathBuf> {
     let sysroot = [
         env::var_os("RUSTUP_HOME")?,
@@ -71,8 +72,33 @@ fn get_sysroot_fast() -> Option<PathBuf> {
     Some(sysroot)
 }
 
+/// Lookup the sysroot slow, but in a more reliable way using `rustc --print sysroot`.
+///
+/// TODO(kkysen) deduplicate this with `rustc_private_link::SysRoot::resolve`
 fn get_sysroot_slow() -> anyhow::Result<PathBuf> {
-    todo!("use `rustc --print sysroot` to support non-`rustup` cases, which @fw-immunant uses")
+    let rustc = env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    let output = Command::new(rustc)
+        .args(&["--print", "sysroot"])
+        .output()
+        .context("could not invoke `rustc` to find rust sysroot")?;
+    // trim, but `str::trim` doesn't exist on `[u8]`
+    let path = output
+        .stdout
+        .as_slice()
+        .split(|c| c.is_ascii_whitespace())
+        .next()
+        .unwrap_or_default();
+    let path = if cfg!(unix) {
+        use std::os::unix::ffi::OsStrExt;
+
+        OsStr::from_bytes(path)
+    } else {
+        // Windows is hard, so just require UTF-8
+        let path = std::str::from_utf8(path).context("`rustc --print sysroot` is not UTF-8")?;
+        OsStr::new(path)
+    };
+    let path = Path::new(path).to_owned();
+    Ok(path)
 }
 
 /// Resolve the current `rustc` sysroot.
