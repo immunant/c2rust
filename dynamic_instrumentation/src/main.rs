@@ -140,6 +140,9 @@ fn main() -> anyhow::Result<()> {
 
         let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
 
+        let cargo_target_dir_var = "CARGO_TARGET_DIR";
+        let cargo_target_dir = "instrument.target";
+
         let cargo_metadata = MetadataCommand::new().cargo_path(&cargo).exec()?;
 
         let root_package = cargo_metadata
@@ -148,6 +151,7 @@ fn main() -> anyhow::Result<()> {
 
         let status = Command::new(&cargo)
             .args(&["clean", "--package", root_package.name.as_str()])
+            .env(cargo_target_dir_var, cargo_target_dir)
             .status()?;
         if !status.success() {
             exit_with_status(status);
@@ -156,6 +160,7 @@ fn main() -> anyhow::Result<()> {
         let status = Command::new(&cargo)
             .args(cargo_args)
             .env(rustc_wrapper_var, &own_exe)
+            .env(cargo_target_dir_var, cargo_target_dir)
             .env(metadata_var, metadata)
             .status()?;
         exit_with_status(status);

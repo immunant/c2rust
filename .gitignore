@@ -6,6 +6,7 @@
 *.log
 # ignore rust build dirs everywhere
 **/target/
+**/instrument.target/
 **/tests/
 /build
 *.pyc
