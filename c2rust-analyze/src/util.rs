@@ -1,6 +1,6 @@
 use rustc_hir::def::DefKind;
-use rustc_middle::mir::{PlaceRef, PlaceElem, Rvalue, Operand, Local, Mutability};
-use rustc_middle::ty::{TyCtxt, Ty, TyKind, DefIdTree};
+use rustc_middle::mir::{Local, Mutability, Operand, PlaceElem, PlaceRef, Rvalue};
+use rustc_middle::ty::{DefIdTree, Ty, TyCtxt, TyKind};
 
 #[derive(Debug)]
 pub enum RvalueDesc<'tcx> {
@@ -17,17 +17,18 @@ pub enum RvalueDesc<'tcx> {
 pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
     Some(match *rv {
         Rvalue::Use(ref op) => match *op {
-            Operand::Move(pl) |
-            Operand::Copy(pl) => RvalueDesc::Project {
+            Operand::Move(pl) | Operand::Copy(pl) => RvalueDesc::Project {
                 base: pl.as_ref(),
                 proj: &[],
             },
             Operand::Constant(_) => return None,
         },
-        Rvalue::Ref(_, _, pl) |
-        Rvalue::AddressOf(_, pl) => {
+        Rvalue::Ref(_, _, pl) | Rvalue::AddressOf(_, pl) => {
             let projection = &pl.projection[..];
-            match projection.iter().rposition(|p| matches!(p, PlaceElem::Deref)) {
+            match projection
+                .iter()
+                .rposition(|p| matches!(p, PlaceElem::Deref))
+            {
                 Some(i) => {
                     // `i` is the index of the last `ProjectionElem::Deref` in `pl`.
                     RvalueDesc::Project {
@@ -35,26 +36,28 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
                             local: pl.local,
                             projection: &projection[..i],
                         },
-                        proj: &projection[i + 1 ..],
+                        proj: &projection[i + 1..],
                     }
-                },
+                }
                 None => {
                     // `pl` refers to a field/element of a local.
                     RvalueDesc::AddrOfLocal {
                         local: pl.local,
                         proj: projection,
                     }
-                },
+                }
             }
-        },
+        }
         _ => return None,
     })
 }
 
-
 #[derive(Debug)]
 pub enum Callee<'tcx> {
-    PtrOffset { pointee_ty: Ty<'tcx>, mutbl: Mutability },
+    PtrOffset {
+        pointee_ty: Ty<'tcx>,
+        mutbl: Mutability,
+    },
 }
 
 pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> {
@@ -80,7 +83,7 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> 
                 _ => return None,
             };
             Some(Callee::PtrOffset { pointee_ty, mutbl })
-        },
+        }
         _ => None,
     }
 }

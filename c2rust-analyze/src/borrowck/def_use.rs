@@ -1,14 +1,13 @@
+use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Path, SubPoint};
+use rustc_middle::mir::visit::{
+    MutatingUseContext, NonMutatingUseContext, NonUseContext, PlaceContext, Visitor,
+};
+use rustc_middle::mir::{
+    Body, BorrowKind, Local, Location, Place, ProjectionElem, Statement, StatementKind,
+};
+use rustc_middle::ty::{List, TyCtxt};
 use std::cmp;
 use std::collections::HashMap;
-use rustc_middle::mir::{
-    Body, Place, Local, Location, Statement, StatementKind, ProjectionElem, BorrowKind,
-};
-use rustc_middle::mir::visit::{
-    Visitor, PlaceContext, MutatingUseContext, NonMutatingUseContext, NonUseContext,
-};
-use rustc_middle::ty::{TyCtxt, List};
-use crate::borrowck::atoms::{AllFacts, AtomMaps, Path, Loan, SubPoint};
-
 
 // From `rustc_borrowck/src/def_use.rs`, licensed MIT/Apache2
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -85,7 +84,6 @@ pub fn categorize(context: PlaceContext) -> Option<DefUse> {
     }
 }
 
-
 struct DefUseVisitor<'tcx, 'a> {
     facts: &'a mut AllFacts,
     maps: &'a mut AtomMaps<'tcx>,
@@ -94,8 +92,13 @@ struct DefUseVisitor<'tcx, 'a> {
 impl<'tcx> Visitor<'tcx> for DefUseVisitor<'tcx, '_> {
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         self.super_place(place, context, location);
-        eprintln!("visit place {:?} with context {:?} = {:?} at {:?}",
-                  place, context, categorize(context), location);
+        eprintln!(
+            "visit place {:?} with context {:?} = {:?} at {:?}",
+            place,
+            context,
+            categorize(context),
+            location
+        );
 
         if place.is_indirect() {
             // TODO
@@ -115,31 +118,36 @@ impl<'tcx> Visitor<'tcx> for DefUseVisitor<'tcx, '_> {
         match categorize(context) {
             Some(DefUse::Def) => {
                 self.facts.path_assigned_at_base.push((path, point));
-            },
+            }
             Some(DefUse::Use) => {
                 self.facts.path_accessed_at_base.push((path, point));
-            },
-            Some(DefUse::Drop) => {},
-            None => {},
+            }
+            Some(DefUse::Drop) => {}
+            None => {}
         }
     }
 
     fn visit_local(&mut self, local: &Local, context: PlaceContext, location: Location) {
-        eprintln!("visit local {:?} with context {:?} = {:?} at {:?}",
-                  local, context, categorize(context), location);
+        eprintln!(
+            "visit local {:?} with context {:?} = {:?} at {:?}",
+            local,
+            context,
+            categorize(context),
+            location
+        );
         let var = self.maps.variable(*local);
         let point = self.maps.point_mid_location(location);
         match categorize(context) {
             Some(DefUse::Def) => {
                 self.facts.var_defined_at.push((var, point));
-            },
+            }
             Some(DefUse::Use) => {
                 self.facts.var_used_at.push((var, point));
-            },
+            }
             Some(DefUse::Drop) => {
                 self.facts.var_dropped_at.push((var, point));
-            },
-            None => {},
+            }
+            None => {}
         }
     }
 
@@ -149,7 +157,10 @@ impl<'tcx> Visitor<'tcx> for DefUseVisitor<'tcx, '_> {
 
         if let StatementKind::StorageDead(local) = stmt.kind {
             // Observed: `StorageDead` emits `path_moved_at_base` at the `Mid` point.
-            let place = Place { local, projection: List::empty() };
+            let place = Place {
+                local,
+                projection: List::empty(),
+            };
             let path = self.maps.path(self.facts, place);
             let point = self.maps.point_mid_location(location);
             self.facts.path_moved_at_base.push((path, point));
@@ -162,12 +173,11 @@ pub fn visit<'tcx>(facts: &mut AllFacts, maps: &mut AtomMaps<'tcx>, mir: &Body<'
     v.visit_body(mir);
 }
 
-
 struct LoanInvalidatedAtVisitor<'tcx, 'a> {
     tcx: TyCtxt<'tcx>,
     facts: &'a mut AllFacts,
     maps: &'a mut AtomMaps<'tcx>,
-    loans:  &'a HashMap<Local, Vec<(Path, Loan, BorrowKind)>>,
+    loans: &'a HashMap<Local, Vec<(Path, Loan, BorrowKind)>>,
 }
 
 impl<'tcx> LoanInvalidatedAtVisitor<'tcx, '_> {
@@ -180,8 +190,14 @@ impl<'tcx> LoanInvalidatedAtVisitor<'tcx, '_> {
         context: PlaceContext,
         location: Location,
     ) {
-        eprintln!("access loan {:?} (kind {:?}) at location {:?} (context {:?} = {:?})",
-            loan, borrow_kind, location, context, categorize(context));
+        eprintln!(
+            "access loan {:?} (kind {:?}) at location {:?} (context {:?} = {:?})",
+            loan,
+            borrow_kind,
+            location,
+            context,
+            categorize(context)
+        );
         let invalidate = match (borrow_kind, categorize(context)) {
             (BorrowKind::Shared, Some(DefUse::Use)) => false,
             (_, None) => false,
@@ -191,7 +207,9 @@ impl<'tcx> LoanInvalidatedAtVisitor<'tcx, '_> {
             return;
         }
 
-        let point = self.maps.point(location.block, location.statement_index, SubPoint::Start);
+        let point = self
+            .maps
+            .point(location.block, location.statement_index, SubPoint::Start);
         self.facts.loan_invalidated_at.push((point, loan));
     }
 }
@@ -199,8 +217,13 @@ impl<'tcx> LoanInvalidatedAtVisitor<'tcx, '_> {
 impl<'tcx> Visitor<'tcx> for LoanInvalidatedAtVisitor<'tcx, '_> {
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         //self.super_place(place, context, location);
-        eprintln!("loan_invalidated_at: visit place {:?} with context {:?} = {:?} at {:?}",
-                  place, context, categorize(context), location);
+        eprintln!(
+            "loan_invalidated_at: visit place {:?} with context {:?} = {:?} at {:?}",
+            place,
+            context,
+            categorize(context),
+            location
+        );
 
         if place.is_indirect() {
             // TODO
@@ -213,7 +236,9 @@ impl<'tcx> Visitor<'tcx> for LoanInvalidatedAtVisitor<'tcx, '_> {
 
             // If `proj` is a prefix of `place.projection` or vice versa, then the paths overlap.
             let common_len = cmp::min(proj.len(), place.projection.len());
-            let overlap = proj[..common_len].iter().zip(place.projection[..common_len].iter())
+            let overlap = proj[..common_len]
+                .iter()
+                .zip(place.projection[..common_len].iter())
                 .all(|(&elem1, &elem2)| match (elem1, elem2) {
                     (ProjectionElem::Field(f1, _), ProjectionElem::Field(f2, _)) => f1 == f2,
                     (ProjectionElem::Index(_), ProjectionElem::Index(_)) => true,
@@ -229,8 +254,13 @@ impl<'tcx> Visitor<'tcx> for LoanInvalidatedAtVisitor<'tcx, '_> {
     }
 
     fn visit_local(&mut self, local: &Local, context: PlaceContext, location: Location) {
-        eprintln!("loan_invalidated_at: visit local {:?} with context {:?} = {:?} at {:?}",
-                  local, context, categorize(context), location);
+        eprintln!(
+            "loan_invalidated_at: visit local {:?} with context {:?} = {:?} at {:?}",
+            local,
+            context,
+            categorize(context),
+            location
+        );
 
         let local_loans = self.loans.get(&local).map_or(&[] as &[_], |x| x);
         for &(_path, loan, borrow_kind) in local_loans {
@@ -247,6 +277,11 @@ pub fn visit_loan_invalidated_at<'tcx>(
     loans: &HashMap<Local, Vec<(Path, Loan, BorrowKind)>>,
     mir: &Body<'tcx>,
 ) {
-    let mut v = LoanInvalidatedAtVisitor { tcx, facts, maps, loans };
+    let mut v = LoanInvalidatedAtVisitor {
+        tcx,
+        facts,
+        maps,
+        loans,
+    };
     v.visit_body(mir)
 }

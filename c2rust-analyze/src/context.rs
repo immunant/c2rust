@@ -1,10 +1,9 @@
-use std::cell::Cell;
+use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use bitflags::bitflags;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{Local, Place, PlaceRef, ProjectionElem};
 use rustc_middle::ty::{TyCtxt, TyKind};
-use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
-
+use std::cell::Cell;
 
 bitflags! {
     #[derive(Default)]
@@ -31,7 +30,6 @@ bitflags! {
     }
 }
 
-
 bitflags! {
     /// Additional flags describing a given pointer type.  These are mainly derived from
     /// `PermissionSet`, but don't follow the normal subtyping rules and propagation algorithm.
@@ -44,7 +42,6 @@ bitflags! {
         const CELL = 0x0001;
     }
 }
-
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct PointerId(u32);
@@ -60,7 +57,6 @@ impl PointerId {
         self == Self::NONE
     }
 }
-
 
 pub type LTy<'tcx> = LabeledTy<'tcx, PointerId>;
 pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, PointerId>;
@@ -110,7 +106,6 @@ impl<'tcx> AnalysisCtxt<'tcx> {
     }
 }
 
-
 pub trait TypeOf<'tcx> {
     fn type_of(&self, acx: &AnalysisCtxt<'tcx>) -> LTy<'tcx>;
 }
@@ -142,16 +137,17 @@ impl<'tcx> TypeOf<'tcx> for PlaceRef<'tcx> {
                     assert!(matches!(ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)));
                     assert_eq!(ty.args.len(), 1);
                     ty = ty.args[0];
-                },
+                }
                 ProjectionElem::Field(f, _) => match ty.kind() {
                     TyKind::Tuple(_) => {
                         ty = ty.args[f.index()];
-                    },
+                    }
                     TyKind::Adt(..) => todo!("type_of Field(Adt)"),
                     _ => panic!("Field projection is unsupported on type {:?}", ty),
+                },
+                ProjectionElem::Index(..) | ProjectionElem::ConstantIndex { .. } => {
+                    todo!("type_of Index")
                 }
-                ProjectionElem::Index(..) |
-                ProjectionElem::ConstantIndex { .. } => todo!("type_of Index"),
                 ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
                 ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
             }

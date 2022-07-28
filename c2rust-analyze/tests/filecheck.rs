@@ -66,19 +66,20 @@ fn filecheck() {
         eprintln!("{:?}", entry.path());
 
         let mut filecheck_cmd = Command::new(&filecheck_bin);
-        filecheck_cmd
-            .arg(entry.path())
-            .stdin(Stdio::piped());
+        filecheck_cmd.arg(entry.path()).stdin(Stdio::piped());
         let mut filecheck = filecheck_cmd.spawn().unwrap();
         let pipe_fd = filecheck.stdin.as_ref().unwrap().as_raw_fd();
         let mut analyze_cmd = Command::new("cargo");
         analyze_cmd
             .arg("run")
-            .arg("--manifest-path").arg(format!("{}/Cargo.toml", env!("CARGO_MANIFEST_DIR")))
+            .arg("--manifest-path")
+            .arg(format!("{}/Cargo.toml", env!("CARGO_MANIFEST_DIR")))
             .arg("--")
             .arg(entry.path())
-            .arg("-L").arg(lib_dir)
-            .arg("--crate-type").arg("rlib")
+            .arg("-L")
+            .arg(lib_dir)
+            .arg("--crate-type")
+            .arg("rlib")
             .stdout(unsafe { Stdio::from_raw_fd(pipe_fd) })
             .stderr(unsafe { Stdio::from_raw_fd(pipe_fd) });
         let mut analyze = analyze_cmd.spawn().unwrap();
@@ -87,14 +88,16 @@ fn filecheck() {
         assert!(
             filecheck_status.success(),
             "{:?}: FileCheck failed with status {:?}",
-            entry.path(), filecheck_status,
+            entry.path(),
+            filecheck_status,
         );
 
         let analyze_status = analyze.wait().unwrap();
         assert!(
             analyze_status.success(),
             "{:?}: c2rust-analyze failed with status {:?}",
-            entry.path(), analyze_status,
+            entry.path(),
+            analyze_status,
         );
     }
 }

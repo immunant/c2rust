@@ -13,16 +13,15 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 
-use std::env;
+use crate::context::{AnalysisCtxt, FlagSet, LTy, PermissionSet, PointerId};
 use rustc_index::vec::IndexVec;
-use rustc_middle::mir::{Body, LocalDecl, LocalInfo, BindingForm};
-use rustc_middle::ty::{TyCtxt, Ty, TyKind, WithOptConstParam};
-use rustc_middle::ty::query::{Providers, ExternProviders};
+use rustc_middle::mir::{BindingForm, Body, LocalDecl, LocalInfo};
+use rustc_middle::ty::query::{ExternProviders, Providers};
+use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_session::Session;
-use rustc_span::Span;
 use rustc_span::def_id::LocalDefId;
-use crate::context::{AnalysisCtxt, PointerId, PermissionSet, FlagSet, LTy};
-
+use rustc_span::Span;
+use std::env;
 
 mod borrowck;
 mod context;
@@ -32,12 +31,7 @@ mod labeled_ty;
 mod type_desc;
 mod util;
 
-
-fn inspect_mir<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    def: WithOptConstParam<LocalDefId>,
-    mir: &Body<'tcx>,
-) {
+fn inspect_mir<'tcx>(tcx: TyCtxt<'tcx>, def: WithOptConstParam<LocalDefId>, mir: &Body<'tcx>) {
     let name = tcx.item_name(def.to_global().did);
     eprintln!("\nprocessing function {:?}", name);
 
@@ -60,7 +54,7 @@ fn inspect_mir<'tcx>(
     let dataflow = self::dataflow::generate_constraints(&acx, mir);
 
     let mut hypothesis = Vec::with_capacity(acx.num_pointers());
-    for _ in 0 .. acx.num_pointers() {
+    for _ in 0..acx.num_pointers() {
         hypothesis.push(PermissionSet::UNIQUE);
     }
     dataflow.propagate(&mut hypothesis);
@@ -69,7 +63,6 @@ fn inspect_mir<'tcx>(
 
     let mut flags = vec![FlagSet::empty(); acx.num_pointers()];
     dataflow.propagate_cell(&hypothesis, &mut flags);
-
 
     eprintln!("final labeling for {:?}:", name);
     let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(acx.tcx);
@@ -83,7 +76,8 @@ fn inspect_mir<'tcx>(
                 hypothesis[lty.label.index()]
             }
         });
-        eprintln!("{:?} ({}): addr_of = {:?}, type = {:?}",
+        eprintln!(
+            "{:?} ({}): addr_of = {:?}, type = {:?}",
             local,
             describe_local(acx.tcx, decl),
             addr_of1,
@@ -98,7 +92,8 @@ fn inspect_mir<'tcx>(
                 flags[lty.label.index()]
             }
         });
-        eprintln!("{:?} ({}): addr_of flags = {:?}, type flags = {:?}",
+        eprintln!(
+            "{:?} ({}): addr_of flags = {:?}, type flags = {:?}",
             local,
             describe_local(acx.tcx, decl),
             addr_of2,
@@ -110,11 +105,7 @@ fn inspect_mir<'tcx>(
     for (local, decl) in mir.local_decls.iter_enumerated() {
         // TODO: apply `Cell` if `addr_of_local` indicates it's needed
         let ty = type_desc::convert_type(&acx, acx.local_tys[local], &hypothesis, &flags);
-        eprintln!("{:?} ({}): {:?}",
-            local,
-            describe_local(acx.tcx, decl),
-            ty,
-        );
+        eprintln!("{:?} ({}): {:?}", local, describe_local(acx.tcx, decl), ty,);
     }
 
     eprintln!("");
@@ -122,7 +113,9 @@ fn inspect_mir<'tcx>(
     for rw in &rewrites {
         eprintln!(
             "at {:?} ({}, {:?}):",
-            rw.loc.stmt, describe_span(tcx, rw.loc.span), rw.loc.sub,
+            rw.loc.stmt,
+            describe_span(tcx, rw.loc.span),
+            rw.loc.sub,
         );
         for kind in &rw.kinds {
             eprintln!("  {:?}", kind);
@@ -130,13 +123,9 @@ fn inspect_mir<'tcx>(
     }
 }
 
-fn assign_pointer_ids<'tcx>(
-    acx: &AnalysisCtxt<'tcx>,
-    ty: Ty<'tcx>,
-) -> LTy<'tcx> {
+fn assign_pointer_ids<'tcx>(acx: &AnalysisCtxt<'tcx>, ty: Ty<'tcx>) -> LTy<'tcx> {
     acx.lcx.label(ty, &mut |ty| match ty.kind() {
-        TyKind::Ref(_, _, _) |
-        TyKind::RawPtr(_) => acx.new_pointer(),
+        TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => acx.new_pointer(),
         _ => PointerId::NONE,
     })
 }
@@ -168,14 +157,13 @@ fn describe_span(tcx: TyCtxt, span: Span) -> String {
     };
 
     let (src1, src2, src3) = if s.len() > 20 {
-        (&s[..15], " ... ", &s[s.len() - 5 ..])
+        (&s[..15], " ... ", &s[s.len() - 5..])
     } else {
         (&s[..], "", "")
     };
     let line = tcx.sess.source_map().lookup_char_pos(span.lo()).line;
     format!("{}: {}{}{}", line, src1, src2, src3)
 }
-
 
 struct AnalysisCallbacks;
 

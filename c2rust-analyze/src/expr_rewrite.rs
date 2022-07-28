@@ -1,12 +1,11 @@
-use rustc_middle::mir::{
-    Body, BasicBlock, Location, Statement, StatementKind, Terminator, TerminatorKind, Rvalue,
-    Operand,
-};
-use rustc_span::{Span, DUMMY_SP};
-use crate::context::{AnalysisCtxt, PointerId, PermissionSet, FlagSet, LTy};
+use crate::context::{AnalysisCtxt, FlagSet, LTy, PermissionSet, PointerId};
 use crate::type_desc::{self, Ownership, Quantity};
 use crate::util::{self, Callee};
-
+use rustc_middle::mir::{
+    BasicBlock, Body, Location, Operand, Rvalue, Statement, StatementKind, Terminator,
+    TerminatorKind,
+};
+use rustc_span::{Span, DUMMY_SP};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ExprLoc {
@@ -47,7 +46,6 @@ pub struct ExprRewrite {
     pub kinds: Vec<RewriteKind>,
 }
 
-
 struct ExprRewriteVisitor<'a, 'tcx> {
     acx: &'a AnalysisCtxt<'tcx>,
     perms: &'a [PermissionSet],
@@ -66,7 +64,11 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         mir: &'a Body<'tcx>,
     ) -> ExprRewriteVisitor<'a, 'tcx> {
         ExprRewriteVisitor {
-            acx, perms, flags, rewrites, mir,
+            acx,
+            perms,
+            flags,
+            rewrites,
+            mir,
             loc: ExprLoc {
                 stmt: Location {
                     block: BasicBlock::from_usize(0),
@@ -112,7 +114,6 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         self.enter(SubLoc::PlacePointer(i), f)
     }
 
-
     fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         self.loc = ExprLoc {
             stmt: loc,
@@ -126,16 +127,16 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 let pl_ty = self.acx.type_of(pl);
                 self.enter_assign_rvalue(|v| v.visit_rvalue(rv, pl_ty));
                 // TODO: visit place
-            },
-            StatementKind::FakeRead(..) => {},
+            }
+            StatementKind::FakeRead(..) => {}
             StatementKind::SetDiscriminant { .. } => todo!("statement {:?}", stmt),
-            StatementKind::StorageLive(..) => {},
-            StatementKind::StorageDead(..) => {},
-            StatementKind::Retag(..) => {},
-            StatementKind::AscribeUserType(..) => {},
-            StatementKind::Coverage(..) => {},
+            StatementKind::StorageLive(..) => {}
+            StatementKind::StorageDead(..) => {}
+            StatementKind::Retag(..) => {}
+            StatementKind::AscribeUserType(..) => {}
+            StatementKind::Coverage(..) => {}
             StatementKind::CopyNonOverlapping(..) => todo!("statement {:?}", stmt),
-            StatementKind::Nop => {},
+            StatementKind::Nop => {}
         }
     }
 
@@ -148,15 +149,20 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         };
 
         match term.kind {
-            TerminatorKind::Goto { .. } => {},
-            TerminatorKind::SwitchInt { .. } => {},
-            TerminatorKind::Resume => {},
-            TerminatorKind::Abort => {},
-            TerminatorKind::Return => {},
-            TerminatorKind::Unreachable => {},
-            TerminatorKind::Drop { .. } => {},
-            TerminatorKind::DropAndReplace { .. } => {},
-            TerminatorKind::Call { ref func, ref args, destination, .. } => {
+            TerminatorKind::Goto { .. } => {}
+            TerminatorKind::SwitchInt { .. } => {}
+            TerminatorKind::Resume => {}
+            TerminatorKind::Abort => {}
+            TerminatorKind::Return => {}
+            TerminatorKind::Unreachable => {}
+            TerminatorKind::Drop { .. } => {}
+            TerminatorKind::DropAndReplace { .. } => {}
+            TerminatorKind::Call {
+                ref func,
+                ref args,
+                destination,
+                ..
+            } => {
                 let func_ty = func.ty(self.mir, tcx);
                 let pl_ty = destination.map(|(pl, _)| self.acx.type_of(pl));
 
@@ -167,7 +173,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         Callee::PtrOffset { .. } => {
                             self.visit_ptr_offset(&args[0], pl_ty);
                             return;
-                        },
+                        }
                     }
                 }
 
@@ -178,7 +184,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 for (i, _op) in args.iter().enumerate() {
                     if i >= sig.inputs().len() {
                         // This is a call to a variadic function, and we've gone past the end of
-                        // the declared arguments.  
+                        // the declared arguments.
                         // TODO: insert a cast to turn `op` back into its original declared type
                         // (i.e. upcast the chosen reference type back to a raw pointer)
                         continue;
@@ -188,12 +194,12 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     // let expect_ty = ...;
                     // self.enter_call_arg(i, |v| v.visit_operand(op, expect_ty));
                 }
-            },
-            TerminatorKind::Assert { .. } => {},
-            TerminatorKind::Yield { .. } => {},
-            TerminatorKind::GeneratorDrop => {},
-            TerminatorKind::FalseEdge { .. } => {},
-            TerminatorKind::FalseUnwind { .. } => {},
+            }
+            TerminatorKind::Assert { .. } => {}
+            TerminatorKind::Yield { .. } => {}
+            TerminatorKind::GeneratorDrop => {}
+            TerminatorKind::FalseEdge { .. } => {}
+            TerminatorKind::FalseUnwind { .. } => {}
             TerminatorKind::InlineAsm { .. } => todo!("terminator {:?}", term),
         }
     }
@@ -203,59 +209,58 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         match *rv {
             Rvalue::Use(ref op) => {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, expect_ty));
-            },
+            }
             Rvalue::Repeat(ref _op, _) => {
                 // TODO
-            },
+            }
             Rvalue::Ref(_rg, _kind, _pl) => {
                 // TODO
-            },
+            }
             Rvalue::ThreadLocalRef(_def_id) => {
                 // TODO
-            },
+            }
             Rvalue::AddressOf(_mutbl, _pl) => {
                 // TODO
-            },
+            }
             Rvalue::Len(_pl) => {
                 // TODO
-            },
+            }
             Rvalue::Cast(_kind, ref _op, _ty) => {
                 // TODO
-            },
+            }
             Rvalue::BinaryOp(_bop, ref _ops) => {
                 // TODO
-            },
+            }
             Rvalue::CheckedBinaryOp(_bop, ref _ops) => {
                 // TODO
-            },
-            Rvalue::NullaryOp(..) => {},
+            }
+            Rvalue::NullaryOp(..) => {}
             Rvalue::UnaryOp(_uop, ref _op) => {
                 // TODO
-            },
+            }
             Rvalue::Discriminant(_pl) => {
                 // TODO
-            },
+            }
             Rvalue::Aggregate(ref _kind, ref _ops) => {
                 // TODO
-            },
+            }
             Rvalue::ShallowInitBox(ref _op, _ty) => {
                 // TODO
-            },
+            }
         }
     }
 
     fn visit_operand(&mut self, op: &Operand<'tcx>, expect_ty: LTy<'tcx>) {
         match *op {
-            Operand::Copy(pl) |
-            Operand::Move(pl) => {
+            Operand::Copy(pl) | Operand::Move(pl) => {
                 if let Some(ptr) = self.acx.ptr_of(pl) {
                     let expect_ptr = expect_ty.label;
                     self.emit_ptr_cast(ptr, expect_ptr);
                 }
 
                 // TODO: walk over `pl` to handle all derefs (casts, `*x` -> `(*x).get()`)
-            },
-            Operand::Constant(..) => {},
+            }
+            Operand::Constant(..) => {}
         }
     }
 
@@ -266,15 +271,14 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         expect_qty: Quantity,
     ) {
         match *op {
-            Operand::Copy(pl) |
-            Operand::Move(pl) => {
+            Operand::Copy(pl) | Operand::Move(pl) => {
                 if let Some(ptr) = self.acx.ptr_of(pl) {
                     self.emit_cast(ptr, expect_own, expect_qty);
                 }
 
                 // TODO: walk over `pl` to handle all derefs (casts, `*x` -> `(*x).get()`)
-            },
-            Operand::Constant(..) => {},
+            }
+            Operand::Constant(..) => {}
         }
     }
 
@@ -282,7 +286,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         // Compute the expected type for the argument, and emit a cast if needed.
         let result_ptr = result_ty.label;
         let (result_own, result_qty) = type_desc::perms_to_desc(
-            self.perms[result_ptr.index()], self.flags[result_ptr.index()]);
+            self.perms[result_ptr.index()],
+            self.flags[result_ptr.index()],
+        );
 
         let arg_expect_own = result_own;
         // TODO: infer `arg_expect_qty` based on the type of offset this is (positive / unknown)
@@ -292,7 +298,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             Quantity::OffsetPtr => todo!("OffsetPtr"),
         };
 
-        self.enter_call_arg(0, |v| v.visit_operand_desc(op, arg_expect_own, arg_expect_qty));
+        self.enter_call_arg(0, |v| {
+            v.visit_operand_desc(op, arg_expect_own, arg_expect_qty)
+        });
 
         // Emit `OffsetSlice` for the offset itself.
         let mutbl = match result_own {
@@ -307,7 +315,6 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             self.emit(RewriteKind::SliceFirst { mutbl });
         }
     }
-
 
     fn emit(&mut self, rw: RewriteKind) {
         if let Some(er) = self.rewrites.last_mut() {
@@ -327,7 +334,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         assert!(expect_ptr != PointerId::NONE);
 
         let (own2, qty2) = type_desc::perms_to_desc(
-            self.perms[expect_ptr.index()], self.flags[expect_ptr.index()]);
+            self.perms[expect_ptr.index()],
+            self.flags[expect_ptr.index()],
+        );
 
         self.emit_cast(ptr, own2, qty2);
     }
@@ -335,8 +344,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn emit_cast(&mut self, ptr: PointerId, expect_own: Ownership, expect_qty: Quantity) {
         assert!(ptr != PointerId::NONE);
 
-        let (own1, qty1) = type_desc::perms_to_desc(
-            self.perms[ptr.index()], self.flags[ptr.index()]);
+        let (own1, qty1) =
+            type_desc::perms_to_desc(self.perms[ptr.index()], self.flags[ptr.index()]);
         let (own2, qty2) = (expect_own, expect_qty);
 
         if (own1, qty1) == (own2, qty2) {
@@ -348,11 +357,14 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             return;
         }
 
-        eprintln!("unsupported cast kind: {:?} {:?} -> {:?}",
-            self.perms[ptr.index()], (own1, qty1), (own2, qty2));
+        eprintln!(
+            "unsupported cast kind: {:?} {:?} -> {:?}",
+            self.perms[ptr.index()],
+            (own1, qty1),
+            (own2, qty2)
+        );
     }
 }
-
 
 pub fn gen_expr_rewrites<'tcx>(
     acx: &AnalysisCtxt<'tcx>,
@@ -370,12 +382,18 @@ pub fn gen_expr_rewrites<'tcx>(
 
     for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb.statements.iter().enumerate() {
-            let loc = Location { block: bb_id, statement_index: i };
+            let loc = Location {
+                block: bb_id,
+                statement_index: i,
+            };
             v.visit_statement(stmt, loc);
         }
 
         if let Some(ref term) = bb.terminator {
-            let loc = Location { block: bb_id, statement_index: bb.statements.len() };
+            let loc = Location {
+                block: bb_id,
+                statement_index: bb.statements.len(),
+            };
             v.visit_terminator(term, loc);
         }
     }
