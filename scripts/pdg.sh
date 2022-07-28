@@ -35,7 +35,7 @@ main() {
     fi
     local profile_args=(--profile "${profile}")
 
-    local instrument="c2rust-dynamic-instrumentation"
+    local instrument="c2rust-instrument"
     cargo build "${profile_args[@]}" --bin "${instrument}"
 
     local c2rust="${CWD}/${profile_dir}/c2rust"

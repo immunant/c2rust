@@ -228,7 +228,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "c2rust-dynamic-instrumentation"
+name = "c2rust-instrument"
 version = "0.1.0"
 dependencies = [
  "anyhow",
