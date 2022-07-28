@@ -121,6 +121,41 @@ fn add_runtime_feature(cargo_args: &mut Vec<OsString>) {
     }
 }
 
+struct Cargo {
+    path: PathBuf,
+}
+
+impl Cargo {
+    pub fn new() -> Self {
+        let path = env::var_os("CARGO")
+            .unwrap_or_else(|| "cargo".into())
+            .into();
+        Self { path }
+    }
+
+    pub fn metadata(&self) -> MetadataCommand {
+        let mut cmd = MetadataCommand::new();
+        cmd.cargo_path(&self.path);
+        cmd
+    }
+
+    pub fn command(&self) -> Command {
+        let mut cmd = Command::new(&self.path);
+        cmd.env("CARGO_TARGET_DIR", "instrument.target");
+        cmd
+    }
+
+    pub fn run(&self, f: impl FnOnce(&mut Command)) -> anyhow::Result<()> {
+        let mut cmd = self.command();
+        f(&mut cmd);
+        let status = cmd.status()?;
+        if !status.success() {
+            exit_with_status(status);
+        }
+        Ok(())
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let rustc_wrapper_var = "RUSTC_WRAPPER";
     let metadata_var = "C2RUST_INSTRUMENT_METADATA_PATH";
@@ -160,33 +195,23 @@ fn main() -> anyhow::Result<()> {
             mut cargo_args,
         } = Args::parse();
 
-        let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+        let cargo = Cargo::new();
 
-        let cargo_target_dir_var = "CARGO_TARGET_DIR";
-        let cargo_target_dir = "instrument.target";
-
-        let cargo_metadata = MetadataCommand::new().cargo_path(&cargo).exec()?;
-
+        let cargo_metadata = cargo.metadata().exec()?;
         let root_package = cargo_metadata
             .root_package()
             .ok_or_else(|| anyhow!("no root package found by `cargo`"))?;
 
-        let status = Command::new(&cargo)
-            .args(&["clean", "--package", root_package.name.as_str()])
-            .env(cargo_target_dir_var, cargo_target_dir)
-            .status()?;
-        if !status.success() {
-            exit_with_status(status);
-        }
+        cargo.run(|cmd| {
+            cmd.args(&["clean", "--package", root_package.name.as_str()]);
+        })?;
 
-        add_runtime_feature(&mut cargo_args);
-        let status = Command::new(&cargo)
-            .args(cargo_args)
-            .env(rustc_wrapper_var, &own_exe)
-            .env(cargo_target_dir_var, cargo_target_dir)
-            .env(metadata_var, metadata)
-            .status()?;
-        exit_with_status(status);
+        cargo.run(|cmd| {
+            add_runtime_feature(&mut cargo_args);
+            cmd.args(cargo_args)
+                .env(rustc_wrapper_var, &own_exe)
+                .env(metadata_var, metadata);
+        })?;
     }
     Ok(())
 }
