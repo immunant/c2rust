@@ -99,6 +99,28 @@ fn get_sysroot() -> anyhow::Result<PathBuf> {
         .or_else(|()| get_sysroot_slow())
 }
 
+/// Insert the feature flags as the first arguments following the `cargo` subcommand.
+///
+/// We can't insert them at the end because they could come after a `--` and thus be ignored.
+/// And we can't insert them at the beginning before the `cargo` subcommand argument,
+/// as `--features` is an argument of the subcommands, not `cargo` itself.
+///
+/// If there are no arguments, we don't insert the feature flags, as:
+/// * it would panic on splicing/insertion
+/// * we don't want to add the feature flags anyways, as `cargo` without arguments is already an error
+/// * we don't want to obfuscate that error with an error about unexpected feature flags
+fn add_runtime_feature(cargo_args: &mut Vec<OsString>) {
+    let insertion_point = 1;
+    if cargo_args.len() >= insertion_point {
+        cargo_args.splice(
+            insertion_point..insertion_point,
+            ["--features", "c2rust-analysis-rt"]
+                .iter()
+                .map(|s| s.into()),
+        );
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let rustc_wrapper_var = "RUSTC_WRAPPER";
     let metadata_var = "C2RUST_INSTRUMENT_METADATA_PATH";
@@ -157,23 +179,7 @@ fn main() -> anyhow::Result<()> {
             exit_with_status(status);
         }
 
-        // Insert the feature flags as the first arguments following the `cargo` subcommand.
-        // We can't insert them at the end because they could come after a `--` and thus be ignored.
-        // And we can't insert them at the beginning before the `cargo` subcommand argument,
-        // as `--features` is an argument of the subcommands, not `cargo` itself.
-        let insertion_point = 1;
-        // If there are no arguments, this would panic on splicing/insertion,
-        // and we don't want to add the feature flags anyways, as `cargo` without arguments is already an error,
-        // and we don't want to obfuscate that error with an error about unexpected feature flags.
-        if cargo_args.len() >= insertion_point {
-            cargo_args.splice(
-                insertion_point..insertion_point,
-                ["--features", "c2rust-analysis-rt"]
-                    .iter()
-                    .map(|s| s.into()),
-            );
-        }
-        
+        add_runtime_feature(&mut cargo_args);
         let status = Command::new(&cargo)
             .args(cargo_args)
             .env(rustc_wrapper_var, &own_exe)
