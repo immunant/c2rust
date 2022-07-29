@@ -61,6 +61,7 @@ impl fmt::Debug for PointerId {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct NextLocalPointerId(Cell<u32>);
 
 impl NextLocalPointerId {
@@ -79,6 +80,7 @@ impl NextLocalPointerId {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct NextGlobalPointerId(Cell<u32>);
 
 impl NextGlobalPointerId {
@@ -97,8 +99,11 @@ impl NextGlobalPointerId {
     }
 }
 
+#[derive(Clone, Debug)]
 struct RawPointerTable<T>(Vec<T>);
+#[derive(Clone, Debug)]
 pub struct LocalPointerTable<T>(RawPointerTable<T>);
+#[derive(Clone, Debug)]
 pub struct GlobalPointerTable<T>(RawPointerTable<T>);
 pub struct PointerTable<'a, T> {
     global: &'a GlobalPointerTable<T>,

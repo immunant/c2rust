@@ -108,6 +108,20 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     pub fn num_pointers(&self) -> usize {
         self.next_ptr_id.num_pointers()
     }
+
+    pub fn remap_pointers(
+        &mut self,
+        map: &GlobalPointerTable<PointerId>,
+        counter: NextGlobalPointerId,
+    ) {
+        let GlobalAnalysisCtxt {
+            tcx: _,
+            lcx: _,
+            ref mut next_ptr_id,
+        } = *self;
+
+        *next_ptr_id = counter;
+    }
 }
 
 impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
@@ -198,6 +212,39 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
             ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
         }
+    }
+}
+
+impl<'tcx> AnalysisCtxtData<'tcx> {
+    pub fn remap_pointers(
+        &mut self,
+        lcx: LTyCtxt<'tcx>,
+        map: PointerTable<PointerId>,
+        counter: NextLocalPointerId,
+    ) {
+        let AnalysisCtxtData {
+            ref mut local_tys,
+            ref mut addr_of_local,
+            ref mut next_ptr_id,
+        } = *self;
+
+        for lty in local_tys {
+            *lty = lcx.relabel(*lty, &mut |inner_lty| {
+                if inner_lty.label.is_none() {
+                    PointerId::NONE
+                } else {
+                    map[inner_lty.label]
+                }
+            });
+        }
+
+        for ptr in addr_of_local {
+            if !ptr.is_none() {
+                *ptr = map[*ptr];
+            }
+        }
+
+        *next_ptr_id = counter;
     }
 }
 

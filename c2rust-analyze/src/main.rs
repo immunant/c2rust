@@ -80,6 +80,9 @@ fn run(tcx: TyCtxt) {
 
     // Compute permission and flag assignments.
 
+    let (g_counter, g_equiv_map) = g_equiv.renumber();
+    eprintln!("g_equiv_map = {:?}", g_equiv_map);
+    gacx.remap_pointers(&g_equiv_map, g_counter);
     let mut gasn = GlobalAssignment::new(0, PermissionSet::UNIQUE, FlagSet::empty());
     for (ldid, info) in tcx.hir().body_owners().zip(func_info.into_iter()) {
         let ldid_const = WithOptConstParam::unknown(ldid);
@@ -87,9 +90,14 @@ fn run(tcx: TyCtxt) {
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
 
-        let (data, dataflow, mut l_equiv) = info;
-        let mut equiv = g_equiv.and_mut(&mut l_equiv);
-        // TODO: rewrite data and dataflow using equiv
+        let (mut data, mut dataflow, mut l_equiv) = info;
+        // Remap pointers based on equivalence classes, so all members of an equivalence class now
+        // use the same `PointerId`.
+        let (l_counter, l_equiv_map) = l_equiv.renumber(&g_equiv_map);
+        eprintln!("l_equiv_map = {:?}", l_equiv_map);
+        data.remap_pointers(gacx.lcx, g_equiv_map.and(&l_equiv_map), l_counter);
+        dataflow.remap_pointers(g_equiv_map.and(&l_equiv_map));
+
         let mut acx = gacx.enter_function_with_data(&mir, data);
 
         let mut lasn =
@@ -107,7 +115,6 @@ fn run(tcx: TyCtxt) {
         eprintln!("final labeling for {:?}:", name);
         let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
         let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
-        let lcx3 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
         for (local, decl) in mir.local_decls.iter_enumerated() {
             let addr_of1 = asn.perms()[acx.addr_of_local[local]];
             let ty1 = lcx1.relabel(acx.local_tys[local], &mut |lty| {
@@ -141,14 +148,8 @@ fn run(tcx: TyCtxt) {
                 ty2,
             );
 
-            let addr_of3 = equiv.rep(acx.addr_of_local[local]);
-            let ty3 = lcx3.relabel(acx.local_tys[local], &mut |lty| {
-                if lty.label == PointerId::NONE {
-                    PointerId::NONE
-                } else {
-                    equiv.rep(lty.label)
-                }
-            });
+            let addr_of3 = acx.addr_of_local[local];
+            let ty3 = acx.local_tys[local];
             eprintln!(
                 "{:?} ({}): addr_of = {:?}, type = {:?}",
                 local,

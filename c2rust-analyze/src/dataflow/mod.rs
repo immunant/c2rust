@@ -243,6 +243,24 @@ impl DataflowConstraints {
     }
 }
 
+impl Constraint {
+    pub fn remap_pointers(&mut self, map: PointerTable<PointerId>) {
+        *self = match *self {
+            Constraint::Subset(a, b) => Constraint::Subset(map[a], map[b]),
+            Constraint::AllPerms(ptr, perms) => Constraint::AllPerms(map[ptr], perms),
+            Constraint::NoPerms(ptr, perms) => Constraint::NoPerms(map[ptr], perms),
+        };
+    }
+}
+
+impl DataflowConstraints {
+    pub fn remap_pointers(&mut self, map: PointerTable<PointerId>) {
+        for c in &mut self.constraints {
+            c.remap_pointers(map.borrow());
+        }
+    }
+}
+
 struct TrackedPointerTable<'a, T> {
     xs: PointerTableMut<'a, T>,
     dirty: OwnedPointerTable<bool>,
