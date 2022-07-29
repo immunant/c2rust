@@ -9,9 +9,9 @@ use rustc_span::def_id::{DefId, DefPathHash};
 
 use crate::{
     arg::{ArgKind, InstrumentationArg},
-    cast::cast_ptr_to_usize,
     instrument::{insert_call, Instrumenter},
     into_operand::IntoOperand,
+    point::cast::cast_ptr_to_usize,
     util::Convert,
 };
 

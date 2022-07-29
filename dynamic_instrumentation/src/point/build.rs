@@ -9,7 +9,7 @@ use rustc_span::def_id::DefId;
 use crate::{
     arg::{ArgKind, InstrumentationArg},
     into_operand::IntoOperand,
-    source::Source,
+    point::source::Source,
     util::Convert,
 };
 

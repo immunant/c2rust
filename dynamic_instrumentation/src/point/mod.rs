@@ -1,5 +1,7 @@
 pub mod apply;
 pub mod build;
+pub mod cast;
+pub mod source;
 
 use c2rust_analysis_rt::mir_loc::{self, EventMetadata};
 use rustc_middle::{
