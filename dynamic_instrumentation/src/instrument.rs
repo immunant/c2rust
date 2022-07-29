@@ -402,7 +402,7 @@ fn instrument_body<'a, 'tcx>(
     body_did: DefId,
 ) {
     let hooks = Hooks::new(tcx);
-    let mut adder = InstrumentationAdder::new(hooks, body);
+    let mut adder = InstrumentationAdder::new(tcx, hooks, body);
     adder.visit_body(body);
     let points = adder.into_instrumentation_points();
     let mut applier = InstrumentationApplier::new(state, tcx, body, body_did);

@@ -23,6 +23,7 @@ pub struct InstrumentationPoint<'tcx> {
 }
 
 pub struct InstrumentationAdder<'a, 'tcx: 'a> {
+    tcx: TyCtxt<'tcx>,
     hooks: Hooks<'tcx>,
     body: &'a Body<'tcx>,
     instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
@@ -30,8 +31,9 @@ pub struct InstrumentationAdder<'a, 'tcx: 'a> {
 }
 
 impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
-    pub fn new(hooks: Hooks<'tcx>, body: &'a Body<'tcx>) -> Self {
+    pub fn new(tcx: TyCtxt<'tcx>, hooks: Hooks<'tcx>, body: &'a Body<'tcx>) -> Self {
         Self {
+            tcx,
             hooks,
             body,
             instrumentation_points: Default::default(),
@@ -40,7 +42,7 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
     }
 
     pub fn tcx(&self) -> TyCtxt<'tcx> {
-        self.hooks.tcx()
+        self.tcx
     }
 }
 
