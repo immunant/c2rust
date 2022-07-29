@@ -10,6 +10,8 @@ use rustc_span::def_id::DefId;
 
 use crate::{arg::InstrumentationArg, hooks::Hooks, util::Convert};
 
+pub use apply::InstrumentationApplier;
+
 pub struct InstrumentationPoint<'tcx> {
     id: usize,
     pub loc: Location,

@@ -22,8 +22,8 @@ use crate::arg::{ArgKind, InstrumentationArg};
 use crate::cast::cast_ptr_to_usize;
 use crate::deref::{has_outer_deref, remove_outer_deref, strip_all_deref};
 use crate::hooks::Hooks;
-use crate::point::apply::InstrumentationApplier;
 use crate::point::InstrumentationAdder;
+use crate::point::InstrumentationApplier;
 use crate::util::Convert;
 
 #[derive(Default)]
