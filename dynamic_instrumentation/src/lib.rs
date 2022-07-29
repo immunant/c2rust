@@ -13,10 +13,10 @@ extern crate rustc_span;
 extern crate rustc_target;
 
 mod arg;
-mod deref;
 mod hooks;
 mod instrument;
 mod into_operand;
+mod mir_utils;
 mod point;
 mod runtime_conversions;
 mod util;
