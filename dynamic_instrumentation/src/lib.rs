@@ -15,6 +15,7 @@ extern crate rustc_target;
 mod arg;
 mod cast;
 mod deref;
+mod hooks;
 mod instrument;
 mod into_operand;
 mod point;

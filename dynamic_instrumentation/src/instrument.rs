@@ -7,23 +7,23 @@ use log::debug;
 use rustc_index::vec::Idx;
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, BorrowKind, Local, LocalDecl, Location, Operand, Place,
-    PlaceElem, Rvalue, SourceInfo, Terminator, TerminatorKind, START_BLOCK,
+    BasicBlock, BasicBlockData, Body, BorrowKind, HasLocalDecls, Local, LocalDecl, Location,
+    Operand, Place, PlaceElem, Rvalue, SourceInfo, Terminator, TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, TyCtxt, TyS};
-use rustc_span::def_id::{DefId, DefPathHash, CRATE_DEF_INDEX};
-use rustc_span::{Symbol, DUMMY_SP};
+use rustc_span::def_id::{DefId, DefPathHash};
+use rustc_span::DUMMY_SP;
 use std::collections::HashMap;
 use std::fs::File;
-use std::mem;
 use std::path::Path;
 use std::sync::Mutex;
 
 use crate::arg::{ArgKind, InstrumentationArg};
 use crate::cast::cast_ptr_to_usize;
 use crate::deref::{has_outer_deref, remove_outer_deref, strip_all_deref};
-use crate::into_operand::IntoOperand;
-use crate::point::{InstrumentationAdder, InstrumentationPoint};
+use crate::hooks::Hooks;
+use crate::point::InstrumentationAdder;
+use crate::point::InstrumentationApplier;
 use crate::util::Convert;
 
 #[derive(Default)]
@@ -38,10 +38,17 @@ impl Instrumenter {
     /// A single [`Instrumenter`] instance should be shared across the
     /// entire crate being instrumented, as the indexed source locations are
     /// shared and should be global.
-    /// 
+    ///
     /// TODO(kkysen) can be made `const` when `Mutex::new` is `const` in rust 1.63
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn add_fn(&self, did: DefId, tcx: TyCtxt) {
+        self.functions.lock().unwrap().insert(
+            tcx.def_path_hash(did).convert(),
+            tcx.item_name(did).to_string(),
+        );
     }
 
     /// Instrument memory operations in-place in the function `body`.
@@ -49,10 +56,7 @@ impl Instrumenter {
         let function_name = tcx.item_name(body_did);
         debug!("Instrumenting function {}", function_name);
 
-        self.functions.lock().unwrap().insert(
-            tcx.def_path_hash(body_did).convert(),
-            tcx.item_name(body_did).to_string(),
-        );
+        self.add_fn(body_did, tcx);
         debug!("Body before instrumentation: {:#?}", body);
         instrument_body(self, tcx, body, body_did);
         debug!("Body after instrumentation: {:#?}", body);
@@ -77,7 +81,7 @@ impl Instrumenter {
     /// Returned indices will not be sorted in any particular order, but are
     /// unique and constant across the entire lifetime of this instrumentation
     /// instance.
-    fn get_mir_loc_idx(
+    pub fn get_mir_loc_idx(
         &self,
         body_def: DefPathHash,
         location: Location,
@@ -117,9 +121,9 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         self.super_place(place, context, location);
 
-        let field_fn = self.find_hook("ptr_field");
+        let field_fn = self.hooks().find("ptr_field");
 
-        let base_ty = self.body.local_decls[place.local].ty;
+        let base_ty = self.local_decls()[place.local].ty;
 
         // Instrument field projections on raw-ptr places
         if is_region_or_unsafe_ptr(base_ty) && context.is_use() {
@@ -127,7 +131,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 if let PlaceElem::Field(field, _) = elem {
                     let proj_dest = || {
                         // Only the last field projection gets a destination
-                        self.assignment
+                        self.assignment()
                             .as_ref()
                             .map(|(dest, _)| dest)
                             .copied()
@@ -145,27 +149,27 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
     }
 
     fn visit_assign(&mut self, dest: &Place<'tcx>, value: &Rvalue<'tcx>, mut location: Location) {
-        let copy_fn = self.find_hook("ptr_copy");
-        let addr_local_fn = self.find_hook("addr_of_local");
-        let ptr_contrive_fn = self.find_hook("ptr_contrive");
-        let ptr_to_int_fn = self.find_hook("ptr_to_int");
-        let load_value_fn = self.find_hook("load_value");
-        let store_value_fn = self.find_hook("store_value");
-        let store_fn = self.find_hook("ptr_store");
-        let load_fn = self.find_hook("ptr_load");
+        let copy_fn = self.hooks().find("ptr_copy");
+        let addr_local_fn = self.hooks().find("addr_of_local");
+        let ptr_contrive_fn = self.hooks().find("ptr_contrive");
+        let ptr_to_int_fn = self.hooks().find("ptr_to_int");
+        let load_value_fn = self.hooks().find("load_value");
+        let store_value_fn = self.hooks().find("store_value");
+        let store_fn = self.hooks().find("ptr_store");
+        let load_fn = self.hooks().find("ptr_load");
 
         let dest = *dest;
-        self.assignment = Some((dest, value.clone()));
-        self.visit_rvalue(value, location);
-        self.assignment = None;
+        self.with_assignment((dest, value.clone()), |this| {
+            this.visit_rvalue(value, location)
+        });
 
-        let locals = self.body.local_decls.clone();
-        let ctx = self.tcx;
+        let locals = self.local_decls().clone();
+        let ctx = self.tcx();
 
         let op_ty = |op: &Operand<'tcx>| op.ty(&locals, ctx);
         let place_ty = |p: &Place<'tcx>| p.ty(&locals, ctx).ty;
         let local_ty = |p: &Place| place_ty(&p.local.into());
-        let value_ty = value.ty(&self.body.local_decls, self.tcx);
+        let value_ty = value.ty(self, self.tcx());
 
         self.visit_place(
             &dest,
@@ -194,11 +198,11 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
         match value {
             _ if dest.is_indirect() => {
                 // Strip all derefs to set base_dest to the pointer that is deref'd
-                let base_dest = strip_all_deref(&dest, self.tcx);
+                let base_dest = strip_all_deref(&dest, self.tcx());
 
                 self.loc(location, store_fn)
                     .arg_var(base_dest)
-                    .source(&remove_outer_deref(dest, self.tcx))
+                    .source(&remove_outer_deref(dest, self.tcx()))
                     .add_to(self);
 
                 if is_region_or_unsafe_ptr(value_ty) {
@@ -262,7 +266,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
             }
             Rvalue::Ref(_, bkind, p) if has_outer_deref(p) => {
                 // this is a reborrow or field reference, i.e. _2 = &(*_1)
-                let source = remove_outer_deref(*p, self.tcx);
+                let source = remove_outer_deref(*p, self.tcx());
                 if let BorrowKind::Mut { .. } = bkind {
                     // Instrument which local's address is taken
                     self.loc(location, copy_fn)
@@ -282,7 +286,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
             }
             Rvalue::Ref(_, bkind, p) if !p.is_indirect() => {
                 // this is a reborrow or field reference, i.e. _2 = &(*_1)
-                let source = remove_outer_deref(*p, self.tcx);
+                let source = remove_outer_deref(*p, self.tcx());
                 if let BorrowKind::Mut { .. } = bkind {
                     // Instrument which local's address is taken
                     self.loc(location, addr_local_fn)
@@ -309,8 +313,8 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
     fn visit_terminator(&mut self, terminator: &Terminator<'tcx>, mut location: Location) {
         self.super_terminator(terminator, location);
 
-        let arg_fn = self.find_hook("ptr_copy");
-        let ret_fn = self.find_hook("ptr_ret");
+        let arg_fn = self.hooks().find("ptr_copy");
+        let ret_fn = self.hooks().find("ptr_ret");
 
         match &terminator.kind {
             TerminatorKind::Call {
@@ -321,23 +325,23 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
             } => {
                 let mut callee_arg: Place = Local::new(1).into();
                 let is_hook = {
-                    if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
-                        let fn_name = self.tcx.item_name(*def_id);
+                    if let ty::FnDef(def_id, _) = func.ty(self, self.tcx()).kind() {
+                        let fn_name = self.tcx().item_name(*def_id);
                         HOOK_FUNCTIONS.contains(&fn_name.as_str())
                     } else {
                         false
                     }
                 };
-                let func_kind = func.ty(self.body, self.tcx).kind();
+                let func_kind = func.ty(self, self.tcx()).kind();
                 let transfer_kind = if let &ty::FnDef(def_id, _) = func_kind {
-                    TransferKind::Arg(self.tcx.def_path_hash(def_id).convert())
+                    TransferKind::Arg(self.tcx().def_path_hash(def_id).convert())
                 } else {
                     TransferKind::None
                 };
                 if !is_hook {
                     for arg in args {
                         if let Some(place) = arg.place() {
-                            let place_ty = place.ty(self.body, self.tcx).ty;
+                            let place_ty = place.ty(self, self.tcx()).ty;
                             if is_shared_or_unsafe_ptr(place_ty) {
                                 self.loc(location, arg_fn)
                                     .arg_var(place)
@@ -353,15 +357,9 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 if let (&ty::FnDef(def_id, _), &Some(destination)) = (func_kind, destination) {
                     let (dest_place, dest_block) = destination;
                     println!("term: {:?}", terminator.kind);
-                    let fn_name = self.tcx.item_name(def_id);
+                    let fn_name = self.tcx().item_name(def_id);
                     if HOOK_FUNCTIONS.contains(&fn_name.as_str()) {
-                        let func_def_id =
-                            self.find_instrumentation_def(fn_name).unwrap_or_else(|| {
-                                panic!(
-                                    "could not find instrumentation hook function: {}",
-                                    fn_name.as_str()
-                                )
-                            });
+                        let func_def_id = self.hooks().find_from_symbol(fn_name);
 
                         // Hooked function called; trace args
                         self.loc(location, func_def_id)
@@ -371,16 +369,16 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                             .transfer(TransferKind::Ret(self.func_hash()))
                             .arg_vars(args.iter().cloned())
                             .add_to(self);
-                    } else if is_region_or_unsafe_ptr(
-                        dest_place.ty(&self.body.local_decls, self.tcx).ty,
-                    ) {
+                    } else if is_region_or_unsafe_ptr(dest_place.ty(self, self.tcx()).ty) {
                         location.statement_index = 0;
                         location.block = dest_block;
 
                         self.loc(location, arg_fn)
                             .source(&0)
                             .dest(&dest_place)
-                            .transfer(TransferKind::Ret(self.tcx.def_path_hash(def_id).convert()))
+                            .transfer(TransferKind::Ret(
+                                self.tcx().def_path_hash(def_id).convert(),
+                            ))
                             .arg_var(dest_place)
                             .add_to(self);
                     }
@@ -388,7 +386,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
             }
             TerminatorKind::Return => {
                 let place = Place::return_place();
-                if is_region_or_unsafe_ptr(self.body.local_decls[place.local].ty) {
+                if is_region_or_unsafe_ptr(self.local_decls()[place.local].ty) {
                     self.loc(location, ret_fn).arg_var(place).add_to(self);
                 }
             }
@@ -397,64 +395,32 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
     }
 }
 
-pub fn find_instrumentation_def(tcx: TyCtxt, runtime_crate_did: DefId, name: Symbol) -> Option<DefId> {
-    Some(
-        tcx.module_children(runtime_crate_did)
-            .iter()
-            .find(|child| child.ident.name == name)?
-            .res
-            .def_id(),
-    )
-}
-
 fn instrument_body<'a, 'tcx>(
     state: &Instrumenter,
     tcx: TyCtxt<'tcx>,
     body: &'a mut Body<'tcx>,
     body_did: DefId,
 ) {
-    let body_def_hash = tcx.def_path_hash(body_did);
-
-    let runtime_crate = tcx
-        .crates(())
-        .iter()
-        .cloned()
-        .find(|&krate| tcx.crate_name(krate).as_str() == "c2rust_analysis_rt")
-        .unwrap();
-
-    let runtime_crate_did = DefId {
-        krate: runtime_crate,
-        index: CRATE_DEF_INDEX,
-    };
-
-    let mut collect_points = InstrumentationAdder::new(tcx, body, runtime_crate_did);
-    collect_points.visit_body(body);
-
-    apply_instrumentation(
-        state,
-        &collect_points.into_instrumentation_points(),
-        tcx,
-        body,
-        body_def_hash,
-    );
+    let hooks = Hooks::new(tcx);
+    let mut adder = InstrumentationAdder::new(tcx, hooks, body);
+    adder.visit_body(body);
+    let points = adder.into_instrumentation_points();
+    let mut applier = InstrumentationApplier::new(state, tcx, body, body_did);
+    applier.apply_points(&points);
 
     // Apply `main`-specific instrumentation if this fn is main
     let main_did = tcx.entry_fn(()).map(|(def_id, _)| def_id);
     if Some(body_did) == main_did {
-        instrument_entry_fn(tcx, runtime_crate_did, body);
+        instrument_entry_fn(tcx, hooks, body);
     }
 }
 
 /// Add initialization code to the body of a function known to be the binary entrypoint
-fn instrument_entry_fn<'tcx>(tcx: TyCtxt<'tcx>, runtime_crate_did: DefId, body: &mut Body<'tcx>) {
-    let init_fn_did =
-        find_instrumentation_def(tcx, runtime_crate_did, Symbol::intern("initialize"))
-            .expect("Could not find instrumentation context constructor definition");
+fn instrument_entry_fn<'tcx>(tcx: TyCtxt<'tcx>, hooks: Hooks, body: &mut Body<'tcx>) {
+    let init_fn = hooks.find("initialize");
+    let fini_fn = hooks.find("finalize");
 
-    let fini_fn_did = find_instrumentation_def(tcx, runtime_crate_did, Symbol::intern("finalize"))
-        .expect("Could not find instrumentation context constructor definition");
-
-    let _ = insert_call(tcx, body, START_BLOCK, 0, init_fn_did, vec![]);
+    let _ = insert_call(tcx, body, START_BLOCK, 0, init_fn, vec![]);
 
     let mut return_blocks = vec![];
     let mut resume_blocks = vec![];
@@ -471,122 +437,10 @@ fn instrument_entry_fn<'tcx>(tcx: TyCtxt<'tcx>, runtime_crate_did: DefId, body: 
     }
 
     for block in return_blocks {
-        let _ = insert_call(tcx, body, block, 0, fini_fn_did, vec![]);
+        let _ = insert_call(tcx, body, block, 0, fini_fn, vec![]);
     }
     for block in resume_blocks {
-        let _ = insert_call(tcx, body, block, 0, fini_fn_did, vec![]);
-    }
-}
-
-/// Rewrite the body to apply the specified instrumentation points
-fn apply_instrumentation<'a, 'tcx>(
-    state: &Instrumenter,
-    points: &[InstrumentationPoint<'tcx>],
-    tcx: TyCtxt<'tcx>,
-    body: &'a mut Body<'tcx>,
-    body_def: DefPathHash,
-) {
-    for point in points {
-        let &InstrumentationPoint {
-            loc,
-            func,
-            ref args,
-            is_cleanup,
-            after_call,
-            ref metadata,
-            ..
-        } = point;
-        let mut args = args.clone();
-
-        if let TransferKind::Arg(def_path_hash) = metadata.transfer_kind {
-            let callee_id = tcx.def_path_hash_to_def_id(def_path_hash.convert(), &mut || {
-                panic!("cannot find DefId of callee func hash")
-            });
-            state.functions.lock().unwrap().insert(
-                tcx.def_path_hash(callee_id).convert(),
-                tcx.item_name(callee_id).to_string(),
-            );
-        }
-
-        // Add the MIR location as the first argument to the instrumentation function
-        let loc_idx = state.get_mir_loc_idx(body_def, loc, metadata.clone());
-        args.insert(
-            0,
-            InstrumentationArg::Op(ArgKind::AddressUsize(loc_idx.op(tcx))),
-        );
-
-        let (blocks, locals) = body.basic_blocks_and_local_decls_mut();
-        let mut extra_statements = None;
-        if after_call {
-            let call = blocks[loc.block].terminator_mut();
-            let ret_value = if let TerminatorKind::Call {
-                destination: Some((place, _next_block)),
-                args,
-                ..
-            } = &mut call.kind
-            {
-                // Make the call operands copies so we don't reuse a moved value
-                args.iter_mut().for_each(|arg| *arg = arg.to_copy());
-
-                let place_ty = &place.ty(locals, tcx).ty;
-                // The return type of a hooked fn is always a raw ptr, reference, or unit
-                if place_ty.is_unit() {
-                    // It's somewhat wrong to call unit an AddressUsize, but it has the pass-through
-                    // semantics we want
-                    InstrumentationArg::Op(ArgKind::AddressUsize(Operand::Copy(*place)))
-                } else {
-                    assert!(place_ty.is_unsafe_ptr());
-                    InstrumentationArg::Op(ArgKind::RawPtr(Operand::Copy(*place)))
-                }
-            } else {
-                panic!(
-                    "Expected a call terminator in block to instrument, found: {:?}",
-                    call
-                );
-            };
-
-            // push return value to argument list
-            if let Some((casts, cast_local)) = cast_ptr_to_usize(tcx, locals, &ret_value) {
-                extra_statements = Some(casts);
-                args.push(InstrumentationArg::Op(ArgKind::AddressUsize(cast_local)));
-            } else {
-                args.push(ret_value);
-            }
-        }
-
-        let (successor_block, _) =
-            insert_call(tcx, body, loc.block, loc.statement_index, func, args);
-
-        let blocks = body.basic_blocks_mut();
-        if after_call {
-            // Swap the newly inserted instrumentation call to the following
-            // block and move the original call back to the current block
-            let mut instrument_call = blocks[loc.block].terminator.take().unwrap();
-            let orig_call = blocks[successor_block].terminator_mut();
-            if let (
-                TerminatorKind::Call {
-                    destination: Some((_, instrument_dest)),
-                    ..
-                },
-                TerminatorKind::Call {
-                    destination: Some((_, orig_dest)),
-                    ..
-                },
-            ) = (&mut instrument_call.kind, &mut orig_call.kind)
-            {
-                mem::swap(instrument_dest, orig_dest);
-            }
-            let orig_call = mem::replace(orig_call, instrument_call);
-            blocks[loc.block].terminator = Some(orig_call);
-
-            if let Some(stmts) = extra_statements {
-                blocks[successor_block].statements.extend(stmts);
-            }
-        }
-
-        if is_cleanup {
-            blocks[successor_block].is_cleanup = true;
-        }
+        let _ = insert_call(tcx, body, block, 0, fini_fn, vec![]);
     }
 }
 
@@ -598,7 +452,7 @@ fn apply_instrumentation<'a, 'tcx>(
 ///
 /// `func` must not unwind, as it will have no cleanup destination.
 /// Returns the successor basic block and the local slot for the inserted call's return value.
-fn insert_call<'tcx>(
+pub fn insert_call<'tcx>(
     tcx: TyCtxt<'tcx>,
     body: &mut Body<'tcx>,
     block: BasicBlock,

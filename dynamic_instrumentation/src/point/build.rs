@@ -1,29 +1,19 @@
-use c2rust_analysis_rt::mir_loc::{self, EventMetadata, TransferKind};
+use c2rust_analysis_rt::mir_loc::{EventMetadata, TransferKind};
 use rustc_index::vec::Idx;
 use rustc_middle::{
-    mir::{Body, Location, Place, Rvalue},
+    mir::{Body, Location, Place},
     ty::TyCtxt,
 };
-use rustc_span::{def_id::DefId, Symbol};
+use rustc_span::def_id::DefId;
 
 use crate::{
     arg::{ArgKind, InstrumentationArg},
-    instrument::find_instrumentation_def,
     into_operand::IntoOperand,
     source::Source,
     util::Convert,
 };
 
-#[derive(Clone)]
-pub struct InstrumentationPoint<'tcx> {
-    id: usize,
-    pub loc: Location,
-    pub func: DefId,
-    pub args: Vec<InstrumentationArg<'tcx>>,
-    pub is_cleanup: bool,
-    pub after_call: bool,
-    pub metadata: EventMetadata,
-}
+use super::{InstrumentationAdder, InstrumentationPoint};
 
 #[derive(Default)]
 struct InstrumentationPointBuilder<'tcx> {
@@ -33,27 +23,7 @@ struct InstrumentationPointBuilder<'tcx> {
     pub metadata: EventMetadata,
 }
 
-pub struct InstrumentationAdder<'a, 'tcx: 'a> {
-    pub tcx: TyCtxt<'tcx>,
-    pub body: &'a Body<'tcx>,
-    runtime_crate_did: DefId,
-
-    instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
-
-    pub assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
-}
-
-impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>, body: &'a Body<'tcx>, runtime_crate_did: DefId) -> Self {
-        Self {
-            tcx,
-            body,
-            runtime_crate_did,
-            instrumentation_points: Default::default(),
-            assignment: Default::default(),
-        }
-    }
-
+impl<'tcx> InstrumentationAdder<'_, 'tcx> {
     fn add(&mut self, point: InstrumentationPointBuilder<'tcx>, loc: Location, func: DefId) {
         let id = self.instrumentation_points.len();
         let InstrumentationPointBuilder {
@@ -85,7 +55,7 @@ pub struct InstrumentationBuilder<'a, 'tcx: 'a> {
 impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
     pub fn loc(&self, loc: Location, func: DefId) -> InstrumentationBuilder<'a, 'tcx> {
         InstrumentationBuilder {
-            tcx: self.tcx,
+            tcx: self.tcx(),
             body: self.body,
             loc,
             func,
@@ -100,19 +70,6 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
         self.instrumentation_points
             .sort_unstable_by(|a, b| key(a).cmp(&key(b)).reverse());
         self.instrumentation_points
-    }
-
-    pub fn find_instrumentation_def(&self, name: Symbol) -> Option<DefId> {
-        find_instrumentation_def(self.tcx, self.runtime_crate_did, name)
-    }
-
-    pub fn find_hook(&self, name: &str) -> DefId {
-        self.find_instrumentation_def(Symbol::intern(name))
-            .unwrap_or_else(|| panic!("could not find `{name}` hook"))
-    }
-
-    pub fn func_hash(&self) -> mir_loc::DefPathHash {
-        self.tcx.def_path_hash(self.body.source.def_id()).convert()
     }
 }
 
@@ -141,7 +98,7 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     /// but we eventually want to be able to pass other serializable types as well.
     pub fn arg_index_of(self, arg: impl Idx) -> Self {
         let index: u32 = arg.index().try_into()
-            .expect("`rustc_index::vec::newtype_index!` should use `u32` as the underlying index type, so this shouldn't fail unless that changes");
+                .expect("`rustc_index::vec::newtype_index!` should use `u32` as the underlying index type, so this shouldn't fail unless that changes");
         self.arg_var(index)
     }
 
