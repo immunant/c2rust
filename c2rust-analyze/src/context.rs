@@ -1,4 +1,3 @@
-use crate::equiv::{EquivSet, GlobalEquivSet, LocalEquivSet};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::{
     GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
@@ -75,6 +74,12 @@ pub struct AnalysisCtxt<'a, 'tcx> {
     next_ptr_id: NextLocalPointerId,
 }
 
+pub struct AnalysisCtxtData<'tcx> {
+    local_tys: IndexVec<Local, LTy<'tcx>>,
+    addr_of_local: IndexVec<Local, PointerId>,
+    next_ptr_id: NextLocalPointerId,
+}
+
 impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> GlobalAnalysisCtxt<'tcx> {
         GlobalAnalysisCtxt {
@@ -86,6 +91,14 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
 
     pub fn enter_function<'a>(&'a mut self, mir: &'a Body<'tcx>) -> AnalysisCtxt<'a, 'tcx> {
         AnalysisCtxt::new(self, mir)
+    }
+
+    pub fn enter_function_with_data<'a>(
+        &'a mut self,
+        mir: &'a Body<'tcx>,
+        data: AnalysisCtxtData<'tcx>,
+    ) -> AnalysisCtxt<'a, 'tcx> {
+        AnalysisCtxt::from_data(self, mir, data)
     }
 
     pub fn new_pointer(&self) -> PointerId {
@@ -108,6 +121,33 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             local_tys: IndexVec::new(),
             addr_of_local: IndexVec::new(),
             next_ptr_id: NextLocalPointerId::new(),
+        }
+    }
+
+    pub fn from_data(
+        gacx: &'a mut GlobalAnalysisCtxt<'tcx>,
+        mir: &'a Body<'tcx>,
+        data: AnalysisCtxtData<'tcx>,
+    ) -> AnalysisCtxt<'a, 'tcx> {
+        let AnalysisCtxtData {
+            local_tys,
+            addr_of_local,
+            next_ptr_id,
+        } = data;
+        AnalysisCtxt {
+            gacx,
+            local_decls: &mir.local_decls,
+            local_tys,
+            addr_of_local,
+            next_ptr_id,
+        }
+    }
+
+    pub fn into_data(self) -> AnalysisCtxtData<'tcx> {
+        AnalysisCtxtData {
+            local_tys: self.local_tys,
+            addr_of_local: self.addr_of_local,
+            next_ptr_id: self.next_ptr_id,
         }
     }
 
@@ -317,7 +357,6 @@ fn label_no_pointers<'tcx>(acx: &AnalysisCtxt<'_, 'tcx>, ty: Ty<'tcx>) -> LTy<'t
 pub struct GlobalAssignment {
     pub perms: GlobalPointerTable<PermissionSet>,
     pub flags: GlobalPointerTable<FlagSet>,
-    pub equiv: GlobalEquivSet,
 }
 
 impl GlobalAssignment {
@@ -329,7 +368,6 @@ impl GlobalAssignment {
         GlobalAssignment {
             perms: GlobalPointerTable::from_raw(vec![default_perms; len]),
             flags: GlobalPointerTable::from_raw(vec![default_flags; len]),
-            equiv: GlobalEquivSet::new(len),
         }
     }
 
@@ -344,7 +382,6 @@ impl GlobalAssignment {
 pub struct LocalAssignment {
     pub perms: LocalPointerTable<PermissionSet>,
     pub flags: LocalPointerTable<FlagSet>,
-    pub equiv: LocalEquivSet,
 }
 
 impl LocalAssignment {
@@ -356,7 +393,6 @@ impl LocalAssignment {
         LocalAssignment {
             perms: LocalPointerTable::from_raw(vec![default_perms; len]),
             flags: LocalPointerTable::from_raw(vec![default_flags; len]),
-            equiv: LocalEquivSet::new(len),
         }
     }
 }
@@ -383,21 +419,10 @@ impl Assignment<'_> {
         self.global.flags.and_mut(&mut self.local.flags)
     }
 
-    pub fn equiv_mut(&mut self) -> EquivSet {
-        self.global.equiv.and_mut(&mut self.local.equiv)
-    }
-
-    pub fn all_mut(
-        &mut self,
-    ) -> (
-        PointerTableMut<PermissionSet>,
-        PointerTableMut<FlagSet>,
-        EquivSet,
-    ) {
+    pub fn all_mut(&mut self) -> (PointerTableMut<PermissionSet>, PointerTableMut<FlagSet>) {
         (
             self.global.perms.and_mut(&mut self.local.perms),
             self.global.flags.and_mut(&mut self.local.flags),
-            self.global.equiv.and_mut(&mut self.local.equiv),
         )
     }
 }
