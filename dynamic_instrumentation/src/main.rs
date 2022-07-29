@@ -167,7 +167,8 @@ impl Cargo {
 
     pub fn command(&self) -> Command {
         let mut cmd = Command::new(&self.path);
-        cmd.env("CARGO_TARGET_DIR", "instrument.target");
+        cmd.env("RUSTUP_TOOLCHAIN", include_str!("../rust-toolchain").trim())
+            .env("CARGO_TARGET_DIR", "instrument.target");
         cmd
     }
 
