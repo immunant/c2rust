@@ -139,6 +139,11 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
         self
     }
 
+    pub fn debug<T: std::fmt::Debug>(mut self, t: T) -> Self {
+        self.point.metadata.debug = format!("{t:?}");
+        self
+    }
+
     /// Queue insertion of a call to [`func`].
     ///
     /// The call will be inserted before the statement
