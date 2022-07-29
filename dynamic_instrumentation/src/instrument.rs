@@ -20,7 +20,7 @@ use std::sync::Mutex;
 
 use crate::arg::{ArgKind, InstrumentationArg};
 use crate::hooks::Hooks;
-use crate::mir_utils::deref::{has_outer_deref, remove_outer_deref, strip_all_deref};
+use crate::mir_utils::{has_outer_deref, remove_outer_deref, strip_all_deref};
 use crate::point::cast_ptr_to_usize;
 use crate::point::InstrumentationAdder;
 use crate::point::InstrumentationApplier;

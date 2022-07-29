@@ -10,7 +10,7 @@ use rustc_span::DUMMY_SP;
 
 use crate::{
     arg::{ArgKind, InstrumentationArg},
-    mir_utils::deref::remove_outer_deref,
+    mir_utils::remove_outer_deref,
 };
 
 /// Cast an argument from pointer to `usize`, if needed.
