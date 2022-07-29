@@ -316,7 +316,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         // it usually isn't that slow.
         cmd.args(&["clean", "--package", root_package.name.as_str()]);
     })?;
-
+    
     // TODO(kkysen) Once we upgrade to 1.62, we can just use `cargo` and not specify `+stable`.
     // The problem currently is that `+stable` doesn't work on a resolved `$CARGO`,
     // which happens when this runs inside of `cargo test`,
