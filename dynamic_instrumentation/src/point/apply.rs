@@ -11,7 +11,7 @@ use crate::{
     arg::{ArgKind, InstrumentationArg},
     instrument::{insert_call, Instrumenter},
     into_operand::IntoOperand,
-    point::cast::cast_ptr_to_usize,
+    point::cast_ptr_to_usize,
     util::Convert,
 };
 

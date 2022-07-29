@@ -1,6 +1,6 @@
 pub mod apply;
 pub mod build;
-pub mod cast;
+mod cast;
 pub mod source;
 
 use c2rust_analysis_rt::mir_loc::{self, EventMetadata};
@@ -13,6 +13,7 @@ use rustc_span::def_id::DefId;
 use crate::{arg::InstrumentationArg, hooks::Hooks, util::Convert};
 
 pub use apply::InstrumentationApplier;
+pub use cast::cast_ptr_to_usize;
 
 pub struct InstrumentationPoint<'tcx> {
     id: usize,
