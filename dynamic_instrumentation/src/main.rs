@@ -43,7 +43,7 @@ use rustc_span::def_id::LocalDefId;
 use rustc_span::symbol::Ident;
 use rustc_span::DUMMY_SP;
 
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, ensure, Context};
 use camino::Utf8Path;
 use cargo_metadata::MetadataCommand;
 use clap::Parser;
@@ -67,22 +67,27 @@ fn exit_with_status(status: ExitStatus) {
     process::exit(status.code().unwrap_or(1))
 }
 
-/// Lookup the sysroot fast using `rustup` environment variables.
-fn get_sysroot_fast() -> Option<PathBuf> {
-    let sysroot = [
-        env::var_os("RUSTUP_HOME")?,
-        "toolchains".into(),
-        env::var_os("RUSTUP_TOOLCHAIN")?,
-    ]
-    .into_iter()
-    .collect();
-    Some(sysroot)
-}
-
-/// Lookup the sysroot slow, but in a more reliable way using `rustc --print sysroot`.
+/// Resolve the current `rustc` sysroot using `rustc --print sysroot`.
+///
+/// Normally, `rustc` looks up the sysroot by the location of its own binary.
+/// This works because the `rustc` on `$PATH` is actually `rustup`,
+/// and `rustup` invokes the real `rustc`, which is in a location relative to the sysroot.
+/// As we invoke `rustc_driver` directly here, we are `rustc`,
+/// and thus we have to explicitly specify the sysroot that the real `rustc` would normally use.
+///
+/// Note that the sysroot contains the toolchain and host target name,
+/// but this has no effect on cross-compiling.
+/// Every toolchain's `rustc` is able to itself cross-compile.
+/// I'm not sure why the host target needs to be in the sysroot directory name, but it is.
+///
+/// Also note that this sysroot lookup should be done at runtime,
+/// not at compile-time in the `build.rs`,
+/// as the toolchain locations could be different
+/// from where this binary was compiled and where it is running
+/// (it could be on a different machine with a different `$RUSTUP_HOME`).
 ///
 /// TODO(kkysen) deduplicate this with `rustc_private_link::SysRoot::resolve`
-fn get_sysroot_slow() -> anyhow::Result<PathBuf> {
+fn resolve_sysroot() -> anyhow::Result<PathBuf> {
     let rustc = env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
     let output = Command::new(rustc)
         .args(&["--print", "sysroot"])
@@ -105,31 +110,13 @@ fn get_sysroot_slow() -> anyhow::Result<PathBuf> {
         OsStr::new(path)
     };
     let path = Path::new(path).to_owned();
+    // `rustc` reports a million errors if the sysroot is wrong, so try to check first.
+    ensure!(
+        path.is_dir(),
+        "invalid sysroot (not a dir): {}",
+        path.display()
+    );
     Ok(path)
-}
-
-/// Resolve the current `rustc` sysroot.
-///
-/// Normally, `rustc` looks up the sysroot by the location of its own binary.
-/// This works because the `rustc` on `$PATH` is actually `rustup`,
-/// and `rustup` invokes the real `rustc`, which is in a location relative to the sysroot.
-/// As we invoke `rustc_driver` directly here, we are `rustc`,
-/// and thus we have to explicitly specify the sysroot that the real `rustc` would normally use.
-///
-/// Note that the sysroot contains the toolchain and host target name,
-/// but this has no effect on cross-compiling.
-/// Every toolchain's `rustc` is able to itself cross-compile.
-/// I'm not sure why the host target needs to be in the sysroot directory name, but it is.
-///
-/// Also note that this sysroot lookup should be done at runtime,
-/// not at compile-time in the `build.rs`,
-/// as the toolchain locations could be different
-/// from where this binary was compiled and where it is running
-/// (it could be on a different machine with a different `$RUSTUP_HOME`).
-fn get_sysroot() -> anyhow::Result<PathBuf> {
-    get_sysroot_fast()
-        .ok_or(())
-        .or_else(|()| get_sysroot_slow())
 }
 
 /// Insert the feature flags as the first arguments following the `cargo` subcommand.
@@ -174,8 +161,7 @@ impl Cargo {
 
     pub fn command(&self) -> Command {
         let mut cmd = Command::new(&self.path);
-        cmd.env("RUSTUP_TOOLCHAIN", include_str!("../rust-toolchain").trim())
-            .env("CARGO_TARGET_DIR", "instrument.target");
+        cmd.env("CARGO_TARGET_DIR", "instrument.target");
         cmd
     }
 
@@ -192,13 +178,20 @@ impl Cargo {
 }
 
 const RUSTC_WRAPPER_VAR: &str = "RUSTC_WRAPPER";
+const RUST_SYSROOT_VAR: &str = "RUST_SYSROOT";
 const METADATA_VAR: &str = "C2RUST_INSTRUMENT_METADATA_PATH";
+
+fn env_path_from_wrapper(var: &str) -> anyhow::Result<PathBuf> {
+    let path = env::var_os(var)
+        .ok_or_else(|| anyhow!("the `cargo` wrapper should've `${var}` for the `rustc` wrapper"))?;
+    Ok(path.into())
+}
 
 fn rustc_wrapper() -> anyhow::Result<()> {
     let is_primary_package = env::var("CARGO_PRIMARY_PACKAGE").is_ok();
     let should_instrument = is_primary_package;
     let mut at_args = env::args().skip(1).collect::<Vec<_>>();
-    let sysroot = get_sysroot()?;
+    let sysroot = env_path_from_wrapper(RUST_SYSROOT_VAR)?;
     let sysroot: &Utf8Path = sysroot.as_path().try_into()?;
     at_args.extend(["--sysroot".into(), sysroot.as_str().into()]);
     let result = if should_instrument {
@@ -216,8 +209,7 @@ fn rustc_wrapper() -> anyhow::Result<()> {
     // There is no `impl Error for ErrorReported`.
     result.map_err(|_| anyhow!("`rustc` failed"))?;
     if should_instrument {
-        let metadata = env::var_os(METADATA_VAR).ok_or_else(|| anyhow!("we should've set this"))?;
-        INSTRUMENTER.finalize(Path::new(&metadata))?;
+        INSTRUMENTER.finalize(&env_path_from_wrapper(METADATA_VAR)?)?;
     }
     Ok(())
 }
@@ -227,6 +219,10 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         metadata,
         mut cargo_args,
     } = Args::parse();
+
+    env::set_var("RUSTUP_TOOLCHAIN", include_str!("../rust-toolchain").trim());
+
+    let sysroot = resolve_sysroot()?;
 
     let cargo = Cargo::new();
 
@@ -243,7 +239,8 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         add_runtime_feature(&mut cargo_args);
         cmd.args(cargo_args)
             .env(RUSTC_WRAPPER_VAR, rustc_wrapper)
-            .env(METADATA_VAR, metadata);
+            .env(RUST_SYSROOT_VAR, &sysroot)
+            .env(METADATA_VAR, &metadata);
     })?;
 
     Ok(())
