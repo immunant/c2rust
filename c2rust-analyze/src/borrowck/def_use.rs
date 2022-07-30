@@ -198,11 +198,7 @@ impl<'tcx> LoanInvalidatedAtVisitor<'tcx, '_> {
             context,
             categorize(context)
         );
-        let invalidate = match (borrow_kind, categorize(context)) {
-            (BorrowKind::Shared, Some(DefUse::Use)) => false,
-            (_, None) => false,
-            _ => true,
-        };
+        let invalidate = !matches!((borrow_kind, categorize(context)), (BorrowKind::Shared, Some(DefUse::Use)) | (_, None));
         if !invalidate {
             return;
         }

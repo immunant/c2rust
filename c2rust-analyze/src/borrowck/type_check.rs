@@ -187,43 +187,37 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>) {
-        match stmt.kind {
-            StatementKind::Assign(ref x) => {
-                let (pl, ref rv) = **x;
-                let pl_lty = self.visit_place(pl);
-                let rv_lty = self.visit_rvalue(rv, pl_lty);
-                self.do_assign(pl_lty, rv_lty);
-            }
-            _ => {}
+        if let StatementKind::Assign(ref x) = stmt.kind {
+            let (pl, ref rv) = **x;
+            let pl_lty = self.visit_place(pl);
+            let rv_lty = self.visit_rvalue(rv, pl_lty);
+            self.do_assign(pl_lty, rv_lty);
         }
     }
 
     pub fn visit_terminator(&mut self, term: &Terminator<'tcx>) {
         eprintln!("borrowck: visit_terminator({:?})", term.kind);
-        match term.kind {
-            TerminatorKind::Call {
-                ref func,
-                ref args,
-                destination,
-                ..
-            } => {
-                let func_ty = func.ty(self.local_decls, *self.ltcx);
-                eprintln!("callee = {:?}", util::ty_callee(*self.ltcx, func_ty));
-                match util::ty_callee(*self.ltcx, func_ty) {
-                    Some(Callee::PtrOffset { .. }) => {
-                        // We handle this like a pointer assignment.
+        if let TerminatorKind::Call {
+                        ref func,
+                        ref args,
+                        destination,
+                        ..
+                    } = term.kind {
+            let func_ty = func.ty(self.local_decls, *self.ltcx);
+            eprintln!("callee = {:?}", util::ty_callee(*self.ltcx, func_ty));
+            match util::ty_callee(*self.ltcx, func_ty) {
+                Some(Callee::PtrOffset { .. }) => {
+                    // We handle this like a pointer assignment.
 
-                        // `destination` must be `Some` because the function doesn't diverge.
-                        let destination = destination.unwrap();
-                        let pl_lty = self.visit_place(destination.0);
-                        assert!(args.len() == 2);
-                        let rv_lty = self.visit_operand(&args[0]);
-                        self.do_assign(pl_lty, rv_lty);
-                    }
-                    None => {}
+                    // `destination` must be `Some` because the function doesn't diverge.
+                    let destination = destination.unwrap();
+                    let pl_lty = self.visit_place(destination.0);
+                    assert!(args.len() == 2);
+                    let rv_lty = self.visit_operand(&args[0]);
+                    self.do_assign(pl_lty, rv_lty);
                 }
+                None => {}
             }
-            _ => {}
         }
     }
 }

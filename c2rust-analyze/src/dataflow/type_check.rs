@@ -138,51 +138,45 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>) {
         eprintln!("visit_statement({:?})", stmt);
-        match stmt.kind {
-            StatementKind::Assign(ref x) => {
-                let (pl, ref rv) = **x;
-                let ctx = PlaceContext::MutatingUse(MutatingUseContext::Store);
-                let pl_lty = self.visit_place(pl, ctx);
-                let pl_ptr = pl_lty.label;
+        if let StatementKind::Assign(ref x) = stmt.kind {
+            let (pl, ref rv) = **x;
+            let ctx = PlaceContext::MutatingUse(MutatingUseContext::Store);
+            let pl_lty = self.visit_place(pl, ctx);
+            let pl_ptr = pl_lty.label;
 
-                let rv_ptr = self.visit_rvalue(rv);
+            let rv_ptr = self.visit_rvalue(rv);
 
-                self.do_assign(pl_ptr, rv_ptr);
-            }
-            _ => {}
+            self.do_assign(pl_ptr, rv_ptr);
         }
     }
 
     pub fn visit_terminator(&mut self, term: &Terminator<'tcx>) {
         eprintln!("visit_terminator({:?})", term.kind);
         let tcx = self.acx.tcx;
-        match term.kind {
-            TerminatorKind::Call {
-                ref func,
-                ref args,
-                destination,
-                ..
-            } => {
-                let func_ty = func.ty(self.mir, tcx);
-                eprintln!("callee = {:?}", util::ty_callee(tcx, func_ty));
-                match util::ty_callee(tcx, func_ty) {
-                    Some(Callee::PtrOffset { .. }) => {
-                        // We handle this like a pointer assignment.
+        if let TerminatorKind::Call {
+                        ref func,
+                        ref args,
+                        destination,
+                        ..
+                    } = term.kind {
+            let func_ty = func.ty(self.mir, tcx);
+            eprintln!("callee = {:?}", util::ty_callee(tcx, func_ty));
+            match util::ty_callee(tcx, func_ty) {
+                Some(Callee::PtrOffset { .. }) => {
+                    // We handle this like a pointer assignment.
 
-                        // `destination` must be `Some` because the function doesn't diverge.
-                        let destination = destination.unwrap();
-                        let ctx = PlaceContext::MutatingUse(MutatingUseContext::Store);
-                        let pl_lty = self.visit_place(destination.0, ctx);
-                        assert!(args.len() == 2);
-                        let rv_lty = self.visit_operand(&args[0]);
-                        self.do_assign(pl_lty.label, rv_lty.label);
-                        let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
-                        self.constraints.add_all_perms(rv_lty.label, perms);
-                    }
-                    None => {}
+                    // `destination` must be `Some` because the function doesn't diverge.
+                    let destination = destination.unwrap();
+                    let ctx = PlaceContext::MutatingUse(MutatingUseContext::Store);
+                    let pl_lty = self.visit_place(destination.0, ctx);
+                    assert!(args.len() == 2);
+                    let rv_lty = self.visit_operand(&args[0]);
+                    self.do_assign(pl_lty.label, rv_lty.label);
+                    let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
+                    self.constraints.add_all_perms(rv_lty.label, perms);
                 }
+                None => {}
             }
-            _ => {}
         }
     }
 }
