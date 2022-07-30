@@ -50,7 +50,7 @@ pub fn borrowck_mir<'tcx>(
         }
 
         let mut changed = false;
-        for (_, loans) in &output.errors {
+        for loans in output.errors.values() {
             for &loan in loans {
                 let issued_point = facts
                     .loan_issued_at

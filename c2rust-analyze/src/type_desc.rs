@@ -44,10 +44,8 @@ pub fn perms_to_desc(perms: PermissionSet, flags: FlagSet) -> (Ownership, Quanti
         Ownership::Imm
     };
 
-    let qty = if perms.contains(PermissionSet::OFFSET_SUB) {
+    let qty = if perms.contains(PermissionSet::OFFSET_SUB) || perms.contains(PermissionSet::OFFSET_ADD) {
         // TODO: should be Quantity::OffsetPtr, but that's not implemented yet
-        Quantity::Slice
-    } else if perms.contains(PermissionSet::OFFSET_ADD) {
         Quantity::Slice
     } else {
         Quantity::Single
