@@ -38,7 +38,7 @@ use rustc_interface::Queries;
 use rustc_middle::mir::MirPass;
 use rustc_middle::ty::query::{ExternProviders, Providers};
 use rustc_middle::ty::WithOptConstParam;
-use rustc_session::Session;
+use rustc_session::{Session, config::CrateType};
 use rustc_span::def_id::LocalDefId;
 use rustc_span::symbol::Ident;
 use rustc_span::DUMMY_SP;
@@ -187,10 +187,33 @@ fn env_path_from_wrapper(var: &str) -> anyhow::Result<PathBuf> {
     Ok(path.into())
 }
 
+fn is_primary_package() -> bool {
+    env::var("CARGO_PRIMARY_PACKAGE").is_ok()
+}
+
+fn is_bin_crate(at_args: &[String]) -> anyhow::Result<bool> {
+    let args = rustc_driver::args::arg_expand_all(at_args);
+    let matches = rustc_driver::handle_options(&args)
+        .ok_or_else(|| anyhow!("failed to parse `rustc` args"))?;
+    let session_options = rustc_session::config::build_session_options(&matches);
+    let is_bin = session_options.crate_types.contains(&CrateType::Executable);
+    Ok(is_bin)
+}
+
+fn bin_crate_name() -> Option<PathBuf> {
+    env::var_os("CARGO_BIN_NAME").map(PathBuf::from)
+}
+
+fn is_build_script(at_args: &[String]) -> anyhow::Result<bool> {
+    Ok(bin_crate_name().is_none() && is_bin_crate(at_args)?)
+}
+
 fn rustc_wrapper() -> anyhow::Result<()> {
-    let is_primary_package = env::var("CARGO_PRIMARY_PACKAGE").is_ok();
-    let should_instrument = is_primary_package;
     let mut at_args = env::args().skip(1).collect::<Vec<_>>();
+    // `c2rust-analysis-rt` is not yet built for the build script,
+    // so trying to compile it will fail.
+    // Plus, we don't need to and don't want to instrument the build script.
+    let should_instrument = is_primary_package() && !is_build_script(&at_args)?;
     let sysroot = env_path_from_wrapper(RUST_SYSROOT_VAR)?;
     let sysroot: &Utf8Path = sysroot.as_path().try_into()?;
     at_args.extend(["--sysroot".into(), sysroot.as_str().into()]);
