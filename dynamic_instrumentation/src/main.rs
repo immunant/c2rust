@@ -30,7 +30,7 @@ use std::{
 use rustc_ast::ast::{Item, ItemKind, Visibility, VisibilityKind};
 use rustc_ast::node_id::NodeId;
 use rustc_ast::ptr::P;
-use rustc_const_eval::transform::validate;
+use rustc_const_eval::transform::validate::Validator;
 use rustc_driver::Compilation;
 use rustc_driver::{RunCompiler, TimePassesCallbacks};
 use rustc_interface::interface::Compiler;
@@ -310,7 +310,7 @@ fn override_queries(
         if fn_ty.is_fn() && !tcx.is_const_fn(body_did) && !tcx.is_static(body_did) {
             INSTRUMENTER.instrument_fn(tcx, &mut mir, body_did);
 
-            validate::Validator {
+            Validator {
                 when: "After dynamic instrumentation".to_string(),
                 mir_phase: mir.phase,
             }
