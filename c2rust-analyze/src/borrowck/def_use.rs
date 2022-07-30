@@ -262,7 +262,7 @@ impl<'tcx> Visitor<'tcx> for LoanInvalidatedAtVisitor<'tcx, '_> {
             location
         );
 
-        let local_loans = self.loans.get(&local).map_or(&[] as &[_], |x| x);
+        let local_loans = self.loans.get(local).map_or(&[] as &[_], |x| x);
         for &(_path, loan, borrow_kind) in local_loans {
             // All paths rooted in this local overlap the local.
             self.access_loan_at_location(loan, borrow_kind, context, location);

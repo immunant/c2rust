@@ -59,7 +59,7 @@ fn filecheck() {
 
         let name = entry.file_name();
         let name = name.to_str().unwrap();
-        if name.starts_with(".") || !name.ends_with(".rs") {
+        if name.starts_with('.') || !name.ends_with(".rs") {
             continue;
         }
 

@@ -168,7 +168,7 @@ impl<'tcx> AtomMaps<'tcx> {
     ) -> Path {
         let (path, new) = self.path.add_new((local, projection));
         if new {
-            if projection.len() == 0 {
+            if projection.is_empty() {
                 let var = self.variable(local);
                 facts.path_is_var.push((path, var));
             } else {
