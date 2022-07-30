@@ -11,9 +11,14 @@ extern crate rustc_mir_transform;
 extern crate rustc_session;
 extern crate rustc_span;
 
-mod instrument_memory;
-
-use instrument_memory::InstrumentMemoryOps;
+mod arg;
+mod hooks;
+mod instrument;
+mod into_operand;
+mod mir_utils;
+mod point;
+mod runtime_conversions;
+mod util;
 
 use std::{
     env,
@@ -43,6 +48,8 @@ use camino::Utf8Path;
 use cargo_metadata::MetadataCommand;
 use clap::Parser;
 use lazy_static::lazy_static;
+
+use instrument::Instrumenter;
 
 /// Instrument memory accesses for dynamic analysis.
 #[derive(Debug, Parser)]
@@ -254,7 +261,8 @@ fn main() -> anyhow::Result<()> {
 }
 
 lazy_static! {
-    static ref INSTRUMENTER: InstrumentMemoryOps = InstrumentMemoryOps::new();
+    /// TODO(kkysen) can be made non-lazy when `Mutex::new` is `const` in rust 1.63
+    static ref INSTRUMENTER: Instrumenter = Instrumenter::new();
 }
 
 struct MirTransformCallbacks;
