@@ -204,15 +204,46 @@ fn bin_crate_name() -> Option<PathBuf> {
     env::var_os("CARGO_BIN_NAME").map(PathBuf::from)
 }
 
+/// Detect if the `rustc` invocation is for compiling a build script.
+/// 
+/// `c2rust-analysis-rt` is not yet built for the build script,
+/// so trying to compile it will fail.
+/// Plus, we don't need to and don't want to instrument the build script.
+/// 
+/// We check if it is a build script by checking if it's a `--crate-type bin`
+/// and yet has no `$CARGO_BIN_NAME`, which is set for normal binary crates.
+/// 
+/// Another solution (that `miri` uses) is to always specify the `--target`,
+/// even if it's the host target.  Then `cargo` thinks it's cross-compiling,
+/// and always forwards `--target` to `rustc` for native compilations,
+/// but for host compilations like build scripts and proc-macros,
+/// it doesn't specify `--target`.
+/// 
+/// This would work more robustly if we were also instrumenting dependencies,
+/// as our currently solution would no longer work, but we aren't.
+/// 
+/// On the other hand, the `--target` solution has a drawback
+/// in that there are many ways to specify the target:
+/// * `--target`
+/// * `$CARGO_BUILD_TARGET`
+/// * `targets` in `rust-toolchain.toml`
+/// * `targets` in `.cargo/config.toml`
+/// * and maybe some other places as well
+/// All the resolution is in `cargo`, but we have to decide
+/// if we're going to supply `--target $HOST` before `cargo` runs,
+/// so we have to check all of those places ourselves to make sure
+/// that we're not overriding the true cross-compilation the user wants.
+/// 
+/// Compared to the current solution, this seems harder,
+/// so we're sticking with the current solution for now as long as it works.
 fn is_build_script(at_args: &[String]) -> anyhow::Result<bool> {
     Ok(bin_crate_name().is_none() && is_bin_crate(at_args)?)
 }
 
 fn rustc_wrapper() -> anyhow::Result<()> {
     let mut at_args = env::args().skip(1).collect::<Vec<_>>();
-    // `c2rust-analysis-rt` is not yet built for the build script,
-    // so trying to compile it will fail.
-    // Plus, we don't need to and don't want to instrument the build script.
+    // We also want to avoid proc-macro crates,
+    // but those must be separate crates, so we should be okay.
     let should_instrument = is_primary_package() && !is_build_script(&at_args)?;
     let sysroot = env_path_from_wrapper(RUST_SYSROOT_VAR)?;
     let sysroot: &Utf8Path = sysroot.as_path().try_into()?;
