@@ -139,9 +139,9 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
         self
     }
 
-    pub fn debug_mir(mut self, loc: Location) -> Self {
+    fn debug_mir_to_string(&self, loc: Location) -> String {
         let block = &self.body.basic_blocks()[loc.block];
-        self.point.metadata.debug_info = if loc.statement_index == block.statements.len() {
+        if loc.statement_index == block.statements.len() {
             match &block.terminator().kind {
                 TerminatorKind::Call {
                     args,
@@ -169,7 +169,11 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
             }
         } else {
             format!("{:?}", block.statements[loc.statement_index])
-        };
+        }
+    }
+
+    pub fn debug_mir(mut self, loc: Location) -> Self {
+        self.point.metadata.debug_info = self.debug_mir_to_string(loc);
         self
     }
 
