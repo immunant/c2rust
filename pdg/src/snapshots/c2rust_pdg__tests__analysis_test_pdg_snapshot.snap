@@ -688,6 +688,22 @@ g {
 nodes_that_need_write = []
 
 g {
+	n[0]:  alloc      _     => _2  @ bb1[2]:  fn test_ref_field; _2 = pointers::calloc(move _3, move _4)  
+	n[1]:  copy       n[0]  => _1  @ bb2[3]:  fn test_ref_field; _1 = move _2 as *mut pointers::S (Misc)  
+	n[2]:  copy       n[1]  => _6  @ bb2[6]:  fn test_ref_field; _6 = &mut (*_1)                          
+	n[3]:  field.3    n[2]  => _   @ bb2[9]:  fn test_ref_field; _7 = (((*_6).3: pointers::T).3: i32)     
+	n[4]:  field.3    n[3]  => _7  @ bb2[9]:  fn test_ref_field; _7 = (((*_6).3: pointers::T).3: i32)     
+	n[5]:  addr.load  n[4]  => _   @ bb2[9]:  fn test_ref_field; _7 = (((*_6).3: pointers::T).3: i32)     
+	n[6]:  field.3    n[2]  => _   @ bb2[10]: fn test_ref_field; (((*_6).3: pointers::T).3: i32) = move _7
+	n[7]:  field.3    n[6]  => _   @ bb2[10]: fn test_ref_field; (((*_6).3: pointers::T).3: i32) = move _7
+	n[8]:  addr.store n[7]  => _   @ bb2[10]: fn test_ref_field; (((*_6).3: pointers::T).3: i32) = move _7
+	n[9]:  copy       n[0]  => _10 @ bb2[16]: fn test_ref_field; _10 = &raw mut (*_6)                     
+	n[10]: copy       n[9]  => _9  @ bb2[17]: fn test_ref_field; _9 = move _10 as *mut libc::c_void (Misc)
+	n[11]: free       n[10] => _8  @ bb2[18]: fn test_ref_field; _8 = pointers::free(move _9)             
+}
+nodes_that_need_write = [8, 7, 6, 2, 1, 0]
+
+g {
 	n[0]: alloc _    => _1 @ bb1[2]: fn test_realloc_reassign; _1 = pointers::malloc(move _2)          
 	n[1]: copy  n[0] => _5 @ bb2[5]: fn test_realloc_reassign; _5 = _1                                 
 	n[2]: free  n[1] => _4 @ bb4[2]: fn test_realloc_reassign; _4 = pointers::realloc(move _5, move _6)
@@ -885,13 +901,13 @@ g {
 nodes_that_need_write = [2, 0]
 
 g {
-	n[0]:  &_35       _     => _34 @ bb30[4]:  fn main_0;         _34 = &mut _35                                                      
-	n[1]:  copy       n[0]  => _40 @ bb30[12]: fn main_0;         _40 = &(*_34)                                                       
-	n[2]:  copy       n[1]  => _39 @ bb30[13]: fn main_0;         _39 = move _40 as &[i32] (Pointer(Unsize))                          
-	n[3]:  copy       n[2]  => _1  @ bb0[0]:   fn len;            _38 = core::slice::<impl [i32]>::len(move _39)                      
-	n[4]:  copy       n[0]  => _42 @ bb31[6]:  fn main_0;         _42 = &raw mut (*_34)                                               
-	n[5]:  copy       n[4]  => _41 @ bb31[7]:  fn main_0;         _41 = move _42 as *mut i32 (Pointer(ArrayToPointer))                
-	n[6]:  copy       n[5]  => _2  @ bb0[0]:   fn insertion_sort; _36 = pointers::insertion_sort(move _37, move _41)                  
+	n[0]:  &_36       _     => _35 @ bb31[4]:  fn main_0;         _35 = &mut _36                                                      
+	n[1]:  copy       n[0]  => _41 @ bb31[12]: fn main_0;         _41 = &(*_35)                                                       
+	n[2]:  copy       n[1]  => _40 @ bb31[13]: fn main_0;         _40 = move _41 as &[i32] (Pointer(Unsize))                          
+	n[3]:  copy       n[2]  => _1  @ bb0[0]:   fn len;            _39 = core::slice::<impl [i32]>::len(move _40)                      
+	n[4]:  copy       n[0]  => _43 @ bb32[6]:  fn main_0;         _43 = &raw mut (*_35)                                               
+	n[5]:  copy       n[4]  => _42 @ bb32[7]:  fn main_0;         _42 = move _43 as *mut i32 (Pointer(ArrayToPointer))                
+	n[6]:  copy       n[5]  => _2  @ bb0[0]:   fn insertion_sort; _37 = pointers::insertion_sort(move _38, move _42)                  
 	n[7]:  copy       n[6]  => _10 @ bb3[4]:   fn insertion_sort; _10 = _2                                                            
 	n[8]:  offset[1]  n[7]  => _9  @ bb3[9]:   fn insertion_sort; _9 = std::ptr::mut_ptr::<impl *mut i32>::offset(move _10, move _11) 
 	n[9]:  addr.load  n[8]  => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9)                                                          
@@ -964,6 +980,6 @@ g {
 }
 nodes_that_need_write = [75, 74, 73, 66, 65, 64, 63, 62, 61, 54, 53, 52, 45, 44, 43, 33, 32, 31, 27, 26, 25, 15, 14, 13, 6, 5, 4, 0]
 
-num_graphs = 76
-num_nodes = 658
+num_graphs = 77
+num_nodes = 670
 
