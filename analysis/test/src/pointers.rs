@@ -365,6 +365,7 @@ pub unsafe extern "C" fn test_shared_ref() {
     let y = &x;
     let z = y;
     let foo = shared_ref_foo(z);
+    let bar = std::ptr::addr_of!(*foo);
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_unique_ref() {
