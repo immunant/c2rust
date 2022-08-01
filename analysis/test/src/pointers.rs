@@ -386,6 +386,15 @@ pub unsafe extern "C" fn test_ref_field() {
     free(s_ref as *mut S as *mut libc::c_void);
 }
 #[no_mangle]
+pub unsafe extern "C" fn test_ref_field_addr() {
+    let s = calloc(
+        0i32 as libc::c_ulong,
+        ::std::mem::size_of::<S>() as libc::c_ulong,
+    ) as *mut S;
+    let s_ref = &mut *s;
+    let x = std::ptr::addr_of!((*((*s_ref).field3)).field3);
+}
+#[no_mangle]
 pub unsafe extern "C" fn test_realloc_reassign() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
     s = realloc(s, 2 * mem::size_of::<S>() as c_ulong);
@@ -515,6 +524,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     test_shared_ref();
     test_unique_ref();
     test_ref_field();
+    test_ref_field_addr();
     test_realloc_reassign();
     test_realloc_fresh();
     test_load_addr();
