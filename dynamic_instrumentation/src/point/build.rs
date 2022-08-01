@@ -1,7 +1,7 @@
 use c2rust_analysis_rt::mir_loc::{EventMetadata, TransferKind};
 use rustc_index::vec::Idx;
 use rustc_middle::{
-    mir::{Body, Location, Place},
+    mir::{Body, Location, Place, TerminatorKind},
     ty::TyCtxt,
 };
 use rustc_span::def_id::DefId;
@@ -136,6 +136,36 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
 
     pub fn transfer(mut self, transfer_kind: TransferKind) -> Self {
         self.point.metadata.transfer_kind = transfer_kind;
+        self
+    }
+
+    pub fn debug_mir(mut self, loc: Location) -> Self {
+        self.point.metadata.debug = {
+            let block = &self.body.basic_blocks()[loc.block];
+            if loc.statement_index == block.statements.len() {
+                match &block.terminator().kind {
+                    TerminatorKind::Call {
+                        args,
+                        destination,
+                        func,
+                        ..
+                    } if destination.is_some() => {
+                        let mut s = format!("{:?} = {:?}(", destination.unwrap().0, func);
+                        for (i, arg) in args.iter().enumerate() {
+                            if i > 0 {
+                                s.push_str(", ");
+                            }
+                            s.push_str(&format!("{:?}", arg));
+                        }
+                        s.push(')');
+                        s
+                    }
+                    _ => String::from(""),
+                }
+            } else {
+                format!("{:?}", block.statements[loc.statement_index])
+            }
+        };
         self
     }
 

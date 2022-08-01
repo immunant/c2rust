@@ -68,6 +68,8 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
             state.add_fn(callee_id, tcx);
         }
 
+        let (blocks, locals) = body.basic_blocks_and_local_decls_mut();
+
         // Add the MIR location as the first argument to the instrumentation function
         let loc_idx = state.get_mir_loc_idx(body_def, loc, metadata.clone());
         args.insert(
@@ -75,7 +77,6 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
             InstrumentationArg::Op(ArgKind::AddressUsize(loc_idx.op(tcx))),
         );
 
-        let (blocks, locals) = body.basic_blocks_and_local_decls_mut();
         let mut extra_statements = None;
         if after_call {
             let call = blocks[loc.block].terminator_mut();
