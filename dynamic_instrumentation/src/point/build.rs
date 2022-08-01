@@ -2,7 +2,7 @@ use c2rust_analysis_rt::mir_loc::{EventMetadata, TransferKind};
 use rustc_index::vec::Idx;
 use rustc_middle::{
     mir::{Body, Location, Place, TerminatorKind},
-    ty::TyCtxt,
+    ty::{self, TyCtxt},
 };
 use rustc_span::def_id::DefId;
 
@@ -150,7 +150,13 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
                         func,
                         ..
                     } if destination.is_some() => {
-                        let mut s = format!("{:?} = {:?}(", destination.unwrap().0, func);
+                        let mut s = format!("{:?} = ", destination.unwrap().0);
+                        if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
+                            let name = self.tcx.item_name(*def_id);
+                            s.push_str(&format!("{}(", name));
+                        } else {
+                            s.push_str(&format!("{:?}(", func));
+                        };
                         for (i, arg) in args.iter().enumerate() {
                             if i > 0 {
                                 s.push_str(", ");
