@@ -24,7 +24,7 @@ use std::{
     env,
     ffi::{OsStr, OsString},
     path::{Path, PathBuf},
-    process::{self, Command, ExitStatus},
+    process::{self, Command, ExitStatus}, iter,
 };
 
 use rustc_ast::ast::{Item, ItemKind, Visibility, VisibilityKind};
@@ -119,7 +119,7 @@ fn resolve_sysroot() -> anyhow::Result<PathBuf> {
     Ok(path)
 }
 
-/// Insert the feature flags as the first arguments following the `cargo` subcommand.
+/// Insert feature flags as the first arguments following the `cargo` subcommand.
 ///
 /// We can't insert them at the end because they could come after a `--` and thus be ignored.
 /// And we can't insert them at the beginning before the `cargo` subcommand argument,
@@ -129,13 +129,12 @@ fn resolve_sysroot() -> anyhow::Result<PathBuf> {
 /// * it would panic on splicing/insertion
 /// * we don't want to add the feature flags anyways, as `cargo` without arguments is already an error
 /// * we don't want to obfuscate that error with an error about unexpected feature flags
-fn add_runtime_feature(cargo_args: &mut Vec<OsString>) {
+fn add_feature(cargo_args: &mut Vec<OsString>, features: &[&str]) {
     let insertion_point = 1;
     if cargo_args.len() >= insertion_point {
         cargo_args.splice(
             insertion_point..insertion_point,
-            ["--features", "c2rust-analysis-rt"]
-                .iter()
+            iter::once(&"--features").chain(features)
                 .map(|s| s.into()),
         );
     }
@@ -181,16 +180,24 @@ const RUSTC_WRAPPER_VAR: &str = "RUSTC_WRAPPER";
 const RUST_SYSROOT_VAR: &str = "RUST_SYSROOT";
 const METADATA_VAR: &str = "C2RUST_INSTRUMENT_METADATA_PATH";
 
+/// Read a [`PathBuf`] from the [`mod@env`]ironment that should've been set by the [`cargo_wrapper`].
 fn env_path_from_wrapper(var: &str) -> anyhow::Result<PathBuf> {
     let path = env::var_os(var)
         .ok_or_else(|| anyhow!("the `cargo` wrapper should've `${var}` for the `rustc` wrapper"))?;
     Ok(path.into())
 }
 
+/// Check if the current [`rustc_wrapper`] invocation is for the primary `cargo` package,
+/// as determined by `$CARGO_PRIMARY_PACKAGE`.
 fn is_primary_package() -> bool {
     env::var("CARGO_PRIMARY_PACKAGE").is_ok()
 }
 
+/// Check if the current [`rustc_wrapper`] invocation is a binary crate,
+/// i.e., if `--crate-type bin` was specified.
+/// 
+/// This uses the [`rustc_driver`] and [`rustc_session`] APIs
+/// to check this exactly as `rustc` would.
 fn is_bin_crate(at_args: &[String]) -> anyhow::Result<bool> {
     let args = rustc_driver::args::arg_expand_all(at_args);
     let matches = rustc_driver::handle_options(&args)
@@ -200,11 +207,16 @@ fn is_bin_crate(at_args: &[String]) -> anyhow::Result<bool> {
     Ok(is_bin)
 }
 
+/// Read the name of the current binary crate being compiled, if it is a binary crate ([`is_bin_crate`]).
+/// 
+/// Note that despite setting `--crate-type bin` and [`is_bin_crate`] being true,
+/// there is no name set for build scripts.
+/// That's how we can detect them.
 fn bin_crate_name() -> Option<PathBuf> {
     env::var_os("CARGO_BIN_NAME").map(PathBuf::from)
 }
 
-/// Detect if the `rustc` invocation is for compiling a build script.
+/// Detect if the current [`rustc_wrapper`] is for compiling a build script.
 /// 
 /// `c2rust-analysis-rt` is not yet built for the build script,
 /// so trying to compile it will fail.
@@ -240,6 +252,7 @@ fn is_build_script(at_args: &[String]) -> anyhow::Result<bool> {
     Ok(bin_crate_name().is_none() && is_bin_crate(at_args)?)
 }
 
+/// Run as a `rustc` wrapper (a la `$RUSTC_WRAPPER`/[`RUSTC_WRAPPER_VAR`]).
 fn rustc_wrapper() -> anyhow::Result<()> {
     let mut at_args = env::args().skip(1).collect::<Vec<_>>();
     // We also want to avoid proc-macro crates,
@@ -268,14 +281,18 @@ fn rustc_wrapper() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Run as a `cargo` wrapper/plugin, the default invocation.
 fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     let Args {
         metadata,
         mut cargo_args,
     } = Args::parse();
 
+    // Ensure we use a toolchain compatible with the `rustc` private crates we linked to.
     env::set_var("RUSTUP_TOOLCHAIN", include_str!("../rust-toolchain").trim());
 
+    // Resolve the sysroot once in the [`cargo_wrapper`]
+    // so that we don't need all of the [`rustc_wrapper`]s to have to do it.
     let sysroot = resolve_sysroot()?;
 
     let cargo = Cargo::new();
@@ -286,11 +303,18 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         .ok_or_else(|| anyhow!("no root package found by `cargo`"))?;
 
     cargo.run(|cmd| {
+        // Clean the primary package so that we always rebuild it
+        // and get up-to-date, complete instrumentation [`Metadata`].
+        // Incremental instrumentation is very tricky,
+        // so don't try that yet,
+        // and if we only need to rebuild the primary package,
+        // it usually isn't that slow.
         cmd.args(&["clean", "--package", root_package.name.as_str()]);
     })?;
 
     cargo.run(|cmd| {
-        add_runtime_feature(&mut cargo_args);
+        // Enable the runtime dependency.
+        add_feature(&mut cargo_args, &["c2rust-analysis-rt"]);
         cmd.args(cargo_args)
             .env(RUSTC_WRAPPER_VAR, rustc_wrapper)
             .env(RUST_SYSROOT_VAR, &sysroot)
