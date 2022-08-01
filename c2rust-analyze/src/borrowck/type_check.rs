@@ -187,37 +187,49 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>) {
-        if let StatementKind::Assign(ref x) = stmt.kind {
-            let (pl, ref rv) = **x;
-            let pl_lty = self.visit_place(pl);
-            let rv_lty = self.visit_rvalue(rv, pl_lty);
-            self.do_assign(pl_lty, rv_lty);
+        // TODO(spernsteiner): other `StatementKind`s will be handled in the future
+        #[allow(clippy::single_match)]
+        match stmt.kind {
+            StatementKind::Assign(ref x) => {
+                let (pl, ref rv) = **x;
+                let pl_lty = self.visit_place(pl);
+                let rv_lty = self.visit_rvalue(rv, pl_lty);
+                self.do_assign(pl_lty, rv_lty);
+            }
+            // TODO(spernsteiner): handle other `StatementKind`s
+            _ => (),
         }
     }
 
     pub fn visit_terminator(&mut self, term: &Terminator<'tcx>) {
         eprintln!("borrowck: visit_terminator({:?})", term.kind);
-        if let TerminatorKind::Call {
-                        ref func,
-                        ref args,
-                        destination,
-                        ..
-                    } = term.kind {
-            let func_ty = func.ty(self.local_decls, *self.ltcx);
-            eprintln!("callee = {:?}", util::ty_callee(*self.ltcx, func_ty));
-            match util::ty_callee(*self.ltcx, func_ty) {
-                Some(Callee::PtrOffset { .. }) => {
-                    // We handle this like a pointer assignment.
+        // TODO(spernsteiner): other `TerminatorKind`s will be handled in the future
+        #[allow(clippy::single_match)]
+        match term.kind {
+            TerminatorKind::Call {
+                ref func,
+                ref args,
+                destination,
+                ..
+            } => {
+                let func_ty = func.ty(self.local_decls, *self.ltcx);
+                eprintln!("callee = {:?}", util::ty_callee(*self.ltcx, func_ty));
+                match util::ty_callee(*self.ltcx, func_ty) {
+                    Some(Callee::PtrOffset { .. }) => {
+                        // We handle this like a pointer assignment.
 
-                    // `destination` must be `Some` because the function doesn't diverge.
-                    let destination = destination.unwrap();
-                    let pl_lty = self.visit_place(destination.0);
-                    assert!(args.len() == 2);
-                    let rv_lty = self.visit_operand(&args[0]);
-                    self.do_assign(pl_lty, rv_lty);
+                        // `destination` must be `Some` because the function doesn't diverge.
+                        let destination = destination.unwrap();
+                        let pl_lty = self.visit_place(destination.0);
+                        assert!(args.len() == 2);
+                        let rv_lty = self.visit_operand(&args[0]);
+                        self.do_assign(pl_lty, rv_lty);
+                    }
+                    None => {}
                 }
-                None => {}
             }
+            // TODO(spernsteiner): handle other `TerminatorKind`s
+            _ => (),
         }
     }
 }
