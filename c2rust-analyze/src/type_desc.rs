@@ -44,8 +44,12 @@ pub fn perms_to_desc(perms: PermissionSet, flags: FlagSet) -> (Ownership, Quanti
         Ownership::Imm
     };
 
-    let qty = if perms.contains(PermissionSet::OFFSET_SUB) || perms.contains(PermissionSet::OFFSET_ADD) {
-        // TODO: should be Quantity::OffsetPtr, but that's not implemented yet
+    // TODO(spernsteiner): will not remain identical branches
+    #[allow(clippy::if_same_then_else)]
+    let qty = if perms.contains(PermissionSet::OFFSET_SUB) {
+        // TODO(spernsteiner): should be [`Quantity::OffsetPtr`], but that's not implemented yet
+        Quantity::Slice
+    } else if perms.contains(PermissionSet::OFFSET_ADD) {
         Quantity::Slice
     } else {
         Quantity::Single
