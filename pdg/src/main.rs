@@ -1,6 +1,8 @@
 #![feature(min_specialization)]
 #![feature(rustc_private)]
 #![feature(map_try_insert)]
+#![feature(type_ascription)]
+
 
 extern crate rustc_ast;
 extern crate rustc_const_eval;
@@ -110,7 +112,7 @@ fn main() -> eyre::Result<()> {
             .map(|node_id| node_id.as_usize())
             .collect::<Vec<_>>();
         if should_print(ToPrint::Graphs) {
-            println!("{graph}");
+            println!("Graph:\n {graph}");
         }
         if should_print(ToPrint::WritePermissions) {
             println!("nodes_that_need_write = {needs_write:?}");
