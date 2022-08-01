@@ -169,7 +169,6 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
 
         let op_ty = |op: &Operand<'tcx>| op.ty(&locals, ctx);
         let place_ty = |p: &Place<'tcx>| p.ty(&locals, ctx).ty;
-        let local_ty = |p: &Place| place_ty(&p.local.into());
         let value_ty = value.ty(self, self.tcx());
 
         self.visit_place(
@@ -189,9 +188,6 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
         // add instrumentation for load-from-address operations
         match value {
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) if p.is_indirect() => {
-                add_load_instr(p)
-            }
-            Rvalue::AddressOf(_, p) if !local_ty(p).is_region_ptr() && p.is_indirect() => {
                 add_load_instr(p)
             }
             _ => (),

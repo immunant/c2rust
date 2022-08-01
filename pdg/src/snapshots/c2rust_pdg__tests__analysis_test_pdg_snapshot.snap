@@ -85,10 +85,9 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]: alloc     _    => _2 @ bb1[2]: fn simple; _2 = pointers::malloc(move _3)         
-	n[1]: copy      n[0] => _1 @ bb2[2]: fn simple; _1 = move _2 as *mut pointers::S (Misc)
-	n[2]: field.0   n[1] => _9 @ bb4[5]: fn simple; _9 = &raw const ((*_1).0: i32)         
-	n[3]: addr.load n[2] => _  @ bb4[5]: fn simple; _9 = &raw const ((*_1).0: i32)         
+	n[0]: alloc   _    => _2 @ bb1[2]: fn simple; _2 = pointers::malloc(move _3)         
+	n[1]: copy    n[0] => _1 @ bb2[2]: fn simple; _1 = move _2 as *mut pointers::S (Misc)
+	n[2]: field.0 n[1] => _9 @ bb4[5]: fn simple; _9 = &raw const ((*_1).0: i32)         
 }
 nodes_that_need_write = []
 
@@ -108,28 +107,26 @@ g {
 	n[12]: field.0    n[3]  => _12 @ bb4[18]: fn simple; _12 = ((*_1).0: i32)                        
 	n[13]: addr.load  n[12] => _   @ bb4[18]: fn simple; _12 = ((*_1).0: i32)                        
 	n[14]: field.1    n[3]  => _13 @ bb4[21]: fn simple; _13 = &raw const ((*_1).1: u64)             
-	n[15]: addr.load  n[14] => _   @ bb4[21]: fn simple; _13 = &raw const ((*_1).1: u64)             
-	n[16]: addr.load  n[3]  => _   @ bb4[24]: fn simple; _14 = &raw const (*_1)                      
-	n[17]: field.2    n[3]  => _   @ bb4[25]: fn simple; ((*_1).2: *const pointers::S) = move _14    
-	n[18]: addr.store n[17] => _   @ bb4[25]: fn simple; ((*_1).2: *const pointers::S) = move _14    
-	n[19]: copy       n[3]  => _16 @ bb4[30]: fn simple; _16 = _1                                    
-	n[20]: copy       n[19] => _2  @ bb0[0]:  fn recur;  _15 = pointers::recur(const 3_i32, move _16)
+	n[15]: field.2    n[14] => _   @ bb4[25]: fn simple; ((*_1).2: *const pointers::S) = move _14    
+	n[16]: addr.store n[15] => _   @ bb4[25]: fn simple; ((*_1).2: *const pointers::S) = move _14    
+	n[17]: copy       n[3]  => _16 @ bb4[30]: fn simple; _16 = _1                                    
+	n[18]: copy       n[17] => _2  @ bb0[0]:  fn recur;  _15 = pointers::recur(const 3_i32, move _16)
+	n[19]: copy       n[18] => _13 @ bb8[4]:  fn recur;  _13 = _2                                    
+	n[20]: copy       n[19] => _2  @ bb0[0]:  fn recur;  _9 = pointers::recur(move _10, move _13)    
 	n[21]: copy       n[20] => _13 @ bb8[4]:  fn recur;  _13 = _2                                    
 	n[22]: copy       n[21] => _2  @ bb0[0]:  fn recur;  _9 = pointers::recur(move _10, move _13)    
 	n[23]: copy       n[22] => _13 @ bb8[4]:  fn recur;  _13 = _2                                    
 	n[24]: copy       n[23] => _2  @ bb0[0]:  fn recur;  _9 = pointers::recur(move _10, move _13)    
-	n[25]: copy       n[24] => _13 @ bb8[4]:  fn recur;  _13 = _2                                    
-	n[26]: copy       n[25] => _2  @ bb0[0]:  fn recur;  _9 = pointers::recur(move _10, move _13)    
-	n[27]: copy       n[26] => _8  @ bb1[3]:  fn recur;  _8 = _2                                     
-	n[28]: copy       n[27] => _7  @ bb1[4]:  fn recur;  _7 = move _8 as *mut libc::c_void (Misc)    
-	n[29]: free       n[28] => _0  @ bb1[5]:  fn recur;  _0 = pointers::free(move _7)                
-	n[30]: copy       n[26] => _14 @ bb9[5]:  fn recur;  _14 = _2                                    
-	n[31]: copy       n[26] => _14 @ bb9[5]:  fn recur;  _14 = _2                                    
-	n[32]: copy       n[26] => _14 @ bb9[5]:  fn recur;  _14 = _2                                    
-	n[33]: addr.load  n[1]  => _   @ bb5[3]:  fn simple; _17 = (*_5)                                 
-	n[34]: addr.store n[3]  => _   @ bb5[7]:  fn simple; (*_1) = move _18                            
+	n[25]: copy       n[24] => _8  @ bb1[3]:  fn recur;  _8 = _2                                     
+	n[26]: copy       n[25] => _7  @ bb1[4]:  fn recur;  _7 = move _8 as *mut libc::c_void (Misc)    
+	n[27]: free       n[26] => _0  @ bb1[5]:  fn recur;  _0 = pointers::free(move _7)                
+	n[28]: copy       n[24] => _14 @ bb9[5]:  fn recur;  _14 = _2                                    
+	n[29]: copy       n[24] => _14 @ bb9[5]:  fn recur;  _14 = _2                                    
+	n[30]: copy       n[24] => _14 @ bb9[5]:  fn recur;  _14 = _2                                    
+	n[31]: addr.load  n[1]  => _   @ bb5[3]:  fn simple; _17 = (*_5)                                 
+	n[32]: addr.store n[3]  => _   @ bb5[7]:  fn simple; (*_1) = move _18                            
 }
-nodes_that_need_write = [34, 18, 17, 11, 10, 9, 8, 5, 4, 3, 2, 1, 0]
+nodes_that_need_write = [32, 16, 15, 14, 11, 10, 9, 8, 5, 4, 3, 2, 1, 0]
 
 g {
 	n[0]: &_1 _ => _9 @ bb4[6]: fn simple; _9 = &raw const ((*_1).0: i32)
@@ -1000,5 +997,5 @@ g {
 nodes_that_need_write = [71, 70, 69, 62, 61, 60, 59, 58, 57, 50, 49, 48, 41, 40, 39, 29, 28, 27, 23, 22, 21, 11, 10, 9, 2, 1, 0]
 
 num_graphs = 91
-num_nodes = 633
+num_nodes = 630
 
