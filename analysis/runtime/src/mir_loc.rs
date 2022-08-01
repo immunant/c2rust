@@ -161,7 +161,13 @@ pub enum TransferKind {
     Ret(DefPathHash),
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+impl Default for TransferKind {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Default)]
 pub struct EventMetadata {
     /// Input [`Local`]s for an [`Event`](crate::events::Event).
     pub source: Option<MirPlace>,
@@ -171,17 +177,6 @@ pub struct EventMetadata {
     pub transfer_kind: TransferKind,
     /// Any string useful for debugging
     pub debug: String
-}
-
-impl Default for EventMetadata {
-    fn default() -> Self {
-        Self {
-            source: None,
-            destination: None,
-            transfer_kind: TransferKind::None,
-            debug: "".to_owned()
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
