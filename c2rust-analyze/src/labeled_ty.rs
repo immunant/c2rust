@@ -195,11 +195,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
             }
         }
 
-        self.mk(
-            lty.ty,
-            self.subst_slice(lty.args, substs),
-            lty.label,
-        )
+        self.mk(lty.ty, self.subst_slice(lty.args, substs), lty.label)
     }
 
     /// Substitute arguments in multiple labeled types.
