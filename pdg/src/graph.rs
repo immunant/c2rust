@@ -140,7 +140,7 @@ impl Node {
             dest,
             kind,
             source,
-            node_info: _
+            node_info
         } = self;
         let src = ShortOption(source.as_ref());
         let dest = ShortOption(dest.as_ref());
@@ -149,9 +149,13 @@ impl Node {
             statement_idx,
         };
         let fn_ = function;
+        let info = match node_info {
+            None => format!(""),
+            Some(i) => format!("{i}")
+        };
         write!(
             f,
-            "{kind}{sep}{src}{sep}=>{sep}{dest}{sep}@{sep}{bb_stmt}:{sep}fn {fn_};"
+            "{kind}{sep}{src}{sep}=>{sep}{dest}{sep}@{sep}{bb_stmt}:{sep}fn {fn_}; ({info})"
         )
     }
 }
