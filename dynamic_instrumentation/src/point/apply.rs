@@ -1,6 +1,6 @@
 use std::mem;
 
-use c2rust_analysis_rt::mir_loc::{TransferKind, EventMetadata};
+use c2rust_analysis_rt::mir_loc::{EventMetadata, TransferKind};
 use rustc_middle::{
     mir::{Body, Operand, TerminatorKind},
     ty::TyCtxt,
@@ -69,18 +69,37 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
         }
 
         let (blocks, locals) = body.basic_blocks_and_local_decls_mut();
-        
+
         let debug = {
             let block = &blocks[loc.block];
             if loc.statement_index == block.statements.len() {
-                format!("{:?}", block.terminator())
+                match &block.terminator().kind {
+                    TerminatorKind::Call {
+                        args, destination, ..
+                    } if destination.is_some() => {
+                        let mut s: String = format!(
+                            "{:?} = {}(",
+                            destination.unwrap().0,
+                            tcx.item_name(func),
+                        );
+                        for (i, arg) in args.iter().enumerate() {
+                            if i > 0 {
+                                s.push_str(", ");
+                            }
+                            s.push_str(&format!("{:?}", arg));
+                        }
+                        s.push(')');
+                        s
+                    }
+                    _ => String::from(""),
+                }
             } else {
                 format!("{:?}", block.statements[loc.statement_index])
             }
         };
         let metadata = EventMetadata {
             debug,
-            .. metadata.clone()
+            ..metadata.clone()
         };
 
         // Add the MIR location as the first argument to the instrumentation function
