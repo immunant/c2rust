@@ -140,7 +140,7 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     }
 
     pub fn debug_mir(mut self, loc: Location) -> Self {
-        self.point.metadata.debug = {
+        self.point.metadata.debug_info = {
             let block = &self.body.basic_blocks()[loc.block];
             if loc.statement_index == block.statements.len() {
                 match &block.terminator().kind {
