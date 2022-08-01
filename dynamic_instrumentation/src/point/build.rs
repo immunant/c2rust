@@ -150,7 +150,7 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
                         func,
                         ..
                     } if destination.is_some() => {
-                        let mut s: String = format!("{:?} = {:?}(", destination.unwrap().0, func);
+                        let mut s = format!("{:?} = {:?}(", destination.unwrap().0, func);
                         for (i, arg) in args.iter().enumerate() {
                             if i > 0 {
                                 s.push_str(", ");
