@@ -241,10 +241,12 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                     statement_index: location.statement_index + 1,
                     ..location
                 };
+
+                let source = remove_outer_deref(*p, self.tcx());
                 // Instrument which local's address is taken
                 self.loc(instrumentation_location, copy_fn)
                     .arg_var(dest)
-                    .source(p)
+                    .source(&source)
                     .dest(&dest)
                     .debug_mir(location)
                     .add_to(self);
