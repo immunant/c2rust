@@ -161,10 +161,66 @@ g {
 nodes_that_need_write = [3, 2, 1, 0]
 
 g {
-	n[0]: &_9  _    => _8 @ bb2[13]: fn exercise_allocator; _8 = &raw const (*_9);                              
-	n[1]: copy n[0] => _7 @ bb2[14]: fn exercise_allocator; _7 = move _8 as *const u8 (Pointer(ArrayToPointer));
-	n[2]: copy n[1] => _6 @ bb2[16]: fn exercise_allocator; _6 = move _7 as *const i8 (Misc);                   
-	n[3]: copy n[2] => _1 @ bb0[0]:  fn printf;             _5 = printf(move _6, move _10);                     
+	n[0]:  copy _     => _8  @ bb2[13]:  fn exercise_allocator;      _8 = &raw const (*_9);                                
+	n[1]:  copy n[0]  => _7  @ bb2[14]:  fn exercise_allocator;      _7 = move _8 as *const u8 (Pointer(ArrayToPointer));  
+	n[2]:  copy n[1]  => _6  @ bb2[16]:  fn exercise_allocator;      _6 = move _7 as *const i8 (Misc);                     
+	n[3]:  copy n[2]  => _1  @ bb0[0]:   fn printf;                  _5 = printf(move _6, move _10);                       
+	n[4]:  copy n[0]  => _30 @ bb11[7]:  fn exercise_allocator;      _30 = &raw const (*_31);                              
+	n[5]:  copy n[4]  => _29 @ bb11[8]:  fn exercise_allocator;      _29 = move _30 as *const u8 (Pointer(ArrayToPointer));
+	n[6]:  copy n[5]  => _28 @ bb11[10]: fn exercise_allocator;      _28 = move _29 as *const i8 (Misc);                   
+	n[7]:  copy n[6]  => _1  @ bb0[0]:   fn printf;                  _27 = printf(move _28, move _32);                     
+	n[8]:  copy n[0]  => _30 @ bb11[7]:  fn exercise_allocator;      _30 = &raw const (*_31);                              
+	n[9]:  copy n[8]  => _29 @ bb11[8]:  fn exercise_allocator;      _29 = move _30 as *const u8 (Pointer(ArrayToPointer));
+	n[10]: copy n[9]  => _28 @ bb11[10]: fn exercise_allocator;      _28 = move _29 as *const i8 (Misc);                   
+	n[11]: copy n[10] => _1  @ bb0[0]:   fn printf;                  _27 = printf(move _28, move _32);                     
+	n[12]: copy n[0]  => _60 @ bb29[7]:  fn exercise_allocator;      _60 = &raw const (*_61);                              
+	n[13]: copy n[12] => _59 @ bb29[8]:  fn exercise_allocator;      _59 = move _60 as *const u8 (Pointer(ArrayToPointer));
+	n[14]: copy n[13] => _58 @ bb29[10]: fn exercise_allocator;      _58 = move _59 as *const i8 (Misc);                   
+	n[15]: copy n[14] => _1  @ bb0[0]:   fn printf;                  _57 = printf(move _58, move _62);                     
+	n[16]: copy n[0]  => _60 @ bb29[7]:  fn exercise_allocator;      _60 = &raw const (*_61);                              
+	n[17]: copy n[16] => _59 @ bb29[8]:  fn exercise_allocator;      _59 = move _60 as *const u8 (Pointer(ArrayToPointer));
+	n[18]: copy n[17] => _58 @ bb29[10]: fn exercise_allocator;      _58 = move _59 as *const i8 (Misc);                   
+	n[19]: copy n[18] => _1  @ bb0[0]:   fn printf;                  _57 = printf(move _58, move _62);                     
+	n[20]: copy n[0]  => _60 @ bb29[7]:  fn exercise_allocator;      _60 = &raw const (*_61);                              
+	n[21]: copy n[20] => _59 @ bb29[8]:  fn exercise_allocator;      _59 = move _60 as *const u8 (Pointer(ArrayToPointer));
+	n[22]: copy n[21] => _58 @ bb29[10]: fn exercise_allocator;      _58 = move _59 as *const i8 (Misc);                   
+	n[23]: copy n[22] => _1  @ bb0[0]:   fn printf;                  _57 = printf(move _58, move _62);                     
+	n[24]: copy n[0]  => _93 @ bb49[7]:  fn exercise_allocator;      _93 = &raw const (*_94);                              
+	n[25]: copy n[24] => _92 @ bb49[8]:  fn exercise_allocator;      _92 = move _93 as *const u8 (Pointer(ArrayToPointer));
+	n[26]: copy n[25] => _91 @ bb49[10]: fn exercise_allocator;      _91 = move _92 as *const i8 (Misc);                   
+	n[27]: copy n[26] => _1  @ bb0[0]:   fn printf;                  _90 = printf(move _91, move _95);                     
+	n[28]: copy n[0]  => _93 @ bb49[7]:  fn exercise_allocator;      _93 = &raw const (*_94);                              
+	n[29]: copy n[28] => _92 @ bb49[8]:  fn exercise_allocator;      _92 = move _93 as *const u8 (Pointer(ArrayToPointer));
+	n[30]: copy n[29] => _91 @ bb49[10]: fn exercise_allocator;      _91 = move _92 as *const i8 (Misc);                   
+	n[31]: copy n[30] => _1  @ bb0[0]:   fn printf;                  _90 = printf(move _91, move _95);                     
+	n[32]: copy n[0]  => _93 @ bb49[7]:  fn exercise_allocator;      _93 = &raw const (*_94);                              
+	n[33]: copy n[32] => _92 @ bb49[8]:  fn exercise_allocator;      _92 = move _93 as *const u8 (Pointer(ArrayToPointer));
+	n[34]: copy n[33] => _91 @ bb49[10]: fn exercise_allocator;      _91 = move _92 as *const i8 (Misc);                   
+	n[35]: copy n[34] => _1  @ bb0[0]:   fn printf;                  _90 = printf(move _91, move _95);                     
+	n[36]: copy n[0]  => _93 @ bb49[7]:  fn exercise_allocator;      _93 = &raw const (*_94);                              
+	n[37]: copy n[36] => _92 @ bb49[8]:  fn exercise_allocator;      _92 = move _93 as *const u8 (Pointer(ArrayToPointer));
+	n[38]: copy n[37] => _91 @ bb49[10]: fn exercise_allocator;      _91 = move _92 as *const i8 (Misc);                   
+	n[39]: copy n[38] => _1  @ bb0[0]:   fn printf;                  _90 = printf(move _91, move _95);                     
+	n[40]: copy n[0]  => _8  @ bb2[13]:  fn simple_analysis;         _8 = &raw const (*_9);                                
+	n[41]: copy n[40] => _7  @ bb2[14]:  fn simple_analysis;         _7 = move _8 as *const u8 (Pointer(ArrayToPointer));  
+	n[42]: copy n[41] => _6  @ bb2[16]:  fn simple_analysis;         _6 = move _7 as *const i8 (Misc);                     
+	n[43]: copy n[42] => _1  @ bb0[0]:   fn printf;                  _5 = printf(move _6, move _10);                       
+	n[44]: copy n[0]  => _5  @ bb0[7]:   fn analysis2_helper;        _5 = &raw const (*_6);                                
+	n[45]: copy n[44] => _4  @ bb0[8]:   fn analysis2_helper;        _4 = move _5 as *const u8 (Pointer(ArrayToPointer));  
+	n[46]: copy n[45] => _3  @ bb0[10]:  fn analysis2_helper;        _3 = move _4 as *const i8 (Misc);                     
+	n[47]: copy n[46] => _1  @ bb0[0]:   fn printf;                  _2 = printf(move _3, move _7);                        
+	n[48]: copy n[0]  => _8  @ bb2[13]:  fn inter_function_analysis; _8 = &raw const (*_9);                                
+	n[49]: copy n[48] => _7  @ bb2[14]:  fn inter_function_analysis; _7 = move _8 as *const u8 (Pointer(ArrayToPointer));  
+	n[50]: copy n[49] => _6  @ bb2[16]:  fn inter_function_analysis; _6 = move _7 as *const i8 (Misc);                     
+	n[51]: copy n[50] => _1  @ bb0[0]:   fn printf;                  _5 = printf(move _6, move _10);                       
+	n[52]: copy n[0]  => _10 @ bb2[20]:  fn invalid;                 _10 = &raw const (*_11);                              
+	n[53]: copy n[52] => _9  @ bb2[21]:  fn invalid;                 _9 = move _10 as *const u8 (Pointer(ArrayToPointer)); 
+	n[54]: copy n[53] => _8  @ bb2[23]:  fn invalid;                 _8 = move _9 as *const i8 (Misc);                     
+	n[55]: copy n[54] => _1  @ bb0[0]:   fn printf;                  _7 = printf(move _8, move _12);                       
+	n[56]: copy n[0]  => _16 @ bb3[11]:  fn invalid;                 _16 = &raw const (*_17);                              
+	n[57]: copy n[56] => _15 @ bb3[12]:  fn invalid;                 _15 = move _16 as *const u8 (Pointer(ArrayToPointer));
+	n[58]: copy n[57] => _14 @ bb3[14]:  fn invalid;                 _14 = move _15 as *const i8 (Misc);                   
+	n[59]: copy n[58] => _1  @ bb0[0]:   fn printf;                  _13 = printf(move _14, move _18);                     
 }
 nodes_that_need_write = []
 
@@ -194,14 +250,6 @@ g {
 	n[22]: free       n[19] => _41 @ bb22[2]:  fn exercise_allocator; _41 = reallocarray(move _42, move _44, move _45);
 }
 nodes_that_need_write = [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
-
-g {
-	n[0]: &_31 _    => _30 @ bb11[7]:  fn exercise_allocator; _30 = &raw const (*_31);                              
-	n[1]: copy n[0] => _29 @ bb11[8]:  fn exercise_allocator; _29 = move _30 as *const u8 (Pointer(ArrayToPointer));
-	n[2]: copy n[1] => _28 @ bb11[10]: fn exercise_allocator; _28 = move _29 as *const i8 (Misc);                   
-	n[3]: copy n[2] => _1  @ bb0[0]:   fn printf;             _27 = printf(move _28, move _32);                     
-}
-nodes_that_need_write = []
 
 g {
 	n[0]:  alloc      _     => _41 @ bb22[2]:  fn exercise_allocator; _41 = reallocarray(move _42, move _44, move _45);
@@ -235,14 +283,6 @@ g {
 	n[28]: free       n[27] => _71 @ bb39[9]:  fn exercise_allocator; _71 = free(move _72);                            
 }
 nodes_that_need_write = [13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
-
-g {
-	n[0]: &_61 _    => _60 @ bb29[7]:  fn exercise_allocator; _60 = &raw const (*_61);                              
-	n[1]: copy n[0] => _59 @ bb29[8]:  fn exercise_allocator; _59 = move _60 as *const u8 (Pointer(ArrayToPointer));
-	n[2]: copy n[1] => _58 @ bb29[10]: fn exercise_allocator; _58 = move _59 as *const i8 (Misc);                   
-	n[3]: copy n[2] => _1  @ bb0[0]:   fn printf;             _57 = printf(move _58, move _62);                     
-}
-nodes_that_need_write = []
 
 g {
 	n[0]:  alloc      _     => _74  @ bb41[2]:  fn exercise_allocator; _74 = calloc(move _75, move _76);            
@@ -286,14 +326,6 @@ g {
 nodes_that_need_write = [17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
 
 g {
-	n[0]: &_94 _    => _93 @ bb49[7]:  fn exercise_allocator; _93 = &raw const (*_94);                              
-	n[1]: copy n[0] => _92 @ bb49[8]:  fn exercise_allocator; _92 = move _93 as *const u8 (Pointer(ArrayToPointer));
-	n[2]: copy n[1] => _91 @ bb49[10]: fn exercise_allocator; _91 = move _92 as *const i8 (Misc);                   
-	n[3]: copy n[2] => _1  @ bb0[0]:   fn printf;             _90 = printf(move _91, move _95);                     
-}
-nodes_that_need_write = []
-
-g {
 	n[0]: alloc      _    => _2  @ bb1[2]:  fn simple_analysis; _2 = malloc(move _3);                      
 	n[1]: copy       n[0] => _1  @ bb2[2]:  fn simple_analysis; _1 = move _2 as *mut pointers::S (Misc);   
 	n[2]: field.0    n[1] => _   @ bb2[5]:  fn simple_analysis; ((*_1).0: i32) = const 10_i32;             
@@ -305,14 +337,6 @@ g {
 	n[8]: free       n[7] => _11 @ bb3[10]: fn simple_analysis; _11 = free(move _12);                      
 }
 nodes_that_need_write = [3, 2, 1, 0]
-
-g {
-	n[0]: &_9  _    => _8 @ bb2[13]: fn simple_analysis; _8 = &raw const (*_9);                              
-	n[1]: copy n[0] => _7 @ bb2[14]: fn simple_analysis; _7 = move _8 as *const u8 (Pointer(ArrayToPointer));
-	n[2]: copy n[1] => _6 @ bb2[16]: fn simple_analysis; _6 = move _7 as *const i8 (Misc);                   
-	n[3]: copy n[2] => _1 @ bb0[0]:  fn printf;          _5 = printf(move _6, move _10);                     
-}
-nodes_that_need_write = []
 
 g {
 	n[0]:  alloc      _    => _2 @ bb1[2]:  fn analysis2;        _2 = malloc(move _3);                    
@@ -330,14 +354,6 @@ g {
 nodes_that_need_write = [3, 2, 1, 0]
 
 g {
-	n[0]: &_6  _    => _5 @ bb0[7]:  fn analysis2_helper; _5 = &raw const (*_6);                              
-	n[1]: copy n[0] => _4 @ bb0[8]:  fn analysis2_helper; _4 = move _5 as *const u8 (Pointer(ArrayToPointer));
-	n[2]: copy n[1] => _3 @ bb0[10]: fn analysis2_helper; _3 = move _4 as *const i8 (Misc);                   
-	n[3]: copy n[2] => _1 @ bb0[0]:  fn printf;           _2 = printf(move _3, move _7);                      
-}
-nodes_that_need_write = []
-
-g {
 	n[0]: alloc      _    => _0  @ bb0[2]:  fn malloc_wrapper;          _0 = malloc(move _3);                      
 	n[1]: copy       n[0] => _2  @ bb2[0]:  fn inter_function_analysis; _2 = malloc_wrapper(move _3);              
 	n[2]: copy       n[1] => _1  @ bb2[2]:  fn inter_function_analysis; _1 = move _2 as *mut pointers::S (Misc);   
@@ -350,14 +366,6 @@ g {
 	n[9]: free       n[8] => _11 @ bb3[10]: fn inter_function_analysis; _11 = free(move _12);                      
 }
 nodes_that_need_write = [4, 3, 2, 1, 0]
-
-g {
-	n[0]: &_9  _    => _8 @ bb2[13]: fn inter_function_analysis; _8 = &raw const (*_9);                              
-	n[1]: copy n[0] => _7 @ bb2[14]: fn inter_function_analysis; _7 = move _8 as *const u8 (Pointer(ArrayToPointer));
-	n[2]: copy n[1] => _6 @ bb2[16]: fn inter_function_analysis; _6 = move _7 as *const i8 (Misc);                   
-	n[3]: copy n[2] => _1 @ bb0[0]:  fn printf;                  _5 = printf(move _6, move _10);                     
-}
-nodes_that_need_write = []
 
 g {
 	n[0]: alloc       _    => _2   @ bb1[2]: fn no_owner; _2 = malloc(move _3);                      
@@ -406,22 +414,6 @@ g {
 nodes_that_need_write = [0]
 
 g {
-	n[0]: &_11 _    => _10 @ bb2[20]: fn invalid; _10 = &raw const (*_11);                             
-	n[1]: copy n[0] => _9  @ bb2[21]: fn invalid; _9 = move _10 as *const u8 (Pointer(ArrayToPointer));
-	n[2]: copy n[1] => _8  @ bb2[23]: fn invalid; _8 = move _9 as *const i8 (Misc);                    
-	n[3]: copy n[2] => _1  @ bb0[0]:  fn printf;  _7 = printf(move _8, move _12);                      
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_17 _    => _16 @ bb3[11]: fn invalid; _16 = &raw const (*_17);                              
-	n[1]: copy n[0] => _15 @ bb3[12]: fn invalid; _15 = move _16 as *const u8 (Pointer(ArrayToPointer));
-	n[2]: copy n[1] => _14 @ bb3[14]: fn invalid; _14 = move _15 as *const i8 (Misc);                   
-	n[3]: copy n[2] => _1  @ bb0[0]:  fn printf;  _13 = printf(move _14, move _18);                     
-}
-nodes_that_need_write = []
-
-g {
 	n[0]: field.0 _ => _18 @ bb3[18]: fn invalid; _18 = ((*(*_19)).0: i32);
 }
 nodes_that_need_write = []
@@ -437,12 +429,8 @@ g {
 nodes_that_need_write = [0]
 
 g {
-	n[0]: &_1 _ => _4 @ bb0[8]: fn testing; _4 = &mut _1;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_4 _ => _3 @ bb0[10]: fn testing; _3 = &raw mut (*_4);
+	n[0]: &_1  _    => _4 @ bb0[8]:  fn testing; _4 = &mut _1;       
+	n[1]: copy n[0] => _3 @ bb0[10]: fn testing; _3 = &raw mut (*_4);
 }
 nodes_that_need_write = []
 
@@ -453,13 +441,9 @@ g {
 nodes_that_need_write = [1, 0]
 
 g {
-	n[0]: &_1 _ => _7 @ bb0[16]: fn testing; _7 = &mut _1;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_7         _    => _6   @ bb0[18]: fn testing; _6 = &raw mut (*_7);
-	n[1]: value.store n[0] => _5.* @ bb0[19]: fn testing; (*_5) = move _6;    
+	n[0]: &_1         _    => _7   @ bb0[16]: fn testing; _7 = &mut _1;       
+	n[1]: copy        n[0] => _6   @ bb0[18]: fn testing; _6 = &raw mut (*_7);
+	n[2]: value.store n[1] => _5.* @ bb0[19]: fn testing; (*_5) = move _6;    
 }
 nodes_that_need_write = []
 
@@ -544,15 +528,17 @@ g {
 nodes_that_need_write = [3, 2, 1, 0]
 
 g {
-	n[0]: &_11 _ => _10 @ bb4[14]: fn lighttpd_test; _10 = &mut _11;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_10      _    => _14 @ bb4[18]: fn lighttpd_test;       _14 = &raw mut (*_10);                           
-	n[1]: copy      n[0] => _1  @ bb0[0]:  fn connection_accepted; _13 = connection_accepted(move _14, const 0_i32);
-	n[2]: field.0   n[1] => _10 @ bb2[10]: fn connection_accepted; _10 = ((*_1).0: *mut pointers::fdevents);        
-	n[3]: addr.load n[2] => _   @ bb2[10]: fn connection_accepted; _10 = ((*_1).0: *mut pointers::fdevents);        
+	n[0]:  &_11      _    => _10 @ bb4[14]: fn lighttpd_test;       _10 = &mut _11;                                  
+	n[1]:  copy      n[0] => _14 @ bb4[18]: fn lighttpd_test;       _14 = &raw mut (*_10);                           
+	n[2]:  copy      n[1] => _1  @ bb0[0]:  fn connection_accepted; _13 = connection_accepted(move _14, const 0_i32);
+	n[3]:  field.0   n[2] => _10 @ bb2[10]: fn connection_accepted; _10 = ((*_1).0: *mut pointers::fdevents);        
+	n[4]:  addr.load n[3] => _   @ bb2[10]: fn connection_accepted; _10 = ((*_1).0: *mut pointers::fdevents);        
+	n[5]:  copy      n[0] => _16 @ bb5[5]:  fn lighttpd_test;       _16 = &raw mut (*_10);                           
+	n[6]:  copy      n[5] => _1  @ bb0[0]:  fn connection_close;    _15 = connection_close(move _16, move _17);      
+	n[7]:  field.0   n[6] => _4  @ bb0[2]:  fn connection_close;    _4 = ((*_1).0: *mut pointers::fdevents);         
+	n[8]:  addr.load n[7] => _   @ bb0[2]:  fn connection_close;    _4 = ((*_1).0: *mut pointers::fdevents);         
+	n[9]:  field.0   n[6] => _7  @ bb1[5]:  fn connection_close;    _7 = ((*_1).0: *mut pointers::fdevents);         
+	n[10]: addr.load n[9] => _   @ bb1[5]:  fn connection_close;    _7 = ((*_1).0: *mut pointers::fdevents);         
 }
 nodes_that_need_write = []
 
@@ -623,16 +609,6 @@ g {
 nodes_that_need_write = [17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7]
 
 g {
-	n[0]: &_10      _    => _16 @ bb5[5]: fn lighttpd_test;    _16 = &raw mut (*_10);                     
-	n[1]: copy      n[0] => _1  @ bb0[0]: fn connection_close; _15 = connection_close(move _16, move _17);
-	n[2]: field.0   n[1] => _4  @ bb0[2]: fn connection_close; _4 = ((*_1).0: *mut pointers::fdevents);   
-	n[3]: addr.load n[2] => _   @ bb0[2]: fn connection_close; _4 = ((*_1).0: *mut pointers::fdevents);   
-	n[4]: field.0   n[1] => _7  @ bb1[5]: fn connection_close; _7 = ((*_1).0: *mut pointers::fdevents);   
-	n[5]: addr.load n[4] => _   @ bb1[5]: fn connection_close; _7 = ((*_1).0: *mut pointers::fdevents);   
-}
-nodes_that_need_write = []
-
-g {
 	n[0]: alloc _    => _1 @ bb1[2]: fn test_malloc_free; _1 = malloc(move _2);
 	n[1]: copy  n[0] => _5 @ bb2[5]: fn test_malloc_free; _5 = _1;             
 	n[2]: free  n[1] => _4 @ bb2[5]: fn test_malloc_free; _4 = free(move _5);  
@@ -688,16 +664,13 @@ g {
 	n[3]: copy n[2] => _1 @ bb0[0]:  fn shared_ref_foo;  _4 = shared_ref_foo(move _5);
 	n[4]: copy n[3] => _0 @ bb0[1]:  fn shared_ref_foo;  _0 = _1;                     
 	n[5]: copy n[4] => _4 @ bb1[0]:  fn test_shared_ref; _4 = shared_ref_foo(move _5);
+	n[6]: copy n[0] => _6 @ bb1[4]:  fn test_shared_ref; _6 = &raw const (*_4);       
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: &_1 _ => _4 @ bb0[8]: fn test_unique_ref; _4 = &mut _1;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_4 _ => _3 @ bb0[10]: fn test_unique_ref; _3 = &raw mut (*_4);
+	n[0]: &_1  _    => _4 @ bb0[8]:  fn test_unique_ref; _4 = &mut _1;       
+	n[1]: copy n[0] => _3 @ bb0[10]: fn test_unique_ref; _3 = &raw mut (*_4);
 }
 nodes_that_need_write = []
 
@@ -708,13 +681,9 @@ g {
 nodes_that_need_write = [1, 0]
 
 g {
-	n[0]: &_1 _ => _7 @ bb0[16]: fn test_unique_ref; _7 = &mut _1;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_7         _    => _6   @ bb0[18]: fn test_unique_ref; _6 = &raw mut (*_7);
-	n[1]: value.store n[0] => _5.* @ bb0[19]: fn test_unique_ref; (*_5) = move _6;    
+	n[0]: &_1         _    => _7   @ bb0[16]: fn test_unique_ref; _7 = &mut _1;       
+	n[1]: copy        n[0] => _6   @ bb0[18]: fn test_unique_ref; _6 = &raw mut (*_7);
+	n[2]: value.store n[1] => _5.* @ bb0[19]: fn test_unique_ref; (*_5) = move _6;    
 }
 nodes_that_need_write = []
 
@@ -916,89 +885,85 @@ g {
 nodes_that_need_write = [2, 0]
 
 g {
-	n[0]: &_35 _    => _34 @ bb30[4]:  fn main_0; _34 = &mut _35;                            
-	n[1]: copy n[0] => _40 @ bb30[12]: fn main_0; _40 = &(*_34);                             
-	n[2]: copy n[1] => _39 @ bb30[13]: fn main_0; _39 = move _40 as &[i32] (Pointer(Unsize));
-	n[3]: copy n[2] => _1  @ bb0[0]:   fn len;    _38 = len(move _39);                       
+	n[0]:  &_35       _     => _34 @ bb30[4]:  fn main_0;         _34 = &mut _35;                                      
+	n[1]:  copy       n[0]  => _40 @ bb30[12]: fn main_0;         _40 = &(*_34);                                       
+	n[2]:  copy       n[1]  => _39 @ bb30[13]: fn main_0;         _39 = move _40 as &[i32] (Pointer(Unsize));          
+	n[3]:  copy       n[2]  => _1  @ bb0[0]:   fn len;            _38 = len(move _39);                                 
+	n[4]:  copy       n[0]  => _42 @ bb31[6]:  fn main_0;         _42 = &raw mut (*_34);                               
+	n[5]:  copy       n[4]  => _41 @ bb31[7]:  fn main_0;         _41 = move _42 as *mut i32 (Pointer(ArrayToPointer));
+	n[6]:  copy       n[5]  => _2  @ bb0[0]:   fn insertion_sort; _36 = insertion_sort(move _37, move _41);            
+	n[7]:  copy       n[6]  => _10 @ bb3[4]:   fn insertion_sort; _10 = _2;                                            
+	n[8]:  offset[1]  n[7]  => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);                     
+	n[9]:  addr.load  n[8]  => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);                                          
+	n[10]: copy       n[6]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
+	n[11]: offset[0]  n[10] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
+	n[12]: addr.load  n[11] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
+	n[13]: copy       n[6]  => _47 @ bb24[8]:  fn insertion_sort; _47 = _2;                                            
+	n[14]: offset[1]  n[13] => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);                    
+	n[15]: addr.store n[14] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;                                   
+	n[16]: copy       n[6]  => _10 @ bb3[4]:   fn insertion_sort; _10 = _2;                                            
+	n[17]: offset[2]  n[16] => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);                     
+	n[18]: addr.load  n[17] => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);                                          
+	n[19]: copy       n[6]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
+	n[20]: offset[1]  n[19] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
+	n[21]: addr.load  n[20] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
+	n[22]: copy       n[6]  => _31 @ bb13[4]:  fn insertion_sort; _31 = _2;                                            
+	n[23]: offset[1]  n[22] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);                    
+	n[24]: addr.load  n[23] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);                                        
+	n[25]: copy       n[6]  => _38 @ bb16[6]:  fn insertion_sort; _38 = _2;                                            
+	n[26]: offset[2]  n[25] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);                    
+	n[27]: addr.store n[26] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;                                   
+	n[28]: copy       n[6]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
+	n[29]: offset[0]  n[28] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
+	n[30]: addr.load  n[29] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
+	n[31]: copy       n[6]  => _47 @ bb24[8]:  fn insertion_sort; _47 = _2;                                            
+	n[32]: offset[1]  n[31] => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);                    
+	n[33]: addr.store n[32] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;                                   
+	n[34]: copy       n[6]  => _10 @ bb3[4]:   fn insertion_sort; _10 = _2;                                            
+	n[35]: offset[3]  n[34] => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);                     
+	n[36]: addr.load  n[35] => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);                                          
+	n[37]: copy       n[6]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
+	n[38]: offset[2]  n[37] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
+	n[39]: addr.load  n[38] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
+	n[40]: copy       n[6]  => _31 @ bb13[4]:  fn insertion_sort; _31 = _2;                                            
+	n[41]: offset[2]  n[40] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);                    
+	n[42]: addr.load  n[41] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);                                        
+	n[43]: copy       n[6]  => _38 @ bb16[6]:  fn insertion_sort; _38 = _2;                                            
+	n[44]: offset[3]  n[43] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);                    
+	n[45]: addr.store n[44] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;                                   
+	n[46]: copy       n[6]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
+	n[47]: offset[1]  n[46] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
+	n[48]: addr.load  n[47] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
+	n[49]: copy       n[6]  => _31 @ bb13[4]:  fn insertion_sort; _31 = _2;                                            
+	n[50]: offset[1]  n[49] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);                    
+	n[51]: addr.load  n[50] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);                                        
+	n[52]: copy       n[6]  => _38 @ bb16[6]:  fn insertion_sort; _38 = _2;                                            
+	n[53]: offset[2]  n[52] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);                    
+	n[54]: addr.store n[53] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;                                   
+	n[55]: copy       n[6]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
+	n[56]: offset[0]  n[55] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
+	n[57]: addr.load  n[56] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
+	n[58]: copy       n[6]  => _31 @ bb13[4]:  fn insertion_sort; _31 = _2;                                            
+	n[59]: offset[0]  n[58] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);                    
+	n[60]: addr.load  n[59] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);                                        
+	n[61]: copy       n[6]  => _38 @ bb16[6]:  fn insertion_sort; _38 = _2;                                            
+	n[62]: offset[1]  n[61] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);                    
+	n[63]: addr.store n[62] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;                                   
+	n[64]: copy       n[6]  => _47 @ bb24[8]:  fn insertion_sort; _47 = _2;                                            
+	n[65]: offset[0]  n[64] => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);                    
+	n[66]: addr.store n[65] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;                                   
+	n[67]: copy       n[6]  => _10 @ bb3[4]:   fn insertion_sort; _10 = _2;                                            
+	n[68]: offset[4]  n[67] => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);                     
+	n[69]: addr.load  n[68] => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);                                          
+	n[70]: copy       n[6]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
+	n[71]: offset[3]  n[70] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
+	n[72]: addr.load  n[71] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
+	n[73]: copy       n[6]  => _47 @ bb24[8]:  fn insertion_sort; _47 = _2;                                            
+	n[74]: offset[4]  n[73] => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);                    
+	n[75]: addr.store n[74] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;                                   
 }
-nodes_that_need_write = []
+nodes_that_need_write = [75, 74, 73, 66, 65, 64, 63, 62, 61, 54, 53, 52, 45, 44, 43, 33, 32, 31, 27, 26, 25, 15, 14, 13, 6, 5, 4, 0]
 
-g {
-	n[0]:  &_34       _     => _42 @ bb31[6]:  fn main_0;         _42 = &raw mut (*_34);                               
-	n[1]:  copy       n[0]  => _41 @ bb31[7]:  fn main_0;         _41 = move _42 as *mut i32 (Pointer(ArrayToPointer));
-	n[2]:  copy       n[1]  => _2  @ bb0[0]:   fn insertion_sort; _36 = insertion_sort(move _37, move _41);            
-	n[3]:  copy       n[2]  => _10 @ bb3[4]:   fn insertion_sort; _10 = _2;                                            
-	n[4]:  offset[1]  n[3]  => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);                     
-	n[5]:  addr.load  n[4]  => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);                                          
-	n[6]:  copy       n[2]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
-	n[7]:  offset[0]  n[6]  => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
-	n[8]:  addr.load  n[7]  => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
-	n[9]:  copy       n[2]  => _47 @ bb24[8]:  fn insertion_sort; _47 = _2;                                            
-	n[10]: offset[1]  n[9]  => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);                    
-	n[11]: addr.store n[10] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;                                   
-	n[12]: copy       n[2]  => _10 @ bb3[4]:   fn insertion_sort; _10 = _2;                                            
-	n[13]: offset[2]  n[12] => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);                     
-	n[14]: addr.load  n[13] => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);                                          
-	n[15]: copy       n[2]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
-	n[16]: offset[1]  n[15] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
-	n[17]: addr.load  n[16] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
-	n[18]: copy       n[2]  => _31 @ bb13[4]:  fn insertion_sort; _31 = _2;                                            
-	n[19]: offset[1]  n[18] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);                    
-	n[20]: addr.load  n[19] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);                                        
-	n[21]: copy       n[2]  => _38 @ bb16[6]:  fn insertion_sort; _38 = _2;                                            
-	n[22]: offset[2]  n[21] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);                    
-	n[23]: addr.store n[22] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;                                   
-	n[24]: copy       n[2]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
-	n[25]: offset[0]  n[24] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
-	n[26]: addr.load  n[25] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
-	n[27]: copy       n[2]  => _47 @ bb24[8]:  fn insertion_sort; _47 = _2;                                            
-	n[28]: offset[1]  n[27] => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);                    
-	n[29]: addr.store n[28] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;                                   
-	n[30]: copy       n[2]  => _10 @ bb3[4]:   fn insertion_sort; _10 = _2;                                            
-	n[31]: offset[3]  n[30] => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);                     
-	n[32]: addr.load  n[31] => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);                                          
-	n[33]: copy       n[2]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
-	n[34]: offset[2]  n[33] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
-	n[35]: addr.load  n[34] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
-	n[36]: copy       n[2]  => _31 @ bb13[4]:  fn insertion_sort; _31 = _2;                                            
-	n[37]: offset[2]  n[36] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);                    
-	n[38]: addr.load  n[37] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);                                        
-	n[39]: copy       n[2]  => _38 @ bb16[6]:  fn insertion_sort; _38 = _2;                                            
-	n[40]: offset[3]  n[39] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);                    
-	n[41]: addr.store n[40] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;                                   
-	n[42]: copy       n[2]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
-	n[43]: offset[1]  n[42] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
-	n[44]: addr.load  n[43] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
-	n[45]: copy       n[2]  => _31 @ bb13[4]:  fn insertion_sort; _31 = _2;                                            
-	n[46]: offset[1]  n[45] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);                    
-	n[47]: addr.load  n[46] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);                                        
-	n[48]: copy       n[2]  => _38 @ bb16[6]:  fn insertion_sort; _38 = _2;                                            
-	n[49]: offset[2]  n[48] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);                    
-	n[50]: addr.store n[49] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;                                   
-	n[51]: copy       n[2]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
-	n[52]: offset[0]  n[51] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
-	n[53]: addr.load  n[52] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
-	n[54]: copy       n[2]  => _31 @ bb13[4]:  fn insertion_sort; _31 = _2;                                            
-	n[55]: offset[0]  n[54] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);                    
-	n[56]: addr.load  n[55] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);                                        
-	n[57]: copy       n[2]  => _38 @ bb16[6]:  fn insertion_sort; _38 = _2;                                            
-	n[58]: offset[1]  n[57] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);                    
-	n[59]: addr.store n[58] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;                                   
-	n[60]: copy       n[2]  => _47 @ bb24[8]:  fn insertion_sort; _47 = _2;                                            
-	n[61]: offset[0]  n[60] => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);                    
-	n[62]: addr.store n[61] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;                                   
-	n[63]: copy       n[2]  => _10 @ bb3[4]:   fn insertion_sort; _10 = _2;                                            
-	n[64]: offset[4]  n[63] => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);                     
-	n[65]: addr.load  n[64] => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);                                          
-	n[66]: copy       n[2]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
-	n[67]: offset[3]  n[66] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
-	n[68]: addr.load  n[67] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
-	n[69]: copy       n[2]  => _47 @ bb24[8]:  fn insertion_sort; _47 = _2;                                            
-	n[70]: offset[4]  n[69] => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);                    
-	n[71]: addr.store n[70] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;                                   
-}
-nodes_that_need_write = [71, 70, 69, 62, 61, 60, 59, 58, 57, 50, 49, 48, 41, 40, 39, 29, 28, 27, 23, 22, 21, 11, 10, 9, 2, 1, 0]
-
-num_graphs = 91
-num_nodes = 633
+num_graphs = 76
+num_nodes = 658
 
