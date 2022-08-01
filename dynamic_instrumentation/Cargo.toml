@@ -10,6 +10,7 @@ c2rust-analysis-rt = { path = "../analysis/runtime"}
 cargo = "0.62"
 cargo-util = "0.1"
 indexmap = "1.8"
+itertools = "0.10"
 lazy_static = "1.4"
 log = "0.4"
 

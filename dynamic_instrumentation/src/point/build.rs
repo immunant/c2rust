@@ -1,4 +1,5 @@
 use c2rust_analysis_rt::mir_loc::{EventMetadata, TransferKind};
+use itertools::Itertools;
 use rustc_index::vec::Idx;
 use rustc_middle::{
     mir::{Body, Location, Place, TerminatorKind},
@@ -151,21 +152,14 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
                 func,
                 ..
             } => {
-                let mut s = format!("{:?} = ", destination);
-                if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
-                    let name = self.tcx.item_name(*def_id);
-                    s.push_str(&format!("{}(", name));
+                let func_name = if let &ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
+                    let name = self.tcx.item_name(def_id);
+                    format!("{name}")
                 } else {
-                    s.push_str(&format!("{:?}(", func));
+                    format!("{func:?}")
                 };
-                for (i, arg) in args.iter().enumerate() {
-                    if i > 0 {
-                        s.push_str(", ");
-                    }
-                    s.push_str(&format!("{:?}", arg));
-                }
-                s.push(')');
-                s
+                let args = args.iter().format(", ");
+                format!("{destination:?} = {func_name}({args:?})")
             }
             _ => String::from(""),
         }
