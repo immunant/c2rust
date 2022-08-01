@@ -30,10 +30,6 @@ impl<'tcx> Hooks<'tcx> {
         }
     }
 
-    pub fn tcx(&self) -> TyCtxt<'tcx> {
-        self.tcx
-    }
-
     fn try_find(&self, name: Symbol) -> Option<DefId> {
         Some(
             self.tcx

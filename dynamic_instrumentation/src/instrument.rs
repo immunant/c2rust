@@ -19,11 +19,11 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use crate::arg::{ArgKind, InstrumentationArg};
-use crate::cast::cast_ptr_to_usize;
-use crate::deref::{has_outer_deref, remove_outer_deref, strip_all_deref};
 use crate::hooks::Hooks;
-use crate::point::apply::InstrumentationApplier;
+use crate::mir_utils::{has_outer_deref, remove_outer_deref, strip_all_deref};
+use crate::point::cast_ptr_to_usize;
 use crate::point::InstrumentationAdder;
+use crate::point::InstrumentationApplier;
 use crate::util::Convert;
 
 #[derive(Default)]
@@ -402,7 +402,7 @@ fn instrument_body<'a, 'tcx>(
     body_did: DefId,
 ) {
     let hooks = Hooks::new(tcx);
-    let mut adder = InstrumentationAdder::new(hooks, body);
+    let mut adder = InstrumentationAdder::new(tcx, hooks, body);
     adder.visit_body(body);
     let points = adder.into_instrumentation_points();
     let mut applier = InstrumentationApplier::new(state, tcx, body, body_did);

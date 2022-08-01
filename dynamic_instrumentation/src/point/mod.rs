@@ -1,5 +1,7 @@
 pub mod apply;
 pub mod build;
+mod cast;
+pub mod source;
 
 use c2rust_analysis_rt::mir_loc::{self, EventMetadata};
 use rustc_middle::{
@@ -9,6 +11,9 @@ use rustc_middle::{
 use rustc_span::def_id::DefId;
 
 use crate::{arg::InstrumentationArg, hooks::Hooks, util::Convert};
+
+pub use apply::InstrumentationApplier;
+pub use cast::cast_ptr_to_usize;
 
 pub struct InstrumentationPoint<'tcx> {
     id: usize,
@@ -21,6 +26,7 @@ pub struct InstrumentationPoint<'tcx> {
 }
 
 pub struct InstrumentationAdder<'a, 'tcx: 'a> {
+    tcx: TyCtxt<'tcx>,
     hooks: Hooks<'tcx>,
     body: &'a Body<'tcx>,
     instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
@@ -28,8 +34,9 @@ pub struct InstrumentationAdder<'a, 'tcx: 'a> {
 }
 
 impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
-    pub fn new(hooks: Hooks<'tcx>, body: &'a Body<'tcx>) -> Self {
+    pub fn new(tcx: TyCtxt<'tcx>, hooks: Hooks<'tcx>, body: &'a Body<'tcx>) -> Self {
         Self {
+            tcx,
             hooks,
             body,
             instrumentation_points: Default::default(),
@@ -38,7 +45,7 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
     }
 
     pub fn tcx(&self) -> TyCtxt<'tcx> {
-        self.hooks.tcx()
+        self.tcx
     }
 }
 
