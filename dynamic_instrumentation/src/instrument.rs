@@ -233,6 +233,22 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 }
             }
             _ if !is_region_or_unsafe_ptr(value_ty) => {}
+            Rvalue::AddressOf(_, p)
+                if has_outer_deref(p)
+                    && place_ty(&remove_outer_deref(*p, self.tcx())).is_region_ptr() =>
+            {
+                let instrumentation_location = Location {
+                    statement_index: location.statement_index + 1,
+                    ..location
+                };
+                // Instrument which local's address is taken
+                self.loc(instrumentation_location, copy_fn)
+                    .arg_var(dest)
+                    .source(p)
+                    .dest(&dest)
+                    .debug_mir(location)
+                    .add_to(self);
+            }
             Rvalue::AddressOf(_, p) => {
                 let instrumentation_location = Location {
                     statement_index: location.statement_index + 1,
