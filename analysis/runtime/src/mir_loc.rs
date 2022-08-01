@@ -175,7 +175,7 @@ pub struct EventMetadata {
     pub destination: Option<MirPlace>,
     /// Destination func [`DefPathHash`] of [`Event`](crate::events::Event).
     pub transfer_kind: TransferKind,
-    /// Any string useful for debugging
+    /// Any string useful for debugging.
     pub debug: String
 }
 
