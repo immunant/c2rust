@@ -141,34 +141,33 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
 
     fn debug_mir_to_string(&self, loc: Location) -> String {
         let block = &self.body.basic_blocks()[loc.block];
-        if loc.statement_index == block.statements.len() {
-            match &block.terminator().kind {
-                TerminatorKind::Call {
-                    args,
-                    destination,
-                    func,
-                    ..
-                } if destination.is_some() => {
-                    let mut s = format!("{:?} = ", destination.unwrap().0);
-                    if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
-                        let name = self.tcx.item_name(*def_id);
-                        s.push_str(&format!("{}(", name));
-                    } else {
-                        s.push_str(&format!("{:?}(", func));
-                    };
-                    for (i, arg) in args.iter().enumerate() {
-                        if i > 0 {
-                            s.push_str(", ");
-                        }
-                        s.push_str(&format!("{:?}", arg));
+        if loc.statement_index != block.statements.len() {
+            return format!("{:?}", block.statements[loc.statement_index]);
+        }
+        match &block.terminator().kind {
+            TerminatorKind::Call {
+                args,
+                destination,
+                func,
+                ..
+            } if destination.is_some() => {
+                let mut s = format!("{:?} = ", destination.unwrap().0);
+                if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
+                    let name = self.tcx.item_name(*def_id);
+                    s.push_str(&format!("{}(", name));
+                } else {
+                    s.push_str(&format!("{:?}(", func));
+                };
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        s.push_str(", ");
                     }
-                    s.push(')');
-                    s
+                    s.push_str(&format!("{:?}", arg));
                 }
-                _ => String::from(""),
+                s.push(')');
+                s
             }
-        } else {
-            format!("{:?}", block.statements[loc.statement_index])
+            _ => String::from(""),
         }
     }
 
