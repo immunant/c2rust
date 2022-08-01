@@ -147,11 +147,11 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
         match &block.terminator().kind {
             TerminatorKind::Call {
                 args,
-                destination,
+                destination: Some((destination, _)),
                 func,
                 ..
-            } if destination.is_some() => {
-                let mut s = format!("{:?} = ", destination.unwrap().0);
+            } => {
+                let mut s = format!("{:?} = ", destination);
                 if let ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
                     let name = self.tcx.item_name(*def_id);
                     s.push_str(&format!("{}(", name));
