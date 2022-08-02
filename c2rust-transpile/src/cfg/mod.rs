@@ -318,7 +318,7 @@ pub enum GenTerminator<Lbl> {
     /// Multi-way branch. The patterns are expected to match the type of the expression.
     Switch {
         expr: Box<Expr>,
-        cases: Vec<(Box<Pat>, Lbl)>, // TODO: support ranges of expressions
+        cases: Vec<(Pat, Lbl)>, // TODO: support ranges of expressions
     },
 }
 
@@ -429,7 +429,7 @@ impl GenTerminator<StructureLabel<StmtOrDecl>> {
 /// been seen which translating the body of the switch.
 #[derive(Clone, Debug, Default)]
 pub struct SwitchCases {
-    cases: Vec<(Box<Pat>, Label)>,
+    cases: Vec<(Pat, Label)>,
     default: Option<Label>,
 }
 

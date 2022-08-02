@@ -119,7 +119,7 @@ impl WithStmts<Box<Expr>> {
     }
 
     /// Package a series of statements and an expression into one block
-    pub fn to_block(mut self) -> Box<Block> {
+    pub fn to_block(mut self) -> Block {
         self.stmts.push(mk().expr_stmt(self.val));
         mk().block(self.stmts)
     }
