@@ -248,11 +248,11 @@ impl TypeConverter {
 
         let variadic = is_variadic.then(|| mk().variadic_arg(vec![]));
 
-        let fn_ty = Box::new((
+        let fn_ty = (
             barefn_inputs,
             variadic,
             ReturnType::Type(Default::default(), output),
-        ));
+        );
         Ok(mk().unsafe_().extern_("C").barefn_ty(fn_ty))
     }
 

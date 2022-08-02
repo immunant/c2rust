@@ -26,7 +26,8 @@ impl<'tcx> ArgKind<'tcx> {
         } else if ty.is_integral() {
             AddressUsize
         } else {
-            panic!("operand is not of integer-castable type: {:?}", op)
+            let kind = ty.kind();
+            panic!("operand is not of integer-castable type: op = {op:?}, ty = {ty:?}, ty.kind(): {kind:?}")
         })(op)
     }
 }
