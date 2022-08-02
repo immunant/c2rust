@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
+apply = "0.3"
 bincode = "1.0.1"
 c2rust-analysis-rt = { path = "../analysis/runtime"}
 cargo = "0.62"

@@ -1,4 +1,5 @@
 use anyhow::Context;
+use apply::Apply;
 use c2rust_analysis_rt::metadata::Metadata;
 use c2rust_analysis_rt::mir_loc::{self, EventMetadata, Func, MirLoc, MirLocId, TransferKind};
 use c2rust_analysis_rt::HOOK_FUNCTIONS;
@@ -239,13 +240,13 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                     Some(_) => copy_fn,
                     None => addr_local_fn,
                 };
-                let mut b = self
-                    .loc(location.successor_within_block(), func)
-                    .arg_var(dest);
-                if source.is_none() {
-                    b = b.arg_index_of(p.local)
-                }
-                b.source(source.as_ref().unwrap_or(p))
+                self.loc(location.successor_within_block(), func)
+                    .arg_var(dest)
+                    .apply(|b| match source {
+                        Some(_) => b,
+                        None => b.arg_index_of(p.local),
+                    })
+                    .source(source.as_ref().unwrap_or(p))
                     .dest(&dest)
                     .debug_mir(location)
                     .add_to(self);
