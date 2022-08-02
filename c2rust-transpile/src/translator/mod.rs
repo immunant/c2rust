@@ -369,12 +369,12 @@ fn vec_expr(val: Box<Expr>, count: Box<Expr>) -> Box<Expr> {
     mk().call_expr(from_elem, vec![val, count])
 }
 
-pub fn stmts_block(mut stmts: Vec<Stmt>) -> Box<Block> {
+pub fn stmts_block(mut stmts: Vec<Stmt>) -> Block {
     match stmts.pop() {
         None => {}
         Some(Stmt::Expr(Expr::Block(ExprBlock {
             block, label: None, ..
-        }))) if stmts.is_empty() => return Box::new(block),
+        }))) if stmts.is_empty() => return block,
         Some(mut s) => {
             if let Stmt::Expr(e) = s {
                 s = Stmt::Semi(e, Default::default());
@@ -1532,7 +1532,7 @@ impl<'c> Translation<'c> {
             .pick_name("run_static_initializers");
         let fn_ty = ReturnType::Default;
         let fn_decl = mk().fn_decl(fn_name.clone(), vec![], None, fn_ty.clone());
-        let fn_bare_decl = Box::new((vec![], None, fn_ty));
+        let fn_bare_decl = (vec![], None, fn_ty);
         let fn_block = mk().block(sectioned_static_initializers);
         let fn_item = mk().unsafe_().extern_("C").fn_item(fn_decl, fn_block);
 
@@ -3540,23 +3540,23 @@ impl<'c> Translation<'c> {
 
                 if ctx.is_unused() {
                     let is_unsafe = lhs.is_unsafe() || rhs.is_unsafe();
-                    let then: Box<Block> = mk().block(lhs.into_stmts());
-                    let els: Box<Expr> = mk().block_expr(mk().block(rhs.into_stmts()));
+                    let then = mk().block(lhs.into_stmts());
+                    let else_ = mk().block_expr(mk().block(rhs.into_stmts()));
 
                     let mut res = cond.and_then(|c| -> TranslationResult<_> {
                         Ok(WithStmts::new(
-                            vec![mk().semi_stmt(mk().ifte_expr(c, then, Some(els)))],
+                            vec![mk().semi_stmt(mk().ifte_expr(c, then, Some(else_)))],
                             self.panic_or_err("Conditional expression is not supposed to be used"),
                         ))
                     })?;
                     res.merge_unsafe(is_unsafe);
                     Ok(res)
                 } else {
-                    let then: Box<Block> = lhs.to_block();
-                    let els: Box<Expr> = rhs.to_expr();
+                    let then = lhs.to_block();
+                    let else_ = rhs.to_expr();
 
                     Ok(cond.map(|c| {
-                        let ifte_expr = mk().ifte_expr(c, then, Some(els));
+                        let ifte_expr = mk().ifte_expr(c, then, Some(else_));
 
                         if ctx.ternary_needs_parens {
                             mk().paren_expr(ifte_expr)
@@ -3785,12 +3785,11 @@ impl<'c> Translation<'c> {
                                 Type::Tuple(TypeTuple { elems: ref v, .. }) if v.is_empty() => ReturnType::Default,
                                 _ => ReturnType::Type(Default::default(), ret_ty),
                             };
-                            let bare_ty: (Vec<BareFnArg>, Option<Variadic>, ReturnType) = (
+                            let bare_ty = (
                                 vec![mk().bare_arg(mk().infer_ty(), None::<Box<Ident>>); args.len()],
-                                None,
+                                None::<Variadic>,
                                 ret_ty
                             );
-                            let bare_ty = Box::new(bare_ty);
                             mk().barefn_ty(bare_ty)
                         };
                         match fn_ty {

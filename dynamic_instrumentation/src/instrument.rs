@@ -209,11 +209,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                     .add_to(self);
 
                 if is_region_or_unsafe_ptr(value_ty) {
-                    let instrumentation_location = Location {
-                        statement_index: location.statement_index + 1,
-                        ..location
-                    };
-                    self.loc(instrumentation_location, store_value_fn)
+                    self.loc(location.successor_within_block(), store_value_fn)
                         .arg_var(dest)
                         .source(value)
                         .dest(&dest)
@@ -237,14 +233,9 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 if has_outer_deref(p)
                     && place_ty(&remove_outer_deref(*p, self.tcx())).is_region_ptr() =>
             {
-                let instrumentation_location = Location {
-                    statement_index: location.statement_index + 1,
-                    ..location
-                };
-
                 let source = remove_outer_deref(*p, self.tcx());
                 // Instrument which local's address is taken
-                self.loc(instrumentation_location, copy_fn)
+                self.loc(location.successor_within_block(), copy_fn)
                     .arg_var(dest)
                     .source(&source)
                     .dest(&dest)
@@ -252,12 +243,8 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                     .add_to(self);
             }
             Rvalue::AddressOf(_, p) => {
-                let instrumentation_location = Location {
-                    statement_index: location.statement_index + 1,
-                    ..location
-                };
                 // Instrument which local's address is taken
-                self.loc(instrumentation_location, addr_local_fn)
+                self.loc(location.successor_within_block(), addr_local_fn)
                     .arg_var(dest)
                     .arg_index_of(p.local)
                     .source(p)
@@ -266,23 +253,15 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                     .add_to(self);
             }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) if p.is_indirect() => {
-                let instrumentation_location = Location {
-                    statement_index: location.statement_index + 1,
-                    ..location
-                };
                 // We're dereferencing something, the result of which is a reference or pointer
-                self.loc(instrumentation_location, load_value_fn)
+                self.loc(location.successor_within_block(), load_value_fn)
                     .arg_var(dest)
                     .dest(&dest)
                     .debug_mir(location)
                     .add_to(self);
             }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) => {
-                let instrumentation_location = Location {
-                    statement_index: location.statement_index + 1,
-                    ..location
-                };
-                self.loc(instrumentation_location, copy_fn)
+                self.loc(location.successor_within_block(), copy_fn)
                     .arg_var(dest)
                     .source(p)
                     .dest(&dest)
@@ -295,11 +274,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 } else {
                     copy_fn
                 };
-                let instrumentation_location = Location {
-                    statement_index: location.statement_index + 1,
-                    ..location
-                };
-                self.loc(instrumentation_location, func)
+                self.loc(location.successor_within_block(), func)
                     .arg_var(dest)
                     .source(op)
                     .dest(&dest)
@@ -319,11 +294,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                         .add_to(self);
                 } else {
                     // Instrument immutable borrows by tracing the reference itself
-                    let instrumentation_location = Location {
-                        statement_index: location.statement_index + 1,
-                        ..location
-                    };
-                    self.loc(instrumentation_location, copy_fn)
+                    self.loc(location.successor_within_block(), copy_fn)
                         .arg_var(dest)
                         .source(&source)
                         .dest(&dest)
@@ -345,11 +316,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                         .add_to(self);
                 } else {
                     // Instrument immutable borrows by tracing the reference itself
-                    let instrumentation_location = Location {
-                        statement_index: location.statement_index + 1,
-                        ..location
-                    };
-                    self.loc(instrumentation_location, addr_local_fn)
+                    self.loc(location.successor_within_block(), addr_local_fn)
                         .arg_var(dest)
                         .arg_index_of(p.local)
                         .source(&source)
