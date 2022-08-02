@@ -20,7 +20,9 @@ use std::sync::Mutex;
 
 use crate::arg::{ArgKind, InstrumentationArg};
 use crate::hooks::Hooks;
-use crate::mir_utils::{has_outer_deref, remove_outer_deref, strip_all_deref};
+use crate::mir_utils::{
+    has_outer_deref, remove_outer_deref, strip_all_deref, try_remove_outer_deref,
+};
 use crate::point::cast_ptr_to_usize;
 use crate::point::InstrumentationAdder;
 use crate::point::InstrumentationApplier;
@@ -229,25 +231,21 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 }
             }
             _ if !is_region_or_unsafe_ptr(value_ty) => {}
-            Rvalue::AddressOf(_, p)
-                if has_outer_deref(p)
-                    && place_ty(&remove_outer_deref(*p, self.tcx())).is_region_ptr() =>
-            {
-                let source = remove_outer_deref(*p, self.tcx());
-                // Instrument which local's address is taken
-                self.loc(location.successor_within_block(), copy_fn)
-                    .arg_var(dest)
-                    .source(&source)
-                    .dest(&dest)
-                    .debug_mir(location)
-                    .add_to(self);
-            }
             Rvalue::AddressOf(_, p) => {
                 // Instrument which local's address is taken
-                self.loc(location.successor_within_block(), addr_local_fn)
-                    .arg_var(dest)
-                    .arg_index_of(p.local)
-                    .source(p)
+                let source = try_remove_outer_deref(*p, self.tcx())
+                    .filter(|source| place_ty(source).is_region_ptr());
+                let func = match source {
+                    Some(_) => copy_fn,
+                    None => addr_local_fn,
+                };
+                let mut b = self
+                    .loc(location.successor_within_block(), func)
+                    .arg_var(dest);
+                if source.is_none() {
+                    b = b.arg_index_of(p.local)
+                }
+                b.source(source.as_ref().unwrap_or(p))
                     .dest(&dest)
                     .debug_mir(location)
                     .add_to(self);
