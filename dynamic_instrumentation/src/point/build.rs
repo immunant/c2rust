@@ -3,7 +3,7 @@ use itertools::Itertools;
 use rustc_index::vec::Idx;
 use rustc_middle::{
     mir::{Body, Location, Place, TerminatorKind},
-    ty::{self, TyCtxt},
+    ty::TyCtxt,
 };
 use rustc_span::def_id::DefId;
 
@@ -152,14 +152,8 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
                 func,
                 ..
             } => {
-                let func_name = if let &ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
-                    let name = self.tcx.item_name(def_id);
-                    format!("{name}")
-                } else {
-                    format!("{func:?}")
-                };
                 let args = args.iter().format(", ");
-                format!("{destination:?} = {func_name}({args:?})")
+                format!("{destination:?} = {func:?}({args:?})")
             }
             _ => "".into(),
         }
