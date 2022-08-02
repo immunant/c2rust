@@ -1197,13 +1197,7 @@ impl Builder {
         }))
     }
 
-    pub fn for_expr<I>(
-        self,
-        pat: Pat,
-        expr: Box<Expr>,
-        body: Block,
-        label: Option<I>,
-    ) -> Box<Expr>
+    pub fn for_expr<I>(self, pat: Pat, expr: Box<Expr>, body: Block, label: Option<I>) -> Box<Expr>
     where
         I: Make<Ident>,
     {
