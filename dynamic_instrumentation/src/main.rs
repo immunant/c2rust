@@ -12,6 +12,7 @@ extern crate rustc_session;
 extern crate rustc_span;
 
 mod arg;
+mod callbacks;
 mod hooks;
 mod instrument;
 mod into_operand;
@@ -20,36 +21,23 @@ mod point;
 mod runtime_conversions;
 mod util;
 
+use crate::callbacks::{MirTransformCallbacks, INSTRUMENTER};
+
 use std::{
     env,
     ffi::{OsStr, OsString},
+    iter,
     path::{Path, PathBuf},
-    process::{self, Command, ExitStatus}, iter,
+    process::{self, Command, ExitStatus},
 };
 
-use rustc_ast::ast::{Item, ItemKind, Visibility, VisibilityKind};
-use rustc_ast::node_id::NodeId;
-use rustc_ast::ptr::P;
-use rustc_const_eval::transform::validate::Validator;
-use rustc_driver::Compilation;
 use rustc_driver::{RunCompiler, TimePassesCallbacks};
-use rustc_interface::interface::Compiler;
-use rustc_interface::Queries;
-use rustc_middle::mir::MirPass;
-use rustc_middle::ty::query::{ExternProviders, Providers};
-use rustc_middle::ty::WithOptConstParam;
-use rustc_session::{Session, config::CrateType};
-use rustc_span::def_id::LocalDefId;
-use rustc_span::symbol::Ident;
-use rustc_span::DUMMY_SP;
+use rustc_session::config::CrateType;
 
 use anyhow::{anyhow, ensure, Context};
 use camino::Utf8Path;
 use cargo_metadata::MetadataCommand;
 use clap::Parser;
-use lazy_static::lazy_static;
-
-use instrument::Instrumenter;
 
 /// Instrument memory accesses for dynamic analysis.
 #[derive(Debug, Parser)]
@@ -134,8 +122,7 @@ fn add_feature(cargo_args: &mut Vec<OsString>, features: &[&str]) {
     if cargo_args.len() >= insertion_point {
         cargo_args.splice(
             insertion_point..insertion_point,
-            iter::once(&"--features").chain(features)
-                .map(|s| s.into()),
+            iter::once(&"--features").chain(features).map(|s| s.into()),
         );
     }
 }
@@ -195,7 +182,7 @@ fn is_primary_package() -> bool {
 
 /// Check if the current [`rustc_wrapper`] invocation is a binary crate,
 /// i.e., if `--crate-type bin` was specified.
-/// 
+///
 /// This uses the [`rustc_driver`] and [`rustc_session`] APIs
 /// to check this exactly as `rustc` would.
 fn is_bin_crate(at_args: &[String]) -> anyhow::Result<bool> {
@@ -208,7 +195,7 @@ fn is_bin_crate(at_args: &[String]) -> anyhow::Result<bool> {
 }
 
 /// Read the name of the current binary crate being compiled, if it is a binary crate ([`is_bin_crate`]).
-/// 
+///
 /// Note that despite setting `--crate-type bin` and [`is_bin_crate`] being true,
 /// there is no name set for build scripts.
 /// That's how we can detect them.
@@ -217,23 +204,23 @@ fn bin_crate_name() -> Option<PathBuf> {
 }
 
 /// Detect if the current [`rustc_wrapper`] is for compiling a build script.
-/// 
+///
 /// `c2rust-analysis-rt` is not yet built for the build script,
 /// so trying to compile it will fail.
 /// Plus, we don't need to and don't want to instrument the build script.
-/// 
+///
 /// We check if it is a build script by checking if it's a `--crate-type bin`
 /// and yet has no `$CARGO_BIN_NAME`, which is set for normal binary crates.
-/// 
+///
 /// Another solution (that `miri` uses) is to always specify the `--target`,
 /// even if it's the host target.  Then `cargo` thinks it's cross-compiling,
 /// and always forwards `--target` to `rustc` for native compilations,
 /// but for host compilations like build scripts and proc-macros,
 /// it doesn't specify `--target`.
-/// 
+///
 /// This would work more robustly if we were also instrumenting dependencies,
 /// as our currently solution would no longer work, but we aren't.
-/// 
+///
 /// On the other hand, the `--target` solution has a drawback
 /// in that there are many ways to specify the target:
 /// * `--target`
@@ -245,7 +232,7 @@ fn bin_crate_name() -> Option<PathBuf> {
 /// if we're going to supply `--target $HOST` before `cargo` runs,
 /// so we have to check all of those places ourselves to make sure
 /// that we're not overriding the true cross-compilation the user wants.
-/// 
+///
 /// Compared to the current solution, this seems harder,
 /// so we're sticking with the current solution for now as long as it works.
 fn is_build_script(at_args: &[String]) -> anyhow::Result<bool> {
@@ -333,68 +320,4 @@ fn main() -> anyhow::Result<()> {
     } else {
         cargo_wrapper(&own_exe)
     }
-}
-
-lazy_static! {
-    /// TODO(kkysen) can be made non-lazy when `Mutex::new` is `const` in rust 1.63
-    static ref INSTRUMENTER: Instrumenter = Instrumenter::new();
-}
-
-struct MirTransformCallbacks;
-
-impl rustc_driver::Callbacks for MirTransformCallbacks {
-    fn config(&mut self, config: &mut rustc_interface::Config) {
-        config.override_queries = Some(override_queries);
-    }
-
-    fn after_parsing<'tcx>(
-        &mut self,
-        _compiler: &Compiler,
-        queries: &'tcx Queries<'tcx>,
-    ) -> Compilation {
-        let parse = queries.parse().unwrap();
-        let mut parse = parse.peek_mut();
-        parse.items.push(P(Item {
-            attrs: Vec::new(),
-            id: NodeId::from_u32(0),
-            span: DUMMY_SP,
-            vis: Visibility {
-                kind: VisibilityKind::Inherited,
-                span: DUMMY_SP,
-                tokens: None,
-            },
-            ident: Ident::from_str("c2rust_analysis_rt"),
-            kind: ItemKind::ExternCrate(None),
-            tokens: None,
-        }));
-        Compilation::Continue
-    }
-}
-
-fn override_queries(
-    _sess: &Session,
-    providers: &mut Providers,
-    _extern_providers: &mut ExternProviders,
-) {
-    providers.mir_built = |tcx, def: WithOptConstParam<LocalDefId>| {
-        let mut providers = Providers::default();
-        rustc_mir_build::provide(&mut providers);
-
-        let steal_mir = (providers.mir_built)(tcx, def);
-        let mut mir = steal_mir.steal();
-
-        let body_did = def.did.to_def_id();
-        let fn_ty = tcx.type_of(body_did);
-        if fn_ty.is_fn() && !tcx.is_const_fn(body_did) && !tcx.is_static(body_did) {
-            INSTRUMENTER.instrument_fn(tcx, &mut mir, body_did);
-
-            Validator {
-                when: "After dynamic instrumentation".to_string(),
-                mir_phase: mir.phase,
-            }
-            .run_pass(tcx, &mut mir);
-        }
-
-        tcx.alloc_steal_mir(mir)
-    };
 }
