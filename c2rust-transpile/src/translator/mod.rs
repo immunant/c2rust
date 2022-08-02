@@ -3787,7 +3787,7 @@ impl<'c> Translation<'c> {
                             };
                             let bare_ty = (
                                 vec![mk().bare_arg(mk().infer_ty(), None::<Box<Ident>>); args.len()],
-                                None,
+                                None::<Variadic>,
                                 ret_ty
                             );
                             mk().barefn_ty(bare_ty)
