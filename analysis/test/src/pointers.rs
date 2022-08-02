@@ -514,7 +514,6 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     test_arg_rec();
     test_shared_ref();
     test_unique_ref();
-    test_ref_field();
     test_realloc_reassign();
     test_realloc_fresh();
     test_load_addr();
@@ -530,6 +529,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     test_load_value_store_value();
     let nums = &mut [2i32, 5i32, 3i32, 1i32, 6i32];
     insertion_sort(nums.len() as libc::c_int, nums as *mut libc::c_int);
+    test_ref_field();
     return 0i32;
 }
 pub fn main() {
