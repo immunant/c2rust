@@ -37,7 +37,7 @@ pub enum NodeKind {
     _AddrOfStatic(DefPathHash),
     /// Heap allocation.  The `usize` is the number of array elements allocated; for allocations of
     /// a single object, this value is 1.
-    Malloc(usize),
+    Alloc(usize),
     /// Int to pointer conversion.  Details TBD.
     IntToPtr,
     /// The result of loading a value through some other pointer.  Details TBD.
@@ -67,7 +67,15 @@ impl Display for NodeKind {
             Offset(offset) => write!(f, "offset[{offset}]"),
             AddrOfLocal(local) => write!(f, "&{local:?}"),
             _AddrOfStatic(static_) => write!(f, "&'static {static_:?}"),
-            Malloc(n) => write!(f, "malloc(n = {n})"),
+            Alloc(n) => {
+                // Right now we only create `Alloc(1)`, so special case it,
+                // as the increased readability helps.
+                write!(f, "alloc")?;
+                if *n != 1 {
+                    write!(f, "(n = {n})")?;
+                }
+                Ok(())
+            }
             Free => write!(f, "free"),
             PtrToInt => write!(f, "ptr_to_int"),
             IntToPtr => write!(f, "int_to_ptr"),
@@ -111,6 +119,8 @@ pub struct Node {
     pub kind: NodeKind,
     /// The `Node` that produced the input to this operation.
     pub source: Option<NodeId>,
+    /// Any string useful for debugging.
+    pub debug_info: String,
 }
 
 struct BlockStatement<'a> {
@@ -137,6 +147,7 @@ impl Node {
             dest,
             kind,
             source,
+            debug_info,
         } = self;
         let src = ShortOption(source.as_ref());
         let dest = ShortOption(dest.as_ref());
@@ -147,7 +158,7 @@ impl Node {
         let fn_ = function;
         write!(
             f,
-            "{kind}{sep}{src}{sep}=>{sep}{dest}{sep}@{sep}{bb_stmt}:{sep}fn {fn_};"
+            "{kind}{sep}{src}{sep}=>{sep}{dest}{sep}@{sep}{bb_stmt}:{sep}fn {fn_};{sep}{debug_info};"
         )
     }
 }

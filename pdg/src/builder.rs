@@ -69,8 +69,8 @@ impl EventKindExt for EventKind {
     fn to_node_kind(&self) -> Option<NodeKind> {
         use EventKind::*;
         Some(match *self {
-            Alloc { .. } => NodeKind::Malloc(1),
-            Realloc { .. } => NodeKind::Malloc(1),
+            Alloc { .. } => NodeKind::Alloc(1),
+            Realloc { .. } => NodeKind::Alloc(1),
             Free { .. } => NodeKind::Free,
             CopyPtr(..) | CopyRef => NodeKind::Copy,
             Field(_, field) => NodeKind::Field(field.into()),
@@ -205,6 +205,7 @@ pub fn add_node(
             .and_then(|p| event.kind.parent(p))
             .map(|(_, nid)| nid),
         dest: event_metadata.destination.clone(),
+        debug_info: event_metadata.debug_info.clone(),
     };
 
     let graph_id = source

@@ -12,5 +12,5 @@ description = "Rust AST builder support crate for the C2Rust project"
 edition = "2021"
 
 [dependencies]
-proc-macro2 = { version = "1.0", features = ["span-locations"], default-features = false }
-syn = { version = "1.0", features = ["full", "extra-traits", "printing"], default-features = false }
+proc-macro2 = { version = "1.0", features = ["span-locations"]}
+syn = { version = "1.0", features = ["full", "extra-traits", "printing", "clone-impls"]}

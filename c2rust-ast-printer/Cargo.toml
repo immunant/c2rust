@@ -9,6 +9,6 @@ description = "Customized version of libsyntax rust pretty-printer"
 
 [dependencies]
 log = "0.4"
-syn = { version = "1.0", features = ["full", "proc-macro", "printing"], default-features = false }
-proc-macro2 = { version = "1.0", default-features = false }
+syn = { version = "1.0", features = ["full", "proc-macro", "printing", "clone-impls"] }
+proc-macro2 = "1.0"
 prettyplease = "0.1.9"

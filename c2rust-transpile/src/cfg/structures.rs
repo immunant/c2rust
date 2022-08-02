@@ -14,7 +14,7 @@ pub fn structured_cfg(
     debug_labels: bool,
     cut_out_trailing_ret: bool,
 ) -> TranslationResult<Vec<Stmt>> {
-    let ast: StructuredAST<Box<Expr>, Box<Pat>, Label, Stmt> =
+    let ast: StructuredAST<Box<Expr>, Pat, Label, Stmt> =
         structured_cfg_help(vec![], &IndexSet::new(), root, &mut IndexSet::new())?;
 
     let s = StructureState {
@@ -198,7 +198,7 @@ type Exit = (Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>);
 /// Recursive helper for `structured_cfg`
 ///
 /// TODO: move this into `structured_cfg`?
-fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = Label, S = Stmt>>(
+fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stmt>>(
     exits: Vec<Exit>,
     next: &IndexSet<Label>,
     root: &[Structure<Stmt>],
@@ -285,10 +285,10 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
                         Jump(to) => branch(to)?,
                         Branch(c, t, f) => S::mk_if(c.clone(), branch(t)?, branch(f)?),
                         Switch { expr, cases } => {
-                            let branched_cases: Vec<(Box<Pat>, S)> = cases
+                            let branched_cases = cases
                                 .iter()
                                 .map(|&(ref pat, ref slbl)| Ok((pat.clone(), branch(slbl)?)))
-                                .collect::<TranslationResult<Vec<(Box<Pat>, S)>>>()?;
+                                .collect::<TranslationResult<_>>()?;
 
                             S::mk_match(expr.clone(), branched_cases)
                         }
@@ -299,12 +299,12 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = L
             Multiple { branches, then, .. } => {
                 let cases = branches
                     .iter()
-                    .map(|(lbl, body)| -> TranslationResult<(Label, S)> {
+                    .map(|(lbl, body)| {
                         let stmts =
                             structured_cfg_help(exits.clone(), next, body, used_loop_labels)?;
                         Ok((lbl.clone(), stmts))
                     })
-                    .collect::<TranslationResult<Vec<(Label, S)>>>()?;
+                    .collect::<TranslationResult<_>>()?;
 
                 let then: S = structured_cfg_help(exits.clone(), next, then, used_loop_labels)?;
 
@@ -405,7 +405,7 @@ fn span_subst_hi(span: Span, other: Span) -> Option<Span> {
 impl StructureState {
     pub fn to_stmt(
         &self,
-        ast: StructuredAST<Box<Expr>, Box<Pat>, Label, Stmt>,
+        ast: StructuredAST<Box<Expr>, Pat, Label, Stmt>,
         comment_store: &mut comment_store::CommentStore,
     ) -> (Vec<Stmt>, Span) {
         use crate::cfg::structures::StructuredASTKind::*;
@@ -491,7 +491,7 @@ impl StructureState {
                         let (stmts, span) = self.to_stmt(stmts, comment_store);
 
                         let body = mk().block_expr(mk().span(span).block(stmts));
-                        mk().arm(pat, None as Option<Box<Expr>>, body)
+                        mk().arm(pat, None, body)
                     })
                     .collect();
 
@@ -515,11 +515,8 @@ impl StructureState {
                 let mut if_stmt = match (then_stmts.is_empty(), els_stmts.is_empty()) {
                     (true, true) => mk().semi_stmt(cond),
                     (false, true) => {
-                        let if_expr = mk().ifte_expr(
-                            cond,
-                            mk().span(then_span).block(then_stmts),
-                            None as Option<Box<Expr>>,
-                        );
+                        let if_expr =
+                            mk().ifte_expr(cond, mk().span(then_span).block(then_stmts), None);
                         mk().expr_stmt(if_expr)
                     }
                     (true, false) => {
@@ -527,7 +524,7 @@ impl StructureState {
                         let if_expr = mk().ifte_expr(
                             negated_cond,
                             mk().span(els_span).block(els_stmts),
-                            None as Option<Box<Expr>>,
+                            None,
                         );
                         mk().expr_stmt(if_expr)
                     }
@@ -582,7 +579,7 @@ impl StructureState {
                         };
                         let pat = mk().lit_pat(lbl_expr);
                         let body = mk().block_expr(mk().span(stmts_span).block(stmts));
-                        mk().arm(pat, None as Option<Box<Expr>>, body)
+                        mk().arm(pat, None, body)
                     })
                     .collect();
 
@@ -590,7 +587,7 @@ impl StructureState {
 
                 arms.push(mk().arm(
                     mk().wild_pat(),
-                    None as Option<Box<Expr>>,
+                    None,
                     mk().block_expr(mk().span(then_span).block(then)),
                 ));
 

@@ -28,14 +28,6 @@ pub fn pos_to_span(pos: BytePos) -> Span {
     SpanExt::new(pos.0, pos.0)
 }
 
-pub const DUMMY_SP: Span = unsafe {
-    std::mem::transmute(SpanRepr {
-        compiler_or_fallback: 1,
-        lo: 0,
-        hi: 0,
-    })
-};
-
 pub trait SpanExt: Sized {
     fn is_dummy(&self) -> bool;
 
@@ -46,8 +38,6 @@ pub trait SpanExt: Sized {
     fn new(lo: u32, hi: u32) -> Self;
 
     fn inner(&self) -> (u32, u32);
-
-    fn inner_mut(&mut self) -> (&mut u32, &mut u32);
 
     #[inline(always)]
     fn lo(&self) -> BytePos {
@@ -145,15 +135,6 @@ fn validate_repr() {
     assert!(repr.hi == 0);
 }
 
-/** return a pair of mutable references to s.lo and s.hi */
-fn get_inner_mut(s: &mut Span) -> (&mut u32, &mut u32) {
-    validate_repr();
-    /* safety: safe if it is safe to transmute between `Span` and `SpanRepr`;
-    we call `validate_repr` to verify this. see doc comment on `validare_repr` */
-    let repr: &mut SpanRepr = unsafe { std::mem::transmute(s) };
-    (&mut repr.lo, &mut repr.hi)
-}
-
 /** return (s.lo, s.hi) */
 fn get_inner(s: &Span) -> (u32, u32) {
     validate_repr();
@@ -185,8 +166,7 @@ impl SpanExt for Span {
     }
 
     fn dummy() -> Self {
-        //Span::call_site()
-        synthesize(0, 0)
+        Span::call_site()
     }
 
     fn eq(&self, other: &Self) -> bool {
@@ -199,9 +179,5 @@ impl SpanExt for Span {
 
     fn inner(&self) -> (u32, u32) {
         get_inner(self)
-    }
-
-    fn inner_mut(&mut self) -> (&mut u32, &mut u32) {
-        get_inner_mut(self)
     }
 }

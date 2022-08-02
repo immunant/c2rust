@@ -67,6 +67,23 @@ static SIMD_X86_64_ONLY: &[&str] = &[
     "_mm_crc32_u64",
 ];
 
+fn add_arch_use(store: &mut ItemStore, arch_name: &str, item_name: &str) {
+    store.add_use_with_attr(
+        vec!["core".into(), "arch".into(), arch_name.into()],
+        item_name,
+        mk().meta_item_attr(
+            AttrStyle::Outer,
+            mk().meta_list(
+                "cfg",
+                vec![NestedMeta::Meta(
+                    mk().meta_namevalue("target_arch", arch_name),
+                )],
+            ),
+        )
+        .pub_(),
+    );
+}
+
 impl<'c> Translation<'c> {
     /// Given the name of a typedef check if its one of the SIMD types.
     /// This function returns `true` when the name of the type is one that
@@ -84,37 +101,8 @@ impl<'c> Translation<'c> {
                 }
 
                 self.with_cur_file_item_store(|item_store| {
-                    let x86_attr = mk()
-                        .meta_item_attr(
-                            AttrStyle::Outer,
-                            mk().meta_list(
-                                "cfg",
-                                vec![NestedMeta::Meta(mk().meta_namevalue("target_arch", "x86"))],
-                            ),
-                        )
-                        .pub_();
-                    let x86_64_attr = mk()
-                        .meta_item_attr(
-                            AttrStyle::Outer,
-                            mk().meta_list(
-                                "cfg",
-                                vec![NestedMeta::Meta(
-                                    mk().meta_namevalue("target_arch", "x86_64"),
-                                )],
-                            ),
-                        )
-                        .pub_();
-
-                    item_store.add_use_with_attr(
-                        vec!["core".into(), "arch".into(), "x86".into()],
-                        name,
-                        x86_attr,
-                    );
-                    item_store.add_use_with_attr(
-                        vec!["core".into(), "arch".into(), "x86_64".into()],
-                        name,
-                        x86_64_attr,
-                    );
+                    add_arch_use(item_store, "x86", name);
+                    add_arch_use(item_store, "x86_64", name);
                 });
 
                 true
@@ -179,46 +167,16 @@ impl<'c> Translation<'c> {
             self.with_cur_file_item_store(|item_store| {
                 // REVIEW: Also a linear lookup
                 if !SIMD_X86_64_ONLY.contains(&name) {
-                    let x86_attr = mk()
-                        .meta_item_attr(
-                            AttrStyle::Outer,
-                            mk().meta_list(
-                                "cfg",
-                                vec![NestedMeta::Meta(mk().meta_namevalue("target_arch", "x86"))],
-                            ),
-                        )
-                        .pub_();
-
-                    item_store.add_use_with_attr(
-                        vec!["core".into(), "arch".into(), "x86".into()],
-                        name,
-                        x86_attr,
-                    );
+                    add_arch_use(item_store, "x86", name);
                 }
 
-                let x86_64_attr = mk()
-                    .meta_item_attr(
-                        AttrStyle::Outer,
-                        mk().meta_list(
-                            "cfg",
-                            vec![NestedMeta::Meta(
-                                mk().meta_namevalue("target_arch", "x86_64"),
-                            )],
-                        ),
-                    )
-                    .pub_();
-
-                item_store.add_use_with_attr(
-                    vec!["core".into(), "arch".into(), "x86_64".into()],
-                    name,
-                    x86_64_attr,
-                );
+                add_arch_use(item_store, "x86_64", name);
             });
 
-            return Ok(true);
+            Ok(true)
+        } else {
+            Ok(false)
         }
-
-        Ok(false)
     }
 
     /// This function will strip either an implicitly casted int or explicitly casted
@@ -323,10 +281,9 @@ impl<'c> Translation<'c> {
             self.import_simd_function(fn_name)
                 .expect("None of these fns should be unsupported in rust");
 
-            Ok(WithStmts::new_val(mk().call_expr(
-                mk().ident_expr(fn_name),
-                Vec::new() as Vec<Box<Expr>>,
-            )))
+            Ok(WithStmts::new_val(
+                mk().call_expr(mk().ident_expr(fn_name), Vec::new()),
+            ))
         }
     }
 
@@ -428,16 +385,9 @@ impl<'c> Translation<'c> {
         let param_translation =
             self.convert_exprs(ctx.used(), &[first_expr_id, second_expr_id, mask_expr_id])?;
         param_translation.and_then(|params| {
-            let mut params = params.into_iter();
-            let first = params
-                .next()
-                .ok_or("Missing first param in convert_shuffle_vector")?;
-            let second = params
-                .next()
-                .ok_or("Missing second param in convert_shuffle_vector")?;
-            let third = params
-                .next()
-                .ok_or("Missing third param in convert_shuffle_vector")?;
+            let [first, second, third]: [_; 3] = params
+                .try_into()
+                .map_err(|_| "`convert_shuffle_vector` must have exactly 3 parameters")?;
             let mut new_params = vec![first];
 
             // Some don't take a second param, but the expr is still there for some reason

@@ -61,16 +61,11 @@ impl<'c> Translation<'c> {
                             mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_char"])),
                         ]),
                     )])),
-                    Some(
-                        mk().call_expr(
-                            mk().path_expr(vec!["Vec", "new"]),
-                            vec![] as Vec<Box<Expr>>,
-                        ),
-                    ),
+                    Some(mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![])),
                 ))));
                 stmts.push(mk().semi_stmt(mk().for_expr(
                     mk().ident_pat("arg"),
-                    mk().call_expr(args_fn, vec![] as Vec<Box<Expr>>),
+                    mk().call_expr(args_fn, vec![]),
                     mk().block(vec![mk().semi_stmt(mk().method_call_expr(
                         mk().path_expr(vec!["args"]),
                         "push",
@@ -85,18 +80,17 @@ impl<'c> Translation<'c> {
                                 vec![mk().lit_expr("Failed to convert argument into CString.")],
                             ),
                             "into_raw",
-                            vec![] as Vec<Box<Expr>>,
+                            vec![],
                         )],
                     ))]),
-                    None as Option<Ident>,
+                    None::<Ident>,
                 )));
                 stmts.push(mk().semi_stmt(mk().method_call_expr(
                     mk().path_expr(vec!["args"]),
                     "push",
-                    vec![mk().call_expr(
-                        mk().abs_path_expr(vec!["core", "ptr", "null_mut"]),
-                        vec![] as Vec<Box<Expr>>,
-                    )],
+                    vec![
+                        mk().call_expr(mk().abs_path_expr(vec!["core", "ptr", "null_mut"]), vec![]),
+                    ],
                 )));
 
                 let argc_ty: Box<Type> = match self.ast_context.index(parameters[0]).kind {
@@ -135,12 +129,7 @@ impl<'c> Translation<'c> {
                             mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_char"])),
                         ]),
                     )])),
-                    Some(
-                        mk().call_expr(
-                            mk().path_expr(vec!["Vec", "new"]),
-                            vec![] as Vec<Box<Expr>>,
-                        ),
-                    ),
+                    Some(mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![])),
                 ))));
                 let var_name_ident = mk().ident("var_name");
                 let var_value_ident = mk().ident("var_value");
@@ -149,70 +138,69 @@ impl<'c> Translation<'c> {
                         mk().ident_pat("var_name"),
                         mk().ident_pat("var_value"),
                     ]),
-                    mk().call_expr(vars_fn, vec![] as Vec<Box<Expr>>),
+                    mk().call_expr(vars_fn, vec![]),
                     mk().block(vec![
-                                mk().local_stmt(Box::new(
-                                    mk().local(
-                                        mk().ident_pat("var"),
-                                        Some(mk().path_ty(vec!["String"])),
-                                        Some(
-                                            mk().mac_expr(
-                                                mk().mac(
-                                                    vec!["format"],
-                                                    vec![
-                                                        TokenTree::Literal(
-                                                            proc_macro2::Literal::string("{}={}"),
-                                                        ),
-                                                        TokenTree::Punct(Punct::new(
-                                                            ',',
-                                                            proc_macro2::Spacing::Alone,
-                                                        )),
-                                                        TokenTree::Ident(var_name_ident),
-                                                        TokenTree::Punct(Punct::new(
-                                                            ',',
-                                                            proc_macro2::Spacing::Alone,
-                                                        )),
-                                                        TokenTree::Ident(var_value_ident),
-                                                    ]
-                                                    .into_iter()
-                                                    .collect::<TokenStream>(),
-                                                    MacroDelimiter::Paren(Default::default()),
+                        mk().local_stmt(Box::new(
+                            mk().local(
+                                mk().ident_pat("var"),
+                                Some(mk().path_ty(vec!["String"])),
+                                Some(
+                                    mk().mac_expr(
+                                        mk().mac(
+                                            mk().path(vec!["format"]),
+                                            vec![
+                                                TokenTree::Literal(
+                                                    proc_macro2::Literal::string("{}={}"),
                                                 ),
-                                            ),
+                                                TokenTree::Punct(Punct::new(
+                                                    ',',
+                                                    proc_macro2::Spacing::Alone,
+                                                )),
+                                                TokenTree::Ident(var_name_ident),
+                                                TokenTree::Punct(Punct::new(
+                                                    ',',
+                                                    proc_macro2::Spacing::Alone,
+                                                )),
+                                                TokenTree::Ident(var_value_ident),
+                                            ]
+                                            .into_iter()
+                                            .collect::<TokenStream>(),
+                                            MacroDelimiter::Paren(Default::default()),
                                         ),
                                     ),
-                                )),
-                                mk().semi_stmt(mk().method_call_expr(
-                                    mk().path_expr(vec!["vars"]),
-                                    "push",
-                                    vec![mk().method_call_expr(
-                                        mk().method_call_expr(
-                                            mk().call_expr(
-                                                mk().abs_path_expr(vec![
-                                                    // TODO(kkysen) change `"std"` to `"alloc"` after `#![feature(alloc_c_string)]` is stabilized in `1.63.0`
-                                                    "std", "ffi", "CString", "new",
-                                                ]),
-                                                vec![mk().path_expr(vec!["var"])],
-                                            ),
-                                            "expect",
-                                            vec![mk().lit_expr(
-                                            "Failed to convert environment variable into CString."
-                                        )],
-                                        ),
-                                        "into_raw",
-                                        vec![] as Vec<Box<Expr>>,
-                                    )],
-                                )),
-                            ]),
+                                ),
+                            ),
+                        )),
+                        mk().semi_stmt(mk().method_call_expr(
+                            mk().path_expr(vec!["vars"]),
+                            "push",
+                            vec![mk().method_call_expr(
+                                mk().method_call_expr(
+                                    mk().call_expr(
+                                        mk().abs_path_expr(vec![
+                                            // TODO(kkysen) change `"std"` to `"alloc"` after `#![feature(alloc_c_string)]` is stabilized in `1.63.0`
+                                            "std", "ffi", "CString", "new",
+                                        ]),
+                                        vec![mk().path_expr(vec!["var"])],
+                                    ),
+                                    "expect",
+                                    vec![mk().lit_expr(
+                                    "Failed to convert environment variable into CString."
+                                )],
+                                ),
+                                "into_raw",
+                                vec![],
+                            )],
+                        )),
+                    ]),
                     None as Option<Ident>,
                 )));
                 stmts.push(mk().semi_stmt(mk().method_call_expr(
                     mk().path_expr(vec!["vars"]),
                     "push",
-                    vec![mk().call_expr(
-                        mk().abs_path_expr(vec!["core", "ptr", "null_mut"]),
-                        vec![] as Vec<Box<Expr>>,
-                    )],
+                    vec![
+                        mk().call_expr(mk().abs_path_expr(vec!["core", "ptr", "null_mut"]), vec![]),
+                    ],
                 )));
 
                 let envp_ty: Box<Type> = match self.ast_context.index(parameters[2]).kind {

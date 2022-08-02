@@ -70,8 +70,7 @@ impl<'c> Translation<'c> {
                 let val = self.convert_expr(ctx.used(), args[0])?;
 
                 Ok(val.map(|v| {
-                    let val =
-                        mk().method_call_expr(v, "is_sign_negative", vec![] as Vec<Box<Expr>>);
+                    let val = mk().method_call_expr(v, "is_sign_negative", vec![]);
 
                     mk().cast_expr(val, mk().path_ty(vec!["libc", "c_int"]))
                 }))
@@ -84,11 +83,7 @@ impl<'c> Translation<'c> {
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
                     let one = mk().lit_expr(mk().int_lit(1, ""));
                     let cmp = BinOp::Eq(Default::default());
-                    let zeros = mk().method_call_expr(
-                        x.clone(),
-                        "trailing_zeros",
-                        vec![] as Vec<Box<Expr>>,
-                    );
+                    let zeros = mk().method_call_expr(x.clone(), "trailing_zeros", vec![]);
                     let zeros_cast = mk().cast_expr(zeros, mk().path_ty(vec!["i32"]));
                     let zeros_plus1 = mk().binary_expr(add, zeros_cast, one);
                     let block = mk().block(vec![mk().expr_stmt(zero.clone())]);
@@ -100,25 +95,24 @@ impl<'c> Translation<'c> {
             "__builtin_clz" | "__builtin_clzl" | "__builtin_clzll" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| {
-                    let zeros = mk().method_call_expr(x, "leading_zeros", vec![] as Vec<Box<Expr>>);
+                    let zeros = mk().method_call_expr(x, "leading_zeros", vec![]);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
             }
             "__builtin_ctz" | "__builtin_ctzl" | "__builtin_ctzll" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| {
-                    let zeros =
-                        mk().method_call_expr(x, "trailing_zeros", vec![] as Vec<Box<Expr>>);
+                    let zeros = mk().method_call_expr(x, "trailing_zeros", vec![]);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
             }
             "__builtin_bswap16" | "__builtin_bswap32" | "__builtin_bswap64" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
-                Ok(val.map(|x| mk().method_call_expr(x, "swap_bytes", vec![] as Vec<Box<Expr>>)))
+                Ok(val.map(|x| mk().method_call_expr(x, "swap_bytes", vec![])))
             }
             "__builtin_fabs" | "__builtin_fabsf" | "__builtin_fabsl" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
-                Ok(val.map(|x| mk().method_call_expr(x, "abs", vec![] as Vec<Box<Expr>>)))
+                Ok(val.map(|x| mk().method_call_expr(x, "abs", vec![])))
             }
             "__builtin_isfinite" | "__builtin_isnan" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
@@ -129,7 +123,7 @@ impl<'c> Translation<'c> {
                     _ => panic!(),
                 };
                 Ok(val.map(|x| {
-                    let call = mk().method_call_expr(x, seg, vec![] as Vec<Box<Expr>>);
+                    let call = mk().method_call_expr(x, seg, vec![]);
                     mk().cast_expr(call, mk().path_ty(vec!["i32"]))
                 }))
             }
@@ -137,11 +131,7 @@ impl<'c> Translation<'c> {
                 // isinf_sign(x) -> fabs(x) == infinity ? (signbit(x) ? -1 : 1) : 0
                 let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| {
-                    let inner_cond = mk().method_call_expr(
-                        x.clone(),
-                        "is_sign_positive",
-                        vec![] as Vec<Box<Expr>>,
-                    );
+                    let inner_cond = mk().method_call_expr(x.clone(), "is_sign_positive", vec![]);
                     let one = mk().lit_expr(mk().int_lit(1, ""));
                     let minus_one = mk().unary_expr(
                         UnOp::Neg(Default::default()),
@@ -150,8 +140,7 @@ impl<'c> Translation<'c> {
                     let one_block = mk().block(vec![mk().expr_stmt(one)]);
                     let inner_ifte = mk().ifte_expr(inner_cond, one_block, Some(minus_one));
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
-                    let outer_cond =
-                        mk().method_call_expr(x, "is_infinite", vec![] as Vec<Box<Expr>>);
+                    let outer_cond = mk().method_call_expr(x, "is_infinite", vec![]);
                     let inner_ifte_block = mk().block(vec![mk().expr_stmt(inner_ifte)]);
                     mk().ifte_expr(outer_cond, inner_ifte_block, Some(zero))
                 }))
@@ -167,7 +156,7 @@ impl<'c> Translation<'c> {
             "__builtin_popcount" | "__builtin_popcountl" | "__builtin_popcountll" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| {
-                    let zeros = mk().method_call_expr(x, "count_ones", vec![] as Vec<Box<Expr>>);
+                    let zeros = mk().method_call_expr(x, "count_ones", vec![]);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
             }
@@ -272,11 +261,8 @@ impl<'c> Translation<'c> {
                             let fn_ctx = self.function_context.borrow();
                             let src = fn_ctx.get_va_list_arg_name();
 
-                            let call_expr = mk().method_call_expr(
-                                mk().ident_expr(src),
-                                "clone",
-                                vec![] as Vec<Box<Expr>>,
-                            );
+                            let call_expr =
+                                mk().method_call_expr(mk().ident_expr(src), "clone", vec![]);
                             let assign_expr = mk().assign_expr(dst.to_expr(), call_expr);
                             let stmt = mk().semi_stmt(assign_expr);
 
@@ -295,8 +281,7 @@ impl<'c> Translation<'c> {
                         let dst = self.convert_expr(ctx.expect_valistimpl().used(), args[0])?;
                         let src = self.convert_expr(ctx.expect_valistimpl().used(), args[1])?;
 
-                        let call_expr =
-                            mk().method_call_expr(src.to_expr(), "clone", vec![] as Vec<Box<Expr>>);
+                        let call_expr = mk().method_call_expr(src.to_expr(), "clone", vec![]);
                         let assign_expr = mk().assign_expr(dst.to_expr(), call_expr);
                         let stmt = mk().semi_stmt(assign_expr);
 
@@ -326,14 +311,10 @@ impl<'c> Translation<'c> {
                     Ok(WithStmts::new(
                         vec![mk().local_stmt(Box::new(mk().local(
                             mk().mutbl().ident_pat(&alloca_name),
-                            None as Option<Box<Type>>,
+                            None,
                             Some(vec_expr(zero_elem, cast_int(count, "usize", false))),
                         )))],
-                        mk().method_call_expr(
-                            mk().ident_expr(&alloca_name),
-                            "as_mut_ptr",
-                            vec![] as Vec<Box<Expr>>,
-                        ),
+                        mk().method_call_expr(mk().ident_expr(&alloca_name), "as_mut_ptr", vec![]),
                     ))
                 })
             }
@@ -540,7 +521,7 @@ impl<'c> Translation<'c> {
                 self.use_feature("core_intrinsics");
 
                 let atomic_func = mk().abs_path_expr(vec!["core", "intrinsics", "atomic_fence"]);
-                let call_expr = mk().call_expr(atomic_func, vec![] as Vec<Box<Expr>>);
+                let call_expr = mk().call_expr(atomic_func, vec![]);
                 self.convert_side_effects_expr(
                     ctx,
                     WithStmts::new_val(call_expr),
@@ -599,7 +580,7 @@ impl<'c> Translation<'c> {
             "__builtin_unwind_init" => Ok(WithStmts::new_val(self.panic_or_err("no value"))),
             "__builtin_unreachable" => Ok(WithStmts::new(
                 vec![mk().semi_stmt(mk().mac_expr(mk().mac(
-                    vec!["unreachable"],
+                    mk().path(vec!["unreachable"]),
                     vec![],
                     MacroDelimiter::Paren(Default::default()),
                 )))],
@@ -646,16 +627,9 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let args = self.convert_exprs(ctx.used(), args)?;
         args.and_then(|args| {
-            let mut args = args.into_iter();
-            let a = args
-                .next()
-                .ok_or("Missing first argument to convert_overflow_arith")?;
-            let b = args
-                .next()
-                .ok_or("Missing second argument to convert_overflow_arith")?;
-            let c = args
-                .next()
-                .ok_or("Missing third argument to convert_overflow_arith")?;
+            let [a, b, c]: [_; 3] = args
+                .try_into()
+                .map_err(|_| "`convert_overflow_arith` must have exactly 3 arguments")?;
             let overflowing = mk().method_call_expr(a, method_name, vec![b]);
             let sum_name = self.renamer.borrow_mut().fresh();
             let over_name = self.renamer.borrow_mut().fresh();
@@ -664,7 +638,7 @@ impl<'c> Translation<'c> {
                     mk().ident_pat(&sum_name),
                     mk().ident_pat(over_name.clone()),
                 ]),
-                None as Option<Box<Type>>,
+                None,
                 Some(overflowing),
             )));
 
@@ -691,16 +665,9 @@ impl<'c> Translation<'c> {
         let mem = mk().path_expr(vec!["libc", name]);
         let args = self.convert_exprs(ctx.used(), args)?;
         args.and_then(|args| {
-            let mut args = args.into_iter();
-            let dst = args
-                .next()
-                .ok_or("Missing dst argument to convert_libc_fns")?;
-            let c = args
-                .next()
-                .ok_or("Missing c argument to convert_libc_fns")?;
-            let len = args
-                .next()
-                .ok_or("Missing len argument to convert_libc_fns")?;
+            let [dst, c, len]: [_; 3] = args
+                .try_into()
+                .map_err(|_| "`convert_libc_fns` must have exactly 3 arguments: [dst, c, len]")?;
             let size_t = mk().path_ty(vec!["libc", "size_t"]);
             let len1 = mk().cast_expr(len, size_t);
             let mem_expr = mk().call_expr(mem, vec![dst, c, len1]);

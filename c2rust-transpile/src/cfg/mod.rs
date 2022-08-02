@@ -18,7 +18,7 @@
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::CLabelId;
 use crate::diagnostics::TranslationResult;
-use crate::rust_ast::{SpanExt, DUMMY_SP};
+use crate::rust_ast::SpanExt;
 use crate::translator::assembly::ConvertAsmArgs;
 use c2rust_ast_printer::pprust;
 use proc_macro2::Span;
@@ -279,7 +279,7 @@ impl<L, S> BasicBlock<L, S> {
             terminator,
             live: IndexSet::new(),
             defined: IndexSet::new(),
-            span: DUMMY_SP,
+            span: Span::call_site(),
         }
     }
 
@@ -318,7 +318,7 @@ pub enum GenTerminator<Lbl> {
     /// Multi-way branch. The patterns are expected to match the type of the expression.
     Switch {
         expr: Box<Expr>,
-        cases: Vec<(Box<Pat>, Lbl)>, // TODO: support ranges of expressions
+        cases: Vec<(Pat, Lbl)>, // TODO: support ranges of expressions
     },
 }
 
@@ -429,7 +429,7 @@ impl GenTerminator<StructureLabel<StmtOrDecl>> {
 /// been seen which translating the body of the switch.
 #[derive(Clone, Debug, Default)]
 pub struct SwitchCases {
-    cases: Vec<(Box<Pat>, Label)>,
+    cases: Vec<(Pat, Label)>,
     default: Option<Label>,
 }
 
@@ -602,9 +602,8 @@ impl Cfg<Label, StmtOrDecl> {
                             .push(StmtOrDecl::Stmt(mk().semi_stmt(mk().return_expr(ret_expr))));
                     }
                     ImplicitReturnType::Void => {
-                        wip.body.push(StmtOrDecl::Stmt(
-                            mk().semi_stmt(mk().return_expr(None as Option<Box<Expr>>)),
-                        ));
+                        wip.body
+                            .push(StmtOrDecl::Stmt(mk().semi_stmt(mk().return_expr(None))));
                     }
                     ImplicitReturnType::NoImplicitReturnType => {
                         // NOTE: emitting `ret_expr` is not necessarily an error. For instance,
@@ -1293,7 +1292,7 @@ impl CfgBuilder {
             body: vec![],
             defined: IndexSet::new(),
             live: self.current_variables(),
-            span: DUMMY_SP,
+            span: Span::call_site(),
         }
     }
 
@@ -1389,7 +1388,7 @@ impl CfgBuilder {
 
         wip.span = translator
             .get_span(SomeId::Stmt(stmt_id))
-            .unwrap_or(DUMMY_SP);
+            .unwrap_or_else(Span::call_site);
 
         let out_wip: TranslationResult<Option<WipBlock>> = match translator
             .ast_context
@@ -1952,7 +1951,7 @@ impl CfgBuilder {
                 wip.extend(translator.convert_asm(
                     ctx,
                     ConvertAsmArgs {
-                        span: DUMMY_SP,
+                        span: Span::call_site(),
                         is_volatile,
                         asm,
                         inputs,
@@ -2028,10 +2027,10 @@ impl CfgBuilder {
                 false,
             ),
 
-            Some(ImplicitReturnType::Void) => (mk().return_expr(None as Option<Box<Expr>>), false),
+            Some(ImplicitReturnType::Void) => (mk().return_expr(None), false),
 
             _ => (
-                mk().break_expr_value(Some(brk_lbl.pretty_print()), None as Option<Box<Expr>>),
+                mk().break_expr_value(Some(brk_lbl.pretty_print()), None),
                 true,
             ),
         };

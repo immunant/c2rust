@@ -12,8 +12,16 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 
-mod instrument_memory;
-use instrument_memory::InstrumentMemoryOps;
+mod arg;
+mod hooks;
+mod instrument;
+mod into_operand;
+mod mir_utils;
+mod point;
+mod runtime_conversions;
+mod util;
+
+use instrument::Instrumenter;
 
 use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
 use cargo::core::{PackageId, Target, Verbosity, Workspace};
@@ -48,7 +56,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 lazy_static! {
-    static ref INSTRUMENTER: InstrumentMemoryOps = InstrumentMemoryOps::new();
+    /// TODO(kkysen) can be made non-lazy when `Mutex::new` is `const` in rust 1.63
+    static ref INSTRUMENTER: Instrumenter = Instrumenter::new();
 }
 
 struct NullCallbacks;
@@ -142,11 +151,11 @@ pub fn instrument(
     let cwd = env::current_dir().unwrap();
 
     env::set_current_dir(rt_ws.root()).unwrap();
-    let _ = ops::compile_with_exec(&rt_ws, &compile_opts, &exec_dyn);
+    ops::compile_with_exec(&rt_ws, &compile_opts, &exec_dyn)?;
 
     exec.building_rt.store(false, Ordering::Relaxed);
     env::set_current_dir(cwd).unwrap();
-    let _ = ops::compile_with_exec(&ws, &compile_opts, &exec_dyn);
+    ops::compile_with_exec(&ws, &compile_opts, &exec_dyn)?;
 
     INSTRUMENTER.finalize(metadata_file_path)
 }

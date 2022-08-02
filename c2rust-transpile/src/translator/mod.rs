@@ -21,7 +21,7 @@ use crate::diagnostics::TranslationResult;
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::set_span::SetSpan;
-use crate::rust_ast::{pos_to_span, SpanExt, DUMMY_SP};
+use crate::rust_ast::{pos_to_span, SpanExt};
 use crate::translator::atomics::ConvertAtomicArgs;
 use crate::translator::named_references::NamedReference;
 use crate::translator::operators::ConvertBinaryExprArgs;
@@ -369,12 +369,12 @@ fn vec_expr(val: Box<Expr>, count: Box<Expr>) -> Box<Expr> {
     mk().call_expr(from_elem, vec![val, count])
 }
 
-pub fn stmts_block(mut stmts: Vec<Stmt>) -> Box<Block> {
+pub fn stmts_block(mut stmts: Vec<Stmt>) -> Block {
     match stmts.pop() {
         None => {}
         Some(Stmt::Expr(Expr::Block(ExprBlock {
             block, label: None, ..
-        }))) if stmts.is_empty() => return Box::new(block),
+        }))) if stmts.is_empty() => return block,
         Some(mut s) => {
             if let Stmt::Expr(e) = s {
                 s = Stmt::Semi(e, Default::default());
@@ -1038,7 +1038,7 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
         for c in t.extern_crates.borrow().iter() {
             out_items.push(mk().use_simple_item(
                 mk().abs_path(vec![ExternCrateDetails::from(*c).ident]),
-                None as Option<Ident>,
+                None::<Ident>,
             ))
         }
     } else {
@@ -1333,7 +1333,7 @@ impl<'c> Translation<'c> {
             .into_iter()
             .collect::<TokenStream>();
         mk().mac_expr(mk().mac(
-            vec![macro_name],
+            mk().path(vec![macro_name]),
             macro_msg,
             MacroDelimiter::Paren(Default::default()),
         ))
@@ -1532,7 +1532,7 @@ impl<'c> Translation<'c> {
             .pick_name("run_static_initializers");
         let fn_ty = ReturnType::Default;
         let fn_decl = mk().fn_decl(fn_name.clone(), vec![], None, fn_ty.clone());
-        let fn_bare_decl = Box::new((vec![], None, fn_ty));
+        let fn_bare_decl = (vec![], None, fn_ty);
         let fn_block = mk().block(sectioned_static_initializers);
         let fn_item = mk().unsafe_().extern_("C").fn_item(fn_decl, fn_block);
 
@@ -1587,7 +1587,9 @@ impl<'c> Translation<'c> {
             .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))?;
 
-        let mut span = self.get_span(SomeId::Decl(decl_id)).unwrap_or(DUMMY_SP);
+        let mut span = self
+            .get_span(SomeId::Decl(decl_id))
+            .unwrap_or_else(Span::call_site);
 
         use CDeclKind::*;
         match decl.kind {
@@ -2517,7 +2519,7 @@ impl<'c> Translation<'c> {
             let local = mk().local(
                 mk().mutbl().ident_pat(current_block_ident),
                 Some(current_block_ty),
-                None as Option<Box<Expr>>,
+                None,
             );
             stmts.push(mk().local_stmt(Box::new(local)))
         }
@@ -2568,12 +2570,12 @@ impl<'c> Translation<'c> {
                 Ok(val.map(|e| {
                     if self.ast_context.is_function_pointer(ptr_type) {
                         if negated {
-                            mk().method_call_expr(e, "is_some", vec![] as Vec<Box<Expr>>)
+                            mk().method_call_expr(e, "is_some", vec![])
                         } else {
-                            mk().method_call_expr(e, "is_none", vec![] as Vec<Box<Expr>>)
+                            mk().method_call_expr(e, "is_none", vec![])
                         }
                     } else {
-                        let is_null = mk().method_call_expr(e, "is_null", vec![] as Vec<Box<Expr>>);
+                        let is_null = mk().method_call_expr(e, "is_null", vec![]);
                         if negated {
                             mk().unary_expr(UnOp::Not(Default::default()), is_null)
                         } else {
@@ -2681,7 +2683,7 @@ impl<'c> Translation<'c> {
                     .borrow_mut()
                     .add_comments(&[comment])
                     .map(pos_to_span)
-                    .unwrap_or(DUMMY_SP);
+                    .unwrap_or_else(Span::call_site);
                 let static_item = mk()
                     .span(span)
                     .mutbl()
@@ -2726,7 +2728,7 @@ impl<'c> Translation<'c> {
                         let path = vec!["core", "ffi", "VaListImpl"];
                         mk().path_ty(mk().abs_path(path))
                     };
-                    let local_mut = mk().local::<_, _, Box<Expr>>(pat_mut, Some(ty), None);
+                    let local_mut = mk().local(pat_mut, Some(ty), None);
 
                     return Ok(cfg::DeclStmtInfo::new(
                         vec![],                                     // decl
@@ -3129,7 +3131,7 @@ impl<'c> Translation<'c> {
 
                         let local = mk().local(
                             mk().ident_pat(name),
-                            None as Option<Box<Type>>,
+                            None,
                             Some(mk().cast_expr(expr, mk().path_ty(vec!["usize"]))),
                         );
 
@@ -3178,7 +3180,7 @@ impl<'c> Translation<'c> {
             mk().path_segment("mem"),
             mk().path_segment_with_args(name, params),
         ];
-        let call = mk().call_expr(mk().abs_path_expr(path), vec![] as Vec<Box<Expr>>);
+        let call = mk().call_expr(mk().abs_path_expr(path), vec![]);
 
         Ok(WithStmts::new_val(call))
     }
@@ -3201,7 +3203,7 @@ impl<'c> Translation<'c> {
             path.push(mk().path_segment("mem"));
             path.push(mk().path_segment_with_args("align_of", mk().angle_bracketed_args(tys)));
         }
-        let call = mk().call_expr(mk().abs_path_expr(path), vec![] as Vec<Box<Expr>>);
+        let call = mk().call_expr(mk().abs_path_expr(path), vec![]);
         Ok(WithStmts::new_val(call))
     }
 
@@ -3364,7 +3366,7 @@ impl<'c> Translation<'c> {
                 // Most references to the va_list should refer to the VaList
                 // type, not VaListImpl
                 if !ctx.expecting_valistimpl && self.ast_context.is_va_list(qual_ty.ctype) {
-                    val = mk().method_call_expr(val, "as_va_list", Vec::<Box<Expr>>::new());
+                    val = mk().method_call_expr(val, "as_va_list", Vec::new());
                 }
 
                 // If we are referring to a function and need its address, we
@@ -3398,7 +3400,7 @@ impl<'c> Translation<'c> {
                 if let CTypeKind::VariableArray(..) =
                     self.ast_context.resolve_type(qual_ty.ctype).kind
                 {
-                    val = mk().method_call_expr(val, "as_mut_ptr", vec![] as Vec<Box<Expr>>);
+                    val = mk().method_call_expr(val, "as_mut_ptr", vec![]);
                 }
 
                 let mut res = WithStmts::new_val(val);
@@ -3538,23 +3540,23 @@ impl<'c> Translation<'c> {
 
                 if ctx.is_unused() {
                     let is_unsafe = lhs.is_unsafe() || rhs.is_unsafe();
-                    let then: Box<Block> = mk().block(lhs.into_stmts());
-                    let els: Box<Expr> = mk().block_expr(mk().block(rhs.into_stmts()));
+                    let then = mk().block(lhs.into_stmts());
+                    let else_ = mk().block_expr(mk().block(rhs.into_stmts()));
 
                     let mut res = cond.and_then(|c| -> TranslationResult<_> {
                         Ok(WithStmts::new(
-                            vec![mk().semi_stmt(mk().ifte_expr(c, then, Some(els)))],
+                            vec![mk().semi_stmt(mk().ifte_expr(c, then, Some(else_)))],
                             self.panic_or_err("Conditional expression is not supposed to be used"),
                         ))
                     })?;
                     res.merge_unsafe(is_unsafe);
                     Ok(res)
                 } else {
-                    let then: Box<Block> = lhs.to_block();
-                    let els: Box<Expr> = rhs.to_expr();
+                    let then = lhs.to_block();
+                    let else_ = rhs.to_expr();
 
                     Ok(cond.map(|c| {
-                        let ifte_expr = mk().ifte_expr(c, then, Some(els));
+                        let ifte_expr = mk().ifte_expr(c, then, Some(else_));
 
                         if ctx.ternary_needs_parens {
                             mk().paren_expr(ifte_expr)
@@ -3576,7 +3578,7 @@ impl<'c> Translation<'c> {
                             vec![mk().semi_stmt(mk().ifte_expr(
                                 val,
                                 mk().block(rhs.into_stmts()),
-                                None as Option<Box<Expr>>,
+                                None,
                             ))],
                             self.panic_or_err(
                                 "Binary conditional expression is not supposed to be used",
@@ -3783,12 +3785,11 @@ impl<'c> Translation<'c> {
                                 Type::Tuple(TypeTuple { elems: ref v, .. }) if v.is_empty() => ReturnType::Default,
                                 _ => ReturnType::Type(Default::default(), ret_ty),
                             };
-                            let bare_ty: (Vec<BareFnArg>, Option<Variadic>, ReturnType) = (
+                            let bare_ty = (
                                 vec![mk().bare_arg(mk().infer_ty(), None::<Box<Ident>>); args.len()],
-                                None,
+                                None::<Variadic>,
                                 ret_ty
                             );
-                            let bare_ty = Box::new(bare_ty);
                             mk().barefn_ty(bare_ty)
                         };
                         match fn_ty {
@@ -3884,9 +3885,7 @@ impl<'c> Translation<'c> {
                         // to and will have to be handled elsewhere, IE `bf.set_a(1)`
                         if !ctx.is_bitfield_write {
                             // Cases A and B above
-                            val = val.map(|v| {
-                                mk().method_call_expr(v, field_name, vec![] as Vec<Box<Expr>>)
-                            });
+                            val = val.map(|v| mk().method_call_expr(v, field_name, vec![]));
                         }
                     } else {
                         val = val.map(|v| mk().field_expr(v, field_name));
@@ -4069,7 +4068,7 @@ impl<'c> Translation<'c> {
 
         let ts: TokenStream = syn::parse_str(args).ok()?;
         Some(WithStmts::new_val(mk().mac_expr(mk().mac(
-            ident,
+            mk().path(ident),
             ts,
             MacroDelimiter::Paren(Default::default()),
         ))))
@@ -4395,9 +4394,7 @@ impl<'c> Translation<'c> {
                                 "as_mut_ptr"
                             };
 
-                            let call = val.map(|x| {
-                                mk().method_call_expr(x, method, vec![] as Vec<Box<Expr>>)
-                            });
+                            let call = val.map(|x| mk().method_call_expr(x, method, vec![]));
 
                             // Static arrays can now use as_ptr. Can also cast that const ptr to a
                             // mutable pointer as we do here:
@@ -4509,9 +4506,9 @@ impl<'c> Translation<'c> {
         };
 
         Ok(val.map(|val| {
-            let to_call = mk().method_call_expr(val, to_method_name, Vec::<Box<Expr>>::new());
+            let to_call = mk().method_call_expr(val, to_method_name, Vec::new());
 
-            mk().method_call_expr(to_call, "unwrap", Vec::<Box<Expr>>::new())
+            mk().method_call_expr(to_call, "unwrap", Vec::new())
         }))
     }
 
@@ -4578,8 +4575,8 @@ impl<'c> Translation<'c> {
         if self.ast_context.is_va_list(resolved_ty_id) {
             // generate MaybeUninit::uninit().assume_init()
             let path = vec!["core", "mem", "MaybeUninit", "uninit"];
-            let call = mk().call_expr(mk().abs_path_expr(path), vec![] as Vec<Box<Expr>>);
-            let call = mk().method_call_expr(call, "assume_init", vec![] as Vec<Box<Expr>>);
+            let call = mk().call_expr(mk().abs_path_expr(path), vec![]);
+            let call = mk().method_call_expr(call, "assume_init", vec![]);
             return Ok(WithStmts::new_val(call));
         }
 
@@ -4608,9 +4605,7 @@ impl<'c> Translation<'c> {
                 .map(|elt| mk().repeat_expr(elt, sz)))
         } else if let &CTypeKind::IncompleteArray(_) = resolved_ty {
             // Incomplete arrays are translated to zero length arrays
-            Ok(WithStmts::new_val(
-                mk().array_expr(vec![] as Vec<Box<Expr>>),
-            ))
+            Ok(WithStmts::new_val(mk().array_expr(vec![])))
         } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
             self.zero_initializer(decl_id, ty_id, is_static)
         } else if let &CTypeKind::VariableArray(elt, _) = resolved_ty {
@@ -4775,12 +4770,12 @@ impl<'c> Translation<'c> {
 
         if self.ast_context.is_function_pointer(ty_id) {
             if target {
-                mk().method_call_expr(val, "is_some", vec![] as Vec<Box<Expr>>)
+                mk().method_call_expr(val, "is_some", vec![])
             } else {
-                mk().method_call_expr(val, "is_none", vec![] as Vec<Box<Expr>>)
+                mk().method_call_expr(val, "is_none", vec![])
             }
         } else if ty.is_pointer() {
-            let mut res = mk().method_call_expr(val, "is_null", vec![] as Vec<Box<Expr>>);
+            let mut res = mk().method_call_expr(val, "is_null", vec![]);
             if target {
                 res = mk().unary_expr(UnOp::Not(Default::default()), res)
             }
