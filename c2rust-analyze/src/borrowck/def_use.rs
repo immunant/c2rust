@@ -198,10 +198,13 @@ impl<'tcx> LoanInvalidatedAtVisitor<'tcx, '_> {
             context,
             categorize(context)
         );
-        let invalidate = !matches!(
-            (borrow_kind, categorize(context)),
-            (BorrowKind::Shared, Some(DefUse::Use)) | (_, None)
-        );
+        // `match` is easier to read.
+        #[allow(clippy::match_like_matches_macro)]
+        let invalidate = match (borrow_kind, categorize(context)) {
+            (BorrowKind::Shared, Some(DefUse::Use)) => false,
+            (_, None) => false,
+            _ => true,
+        };
         if !invalidate {
             return;
         }
