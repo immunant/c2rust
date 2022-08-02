@@ -117,7 +117,7 @@ impl DataflowConstraints {
         let mut i = 0;
         loop {
             if i > xs.len() + self.constraints.len() {
-                return Err(format!("infinite loop in dataflow edges"));
+                return Err("infinite loop in dataflow edges".to_string());
             }
             i += 1;
 

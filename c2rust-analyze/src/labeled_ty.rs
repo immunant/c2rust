@@ -150,7 +150,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Tuple(ref elems) => {
+            Tuple(elems) => {
                 let args = elems
                     .types()
                     .map(|ty| self.label(ty, f))
@@ -195,11 +195,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
             }
         }
 
-        self.mk(
-            lty.ty,
-            self.subst_slice(lty.args, substs),
-            lty.label.clone(),
-        )
+        self.mk(lty.ty, self.subst_slice(lty.args, substs), lty.label)
     }
 
     /// Substitute arguments in multiple labeled types.
