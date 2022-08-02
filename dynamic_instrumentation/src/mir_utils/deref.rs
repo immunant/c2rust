@@ -3,13 +3,6 @@ use rustc_middle::{
     ty::TyCtxt,
 };
 
-pub fn has_outer_deref(p: &Place) -> bool {
-    matches!(
-        p.iter_projections().last(),
-        Some((_, ProjectionElem::Deref))
-    )
-}
-
 /// Get the inner-most dereferenced [`Place`].
 pub fn strip_all_deref<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
     let mut base_dest = p.as_ref();
@@ -27,18 +20,33 @@ pub fn strip_all_deref<'tcx>(p: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> 
     }
 }
 
-/// Strip the initital [`Deref`](ProjectionElem::Deref)
-/// from a [`projection`](PlaceRef::projection) sequence.
-pub fn remove_outer_deref<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
+fn try_remove_outer_deref_as_ref<'tcx>(p: &Place<'tcx>) -> Option<PlaceRef<'tcx>> {
     // Remove outer deref if present
     match p.as_ref() {
         PlaceRef {
             local,
-            projection: &[ref base @ .., ProjectionElem::Deref],
-        } => Place {
-            local,
-            projection: tcx.intern_place_elems(base),
-        },
-        _ => p,
+            projection: &[ref projection @ .., ProjectionElem::Deref],
+        } => Some(PlaceRef { local, projection }),
+        _ => None,
     }
+}
+
+pub fn has_outer_deref(p: &Place) -> bool {
+    try_remove_outer_deref_as_ref(p).is_some()
+}
+
+/// Try to strip the initital [`Deref`](ProjectionElem::Deref)
+/// from a [`projection`](PlaceRef::projection) sequence.
+pub fn try_remove_outer_deref<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Place<'tcx>> {
+    try_remove_outer_deref_as_ref(&p).map(|PlaceRef { local, projection }| Place {
+        local,
+        projection: tcx.intern_place_elems(projection),
+    })
+}
+
+/// Strip the initital [`Deref`](ProjectionElem::Deref)
+/// from a [`projection`](PlaceRef::projection) sequence
+/// if there is one.
+pub fn remove_outer_deref<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx> {
+    try_remove_outer_deref(p, tcx).unwrap_or(p)
 }
