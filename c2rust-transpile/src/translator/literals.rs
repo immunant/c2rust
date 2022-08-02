@@ -216,7 +216,7 @@ impl<'c> Translation<'c> {
                             iter::repeat(self.implicit_default_expr(ty, ctx.is_static))
                                 .take(n - ids.len()),
                         )
-                        .collect::<TranslationResult<WithStmts<Vec<Box<Expr>>>>>()?
+                        .collect::<TranslationResult<WithStmts<_>>>()?
                         .map(|vals| mk().array_expr(vals)))
                 }
             }

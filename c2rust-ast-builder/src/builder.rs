@@ -883,22 +883,22 @@ impl Builder {
         Box::new(Expr::Unsafe(unsafe_blk))
     }
 
-    pub fn block_expr(self, blk: Box<Block>) -> Box<Expr> {
+    pub fn block_expr(self, block: Block) -> Box<Expr> {
         Box::new(Expr::Block(ExprBlock {
             attrs: self.attrs,
-            block: *blk,
+            block,
             label: None,
         }))
     }
 
-    pub fn labelled_block_expr<L>(self, blk: Box<Block>, lbl: L) -> Box<Expr>
+    pub fn labelled_block_expr<L>(self, block: Block, lbl: L) -> Box<Expr>
     where
         L: Make<Label>,
     {
         let lbl = lbl.make(&self);
         Box::new(Expr::Block(ExprBlock {
             attrs: self.attrs,
-            block: *blk,
+            block,
             label: Some(lbl),
         }))
     }
@@ -1087,11 +1087,11 @@ impl Builder {
         }))
     }
 
-    pub fn arm(self, pat: Box<Pat>, guard: Option<Box<Expr>>, body: Box<Expr>) -> Arm {
+    pub fn arm(self, pat: Pat, guard: Option<Box<Expr>>, body: Box<Expr>) -> Arm {
         let guard = guard.map(|g| (Token![if](self.span), g));
         Arm {
             attrs: self.attrs,
-            pat: *pat,
+            pat,
             guard,
             body,
             fat_arrow_token: Token![=>](self.span),
@@ -1127,10 +1127,10 @@ impl Builder {
     pub fn ifte_expr(
         self,
         cond: Box<Expr>,
-        then_case: Box<Block>,
-        else_case: Option<Box<Expr>>,
+        then_branch: Block,
+        else_branch: Option<Box<Expr>>,
     ) -> Box<Expr> {
-        let else_case = else_case.map(|e| {
+        let else_branch = else_branch.map(|e| {
             // The else branch in libsyntax must be one of these three cases,
             // otherwise we have to manually add the block around the else expression
             (
@@ -1151,12 +1151,12 @@ impl Builder {
             attrs: self.attrs,
             if_token: Token![if](self.span),
             cond,
-            then_branch: *then_case,
-            else_branch: else_case,
+            then_branch,
+            else_branch,
         }))
     }
 
-    pub fn while_expr<I>(self, cond: Box<Expr>, body: Box<Block>, label: Option<I>) -> Box<Expr>
+    pub fn while_expr<I>(self, cond: Box<Expr>, body: Block, label: Option<I>) -> Box<Expr>
     where
         I: Make<Ident>,
     {
@@ -1172,12 +1172,12 @@ impl Builder {
             attrs: self.attrs,
             while_token: Token![while](self.span),
             cond,
-            body: *body,
+            body,
             label,
         }))
     }
 
-    pub fn loop_expr<I>(self, body: Box<Block>, label: Option<I>) -> Box<Expr>
+    pub fn loop_expr<I>(self, body: Block, label: Option<I>) -> Box<Expr>
     where
         I: Make<Ident>,
     {
@@ -1192,18 +1192,12 @@ impl Builder {
         Box::new(Expr::Loop(ExprLoop {
             attrs: self.attrs,
             loop_token: Token![loop](self.span),
-            body: *body,
+            body,
             label,
         }))
     }
 
-    pub fn for_expr<I>(
-        self,
-        pat: Box<Pat>,
-        expr: Box<Expr>,
-        body: Box<Block>,
-        label: Option<I>,
-    ) -> Box<Expr>
+    pub fn for_expr<I>(self, pat: Pat, expr: Box<Expr>, body: Block, label: Option<I>) -> Box<Expr>
     where
         I: Make<Ident>,
     {
@@ -1219,35 +1213,35 @@ impl Builder {
             attrs: self.attrs,
             for_token: Token![for](self.span),
             in_token: Token![in](self.span),
-            pat: *pat,
+            pat,
             expr,
-            body: *body,
+            body,
             label,
         }))
     }
 
     // Patterns
 
-    pub fn ident_pat<I>(self, name: I) -> Box<Pat>
+    pub fn ident_pat<I>(self, name: I) -> Pat
     where
         I: Make<Ident>,
     {
         let name = name.make(&self);
-        Box::new(Pat::Ident(PatIdent {
+        Pat::Ident(PatIdent {
             attrs: self.attrs,
             mutability: self.mutbl.to_token(),
             by_ref: None,
             ident: name,
             subpat: None,
-        }))
+        })
     }
 
-    pub fn tuple_pat(self, pats: Vec<Box<Pat>>) -> Box<Pat> {
-        Box::new(Pat::Tuple(PatTuple {
+    pub fn tuple_pat(self, pats: Vec<Pat>) -> Pat {
+        Pat::Tuple(PatTuple {
             attrs: self.attrs,
             paren_token: token::Paren(self.span),
-            elems: punct_box(pats),
-        }))
+            elems: punct(pats),
+        })
     }
 
     pub fn qpath_pat<Pa>(self, qself: Option<QSelf>, path: Pa) -> Box<Pat>
@@ -1262,53 +1256,53 @@ impl Builder {
         }))
     }
 
-    pub fn wild_pat(self) -> Box<Pat> {
-        Box::new(Pat::Wild(PatWild {
+    pub fn wild_pat(self) -> Pat {
+        Pat::Wild(PatWild {
             attrs: self.attrs,
             underscore_token: Token![_](self.span),
-        }))
+        })
     }
 
-    pub fn lit_pat(self, lit: Box<Expr>) -> Box<Pat> {
-        Box::new(Pat::Lit(PatLit {
+    pub fn lit_pat(self, lit: Box<Expr>) -> Pat {
+        Pat::Lit(PatLit {
             attrs: self.attrs,
             expr: lit,
-        }))
+        })
     }
 
-    pub fn mac_pat(self, mac: Macro) -> Box<Pat> {
-        Box::new(Pat::Macro(PatMacro {
+    pub fn mac_pat(self, mac: Macro) -> Pat {
+        Pat::Macro(PatMacro {
             attrs: self.attrs,
             mac,
-        }))
+        })
     }
 
-    pub fn ident_ref_pat<I>(self, name: I) -> Box<Pat>
+    pub fn ident_ref_pat<I>(self, name: I) -> Pat
     where
         I: Make<Ident>,
     {
         let name = name.make(&self);
-        Box::new(Pat::Ident(PatIdent {
+        Pat::Ident(PatIdent {
             attrs: self.attrs,
             by_ref: Some(Token![ref](self.span)),
             mutability: self.mutbl.to_token(),
             ident: name,
             subpat: None,
-        }))
+        })
     }
 
-    pub fn or_pat(self, pats: Vec<Box<Pat>>) -> Box<Pat> {
-        Box::new(Pat::Or(PatOr {
+    pub fn or_pat(self, pats: Vec<Pat>) -> Pat {
+        Pat::Or(PatOr {
             attrs: self.attrs,
             leading_vert: None, // Untested
-            cases: punct_box(pats),
-        }))
+            cases: punct(pats),
+        })
     }
 
     // Types
 
-    pub fn barefn_ty(self, decl: Box<BareFnTyParts>) -> Box<Type> {
-        let (inputs, variadic, output) = *decl;
+    pub fn barefn_ty(self, decl: BareFnTyParts) -> Box<Type> {
+        let (inputs, variadic, output) = decl;
         let abi = self.get_abi_opt();
 
         let barefn = TypeBareFn {
@@ -1490,7 +1484,7 @@ impl Builder {
         }))
     }
 
-    pub fn fn_item<S>(self, sig: S, block: Box<Block>) -> Box<Item>
+    pub fn fn_item<S>(self, sig: S, block: Block) -> Box<Item>
     where
         S: Make<Signature>,
     {
@@ -1499,7 +1493,7 @@ impl Builder {
             attrs: self.attrs,
             vis: self.vis,
             sig,
-            block,
+            block: Box::new(block),
         }))
     }
 
@@ -1947,11 +1941,11 @@ impl Builder {
         }
     }
 
-    pub fn block(self, stmts: Vec<Stmt>) -> Box<Block> {
-        Box::new(Block {
+    pub fn block(self, stmts: Vec<Stmt>) -> Block {
+        Block {
             stmts,
             brace_token: token::Brace(self.span),
-        })
+        }
     }
 
     pub fn label<L>(self, lbl: L) -> Label
@@ -1986,11 +1980,11 @@ impl Builder {
         }
     }
 
-    pub fn arg(self, ty: Box<Type>, pat: Box<Pat>) -> FnArg {
+    pub fn arg(self, ty: Box<Type>, pat: Pat) -> FnArg {
         FnArg::Typed(PatType {
             attrs: Vec::new(),
             ty,
-            pat,
+            pat: Box::new(pat),
             colon_token: Token![:](self.span),
         })
     }
@@ -2160,17 +2154,17 @@ impl Builder {
     }
 
     /// Create a local variable
-    pub fn local(self, pat: Box<Pat>, ty: Option<Box<Type>>, init: Option<Box<Expr>>) -> Local {
+    pub fn local(self, pat: Pat, ty: Option<Box<Type>>, init: Option<Box<Expr>>) -> Local {
         let init = init.map(|x| (Default::default(), x));
         let pat = if let Some(ty) = ty {
             Pat::Type(PatType {
                 attrs: vec![],
-                pat,
+                pat: Box::new(pat),
                 colon_token: Token![:](self.span),
                 ty,
             })
         } else {
-            *pat
+            pat
         };
         Local {
             attrs: self.attrs,
@@ -2226,10 +2220,10 @@ impl Builder {
         self,
         capture: CaptureBy,
         mov: Movability,
-        decl: Box<FnDecl>,
+        decl: FnDecl,
         body: Box<Expr>,
     ) -> Box<Expr> {
-        let (_name, inputs, _variadic, output) = *decl;
+        let (_name, inputs, _variadic, output) = decl;
         let inputs = inputs
             .into_iter()
             .map(|e| match e {

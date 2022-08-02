@@ -8,6 +8,7 @@ anyhow = "1.0"
 bincode = "1.0.1"
 c2rust-analysis-rt = { path = "../analysis/runtime"}
 indexmap = "1.8"
+itertools = "0.10"
 lazy_static = "1.4"
 log = "0.4"
 fs-err = "2"
