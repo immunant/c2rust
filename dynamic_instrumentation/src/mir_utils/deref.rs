@@ -31,10 +31,6 @@ fn try_remove_outer_deref_as_ref<'tcx>(p: &Place<'tcx>) -> Option<PlaceRef<'tcx>
     }
 }
 
-pub fn has_outer_deref(p: &Place) -> bool {
-    try_remove_outer_deref_as_ref(p).is_some()
-}
-
 /// Try to strip the initital [`Deref`](ProjectionElem::Deref)
 /// from a [`projection`](PlaceRef::projection) sequence.
 pub fn try_remove_outer_deref<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Place<'tcx>> {
