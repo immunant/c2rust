@@ -321,7 +321,6 @@ dependencies = [
  "c2rust-ast-exporter",
  "c2rust-ast-printer",
  "c2rust-bitfields",
- "clap 2.34.0",
  "colored 2.0.0",
  "dtoa",
  "failure",
