@@ -1,4 +1,5 @@
 use anyhow::Context;
+use apply::Apply;
 use c2rust_analysis_rt::metadata::Metadata;
 use c2rust_analysis_rt::mir_loc::{self, EventMetadata, Func, MirLoc, MirLocId, TransferKind};
 use c2rust_analysis_rt::HOOK_FUNCTIONS;
@@ -20,7 +21,7 @@ use std::sync::Mutex;
 
 use crate::arg::{ArgKind, InstrumentationArg};
 use crate::hooks::Hooks;
-use crate::mir_utils::{has_outer_deref, remove_outer_deref, strip_all_deref};
+use crate::mir_utils::{remove_outer_deref, strip_all_deref, try_remove_outer_deref};
 use crate::point::cast_ptr_to_usize;
 use crate::point::InstrumentationAdder;
 use crate::point::InstrumentationApplier;
@@ -229,25 +230,21 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 }
             }
             _ if !is_region_or_unsafe_ptr(value_ty) => {}
-            Rvalue::AddressOf(_, p)
-                if has_outer_deref(p)
-                    && place_ty(&remove_outer_deref(*p, self.tcx())).is_region_ptr() =>
-            {
-                let source = remove_outer_deref(*p, self.tcx());
-                // Instrument which local's address is taken
-                self.loc(location.successor_within_block(), copy_fn)
-                    .arg_var(dest)
-                    .source(&source)
-                    .dest(&dest)
-                    .debug_mir(location)
-                    .add_to(self);
-            }
             Rvalue::AddressOf(_, p) => {
                 // Instrument which local's address is taken
-                self.loc(location.successor_within_block(), addr_local_fn)
+                let source = try_remove_outer_deref(*p, self.tcx())
+                    .filter(|source| place_ty(source).is_region_ptr());
+                let func = match source {
+                    Some(_) => copy_fn,
+                    None => addr_local_fn,
+                };
+                self.loc(location.successor_within_block(), func)
                     .arg_var(dest)
-                    .arg_index_of(p.local)
-                    .source(p)
+                    .apply(|b| match source {
+                        Some(_) => b,
+                        None => b.arg_index_of(p.local),
+                    })
+                    .source(source.as_ref().unwrap_or(p))
                     .dest(&dest)
                     .debug_mir(location)
                     .add_to(self);
@@ -281,49 +278,30 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                     .debug_mir(location)
                     .add_to(self);
             }
-            Rvalue::Ref(_, bkind, p) if has_outer_deref(p) => {
+            Rvalue::Ref(_, bkind, p) => {
                 // this is a reborrow or field reference, i.e. _2 = &(*_1)
-                let source = remove_outer_deref(*p, self.tcx());
-                if let BorrowKind::Mut { .. } = bkind {
+                let source = try_remove_outer_deref(*p, self.tcx());
+                let loc = if let BorrowKind::Mut { .. } = bkind {
                     // Instrument which local's address is taken
-                    self.loc(location, copy_fn)
-                        .arg_addr_of(*p)
-                        .source(&source)
-                        .dest(&dest)
-                        .debug_mir(location)
-                        .add_to(self);
+                    location
                 } else {
                     // Instrument immutable borrows by tracing the reference itself
-                    self.loc(location.successor_within_block(), copy_fn)
-                        .arg_var(dest)
-                        .source(&source)
-                        .dest(&dest)
-                        .debug_mir(location)
-                        .add_to(self);
+                    location.successor_within_block()
                 };
-            }
-            Rvalue::Ref(_, bkind, p) if !p.is_indirect() => {
-                // this is a reborrow or field reference, i.e. _2 = &(*_1)
-                let source = remove_outer_deref(*p, self.tcx());
-                if let BorrowKind::Mut { .. } = bkind {
-                    // Instrument which local's address is taken
-                    self.loc(location, addr_local_fn)
-                        .arg_addr_of(*p)
-                        .arg_index_of(p.local)
-                        .source(&source)
-                        .dest(&dest)
-                        .debug_mir(location)
-                        .add_to(self);
-                } else {
-                    // Instrument immutable borrows by tracing the reference itself
-                    self.loc(location.successor_within_block(), addr_local_fn)
-                        .arg_var(dest)
-                        .arg_index_of(p.local)
-                        .source(&source)
-                        .dest(&dest)
-                        .debug_mir(location)
-                        .add_to(self);
+                let func = match source {
+                    Some(_) => copy_fn,
+                    None => addr_local_fn,
                 };
+                self.loc(loc, func)
+                    .arg_addr_of(*p)
+                    .apply(|b| match source {
+                        Some(_) => b,
+                        None => b.arg_index_of(p.local),
+                    })
+                    .source(source.as_ref().unwrap_or(p))
+                    .dest(&dest)
+                    .debug_mir(location)
+                    .add_to(self);
             }
             _ => (),
         }

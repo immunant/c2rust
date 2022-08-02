@@ -12,7 +12,7 @@ use rustc_span::def_id::DefId;
 
 use crate::{arg::InstrumentationArg, hooks::Hooks, util::Convert};
 
-pub use apply::InstrumentationApplier;
+pub use self::apply::InstrumentationApplier;
 pub use cast::cast_ptr_to_usize;
 
 pub struct InstrumentationPoint<'tcx> {
