@@ -161,7 +161,7 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
                 let args = args.iter().format(", ");
                 format!("{destination:?} = {func_name}({args:?})")
             }
-            _ => String::from(""),
+            _ => "".into(),
         }
     }
 

@@ -176,7 +176,7 @@ pub struct EventMetadata {
     /// Destination func [`DefPathHash`] of [`Event`](crate::events::Event).
     pub transfer_kind: TransferKind,
     /// Any string useful for debugging.
-    pub debug_info: String
+    pub debug_info: String,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
