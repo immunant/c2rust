@@ -198,6 +198,8 @@ impl<'tcx> LoanInvalidatedAtVisitor<'tcx, '_> {
             context,
             categorize(context)
         );
+        // `match` is easier to read.
+        #[allow(clippy::match_like_matches_macro)]
         let invalidate = match (borrow_kind, categorize(context)) {
             (BorrowKind::Shared, Some(DefUse::Use)) => false,
             (_, None) => false,
@@ -262,7 +264,7 @@ impl<'tcx> Visitor<'tcx> for LoanInvalidatedAtVisitor<'tcx, '_> {
             location
         );
 
-        let local_loans = self.loans.get(&local).map_or(&[] as &[_], |x| x);
+        let local_loans = self.loans.get(local).map_or(&[] as &[_], |x| x);
         for &(_path, loan, borrow_kind) in local_loans {
             // All paths rooted in this local overlap the local.
             self.access_loan_at_location(loan, borrow_kind, context, location);

@@ -1,8 +1,9 @@
 use c2rust_analysis_rt::mir_loc::{EventMetadata, TransferKind};
+use itertools::Itertools;
 use rustc_index::vec::Idx;
 use rustc_middle::{
     mir::{Body, Location, Place, TerminatorKind},
-    ty::TyCtxt,
+    ty::{self, TyCtxt},
 };
 use rustc_span::def_id::DefId;
 
@@ -139,33 +140,33 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
         self
     }
 
-    pub fn debug_mir(mut self, loc: Location) -> Self {
-        self.point.metadata.debug = {
-            let block = &self.body.basic_blocks()[loc.block];
-            if loc.statement_index == block.statements.len() {
-                match &block.terminator().kind {
-                    TerminatorKind::Call {
-                        args,
-                        destination,
-                        func,
-                        ..
-                    } if destination.is_some() => {
-                        let mut s = format!("{:?} = {:?}(", destination.unwrap().0, func);
-                        for (i, arg) in args.iter().enumerate() {
-                            if i > 0 {
-                                s.push_str(", ");
-                            }
-                            s.push_str(&format!("{:?}", arg));
-                        }
-                        s.push(')');
-                        s
-                    }
-                    _ => String::from(""),
-                }
-            } else {
-                format!("{:?}", block.statements[loc.statement_index])
+    fn debug_mir_to_string(&self, loc: Location) -> String {
+        let block = &self.body.basic_blocks()[loc.block];
+        if loc.statement_index != block.statements.len() {
+            return format!("{:?}", block.statements[loc.statement_index]);
+        }
+        match &block.terminator().kind {
+            TerminatorKind::Call {
+                args,
+                destination: Some((destination, _)),
+                func,
+                ..
+            } => {
+                let func_name = if let &ty::FnDef(def_id, _) = func.ty(self.body, self.tcx).kind() {
+                    let name = self.tcx.item_name(def_id);
+                    format!("{name}")
+                } else {
+                    format!("{func:?}")
+                };
+                let args = args.iter().format(", ");
+                format!("{destination:?} = {func_name}({args:?})")
             }
-        };
+            _ => "".into(),
+        }
+    }
+
+    pub fn debug_mir(mut self, loc: Location) -> Self {
+        self.point.metadata.debug_info = self.debug_mir_to_string(loc);
         self
     }
 

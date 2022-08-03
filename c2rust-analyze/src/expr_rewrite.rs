@@ -303,10 +303,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         });
 
         // Emit `OffsetSlice` for the offset itself.
-        let mutbl = match result_own {
-            Ownership::Mut => true,
-            _ => false,
-        };
+        let mutbl = matches!(result_own, Ownership::Mut);
 
         self.emit(RewriteKind::OffsetSlice { mutbl });
 

@@ -39,8 +39,6 @@ pub trait SpanExt: Sized {
 
     fn inner(&self) -> (u32, u32);
 
-    fn inner_mut(&mut self) -> (&mut u32, &mut u32);
-
     #[inline(always)]
     fn lo(&self) -> BytePos {
         BytePos(self.inner().0)
@@ -137,15 +135,6 @@ fn validate_repr() {
     assert!(repr.hi == 0);
 }
 
-/** return a pair of mutable references to s.lo and s.hi */
-fn get_inner_mut(s: &mut Span) -> (&mut u32, &mut u32) {
-    validate_repr();
-    /* safety: safe if it is safe to transmute between `Span` and `SpanRepr`;
-    we call `validate_repr` to verify this. see doc comment on `validare_repr` */
-    let repr: &mut SpanRepr = unsafe { std::mem::transmute(s) };
-    (&mut repr.lo, &mut repr.hi)
-}
-
 /** return (s.lo, s.hi) */
 fn get_inner(s: &Span) -> (u32, u32) {
     validate_repr();
@@ -190,41 +179,5 @@ impl SpanExt for Span {
 
     fn inner(&self) -> (u32, u32) {
         get_inner(self)
-    }
-
-    fn inner_mut(&mut self) -> (&mut u32, &mut u32) {
-        get_inner_mut(self)
-    }
-}
-
-#[derive(PartialEq, Eq, Debug, Clone)]
-pub struct MySpan {
-    pub lo: u32,
-    pub hi: u32,
-}
-
-impl SpanExt for MySpan {
-    fn is_dummy(&self) -> bool {
-        self.lo == 0 && self.hi == 0
-    }
-
-    fn dummy() -> Self {
-        MySpan { lo: 0, hi: 0 }
-    }
-
-    fn eq(&self, other: &Self) -> bool {
-        self == other
-    }
-
-    fn new(lo: u32, hi: u32) -> Self {
-        MySpan { lo, hi }
-    }
-
-    fn inner(&self) -> (u32, u32) {
-        (self.lo, self.hi)
-    }
-
-    fn inner_mut(&mut self) -> (&mut u32, &mut u32) {
-        (&mut self.lo, &mut self.hi)
     }
 }

@@ -3,7 +3,7 @@ use crate::context::{AnalysisCtxt, PermissionSet};
 use crate::dataflow::DataflowConstraints;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::util::{describe_rvalue, RvalueDesc};
-use polonius_engine;
+
 use rustc_middle::mir::{Body, BorrowKind, Local, LocalKind, Place, StatementKind, START_BLOCK};
 use rustc_middle::ty::{List, TyKind};
 use std::collections::HashMap;
@@ -42,7 +42,7 @@ pub fn borrowck_mir<'tcx>(
         );
         i += 1;
 
-        if output.errors.len() == 0 {
+        if output.errors.is_empty() {
             break;
         }
         if i >= 20 {
@@ -50,7 +50,7 @@ pub fn borrowck_mir<'tcx>(
         }
 
         let mut changed = false;
-        for (_, loans) in &output.errors {
+        for loans in output.errors.values() {
             for &loan in loans {
                 let issued_point = facts
                     .loan_issued_at
