@@ -377,13 +377,20 @@ pub unsafe extern "C" fn test_unique_ref() {
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_ref_field() {
-    let s = calloc(
-        0i32 as libc::c_ulong,
-        ::std::mem::size_of::<S>() as libc::c_ulong,
-    ) as *mut S;
-    let s_ref = &mut *s;
-    (*s_ref).field4.field4 = (*s_ref).field4.field4;
-    free(s_ref as *mut S as *mut libc::c_void);
+    let t =  T {
+        field: 0i32,
+        field2: 0u64,
+        field3: 0 as *const S,
+        field4: 0i32,
+    };
+
+    let ref mut s = S {
+        field: 0i32,
+        field2: 0u64,
+        field3: 0 as *const S,
+        field4: t,
+    };
+    s.field4.field4 = s.field4.field4;
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_realloc_reassign() {
