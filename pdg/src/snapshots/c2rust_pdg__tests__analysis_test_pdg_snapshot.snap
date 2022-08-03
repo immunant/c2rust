@@ -64,6 +64,8 @@ g {
 	n[1]: copy        n[0] => _2    @ bb0[0]:  fn push;               _36 = push(move _37, move _38);                           
 	n[2]: value.store _    => _20.* @ bb4[8]:  fn invalid;            (*_20) = const 0_usize as *mut pointers::S (Misc);        
 	n[3]: value.store _    => _17.* @ bb8[5]:  fn fdevent_unregister; (*_17) = const 0_usize as *mut pointers::fdnode_st (Misc);
+	n[4]: int_to_ptr  _    => _2    @ bb0[3]:  fn test_ref_field;     _2 = const 0_usize as *const pointers::S (Misc);          
+	n[5]: int_to_ptr  _    => _5    @ bb0[9]:  fn test_ref_field;     _5 = const 0_usize as *const pointers::S (Misc);          
 }
 nodes_that_need_write = []
 
@@ -965,21 +967,16 @@ g {
 nodes_that_need_write = [75, 74, 73, 66, 65, 64, 63, 62, 61, 54, 53, 52, 45, 44, 43, 33, 32, 31, 27, 26, 25, 15, 14, 13, 6, 5, 4, 0]
 
 g {
-	n[0]:  alloc      _     => _2  @ bb1[2]:  fn test_ref_field; _2 = calloc(move _3, move _4);            
-	n[1]:  copy       n[0]  => _1  @ bb2[3]:  fn test_ref_field; _1 = move _2 as *mut pointers::S (Misc);  
-	n[2]:  copy       n[1]  => _6  @ bb2[6]:  fn test_ref_field; _6 = &mut (*_1);                          
-	n[3]:  field.3    n[2]  => _   @ bb2[9]:  fn test_ref_field; _7 = (((*_6).3: pointers::T).3: i32);     
-	n[4]:  field.3    n[3]  => _7  @ bb2[9]:  fn test_ref_field; _7 = (((*_6).3: pointers::T).3: i32);     
-	n[5]:  addr.load  n[4]  => _   @ bb2[9]:  fn test_ref_field; _7 = (((*_6).3: pointers::T).3: i32);     
-	n[6]:  field.3    n[2]  => _   @ bb2[10]: fn test_ref_field; (((*_6).3: pointers::T).3: i32) = move _7;
-	n[7]:  field.3    n[6]  => _   @ bb2[10]: fn test_ref_field; (((*_6).3: pointers::T).3: i32) = move _7;
-	n[8]:  addr.store n[7]  => _   @ bb2[10]: fn test_ref_field; (((*_6).3: pointers::T).3: i32) = move _7;
-	n[9]:  copy       n[2]  => _10 @ bb2[16]: fn test_ref_field; _10 = &raw mut (*_6);                     
-	n[10]: copy       n[9]  => _9  @ bb2[17]: fn test_ref_field; _9 = move _10 as *mut libc::c_void (Misc);
-	n[11]: free       n[10] => _8  @ bb2[18]: fn test_ref_field; _8 = free(move _9);                       
+	n[0]: &_4        _    => _3 @ bb0[15]: fn test_ref_field; _3 = &mut _4;                             
+	n[1]: field.3    n[0] => _  @ bb0[17]: fn test_ref_field; _7 = (((*_3).3: pointers::T).3: i32);     
+	n[2]: field.3    n[1] => _7 @ bb0[17]: fn test_ref_field; _7 = (((*_3).3: pointers::T).3: i32);     
+	n[3]: addr.load  n[2] => _  @ bb0[17]: fn test_ref_field; _7 = (((*_3).3: pointers::T).3: i32);     
+	n[4]: field.3    n[0] => _  @ bb0[18]: fn test_ref_field; (((*_3).3: pointers::T).3: i32) = move _7;
+	n[5]: field.3    n[4] => _  @ bb0[18]: fn test_ref_field; (((*_3).3: pointers::T).3: i32) = move _7;
+	n[6]: addr.store n[5] => _  @ bb0[18]: fn test_ref_field; (((*_3).3: pointers::T).3: i32) = move _7;
 }
-nodes_that_need_write = [8, 7, 6, 2, 1, 0]
+nodes_that_need_write = [6, 5, 4, 0]
 
 num_graphs = 77
-num_nodes = 670
+num_nodes = 667
 
