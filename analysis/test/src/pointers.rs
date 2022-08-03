@@ -38,7 +38,7 @@ pub type size_t = libc::c_ulong;
 pub struct T {
     pub field: libc::c_int,
     pub field2: libc::c_ulong,
-    pub field3: *const S,
+    pub field3: *mut S,
     pub field4: libc::c_int,
 }
 #[derive(Copy, Clone)]
@@ -46,7 +46,7 @@ pub struct T {
 pub struct S {
     pub field: libc::c_int,
     pub field2: libc::c_ulong,
-    pub field3: *const S,
+    pub field3: *mut S,
     pub field4: T,
 }
 #[no_mangle]
@@ -75,7 +75,7 @@ pub unsafe extern "C" fn simple() {
     (*x).field2 = 9u64;
     let k = (*x).field;
     let z = std::ptr::addr_of!((*x).field2);
-    (*x).field3 = std::ptr::addr_of!(*x) as *const S;
+    (*x).field3 = std::ptr::addr_of!(*x) as *mut S;
     recur(3, x);
     let s = *y;
     *x = s;
@@ -391,8 +391,11 @@ pub unsafe extern "C" fn test_ref_field_addr() {
         0i32 as libc::c_ulong,
         ::std::mem::size_of::<S>() as libc::c_ulong,
     ) as *mut S;
-    let s_ref = &mut *s;
-    let x = std::ptr::addr_of!((*((*s_ref).field3)).field3);
+    let mut s_ref = &mut *s;
+    (*s_ref).field3 = s;
+    (*((*s_ref).field3)).field3 = s;
+    let x = *std::ptr::addr_of!(*((*((*s_ref).field3)).field3));
+    let z = *((*((*s_ref).field3)).field3);
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_realloc_reassign() {
