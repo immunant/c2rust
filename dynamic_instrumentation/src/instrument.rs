@@ -232,11 +232,12 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
             Rvalue::AddressOf(_, p)
                 if has_outer_deref(p)
                     && place_ty(&remove_outer_deref(*p, self.tcx())).is_region_ptr() =>
-            {
+            { 
+                let source = remove_outer_deref(*p, self.tcx());
                 // Instrument which local's address is taken
                 self.loc(location.successor_within_block(), copy_fn)
                     .arg_var(dest)
-                    .source(p)
+                    .source(&source)
                     .dest(&dest)
                     .debug_mir(location)
                     .add_to(self);
