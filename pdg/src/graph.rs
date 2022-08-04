@@ -119,6 +119,8 @@ pub struct Node {
     pub kind: NodeKind,
     /// The `Node` that produced the input to this operation.
     pub source: Option<NodeId>,
+    /// Any string useful for debugging.
+    pub debug_info: String,
 }
 
 struct BlockStatement<'a> {
@@ -145,6 +147,7 @@ impl Node {
             dest,
             kind,
             source,
+            debug_info,
         } = self;
         let src = ShortOption(source.as_ref());
         let dest = ShortOption(dest.as_ref());
@@ -155,7 +158,7 @@ impl Node {
         let fn_ = function;
         write!(
             f,
-            "{kind}{sep}{src}{sep}=>{sep}{dest}{sep}@{sep}{bb_stmt}:{sep}fn {fn_};"
+            "{kind}{sep}{src}{sep}=>{sep}{dest}{sep}@{sep}{bb_stmt}:{sep}fn {fn_};{sep}{debug_info};"
         )
     }
 }

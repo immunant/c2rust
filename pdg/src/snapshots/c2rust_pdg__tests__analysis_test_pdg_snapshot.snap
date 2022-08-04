@@ -3,963 +3,980 @@ source: pdg/src/main.rs
 expression: pdg
 ---
 g {
-	n[0]: copy _ => _10 @ bb5[4]: fn main;
+	n[0]: &_5  _    => _10 @ bb5[4]: fn main; _10 = &mut _5;   
+	n[1]: copy n[0] => _9  @ bb5[5]: fn main; _9 = &mut (*_10);
+	n[2]: copy n[0] => _9  @ bb5[5]: fn main; _9 = &mut (*_10);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _9 @ bb5[5]: fn main;
+	n[0]: &_20 _    => _19 @ bb8[11]: fn main;   _19 = &_20;                                 
+	n[1]: copy n[0] => _18 @ bb8[12]: fn main;   _18 = &(*_19);                              
+	n[2]: copy n[1] => _17 @ bb8[13]: fn main;   _17 = move _18 as &[&str] (Pointer(Unsize));
+	n[3]: copy n[2] => _1  @ bb0[0]:  fn new_v1; _16 = new_v1(move _17, move _21);           
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _19 @ bb8[11]: fn main;
+	n[0]: &_13 _    => _27 @ bb8[22]: fn main;      _27 = &_13;               
+	n[1]: copy n[0] => _26 @ bb8[23]: fn main;      _26 = &(*_27);            
+	n[2]: copy n[1] => _1  @ bb0[0]:  fn new_debug; _25 = new_debug(move _26);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _18 @ bb8[12]: fn main;
+	n[0]: &_24 _    => _23 @ bb13[4]: fn main;   _23 = &_24;                                                 
+	n[1]: copy n[0] => _22 @ bb13[5]: fn main;   _22 = &(*_23);                                              
+	n[2]: copy n[1] => _21 @ bb13[6]: fn main;   _21 = move _22 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy n[2] => _2  @ bb0[0]:  fn new_v1; _16 = new_v1(move _17, move _21);                           
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _27 @ bb8[22]: fn main;
+	n[0]: &_1 _ => _29 @ bb15[11]: fn main; _29 = &mut _1;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _26 @ bb8[23]: fn main;
+	n[0]: copy _    => _34 @ bb16[5]: fn main;   _34 = &(*_35);                   
+	n[1]: copy n[0] => _2  @ bb0[0]:  fn expect; _31 = expect(move _32, move _34);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _23 @ bb13[4]: fn main;
+	n[0]: copy _    => _30 @ bb18[0]: fn main; _30 = into_raw(move _31);      
+	n[1]: copy n[0] => _2  @ bb0[0]:  fn push; _28 = push(move _29, move _30);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _22 @ bb13[5]: fn main;
+	n[0]: &_5 _ => _10 @ bb5[4]: fn main; _10 = &mut _5;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _29 @ bb15[11]: fn main;
+	n[0]: &_1 _ => _37 @ bb27[4]: fn main; _37 = &mut _1;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _34 @ bb16[5]: fn main;
+	n[0]: copy        _    => _38   @ bb28[0]: fn main;               _38 = null_mut();                                         
+	n[1]: copy        n[0] => _2    @ bb0[0]:  fn push;               _36 = push(move _37, move _38);                           
+	n[2]: value.store _    => _20.* @ bb4[8]:  fn invalid;            (*_20) = const 0_usize as *mut pointers::S (Misc);        
+	n[3]: value.store _    => _17.* @ bb8[5]:  fn fdevent_unregister; (*_17) = const 0_usize as *mut pointers::fdnode_st (Misc);
+	n[4]: int_to_ptr  _    => _2    @ bb0[3]:  fn test_ref_field;     _2 = const 0_usize as *const pointers::S (Misc);          
+	n[5]: int_to_ptr  _    => _5    @ bb0[9]:  fn test_ref_field;     _5 = const 0_usize as *const pointers::S (Misc);          
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _    => _30 @ bb18[0]: fn main;
-	n[1]: copy n[0] => _2  @ bb0[0]:  fn push;
+	n[0]: &_1  _    => _43 @ bb29[9]: fn main; _43 = &_1;          
+	n[1]: copy n[0] => _1  @ bb0[0]:  fn len;  _42 = len(move _43);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _37 @ bb27[4]: fn main;
+	n[0]: &_1 _ => _46 @ bb31[6]: fn main; _46 = &mut _1;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy        _    => _38   @ bb28[0]: fn main;              
-	n[1]: copy        n[0] => _2    @ bb0[0]:  fn push;              
-	n[2]: value.store _    => _20.* @ bb4[8]:  fn invalid;           
-	n[3]: value.store _    => _17.* @ bb8[5]:  fn fdevent_unregister;
+	n[0]: copy _    => _45 @ bb32[0]: fn main;   _45 = as_mut_ptr(move _46);      
+	n[1]: copy n[0] => _2  @ bb0[0]:  fn main_0; _39 = main_0(move _40, move _45);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _43 @ bb29[9]: fn main;
+	n[0]: alloc     _    => _2 @ bb1[2]: fn simple; _2 = malloc(move _3);                   
+	n[1]: copy      n[0] => _1 @ bb2[2]: fn simple; _1 = move _2 as *mut pointers::S (Misc);
+	n[2]: field.0   n[1] => _9 @ bb4[5]: fn simple; _9 = &raw const ((*_1).0: i32);         
+	n[3]: addr.load n[2] => _  @ bb4[5]: fn simple; _9 = &raw const ((*_1).0: i32);         
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _ => _46 @ bb31[6]: fn main;
+	n[0]:  alloc      _     => _6  @ bb3[2]:  fn simple; _6 = malloc(move _7);                    
+	n[1]:  copy       n[0]  => _5  @ bb4[2]:  fn simple; _5 = move _6 as *mut pointers::S (Misc); 
+	n[2]:  copy       n[1]  => _10 @ bb4[9]:  fn simple; _10 = _5;                                
+	n[3]:  copy       n[2]  => _1  @ bb4[10]: fn simple; _1 = move _10;                           
+	n[4]:  field.0    n[3]  => _   @ bb4[11]: fn simple; ((*_1).0: i32) = const 10_i32;           
+	n[5]:  addr.store n[4]  => _   @ bb4[11]: fn simple; ((*_1).0: i32) = const 10_i32;           
+	n[6]:  field.0    n[3]  => _11 @ bb4[13]: fn simple; _11 = ((*_1).0: i32);                    
+	n[7]:  addr.load  n[6]  => _   @ bb4[13]: fn simple; _11 = ((*_1).0: i32);                    
+	n[8]:  field.0    n[1]  => _   @ bb4[14]: fn simple; ((*_5).0: i32) = move _11;               
+	n[9]:  addr.store n[8]  => _   @ bb4[14]: fn simple; ((*_5).0: i32) = move _11;               
+	n[10]: field.1    n[3]  => _   @ bb4[16]: fn simple; ((*_1).1: u64) = const 9_u64;            
+	n[11]: addr.store n[10] => _   @ bb4[16]: fn simple; ((*_1).1: u64) = const 9_u64;            
+	n[12]: field.0    n[3]  => _12 @ bb4[18]: fn simple; _12 = ((*_1).0: i32);                    
+	n[13]: addr.load  n[12] => _   @ bb4[18]: fn simple; _12 = ((*_1).0: i32);                    
+	n[14]: field.1    n[3]  => _13 @ bb4[21]: fn simple; _13 = &raw const ((*_1).1: u64);         
+	n[15]: addr.load  n[14] => _   @ bb4[21]: fn simple; _13 = &raw const ((*_1).1: u64);         
+	n[16]: addr.load  n[3]  => _   @ bb4[24]: fn simple; _14 = &raw const (*_1);                  
+	n[17]: field.2    n[3]  => _   @ bb4[25]: fn simple; ((*_1).2: *const pointers::S) = move _14;
+	n[18]: addr.store n[17] => _   @ bb4[25]: fn simple; ((*_1).2: *const pointers::S) = move _14;
+	n[19]: copy       n[3]  => _16 @ bb4[30]: fn simple; _16 = _1;                                
+	n[20]: copy       n[19] => _2  @ bb0[0]:  fn recur;  _15 = recur(const 3_i32, move _16);      
+	n[21]: copy       n[20] => _13 @ bb8[4]:  fn recur;  _13 = _2;                                
+	n[22]: copy       n[21] => _2  @ bb0[0]:  fn recur;  _9 = recur(move _10, move _13);          
+	n[23]: copy       n[22] => _13 @ bb8[4]:  fn recur;  _13 = _2;                                
+	n[24]: copy       n[23] => _2  @ bb0[0]:  fn recur;  _9 = recur(move _10, move _13);          
+	n[25]: copy       n[24] => _13 @ bb8[4]:  fn recur;  _13 = _2;                                
+	n[26]: copy       n[25] => _2  @ bb0[0]:  fn recur;  _9 = recur(move _10, move _13);          
+	n[27]: copy       n[26] => _8  @ bb1[3]:  fn recur;  _8 = _2;                                 
+	n[28]: copy       n[27] => _7  @ bb1[4]:  fn recur;  _7 = move _8 as *mut libc::c_void (Misc);
+	n[29]: free       n[28] => _0  @ bb1[5]:  fn recur;  _0 = free(move _7);                      
+	n[30]: copy       n[26] => _14 @ bb9[5]:  fn recur;  _14 = _2;                                
+	n[31]: copy       n[26] => _14 @ bb9[5]:  fn recur;  _14 = _2;                                
+	n[32]: copy       n[26] => _14 @ bb9[5]:  fn recur;  _14 = _2;                                
+	n[33]: addr.load  n[1]  => _   @ bb5[3]:  fn simple; _17 = (*_5);                             
+	n[34]: addr.store n[3]  => _   @ bb5[7]:  fn simple; (*_1) = move _18;                        
+}
+nodes_that_need_write = [34, 18, 17, 11, 10, 9, 8, 5, 4, 3, 2, 1, 0]
+
+g {
+	n[0]: &_1 _ => _9 @ bb4[6]: fn simple; _9 = &raw const ((*_1).0: i32);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _    => _45 @ bb32[0]: fn main;  
-	n[1]: copy n[0] => _2  @ bb0[0]:  fn main_0;
+	n[0]: &_1 _ => _13 @ bb4[22]: fn simple; _13 = &raw const ((*_1).1: u64);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: alloc     _    => _2 @ bb1[2]: fn simple;
-	n[1]: copy      n[0] => _1 @ bb2[2]: fn simple;
-	n[2]: field.0   n[1] => _9 @ bb4[5]: fn simple;
-	n[3]: addr.load n[2] => _  @ bb4[5]: fn simple;
+	n[0]: &_1         _    => _14    @ bb4[25]: fn simple; _14 = &raw const (*_1);                  
+	n[1]: value.store n[0] => _1.*.2 @ bb4[26]: fn simple; ((*_1).2: *const pointers::S) = move _14;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]:  alloc      _     => _6  @ bb3[2]:  fn simple;
-	n[1]:  copy       n[0]  => _5  @ bb4[2]:  fn simple;
-	n[2]:  copy       n[1]  => _10 @ bb4[9]:  fn simple;
-	n[3]:  copy       n[2]  => _1  @ bb4[10]: fn simple;
-	n[4]:  field.0    n[3]  => _   @ bb4[11]: fn simple;
-	n[5]:  addr.store n[4]  => _   @ bb4[11]: fn simple;
-	n[6]:  field.0    n[3]  => _11 @ bb4[13]: fn simple;
-	n[7]:  addr.load  n[6]  => _   @ bb4[13]: fn simple;
-	n[8]:  field.0    n[1]  => _   @ bb4[14]: fn simple;
-	n[9]:  addr.store n[8]  => _   @ bb4[14]: fn simple;
-	n[10]: field.1    n[3]  => _   @ bb4[16]: fn simple;
-	n[11]: addr.store n[10] => _   @ bb4[16]: fn simple;
-	n[12]: field.0    n[3]  => _12 @ bb4[18]: fn simple;
-	n[13]: addr.load  n[12] => _   @ bb4[18]: fn simple;
-	n[14]: field.1    n[3]  => _13 @ bb4[21]: fn simple;
-	n[15]: addr.load  n[14] => _   @ bb4[21]: fn simple;
-	n[16]: addr.load  n[0]  => _   @ bb4[24]: fn simple;
-	n[17]: field.2    n[3]  => _   @ bb4[25]: fn simple;
-	n[18]: addr.store n[17] => _   @ bb4[25]: fn simple;
-	n[19]: copy       n[3]  => _16 @ bb4[30]: fn simple;
-	n[20]: copy       n[19] => _2  @ bb0[0]:  fn recur; 
-	n[21]: copy       n[20] => _13 @ bb8[4]:  fn recur; 
-	n[22]: copy       n[21] => _2  @ bb0[0]:  fn recur; 
-	n[23]: copy       n[22] => _13 @ bb8[4]:  fn recur; 
-	n[24]: copy       n[23] => _2  @ bb0[0]:  fn recur; 
-	n[25]: copy       n[24] => _13 @ bb8[4]:  fn recur; 
-	n[26]: copy       n[25] => _2  @ bb0[0]:  fn recur; 
-	n[27]: copy       n[26] => _8  @ bb1[3]:  fn recur; 
-	n[28]: copy       n[27] => _7  @ bb1[4]:  fn recur; 
-	n[29]: free       n[28] => _0  @ bb1[5]:  fn recur; 
-	n[30]: copy       n[26] => _14 @ bb9[5]:  fn recur; 
-	n[31]: copy       n[26] => _14 @ bb9[5]:  fn recur; 
-	n[32]: copy       n[26] => _14 @ bb9[5]:  fn recur; 
-}
-nodes_that_need_write = [18, 17, 11, 10, 9, 8, 5, 4, 3, 2, 1, 0]
-
-g {
-	n[0]: &_1 _ => _9 @ bb4[6]: fn simple;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_1 _ => _13 @ bb4[22]: fn simple;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_1         _    => _14    @ bb4[25]: fn simple;
-	n[1]: value.store n[0] => _1.*.2 @ bb4[26]: fn simple;
-	n[2]: addr.load   n[0] => _      @ bb5[3]:  fn simple;
-	n[3]: addr.store  n[0] => _      @ bb5[7]:  fn simple;
-}
-nodes_that_need_write = [3, 0]
-
-g {
-	n[0]: alloc      _    => _2  @ bb1[2]:  fn exercise_allocator;
-	n[1]: copy       n[0] => _1  @ bb2[2]:  fn exercise_allocator;
-	n[2]: field.0    n[1] => _   @ bb2[5]:  fn exercise_allocator;
-	n[3]: addr.store n[2] => _   @ bb2[5]:  fn exercise_allocator;
-	n[4]: field.0    n[1] => _10 @ bb2[18]: fn exercise_allocator;
-	n[5]: addr.load  n[4] => _   @ bb2[18]: fn exercise_allocator;
-	n[6]: copy       n[1] => _13 @ bb3[8]:  fn exercise_allocator;
-	n[7]: copy       n[6] => _12 @ bb3[9]:  fn exercise_allocator;
-	n[8]: free       n[7] => _11 @ bb5[2]:  fn exercise_allocator;
+	n[0]: alloc      _    => _2  @ bb1[2]:  fn exercise_allocator; _2 = malloc(move _3);                      
+	n[1]: copy       n[0] => _1  @ bb2[2]:  fn exercise_allocator; _1 = move _2 as *mut pointers::S (Misc);   
+	n[2]: field.0    n[1] => _   @ bb2[5]:  fn exercise_allocator; ((*_1).0: i32) = const 10_i32;             
+	n[3]: addr.store n[2] => _   @ bb2[5]:  fn exercise_allocator; ((*_1).0: i32) = const 10_i32;             
+	n[4]: field.0    n[1] => _10 @ bb2[18]: fn exercise_allocator; _10 = ((*_1).0: i32);                      
+	n[5]: addr.load  n[4] => _   @ bb2[18]: fn exercise_allocator; _10 = ((*_1).0: i32);                      
+	n[6]: copy       n[1] => _13 @ bb3[8]:  fn exercise_allocator; _13 = _1;                                  
+	n[7]: copy       n[6] => _12 @ bb3[9]:  fn exercise_allocator; _12 = move _13 as *mut libc::c_void (Misc);
+	n[8]: free       n[7] => _11 @ bb5[2]:  fn exercise_allocator; _11 = realloc(move _12, move _14);         
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
 g {
-	n[0]: &_9  _    => _8 @ bb2[13]: fn exercise_allocator;
-	n[1]: copy n[0] => _7 @ bb2[14]: fn exercise_allocator;
-	n[2]: copy n[1] => _6 @ bb2[16]: fn exercise_allocator;
-	n[3]: copy n[2] => _1 @ bb0[0]:  fn printf;            
+	n[0]:  copy _     => _8  @ bb2[13]:  fn exercise_allocator;      _8 = &raw const (*_9);                                
+	n[1]:  copy n[0]  => _7  @ bb2[14]:  fn exercise_allocator;      _7 = move _8 as *const u8 (Pointer(ArrayToPointer));  
+	n[2]:  copy n[1]  => _6  @ bb2[16]:  fn exercise_allocator;      _6 = move _7 as *const i8 (Misc);                     
+	n[3]:  copy n[2]  => _1  @ bb0[0]:   fn printf;                  _5 = printf(move _6, move _10);                       
+	n[4]:  copy _     => _30 @ bb11[7]:  fn exercise_allocator;      _30 = &raw const (*_31);                              
+	n[5]:  copy n[4]  => _29 @ bb11[8]:  fn exercise_allocator;      _29 = move _30 as *const u8 (Pointer(ArrayToPointer));
+	n[6]:  copy n[5]  => _28 @ bb11[10]: fn exercise_allocator;      _28 = move _29 as *const i8 (Misc);                   
+	n[7]:  copy n[6]  => _1  @ bb0[0]:   fn printf;                  _27 = printf(move _28, move _32);                     
+	n[8]:  copy _     => _30 @ bb11[7]:  fn exercise_allocator;      _30 = &raw const (*_31);                              
+	n[9]:  copy n[8]  => _29 @ bb11[8]:  fn exercise_allocator;      _29 = move _30 as *const u8 (Pointer(ArrayToPointer));
+	n[10]: copy n[9]  => _28 @ bb11[10]: fn exercise_allocator;      _28 = move _29 as *const i8 (Misc);                   
+	n[11]: copy n[10] => _1  @ bb0[0]:   fn printf;                  _27 = printf(move _28, move _32);                     
+	n[12]: copy _     => _60 @ bb29[7]:  fn exercise_allocator;      _60 = &raw const (*_61);                              
+	n[13]: copy n[12] => _59 @ bb29[8]:  fn exercise_allocator;      _59 = move _60 as *const u8 (Pointer(ArrayToPointer));
+	n[14]: copy n[13] => _58 @ bb29[10]: fn exercise_allocator;      _58 = move _59 as *const i8 (Misc);                   
+	n[15]: copy n[14] => _1  @ bb0[0]:   fn printf;                  _57 = printf(move _58, move _62);                     
+	n[16]: copy _     => _60 @ bb29[7]:  fn exercise_allocator;      _60 = &raw const (*_61);                              
+	n[17]: copy n[16] => _59 @ bb29[8]:  fn exercise_allocator;      _59 = move _60 as *const u8 (Pointer(ArrayToPointer));
+	n[18]: copy n[17] => _58 @ bb29[10]: fn exercise_allocator;      _58 = move _59 as *const i8 (Misc);                   
+	n[19]: copy n[18] => _1  @ bb0[0]:   fn printf;                  _57 = printf(move _58, move _62);                     
+	n[20]: copy _     => _60 @ bb29[7]:  fn exercise_allocator;      _60 = &raw const (*_61);                              
+	n[21]: copy n[20] => _59 @ bb29[8]:  fn exercise_allocator;      _59 = move _60 as *const u8 (Pointer(ArrayToPointer));
+	n[22]: copy n[21] => _58 @ bb29[10]: fn exercise_allocator;      _58 = move _59 as *const i8 (Misc);                   
+	n[23]: copy n[22] => _1  @ bb0[0]:   fn printf;                  _57 = printf(move _58, move _62);                     
+	n[24]: copy _     => _93 @ bb49[7]:  fn exercise_allocator;      _93 = &raw const (*_94);                              
+	n[25]: copy n[24] => _92 @ bb49[8]:  fn exercise_allocator;      _92 = move _93 as *const u8 (Pointer(ArrayToPointer));
+	n[26]: copy n[25] => _91 @ bb49[10]: fn exercise_allocator;      _91 = move _92 as *const i8 (Misc);                   
+	n[27]: copy n[26] => _1  @ bb0[0]:   fn printf;                  _90 = printf(move _91, move _95);                     
+	n[28]: copy _     => _93 @ bb49[7]:  fn exercise_allocator;      _93 = &raw const (*_94);                              
+	n[29]: copy n[28] => _92 @ bb49[8]:  fn exercise_allocator;      _92 = move _93 as *const u8 (Pointer(ArrayToPointer));
+	n[30]: copy n[29] => _91 @ bb49[10]: fn exercise_allocator;      _91 = move _92 as *const i8 (Misc);                   
+	n[31]: copy n[30] => _1  @ bb0[0]:   fn printf;                  _90 = printf(move _91, move _95);                     
+	n[32]: copy _     => _93 @ bb49[7]:  fn exercise_allocator;      _93 = &raw const (*_94);                              
+	n[33]: copy n[32] => _92 @ bb49[8]:  fn exercise_allocator;      _92 = move _93 as *const u8 (Pointer(ArrayToPointer));
+	n[34]: copy n[33] => _91 @ bb49[10]: fn exercise_allocator;      _91 = move _92 as *const i8 (Misc);                   
+	n[35]: copy n[34] => _1  @ bb0[0]:   fn printf;                  _90 = printf(move _91, move _95);                     
+	n[36]: copy _     => _93 @ bb49[7]:  fn exercise_allocator;      _93 = &raw const (*_94);                              
+	n[37]: copy n[36] => _92 @ bb49[8]:  fn exercise_allocator;      _92 = move _93 as *const u8 (Pointer(ArrayToPointer));
+	n[38]: copy n[37] => _91 @ bb49[10]: fn exercise_allocator;      _91 = move _92 as *const i8 (Misc);                   
+	n[39]: copy n[38] => _1  @ bb0[0]:   fn printf;                  _90 = printf(move _91, move _95);                     
+	n[40]: copy _     => _8  @ bb2[13]:  fn simple_analysis;         _8 = &raw const (*_9);                                
+	n[41]: copy n[40] => _7  @ bb2[14]:  fn simple_analysis;         _7 = move _8 as *const u8 (Pointer(ArrayToPointer));  
+	n[42]: copy n[41] => _6  @ bb2[16]:  fn simple_analysis;         _6 = move _7 as *const i8 (Misc);                     
+	n[43]: copy n[42] => _1  @ bb0[0]:   fn printf;                  _5 = printf(move _6, move _10);                       
+	n[44]: copy n[42] => _5  @ bb0[7]:   fn analysis2_helper;        _5 = &raw const (*_6);                                
+	n[45]: copy n[44] => _4  @ bb0[8]:   fn analysis2_helper;        _4 = move _5 as *const u8 (Pointer(ArrayToPointer));  
+	n[46]: copy n[45] => _3  @ bb0[10]:  fn analysis2_helper;        _3 = move _4 as *const i8 (Misc);                     
+	n[47]: copy n[46] => _1  @ bb0[0]:   fn printf;                  _2 = printf(move _3, move _7);                        
+	n[48]: copy _     => _8  @ bb2[13]:  fn inter_function_analysis; _8 = &raw const (*_9);                                
+	n[49]: copy n[48] => _7  @ bb2[14]:  fn inter_function_analysis; _7 = move _8 as *const u8 (Pointer(ArrayToPointer));  
+	n[50]: copy n[49] => _6  @ bb2[16]:  fn inter_function_analysis; _6 = move _7 as *const i8 (Misc);                     
+	n[51]: copy n[50] => _1  @ bb0[0]:   fn printf;                  _5 = printf(move _6, move _10);                       
+	n[52]: copy _     => _10 @ bb2[20]:  fn invalid;                 _10 = &raw const (*_11);                              
+	n[53]: copy n[52] => _9  @ bb2[21]:  fn invalid;                 _9 = move _10 as *const u8 (Pointer(ArrayToPointer)); 
+	n[54]: copy n[53] => _8  @ bb2[23]:  fn invalid;                 _8 = move _9 as *const i8 (Misc);                     
+	n[55]: copy n[54] => _1  @ bb0[0]:   fn printf;                  _7 = printf(move _8, move _12);                       
+	n[56]: copy _     => _16 @ bb3[11]:  fn invalid;                 _16 = &raw const (*_17);                              
+	n[57]: copy n[56] => _15 @ bb3[12]:  fn invalid;                 _15 = move _16 as *const u8 (Pointer(ArrayToPointer));
+	n[58]: copy n[57] => _14 @ bb3[14]:  fn invalid;                 _14 = move _15 as *const i8 (Misc);                   
+	n[59]: copy n[58] => _1  @ bb0[0]:   fn printf;                  _13 = printf(move _14, move _18);                     
 }
 nodes_that_need_write = []
 
 g {
-	n[0]:  alloc      _     => _11 @ bb5[2]:   fn exercise_allocator;
-	n[1]:  copy       n[0]  => _1  @ bb6[3]:   fn exercise_allocator;
-	n[2]:  copy       n[1]  => _19 @ bb6[7]:   fn exercise_allocator;
-	n[3]:  offset[0]  n[2]  => _18 @ bb6[7]:   fn exercise_allocator;
-	n[4]:  field.0    n[3]  => _   @ bb7[1]:   fn exercise_allocator;
-	n[5]:  addr.store n[4]  => _   @ bb7[1]:   fn exercise_allocator;
-	n[6]:  copy       n[1]  => _21 @ bb7[6]:   fn exercise_allocator;
-	n[7]:  offset[1]  n[6]  => _20 @ bb7[6]:   fn exercise_allocator;
-	n[8]:  field.0    n[7]  => _   @ bb8[1]:   fn exercise_allocator;
-	n[9]:  addr.store n[8]  => _   @ bb8[1]:   fn exercise_allocator;
-	n[10]: copy       n[1]  => _34 @ bb11[15]: fn exercise_allocator;
-	n[11]: offset[0]  n[10] => _33 @ bb11[20]: fn exercise_allocator;
-	n[12]: field.0    n[11] => _32 @ bb13[2]:  fn exercise_allocator;
-	n[13]: addr.load  n[12] => _   @ bb13[2]:  fn exercise_allocator;
-	n[14]: copy       n[1]  => _34 @ bb11[15]: fn exercise_allocator;
-	n[15]: offset[1]  n[14] => _33 @ bb11[20]: fn exercise_allocator;
-	n[16]: field.0    n[15] => _32 @ bb13[2]:  fn exercise_allocator;
-	n[17]: addr.load  n[16] => _   @ bb13[2]:  fn exercise_allocator;
-	n[18]: copy       n[1]  => _43 @ bb21[7]:  fn exercise_allocator;
-	n[19]: copy       n[18] => _42 @ bb21[8]:  fn exercise_allocator;
-	n[20]: copy       n[1]  => _4  @ bb0[2]:   fn reallocarray;      
-	n[21]: copy       n[20] => _1  @ bb1[3]:   fn reallocarray;      
-	n[22]: free       n[19] => _41 @ bb22[2]:  fn exercise_allocator;
+	n[0]:  alloc      _     => _11 @ bb5[2]:   fn exercise_allocator; _11 = realloc(move _12, move _14);               
+	n[1]:  copy       n[0]  => _1  @ bb6[3]:   fn exercise_allocator; _1 = move _11 as *mut pointers::S (Misc);        
+	n[2]:  copy       n[1]  => _19 @ bb6[7]:   fn exercise_allocator; _19 = _1;                                        
+	n[3]:  offset[0]  n[2]  => _18 @ bb6[7]:   fn exercise_allocator; _18 = offset(move _19, const 0_isize);           
+	n[4]:  field.0    n[3]  => _   @ bb7[1]:   fn exercise_allocator; ((*_18).0: i32) = const 10_i32;                  
+	n[5]:  addr.store n[4]  => _   @ bb7[1]:   fn exercise_allocator; ((*_18).0: i32) = const 10_i32;                  
+	n[6]:  copy       n[1]  => _21 @ bb7[6]:   fn exercise_allocator; _21 = _1;                                        
+	n[7]:  offset[1]  n[6]  => _20 @ bb7[6]:   fn exercise_allocator; _20 = offset(move _21, const 1_isize);           
+	n[8]:  field.0    n[7]  => _   @ bb8[1]:   fn exercise_allocator; ((*_20).0: i32) = const 11_i32;                  
+	n[9]:  addr.store n[8]  => _   @ bb8[1]:   fn exercise_allocator; ((*_20).0: i32) = const 11_i32;                  
+	n[10]: copy       n[1]  => _34 @ bb11[15]: fn exercise_allocator; _34 = _1;                                        
+	n[11]: offset[0]  n[10] => _33 @ bb11[20]: fn exercise_allocator; _33 = offset(move _34, move _35);                
+	n[12]: field.0    n[11] => _32 @ bb13[2]:  fn exercise_allocator; _32 = ((*_33).0: i32);                           
+	n[13]: addr.load  n[12] => _   @ bb13[2]:  fn exercise_allocator; _32 = ((*_33).0: i32);                           
+	n[14]: copy       n[1]  => _34 @ bb11[15]: fn exercise_allocator; _34 = _1;                                        
+	n[15]: offset[1]  n[14] => _33 @ bb11[20]: fn exercise_allocator; _33 = offset(move _34, move _35);                
+	n[16]: field.0    n[15] => _32 @ bb13[2]:  fn exercise_allocator; _32 = ((*_33).0: i32);                           
+	n[17]: addr.load  n[16] => _   @ bb13[2]:  fn exercise_allocator; _32 = ((*_33).0: i32);                           
+	n[18]: copy       n[1]  => _43 @ bb21[7]:  fn exercise_allocator; _43 = _1;                                        
+	n[19]: copy       n[18] => _42 @ bb21[8]:  fn exercise_allocator; _42 = move _43 as *mut libc::c_void (Misc);      
+	n[20]: copy       n[1]  => _4  @ bb0[2]:   fn reallocarray;       _4 = _1;                                         
+	n[21]: copy       n[20] => _1  @ bb1[3]:   fn reallocarray;       _0 = const pointers::REALLOC(move _4, move _5);  
+	n[22]: free       n[19] => _41 @ bb22[2]:  fn exercise_allocator; _41 = reallocarray(move _42, move _44, move _45);
 }
 nodes_that_need_write = [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
 
 g {
-	n[0]: &_31 _    => _30 @ bb11[7]:  fn exercise_allocator;
-	n[1]: copy n[0] => _29 @ bb11[8]:  fn exercise_allocator;
-	n[2]: copy n[1] => _28 @ bb11[10]: fn exercise_allocator;
-	n[3]: copy n[2] => _1  @ bb0[0]:   fn printf;            
-}
-nodes_that_need_write = []
-
-g {
-	n[0]:  alloc      _     => _41 @ bb22[2]:  fn exercise_allocator;
-	n[1]:  copy       n[0]  => _1  @ bb23[4]:  fn exercise_allocator;
-	n[2]:  copy       n[1]  => _48 @ bb23[8]:  fn exercise_allocator;
-	n[3]:  offset[0]  n[2]  => _47 @ bb23[8]:  fn exercise_allocator;
-	n[4]:  field.0    n[3]  => _   @ bb24[1]:  fn exercise_allocator;
-	n[5]:  addr.store n[4]  => _   @ bb24[1]:  fn exercise_allocator;
-	n[6]:  copy       n[1]  => _50 @ bb24[6]:  fn exercise_allocator;
-	n[7]:  offset[1]  n[6]  => _49 @ bb24[6]:  fn exercise_allocator;
-	n[8]:  field.0    n[7]  => _   @ bb25[1]:  fn exercise_allocator;
-	n[9]:  addr.store n[8]  => _   @ bb25[1]:  fn exercise_allocator;
-	n[10]: copy       n[1]  => _52 @ bb25[6]:  fn exercise_allocator;
-	n[11]: offset[2]  n[10] => _51 @ bb25[6]:  fn exercise_allocator;
-	n[12]: field.0    n[11] => _   @ bb26[1]:  fn exercise_allocator;
-	n[13]: addr.store n[12] => _   @ bb26[1]:  fn exercise_allocator;
-	n[14]: copy       n[1]  => _64 @ bb29[15]: fn exercise_allocator;
-	n[15]: offset[0]  n[14] => _63 @ bb29[20]: fn exercise_allocator;
-	n[16]: field.0    n[15] => _62 @ bb31[2]:  fn exercise_allocator;
-	n[17]: addr.load  n[16] => _   @ bb31[2]:  fn exercise_allocator;
-	n[18]: copy       n[1]  => _64 @ bb29[15]: fn exercise_allocator;
-	n[19]: offset[1]  n[18] => _63 @ bb29[20]: fn exercise_allocator;
-	n[20]: field.0    n[19] => _62 @ bb31[2]:  fn exercise_allocator;
-	n[21]: addr.load  n[20] => _   @ bb31[2]:  fn exercise_allocator;
-	n[22]: copy       n[1]  => _64 @ bb29[15]: fn exercise_allocator;
-	n[23]: offset[2]  n[22] => _63 @ bb29[20]: fn exercise_allocator;
-	n[24]: field.0    n[23] => _62 @ bb31[2]:  fn exercise_allocator;
-	n[25]: addr.load  n[24] => _   @ bb31[2]:  fn exercise_allocator;
-	n[26]: copy       n[1]  => _73 @ bb39[7]:  fn exercise_allocator;
-	n[27]: copy       n[26] => _72 @ bb39[8]:  fn exercise_allocator;
-	n[28]: free       n[27] => _71 @ bb39[9]:  fn exercise_allocator;
+	n[0]:  alloc      _     => _41 @ bb22[2]:  fn exercise_allocator; _41 = reallocarray(move _42, move _44, move _45);
+	n[1]:  copy       n[0]  => _1  @ bb23[4]:  fn exercise_allocator; _1 = move _41 as *mut pointers::S (Misc);        
+	n[2]:  copy       n[1]  => _48 @ bb23[8]:  fn exercise_allocator; _48 = _1;                                        
+	n[3]:  offset[0]  n[2]  => _47 @ bb23[8]:  fn exercise_allocator; _47 = offset(move _48, const 0_isize);           
+	n[4]:  field.0    n[3]  => _   @ bb24[1]:  fn exercise_allocator; ((*_47).0: i32) = const 10_i32;                  
+	n[5]:  addr.store n[4]  => _   @ bb24[1]:  fn exercise_allocator; ((*_47).0: i32) = const 10_i32;                  
+	n[6]:  copy       n[1]  => _50 @ bb24[6]:  fn exercise_allocator; _50 = _1;                                        
+	n[7]:  offset[1]  n[6]  => _49 @ bb24[6]:  fn exercise_allocator; _49 = offset(move _50, const 1_isize);           
+	n[8]:  field.0    n[7]  => _   @ bb25[1]:  fn exercise_allocator; ((*_49).0: i32) = const 11_i32;                  
+	n[9]:  addr.store n[8]  => _   @ bb25[1]:  fn exercise_allocator; ((*_49).0: i32) = const 11_i32;                  
+	n[10]: copy       n[1]  => _52 @ bb25[6]:  fn exercise_allocator; _52 = _1;                                        
+	n[11]: offset[2]  n[10] => _51 @ bb25[6]:  fn exercise_allocator; _51 = offset(move _52, const 2_isize);           
+	n[12]: field.0    n[11] => _   @ bb26[1]:  fn exercise_allocator; ((*_51).0: i32) = const 12_i32;                  
+	n[13]: addr.store n[12] => _   @ bb26[1]:  fn exercise_allocator; ((*_51).0: i32) = const 12_i32;                  
+	n[14]: copy       n[1]  => _64 @ bb29[15]: fn exercise_allocator; _64 = _1;                                        
+	n[15]: offset[0]  n[14] => _63 @ bb29[20]: fn exercise_allocator; _63 = offset(move _64, move _65);                
+	n[16]: field.0    n[15] => _62 @ bb31[2]:  fn exercise_allocator; _62 = ((*_63).0: i32);                           
+	n[17]: addr.load  n[16] => _   @ bb31[2]:  fn exercise_allocator; _62 = ((*_63).0: i32);                           
+	n[18]: copy       n[1]  => _64 @ bb29[15]: fn exercise_allocator; _64 = _1;                                        
+	n[19]: offset[1]  n[18] => _63 @ bb29[20]: fn exercise_allocator; _63 = offset(move _64, move _65);                
+	n[20]: field.0    n[19] => _62 @ bb31[2]:  fn exercise_allocator; _62 = ((*_63).0: i32);                           
+	n[21]: addr.load  n[20] => _   @ bb31[2]:  fn exercise_allocator; _62 = ((*_63).0: i32);                           
+	n[22]: copy       n[1]  => _64 @ bb29[15]: fn exercise_allocator; _64 = _1;                                        
+	n[23]: offset[2]  n[22] => _63 @ bb29[20]: fn exercise_allocator; _63 = offset(move _64, move _65);                
+	n[24]: field.0    n[23] => _62 @ bb31[2]:  fn exercise_allocator; _62 = ((*_63).0: i32);                           
+	n[25]: addr.load  n[24] => _   @ bb31[2]:  fn exercise_allocator; _62 = ((*_63).0: i32);                           
+	n[26]: copy       n[1]  => _73 @ bb39[7]:  fn exercise_allocator; _73 = _1;                                        
+	n[27]: copy       n[26] => _72 @ bb39[8]:  fn exercise_allocator; _72 = move _73 as *mut libc::c_void (Misc);      
+	n[28]: free       n[27] => _71 @ bb39[9]:  fn exercise_allocator; _71 = free(move _72);                            
 }
 nodes_that_need_write = [13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
 
 g {
-	n[0]: &_61 _    => _60 @ bb29[7]:  fn exercise_allocator;
-	n[1]: copy n[0] => _59 @ bb29[8]:  fn exercise_allocator;
-	n[2]: copy n[1] => _58 @ bb29[10]: fn exercise_allocator;
-	n[3]: copy n[2] => _1  @ bb0[0]:   fn printf;            
-}
-nodes_that_need_write = []
-
-g {
-	n[0]:  alloc      _     => _74  @ bb41[2]:  fn exercise_allocator;
-	n[1]:  copy       n[0]  => _1   @ bb42[3]:  fn exercise_allocator;
-	n[2]:  copy       n[1]  => _79  @ bb42[7]:  fn exercise_allocator;
-	n[3]:  offset[0]  n[2]  => _78  @ bb42[7]:  fn exercise_allocator;
-	n[4]:  field.0    n[3]  => _    @ bb43[1]:  fn exercise_allocator;
-	n[5]:  addr.store n[4]  => _    @ bb43[1]:  fn exercise_allocator;
-	n[6]:  copy       n[1]  => _81  @ bb43[6]:  fn exercise_allocator;
-	n[7]:  offset[1]  n[6]  => _80  @ bb43[6]:  fn exercise_allocator;
-	n[8]:  field.0    n[7]  => _    @ bb44[1]:  fn exercise_allocator;
-	n[9]:  addr.store n[8]  => _    @ bb44[1]:  fn exercise_allocator;
-	n[10]: copy       n[1]  => _83  @ bb44[6]:  fn exercise_allocator;
-	n[11]: offset[2]  n[10] => _82  @ bb44[6]:  fn exercise_allocator;
-	n[12]: field.0    n[11] => _    @ bb45[1]:  fn exercise_allocator;
-	n[13]: addr.store n[12] => _    @ bb45[1]:  fn exercise_allocator;
-	n[14]: copy       n[1]  => _85  @ bb45[6]:  fn exercise_allocator;
-	n[15]: offset[3]  n[14] => _84  @ bb45[6]:  fn exercise_allocator;
-	n[16]: field.0    n[15] => _    @ bb46[1]:  fn exercise_allocator;
-	n[17]: addr.store n[16] => _    @ bb46[1]:  fn exercise_allocator;
-	n[18]: copy       n[1]  => _97  @ bb49[15]: fn exercise_allocator;
-	n[19]: offset[0]  n[18] => _96  @ bb49[20]: fn exercise_allocator;
-	n[20]: field.0    n[19] => _95  @ bb51[2]:  fn exercise_allocator;
-	n[21]: addr.load  n[20] => _    @ bb51[2]:  fn exercise_allocator;
-	n[22]: copy       n[1]  => _97  @ bb49[15]: fn exercise_allocator;
-	n[23]: offset[1]  n[22] => _96  @ bb49[20]: fn exercise_allocator;
-	n[24]: field.0    n[23] => _95  @ bb51[2]:  fn exercise_allocator;
-	n[25]: addr.load  n[24] => _    @ bb51[2]:  fn exercise_allocator;
-	n[26]: copy       n[1]  => _97  @ bb49[15]: fn exercise_allocator;
-	n[27]: offset[2]  n[26] => _96  @ bb49[20]: fn exercise_allocator;
-	n[28]: field.0    n[27] => _95  @ bb51[2]:  fn exercise_allocator;
-	n[29]: addr.load  n[28] => _    @ bb51[2]:  fn exercise_allocator;
-	n[30]: copy       n[1]  => _97  @ bb49[15]: fn exercise_allocator;
-	n[31]: offset[3]  n[30] => _96  @ bb49[20]: fn exercise_allocator;
-	n[32]: field.0    n[31] => _95  @ bb51[2]:  fn exercise_allocator;
-	n[33]: addr.load  n[32] => _    @ bb51[2]:  fn exercise_allocator;
-	n[34]: copy       n[1]  => _106 @ bb59[7]:  fn exercise_allocator;
-	n[35]: copy       n[34] => _105 @ bb59[8]:  fn exercise_allocator;
-	n[36]: free       n[35] => _104 @ bb59[9]:  fn exercise_allocator;
+	n[0]:  alloc      _     => _74  @ bb41[2]:  fn exercise_allocator; _74 = calloc(move _75, move _76);            
+	n[1]:  copy       n[0]  => _1   @ bb42[3]:  fn exercise_allocator; _1 = move _74 as *mut pointers::S (Misc);    
+	n[2]:  copy       n[1]  => _79  @ bb42[7]:  fn exercise_allocator; _79 = _1;                                    
+	n[3]:  offset[0]  n[2]  => _78  @ bb42[7]:  fn exercise_allocator; _78 = offset(move _79, const 0_isize);       
+	n[4]:  field.0    n[3]  => _    @ bb43[1]:  fn exercise_allocator; ((*_78).0: i32) = const 10_i32;              
+	n[5]:  addr.store n[4]  => _    @ bb43[1]:  fn exercise_allocator; ((*_78).0: i32) = const 10_i32;              
+	n[6]:  copy       n[1]  => _81  @ bb43[6]:  fn exercise_allocator; _81 = _1;                                    
+	n[7]:  offset[1]  n[6]  => _80  @ bb43[6]:  fn exercise_allocator; _80 = offset(move _81, const 1_isize);       
+	n[8]:  field.0    n[7]  => _    @ bb44[1]:  fn exercise_allocator; ((*_80).0: i32) = const 11_i32;              
+	n[9]:  addr.store n[8]  => _    @ bb44[1]:  fn exercise_allocator; ((*_80).0: i32) = const 11_i32;              
+	n[10]: copy       n[1]  => _83  @ bb44[6]:  fn exercise_allocator; _83 = _1;                                    
+	n[11]: offset[2]  n[10] => _82  @ bb44[6]:  fn exercise_allocator; _82 = offset(move _83, const 2_isize);       
+	n[12]: field.0    n[11] => _    @ bb45[1]:  fn exercise_allocator; ((*_82).0: i32) = const 12_i32;              
+	n[13]: addr.store n[12] => _    @ bb45[1]:  fn exercise_allocator; ((*_82).0: i32) = const 12_i32;              
+	n[14]: copy       n[1]  => _85  @ bb45[6]:  fn exercise_allocator; _85 = _1;                                    
+	n[15]: offset[3]  n[14] => _84  @ bb45[6]:  fn exercise_allocator; _84 = offset(move _85, const 3_isize);       
+	n[16]: field.0    n[15] => _    @ bb46[1]:  fn exercise_allocator; ((*_84).0: i32) = const 13_i32;              
+	n[17]: addr.store n[16] => _    @ bb46[1]:  fn exercise_allocator; ((*_84).0: i32) = const 13_i32;              
+	n[18]: copy       n[1]  => _97  @ bb49[15]: fn exercise_allocator; _97 = _1;                                    
+	n[19]: offset[0]  n[18] => _96  @ bb49[20]: fn exercise_allocator; _96 = offset(move _97, move _98);            
+	n[20]: field.0    n[19] => _95  @ bb51[2]:  fn exercise_allocator; _95 = ((*_96).0: i32);                       
+	n[21]: addr.load  n[20] => _    @ bb51[2]:  fn exercise_allocator; _95 = ((*_96).0: i32);                       
+	n[22]: copy       n[1]  => _97  @ bb49[15]: fn exercise_allocator; _97 = _1;                                    
+	n[23]: offset[1]  n[22] => _96  @ bb49[20]: fn exercise_allocator; _96 = offset(move _97, move _98);            
+	n[24]: field.0    n[23] => _95  @ bb51[2]:  fn exercise_allocator; _95 = ((*_96).0: i32);                       
+	n[25]: addr.load  n[24] => _    @ bb51[2]:  fn exercise_allocator; _95 = ((*_96).0: i32);                       
+	n[26]: copy       n[1]  => _97  @ bb49[15]: fn exercise_allocator; _97 = _1;                                    
+	n[27]: offset[2]  n[26] => _96  @ bb49[20]: fn exercise_allocator; _96 = offset(move _97, move _98);            
+	n[28]: field.0    n[27] => _95  @ bb51[2]:  fn exercise_allocator; _95 = ((*_96).0: i32);                       
+	n[29]: addr.load  n[28] => _    @ bb51[2]:  fn exercise_allocator; _95 = ((*_96).0: i32);                       
+	n[30]: copy       n[1]  => _97  @ bb49[15]: fn exercise_allocator; _97 = _1;                                    
+	n[31]: offset[3]  n[30] => _96  @ bb49[20]: fn exercise_allocator; _96 = offset(move _97, move _98);            
+	n[32]: field.0    n[31] => _95  @ bb51[2]:  fn exercise_allocator; _95 = ((*_96).0: i32);                       
+	n[33]: addr.load  n[32] => _    @ bb51[2]:  fn exercise_allocator; _95 = ((*_96).0: i32);                       
+	n[34]: copy       n[1]  => _106 @ bb59[7]:  fn exercise_allocator; _106 = _1;                                   
+	n[35]: copy       n[34] => _105 @ bb59[8]:  fn exercise_allocator; _105 = move _106 as *mut libc::c_void (Misc);
+	n[36]: free       n[35] => _104 @ bb59[9]:  fn exercise_allocator; _104 = free(move _105);                      
 }
 nodes_that_need_write = [17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
 
 g {
-	n[0]: &_94 _    => _93 @ bb49[7]:  fn exercise_allocator;
-	n[1]: copy n[0] => _92 @ bb49[8]:  fn exercise_allocator;
-	n[2]: copy n[1] => _91 @ bb49[10]: fn exercise_allocator;
-	n[3]: copy n[2] => _1  @ bb0[0]:   fn printf;            
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: alloc      _    => _2  @ bb1[2]:  fn simple_analysis;
-	n[1]: copy       n[0] => _1  @ bb2[2]:  fn simple_analysis;
-	n[2]: field.0    n[1] => _   @ bb2[5]:  fn simple_analysis;
-	n[3]: addr.store n[2] => _   @ bb2[5]:  fn simple_analysis;
-	n[4]: field.0    n[1] => _10 @ bb2[18]: fn simple_analysis;
-	n[5]: addr.load  n[4] => _   @ bb2[18]: fn simple_analysis;
-	n[6]: copy       n[1] => _13 @ bb3[8]:  fn simple_analysis;
-	n[7]: copy       n[6] => _12 @ bb3[9]:  fn simple_analysis;
-	n[8]: free       n[7] => _11 @ bb3[10]: fn simple_analysis;
+	n[0]: alloc      _    => _2  @ bb1[2]:  fn simple_analysis; _2 = malloc(move _3);                      
+	n[1]: copy       n[0] => _1  @ bb2[2]:  fn simple_analysis; _1 = move _2 as *mut pointers::S (Misc);   
+	n[2]: field.0    n[1] => _   @ bb2[5]:  fn simple_analysis; ((*_1).0: i32) = const 10_i32;             
+	n[3]: addr.store n[2] => _   @ bb2[5]:  fn simple_analysis; ((*_1).0: i32) = const 10_i32;             
+	n[4]: field.0    n[1] => _10 @ bb2[18]: fn simple_analysis; _10 = ((*_1).0: i32);                      
+	n[5]: addr.load  n[4] => _   @ bb2[18]: fn simple_analysis; _10 = ((*_1).0: i32);                      
+	n[6]: copy       n[1] => _13 @ bb3[8]:  fn simple_analysis; _13 = _1;                                  
+	n[7]: copy       n[6] => _12 @ bb3[9]:  fn simple_analysis; _12 = move _13 as *mut libc::c_void (Misc);
+	n[8]: free       n[7] => _11 @ bb3[10]: fn simple_analysis; _11 = free(move _12);                      
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
 g {
-	n[0]: &_9  _    => _8 @ bb2[13]: fn simple_analysis;
-	n[1]: copy n[0] => _7 @ bb2[14]: fn simple_analysis;
-	n[2]: copy n[1] => _6 @ bb2[16]: fn simple_analysis;
-	n[3]: copy n[2] => _1 @ bb0[0]:  fn printf;         
-}
-nodes_that_need_write = []
-
-g {
-	n[0]:  alloc      _    => _2 @ bb1[2]:  fn analysis2;       
-	n[1]:  copy       n[0] => _1 @ bb2[2]:  fn analysis2;       
-	n[2]:  field.0    n[1] => _  @ bb2[5]:  fn analysis2;       
-	n[3]:  addr.store n[2] => _  @ bb2[5]:  fn analysis2;       
-	n[4]:  copy       n[1] => _6 @ bb2[9]:  fn analysis2;       
-	n[5]:  copy       n[4] => _1 @ bb0[0]:  fn analysis2_helper;
-	n[6]:  field.0    n[5] => _7 @ bb0[12]: fn analysis2_helper;
-	n[7]:  addr.load  n[6] => _  @ bb0[12]: fn analysis2_helper;
-	n[8]:  copy       n[5] => _9 @ bb3[6]:  fn analysis2;       
-	n[9]:  copy       n[8] => _8 @ bb3[7]:  fn analysis2;       
-	n[10]: free       n[9] => _7 @ bb3[8]:  fn analysis2;       
+	n[0]:  alloc      _    => _2 @ bb1[2]:  fn analysis2;        _2 = malloc(move _3);                    
+	n[1]:  copy       n[0] => _1 @ bb2[2]:  fn analysis2;        _1 = move _2 as *mut pointers::S (Misc); 
+	n[2]:  field.0    n[1] => _  @ bb2[5]:  fn analysis2;        ((*_1).0: i32) = const 10_i32;           
+	n[3]:  addr.store n[2] => _  @ bb2[5]:  fn analysis2;        ((*_1).0: i32) = const 10_i32;           
+	n[4]:  copy       n[1] => _6 @ bb2[9]:  fn analysis2;        _6 = _1;                                 
+	n[5]:  copy       n[4] => _1 @ bb0[0]:  fn analysis2_helper; _5 = analysis2_helper(move _6);          
+	n[6]:  field.0    n[5] => _7 @ bb0[12]: fn analysis2_helper; _7 = ((*_1).0: i32);                     
+	n[7]:  addr.load  n[6] => _  @ bb0[12]: fn analysis2_helper; _7 = ((*_1).0: i32);                     
+	n[8]:  copy       n[5] => _9 @ bb3[6]:  fn analysis2;        _9 = _1;                                 
+	n[9]:  copy       n[8] => _8 @ bb3[7]:  fn analysis2;        _8 = move _9 as *mut libc::c_void (Misc);
+	n[10]: free       n[9] => _7 @ bb3[8]:  fn analysis2;        _7 = free(move _8);                      
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
 g {
-	n[0]: &_6  _    => _5 @ bb0[7]:  fn analysis2_helper;
-	n[1]: copy n[0] => _4 @ bb0[8]:  fn analysis2_helper;
-	n[2]: copy n[1] => _3 @ bb0[10]: fn analysis2_helper;
-	n[3]: copy n[2] => _1 @ bb0[0]:  fn printf;          
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: alloc      _    => _0  @ bb0[2]:  fn malloc_wrapper;         
-	n[1]: copy       n[0] => _2  @ bb2[0]:  fn inter_function_analysis;
-	n[2]: copy       n[1] => _1  @ bb2[2]:  fn inter_function_analysis;
-	n[3]: field.0    n[2] => _   @ bb2[5]:  fn inter_function_analysis;
-	n[4]: addr.store n[3] => _   @ bb2[5]:  fn inter_function_analysis;
-	n[5]: field.0    n[2] => _10 @ bb2[18]: fn inter_function_analysis;
-	n[6]: addr.load  n[5] => _   @ bb2[18]: fn inter_function_analysis;
-	n[7]: copy       n[2] => _13 @ bb3[8]:  fn inter_function_analysis;
-	n[8]: copy       n[7] => _12 @ bb3[9]:  fn inter_function_analysis;
-	n[9]: free       n[8] => _11 @ bb3[10]: fn inter_function_analysis;
+	n[0]: alloc      _    => _0  @ bb0[2]:  fn malloc_wrapper;          _0 = malloc(move _3);                      
+	n[1]: copy       n[0] => _2  @ bb2[0]:  fn inter_function_analysis; _2 = malloc_wrapper(move _3);              
+	n[2]: copy       n[1] => _1  @ bb2[2]:  fn inter_function_analysis; _1 = move _2 as *mut pointers::S (Misc);   
+	n[3]: field.0    n[2] => _   @ bb2[5]:  fn inter_function_analysis; ((*_1).0: i32) = const 11_i32;             
+	n[4]: addr.store n[3] => _   @ bb2[5]:  fn inter_function_analysis; ((*_1).0: i32) = const 11_i32;             
+	n[5]: field.0    n[2] => _10 @ bb2[18]: fn inter_function_analysis; _10 = ((*_1).0: i32);                      
+	n[6]: addr.load  n[5] => _   @ bb2[18]: fn inter_function_analysis; _10 = ((*_1).0: i32);                      
+	n[7]: copy       n[2] => _13 @ bb3[8]:  fn inter_function_analysis; _13 = _1;                                  
+	n[8]: copy       n[7] => _12 @ bb3[9]:  fn inter_function_analysis; _12 = move _13 as *mut libc::c_void (Misc);
+	n[9]: free       n[8] => _11 @ bb3[10]: fn inter_function_analysis; _11 = free(move _12);                      
 }
 nodes_that_need_write = [4, 3, 2, 1, 0]
 
 g {
-	n[0]: &_9  _    => _8 @ bb2[13]: fn inter_function_analysis;
-	n[1]: copy n[0] => _7 @ bb2[14]: fn inter_function_analysis;
-	n[2]: copy n[1] => _6 @ bb2[16]: fn inter_function_analysis;
-	n[3]: copy n[2] => _1 @ bb0[0]:  fn printf;                 
+	n[0]: alloc       _    => _2   @ bb1[2]: fn no_owner; _2 = malloc(move _3);                      
+	n[1]: value.store n[0] => _5.* @ bb2[4]: fn no_owner; (*_5) = move _2 as *mut pointers::S (Misc);
+	n[2]: addr.store  n[1] => _    @ bb2[3]: fn no_owner; (*_5) = move _2 as *mut pointers::S (Misc);
 }
-nodes_that_need_write = []
+nodes_that_need_write = [2, 1, 0]
 
 g {
-	n[0]: alloc       _    => _2   @ bb1[2]: fn no_owner;
-	n[1]: value.store n[0] => _5.* @ bb2[4]: fn no_owner;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]:  copy       _    => _5  @ bb2[3]:  fn no_owner;
-	n[1]:  addr.store n[0] => _   @ bb2[3]:  fn no_owner;
-	n[2]:  copy       _    => _5  @ bb2[3]:  fn no_owner;
-	n[3]:  addr.store n[0] => _   @ bb2[3]:  fn no_owner;
-	n[4]:  copy       _    => _12 @ bb3[5]:  fn no_owner;
-	n[5]:  addr.load  n[0] => _   @ bb3[5]:  fn no_owner;
-	n[6]:  copy       _    => _6  @ bb2[10]: fn invalid; 
-	n[7]:  addr.store n[0] => _   @ bb2[10]: fn invalid; 
-	n[8]:  copy       _    => _19 @ bb3[18]: fn invalid; 
-	n[9]:  field.0    n[8] => _18 @ bb3[18]: fn invalid; 
-	n[10]: addr.load  n[9] => _   @ bb3[18]: fn invalid; 
-	n[11]: copy       _    => _20 @ bb4[7]:  fn invalid; 
-	n[12]: addr.store n[0] => _   @ bb4[7]:  fn invalid; 
-}
-nodes_that_need_write = [12, 7, 3, 1, 0]
-
-g {
-	n[0]: alloc       _    => _2   @ bb1[2]: fn no_owner;
-	n[1]: value.store n[0] => _5.* @ bb2[4]: fn no_owner;
-	n[2]: value.load  _    => _11  @ bb3[6]: fn no_owner;
-	n[3]: copy        n[2] => _10  @ bb3[7]: fn no_owner;
-	n[4]: free        n[3] => _9   @ bb3[8]: fn no_owner;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]:  alloc       _    => _2   @ bb1[2]:  fn invalid;
-	n[1]:  copy        n[0] => _1   @ bb2[2]:  fn invalid;
-	n[2]:  field.0     n[1] => _    @ bb2[5]:  fn invalid;
-	n[3]:  addr.store  n[2] => _    @ bb2[5]:  fn invalid;
-	n[4]:  copy        n[1] => _5   @ bb2[8]:  fn invalid;
-	n[5]:  value.store n[4] => _6.* @ bb2[11]: fn invalid;
-	n[6]:  field.0     n[1] => _12  @ bb2[25]: fn invalid;
-	n[7]:  addr.load   n[6] => _    @ bb2[25]: fn invalid;
-	n[8]:  copy        n[1] => _23  @ bb4[13]: fn invalid;
-	n[9]:  copy        n[8] => _22  @ bb4[14]: fn invalid;
-	n[10]: free        n[9] => _21  @ bb4[15]: fn invalid;
-}
-nodes_that_need_write = [3, 2, 1, 0]
-
-g {
-	n[0]: &_11 _    => _10 @ bb2[20]: fn invalid;
-	n[1]: copy n[0] => _9  @ bb2[21]: fn invalid;
-	n[2]: copy n[1] => _8  @ bb2[23]: fn invalid;
-	n[3]: copy n[2] => _1  @ bb0[0]:  fn printf; 
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_17 _    => _16 @ bb3[11]: fn invalid;
-	n[1]: copy n[0] => _15 @ bb3[12]: fn invalid;
-	n[2]: copy n[1] => _14 @ bb3[14]: fn invalid;
-	n[3]: copy n[2] => _1  @ bb0[0]:  fn printf; 
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: copy _ => _4 @ bb0[8]: fn testing;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_4  _    => _3 @ bb0[10]: fn testing;
-	n[1]: copy n[0] => _5 @ bb0[13]: fn testing;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: copy _ => _7 @ bb0[16]: fn testing;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_7         _    => _6   @ bb0[18]: fn testing;
-	n[1]: value.store n[0] => _5.* @ bb0[19]: fn testing;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: addr.store _ => _ @ bb0[18]: fn testing;
+	n[0]: addr.store _ => _ @ bb2[3]: fn no_owner; (*_5) = move _2 as *mut pointers::S (Misc);
 }
 nodes_that_need_write = [0]
 
 g {
-	n[0]: alloc      _    => _2  @ bb1[2]:  fn simple1;
-	n[1]: copy       n[0] => _1  @ bb2[2]:  fn simple1;
-	n[2]: copy       n[1] => _8  @ bb2[9]:  fn simple1;
-	n[3]: copy       n[2] => _7  @ bb2[10]: fn simple1;
-	n[4]: free       n[3] => _6  @ bb3[2]:  fn simple1;
-	n[5]: copy       n[1] => _16 @ bb4[21]: fn simple1;
-	n[6]: ptr_to_int n[5] => _   @ bb4[21]: fn simple1;
-	n[7]: copy       n[1] => _21 @ bb4[34]: fn simple1;
-	n[8]: copy       n[7] => _20 @ bb4[35]: fn simple1;
-	n[9]: free       n[8] => _19 @ bb4[36]: fn simple1;
+	n[0]: alloc       _    => _2   @ bb1[2]: fn no_owner; _2 = malloc(move _3);                      
+	n[1]: value.store n[0] => _5.* @ bb2[4]: fn no_owner; (*_5) = move _2 as *mut pointers::S (Misc);
+	n[2]: value.load  _    => _11  @ bb3[6]: fn no_owner; _11 = (*_12);                              
+	n[3]: copy        n[2] => _10  @ bb3[7]: fn no_owner; _10 = move _11 as *mut libc::c_void (Misc);
+	n[4]: free        n[3] => _9   @ bb3[8]: fn no_owner; _9 = free(move _10);                       
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: alloc      _    => _6  @ bb3[2]:  fn simple1;
-	n[1]: copy       n[0] => _5  @ bb4[3]:  fn simple1;
-	n[2]: copy       n[1] => _11 @ bb4[7]:  fn simple1;
-	n[3]: field.0    n[2] => _   @ bb4[8]:  fn simple1;
-	n[4]: addr.store n[3] => _   @ bb4[8]:  fn simple1;
-	n[5]: copy       n[1] => _12 @ bb4[11]: fn simple1;
-	n[6]: copy       n[2] => _13 @ bb4[14]: fn simple1;
-	n[7]: int_to_ptr _    => _17 @ bb4[28]: fn simple1;
-}
-nodes_that_need_write = [4, 3, 2, 1, 0]
-
-g {
-	n[0]: &_13 _ => _14 @ bb4[17]: fn simple1;
+	n[0]: addr.load _ => _ @ bb3[5]: fn no_owner; _11 = (*_12);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]:  alloc       _     => _2     @ bb1[2]:  fn lighttpd_test;     
-	n[1]:  copy        n[0]  => _1     @ bb2[2]:  fn lighttpd_test;     
-	n[2]:  copy        n[1]  => _9     @ bb4[6]:  fn lighttpd_test;     
-	n[3]:  value.store n[2]  => _5.*.0 @ bb4[7]:  fn lighttpd_test;     
-	n[4]:  value.load  _     => _8     @ bb0[3]:  fn fdevent_register;  
-	n[5]:  offset[0]   n[4]  => _7     @ bb0[8]:  fn fdevent_register;  
-	n[6]:  addr.store  n[5]  => _      @ bb2[0]:  fn fdevent_register;  
-	n[7]:  value.load  _     => _5     @ bb0[4]:  fn fdevent_unregister;
-	n[8]:  offset[0]   n[7]  => _4     @ bb0[9]:  fn fdevent_unregister;
-	n[9]:  addr.load   n[8]  => _      @ bb1[2]:  fn fdevent_unregister;
-	n[10]: value.load  _     => _19    @ bb7[5]:  fn fdevent_unregister;
-	n[11]: offset[0]   n[10] => _18    @ bb7[10]: fn fdevent_unregister;
-	n[12]: addr.store  n[11] => _      @ bb8[4]:  fn fdevent_unregister;
-	n[13]: copy        n[1]  => _20    @ bb6[7]:  fn lighttpd_test;     
-	n[14]: copy        n[13] => _19    @ bb6[8]:  fn lighttpd_test;     
-	n[15]: free        n[14] => _18    @ bb6[9]:  fn lighttpd_test;     
-}
-nodes_that_need_write = [12, 11, 10, 6, 5, 4]
-
-g {
-	n[0]:  alloc      _     => _6  @ bb3[2]:  fn lighttpd_test;                
-	n[1]:  copy       n[0]  => _5  @ bb4[2]:  fn lighttpd_test;                
-	n[2]:  field.0    n[1]  => _   @ bb4[6]:  fn lighttpd_test;                
-	n[3]:  addr.store n[2]  => _   @ bb4[6]:  fn lighttpd_test;                
-	n[4]:  copy       n[1]  => _12 @ bb4[11]: fn lighttpd_test;                
-	n[5]:  value.load _     => _10 @ bb2[11]: fn connection_accepted;          
-	n[6]:  copy       n[5]  => _1  @ bb0[0]:  fn fdevent_register;             
-	n[7]:  field.0    n[6]  => _8  @ bb0[2]:  fn fdevent_register;             
-	n[8]:  addr.load  n[7]  => _   @ bb0[2]:  fn fdevent_register;             
-	n[9]:  value.load _     => _4  @ bb0[3]:  fn connection_close;             
-	n[10]: copy       n[9]  => _1  @ bb0[0]:  fn fdevent_fdnode_event_del;     
-	n[11]: copy       n[10] => _7  @ bb2[3]:  fn fdevent_fdnode_event_del;     
-	n[12]: copy       n[11] => _1  @ bb0[0]:  fn fdevent_fdnode_event_unsetter;
-	n[13]: value.load _     => _7  @ bb1[6]:  fn connection_close;             
-	n[14]: copy       n[13] => _1  @ bb0[0]:  fn fdevent_unregister;           
-	n[15]: field.0    n[14] => _5  @ bb0[3]:  fn fdevent_unregister;           
-	n[16]: addr.load  n[15] => _   @ bb0[3]:  fn fdevent_unregister;           
-	n[17]: field.0    n[14] => _19 @ bb7[4]:  fn fdevent_unregister;           
-	n[18]: addr.load  n[17] => _   @ bb7[4]:  fn fdevent_unregister;           
-	n[19]: copy       n[15] => _23 @ bb7[6]:  fn lighttpd_test;                
-	n[20]: copy       n[19] => _22 @ bb7[7]:  fn lighttpd_test;                
-	n[21]: free       n[20] => _21 @ bb7[8]:  fn lighttpd_test;                
+	n[0]:  alloc       _    => _2   @ bb1[2]:  fn invalid; _2 = malloc(move _3);                      
+	n[1]:  copy        n[0] => _1   @ bb2[2]:  fn invalid; _1 = move _2 as *mut pointers::S (Misc);   
+	n[2]:  field.0     n[1] => _    @ bb2[5]:  fn invalid; ((*_1).0: i32) = const 10_i32;             
+	n[3]:  addr.store  n[2] => _    @ bb2[5]:  fn invalid; ((*_1).0: i32) = const 10_i32;             
+	n[4]:  copy        n[1] => _5   @ bb2[8]:  fn invalid; _5 = _1;                                   
+	n[5]:  value.store n[4] => _6.* @ bb2[11]: fn invalid; (*_6) = move _5;                           
+	n[6]:  field.0     n[1] => _12  @ bb2[25]: fn invalid; _12 = ((*_1).0: i32);                      
+	n[7]:  addr.load   n[6] => _    @ bb2[25]: fn invalid; _12 = ((*_1).0: i32);                      
+	n[8]:  copy        n[1] => _23  @ bb4[13]: fn invalid; _23 = _1;                                  
+	n[9]:  copy        n[8] => _22  @ bb4[14]: fn invalid; _22 = move _23 as *mut libc::c_void (Misc);
+	n[10]: free        n[9] => _21  @ bb4[15]: fn invalid; _21 = free(move _22);                      
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
 g {
-	n[0]: copy _ => _10 @ bb4[14]: fn lighttpd_test;
+	n[0]: addr.store _ => _ @ bb2[10]: fn invalid; (*_6) = move _5;
+}
+nodes_that_need_write = [0]
+
+g {
+	n[0]: field.0 _ => _18 @ bb3[18]: fn invalid; _18 = ((*(*_19)).0: i32);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: &_10      _    => _14 @ bb4[18]: fn lighttpd_test;      
-	n[1]: copy      n[0] => _1  @ bb0[0]:  fn connection_accepted;
-	n[2]: field.0   n[1] => _10 @ bb2[10]: fn connection_accepted;
-	n[3]: addr.load n[2] => _   @ bb2[10]: fn connection_accepted;
+	n[0]: addr.load _ => _ @ bb3[18]: fn invalid; _18 = ((*(*_19)).0: i32);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]:  alloc       _     => _5      @ bb1[2]:  fn connection_accepted;
-	n[1]:  copy        n[0]  => _4      @ bb2[2]:  fn connection_accepted;
-	n[2]:  field.0     n[1]  => _       @ bb2[6]:  fn connection_accepted;
-	n[3]:  addr.store  n[2]  => _       @ bb2[6]:  fn connection_accepted;
-	n[4]:  field.0     n[1]  => _11     @ bb2[12]: fn connection_accepted;
-	n[5]:  addr.load   n[4]  => _       @ bb2[12]: fn connection_accepted;
-	n[6]:  copy        n[1]  => _15     @ bb2[21]: fn connection_accepted;
-	n[7]:  copy        n[6]  => _14     @ bb2[22]: fn connection_accepted;
-	n[8]:  copy        n[7]  => _4      @ bb0[0]:  fn fdevent_register;   
-	n[9]:  copy        n[8]  => _15     @ bb2[16]: fn fdevent_register;   
-	n[10]: value.store n[9]  => _12.*.1 @ bb2[17]: fn fdevent_register;   
-	n[11]: field.1     n[1]  => _       @ bb3[4]:  fn connection_accepted;
-	n[12]: addr.store  n[11] => _       @ bb3[4]:  fn connection_accepted;
-	n[13]: copy        n[8]  => _0      @ bb3[7]:  fn connection_accepted;
-	n[14]: copy        n[13] => _13     @ bb5[0]:  fn lighttpd_test;      
-	n[15]: copy        n[14] => _17     @ bb5[7]:  fn lighttpd_test;      
-	n[16]: copy        n[15] => _2      @ bb0[0]:  fn connection_close;   
-	n[17]: field.1     n[16] => _5      @ bb0[4]:  fn connection_close;   
-	n[18]: addr.load   n[17] => _       @ bb0[4]:  fn connection_close;   
-	n[19]: field.0     n[16] => _8      @ bb1[7]:  fn connection_close;   
-	n[20]: addr.load   n[19] => _       @ bb1[7]:  fn connection_close;   
+	n[0]: addr.store _ => _ @ bb4[7]: fn invalid; (*_20) = const 0_usize as *mut pointers::S (Misc);
 }
-nodes_that_need_write = [12, 11, 3, 2, 1, 0]
+nodes_that_need_write = [0]
 
 g {
-	n[0]: copy _ => _6 @ bb1[3]: fn fdevent_register;
+	n[0]: &_1  _    => _4 @ bb0[8]:  fn testing; _4 = &mut _1;       
+	n[1]: copy n[0] => _3 @ bb0[10]: fn testing; _3 = &raw mut (*_4);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]:  alloc       _     => _3     @ bb1[2]:  fn fdnode_init;                  
-	n[1]:  copy        n[0]  => _2     @ bb2[3]:  fn fdnode_init;                  
-	n[2]:  copy        n[1]  => _10    @ bb2[10]: fn fdnode_init;                  
-	n[3]:  copy        n[2]  => _1     @ bb0[0]:  fn is_null;                      
-	n[4]:  copy        n[1]  => _0     @ bb9[3]:  fn fdnode_init;                  
-	n[5]:  copy        n[4]  => _11    @ bb2[0]:  fn fdevent_register;             
-	n[6]:  value.store n[5]  => _6.*   @ bb2[1]:  fn fdevent_register;             
-	n[7]:  value.load  _     => _12    @ bb2[4]:  fn fdevent_register;             
-	n[8]:  field.0     n[7]  => _      @ bb2[8]:  fn fdevent_register;             
-	n[9]:  addr.store  n[8]  => _      @ bb2[8]:  fn fdevent_register;             
-	n[10]: field.2     n[7]  => _      @ bb2[12]: fn fdevent_register;             
-	n[11]: addr.store  n[10] => _      @ bb2[12]: fn fdevent_register;             
-	n[12]: field.1     n[7]  => _      @ bb2[16]: fn fdevent_register;             
-	n[13]: addr.store  n[12] => _      @ bb2[16]: fn fdevent_register;             
-	n[14]: field.3     n[7]  => _      @ bb2[20]: fn fdevent_register;             
-	n[15]: addr.store  n[14] => _      @ bb2[20]: fn fdevent_register;             
-	n[16]: field.4     n[7]  => _      @ bb3[0]:  fn fdevent_register;             
-	n[17]: addr.store  n[16] => _      @ bb3[0]:  fn fdevent_register;             
-	n[18]: copy        n[7]  => _0     @ bb3[3]:  fn fdevent_register;             
-	n[19]: copy        n[18] => _9     @ bb3[0]:  fn connection_accepted;          
-	n[20]: value.store n[19] => _4.*.1 @ bb3[5]:  fn connection_accepted;          
-	n[21]: value.load  _     => _5     @ bb0[5]:  fn connection_close;             
-	n[22]: copy        n[21] => _2     @ bb0[0]:  fn fdevent_fdnode_event_del;     
-	n[23]: copy        n[22] => _5     @ bb0[4]:  fn fdevent_fdnode_event_del;     
-	n[24]: copy        n[23] => _1     @ bb0[0]:  fn is_null;                      
-	n[25]: copy        n[22] => _8     @ bb2[5]:  fn fdevent_fdnode_event_del;     
-	n[26]: copy        n[25] => _2     @ bb0[0]:  fn fdevent_fdnode_event_unsetter;
-	n[27]: field.4     n[26] => _8     @ bb1[3]:  fn fdevent_fdnode_event_unsetter;
-	n[28]: addr.load   n[27] => _      @ bb1[3]:  fn fdevent_fdnode_event_unsetter;
-	n[29]: value.load  _     => _3     @ bb1[3]:  fn fdevent_unregister;           
-	n[30]: copy        n[29] => _12    @ bb1[12]: fn fdevent_unregister;           
-	n[31]: ptr_to_int  n[30] => _      @ bb1[12]: fn fdevent_unregister;           
-	n[32]: copy        n[29] => _23    @ bb8[8]:  fn fdevent_unregister;           
-	n[33]: copy        n[32] => _1     @ bb0[0]:  fn fdnode_free;                  
-	n[34]: copy        n[33] => _4     @ bb0[4]:  fn fdnode_free;                  
-	n[35]: copy        n[34] => _3     @ bb0[5]:  fn fdnode_free;                  
-	n[36]: free        n[35] => _2     @ bb0[6]:  fn fdnode_free;                  
-}
-nodes_that_need_write = [17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7]
-
-g {
-	n[0]: &_10      _    => _16 @ bb5[5]: fn lighttpd_test;   
-	n[1]: copy      n[0] => _1  @ bb0[0]: fn connection_close;
-	n[2]: field.0   n[1] => _4  @ bb0[2]: fn connection_close;
-	n[3]: addr.load n[2] => _   @ bb0[2]: fn connection_close;
-	n[4]: field.0   n[1] => _7  @ bb1[5]: fn connection_close;
-	n[5]: addr.load n[4] => _   @ bb1[5]: fn connection_close;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: copy _ => _17 @ bb8[3]: fn fdevent_unregister;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: alloc _    => _1 @ bb1[2]: fn test_malloc_free;
-	n[1]: copy  n[0] => _5 @ bb2[5]: fn test_malloc_free;
-	n[2]: free  n[1] => _4 @ bb2[5]: fn test_malloc_free;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: alloc _    => _2 @ bb1[2]:  fn test_malloc_free_cast;
-	n[1]: copy  n[0] => _1 @ bb2[2]:  fn test_malloc_free_cast;
-	n[2]: copy  n[1] => _7 @ bb2[8]:  fn test_malloc_free_cast;
-	n[3]: copy  n[2] => _6 @ bb2[9]:  fn test_malloc_free_cast;
-	n[4]: free  n[3] => _5 @ bb2[10]: fn test_malloc_free_cast;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: alloc _    => _1 @ bb1[2]: fn test_arg;
-	n[1]: copy  n[0] => _5 @ bb2[5]: fn test_arg;
-	n[2]: copy  n[1] => _1 @ bb0[0]: fn foo;     
-	n[3]: copy  n[2] => _2 @ bb0[2]: fn foo;     
-	n[4]: copy  n[2] => _6 @ bb3[4]: fn test_arg;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]:  alloc _     => _1  @ bb1[2]: fn test_arg_rec;
-	n[1]:  copy  n[0]  => _5  @ bb2[5]: fn test_arg_rec;
-	n[2]:  copy  n[1]  => _2  @ bb0[0]: fn foo_rec;     
-	n[3]:  copy  n[2]  => _11 @ bb3[4]: fn foo_rec;     
-	n[4]:  copy  n[3]  => _2  @ bb0[0]: fn foo_rec;     
-	n[5]:  copy  n[4]  => _11 @ bb3[4]: fn foo_rec;     
-	n[6]:  copy  n[5]  => _2  @ bb0[0]: fn foo_rec;     
-	n[7]:  copy  n[6]  => _11 @ bb3[4]: fn foo_rec;     
-	n[8]:  copy  n[7]  => _2  @ bb0[0]: fn foo_rec;     
-	n[9]:  copy  n[8]  => _0  @ bb8[3]: fn foo_rec;     
-	n[10]: copy  n[9]  => _7  @ bb4[0]: fn foo_rec;     
-	n[11]: copy  n[10] => _12 @ bb4[5]: fn foo_rec;     
-	n[12]: copy  n[11] => _0  @ bb4[7]: fn foo_rec;     
-	n[13]: copy  n[12] => _7  @ bb4[0]: fn foo_rec;     
-	n[14]: copy  n[13] => _12 @ bb4[5]: fn foo_rec;     
-	n[15]: copy  n[14] => _0  @ bb4[7]: fn foo_rec;     
-	n[16]: copy  n[15] => _7  @ bb4[0]: fn foo_rec;     
-	n[17]: copy  n[16] => _12 @ bb4[5]: fn foo_rec;     
-	n[18]: copy  n[17] => _0  @ bb4[7]: fn foo_rec;     
-	n[19]: copy  n[18] => _4  @ bb3[0]: fn test_arg_rec;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: alloc _    => _1 @ bb1[2]: fn test_realloc_reassign;
-	n[1]: copy  n[0] => _5 @ bb2[5]: fn test_realloc_reassign;
-	n[2]: free  n[1] => _4 @ bb4[2]: fn test_realloc_reassign;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: alloc _    => _4  @ bb4[2]: fn test_realloc_reassign;
-	n[1]: copy  n[0] => _1  @ bb5[3]: fn test_realloc_reassign;
-	n[2]: copy  n[1] => _11 @ bb5[7]: fn test_realloc_reassign;
-	n[3]: free  n[2] => _10 @ bb5[7]: fn test_realloc_reassign;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: alloc _    => _1 @ bb1[2]: fn test_realloc_fresh;
-	n[1]: copy  n[0] => _5 @ bb2[5]: fn test_realloc_fresh;
-	n[2]: free  n[1] => _4 @ bb3[2]: fn test_realloc_fresh;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: alloc _    => _4 @ bb3[2]: fn test_realloc_fresh;
-	n[1]: copy  n[0] => _9 @ bb4[6]: fn test_realloc_fresh;
-	n[2]: free  n[1] => _8 @ bb4[6]: fn test_realloc_fresh;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: alloc     _    => _2 @ bb1[2]:  fn test_load_addr;
-	n[1]: copy      n[0] => _1 @ bb2[2]:  fn test_load_addr;
-	n[2]: addr.load n[0] => _  @ bb2[5]:  fn test_load_addr;
-	n[3]: copy      n[1] => _8 @ bb2[11]: fn test_load_addr;
-	n[4]: copy      n[3] => _7 @ bb2[12]: fn test_load_addr;
-	n[5]: free      n[4] => _6 @ bb2[13]: fn test_load_addr;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: alloc _ => _1 @ bb1[2]: fn test_overwrite;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: alloc _    => _4 @ bb3[2]: fn test_overwrite;
-	n[1]: copy  n[0] => _7 @ bb4[4]: fn test_overwrite;
-	n[2]: copy  n[1] => _1 @ bb4[5]: fn test_overwrite;
-	n[3]: copy  n[2] => _9 @ bb4[9]: fn test_overwrite;
-	n[4]: free  n[3] => _8 @ bb4[9]: fn test_overwrite;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: alloc      _    => _2 @ bb1[2]:  fn test_store_addr;
-	n[1]: copy       n[0] => _1 @ bb2[2]:  fn test_store_addr;
-	n[2]: field.0    n[1] => _  @ bb2[4]:  fn test_store_addr;
-	n[3]: addr.store n[2] => _  @ bb2[4]:  fn test_store_addr;
-	n[4]: copy       n[1] => _7 @ bb2[9]:  fn test_store_addr;
-	n[5]: copy       n[4] => _6 @ bb2[10]: fn test_store_addr;
-	n[6]: free       n[5] => _5 @ bb2[11]: fn test_store_addr;
-}
-nodes_that_need_write = [3, 2, 1, 0]
-
-g {
-	n[0]: alloc      _    => _2  @ bb1[2]:  fn test_load_other_store_self;
-	n[1]: copy       n[0] => _1  @ bb2[2]:  fn test_load_other_store_self;
-	n[2]: field.0    n[1] => _   @ bb4[4]:  fn test_load_other_store_self;
-	n[3]: addr.store n[2] => _   @ bb4[4]:  fn test_load_other_store_self;
-	n[4]: field.0    n[1] => _9  @ bb4[6]:  fn test_load_other_store_self;
-	n[5]: addr.load  n[4] => _   @ bb4[6]:  fn test_load_other_store_self;
-	n[6]: copy       n[1] => _12 @ bb4[13]: fn test_load_other_store_self;
-	n[7]: copy       n[6] => _11 @ bb4[14]: fn test_load_other_store_self;
-	n[8]: free       n[7] => _10 @ bb4[15]: fn test_load_other_store_self;
-}
-nodes_that_need_write = [3, 2, 1, 0]
-
-g {
-	n[0]: alloc      _    => _6  @ bb3[2]: fn test_load_other_store_self;
-	n[1]: copy       n[0] => _5  @ bb4[2]: fn test_load_other_store_self;
-	n[2]: field.0    n[1] => _   @ bb4[7]: fn test_load_other_store_self;
-	n[3]: addr.store n[2] => _   @ bb4[7]: fn test_load_other_store_self;
-	n[4]: copy       n[1] => _15 @ bb5[6]: fn test_load_other_store_self;
-	n[5]: copy       n[4] => _14 @ bb5[7]: fn test_load_other_store_self;
-	n[6]: free       n[5] => _13 @ bb5[8]: fn test_load_other_store_self;
-}
-nodes_that_need_write = [3, 2, 1, 0]
-
-g {
-	n[0]:  alloc      _    => _2 @ bb1[2]:  fn test_load_self_store_self;
-	n[1]:  copy       n[0] => _1 @ bb2[3]:  fn test_load_self_store_self;
-	n[2]:  field.3    n[1] => _  @ bb2[6]:  fn test_load_self_store_self;
-	n[3]:  field.3    n[2] => _6 @ bb2[6]:  fn test_load_self_store_self;
-	n[4]:  addr.load  n[3] => _  @ bb2[6]:  fn test_load_self_store_self;
-	n[5]:  field.3    n[1] => _  @ bb2[7]:  fn test_load_self_store_self;
-	n[6]:  field.3    n[5] => _  @ bb2[7]:  fn test_load_self_store_self;
-	n[7]:  addr.store n[6] => _  @ bb2[7]:  fn test_load_self_store_self;
-	n[8]:  copy       n[1] => _9 @ bb2[13]: fn test_load_self_store_self;
-	n[9]:  copy       n[8] => _8 @ bb2[14]: fn test_load_self_store_self;
-	n[10]: free       n[9] => _7 @ bb2[15]: fn test_load_self_store_self;
-}
-nodes_that_need_write = [7, 6, 5, 1, 0]
-
-g {
-	n[0]: alloc      _    => _2  @ bb1[2]:  fn test_load_self_store_self_inter;
-	n[1]: copy       n[0] => _1  @ bb2[3]:  fn test_load_self_store_self_inter;
-	n[2]: field.0    n[1] => _6  @ bb2[6]:  fn test_load_self_store_self_inter;
-	n[3]: addr.load  n[2] => _   @ bb2[6]:  fn test_load_self_store_self_inter;
-	n[4]: field.0    n[1] => _   @ bb2[10]: fn test_load_self_store_self_inter;
-	n[5]: addr.store n[4] => _   @ bb2[10]: fn test_load_self_store_self_inter;
-	n[6]: copy       n[1] => _10 @ bb2[16]: fn test_load_self_store_self_inter;
-	n[7]: copy       n[6] => _9  @ bb2[17]: fn test_load_self_store_self_inter;
-	n[8]: free       n[7] => _8  @ bb2[18]: fn test_load_self_store_self_inter;
-}
-nodes_that_need_write = [5, 4, 1, 0]
-
-g {
-	n[0]: alloc      _    => _1 @ bb1[2]:  fn test_ptr_int_ptr;
-	n[1]: copy       n[0] => _5 @ bb2[5]:  fn test_ptr_int_ptr;
-	n[2]: ptr_to_int n[1] => _  @ bb2[5]:  fn test_ptr_int_ptr;
-	n[3]: int_to_ptr _    => _1 @ bb2[11]: fn test_ptr_int_ptr;
-	n[4]: copy       n[3] => _8 @ bb2[15]: fn test_ptr_int_ptr;
-	n[5]: free       n[4] => _7 @ bb2[15]: fn test_ptr_int_ptr;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: alloc      _    => _1 @ bb1[2]: fn test_load_value;
-	n[1]: value.load _    => _6 @ bb2[8]: fn test_load_value;
-	n[2]: free       n[1] => _5 @ bb2[8]: fn test_load_value;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_1       _    => _4 @ bb2[4]: fn test_load_value;
-	n[1]: addr.load n[0] => _  @ bb2[7]: fn test_load_value;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: alloc       _    => _1   @ bb1[2]:  fn test_store_value;
-	n[1]: copy        n[0] => _4   @ bb2[4]:  fn test_store_value;
-	n[2]: copy        n[1] => _6   @ bb2[10]: fn test_store_value;
-	n[3]: value.store n[2] => _5.* @ bb2[11]: fn test_store_value;
-	n[4]: copy        n[0] => _8   @ bb2[15]: fn test_store_value;
-	n[5]: free        n[4] => _7   @ bb2[15]: fn test_store_value;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_1        _    => _5 @ bb2[7]:  fn test_store_value;
-	n[1]: addr.store n[0] => _  @ bb2[10]: fn test_store_value;
+	n[0]: &_3        _    => _5 @ bb0[13]: fn testing; _5 = &mut _3;   
+	n[1]: addr.store n[0] => _  @ bb0[18]: fn testing; (*_5) = move _6;
 }
 nodes_that_need_write = [1, 0]
 
 g {
-	n[0]:  alloc       _    => _2     @ bb1[2]:  fn test_store_value_field;
-	n[1]:  copy        n[0] => _1     @ bb2[2]:  fn test_store_value_field;
-	n[2]:  copy        n[1] => _9     @ bb4[6]:  fn test_store_value_field;
-	n[3]:  value.store n[2] => _5.*.2 @ bb4[7]:  fn test_store_value_field;
-	n[4]:  value.load  _    => _10    @ bb4[10]: fn test_store_value_field;
-	n[5]:  field.2     n[1] => _      @ bb4[10]: fn test_store_value_field;
-	n[6]:  addr.store  n[5] => _      @ bb4[10]: fn test_store_value_field;
-	n[7]:  value.store n[4] => _1.*.2 @ bb4[11]: fn test_store_value_field;
-	n[8]:  copy        n[1] => _13    @ bb4[16]: fn test_store_value_field;
-	n[9]:  copy        n[8] => _12    @ bb4[17]: fn test_store_value_field;
-	n[10]: free        n[9] => _11    @ bb4[18]: fn test_store_value_field;
+	n[0]: &_1         _    => _7   @ bb0[16]: fn testing; _7 = &mut _1;       
+	n[1]: copy        n[0] => _6   @ bb0[18]: fn testing; _6 = &raw mut (*_7);
+	n[2]: value.store n[1] => _5.* @ bb0[19]: fn testing; (*_5) = move _6;    
 }
-nodes_that_need_write = [6, 5, 1, 0]
+nodes_that_need_write = []
 
 g {
-	n[0]: alloc      _    => _6  @ bb3[2]: fn test_store_value_field;
-	n[1]: copy       n[0] => _5  @ bb4[2]: fn test_store_value_field;
-	n[2]: field.2    n[1] => _   @ bb4[6]: fn test_store_value_field;
-	n[3]: addr.store n[2] => _   @ bb4[6]: fn test_store_value_field;
-	n[4]: field.2    n[1] => _10 @ bb4[9]: fn test_store_value_field;
-	n[5]: addr.load  n[4] => _   @ bb4[9]: fn test_store_value_field;
+	n[0]: alloc      _    => _2  @ bb1[2]:  fn simple1; _2 = malloc(move _3);                      
+	n[1]: copy       n[0] => _1  @ bb2[2]:  fn simple1; _1 = move _2 as *mut pointers::S (Misc);   
+	n[2]: copy       n[1] => _8  @ bb2[9]:  fn simple1; _8 = _1;                                   
+	n[3]: copy       n[2] => _7  @ bb2[10]: fn simple1; _7 = move _8 as *mut libc::c_void (Misc);  
+	n[4]: free       n[3] => _6  @ bb3[2]:  fn simple1; _6 = realloc(move _7, move _9);            
+	n[5]: copy       n[1] => _16 @ bb4[21]: fn simple1; _16 = _1;                                  
+	n[6]: ptr_to_int n[5] => _   @ bb4[21]: fn simple1; _15 = move _16 as usize (Misc);            
+	n[7]: copy       n[1] => _21 @ bb4[34]: fn simple1; _21 = _1;                                  
+	n[8]: copy       n[7] => _20 @ bb4[35]: fn simple1; _20 = move _21 as *mut libc::c_void (Misc);
+	n[9]: free       n[8] => _19 @ bb4[36]: fn simple1; _19 = free(move _20);                      
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: alloc      _    => _6  @ bb3[2]:  fn simple1; _6 = realloc(move _7, move _9);              
+	n[1]: copy       n[0] => _5  @ bb4[3]:  fn simple1; _5 = move _6 as *mut pointers::S (Misc);     
+	n[2]: copy       n[1] => _11 @ bb4[7]:  fn simple1; _11 = _5;                                    
+	n[3]: field.0    n[2] => _   @ bb4[8]:  fn simple1; ((*_11).0: i32) = const 10_i32;              
+	n[4]: addr.store n[3] => _   @ bb4[8]:  fn simple1; ((*_11).0: i32) = const 10_i32;              
+	n[5]: copy       n[1] => _12 @ bb4[11]: fn simple1; _12 = _5;                                    
+	n[6]: copy       n[2] => _13 @ bb4[14]: fn simple1; _13 = _11;                                   
+	n[7]: int_to_ptr _    => _17 @ bb4[28]: fn simple1; _17 = move _18 as *const libc::c_void (Misc);
+}
+nodes_that_need_write = [4, 3, 2, 1, 0]
+
+g {
+	n[0]: &_13 _ => _14 @ bb4[17]: fn simple1; _14 = &raw const _13;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]:  alloc       _     => _2     @ bb1[2]:  fn lighttpd_test;      _2 = malloc(move _3);                                     
+	n[1]:  copy        n[0]  => _1     @ bb2[2]:  fn lighttpd_test;      _1 = move _2 as *mut *mut pointers::fdnode_st (Misc);     
+	n[2]:  copy        n[1]  => _9     @ bb4[6]:  fn lighttpd_test;      _9 = _1;                                                  
+	n[3]:  value.store n[2]  => _5.*.0 @ bb4[7]:  fn lighttpd_test;      ((*_5).0: *mut *mut pointers::fdnode_st) = move _9;       
+	n[4]:  value.load  _     => _8     @ bb0[3]:  fn fdevent_register;   _8 = ((*_1).0: *mut *mut pointers::fdnode_st);            
+	n[5]:  offset[0]   n[4]  => _7     @ bb0[8]:  fn fdevent_register;   _7 = offset(move _8, move _9);                            
+	n[6]:  copy        n[5]  => _6     @ bb1[3]:  fn fdevent_register;   _6 = &mut (*_7);                                          
+	n[7]:  addr.store  n[6]  => _      @ bb2[0]:  fn fdevent_register;   (*_6) = move _11;                                         
+	n[8]:  addr.load   n[6]  => _      @ bb2[3]:  fn fdevent_register;   _12 = (*_6);                                              
+	n[9]:  value.load  _     => _5     @ bb0[4]:  fn fdevent_unregister; _5 = ((*_1).0: *mut *mut pointers::fdnode_st);            
+	n[10]: offset[0]   n[9]  => _4     @ bb0[9]:  fn fdevent_unregister; _4 = offset(move _5, move _6);                            
+	n[11]: addr.load   n[10] => _      @ bb1[2]:  fn fdevent_unregister; _3 = (*_4);                                               
+	n[12]: value.load  _     => _19    @ bb7[5]:  fn fdevent_unregister; _19 = ((*_1).0: *mut *mut pointers::fdnode_st);           
+	n[13]: offset[0]   n[12] => _18    @ bb7[10]: fn fdevent_unregister; _18 = offset(move _19, move _20);                         
+	n[14]: copy        n[13] => _17    @ bb8[3]:  fn fdevent_unregister; _17 = &mut (*_18);                                        
+	n[15]: addr.store  n[14] => _      @ bb8[4]:  fn fdevent_unregister; (*_17) = const 0_usize as *mut pointers::fdnode_st (Misc);
+	n[16]: copy        n[1]  => _20    @ bb6[7]:  fn lighttpd_test;      _20 = _1;                                                 
+	n[17]: copy        n[16] => _19    @ bb6[8]:  fn lighttpd_test;      _19 = move _20 as *mut libc::c_void (Misc);               
+	n[18]: free        n[17] => _18    @ bb6[9]:  fn lighttpd_test;      _18 = free(move _19);                                     
+}
+nodes_that_need_write = [15, 14, 13, 12, 7, 6, 5, 4]
+
+g {
+	n[0]:  alloc      _     => _6  @ bb3[2]:  fn lighttpd_test;                 _6 = malloc(move _7);                                         
+	n[1]:  copy       n[0]  => _5  @ bb4[2]:  fn lighttpd_test;                 _5 = move _6 as *mut pointers::fdevents (Misc);               
+	n[2]:  field.0    n[1]  => _   @ bb4[6]:  fn lighttpd_test;                 ((*_5).0: *mut *mut pointers::fdnode_st) = move _9;           
+	n[3]:  addr.store n[2]  => _   @ bb4[6]:  fn lighttpd_test;                 ((*_5).0: *mut *mut pointers::fdnode_st) = move _9;           
+	n[4]:  copy       n[1]  => _12 @ bb4[11]: fn lighttpd_test;                 _12 = _5;                                                     
+	n[5]:  value.load _     => _10 @ bb2[11]: fn connection_accepted;           _10 = ((*_1).0: *mut pointers::fdevents);                     
+	n[6]:  copy       n[5]  => _1  @ bb0[0]:  fn fdevent_register;              _9 = fdevent_register(move _10, move _11, move _12, move _14);
+	n[7]:  field.0    n[6]  => _8  @ bb0[2]:  fn fdevent_register;              _8 = ((*_1).0: *mut *mut pointers::fdnode_st);                
+	n[8]:  addr.load  n[7]  => _   @ bb0[2]:  fn fdevent_register;              _8 = ((*_1).0: *mut *mut pointers::fdnode_st);                
+	n[9]:  value.load _     => _4  @ bb0[3]:  fn connection_close;              _4 = ((*_1).0: *mut pointers::fdevents);                      
+	n[10]: copy       n[9]  => _1  @ bb0[0]:  fn fdevent_fdnode_event_del;      _3 = fdevent_fdnode_event_del(move _4, move _5);              
+	n[11]: copy       n[10] => _7  @ bb2[3]:  fn fdevent_fdnode_event_del;      _7 = _1;                                                      
+	n[12]: copy       n[11] => _1  @ bb0[0]:  fn fdevent_fdnode_event_unsetter; _6 = fdevent_fdnode_event_unsetter(move _7, move _8);         
+	n[13]: value.load _     => _7  @ bb1[6]:  fn connection_close;              _7 = ((*_1).0: *mut pointers::fdevents);                      
+	n[14]: copy       n[13] => _1  @ bb0[0]:  fn fdevent_unregister;            _6 = fdevent_unregister(move _7, move _8);                    
+	n[15]: field.0    n[14] => _5  @ bb0[3]:  fn fdevent_unregister;            _5 = ((*_1).0: *mut *mut pointers::fdnode_st);                
+	n[16]: addr.load  n[15] => _   @ bb0[3]:  fn fdevent_unregister;            _5 = ((*_1).0: *mut *mut pointers::fdnode_st);                
+	n[17]: field.0    n[14] => _19 @ bb7[4]:  fn fdevent_unregister;            _19 = ((*_1).0: *mut *mut pointers::fdnode_st);               
+	n[18]: addr.load  n[17] => _   @ bb7[4]:  fn fdevent_unregister;            _19 = ((*_1).0: *mut *mut pointers::fdnode_st);               
+	n[19]: copy       n[15] => _23 @ bb7[6]:  fn lighttpd_test;                 _23 = _5;                                                     
+	n[20]: copy       n[19] => _22 @ bb7[7]:  fn lighttpd_test;                 _22 = move _23 as *mut libc::c_void (Misc);                   
+	n[21]: free       n[20] => _21 @ bb7[8]:  fn lighttpd_test;                 _21 = free(move _22);                                         
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
 g {
-	n[0]: alloc       _    => _1   @ bb1[2]:  fn test_load_value_store_value;
-	n[1]: value.load  _    => _5   @ bb2[7]:  fn test_load_value_store_value;
-	n[2]: value.store n[1] => _4.* @ bb2[8]:  fn test_load_value_store_value;
-	n[3]: value.load  _    => _7   @ bb2[12]: fn test_load_value_store_value;
-	n[4]: free        n[3] => _6   @ bb2[12]: fn test_load_value_store_value;
+	n[0]:  &_11      _    => _10 @ bb4[14]: fn lighttpd_test;       _10 = &mut _11;                                  
+	n[1]:  copy      n[0] => _14 @ bb4[18]: fn lighttpd_test;       _14 = &raw mut (*_10);                           
+	n[2]:  copy      n[1] => _1  @ bb0[0]:  fn connection_accepted; _13 = connection_accepted(move _14, const 0_i32);
+	n[3]:  field.0   n[2] => _10 @ bb2[10]: fn connection_accepted; _10 = ((*_1).0: *mut pointers::fdevents);        
+	n[4]:  addr.load n[3] => _   @ bb2[10]: fn connection_accepted; _10 = ((*_1).0: *mut pointers::fdevents);        
+	n[5]:  copy      n[3] => _16 @ bb5[5]:  fn lighttpd_test;       _16 = &raw mut (*_10);                           
+	n[6]:  copy      n[5] => _1  @ bb0[0]:  fn connection_close;    _15 = connection_close(move _16, move _17);      
+	n[7]:  field.0   n[6] => _4  @ bb0[2]:  fn connection_close;    _4 = ((*_1).0: *mut pointers::fdevents);         
+	n[8]:  addr.load n[7] => _   @ bb0[2]:  fn connection_close;    _4 = ((*_1).0: *mut pointers::fdevents);         
+	n[9]:  field.0   n[6] => _7  @ bb1[5]:  fn connection_close;    _7 = ((*_1).0: *mut pointers::fdevents);         
+	n[10]: addr.load n[9] => _   @ bb1[5]:  fn connection_close;    _7 = ((*_1).0: *mut pointers::fdevents);         
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: &_1        _    => _4 @ bb2[4]:  fn test_load_value_store_value;
-	n[1]: addr.load  n[0] => _  @ bb2[6]:  fn test_load_value_store_value;
-	n[2]: addr.store n[0] => _  @ bb2[7]:  fn test_load_value_store_value;
-	n[3]: addr.load  n[0] => _  @ bb2[11]: fn test_load_value_store_value;
+	n[0]:  alloc       _     => _5      @ bb1[2]:  fn connection_accepted; _5 = malloc(move _6);                                         
+	n[1]:  copy        n[0]  => _4      @ bb2[2]:  fn connection_accepted; _4 = move _5 as *mut pointers::connection (Misc);             
+	n[2]:  field.0     n[1]  => _       @ bb2[6]:  fn connection_accepted; ((*_4).0: i32) = move _8;                                     
+	n[3]:  addr.store  n[2]  => _       @ bb2[6]:  fn connection_accepted; ((*_4).0: i32) = move _8;                                     
+	n[4]:  field.0     n[1]  => _11     @ bb2[12]: fn connection_accepted; _11 = ((*_4).0: i32);                                         
+	n[5]:  addr.load   n[4]  => _       @ bb2[12]: fn connection_accepted; _11 = ((*_4).0: i32);                                         
+	n[6]:  copy        n[1]  => _15     @ bb2[21]: fn connection_accepted; _15 = _4;                                                     
+	n[7]:  copy        n[6]  => _14     @ bb2[22]: fn connection_accepted; _14 = move _15 as *mut libc::c_void (Misc);                   
+	n[8]:  copy        n[7]  => _4      @ bb0[0]:  fn fdevent_register;    _9 = fdevent_register(move _10, move _11, move _12, move _14);
+	n[9]:  copy        n[8]  => _15     @ bb2[16]: fn fdevent_register;    _15 = _4;                                                     
+	n[10]: value.store n[9]  => _12.*.1 @ bb2[17]: fn fdevent_register;    ((*_12).1: *mut libc::c_void) = move _15;                     
+	n[11]: field.1     n[1]  => _       @ bb3[4]:  fn connection_accepted; ((*_4).1: *mut pointers::fdnode_st) = move _9;                
+	n[12]: addr.store  n[11] => _       @ bb3[4]:  fn connection_accepted; ((*_4).1: *mut pointers::fdnode_st) = move _9;                
+	n[13]: copy        n[8]  => _0      @ bb3[7]:  fn connection_accepted; _0 = _4;                                                      
+	n[14]: copy        n[13] => _13     @ bb5[0]:  fn lighttpd_test;       _13 = connection_accepted(move _14, const 0_i32);             
+	n[15]: copy        n[14] => _17     @ bb5[7]:  fn lighttpd_test;       _17 = _13;                                                    
+	n[16]: copy        n[15] => _2      @ bb0[0]:  fn connection_close;    _15 = connection_close(move _16, move _17);                   
+	n[17]: field.1     n[16] => _5      @ bb0[4]:  fn connection_close;    _5 = ((*_2).1: *mut pointers::fdnode_st);                     
+	n[18]: addr.load   n[17] => _       @ bb0[4]:  fn connection_close;    _5 = ((*_2).1: *mut pointers::fdnode_st);                     
+	n[19]: field.0     n[16] => _8      @ bb1[7]:  fn connection_close;    _8 = ((*_2).0: i32);                                          
+	n[20]: addr.load   n[19] => _       @ bb1[7]:  fn connection_close;    _8 = ((*_2).0: i32);                                          
+}
+nodes_that_need_write = [12, 11, 3, 2, 1, 0]
+
+g {
+	n[0]:  alloc       _     => _3     @ bb1[2]:  fn fdnode_init;                   _3 = calloc(move _4, move _6);                                                                  
+	n[1]:  copy        n[0]  => _2     @ bb2[3]:  fn fdnode_init;                   _2 = move _3 as *mut pointers::fdnode_st (Misc);                                                
+	n[2]:  copy        n[1]  => _10    @ bb2[10]: fn fdnode_init;                   _10 = _2;                                                                                       
+	n[3]:  copy        n[2]  => _1     @ bb0[0]:  fn is_null;                       _9 = is_null(move _10);                                                                         
+	n[4]:  copy        n[1]  => _0     @ bb9[3]:  fn fdnode_init;                   _0 = _2;                                                                                        
+	n[5]:  copy        n[4]  => _11    @ bb2[0]:  fn fdevent_register;              _11 = fdnode_init();                                                                            
+	n[6]:  value.store n[5]  => _6.*   @ bb2[1]:  fn fdevent_register;              (*_6) = move _11;                                                                               
+	n[7]:  value.load  _     => _12    @ bb2[4]:  fn fdevent_register;              _12 = (*_6);                                                                                    
+	n[8]:  field.0     n[7]  => _      @ bb2[8]:  fn fdevent_register;              ((*_12).0: std::option::Option<unsafe extern "C" fn(*mut libc::c_void, i32) -> u32>) = move _13;
+	n[9]:  addr.store  n[8]  => _      @ bb2[8]:  fn fdevent_register;              ((*_12).0: std::option::Option<unsafe extern "C" fn(*mut libc::c_void, i32) -> u32>) = move _13;
+	n[10]: field.2     n[7]  => _      @ bb2[12]: fn fdevent_register;              ((*_12).2: i32) = move _14;                                                                     
+	n[11]: addr.store  n[10] => _      @ bb2[12]: fn fdevent_register;              ((*_12).2: i32) = move _14;                                                                     
+	n[12]: field.1     n[7]  => _      @ bb2[16]: fn fdevent_register;              ((*_12).1: *mut libc::c_void) = move _15;                                                       
+	n[13]: addr.store  n[12] => _      @ bb2[16]: fn fdevent_register;              ((*_12).1: *mut libc::c_void) = move _15;                                                       
+	n[14]: field.3     n[7]  => _      @ bb2[20]: fn fdevent_register;              ((*_12).3: i32) = move _16;                                                                     
+	n[15]: addr.store  n[14] => _      @ bb2[20]: fn fdevent_register;              ((*_12).3: i32) = move _16;                                                                     
+	n[16]: field.4     n[7]  => _      @ bb3[0]:  fn fdevent_register;              ((*_12).4: i32) = Neg(move _17);                                                                
+	n[17]: addr.store  n[16] => _      @ bb3[0]:  fn fdevent_register;              ((*_12).4: i32) = Neg(move _17);                                                                
+	n[18]: copy        n[7]  => _0     @ bb3[3]:  fn fdevent_register;              _0 = _12;                                                                                       
+	n[19]: copy        n[18] => _9     @ bb3[0]:  fn connection_accepted;           _9 = fdevent_register(move _10, move _11, move _12, move _14);                                  
+	n[20]: value.store n[19] => _4.*.1 @ bb3[5]:  fn connection_accepted;           ((*_4).1: *mut pointers::fdnode_st) = move _9;                                                  
+	n[21]: value.load  _     => _5     @ bb0[5]:  fn connection_close;              _5 = ((*_2).1: *mut pointers::fdnode_st);                                                       
+	n[22]: copy        n[21] => _2     @ bb0[0]:  fn fdevent_fdnode_event_del;      _3 = fdevent_fdnode_event_del(move _4, move _5);                                                
+	n[23]: copy        n[22] => _5     @ bb0[4]:  fn fdevent_fdnode_event_del;      _5 = _2;                                                                                        
+	n[24]: copy        n[23] => _1     @ bb0[0]:  fn is_null;                       _4 = is_null(move _5);                                                                          
+	n[25]: copy        n[22] => _8     @ bb2[5]:  fn fdevent_fdnode_event_del;      _8 = _2;                                                                                        
+	n[26]: copy        n[25] => _2     @ bb0[0]:  fn fdevent_fdnode_event_unsetter; _6 = fdevent_fdnode_event_unsetter(move _7, move _8);                                           
+	n[27]: field.4     n[26] => _8     @ bb1[3]:  fn fdevent_fdnode_event_unsetter; _8 = ((*_2).4: i32);                                                                            
+	n[28]: addr.load   n[27] => _      @ bb1[3]:  fn fdevent_fdnode_event_unsetter; _8 = ((*_2).4: i32);                                                                            
+	n[29]: value.load  _     => _3     @ bb1[3]:  fn fdevent_unregister;            _3 = (*_4);                                                                                     
+	n[30]: copy        n[29] => _12    @ bb1[12]: fn fdevent_unregister;            _12 = _3;                                                                                       
+	n[31]: ptr_to_int  n[30] => _      @ bb1[12]: fn fdevent_unregister;            _11 = move _12 as usize (Misc);                                                                 
+	n[32]: copy        n[29] => _23    @ bb8[8]:  fn fdevent_unregister;            _23 = _3;                                                                                       
+	n[33]: copy        n[32] => _1     @ bb0[0]:  fn fdnode_free;                   _22 = fdnode_free(move _23);                                                                    
+	n[34]: copy        n[33] => _4     @ bb0[4]:  fn fdnode_free;                   _4 = _1;                                                                                        
+	n[35]: copy        n[34] => _3     @ bb0[5]:  fn fdnode_free;                   _3 = move _4 as *mut libc::c_void (Misc);                                                       
+	n[36]: free        n[35] => _2     @ bb0[6]:  fn fdnode_free;                   _2 = free(move _3);                                                                             
+}
+nodes_that_need_write = [17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7]
+
+g {
+	n[0]: alloc _    => _1 @ bb1[2]: fn test_malloc_free; _1 = malloc(move _2);
+	n[1]: copy  n[0] => _5 @ bb2[5]: fn test_malloc_free; _5 = _1;             
+	n[2]: free  n[1] => _4 @ bb2[5]: fn test_malloc_free; _4 = free(move _5);  
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: alloc _    => _2 @ bb1[2]:  fn test_malloc_free_cast; _2 = malloc(move _3);                    
+	n[1]: copy  n[0] => _1 @ bb2[2]:  fn test_malloc_free_cast; _1 = move _2 as *mut pointers::S (Misc); 
+	n[2]: copy  n[1] => _7 @ bb2[8]:  fn test_malloc_free_cast; _7 = _1;                                 
+	n[3]: copy  n[2] => _6 @ bb2[9]:  fn test_malloc_free_cast; _6 = move _7 as *mut libc::c_void (Misc);
+	n[4]: free  n[3] => _5 @ bb2[10]: fn test_malloc_free_cast; _5 = free(move _6);                      
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: alloc _    => _1 @ bb1[2]: fn test_arg; _1 = malloc(move _2);
+	n[1]: copy  n[0] => _5 @ bb2[5]: fn test_arg; _5 = _1;             
+	n[2]: copy  n[1] => _1 @ bb0[0]: fn foo;      _4 = foo(move _5);   
+	n[3]: copy  n[2] => _2 @ bb0[2]: fn foo;      _2 = _1;             
+	n[4]: copy  n[2] => _6 @ bb3[4]: fn test_arg; _6 = _1;             
+}
+nodes_that_need_write = []
+
+g {
+	n[0]:  alloc _     => _1  @ bb1[2]: fn test_arg_rec; _1 = malloc(move _2);              
+	n[1]:  copy  n[0]  => _5  @ bb2[5]: fn test_arg_rec; _5 = _1;                           
+	n[2]:  copy  n[1]  => _2  @ bb0[0]: fn foo_rec;      _4 = foo_rec(const 3_i32, move _5);
+	n[3]:  copy  n[2]  => _11 @ bb3[4]: fn foo_rec;      _11 = _2;                          
+	n[4]:  copy  n[3]  => _2  @ bb0[0]: fn foo_rec;      _7 = foo_rec(move _8, move _11);   
+	n[5]:  copy  n[4]  => _11 @ bb3[4]: fn foo_rec;      _11 = _2;                          
+	n[6]:  copy  n[5]  => _2  @ bb0[0]: fn foo_rec;      _7 = foo_rec(move _8, move _11);   
+	n[7]:  copy  n[6]  => _11 @ bb3[4]: fn foo_rec;      _11 = _2;                          
+	n[8]:  copy  n[7]  => _2  @ bb0[0]: fn foo_rec;      _7 = foo_rec(move _8, move _11);   
+	n[9]:  copy  n[8]  => _0  @ bb8[3]: fn foo_rec;      _0 = _2;                           
+	n[10]: copy  n[9]  => _7  @ bb4[0]: fn foo_rec;      _7 = foo_rec(move _8, move _11);   
+	n[11]: copy  n[10] => _12 @ bb4[5]: fn foo_rec;      _12 = _7;                          
+	n[12]: copy  n[11] => _0  @ bb4[7]: fn foo_rec;      _0 = _12;                          
+	n[13]: copy  n[12] => _7  @ bb4[0]: fn foo_rec;      _7 = foo_rec(move _8, move _11);   
+	n[14]: copy  n[13] => _12 @ bb4[5]: fn foo_rec;      _12 = _7;                          
+	n[15]: copy  n[14] => _0  @ bb4[7]: fn foo_rec;      _0 = _12;                          
+	n[16]: copy  n[15] => _7  @ bb4[0]: fn foo_rec;      _7 = foo_rec(move _8, move _11);   
+	n[17]: copy  n[16] => _12 @ bb4[5]: fn foo_rec;      _12 = _7;                          
+	n[18]: copy  n[17] => _0  @ bb4[7]: fn foo_rec;      _0 = _12;                          
+	n[19]: copy  n[18] => _4  @ bb3[0]: fn test_arg_rec; _4 = foo_rec(const 3_i32, move _5);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1  _    => _2 @ bb0[5]:  fn test_shared_ref; _2 = &_1;                    
+	n[1]: copy n[0] => _3 @ bb0[8]:  fn test_shared_ref; _3 = _2;                     
+	n[2]: copy n[1] => _5 @ bb0[12]: fn test_shared_ref; _5 = &(*_3);                 
+	n[3]: copy n[2] => _1 @ bb0[0]:  fn shared_ref_foo;  _4 = shared_ref_foo(move _5);
+	n[4]: copy n[3] => _0 @ bb0[1]:  fn shared_ref_foo;  _0 = _1;                     
+	n[5]: copy n[4] => _4 @ bb1[0]:  fn test_shared_ref; _4 = shared_ref_foo(move _5);
+	n[6]: copy n[5] => _6 @ bb1[4]:  fn test_shared_ref; _6 = &raw const (*_4);       
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1  _    => _4 @ bb0[8]:  fn test_unique_ref; _4 = &mut _1;       
+	n[1]: copy n[0] => _3 @ bb0[10]: fn test_unique_ref; _3 = &raw mut (*_4);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_3        _    => _5 @ bb0[13]: fn test_unique_ref; _5 = &mut _3;   
+	n[1]: addr.store n[0] => _  @ bb0[18]: fn test_unique_ref; (*_5) = move _6;
+}
+nodes_that_need_write = [1, 0]
+
+g {
+	n[0]: &_1         _    => _7   @ bb0[16]: fn test_unique_ref; _7 = &mut _1;       
+	n[1]: copy        n[0] => _6   @ bb0[18]: fn test_unique_ref; _6 = &raw mut (*_7);
+	n[2]: value.store n[1] => _5.* @ bb0[19]: fn test_unique_ref; (*_5) = move _6;    
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: alloc _    => _1 @ bb1[2]: fn test_realloc_reassign; _1 = malloc(move _2);          
+	n[1]: copy  n[0] => _5 @ bb2[5]: fn test_realloc_reassign; _5 = _1;                       
+	n[2]: free  n[1] => _4 @ bb4[2]: fn test_realloc_reassign; _4 = realloc(move _5, move _6);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: alloc _    => _4  @ bb4[2]: fn test_realloc_reassign; _4 = realloc(move _5, move _6);
+	n[1]: copy  n[0] => _1  @ bb5[3]: fn test_realloc_reassign; _1 = move _4;                  
+	n[2]: copy  n[1] => _11 @ bb5[7]: fn test_realloc_reassign; _11 = _1;                      
+	n[3]: free  n[2] => _10 @ bb5[7]: fn test_realloc_reassign; _10 = free(move _11);          
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: alloc _    => _1 @ bb1[2]: fn test_realloc_fresh; _1 = malloc(move _2);          
+	n[1]: copy  n[0] => _5 @ bb2[5]: fn test_realloc_fresh; _5 = _1;                       
+	n[2]: free  n[1] => _4 @ bb3[2]: fn test_realloc_fresh; _4 = realloc(move _5, move _6);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: alloc _    => _4 @ bb3[2]: fn test_realloc_fresh; _4 = realloc(move _5, move _6);
+	n[1]: copy  n[0] => _9 @ bb4[6]: fn test_realloc_fresh; _9 = _4;                       
+	n[2]: free  n[1] => _8 @ bb4[6]: fn test_realloc_fresh; _8 = free(move _9);            
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: alloc     _    => _2 @ bb1[2]:  fn test_load_addr; _2 = malloc(move _3);                    
+	n[1]: copy      n[0] => _1 @ bb2[2]:  fn test_load_addr; _1 = move _2 as *mut pointers::S (Misc); 
+	n[2]: addr.load n[1] => _  @ bb2[5]:  fn test_load_addr; _5 = (*_1);                              
+	n[3]: copy      n[1] => _8 @ bb2[11]: fn test_load_addr; _8 = _1;                                 
+	n[4]: copy      n[3] => _7 @ bb2[12]: fn test_load_addr; _7 = move _8 as *mut libc::c_void (Misc);
+	n[5]: free      n[4] => _6 @ bb2[13]: fn test_load_addr; _6 = free(move _7);                      
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: alloc _ => _1 @ bb1[2]: fn test_overwrite; _1 = malloc(move _2);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: alloc _    => _4 @ bb3[2]: fn test_overwrite; _4 = malloc(move _5);
+	n[1]: copy  n[0] => _7 @ bb4[4]: fn test_overwrite; _7 = _4;             
+	n[2]: copy  n[1] => _1 @ bb4[5]: fn test_overwrite; _1 = move _7;        
+	n[3]: copy  n[2] => _9 @ bb4[9]: fn test_overwrite; _9 = _1;             
+	n[4]: free  n[3] => _8 @ bb4[9]: fn test_overwrite; _8 = free(move _9);  
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: alloc      _    => _2 @ bb1[2]:  fn test_store_addr; _2 = malloc(move _3);                    
+	n[1]: copy       n[0] => _1 @ bb2[2]:  fn test_store_addr; _1 = move _2 as *mut pointers::S (Misc); 
+	n[2]: field.0    n[1] => _  @ bb2[4]:  fn test_store_addr; ((*_1).0: i32) = const 10_i32;           
+	n[3]: addr.store n[2] => _  @ bb2[4]:  fn test_store_addr; ((*_1).0: i32) = const 10_i32;           
+	n[4]: copy       n[1] => _7 @ bb2[9]:  fn test_store_addr; _7 = _1;                                 
+	n[5]: copy       n[4] => _6 @ bb2[10]: fn test_store_addr; _6 = move _7 as *mut libc::c_void (Misc);
+	n[6]: free       n[5] => _5 @ bb2[11]: fn test_store_addr; _5 = free(move _6);                      
+}
+nodes_that_need_write = [3, 2, 1, 0]
+
+g {
+	n[0]: alloc      _    => _2  @ bb1[2]:  fn test_load_other_store_self; _2 = malloc(move _3);                      
+	n[1]: copy       n[0] => _1  @ bb2[2]:  fn test_load_other_store_self; _1 = move _2 as *mut pointers::S (Misc);   
+	n[2]: field.0    n[1] => _   @ bb4[4]:  fn test_load_other_store_self; ((*_1).0: i32) = const 10_i32;             
+	n[3]: addr.store n[2] => _   @ bb4[4]:  fn test_load_other_store_self; ((*_1).0: i32) = const 10_i32;             
+	n[4]: field.0    n[1] => _9  @ bb4[6]:  fn test_load_other_store_self; _9 = ((*_1).0: i32);                       
+	n[5]: addr.load  n[4] => _   @ bb4[6]:  fn test_load_other_store_self; _9 = ((*_1).0: i32);                       
+	n[6]: copy       n[1] => _12 @ bb4[13]: fn test_load_other_store_self; _12 = _1;                                  
+	n[7]: copy       n[6] => _11 @ bb4[14]: fn test_load_other_store_self; _11 = move _12 as *mut libc::c_void (Misc);
+	n[8]: free       n[7] => _10 @ bb4[15]: fn test_load_other_store_self; _10 = free(move _11);                      
+}
+nodes_that_need_write = [3, 2, 1, 0]
+
+g {
+	n[0]: alloc      _    => _6  @ bb3[2]: fn test_load_other_store_self; _6 = malloc(move _7);                      
+	n[1]: copy       n[0] => _5  @ bb4[2]: fn test_load_other_store_self; _5 = move _6 as *mut pointers::S (Misc);   
+	n[2]: field.0    n[1] => _   @ bb4[7]: fn test_load_other_store_self; ((*_5).0: i32) = move _9;                  
+	n[3]: addr.store n[2] => _   @ bb4[7]: fn test_load_other_store_self; ((*_5).0: i32) = move _9;                  
+	n[4]: copy       n[1] => _15 @ bb5[6]: fn test_load_other_store_self; _15 = _5;                                  
+	n[5]: copy       n[4] => _14 @ bb5[7]: fn test_load_other_store_self; _14 = move _15 as *mut libc::c_void (Misc);
+	n[6]: free       n[5] => _13 @ bb5[8]: fn test_load_other_store_self; _13 = free(move _14);                      
+}
+nodes_that_need_write = [3, 2, 1, 0]
+
+g {
+	n[0]:  alloc      _    => _2 @ bb1[2]:  fn test_load_self_store_self; _2 = calloc(move _3, move _4);            
+	n[1]:  copy       n[0] => _1 @ bb2[3]:  fn test_load_self_store_self; _1 = move _2 as *mut pointers::S (Misc);  
+	n[2]:  field.3    n[1] => _  @ bb2[6]:  fn test_load_self_store_self; _6 = (((*_1).3: pointers::T).3: i32);     
+	n[3]:  field.3    n[2] => _6 @ bb2[6]:  fn test_load_self_store_self; _6 = (((*_1).3: pointers::T).3: i32);     
+	n[4]:  addr.load  n[3] => _  @ bb2[6]:  fn test_load_self_store_self; _6 = (((*_1).3: pointers::T).3: i32);     
+	n[5]:  field.3    n[1] => _  @ bb2[7]:  fn test_load_self_store_self; (((*_1).3: pointers::T).3: i32) = move _6;
+	n[6]:  field.3    n[5] => _  @ bb2[7]:  fn test_load_self_store_self; (((*_1).3: pointers::T).3: i32) = move _6;
+	n[7]:  addr.store n[6] => _  @ bb2[7]:  fn test_load_self_store_self; (((*_1).3: pointers::T).3: i32) = move _6;
+	n[8]:  copy       n[1] => _9 @ bb2[13]: fn test_load_self_store_self; _9 = _1;                                  
+	n[9]:  copy       n[8] => _8 @ bb2[14]: fn test_load_self_store_self; _8 = move _9 as *mut libc::c_void (Misc); 
+	n[10]: free       n[9] => _7 @ bb2[15]: fn test_load_self_store_self; _7 = free(move _8);                       
+}
+nodes_that_need_write = [7, 6, 5, 1, 0]
+
+g {
+	n[0]: alloc      _    => _2  @ bb1[2]:  fn test_load_self_store_self_inter; _2 = calloc(move _3, move _4);            
+	n[1]: copy       n[0] => _1  @ bb2[3]:  fn test_load_self_store_self_inter; _1 = move _2 as *mut pointers::S (Misc);  
+	n[2]: field.0    n[1] => _6  @ bb2[6]:  fn test_load_self_store_self_inter; _6 = ((*_1).0: i32);                      
+	n[3]: addr.load  n[2] => _   @ bb2[6]:  fn test_load_self_store_self_inter; _6 = ((*_1).0: i32);                      
+	n[4]: field.0    n[1] => _   @ bb2[10]: fn test_load_self_store_self_inter; ((*_1).0: i32) = move _7;                 
+	n[5]: addr.store n[4] => _   @ bb2[10]: fn test_load_self_store_self_inter; ((*_1).0: i32) = move _7;                 
+	n[6]: copy       n[1] => _10 @ bb2[16]: fn test_load_self_store_self_inter; _10 = _1;                                 
+	n[7]: copy       n[6] => _9  @ bb2[17]: fn test_load_self_store_self_inter; _9 = move _10 as *mut libc::c_void (Misc);
+	n[8]: free       n[7] => _8  @ bb2[18]: fn test_load_self_store_self_inter; _8 = free(move _9);                       
+}
+nodes_that_need_write = [5, 4, 1, 0]
+
+g {
+	n[0]: alloc      _    => _1 @ bb1[2]:  fn test_ptr_int_ptr; _1 = malloc(move _2);                    
+	n[1]: copy       n[0] => _5 @ bb2[5]:  fn test_ptr_int_ptr; _5 = _1;                                 
+	n[2]: ptr_to_int n[1] => _  @ bb2[5]:  fn test_ptr_int_ptr; _4 = move _5 as usize (Misc);            
+	n[3]: int_to_ptr _    => _1 @ bb2[11]: fn test_ptr_int_ptr; _1 = move _6 as *mut libc::c_void (Misc);
+	n[4]: copy       n[3] => _8 @ bb2[15]: fn test_ptr_int_ptr; _8 = _1;                                 
+	n[5]: free       n[4] => _7 @ bb2[15]: fn test_ptr_int_ptr; _7 = free(move _8);                      
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: alloc      _    => _1 @ bb1[2]: fn test_load_value; _1 = malloc(move _2);
+	n[1]: value.load _    => _6 @ bb2[8]: fn test_load_value; _6 = (*_4);          
+	n[2]: free       n[1] => _5 @ bb2[8]: fn test_load_value; _5 = free(move _6);  
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1       _    => _4 @ bb2[4]: fn test_load_value; _4 = &raw const _1;
+	n[1]: addr.load n[0] => _  @ bb2[7]: fn test_load_value; _6 = (*_4);        
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: alloc       _    => _1   @ bb1[2]:  fn test_store_value; _1 = malloc(move _2);
+	n[1]: copy        n[0] => _4   @ bb2[4]:  fn test_store_value; _4 = _1;             
+	n[2]: copy        n[1] => _6   @ bb2[10]: fn test_store_value; _6 = _4;             
+	n[3]: value.store n[2] => _5.* @ bb2[11]: fn test_store_value; (*_5) = move _6;     
+	n[4]: copy        n[0] => _8   @ bb2[15]: fn test_store_value; _8 = _1;             
+	n[5]: free        n[4] => _7   @ bb2[15]: fn test_store_value; _7 = free(move _8);  
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1        _    => _5 @ bb2[7]:  fn test_store_value; _5 = &raw mut _1;
+	n[1]: addr.store n[0] => _  @ bb2[10]: fn test_store_value; (*_5) = move _6; 
+}
+nodes_that_need_write = [1, 0]
+
+g {
+	n[0]:  alloc       _    => _2     @ bb1[2]:  fn test_store_value_field; _2 = malloc(move _3);                                                                      
+	n[1]:  copy        n[0] => _1     @ bb2[2]:  fn test_store_value_field; _1 = move _2 as *mut pointers::S (Misc);                                                   
+	n[2]:  copy        n[1] => _9     @ bb4[6]:  fn test_store_value_field; _9 = _1;                                                                                   
+	n[3]:  value.store n[2] => _5.*.2 @ bb4[7]:  fn test_store_value_field; ((*_5).2: *const pointers::S) = move _9 as *const pointers::S (Pointer(MutToConstPointer));
+	n[4]:  value.load  _    => _10    @ bb4[10]: fn test_store_value_field; _10 = ((*_5).2: *const pointers::S);                                                       
+	n[5]:  field.2     n[1] => _      @ bb4[10]: fn test_store_value_field; ((*_1).2: *const pointers::S) = move _10;                                                  
+	n[6]:  addr.store  n[5] => _      @ bb4[10]: fn test_store_value_field; ((*_1).2: *const pointers::S) = move _10;                                                  
+	n[7]:  value.store n[4] => _1.*.2 @ bb4[11]: fn test_store_value_field; ((*_1).2: *const pointers::S) = move _10;                                                  
+	n[8]:  copy        n[1] => _13    @ bb4[16]: fn test_store_value_field; _13 = _1;                                                                                  
+	n[9]:  copy        n[8] => _12    @ bb4[17]: fn test_store_value_field; _12 = move _13 as *mut libc::c_void (Misc);                                                
+	n[10]: free        n[9] => _11    @ bb4[18]: fn test_store_value_field; _11 = free(move _12);                                                                      
+}
+nodes_that_need_write = [6, 5, 1, 0]
+
+g {
+	n[0]: alloc      _    => _6  @ bb3[2]: fn test_store_value_field; _6 = malloc(move _7);                                                                      
+	n[1]: copy       n[0] => _5  @ bb4[2]: fn test_store_value_field; _5 = move _6 as *mut pointers::S (Misc);                                                   
+	n[2]: field.2    n[1] => _   @ bb4[6]: fn test_store_value_field; ((*_5).2: *const pointers::S) = move _9 as *const pointers::S (Pointer(MutToConstPointer));
+	n[3]: addr.store n[2] => _   @ bb4[6]: fn test_store_value_field; ((*_5).2: *const pointers::S) = move _9 as *const pointers::S (Pointer(MutToConstPointer));
+	n[4]: field.2    n[1] => _10 @ bb4[9]: fn test_store_value_field; _10 = ((*_5).2: *const pointers::S);                                                       
+	n[5]: addr.load  n[4] => _   @ bb4[9]: fn test_store_value_field; _10 = ((*_5).2: *const pointers::S);                                                       
+}
+nodes_that_need_write = [3, 2, 1, 0]
+
+g {
+	n[0]: alloc       _    => _1   @ bb1[2]:  fn test_load_value_store_value; _1 = malloc(move _2);
+	n[1]: value.load  _    => _5   @ bb2[7]:  fn test_load_value_store_value; _5 = (*_4);          
+	n[2]: value.store n[1] => _4.* @ bb2[8]:  fn test_load_value_store_value; (*_4) = move _5;     
+	n[3]: value.load  _    => _7   @ bb2[12]: fn test_load_value_store_value; _7 = (*_4);          
+	n[4]: free        n[3] => _6   @ bb2[12]: fn test_load_value_store_value; _6 = free(move _7);  
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1        _    => _4 @ bb2[4]:  fn test_load_value_store_value; _4 = &raw mut _1;
+	n[1]: addr.load  n[0] => _  @ bb2[6]:  fn test_load_value_store_value; _5 = (*_4);      
+	n[2]: addr.store n[0] => _  @ bb2[7]:  fn test_load_value_store_value; (*_4) = move _5; 
+	n[3]: addr.load  n[0] => _  @ bb2[11]: fn test_load_value_store_value; _7 = (*_4);      
 }
 nodes_that_need_write = [2, 0]
 
 g {
-	n[0]: copy _ => _32 @ bb28[4]: fn main_0;
+	n[0]:  &_35       _     => _34 @ bb30[4]:  fn main_0;         _34 = &mut _35;                                      
+	n[1]:  copy       n[0]  => _40 @ bb30[12]: fn main_0;         _40 = &(*_34);                                       
+	n[2]:  copy       n[1]  => _39 @ bb30[13]: fn main_0;         _39 = move _40 as &[i32] (Pointer(Unsize));          
+	n[3]:  copy       n[2]  => _1  @ bb0[0]:   fn len;            _38 = len(move _39);                                 
+	n[4]:  copy       n[0]  => _42 @ bb31[6]:  fn main_0;         _42 = &raw mut (*_34);                               
+	n[5]:  copy       n[4]  => _41 @ bb31[7]:  fn main_0;         _41 = move _42 as *mut i32 (Pointer(ArrayToPointer));
+	n[6]:  copy       n[5]  => _2  @ bb0[0]:   fn insertion_sort; _36 = insertion_sort(move _37, move _41);            
+	n[7]:  copy       n[6]  => _10 @ bb3[4]:   fn insertion_sort; _10 = _2;                                            
+	n[8]:  offset[1]  n[7]  => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);                     
+	n[9]:  addr.load  n[8]  => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);                                          
+	n[10]: copy       n[6]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
+	n[11]: offset[0]  n[10] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
+	n[12]: addr.load  n[11] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
+	n[13]: copy       n[6]  => _47 @ bb24[8]:  fn insertion_sort; _47 = _2;                                            
+	n[14]: offset[1]  n[13] => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);                    
+	n[15]: addr.store n[14] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;                                   
+	n[16]: copy       n[6]  => _10 @ bb3[4]:   fn insertion_sort; _10 = _2;                                            
+	n[17]: offset[2]  n[16] => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);                     
+	n[18]: addr.load  n[17] => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);                                          
+	n[19]: copy       n[6]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
+	n[20]: offset[1]  n[19] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
+	n[21]: addr.load  n[20] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
+	n[22]: copy       n[6]  => _31 @ bb13[4]:  fn insertion_sort; _31 = _2;                                            
+	n[23]: offset[1]  n[22] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);                    
+	n[24]: addr.load  n[23] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);                                        
+	n[25]: copy       n[6]  => _38 @ bb16[6]:  fn insertion_sort; _38 = _2;                                            
+	n[26]: offset[2]  n[25] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);                    
+	n[27]: addr.store n[26] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;                                   
+	n[28]: copy       n[6]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
+	n[29]: offset[0]  n[28] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
+	n[30]: addr.load  n[29] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
+	n[31]: copy       n[6]  => _47 @ bb24[8]:  fn insertion_sort; _47 = _2;                                            
+	n[32]: offset[1]  n[31] => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);                    
+	n[33]: addr.store n[32] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;                                   
+	n[34]: copy       n[6]  => _10 @ bb3[4]:   fn insertion_sort; _10 = _2;                                            
+	n[35]: offset[3]  n[34] => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);                     
+	n[36]: addr.load  n[35] => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);                                          
+	n[37]: copy       n[6]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
+	n[38]: offset[2]  n[37] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
+	n[39]: addr.load  n[38] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
+	n[40]: copy       n[6]  => _31 @ bb13[4]:  fn insertion_sort; _31 = _2;                                            
+	n[41]: offset[2]  n[40] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);                    
+	n[42]: addr.load  n[41] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);                                        
+	n[43]: copy       n[6]  => _38 @ bb16[6]:  fn insertion_sort; _38 = _2;                                            
+	n[44]: offset[3]  n[43] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);                    
+	n[45]: addr.store n[44] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;                                   
+	n[46]: copy       n[6]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
+	n[47]: offset[1]  n[46] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
+	n[48]: addr.load  n[47] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
+	n[49]: copy       n[6]  => _31 @ bb13[4]:  fn insertion_sort; _31 = _2;                                            
+	n[50]: offset[1]  n[49] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);                    
+	n[51]: addr.load  n[50] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);                                        
+	n[52]: copy       n[6]  => _38 @ bb16[6]:  fn insertion_sort; _38 = _2;                                            
+	n[53]: offset[2]  n[52] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);                    
+	n[54]: addr.store n[53] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;                                   
+	n[55]: copy       n[6]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
+	n[56]: offset[0]  n[55] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
+	n[57]: addr.load  n[56] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
+	n[58]: copy       n[6]  => _31 @ bb13[4]:  fn insertion_sort; _31 = _2;                                            
+	n[59]: offset[0]  n[58] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);                    
+	n[60]: addr.load  n[59] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);                                        
+	n[61]: copy       n[6]  => _38 @ bb16[6]:  fn insertion_sort; _38 = _2;                                            
+	n[62]: offset[1]  n[61] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);                    
+	n[63]: addr.store n[62] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;                                   
+	n[64]: copy       n[6]  => _47 @ bb24[8]:  fn insertion_sort; _47 = _2;                                            
+	n[65]: offset[0]  n[64] => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);                    
+	n[66]: addr.store n[65] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;                                   
+	n[67]: copy       n[6]  => _10 @ bb3[4]:   fn insertion_sort; _10 = _2;                                            
+	n[68]: offset[4]  n[67] => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);                     
+	n[69]: addr.load  n[68] => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);                                          
+	n[70]: copy       n[6]  => _22 @ bb9[5]:   fn insertion_sort; _22 = _2;                                            
+	n[71]: offset[3]  n[70] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);                    
+	n[72]: addr.load  n[71] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);                                        
+	n[73]: copy       n[6]  => _47 @ bb24[8]:  fn insertion_sort; _47 = _2;                                            
+	n[74]: offset[4]  n[73] => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);                    
+	n[75]: addr.store n[74] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;                                   
 }
-nodes_that_need_write = []
+nodes_that_need_write = [75, 74, 73, 66, 65, 64, 63, 62, 61, 54, 53, 52, 45, 44, 43, 33, 32, 31, 27, 26, 25, 15, 14, 13, 6, 5, 4, 0]
 
 g {
-	n[0]: copy _ => _38 @ bb28[12]: fn main_0;
+	n[0]: &_4        _    => _3 @ bb0[15]: fn test_ref_field; _3 = &mut _4;                             
+	n[1]: field.3    n[0] => _  @ bb0[17]: fn test_ref_field; _7 = (((*_3).3: pointers::T).3: i32);     
+	n[2]: field.3    n[1] => _7 @ bb0[17]: fn test_ref_field; _7 = (((*_3).3: pointers::T).3: i32);     
+	n[3]: addr.load  n[2] => _  @ bb0[17]: fn test_ref_field; _7 = (((*_3).3: pointers::T).3: i32);     
+	n[4]: field.3    n[0] => _  @ bb0[18]: fn test_ref_field; (((*_3).3: pointers::T).3: i32) = move _7;
+	n[5]: field.3    n[4] => _  @ bb0[18]: fn test_ref_field; (((*_3).3: pointers::T).3: i32) = move _7;
+	n[6]: addr.store n[5] => _  @ bb0[18]: fn test_ref_field; (((*_3).3: pointers::T).3: i32) = move _7;
 }
-nodes_that_need_write = []
+nodes_that_need_write = [6, 5, 4, 0]
 
-g {
-	n[0]:  &_32       _     => _40 @ bb29[6]:  fn main_0;        
-	n[1]:  copy       n[0]  => _39 @ bb29[7]:  fn main_0;        
-	n[2]:  copy       n[1]  => _2  @ bb0[0]:   fn insertion_sort;
-	n[3]:  copy       n[2]  => _10 @ bb3[4]:   fn insertion_sort;
-	n[4]:  offset[1]  n[3]  => _9  @ bb3[9]:   fn insertion_sort;
-	n[5]:  addr.load  n[4]  => _   @ bb5[2]:   fn insertion_sort;
-	n[6]:  copy       n[2]  => _22 @ bb9[5]:   fn insertion_sort;
-	n[7]:  offset[0]  n[6]  => _21 @ bb11[5]:  fn insertion_sort;
-	n[8]:  addr.load  n[7]  => _   @ bb12[2]:  fn insertion_sort;
-	n[9]:  copy       n[2]  => _47 @ bb24[8]:  fn insertion_sort;
-	n[10]: offset[1]  n[9]  => _46 @ bb24[13]: fn insertion_sort;
-	n[11]: addr.store n[10] => _   @ bb25[2]:  fn insertion_sort;
-	n[12]: copy       n[2]  => _10 @ bb3[4]:   fn insertion_sort;
-	n[13]: offset[2]  n[12] => _9  @ bb3[9]:   fn insertion_sort;
-	n[14]: addr.load  n[13] => _   @ bb5[2]:   fn insertion_sort;
-	n[15]: copy       n[2]  => _22 @ bb9[5]:   fn insertion_sort;
-	n[16]: offset[1]  n[15] => _21 @ bb11[5]:  fn insertion_sort;
-	n[17]: addr.load  n[16] => _   @ bb12[2]:  fn insertion_sort;
-	n[18]: copy       n[2]  => _31 @ bb13[4]:  fn insertion_sort;
-	n[19]: offset[1]  n[18] => _30 @ bb15[5]:  fn insertion_sort;
-	n[20]: addr.load  n[19] => _   @ bb16[2]:  fn insertion_sort;
-	n[21]: copy       n[2]  => _38 @ bb16[6]:  fn insertion_sort;
-	n[22]: offset[2]  n[21] => _37 @ bb16[11]: fn insertion_sort;
-	n[23]: addr.store n[22] => _   @ bb17[2]:  fn insertion_sort;
-	n[24]: copy       n[2]  => _22 @ bb9[5]:   fn insertion_sort;
-	n[25]: offset[0]  n[24] => _21 @ bb11[5]:  fn insertion_sort;
-	n[26]: addr.load  n[25] => _   @ bb12[2]:  fn insertion_sort;
-	n[27]: copy       n[2]  => _47 @ bb24[8]:  fn insertion_sort;
-	n[28]: offset[1]  n[27] => _46 @ bb24[13]: fn insertion_sort;
-	n[29]: addr.store n[28] => _   @ bb25[2]:  fn insertion_sort;
-	n[30]: copy       n[2]  => _10 @ bb3[4]:   fn insertion_sort;
-	n[31]: offset[3]  n[30] => _9  @ bb3[9]:   fn insertion_sort;
-	n[32]: addr.load  n[31] => _   @ bb5[2]:   fn insertion_sort;
-	n[33]: copy       n[2]  => _22 @ bb9[5]:   fn insertion_sort;
-	n[34]: offset[2]  n[33] => _21 @ bb11[5]:  fn insertion_sort;
-	n[35]: addr.load  n[34] => _   @ bb12[2]:  fn insertion_sort;
-	n[36]: copy       n[2]  => _31 @ bb13[4]:  fn insertion_sort;
-	n[37]: offset[2]  n[36] => _30 @ bb15[5]:  fn insertion_sort;
-	n[38]: addr.load  n[37] => _   @ bb16[2]:  fn insertion_sort;
-	n[39]: copy       n[2]  => _38 @ bb16[6]:  fn insertion_sort;
-	n[40]: offset[3]  n[39] => _37 @ bb16[11]: fn insertion_sort;
-	n[41]: addr.store n[40] => _   @ bb17[2]:  fn insertion_sort;
-	n[42]: copy       n[2]  => _22 @ bb9[5]:   fn insertion_sort;
-	n[43]: offset[1]  n[42] => _21 @ bb11[5]:  fn insertion_sort;
-	n[44]: addr.load  n[43] => _   @ bb12[2]:  fn insertion_sort;
-	n[45]: copy       n[2]  => _31 @ bb13[4]:  fn insertion_sort;
-	n[46]: offset[1]  n[45] => _30 @ bb15[5]:  fn insertion_sort;
-	n[47]: addr.load  n[46] => _   @ bb16[2]:  fn insertion_sort;
-	n[48]: copy       n[2]  => _38 @ bb16[6]:  fn insertion_sort;
-	n[49]: offset[2]  n[48] => _37 @ bb16[11]: fn insertion_sort;
-	n[50]: addr.store n[49] => _   @ bb17[2]:  fn insertion_sort;
-	n[51]: copy       n[2]  => _22 @ bb9[5]:   fn insertion_sort;
-	n[52]: offset[0]  n[51] => _21 @ bb11[5]:  fn insertion_sort;
-	n[53]: addr.load  n[52] => _   @ bb12[2]:  fn insertion_sort;
-	n[54]: copy       n[2]  => _31 @ bb13[4]:  fn insertion_sort;
-	n[55]: offset[0]  n[54] => _30 @ bb15[5]:  fn insertion_sort;
-	n[56]: addr.load  n[55] => _   @ bb16[2]:  fn insertion_sort;
-	n[57]: copy       n[2]  => _38 @ bb16[6]:  fn insertion_sort;
-	n[58]: offset[1]  n[57] => _37 @ bb16[11]: fn insertion_sort;
-	n[59]: addr.store n[58] => _   @ bb17[2]:  fn insertion_sort;
-	n[60]: copy       n[2]  => _47 @ bb24[8]:  fn insertion_sort;
-	n[61]: offset[0]  n[60] => _46 @ bb24[13]: fn insertion_sort;
-	n[62]: addr.store n[61] => _   @ bb25[2]:  fn insertion_sort;
-	n[63]: copy       n[2]  => _10 @ bb3[4]:   fn insertion_sort;
-	n[64]: offset[4]  n[63] => _9  @ bb3[9]:   fn insertion_sort;
-	n[65]: addr.load  n[64] => _   @ bb5[2]:   fn insertion_sort;
-	n[66]: copy       n[2]  => _22 @ bb9[5]:   fn insertion_sort;
-	n[67]: offset[3]  n[66] => _21 @ bb11[5]:  fn insertion_sort;
-	n[68]: addr.load  n[67] => _   @ bb12[2]:  fn insertion_sort;
-	n[69]: copy       n[2]  => _47 @ bb24[8]:  fn insertion_sort;
-	n[70]: offset[4]  n[69] => _46 @ bb24[13]: fn insertion_sort;
-	n[71]: addr.store n[70] => _   @ bb25[2]:  fn insertion_sort;
-}
-nodes_that_need_write = [71, 70, 69, 62, 61, 60, 59, 58, 57, 50, 49, 48, 41, 40, 39, 29, 28, 27, 23, 22, 21, 11, 10, 9, 2, 1, 0]
-
-num_graphs = 86
-num_nodes = 614
+num_graphs = 77
+num_nodes = 667
 

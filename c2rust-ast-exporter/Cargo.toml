@@ -20,7 +20,7 @@ serde_bytes = "0.11"
 serde_cbor = "0.11"
 
 [build-dependencies]
-bindgen = { version = "0.60", features = ["logging"], default-features = false }
+bindgen = { version = "0.60", features = ["logging"] }
 clang-sys = "1.3"
 # Pinning until https://github.com/rust-lang/cmake-rs/issues/131 is resolved
 # Fixed by https://github.com/rust-lang/cmake-rs/pull/146 on 5/12/2022; waiting for next release.

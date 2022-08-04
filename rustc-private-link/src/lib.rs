@@ -65,10 +65,6 @@ impl SysRoot {
         .collect()
     }
 
-    pub fn set_env_rust_sysroot(&self) {
-        print_cargo_path("rustc-env=RUST_SYSROOT=", self.sysroot());
-    }
-
     pub fn link_rustc_private(&self) {
         let lib = self.lib();
         print_cargo_path("rustc-link-search=native=", &lib);
