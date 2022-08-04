@@ -16,7 +16,9 @@ git_testament!(TESTAMENT);
 
 /// A `c2rust` sub-command.
 struct SubCommand {
-    /// The path to the [`SubCommand`]'s executable.
+    /// The path to the [`SubCommand`]'s executable,
+    /// if it was found (see [`Self::find_all`]).
+    /// Otherwise [`None`] if it is a known [`SubCommand`] (see [`Self::known`]).
     path: Option<PathBuf>,
     /// The name of the [`SubCommand`], i.e. in `c2rust-{name}`.
     name: Cow<'static, str>,
@@ -112,6 +114,8 @@ fn main() -> anyhow::Result<()> {
     // like the ones with hyphens like `--metadata`,
     // even though I've set [`Arg::allow_hyphen_values`].
     // This is faster anyways.
+    // I also tried a single "subcommand" argument with [`Arg::possible_values`],
+    // but that had the same problem passing through all arguments as well.
     //
     // Furthermore, doing it this way correctly forwards `--help` through to the subcommand
     // instead of `clap` intercepting it and displaying the top-level `--help`.
@@ -128,9 +132,6 @@ fn main() -> anyhow::Result<()> {
     }
 
     // If we didn't get a subcommand, then use `clap` for parsing and error/help messages.
-
-    // For some stupid reason, [`Arg::possible_values`] requires a slice, not an iterator.
-    // let sub_command_names = sub_commands.keys().copied().collect::<Vec<_>>();
     let matches = App::new("C2Rust")
         .version(&*render_testament!(TESTAMENT))
         .author(crate_authors!(", "))
@@ -145,11 +146,9 @@ fn main() -> anyhow::Result<()> {
                     .allow_hyphen_values(true),
             )
         }))
-        // .arg(Arg::with_name("subcommand").possible_values(sub_command_names.as_slice()))
         .get_matches();
     let sub_command_name = matches
         .subcommand_name()
-        // .value_of("subcommand")
         .ok_or_else(|| anyhow!("no subcommand"))?;
     sub_commands[sub_command_name].invoke(args)
 }
