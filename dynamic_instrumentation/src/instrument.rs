@@ -227,7 +227,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
             _ if !is_region_or_unsafe_ptr(value_ty) => {}
             Rvalue::AddressOf(_, p)
                 if has_outer_deref(p)
-                    && is_region_or_unsafe_ptr(place_ty(&remove_outer_deref(*p, self.tcx()))) =>
+                    && is_region_or_unsafe_ptr(place_ty(&remove_outer_deref(*p, self.tcx()))) => 
             {
                 let source = remove_outer_deref(*p, self.tcx());
                 // Instrument which local's address is taken
