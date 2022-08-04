@@ -144,7 +144,7 @@ mod tests {
         let dir = Path::new("analysis/test");
         let status = Command::new("scripts/pdg.sh")
             .arg(dir)
-            .env("BINARY", "c2rust-analysis-test")
+            .env("PROFILE", "debug")
             .status()?;
         assert!(status.success());
         let pdg = fs_err::read_to_string(dir.join("pdg.log"))?;
