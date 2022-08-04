@@ -187,6 +187,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>) {
+        // TODO(spernsteiner): other `StatementKind`s will be handled in the future
+        #[allow(clippy::single_match)]
         match stmt.kind {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
@@ -194,12 +196,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let rv_lty = self.visit_rvalue(rv, pl_lty);
                 self.do_assign(pl_lty, rv_lty);
             }
-            _ => {}
+            // TODO(spernsteiner): handle other `StatementKind`s
+            _ => (),
         }
     }
 
     pub fn visit_terminator(&mut self, term: &Terminator<'tcx>) {
         eprintln!("borrowck: visit_terminator({:?})", term.kind);
+        // TODO(spernsteiner): other `TerminatorKind`s will be handled in the future
+        #[allow(clippy::single_match)]
         match term.kind {
             TerminatorKind::Call {
                 ref func,
@@ -223,7 +228,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     None => {}
                 }
             }
-            _ => {}
+            // TODO(spernsteiner): handle other `TerminatorKind`s
+            _ => (),
         }
     }
 }

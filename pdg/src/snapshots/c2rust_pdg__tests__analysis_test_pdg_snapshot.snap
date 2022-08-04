@@ -64,6 +64,8 @@ g {
 	n[1]: copy        n[0] => _2    @ bb0[0]:  fn push;               _36 = push(move _37, move _38);                           
 	n[2]: value.store _    => _20.* @ bb4[8]:  fn invalid;            (*_20) = const 0_usize as *mut pointers::S (Misc);        
 	n[3]: value.store _    => _17.* @ bb8[5]:  fn fdevent_unregister; (*_17) = const 0_usize as *mut pointers::fdnode_st (Misc);
+	n[4]: int_to_ptr  _    => _2    @ bb0[3]:  fn test_ref_field;     _2 = const 0_usize as *const pointers::S (Misc);          
+	n[5]: int_to_ptr  _    => _5    @ bb0[9]:  fn test_ref_field;     _5 = const 0_usize as *const pointers::S (Misc);          
 }
 nodes_that_need_write = []
 
@@ -957,6 +959,17 @@ g {
 }
 nodes_that_need_write = [75, 74, 73, 66, 65, 64, 63, 62, 61, 54, 53, 52, 45, 44, 43, 33, 32, 31, 27, 26, 25, 15, 14, 13, 6, 5, 4, 0]
 
-num_graphs = 75
-num_nodes = 655
+g {
+	n[0]: &_4        _    => _3 @ bb0[15]: fn test_ref_field; _3 = &mut _4;                             
+	n[1]: field.3    n[0] => _  @ bb0[17]: fn test_ref_field; _7 = (((*_3).3: pointers::T).3: i32);     
+	n[2]: field.3    n[1] => _7 @ bb0[17]: fn test_ref_field; _7 = (((*_3).3: pointers::T).3: i32);     
+	n[3]: addr.load  n[2] => _  @ bb0[17]: fn test_ref_field; _7 = (((*_3).3: pointers::T).3: i32);     
+	n[4]: field.3    n[0] => _  @ bb0[18]: fn test_ref_field; (((*_3).3: pointers::T).3: i32) = move _7;
+	n[5]: field.3    n[4] => _  @ bb0[18]: fn test_ref_field; (((*_3).3: pointers::T).3: i32) = move _7;
+	n[6]: addr.store n[5] => _  @ bb0[18]: fn test_ref_field; (((*_3).3: pointers::T).3: i32) = move _7;
+}
+nodes_that_need_write = [6, 5, 4, 0]
+
+num_graphs = 76
+num_nodes = 664
 

@@ -376,6 +376,23 @@ pub unsafe extern "C" fn test_unique_ref() {
     *fresh1 = &mut x as *mut i32;
 }
 #[no_mangle]
+pub unsafe extern "C" fn test_ref_field() {
+    let t =  T {
+        field: 0i32,
+        field2: 0u64,
+        field3: 0 as *const S,
+        field4: 0i32,
+    };
+
+    let ref mut s = S {
+        field: 0i32,
+        field2: 0u64,
+        field3: 0 as *const S,
+        field4: t,
+    };
+    s.field4.field4 = s.field4.field4;
+}
+#[no_mangle]
 pub unsafe extern "C" fn test_realloc_reassign() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
     s = realloc(s, 2 * mem::size_of::<S>() as c_ulong);
@@ -519,6 +536,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     test_load_value_store_value();
     let nums = &mut [2i32, 5i32, 3i32, 1i32, 6i32];
     insertion_sort(nums.len() as libc::c_int, nums as *mut libc::c_int);
+    test_ref_field();
     return 0i32;
 }
 pub fn main() {

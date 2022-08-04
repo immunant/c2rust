@@ -39,7 +39,7 @@ fn inspect_mir<'tcx>(tcx: TyCtxt<'tcx>, def: WithOptConstParam<LocalDefId>, mir:
 
     // Label all pointers in local variables.
     // TODO: also label pointers in Rvalue::Cast (and ShallowInitBox?)
-    assert!(acx.local_tys.len() == 0);
+    assert!(acx.local_tys.is_empty());
     acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
     for (local, decl) in mir.local_decls.iter_enumerated() {
         let lty = assign_pointer_ids(&acx, decl.ty);
@@ -108,7 +108,7 @@ fn inspect_mir<'tcx>(tcx: TyCtxt<'tcx>, def: WithOptConstParam<LocalDefId>, mir:
         eprintln!("{:?} ({}): {:?}", local, describe_local(acx.tcx, decl), ty,);
     }
 
-    eprintln!("");
+    eprintln!();
     let rewrites = expr_rewrite::gen_expr_rewrites(&acx, &hypothesis, &flags, mir);
     for rw in &rewrites {
         eprintln!(
@@ -148,7 +148,7 @@ fn describe_span(tcx: TyCtxt, span: Span) -> String {
     let s = {
         let mut s2 = String::new();
         for word in s.split_ascii_whitespace() {
-            if s2.len() > 0 {
+            if !s2.is_empty() {
                 s2.push(' ');
             }
             s2.push_str(word);

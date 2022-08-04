@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 libc = "0.2"
+c2rust-analysis-rt = { path = "../../analysis/runtime", optional = true }

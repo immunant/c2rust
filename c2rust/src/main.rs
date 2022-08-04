@@ -7,7 +7,7 @@ use std::process::{exit, Command};
 git_testament!(TESTAMENT);
 
 fn main() {
-    let subcommand_yamls = [load_yaml!("transpile.yaml"), load_yaml!("instrument.yaml")];
+    let subcommand_yamls = [load_yaml!("transpile.yaml")];
     let matches = App::new("C2Rust")
         .version(&*render_testament!(TESTAMENT))
         .author(crate_authors!(", "))
