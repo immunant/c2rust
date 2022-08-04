@@ -117,10 +117,14 @@ fn calc_lineage(g: &Graph, n:&NodeId) -> (NodeId,Vec<Field>) {
     let mut n_idx = n.clone();
     loop {
         let node = g.nodes.get(n_idx).unwrap();
+        let parent = match node.source {
+            None => break,
+            Some(p) => p
+        };
         n_idx = match node.kind {
-            NodeKind::Offset(_) => node.source.unwrap(),
-            NodeKind::Copy => node.source.unwrap(),
-            NodeKind::Field(f) => {lineage.push(f); node.source.unwrap()},
+            NodeKind::Offset(_) => parent,
+            NodeKind::Copy => parent,
+            NodeKind::Field(f) => {lineage.push(f); parent},
             _ => break
         };
     }
