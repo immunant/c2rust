@@ -180,7 +180,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
 
         let mut add_load_instr = |p: &Place<'tcx>| {
             self.loc(location, load_fn)
-                .arg_var(p.local)
+                .arg_var(remove_outer_deref(*p, ctx))
                 .source(&remove_outer_deref(*p, ctx))
                 .debug_mir(location)
                 .add_to(self);
@@ -188,10 +188,10 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
 
         // add instrumentation for load-from-address operations
         match value {
-            Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) if p.is_indirect() => {
+            Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) if has_outer_deref(p) => {
                 add_load_instr(p)
             }
-            Rvalue::AddressOf(_, p) if !local_ty(p).is_region_ptr() && p.is_indirect() => {
+            Rvalue::AddressOf(_, p) if !local_ty(p).is_region_ptr() && has_outer_deref(p) => {
                 add_load_instr(p)
             }
             _ => (),
@@ -232,7 +232,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
             Rvalue::AddressOf(_, p)
                 if has_outer_deref(p)
                     && place_ty(&remove_outer_deref(*p, self.tcx())).is_region_ptr() =>
-            { 
+            {
                 let source = remove_outer_deref(*p, self.tcx());
                 // Instrument which local's address is taken
                 self.loc(location.successor_within_block(), copy_fn)
