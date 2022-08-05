@@ -7,7 +7,7 @@
     unused_assignments,
     unused_mut,
     unused_variables,
-    unused_parens,
+    unused_parens
 )]
 extern "C" {
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
@@ -18,10 +18,11 @@ extern "C" {
 }
 
 /// Hidden from instrumentation so that we can polyfill [`reallocarray`] with it.
-const REALLOC: unsafe extern "C" fn(*mut libc::c_void, libc::c_ulong) -> *mut libc::c_void = realloc;
+const REALLOC: unsafe extern "C" fn(*mut libc::c_void, libc::c_ulong) -> *mut libc::c_void =
+    realloc;
 
 /// Polyfill [`reallocarray`] as macOS does not have [`reallocarray`].
-/// 
+///
 /// Normally we'd only polyfill it on macOS, but then we'd need a different snapshot file for macOS,
 /// as polyfilling results in a couple of extra copies.
 /// Thus, we just polyfill always.
@@ -377,7 +378,7 @@ pub unsafe extern "C" fn test_unique_ref() {
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_ref_field() {
-    let t =  T {
+    let t = T {
         field: 0i32,
         field2: 0u64,
         field3: 0 as *const S,
@@ -501,6 +502,30 @@ pub unsafe extern "C" fn insertion_sort(n: libc::c_int, p: *mut libc::c_int) {
         i += 1
     }
 }
+// CHECK-LABEL: final labeling for "ptrptr1_backward"
+// CHECK-DAG: ([[#@LINE+4]]: x): {{.*}}type = {{[lg][0-9]+}}#*mut *mut i32{{\[}}[[LABEL:[lg][0-9]+]]#*mut i32[NONE#i32[]]]
+// CHECK-DAG: ([[#@LINE+3]]: y): {{.*}}type = {{[lg][0-9]+}}#*mut *mut i32{{\[}}[[LABEL]]#*mut i32[NONE#i32[]]]
+// CHECK-DAG: ([[#@LINE+2]]: x): &&mut i32
+// CHECK-DAG: ([[#@LINE+1]]: y): &&mut i32
+pub unsafe fn ptrptr1_backward(cond: bool, x: *mut *mut i32, y: *mut *mut i32) {
+    // CHECK-DAG: ([[#@LINE+2]]: z): {{.*}}type = {{[lg][0-9]+}}#*mut *mut i32{{\[}}[[LABEL]]#*mut i32[NONE#i32[]]]
+    // CHECK-DAG: ([[#@LINE+1]]: z): &&mut i32
+    let z = if cond { x } else { y };
+    **z = 1;
+}
+
+// CHECK-LABEL: final labeling for "ptrptr1_bidir"
+// CHECK-DAG: ([[#@LINE+4]]: x): {{.*}}type = {{[lg][0-9]+}}#*mut *mut i32{{\[}}[[LABEL:[lg][0-9]+]]#*mut i32[NONE#i32[]]]
+// CHECK-DAG: ([[#@LINE+3]]: y): {{.*}}type = {{[lg][0-9]+}}#*mut *mut i32{{\[}}[[LABEL]]#*mut i32[NONE#i32[]]]
+// CHECK-DAG: ([[#@LINE+2]]: x): &&mut i32
+// CHECK-DAG: ([[#@LINE+1]]: y): &&mut i32
+pub unsafe fn ptrptr1_bidir(cond: bool, x: *mut *mut i32, y: *mut *mut i32) {
+    // CHECK-DAG: ([[#@LINE+2]]: z): {{.*}}type = {{[lg][0-9]+}}#*mut *mut i32{{\[}}[[LABEL]]#*mut i32[NONE#i32[]]]
+    // CHECK-DAG: ([[#@LINE+1]]: z): &&mut i32
+    let z = if cond { x } else { y };
+    // `*x` must be `&mut i32`, so `*z` must be `&mut i32`, so `*y` must be `&mut i32`.
+    **x = 1;
+}
 unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> libc::c_int {
     simple();
     exercise_allocator();
@@ -536,6 +561,20 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     test_load_value_store_value();
     let nums = &mut [2i32, 5i32, 3i32, 1i32, 6i32];
     insertion_sort(nums.len() as libc::c_int, nums as *mut libc::c_int);
+
+    let mut x: i32 = 0; 
+    let mut p_x = std::ptr::addr_of_mut!(x);
+    let pp_x: *mut *mut i32 = std::ptr::addr_of_mut!(p_x);
+
+    let mut y: i32 = 0; 
+    let mut p_y = std::ptr::addr_of_mut!(y);
+    let pp_y: *mut *mut i32 = std::ptr::addr_of_mut!(p_y);
+
+    ptrptr1_backward(true, pp_x, pp_y);
+    ptrptr1_backward(false, pp_x, pp_y);
+    ptrptr1_bidir(true, pp_x, pp_y);
+    ptrptr1_bidir(false, pp_x, pp_y);
+
     test_ref_field();
     return 0i32;
 }

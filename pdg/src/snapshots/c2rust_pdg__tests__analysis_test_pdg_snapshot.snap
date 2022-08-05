@@ -960,6 +960,50 @@ g {
 nodes_that_need_write = [75, 74, 73, 66, 65, 64, 63, 62, 61, 54, 53, 52, 45, 44, 43, 33, 32, 31, 27, 26, 25, 15, 14, 13, 6, 5, 4, 0]
 
 g {
+	n[0]: &_43 _ => _44 @ bb32[9]: fn main_0; _44 = &raw mut _43;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]:  &_44       _     => _45 @ bb32[12]: fn main_0;           _45 = &raw mut _44;                                     
+	n[1]:  copy       n[0]  => _50 @ bb32[28]: fn main_0;           _50 = _45;                                              
+	n[2]:  copy       n[1]  => _2  @ bb0[0]:   fn ptrptr1_backward; _49 = ptrptr1_backward(const true, move _50, move _51); 
+	n[3]:  copy       n[2]  => _4  @ bb1[1]:   fn ptrptr1_backward; _4 = _2;                                                
+	n[4]:  addr.store n[0]  => _   @ bb4[2]:   fn ptrptr1_backward; (*(*_4)) = const 1_i32;                                 
+	n[5]:  copy       n[0]  => _53 @ bb33[6]:  fn main_0;           _53 = _45;                                              
+	n[6]:  copy       n[5]  => _2  @ bb0[0]:   fn ptrptr1_backward; _52 = ptrptr1_backward(const false, move _53, move _54);
+	n[7]:  copy       n[0]  => _56 @ bb34[6]:  fn main_0;           _56 = _45;                                              
+	n[8]:  copy       n[7]  => _2  @ bb0[0]:   fn ptrptr1_bidir;    _55 = ptrptr1_bidir(const true, move _56, move _57);    
+	n[9]:  copy       n[8]  => _4  @ bb1[1]:   fn ptrptr1_bidir;    _4 = _2;                                                
+	n[10]: addr.store n[0]  => _   @ bb4[2]:   fn ptrptr1_bidir;    (*(*_2)) = const 1_i32;                                 
+	n[11]: copy       n[0]  => _59 @ bb35[6]:  fn main_0;           _59 = _45;                                              
+	n[12]: copy       n[11] => _2  @ bb0[0]:   fn ptrptr1_bidir;    _58 = ptrptr1_bidir(const false, move _59, move _60);   
+	n[13]: addr.store n[0]  => _   @ bb4[2]:   fn ptrptr1_bidir;    (*(*_2)) = const 1_i32;                                 
+}
+nodes_that_need_write = [13, 10, 4, 0]
+
+g {
+	n[0]: &_46 _ => _47 @ bb32[20]: fn main_0; _47 = &raw mut _46;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]:  &_47       _     => _48 @ bb32[23]: fn main_0;           _48 = &raw mut _47;                                     
+	n[1]:  copy       n[0]  => _51 @ bb32[30]: fn main_0;           _51 = _48;                                              
+	n[2]:  copy       n[1]  => _3  @ bb0[0]:   fn ptrptr1_backward; _49 = ptrptr1_backward(const true, move _50, move _51); 
+	n[3]:  copy       n[0]  => _54 @ bb33[8]:  fn main_0;           _54 = _48;                                              
+	n[4]:  copy       n[3]  => _3  @ bb0[0]:   fn ptrptr1_backward; _52 = ptrptr1_backward(const false, move _53, move _54);
+	n[5]:  copy       n[4]  => _4  @ bb3[1]:   fn ptrptr1_backward; _4 = _3;                                                
+	n[6]:  addr.store n[0]  => _   @ bb4[2]:   fn ptrptr1_backward; (*(*_4)) = const 1_i32;                                 
+	n[7]:  copy       n[0]  => _57 @ bb34[8]:  fn main_0;           _57 = _48;                                              
+	n[8]:  copy       n[7]  => _3  @ bb0[0]:   fn ptrptr1_bidir;    _55 = ptrptr1_bidir(const true, move _56, move _57);    
+	n[9]:  copy       n[0]  => _60 @ bb35[8]:  fn main_0;           _60 = _48;                                              
+	n[10]: copy       n[9]  => _3  @ bb0[0]:   fn ptrptr1_bidir;    _58 = ptrptr1_bidir(const false, move _59, move _60);   
+	n[11]: copy       n[10] => _4  @ bb3[1]:   fn ptrptr1_bidir;    _4 = _3;                                                
+}
+nodes_that_need_write = [6, 0]
+
+g {
 	n[0]: &_4        _    => _3 @ bb0[15]: fn test_ref_field; _3 = &mut _4;                             
 	n[1]: field.3    n[0] => _  @ bb0[17]: fn test_ref_field; _7 = (((*_3).3: pointers::T).3: i32);     
 	n[2]: field.3    n[1] => _7 @ bb0[17]: fn test_ref_field; _7 = (((*_3).3: pointers::T).3: i32);     
@@ -970,6 +1014,6 @@ g {
 }
 nodes_that_need_write = [6, 5, 4, 0]
 
-num_graphs = 76
-num_nodes = 664
+num_graphs = 80
+num_nodes = 692
 
