@@ -24,19 +24,20 @@ struct InstrumentationPointBuilder<'tcx> {
     pub metadata: EventMetadata,
 }
 
-impl<'tcx> InstrumentationAdder<'_, 'tcx> {
-    fn add(&mut self, point: InstrumentationPointBuilder<'tcx>, loc: Location, func: DefId) {
+impl<'a, 'tcx> InstrumentationAdder<'a, 'tcx> {
+    fn add(&mut self, builder: InstrumentationBuilder<'a, 'tcx>) {
         let id = self.instrumentation_points.len();
         let InstrumentationPointBuilder {
             args,
             is_cleanup,
             after_call,
             metadata,
-        } = point;
+        } = builder.point;
         self.instrumentation_points.push(InstrumentationPoint {
             id,
-            loc,
-            func,
+            original_location: builder.original_location,
+            instrumentation_location: builder.instrumentation_location,
+            func: builder.func,
             args,
             is_cleanup,
             after_call,
@@ -48,17 +49,24 @@ impl<'tcx> InstrumentationAdder<'_, 'tcx> {
 pub struct InstrumentationBuilder<'a, 'tcx: 'a> {
     tcx: TyCtxt<'tcx>,
     body: &'a Body<'tcx>,
-    loc: Location,
+    original_location: Location,
+    instrumentation_location: Location,
     func: DefId,
     point: InstrumentationPointBuilder<'tcx>,
 }
 
 impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
-    pub fn loc(&self, loc: Location, func: DefId) -> InstrumentationBuilder<'a, 'tcx> {
+    pub fn loc(
+        &self,
+        original_location: Location,
+        instrumentation_location: Location,
+        func: DefId,
+    ) -> InstrumentationBuilder<'a, 'tcx> {
         InstrumentationBuilder {
             tcx: self.tcx(),
             body: self.body,
-            loc,
+            original_location,
+            instrumentation_location,
             func,
             point: Default::default(),
         }
@@ -67,14 +75,14 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
     pub fn into_instrumentation_points(mut self) -> Vec<InstrumentationPoint<'tcx>> {
         // Sort by reverse location so that we can split blocks without
         // perturbing future statement indices
-        let key = |p: &InstrumentationPoint| (p.loc, p.after_call, p.id);
+        let key = |p: &InstrumentationPoint| (p.instrumentation_location, p.after_call, p.id);
         self.instrumentation_points
             .sort_unstable_by(|a, b| key(a).cmp(&key(b)).reverse());
         self.instrumentation_points
     }
 }
 
-impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
+impl<'a, 'tcx> InstrumentationBuilder<'a, 'tcx> {
     /// Add an argument to this [`InstrumentationPoint`].
     pub fn arg_var(mut self, arg: impl IntoOperand<'tcx>) -> Self {
         let op = arg.op(self.tcx);
@@ -181,7 +189,7 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     ///
     /// [`func`]: InstrumentationPoint::func
     /// [`statement_idx`]: Location::statement_index
-    pub fn add_to(self, adder: &mut InstrumentationAdder<'_, 'tcx>) {
-        adder.add(self.point, self.loc, self.func);
+    pub fn add_to(self, adder: &mut InstrumentationAdder<'a, 'tcx>) {
+        adder.add(self);
     }
 }

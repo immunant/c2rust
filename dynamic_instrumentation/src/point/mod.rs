@@ -17,7 +17,8 @@ pub use cast::cast_ptr_to_usize;
 
 pub struct InstrumentationPoint<'tcx> {
     id: usize,
-    pub loc: Location,
+    pub original_location: Location,
+    pub instrumentation_location: Location,
     pub func: DefId,
     pub args: Vec<InstrumentationArg<'tcx>>,
     pub is_cleanup: bool,
