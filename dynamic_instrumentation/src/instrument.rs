@@ -256,6 +256,13 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                     .debug_mir(location)
                     .add_to(self);
             }
+            Rvalue::Use(Operand::Constant(..))=> {
+                self.loc(location.successor_within_block(), copy_fn)
+                    .arg_var(dest)
+                    .dest(&dest)
+                    .debug_mir(location)
+                    .add_to(self);
+            }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) => {
                 self.loc(location.successor_within_block(), copy_fn)
                     .arg_var(dest)
