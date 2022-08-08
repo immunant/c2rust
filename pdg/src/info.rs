@@ -103,7 +103,7 @@ fn check_flows_to_node_kind(
             }
         }
     }
-    return None;
+    None
 }
 
 fn greatest_desc(g: &Graph, n: &NodeId) -> NodeId {
@@ -122,7 +122,7 @@ fn greatest_desc(g: &Graph, n: &NodeId) -> NodeId {
             add_children_to_vec(g, &desc_seen, &mut to_view);
         }
     }
-    return greatest_node_idx;
+    greatest_node_idx
 }
 
 /// Finds the highest-up ancestor of the given node n in g which is reached through Copy, Field, and
@@ -147,7 +147,7 @@ fn calc_lineage(g: &Graph, n: &NodeId) -> (NodeId, Vec<Field>) {
             _ => break,
         };
     }
-    return (n_idx, lineage);
+    (n_idx, lineage)
 }
 
 /// Looks for a node which proves that the given node n is not unique. If any is found, it's
@@ -186,7 +186,7 @@ pub fn check_whether_rules_obeyed(g: &Graph, n: &NodeId) -> Option<NodeId> {
             }
         }
     }
-    return None;
+    None
 }
 
 /// Takes a list of graphs, creates a NodeInfo object for each node in each graph, filling it with
