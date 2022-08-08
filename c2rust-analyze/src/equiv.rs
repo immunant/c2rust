@@ -1,3 +1,8 @@
+//! This module implements a two-level union-find data structure for computing equivalence classes
+//! on `PointerId`s.  Any equivalence class that contains at least one global `PointerId` is
+//! guaranteed to have a global pointer as its representative.  This means the global layer of the
+//! data structure is self-contained, and one global layer can be used with many different local
+//! parts.
 use crate::pointer_id::{
     GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerId,
     PointerTableMut,
@@ -78,10 +83,18 @@ impl LocalEquivSet {
     }
 
     fn set_parent(&self, x: PointerId, parent: PointerId) {
+        // `x` must be a local ID; its parent can be either local or global.
         debug_assert!(!x.is_global());
         self.0[x].set(parent);
     }
 
+    /// Get the representative of `x`'s equivalence class, considering only the local layer.  If
+    /// the representative is a global pointer, this method returns a global pointer from the same
+    /// equivalence class, but it is not guaranteed to return the same representative for all
+    /// members of the class.  That is, it may return two different global pointers for `rep(x)`
+    /// and `rep(y)`, even when `x` and `y` are in the same equivalence class.  This is
+    /// unavoidable, as information about the global equivalence classes is not available to this
+    /// method.
     fn rep(&self, x: PointerId) -> PointerId {
         let parent = self.parent(x);
         if parent == x || parent.is_global() || self.parent(parent) == parent {
@@ -135,6 +148,8 @@ impl<'g> EquivSet<'g> {
         self.0[x].set(parent);
     }
 
+    /// Get the representative of `x`'s equivalence class.  Two pointers `x` and `y` are in the
+    /// same equivalence class if and only if `rep(x) == rep(y)`.
     pub fn rep(&self, x: PointerId) -> PointerId {
         let parent = self.parent(x);
         if parent == x || self.parent(parent) == parent {
@@ -146,6 +161,8 @@ impl<'g> EquivSet<'g> {
         rep
     }
 
+    /// Merge the equivalence classes that contain `x` and `y`.  Afterward, all members of both
+    /// equivalence classes will have the same `rep`.
     pub fn unify(&mut self, x: PointerId, y: PointerId) {
         let x_rep = self.rep(x);
         let y_rep = self.rep(y);
