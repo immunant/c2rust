@@ -1,5 +1,4 @@
 use std::cell::Cell;
-use std::convert::TryFrom;
 use std::fmt;
 use std::ops::{Index, IndexMut};
 
@@ -7,6 +6,7 @@ use std::ops::{Index, IndexMut};
 pub struct PointerId(u32);
 const GLOBAL_BIT: u32 = 0x8000_0000;
 
+#[allow(dead_code)]
 impl PointerId {
     pub const NONE: PointerId = PointerId(u32::MAX);
 
@@ -154,6 +154,7 @@ impl<T> IndexMut<u32> for RawPointerTable<T> {
     }
 }
 
+#[allow(dead_code)]
 impl<T> LocalPointerTable<T> {
     pub fn empty() -> LocalPointerTable<T> {
         LocalPointerTable(RawPointerTable::empty())
@@ -217,6 +218,7 @@ impl<T> IndexMut<PointerId> for LocalPointerTable<T> {
     }
 }
 
+#[allow(dead_code)]
 impl<T> GlobalPointerTable<T> {
     pub fn empty() -> GlobalPointerTable<T> {
         GlobalPointerTable(RawPointerTable::empty())
@@ -297,6 +299,7 @@ impl<T> IndexMut<PointerId> for GlobalPointerTable<T> {
     }
 }
 
+#[allow(dead_code)]
 impl<'a, T> PointerTable<'a, T> {
     pub fn new(
         global: &'a GlobalPointerTable<T>,
@@ -329,6 +332,7 @@ impl<'a, T> Index<PointerId> for PointerTable<'a, T> {
     }
 }
 
+#[allow(dead_code)]
 impl<'a, T> PointerTableMut<'a, T> {
     pub fn new(
         global: &'a mut GlobalPointerTable<T>,
@@ -387,6 +391,7 @@ impl<'a, T> IndexMut<PointerId> for PointerTableMut<'a, T> {
     }
 }
 
+#[allow(dead_code)]
 impl<T> OwnedPointerTable<T> {
     pub fn new(global: GlobalPointerTable<T>, local: LocalPointerTable<T>) -> OwnedPointerTable<T> {
         OwnedPointerTable { global, local }

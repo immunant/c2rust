@@ -11,8 +11,6 @@ use rustc_middle::mir::{
     Rvalue,
 };
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
-use std::cell::Cell;
-use std::iter;
 
 bitflags! {
     #[derive(Default)]
@@ -101,7 +99,8 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         AnalysisCtxt::from_data(self, mir, data)
     }
 
-    pub fn new_pointer(&self) -> PointerId {
+    #[allow(dead_code)]
+    pub fn _new_pointer(&self) -> PointerId {
         self.next_ptr_id.next()
     }
 
@@ -111,7 +110,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
 
     pub fn remap_pointers(
         &mut self,
-        map: &GlobalPointerTable<PointerId>,
+        _map: &GlobalPointerTable<PointerId>,
         counter: NextGlobalPointerId,
     ) {
         let GlobalAnalysisCtxt {
@@ -382,8 +381,8 @@ impl<'tcx> TypeOf<'tcx> for Rvalue<'tcx> {
                 let ty = self.ty(acx, acx.tcx());
                 label_no_pointers(acx, ty)
             }
-            Rvalue::Aggregate(ref kind, ref vals) => todo!("type_of Aggregate"),
-            Rvalue::ShallowInitBox(ref op, ty) => todo!("type_of ShallowInitBox"),
+            Rvalue::Aggregate(ref _kind, ref _vals) => todo!("type_of Aggregate"),
+            Rvalue::ShallowInitBox(ref _op, _ty) => todo!("type_of ShallowInitBox"),
         }
     }
 }
@@ -462,7 +461,8 @@ impl Assignment<'_> {
         self.global.flags.and(&self.local.flags)
     }
 
-    pub fn flags_mut(&mut self) -> PointerTableMut<FlagSet> {
+    #[allow(dead_code)]
+    pub fn _flags_mut(&mut self) -> PointerTableMut<FlagSet> {
         self.global.flags.and_mut(&mut self.local.flags)
     }
 

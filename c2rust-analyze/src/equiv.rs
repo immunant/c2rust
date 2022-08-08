@@ -46,7 +46,7 @@ impl GlobalEquivSet {
     /// Returns the next-ID counter for the new numbering and a map from old `PointerId`s to new
     /// ones.
     pub fn renumber(&self) -> (NextGlobalPointerId, GlobalPointerTable<PointerId>) {
-        let mut counter = NextGlobalPointerId::new();
+        let counter = NextGlobalPointerId::new();
         let mut map = GlobalPointerTable::from_raw(vec![PointerId::NONE; self.0.len()]);
 
         for old_id in self.0.iter().map(|(x, _)| x) {
@@ -100,7 +100,7 @@ impl LocalEquivSet {
         &self,
         global_map: &GlobalPointerTable<PointerId>,
     ) -> (NextLocalPointerId, LocalPointerTable<PointerId>) {
-        let mut counter = NextLocalPointerId::new();
+        let counter = NextLocalPointerId::new();
         let mut map = LocalPointerTable::from_raw(vec![PointerId::NONE; self.0.len()]);
 
         for old_id in self.0.iter().map(|(x, _)| x) {

@@ -17,13 +17,10 @@ use crate::context::{
     AnalysisCtxt, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LTy, LocalAssignment,
     PermissionSet, PointerId,
 };
-use crate::equiv::{EquivSet, GlobalEquivSet, LocalEquivSet};
+use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use rustc_index::vec::IndexVec;
-use rustc_middle::mir::{BindingForm, Body, LocalDecl, LocalInfo};
-use rustc_middle::ty::query::{ExternProviders, Providers};
+use rustc_middle::mir::{BindingForm, LocalDecl, LocalInfo};
 use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
-use rustc_session::Session;
-use rustc_span::def_id::LocalDefId;
 use rustc_span::Span;
 use std::env;
 
@@ -47,7 +44,7 @@ fn run(tcx: TyCtxt) {
 
     // TODO: assign global PointerIds
 
-    let mut g_equiv = GlobalEquivSet::new(0);
+    let mut g_equiv = GlobalEquivSet::new(gacx.num_pointers());
     for ldid in tcx.hir().body_owners() {
         let ldid_const = WithOptConstParam::unknown(ldid);
         let mir = tcx.mir_built(ldid_const);
@@ -90,7 +87,7 @@ fn run(tcx: TyCtxt) {
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
 
-        let (mut data, mut dataflow, mut l_equiv) = info;
+        let (mut data, mut dataflow, l_equiv) = info;
         // Remap pointers based on equivalence classes, so all members of an equivalence class now
         // use the same `PointerId`.
         let (l_counter, l_equiv_map) = l_equiv.renumber(&g_equiv_map);
@@ -98,7 +95,7 @@ fn run(tcx: TyCtxt) {
         data.remap_pointers(gacx.lcx, g_equiv_map.and(&l_equiv_map), l_counter);
         dataflow.remap_pointers(g_equiv_map.and(&l_equiv_map));
 
-        let mut acx = gacx.enter_function_with_data(&mir, data);
+        let acx = gacx.enter_function_with_data(&mir, data);
 
         let mut lasn =
             LocalAssignment::new(acx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
@@ -229,7 +226,7 @@ struct AnalysisCallbacks;
 impl rustc_driver::Callbacks for AnalysisCallbacks {
     fn after_expansion<'tcx>(
         &mut self,
-        compiler: &rustc_interface::interface::Compiler,
+        _compiler: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> rustc_driver::Compilation {
         queries.global_ctxt().unwrap().peek_mut().enter(|tcx| {
