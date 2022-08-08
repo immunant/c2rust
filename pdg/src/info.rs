@@ -5,12 +5,12 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::{self, Debug, Display, Formatter};
 
-///The information checked in this struct is whether nodes flow to loads, stores, and offsets (pos
-///and neg), as well as whether they are unique.
-///Uniqueness of node X is determined based on whether there is a node Y which is X's ancestor
-///through copies, fields, and offsets, also is a node Z's ancestor through copies, fields, offsets,
-///where the fields are the same between X and Z, and where Z is chronologically between X and X's last descendent.
-///If such a node exists, X is not unique.
+/// The information checked in this struct is whether nodes flow to loads, stores, and offsets (pos
+/// and neg), as well as whether they are unique.
+/// Uniqueness of node X is determined based on whether there is a node Y which is X's ancestor
+/// through copies, fields, and offsets, also is a node Z's ancestor through copies, fields, offsets,
+/// where the fields are the same between X and Z, and where Z is chronologically between X and X's last descendent.
+/// If such a node exists, X is not unique.
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct NodeInfo {
     flows_to_mutation: Option<NodeId>,
@@ -125,9 +125,9 @@ fn greatest_desc(g: &Graph, n: &NodeId) -> NodeId {
     return greatest_node_idx;
 }
 
-///Finds the highest-up ancestor of the given node n in g which is reached through Copy, Field, and
-///Offset, and returns its index as well as the Fields through which it is reached, in order
-///(the final element is the Field closest to the returned idx)
+/// Finds the highest-up ancestor of the given node n in g which is reached through Copy, Field, and
+/// Offset, and returns its index as well as the Fields through which it is reached, in order
+/// (the final element is the Field closest to the returned idx)
 fn calc_lineage(g: &Graph, n: &NodeId) -> (NodeId, Vec<Field>) {
     let mut lineage = Vec::new();
     let mut n_idx = n.clone();
@@ -150,9 +150,9 @@ fn calc_lineage(g: &Graph, n: &NodeId) -> (NodeId, Vec<Field>) {
     return (n_idx, lineage);
 }
 
-///Looks for a node which proves that the given node n is not unique. If any is found, it's
-///immediately returned (no guarantee of which is returned if multiple violate the uniqueness conditions);
-///otherwise None is returned.
+/// Looks for a node which proves that the given node n is not unique. If any is found, it's
+/// immediately returned (no guarantee of which is returned if multiple violate the uniqueness conditions);
+/// otherwise None is returned.
 pub fn check_whether_rules_obeyed(g: &Graph, n: &NodeId) -> Option<NodeId> {
     let (oldest_ancestor, oldest_lineage) = calc_lineage(g, n);
     let youngest_descendent = greatest_desc(g, n);
