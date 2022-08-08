@@ -9,9 +9,9 @@ use std::{
     fmt::{self, Debug, Formatter},
 };
 
+use crate::info::NodeInfo;
 use crate::util::pad_columns;
 use crate::util::ShortOption;
-use crate::info::NodeInfo;
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum NodeKind {
@@ -162,7 +162,7 @@ impl Node {
         let fn_ = function;
         let info = match node_info {
             None => format!(""),
-            Some(i) => format!("{i}")
+            Some(i) => format!("{i}"),
         };
         write!(
             f,
