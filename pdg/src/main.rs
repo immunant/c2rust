@@ -1,8 +1,6 @@
 #![feature(min_specialization)]
 #![feature(rustc_private)]
 #![feature(map_try_insert)]
-#![feature(type_ascription)]
-
 
 extern crate rustc_ast;
 extern crate rustc_const_eval;
@@ -22,19 +20,19 @@ extern crate rustc_target;
 mod assert;
 mod builder;
 mod graph;
+mod info;
 mod query;
 mod util;
-mod info;
 
 use builder::{construct_pdg, read_event_log};
 use clap::{Parser, ValueEnum};
 use color_eyre::eyre;
+use info::augment_with_info;
 use std::{
     collections::HashSet,
     fmt::{self, Display, Formatter},
     path::{Path, PathBuf},
 };
-use info::augment_with_info;
 
 use crate::builder::read_metadata;
 
@@ -112,7 +110,7 @@ fn main() -> eyre::Result<()> {
             .map(|node_id| node_id.as_usize())
             .collect::<Vec<_>>();
         if should_print(ToPrint::Graphs) {
-            println!("Graph:\n {graph}");
+            println!("{graph}");
         }
         if should_print(ToPrint::WritePermissions) {
             println!("nodes_that_need_write = {needs_write:?}");
