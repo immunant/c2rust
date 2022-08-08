@@ -63,13 +63,12 @@ fn node_does_neg_offset(n: &Node) -> bool {
 }
 
 fn add_children_to_vec(g: &Graph, parents: &HashSet<NodeId>, v: &mut Vec<NodeId>) {
-    for (possible_child_id, possible_child_node) in g.nodes.iter_enumerated() {
-        if let Some(srcidx) = possible_child_node.source {
-            if parents.contains(&srcidx) {
-                v.push(possible_child_id);
-            }
-        }
-    }
+    v.extend(g.nodes
+             .iter_enumerated()
+             .filter_map(|(id,node)| Some((id,node.source?)))
+             .filter(|(_,src_idx)| parents.contains(src_idx))
+             .map(|(id,_)| id)
+    );
 }
 
 fn check_flows_to_node_kind(
@@ -78,8 +77,7 @@ fn check_flows_to_node_kind(
     node_check: fn(&Node) -> bool,
 ) -> Option<NodeId> {
     let mut seen = HashSet::new();
-    let mut to_view = Vec::new();
-    to_view.push(*n);
+    let mut to_view = vec![*n];
     while let Some(node_id_to_check) = to_view.pop() {
         if !seen.contains(&node_id_to_check) {
             seen.insert(node_id_to_check);
@@ -164,13 +162,13 @@ pub fn check_whether_rules_obeyed(g: &Graph, n: &NodeId) -> Option<NodeId> {
         {
             return Some(cur_node_id);
         }
-        for (possible_child_id, possible_child_node) in g.nodes.iter_enumerated() {
-            if let Some(srcidx) = possible_child_node.source {
-                if cur_node_id == srcidx {
-                    to_view.push((possible_child_id, lineage.clone()));
-                }
-            }
-        }
+        to_view.extend(
+            g.nodes
+                .iter_enumerated()
+                .filter_map(|(id,node)| Some((id,node.source?)))
+                .filter(|(_,src_idx)| *src_idx == cur_node_id)
+                .map(|(id,_)| (id,lineage.clone()))
+        );
     }
     None
 }
