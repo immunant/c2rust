@@ -3,6 +3,7 @@ use rustc_index::vec::IndexVec;
 use rustc_middle::mir::Field;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use itertools::Itertools;
 use std::fmt::{self, Debug, Display, Formatter};
 
 /// The information checked in this struct is whether nodes flow to loads, stores, and offsets (pos
@@ -22,27 +23,16 @@ pub struct NodeInfo {
 
 impl Display for NodeInfo {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let fm = match self.flows_to_mutation {
-            None => "no mut".to_string(),
-            Some(x) => format!("mut {}", x),
-        };
-        let fl = match self.flows_to_load {
-            None => "no load".to_string(),
-            Some(x) => format!("load {}", x),
-        };
-        let fpo = match self.flows_to_pos_offset {
-            None => "no flow to pos_offset".to_string(),
-            Some(_) => "does flow to pos_offset".to_string(),
-        };
-        let fno = match self.flows_to_neg_offset {
-            None => "no flow to neg_offset".to_string(),
-            Some(_) => "does flow to neg_offset".to_string(),
-        };
-        let funi = match self.non_unique {
-            None => "unique".to_string(),
-            Some(x) => format!("non unique proven by {}", x),
-        };
-        write!(f, "{fm},{fl},{fpo},{fno},{funi}")
+        let s = [
+            ("mut", self.flows_to_mutation),
+            ("load", self.flows_to_load),
+            ("+offset", self.flows_to_neg_offset),
+            ("-offset", self.flows_to_neg_offset),
+            ("non unique by", self.non_unique),
+        ].into_iter()
+        .filter_map(|(name,node)| Some((name,node?)))
+        .format_with(", ", |(name, node), f| f(&format_args!("{name} {node}")));
+        write!(f,"{}", s)
     }
 }
 
