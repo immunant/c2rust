@@ -53,7 +53,7 @@ fn run(tcx: TyCtxt) {
         let mut acx = gacx.enter_function(&mir);
 
         // Assign PointerIds to local types
-        assert!(acx.local_tys.len() == 0);
+        assert!(acx.local_tys.is_empty());
         acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
         for (local, decl) in mir.local_decls.iter_enumerated() {
             let lty = assign_pointer_ids(&acx, decl.ty);
@@ -163,7 +163,7 @@ fn run(tcx: TyCtxt) {
             eprintln!("{:?} ({}): {:?}", local, describe_local(tcx, decl), ty,);
         }
 
-        eprintln!("");
+        eprintln!();
         let rewrites = expr_rewrite::gen_expr_rewrites(&acx, &asn, &mir);
         for rw in &rewrites {
             eprintln!(

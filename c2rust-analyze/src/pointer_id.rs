@@ -186,7 +186,7 @@ impl<T> LocalPointerTable<T> {
         self.0 .0.fill(x);
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (PointerId, &'a T)> + 'a {
+    pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
         self.0
              .0
             .iter()
@@ -194,7 +194,7 @@ impl<T> LocalPointerTable<T> {
             .map(|(i, x)| (PointerId::local(i as u32), x))
     }
 
-    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = (PointerId, &'a mut T)> + 'a {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (PointerId, &mut T)> {
         self.0
              .0
             .iter_mut()
@@ -243,7 +243,7 @@ impl<T> GlobalPointerTable<T> {
         self.0 .0.len()
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (PointerId, &'a T)> + 'a {
+    pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
         self.0
              .0
             .iter()
@@ -251,7 +251,7 @@ impl<T> GlobalPointerTable<T> {
             .map(|(i, x)| (PointerId::global(i as u32), x))
     }
 
-    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = (PointerId, &'a mut T)> + 'a {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (PointerId, &mut T)> {
         self.0
              .0
             .iter_mut()
@@ -316,7 +316,7 @@ impl<'a, T> PointerTable<'a, T> {
         self.global.len() + self.local.len()
     }
 
-    pub fn iter<'b>(&'b self) -> impl Iterator<Item = (PointerId, &'b T)> + 'b {
+    pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
         self.global.iter().chain(self.local.iter())
     }
 }
@@ -353,11 +353,11 @@ impl<'a, T> PointerTableMut<'a, T> {
         self.global.len() + self.local.len()
     }
 
-    pub fn iter<'b>(&'b self) -> impl Iterator<Item = (PointerId, &'b T)> + 'b {
+    pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
         self.global.iter().chain(self.local.iter())
     }
 
-    pub fn iter_mut<'b>(&'b mut self) -> impl Iterator<Item = (PointerId, &'b mut T)> + 'b {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (PointerId, &mut T)> {
         self.global.iter_mut().chain(self.local.iter_mut())
     }
 
@@ -419,11 +419,11 @@ impl<T> OwnedPointerTable<T> {
         self.global.len() + self.local.len()
     }
 
-    pub fn iter<'b>(&'b self) -> impl Iterator<Item = (PointerId, &'b T)> + 'b {
+    pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
         self.global.iter().chain(self.local.iter())
     }
 
-    pub fn iter_mut<'b>(&'b mut self) -> impl Iterator<Item = (PointerId, &'b mut T)> + 'b {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (PointerId, &mut T)> {
         self.global.iter_mut().chain(self.local.iter_mut())
     }
 

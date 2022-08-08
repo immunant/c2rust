@@ -81,7 +81,7 @@ impl<'tcx, L> Iterator for LabeledTyIter<'tcx, L> {
 
     fn next(&mut self) -> Option<LabeledTy<'tcx, L>> {
         if let Some(lty) = self.root.take() {
-            if lty.args.len() > 0 {
+            if !lty.args.is_empty() {
                 self.stack.push(lty.args.iter());
             }
             return Some(lty);
@@ -90,7 +90,7 @@ impl<'tcx, L> Iterator for LabeledTyIter<'tcx, L> {
         loop {
             match self.stack.last_mut()?.next() {
                 Some(lty) => {
-                    if lty.args.len() > 0 {
+                    if !lty.args.is_empty() {
                         self.stack.push(lty.args.iter());
                     }
                     return Some(lty);
