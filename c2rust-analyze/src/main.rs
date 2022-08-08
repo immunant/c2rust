@@ -56,7 +56,7 @@ fn run(tcx: TyCtxt) {
         assert!(acx.local_tys.is_empty());
         acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
         for (local, decl) in mir.local_decls.iter_enumerated() {
-            let lty = assign_pointer_ids(&acx, decl.ty);
+            let lty = assign_pointer_ids(&mut acx, decl.ty);
             let l = acx.local_tys.push(lty);
             assert_eq!(local, l);
 
@@ -179,7 +179,7 @@ fn run(tcx: TyCtxt) {
     }
 }
 
-fn assign_pointer_ids<'tcx>(acx: &AnalysisCtxt<'_, 'tcx>, ty: Ty<'tcx>) -> LTy<'tcx> {
+fn assign_pointer_ids<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, ty: Ty<'tcx>) -> LTy<'tcx> {
     acx.lcx().label(ty, &mut |ty| match ty.kind() {
         TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => acx.new_pointer(),
         _ => PointerId::NONE,

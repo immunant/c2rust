@@ -1,4 +1,3 @@
-use std::cell::Cell;
 use std::fmt;
 use std::ops::{Index, IndexMut};
 
@@ -62,40 +61,40 @@ impl fmt::Debug for PointerId {
 }
 
 #[derive(Clone, Debug)]
-pub struct NextLocalPointerId(Cell<u32>);
+pub struct NextLocalPointerId(u32);
 
 impl NextLocalPointerId {
     pub fn new() -> NextLocalPointerId {
-        NextLocalPointerId(Cell::new(0))
+        NextLocalPointerId(0)
     }
 
-    pub fn next(&self) -> PointerId {
-        let x = self.0.get();
-        self.0.set(x + 1);
+    pub fn next(&mut self) -> PointerId {
+        let x = self.0;
+        self.0 += 1;
         PointerId::local(x)
     }
 
     pub fn num_pointers(&self) -> usize {
-        self.0.get() as usize
+        self.0 as usize
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct NextGlobalPointerId(Cell<u32>);
+pub struct NextGlobalPointerId(u32);
 
 impl NextGlobalPointerId {
     pub fn new() -> NextGlobalPointerId {
-        NextGlobalPointerId(Cell::new(0))
+        NextGlobalPointerId(0)
     }
 
-    pub fn next(&self) -> PointerId {
-        let x = self.0.get();
-        self.0.set(x + 1);
+    pub fn next(&mut self) -> PointerId {
+        let x = self.0;
+        self.0 += 1;
         PointerId::global(x)
     }
 
     pub fn num_pointers(&self) -> usize {
-        self.0.get() as usize
+        self.0 as usize
     }
 }
 

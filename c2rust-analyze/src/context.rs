@@ -100,7 +100,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     }
 
     #[allow(dead_code)]
-    pub fn _new_pointer(&self) -> PointerId {
+    pub fn _new_pointer(&mut self) -> PointerId {
         self.next_ptr_id.next()
     }
 
@@ -172,7 +172,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         self.gacx.lcx
     }
 
-    pub fn new_pointer(&self) -> PointerId {
+    pub fn new_pointer(&mut self) -> PointerId {
         self.next_ptr_id.next()
     }
 
