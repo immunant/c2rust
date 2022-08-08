@@ -47,31 +47,19 @@ impl Display for NodeInfo {
 }
 
 fn node_does_mutation(n: &Node) -> bool {
-    match n.kind {
-        NodeKind::StoreAddr | NodeKind::StoreValue => true,
-        _ => false,
-    }
+    matches!(n.kind, NodeKind::StoreAddr | NodeKind::StoreValue)
 }
 
 fn node_does_load(n: &Node) -> bool {
-    match n.kind {
-        NodeKind::LoadAddr | NodeKind::LoadValue => true,
-        _ => false,
-    }
+    matches!(n.kind, NodeKind::LoadAddr | NodeKind::LoadValue)
 }
 
 fn node_does_pos_offset(n: &Node) -> bool {
-    match n.kind {
-        NodeKind::Offset(x) => x > 0,
-        _ => false,
-    }
+    matches!(n.kind, NodeKind::Offset(x) if x > 0)
 }
 
 fn node_does_neg_offset(n: &Node) -> bool {
-    match n.kind {
-        NodeKind::Offset(x) => x < 0,
-        _ => false,
-    }
+    matches!(n.kind, NodeKind::Offset(x) if x < 0)
 }
 
 fn add_children_to_vec(g: &Graph, parents: &HashSet<NodeId>, v: &mut Vec<NodeId>) {
@@ -108,10 +96,9 @@ fn check_flows_to_node_kind(
 
 fn greatest_desc(g: &Graph, n: &NodeId) -> NodeId {
     let mut desc_seen = HashSet::<NodeId>::new();
-    let mut to_view = Vec::new();
+    let mut to_view = vec![*n];
     let mut greatest_index = n.index();
     let mut greatest_node_idx: NodeId = n.clone();
-    to_view.push(*n);
     while let Some(node_id_to_check) = to_view.pop() {
         if !desc_seen.contains(&node_id_to_check) {
             desc_seen.insert(node_id_to_check);
@@ -130,7 +117,7 @@ fn greatest_desc(g: &Graph, n: &NodeId) -> NodeId {
 /// (the final element is the Field closest to the returned idx)
 fn calc_lineage(g: &Graph, n: &NodeId) -> (NodeId, Vec<Field>) {
     let mut lineage = Vec::new();
-    let mut n_idx = n.clone();
+    let mut n_idx = *n;
     loop {
         let node = g.nodes.get(n_idx).unwrap();
         let parent = match node.source {
@@ -156,8 +143,7 @@ fn calc_lineage(g: &Graph, n: &NodeId) -> (NodeId, Vec<Field>) {
 pub fn check_whether_rules_obeyed(g: &Graph, n: &NodeId) -> Option<NodeId> {
     let (oldest_ancestor, oldest_lineage) = calc_lineage(g, n);
     let youngest_descendent = greatest_desc(g, n);
-    let mut to_view = Vec::new();
-    to_view.push((oldest_ancestor, oldest_lineage));
+    let mut to_view = vec![(oldest_ancestor, oldest_lineage)];
     while let Some((cur_node_id, mut lineage)) = to_view.pop() {
         if cur_node_id == *n {
             continue;
@@ -200,19 +186,19 @@ pub fn augment_with_info(pdg: &mut Graphs) {
         let mut idx_flow_to_neg_offset = HashMap::new();
         let mut idx_non_unique = HashMap::new();
         for (idx, _) in g.nodes.iter_enumerated() {
-            if let Some(descmutidx) = check_flows_to_node_kind(&g, &idx, node_does_mutation) {
+            if let Some(descmutidx) = check_flows_to_node_kind(g, &idx, node_does_mutation) {
                 idx_flow_to_mut.insert(idx, descmutidx);
             }
-            if let Some(descuseidx) = check_flows_to_node_kind(&g, &idx, node_does_load) {
+            if let Some(descuseidx) = check_flows_to_node_kind(g, &idx, node_does_load) {
                 idx_flow_to_use.insert(idx, descuseidx);
             }
-            if let Some(descposoidx) = check_flows_to_node_kind(&g, &idx, node_does_pos_offset) {
+            if let Some(descposoidx) = check_flows_to_node_kind(g, &idx, node_does_pos_offset) {
                 idx_flow_to_pos_offset.insert(idx, descposoidx);
             }
-            if let Some(descnegoidx) = check_flows_to_node_kind(&g, &idx, node_does_neg_offset) {
+            if let Some(descnegoidx) = check_flows_to_node_kind(g, &idx, node_does_neg_offset) {
                 idx_flow_to_neg_offset.insert(idx, descnegoidx);
             }
-            if let Some(non_unique_idx) = check_whether_rules_obeyed(&g, &idx) {
+            if let Some(non_unique_idx) = check_whether_rules_obeyed(g, &idx) {
                 idx_non_unique.insert(idx, non_unique_idx);
             }
         }
