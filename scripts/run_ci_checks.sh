@@ -12,8 +12,7 @@ cargo fmt --check
 
 # Soon to be superceded by the commented out `cargo clippy` below.
 # This is different from `cargo build`
-# as that uses `--features dynamic-instrumention` (see below)
-# and this uses `--all-features` to check everything.
+# as this uses `--all-features` to check everything.
 cargo check --tests --all-features
 # cargo clippy --tests --all-features
 
@@ -24,12 +23,11 @@ cargo doc --all-features --document-private-items
 # but doing so and then re-compiling would flush the caches,
 # so we leave them until we're done compiling.
 
-# Build these with `--features dynamic-instrumentation`
-# instead of `--all-features` as `--all-features` includes `--features llvm-static`,
+# Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
 # which we don't want to test here (it doesn't work out of the box on Arch and Fedora;
 # see https://github.com/immunant/c2rust/issues/500).
-cargo build --features dynamic-instrumentation --release
-cargo test --features dynamic-instrumentation --release
+cargo build --release
+cargo test --release
 
 # `test_translatory.py` compiles translated code,
 # which has tons of warnings.

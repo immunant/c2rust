@@ -51,9 +51,8 @@ jobs:
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       # Soon to be superceded by the commented out `cargo clippy` below.
-      # This is different from `cargo build`
-      # as that uses `--features dynamic-instrumention` (see below)
-      # and this uses `--all-features` to check everything.
+      # This is different from `cargo build`,
+      # as this uses `--all-features` to check everything.
       export RUSTFLAGS="-D warnings"
       cargo check --tests --all-features
     displayName: 'cargo check'
@@ -70,24 +69,22 @@ jobs:
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      # Build these with `--features dynamic-instrumentation`
-      # instead of `--all-features` as `--all-features` includes `--features llvm-static`,
+      # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
       # which we don't want to test here (it doesn't work out of the box on Arch and Fedora;
       # see https://github.com/immunant/c2rust/issues/500).
       export RUSTFLAGS="-D warnings"
-      cargo build --release --features dynamic-instrumentation
+      cargo build --release
     displayName: 'cargo build against host clang/LLVM (fast build)'
 
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      # Build these with `--features dynamic-instrumentation`
-      # instead of `--all-features` as `--all-features` includes `--features llvm-static`,
+      # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
       # which we don't want to test here (it doesn't work out of the box on Arch and Fedora;
       # see https://github.com/immunant/c2rust/issues/500).
       export RUSTFLAGS="-D warnings"
-      cargo test --release --features dynamic-instrumentation
+      cargo test --release
     displayName: 'cargo test'
   
   - script: |
@@ -137,9 +134,8 @@ jobs:
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
       # Soon to be superceded by the commented out `cargo clippy` below.
-      # This is different from `cargo build`
-      # as that uses `--features dynamic-instrumention` (see below)
-      # and this uses `--all-features` to check everything.
+      # This is different from `cargo build`,
+      # as this uses `--all-features` to check everything.
       export RUSTFLAGS="-D warnings"
       cargo check --tests --all-features
     displayName: 'cargo check'
@@ -152,22 +148,20 @@ jobs:
 
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      # Build these with `--features dynamic-instrumentation`
-      # instead of `--all-features` as `--all-features` includes `--features llvm-static`,
+      # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
       # which we don't want to test here (it doesn't work out of the box on Arch and Fedora;
       # see https://github.com/immunant/c2rust/issues/500).
       export RUSTFLAGS="-D warnings"
-      cargo build --release --features dynamic-instrumentation
+      cargo build --release
     displayName: 'cargo build against host clang/LLVM (fast build)'
 
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      # Build these with `--features dynamic-instrumentation`
-      # instead of `--all-features` as `--all-features` includes `--features llvm-static`,
+      # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
       # which we don't want to test here (it doesn't work out of the box on Arch and Fedora;
       # see https://github.com/immunant/c2rust/issues/500).
       export RUSTFLAGS="-D warnings"
-      cargo test --release --features dynamic-instrumentation
+      cargo test --release
     displayName: 'cargo test'
 
   - script: |
