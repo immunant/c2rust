@@ -8,15 +8,21 @@ set -euox pipefail
 export RUSTFLAGS="-D warnings"
 export RUSTDOCFLAGS="-D warnings"
 
-cargo fmt --check
+fmt() {
+    cargo fmt --check
+}
 
 # Soon to be superceded by the commented out `cargo clippy` below.
 # This is different from `cargo build`
 # as this uses `--all-features` to check everything.
-cargo check --tests --all-features
-# cargo clippy --tests --all-features
+check() {
+    cargo check --tests --all-features
+    # cargo clippy --tests --all-features
+}
 
-cargo doc --all-features --document-private-items --no-deps
+doc() {
+    cargo doc --all-features --document-private-items --no-deps
+}
 
 # At this point, we could unset `RUSTFLAGS` and `RUSTDOCFLAGS`,
 # as we've already checked all the code,
@@ -26,12 +32,30 @@ cargo doc --all-features --document-private-items --no-deps
 # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
 # which we don't want to test here (it doesn't work out of the box on Arch and Fedora;
 # see https://github.com/immunant/c2rust/issues/500).
-cargo build --release
-cargo test --release
+build() {
+    cargo build --release
+}
+
+test() {
+    cargo test --release
+}
 
 # `test_translatory.py` compiles translated code,
 # which has tons of warnings.
 # `RUSTFLAGS="-D warnings"` would be inherited by that,
 # causing tons of errors, so unset that.
-unset RUSTFLAGS
-./scripts/test_translator.py tests/
+test-translator() {
+    unset RUSTFLAGS
+    ./scripts/test_translator.py tests/
+}
+
+all() {
+    fmt
+    check
+    doc
+    build
+    test
+    test-translator
+}
+
+"${1:-all}"

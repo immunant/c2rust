@@ -43,6 +43,7 @@ jobs:
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      ./scripts/run_ci_checks.sh fmt
       cargo fmt --check
     displayName: 'cargo fmt --check'
   
@@ -50,60 +51,35 @@ jobs:
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      # Soon to be superceded by the commented out `cargo clippy` below.
-      # This is different from `cargo build`,
-      # as this uses `--all-features` to check everything.
-      export RUSTFLAGS="-D warnings"
-      cargo check --tests --all-features
+      ./scripts/run_ci_checks.sh check
     displayName: 'cargo check'
-  
-  # - script: |
-  #     export PATH="/home/docker/.cargo/bin:$PATH"
-  #     export RUSTUP_HOME=/home/docker/.rustup
-  #     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-  #     export RUSTFLAGS="-D warnings"
-  #     cargo clippy --tests --all-features
-  #   displayName: 'cargo clippy'
 
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
-      # which we don't want to test here (it doesn't work out of the box on Arch and Fedora;
-      # see https://github.com/immunant/c2rust/issues/500).
-      export RUSTFLAGS="-D warnings"
-      cargo build --release
+      ./scripts/run_ci_checks.sh build
     displayName: 'cargo build against host clang/LLVM (fast build)'
 
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
-      # which we don't want to test here (it doesn't work out of the box on Arch and Fedora;
-      # see https://github.com/immunant/c2rust/issues/500).
-      export RUSTFLAGS="-D warnings"
-      cargo test --release
+      ./scripts/run_ci_checks.sh test
     displayName: 'cargo test'
   
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      # `test_translatory.py` compiles translated code,
-      # which has tons of warnings, so don't set `RUSTFLAGS="-D warnings"`,
-      # which would be inherited by that, causing tons of errors.
-      python3 ./scripts/test_translator.py ./tests
+      ./scripts/run_ci_checks.sh test-translator
     displayName: 'Test translator (fast build)'
 
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      export RUSTFLAGS="-D warnings"
-      export RUSTDOCFLAGS="-D warnings"
-      cargo doc --all-features --document-private-items --no-deps
+      ./scripts/run_ci_checks.sh doc
     displayName: 'cargo doc'
 
 - job: Darwin
@@ -128,52 +104,29 @@ jobs:
 
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      cargo fmt --check
+      ./scripts/run_ci_checks.sh fmt
     displayName: 'cargo fmt --check'
   
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      # Soon to be superceded by the commented out `cargo clippy` below.
-      # This is different from `cargo build`,
-      # as this uses `--all-features` to check everything.
-      export RUSTFLAGS="-D warnings"
-      cargo check --tests --all-features
+      ./scripts/run_ci_checks.sh check
     displayName: 'cargo check'
-  
-  # - script: |
-  #     export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-  #     export RUSTFLAGS="-D warnings"
-  #     cargo clippy --tests --all-features
-  #   displayName: 'cargo clippy'
 
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
-      # which we don't want to test here (it doesn't work out of the box on Arch and Fedora;
-      # see https://github.com/immunant/c2rust/issues/500).
-      export RUSTFLAGS="-D warnings"
-      cargo build --release
+      ./scripts/run_ci_checks.sh build
     displayName: 'cargo build against host clang/LLVM (fast build)'
 
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
-      # which we don't want to test here (it doesn't work out of the box on Arch and Fedora;
-      # see https://github.com/immunant/c2rust/issues/500).
-      export RUSTFLAGS="-D warnings"
-      cargo test --release
+      ./scripts/run_ci_checks.sh test
     displayName: 'cargo test'
 
   - script: |
-      # `test_translatory.py` compiles translated code,
-      # which has tons of warnings, so don't set `RUSTFLAGS="-D warnings"`,
-      # which would be inherited by that, causing tons of errors.
-      python3 ./scripts/test_translator.py ./tests
+      ./scripts/run_ci_checks.sh test-translator
     displayName: 'Test translator (fast build)'
 
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      export RUSTFLAGS="-D warnings"
-      export RUSTDOCFLAGS="-D warnings"
-      cargo doc --all-features --document-private-items --no-deps
+      ./scripts/run_ci_checks.sh doc
     displayName: 'cargo doc'
