@@ -13,118 +13,174 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 
-use crate::context::{AnalysisCtxt, FlagSet, LTy, PermissionSet, PointerId};
+use crate::context::{
+    AnalysisCtxt, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LTy, LocalAssignment,
+    PermissionSet, PointerId,
+};
+use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use rustc_index::vec::IndexVec;
-use rustc_middle::mir::{BindingForm, Body, LocalDecl, LocalInfo};
-use rustc_middle::ty::query::{ExternProviders, Providers};
+use rustc_middle::mir::{BindingForm, LocalDecl, LocalInfo};
 use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
-use rustc_session::Session;
-use rustc_span::def_id::LocalDefId;
 use rustc_span::Span;
 use std::env;
 
 mod borrowck;
 mod context;
 mod dataflow;
+mod equiv;
 mod expr_rewrite;
 mod labeled_ty;
+mod pointer_id;
 mod type_desc;
 mod util;
 
-fn inspect_mir<'tcx>(tcx: TyCtxt<'tcx>, def: WithOptConstParam<LocalDefId>, mir: &Body<'tcx>) {
-    let name = tcx.item_name(def.to_global().did);
-    eprintln!("\nprocessing function {:?}", name);
+fn run(tcx: TyCtxt) {
+    let mut gacx = GlobalAnalysisCtxt::new(tcx);
+    let mut func_info = Vec::new();
 
-    let mut acx = AnalysisCtxt::new(tcx);
+    // Initial pass to gather equivalence constraints, which state that two pointer types must be
+    // converted to the same reference type.  Some additional data computed during this the process
+    // is kept around for use in later passes.
 
-    // Label all pointers in local variables.
-    // TODO: also label pointers in Rvalue::Cast (and ShallowInitBox?)
-    assert!(acx.local_tys.is_empty());
-    acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
-    for (local, decl) in mir.local_decls.iter_enumerated() {
-        let lty = assign_pointer_ids(&acx, decl.ty);
-        let l = acx.local_tys.push(lty);
-        assert_eq!(local, l);
+    // TODO: assign global PointerIds
 
-        let ptr = acx.new_pointer();
-        let l = acx.addr_of_local.push(ptr);
-        assert_eq!(local, l);
+    let mut g_equiv = GlobalEquivSet::new(gacx.num_pointers());
+    for ldid in tcx.hir().body_owners() {
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+
+        let mut acx = gacx.function_context(&mir);
+
+        // Assign PointerIds to local types
+        assert!(acx.local_tys.is_empty());
+        acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
+        for (local, decl) in mir.local_decls.iter_enumerated() {
+            let lty = assign_pointer_ids(&mut acx, decl.ty);
+            let l = acx.local_tys.push(lty);
+            assert_eq!(local, l);
+
+            let ptr = acx.new_pointer();
+            let l = acx.addr_of_local.push(ptr);
+            assert_eq!(local, l);
+        }
+
+        let (dataflow, equiv_constraints) = dataflow::generate_constraints(&acx, &mir);
+        let mut l_equiv = LocalEquivSet::new(acx.num_pointers());
+        let mut equiv = g_equiv.and_mut(&mut l_equiv);
+        for (a, b) in equiv_constraints {
+            equiv.unify(a, b);
+        }
+
+        func_info.push((acx.into_data(), dataflow, l_equiv));
     }
 
-    let dataflow = self::dataflow::generate_constraints(&acx, mir);
+    // Compute permission and flag assignments.
 
-    let mut hypothesis = Vec::with_capacity(acx.num_pointers());
-    for _ in 0..acx.num_pointers() {
-        hypothesis.push(PermissionSet::UNIQUE);
-    }
-    dataflow.propagate(&mut hypothesis);
+    let (g_counter, g_equiv_map) = g_equiv.renumber();
+    eprintln!("g_equiv_map = {:?}", g_equiv_map);
+    gacx.remap_pointers(&g_equiv_map, g_counter);
+    let mut gasn = GlobalAssignment::new(0, PermissionSet::UNIQUE, FlagSet::empty());
+    for (ldid, info) in tcx.hir().body_owners().zip(func_info.into_iter()) {
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let name = tcx.item_name(ldid.to_def_id());
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
 
-    borrowck::borrowck_mir(&acx, &dataflow, &mut hypothesis, name.as_str(), mir);
+        let (mut data, mut dataflow, l_equiv) = info;
+        // Remap pointers based on equivalence classes, so all members of an equivalence class now
+        // use the same `PointerId`.
+        let (l_counter, l_equiv_map) = l_equiv.renumber(&g_equiv_map);
+        eprintln!("l_equiv_map = {:?}", l_equiv_map);
+        data.remap_pointers(gacx.lcx, g_equiv_map.and(&l_equiv_map), l_counter);
+        dataflow.remap_pointers(g_equiv_map.and(&l_equiv_map));
 
-    let mut flags = vec![FlagSet::empty(); acx.num_pointers()];
-    dataflow.propagate_cell(&hypothesis, &mut flags);
+        let acx = gacx.function_context_with_data(&mir, data);
 
-    eprintln!("final labeling for {:?}:", name);
-    let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(acx.tcx);
-    let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(acx.tcx);
-    for (local, decl) in mir.local_decls.iter_enumerated() {
-        let addr_of1 = hypothesis[acx.addr_of_local[local].index()];
-        let ty1 = lcx1.relabel(acx.local_tys[local], &mut |lty| {
-            if lty.label == PointerId::NONE {
-                PermissionSet::empty()
-            } else {
-                hypothesis[lty.label.index()]
+        let mut lasn =
+            LocalAssignment::new(acx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
+        let mut asn = gasn.and(&mut lasn);
+
+        dataflow.propagate(&mut asn.perms_mut());
+
+        borrowck::borrowck_mir(&acx, &dataflow, &mut asn.perms_mut(), name.as_str(), &mir);
+
+        dataflow.propagate_cell(&mut asn);
+
+        // Print labeling and rewrites for the current function.
+
+        eprintln!("final labeling for {:?}:", name);
+        let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
+        let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
+        for (local, decl) in mir.local_decls.iter_enumerated() {
+            let addr_of1 = asn.perms()[acx.addr_of_local[local]];
+            let ty1 = lcx1.relabel(acx.local_tys[local], &mut |lty| {
+                if lty.label == PointerId::NONE {
+                    PermissionSet::empty()
+                } else {
+                    asn.perms()[lty.label]
+                }
+            });
+            eprintln!(
+                "{:?} ({}): addr_of = {:?}, type = {:?}",
+                local,
+                describe_local(tcx, decl),
+                addr_of1,
+                ty1,
+            );
+
+            let addr_of2 = asn.flags()[acx.addr_of_local[local]];
+            let ty2 = lcx2.relabel(acx.local_tys[local], &mut |lty| {
+                if lty.label == PointerId::NONE {
+                    FlagSet::empty()
+                } else {
+                    asn.flags()[lty.label]
+                }
+            });
+            eprintln!(
+                "{:?} ({}): addr_of flags = {:?}, type flags = {:?}",
+                local,
+                describe_local(tcx, decl),
+                addr_of2,
+                ty2,
+            );
+
+            let addr_of3 = acx.addr_of_local[local];
+            let ty3 = acx.local_tys[local];
+            eprintln!(
+                "{:?} ({}): addr_of = {:?}, type = {:?}",
+                local,
+                describe_local(tcx, decl),
+                addr_of3,
+                ty3,
+            );
+        }
+
+        eprintln!("\ntype assignment for {:?}:", name);
+        for (local, decl) in mir.local_decls.iter_enumerated() {
+            // TODO: apply `Cell` if `addr_of_local` indicates it's needed
+            let ty = type_desc::convert_type(&acx, acx.local_tys[local], &asn);
+            eprintln!("{:?} ({}): {:?}", local, describe_local(tcx, decl), ty,);
+        }
+
+        eprintln!();
+        let rewrites = expr_rewrite::gen_expr_rewrites(&acx, &asn, &mir);
+        for rw in &rewrites {
+            eprintln!(
+                "at {:?} ({}, {:?}):",
+                rw.loc.stmt,
+                describe_span(tcx, rw.loc.span),
+                rw.loc.sub,
+            );
+            for kind in &rw.kinds {
+                eprintln!("  {:?}", kind);
             }
-        });
-        eprintln!(
-            "{:?} ({}): addr_of = {:?}, type = {:?}",
-            local,
-            describe_local(acx.tcx, decl),
-            addr_of1,
-            ty1,
-        );
-
-        let addr_of2 = flags[acx.addr_of_local[local].index()];
-        let ty2 = lcx2.relabel(acx.local_tys[local], &mut |lty| {
-            if lty.label == PointerId::NONE {
-                FlagSet::empty()
-            } else {
-                flags[lty.label.index()]
-            }
-        });
-        eprintln!(
-            "{:?} ({}): addr_of flags = {:?}, type flags = {:?}",
-            local,
-            describe_local(acx.tcx, decl),
-            addr_of2,
-            ty2,
-        );
-    }
-
-    eprintln!("\ntype assignment for {:?}:", name);
-    for (local, decl) in mir.local_decls.iter_enumerated() {
-        // TODO: apply `Cell` if `addr_of_local` indicates it's needed
-        let ty = type_desc::convert_type(&acx, acx.local_tys[local], &hypothesis, &flags);
-        eprintln!("{:?} ({}): {:?}", local, describe_local(acx.tcx, decl), ty,);
-    }
-
-    eprintln!();
-    let rewrites = expr_rewrite::gen_expr_rewrites(&acx, &hypothesis, &flags, mir);
-    for rw in &rewrites {
-        eprintln!(
-            "at {:?} ({}, {:?}):",
-            rw.loc.stmt,
-            describe_span(tcx, rw.loc.span),
-            rw.loc.sub,
-        );
-        for kind in &rw.kinds {
-            eprintln!("  {:?}", kind);
         }
     }
 }
 
-fn assign_pointer_ids<'tcx>(acx: &AnalysisCtxt<'tcx>, ty: Ty<'tcx>) -> LTy<'tcx> {
-    acx.lcx.label(ty, &mut |ty| match ty.kind() {
+fn assign_pointer_ids<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, ty: Ty<'tcx>) -> LTy<'tcx> {
+    acx.lcx().label(ty, &mut |ty| match ty.kind() {
         TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => acx.new_pointer(),
         _ => PointerId::NONE,
     })
@@ -168,25 +224,16 @@ fn describe_span(tcx: TyCtxt, span: Span) -> String {
 struct AnalysisCallbacks;
 
 impl rustc_driver::Callbacks for AnalysisCallbacks {
-    fn config(&mut self, config: &mut rustc_interface::Config) {
-        config.override_queries = Some(override_queries);
+    fn after_expansion<'tcx>(
+        &mut self,
+        _compiler: &rustc_interface::interface::Compiler,
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) -> rustc_driver::Compilation {
+        queries.global_ctxt().unwrap().peek_mut().enter(|tcx| {
+            run(tcx);
+        });
+        rustc_driver::Compilation::Continue
     }
-}
-
-fn override_queries(
-    _sess: &Session,
-    providers: &mut Providers,
-    _extern_providers: &mut ExternProviders,
-) {
-    providers.mir_built = |tcx, def: WithOptConstParam<LocalDefId>| {
-        let mut providers = Providers::default();
-        rustc_mir_build::provide(&mut providers);
-        let steal_mir = (providers.mir_built)(tcx, def);
-
-        inspect_mir(tcx, def, &steal_mir.borrow());
-
-        steal_mir
-    };
 }
 
 fn main() -> rustc_interface::interface::Result<()> {

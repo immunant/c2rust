@@ -130,9 +130,10 @@ def get_native_arch() -> str:
     raise KeyError
 
 def rustc_has_target(target: str) -> bool:
-    args = ["--target", target, "/dev/null"]
-    retcode, stdout, stderr = rustc[args].run(retcode=None)
-    return not "target may not be installed" in stderr
+    args = ["--target", target, "--print", "target-libdir"]
+    stdout = rustc[args]()
+    target_libdir = Path(stdout.strip())
+    return target_libdir.exists()
 
 def target_args(target: Optional[str]) -> List[str]:
     if target:
@@ -422,7 +423,7 @@ class TestDirectory:
                 self.generated_files["rust_src"].append(self.full_path + "/src/Cargo.toml")
                 self.generated_files["rust_src"].append(self.full_path + "/src/build.rs")
                 self.generated_files["rust_src"].append(self.full_path + "/src/c2rust-lib.rs")
-                self.generated_files["rust_src"].append(self.full_path + "/src/rust-toolchain")
+                self.generated_files["rust_src"].append(self.full_path + "/src/rust-toolchain.toml")
 
             _, rust_file_short = os.path.split(translated_rust_file.path)
             extensionless_rust_file, _ = os.path.splitext(rust_file_short)
@@ -657,7 +658,7 @@ def main() -> None:
             die(msg, errno.ENOENT)
 
     # NOTE: it seems safe to disable this check since we now
-    # that we use a rust-toolchain file for rustc versioning.
+    # that we use a rust-toolchain.toml file for rustc versioning.
     # ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
 
     if not test_directories:
