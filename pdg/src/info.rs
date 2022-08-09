@@ -201,3 +201,194 @@ pub fn augment_with_info(pdg: &mut Graphs) {
         }
     }
 }
+
+
+#[cfg(test)]
+mod test {
+    use c2rust_analysis_rt::mir_loc::Func;
+    use rustc_middle::mir::Local;
+    use super::*;
+
+    fn mk_node(g: &mut Graph, kind: NodeKind, source: Option<NodeId>) -> NodeId {
+        g.nodes.push(Node {
+            function: Func {
+                def_path_hash: (1, 2).into(),
+                name: "fake_function".into(),
+            },
+            block: 0_u32.into(),
+            statement_idx: 0,
+            dest: None,
+            kind,
+            source,
+            node_info: None,
+            debug_info: "".into(),
+        })
+    }
+
+    fn mk_addr_of_local(g: &mut Graph, local: impl Into<Local>) -> NodeId {
+        mk_node(g, NodeKind::AddrOfLocal(local.into()), None)
+    }
+
+    fn mk_copy(g: &mut Graph, source: NodeId) -> NodeId {
+        mk_node(g, NodeKind::Copy, Some(source))
+    }
+
+    fn mk_load_addr(g: &mut Graph, source: NodeId) -> NodeId {
+        mk_node(g, NodeKind::LoadAddr, Some(source))
+    }
+
+    fn mk_store_addr(g: &mut Graph, source: NodeId) -> NodeId {
+        mk_node(g, NodeKind::StoreAddr, Some(source))
+    }
+
+    fn build_pdg(g: Graph) -> Graphs {
+        let mut pdg = Graphs::default();
+        pdg.graphs.push(g);
+        augment_with_info(&mut pdg);
+        pdg
+    }
+
+    fn info(pdg: &Graphs, id: NodeId) -> &NodeInfo {
+        pdg.graphs[0_u32.into()].nodes[id].node_info.as_ref().unwrap()
+    }
+
+    #[test]
+    fn unique_interleave() {
+        let mut g = Graph::default();
+        // let mut a = 0;   // A
+        // let b = &mut a;  // B1
+        // *b = 0;          // B2
+        // let c = &mut a;  // C1
+        // *c = 0;          // C2
+        // *b = 0;          // B3
+        // *c = 0;          // C3
+        //
+        // A
+        // +----.
+        // B1   |
+        // +-B2 |
+        // |    C1
+        // |    +-C2
+        // B3   |
+        //      C3
+        let a = mk_addr_of_local(&mut g, 0_u32);
+        let b1 = mk_copy(&mut g, a);
+        let b2 = mk_store_addr(&mut g, b1);
+        let c1 = mk_copy(&mut g, a);
+        let c2 = mk_store_addr(&mut g, c1);
+        let b3 = mk_store_addr(&mut g, b1);
+        let c3 = mk_store_addr(&mut g, c1);
+
+        let pdg = build_pdg(g);
+        assert!(info(&pdg, a).non_unique.is_some());
+        assert!(info(&pdg, b1).non_unique.is_some());
+        assert!(info(&pdg, b2).non_unique.is_some());
+        assert!(info(&pdg, b3).non_unique.is_some());
+        assert!(info(&pdg, c1).non_unique.is_some());
+        assert!(info(&pdg, c2).non_unique.is_some());
+        assert!(info(&pdg, c3).non_unique.is_some());
+    }
+
+    #[test]
+    fn unique_interleave_onesided() {
+        let mut g = Graph::default();
+        // let mut a = 0;   // A
+        // let b = &mut a;  // B1
+        // *b = 0;          // B2
+        // let c = &mut a;  // C1
+        // *c = 0;          // C2
+        // *b = 0;          // B3
+        //
+        // A
+        // +----.
+        // B1   |
+        // +-B2 |
+        // |    C1
+        // |    +-C2
+        // B3
+        let a = mk_addr_of_local(&mut g, 0_u32);
+        let b1 = mk_copy(&mut g, a);
+        let b2 = mk_store_addr(&mut g, b1);
+        let c1 = mk_copy(&mut g, a);
+        let c2 = mk_store_addr(&mut g, c1);
+        let b3 = mk_store_addr(&mut g, b1);
+
+        let pdg = build_pdg(g);
+        assert!(info(&pdg, a).non_unique.is_some());
+        assert!(info(&pdg, b1).non_unique.is_some());
+        assert!(info(&pdg, b2).non_unique.is_some());
+        assert!(info(&pdg, b3).non_unique.is_some());
+        assert!(info(&pdg, c1).non_unique.is_some());
+        assert!(info(&pdg, c2).non_unique.is_some());
+    }
+
+    #[test]
+    fn unique_sub_borrow() {
+        let mut g = Graph::default();
+        // let mut a = 0;   // A
+        // let b = &mut a;  // B1
+        // *b = 0;          // B2
+        // let c = &mut *b; // C1
+        // *c = 0;          // C2
+        // *b = 0;          // B3
+        //
+        // A
+        // |
+        // B1
+        // +-B2
+        // +----C1
+        // |    +-C2
+        // B3
+        let a = mk_addr_of_local(&mut g, 0_u32);
+        let b1 = mk_copy(&mut g, a);
+        let b2 = mk_store_addr(&mut g, b1);
+        let c1 = mk_copy(&mut g, b1);
+        let c2 = mk_store_addr(&mut g, c1);
+        let b3 = mk_store_addr(&mut g, b1);
+
+        let pdg = build_pdg(g);
+        assert!(info(&pdg, a).non_unique.is_none());
+        assert!(info(&pdg, b1).non_unique.is_none());
+        assert!(info(&pdg, b2).non_unique.is_none());
+        assert!(info(&pdg, b3).non_unique.is_none());
+        assert!(info(&pdg, c1).non_unique.is_none());
+        assert!(info(&pdg, c2).non_unique.is_none());
+    }
+
+    #[test]
+    fn unique_sub_borrow_bad() {
+        let mut g = Graph::default();
+        // let mut a = 0;   // A
+        // let b = &mut a;  // B1
+        // *b = 0;          // B2
+        // let c = &mut *b; // C1
+        // *c = 0;          // C2
+        // *b = 0;          // B3
+        // *c = 0;          // C3
+        //
+        // A
+        // |
+        // B1
+        // +-B2
+        // +----C1
+        // |    +-C2
+        // B3   |
+        //      C3
+        let a = mk_addr_of_local(&mut g, 0_u32);
+        let b1 = mk_copy(&mut g, a);
+        let b2 = mk_store_addr(&mut g, b1);
+        let c1 = mk_copy(&mut g, b1);
+        let c2 = mk_store_addr(&mut g, c1);
+        let b3 = mk_store_addr(&mut g, b1);
+        let c3 = mk_store_addr(&mut g, c1);
+
+        let pdg = build_pdg(g);
+        assert!(info(&pdg, a).non_unique.is_none());
+        assert!(info(&pdg, b1).non_unique.is_some());
+        assert!(info(&pdg, b2).non_unique.is_some());
+        assert!(info(&pdg, b3).non_unique.is_some());
+        assert!(info(&pdg, c1).non_unique.is_some());
+        assert!(info(&pdg, c2).non_unique.is_some());
+        assert!(info(&pdg, c3).non_unique.is_some());
+    }
+}
