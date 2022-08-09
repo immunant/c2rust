@@ -12,12 +12,11 @@ fmt() {
     cargo fmt --check
 }
 
-# Soon to be superceded by the commented out `cargo clippy` below.
 # This is different from `cargo build`
-# as this uses `--all-features` to check everything.
+# as this uses `--all-features` to check everything,
+# and runs extra `clippy` checks.
 check() {
-    cargo check --tests --all-features
-    # cargo clippy --tests --all-features
+    cargo clippy --tests --all-features
 }
 
 doc() {
