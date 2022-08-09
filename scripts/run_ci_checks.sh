@@ -16,7 +16,7 @@ cargo fmt --check
 cargo check --tests --all-features
 # cargo clippy --tests --all-features
 
-cargo doc --all-features --document-private-items
+cargo doc --all-features --document-private-items --no-deps
 
 # At this point, we could unset `RUSTFLAGS` and `RUSTDOCFLAGS`,
 # as we've already checked all the code,

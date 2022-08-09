@@ -103,7 +103,7 @@ jobs:
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
-      cargo doc --all-features --document-private-items
+      cargo doc --all-features --document-private-items --no-deps
     displayName: 'cargo doc'
 
 - job: Darwin
@@ -175,5 +175,5 @@ jobs:
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
-      cargo doc --all-features --document-private-items
+      cargo doc --all-features --document-private-items --no-deps
     displayName: 'cargo doc'
