@@ -268,6 +268,19 @@ fn rustc_wrapper() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Set `$RUST_TOOLCHAIN` to the toolchain channel specified in `rust-toolchain.toml`.
+/// This ensures that we use a toolchain compatible with the `rustc` private crates that we linked to.
+fn set_rust_toolchain() -> anyhow::Result<()> {
+    let toml = include_str!("../rust-toolchain.toml");
+    // Couldn't find an `include_toml!` macro to do this at compile time.
+    let doc = toml.parse::<toml_edit::Document>()?;
+    let channel = doc["toolchain"]["channel"].as_str();
+    if let Some(toolchain) = channel {
+        env::set_var("RUSTUP_TOOLCHAIN", toolchain);
+    }
+    Ok(())
+}
+
 /// Run as a `cargo` wrapper/plugin, the default invocation.
 fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     let Args {
@@ -275,8 +288,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         mut cargo_args,
     } = Args::parse();
 
-    // Ensure we use a toolchain compatible with the `rustc` private crates we linked to.
-    env::set_var("RUSTUP_TOOLCHAIN", include_str!("../rust-toolchain").trim());
+    set_rust_toolchain()?;
 
     // Resolve the sysroot once in the [`cargo_wrapper`]
     // so that we don't need all of the [`rustc_wrapper`]s to have to do it.

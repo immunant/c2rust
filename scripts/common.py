@@ -11,11 +11,13 @@ import argparse
 import platform
 import multiprocessing
 
-from typing import List, Callable
+from pathlib import Path
+from typing import List
 
 import plumbum as pb
 
 from plumbum.machines import LocalCommand as Command
+from query_toml import query_toml
 
 
 class Colors:
@@ -99,9 +101,7 @@ class Config:
 
     CC_DB_JSON = "compile_commands.json"
 
-    # Look up rust toolchain from repo root
-    with open(os.path.join(ROOT_DIR, "rust-toolchain")) as fh:
-        CUSTOM_RUST_NAME = fh.readline().strip()
+    CUSTOM_RUST_NAME = query_toml(path=Path(ROOT_DIR).joinpath("rust-toolchain.toml"), query=("toolchain", "channel"))
 
     LLVM_SKIP_SIGNATURE_CHECKS  = False
 

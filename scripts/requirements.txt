@@ -9,3 +9,4 @@ pygments
 typing;python_version<"3.5"
 scan-build
 pyyaml
+toml
