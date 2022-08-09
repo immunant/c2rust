@@ -16,7 +16,7 @@ from typing import List
 
 import plumbum as pb
 
-from scripts.query_toml import query_toml
+from query_toml import query_toml
 
 
 class Colors:
