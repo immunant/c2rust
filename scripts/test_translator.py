@@ -238,6 +238,27 @@ class TestDirectory:
             if target_arch != get_native_arch():
                 with open(self.full_path + "/target-tuple", 'r', encoding="utf-8") as file:
                     self.target = file.read().strip()
+        if self.target is not None:
+            self.c_target = self.target.replace("-unknown", "")
+            self.arch = self.target.split("-")[0]
+            self.cargo_config = f"""
+[build]
+target = "{self.target}"
+
+[target.{self.target}]
+linker = "{self.c_target}-gcc"
+ar = "{self.c_target}-ar"
+rustflags = ["-C", "link-arg=-fuse-ld=gold"] # override any other linker
+runner = ["qemu-{self.arch}", "-L", "/usr/{self.c_target}"]
+            """.strip() + "\n"
+            cargo_config_dir = Path(self.full_path) / ".cargo"
+            cargo_config_dir.mkdir(exist_ok=True)
+            cargo_config_path = cargo_config_dir / "config.toml"
+            cargo_config_path.write_text(self.cargo_config)
+            self.generated_files["rust_src"].append(cargo_config_path)
+            self.generated_files["rust_src"].append(cargo_config_dir)
+        else:
+            self.c_target = None
 
         for entry in os.listdir(self.full_path_src):
             path = os.path.abspath(os.path.join(self.full_path_src, entry))
@@ -311,7 +332,7 @@ class TestDirectory:
     def _generate_cc_db(self, c_file_path: str) -> None:
         directory, cfile = os.path.split(c_file_path)
 
-        target_args = '"-target", "{}", '.format(self.target) if self.target else ""
+        target_args = '"-target", "{}", '.format(self.c_target) if self.c_target else ""
 
         compile_commands = """ \
         [
@@ -361,7 +382,7 @@ class TestDirectory:
         self.print_status(Colors.WARNING, "RUNNING", description)
 
         try:
-            static_library = build_static_library(self.c_files, self.full_path, self.target)
+            static_library = build_static_library(self.c_files, self.full_path, self.c_target)
         except NonZeroReturn as exception:
             self.print_status(Colors.FAIL, "FAILED", "create libtest.a")
             sys.stdout.write('\n')
@@ -495,14 +516,12 @@ class TestDirectory:
             if c.BUILD_TYPE == 'release':
                 args.append('--release')
 
-            if self.target:
-                if not rustc_has_target(self.target):
-                    self.print_status(Colors.OKBLUE, "SKIPPED",
-                      "building test {} because the {} target is not installed"
-                      .format(self.name, self.target))
-                    sys.stdout.write('\n')
-                    return []
-                args.append(["--target", self.target])
+            if self.target and not rustc_has_target(self.target):
+                self.print_status(Colors.OKBLUE, "SKIPPED",
+                    "building test {} because the {} target is not installed"
+                    .format(self.name, self.target))
+                sys.stdout.write('\n')
+                return []
 
             retcode, stdout, stderr = cargo[args].run(retcode=None)
 
@@ -525,10 +544,12 @@ class TestDirectory:
             extensionless_file_name, _ = os.path.splitext(file_name)
 
             for test_function in test_file.test_functions:
-                args = ["run", "{}::{}".format(extensionless_file_name, test_function.name)]
+                args = ["run"]
 
                 if c.BUILD_TYPE == 'release':
                     args.append('--release')
+                
+                args.append("{}::{}".format(extensionless_file_name, test_function.name))
 
                 with pb.local.cwd(self.full_path):
                     retcode, stdout, stderr = cargo[args].run(retcode=None)

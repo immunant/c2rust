@@ -22,6 +22,10 @@ RUN useradd --create-home -u $UID -g $GID --create-home --shell /bin/bash $USER
 # cargo binary from /home/docker.cargo/bin
 RUN chmod 755 /home/docker
 
+# all targets needed for testing
+ARG TARGETS
+ENV TARGETS="${TARGETS}"
+
 # Provision debian and python packages 
 COPY provision*.sh /tmp/
 COPY requirements.txt /tmp/

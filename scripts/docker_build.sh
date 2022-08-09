@@ -27,9 +27,10 @@ build_image() {
     BASE_IMAGE=${1}
     IMAGE_TAG=$(echo ${BASE_IMAGE} | tr -s :/ - ) # replace colons and slashes with hyphens
 
-    # pull the rust version out of ../rust-toolchain to keep things synched
+    # pull the rust version out of ../rust-toolchain to keep things synced
     RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain"
     RUST_VER=$(cat $RUST_TOOLCHAIN_FILE | tr -d '\n')
+    TARGETS="$(find "${SCRIPT_DIR}/.." -name 'target-tuple' -exec cat {} \;)"
 
     docker pull "$BASE_IMAGE"
     docker build -f $SCRIPT_DIR/../docker/Dockerfile \
@@ -37,6 +38,7 @@ build_image() {
            --build-arg UID=$(id -u $(logname)) \
            --build-arg GID=$(id -g $(logname)) \
            --build-arg RUST_VER=$RUST_VER \
+           --build-arg TARGETS="${TARGETS}" \
            --tag "$REPO_NAME:$IMAGE_TAG-$DATE_TAG" \
            --tag "$REPO_NAME:$IMAGE_TAG-latest" \
            $SCRIPT_DIR

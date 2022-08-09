@@ -1,3 +1,4 @@
+//! xfail
 //! extern_crate_c2rust_asm_casts
 
 use crate::asm::rust_entry;

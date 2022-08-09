@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -e pipefail
 
 # Are we on a supported distro? Note: We can't use dpkg-vendor
 # because it is installed via `build-essential`.
@@ -49,11 +49,25 @@ apt-get install -qq \
     python-dev \
     python3-pip \
     python3-setuptools \
+    `# for running cross tests` \
+    qemu-user \
+    qemu-user-static \
     software-properties-common \
     unzip \
     libncurses5-dev \
     luarocks \
     zlib1g-dev
+
+# `rustc` not installed yet
+# native_rust_target="$(rustc -vV | sed -n 's|host: ||p')"
+native_clang_target="$(clang --version | sed -n 's|Target: ||p')"
+native_c_target="${native_clang_target/-pc/}"
+echo "${TARGETS}" | while read -r rust_target; do
+    c_target="${rust_target/-unknown/}"
+    if [[ "${c_target}" != "${native_c_target}" ]]; then
+        apt install -y "gcc-${c_target}"
+	fi
+done
 
 apt-get clean # clear apt-caches to reduce image size
 
