@@ -43,6 +43,7 @@ main() {
     local metadata="${CWD}/${test_dir}/metadata.bc"
 
     (cd "${test_dir}"
+        unset RUSTFLAGS # transpiled code has tons of warnings; don't allow `-D warnings`
         export RUST_BACKTRACE=1
         export INSTRUMENT_BACKEND=log
         export INSTRUMENT_OUTPUT=log.bc
