@@ -17,7 +17,7 @@ cargo_metadata = "0.15"
 camino = "1.0"
 
 [build-dependencies]
-rustc-private-link = { path = "../rustc-private-link" }
+build-utils = { path = "../build-utils" }
 
 [package.metadata.rust-analyzer] 
 rustc_private = true

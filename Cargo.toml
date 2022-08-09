@@ -11,7 +11,7 @@ members = [
     "analysis/runtime",
     "dynamic_instrumentation",
     "pdg",
-    "rustc-private-link",
+    "build-utils",
 ]
 exclude = [
     "c2rust-macros",

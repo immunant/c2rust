@@ -1,4 +1,4 @@
-use rustc_private_link::SysRoot;
+use build_utils::SysRoot;
 
 fn main() {
     let sysroot = SysRoot::resolve();
