@@ -1,3 +1,4 @@
+//! skip_translation
 /* derived from LLVM's clang/test/CodeGen/aarch64-inline-asm.c */
 typedef unsigned long uint64_t;
 typedef unsigned int uint32_t;
