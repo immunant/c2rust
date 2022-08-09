@@ -16,6 +16,7 @@ from typing import List
 
 import plumbum as pb
 
+from plumbum.machines import LocalCommand as Command
 from query_toml import query_toml
 
 
@@ -303,9 +304,6 @@ def _invoke(console_output, cmd, *arguments):
         msg = "cmd exited with code {}: {}".format(pee.retcode, cmd[arguments])
         logging.critical(pee.stderr)
         die(msg, pee.retcode)
-
-
-Command = pb.machines.LocalCommand
 
 
 def get_cmd_or_die(cmd: str) -> Command:

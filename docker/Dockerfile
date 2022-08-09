@@ -24,7 +24,7 @@ RUN chmod 755 /home/docker
 
 # Provision debian and python packages 
 COPY provision*.sh /tmp/
-COPY requirements.txt /tmp/requirements.txt
+COPY requirements.txt /tmp/
 RUN chmod +x /tmp/provision*.sh && /tmp/provision.sh
 
 USER $USER
