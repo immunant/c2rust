@@ -130,9 +130,10 @@ def get_native_arch() -> str:
     raise KeyError
 
 def rustc_has_target(target: str) -> bool:
-    args = ["--target", target, "/dev/null"]
-    retcode, stdout, stderr = rustc[args].run(retcode=None)
-    return not "target may not be installed" in stderr
+    args = ["--target", target, "--print", "target-libdir"]
+    stdout = rustc[args]()
+    target_libdir = Path(stdout.strip())
+    return target_libdir.exists()
 
 def target_args(target: Optional[str]) -> List[str]:
     if target:
