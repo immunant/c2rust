@@ -37,7 +37,7 @@ build() {
 }
 
 test() {
-    cargo test --release
+    cargo test --release --exclude c2rust-analyze --workspace
 }
 
 # `test_translatory.py` compiles translated code,
