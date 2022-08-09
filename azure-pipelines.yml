@@ -58,6 +58,13 @@ jobs:
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      ./scripts/run_ci_checks.sh doc
+    displayName: 'cargo doc'
+
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       ./scripts/run_ci_checks.sh build
     displayName: 'cargo build against host clang/LLVM (fast build)'
 
@@ -74,13 +81,6 @@ jobs:
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       ./scripts/run_ci_checks.sh test-translator
     displayName: 'Test translator (fast build)'
-
-  - script: |
-      export PATH="/home/docker/.cargo/bin:$PATH"
-      export RUSTUP_HOME=/home/docker/.rustup
-      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      ./scripts/run_ci_checks.sh doc
-    displayName: 'cargo doc'
 
 - job: Darwin
   timeoutInMinutes: 180
@@ -114,6 +114,11 @@ jobs:
 
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+      ./scripts/run_ci_checks.sh doc
+    displayName: 'cargo doc'
+
+  - script: |
+      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
       ./scripts/run_ci_checks.sh build
     displayName: 'cargo build against host clang/LLVM (fast build)'
 
@@ -125,8 +130,3 @@ jobs:
   - script: |
       ./scripts/run_ci_checks.sh test-translator
     displayName: 'Test translator (fast build)'
-
-  - script: |
-      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      ./scripts/run_ci_checks.sh doc
-    displayName: 'cargo doc'
