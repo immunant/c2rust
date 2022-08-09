@@ -10,10 +10,9 @@ import logging
 import argparse
 import platform
 import multiprocessing
-import toml
 
 from pathlib import Path
-from typing import List, Callable
+from typing import List
 
 import plumbum as pb
 
