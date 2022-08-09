@@ -50,7 +50,7 @@ fn run(tcx: TyCtxt) {
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
 
-        let mut acx = gacx.enter_function(&mir);
+        let mut acx = gacx.function_context(&mir);
 
         // Assign PointerIds to local types
         assert!(acx.local_tys.is_empty());
@@ -95,7 +95,7 @@ fn run(tcx: TyCtxt) {
         data.remap_pointers(gacx.lcx, g_equiv_map.and(&l_equiv_map), l_counter);
         dataflow.remap_pointers(g_equiv_map.and(&l_equiv_map));
 
-        let acx = gacx.enter_function_with_data(&mir, data);
+        let acx = gacx.function_context_with_data(&mir, data);
 
         let mut lasn =
             LocalAssignment::new(acx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());

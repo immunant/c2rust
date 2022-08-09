@@ -87,11 +87,11 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         }
     }
 
-    pub fn enter_function<'a>(&'a mut self, mir: &'a Body<'tcx>) -> AnalysisCtxt<'a, 'tcx> {
+    pub fn function_context<'a>(&'a mut self, mir: &'a Body<'tcx>) -> AnalysisCtxt<'a, 'tcx> {
         AnalysisCtxt::new(self, mir)
     }
 
-    pub fn enter_function_with_data<'a>(
+    pub fn function_context_with_data<'a>(
         &'a mut self,
         mir: &'a Body<'tcx>,
         data: AnalysisCtxtData<'tcx>,
@@ -118,6 +118,8 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             lcx: _,
             ref mut next_ptr_id,
         } = *self;
+
+        // `GlobalAnalysisCtxt` doesn't yet have any fields that need remapping.
 
         *next_ptr_id = counter;
     }

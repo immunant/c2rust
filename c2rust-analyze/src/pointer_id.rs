@@ -99,11 +99,11 @@ impl NextGlobalPointerId {
 }
 
 #[derive(Clone, Debug)]
-struct RawPointerTable<T>(Vec<T>);
+struct PointerTableInner<T>(Vec<T>);
 #[derive(Clone, Debug)]
-pub struct LocalPointerTable<T>(RawPointerTable<T>);
+pub struct LocalPointerTable<T>(PointerTableInner<T>);
 #[derive(Clone, Debug)]
-pub struct GlobalPointerTable<T>(RawPointerTable<T>);
+pub struct GlobalPointerTable<T>(PointerTableInner<T>);
 pub struct PointerTable<'a, T> {
     global: &'a GlobalPointerTable<T>,
     local: &'a LocalPointerTable<T>,
@@ -117,12 +117,12 @@ pub struct OwnedPointerTable<T> {
     local: LocalPointerTable<T>,
 }
 
-impl<T> RawPointerTable<T> {
-    pub fn empty() -> RawPointerTable<T> {
+impl<T> PointerTableInner<T> {
+    pub fn empty() -> PointerTableInner<T> {
         Self::from_raw(Vec::new())
     }
 
-    pub fn new(len: usize) -> RawPointerTable<T>
+    pub fn new(len: usize) -> PointerTableInner<T>
     where
         T: Default,
     {
@@ -131,8 +131,8 @@ impl<T> RawPointerTable<T> {
         Self::from_raw(v)
     }
 
-    pub fn from_raw(raw: Vec<T>) -> RawPointerTable<T> {
-        RawPointerTable(raw)
+    pub fn from_raw(raw: Vec<T>) -> PointerTableInner<T> {
+        PointerTableInner(raw)
     }
 
     pub fn into_raw(self) -> Vec<T> {
@@ -140,14 +140,14 @@ impl<T> RawPointerTable<T> {
     }
 }
 
-impl<T> Index<u32> for RawPointerTable<T> {
+impl<T> Index<u32> for PointerTableInner<T> {
     type Output = T;
     fn index(&self, index: u32) -> &T {
         &self.0[index as usize]
     }
 }
 
-impl<T> IndexMut<u32> for RawPointerTable<T> {
+impl<T> IndexMut<u32> for PointerTableInner<T> {
     fn index_mut(&mut self, index: u32) -> &mut T {
         &mut self.0[index as usize]
     }
@@ -156,18 +156,18 @@ impl<T> IndexMut<u32> for RawPointerTable<T> {
 #[allow(dead_code)]
 impl<T> LocalPointerTable<T> {
     pub fn empty() -> LocalPointerTable<T> {
-        LocalPointerTable(RawPointerTable::empty())
+        LocalPointerTable(PointerTableInner::empty())
     }
 
     pub fn new(len: usize) -> LocalPointerTable<T>
     where
         T: Default,
     {
-        LocalPointerTable(RawPointerTable::new(len))
+        LocalPointerTable(PointerTableInner::new(len))
     }
 
     pub fn from_raw(raw: Vec<T>) -> LocalPointerTable<T> {
-        LocalPointerTable(RawPointerTable::from_raw(raw))
+        LocalPointerTable(PointerTableInner::from_raw(raw))
     }
 
     pub fn into_raw(self) -> Vec<T> {
@@ -220,18 +220,18 @@ impl<T> IndexMut<PointerId> for LocalPointerTable<T> {
 #[allow(dead_code)]
 impl<T> GlobalPointerTable<T> {
     pub fn empty() -> GlobalPointerTable<T> {
-        GlobalPointerTable(RawPointerTable::empty())
+        GlobalPointerTable(PointerTableInner::empty())
     }
 
     pub fn new(len: usize) -> GlobalPointerTable<T>
     where
         T: Default,
     {
-        GlobalPointerTable(RawPointerTable::new(len))
+        GlobalPointerTable(PointerTableInner::new(len))
     }
 
     pub fn from_raw(raw: Vec<T>) -> GlobalPointerTable<T> {
-        GlobalPointerTable(RawPointerTable::from_raw(raw))
+        GlobalPointerTable(PointerTableInner::from_raw(raw))
     }
 
     pub fn into_raw(self) -> Vec<T> {
