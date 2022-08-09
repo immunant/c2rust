@@ -2,8 +2,8 @@ use self::atoms::{AllFacts, AtomMaps, Loan, Origin, Output, Path, SubPoint};
 use crate::context::{AnalysisCtxt, PermissionSet};
 use crate::dataflow::DataflowConstraints;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
+use crate::pointer_id::PointerTableMut;
 use crate::util::{describe_rvalue, RvalueDesc};
-
 use rustc_middle::mir::{Body, BorrowKind, Local, LocalKind, Place, StatementKind, START_BLOCK};
 use rustc_middle::ty::{List, TyKind};
 use std::collections::HashMap;
@@ -24,9 +24,9 @@ pub type LTy<'tcx> = LabeledTy<'tcx, Label>;
 pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, Label>;
 
 pub fn borrowck_mir<'tcx>(
-    acx: &AnalysisCtxt<'tcx>,
+    acx: &AnalysisCtxt<'_, 'tcx>,
     dataflow: &DataflowConstraints,
-    hypothesis: &mut [PermissionSet],
+    hypothesis: &mut PointerTableMut<PermissionSet>,
     name: &str,
     mir: &Body<'tcx>,
 ) {
@@ -79,8 +79,8 @@ pub fn borrowck_mir<'tcx>(
                 };
                 eprintln!("want to drop UNIQUE from pointer {:?}", ptr);
 
-                if hypothesis[ptr.index()].contains(PermissionSet::UNIQUE) {
-                    hypothesis[ptr.index()].remove(PermissionSet::UNIQUE);
+                if hypothesis[ptr].contains(PermissionSet::UNIQUE) {
+                    hypothesis[ptr].remove(PermissionSet::UNIQUE);
                     changed = true;
                 }
             }
@@ -103,12 +103,12 @@ pub fn borrowck_mir<'tcx>(
 }
 
 fn run_polonius<'tcx>(
-    acx: &AnalysisCtxt<'tcx>,
-    hypothesis: &[PermissionSet],
+    acx: &AnalysisCtxt<'_, 'tcx>,
+    hypothesis: &PointerTableMut<PermissionSet>,
     name: &str,
     mir: &Body<'tcx>,
 ) -> (AllFacts, AtomMaps<'tcx>, Output) {
-    let tcx = acx.tcx;
+    let tcx = acx.tcx();
     let mut facts = AllFacts::default();
     let mut maps = AtomMaps::default();
 
@@ -203,7 +203,7 @@ fn run_polonius<'tcx>(
     );
 
     // Populate `loan_invalidated_at`
-    def_use::visit_loan_invalidated_at(acx.tcx, &mut facts, &mut maps, &loans, mir);
+    def_use::visit_loan_invalidated_at(acx.tcx(), &mut facts, &mut maps, &loans, mir);
 
     // Populate `var_defined/used/dropped_at` and `path_assigned/accessed_at_base`.
     def_use::visit(&mut facts, &mut maps, mir);
@@ -218,7 +218,7 @@ fn run_polonius<'tcx>(
 
 fn assign_origins<'tcx>(
     ltcx: LTyCtxt<'tcx>,
-    hypothesis: &[PermissionSet],
+    hypothesis: &PointerTableMut<PermissionSet>,
     _facts: &mut AllFacts,
     maps: &mut AtomMaps<'tcx>,
     lty: crate::LTy<'tcx>,
@@ -227,7 +227,7 @@ fn assign_origins<'tcx>(
         let perm = if lty.label.is_none() {
             PermissionSet::empty()
         } else {
-            hypothesis[lty.label.index()]
+            hypothesis[lty.label]
         };
         match lty.ty.kind() {
             TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
