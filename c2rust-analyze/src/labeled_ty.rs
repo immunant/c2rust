@@ -199,10 +199,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                 self.mk(ty, self.mk_slice(&args), label)
             }
             Tuple(elems) => {
-                let args = elems
-                    .types()
-                    .map(|ty| self.label(ty, f))
-                    .collect::<Vec<_>>();
+                let args = elems.iter().map(|ty| self.label(ty, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
 
