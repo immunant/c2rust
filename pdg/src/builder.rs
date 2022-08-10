@@ -63,7 +63,7 @@ impl EventKindExt for EventKind {
     }
 
     fn parent(&self, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)> {
-        self.has_parent().then(|| obj)
+        self.has_parent().then_some(obj)
     }
 
     fn to_node_kind(&self) -> Option<NodeKind> {
