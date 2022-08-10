@@ -257,6 +257,8 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                     .add_to(self);
             }
             Rvalue::Use(Operand::Constant(..))=> {
+                // Track (as copies) assignments that give local names to constants so that code
+                // taking references to said constants can refer to these assignments as sources
                 self.loc(location.successor_within_block(), copy_fn)
                     .arg_var(dest)
                     .dest(&dest)
