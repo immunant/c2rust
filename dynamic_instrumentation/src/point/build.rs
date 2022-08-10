@@ -173,8 +173,10 @@ impl<'a, 'tcx> InstrumentationBuilder<'a, 'tcx> {
         }
     }
 
-    pub fn debug_mir(mut self, loc: Location) -> Self {
-        self.point.metadata.debug_info = self.debug_mir_to_string(loc);
+    /// Set [`debug_info`](EventMetadata::debug_info)
+    /// to the MIR of the [`original_location`](Self::original_location).
+    pub fn debug_mir(mut self) -> Self {
+        self.point.metadata.debug_info = self.debug_mir_to_string(self.original_location);
         self
     }
 

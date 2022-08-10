@@ -142,7 +142,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                         .arg_index_of(field)
                         .source(place)
                         .dest_from(proj_dest)
-                        .debug_mir(location)
+                        .debug_mir()
                         .add_to(self);
                 }
             }
@@ -181,7 +181,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
             self.loc(location, location, load_fn)
                 .arg_var(p.local)
                 .source(&remove_outer_deref(*p, ctx))
-                .debug_mir(location)
+                .debug_mir()
                 .add_to(self);
         };
 
@@ -201,7 +201,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                 self.loc(location, location, store_fn)
                     .arg_var(base_dest)
                     .source(&remove_outer_deref(dest, self.tcx()))
-                    .debug_mir(location)
+                    .debug_mir()
                     .add_to(self);
 
                 if is_region_or_unsafe_ptr(value_ty) {
@@ -209,7 +209,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                         .arg_var(dest)
                         .source(value)
                         .dest(&dest)
-                        .debug_mir(location)
+                        .debug_mir()
                         .add_to(self);
                 }
             }
@@ -220,7 +220,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     self.loc(location, location, ptr_to_int_fn)
                         .arg_var(p.local)
                         .source(p)
-                        .debug_mir(location)
+                        .debug_mir()
                         .add_to(self);
                 }
             }
@@ -235,7 +235,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     .arg_var(dest)
                     .source(&source)
                     .dest(&dest)
-                    .debug_mir(location)
+                    .debug_mir()
                     .add_to(self);
             }
             Rvalue::AddressOf(_, p) => {
@@ -245,7 +245,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     .arg_index_of(p.local)
                     .source(p)
                     .dest(&dest)
-                    .debug_mir(location)
+                    .debug_mir()
                     .add_to(self);
             }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) if p.is_indirect() => {
@@ -253,7 +253,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                 self.loc(location, location.successor_within_block(), load_value_fn)
                     .arg_var(dest)
                     .dest(&dest)
-                    .debug_mir(location)
+                    .debug_mir()
                     .add_to(self);
             }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) => {
@@ -261,7 +261,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     .arg_var(dest)
                     .source(p)
                     .dest(&dest)
-                    .debug_mir(location)
+                    .debug_mir()
                     .add_to(self);
             }
             Rvalue::Cast(_, op, _) => {
@@ -274,7 +274,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     .arg_var(dest)
                     .source(op)
                     .dest(&dest)
-                    .debug_mir(location)
+                    .debug_mir()
                     .add_to(self);
             }
             Rvalue::Ref(_, bkind, p) if has_outer_deref(p) => {
@@ -286,7 +286,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                         .arg_addr_of(*p)
                         .source(&source)
                         .dest(&dest)
-                        .debug_mir(location)
+                        .debug_mir()
                         .add_to(self);
                 } else {
                     // Instrument immutable borrows by tracing the reference itself
@@ -294,7 +294,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                         .arg_var(dest)
                         .source(&source)
                         .dest(&dest)
-                        .debug_mir(location)
+                        .debug_mir()
                         .add_to(self);
                 };
             }
@@ -308,7 +308,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                         .arg_index_of(p.local)
                         .source(&source)
                         .dest(&dest)
-                        .debug_mir(location)
+                        .debug_mir()
                         .add_to(self);
                 } else {
                     // Instrument immutable borrows by tracing the reference itself
@@ -317,7 +317,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                         .arg_index_of(p.local)
                         .source(&source)
                         .dest(&dest)
-                        .debug_mir(location)
+                        .debug_mir()
                         .add_to(self);
                 };
             }
@@ -363,7 +363,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                                     .source(&place)
                                     .dest(&callee_arg)
                                     .transfer(transfer_kind)
-                                    .debug_mir(location)
+                                    .debug_mir()
                                     .add_to(self);
                             }
                         }
@@ -384,7 +384,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                             .after_call()
                             .transfer(TransferKind::Ret(self.func_hash()))
                             .arg_vars(args.iter().cloned())
-                            .debug_mir(location)
+                            .debug_mir()
                             .add_to(self);
                     } else if is_region_or_unsafe_ptr(dest_place.ty(self, self.tcx()).ty) {
                         let instrumentation_location = Location {
@@ -399,7 +399,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                                 self.tcx().def_path_hash(def_id).convert(),
                             ))
                             .arg_var(dest_place)
-                            .debug_mir(location)
+                            .debug_mir()
                             .add_to(self);
                     }
                 }
