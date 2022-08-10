@@ -10,7 +10,7 @@ use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Body, BorrowKind, HasLocalDecls, Local, LocalDecl, Location,
     Operand, Place, PlaceElem, Rvalue, SourceInfo, Terminator, TerminatorKind, START_BLOCK,
 };
-use rustc_middle::ty::{self, TyCtxt, TyS};
+use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::def_id::{DefId, DefPathHash};
 use rustc_span::DUMMY_SP;
 use std::collections::HashMap;
@@ -109,11 +109,11 @@ impl Instrumenter {
     }
 }
 
-fn is_shared_or_unsafe_ptr(ty: &TyS) -> bool {
+fn is_shared_or_unsafe_ptr(ty: Ty) -> bool {
     ty.is_unsafe_ptr() || (ty.is_region_ptr() && !ty.is_mutable_ptr())
 }
 
-fn is_region_or_unsafe_ptr(ty: &TyS) -> bool {
+fn is_region_or_unsafe_ptr(ty: Ty) -> bool {
     ty.is_unsafe_ptr() || ty.is_region_ptr()
 }
 
@@ -336,6 +336,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 func,
                 args,
                 destination,
+                target,
                 ..
             } => {
                 let mut callee_arg: Place = Local::new(1).into();
@@ -370,8 +371,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                         callee_arg.local.increment_by(1);
                     }
                 }
-                if let (&ty::FnDef(def_id, _), &Some(destination)) = (func_kind, destination) {
-                    let (dest_place, dest_block) = destination;
+                if let (&ty::FnDef(def_id, _), &Some(target)) = (func_kind, target) {
                     println!("term: {:?}", terminator.kind);
                     let fn_name = self.tcx().item_name(def_id);
                     if HOOK_FUNCTIONS.contains(&fn_name.as_str()) {
@@ -380,25 +380,25 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                         // Hooked function called; trace args
                         self.loc(location, func_def_id)
                             .source(args)
-                            .dest(&dest_place)
+                            .dest(destination)
                             .after_call()
                             .transfer(TransferKind::Ret(self.func_hash()))
                             .arg_vars(args.iter().cloned())
                             .debug_mir(location)
                             .add_to(self);
-                    } else if is_region_or_unsafe_ptr(dest_place.ty(self, self.tcx()).ty) {
+                    } else if is_region_or_unsafe_ptr(destination.ty(self, self.tcx()).ty) {
                         let instrumentation_location = Location {
                             statement_index: 0,
-                            block: dest_block,
+                            block: target,
                         };
 
                         self.loc(instrumentation_location, arg_fn)
                             .source(&0)
-                            .dest(&dest_place)
+                            .dest(destination)
                             .transfer(TransferKind::Ret(
                                 self.tcx().def_path_hash(def_id).convert(),
                             ))
-                            .arg_var(dest_place)
+                            .arg_var(*destination)
                             .debug_mir(location)
                             .add_to(self);
                     }
@@ -481,7 +481,9 @@ pub fn insert_call<'tcx>(
     mut args: Vec<InstrumentationArg<'tcx>>,
 ) -> (BasicBlock, Local) {
     println!("ST: {:?}", statement_index);
-    let (blocks, locals) = body.basic_blocks_and_local_decls_mut();
+
+    let blocks = body.basic_blocks.as_mut();
+    let locals = &mut body.local_decls;
 
     let successor_stmts = blocks[block].statements.split_off(statement_index);
     let successor_terminator = blocks[block].terminator.take();
@@ -510,7 +512,8 @@ pub fn insert_call<'tcx>(
         kind: TerminatorKind::Call {
             func,
             args: args.iter().map(|arg| arg.inner().clone()).collect(),
-            destination: Some((ret_local.into(), successor_block)),
+            destination: ret_local.into(),
+            target: Some(successor_block),
             cleanup: None,
             from_hir_call: true,
             fn_span: DUMMY_SP,

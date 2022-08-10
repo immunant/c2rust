@@ -148,7 +148,9 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
         match &block.terminator().kind {
             TerminatorKind::Call {
                 args,
-                destination: Some((destination, _)),
+                destination,
+                // TODO(kkysen) I kept the `Some` pattern so the `match` is identical; do we need this?
+                target: Some(_), 
                 func,
                 ..
             } => {

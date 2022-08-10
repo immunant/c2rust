@@ -68,7 +68,8 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
             state.add_fn(callee_id, tcx);
         }
 
-        let (blocks, locals) = body.basic_blocks_and_local_decls_mut();
+        let blocks = body.basic_blocks.as_mut();
+        let locals = &mut body.local_decls;
 
         // Add the MIR location as the first argument to the instrumentation function
         let loc_idx = state.get_mir_loc_idx(body_def, loc, metadata.clone());
@@ -81,7 +82,9 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
         if after_call {
             let call = blocks[loc.block].terminator_mut();
             let ret_value = if let TerminatorKind::Call {
-                destination: Some((place, _next_block)),
+                destination: place,
+                // TODO(kkysen) I kept the `Some` pattern so the `match` is identical; do we need this?
+                target: Some(_next_block),
                 args,
                 ..
             } = &mut call.kind
@@ -126,11 +129,11 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
             let orig_call = blocks[successor_block].terminator_mut();
             if let (
                 TerminatorKind::Call {
-                    destination: Some((_, instrument_dest)),
+                    target: Some(instrument_dest),
                     ..
                 },
                 TerminatorKind::Call {
-                    destination: Some((_, orig_dest)),
+                    target: Some(orig_dest),
                     ..
                 },
             ) = (&mut instrument_call.kind, &mut orig_call.kind)
