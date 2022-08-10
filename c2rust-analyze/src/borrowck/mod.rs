@@ -138,7 +138,7 @@ fn run_polonius<'tcx>(
         let term_start = maps.point(bb, term_idx, SubPoint::Start);
         let term_mid = maps.point(bb, term_idx, SubPoint::Mid);
         facts.cfg_edge.push((term_start, term_mid));
-        for &succ in bb_data.terminator().successors() {
+        for succ in bb_data.terminator().successors() {
             let succ_start = maps.point(succ, 0, SubPoint::Start);
             facts.cfg_edge.push((term_mid, succ_start));
         }

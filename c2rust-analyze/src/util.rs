@@ -82,7 +82,7 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> 
     match name.as_str() {
         "offset" => {
             // The `offset` inherent method of `*const T` and `*mut T`.
-            let parent_did = tcx.parent(did)?;
+            let parent_did = tcx.parent(did);
             if tcx.def_kind(parent_did) != DefKind::Impl {
                 return None;
             }

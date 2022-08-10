@@ -83,7 +83,7 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
             let call = blocks[loc.block].terminator_mut();
             let ret_value = if let TerminatorKind::Call {
                 destination: place,
-                // TODO(kkysen) I kept the `Some` pattern so the `match` is identical; do we need this?
+                // TODO(kkysen) I kept the `Some` pattern so that the `match` is identical.  Do we need this?
                 target: Some(_next_block),
                 args,
                 ..
