@@ -26,7 +26,7 @@ pub struct InstrumentationPoint<'tcx> {
     pub metadata: EventMetadata,
 }
 
-pub struct InstrumentationPointCollectorVisitor<'a, 'tcx: 'a> {
+pub struct CollectInstrumentationPoints<'a, 'tcx: 'a> {
     tcx: TyCtxt<'tcx>,
     hooks: Hooks<'tcx>,
     body: &'a Body<'tcx>,
@@ -34,7 +34,7 @@ pub struct InstrumentationPointCollectorVisitor<'a, 'tcx: 'a> {
     assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
 }
 
-impl<'a, 'tcx: 'a> InstrumentationPointCollectorVisitor<'a, 'tcx> {
+impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>, hooks: Hooks<'tcx>, body: &'a Body<'tcx>) -> Self {
         Self {
             tcx,
@@ -50,13 +50,13 @@ impl<'a, 'tcx: 'a> InstrumentationPointCollectorVisitor<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a> HasLocalDecls<'tcx> for InstrumentationPointCollectorVisitor<'a, 'tcx> {
+impl<'a, 'tcx: 'a> HasLocalDecls<'tcx> for CollectInstrumentationPoints<'a, 'tcx> {
     fn local_decls(&self) -> &'a LocalDecls<'tcx> {
         self.body.local_decls()
     }
 }
 
-impl<'a, 'tcx: 'a> InstrumentationPointCollectorVisitor<'a, 'tcx> {
+impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
     pub fn hooks(&self) -> &Hooks<'tcx> {
         &self.hooks
     }

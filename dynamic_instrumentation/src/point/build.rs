@@ -14,7 +14,7 @@ use crate::{
     util::Convert,
 };
 
-use super::{InstrumentationPoint, InstrumentationPointCollectorVisitor};
+use super::{CollectInstrumentationPoints, InstrumentationPoint};
 
 #[derive(Default)]
 struct InstrumentationPointBuilder<'tcx> {
@@ -24,7 +24,7 @@ struct InstrumentationPointBuilder<'tcx> {
     pub metadata: EventMetadata,
 }
 
-impl<'a, 'tcx> InstrumentationPointCollectorVisitor<'a, 'tcx> {
+impl<'a, 'tcx> CollectInstrumentationPoints<'a, 'tcx> {
     fn add(&mut self, builder: InstrumentationBuilder<'a, 'tcx>) {
         let id = self.instrumentation_points.len();
         let InstrumentationPointBuilder {
@@ -55,7 +55,7 @@ pub struct InstrumentationBuilder<'a, 'tcx: 'a> {
     point: InstrumentationPointBuilder<'tcx>,
 }
 
-impl<'a, 'tcx: 'a> InstrumentationPointCollectorVisitor<'a, 'tcx> {
+impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
     pub fn loc(
         &self,
         original_location: Location,
@@ -189,7 +189,7 @@ impl<'a, 'tcx> InstrumentationBuilder<'a, 'tcx> {
     ///
     /// [`func`]: InstrumentationPoint::func
     /// [`statement_idx`]: Location::statement_index
-    pub fn add_to(self, adder: &mut InstrumentationPointCollectorVisitor<'a, 'tcx>) {
+    pub fn add_to(self, adder: &mut CollectInstrumentationPoints<'a, 'tcx>) {
         adder.add(self);
     }
 }

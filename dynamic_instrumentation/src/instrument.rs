@@ -22,8 +22,8 @@ use crate::arg::{ArgKind, InstrumentationArg};
 use crate::hooks::Hooks;
 use crate::mir_utils::{has_outer_deref, remove_outer_deref, strip_all_deref};
 use crate::point::cast_ptr_to_usize;
+use crate::point::CollectInstrumentationPoints;
 use crate::point::InstrumentationApplier;
-use crate::point::InstrumentationPointCollectorVisitor;
 use crate::util::Convert;
 
 #[derive(Default)]
@@ -117,7 +117,7 @@ fn is_region_or_unsafe_ptr(ty: &TyS) -> bool {
     ty.is_unsafe_ptr() || ty.is_region_ptr()
 }
 
-impl<'tcx> Visitor<'tcx> for InstrumentationPointCollectorVisitor<'_, 'tcx> {
+impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         self.super_place(place, context, location);
 
@@ -424,9 +424,9 @@ fn instrument_body<'a, 'tcx>(
     body_did: DefId,
 ) {
     let hooks = Hooks::new(tcx);
-    let mut adder = InstrumentationPointCollectorVisitor::new(tcx, hooks, body);
-    adder.visit_body(body);
-    let points = adder.into_instrumentation_points();
+    let mut collector = CollectInstrumentationPoints::new(tcx, hooks, body);
+    collector.visit_body(body);
+    let points = collector.into_instrumentation_points();
     let mut applier = InstrumentationApplier::new(state, tcx, body, body_did);
     applier.apply_points(&points);
 
