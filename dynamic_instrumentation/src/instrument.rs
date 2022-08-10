@@ -256,6 +256,16 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                     .debug_mir(location)
                     .add_to(self);
             }
+            Rvalue::Use(Operand::Constant(..)) => {
+                // Track (as copies) assignments that give local names to constants so that code
+                // taking references to said constants can refer to these assignments as sources.
+                // TODO: should be replaced by AddrOfStatic when support for that is added
+                self.loc(location.successor_within_block(), copy_fn)
+                    .arg_var(dest)
+                    .dest(&dest)
+                    .debug_mir(location)
+                    .add_to(self);
+            }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) => {
                 self.loc(location.successor_within_block(), copy_fn)
                     .arg_var(dest)
