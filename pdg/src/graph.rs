@@ -151,7 +151,7 @@ impl Node {
             kind,
             source,
             debug_info,
-            node_info: _
+            node_info
         } = self;
         let src = ShortOption(source.as_ref());
         let dest = ShortOption(dest.as_ref());
