@@ -186,7 +186,7 @@ impl Default for TransferKind {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Eq, Clone, Default)]
 pub struct EventMetadata {
     /// Input [`Local`]s for an [`Event`](crate::events::Event).
     pub source: Option<MirPlace>,
@@ -196,6 +196,30 @@ pub struct EventMetadata {
     pub transfer_kind: TransferKind,
     /// Any string useful for debugging.
     pub debug_info: String,
+}
+
+impl EventMetadata {
+    fn eq_fields(&self) -> impl Eq + Hash + '_ {
+        let Self {
+            source,
+            destination,
+            transfer_kind,
+            debug_info: _,
+        } = self;
+        (source, destination, transfer_kind)
+    }
+}
+
+impl PartialEq for EventMetadata {
+    fn eq(&self, other: &Self) -> bool {
+        self.eq_fields() == other.eq_fields()
+    }
+}
+
+impl Hash for EventMetadata {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.eq_fields().hash(state);
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
