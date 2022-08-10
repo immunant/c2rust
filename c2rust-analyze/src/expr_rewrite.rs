@@ -1,4 +1,5 @@
-use crate::context::{AnalysisCtxt, FlagSet, LTy, PermissionSet, PointerId};
+use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet, PointerId};
+use crate::pointer_id::PointerTable;
 use crate::type_desc::{self, Ownership, Quantity};
 use crate::util::{self, Callee};
 use rustc_middle::mir::{
@@ -47,9 +48,9 @@ pub struct ExprRewrite {
 }
 
 struct ExprRewriteVisitor<'a, 'tcx> {
-    acx: &'a AnalysisCtxt<'tcx>,
-    perms: &'a [PermissionSet],
-    flags: &'a [FlagSet],
+    acx: &'a AnalysisCtxt<'a, 'tcx>,
+    perms: PointerTable<'a, PermissionSet>,
+    flags: PointerTable<'a, FlagSet>,
     rewrites: &'a mut Vec<ExprRewrite>,
     mir: &'a Body<'tcx>,
     loc: ExprLoc,
@@ -57,12 +58,13 @@ struct ExprRewriteVisitor<'a, 'tcx> {
 
 impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     pub fn new(
-        acx: &'a AnalysisCtxt<'tcx>,
-        perms: &'a [PermissionSet],
-        flags: &'a [FlagSet],
+        acx: &'a AnalysisCtxt<'a, 'tcx>,
+        asn: &'a Assignment,
         rewrites: &'a mut Vec<ExprRewrite>,
         mir: &'a Body<'tcx>,
     ) -> ExprRewriteVisitor<'a, 'tcx> {
+        let perms = asn.perms();
+        let flags = asn.flags();
         ExprRewriteVisitor {
             acx,
             perms,
@@ -141,7 +143,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     }
 
     fn visit_terminator(&mut self, term: &Terminator<'tcx>, loc: Location) {
-        let tcx = self.acx.tcx;
+        let tcx = self.acx.tcx();
         self.loc = ExprLoc {
             stmt: loc,
             span: term.source_info.span,
@@ -285,10 +287,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn visit_ptr_offset(&mut self, op: &Operand<'tcx>, result_ty: LTy<'tcx>) {
         // Compute the expected type for the argument, and emit a cast if needed.
         let result_ptr = result_ty.label;
-        let (result_own, result_qty) = type_desc::perms_to_desc(
-            self.perms[result_ptr.index()],
-            self.flags[result_ptr.index()],
-        );
+        let (result_own, result_qty) =
+            type_desc::perms_to_desc(self.perms[result_ptr], self.flags[result_ptr]);
 
         let arg_expect_own = result_own;
         // TODO: infer `arg_expect_qty` based on the type of offset this is (positive / unknown)
@@ -330,10 +330,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn emit_ptr_cast(&mut self, ptr: PointerId, expect_ptr: PointerId) {
         assert!(expect_ptr != PointerId::NONE);
 
-        let (own2, qty2) = type_desc::perms_to_desc(
-            self.perms[expect_ptr.index()],
-            self.flags[expect_ptr.index()],
-        );
+        let (own2, qty2) = type_desc::perms_to_desc(self.perms[expect_ptr], self.flags[expect_ptr]);
 
         self.emit_cast(ptr, own2, qty2);
     }
@@ -341,8 +338,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn emit_cast(&mut self, ptr: PointerId, expect_own: Ownership, expect_qty: Quantity) {
         assert!(ptr != PointerId::NONE);
 
-        let (own1, qty1) =
-            type_desc::perms_to_desc(self.perms[ptr.index()], self.flags[ptr.index()]);
+        let (own1, qty1) = type_desc::perms_to_desc(self.perms[ptr], self.flags[ptr]);
         let (own2, qty2) = (expect_own, expect_qty);
 
         if (own1, qty1) == (own2, qty2) {
@@ -356,7 +352,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
         eprintln!(
             "unsupported cast kind: {:?} {:?} -> {:?}",
-            self.perms[ptr.index()],
+            self.perms[ptr],
             (own1, qty1),
             (own2, qty2)
         );
@@ -364,9 +360,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 }
 
 pub fn gen_expr_rewrites<'tcx>(
-    acx: &AnalysisCtxt<'tcx>,
-    perms: &[PermissionSet],
-    flags: &[FlagSet],
+    acx: &AnalysisCtxt<'_, 'tcx>,
+    asn: &Assignment,
     mir: &Body<'tcx>,
 ) -> Vec<ExprRewrite> {
     // - walk over statements/terminators
@@ -375,7 +370,7 @@ pub fn gen_expr_rewrites<'tcx>(
 
     let mut out = Vec::new();
 
-    let mut v = ExprRewriteVisitor::new(acx, perms, flags, &mut out, mir);
+    let mut v = ExprRewriteVisitor::new(acx, asn, &mut out, mir);
 
     for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb.statements.iter().enumerate() {

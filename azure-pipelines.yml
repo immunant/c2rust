@@ -34,21 +34,52 @@ jobs:
         containerImage: immunant/c2rust:ubuntu-bionic-latest
   container: $[ variables['containerImage'] ]
   steps:
-  - script: |
-      # rust was installed for the `docker` user, not the user azure creates
-      # but cargo and rustup can be controlled via $CARGO_HOME and $RUSTUP_HOME.
-      # NOTE: $HOME is not set correctly for the azure user; don't rely on it.
-      export PATH="/home/docker/.cargo/bin:$PATH"
-      export RUSTUP_HOME=/home/docker/.rustup
-      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      cargo build --release
-    displayName: 'Fast build against host clang/LLVM'
+
+  # rust was installed for the `docker` user, not the user azure creates
+  # but cargo and rustup can be controlled via $CARGO_HOME and $RUSTUP_HOME.
+  # NOTE: $HOME is not set correctly for the azure user; don't rely on it.
 
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      python3 ./scripts/test_translator.py ./tests
+      ./scripts/run_ci_checks.sh fmt
+      cargo fmt --check
+    displayName: 'cargo fmt --check'
+  
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      ./scripts/run_ci_checks.sh check
+    displayName: 'cargo check'
+
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      ./scripts/run_ci_checks.sh doc
+    displayName: 'cargo doc'
+
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      ./scripts/run_ci_checks.sh build
+    displayName: 'cargo build against host clang/LLVM (fast build)'
+
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      ./scripts/run_ci_checks.sh test
+    displayName: 'cargo test'
+  
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      ./scripts/run_ci_checks.sh test-translator
     displayName: 'Test translator (fast build)'
 
 - job: Darwin
@@ -73,8 +104,29 @@ jobs:
 
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      cargo build --release
-    displayName: 'Fast build against host clang/LLVM'
+      ./scripts/run_ci_checks.sh fmt
+    displayName: 'cargo fmt --check'
+  
+  - script: |
+      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+      ./scripts/run_ci_checks.sh check
+    displayName: 'cargo check'
 
-  - script: python3 ./scripts/test_translator.py  ./tests
+  - script: |
+      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+      ./scripts/run_ci_checks.sh doc
+    displayName: 'cargo doc'
+
+  - script: |
+      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+      ./scripts/run_ci_checks.sh build
+    displayName: 'cargo build against host clang/LLVM (fast build)'
+
+  - script: |
+      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+      ./scripts/run_ci_checks.sh test
+    displayName: 'cargo test'
+
+  - script: |
+      ./scripts/run_ci_checks.sh test-translator
     displayName: 'Test translator (fast build)'

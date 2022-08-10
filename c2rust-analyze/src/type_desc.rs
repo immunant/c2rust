@@ -1,4 +1,4 @@
-use crate::context::{AnalysisCtxt, FlagSet, LTy, PermissionSet, PointerId};
+use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet, PointerId};
 use rustc_hir::def::{DefKind, Res};
 use rustc_middle::ty::subst::GenericArg;
 use rustc_middle::ty::{ReErased, Ty, TyCtxt};
@@ -92,19 +92,20 @@ fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Ty<'tcx> {
 }
 
 pub fn convert_type<'tcx>(
-    acx: &AnalysisCtxt<'tcx>,
+    acx: &AnalysisCtxt<'_, 'tcx>,
     lty: LTy<'tcx>,
-    perms: &[PermissionSet],
-    flags: &[FlagSet],
+    asn: &Assignment,
 ) -> Ty<'tcx> {
-    let tcx = acx.tcx;
-    acx.lcx.rewrite_unlabeled(lty, &mut |ty, args, label| {
+    let tcx = acx.tcx();
+    let perms = asn.perms();
+    let flags = asn.flags();
+    acx.lcx().rewrite_unlabeled(lty, &mut |ty, args, label| {
         if label == PointerId::NONE {
             return ty;
         }
         let ptr = label;
 
-        let (own, qty) = perms_to_desc(perms[ptr.index()], flags[ptr.index()]);
+        let (own, qty) = perms_to_desc(perms[ptr], flags[ptr]);
 
         assert_eq!(args.len(), 1);
         let mut ty = args[0];

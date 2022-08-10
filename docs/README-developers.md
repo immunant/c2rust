@@ -27,7 +27,7 @@ Then run `./scripts/provision_mac.sh`.
   - `python-dev`
   - `python` >= 3.6
   - [python dependencies](../scripts/requirements.txt)
-  - `rustc` [version](../rust-toolchain)
+  - `rustc` [version](../rust-toolchain.toml)
   - `rustfmt-preview` component for the above `rustc` version
   - `libssl` (development library, dependency of the refactoring tool)
 

@@ -1011,18 +1011,15 @@ impl ConversionContext {
 
                     let label_name = from_value::<Rc<str>>(node.extras[0].clone())
                         .expect("unnamed label in C source code");
-                    match self
+                    if let Some(old_label_name) = self
                         .typed_context
                         .label_names
                         .insert(CStmtId(new_id), label_name.clone())
                     {
-                        Some(old_label_name) => {
-                            panic!(
-                                "Duplicate label name with id {}. Old name: {}. New name: {}",
-                                new_id, old_label_name, label_name,
-                            );
-                        }
-                        None => {}
+                        panic!(
+                            "Duplicate label name with id {}. Old name: {}. New name: {}",
+                            new_id, old_label_name, label_name,
+                        );
                     }
 
                     let label_stmt = CStmtKind::Label(substmt);

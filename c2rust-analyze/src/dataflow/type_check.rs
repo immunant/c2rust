@@ -11,15 +11,20 @@ use rustc_middle::ty::TyKind;
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
 /// constraints as a side effect.
 struct TypeChecker<'tcx, 'a> {
-    acx: &'a AnalysisCtxt<'tcx>,
+    acx: &'a AnalysisCtxt<'a, 'tcx>,
     mir: &'a Body<'tcx>,
     constraints: DataflowConstraints,
+    equiv_constraints: Vec<(PointerId, PointerId)>,
 }
 
 impl<'tcx> TypeChecker<'tcx, '_> {
     fn add_edge(&mut self, src: PointerId, dest: PointerId) {
         // Copying `src` to `dest` can discard permissions, but can't add new ones.
         self.constraints.add_subset(dest, src);
+    }
+
+    fn add_equiv(&mut self, a: PointerId, b: PointerId) {
+        self.equiv_constraints.push((a, b));
     }
 
     fn record_access(&mut self, ptr: PointerId, mutbl: Mutability) {
@@ -123,7 +128,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Operand::Constant(ref c) => {
                 let ty = c.ty();
                 // TODO
-                self.acx.lcx.label(ty, &mut |_| PointerId::NONE)
+                self.acx.lcx().label(ty, &mut |_| PointerId::NONE)
             }
         }
     }
@@ -133,6 +138,28 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             assert!(pl_ptr != PointerId::NONE);
             assert!(rv_ptr != PointerId::NONE);
             self.add_edge(rv_ptr, pl_ptr);
+        }
+    }
+
+    fn do_unify_pointees(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
+        if pl_lty.label == PointerId::NONE && rv_lty.label == PointerId::NONE {
+            return;
+        }
+        assert!(pl_lty.label != PointerId::NONE);
+        assert!(rv_lty.label != PointerId::NONE);
+        assert_eq!(pl_lty.args.len(), 1);
+        assert_eq!(rv_lty.args.len(), 1);
+
+        let pl_pointee = pl_lty.args[0];
+        let rv_pointee = rv_lty.args[0];
+        assert_eq!(pl_pointee.ty, rv_pointee.ty);
+        for (pl_sub_lty, rv_sub_lty) in pl_pointee.iter().zip(rv_pointee.iter()) {
+            eprintln!("equate {:?} = {:?}", pl_sub_lty, rv_sub_lty);
+            if pl_sub_lty.label != PointerId::NONE || rv_sub_lty.label != PointerId::NONE {
+                assert!(pl_sub_lty.label != PointerId::NONE);
+                assert!(rv_sub_lty.label != PointerId::NONE);
+                self.add_equiv(pl_sub_lty.label, rv_sub_lty.label);
+            }
         }
     }
 
@@ -147,9 +174,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let pl_lty = self.visit_place(pl, ctx);
                 let pl_ptr = pl_lty.label;
 
+                // TODO: combine these
                 let rv_ptr = self.visit_rvalue(rv);
+                let rv_lty = self.acx.type_of(rv);
 
                 self.do_assign(pl_ptr, rv_ptr);
+                self.do_unify_pointees(pl_lty, rv_lty);
             }
             // TODO(spernsteiner): handle other `StatementKind`s
             _ => (),
@@ -158,7 +188,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_terminator(&mut self, term: &Terminator<'tcx>) {
         eprintln!("visit_terminator({:?})", term.kind);
-        let tcx = self.acx.tcx;
+        let tcx = self.acx.tcx();
         // TODO(spernsteiner): other `TerminatorKind`s will be handled in the future
         #[allow(clippy::single_match)]
         match term.kind {
@@ -193,11 +223,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 }
 
-pub fn visit<'tcx>(acx: &AnalysisCtxt<'tcx>, mir: &Body<'tcx>) -> DataflowConstraints {
+pub fn visit<'tcx>(
+    acx: &AnalysisCtxt<'_, 'tcx>,
+    mir: &Body<'tcx>,
+) -> (DataflowConstraints, Vec<(PointerId, PointerId)>) {
     let mut tc = TypeChecker {
         acx,
         mir,
         constraints: DataflowConstraints::default(),
+        equiv_constraints: Vec::new(),
     };
 
     for bb_data in mir.basic_blocks().iter() {
@@ -207,5 +241,5 @@ pub fn visit<'tcx>(acx: &AnalysisCtxt<'tcx>, mir: &Body<'tcx>) -> DataflowConstr
         tc.visit_terminator(bb_data.terminator());
     }
 
-    tc.constraints
+    (tc.constraints, tc.equiv_constraints)
 }
