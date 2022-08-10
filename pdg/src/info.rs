@@ -12,7 +12,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 /// through copies, fields, and offsets, also is a node Z's ancestor through copies, fields, offsets,
 /// where the fields are the same between X and Z, and where Z is chronologically between X and X's last descendent.
 /// If such a node exists, X is not unique.
-#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Default)]
 pub struct NodeInfo {
     flows_to_store: Option<NodeId>,
     flows_to_load: Option<NodeId>,
@@ -21,8 +21,10 @@ pub struct NodeInfo {
     aliases: Option<NodeId>,
 }
 
-impl Display for NodeInfo {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+impl NodeInfo {
+    pub fn fmt_with_sep(&self, f: &mut Formatter, sep: char) -> fmt::Result {
+        let mut sep_buf = [0u8; 4];
+        let sep = sep.encode_utf8(&mut sep_buf);
         let s = [
             ("store", self.flows_to_store),
             ("load", self.flows_to_load),
@@ -31,9 +33,17 @@ impl Display for NodeInfo {
             ("alias", self.aliases),
         ]
         .into_iter()
-        .filter_map(|(name, node)| Some((name, node?)))
-        .format_with(", ", |(name, node), f| f(&format_args!("{name} {node}")));
+        .format_with(sep, |(name, node), f| match node {
+            Some(node) => f(&format_args!("{name} {node};")),
+            None => f(&""),
+        });
         write!(f, "{}", s)
+    }
+}
+
+impl Display for NodeInfo {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        self.fmt_with_sep(f, ' ')
     }
 }
 
