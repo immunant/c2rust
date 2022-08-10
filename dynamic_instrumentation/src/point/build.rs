@@ -24,20 +24,26 @@ struct InstrumentationPointBuilder<'tcx> {
     pub metadata: EventMetadata,
 }
 
-impl<'a, 'tcx> InstrumentationAdder<'a, 'tcx> {
-    fn add(&mut self, builder: InstrumentationBuilder<'a, 'tcx>) {
+impl<'tcx> InstrumentationAdder<'_, 'tcx> {
+    fn add(
+        &mut self,
+        point: InstrumentationPointBuilder<'tcx>,
+        original_location: Location,
+        instrumentation_location: Location,
+        func: DefId,
+    ) {
         let id = self.instrumentation_points.len();
         let InstrumentationPointBuilder {
             args,
             is_cleanup,
             after_call,
             metadata,
-        } = builder.point;
+        } = point;
         self.instrumentation_points.push(InstrumentationPoint {
             id,
-            original_location: builder.original_location,
-            instrumentation_location: builder.instrumentation_location,
-            func: builder.func,
+            original_location,
+            instrumentation_location,
+            func,
             args,
             is_cleanup,
             after_call,
@@ -82,7 +88,7 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx> InstrumentationBuilder<'a, 'tcx> {
+impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     /// Add an argument to this [`InstrumentationPoint`].
     pub fn arg_var(mut self, arg: impl IntoOperand<'tcx>) -> Self {
         let op = arg.op(self.tcx);
@@ -191,7 +197,12 @@ impl<'a, 'tcx> InstrumentationBuilder<'a, 'tcx> {
     ///
     /// [`func`]: InstrumentationPoint::func
     /// [`statement_idx`]: Location::statement_index
-    pub fn add_to(self, adder: &mut InstrumentationAdder<'a, 'tcx>) {
-        adder.add(self);
+    pub fn add_to(self, adder: &mut InstrumentationAdder<'_, 'tcx>) {
+        adder.add(
+            self.point,
+            self.original_location,
+            self.instrumentation_location,
+            self.func,
+        );
     }
 }
