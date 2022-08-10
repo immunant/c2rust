@@ -70,6 +70,7 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
             func,
             point: Default::default(),
         }
+        .debug_mir()
     }
 
     pub fn into_instrumentation_points(mut self) -> Vec<InstrumentationPoint<'tcx>> {
