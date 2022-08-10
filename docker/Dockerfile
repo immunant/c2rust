@@ -1,6 +1,6 @@
 # Docker image for c2rust CI and containerized development.
 # Multi-distro via optional BASE_IMAGE argument.
-# RUST_VER argument should be set to the contents of the rust-toolchain file in
+# RUST_VER argument should be set to the channel of the rust-toolchain.toml file in
 # the repo root (because dockerfiles can't access files above the location where
 # `docker build` is run).
 
@@ -24,7 +24,7 @@ RUN chmod 755 /home/docker
 
 # Provision debian and python packages 
 COPY provision*.sh /tmp/
-COPY requirements.txt /tmp/requirements.txt
+COPY requirements.txt /tmp/
 RUN chmod +x /tmp/provision*.sh && /tmp/provision.sh
 
 USER $USER

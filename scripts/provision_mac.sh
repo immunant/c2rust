@@ -21,7 +21,8 @@ export HOMEBREW_NO_AUTO_UPDATE=1
 
 # NOTE: Pin LLVM to a known good version since new releases
 # tend not to be backwards compatible
-hb_packages=(python cmake ninja gpg llvm)
+# `bash` needed b/c macOS ships with bash 3, which doesn't support arrays properly
+hb_packages=(python cmake ninja gpg llvm bash)
 for item in "${hb_packages[@]}"; do
   brew info "${item}" | grep 'Not installed' > /dev/null && brew install "${item}"
 done
@@ -34,10 +35,7 @@ type -P "pip3" >/dev/null || {
 pip3 install --user --upgrade pip
 pip3 install -r "$SCRIPT_DIR/requirements.txt" --user --disable-pip-version-check
 
-RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain"
-export RUST_VER=$(cat $RUST_TOOLCHAIN_FILE | tr -d '\n')
-
 # Rust and dependencies
-RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain"
-export RUST_VER=$(cat $RUST_TOOLCHAIN_FILE | tr -d '\n')
+RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain.toml"
+export RUST_VER=$($SCRIPT_DIR/query_toml.py toolchain.channel $RUST_TOOLCHAIN_FILE)
 "$SCRIPT_DIR/provision_rust.sh"

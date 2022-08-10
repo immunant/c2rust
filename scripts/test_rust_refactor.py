@@ -91,7 +91,7 @@ def main():
 
     setup_logging()
     # NOTE: it seems safe to disable this check since we now
-    # that we use a rust-toolchain file for rustc versioning.
+    # that we use a rust-toolchain.toml file for rustc versioning.
     # ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
     # TODO: update rustfmt version check once c2rust-refactor bitrot has been fixed
     # ensure_rustfmt_version()

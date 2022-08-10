@@ -556,12 +556,9 @@ impl<W: Write> Printer<W> {
                     self.writer.write_all(b"__thread ")?;
                 }
                 self.print_qtype(typ, Some(ident.as_str()), context)?;
-                match initializer {
-                    Some(init) => {
-                        self.writer.write_all(b" = ")?;
-                        self.print_expr(init, context)?;
-                    }
-                    None => {}
+                if let Some(init) = initializer {
+                    self.writer.write_all(b" = ")?;
+                    self.print_expr(init, context)?;
                 }
                 self.writer.write_all(b";")?;
                 if newline {
