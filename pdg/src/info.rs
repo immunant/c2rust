@@ -1,10 +1,10 @@
 use crate::graph::{Graph, GraphId, Graphs, Node, NodeId, NodeKind};
+use itertools::Itertools;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::Field;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::cmp;
-use itertools::Itertools;
 use std::fmt::{self, Debug, Display, Formatter};
 
 /// The information checked in this struct is whether nodes flow to loads, stores, and offsets (pos
@@ -161,10 +161,11 @@ impl Display for NodeInfo {
             ("+offset", self.flows_to_neg_offset),
             ("-offset", self.flows_to_neg_offset),
             ("non unique by", self.non_unique),
-        ].into_iter()
-        .filter_map(|(name,node)| Some((name,node?)))
+        ]
+        .into_iter()
+        .filter_map(|(name, node)| Some((name, node?)))
         .format_with(", ", |(name, node), f| f(&format_args!("{name} {node}")));
-        write!(f,"{}", s)
+        write!(f, "{}", s)
     }
 }
 
@@ -190,11 +191,12 @@ fn node_does_neg_offset(n: &Node) -> bool {
 }
 
 fn add_children_to_vec(g: &Graph, parents: &HashSet<NodeId>, v: &mut Vec<NodeId>) {
-    v.extend(g.nodes
-             .iter_enumerated()
-             .filter_map(|(id,node)| Some((id,node.source?)))
-             .filter(|(_,src_idx)| parents.contains(src_idx))
-             .map(|(id,_)| id)
+    v.extend(
+        g.nodes
+            .iter_enumerated()
+            .filter_map(|(id, node)| Some((id, node.source?)))
+            .filter(|(_, src_idx)| parents.contains(src_idx))
+            .map(|(id, _)| id),
     );
 }
 
@@ -292,9 +294,9 @@ pub fn check_whether_rules_obeyed(g: &Graph, n: &NodeId) -> Option<NodeId> {
         to_view.extend(
             g.nodes
                 .iter_enumerated()
-                .filter_map(|(id,node)| Some((id,node.source?)))
-                .filter(|(_,src_idx)| *src_idx == cur_node_id)
-                .map(|(id,_)| (id,lineage.clone()))
+                .filter_map(|(id, node)| Some((id, node.source?)))
+                .filter(|(_, src_idx)| *src_idx == cur_node_id)
+                .map(|(id, _)| (id, lineage.clone())),
         );
     }
     None
