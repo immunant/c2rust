@@ -342,6 +342,7 @@ impl<'tcx> TypeOf<'tcx> for Rvalue<'tcx> {
 
         match *self {
             Rvalue::Use(ref op) => acx.type_of(op),
+            Rvalue::CopyForDeref(pl) => acx.type_of(pl),
             Rvalue::Repeat(ref op, _) => {
                 let op_lty = acx.type_of(op);
                 let ty = self.ty(acx, acx.tcx());
