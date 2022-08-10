@@ -14,21 +14,21 @@ use std::fmt::{self, Debug, Display, Formatter};
 /// If such a node exists, X is not unique.
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct NodeInfo {
-    flows_to_mutation: Option<NodeId>,
+    flows_to_store: Option<NodeId>,
     flows_to_load: Option<NodeId>,
     flows_to_pos_offset: Option<NodeId>,
     flows_to_neg_offset: Option<NodeId>,
-    non_unique: Option<NodeId>,
+    aliases: Option<NodeId>,
 }
 
 impl Display for NodeInfo {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let s = [
-            ("mut", self.flows_to_mutation),
+            ("store", self.flows_to_store),
             ("load", self.flows_to_load),
             ("+offset", self.flows_to_neg_offset),
             ("-offset", self.flows_to_neg_offset),
-            ("non unique by", self.non_unique),
+            ("alias", self.aliases),
         ]
         .into_iter()
         .filter_map(|(name, node)| Some((name, node?)))
@@ -170,17 +170,17 @@ pub fn check_whether_rules_obeyed(g: &Graph, n: &NodeId) -> Option<NodeId> {
 pub fn augment_with_info(pdg: &mut Graphs) {
     let gs: &mut IndexVec<GraphId, Graph> = &mut pdg.graphs;
     for g in gs.iter_mut() {
-        let mut idx_flow_to_mut = HashMap::new();
-        let mut idx_flow_to_use = HashMap::new();
+        let mut idx_flow_to_store = HashMap::new();
+        let mut idx_flow_to_load = HashMap::new();
         let mut idx_flow_to_pos_offset = HashMap::new();
         let mut idx_flow_to_neg_offset = HashMap::new();
-        let mut idx_non_unique = HashMap::new();
+        let mut idx_aliases = HashMap::new();
         for (idx, _) in g.nodes.iter_enumerated() {
             if let Some(descmutidx) = check_flows_to_node_kind(g, &idx, node_does_mutation) {
-                idx_flow_to_mut.insert(idx, descmutidx);
+                idx_flow_to_store.insert(idx, descmutidx);
             }
             if let Some(descuseidx) = check_flows_to_node_kind(g, &idx, node_does_load) {
-                idx_flow_to_use.insert(idx, descuseidx);
+                idx_flow_to_load.insert(idx, descuseidx);
             }
             if let Some(descposoidx) = check_flows_to_node_kind(g, &idx, node_does_pos_offset) {
                 idx_flow_to_pos_offset.insert(idx, descposoidx);
@@ -189,16 +189,16 @@ pub fn augment_with_info(pdg: &mut Graphs) {
                 idx_flow_to_neg_offset.insert(idx, descnegoidx);
             }
             if let Some(non_unique_idx) = check_whether_rules_obeyed(g, &idx) {
-                idx_non_unique.insert(idx, non_unique_idx);
+                idx_aliases.insert(idx, non_unique_idx);
             }
         }
         for (idx, node) in g.nodes.iter_enumerated_mut() {
             node.node_info = Some(NodeInfo {
-                flows_to_mutation: idx_flow_to_mut.remove(&idx),
-                flows_to_load: idx_flow_to_use.remove(&idx),
+                flows_to_store: idx_flow_to_store.remove(&idx),
+                flows_to_load: idx_flow_to_load.remove(&idx),
                 flows_to_pos_offset: idx_flow_to_pos_offset.remove(&idx),
                 flows_to_neg_offset: idx_flow_to_pos_offset.remove(&idx),
-                non_unique: idx_non_unique.remove(&idx),
+                aliases: idx_aliases.remove(&idx),
             })
         }
     }
