@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::fmt::{self, Display, Formatter};
 use std::hash::{Hash, Hasher};
@@ -94,7 +95,7 @@ impl Debug for MirPlace {
 
 pub type MirLocId = u32;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Copy, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Clone, Debug)]
 pub struct Fingerprint(pub u64, pub u64);
 
 impl From<(u64, u64)> for Fingerprint {
@@ -109,7 +110,7 @@ impl From<Fingerprint> for (u64, u64) {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Copy, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Clone, Debug)]
 pub struct DefPathHash(pub Fingerprint);
 
 impl From<(u64, u64)> for DefPathHash {
