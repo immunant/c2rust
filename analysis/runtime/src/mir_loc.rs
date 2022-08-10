@@ -131,15 +131,33 @@ pub struct Func {
     pub name: String,
 }
 
+impl Func {
+    fn cmp_fields(&self) -> impl Eq + Hash + Ord + '_ {
+        self.def_path_hash
+    }
+}
+
 impl PartialEq for Func {
     fn eq(&self, other: &Self) -> bool {
-        self.def_path_hash == other.def_path_hash
+        self.cmp_fields() == other.cmp_fields()
     }
 }
 
 impl Hash for Func {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.def_path_hash.hash(state);
+        self.cmp_fields().hash(state);
+    }
+}
+
+impl PartialOrd for Func {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.cmp_fields().partial_cmp(&other.cmp_fields())
+    }
+}
+
+impl Ord for Func {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.cmp_fields().cmp(&other.cmp_fields())
     }
 }
 
