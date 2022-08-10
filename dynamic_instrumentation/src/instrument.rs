@@ -14,7 +14,6 @@ use rustc_middle::ty::{self, TyCtxt, TyS};
 use rustc_span::def_id::{DefId, DefPathHash};
 use rustc_span::DUMMY_SP;
 use std::collections::HashMap;
-use std::fs::File;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -68,11 +67,9 @@ impl Instrumenter {
         let mut functions = self.functions.lock().unwrap();
         let locs = locs.drain(..).collect::<Vec<_>>();
         let functions = functions.drain().collect::<HashMap<_, _>>();
-        let metadata_file =
-            File::create(metadata_file_path).context("Could not open metadata file")?;
         let metadata = Metadata { locs, functions };
-        bincode::serialize_into(metadata_file, &metadata)
-            .context("Location serialization failed")?;
+        let bytes = bincode::serialize(&metadata).context("Location serialization failed")?;
+        fs_err::write(metadata_file_path, &bytes).context("Could not open metadata file")?;
         Ok(())
     }
 
