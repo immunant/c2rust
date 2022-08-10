@@ -86,7 +86,7 @@ fn greatest_desc(g: &Graph, n: &NodeId) -> NodeId {
     let mut desc_seen = HashSet::<NodeId>::new();
     let mut to_view = vec![*n];
     let mut greatest_index = n.index();
-    let mut greatest_node_idx: NodeId = n.clone();
+    let mut greatest_node_idx = *n;
     while let Some(node_id_to_check) = to_view.pop() {
         if !desc_seen.contains(&node_id_to_check) {
             desc_seen.insert(node_id_to_check);
