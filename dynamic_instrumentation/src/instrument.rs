@@ -14,7 +14,6 @@ use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::def_id::{DefId, DefPathHash};
 use rustc_span::DUMMY_SP;
 use std::collections::HashMap;
-use std::fs::File;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -22,7 +21,7 @@ use crate::arg::{ArgKind, InstrumentationArg};
 use crate::hooks::Hooks;
 use crate::mir_utils::{has_outer_deref, remove_outer_deref, strip_all_deref};
 use crate::point::cast_ptr_to_usize;
-use crate::point::InstrumentationAdder;
+use crate::point::CollectInstrumentationPoints;
 use crate::point::InstrumentationApplier;
 use crate::util::Convert;
 
@@ -68,11 +67,9 @@ impl Instrumenter {
         let mut functions = self.functions.lock().unwrap();
         let locs = locs.drain(..).collect::<Vec<_>>();
         let functions = functions.drain().collect::<HashMap<_, _>>();
-        let metadata_file =
-            File::create(metadata_file_path).context("Could not open metadata file")?;
         let metadata = Metadata { locs, functions };
-        bincode::serialize_into(metadata_file, &metadata)
-            .context("Location serialization failed")?;
+        let bytes = bincode::serialize(&metadata).context("Location serialization failed")?;
+        fs_err::write(metadata_file_path, &bytes).context("Could not open metadata file")?;
         Ok(())
     }
 
@@ -117,7 +114,7 @@ fn is_region_or_unsafe_ptr(ty: Ty) -> bool {
     ty.is_unsafe_ptr() || ty.is_region_ptr()
 }
 
-impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
+impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         self.super_place(place, context, location);
 
@@ -137,12 +134,11 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                             .copied()
                             .filter(|_| base.projection.len() == place.projection.len() - 1)
                     };
-                    self.loc(location, field_fn)
+                    self.loc(location, location, field_fn)
                         .arg_var(place.local)
                         .arg_index_of(field)
                         .source(place)
                         .dest_from(proj_dest)
-                        .debug_mir(location)
                         .add_to(self);
                 }
             }
@@ -169,6 +165,7 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
 
         let op_ty = |op: &Operand<'tcx>| op.ty(&locals, ctx);
         let place_ty = |p: &Place<'tcx>| p.ty(&locals, ctx).ty;
+        let local_ty = |p: &Place| place_ty(&p.local.into());
         let value_ty = value.ty(self, self.tcx());
 
         self.visit_place(
@@ -178,16 +175,17 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
         );
 
         let mut add_load_instr = |p: &Place<'tcx>| {
-            self.loc(location, load_fn)
+            self.loc(location, location, load_fn)
                 .arg_var(p.local)
                 .source(&remove_outer_deref(*p, ctx))
-                .debug_mir(location)
                 .add_to(self);
         };
 
         // add instrumentation for load-from-address operations
         match value {
-            Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) if p.is_indirect() => {
+            Rvalue::Use(Operand::Copy(p) | Operand::Move(p))
+                if p.is_indirect() && is_region_or_unsafe_ptr(local_ty(p)) =>
+            {
                 add_load_instr(p)
             }
             _ => (),
@@ -198,18 +196,16 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 // Strip all derefs to set base_dest to the pointer that is deref'd
                 let base_dest = strip_all_deref(&dest, self.tcx());
 
-                self.loc(location, store_fn)
+                self.loc(location, location, store_fn)
                     .arg_var(base_dest)
                     .source(&remove_outer_deref(dest, self.tcx()))
-                    .debug_mir(location)
                     .add_to(self);
 
                 if is_region_or_unsafe_ptr(value_ty) {
-                    self.loc(location.successor_within_block(), store_value_fn)
+                    self.loc(location, location.successor_within_block(), store_value_fn)
                         .arg_var(dest)
                         .source(value)
                         .dest(&dest)
-                        .debug_mir(location)
                         .add_to(self);
                 }
             }
@@ -217,10 +213,9 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 if value_ty.is_integral() && !p.is_indirect() =>
             {
                 if is_region_or_unsafe_ptr(place_ty(p)) {
-                    self.loc(location, ptr_to_int_fn)
+                    self.loc(location, location, ptr_to_int_fn)
                         .arg_var(p.local)
                         .source(p)
-                        .debug_mir(location)
                         .add_to(self);
                 }
             }
@@ -231,37 +226,43 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
             {
                 let source = remove_outer_deref(*p, self.tcx());
                 // Instrument which local's address is taken
-                self.loc(location.successor_within_block(), copy_fn)
+                self.loc(location, location.successor_within_block(), copy_fn)
                     .arg_var(dest)
                     .source(&source)
                     .dest(&dest)
-                    .debug_mir(location)
                     .add_to(self);
             }
             Rvalue::AddressOf(_, p) => {
                 // Instrument which local's address is taken
-                self.loc(location.successor_within_block(), addr_local_fn)
+                self.loc(location, location.successor_within_block(), addr_local_fn)
                     .arg_var(dest)
                     .arg_index_of(p.local)
                     .source(p)
                     .dest(&dest)
-                    .debug_mir(location)
                     .add_to(self);
             }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) if p.is_indirect() => {
                 // We're dereferencing something, the result of which is a reference or pointer
-                self.loc(location.successor_within_block(), load_value_fn)
+                self.loc(location, location.successor_within_block(), load_value_fn)
                     .arg_var(dest)
                     .dest(&dest)
-                    .debug_mir(location)
+                    .add_to(self);
+            }
+            Rvalue::Use(Operand::Constant(..)) => {
+                // Track (as copies) assignments that give local names to constants so that code
+                // taking references to said constants can refer to these assignments as sources.
+                // TODO: should be replaced by AddrOfStatic when support for that is added
+                self.loc(location, location.successor_within_block(), copy_fn)
+                    .arg_var(dest)
+                    .dest(&dest)
+                    .debug_mir()
                     .add_to(self);
             }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) => {
-                self.loc(location.successor_within_block(), copy_fn)
+                self.loc(location, location.successor_within_block(), copy_fn)
                     .arg_var(dest)
                     .source(p)
                     .dest(&dest)
-                    .debug_mir(location)
                     .add_to(self);
             }
             Rvalue::Cast(_, op, _) => {
@@ -270,11 +271,10 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 } else {
                     copy_fn
                 };
-                self.loc(location.successor_within_block(), func)
+                self.loc(location, location.successor_within_block(), func)
                     .arg_var(dest)
                     .source(op)
                     .dest(&dest)
-                    .debug_mir(location)
                     .add_to(self);
             }
             Rvalue::Ref(_, bkind, p) if has_outer_deref(p) => {
@@ -282,19 +282,17 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 let source = remove_outer_deref(*p, self.tcx());
                 if let BorrowKind::Mut { .. } = bkind {
                     // Instrument which local's address is taken
-                    self.loc(location, copy_fn)
+                    self.loc(location, location, copy_fn)
                         .arg_addr_of(*p)
                         .source(&source)
                         .dest(&dest)
-                        .debug_mir(location)
                         .add_to(self);
                 } else {
                     // Instrument immutable borrows by tracing the reference itself
-                    self.loc(location.successor_within_block(), copy_fn)
+                    self.loc(location, location.successor_within_block(), copy_fn)
                         .arg_var(dest)
                         .source(&source)
                         .dest(&dest)
-                        .debug_mir(location)
                         .add_to(self);
                 };
             }
@@ -303,21 +301,19 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                 let source = remove_outer_deref(*p, self.tcx());
                 if let BorrowKind::Mut { .. } = bkind {
                     // Instrument which local's address is taken
-                    self.loc(location, addr_local_fn)
+                    self.loc(location, location, addr_local_fn)
                         .arg_addr_of(*p)
                         .arg_index_of(p.local)
                         .source(&source)
                         .dest(&dest)
-                        .debug_mir(location)
                         .add_to(self);
                 } else {
                     // Instrument immutable borrows by tracing the reference itself
-                    self.loc(location.successor_within_block(), addr_local_fn)
+                    self.loc(location, location.successor_within_block(), addr_local_fn)
                         .arg_var(dest)
                         .arg_index_of(p.local)
                         .source(&source)
                         .dest(&dest)
-                        .debug_mir(location)
                         .add_to(self);
                 };
             }
@@ -359,12 +355,11 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                         if let Some(place) = arg.place() {
                             let place_ty = place.ty(self, self.tcx()).ty;
                             if is_shared_or_unsafe_ptr(place_ty) {
-                                self.loc(location, arg_fn)
+                                self.loc(location, location, arg_fn)
                                     .arg_var(place)
                                     .source(&place)
                                     .dest(&callee_arg)
                                     .transfer(transfer_kind)
-                                    .debug_mir(location)
                                     .add_to(self);
                             }
                         }
@@ -378,13 +373,12 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                         let func_def_id = self.hooks().find_from_symbol(fn_name);
 
                         // Hooked function called; trace args
-                        self.loc(location, func_def_id)
+                        self.loc(location, location, func_def_id)
                             .source(args)
                             .dest(destination)
                             .after_call()
                             .transfer(TransferKind::Ret(self.func_hash()))
                             .arg_vars(args.iter().cloned())
-                            .debug_mir(location)
                             .add_to(self);
                     } else if is_region_or_unsafe_ptr(destination.ty(self, self.tcx()).ty) {
                         let instrumentation_location = Location {
@@ -392,14 +386,13 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
                             block: target,
                         };
 
-                        self.loc(instrumentation_location, arg_fn)
+                        self.loc(location, instrumentation_location, arg_fn)
                             .source(&0)
                             .dest(destination)
                             .transfer(TransferKind::Ret(
                                 self.tcx().def_path_hash(def_id).convert(),
                             ))
                             .arg_var(*destination)
-                            .debug_mir(location)
                             .add_to(self);
                     }
                 }
@@ -407,7 +400,9 @@ impl<'tcx> Visitor<'tcx> for InstrumentationAdder<'_, 'tcx> {
             TerminatorKind::Return => {
                 let place = Place::return_place();
                 if is_region_or_unsafe_ptr(self.local_decls()[place.local].ty) {
-                    self.loc(location, ret_fn).arg_var(place).add_to(self);
+                    self.loc(location, location, ret_fn)
+                        .arg_var(place)
+                        .add_to(self);
                 }
             }
             _ => (),
@@ -422,9 +417,9 @@ fn instrument_body<'a, 'tcx>(
     body_did: DefId,
 ) {
     let hooks = Hooks::new(tcx);
-    let mut adder = InstrumentationAdder::new(tcx, hooks, body);
-    adder.visit_body(body);
-    let points = adder.into_instrumentation_points();
+    let mut collector = CollectInstrumentationPoints::new(tcx, hooks, body);
+    collector.visit_body(body);
+    let points = collector.into_instrumentation_points();
     let mut applier = InstrumentationApplier::new(state, tcx, body, body_did);
     applier.apply_points(&points);
 

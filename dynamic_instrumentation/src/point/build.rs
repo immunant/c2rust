@@ -14,7 +14,7 @@ use crate::{
     util::Convert,
 };
 
-use super::{InstrumentationAdder, InstrumentationPoint};
+use super::{CollectInstrumentationPoints, InstrumentationPoint};
 
 #[derive(Default)]
 struct InstrumentationPointBuilder<'tcx> {
@@ -24,8 +24,14 @@ struct InstrumentationPointBuilder<'tcx> {
     pub metadata: EventMetadata,
 }
 
-impl<'tcx> InstrumentationAdder<'_, 'tcx> {
-    fn add(&mut self, point: InstrumentationPointBuilder<'tcx>, loc: Location, func: DefId) {
+impl<'tcx> CollectInstrumentationPoints<'_, 'tcx> {
+    fn add(
+        &mut self,
+        point: InstrumentationPointBuilder<'tcx>,
+        original_location: Location,
+        instrumentation_location: Location,
+        func: DefId,
+    ) {
         let id = self.instrumentation_points.len();
         let InstrumentationPointBuilder {
             args,
@@ -35,7 +41,8 @@ impl<'tcx> InstrumentationAdder<'_, 'tcx> {
         } = point;
         self.instrumentation_points.push(InstrumentationPoint {
             id,
-            loc,
+            original_location,
+            instrumentation_location,
             func,
             args,
             is_cleanup,
@@ -48,26 +55,34 @@ impl<'tcx> InstrumentationAdder<'_, 'tcx> {
 pub struct InstrumentationBuilder<'a, 'tcx: 'a> {
     tcx: TyCtxt<'tcx>,
     body: &'a Body<'tcx>,
-    loc: Location,
+    original_location: Location,
+    instrumentation_location: Location,
     func: DefId,
     point: InstrumentationPointBuilder<'tcx>,
 }
 
-impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
-    pub fn loc(&self, loc: Location, func: DefId) -> InstrumentationBuilder<'a, 'tcx> {
+impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
+    pub fn loc(
+        &self,
+        original_location: Location,
+        instrumentation_location: Location,
+        func: DefId,
+    ) -> InstrumentationBuilder<'a, 'tcx> {
         InstrumentationBuilder {
             tcx: self.tcx(),
             body: self.body,
-            loc,
+            original_location,
+            instrumentation_location,
             func,
             point: Default::default(),
         }
+        .debug_mir()
     }
 
     pub fn into_instrumentation_points(mut self) -> Vec<InstrumentationPoint<'tcx>> {
         // Sort by reverse location so that we can split blocks without
         // perturbing future statement indices
-        let key = |p: &InstrumentationPoint| (p.loc, p.after_call, p.id);
+        let key = |p: &InstrumentationPoint| (p.instrumentation_location, p.after_call, p.id);
         self.instrumentation_points
             .sort_unstable_by(|a, b| key(a).cmp(&key(b)).reverse());
         self.instrumentation_points
@@ -167,8 +182,10 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
         }
     }
 
-    pub fn debug_mir(mut self, loc: Location) -> Self {
-        self.point.metadata.debug_info = self.debug_mir_to_string(loc);
+    /// Set [`debug_info`](EventMetadata::debug_info)
+    /// to the MIR of the [`original_location`](Self::original_location).
+    pub fn debug_mir(mut self) -> Self {
+        self.point.metadata.debug_info = self.debug_mir_to_string(self.original_location);
         self
     }
 
@@ -183,7 +200,12 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     ///
     /// [`func`]: InstrumentationPoint::func
     /// [`statement_idx`]: Location::statement_index
-    pub fn add_to(self, adder: &mut InstrumentationAdder<'_, 'tcx>) {
-        adder.add(self.point, self.loc, self.func);
+    pub fn add_to(self, adder: &mut CollectInstrumentationPoints<'_, 'tcx>) {
+        adder.add(
+            self.point,
+            self.original_location,
+            self.instrumentation_location,
+            self.func,
+        );
     }
 }

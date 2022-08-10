@@ -51,7 +51,8 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
             body_def,
         } = self;
         let &InstrumentationPoint {
-            loc,
+            original_location,
+            instrumentation_location,
             func,
             ref args,
             is_cleanup,
@@ -72,7 +73,7 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
         let locals = &mut body.local_decls;
 
         // Add the MIR location as the first argument to the instrumentation function
-        let loc_idx = state.get_mir_loc_idx(body_def, loc, metadata.clone());
+        let loc_idx = state.get_mir_loc_idx(body_def, original_location, metadata.clone());
         args.insert(
             0,
             InstrumentationArg::Op(ArgKind::AddressUsize(loc_idx.op(tcx))),
@@ -80,7 +81,7 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
 
         let mut extra_statements = None;
         if after_call {
-            let call = blocks[loc.block].terminator_mut();
+            let call = blocks[instrumentation_location.block].terminator_mut();
             let ret_value = if let TerminatorKind::Call {
                 destination: place,
                 // TODO(kkysen) I kept the `Some` pattern so that the `match` is identical.  Do we need this?
@@ -118,14 +119,23 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
             }
         }
 
-        let (successor_block, _) =
-            insert_call(tcx, body, loc.block, loc.statement_index, func, args);
+        let (successor_block, _) = insert_call(
+            tcx,
+            *body,
+            instrumentation_location.block,
+            instrumentation_location.statement_index,
+            func,
+            args,
+        );
 
         let blocks = body.basic_blocks_mut();
         if after_call {
             // Swap the newly inserted instrumentation call to the following
             // block and move the original call back to the current block
-            let mut instrument_call = blocks[loc.block].terminator.take().unwrap();
+            let mut instrument_call = blocks[instrumentation_location.block]
+                .terminator
+                .take()
+                .unwrap();
             let orig_call = blocks[successor_block].terminator_mut();
             if let (
                 TerminatorKind::Call {
@@ -141,7 +151,7 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
                 mem::swap(instrument_dest, orig_dest);
             }
             let orig_call = mem::replace(orig_call, instrument_call);
-            blocks[loc.block].terminator = Some(orig_call);
+            blocks[instrumentation_location.block].terminator = Some(orig_call);
 
             if let Some(stmts) = extra_statements {
                 blocks[successor_block].statements.extend(stmts);
