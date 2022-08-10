@@ -19,8 +19,7 @@ pub fn read_event_log(path: &Path) -> io::Result<Vec<Event>> {
 
 pub fn read_metadata(path: &Path) -> eyre::Result<Metadata> {
     let bytes = fs_err::read(path)?;
-    let metadata = bincode::deserialize(&bytes)?;
-    Ok(metadata)
+    Ok(Metadata::read(&bytes)?)
 }
 
 pub trait EventKindExt {
