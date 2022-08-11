@@ -202,27 +202,26 @@ impl<'c> Translation<'c> {
                             let order = static_order(order);
                             let order_fail = static_order(order_fail);
                             use Ordering::*;
-                            let intrinsic_name = (|| {
-                                Some(match (order, order_fail) {
-                                    (_, Release | AcqRel) => return None,
-                                    (SeqCst, SeqCst) => "_seqcst_seqcst",
-                                    (SeqCst, Acquire) => "_seqcst_acquire",
-                                    (SeqCst, Relaxed) => "_seqcst_relaxed",
-                                    (AcqRel, Acquire) => "_acqrel_acquire",
-                                    (AcqRel, Relaxed) => "_acqrel_relaxed",
-                                    (Release, Relaxed) => "_release_relaxed",
-                                    (Acquire, Acquire) => "_acquire_acquire",
-                                    (Acquire, Relaxed) => "_acquire_relaxed",
-                                    (Relaxed, Relaxed) => "_relaxed_relaxed",
-                                    (SeqCst | AcqRel | Release | Acquire | Relaxed, _) => {
-                                        return None
-                                    }
+                            let intrinsic_name = match (order, order_fail) {
+                                (_, Release | AcqRel) => None,
+                                (SeqCst, SeqCst)
+                                | (SeqCst, Acquire)
+                                | (SeqCst, Relaxed)
+                                | (AcqRel, Acquire)
+                                | (AcqRel, Relaxed)
+                                | (Release, Relaxed)
+                                | (Acquire, Acquire)
+                                | (Acquire, Relaxed)
+                                | (Relaxed, Relaxed) => Some((order, order_fail)),
+                                (SeqCst | AcqRel | Release | Acquire | Relaxed, _) => None,
 
-                                    (_, _) => unreachable!("Did we not handle a case above??"),
-                                })
-                            })()
-                            .map(|suffix| {
-                                format!("atomic_cxchg{}{}", if weak { "weak" } else { "" }, suffix)
+                                (_, _) => unreachable!("Did we not handle a case above??"),
+                            }
+                            .map(|(order, order_fail)| {
+                                let weak = if weak { "weak" } else { "" };
+                                let order = order_name(order);
+                                let order_fail = order_name(order_fail);
+                                format!("atomic_cxchg{weak}_{order}_{order_fail}")
                             })
                             .ok_or_else(|| {
                                 format_translation_err!(
