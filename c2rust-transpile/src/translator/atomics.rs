@@ -68,35 +68,31 @@ impl<'c> Translation<'c> {
             .transpose()?;
         let weak = weak_id.and_then(|x| self.convert_constant_bool(x));
 
-        fn static_order<T>(order: Option<T>) -> T {
+        fn static_order(order: Option<Ordering>) -> Ordering {
             order.unwrap_or_else(|| {
                 // We have to select which intrinsic to use at runtime
                 unimplemented!("Dynamic memory consistency arguments are not yet supported");
             })
         }
 
+        fn order_name(order: Ordering) -> &'static str {
+            match order {
+                SeqCst => "seqcst",
+                AcqRel => "acqrel",
+                Acquire => "acquire",
+                Release => "release",
+                Relaxed => "relaxed",
+                _ => unreachable!("Did we not handle a case above??"),
+            }
+        }
+
         match name {
             "__atomic_load" | "__atomic_load_n" => ptr.and_then(|ptr| {
-                use Ordering::*;
-                let intrinsic_name = match static_order(order) {
-                    SeqCst => Some("atomic_load"),
-                    AcqRel => None,
-                    Acquire => Some("atomic_load_acq"),
-                    Release => None,
-                    Relaxed => Some("atomic_load_relaxed"),
-                    _ => unreachable!("Did we not handle a case above??"),
-                }
-                .ok_or_else(|| {
-                    format_translation_err!(
-                        self.ast_context
-                            .display_loc(&self.ast_context[order_id].loc),
-                        "Invalid memory ordering for __atomic_load",
-                    )
-                })?;
+                let intrinsic_name = "atomic_load_".to_owned() + order_name(static_order(order));
 
                 self.use_feature("core_intrinsics");
 
-                let atomic_load = mk().abs_path_expr(vec!["core", "intrinsics", intrinsic_name]);
+                let atomic_load = mk().abs_path_expr(vec!["core", "intrinsics", &intrinsic_name]);
                 let call = mk().call_expr(atomic_load, vec![ptr]);
                 if name == "__atomic_load" {
                     let ret = val1.expect("__atomic_load should have a ret argument");
@@ -124,27 +120,13 @@ impl<'c> Translation<'c> {
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
-                        use Ordering::*;
-                        let intrinsic_name = match static_order(order) {
-                            SeqCst => Some("atomic_store"),
-                            AcqRel => None,
-                            Acquire => None,
-                            Release => Some("atomic_store_rel"),
-                            Relaxed => Some("atomic_store_relaxed"),
-                            _ => unreachable!("Did we not handle a case above??"),
-                        }
-                        .ok_or_else(|| {
-                            format_translation_err!(
-                                self.ast_context
-                                    .display_loc(&self.ast_context[order_id].loc),
-                                "Invalid memory ordering for __atomic_store",
-                            )
-                        })?;
+                        let intrinsic_name =
+                            "atomic_store_".to_owned() + order_name(static_order(order));
 
                         self.use_feature("core_intrinsics");
 
                         let atomic_store =
-                            mk().abs_path_expr(vec!["core", "intrinsics", intrinsic_name]);
+                            mk().abs_path_expr(vec!["core", "intrinsics", &intrinsic_name]);
                         let val = if name == "__atomic_store" {
                             mk().unary_expr(UnOp::Deref(Default::default()), val)
                         } else {
@@ -164,27 +146,13 @@ impl<'c> Translation<'c> {
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
-                        use Ordering::*;
-                        let intrinsic_name = match static_order(order) {
-                            SeqCst => Some("atomic_xchg"),
-                            AcqRel => Some("atomic_xchg_acqrel"),
-                            Acquire => Some("atomic_xchg_acq"),
-                            Release => Some("atomic_xchg_rel"),
-                            Relaxed => Some("atomic_xchg_relaxed"),
-                            _ => unreachable!("Did we not handle a case above??"),
-                        }
-                        .ok_or_else(|| {
-                            format_translation_err!(
-                                self.ast_context
-                                    .display_loc(&self.ast_context[order_id].loc),
-                                "Invalid memory ordering for __atomic_exchange",
-                            )
-                        })?;
+                        let intrinsic_name =
+                            "atomic_xchg_".to_owned() + order_name(static_order(order));
 
                         self.use_feature("core_intrinsics");
 
                         let fn_path =
-                            mk().abs_path_expr(vec!["core", "intrinsics", intrinsic_name]);
+                            mk().abs_path_expr(vec!["core", "intrinsics", &intrinsic_name]);
                         let val = if name == "__atomic_exchange" {
                             mk().unary_expr(UnOp::Deref(Default::default()), val)
                         } else {
@@ -226,22 +194,25 @@ impl<'c> Translation<'c> {
                 ptr.and_then(|ptr| {
                     expected.and_then(|expected| {
                         desired.and_then(|desired| {
-                            let weak = static_order(weak);
+                            // If this expect fails, we have to select which intrinsic to use at runtime
+                            let weak = weak.expect(
+                                "Dynamic memory consistency arguments are not yet supported",
+                            );
                             let order = static_order(order);
                             let order_fail = static_order(order_fail);
                             use Ordering::*;
                             let intrinsic_name = (|| {
                                 Some(match (order, order_fail) {
                                     (_, Release | AcqRel) => return None,
-                                    (SeqCst, SeqCst) => "",
-                                    (SeqCst, Acquire) => "_failacq",
-                                    (SeqCst, Relaxed) => "_failrelaxed",
-                                    (AcqRel, Acquire) => "_acqrel",
-                                    (AcqRel, Relaxed) => "_acqrel_failrelaxed",
-                                    (Release, Relaxed) => "_rel",
-                                    (Acquire, Acquire) => "_acq",
-                                    (Acquire, Relaxed) => "_acq_failrelaxed",
-                                    (Relaxed, Relaxed) => "_relaxed",
+                                    (SeqCst, SeqCst) => "_seqcst_seqcst",
+                                    (SeqCst, Acquire) => "_seqcst_acquire",
+                                    (SeqCst, Relaxed) => "_seqcst_relaxed",
+                                    (AcqRel, Acquire) => "_acqrel_acquire",
+                                    (AcqRel, Relaxed) => "_acqrel_relaxed",
+                                    (Release, Relaxed) => "_release_relaxed",
+                                    (Acquire, Acquire) => "_acquire_acquire",
+                                    (Acquire, Relaxed) => "_acquire_relaxed",
+                                    (Relaxed, Relaxed) => "_relaxed_relaxed",
                                     (SeqCst | AcqRel | Release | Acquire | Relaxed, _) => {
                                         return None
                                     }
@@ -320,16 +291,8 @@ impl<'c> Translation<'c> {
                     "atomic_and"
                 };
 
-                use Ordering::*;
-                let intrinsic_suffix = match static_order(order) {
-                    SeqCst => "",
-                    AcqRel => "_acqrel",
-                    Acquire => "_acq",
-                    Release => "_rel",
-                    Relaxed => "_relaxed",
-                    _ => unreachable!("Unknown memory ordering"),
-                };
-                let intrinsic_name = format!("{intrinsic_name}{intrinsic_suffix}");
+                let intrinsic_suffix = order_name(static_order(order));
+                let intrinsic_name = format!("{intrinsic_name}_{intrinsic_suffix}");
 
                 let fetch_first = name.starts_with("__atomic_fetch");
                 let val = val1.expect("__atomic arithmetic operations must have a val argument");
