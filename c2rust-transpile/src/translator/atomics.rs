@@ -204,15 +204,12 @@ impl<'c> Translation<'c> {
                             use Ordering::*;
                             let intrinsic_name = match (order, order_fail) {
                                 (_, Release | AcqRel) => None,
-                                (SeqCst, SeqCst)
-                                | (SeqCst, Acquire)
-                                | (SeqCst, Relaxed)
-                                | (AcqRel, Acquire)
-                                | (AcqRel, Relaxed)
+                                (SeqCst, SeqCst | Acquire | Relaxed)
+                                | (AcqRel, Acquire | Relaxed)
                                 | (Release, Relaxed)
-                                | (Acquire, Acquire)
-                                | (Acquire, Relaxed)
-                                | (Relaxed, Relaxed) => Some((order, order_fail)),
+                                | (Acquire | Relaxed, Acquire | Relaxed) => {
+                                    Some((order, order_fail))
+                                }
                                 (SeqCst | AcqRel | Release | Acquire | Relaxed, _) => None,
 
                                 (_, _) => unreachable!("Did we not handle a case above??"),
