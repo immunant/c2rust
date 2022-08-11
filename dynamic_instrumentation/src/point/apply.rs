@@ -121,7 +121,7 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
 
         let (successor_block, _) = insert_call(
             tcx,
-            *body,
+            body,
             instrumentation_location.block,
             instrumentation_location.statement_index,
             func,
