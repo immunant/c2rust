@@ -83,7 +83,10 @@ impl<'c> Translation<'c> {
                 Acquire => "acquire",
                 Release => "release",
                 Relaxed => "relaxed",
-                _ => unreachable!("Did we not handle a case above??"),
+                _ => unreachable!(
+                    "new variants added to `{}`",
+                    std::any::type_name::<Ordering>()
+                ),
             }
         }
 
