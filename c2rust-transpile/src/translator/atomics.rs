@@ -92,7 +92,7 @@ impl<'c> Translation<'c> {
 
         match name {
             "__atomic_load" | "__atomic_load_n" => ptr.and_then(|ptr| {
-                let intrinsic_name = "atomic_load_".to_owned() + order_name(static_order(order));
+                let intrinsic_name = format!("atomic_load_{}", order_name(static_order(order)));
 
                 self.use_feature("core_intrinsics");
 
@@ -125,7 +125,7 @@ impl<'c> Translation<'c> {
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
                         let intrinsic_name =
-                            "atomic_store_".to_owned() + order_name(static_order(order));
+                            format!("atomic_store_{}", order_name(static_order(order)));
 
                         self.use_feature("core_intrinsics");
 
@@ -151,7 +151,7 @@ impl<'c> Translation<'c> {
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
                         let intrinsic_name =
-                            "atomic_xchg_".to_owned() + order_name(static_order(order));
+                            format!("atomic_xchg_{}", order_name(static_order(order)));
 
                         self.use_feature("core_intrinsics");
 
