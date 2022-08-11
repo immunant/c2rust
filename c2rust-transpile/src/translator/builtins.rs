@@ -493,18 +493,18 @@ impl<'c> Translation<'c> {
             | "__sync_nand_and_fetch_8"
             | "__sync_nand_and_fetch_16" => {
                 let func_name = if builtin_name.contains("_add_") {
-                    "atomic_xadd"
+                    "atomic_xadd_seqcst"
                 } else if builtin_name.contains("_sub_") {
-                    "atomic_xsub"
+                    "atomic_xsub_seqcst"
                 } else if builtin_name.contains("_or_") {
-                    "atomic_or"
+                    "atomic_or_seqcst"
                 } else if builtin_name.contains("_xor_") {
-                    "atomic_xor"
+                    "atomic_xor_seqcst"
                 } else if builtin_name.contains("_nand_") {
-                    "atomic_nand"
+                    "atomic_nand_seqcst"
                 } else {
                     // We can't explicitly check for "_and_" since they all contain it
-                    "atomic_and"
+                    "atomic_and_seqcst"
                 };
 
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
@@ -520,7 +520,8 @@ impl<'c> Translation<'c> {
             "__sync_synchronize" => {
                 self.use_feature("core_intrinsics");
 
-                let atomic_func = mk().abs_path_expr(vec!["core", "intrinsics", "atomic_fence"]);
+                let atomic_func =
+                    mk().abs_path_expr(vec!["core", "intrinsics", "atomic_fence_seqcst"]);
                 let call_expr = mk().call_expr(atomic_func, vec![]);
                 self.convert_side_effects_expr(
                     ctx,
