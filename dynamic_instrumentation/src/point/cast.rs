@@ -30,7 +30,7 @@ pub fn cast_ptr_to_usize<'tcx>(
     let arg_ty = arg.inner().ty(locals, tcx);
 
     let ptr = match arg {
-        // If we were given an address as a usize, no conversion is necessary
+        // If we were given an address as a `usize`, no conversion is necessary.
         InstrumentationArg::Op(ArgKind::AddressUsize(_arg)) => {
             assert!(
                 arg_ty.is_integral() || arg_ty.is_unit(),
@@ -40,7 +40,7 @@ pub fn cast_ptr_to_usize<'tcx>(
             );
             return None;
         }
-        // From a reference `r`, cast through raw ptr to usize: `r as *mut _ as usize`
+        // From a reference `r`, cast through a raw ptr to a `usize`: `r as *mut _ as usize`.
         InstrumentationArg::Op(ArgKind::Reference(arg)) => {
             assert!(arg_ty.is_region_ptr());
             let inner_ty = arg_ty.builtin_deref(false).unwrap();
@@ -63,7 +63,7 @@ pub fn cast_ptr_to_usize<'tcx>(
             new_stmts.push(cast_stmt);
             Operand::Move(raw_ptr_local.into())
         }
-        // From a raw pointer `r`, cast: `r as usize`
+        // From a raw pointer `r`, cast: `r as usize`.
         InstrumentationArg::Op(ArgKind::RawPtr(arg)) => {
             assert!(
                 arg_ty.is_unsafe_ptr(),
@@ -73,8 +73,8 @@ pub fn cast_ptr_to_usize<'tcx>(
             );
             arg.to_copy()
         }
-        // From a place to which a reference is also constructed, create a raw
-        // ptr with `addr_of!`
+        // From a place to which a reference is also constructed,
+        // create a raw ptr with `addr_of!`.
         InstrumentationArg::AddrOf(arg) => {
             let arg_place = arg.place().expect("Can't get the address of a constant");
             let arg_place = remove_outer_deref(arg_place, tcx);
@@ -100,8 +100,7 @@ pub fn cast_ptr_to_usize<'tcx>(
         }
     };
 
-    // Cast the raw ptr to a usize before passing to the
-    // instrumentation function
+    // Cast the raw ptr to a `usize` before passing to the instrumentation function.
     let usize_ty = tcx.mk_mach_uint(ty::UintTy::Usize);
     let casted_local = locals.push(LocalDecl::new(usize_ty, DUMMY_SP));
     let casted_arg = Operand::Move(casted_local.into());
