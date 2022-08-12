@@ -108,7 +108,7 @@ pub fn cast_ptr_to_usize<'tcx>(
         source_info: SourceInfo::outermost(DUMMY_SP),
         kind: StatementKind::Assign(Box::new((
             casted_local.into(),
-            Rvalue::Cast(CastKind::Misc, ptr, usize_ty),
+            Rvalue::Cast(CastKind::PointerExposeAddress, ptr, usize_ty),
         ))),
     };
     new_stmts.push(cast_stmt);
