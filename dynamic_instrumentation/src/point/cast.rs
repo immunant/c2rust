@@ -4,7 +4,7 @@ use rustc_middle::{
         CastKind, Local, LocalDecl, Mutability, Operand, ProjectionElem, Rvalue, SourceInfo,
         Statement, StatementKind,
     },
-    ty::{self, TyCtxt},
+    ty::{self, Ty, TyCtxt, TyKind, TypeAndMut},
 };
 use rustc_span::DUMMY_SP;
 
@@ -12,6 +12,27 @@ use crate::{
     arg::{ArgKind, InstrumentationArg},
     mir_utils::remove_outer_deref,
 };
+
+trait IsFat {
+    fn is_fat(&self) -> bool;
+}
+
+impl IsFat for TyKind<'_> {
+    fn is_fat(&self) -> bool {
+        use rustc_type_ir::TyKind::*;
+        match self {
+            Slice(_) | Dynamic(_, _) => true,
+            RawPtr(TypeAndMut { ty, .. }) | Ref(_, ty, _) => ty.is_fat(),
+            _ => false,
+        }
+    }
+}
+
+impl IsFat for Ty<'_> {
+    fn is_fat(&self) -> bool {
+        self.kind().is_fat()
+    }
+}
 
 /// Cast an argument from pointer to `usize`, if needed.
 ///
