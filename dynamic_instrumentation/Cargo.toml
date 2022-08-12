@@ -18,6 +18,7 @@ camino = "1.0"
 # Used for parsing `rust-toolchain.toml`.
 # We don't need to edit at all, but `cargo` uses `toml-edit`, so we want to match it.
 toml_edit = "0.14"
+fs2 = "0.4"
 
 [build-dependencies]
 rustc-private-link = { path = "../rustc-private-link" }

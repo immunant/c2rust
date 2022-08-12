@@ -2,6 +2,7 @@ use anyhow::Context;
 use c2rust_analysis_rt::metadata::Metadata;
 use c2rust_analysis_rt::mir_loc::{self, EventMetadata, Func, MirLoc, MirLocId, TransferKind};
 use c2rust_analysis_rt::HOOK_FUNCTIONS;
+use fs2::FileExt;
 use fs_err::OpenOptions;
 use indexmap::IndexSet;
 use log::debug;
@@ -76,7 +77,10 @@ impl Instrumenter {
             .write(true)
             .open(metadata_path)
             .context("Could not open metadata file")?;
-        file.write_all(&bytes)?;
+        file.file().lock_exclusive()?;
+        let e = file.write_all(&bytes);
+        file.file().unlock()?;
+        e?;
         Ok(())
     }
 
