@@ -4,7 +4,7 @@ use rustc_middle::{
         CastKind, Local, LocalDecl, Mutability, Operand, ProjectionElem, Rvalue, SourceInfo,
         Statement, StatementKind,
     },
-    ty::{self, TyCtxt},
+    ty::{self, TyCtxt, TypeAndMut},
 };
 use rustc_span::DUMMY_SP;
 
@@ -44,7 +44,6 @@ pub fn cast_ptr_to_usize<'tcx>(
         InstrumentationArg::Op(ArgKind::Reference(arg)) => {
             assert!(arg_ty.is_region_ptr());
             let inner_ty = arg_ty.builtin_deref(false).unwrap();
-
             let raw_ptr_ty = tcx.mk_ptr(inner_ty);
             let raw_ptr_local = locals.push(LocalDecl::new(raw_ptr_ty, DUMMY_SP));
 
@@ -98,6 +97,25 @@ pub fn cast_ptr_to_usize<'tcx>(
             new_stmts.push(addr_of_stmt);
             Operand::Move(raw_ptr_local.into())
         }
+    };
+
+    let ptr = {
+        // Use `*const [(); 0]` as the opaque pointer type.
+        let thin_raw_ptr_ty = tcx.mk_ptr(TypeAndMut {
+            ty: tcx.mk_array(tcx.mk_unit(), 0),
+            mutbl: Mutability::Not,
+        });
+        let casted_local = locals.push(LocalDecl::new(thin_raw_ptr_ty, DUMMY_SP));
+        let casted_arg = Operand::Move(casted_local.into());
+        let cast_stmt = Statement {
+            source_info: SourceInfo::outermost(DUMMY_SP),
+            kind: StatementKind::Assign(Box::new((
+                casted_local.into(),
+                Rvalue::Cast(CastKind::Misc, ptr, thin_raw_ptr_ty),
+            ))),
+        };
+        new_stmts.push(cast_stmt);
+        casted_arg
     };
 
     // Cast the raw ptr to a `usize` before passing to the instrumentation function.
