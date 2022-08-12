@@ -31,6 +31,7 @@ use std::{
     process::{self, Command, ExitStatus},
 };
 
+use fs_err::OpenOptions;
 use rustc_driver::{RunCompiler, TimePassesCallbacks};
 use rustc_session::config::CrateType;
 
@@ -310,6 +311,13 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         // it usually isn't that slow.
         cmd.args(&["clean", "--package", root_package.name.as_str()]);
     })?;
+
+    // Create and truncate the metadata file for the [`rustc_wrapper`]s to append to.
+    OpenOptions::new()
+        .create(true)
+        .write(true) // need write for truncate
+        .truncate(true)
+        .open(&metadata)?;
 
     cargo.run(|cmd| {
         // Enable the runtime dependency.
