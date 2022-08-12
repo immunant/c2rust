@@ -3,6 +3,7 @@ use rustc_index::vec::IndexVec;
 use rustc_middle::mir::Field;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::cmp;
 use itertools::Itertools;
 use std::fmt::{self, Debug, Display, Formatter};
 
@@ -20,6 +21,77 @@ pub struct NodeInfo {
     flows_to_neg_offset: Option<NodeId>,
     non_unique: Option<NodeId>,
 }
+
+//Algorithm for determining non-conflicting:
+//First calculate all of the below from the bottom-up.
+//Then create a tree where children are based on fields only,
+//each node having a list of NodeIds associated with it.
+//Finally, check that each node's starts and ends don't overlap with each other.
+#[derive(Debug, Hash, Clone, Copy)]
+struct GraphTraverseInfo {
+    last_descendent: Option<NodeId>,
+    flows_to_load: Option<NodeId>,
+    flows_to_store: Option<NodeId>,
+    flows_to_pos_offset: Option<NodeId>,
+    flows_to_neg_offset: Option<NodeId>,
+}
+
+fn init_traverse_info (n_id: NodeId, n: &Node) -> GraphTraverseInfo {
+    GraphTraverseInfo {
+        last_descendent: Some(n_id),
+        flows_to_store: node_does_mutation(n).then(|| n_id),
+        flows_to_load: node_does_load(n).then(|| n_id),
+        flows_to_pos_offset: node_does_pos_offset(n).then(|| n_id),
+        flows_to_neg_offset: node_does_neg_offset(n).then(|| n_id)
+    }
+}
+
+fn create_flow_info (g: &Graph) -> HashMap<NodeId,GraphTraverseInfo> {
+    let mut f = HashMap::from_iter(
+        g.nodes.iter_enumerated()
+        .map(|(idx,node)| (idx,init_traverse_info(idx,node)))
+    );
+    for (n_id,node) in g.nodes.iter_enumerated().rev(){ 
+        let cur : GraphTraverseInfo = *(f.get(&n_id).unwrap());
+        if let Some(p_id) = node.source {
+            let parent = f.get_mut(&p_id).unwrap();
+            parent.last_descendent = cmp::max(cur.last_descendent,parent.last_descendent);
+            parent.flows_to_load = parent.flows_to_load.or(cur.flows_to_load);
+            parent.flows_to_store = parent.flows_to_store.or(cur.flows_to_store);
+            parent.flows_to_pos_offset = parent.flows_to_pos_offset.or(cur.flows_to_pos_offset);
+            parent.flows_to_neg_offset = parent.flows_to_neg_offset.or(cur.flows_to_neg_offset);
+        }
+    }
+    f
+}
+
+fn collect_children (g: &Graph) -> HashMap<NodeId,Vec<NodeId>> {
+    let mut m = HashMap::new();
+    for (par,chi) in g.nodes.iter_enumerated().filter_map(|(idx,node)| Some((node.source?,idx))){
+        m.entry(par).or_insert_with(Vec::new).push(chi)
+    }
+    m
+}
+
+fn create_uniqueness_info (g: &Graph) -> HashMap<NodeId,Option<NodeId>> {
+    let downward = collect_children(g);
+    let flow_info = create_flow_info(g);
+    let mut to_view : Vec<(NodeId,Vec<Field>)> = vec![(g.nodes.indices().nth(0).unwrap(),Vec::new())];
+    let mut path_to_fields = HashMap::<Vec<Field>,Vec<NodeId>>::new();
+    while let Some((curidx,path)) = to_view.pop() {
+        let children : &Vec<NodeId> = downward.get(&curidx).unwrap();
+        let newchildren = children.iter().map(|(cidx)| (*cidx,g.nodes.get(*cidx).unwrap()))
+            .map(|(cidx,cn)| if let NodeKind::Field(f) = cn.kind
+                 {(cidx,{let mut cp = path.clone(); cp.push(f); cp})} else {(cidx,path.clone())});
+        for x in newchildren {
+            to_view.push(x);//extend(newchildren);
+        }
+        path_to_fields.entry(path).or_insert_with(|| Vec::new()).push(curidx);
+    };
+    loop {
+    }
+}
+
 
 impl Display for NodeInfo {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
