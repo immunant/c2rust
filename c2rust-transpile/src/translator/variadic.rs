@@ -58,6 +58,22 @@ impl<'c> Translation<'c> {
             Some(va_id)
         }
 
+        // struct-based va_list (e.g. x86_64) where va_list is accessed as a member of a struct pointer
+        fn match_vastart_struct_pointer_member(
+            ast_context: &TypedAstContext,
+            expr: CExprId,
+        ) -> Option<CDeclId> {
+            match_or! { [ast_context[expr].kind]
+            CExprKind::ImplicitCast(_, me, _, _, _) => me }
+            match_or! { [ast_context[me].kind]
+            CExprKind::Member(_, ie, _, _, _) => ie }
+            match_or! { [ast_context[ie].kind]
+            CExprKind::ImplicitCast(_, e, _, _, _) => e }
+            match_or! { [ast_context[e].kind]
+            CExprKind::DeclRef(_, va_id, _) => va_id }
+            Some(va_id)
+        }
+
         // char pointer-based va_list (e.g. x86)
         fn match_vastart_pointer(ast_context: &TypedAstContext, expr: CExprId) -> Option<CDeclId> {
             match_or! { [ast_context[expr].kind]
@@ -68,6 +84,7 @@ impl<'c> Translation<'c> {
         match_vastart_struct(&self.ast_context, expr)
             .or_else(|| match_vastart_pointer(&self.ast_context, expr))
             .or_else(|| match_vastart_struct_member(&self.ast_context, expr))
+            .or_else(|| match_vastart_struct_pointer_member(&self.ast_context, expr))
     }
 
     pub fn match_vaend(&self, expr: CExprId) -> Option<CDeclId> {
