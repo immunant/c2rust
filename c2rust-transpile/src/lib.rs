@@ -88,10 +88,32 @@ pub struct TranspilerConfig {
 }
 
 impl TranspilerConfig {
-    fn is_binary(&self, file: &Path) -> bool {
+    fn binary_name_from_path(file: &Path) -> String {
         let file = Path::new(file.file_stem().unwrap());
-        let name = get_module_name(file, false, false, false).unwrap();
-        self.binaries.contains(&name)
+        get_module_name(file, false, false, false).unwrap()
+    }
+
+    fn is_binary(&self, file: &Path) -> bool {
+        let module_name = Self::binary_name_from_path(file);
+        self.binaries.contains(&module_name)
+    }
+
+    fn check_binaries(&self, modules: impl IntoIterator<Item = impl AsRef<Path>>) -> bool {
+        let module_names = modules
+            .into_iter()
+            .map(|module| Self::binary_name_from_path(module.as_ref()))
+            .collect::<HashSet<_>>();
+        let mut ok = true;
+        for binary in &self.binaries {
+            if !module_names.contains(binary) {
+                ok = false;
+                warn!("binary not used: {binary:?}");
+            }
+        }
+        if !ok {
+            warn!("candidate modules for binaries are: {module_names:#?}");
+        }
+        ok
     }
 
     fn crate_name(&self) -> String {
@@ -216,6 +238,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     let mut top_level_ccfg = None;
     let mut workspace_members = vec![];
     let mut num_transpiled_files = 0;
+    let mut all_modules = Vec::new();
     let build_dir = get_build_dir(&tcfg, cc_db);
     for lcmd in &lcmds {
         let cmds = &lcmd.cmd_inputs;
@@ -297,6 +320,8 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         pragmas.sort();
         crates.sort();
 
+        all_modules.extend(modules.iter().cloned());
+
         if tcfg.emit_build_files {
             if modules_skipped {
                 // If we skipped a file, we may not have collected all required pragmas
@@ -333,6 +358,8 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         reorganize_definitions(&tcfg, &build_dir, crate_file)
             .unwrap_or_else(|e| warn!("Reorganizing definitions failed: {}", e));
     }
+
+    tcfg.check_binaries(&all_modules);
 }
 
 /// Ensure that clang can locate the system headers on macOS 10.14+.
