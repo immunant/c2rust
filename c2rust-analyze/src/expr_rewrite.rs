@@ -164,7 +164,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 ref func,
                 ref args,
                 destination,
-                target,
+                target: _,
                 ..
             } => {
                 let func_ty = func.ty(self.mir, tcx);
@@ -172,8 +172,6 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
                 if let Some(callee) = util::ty_callee(tcx, func_ty) {
                     // Special cases for particular functions.
-                    // TODO(kkysen) I kept the `.unwrap()` so that the behavior is identical.  Do we need this?
-                    target.unwrap();
                     match callee {
                         Callee::PtrOffset { .. } => {
                             self.visit_ptr_offset(&args[0], pl_ty);
