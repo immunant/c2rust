@@ -48,6 +48,15 @@ struct Args {
     #[clap(long, value_parser)]
     metadata: PathBuf,
 
+    /// Path to the `c2rust-analysis-rt` crate if you want to use a local version of it (vs. the crates.io one).
+    /// This is not used unless `--set-runtime` is also passed.
+    #[clap(long, value_parser)]
+    runtime_path: Option<PathBuf>,
+
+    /// Add the runtime as an optional dependency to the instrumented crate using `cargo add`.
+    #[clap(long)]
+    set_runtime: bool,
+
     /// `cargo` args.
     cargo_args: Vec<OsString>,
 }
@@ -286,6 +295,8 @@ fn set_rust_toolchain() -> anyhow::Result<()> {
 fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     let Args {
         metadata,
+        runtime_path,
+        set_runtime,
         mut cargo_args,
     } = Args::parse();
 
@@ -311,6 +322,17 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         // it usually isn't that slow.
         cmd.args(&["clean", "--package", root_package.name.as_str()]);
     })?;
+
+    if set_runtime {
+        cargo.run(|cmd| {
+            cmd.args(&["add", "--optional", "c2rust-analysis-rt"]);
+            if let Some(runtime) = runtime_path {
+                // Since it's a local path, we don't need the internet,
+                // and running it offline saves a slow index sync.
+                cmd.args(&["--offline", "--path"]).arg(runtime);
+            }
+        })?;
+    }
 
     // Create and truncate the metadata file for the [`rustc_wrapper`]s to append to.
     OpenOptions::new()
