@@ -59,6 +59,7 @@ impl<'c> Translation<'c> {
         }
 
         // struct-based va_list (e.g. x86_64) where va_list is accessed as a member of a struct pointer
+        // supporting this pattern is necessary to transpile [graphviz](https://gitlab.com/graphviz/graphviz/-/blob/5.0.0/lib/sfio/sftable.c#L321)
         fn match_vastart_struct_pointer_member(
             ast_context: &TypedAstContext,
             expr: CExprId,
