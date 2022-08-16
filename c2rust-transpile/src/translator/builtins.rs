@@ -422,7 +422,7 @@ impl<'c> Translation<'c> {
                             let returns_val = builtin_name.starts_with("__sync_val");
                             self.convert_atomic_cxchg(
                                 ctx,
-                                "atomic_cxchg",
+                                "atomic_cxchg_seqcst_seqcst",
                                 arg0,
                                 arg1,
                                 arg2,
@@ -493,18 +493,18 @@ impl<'c> Translation<'c> {
             | "__sync_nand_and_fetch_8"
             | "__sync_nand_and_fetch_16" => {
                 let func_name = if builtin_name.contains("_add_") {
-                    "atomic_xadd"
+                    "atomic_xadd_seqcst"
                 } else if builtin_name.contains("_sub_") {
-                    "atomic_xsub"
+                    "atomic_xsub_seqcst"
                 } else if builtin_name.contains("_or_") {
-                    "atomic_or"
+                    "atomic_or_seqcst"
                 } else if builtin_name.contains("_xor_") {
-                    "atomic_xor"
+                    "atomic_xor_seqcst"
                 } else if builtin_name.contains("_nand_") {
-                    "atomic_nand"
+                    "atomic_nand_seqcst"
                 } else {
                     // We can't explicitly check for "_and_" since they all contain it
-                    "atomic_and"
+                    "atomic_and_seqcst"
                 };
 
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
@@ -520,7 +520,8 @@ impl<'c> Translation<'c> {
             "__sync_synchronize" => {
                 self.use_feature("core_intrinsics");
 
-                let atomic_func = mk().abs_path_expr(vec!["core", "intrinsics", "atomic_fence"]);
+                let atomic_func =
+                    mk().abs_path_expr(vec!["core", "intrinsics", "atomic_fence_seqcst"]);
                 let call_expr = mk().call_expr(atomic_func, vec![]);
                 self.convert_side_effects_expr(
                     ctx,
@@ -536,8 +537,9 @@ impl<'c> Translation<'c> {
             | "__sync_lock_test_and_set_16" => {
                 self.use_feature("core_intrinsics");
 
-                // Emit `atomic_xchg_acq(arg0, arg1)`
-                let atomic_func = mk().abs_path_expr(vec!["core", "intrinsics", "atomic_xchg_acq"]);
+                // Emit `atomic_xchg_acquire(arg0, arg1)`
+                let atomic_func =
+                    mk().abs_path_expr(vec!["core", "intrinsics", "atomic_xchg_acquire"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 arg0.and_then(|arg0| {
@@ -559,9 +561,9 @@ impl<'c> Translation<'c> {
             | "__sync_lock_release_16" => {
                 self.use_feature("core_intrinsics");
 
-                // Emit `atomic_store_rel(arg0, 0)`
+                // Emit `atomic_store_release(arg0, 0)`
                 let atomic_func =
-                    mk().abs_path_expr(vec!["core", "intrinsics", "atomic_store_rel"]);
+                    mk().abs_path_expr(vec!["core", "intrinsics", "atomic_store_release"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 arg0.and_then(|arg0| {
                     let zero = mk().lit_expr(mk().int_lit(0, ""));

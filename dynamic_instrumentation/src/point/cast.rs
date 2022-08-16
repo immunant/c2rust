@@ -4,7 +4,7 @@ use rustc_middle::{
         CastKind, Local, LocalDecl, Mutability, Operand, ProjectionElem, Rvalue, SourceInfo,
         Statement, StatementKind,
     },
-    ty::{self, TyCtxt},
+    ty::{self, TyCtxt, TypeAndMut},
 };
 use rustc_span::DUMMY_SP;
 
@@ -30,7 +30,7 @@ pub fn cast_ptr_to_usize<'tcx>(
     let arg_ty = arg.inner().ty(locals, tcx);
 
     let ptr = match arg {
-        // If we were given an address as a usize, no conversion is necessary
+        // If we were given an address as a `usize`, no conversion is necessary.
         InstrumentationArg::Op(ArgKind::AddressUsize(_arg)) => {
             assert!(
                 arg_ty.is_integral() || arg_ty.is_unit(),
@@ -40,11 +40,10 @@ pub fn cast_ptr_to_usize<'tcx>(
             );
             return None;
         }
-        // From a reference `r`, cast through raw ptr to usize: `r as *mut _ as usize`
+        // From a reference `r`, cast through a raw ptr to a `usize`: `r as *mut _ as usize`.
         InstrumentationArg::Op(ArgKind::Reference(arg)) => {
             assert!(arg_ty.is_region_ptr());
             let inner_ty = arg_ty.builtin_deref(false).unwrap();
-
             let raw_ptr_ty = tcx.mk_ptr(inner_ty);
             let raw_ptr_local = locals.push(LocalDecl::new(raw_ptr_ty, DUMMY_SP));
 
@@ -63,7 +62,7 @@ pub fn cast_ptr_to_usize<'tcx>(
             new_stmts.push(cast_stmt);
             Operand::Move(raw_ptr_local.into())
         }
-        // From a raw pointer `r`, cast: `r as usize`
+        // From a raw pointer `r`, cast: `r as usize`.
         InstrumentationArg::Op(ArgKind::RawPtr(arg)) => {
             assert!(
                 arg_ty.is_unsafe_ptr(),
@@ -73,8 +72,8 @@ pub fn cast_ptr_to_usize<'tcx>(
             );
             arg.to_copy()
         }
-        // From a place to which a reference is also constructed, create a raw
-        // ptr with `addr_of!`
+        // From a place to which a reference is also constructed,
+        // create a raw ptr with `addr_of!`.
         InstrumentationArg::AddrOf(arg) => {
             let arg_place = arg.place().expect("Can't get the address of a constant");
             let arg_place = remove_outer_deref(arg_place, tcx);
@@ -100,8 +99,26 @@ pub fn cast_ptr_to_usize<'tcx>(
         }
     };
 
-    // Cast the raw ptr to a usize before passing to the
-    // instrumentation function
+    let ptr = {
+        // Use `*const [(); 0]` as the opaque pointer type.
+        let thin_raw_ptr_ty = tcx.mk_ptr(TypeAndMut {
+            ty: tcx.mk_array(tcx.mk_unit(), 0),
+            mutbl: Mutability::Not,
+        });
+        let casted_local = locals.push(LocalDecl::new(thin_raw_ptr_ty, DUMMY_SP));
+        let casted_arg = Operand::Move(casted_local.into());
+        let cast_stmt = Statement {
+            source_info: SourceInfo::outermost(DUMMY_SP),
+            kind: StatementKind::Assign(Box::new((
+                casted_local.into(),
+                Rvalue::Cast(CastKind::Misc, ptr, thin_raw_ptr_ty),
+            ))),
+        };
+        new_stmts.push(cast_stmt);
+        casted_arg
+    };
+
+    // Cast the raw ptr to a `usize` before passing to the instrumentation function.
     let usize_ty = tcx.mk_mach_uint(ty::UintTy::Usize);
     let casted_local = locals.push(LocalDecl::new(usize_ty, DUMMY_SP));
     let casted_arg = Operand::Move(casted_local.into());
@@ -109,7 +126,7 @@ pub fn cast_ptr_to_usize<'tcx>(
         source_info: SourceInfo::outermost(DUMMY_SP),
         kind: StatementKind::Assign(Box::new((
             casted_local.into(),
-            Rvalue::Cast(CastKind::Misc, ptr, usize_ty),
+            Rvalue::Cast(CastKind::PointerExposeAddress, ptr, usize_ty),
         ))),
     };
     new_stmts.push(cast_stmt);

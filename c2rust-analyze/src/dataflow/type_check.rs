@@ -196,6 +196,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 ref func,
                 ref args,
                 destination,
+                target,
                 ..
             } => {
                 let func_ty = func.ty(self.mir, tcx);
@@ -204,10 +205,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     Some(Callee::PtrOffset { .. }) => {
                         // We handle this like a pointer assignment.
 
-                        // `destination` must be `Some` because the function doesn't diverge.
-                        let destination = destination.unwrap();
+                        // `target` must be `Some` because the function doesn't diverge.
+                        // TODO(kkysen) I kept the `.unwrap()` so that the behavior is identical.  Do we need this?
+                        target.unwrap();
                         let ctx = PlaceContext::MutatingUse(MutatingUseContext::Store);
-                        let pl_lty = self.visit_place(destination.0, ctx);
+                        let pl_lty = self.visit_place(destination, ctx);
                         assert!(args.len() == 2);
                         let rv_lty = self.visit_operand(&args[0]);
                         self.do_assign(pl_lty.label, rv_lty.label);

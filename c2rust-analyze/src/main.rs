@@ -12,6 +12,7 @@ extern crate rustc_mir_build;
 extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
+extern crate rustc_type_ir;
 
 use crate::context::{
     AnalysisCtxt, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LTy, LocalAssignment,

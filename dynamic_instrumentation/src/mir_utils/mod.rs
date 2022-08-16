@@ -5,7 +5,7 @@ mod deref;
 pub use deref::*;
 
 /// Get the one and only input [`Place`], if applicable.
-pub fn rv_place<'tcx>(rv: &'tcx Rvalue) -> Option<Place<'tcx>> {
+pub fn rv_place<'tcx>(rv: &Rvalue<'tcx>) -> Option<Place<'tcx>> {
     use Rvalue::*;
     match rv {
         Use(op) => op.place(),
