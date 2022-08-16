@@ -53,6 +53,7 @@ main() {
 
         time "${c2rust_instrument}" \
             --metadata "${metadata}" \
+            --set-runtime \
             --runtime-path "${runtime}" \
             -- run "${profile_args[@]}" \
             -- "${args[@]}" \
