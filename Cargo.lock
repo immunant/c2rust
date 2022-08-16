@@ -242,8 +242,8 @@ dependencies = [
  "fs2",
  "indexmap",
  "itertools",
- "lazy_static",
  "log",
+ "once_cell",
  "rustc-private-link",
  "toml_edit",
 ]

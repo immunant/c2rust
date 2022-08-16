@@ -40,8 +40,6 @@ impl Instrumenter {
     /// A single [`Instrumenter`] instance should be shared across the
     /// entire crate being instrumented, as the indexed source locations are
     /// shared and should be global.
-    ///
-    /// TODO(kkysen) can be made `const` when `Mutex::new` is `const` in rust 1.63
     pub fn new() -> Self {
         Self::default()
     }
