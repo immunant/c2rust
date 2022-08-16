@@ -2,6 +2,8 @@ use anyhow::Context;
 use c2rust_analysis_rt::metadata::Metadata;
 use c2rust_analysis_rt::mir_loc::{self, EventMetadata, Func, MirLoc, MirLocId, TransferKind};
 use c2rust_analysis_rt::HOOK_FUNCTIONS;
+use fs2::FileExt;
+use fs_err::OpenOptions;
 use indexmap::IndexSet;
 use log::debug;
 use rustc_index::vec::Idx;
@@ -14,6 +16,7 @@ use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::def_id::{DefId, DefPathHash};
 use rustc_span::DUMMY_SP;
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -62,14 +65,22 @@ impl Instrumenter {
     }
 
     /// Finish instrumentation and write out metadata to `metadata_file_path`.
-    pub fn finalize(&self, metadata_file_path: &Path) -> anyhow::Result<()> {
+    pub fn finalize(&self, metadata_path: &Path) -> anyhow::Result<()> {
         let mut locs = self.mir_locs.lock().unwrap();
         let mut functions = self.functions.lock().unwrap();
         let locs = locs.drain(..).collect::<Vec<_>>();
         let functions = functions.drain().collect::<HashMap<_, _>>();
         let metadata = Metadata { locs, functions };
         let bytes = bincode::serialize(&metadata).context("Location serialization failed")?;
-        fs_err::write(metadata_file_path, &bytes).context("Could not open metadata file")?;
+        let mut file = OpenOptions::new()
+            .append(true)
+            .write(true)
+            .open(metadata_path)
+            .context("Could not open metadata file")?;
+        file.file().lock_exclusive()?;
+        let e = file.write_all(&bytes);
+        file.file().unlock()?;
+        e?;
         Ok(())
     }
 
