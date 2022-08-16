@@ -52,6 +52,10 @@ struct Args {
     #[clap(long, value_parser)]
     runtime: Option<PathBuf>,
 
+    /// Add the runtime as an optional dependency to the instrumented crate using `cargo add`.
+    #[clap(long)]
+    set_runtime: bool,
+
     /// `cargo` args.
     cargo_args: Vec<OsString>,
 }
@@ -291,6 +295,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     let Args {
         metadata,
         runtime,
+        set_runtime,
         mut cargo_args,
     } = Args::parse();
 
@@ -316,23 +321,17 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         // it usually isn't that slow.
         cmd.args(&["clean", "--package", root_package.name.as_str()]);
     })?;
-    
-    // TODO(kkysen) Once we upgrade to 1.62, we can just use `cargo` and not specify `+stable`.
-    // The problem currently is that `+stable` doesn't work on a resolved `$CARGO`,
-    // which happens when this runs inside of `cargo test`,
-    // and our current nightly is 1.60, which is before `cargo add` got added
-    // (though it's been in `cargo-edit` for a while).
-    Cargo {
-        path: "cargo".into(),
+
+    if set_runtime {
+        cargo.run(|cmd| {
+            cmd.args(&["add", "--optional", "c2rust-analysis-rt"]);
+            if let Some(runtime) = runtime {
+                // Since it's a local path, we don't need the internet,
+                // and running it offline saves a slow index sync.
+                cmd.args(&["--offline", "--path"]).arg(runtime);
+            }
+        })?;
     }
-    .run(|cmd| {
-        cmd.args(&["+stable", "add", "--optional", "c2rust-analysis-rt"]);
-        if let Some(runtime) = runtime {
-            // Since it's a local path, we don't need the internet,
-            // and running it offline saves a slow index sync.
-            cmd.args(&["--offline", "--path"]).arg(runtime);
-        }
-    })?;
 
     // Create and truncate the metadata file for the [`rustc_wrapper`]s to append to.
     OpenOptions::new()
