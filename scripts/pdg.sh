@@ -53,7 +53,7 @@ main() {
 
         time "${c2rust_instrument}" \
             --metadata "${metadata}" \
-            --runtime "${runtime}" \
+            --runtime-path "${runtime}" \
             -- run "${profile_args[@]}" \
             -- "${args[@]}" \
             1> instrument.out.log
