@@ -32,7 +32,7 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>, log_level: log::LevelFilt
     enabled_warnings.extend(DEFAULT_WARNINGS.iter().cloned());
 
     let colors = ColoredLevelConfig::new();
-    let (_log_level, logger) = fern::Dispatch::new()
+    let (max_level, logger) = fern::Dispatch::new()
         .format(move |out, message, record| {
             let level_label = match record.level() {
                 Level::Error => "error",
@@ -64,7 +64,9 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>, log_level: log::LevelFilt
         })
         .chain(io::stderr())
         .into_log();
+    let _ = log_reroute::init(); // Ignore the [`SetLoggerError`] b/c we just want to make sure it's set at least once.
     log_reroute::reroute_boxed(logger);
+    log::set_max_level(max_level);
 }
 
 #[derive(Debug, Clone)]
