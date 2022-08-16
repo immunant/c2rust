@@ -48,7 +48,8 @@ struct Args {
     #[clap(long, value_parser)]
     metadata: PathBuf,
 
-    /// Path to the `c2rust-analysis-rt` crate.
+    /// Path to the `c2rust-analysis-rt` crate if you want to use a local version of it (vs. the crates.io one).
+    /// This is not used unless `--set-runtime` is also passed.
     #[clap(long, value_parser)]
     runtime: Option<PathBuf>,
 
