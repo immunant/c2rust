@@ -1,7 +1,7 @@
 use colored::Colorize;
 use failure::{err_msg, Backtrace, Context, Error, Fail};
 use fern::colors::ColoredLevelConfig;
-use log::Level;
+use log::{Level, SetLoggerError};
 use std::collections::HashSet;
 use std::fmt::{self, Display};
 use std::io;
@@ -64,7 +64,8 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>, log_level: log::LevelFilt
         })
         .chain(io::stderr())
         .into_log();
-    let _ = log_reroute::init(); // Ignore the [`SetLoggerError`] b/c we just want to make sure it's set at least once.
+    // Ignore the [`SetLoggerError`] b/c we just want to make sure it's set at least once.
+    let _: Result<(), SetLoggerError> = log_reroute::init();
     log_reroute::reroute_boxed(logger);
     log::set_max_level(max_level);
 }
