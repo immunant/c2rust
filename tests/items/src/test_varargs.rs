@@ -2,7 +2,7 @@
 
 use crate::varargs::{
     rust_call_printf, rust_call_vprintf, rust_my_printf, rust_restart_valist, rust_sample_stddev,
-    rust_simple_vacopy, rust_valist_struct_member,
+    rust_simple_vacopy, rust_valist_struct_member, rust_valist_struct_pointer_member,
 };
 
 use libc::c_char;
@@ -19,6 +19,8 @@ extern "C" {
     fn simple_vacopy(_: *const c_char, ...);
 
     fn valist_struct_member(_: *const c_char, ...);
+
+    fn valist_struct_pointer_member(_: *const c_char, ...);
 
     fn restart_valist(_: *const c_char, ...);
 
@@ -66,6 +68,14 @@ pub fn test_valist_struct_member() {
     unsafe {
         valist_struct_member(fmt_str.as_ptr(), 10, 1.5);
         rust_valist_struct_member(fmt_str.as_ptr(), 10, 1.5);
+    }
+}
+
+pub fn test_valist_struct_pointer_member() {
+    let fmt_str = CString::new("%d, %f\n").unwrap();
+    unsafe {
+        valist_struct_pointer_member(fmt_str.as_ptr(), 10, 1.5);
+        rust_valist_struct_pointer_member(fmt_str.as_ptr(), 10, 1.5);
     }
 }
 

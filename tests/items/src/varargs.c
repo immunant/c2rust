@@ -80,6 +80,16 @@ void valist_struct_member(const char *fmt, ...) {
   va_end(thestruct.args);
 }
 
+// pattern first seen in graphviz (sftable.c)
+void valist_struct_pointer_member(const char *fmt, ...) {
+  struct vastruct thestruct;
+  struct vastruct *pointer = &thestruct;
+
+  va_start(pointer->args, fmt);
+  vprintf(fmt, pointer->args);
+  va_end(pointer->args);
+}
+
 // mirrors pattern from json-c's sprintbuf
 void restart_valist(const char *fmt, ...) {
     va_list ap;
