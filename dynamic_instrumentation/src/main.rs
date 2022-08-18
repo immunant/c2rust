@@ -288,6 +288,8 @@ fn set_rust_toolchain() -> anyhow::Result<()> {
 }
 
 /// An open metadata file containing [`Metadata`]s.
+///
+/// [`Metadata`]: c2rust_analysis_rt::metadata::Metadata
 struct MetadataFile<'a> {
     /// The [`Path`] of the [`MetadataFile`].
     path: &'a Path,
@@ -316,6 +318,8 @@ impl<'a> MetadataFile<'a> {
 
     /// Call after the [`MetadataFile`] has been finished being used and potentially appended to.
     /// This will delete any old, out-of-date [`Metadata`]s from the beginning of the [`MetadataFile`] if need be.
+    ///
+    /// [`Metadata`]: c2rust_analysis_rt::metadata::Metadata
     pub fn finish(&mut self) -> anyhow::Result<()> {
         let old_len = self.len;
         if old_len == 0 {
