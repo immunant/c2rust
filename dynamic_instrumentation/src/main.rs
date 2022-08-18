@@ -163,9 +163,7 @@ impl Cargo {
     }
 
     pub fn command(&self) -> Command {
-        let mut cmd = Command::new(&self.path);
-        cmd.env("CARGO_TARGET_DIR", "instrument.target");
-        cmd
+        Command::new(&self.path)
     }
 
     pub fn run(&self, f: impl FnOnce(&mut Command)) -> anyhow::Result<()> {
@@ -407,6 +405,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         extra_args: _,
     } = InterceptedCargoArgs::parse_from(cargo_args.clone());
     let manifest_path = manifest_path.as_deref();
+    let manifest_dir = manifest_path.and_then(|path| path.parent());
 
     set_rust_toolchain()?;
 
@@ -437,10 +436,14 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
 
     cargo.run(|cmd| {
         // Enable the runtime dependency.
+        let cargo_target_dir = manifest_dir
+            .unwrap_or_else(|| Path::new(""))
+            .join("instrument.target");
         add_feature(&mut cargo_args, &["c2rust-analysis-rt"]);
         cmd.args(cargo_args)
             .env(RUSTC_WRAPPER_VAR, rustc_wrapper)
             .env(RUST_SYSROOT_VAR, &sysroot)
+            .env("CARGO_TARGET_DIR", &cargo_target_dir)
             .env(METADATA_VAR, &metadata_path);
     })?;
 
