@@ -48,6 +48,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     pub fn visit_place_ref(&mut self, pl: PlaceRef<'tcx>, ctx: PlaceContext) -> LTy<'tcx> {
+        let mutbl = match ctx {
+            PlaceContext::NonMutatingUse(..) => Some(Mutability::Not),
+            PlaceContext::MutatingUse(..) => Some(Mutability::Mut),
+            PlaceContext::NonUse(..) => None,
+        };
+
         let mut lty = self.acx.local_tys[pl.local];
         let mut prev_deref_ptr = None;
 
@@ -55,9 +61,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             match proj {
                 ProjectionElem::Deref => {
                     // All derefs except the last are loads, to retrieve the pointer for the next
-                    // deref.  The last deref is either a load or a store, depending on `ctx`.
+                    // deref.  However, if the last deref is `&mut` (and is used mutably), then the
+                    // previous derefs must be `&mut` as well.
                     if let Some(ptr) = prev_deref_ptr.take() {
-                        self.record_access(ptr, Mutability::Not);
+                        if let Some(mutbl) = mutbl {
+                            self.record_access(ptr, mutbl);
+                        }
                     }
                     prev_deref_ptr = Some(lty.label);
                     assert_eq!(lty.args.len(), 1);
@@ -76,14 +85,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
 
         if let Some(ptr) = prev_deref_ptr.take() {
-            match ctx {
-                PlaceContext::NonMutatingUse(..) => {
-                    self.record_access(ptr, Mutability::Not);
-                }
-                PlaceContext::MutatingUse(..) => {
-                    self.record_access(ptr, Mutability::Mut);
-                }
-                PlaceContext::NonUse(..) => {}
+            if let Some(mutbl) = mutbl {
+                self.record_access(ptr, mutbl);
             }
         }
 
