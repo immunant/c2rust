@@ -24,8 +24,10 @@ mod util;
 use crate::callbacks::{MirTransformCallbacks, INSTRUMENTER};
 
 use std::{
+    cmp::Ordering,
     env,
     ffi::{OsStr, OsString},
+    io::{Read, Seek, Write},
     iter,
     path::{Path, PathBuf},
     process::{self, Command, ExitStatus},
@@ -34,8 +36,9 @@ use std::{
 use fs_err::OpenOptions;
 use rustc_driver::{RunCompiler, TimePassesCallbacks};
 use rustc_session::config::CrateType;
+use std::io::SeekFrom;
 
-use anyhow::{anyhow, ensure, Context};
+use anyhow::{anyhow, bail, ensure, Context};
 use camino::Utf8Path;
 use cargo_metadata::MetadataCommand;
 use clap::Parser;
@@ -313,16 +316,6 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         .root_package()
         .ok_or_else(|| anyhow!("no root package found by `cargo`"))?;
 
-    cargo.run(|cmd| {
-        // Clean the primary package so that we always rebuild it
-        // and get up-to-date, complete instrumentation [`Metadata`].
-        // Incremental instrumentation is very tricky,
-        // so don't try that yet,
-        // and if we only need to rebuild the primary package,
-        // it usually isn't that slow.
-        cmd.args(&["clean", "--package", root_package.name.as_str()]);
-    })?;
-
     if set_runtime {
         cargo.run(|cmd| {
             cmd.args(&["add", "--optional", "c2rust-analysis-rt"]);
@@ -334,12 +327,16 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         })?;
     }
 
-    // Create and truncate the metadata file for the [`rustc_wrapper`]s to append to.
-    OpenOptions::new()
+    // Create the metadata file for the [`rustc_wrapper`]s to append to.
+    // Note that we can't truncate it because in the case that no inputs have changed,
+    // `cargo` won't recompile, so a new metadata file won't be regenerated.
+    // We should keep the old one in that case.
+    let mut metadata_file = OpenOptions::new()
         .create(true)
-        .write(true) // need write for truncate
-        .truncate(true)
+        .truncate(false)
         .open(&metadata_path)?;
+
+    let old_len = metadata_file.metadata()?.len();
 
     cargo.run(|cmd| {
         // Enable the runtime dependency.
@@ -349,6 +346,38 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
             .env(RUST_SYSROOT_VAR, &sysroot)
             .env(METADATA_VAR, &metadata_path);
     })?;
+
+    if old_len == 0 {
+        // If the `old_len` is 0, then the metadata file is fresh.
+        // There was no old metadata that we need to delete now.
+    } else {
+        let new_len = metadata_file.metadata()?.len();
+        use Ordering::*;
+        match new_len.cmp(&old_len) {
+            Less => bail!(
+                "metadata should never shrink: {old_len} to {new_len} bytes: {}",
+                metadata_path.display()
+            ),
+            Equal => {
+                // The metadata was never updated.
+                // This means no inputs changed and `cargo` never recompiled,
+                // so that old metadata is still valid.
+            }
+            Greater => {
+                // New metadata was appended.
+                // We now need to delete the old metadata.
+                // Simply seek to the new metadata, read it into a buffer,
+                // seek back to the beginning, write it, and then truncate to the correct length.
+                let len = new_len - old_len;
+                metadata_file.seek(SeekFrom::Start(old_len))?;
+                let mut buf = Vec::with_capacity(len.try_into().unwrap());
+                metadata_file.read_to_end(&mut buf)?;
+                metadata_file.rewind()?;
+                metadata_file.write_all(&buf)?;
+                metadata_file.set_len(len)?;
+            }
+        }
+    }
 
     Ok(())
 }
