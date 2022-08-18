@@ -33,7 +33,7 @@ use std::{
     process::{self, Command, ExitStatus},
 };
 
-use fs_err::OpenOptions;
+use fs_err::{File, OpenOptions};
 use rustc_driver::{RunCompiler, TimePassesCallbacks};
 use rustc_session::config::CrateType;
 use std::io::SeekFrom;
@@ -287,6 +287,83 @@ fn set_rust_toolchain() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// An open metadata file containing [`Metadata`]s.
+struct MetadataFile<'a> {
+    /// The [`Path`] of the [`MetadataFile`].
+    path: &'a Path,
+    /// The open [`File`].
+    file: File,
+    /// It's current length.
+    len: u64,
+}
+
+impl<'a> MetadataFile<'a> {
+    /// Open and/or create the [`MetadataFile`] for the [`rustc_wrapper`]s to append to.
+    /// Note that we can't truncate it because in the case that no inputs have changed,
+    /// `cargo` won't recompile, so a new [`MetadataFile`] won't be regenerated.
+    /// We should keep the old one in that case.
+    pub fn open(path: &'a Path) -> anyhow::Result<Self> {
+        let file = OpenOptions::new()
+            .create(true)
+            .read(true) // For reading new [`Metadata`] at the end.
+            .write(true) // For creation and for writing new [`Metadata`] to the beginning.
+            .truncate(false)
+            .open(&path)?;
+        let len = file.metadata()?.len();
+        Ok(Self { path, file, len })
+    }
+
+    /// Call after the [`MetadataFile`] has been finished being used and potentially appended to.
+    /// This will delete any old, out-of-date [`Metadata`]s from the beginning of the [`MetadataFile`] if need be.
+    pub fn finish(&mut self) -> anyhow::Result<()> {
+        let old_len = self.len;
+        if old_len == 0 {
+            // If the `old_len` is 0, then the metadata file is fresh.
+            // There was no old metadata that we need to delete now.
+        } else {
+            let new_len = self.file.metadata()?.len();
+            use Ordering::*;
+            match new_len.cmp(&old_len) {
+                Less => {
+                    self.len = new_len;
+                    bail!(
+                        "metadata should never shrink: {old_len} to {new_len} bytes: {}",
+                        self.path.display()
+                    )
+                }
+                Equal => {
+                    // The metadata was never updated.
+                    // This means no inputs changed and `cargo` never recompiled,
+                    // so that old metadata is still valid.
+                }
+                Greater => {
+                    // New metadata was appended.
+                    // We now need to delete the old metadata.
+                    // Simply seek to the new metadata, read it into a buffer,
+                    // seek back to the beginning, write it, and then truncate to the correct length.
+                    let len = new_len - old_len;
+                    self.file.seek(SeekFrom::Start(old_len))?;
+                    let mut buf = Vec::with_capacity(len.try_into().unwrap());
+                    self.file.read_to_end(&mut buf)?;
+                    self.file.rewind()?;
+                    self.file.write_all(&buf)?;
+                    self.file.set_len(len)?;
+                    self.len = len;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Drop for MetadataFile<'_> {
+    /// Try to call [`Self::finish`].
+    fn drop(&mut self) {
+        // Make sure we don't forget to call this.
+        self.finish().unwrap();
+    }
+}
+
 /// Run as a `cargo` wrapper/plugin, the default invocation.
 fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     let Args {
@@ -315,18 +392,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         })?;
     }
 
-    // Create the metadata file for the [`rustc_wrapper`]s to append to.
-    // Note that we can't truncate it because in the case that no inputs have changed,
-    // `cargo` won't recompile, so a new metadata file won't be regenerated.
-    // We should keep the old one in that case.
-    let mut metadata_file = OpenOptions::new()
-        .create(true)
-        .read(true) // For reading new [`Metadata`] at the end.
-        .write(true) // For creation and for writing new [`Metadata`] to the beginning.
-        .truncate(false)
-        .open(&metadata_path)?;
-
-    let old_len = metadata_file.metadata()?.len();
+    let mut metadata_file = MetadataFile::open(&metadata_path)?;
 
     cargo.run(|cmd| {
         // Enable the runtime dependency.
@@ -337,37 +403,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
             .env(METADATA_VAR, &metadata_path);
     })?;
 
-    if old_len == 0 {
-        // If the `old_len` is 0, then the metadata file is fresh.
-        // There was no old metadata that we need to delete now.
-    } else {
-        let new_len = metadata_file.metadata()?.len();
-        use Ordering::*;
-        match new_len.cmp(&old_len) {
-            Less => bail!(
-                "metadata should never shrink: {old_len} to {new_len} bytes: {}",
-                metadata_path.display()
-            ),
-            Equal => {
-                // The metadata was never updated.
-                // This means no inputs changed and `cargo` never recompiled,
-                // so that old metadata is still valid.
-            }
-            Greater => {
-                // New metadata was appended.
-                // We now need to delete the old metadata.
-                // Simply seek to the new metadata, read it into a buffer,
-                // seek back to the beginning, write it, and then truncate to the correct length.
-                let len = new_len - old_len;
-                metadata_file.seek(SeekFrom::Start(old_len))?;
-                let mut buf = Vec::with_capacity(len.try_into().unwrap());
-                metadata_file.read_to_end(&mut buf)?;
-                metadata_file.rewind()?;
-                metadata_file.write_all(&buf)?;
-                metadata_file.set_len(len)?;
-            }
-        }
-    }
+    metadata_file.finish()?;
 
     Ok(())
 }
