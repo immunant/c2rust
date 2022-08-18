@@ -40,7 +40,7 @@ use std::io::SeekFrom;
 
 use anyhow::{anyhow, bail, ensure, Context};
 use camino::Utf8Path;
-use clap::Parser;
+use clap::{AppSettings, Parser};
 
 /// Instrument memory accesses for dynamic analysis.
 #[derive(Debug, Parser)]
@@ -65,6 +65,7 @@ struct Args {
 
 /// `cargo` args that we intercept.
 #[derive(Debug, Parser)]
+#[clap(setting = AppSettings::IgnoreErrors)]
 struct InterceptedCargoArgs {
     #[clap(long, value_parser)]
     manifest_path: Option<PathBuf>,
