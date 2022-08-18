@@ -294,7 +294,7 @@ fn set_rust_toolchain() -> anyhow::Result<()> {
 /// Run as a `cargo` wrapper/plugin, the default invocation.
 fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     let Args {
-        metadata,
+        metadata: metadata_path,
         runtime_path,
         set_runtime,
         mut cargo_args,
@@ -339,7 +339,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         .create(true)
         .write(true) // need write for truncate
         .truncate(true)
-        .open(&metadata)?;
+        .open(&metadata_path)?;
 
     cargo.run(|cmd| {
         // Enable the runtime dependency.
@@ -347,7 +347,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         cmd.args(cargo_args)
             .env(RUSTC_WRAPPER_VAR, rustc_wrapper)
             .env(RUST_SYSROOT_VAR, &sysroot)
-            .env(METADATA_VAR, &metadata);
+            .env(METADATA_VAR, &metadata_path);
     })?;
 
     Ok(())
