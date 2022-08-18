@@ -5,7 +5,7 @@ set -euox pipefail
 # Run the same checks that are run in CI in `azure-pipelines.yml`.
 
 # Deny all warnings, including in documentation.
-if [[ "${ALLOW_WARNINGS}" != "1" ]]; then
+if [[ "${ALLOW_WARNINGS:-0}" != "1" ]]; then
     export RUSTFLAGS="-D warnings"
     export RUSTDOCFLAGS="-D warnings"
 fi
