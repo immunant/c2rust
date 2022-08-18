@@ -68,6 +68,10 @@ struct Args {
 struct InterceptedCargoArgs {
     #[clap(long, value_parser)]
     manifest_path: Option<PathBuf>,
+
+    /// Need this so `--` is allowed.
+    /// Not actually used.
+    extra_args: Vec<OsString>,
 }
 
 fn exit_with_status(status: ExitStatus) {
@@ -400,6 +404,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
 
     let InterceptedCargoArgs {
         manifest_path,
+        extra_args: _,
     } = InterceptedCargoArgs::parse_from(cargo_args.clone());
     let manifest_path = manifest_path.as_deref();
 
