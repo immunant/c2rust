@@ -40,7 +40,6 @@ use std::io::SeekFrom;
 
 use anyhow::{anyhow, bail, ensure, Context};
 use camino::Utf8Path;
-use cargo_metadata::MetadataCommand;
 use clap::Parser;
 
 /// Instrument memory accesses for dynamic analysis.
@@ -150,12 +149,6 @@ impl Cargo {
             .unwrap_or_else(|| "cargo".into())
             .into();
         Self { path }
-    }
-
-    pub fn metadata(&self) -> MetadataCommand {
-        let mut cmd = MetadataCommand::new();
-        cmd.cargo_path(&self.path);
-        cmd
     }
 
     pub fn command(&self) -> Command {
@@ -310,11 +303,6 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     let sysroot = resolve_sysroot()?;
 
     let cargo = Cargo::new();
-
-    let cargo_metadata = cargo.metadata().exec()?;
-    let root_package = cargo_metadata
-        .root_package()
-        .ok_or_else(|| anyhow!("no root package found by `cargo`"))?;
 
     if set_runtime {
         cargo.run(|cmd| {
