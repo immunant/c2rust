@@ -210,7 +210,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 ref func,
                 ref args,
                 destination,
-                target,
+                target: _,
                 ..
             } => {
                 let func_ty = func.ty(self.local_decls, *self.ltcx);
@@ -218,10 +218,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 match util::ty_callee(*self.ltcx, func_ty) {
                     Some(Callee::PtrOffset { .. }) => {
                         // We handle this like a pointer assignment.
-
-                        // `target` must be `Some` because the function doesn't diverge.
-                        // TODO(kkysen) I kept the `.unwrap()` so that the behavior is identical.  Do we need this?
-                        target.unwrap();
                         let pl_lty = self.visit_place(destination);
                         assert!(args.len() == 2);
                         let rv_lty = self.visit_operand(&args[0]);
