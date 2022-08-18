@@ -36,7 +36,7 @@ use rustc_session::config::CrateType;
 
 use anyhow::{anyhow, ensure, Context};
 use camino::Utf8Path;
-use clap::Parser;
+use clap::{AppSettings, Parser};
 use tempfile::NamedTempFile;
 
 /// Instrument memory accesses for dynamic analysis.
@@ -62,6 +62,7 @@ struct Args {
 
 /// `cargo` args that we intercept.
 #[derive(Debug, Parser)]
+#[clap(setting = AppSettings::IgnoreErrors)]
 struct InterceptedCargoArgs {
     #[clap(long, value_parser)]
     manifest_path: Option<PathBuf>,
