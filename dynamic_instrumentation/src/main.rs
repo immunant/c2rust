@@ -308,8 +308,9 @@ impl<'a> MetadataFile<'a> {
             .read(true) // For reading new [`Metadata`] at the end.
             .write(true) // For creation and for writing new [`Metadata`] to the beginning.
             .truncate(false)
-            .open(&path)?;
-        let len = file.metadata()?.len();
+            .open(&path)
+            .context("open/create metadata file")?;
+        let len = file.metadata().context("read old metadata file len")?.len();
         Ok(Self { path, file, len })
     }
 
@@ -321,7 +322,11 @@ impl<'a> MetadataFile<'a> {
             // If the `old_len` is 0, then the metadata file is fresh.
             // There was no old metadata that we need to delete now.
         } else {
-            let new_len = self.file.metadata()?.len();
+            let new_len = self
+                .file
+                .metadata()
+                .context("read new metadata file len")?
+                .len();
             use Ordering::*;
             match new_len.cmp(&old_len) {
                 Less => {
@@ -342,12 +347,18 @@ impl<'a> MetadataFile<'a> {
                     // Simply seek to the new metadata, read it into a buffer,
                     // seek back to the beginning, write it, and then truncate to the correct length.
                     let len = new_len - old_len;
-                    self.file.seek(SeekFrom::Start(old_len))?;
+                    self.file
+                        .seek(SeekFrom::Start(old_len))
+                        .context("seek to new metadata")?;
                     let mut buf = Vec::with_capacity(len.try_into().unwrap());
-                    self.file.read_to_end(&mut buf)?;
-                    self.file.rewind()?;
-                    self.file.write_all(&buf)?;
-                    self.file.set_len(len)?;
+                    self.file
+                        .read_to_end(&mut buf)
+                        .context("read new metadata at the end")?;
+                    self.file.rewind().context("rewind")?;
+                    self.file
+                        .write_all(&buf)
+                        .context("write new metadata to the beginning")?;
+                    self.file.set_len(len).context("truncate")?;
                     self.len = len;
                 }
             }
