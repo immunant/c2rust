@@ -22,6 +22,7 @@ pub struct MirTransformCallbacks;
 
 impl rustc_driver::Callbacks for MirTransformCallbacks {
     fn config(&mut self, config: &mut rustc_interface::Config) {
+        config.opts.incremental = None;
         config.override_queries = Some(override_queries);
     }
 
