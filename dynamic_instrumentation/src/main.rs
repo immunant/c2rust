@@ -321,6 +321,8 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     // We should keep the old one in that case.
     let mut metadata_file = OpenOptions::new()
         .create(true)
+        .read(true) // For reading new [`Metadata`] at the end.
+        .write(true) // For creation and for writing new [`Metadata`] to the beginning.
         .truncate(false)
         .open(&metadata_path)?;
 
