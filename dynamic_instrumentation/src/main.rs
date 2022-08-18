@@ -400,10 +400,12 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         mut cargo_args,
     } = Args::parse();
 
+    let args_for_cargo =
+        iter::once(OsStr::new("cargo")).chain(cargo_args.iter().map(OsString::as_os_str));
     let InterceptedCargoArgs {
         manifest_path,
         extra_args: _,
-    } = InterceptedCargoArgs::parse_from(cargo_args.clone());
+    } = InterceptedCargoArgs::parse_from(args_for_cargo);
     let manifest_path = manifest_path.as_deref();
     let manifest_dir = manifest_path.and_then(|path| path.parent());
 
