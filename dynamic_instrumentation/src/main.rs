@@ -60,6 +60,13 @@ struct Args {
     cargo_args: Vec<OsString>,
 }
 
+/// `cargo` args that we intercept.
+#[derive(Debug, Parser)]
+struct InterceptedCargoArgs {
+    #[clap(long, value_parser)]
+    manifest_path: Option<PathBuf>,
+}
+
 fn exit_with_status(status: ExitStatus) {
     process::exit(status.code().unwrap_or(1))
 }
@@ -417,6 +424,11 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         mut cargo_args,
     } = Args::parse();
 
+    let InterceptedCargoArgs {
+        manifest_path,
+    } = InterceptedCargoArgs::parse_from(cargo_args.clone());
+    let manifest_path = manifest_path.as_deref();
+
     set_rust_toolchain()?;
 
     // Resolve the sysroot once in the [`cargo_wrapper`]
@@ -432,6 +444,9 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
                 // Since it's a local path, we don't need the internet,
                 // and running it offline saves a slow index sync.
                 cmd.args(&["--offline", "--path"]).arg(runtime);
+            }
+            if let Some(manifest_path) = manifest_path {
+                cmd.arg("--manifest-path").arg(manifest_path);
             }
         })?;
     }
