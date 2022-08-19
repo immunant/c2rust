@@ -58,6 +58,7 @@ pub use crate::pointer_id::PointerId;
 pub type LTy<'tcx> = LabeledTy<'tcx, PointerId>;
 pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, PointerId>;
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct LFnSig<'tcx> {
     pub inputs: &'tcx [LTy<'tcx>],
     pub output: LTy<'tcx>,

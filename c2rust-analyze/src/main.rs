@@ -20,7 +20,7 @@ use crate::context::{
 };
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use rustc_index::vec::IndexVec;
-use rustc_middle::mir::{BindingForm, LocalDecl, LocalInfo};
+use rustc_middle::mir::{BindingForm, LocalDecl, LocalInfo, LocalKind};
 use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
 use std::env;
@@ -65,6 +65,7 @@ fn run(tcx: TyCtxt) {
         let ldid_const = WithOptConstParam::unknown(ldid);
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
+        let lsig = gacx.fn_sigs.get(&ldid.to_def_id()).unwrap().clone();
 
         let mut acx = gacx.function_context(&mir);
 
@@ -72,7 +73,14 @@ fn run(tcx: TyCtxt) {
         assert!(acx.local_tys.is_empty());
         acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
         for (local, decl) in mir.local_decls.iter_enumerated() {
-            let lty = acx.assign_pointer_ids(decl.ty);
+            let lty = match mir.local_kind(local) {
+                LocalKind::Var | LocalKind::Temp => acx.assign_pointer_ids(decl.ty),
+                LocalKind::Arg => {
+                    debug_assert!(local.as_usize() >= 1 && local.as_usize() <= mir.arg_count);
+                    lsig.inputs[local.as_usize() - 1]
+                }
+                LocalKind::ReturnPointer => lsig.output,
+            };
             let l = acx.local_tys.push(lty);
             assert_eq!(local, l);
 
@@ -96,7 +104,8 @@ fn run(tcx: TyCtxt) {
     let (g_counter, g_equiv_map) = g_equiv.renumber();
     eprintln!("g_equiv_map = {:?}", g_equiv_map);
     gacx.remap_pointers(&g_equiv_map, g_counter);
-    let mut gasn = GlobalAssignment::new(0, PermissionSet::UNIQUE, FlagSet::empty());
+    let mut gasn =
+        GlobalAssignment::new(gacx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
     for (ldid, info) in tcx.hir().body_owners().zip(func_info.into_iter()) {
         let ldid_const = WithOptConstParam::unknown(ldid);
         let name = tcx.item_name(ldid.to_def_id());
