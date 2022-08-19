@@ -407,6 +407,8 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         manifest_path,
         extra_args: _,
     } = InterceptedCargoArgs::parse_from(args_for_cargo);
+
+    let metadata_path = metadata_path.as_path();
     let manifest_path = manifest_path.as_deref();
     let manifest_dir = manifest_path.and_then(|path| path.parent());
 
@@ -433,7 +435,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         })?;
     }
 
-    let mut metadata_file = MetadataFile::open(&metadata_path)?;
+    let mut metadata_file = MetadataFile::open(metadata_path)?;
 
     cargo.run(|cmd| {
         // Enable the runtime dependency.
@@ -442,14 +444,18 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
             .join("instrument.target");
 
         // The [`rustc_wrapper`] might run in a different working directory if `--manifest-path` was passed.
-        let metadata_path = metadata_path.canonicalize()?;
+        let abs_metadata_path = metadata_path.canonicalize()?;
+        let metadata_path = match manifest_dir {
+            Some(_) => abs_metadata_path.as_path(),
+            None => metadata_path,
+        };
 
         add_feature(&mut cargo_args, &["c2rust-analysis-rt"]);
         cmd.args(cargo_args)
             .env(RUSTC_WRAPPER_VAR, rustc_wrapper)
             .env(RUST_SYSROOT_VAR, &sysroot)
             .env("CARGO_TARGET_DIR", &cargo_target_dir)
-            .env(METADATA_VAR, &metadata_path);
+            .env(METADATA_VAR, metadata_path);
         Ok(())
     })?;
 
