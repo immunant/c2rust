@@ -448,7 +448,10 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     if set_runtime {
         cargo.run(|cmd| {
             cmd.args(&["add", "--optional", "c2rust-analysis-rt"]);
-            if let Some(runtime) = runtime_path {
+            if let Some(mut runtime) = runtime_path {
+                if manifest_dir.is_some() {
+                    runtime = runtime.canonicalize()?;
+                }
                 // Since it's a local path, we don't need the internet,
                 // and running it offline saves a slow index sync.
                 cmd.args(&["--offline", "--path"]).arg(runtime);
