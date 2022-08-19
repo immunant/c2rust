@@ -15,8 +15,8 @@ extern crate rustc_target;
 extern crate rustc_type_ir;
 
 use crate::context::{
-    AnalysisCtxt, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LTy, LocalAssignment,
-    PermissionSet, PointerId,
+    AnalysisCtxt, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy, LTyCtxt,
+    LocalAssignment, PermissionSet, PointerId,
 };
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use rustc_index::vec::IndexVec;
@@ -44,6 +44,21 @@ fn run(tcx: TyCtxt) {
     // is kept around for use in later passes.
 
     // TODO: assign global PointerIds
+    for ldid in tcx.hir().body_owners() {
+        let sig = tcx.fn_sig(ldid.to_def_id());
+        let sig = tcx.erase_late_bound_regions(sig);
+
+        let inputs = sig
+            .inputs()
+            .iter()
+            .map(|&ty| gacx.assign_pointer_ids(ty))
+            .collect::<Vec<_>>();
+        let inputs = gacx.lcx.mk_slice(&inputs);
+        let output = gacx.assign_pointer_ids(sig.output());
+
+        let lsig = LFnSig { inputs, output };
+        gacx.fn_sigs.insert(ldid.to_def_id(), lsig);
+    }
 
     let mut g_equiv = GlobalEquivSet::new(gacx.num_pointers());
     for ldid in tcx.hir().body_owners() {
@@ -57,7 +72,7 @@ fn run(tcx: TyCtxt) {
         assert!(acx.local_tys.is_empty());
         acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
         for (local, decl) in mir.local_decls.iter_enumerated() {
-            let lty = assign_pointer_ids(&mut acx, decl.ty);
+            let lty = acx.assign_pointer_ids(decl.ty);
             let l = acx.local_tys.push(lty);
             assert_eq!(local, l);
 
@@ -180,11 +195,36 @@ fn run(tcx: TyCtxt) {
     }
 }
 
-fn assign_pointer_ids<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, ty: Ty<'tcx>) -> LTy<'tcx> {
-    acx.lcx().label(ty, &mut |ty| match ty.kind() {
-        TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => acx.new_pointer(),
-        _ => PointerId::NONE,
-    })
+trait AssignPointerIds<'tcx> {
+    fn lcx(&self) -> LTyCtxt<'tcx>;
+    fn new_pointer(&mut self) -> PointerId;
+
+    fn assign_pointer_ids(&mut self, ty: Ty<'tcx>) -> LTy<'tcx> {
+        self.lcx().label(ty, &mut |ty| match ty.kind() {
+            TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => self.new_pointer(),
+            _ => PointerId::NONE,
+        })
+    }
+}
+
+impl<'tcx> AssignPointerIds<'tcx> for GlobalAnalysisCtxt<'tcx> {
+    fn lcx(&self) -> LTyCtxt<'tcx> {
+        self.lcx
+    }
+
+    fn new_pointer(&mut self) -> PointerId {
+        self.new_pointer()
+    }
+}
+
+impl<'tcx> AssignPointerIds<'tcx> for AnalysisCtxt<'_, 'tcx> {
+    fn lcx(&self) -> LTyCtxt<'tcx> {
+        self.lcx()
+    }
+
+    fn new_pointer(&mut self) -> PointerId {
+        self.new_pointer()
+    }
 }
 
 fn describe_local(tcx: TyCtxt, decl: &LocalDecl) -> String {

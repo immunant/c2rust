@@ -5,12 +5,15 @@ use crate::pointer_id::{
 };
 use crate::util::{describe_rvalue, RvalueDesc};
 use bitflags::bitflags;
+use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
     Body, HasLocalDecls, Local, LocalDecls, Operand, Place, PlaceElem, PlaceRef, ProjectionElem,
     Rvalue,
 };
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
+use std::collections::HashMap;
+use std::ops::Index;
 
 bitflags! {
     #[derive(Default)]
@@ -55,9 +58,16 @@ pub use crate::pointer_id::PointerId;
 pub type LTy<'tcx> = LabeledTy<'tcx, PointerId>;
 pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, PointerId>;
 
+pub struct LFnSig<'tcx> {
+    pub inputs: &'tcx [LTy<'tcx>],
+    pub output: LTy<'tcx>,
+}
+
 pub struct GlobalAnalysisCtxt<'tcx> {
     pub tcx: TyCtxt<'tcx>,
     pub lcx: LTyCtxt<'tcx>,
+
+    pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
 
     next_ptr_id: NextGlobalPointerId,
 }
@@ -83,6 +93,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         GlobalAnalysisCtxt {
             tcx,
             lcx: LabeledTyCtxt::new(tcx),
+            fn_sigs: HashMap::new(),
             next_ptr_id: NextGlobalPointerId::new(),
         }
     }
@@ -99,8 +110,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         AnalysisCtxt::from_data(self, mir, data)
     }
 
-    #[allow(dead_code)]
-    pub fn _new_pointer(&mut self) -> PointerId {
+    pub fn new_pointer(&mut self) -> PointerId {
         self.next_ptr_id.next()
     }
 
@@ -110,16 +120,25 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
 
     pub fn remap_pointers(
         &mut self,
-        _map: &GlobalPointerTable<PointerId>,
+        map: &GlobalPointerTable<PointerId>,
         counter: NextGlobalPointerId,
     ) {
         let GlobalAnalysisCtxt {
             tcx: _,
-            lcx: _,
+            lcx,
+            ref mut fn_sigs,
             ref mut next_ptr_id,
         } = *self;
 
-        // `GlobalAnalysisCtxt` doesn't yet have any fields that need remapping.
+        for sig in fn_sigs.values_mut() {
+            sig.inputs = lcx.mk_slice(
+                &sig.inputs
+                    .iter()
+                    .map(|&lty| remap_lty_pointers(lcx, map, lty))
+                    .collect::<Vec<_>>(),
+            );
+            sig.output = remap_lty_pointers(lcx, map, sig.output);
+        }
 
         *next_ptr_id = counter;
     }
@@ -230,13 +249,7 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
         } = *self;
 
         for lty in local_tys {
-            *lty = lcx.relabel(*lty, &mut |inner_lty| {
-                if inner_lty.label.is_none() {
-                    PointerId::NONE
-                } else {
-                    map[inner_lty.label]
-                }
-            });
+            *lty = remap_lty_pointers(lcx, &map, *lty);
         }
 
         for ptr in addr_of_local {
@@ -247,6 +260,19 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
 
         *next_ptr_id = counter;
     }
+}
+
+fn remap_lty_pointers<'tcx, T>(lcx: LTyCtxt<'tcx>, map: &T, lty: LTy<'tcx>) -> LTy<'tcx>
+where
+    T: Index<PointerId, Output = PointerId>,
+{
+    lcx.relabel(lty, &mut |inner_lty| {
+        if inner_lty.label.is_none() {
+            PointerId::NONE
+        } else {
+            map[inner_lty.label]
+        }
+    })
 }
 
 impl<'tcx> HasLocalDecls<'tcx> for AnalysisCtxt<'_, 'tcx> {
