@@ -110,6 +110,7 @@ fn check_sibling_conflict(siblings: &mut Vec<NodeId>, flow_info: &HashMap<NodeId
     for id in siblings {
         if *id < max_desc {
             conflict_result.insert(max_desc_parent,*id);
+            conflict_result.insert(*id,max_desc_parent);
         }
         if flow_info.get(&id).unwrap().last_descendent > max_desc {
             max_desc = flow_info.get(&id).unwrap().last_descendent;
@@ -131,6 +132,15 @@ fn determine_non_conflicting(g: &Graph, downward: &HashMap<NodeId,Vec<NodeId>>, 
         if !children.is_empty() {
             check_sibling_conflict(&mut children,flow_info,&mut result);
         }
+    }
+    for id in g.nodes.indices() {
+        let mut children = downward.get(&id).unwrap().clone();
+        match children.iter().find(|cidx| result.get(cidx).is_some()){
+            None => (),
+            Some(failchild) => {result.insert(id,*result.get(failchild).unwrap()); ()},
+        }
+    }
+    for (id,n) in g.nodes.iter_enumerated() {
         if let Some(par) = n.source {
             if let Some(f) = result.get(&par){
                 let failidx = f.clone();
@@ -280,6 +290,7 @@ mod test {
         assert!(info(&pdg, a).non_unique.is_some());
         assert!(info(&pdg, b1).non_unique.is_some());
         assert!(info(&pdg, b2).non_unique.is_some());
+
         assert!(info(&pdg, b3).non_unique.is_some());
         assert!(info(&pdg, c1).non_unique.is_some());
         assert!(info(&pdg, c2).non_unique.is_some());
