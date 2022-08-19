@@ -177,6 +177,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             self.visit_ptr_offset(&args[0], pl_ty);
                             return;
                         }
+                        _ => {}
                     }
                 }
 

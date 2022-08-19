@@ -223,7 +223,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         let rv_lty = self.visit_operand(&args[0]);
                         self.do_assign(pl_lty, rv_lty);
                     }
-                    None => {}
+                    _ => {}
                 }
             }
             // TODO(spernsteiner): handle other `TerminatorKind`s
