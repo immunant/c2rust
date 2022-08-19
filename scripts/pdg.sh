@@ -56,8 +56,7 @@ main() {
             --set-runtime \
             --runtime-path "${runtime}" \
             -- run "${profile_args[@]}" \
-            -- "${args[@]}" \
-            1> instrument.out.log
+            -- "${args[@]}"
     )
     (cd pdg
         export RUST_BACKTRACE=full # print sources w/ color-eyre
