@@ -24,6 +24,7 @@ mod util;
 use crate::callbacks::{MirTransformCallbacks, INSTRUMENTER};
 
 use std::{
+    borrow::Borrow,
     borrow::Cow,
     env,
     ffi::{OsStr, OsString},
@@ -56,6 +57,10 @@ struct Args {
     /// Add the runtime as an optional dependency to the instrumented crate using `cargo add`.
     #[clap(long)]
     set_runtime: bool,
+
+    /// `$RUSTFLAGS`, but as a CLI argument, not an inheritable environment variable.
+    #[clap(long)]
+    rustflags: Option<OsString>,
 
     /// `cargo` args.
     cargo_args: Vec<OsString>,
@@ -419,12 +424,40 @@ impl MetadataFile {
     }
 }
 
+trait OsStringJoin {
+    fn join(&mut self, sep: &OsStr) -> OsString;
+}
+
+impl<I, T> OsStringJoin for I
+where
+    I: Iterator<Item = T>,
+    T: Borrow<OsStr>,
+{
+    fn join(&mut self, sep: &OsStr) -> OsString {
+        match self.next() {
+            None => OsString::new(),
+            Some(first_elt) => {
+                // estimate lower bound of capacity needed
+                let (lower, _) = self.size_hint();
+                let mut result = OsString::with_capacity(sep.len() * lower);
+                result.push(first_elt.borrow());
+                self.for_each(|elt| {
+                    result.push(sep);
+                    result.push(elt.borrow());
+                });
+                result
+            }
+        }
+    }
+}
+
 /// Run as a `cargo` wrapper/plugin, the default invocation.
 fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     let Args {
         metadata: metadata_path,
         runtime_path,
         set_runtime,
+        rustflags,
         mut cargo_args,
     } = Args::parse();
 
@@ -479,6 +512,11 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
             Cow::Borrowed(metadata_path)
         };
 
+        let rustflags = [env::var_os("RUSTFLAGS"), rustflags]
+            .into_iter()
+            .flatten()
+            .join(OsStr::new(" "));
+
         // Enable the runtime dependency.
         add_feature(&mut cargo_args, &["c2rust-analysis-rt"]);
 
@@ -486,6 +524,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
             .env(RUSTC_WRAPPER_VAR, rustc_wrapper)
             .env(RUST_SYSROOT_VAR, &sysroot)
             .env("CARGO_TARGET_DIR", &cargo_target_dir)
+            .env("RUSTFLAGS", &rustflags)
             .env(METADATA_VAR, metadata_path.as_ref());
         Ok(())
     })?;
