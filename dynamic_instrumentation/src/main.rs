@@ -164,9 +164,9 @@ impl Cargo {
         Command::new(&self.path)
     }
 
-    pub fn run(&self, f: impl FnOnce(&mut Command)) -> anyhow::Result<()> {
+    pub fn run(&self, f: impl FnOnce(&mut Command) -> anyhow::Result<()>) -> anyhow::Result<()> {
         let mut cmd = self.command();
-        f(&mut cmd);
+        f(&mut cmd)?;
         let status = cmd.status()?;
         if !status.success() {
             eprintln!("error ({status}) running: {cmd:?}");
@@ -455,6 +455,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
             if let Some(manifest_path) = manifest_path {
                 cmd.arg("--manifest-path").arg(manifest_path);
             }
+            Ok(())
         })?;
     }
 
@@ -474,6 +475,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
             .env(RUST_SYSROOT_VAR, &sysroot)
             .env("CARGO_TARGET_DIR", &cargo_target_dir)
             .env(METADATA_VAR, &metadata_path);
+        Ok(())
     })?;
 
     metadata_file.close()?;
