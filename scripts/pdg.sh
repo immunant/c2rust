@@ -35,14 +35,15 @@ main() {
     fi
     local profile_args=(--profile "${profile}")
 
-    local metadata="${CWD}/${test_dir}/metadata.bc"
+    local metadata="${test_dir}/metadata.bc"
+    local event_log="${test_dir}/log.bc"
     local runtime="analysis/runtime"
 
     (
         unset RUSTFLAGS # transpiled code has tons of warnings; don't allow `-D warnings`
         export RUST_BACKTRACE=1
         export INSTRUMENT_BACKEND=log
-        export INSTRUMENT_OUTPUT=log.bc
+        export INSTRUMENT_OUTPUT="${event_log}"
         export INSTRUMENT_OUTPUT_APPEND=false
         export METADATA_FILE="${metadata}"
 
@@ -65,7 +66,7 @@ main() {
             --bin c2rust-pdg \
             "${profile_args[@]}" \
             -- \
-            --event-log "${test_dir}/log.bc" \
+            --event-log "${event_log}" \
             --metadata "${metadata}" \
             --print graphs \
             --print write-permissions \
