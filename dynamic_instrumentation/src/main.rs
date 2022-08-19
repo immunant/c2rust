@@ -450,7 +450,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
             cmd.args(&["add", "--optional", "c2rust-analysis-rt"]);
             if let Some(mut runtime) = runtime_path {
                 if manifest_dir.is_some() {
-                    runtime = runtime.canonicalize()?;
+                    runtime = fs_err::canonicalize(runtime)?;
                 }
                 // Since it's a local path, we don't need the internet,
                 // and running it offline saves a slow index sync.
@@ -473,7 +473,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
 
         // The [`rustc_wrapper`] might run in a different working directory if `--manifest-path` was passed.
         let metadata_path = metadata_file.temp_path();
-        let abs_metadata_path = metadata_path.canonicalize()?;
+        let abs_metadata_path = fs_err::canonicalize(metadata_path)?;
         let metadata_path = match manifest_dir {
             Some(_) => abs_metadata_path.as_path(),
             None => metadata_path,
