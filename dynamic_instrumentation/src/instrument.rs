@@ -5,7 +5,7 @@ use c2rust_analysis_rt::HOOK_FUNCTIONS;
 use fs2::FileExt;
 use fs_err::OpenOptions;
 use indexmap::IndexSet;
-use log::debug;
+use log::{debug, trace};
 use rustc_index::vec::Idx;
 use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
@@ -376,7 +376,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     }
                 }
                 if let (&ty::FnDef(def_id, _), &Some(target)) = (func_kind, target) {
-                    println!("term: {:?}", terminator.kind);
+                    trace!("term: {:?}", terminator.kind);
                     let fn_name = self.tcx().item_name(def_id);
                     if HOOK_FUNCTIONS.contains(&fn_name.as_str()) {
                         let func_def_id = self.hooks().find_from_symbol(fn_name);
@@ -484,7 +484,7 @@ pub fn insert_call<'tcx>(
     func: DefId,
     mut args: Vec<InstrumentationArg<'tcx>>,
 ) -> (BasicBlock, Local) {
-    println!("ST: {:?}", statement_index);
+    trace!("ST: {:?}", statement_index);
 
     let blocks = body.basic_blocks.as_mut();
     let locals = &mut body.local_decls;

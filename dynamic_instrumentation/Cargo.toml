@@ -19,6 +19,7 @@ camino = "1.0"
 # We don't need to edit at all, but `cargo` uses `toml-edit`, so we want to match it.
 toml_edit = "0.14"
 fs2 = "0.4"
+env_logger = "0.9"
 
 [build-dependencies]
 rustc-private-link = { path = "../rustc-private-link" }

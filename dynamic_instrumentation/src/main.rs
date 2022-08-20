@@ -354,6 +354,8 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
+    env_logger::init();
+
     let own_exe = env::current_exe()?;
 
     let wrapping_rustc = env::var_os(RUSTC_WRAPPER_VAR).as_deref() == Some(own_exe.as_os_str());
