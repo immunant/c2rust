@@ -63,11 +63,13 @@ impl WriteEvent for DebugBackend {
 
 pub struct LogBackend {
     writer: BufWriter<File>,
+    debug: DebugBackend,
 }
 
 impl WriteEvent for LogBackend {
     fn write(&mut self, event: Event) {
         bincode::serialize_into(&mut self.writer, &event).unwrap();
+        self.debug.write(event);
     }
 }
 
@@ -119,7 +121,8 @@ impl DetectBackend for LogBackend {
             .truncate(!append)
             .open(&path)?;
         let writer = BufWriter::new(file);
-        Ok(Self { writer })
+        let debug = DebugBackend::detect()?;
+        Ok(Self { writer, debug })
     }
 }
 
