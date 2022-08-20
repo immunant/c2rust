@@ -305,6 +305,9 @@ impl<'a> MetadataFile<'a> {
     /// `cargo` won't recompile, so a new [`MetadataFile`] won't be regenerated.
     /// We should keep the old one in that case.
     pub fn open(path: &'a Path) -> anyhow::Result<Self> {
+        if let Some(dir) = path.parent() {
+            fs_err::create_dir_all(dir)?;
+        }
         let file = OpenOptions::new()
             .create(true)
             .read(true) // For reading new [`Metadata`] at the end.
