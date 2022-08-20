@@ -144,6 +144,104 @@ g {
 nodes_that_need_write = []
 
 g {
+	n[0]: &_13 _    => _12 @ bb1[11]: fn main_0;           _12 = &_13;
+	n[1]: copy n[0] => _11 @ bb1[12]: fn main_0;           _11 = &(*_12);
+	n[2]: copy n[1] => _10 @ bb1[13]: fn main_0;           _10 = move _11 as &[&str] (Pointer(Unsize));
+	n[3]: copy n[2] => _1  @ bb0[0]:  fn new_v1_formatted; _9 = new_v1_formatted(move _10, move _14, move _36, move _60);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]:  copy _ => _20   @ bb1[22]:   fn main_0; _20 = const "src/pointers.rs";
+	n[1]:  copy _ => _77   @ bb11[22]:  fn main_0; _77 = const "src/pointers.rs";
+	n[2]:  copy _ => _134  @ bb21[22]:  fn main_0; _134 = const "src/pointers.rs";
+	n[3]:  copy _ => _191  @ bb31[22]:  fn main_0; _191 = const "src/pointers.rs";
+	n[4]:  copy _ => _248  @ bb41[22]:  fn main_0; _248 = const "src/pointers.rs";
+	n[5]:  copy _ => _305  @ bb51[22]:  fn main_0; _305 = const "src/pointers.rs";
+	n[6]:  copy _ => _362  @ bb61[22]:  fn main_0; _362 = const "src/pointers.rs";
+	n[7]:  copy _ => _419  @ bb71[22]:  fn main_0; _419 = const "src/pointers.rs";
+	n[8]:  copy _ => _476  @ bb81[22]:  fn main_0; _476 = const "src/pointers.rs";
+	n[9]:  copy _ => _533  @ bb91[22]:  fn main_0; _533 = const "src/pointers.rs";
+	n[10]: copy _ => _590  @ bb101[22]: fn main_0; _590 = const "src/pointers.rs";
+	n[11]: copy _ => _647  @ bb111[22]: fn main_0; _647 = const "src/pointers.rs";
+	n[12]: copy _ => _704  @ bb121[22]: fn main_0; _704 = const "src/pointers.rs";
+	n[13]: copy _ => _761  @ bb131[22]: fn main_0; _761 = const "src/pointers.rs";
+	n[14]: copy _ => _818  @ bb141[22]: fn main_0; _818 = const "src/pointers.rs";
+	n[15]: copy _ => _875  @ bb151[22]: fn main_0; _875 = const "src/pointers.rs";
+	n[16]: copy _ => _932  @ bb161[22]: fn main_0; _932 = const "src/pointers.rs";
+	n[17]: copy _ => _989  @ bb171[22]: fn main_0; _989 = const "src/pointers.rs";
+	n[18]: copy _ => _1046 @ bb181[22]: fn main_0; _1046 = const "src/pointers.rs";
+	n[19]: copy _ => _1103 @ bb191[22]: fn main_0; _1103 = const "src/pointers.rs";
+	n[20]: copy _ => _1160 @ bb201[22]: fn main_0; _1160 = const "src/pointers.rs";
+	n[21]: copy _ => _1217 @ bb211[22]: fn main_0; _1217 = const "src/pointers.rs";
+	n[22]: copy _ => _1274 @ bb221[22]: fn main_0; _1274 = const "src/pointers.rs";
+	n[23]: copy _ => _1331 @ bb231[22]: fn main_0; _1331 = const "src/pointers.rs";
+	n[24]: copy _ => _1388 @ bb241[22]: fn main_0; _1388 = const "src/pointers.rs";
+	n[25]: copy _ => _1445 @ bb251[22]: fn main_0; _1445 = const "src/pointers.rs";
+	n[26]: copy _ => _1502 @ bb261[22]: fn main_0; _1502 = const "src/pointers.rs";
+	n[27]: copy _ => _1559 @ bb271[22]: fn main_0; _1559 = const "src/pointers.rs";
+	n[28]: copy _ => _1616 @ bb281[22]: fn main_0; _1616 = const "src/pointers.rs";
+	n[29]: copy _ => _1673 @ bb291[22]: fn main_0; _1673 = const "src/pointers.rs";
+	n[30]: copy _ => _1738 @ bb302[24]: fn main_0; _1738 = const "src/pointers.rs";
+	n[31]: copy _ => _1795 @ bb312[22]: fn main_0; _1795 = const "src/pointers.rs";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_20 _    => _19 @ bb1[23]: fn main_0;      _19 = &_20;
+	n[1]: copy n[0] => _29 @ bb1[46]: fn main_0;      _29 = &(*(_27.0: &&str));
+	n[2]: copy n[1] => _1  @ bb0[0]:  fn new_display; _28 = new_display(move _29);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_22 _    => _21 @ bb1[27]: fn main_0;      _21 = &_22;
+	n[1]: copy n[0] => _31 @ bb2[3]:  fn main_0;      _31 = &(*(_27.1: &u32));
+	n[2]: copy n[1] => _1  @ bb0[0]:  fn new_display; _30 = new_display(move _31);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _24 @ bb1[30]: fn main_0; _24 = const "simple()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_24 _    => _23 @ bb1[31]: fn main_0;      _23 = &_24;
+	n[1]: copy n[0] => _33 @ bb3[3]:  fn main_0;      _33 = &(*(_27.2: &&str));
+	n[2]: copy n[1] => _1  @ bb0[0]:  fn new_display; _32 = new_display(move _33);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_6 _ => _26 @ bb1[34]: fn main_0; _26 = &_6;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_26 _    => _25 @ bb1[35]: fn main_0;    _25 = &_26;
+	n[1]: copy n[0] => _35 @ bb4[3]:  fn main_0;    _35 = &(*(_27.3: &&()));
+	n[2]: copy n[1] => _1  @ bb0[0]:  fn new_debug; _34 = new_debug(move _35);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_17 _    => _16 @ bb6[0]: fn main_0;           _16 = &_17;
+	n[1]: copy n[0] => _15 @ bb6[1]: fn main_0;           _15 = &(*_16);
+	n[2]: copy n[1] => _14 @ bb6[2]: fn main_0;           _14 = move _15 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy n[2] => _2  @ bb0[0]: fn new_v1_formatted; _9 = new_v1_formatted(move _10, move _14, move _36, move _60);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_39 _    => _38 @ bb6[69]: fn main_0;           _38 = &_39;
+	n[1]: copy n[0] => _37 @ bb6[70]: fn main_0;           _37 = &(*_38);
+	n[2]: copy n[1] => _36 @ bb6[71]: fn main_0;           _36 = move _37 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy n[2] => _3  @ bb0[0]:  fn new_v1_formatted; _9 = new_v1_formatted(move _10, move _14, move _36, move _60);
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: alloc      _    => _2  @ bb1[2]:  fn exercise_allocator; _2 = malloc(move _3);
 	n[1]: copy       n[0] => _1  @ bb2[1]:  fn exercise_allocator; _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: field.0    n[1] => _   @ bb2[5]:  fn exercise_allocator; ((*_1).0: i32) = const 10_i32;
@@ -337,6 +435,68 @@ g {
 nodes_that_need_write = [17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
 
 g {
+	n[0]: &_70 _    => _69 @ bb11[11]: fn main_0;           _69 = &_70;
+	n[1]: copy n[0] => _68 @ bb11[12]: fn main_0;           _68 = &(*_69);
+	n[2]: copy n[1] => _67 @ bb11[13]: fn main_0;           _67 = move _68 as &[&str] (Pointer(Unsize));
+	n[3]: copy n[2] => _1  @ bb0[0]:   fn new_v1_formatted; _66 = new_v1_formatted(move _67, move _71, move _93, move _117);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_77 _    => _76 @ bb11[23]: fn main_0;      _76 = &_77;
+	n[1]: copy n[0] => _86 @ bb11[46]: fn main_0;      _86 = &(*(_84.0: &&str));
+	n[2]: copy n[1] => _1  @ bb0[0]:   fn new_display; _85 = new_display(move _86);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_79 _    => _78 @ bb11[27]: fn main_0;      _78 = &_79;
+	n[1]: copy n[0] => _88 @ bb12[3]:  fn main_0;      _88 = &(*(_84.1: &u32));
+	n[2]: copy n[1] => _1  @ bb0[0]:   fn new_display; _87 = new_display(move _88);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _81 @ bb11[30]: fn main_0; _81 = const "exercise_allocator()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_81 _    => _80 @ bb11[31]: fn main_0;      _80 = &_81;
+	n[1]: copy n[0] => _90 @ bb13[3]:  fn main_0;      _90 = &(*(_84.2: &&str));
+	n[2]: copy n[1] => _1  @ bb0[0]:   fn new_display; _89 = new_display(move _90);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_63 _ => _83 @ bb11[34]: fn main_0; _83 = &_63;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_83 _    => _82 @ bb11[35]: fn main_0;    _82 = &_83;
+	n[1]: copy n[0] => _92 @ bb14[3]:  fn main_0;    _92 = &(*(_84.3: &&()));
+	n[2]: copy n[1] => _1  @ bb0[0]:   fn new_debug; _91 = new_debug(move _92);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_74 _    => _73 @ bb16[0]: fn main_0;           _73 = &_74;
+	n[1]: copy n[0] => _72 @ bb16[1]: fn main_0;           _72 = &(*_73);
+	n[2]: copy n[1] => _71 @ bb16[2]: fn main_0;           _71 = move _72 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy n[2] => _2  @ bb0[0]:  fn new_v1_formatted; _66 = new_v1_formatted(move _67, move _71, move _93, move _117);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_96 _    => _95 @ bb16[69]: fn main_0;           _95 = &_96;
+	n[1]: copy n[0] => _94 @ bb16[70]: fn main_0;           _94 = &(*_95);
+	n[2]: copy n[1] => _93 @ bb16[71]: fn main_0;           _93 = move _94 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy n[2] => _3  @ bb0[0]:   fn new_v1_formatted; _66 = new_v1_formatted(move _67, move _71, move _93, move _117);
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: alloc      _    => _2  @ bb1[2]:  fn simple_analysis; _2 = malloc(move _3);
 	n[1]: copy       n[0] => _1  @ bb2[1]:  fn simple_analysis; _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: field.0    n[1] => _   @ bb2[5]:  fn simple_analysis; ((*_1).0: i32) = const 10_i32;
@@ -348,6 +508,68 @@ g {
 	n[8]: free       n[7] => _11 @ bb3[10]: fn simple_analysis; _11 = free(move _12);
 }
 nodes_that_need_write = [3, 2, 1, 0]
+
+g {
+	n[0]: &_127 _    => _126 @ bb21[11]: fn main_0;           _126 = &_127;
+	n[1]: copy  n[0] => _125 @ bb21[12]: fn main_0;           _125 = &(*_126);
+	n[2]: copy  n[1] => _124 @ bb21[13]: fn main_0;           _124 = move _125 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:   fn new_v1_formatted; _123 = new_v1_formatted(move _124, move _128, move _150, move _174);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_134 _    => _133 @ bb21[23]: fn main_0;      _133 = &_134;
+	n[1]: copy  n[0] => _143 @ bb21[46]: fn main_0;      _143 = &(*(_141.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _142 = new_display(move _143);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_136 _    => _135 @ bb21[27]: fn main_0;      _135 = &_136;
+	n[1]: copy  n[0] => _145 @ bb22[3]:  fn main_0;      _145 = &(*(_141.1: &u32));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _144 = new_display(move _145);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _138 @ bb21[30]: fn main_0; _138 = const "simple_analysis()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_138 _    => _137 @ bb21[31]: fn main_0;      _137 = &_138;
+	n[1]: copy  n[0] => _147 @ bb23[3]:  fn main_0;      _147 = &(*(_141.2: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _146 = new_display(move _147);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_120 _ => _140 @ bb21[34]: fn main_0; _140 = &_120;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_140 _    => _139 @ bb21[35]: fn main_0;    _139 = &_140;
+	n[1]: copy  n[0] => _149 @ bb24[3]:  fn main_0;    _149 = &(*(_141.3: &&()));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_debug; _148 = new_debug(move _149);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_131 _    => _130 @ bb26[0]: fn main_0;           _130 = &_131;
+	n[1]: copy  n[0] => _129 @ bb26[1]: fn main_0;           _129 = &(*_130);
+	n[2]: copy  n[1] => _128 @ bb26[2]: fn main_0;           _128 = move _129 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:  fn new_v1_formatted; _123 = new_v1_formatted(move _124, move _128, move _150, move _174);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_153 _    => _152 @ bb26[69]: fn main_0;           _152 = &_153;
+	n[1]: copy  n[0] => _151 @ bb26[70]: fn main_0;           _151 = &(*_152);
+	n[2]: copy  n[1] => _150 @ bb26[71]: fn main_0;           _150 = move _151 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy  n[2] => _3   @ bb0[0]:   fn new_v1_formatted; _123 = new_v1_formatted(move _124, move _128, move _150, move _174);
+}
+nodes_that_need_write = []
 
 g {
 	n[0]:  alloc      _    => _2 @ bb1[2]:  fn analysis2;        _2 = malloc(move _3);
@@ -365,6 +587,68 @@ g {
 nodes_that_need_write = [3, 2, 1, 0]
 
 g {
+	n[0]: &_184 _    => _183 @ bb31[11]: fn main_0;           _183 = &_184;
+	n[1]: copy  n[0] => _182 @ bb31[12]: fn main_0;           _182 = &(*_183);
+	n[2]: copy  n[1] => _181 @ bb31[13]: fn main_0;           _181 = move _182 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:   fn new_v1_formatted; _180 = new_v1_formatted(move _181, move _185, move _207, move _231);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_191 _    => _190 @ bb31[23]: fn main_0;      _190 = &_191;
+	n[1]: copy  n[0] => _200 @ bb31[46]: fn main_0;      _200 = &(*(_198.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _199 = new_display(move _200);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_193 _    => _192 @ bb31[27]: fn main_0;      _192 = &_193;
+	n[1]: copy  n[0] => _202 @ bb32[3]:  fn main_0;      _202 = &(*(_198.1: &u32));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _201 = new_display(move _202);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _195 @ bb31[30]: fn main_0; _195 = const "analysis2()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_195 _    => _194 @ bb31[31]: fn main_0;      _194 = &_195;
+	n[1]: copy  n[0] => _204 @ bb33[3]:  fn main_0;      _204 = &(*(_198.2: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _203 = new_display(move _204);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_177 _ => _197 @ bb31[34]: fn main_0; _197 = &_177;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_197 _    => _196 @ bb31[35]: fn main_0;    _196 = &_197;
+	n[1]: copy  n[0] => _206 @ bb34[3]:  fn main_0;    _206 = &(*(_198.3: &&()));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_debug; _205 = new_debug(move _206);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_188 _    => _187 @ bb36[0]: fn main_0;           _187 = &_188;
+	n[1]: copy  n[0] => _186 @ bb36[1]: fn main_0;           _186 = &(*_187);
+	n[2]: copy  n[1] => _185 @ bb36[2]: fn main_0;           _185 = move _186 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:  fn new_v1_formatted; _180 = new_v1_formatted(move _181, move _185, move _207, move _231);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_210 _    => _209 @ bb36[69]: fn main_0;           _209 = &_210;
+	n[1]: copy  n[0] => _208 @ bb36[70]: fn main_0;           _208 = &(*_209);
+	n[2]: copy  n[1] => _207 @ bb36[71]: fn main_0;           _207 = move _208 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy  n[2] => _3   @ bb0[0]:   fn new_v1_formatted; _180 = new_v1_formatted(move _181, move _185, move _207, move _231);
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: alloc      _    => _0  @ bb0[2]:  fn malloc_wrapper;          _0 = malloc(move _3);
 	n[1]: copy       n[0] => _2  @ bb1[2]:  fn inter_function_analysis; _2 = malloc_wrapper(move _3);
 	n[2]: copy       n[1] => _1  @ bb2[1]:  fn inter_function_analysis; _1 = move _2 as *mut pointers::S (Misc);
@@ -377,6 +661,68 @@ g {
 	n[9]: free       n[8] => _11 @ bb3[10]: fn inter_function_analysis; _11 = free(move _12);
 }
 nodes_that_need_write = [4, 3, 2, 1, 0]
+
+g {
+	n[0]: &_241 _    => _240 @ bb41[11]: fn main_0;           _240 = &_241;
+	n[1]: copy  n[0] => _239 @ bb41[12]: fn main_0;           _239 = &(*_240);
+	n[2]: copy  n[1] => _238 @ bb41[13]: fn main_0;           _238 = move _239 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:   fn new_v1_formatted; _237 = new_v1_formatted(move _238, move _242, move _264, move _288);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_248 _    => _247 @ bb41[23]: fn main_0;      _247 = &_248;
+	n[1]: copy  n[0] => _257 @ bb41[46]: fn main_0;      _257 = &(*(_255.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _256 = new_display(move _257);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_250 _    => _249 @ bb41[27]: fn main_0;      _249 = &_250;
+	n[1]: copy  n[0] => _259 @ bb42[3]:  fn main_0;      _259 = &(*(_255.1: &u32));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _258 = new_display(move _259);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _252 @ bb41[30]: fn main_0; _252 = const "inter_function_analysis()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_252 _    => _251 @ bb41[31]: fn main_0;      _251 = &_252;
+	n[1]: copy  n[0] => _261 @ bb43[3]:  fn main_0;      _261 = &(*(_255.2: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _260 = new_display(move _261);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_234 _ => _254 @ bb41[34]: fn main_0; _254 = &_234;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_254 _    => _253 @ bb41[35]: fn main_0;    _253 = &_254;
+	n[1]: copy  n[0] => _263 @ bb44[3]:  fn main_0;    _263 = &(*(_255.3: &&()));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_debug; _262 = new_debug(move _263);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_245 _    => _244 @ bb46[0]: fn main_0;           _244 = &_245;
+	n[1]: copy  n[0] => _243 @ bb46[1]: fn main_0;           _243 = &(*_244);
+	n[2]: copy  n[1] => _242 @ bb46[2]: fn main_0;           _242 = move _243 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:  fn new_v1_formatted; _237 = new_v1_formatted(move _238, move _242, move _264, move _288);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_267 _    => _266 @ bb46[69]: fn main_0;           _266 = &_267;
+	n[1]: copy  n[0] => _265 @ bb46[70]: fn main_0;           _265 = &(*_266);
+	n[2]: copy  n[1] => _264 @ bb46[71]: fn main_0;           _264 = move _265 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy  n[2] => _3   @ bb0[0]:   fn new_v1_formatted; _237 = new_v1_formatted(move _238, move _242, move _264, move _288);
+}
+nodes_that_need_write = []
 
 g {
 	n[0]: alloc       _    => _2   @ bb1[2]: fn no_owner; _2 = malloc(move _3);
@@ -402,11 +748,135 @@ g {
 nodes_that_need_write = [12, 11, 7, 6, 3, 2, 1, 0]
 
 g {
+	n[0]: &_298 _    => _297 @ bb51[11]: fn main_0;           _297 = &_298;
+	n[1]: copy  n[0] => _296 @ bb51[12]: fn main_0;           _296 = &(*_297);
+	n[2]: copy  n[1] => _295 @ bb51[13]: fn main_0;           _295 = move _296 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:   fn new_v1_formatted; _294 = new_v1_formatted(move _295, move _299, move _321, move _345);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_305 _    => _304 @ bb51[23]: fn main_0;      _304 = &_305;
+	n[1]: copy  n[0] => _314 @ bb51[46]: fn main_0;      _314 = &(*(_312.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _313 = new_display(move _314);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_307 _    => _306 @ bb51[27]: fn main_0;      _306 = &_307;
+	n[1]: copy  n[0] => _316 @ bb52[3]:  fn main_0;      _316 = &(*(_312.1: &u32));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _315 = new_display(move _316);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _309 @ bb51[30]: fn main_0; _309 = const "no_owner(0i32)";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_309 _    => _308 @ bb51[31]: fn main_0;      _308 = &_309;
+	n[1]: copy  n[0] => _318 @ bb53[3]:  fn main_0;      _318 = &(*(_312.2: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _317 = new_display(move _318);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_291 _ => _311 @ bb51[34]: fn main_0; _311 = &_291;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_311 _    => _310 @ bb51[35]: fn main_0;    _310 = &_311;
+	n[1]: copy  n[0] => _320 @ bb54[3]:  fn main_0;    _320 = &(*(_312.3: &&()));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_debug; _319 = new_debug(move _320);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_302 _    => _301 @ bb56[0]: fn main_0;           _301 = &_302;
+	n[1]: copy  n[0] => _300 @ bb56[1]: fn main_0;           _300 = &(*_301);
+	n[2]: copy  n[1] => _299 @ bb56[2]: fn main_0;           _299 = move _300 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:  fn new_v1_formatted; _294 = new_v1_formatted(move _295, move _299, move _321, move _345);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_324 _    => _323 @ bb56[69]: fn main_0;           _323 = &_324;
+	n[1]: copy  n[0] => _322 @ bb56[70]: fn main_0;           _322 = &(*_323);
+	n[2]: copy  n[1] => _321 @ bb56[71]: fn main_0;           _321 = move _322 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy  n[2] => _3   @ bb0[0]:   fn new_v1_formatted; _294 = new_v1_formatted(move _295, move _299, move _321, move _345);
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: alloc       _    => _2   @ bb1[2]: fn no_owner; _2 = malloc(move _3);
 	n[1]: value.store n[0] => _5.* @ bb2[3]: fn no_owner; (*_5) = move _2 as *mut pointers::S (Misc);
 	n[2]: value.load  _    => _11  @ bb3[5]: fn no_owner; _11 = (*_12);
 	n[3]: copy        n[2] => _10  @ bb3[6]: fn no_owner; _10 = move _11 as *mut libc::c_void (Misc);
 	n[4]: free        n[3] => _9   @ bb3[8]: fn no_owner; _9 = free(move _10);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_355 _    => _354 @ bb61[11]: fn main_0;           _354 = &_355;
+	n[1]: copy  n[0] => _353 @ bb61[12]: fn main_0;           _353 = &(*_354);
+	n[2]: copy  n[1] => _352 @ bb61[13]: fn main_0;           _352 = move _353 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:   fn new_v1_formatted; _351 = new_v1_formatted(move _352, move _356, move _378, move _402);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_362 _    => _361 @ bb61[23]: fn main_0;      _361 = &_362;
+	n[1]: copy  n[0] => _371 @ bb61[46]: fn main_0;      _371 = &(*(_369.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _370 = new_display(move _371);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_364 _    => _363 @ bb61[27]: fn main_0;      _363 = &_364;
+	n[1]: copy  n[0] => _373 @ bb62[3]:  fn main_0;      _373 = &(*(_369.1: &u32));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _372 = new_display(move _373);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _366 @ bb61[30]: fn main_0; _366 = const "no_owner(1i32)";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_366 _    => _365 @ bb61[31]: fn main_0;      _365 = &_366;
+	n[1]: copy  n[0] => _375 @ bb63[3]:  fn main_0;      _375 = &(*(_369.2: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _374 = new_display(move _375);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_348 _ => _368 @ bb61[34]: fn main_0; _368 = &_348;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_368 _    => _367 @ bb61[35]: fn main_0;    _367 = &_368;
+	n[1]: copy  n[0] => _377 @ bb64[3]:  fn main_0;    _377 = &(*(_369.3: &&()));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_debug; _376 = new_debug(move _377);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_359 _    => _358 @ bb66[0]: fn main_0;           _358 = &_359;
+	n[1]: copy  n[0] => _357 @ bb66[1]: fn main_0;           _357 = &(*_358);
+	n[2]: copy  n[1] => _356 @ bb66[2]: fn main_0;           _356 = move _357 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:  fn new_v1_formatted; _351 = new_v1_formatted(move _352, move _356, move _378, move _402);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_381 _    => _380 @ bb66[69]: fn main_0;           _380 = &_381;
+	n[1]: copy  n[0] => _379 @ bb66[70]: fn main_0;           _379 = &(*_380);
+	n[2]: copy  n[1] => _378 @ bb66[71]: fn main_0;           _378 = move _379 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy  n[2] => _3   @ bb0[0]:   fn new_v1_formatted; _351 = new_v1_formatted(move _352, move _356, move _378, move _402);
 }
 nodes_that_need_write = []
 
@@ -426,6 +896,68 @@ g {
 nodes_that_need_write = [3, 2, 1, 0]
 
 g {
+	n[0]: &_412 _    => _411 @ bb71[11]: fn main_0;           _411 = &_412;
+	n[1]: copy  n[0] => _410 @ bb71[12]: fn main_0;           _410 = &(*_411);
+	n[2]: copy  n[1] => _409 @ bb71[13]: fn main_0;           _409 = move _410 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:   fn new_v1_formatted; _408 = new_v1_formatted(move _409, move _413, move _435, move _459);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_419 _    => _418 @ bb71[23]: fn main_0;      _418 = &_419;
+	n[1]: copy  n[0] => _428 @ bb71[46]: fn main_0;      _428 = &(*(_426.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _427 = new_display(move _428);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_421 _    => _420 @ bb71[27]: fn main_0;      _420 = &_421;
+	n[1]: copy  n[0] => _430 @ bb72[3]:  fn main_0;      _430 = &(*(_426.1: &u32));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _429 = new_display(move _430);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _423 @ bb71[30]: fn main_0; _423 = const "invalid()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_423 _    => _422 @ bb71[31]: fn main_0;      _422 = &_423;
+	n[1]: copy  n[0] => _432 @ bb73[3]:  fn main_0;      _432 = &(*(_426.2: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _431 = new_display(move _432);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_405 _ => _425 @ bb71[34]: fn main_0; _425 = &_405;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_425 _    => _424 @ bb71[35]: fn main_0;    _424 = &_425;
+	n[1]: copy  n[0] => _434 @ bb74[3]:  fn main_0;    _434 = &(*(_426.3: &&()));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_debug; _433 = new_debug(move _434);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_416 _    => _415 @ bb76[0]: fn main_0;           _415 = &_416;
+	n[1]: copy  n[0] => _414 @ bb76[1]: fn main_0;           _414 = &(*_415);
+	n[2]: copy  n[1] => _413 @ bb76[2]: fn main_0;           _413 = move _414 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:  fn new_v1_formatted; _408 = new_v1_formatted(move _409, move _413, move _435, move _459);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_438 _    => _437 @ bb76[69]: fn main_0;           _437 = &_438;
+	n[1]: copy  n[0] => _436 @ bb76[70]: fn main_0;           _436 = &(*_437);
+	n[2]: copy  n[1] => _435 @ bb76[71]: fn main_0;           _435 = move _436 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy  n[2] => _3   @ bb0[0]:   fn new_v1_formatted; _408 = new_v1_formatted(move _409, move _413, move _435, move _459);
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: &_1  _    => _4 @ bb0[8]: fn testing; _4 = &mut _1;
 	n[1]: copy n[0] => _3 @ bb0[9]: fn testing; _3 = &raw mut (*_4);
 }
@@ -441,6 +973,68 @@ g {
 	n[0]: &_1         _    => _7   @ bb0[16]: fn testing; _7 = &mut _1;
 	n[1]: copy        n[0] => _6   @ bb0[17]: fn testing; _6 = &raw mut (*_7);
 	n[2]: value.store n[1] => _5.* @ bb0[18]: fn testing; (*_5) = move _6;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_469 _    => _468 @ bb81[11]: fn main_0;           _468 = &_469;
+	n[1]: copy  n[0] => _467 @ bb81[12]: fn main_0;           _467 = &(*_468);
+	n[2]: copy  n[1] => _466 @ bb81[13]: fn main_0;           _466 = move _467 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:   fn new_v1_formatted; _465 = new_v1_formatted(move _466, move _470, move _492, move _516);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_476 _    => _475 @ bb81[23]: fn main_0;      _475 = &_476;
+	n[1]: copy  n[0] => _485 @ bb81[46]: fn main_0;      _485 = &(*(_483.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _484 = new_display(move _485);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_478 _    => _477 @ bb81[27]: fn main_0;      _477 = &_478;
+	n[1]: copy  n[0] => _487 @ bb82[3]:  fn main_0;      _487 = &(*(_483.1: &u32));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _486 = new_display(move _487);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _480 @ bb81[30]: fn main_0; _480 = const "testing()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_480 _    => _479 @ bb81[31]: fn main_0;      _479 = &_480;
+	n[1]: copy  n[0] => _489 @ bb83[3]:  fn main_0;      _489 = &(*(_483.2: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _488 = new_display(move _489);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_462 _ => _482 @ bb81[34]: fn main_0; _482 = &_462;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_482 _    => _481 @ bb81[35]: fn main_0;    _481 = &_482;
+	n[1]: copy  n[0] => _491 @ bb84[3]:  fn main_0;    _491 = &(*(_483.3: &&()));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_debug; _490 = new_debug(move _491);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_473 _    => _472 @ bb86[0]: fn main_0;           _472 = &_473;
+	n[1]: copy  n[0] => _471 @ bb86[1]: fn main_0;           _471 = &(*_472);
+	n[2]: copy  n[1] => _470 @ bb86[2]: fn main_0;           _470 = move _471 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:  fn new_v1_formatted; _465 = new_v1_formatted(move _466, move _470, move _492, move _516);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_495 _    => _494 @ bb86[69]: fn main_0;           _494 = &_495;
+	n[1]: copy  n[0] => _493 @ bb86[70]: fn main_0;           _493 = &(*_494);
+	n[2]: copy  n[1] => _492 @ bb86[71]: fn main_0;           _492 = move _493 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy  n[2] => _3   @ bb0[0]:   fn new_v1_formatted; _465 = new_v1_formatted(move _466, move _470, move _492, move _516);
 }
 nodes_that_need_write = []
 
@@ -472,6 +1066,68 @@ nodes_that_need_write = [4, 3, 2, 1, 0]
 
 g {
 	n[0]: &_13 _ => _14 @ bb4[16]: fn simple1; _14 = &raw const _13;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_526 _    => _525 @ bb91[11]: fn main_0;           _525 = &_526;
+	n[1]: copy  n[0] => _524 @ bb91[12]: fn main_0;           _524 = &(*_525);
+	n[2]: copy  n[1] => _523 @ bb91[13]: fn main_0;           _523 = move _524 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:   fn new_v1_formatted; _522 = new_v1_formatted(move _523, move _527, move _549, move _573);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_533 _    => _532 @ bb91[23]: fn main_0;      _532 = &_533;
+	n[1]: copy  n[0] => _542 @ bb91[46]: fn main_0;      _542 = &(*(_540.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _541 = new_display(move _542);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_535 _    => _534 @ bb91[27]: fn main_0;      _534 = &_535;
+	n[1]: copy  n[0] => _544 @ bb92[3]:  fn main_0;      _544 = &(*(_540.1: &u32));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _543 = new_display(move _544);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _537 @ bb91[30]: fn main_0; _537 = const "simple1()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_537 _    => _536 @ bb91[31]: fn main_0;      _536 = &_537;
+	n[1]: copy  n[0] => _546 @ bb93[3]:  fn main_0;      _546 = &(*(_540.2: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_display; _545 = new_display(move _546);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_519 _ => _539 @ bb91[34]: fn main_0; _539 = &_519;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_539 _    => _538 @ bb91[35]: fn main_0;    _538 = &_539;
+	n[1]: copy  n[0] => _548 @ bb94[3]:  fn main_0;    _548 = &(*(_540.3: &&()));
+	n[2]: copy  n[1] => _1   @ bb0[0]:   fn new_debug; _547 = new_debug(move _548);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_530 _    => _529 @ bb96[0]: fn main_0;           _529 = &_530;
+	n[1]: copy  n[0] => _528 @ bb96[1]: fn main_0;           _528 = &(*_529);
+	n[2]: copy  n[1] => _527 @ bb96[2]: fn main_0;           _527 = move _528 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:  fn new_v1_formatted; _522 = new_v1_formatted(move _523, move _527, move _549, move _573);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_552 _    => _551 @ bb96[69]: fn main_0;           _551 = &_552;
+	n[1]: copy  n[0] => _550 @ bb96[70]: fn main_0;           _550 = &(*_551);
+	n[2]: copy  n[1] => _549 @ bb96[71]: fn main_0;           _549 = move _550 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy  n[2] => _3   @ bb0[0]:   fn new_v1_formatted; _522 = new_v1_formatted(move _523, move _527, move _549, move _573);
 }
 nodes_that_need_write = []
 
@@ -606,9 +1262,133 @@ g {
 nodes_that_need_write = [17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7]
 
 g {
+	n[0]: &_583 _    => _582 @ bb101[11]: fn main_0;           _582 = &_583;
+	n[1]: copy  n[0] => _581 @ bb101[12]: fn main_0;           _581 = &(*_582);
+	n[2]: copy  n[1] => _580 @ bb101[13]: fn main_0;           _580 = move _581 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:    fn new_v1_formatted; _579 = new_v1_formatted(move _580, move _584, move _606, move _630);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_590 _    => _589 @ bb101[23]: fn main_0;      _589 = &_590;
+	n[1]: copy  n[0] => _599 @ bb101[46]: fn main_0;      _599 = &(*(_597.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _598 = new_display(move _599);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_592 _    => _591 @ bb101[27]: fn main_0;      _591 = &_592;
+	n[1]: copy  n[0] => _601 @ bb102[3]:  fn main_0;      _601 = &(*(_597.1: &u32));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _600 = new_display(move _601);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _594 @ bb101[30]: fn main_0; _594 = const "lighttpd_test()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_594 _    => _593 @ bb101[31]: fn main_0;      _593 = &_594;
+	n[1]: copy  n[0] => _603 @ bb103[3]:  fn main_0;      _603 = &(*(_597.2: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _602 = new_display(move _603);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_576 _ => _596 @ bb101[34]: fn main_0; _596 = &_576;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_596 _    => _595 @ bb101[35]: fn main_0;    _595 = &_596;
+	n[1]: copy  n[0] => _605 @ bb104[3]:  fn main_0;    _605 = &(*(_597.3: &&()));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_debug; _604 = new_debug(move _605);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_587 _    => _586 @ bb106[0]: fn main_0;           _586 = &_587;
+	n[1]: copy  n[0] => _585 @ bb106[1]: fn main_0;           _585 = &(*_586);
+	n[2]: copy  n[1] => _584 @ bb106[2]: fn main_0;           _584 = move _585 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:   fn new_v1_formatted; _579 = new_v1_formatted(move _580, move _584, move _606, move _630);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_609 _    => _608 @ bb106[69]: fn main_0;           _608 = &_609;
+	n[1]: copy  n[0] => _607 @ bb106[70]: fn main_0;           _607 = &(*_608);
+	n[2]: copy  n[1] => _606 @ bb106[71]: fn main_0;           _606 = move _607 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy  n[2] => _3   @ bb0[0]:    fn new_v1_formatted; _579 = new_v1_formatted(move _580, move _584, move _606, move _630);
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: alloc _    => _1 @ bb1[2]: fn test_malloc_free; _1 = malloc(move _2);
 	n[1]: copy  n[0] => _5 @ bb2[4]: fn test_malloc_free; _5 = _1;
 	n[2]: free  n[1] => _4 @ bb2[5]: fn test_malloc_free; _4 = free(move _5);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_640 _    => _639 @ bb111[11]: fn main_0;           _639 = &_640;
+	n[1]: copy  n[0] => _638 @ bb111[12]: fn main_0;           _638 = &(*_639);
+	n[2]: copy  n[1] => _637 @ bb111[13]: fn main_0;           _637 = move _638 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:    fn new_v1_formatted; _636 = new_v1_formatted(move _637, move _641, move _663, move _687);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_647 _    => _646 @ bb111[23]: fn main_0;      _646 = &_647;
+	n[1]: copy  n[0] => _656 @ bb111[46]: fn main_0;      _656 = &(*(_654.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _655 = new_display(move _656);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_649 _    => _648 @ bb111[27]: fn main_0;      _648 = &_649;
+	n[1]: copy  n[0] => _658 @ bb112[3]:  fn main_0;      _658 = &(*(_654.1: &u32));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _657 = new_display(move _658);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _651 @ bb111[30]: fn main_0; _651 = const "test_malloc_free()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_651 _    => _650 @ bb111[31]: fn main_0;      _650 = &_651;
+	n[1]: copy  n[0] => _660 @ bb113[3]:  fn main_0;      _660 = &(*(_654.2: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _659 = new_display(move _660);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_633 _ => _653 @ bb111[34]: fn main_0; _653 = &_633;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_653 _    => _652 @ bb111[35]: fn main_0;    _652 = &_653;
+	n[1]: copy  n[0] => _662 @ bb114[3]:  fn main_0;    _662 = &(*(_654.3: &&()));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_debug; _661 = new_debug(move _662);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_644 _    => _643 @ bb116[0]: fn main_0;           _643 = &_644;
+	n[1]: copy  n[0] => _642 @ bb116[1]: fn main_0;           _642 = &(*_643);
+	n[2]: copy  n[1] => _641 @ bb116[2]: fn main_0;           _641 = move _642 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:   fn new_v1_formatted; _636 = new_v1_formatted(move _637, move _641, move _663, move _687);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_666 _    => _665 @ bb116[69]: fn main_0;           _665 = &_666;
+	n[1]: copy  n[0] => _664 @ bb116[70]: fn main_0;           _664 = &(*_665);
+	n[2]: copy  n[1] => _663 @ bb116[71]: fn main_0;           _663 = move _664 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy  n[2] => _3   @ bb0[0]:    fn new_v1_formatted; _636 = new_v1_formatted(move _637, move _641, move _663, move _687);
 }
 nodes_that_need_write = []
 
@@ -622,11 +1402,135 @@ g {
 nodes_that_need_write = []
 
 g {
+	n[0]: &_697 _    => _696 @ bb121[11]: fn main_0;           _696 = &_697;
+	n[1]: copy  n[0] => _695 @ bb121[12]: fn main_0;           _695 = &(*_696);
+	n[2]: copy  n[1] => _694 @ bb121[13]: fn main_0;           _694 = move _695 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:    fn new_v1_formatted; _693 = new_v1_formatted(move _694, move _698, move _720, move _744);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_704 _    => _703 @ bb121[23]: fn main_0;      _703 = &_704;
+	n[1]: copy  n[0] => _713 @ bb121[46]: fn main_0;      _713 = &(*(_711.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _712 = new_display(move _713);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_706 _    => _705 @ bb121[27]: fn main_0;      _705 = &_706;
+	n[1]: copy  n[0] => _715 @ bb122[3]:  fn main_0;      _715 = &(*(_711.1: &u32));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _714 = new_display(move _715);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _708 @ bb121[30]: fn main_0; _708 = const "test_malloc_free_cast()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_708 _    => _707 @ bb121[31]: fn main_0;      _707 = &_708;
+	n[1]: copy  n[0] => _717 @ bb123[3]:  fn main_0;      _717 = &(*(_711.2: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _716 = new_display(move _717);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_690 _ => _710 @ bb121[34]: fn main_0; _710 = &_690;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_710 _    => _709 @ bb121[35]: fn main_0;    _709 = &_710;
+	n[1]: copy  n[0] => _719 @ bb124[3]:  fn main_0;    _719 = &(*(_711.3: &&()));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_debug; _718 = new_debug(move _719);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_701 _    => _700 @ bb126[0]: fn main_0;           _700 = &_701;
+	n[1]: copy  n[0] => _699 @ bb126[1]: fn main_0;           _699 = &(*_700);
+	n[2]: copy  n[1] => _698 @ bb126[2]: fn main_0;           _698 = move _699 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:   fn new_v1_formatted; _693 = new_v1_formatted(move _694, move _698, move _720, move _744);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_723 _    => _722 @ bb126[69]: fn main_0;           _722 = &_723;
+	n[1]: copy  n[0] => _721 @ bb126[70]: fn main_0;           _721 = &(*_722);
+	n[2]: copy  n[1] => _720 @ bb126[71]: fn main_0;           _720 = move _721 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy  n[2] => _3   @ bb0[0]:    fn new_v1_formatted; _693 = new_v1_formatted(move _694, move _698, move _720, move _744);
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: alloc _    => _1 @ bb1[2]: fn test_arg; _1 = malloc(move _2);
 	n[1]: copy  n[0] => _5 @ bb2[4]: fn test_arg; _5 = _1;
 	n[2]: copy  n[1] => _1 @ bb0[0]: fn foo;      _4 = foo(move _5);
 	n[3]: copy  n[2] => _2 @ bb0[1]: fn foo;      _2 = _1;
 	n[4]: copy  n[2] => _6 @ bb3[3]: fn test_arg; _6 = _1;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_754 _    => _753 @ bb131[11]: fn main_0;           _753 = &_754;
+	n[1]: copy  n[0] => _752 @ bb131[12]: fn main_0;           _752 = &(*_753);
+	n[2]: copy  n[1] => _751 @ bb131[13]: fn main_0;           _751 = move _752 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:    fn new_v1_formatted; _750 = new_v1_formatted(move _751, move _755, move _777, move _801);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_761 _    => _760 @ bb131[23]: fn main_0;      _760 = &_761;
+	n[1]: copy  n[0] => _770 @ bb131[46]: fn main_0;      _770 = &(*(_768.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _769 = new_display(move _770);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_763 _    => _762 @ bb131[27]: fn main_0;      _762 = &_763;
+	n[1]: copy  n[0] => _772 @ bb132[3]:  fn main_0;      _772 = &(*(_768.1: &u32));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _771 = new_display(move _772);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _765 @ bb131[30]: fn main_0; _765 = const "test_arg()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_765 _    => _764 @ bb131[31]: fn main_0;      _764 = &_765;
+	n[1]: copy  n[0] => _774 @ bb133[3]:  fn main_0;      _774 = &(*(_768.2: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _773 = new_display(move _774);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_747 _ => _767 @ bb131[34]: fn main_0; _767 = &_747;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_767 _    => _766 @ bb131[35]: fn main_0;    _766 = &_767;
+	n[1]: copy  n[0] => _776 @ bb134[3]:  fn main_0;    _776 = &(*(_768.3: &&()));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_debug; _775 = new_debug(move _776);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_758 _    => _757 @ bb136[0]: fn main_0;           _757 = &_758;
+	n[1]: copy  n[0] => _756 @ bb136[1]: fn main_0;           _756 = &(*_757);
+	n[2]: copy  n[1] => _755 @ bb136[2]: fn main_0;           _755 = move _756 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:   fn new_v1_formatted; _750 = new_v1_formatted(move _751, move _755, move _777, move _801);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_780 _    => _779 @ bb136[69]: fn main_0;           _779 = &_780;
+	n[1]: copy  n[0] => _778 @ bb136[70]: fn main_0;           _778 = &(*_779);
+	n[2]: copy  n[1] => _777 @ bb136[71]: fn main_0;           _777 = move _778 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy  n[2] => _3   @ bb0[0]:    fn new_v1_formatted; _750 = new_v1_formatted(move _751, move _755, move _777, move _801);
 }
 nodes_that_need_write = []
 
@@ -655,6 +1559,68 @@ g {
 nodes_that_need_write = []
 
 g {
+	n[0]: &_811 _    => _810 @ bb141[11]: fn main_0;           _810 = &_811;
+	n[1]: copy  n[0] => _809 @ bb141[12]: fn main_0;           _809 = &(*_810);
+	n[2]: copy  n[1] => _808 @ bb141[13]: fn main_0;           _808 = move _809 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:    fn new_v1_formatted; _807 = new_v1_formatted(move _808, move _812, move _834, move _858);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_818 _    => _817 @ bb141[23]: fn main_0;      _817 = &_818;
+	n[1]: copy  n[0] => _827 @ bb141[46]: fn main_0;      _827 = &(*(_825.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _826 = new_display(move _827);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_820 _    => _819 @ bb141[27]: fn main_0;      _819 = &_820;
+	n[1]: copy  n[0] => _829 @ bb142[3]:  fn main_0;      _829 = &(*(_825.1: &u32));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _828 = new_display(move _829);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _822 @ bb141[30]: fn main_0; _822 = const "test_arg_rec()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_822 _    => _821 @ bb141[31]: fn main_0;      _821 = &_822;
+	n[1]: copy  n[0] => _831 @ bb143[3]:  fn main_0;      _831 = &(*(_825.2: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _830 = new_display(move _831);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_804 _ => _824 @ bb141[34]: fn main_0; _824 = &_804;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_824 _    => _823 @ bb141[35]: fn main_0;    _823 = &_824;
+	n[1]: copy  n[0] => _833 @ bb144[3]:  fn main_0;    _833 = &(*(_825.3: &&()));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_debug; _832 = new_debug(move _833);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_815 _    => _814 @ bb146[0]: fn main_0;           _814 = &_815;
+	n[1]: copy  n[0] => _813 @ bb146[1]: fn main_0;           _813 = &(*_814);
+	n[2]: copy  n[1] => _812 @ bb146[2]: fn main_0;           _812 = move _813 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:   fn new_v1_formatted; _807 = new_v1_formatted(move _808, move _812, move _834, move _858);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_837 _    => _836 @ bb146[69]: fn main_0;           _836 = &_837;
+	n[1]: copy  n[0] => _835 @ bb146[70]: fn main_0;           _835 = &(*_836);
+	n[2]: copy  n[1] => _834 @ bb146[71]: fn main_0;           _834 = move _835 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy  n[2] => _3   @ bb0[0]:    fn new_v1_formatted; _807 = new_v1_formatted(move _808, move _812, move _834, move _858);
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: &_1  _    => _2 @ bb0[4]:  fn test_shared_ref; _2 = &_1;
 	n[1]: copy n[0] => _3 @ bb0[7]:  fn test_shared_ref; _3 = _2;
 	n[2]: copy n[1] => _5 @ bb0[11]: fn test_shared_ref; _5 = &(*_3);
@@ -662,6 +1628,68 @@ g {
 	n[4]: copy n[3] => _0 @ bb0[0]:  fn shared_ref_foo;  _0 = _1;
 	n[5]: copy n[4] => _4 @ bb0[12]: fn test_shared_ref; _4 = shared_ref_foo(move _5);
 	n[6]: copy n[5] => _6 @ bb1[3]:  fn test_shared_ref; _6 = &raw const (*_4);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_868 _    => _867 @ bb151[11]: fn main_0;           _867 = &_868;
+	n[1]: copy  n[0] => _866 @ bb151[12]: fn main_0;           _866 = &(*_867);
+	n[2]: copy  n[1] => _865 @ bb151[13]: fn main_0;           _865 = move _866 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:    fn new_v1_formatted; _864 = new_v1_formatted(move _865, move _869, move _891, move _915);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_875 _    => _874 @ bb151[23]: fn main_0;      _874 = &_875;
+	n[1]: copy  n[0] => _884 @ bb151[46]: fn main_0;      _884 = &(*(_882.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _883 = new_display(move _884);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_877 _    => _876 @ bb151[27]: fn main_0;      _876 = &_877;
+	n[1]: copy  n[0] => _886 @ bb152[3]:  fn main_0;      _886 = &(*(_882.1: &u32));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _885 = new_display(move _886);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _879 @ bb151[30]: fn main_0; _879 = const "test_shared_ref()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_879 _    => _878 @ bb151[31]: fn main_0;      _878 = &_879;
+	n[1]: copy  n[0] => _888 @ bb153[3]:  fn main_0;      _888 = &(*(_882.2: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _887 = new_display(move _888);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_861 _ => _881 @ bb151[34]: fn main_0; _881 = &_861;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_881 _    => _880 @ bb151[35]: fn main_0;    _880 = &_881;
+	n[1]: copy  n[0] => _890 @ bb154[3]:  fn main_0;    _890 = &(*(_882.3: &&()));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_debug; _889 = new_debug(move _890);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_872 _    => _871 @ bb156[0]: fn main_0;           _871 = &_872;
+	n[1]: copy  n[0] => _870 @ bb156[1]: fn main_0;           _870 = &(*_871);
+	n[2]: copy  n[1] => _869 @ bb156[2]: fn main_0;           _869 = move _870 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:   fn new_v1_formatted; _864 = new_v1_formatted(move _865, move _869, move _891, move _915);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_894 _    => _893 @ bb156[69]: fn main_0;           _893 = &_894;
+	n[1]: copy  n[0] => _892 @ bb156[70]: fn main_0;           _892 = &(*_893);
+	n[2]: copy  n[1] => _891 @ bb156[71]: fn main_0;           _891 = move _892 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy  n[2] => _3   @ bb0[0]:    fn new_v1_formatted; _864 = new_v1_formatted(move _865, move _869, move _891, move _915);
 }
 nodes_that_need_write = []
 
@@ -685,6 +1713,68 @@ g {
 nodes_that_need_write = []
 
 g {
+	n[0]: &_925 _    => _924 @ bb161[11]: fn main_0;           _924 = &_925;
+	n[1]: copy  n[0] => _923 @ bb161[12]: fn main_0;           _923 = &(*_924);
+	n[2]: copy  n[1] => _922 @ bb161[13]: fn main_0;           _922 = move _923 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:    fn new_v1_formatted; _921 = new_v1_formatted(move _922, move _926, move _948, move _972);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_932 _    => _931 @ bb161[23]: fn main_0;      _931 = &_932;
+	n[1]: copy  n[0] => _941 @ bb161[46]: fn main_0;      _941 = &(*(_939.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _940 = new_display(move _941);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_934 _    => _933 @ bb161[27]: fn main_0;      _933 = &_934;
+	n[1]: copy  n[0] => _943 @ bb162[3]:  fn main_0;      _943 = &(*(_939.1: &u32));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _942 = new_display(move _943);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _936 @ bb161[30]: fn main_0; _936 = const "test_unique_ref()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_936 _    => _935 @ bb161[31]: fn main_0;      _935 = &_936;
+	n[1]: copy  n[0] => _945 @ bb163[3]:  fn main_0;      _945 = &(*(_939.2: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _944 = new_display(move _945);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_918 _ => _938 @ bb161[34]: fn main_0; _938 = &_918;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_938 _    => _937 @ bb161[35]: fn main_0;    _937 = &_938;
+	n[1]: copy  n[0] => _947 @ bb164[3]:  fn main_0;    _947 = &(*(_939.3: &&()));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_debug; _946 = new_debug(move _947);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_929 _    => _928 @ bb166[0]: fn main_0;           _928 = &_929;
+	n[1]: copy  n[0] => _927 @ bb166[1]: fn main_0;           _927 = &(*_928);
+	n[2]: copy  n[1] => _926 @ bb166[2]: fn main_0;           _926 = move _927 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:   fn new_v1_formatted; _921 = new_v1_formatted(move _922, move _926, move _948, move _972);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_951 _    => _950 @ bb166[69]: fn main_0;           _950 = &_951;
+	n[1]: copy  n[0] => _949 @ bb166[70]: fn main_0;           _949 = &(*_950);
+	n[2]: copy  n[1] => _948 @ bb166[71]: fn main_0;           _948 = move _949 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy  n[2] => _3   @ bb0[0]:    fn new_v1_formatted; _921 = new_v1_formatted(move _922, move _926, move _948, move _972);
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: alloc _    => _1 @ bb1[2]: fn test_realloc_reassign; _1 = malloc(move _2);
 	n[1]: copy  n[0] => _5 @ bb2[4]: fn test_realloc_reassign; _5 = _1;
 	n[2]: free  n[1] => _4 @ bb4[2]: fn test_realloc_reassign; _4 = realloc(move _5, move _6);
@@ -696,6 +1786,68 @@ g {
 	n[1]: copy  n[0] => _1  @ bb5[2]: fn test_realloc_reassign; _1 = move _4;
 	n[2]: copy  n[1] => _11 @ bb5[6]: fn test_realloc_reassign; _11 = _1;
 	n[3]: free  n[2] => _10 @ bb5[7]: fn test_realloc_reassign; _10 = free(move _11);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_982 _    => _981 @ bb171[11]: fn main_0;           _981 = &_982;
+	n[1]: copy  n[0] => _980 @ bb171[12]: fn main_0;           _980 = &(*_981);
+	n[2]: copy  n[1] => _979 @ bb171[13]: fn main_0;           _979 = move _980 as &[&str] (Pointer(Unsize));
+	n[3]: copy  n[2] => _1   @ bb0[0]:    fn new_v1_formatted; _978 = new_v1_formatted(move _979, move _983, move _1005, move _1029);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_989 _    => _988 @ bb171[23]: fn main_0;      _988 = &_989;
+	n[1]: copy  n[0] => _998 @ bb171[46]: fn main_0;      _998 = &(*(_996.0: &&str));
+	n[2]: copy  n[1] => _1   @ bb0[0]:    fn new_display; _997 = new_display(move _998);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_991 _    => _990  @ bb171[27]: fn main_0;      _990 = &_991;
+	n[1]: copy  n[0] => _1000 @ bb172[3]:  fn main_0;      _1000 = &(*(_996.1: &u32));
+	n[2]: copy  n[1] => _1    @ bb0[0]:    fn new_display; _999 = new_display(move _1000);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _993 @ bb171[30]: fn main_0; _993 = const "test_realloc_reassign()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_993 _    => _992  @ bb171[31]: fn main_0;      _992 = &_993;
+	n[1]: copy  n[0] => _1002 @ bb173[3]:  fn main_0;      _1002 = &(*(_996.2: &&str));
+	n[2]: copy  n[1] => _1    @ bb0[0]:    fn new_display; _1001 = new_display(move _1002);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_975 _ => _995 @ bb171[34]: fn main_0; _995 = &_975;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_995 _    => _994  @ bb171[35]: fn main_0;    _994 = &_995;
+	n[1]: copy  n[0] => _1004 @ bb174[3]:  fn main_0;    _1004 = &(*(_996.3: &&()));
+	n[2]: copy  n[1] => _1    @ bb0[0]:    fn new_debug; _1003 = new_debug(move _1004);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_986 _    => _985 @ bb176[0]: fn main_0;           _985 = &_986;
+	n[1]: copy  n[0] => _984 @ bb176[1]: fn main_0;           _984 = &(*_985);
+	n[2]: copy  n[1] => _983 @ bb176[2]: fn main_0;           _983 = move _984 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy  n[2] => _2   @ bb0[0]:   fn new_v1_formatted; _978 = new_v1_formatted(move _979, move _983, move _1005, move _1029);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1008 _    => _1007 @ bb176[69]: fn main_0;           _1007 = &_1008;
+	n[1]: copy   n[0] => _1006 @ bb176[70]: fn main_0;           _1006 = &(*_1007);
+	n[2]: copy   n[1] => _1005 @ bb176[71]: fn main_0;           _1005 = move _1006 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy   n[2] => _3    @ bb0[0]:    fn new_v1_formatted; _978 = new_v1_formatted(move _979, move _983, move _1005, move _1029);
 }
 nodes_that_need_write = []
 
@@ -714,12 +1866,136 @@ g {
 nodes_that_need_write = []
 
 g {
+	n[0]: &_1039 _    => _1038 @ bb181[11]: fn main_0;           _1038 = &_1039;
+	n[1]: copy   n[0] => _1037 @ bb181[12]: fn main_0;           _1037 = &(*_1038);
+	n[2]: copy   n[1] => _1036 @ bb181[13]: fn main_0;           _1036 = move _1037 as &[&str] (Pointer(Unsize));
+	n[3]: copy   n[2] => _1    @ bb0[0]:    fn new_v1_formatted; _1035 = new_v1_formatted(move _1036, move _1040, move _1062, move _1086);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1046 _    => _1045 @ bb181[23]: fn main_0;      _1045 = &_1046;
+	n[1]: copy   n[0] => _1055 @ bb181[46]: fn main_0;      _1055 = &(*(_1053.0: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1054 = new_display(move _1055);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1048 _    => _1047 @ bb181[27]: fn main_0;      _1047 = &_1048;
+	n[1]: copy   n[0] => _1057 @ bb182[3]:  fn main_0;      _1057 = &(*(_1053.1: &u32));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1056 = new_display(move _1057);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _1050 @ bb181[30]: fn main_0; _1050 = const "test_realloc_fresh()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1050 _    => _1049 @ bb181[31]: fn main_0;      _1049 = &_1050;
+	n[1]: copy   n[0] => _1059 @ bb183[3]:  fn main_0;      _1059 = &(*(_1053.2: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1058 = new_display(move _1059);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1032 _ => _1052 @ bb181[34]: fn main_0; _1052 = &_1032;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1052 _    => _1051 @ bb181[35]: fn main_0;    _1051 = &_1052;
+	n[1]: copy   n[0] => _1061 @ bb184[3]:  fn main_0;    _1061 = &(*(_1053.3: &&()));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_debug; _1060 = new_debug(move _1061);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1043 _    => _1042 @ bb186[0]: fn main_0;           _1042 = &_1043;
+	n[1]: copy   n[0] => _1041 @ bb186[1]: fn main_0;           _1041 = &(*_1042);
+	n[2]: copy   n[1] => _1040 @ bb186[2]: fn main_0;           _1040 = move _1041 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy   n[2] => _2    @ bb0[0]:   fn new_v1_formatted; _1035 = new_v1_formatted(move _1036, move _1040, move _1062, move _1086);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1065 _    => _1064 @ bb186[69]: fn main_0;           _1064 = &_1065;
+	n[1]: copy   n[0] => _1063 @ bb186[70]: fn main_0;           _1063 = &(*_1064);
+	n[2]: copy   n[1] => _1062 @ bb186[71]: fn main_0;           _1062 = move _1063 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy   n[2] => _3    @ bb0[0]:    fn new_v1_formatted; _1035 = new_v1_formatted(move _1036, move _1040, move _1062, move _1086);
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: alloc     _    => _2 @ bb1[2]:  fn test_load_addr; _2 = malloc(move _3);
 	n[1]: copy      n[0] => _1 @ bb2[1]:  fn test_load_addr; _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: addr.load n[1] => _  @ bb2[5]:  fn test_load_addr; _5 = (*_1);
 	n[3]: copy      n[1] => _8 @ bb2[10]: fn test_load_addr; _8 = _1;
 	n[4]: copy      n[3] => _7 @ bb2[11]: fn test_load_addr; _7 = move _8 as *mut libc::c_void (Misc);
 	n[5]: free      n[4] => _6 @ bb2[13]: fn test_load_addr; _6 = free(move _7);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1096 _    => _1095 @ bb191[11]: fn main_0;           _1095 = &_1096;
+	n[1]: copy   n[0] => _1094 @ bb191[12]: fn main_0;           _1094 = &(*_1095);
+	n[2]: copy   n[1] => _1093 @ bb191[13]: fn main_0;           _1093 = move _1094 as &[&str] (Pointer(Unsize));
+	n[3]: copy   n[2] => _1    @ bb0[0]:    fn new_v1_formatted; _1092 = new_v1_formatted(move _1093, move _1097, move _1119, move _1143);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1103 _    => _1102 @ bb191[23]: fn main_0;      _1102 = &_1103;
+	n[1]: copy   n[0] => _1112 @ bb191[46]: fn main_0;      _1112 = &(*(_1110.0: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1111 = new_display(move _1112);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1105 _    => _1104 @ bb191[27]: fn main_0;      _1104 = &_1105;
+	n[1]: copy   n[0] => _1114 @ bb192[3]:  fn main_0;      _1114 = &(*(_1110.1: &u32));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1113 = new_display(move _1114);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _1107 @ bb191[30]: fn main_0; _1107 = const "test_load_addr()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1107 _    => _1106 @ bb191[31]: fn main_0;      _1106 = &_1107;
+	n[1]: copy   n[0] => _1116 @ bb193[3]:  fn main_0;      _1116 = &(*(_1110.2: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1115 = new_display(move _1116);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1089 _ => _1109 @ bb191[34]: fn main_0; _1109 = &_1089;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1109 _    => _1108 @ bb191[35]: fn main_0;    _1108 = &_1109;
+	n[1]: copy   n[0] => _1118 @ bb194[3]:  fn main_0;    _1118 = &(*(_1110.3: &&()));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_debug; _1117 = new_debug(move _1118);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1100 _    => _1099 @ bb196[0]: fn main_0;           _1099 = &_1100;
+	n[1]: copy   n[0] => _1098 @ bb196[1]: fn main_0;           _1098 = &(*_1099);
+	n[2]: copy   n[1] => _1097 @ bb196[2]: fn main_0;           _1097 = move _1098 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy   n[2] => _2    @ bb0[0]:   fn new_v1_formatted; _1092 = new_v1_formatted(move _1093, move _1097, move _1119, move _1143);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1122 _    => _1121 @ bb196[69]: fn main_0;           _1121 = &_1122;
+	n[1]: copy   n[0] => _1120 @ bb196[70]: fn main_0;           _1120 = &(*_1121);
+	n[2]: copy   n[1] => _1119 @ bb196[71]: fn main_0;           _1119 = move _1120 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy   n[2] => _3    @ bb0[0]:    fn new_v1_formatted; _1092 = new_v1_formatted(move _1093, move _1097, move _1119, move _1143);
 }
 nodes_that_need_write = []
 
@@ -738,6 +2014,68 @@ g {
 nodes_that_need_write = []
 
 g {
+	n[0]: &_1153 _    => _1152 @ bb201[11]: fn main_0;           _1152 = &_1153;
+	n[1]: copy   n[0] => _1151 @ bb201[12]: fn main_0;           _1151 = &(*_1152);
+	n[2]: copy   n[1] => _1150 @ bb201[13]: fn main_0;           _1150 = move _1151 as &[&str] (Pointer(Unsize));
+	n[3]: copy   n[2] => _1    @ bb0[0]:    fn new_v1_formatted; _1149 = new_v1_formatted(move _1150, move _1154, move _1176, move _1200);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1160 _    => _1159 @ bb201[23]: fn main_0;      _1159 = &_1160;
+	n[1]: copy   n[0] => _1169 @ bb201[46]: fn main_0;      _1169 = &(*(_1167.0: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1168 = new_display(move _1169);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1162 _    => _1161 @ bb201[27]: fn main_0;      _1161 = &_1162;
+	n[1]: copy   n[0] => _1171 @ bb202[3]:  fn main_0;      _1171 = &(*(_1167.1: &u32));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1170 = new_display(move _1171);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _1164 @ bb201[30]: fn main_0; _1164 = const "test_overwrite()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1164 _    => _1163 @ bb201[31]: fn main_0;      _1163 = &_1164;
+	n[1]: copy   n[0] => _1173 @ bb203[3]:  fn main_0;      _1173 = &(*(_1167.2: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1172 = new_display(move _1173);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1146 _ => _1166 @ bb201[34]: fn main_0; _1166 = &_1146;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1166 _    => _1165 @ bb201[35]: fn main_0;    _1165 = &_1166;
+	n[1]: copy   n[0] => _1175 @ bb204[3]:  fn main_0;    _1175 = &(*(_1167.3: &&()));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_debug; _1174 = new_debug(move _1175);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1157 _    => _1156 @ bb206[0]: fn main_0;           _1156 = &_1157;
+	n[1]: copy   n[0] => _1155 @ bb206[1]: fn main_0;           _1155 = &(*_1156);
+	n[2]: copy   n[1] => _1154 @ bb206[2]: fn main_0;           _1154 = move _1155 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy   n[2] => _2    @ bb0[0]:   fn new_v1_formatted; _1149 = new_v1_formatted(move _1150, move _1154, move _1176, move _1200);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1179 _    => _1178 @ bb206[69]: fn main_0;           _1178 = &_1179;
+	n[1]: copy   n[0] => _1177 @ bb206[70]: fn main_0;           _1177 = &(*_1178);
+	n[2]: copy   n[1] => _1176 @ bb206[71]: fn main_0;           _1176 = move _1177 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy   n[2] => _3    @ bb0[0]:    fn new_v1_formatted; _1149 = new_v1_formatted(move _1150, move _1154, move _1176, move _1200);
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: alloc      _    => _2 @ bb1[2]:  fn test_store_addr; _2 = malloc(move _3);
 	n[1]: copy       n[0] => _1 @ bb2[1]:  fn test_store_addr; _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: field.0    n[1] => _  @ bb2[4]:  fn test_store_addr; ((*_1).0: i32) = const 10_i32;
@@ -747,6 +2085,68 @@ g {
 	n[6]: free       n[5] => _5 @ bb2[11]: fn test_store_addr; _5 = free(move _6);
 }
 nodes_that_need_write = [3, 2, 1, 0]
+
+g {
+	n[0]: &_1210 _    => _1209 @ bb211[11]: fn main_0;           _1209 = &_1210;
+	n[1]: copy   n[0] => _1208 @ bb211[12]: fn main_0;           _1208 = &(*_1209);
+	n[2]: copy   n[1] => _1207 @ bb211[13]: fn main_0;           _1207 = move _1208 as &[&str] (Pointer(Unsize));
+	n[3]: copy   n[2] => _1    @ bb0[0]:    fn new_v1_formatted; _1206 = new_v1_formatted(move _1207, move _1211, move _1233, move _1257);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1217 _    => _1216 @ bb211[23]: fn main_0;      _1216 = &_1217;
+	n[1]: copy   n[0] => _1226 @ bb211[46]: fn main_0;      _1226 = &(*(_1224.0: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1225 = new_display(move _1226);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1219 _    => _1218 @ bb211[27]: fn main_0;      _1218 = &_1219;
+	n[1]: copy   n[0] => _1228 @ bb212[3]:  fn main_0;      _1228 = &(*(_1224.1: &u32));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1227 = new_display(move _1228);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _1221 @ bb211[30]: fn main_0; _1221 = const "test_store_addr()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1221 _    => _1220 @ bb211[31]: fn main_0;      _1220 = &_1221;
+	n[1]: copy   n[0] => _1230 @ bb213[3]:  fn main_0;      _1230 = &(*(_1224.2: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1229 = new_display(move _1230);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1203 _ => _1223 @ bb211[34]: fn main_0; _1223 = &_1203;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1223 _    => _1222 @ bb211[35]: fn main_0;    _1222 = &_1223;
+	n[1]: copy   n[0] => _1232 @ bb214[3]:  fn main_0;    _1232 = &(*(_1224.3: &&()));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_debug; _1231 = new_debug(move _1232);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1214 _    => _1213 @ bb216[0]: fn main_0;           _1213 = &_1214;
+	n[1]: copy   n[0] => _1212 @ bb216[1]: fn main_0;           _1212 = &(*_1213);
+	n[2]: copy   n[1] => _1211 @ bb216[2]: fn main_0;           _1211 = move _1212 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy   n[2] => _2    @ bb0[0]:   fn new_v1_formatted; _1206 = new_v1_formatted(move _1207, move _1211, move _1233, move _1257);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1236 _    => _1235 @ bb216[69]: fn main_0;           _1235 = &_1236;
+	n[1]: copy   n[0] => _1234 @ bb216[70]: fn main_0;           _1234 = &(*_1235);
+	n[2]: copy   n[1] => _1233 @ bb216[71]: fn main_0;           _1233 = move _1234 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy   n[2] => _3    @ bb0[0]:    fn new_v1_formatted; _1206 = new_v1_formatted(move _1207, move _1211, move _1233, move _1257);
+}
+nodes_that_need_write = []
 
 g {
 	n[0]: alloc      _    => _2  @ bb1[2]:  fn test_load_other_store_self; _2 = malloc(move _3);
@@ -773,6 +2173,68 @@ g {
 nodes_that_need_write = [3, 2, 1, 0]
 
 g {
+	n[0]: &_1267 _    => _1266 @ bb221[11]: fn main_0;           _1266 = &_1267;
+	n[1]: copy   n[0] => _1265 @ bb221[12]: fn main_0;           _1265 = &(*_1266);
+	n[2]: copy   n[1] => _1264 @ bb221[13]: fn main_0;           _1264 = move _1265 as &[&str] (Pointer(Unsize));
+	n[3]: copy   n[2] => _1    @ bb0[0]:    fn new_v1_formatted; _1263 = new_v1_formatted(move _1264, move _1268, move _1290, move _1314);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1274 _    => _1273 @ bb221[23]: fn main_0;      _1273 = &_1274;
+	n[1]: copy   n[0] => _1283 @ bb221[46]: fn main_0;      _1283 = &(*(_1281.0: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1282 = new_display(move _1283);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1276 _    => _1275 @ bb221[27]: fn main_0;      _1275 = &_1276;
+	n[1]: copy   n[0] => _1285 @ bb222[3]:  fn main_0;      _1285 = &(*(_1281.1: &u32));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1284 = new_display(move _1285);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _1278 @ bb221[30]: fn main_0; _1278 = const "test_load_other_store_self()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1278 _    => _1277 @ bb221[31]: fn main_0;      _1277 = &_1278;
+	n[1]: copy   n[0] => _1287 @ bb223[3]:  fn main_0;      _1287 = &(*(_1281.2: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1286 = new_display(move _1287);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1260 _ => _1280 @ bb221[34]: fn main_0; _1280 = &_1260;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1280 _    => _1279 @ bb221[35]: fn main_0;    _1279 = &_1280;
+	n[1]: copy   n[0] => _1289 @ bb224[3]:  fn main_0;    _1289 = &(*(_1281.3: &&()));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_debug; _1288 = new_debug(move _1289);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1271 _    => _1270 @ bb226[0]: fn main_0;           _1270 = &_1271;
+	n[1]: copy   n[0] => _1269 @ bb226[1]: fn main_0;           _1269 = &(*_1270);
+	n[2]: copy   n[1] => _1268 @ bb226[2]: fn main_0;           _1268 = move _1269 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy   n[2] => _2    @ bb0[0]:   fn new_v1_formatted; _1263 = new_v1_formatted(move _1264, move _1268, move _1290, move _1314);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1293 _    => _1292 @ bb226[69]: fn main_0;           _1292 = &_1293;
+	n[1]: copy   n[0] => _1291 @ bb226[70]: fn main_0;           _1291 = &(*_1292);
+	n[2]: copy   n[1] => _1290 @ bb226[71]: fn main_0;           _1290 = move _1291 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy   n[2] => _3    @ bb0[0]:    fn new_v1_formatted; _1263 = new_v1_formatted(move _1264, move _1268, move _1290, move _1314);
+}
+nodes_that_need_write = []
+
+g {
 	n[0]:  alloc      _    => _2 @ bb1[2]:  fn test_load_self_store_self; _2 = calloc(move _3, move _4);
 	n[1]:  copy       n[0] => _1 @ bb2[2]:  fn test_load_self_store_self; _1 = move _2 as *mut pointers::S (Misc);
 	n[2]:  field.3    n[1] => _  @ bb2[6]:  fn test_load_self_store_self; _6 = (((*_1).3: pointers::T).3: i32);
@@ -788,6 +2250,68 @@ g {
 nodes_that_need_write = [7, 6, 5, 1, 0]
 
 g {
+	n[0]: &_1324 _    => _1323 @ bb231[11]: fn main_0;           _1323 = &_1324;
+	n[1]: copy   n[0] => _1322 @ bb231[12]: fn main_0;           _1322 = &(*_1323);
+	n[2]: copy   n[1] => _1321 @ bb231[13]: fn main_0;           _1321 = move _1322 as &[&str] (Pointer(Unsize));
+	n[3]: copy   n[2] => _1    @ bb0[0]:    fn new_v1_formatted; _1320 = new_v1_formatted(move _1321, move _1325, move _1347, move _1371);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1331 _    => _1330 @ bb231[23]: fn main_0;      _1330 = &_1331;
+	n[1]: copy   n[0] => _1340 @ bb231[46]: fn main_0;      _1340 = &(*(_1338.0: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1339 = new_display(move _1340);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1333 _    => _1332 @ bb231[27]: fn main_0;      _1332 = &_1333;
+	n[1]: copy   n[0] => _1342 @ bb232[3]:  fn main_0;      _1342 = &(*(_1338.1: &u32));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1341 = new_display(move _1342);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _1335 @ bb231[30]: fn main_0; _1335 = const "test_load_self_store_self()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1335 _    => _1334 @ bb231[31]: fn main_0;      _1334 = &_1335;
+	n[1]: copy   n[0] => _1344 @ bb233[3]:  fn main_0;      _1344 = &(*(_1338.2: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1343 = new_display(move _1344);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1317 _ => _1337 @ bb231[34]: fn main_0; _1337 = &_1317;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1337 _    => _1336 @ bb231[35]: fn main_0;    _1336 = &_1337;
+	n[1]: copy   n[0] => _1346 @ bb234[3]:  fn main_0;    _1346 = &(*(_1338.3: &&()));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_debug; _1345 = new_debug(move _1346);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1328 _    => _1327 @ bb236[0]: fn main_0;           _1327 = &_1328;
+	n[1]: copy   n[0] => _1326 @ bb236[1]: fn main_0;           _1326 = &(*_1327);
+	n[2]: copy   n[1] => _1325 @ bb236[2]: fn main_0;           _1325 = move _1326 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy   n[2] => _2    @ bb0[0]:   fn new_v1_formatted; _1320 = new_v1_formatted(move _1321, move _1325, move _1347, move _1371);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1350 _    => _1349 @ bb236[69]: fn main_0;           _1349 = &_1350;
+	n[1]: copy   n[0] => _1348 @ bb236[70]: fn main_0;           _1348 = &(*_1349);
+	n[2]: copy   n[1] => _1347 @ bb236[71]: fn main_0;           _1347 = move _1348 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy   n[2] => _3    @ bb0[0]:    fn new_v1_formatted; _1320 = new_v1_formatted(move _1321, move _1325, move _1347, move _1371);
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: alloc      _    => _2  @ bb1[2]:  fn test_load_self_store_self_inter; _2 = calloc(move _3, move _4);
 	n[1]: copy       n[0] => _1  @ bb2[2]:  fn test_load_self_store_self_inter; _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: field.0    n[1] => _6  @ bb2[6]:  fn test_load_self_store_self_inter; _6 = ((*_1).0: i32);
@@ -801,12 +2325,136 @@ g {
 nodes_that_need_write = [5, 4, 1, 0]
 
 g {
+	n[0]: &_1381 _    => _1380 @ bb241[11]: fn main_0;           _1380 = &_1381;
+	n[1]: copy   n[0] => _1379 @ bb241[12]: fn main_0;           _1379 = &(*_1380);
+	n[2]: copy   n[1] => _1378 @ bb241[13]: fn main_0;           _1378 = move _1379 as &[&str] (Pointer(Unsize));
+	n[3]: copy   n[2] => _1    @ bb0[0]:    fn new_v1_formatted; _1377 = new_v1_formatted(move _1378, move _1382, move _1404, move _1428);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1388 _    => _1387 @ bb241[23]: fn main_0;      _1387 = &_1388;
+	n[1]: copy   n[0] => _1397 @ bb241[46]: fn main_0;      _1397 = &(*(_1395.0: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1396 = new_display(move _1397);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1390 _    => _1389 @ bb241[27]: fn main_0;      _1389 = &_1390;
+	n[1]: copy   n[0] => _1399 @ bb242[3]:  fn main_0;      _1399 = &(*(_1395.1: &u32));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1398 = new_display(move _1399);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _1392 @ bb241[30]: fn main_0; _1392 = const "test_load_self_store_self_inter()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1392 _    => _1391 @ bb241[31]: fn main_0;      _1391 = &_1392;
+	n[1]: copy   n[0] => _1401 @ bb243[3]:  fn main_0;      _1401 = &(*(_1395.2: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1400 = new_display(move _1401);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1374 _ => _1394 @ bb241[34]: fn main_0; _1394 = &_1374;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1394 _    => _1393 @ bb241[35]: fn main_0;    _1393 = &_1394;
+	n[1]: copy   n[0] => _1403 @ bb244[3]:  fn main_0;    _1403 = &(*(_1395.3: &&()));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_debug; _1402 = new_debug(move _1403);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1385 _    => _1384 @ bb246[0]: fn main_0;           _1384 = &_1385;
+	n[1]: copy   n[0] => _1383 @ bb246[1]: fn main_0;           _1383 = &(*_1384);
+	n[2]: copy   n[1] => _1382 @ bb246[2]: fn main_0;           _1382 = move _1383 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy   n[2] => _2    @ bb0[0]:   fn new_v1_formatted; _1377 = new_v1_formatted(move _1378, move _1382, move _1404, move _1428);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1407 _    => _1406 @ bb246[69]: fn main_0;           _1406 = &_1407;
+	n[1]: copy   n[0] => _1405 @ bb246[70]: fn main_0;           _1405 = &(*_1406);
+	n[2]: copy   n[1] => _1404 @ bb246[71]: fn main_0;           _1404 = move _1405 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy   n[2] => _3    @ bb0[0]:    fn new_v1_formatted; _1377 = new_v1_formatted(move _1378, move _1382, move _1404, move _1428);
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: alloc      _    => _1 @ bb1[2]:  fn test_ptr_int_ptr; _1 = malloc(move _2);
 	n[1]: copy       n[0] => _5 @ bb2[4]:  fn test_ptr_int_ptr; _5 = _1;
 	n[2]: ptr_to_int n[1] => _  @ bb2[5]:  fn test_ptr_int_ptr; _4 = move _5 as usize (PointerExposeAddress);
 	n[3]: int_to_ptr _    => _1 @ bb2[10]: fn test_ptr_int_ptr; _1 = move _6 as *mut libc::c_void (PointerFromExposedAddress);
 	n[4]: copy       n[3] => _8 @ bb2[14]: fn test_ptr_int_ptr; _8 = _1;
 	n[5]: free       n[4] => _7 @ bb2[15]: fn test_ptr_int_ptr; _7 = free(move _8);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1438 _    => _1437 @ bb251[11]: fn main_0;           _1437 = &_1438;
+	n[1]: copy   n[0] => _1436 @ bb251[12]: fn main_0;           _1436 = &(*_1437);
+	n[2]: copy   n[1] => _1435 @ bb251[13]: fn main_0;           _1435 = move _1436 as &[&str] (Pointer(Unsize));
+	n[3]: copy   n[2] => _1    @ bb0[0]:    fn new_v1_formatted; _1434 = new_v1_formatted(move _1435, move _1439, move _1461, move _1485);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1445 _    => _1444 @ bb251[23]: fn main_0;      _1444 = &_1445;
+	n[1]: copy   n[0] => _1454 @ bb251[46]: fn main_0;      _1454 = &(*(_1452.0: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1453 = new_display(move _1454);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1447 _    => _1446 @ bb251[27]: fn main_0;      _1446 = &_1447;
+	n[1]: copy   n[0] => _1456 @ bb252[3]:  fn main_0;      _1456 = &(*(_1452.1: &u32));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1455 = new_display(move _1456);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _1449 @ bb251[30]: fn main_0; _1449 = const "test_ptr_int_ptr()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1449 _    => _1448 @ bb251[31]: fn main_0;      _1448 = &_1449;
+	n[1]: copy   n[0] => _1458 @ bb253[3]:  fn main_0;      _1458 = &(*(_1452.2: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1457 = new_display(move _1458);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1431 _ => _1451 @ bb251[34]: fn main_0; _1451 = &_1431;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1451 _    => _1450 @ bb251[35]: fn main_0;    _1450 = &_1451;
+	n[1]: copy   n[0] => _1460 @ bb254[3]:  fn main_0;    _1460 = &(*(_1452.3: &&()));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_debug; _1459 = new_debug(move _1460);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1442 _    => _1441 @ bb256[0]: fn main_0;           _1441 = &_1442;
+	n[1]: copy   n[0] => _1440 @ bb256[1]: fn main_0;           _1440 = &(*_1441);
+	n[2]: copy   n[1] => _1439 @ bb256[2]: fn main_0;           _1439 = move _1440 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy   n[2] => _2    @ bb0[0]:   fn new_v1_formatted; _1434 = new_v1_formatted(move _1435, move _1439, move _1461, move _1485);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1464 _    => _1463 @ bb256[69]: fn main_0;           _1463 = &_1464;
+	n[1]: copy   n[0] => _1462 @ bb256[70]: fn main_0;           _1462 = &(*_1463);
+	n[2]: copy   n[1] => _1461 @ bb256[71]: fn main_0;           _1461 = move _1462 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy   n[2] => _3    @ bb0[0]:    fn new_v1_formatted; _1434 = new_v1_formatted(move _1435, move _1439, move _1461, move _1485);
 }
 nodes_that_need_write = []
 
@@ -820,6 +2468,68 @@ nodes_that_need_write = []
 g {
 	n[0]: &_1       _    => _4 @ bb2[3]: fn test_load_value; _4 = &raw const _1;
 	n[1]: addr.load n[0] => _  @ bb2[7]: fn test_load_value; _6 = (*_4);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1495 _    => _1494 @ bb261[11]: fn main_0;           _1494 = &_1495;
+	n[1]: copy   n[0] => _1493 @ bb261[12]: fn main_0;           _1493 = &(*_1494);
+	n[2]: copy   n[1] => _1492 @ bb261[13]: fn main_0;           _1492 = move _1493 as &[&str] (Pointer(Unsize));
+	n[3]: copy   n[2] => _1    @ bb0[0]:    fn new_v1_formatted; _1491 = new_v1_formatted(move _1492, move _1496, move _1518, move _1542);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1502 _    => _1501 @ bb261[23]: fn main_0;      _1501 = &_1502;
+	n[1]: copy   n[0] => _1511 @ bb261[46]: fn main_0;      _1511 = &(*(_1509.0: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1510 = new_display(move _1511);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1504 _    => _1503 @ bb261[27]: fn main_0;      _1503 = &_1504;
+	n[1]: copy   n[0] => _1513 @ bb262[3]:  fn main_0;      _1513 = &(*(_1509.1: &u32));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1512 = new_display(move _1513);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _1506 @ bb261[30]: fn main_0; _1506 = const "test_load_value()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1506 _    => _1505 @ bb261[31]: fn main_0;      _1505 = &_1506;
+	n[1]: copy   n[0] => _1515 @ bb263[3]:  fn main_0;      _1515 = &(*(_1509.2: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1514 = new_display(move _1515);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1488 _ => _1508 @ bb261[34]: fn main_0; _1508 = &_1488;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1508 _    => _1507 @ bb261[35]: fn main_0;    _1507 = &_1508;
+	n[1]: copy   n[0] => _1517 @ bb264[3]:  fn main_0;    _1517 = &(*(_1509.3: &&()));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_debug; _1516 = new_debug(move _1517);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1499 _    => _1498 @ bb266[0]: fn main_0;           _1498 = &_1499;
+	n[1]: copy   n[0] => _1497 @ bb266[1]: fn main_0;           _1497 = &(*_1498);
+	n[2]: copy   n[1] => _1496 @ bb266[2]: fn main_0;           _1496 = move _1497 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy   n[2] => _2    @ bb0[0]:   fn new_v1_formatted; _1491 = new_v1_formatted(move _1492, move _1496, move _1518, move _1542);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1521 _    => _1520 @ bb266[69]: fn main_0;           _1520 = &_1521;
+	n[1]: copy   n[0] => _1519 @ bb266[70]: fn main_0;           _1519 = &(*_1520);
+	n[2]: copy   n[1] => _1518 @ bb266[71]: fn main_0;           _1518 = move _1519 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy   n[2] => _3    @ bb0[0]:    fn new_v1_formatted; _1491 = new_v1_formatted(move _1492, move _1496, move _1518, move _1542);
 }
 nodes_that_need_write = []
 
@@ -838,6 +2548,68 @@ g {
 	n[1]: addr.store n[0] => _  @ bb2[10]: fn test_store_value; (*_5) = move _6;
 }
 nodes_that_need_write = [1, 0]
+
+g {
+	n[0]: &_1552 _    => _1551 @ bb271[11]: fn main_0;           _1551 = &_1552;
+	n[1]: copy   n[0] => _1550 @ bb271[12]: fn main_0;           _1550 = &(*_1551);
+	n[2]: copy   n[1] => _1549 @ bb271[13]: fn main_0;           _1549 = move _1550 as &[&str] (Pointer(Unsize));
+	n[3]: copy   n[2] => _1    @ bb0[0]:    fn new_v1_formatted; _1548 = new_v1_formatted(move _1549, move _1553, move _1575, move _1599);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1559 _    => _1558 @ bb271[23]: fn main_0;      _1558 = &_1559;
+	n[1]: copy   n[0] => _1568 @ bb271[46]: fn main_0;      _1568 = &(*(_1566.0: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1567 = new_display(move _1568);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1561 _    => _1560 @ bb271[27]: fn main_0;      _1560 = &_1561;
+	n[1]: copy   n[0] => _1570 @ bb272[3]:  fn main_0;      _1570 = &(*(_1566.1: &u32));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1569 = new_display(move _1570);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _1563 @ bb271[30]: fn main_0; _1563 = const "test_store_value()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1563 _    => _1562 @ bb271[31]: fn main_0;      _1562 = &_1563;
+	n[1]: copy   n[0] => _1572 @ bb273[3]:  fn main_0;      _1572 = &(*(_1566.2: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1571 = new_display(move _1572);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1545 _ => _1565 @ bb271[34]: fn main_0; _1565 = &_1545;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1565 _    => _1564 @ bb271[35]: fn main_0;    _1564 = &_1565;
+	n[1]: copy   n[0] => _1574 @ bb274[3]:  fn main_0;    _1574 = &(*(_1566.3: &&()));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_debug; _1573 = new_debug(move _1574);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1556 _    => _1555 @ bb276[0]: fn main_0;           _1555 = &_1556;
+	n[1]: copy   n[0] => _1554 @ bb276[1]: fn main_0;           _1554 = &(*_1555);
+	n[2]: copy   n[1] => _1553 @ bb276[2]: fn main_0;           _1553 = move _1554 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy   n[2] => _2    @ bb0[0]:   fn new_v1_formatted; _1548 = new_v1_formatted(move _1549, move _1553, move _1575, move _1599);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1578 _    => _1577 @ bb276[69]: fn main_0;           _1577 = &_1578;
+	n[1]: copy   n[0] => _1576 @ bb276[70]: fn main_0;           _1576 = &(*_1577);
+	n[2]: copy   n[1] => _1575 @ bb276[71]: fn main_0;           _1575 = move _1576 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy   n[2] => _3    @ bb0[0]:    fn new_v1_formatted; _1548 = new_v1_formatted(move _1549, move _1553, move _1575, move _1599);
+}
+nodes_that_need_write = []
 
 g {
 	n[0]:  alloc       _    => _2     @ bb1[2]:  fn test_store_value_field; _2 = malloc(move _3);
@@ -865,6 +2637,68 @@ g {
 nodes_that_need_write = [3, 2, 1, 0]
 
 g {
+	n[0]: &_1609 _    => _1608 @ bb281[11]: fn main_0;           _1608 = &_1609;
+	n[1]: copy   n[0] => _1607 @ bb281[12]: fn main_0;           _1607 = &(*_1608);
+	n[2]: copy   n[1] => _1606 @ bb281[13]: fn main_0;           _1606 = move _1607 as &[&str] (Pointer(Unsize));
+	n[3]: copy   n[2] => _1    @ bb0[0]:    fn new_v1_formatted; _1605 = new_v1_formatted(move _1606, move _1610, move _1632, move _1656);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1616 _    => _1615 @ bb281[23]: fn main_0;      _1615 = &_1616;
+	n[1]: copy   n[0] => _1625 @ bb281[46]: fn main_0;      _1625 = &(*(_1623.0: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1624 = new_display(move _1625);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1618 _    => _1617 @ bb281[27]: fn main_0;      _1617 = &_1618;
+	n[1]: copy   n[0] => _1627 @ bb282[3]:  fn main_0;      _1627 = &(*(_1623.1: &u32));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1626 = new_display(move _1627);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _1620 @ bb281[30]: fn main_0; _1620 = const "test_store_value_field()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1620 _    => _1619 @ bb281[31]: fn main_0;      _1619 = &_1620;
+	n[1]: copy   n[0] => _1629 @ bb283[3]:  fn main_0;      _1629 = &(*(_1623.2: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1628 = new_display(move _1629);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1602 _ => _1622 @ bb281[34]: fn main_0; _1622 = &_1602;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1622 _    => _1621 @ bb281[35]: fn main_0;    _1621 = &_1622;
+	n[1]: copy   n[0] => _1631 @ bb284[3]:  fn main_0;    _1631 = &(*(_1623.3: &&()));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_debug; _1630 = new_debug(move _1631);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1613 _    => _1612 @ bb286[0]: fn main_0;           _1612 = &_1613;
+	n[1]: copy   n[0] => _1611 @ bb286[1]: fn main_0;           _1611 = &(*_1612);
+	n[2]: copy   n[1] => _1610 @ bb286[2]: fn main_0;           _1610 = move _1611 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy   n[2] => _2    @ bb0[0]:   fn new_v1_formatted; _1605 = new_v1_formatted(move _1606, move _1610, move _1632, move _1656);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1635 _    => _1634 @ bb286[69]: fn main_0;           _1634 = &_1635;
+	n[1]: copy   n[0] => _1633 @ bb286[70]: fn main_0;           _1633 = &(*_1634);
+	n[2]: copy   n[1] => _1632 @ bb286[71]: fn main_0;           _1632 = move _1633 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy   n[2] => _3    @ bb0[0]:    fn new_v1_formatted; _1605 = new_v1_formatted(move _1606, move _1610, move _1632, move _1656);
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: alloc       _    => _1   @ bb1[2]:  fn test_load_value_store_value; _1 = malloc(move _2);
 	n[1]: value.load  _    => _5   @ bb2[6]:  fn test_load_value_store_value; _5 = (*_4);
 	n[2]: value.store n[1] => _4.* @ bb2[7]:  fn test_load_value_store_value; (*_4) = move _5;
@@ -882,84 +2716,208 @@ g {
 nodes_that_need_write = [2, 0]
 
 g {
-	n[0]:  &_35       _     => _34 @ bb30[4]:  fn main_0;         _34 = &mut _35;
-	n[1]:  copy       n[0]  => _40 @ bb30[11]: fn main_0;         _40 = &(*_34);
-	n[2]:  copy       n[1]  => _39 @ bb30[12]: fn main_0;         _39 = move _40 as &[i32] (Pointer(Unsize));
-	n[3]:  copy       n[2]  => _1  @ bb0[0]:   fn len;            _38 = len(move _39);
-	n[4]:  copy       n[0]  => _42 @ bb31[5]:  fn main_0;         _42 = &raw mut (*_34);
-	n[5]:  copy       n[4]  => _41 @ bb31[6]:  fn main_0;         _41 = move _42 as *mut i32 (Pointer(ArrayToPointer));
-	n[6]:  copy       n[5]  => _2  @ bb0[0]:   fn insertion_sort; _36 = insertion_sort(move _37, move _41);
-	n[7]:  copy       n[6]  => _10 @ bb3[3]:   fn insertion_sort; _10 = _2;
-	n[8]:  offset[1]  n[7]  => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);
-	n[9]:  addr.load  n[8]  => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);
-	n[10]: copy       n[6]  => _22 @ bb9[4]:   fn insertion_sort; _22 = _2;
-	n[11]: offset[0]  n[10] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);
-	n[12]: addr.load  n[11] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);
-	n[13]: copy       n[6]  => _47 @ bb24[7]:  fn insertion_sort; _47 = _2;
-	n[14]: offset[1]  n[13] => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);
-	n[15]: addr.store n[14] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;
-	n[16]: copy       n[6]  => _10 @ bb3[3]:   fn insertion_sort; _10 = _2;
-	n[17]: offset[2]  n[16] => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);
-	n[18]: addr.load  n[17] => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);
-	n[19]: copy       n[6]  => _22 @ bb9[4]:   fn insertion_sort; _22 = _2;
-	n[20]: offset[1]  n[19] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);
-	n[21]: addr.load  n[20] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);
-	n[22]: copy       n[6]  => _31 @ bb13[3]:  fn insertion_sort; _31 = _2;
-	n[23]: offset[1]  n[22] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);
-	n[24]: addr.load  n[23] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);
-	n[25]: copy       n[6]  => _38 @ bb16[5]:  fn insertion_sort; _38 = _2;
-	n[26]: offset[2]  n[25] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);
-	n[27]: addr.store n[26] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;
-	n[28]: copy       n[6]  => _22 @ bb9[4]:   fn insertion_sort; _22 = _2;
-	n[29]: offset[0]  n[28] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);
-	n[30]: addr.load  n[29] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);
-	n[31]: copy       n[6]  => _47 @ bb24[7]:  fn insertion_sort; _47 = _2;
-	n[32]: offset[1]  n[31] => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);
-	n[33]: addr.store n[32] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;
-	n[34]: copy       n[6]  => _10 @ bb3[3]:   fn insertion_sort; _10 = _2;
-	n[35]: offset[3]  n[34] => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);
-	n[36]: addr.load  n[35] => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);
-	n[37]: copy       n[6]  => _22 @ bb9[4]:   fn insertion_sort; _22 = _2;
-	n[38]: offset[2]  n[37] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);
-	n[39]: addr.load  n[38] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);
-	n[40]: copy       n[6]  => _31 @ bb13[3]:  fn insertion_sort; _31 = _2;
-	n[41]: offset[2]  n[40] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);
-	n[42]: addr.load  n[41] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);
-	n[43]: copy       n[6]  => _38 @ bb16[5]:  fn insertion_sort; _38 = _2;
-	n[44]: offset[3]  n[43] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);
-	n[45]: addr.store n[44] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;
-	n[46]: copy       n[6]  => _22 @ bb9[4]:   fn insertion_sort; _22 = _2;
-	n[47]: offset[1]  n[46] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);
-	n[48]: addr.load  n[47] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);
-	n[49]: copy       n[6]  => _31 @ bb13[3]:  fn insertion_sort; _31 = _2;
-	n[50]: offset[1]  n[49] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);
-	n[51]: addr.load  n[50] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);
-	n[52]: copy       n[6]  => _38 @ bb16[5]:  fn insertion_sort; _38 = _2;
-	n[53]: offset[2]  n[52] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);
-	n[54]: addr.store n[53] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;
-	n[55]: copy       n[6]  => _22 @ bb9[4]:   fn insertion_sort; _22 = _2;
-	n[56]: offset[0]  n[55] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);
-	n[57]: addr.load  n[56] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);
-	n[58]: copy       n[6]  => _31 @ bb13[3]:  fn insertion_sort; _31 = _2;
-	n[59]: offset[0]  n[58] => _30 @ bb15[5]:  fn insertion_sort; _30 = offset(move _31, move _32);
-	n[60]: addr.load  n[59] => _   @ bb16[2]:  fn insertion_sort; _29 = (*_30);
-	n[61]: copy       n[6]  => _38 @ bb16[5]:  fn insertion_sort; _38 = _2;
-	n[62]: offset[1]  n[61] => _37 @ bb16[11]: fn insertion_sort; _37 = offset(move _38, move _39);
-	n[63]: addr.store n[62] => _   @ bb17[2]:  fn insertion_sort; (*_37) = move _29;
-	n[64]: copy       n[6]  => _47 @ bb24[7]:  fn insertion_sort; _47 = _2;
-	n[65]: offset[0]  n[64] => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);
-	n[66]: addr.store n[65] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;
-	n[67]: copy       n[6]  => _10 @ bb3[3]:   fn insertion_sort; _10 = _2;
-	n[68]: offset[4]  n[67] => _9  @ bb3[9]:   fn insertion_sort; _9 = offset(move _10, move _11);
-	n[69]: addr.load  n[68] => _   @ bb5[2]:   fn insertion_sort; _8 = (*_9);
-	n[70]: copy       n[6]  => _22 @ bb9[4]:   fn insertion_sort; _22 = _2;
-	n[71]: offset[3]  n[70] => _21 @ bb11[5]:  fn insertion_sort; _21 = offset(move _22, move _23);
-	n[72]: addr.load  n[71] => _   @ bb12[2]:  fn insertion_sort; _20 = (*_21);
-	n[73]: copy       n[6]  => _47 @ bb24[7]:  fn insertion_sort; _47 = _2;
-	n[74]: offset[4]  n[73] => _46 @ bb24[13]: fn insertion_sort; _46 = offset(move _47, move _48);
-	n[75]: addr.store n[74] => _   @ bb25[2]:  fn insertion_sort; (*_46) = move _45;
+	n[0]: &_1666 _    => _1665 @ bb291[11]: fn main_0;           _1665 = &_1666;
+	n[1]: copy   n[0] => _1664 @ bb291[12]: fn main_0;           _1664 = &(*_1665);
+	n[2]: copy   n[1] => _1663 @ bb291[13]: fn main_0;           _1663 = move _1664 as &[&str] (Pointer(Unsize));
+	n[3]: copy   n[2] => _1    @ bb0[0]:    fn new_v1_formatted; _1662 = new_v1_formatted(move _1663, move _1667, move _1689, move _1713);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1673 _    => _1672 @ bb291[23]: fn main_0;      _1672 = &_1673;
+	n[1]: copy   n[0] => _1682 @ bb291[46]: fn main_0;      _1682 = &(*(_1680.0: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1681 = new_display(move _1682);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1675 _    => _1674 @ bb291[27]: fn main_0;      _1674 = &_1675;
+	n[1]: copy   n[0] => _1684 @ bb292[3]:  fn main_0;      _1684 = &(*(_1680.1: &u32));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1683 = new_display(move _1684);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _1677 @ bb291[30]: fn main_0; _1677 = const "test_load_value_store_value()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1677 _    => _1676 @ bb291[31]: fn main_0;      _1676 = &_1677;
+	n[1]: copy   n[0] => _1686 @ bb293[3]:  fn main_0;      _1686 = &(*(_1680.2: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1685 = new_display(move _1686);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1659 _ => _1679 @ bb291[34]: fn main_0; _1679 = &_1659;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1679 _    => _1678 @ bb291[35]: fn main_0;    _1678 = &_1679;
+	n[1]: copy   n[0] => _1688 @ bb294[3]:  fn main_0;    _1688 = &(*(_1680.3: &&()));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_debug; _1687 = new_debug(move _1688);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1670 _    => _1669 @ bb296[0]: fn main_0;           _1669 = &_1670;
+	n[1]: copy   n[0] => _1668 @ bb296[1]: fn main_0;           _1668 = &(*_1669);
+	n[2]: copy   n[1] => _1667 @ bb296[2]: fn main_0;           _1667 = move _1668 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy   n[2] => _2    @ bb0[0]:   fn new_v1_formatted; _1662 = new_v1_formatted(move _1663, move _1667, move _1689, move _1713);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1692 _    => _1691 @ bb296[69]: fn main_0;           _1691 = &_1692;
+	n[1]: copy   n[0] => _1690 @ bb296[70]: fn main_0;           _1690 = &(*_1691);
+	n[2]: copy   n[1] => _1689 @ bb296[71]: fn main_0;           _1689 = move _1690 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy   n[2] => _3    @ bb0[0]:    fn new_v1_formatted; _1662 = new_v1_formatted(move _1663, move _1667, move _1689, move _1713);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]:  &_1715     _     => _1714 @ bb300[5]:  fn main_0;         _1714 = &mut _1715;
+	n[1]:  copy       n[0]  => _1721 @ bb300[13]: fn main_0;         _1721 = &(*_1714);
+	n[2]:  copy       n[1]  => _1720 @ bb300[14]: fn main_0;         _1720 = move _1721 as &[i32] (Pointer(Unsize));
+	n[3]:  copy       n[2]  => _1    @ bb0[0]:    fn len;            _1719 = len(move _1720);
+	n[4]:  copy       n[0]  => _1723 @ bb301[5]:  fn main_0;         _1723 = &raw mut (*_1714);
+	n[5]:  copy       n[4]  => _1722 @ bb301[6]:  fn main_0;         _1722 = move _1723 as *mut i32 (Pointer(ArrayToPointer));
+	n[6]:  copy       n[5]  => _2    @ bb0[0]:    fn insertion_sort; _1717 = insertion_sort(move _1718, move _1722);
+	n[7]:  copy       n[6]  => _10   @ bb3[3]:    fn insertion_sort; _10 = _2;
+	n[8]:  offset[1]  n[7]  => _9    @ bb3[9]:    fn insertion_sort; _9 = offset(move _10, move _11);
+	n[9]:  addr.load  n[8]  => _     @ bb5[2]:    fn insertion_sort; _8 = (*_9);
+	n[10]: copy       n[6]  => _22   @ bb9[4]:    fn insertion_sort; _22 = _2;
+	n[11]: offset[0]  n[10] => _21   @ bb11[5]:   fn insertion_sort; _21 = offset(move _22, move _23);
+	n[12]: addr.load  n[11] => _     @ bb12[2]:   fn insertion_sort; _20 = (*_21);
+	n[13]: copy       n[6]  => _47   @ bb24[7]:   fn insertion_sort; _47 = _2;
+	n[14]: offset[1]  n[13] => _46   @ bb24[13]:  fn insertion_sort; _46 = offset(move _47, move _48);
+	n[15]: addr.store n[14] => _     @ bb25[2]:   fn insertion_sort; (*_46) = move _45;
+	n[16]: copy       n[6]  => _10   @ bb3[3]:    fn insertion_sort; _10 = _2;
+	n[17]: offset[2]  n[16] => _9    @ bb3[9]:    fn insertion_sort; _9 = offset(move _10, move _11);
+	n[18]: addr.load  n[17] => _     @ bb5[2]:    fn insertion_sort; _8 = (*_9);
+	n[19]: copy       n[6]  => _22   @ bb9[4]:    fn insertion_sort; _22 = _2;
+	n[20]: offset[1]  n[19] => _21   @ bb11[5]:   fn insertion_sort; _21 = offset(move _22, move _23);
+	n[21]: addr.load  n[20] => _     @ bb12[2]:   fn insertion_sort; _20 = (*_21);
+	n[22]: copy       n[6]  => _31   @ bb13[3]:   fn insertion_sort; _31 = _2;
+	n[23]: offset[1]  n[22] => _30   @ bb15[5]:   fn insertion_sort; _30 = offset(move _31, move _32);
+	n[24]: addr.load  n[23] => _     @ bb16[2]:   fn insertion_sort; _29 = (*_30);
+	n[25]: copy       n[6]  => _38   @ bb16[5]:   fn insertion_sort; _38 = _2;
+	n[26]: offset[2]  n[25] => _37   @ bb16[11]:  fn insertion_sort; _37 = offset(move _38, move _39);
+	n[27]: addr.store n[26] => _     @ bb17[2]:   fn insertion_sort; (*_37) = move _29;
+	n[28]: copy       n[6]  => _22   @ bb9[4]:    fn insertion_sort; _22 = _2;
+	n[29]: offset[0]  n[28] => _21   @ bb11[5]:   fn insertion_sort; _21 = offset(move _22, move _23);
+	n[30]: addr.load  n[29] => _     @ bb12[2]:   fn insertion_sort; _20 = (*_21);
+	n[31]: copy       n[6]  => _47   @ bb24[7]:   fn insertion_sort; _47 = _2;
+	n[32]: offset[1]  n[31] => _46   @ bb24[13]:  fn insertion_sort; _46 = offset(move _47, move _48);
+	n[33]: addr.store n[32] => _     @ bb25[2]:   fn insertion_sort; (*_46) = move _45;
+	n[34]: copy       n[6]  => _10   @ bb3[3]:    fn insertion_sort; _10 = _2;
+	n[35]: offset[3]  n[34] => _9    @ bb3[9]:    fn insertion_sort; _9 = offset(move _10, move _11);
+	n[36]: addr.load  n[35] => _     @ bb5[2]:    fn insertion_sort; _8 = (*_9);
+	n[37]: copy       n[6]  => _22   @ bb9[4]:    fn insertion_sort; _22 = _2;
+	n[38]: offset[2]  n[37] => _21   @ bb11[5]:   fn insertion_sort; _21 = offset(move _22, move _23);
+	n[39]: addr.load  n[38] => _     @ bb12[2]:   fn insertion_sort; _20 = (*_21);
+	n[40]: copy       n[6]  => _31   @ bb13[3]:   fn insertion_sort; _31 = _2;
+	n[41]: offset[2]  n[40] => _30   @ bb15[5]:   fn insertion_sort; _30 = offset(move _31, move _32);
+	n[42]: addr.load  n[41] => _     @ bb16[2]:   fn insertion_sort; _29 = (*_30);
+	n[43]: copy       n[6]  => _38   @ bb16[5]:   fn insertion_sort; _38 = _2;
+	n[44]: offset[3]  n[43] => _37   @ bb16[11]:  fn insertion_sort; _37 = offset(move _38, move _39);
+	n[45]: addr.store n[44] => _     @ bb17[2]:   fn insertion_sort; (*_37) = move _29;
+	n[46]: copy       n[6]  => _22   @ bb9[4]:    fn insertion_sort; _22 = _2;
+	n[47]: offset[1]  n[46] => _21   @ bb11[5]:   fn insertion_sort; _21 = offset(move _22, move _23);
+	n[48]: addr.load  n[47] => _     @ bb12[2]:   fn insertion_sort; _20 = (*_21);
+	n[49]: copy       n[6]  => _31   @ bb13[3]:   fn insertion_sort; _31 = _2;
+	n[50]: offset[1]  n[49] => _30   @ bb15[5]:   fn insertion_sort; _30 = offset(move _31, move _32);
+	n[51]: addr.load  n[50] => _     @ bb16[2]:   fn insertion_sort; _29 = (*_30);
+	n[52]: copy       n[6]  => _38   @ bb16[5]:   fn insertion_sort; _38 = _2;
+	n[53]: offset[2]  n[52] => _37   @ bb16[11]:  fn insertion_sort; _37 = offset(move _38, move _39);
+	n[54]: addr.store n[53] => _     @ bb17[2]:   fn insertion_sort; (*_37) = move _29;
+	n[55]: copy       n[6]  => _22   @ bb9[4]:    fn insertion_sort; _22 = _2;
+	n[56]: offset[0]  n[55] => _21   @ bb11[5]:   fn insertion_sort; _21 = offset(move _22, move _23);
+	n[57]: addr.load  n[56] => _     @ bb12[2]:   fn insertion_sort; _20 = (*_21);
+	n[58]: copy       n[6]  => _31   @ bb13[3]:   fn insertion_sort; _31 = _2;
+	n[59]: offset[0]  n[58] => _30   @ bb15[5]:   fn insertion_sort; _30 = offset(move _31, move _32);
+	n[60]: addr.load  n[59] => _     @ bb16[2]:   fn insertion_sort; _29 = (*_30);
+	n[61]: copy       n[6]  => _38   @ bb16[5]:   fn insertion_sort; _38 = _2;
+	n[62]: offset[1]  n[61] => _37   @ bb16[11]:  fn insertion_sort; _37 = offset(move _38, move _39);
+	n[63]: addr.store n[62] => _     @ bb17[2]:   fn insertion_sort; (*_37) = move _29;
+	n[64]: copy       n[6]  => _47   @ bb24[7]:   fn insertion_sort; _47 = _2;
+	n[65]: offset[0]  n[64] => _46   @ bb24[13]:  fn insertion_sort; _46 = offset(move _47, move _48);
+	n[66]: addr.store n[65] => _     @ bb25[2]:   fn insertion_sort; (*_46) = move _45;
+	n[67]: copy       n[6]  => _10   @ bb3[3]:    fn insertion_sort; _10 = _2;
+	n[68]: offset[4]  n[67] => _9    @ bb3[9]:    fn insertion_sort; _9 = offset(move _10, move _11);
+	n[69]: addr.load  n[68] => _     @ bb5[2]:    fn insertion_sort; _8 = (*_9);
+	n[70]: copy       n[6]  => _22   @ bb9[4]:    fn insertion_sort; _22 = _2;
+	n[71]: offset[3]  n[70] => _21   @ bb11[5]:   fn insertion_sort; _21 = offset(move _22, move _23);
+	n[72]: addr.load  n[71] => _     @ bb12[2]:   fn insertion_sort; _20 = (*_21);
+	n[73]: copy       n[6]  => _47   @ bb24[7]:   fn insertion_sort; _47 = _2;
+	n[74]: offset[4]  n[73] => _46   @ bb24[13]:  fn insertion_sort; _46 = offset(move _47, move _48);
+	n[75]: addr.store n[74] => _     @ bb25[2]:   fn insertion_sort; (*_46) = move _45;
 }
 nodes_that_need_write = [75, 74, 73, 66, 65, 64, 63, 62, 61, 54, 53, 52, 45, 44, 43, 33, 32, 31, 27, 26, 25, 15, 14, 13, 6, 5, 4, 0]
+
+g {
+	n[0]: &_1731 _    => _1730 @ bb302[13]: fn main_0;           _1730 = &_1731;
+	n[1]: copy   n[0] => _1729 @ bb302[14]: fn main_0;           _1729 = &(*_1730);
+	n[2]: copy   n[1] => _1728 @ bb302[15]: fn main_0;           _1728 = move _1729 as &[&str] (Pointer(Unsize));
+	n[3]: copy   n[2] => _1    @ bb0[0]:    fn new_v1_formatted; _1727 = new_v1_formatted(move _1728, move _1732, move _1754, move _1778);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1738 _    => _1737 @ bb302[25]: fn main_0;      _1737 = &_1738;
+	n[1]: copy   n[0] => _1747 @ bb302[48]: fn main_0;      _1747 = &(*(_1745.0: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1746 = new_display(move _1747);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1740 _    => _1739 @ bb302[29]: fn main_0;      _1739 = &_1740;
+	n[1]: copy   n[0] => _1749 @ bb303[3]:  fn main_0;      _1749 = &(*(_1745.1: &u32));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1748 = new_display(move _1749);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _1742 @ bb302[32]: fn main_0; _1742 = const "insertion_sort(nums.len() as libc::c_int, nums as *mut libc::c_int)";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1742 _    => _1741 @ bb302[33]: fn main_0;      _1741 = &_1742;
+	n[1]: copy   n[0] => _1751 @ bb304[3]:  fn main_0;      _1751 = &(*(_1745.2: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1750 = new_display(move _1751);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1724 _ => _1744 @ bb302[36]: fn main_0; _1744 = &_1724;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1744 _    => _1743 @ bb302[37]: fn main_0;    _1743 = &_1744;
+	n[1]: copy   n[0] => _1753 @ bb305[3]:  fn main_0;    _1753 = &(*(_1745.3: &&()));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_debug; _1752 = new_debug(move _1753);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1735 _    => _1734 @ bb307[0]: fn main_0;           _1734 = &_1735;
+	n[1]: copy   n[0] => _1733 @ bb307[1]: fn main_0;           _1733 = &(*_1734);
+	n[2]: copy   n[1] => _1732 @ bb307[2]: fn main_0;           _1732 = move _1733 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy   n[2] => _2    @ bb0[0]:   fn new_v1_formatted; _1727 = new_v1_formatted(move _1728, move _1732, move _1754, move _1778);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1757 _    => _1756 @ bb307[69]: fn main_0;           _1756 = &_1757;
+	n[1]: copy   n[0] => _1755 @ bb307[70]: fn main_0;           _1755 = &(*_1756);
+	n[2]: copy   n[1] => _1754 @ bb307[71]: fn main_0;           _1754 = move _1755 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy   n[2] => _3    @ bb0[0]:    fn new_v1_formatted; _1727 = new_v1_formatted(move _1728, move _1732, move _1754, move _1778);
+}
+nodes_that_need_write = []
 
 g {
 	n[0]: &_4        _    => _3 @ bb0[15]: fn test_ref_field; _3 = &mut _4;
@@ -972,6 +2930,68 @@ g {
 }
 nodes_that_need_write = [6, 5, 4, 0]
 
-num_graphs = 71
-num_nodes = 686
+g {
+	n[0]: &_1788 _    => _1787 @ bb312[11]: fn main_0;           _1787 = &_1788;
+	n[1]: copy   n[0] => _1786 @ bb312[12]: fn main_0;           _1786 = &(*_1787);
+	n[2]: copy   n[1] => _1785 @ bb312[13]: fn main_0;           _1785 = move _1786 as &[&str] (Pointer(Unsize));
+	n[3]: copy   n[2] => _1    @ bb0[0]:    fn new_v1_formatted; _1784 = new_v1_formatted(move _1785, move _1789, move _1811, move _1835);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1795 _    => _1794 @ bb312[23]: fn main_0;      _1794 = &_1795;
+	n[1]: copy   n[0] => _1804 @ bb312[46]: fn main_0;      _1804 = &(*(_1802.0: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1803 = new_display(move _1804);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1797 _    => _1796 @ bb312[27]: fn main_0;      _1796 = &_1797;
+	n[1]: copy   n[0] => _1806 @ bb313[3]:  fn main_0;      _1806 = &(*(_1802.1: &u32));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1805 = new_display(move _1806);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: copy _ => _1799 @ bb312[30]: fn main_0; _1799 = const "test_ref_field()";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1799 _    => _1798 @ bb312[31]: fn main_0;      _1798 = &_1799;
+	n[1]: copy   n[0] => _1808 @ bb314[3]:  fn main_0;      _1808 = &(*(_1802.2: &&str));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_display; _1807 = new_display(move _1808);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1781 _ => _1801 @ bb312[34]: fn main_0; _1801 = &_1781;
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1801 _    => _1800 @ bb312[35]: fn main_0;    _1800 = &_1801;
+	n[1]: copy   n[0] => _1810 @ bb315[3]:  fn main_0;    _1810 = &(*(_1802.3: &&()));
+	n[2]: copy   n[1] => _1    @ bb0[0]:    fn new_debug; _1809 = new_debug(move _1810);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1792 _    => _1791 @ bb317[0]: fn main_0;           _1791 = &_1792;
+	n[1]: copy   n[0] => _1790 @ bb317[1]: fn main_0;           _1790 = &(*_1791);
+	n[2]: copy   n[1] => _1789 @ bb317[2]: fn main_0;           _1789 = move _1790 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
+	n[3]: copy   n[2] => _2    @ bb0[0]:   fn new_v1_formatted; _1784 = new_v1_formatted(move _1785, move _1789, move _1811, move _1835);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: &_1814 _    => _1813 @ bb317[69]: fn main_0;           _1813 = &_1814;
+	n[1]: copy   n[0] => _1812 @ bb317[70]: fn main_0;           _1812 = &(*_1813);
+	n[2]: copy   n[1] => _1811 @ bb317[71]: fn main_0;           _1811 = move _1812 as &[std::fmt::rt::v1::Argument] (Pointer(Unsize));
+	n[3]: copy   n[2] => _3    @ bb0[0]:    fn new_v1_formatted; _1784 = new_v1_formatted(move _1785, move _1789, move _1811, move _1835);
+}
+nodes_that_need_write = []
+
+num_graphs = 360
+num_nodes = 1550
 
