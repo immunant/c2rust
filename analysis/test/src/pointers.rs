@@ -502,41 +502,41 @@ pub unsafe extern "C" fn insertion_sort(n: libc::c_int, p: *mut libc::c_int) {
     }
 }
 unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> libc::c_int {
-    simple();
-    exercise_allocator();
-    simple_analysis();
-    analysis2();
-    inter_function_analysis();
-    no_owner(0i32);
-    no_owner(1i32);
-    invalid();
-    testing();
-    simple1();
+    dbg!(simple());
+    dbg!(exercise_allocator());
+    dbg!(simple_analysis());
+    dbg!(analysis2());
+    dbg!(inter_function_analysis());
+    dbg!(no_owner(0i32));
+    dbg!(no_owner(1i32));
+    dbg!(invalid());
+    dbg!(testing());
+    dbg!(simple1());
 
-    lighttpd_test();
+    dbg!(lighttpd_test());
 
-    test_malloc_free();
-    test_malloc_free_cast();
-    test_arg();
-    test_arg_rec();
-    test_shared_ref();
-    test_unique_ref();
-    test_realloc_reassign();
-    test_realloc_fresh();
-    test_load_addr();
-    test_overwrite();
-    test_store_addr();
-    test_load_other_store_self();
-    test_load_self_store_self();
-    test_load_self_store_self_inter();
-    test_ptr_int_ptr();
-    test_load_value();
-    test_store_value();
-    test_store_value_field();
-    test_load_value_store_value();
+    dbg!(test_malloc_free());
+    dbg!(test_malloc_free_cast());
+    dbg!(test_arg());
+    dbg!(test_arg_rec());
+    dbg!(test_shared_ref());
+    dbg!(test_unique_ref());
+    dbg!(test_realloc_reassign());
+    dbg!(test_realloc_fresh());
+    dbg!(test_load_addr());
+    dbg!(test_overwrite());
+    dbg!(test_store_addr());
+    dbg!(test_load_other_store_self());
+    dbg!(test_load_self_store_self());
+    dbg!(test_load_self_store_self_inter());
+    dbg!(test_ptr_int_ptr());
+    dbg!(test_load_value());
+    dbg!(test_store_value());
+    dbg!(test_store_value_field());
+    dbg!(test_load_value_store_value());
     let nums = &mut [2i32, 5i32, 3i32, 1i32, 6i32];
-    insertion_sort(nums.len() as libc::c_int, nums as *mut libc::c_int);
-    test_ref_field();
+    dbg!(insertion_sort(nums.len() as libc::c_int, nums as *mut libc::c_int));
+    dbg!(test_ref_field());
     return 0i32;
 }
 pub fn main() {
