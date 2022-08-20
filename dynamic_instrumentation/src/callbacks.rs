@@ -1,3 +1,4 @@
+use once_cell::sync::Lazy;
 use rustc_ast::ast::{Item, ItemKind, Visibility, VisibilityKind};
 use rustc_ast::node_id::NodeId;
 use rustc_ast::ptr::P;
@@ -13,14 +14,9 @@ use rustc_span::def_id::LocalDefId;
 use rustc_span::symbol::Ident;
 use rustc_span::DUMMY_SP;
 
-use lazy_static::lazy_static;
-
 use crate::instrument::Instrumenter;
 
-lazy_static! {
-    /// TODO(kkysen) can be made non-lazy when `Mutex::new` is `const` in rust 1.63
-    pub static ref INSTRUMENTER: Instrumenter = Instrumenter::new();
-}
+pub static INSTRUMENTER: Lazy<Instrumenter> = Lazy::new(Instrumenter::new);
 
 pub struct MirTransformCallbacks;
 
