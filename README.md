@@ -53,6 +53,7 @@ Python 3.6 or later, CMake 3.4.3 or later, and openssl (1.0) are also required. 
     ```
 
 Depending on the LLVM distribution, the `llvm-dev` package may also be required.
+For example, the official LLVM packages from [apt.llvm.org](https://apt.llvm.org/) require `llvm-dev` to be installed.
 
 - **Arch Linux:**
 
