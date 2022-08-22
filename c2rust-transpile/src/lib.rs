@@ -98,8 +98,11 @@ impl TranspilerConfig {
         self.binaries.contains(&module_name)
     }
 
-    fn check_binaries(&self, modules: impl IntoIterator<Item = impl AsRef<Path>>) -> bool {
-        let module_names = modules
+    fn check_if_all_binaries_used(
+        &self,
+        transpiled_modules: impl IntoIterator<Item = impl AsRef<Path>>,
+    ) -> bool {
+        let module_names = transpiled_modules
             .into_iter()
             .map(|module| Self::binary_name_from_path(module.as_ref()))
             .collect::<HashSet<_>>();
@@ -238,7 +241,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     let mut top_level_ccfg = None;
     let mut workspace_members = vec![];
     let mut num_transpiled_files = 0;
-    let mut all_modules = Vec::new();
+    let mut transpiled_modules = Vec::new();
     let build_dir = get_build_dir(&tcfg, cc_db);
     for lcmd in &lcmds {
         let cmds = &lcmd.cmd_inputs;
@@ -320,7 +323,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         pragmas.sort();
         crates.sort();
 
-        all_modules.extend(modules.iter().cloned());
+        transpiled_modules.extend(modules.iter().cloned());
 
         if tcfg.emit_build_files {
             if modules_skipped {
@@ -359,7 +362,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
             .unwrap_or_else(|e| warn!("Reorganizing definitions failed: {}", e));
     }
 
-    tcfg.check_binaries(&all_modules);
+    tcfg.check_if_all_binaries_used(&transpiled_modules);
 }
 
 /// Ensure that clang can locate the system headers on macOS 10.14+.
