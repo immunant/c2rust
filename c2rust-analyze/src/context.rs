@@ -261,6 +261,10 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
 
         *next_ptr_id = counter;
     }
+
+    pub fn num_pointers(&self) -> usize {
+        self.next_ptr_id.num_pointers()
+    }
 }
 
 fn remap_lty_pointers<'tcx, T>(lcx: LTyCtxt<'tcx>, map: &T, lty: LTy<'tcx>) -> LTy<'tcx>
@@ -430,6 +434,7 @@ fn label_no_pointers<'tcx>(acx: &AnalysisCtxt<'_, 'tcx>, ty: Ty<'tcx>) -> LTy<'t
     })
 }
 
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct GlobalAssignment {
     pub perms: GlobalPointerTable<PermissionSet>,
     pub flags: GlobalPointerTable<FlagSet>,

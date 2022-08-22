@@ -1,3 +1,23 @@
+// CHECK-LABEL: final labeling for "call1"
+// CHECK-DAG: ([[#@LINE+1]]: x): &mut i32
+pub unsafe fn call1(x: *mut i32) {
+    // CHECK-DAG: ([[#@LINE+1]]: p): &mut i32
+    let p = x;
+    write(p);
+    // CHECK-DAG: ([[#@LINE+1]]: q): &i32
+    let q = x;
+    let y = read(q);
+}
+
+pub unsafe fn call2(x: *mut i32) {
+    // CHECK-DAG: ([[#@LINE+1]]: p): &mut i32
+    let p = x;
+    write(p);
+    // CHECK-DAG: ([[#@LINE+1]]: q): &mut i32
+    let q = x;
+    non_unique(q);
+}
+
 // CHECK-LABEL: final labeling for "write"
 // CHECK-DAG: ([[#@LINE+1]]: x): &mut i32
 unsafe fn write(x: *mut i32) {
@@ -18,24 +38,4 @@ unsafe fn non_unique(x: *mut i32) {
     *x = 2;
     *y = 3;
     *x = 4;
-}
-
-// CHECK-LABEL: final labeling for "call1"
-// CHECK-DAG: ([[#@LINE+1]]: x): &mut i32
-pub unsafe fn call1(x: *mut i32) {
-    // CHECK-DAG: ([[#@LINE+1]]: p): &mut i32
-    let p = x;
-    write(p);
-    // CHECK-DAG: ([[#@LINE+1]]: q): &i32
-    let q = x;
-    let y = read(q);
-}
-
-pub unsafe fn call2(x: *mut i32) {
-    // CHECK-DAG: ([[#@LINE+1]]: p): &mut i32
-    let p = x;
-    write(p);
-    // CHECK-DAG: ([[#@LINE+1]]: q): &mut i32
-    let q = x;
-    non_unique(q);
 }

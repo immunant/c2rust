@@ -15,15 +15,17 @@ extern crate rustc_target;
 extern crate rustc_type_ir;
 
 use crate::context::{
-    AnalysisCtxt, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy, LTyCtxt,
-    LocalAssignment, PermissionSet, PointerId,
+    AnalysisCtxt, AnalysisCtxtData, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy,
+    LTyCtxt, LocalAssignment, PermissionSet, PointerId,
 };
+use crate::dataflow::DataflowConstraints;
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BindingForm, LocalDecl, LocalInfo, LocalKind};
 use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
 use std::env;
+use std::ops::{Deref, DerefMut};
 
 mod borrowck;
 mod context;
@@ -35,9 +37,70 @@ mod pointer_id;
 mod type_desc;
 mod util;
 
+/// A wrapper around `T` that dynamically tracks whether it's initialized or not.  `RefCell`
+/// dynamically tracks borrowing and panics if the rules are violated at run time; `MaybeUnset`
+/// dynamically tracks initialization and similarly panics if the value is accessed while unset.
+#[derive(Clone, Copy, Debug)]
+struct MaybeUnset<T>(Option<T>);
+
+impl<T> Default for MaybeUnset<T> {
+    fn default() -> MaybeUnset<T> {
+        MaybeUnset(None)
+    }
+}
+
+impl<T> MaybeUnset<T> {
+    pub fn set(&mut self, x: T) {
+        if self.0.is_some() {
+            panic!("value is already set");
+        }
+        self.0 = Some(x);
+    }
+
+    pub fn clear(&mut self) {
+        if self.0.is_none() {
+            panic!("value is already cleared");
+        }
+        self.0 = None;
+    }
+
+    pub fn get(&self) -> &T {
+        self.0.as_ref().expect("value is not set")
+    }
+
+    pub fn get_mut(&mut self) -> &mut T {
+        self.0.as_mut().expect("value is not set")
+    }
+
+    pub fn take(&mut self) -> T {
+        self.0.take().expect("value is not set")
+    }
+}
+
+impl<T> Deref for MaybeUnset<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        self.get()
+    }
+}
+
+impl<T> DerefMut for MaybeUnset<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        self.get_mut()
+    }
+}
+
 fn run(tcx: TyCtxt) {
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = Vec::new();
+
+    #[derive(Default)]
+    struct FuncInfo<'tcx> {
+        acx_data: MaybeUnset<AnalysisCtxtData<'tcx>>,
+        dataflow: MaybeUnset<DataflowConstraints>,
+        l_equiv: MaybeUnset<LocalEquivSet>,
+        lasn: MaybeUnset<LocalAssignment>,
+    }
 
     // Initial pass to gather equivalence constraints, which state that two pointer types must be
     // converted to the same reference type.  Some additional data computed during this the process
@@ -96,41 +159,74 @@ fn run(tcx: TyCtxt) {
             equiv.unify(a, b);
         }
 
-        func_info.push((acx.into_data(), dataflow, l_equiv));
+        let mut info = FuncInfo::default();
+        info.acx_data.set(acx.into_data());
+        info.dataflow.set(dataflow);
+        info.l_equiv.set(l_equiv);
+        func_info.push(info);
     }
 
-    // Compute permission and flag assignments.
-
+    // Remap pointers based on equivalence classes, so all members of an equivalence class now use
+    // the same `PointerId`.
     let (g_counter, g_equiv_map) = g_equiv.renumber();
     eprintln!("g_equiv_map = {:?}", g_equiv_map);
     gacx.remap_pointers(&g_equiv_map, g_counter);
+
+    for (ldid, info) in tcx.hir().body_owners().zip(func_info.iter_mut()) {
+        let (l_counter, l_equiv_map) = info.l_equiv.renumber(&g_equiv_map);
+        eprintln!("l_equiv_map = {:?}", l_equiv_map);
+        info.acx_data
+            .remap_pointers(gacx.lcx, g_equiv_map.and(&l_equiv_map), l_counter);
+        info.dataflow.remap_pointers(g_equiv_map.and(&l_equiv_map));
+        info.l_equiv.clear();
+    }
+
+    // Compute permission and flag assignments.
     let mut gasn =
         GlobalAssignment::new(gacx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
-    for (ldid, info) in tcx.hir().body_owners().zip(func_info.into_iter()) {
+    for info in &mut func_info {
+        let num_pointers = info.acx_data.num_pointers();
+        let lasn = LocalAssignment::new(num_pointers, PermissionSet::UNIQUE, FlagSet::empty());
+        info.lasn.set(lasn);
+    }
+
+    loop {
+        let old_gasn = gasn.clone();
+        for (ldid, info) in tcx.hir().body_owners().zip(func_info.iter_mut()) {
+            let ldid_const = WithOptConstParam::unknown(ldid);
+            let name = tcx.item_name(ldid.to_def_id());
+            let mir = tcx.mir_built(ldid_const);
+            let mir = mir.borrow();
+
+            let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+            let mut asn = gasn.and(&mut info.lasn);
+
+            info.dataflow.propagate(&mut asn.perms_mut());
+
+            borrowck::borrowck_mir(
+                &acx,
+                &info.dataflow,
+                &mut asn.perms_mut(),
+                name.as_str(),
+                &mir,
+            );
+
+            info.acx_data.set(acx.into_data());
+        }
+
+        if gasn == old_gasn {
+            break;
+        }
+    }
+
+    for (ldid, info) in tcx.hir().body_owners().zip(func_info.iter_mut()) {
         let ldid_const = WithOptConstParam::unknown(ldid);
         let name = tcx.item_name(ldid.to_def_id());
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
-
-        let (mut data, mut dataflow, l_equiv) = info;
-        // Remap pointers based on equivalence classes, so all members of an equivalence class now
-        // use the same `PointerId`.
-        let (l_counter, l_equiv_map) = l_equiv.renumber(&g_equiv_map);
-        eprintln!("l_equiv_map = {:?}", l_equiv_map);
-        data.remap_pointers(gacx.lcx, g_equiv_map.and(&l_equiv_map), l_counter);
-        dataflow.remap_pointers(g_equiv_map.and(&l_equiv_map));
-
-        let acx = gacx.function_context_with_data(&mir, data);
-
-        let mut lasn =
-            LocalAssignment::new(acx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
-        let mut asn = gasn.and(&mut lasn);
-
-        dataflow.propagate(&mut asn.perms_mut());
-
-        borrowck::borrowck_mir(&acx, &dataflow, &mut asn.perms_mut(), name.as_str(), &mir);
-
-        dataflow.propagate_cell(&mut asn);
+        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+        let mut asn = gasn.and(&mut info.lasn);
+        info.dataflow.propagate_cell(&mut asn);
 
         // Print labeling and rewrites for the current function.
 
