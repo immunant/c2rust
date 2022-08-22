@@ -6,11 +6,15 @@ use fs2::FileExt;
 use fs_err::OpenOptions;
 use indexmap::IndexSet;
 use log::{debug, trace};
+use rustc_ast::Mutability;
 use rustc_index::vec::Idx;
-use rustc_middle::mir::visit::{MutatingUseContext, PlaceContext, Visitor};
+use rustc_middle::mir::visit::{
+    MutVisitor, MutatingUseContext, NonMutatingUseContext, PlaceContext, Visitor,
+};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, BorrowKind, HasLocalDecls, Local, LocalDecl, Location,
-    Operand, Place, PlaceElem, Rvalue, SourceInfo, Terminator, TerminatorKind, START_BLOCK,
+    BasicBlock, BasicBlockData, Body, BorrowKind, ClearCrossCrate, HasLocalDecls, Local, LocalDecl,
+    Location, Operand, Place, PlaceElem, ProjectionElem, Rvalue, Safety, SourceInfo, Statement,
+    StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::def_id::{DefId, DefPathHash};
@@ -24,8 +28,8 @@ use crate::arg::{ArgKind, InstrumentationArg};
 use crate::hooks::Hooks;
 use crate::mir_utils::{has_outer_deref, remove_outer_deref, strip_all_deref};
 use crate::point::cast_ptr_to_usize;
-use crate::point::CollectInstrumentationPoints;
 use crate::point::InstrumentationApplier;
+use crate::point::{CheckAddressTakenLocals, CollectInstrumentationPoints, SubAddressTakenLocals};
 use crate::util::Convert;
 
 #[derive(Default)]
@@ -121,6 +125,161 @@ fn is_shared_or_unsafe_ptr(ty: Ty) -> bool {
 
 fn is_region_or_unsafe_ptr(ty: Ty) -> bool {
     ty.is_unsafe_ptr() || ty.is_region_ptr()
+}
+
+impl<'tcx> Visitor<'tcx> for CheckAddressTakenLocals<'_, 'tcx> {
+    fn visit_assign(&mut self, place: &Place<'tcx>, rvalue: &Rvalue<'tcx>, location: Location) {
+        let locals = self.local_decls().clone();
+        let ctx = self.tcx();
+
+        let _op_ty = |op: &Operand<'tcx>| op.ty(&locals, ctx);
+        let place_ty = |p: &Place<'tcx>| p.ty(&locals, ctx).ty;
+        let _local_ty = |p: &Place| place_ty(&p.local.into());
+        let value_ty = rvalue.ty(self, self.tcx());
+
+        self.super_assign(place, rvalue, location);
+
+        match rvalue {
+            _ if !is_region_or_unsafe_ptr(value_ty) => {}
+
+            Rvalue::AddressOf(_, p) | Rvalue::Ref(_, _, p) if !p.is_indirect() => {
+                self.address_taken.insert(p.local);
+            }
+            _ => (),
+        }
+    }
+}
+
+impl<'tcx> MutVisitor<'tcx> for SubAddressTakenLocals<'tcx> {
+    fn visit_place(
+        &mut self,
+        mut place: &mut Place<'tcx>,
+        context: PlaceContext,
+        location: Location,
+    ) {
+        // if we have found an address-taken local `_1`, substitute with `(*_2)`
+        if let Some(substitute) = self.local_substitute.get(&place.local) {
+            if context.is_use()
+                && !context.is_place_assignment()
+                && !context.is_drop()
+                && !matches!(
+                    context,
+                    PlaceContext::NonMutatingUse(NonMutatingUseContext::Inspect)
+                )
+            {
+                let projection = {
+                    let mut v = Vec::with_capacity(place.projection.len() + 1);
+                    v.extend([ProjectionElem::Deref]);
+                    v.extend(place.projection);
+                    self.tcx().intern_place_elems(&v)
+                };
+                place.local = *substitute;
+                place.projection = projection;
+            }
+        }
+
+        self.super_place(place, context, location)
+    }
+
+    fn tcx<'a>(&'a self) -> TyCtxt<'tcx> {
+        self.tcx()
+    }
+
+    fn visit_body(&mut self, body: &mut Body<'tcx>) {
+        let mut addr_taken_locals = Vec::new();
+
+        // for each address-taken local, push a new local that will get assigned
+        // its address
+        for local in &self.address_taken {
+            let arg_ty = Place::from(*local).ty(&body.local_decls, self.tcx()).ty;
+            let inner_ty = ty::TypeAndMut {
+                ty: arg_ty,
+                mutbl: Mutability::Mut,
+            };
+
+            let raw_ptr_ty = self.tcx().mk_ptr(inner_ty);
+            let raw_ptr_local = body.local_decls.push(LocalDecl::new(raw_ptr_ty, DUMMY_SP));
+
+            self.local_substitute.insert(*local, raw_ptr_local);
+
+            // set original local as mutable
+            body.local_decls.get_mut(*local).unwrap().mutability = Mutability::Mut;
+        }
+
+        // when the address-taken local is assigned to for the first time, we know it's active,
+        // so mark the location of that assignment for the next step
+        for (bid, block) in body.basic_blocks().iter_enumerated().rev() {
+            for (sid, statement) in block.statements.iter().enumerate().rev() {
+                match &statement.kind {
+                    StatementKind::Assign(stmt) => {
+                        let (ref place, _) = **stmt;
+                        if let Some(l) = place.as_local().filter(|l| self.address_taken.contains(l))
+                        {
+                            // put just below first assignment
+                            addr_taken_locals.push((place.clone(), bid, sid));
+                            self.address_taken.remove(&l);
+                        }
+                    }
+                    _ => (),
+                }
+            }
+            if let Some(term) = &block.terminator {
+                match &term.kind {
+                    TerminatorKind::Call {
+                        func,
+                        args,
+                        destination,
+                        target,
+                        ..
+                    } => {
+                        if let Some(l) = destination
+                            .as_local()
+                            .filter(|l| self.address_taken.contains(l))
+                        {
+                            if let Some(next_block) = target {
+                                // put into first statement of following block
+                                addr_taken_locals.push((destination.clone(), *next_block, 0));
+                                self.address_taken.remove(&l);
+                            }
+                        }
+                    }
+                    _ => (),
+                }
+            }
+        }
+
+        // also mark location of address-taken arguments
+        for l in &self.address_taken {
+            if l.as_usize() > 0 && l.as_usize() <= body.arg_count {
+                // put into first block, first statement
+                addr_taken_locals.push((Place::from(*l), BasicBlock::from_u32(0), 0));
+            }
+        }
+
+        // visit places first, so that they're already re-written and so that we don't accidentally
+        // rewrite locals in statements that we're about to insert
+        self.super_body(body);
+
+        // Add `_y = &raw _x` for each address-taken local _x,
+        // just below the original assignment `_x = ...`
+        for (place, bid, sid) in addr_taken_locals {
+            let addr_of_stmt = Statement {
+                source_info: SourceInfo::outermost(DUMMY_SP),
+                kind: StatementKind::Assign(Box::new((
+                    self.local_substitute
+                        .get(&place.local)
+                        .cloned()
+                        .unwrap()
+                        .into(),
+                    Rvalue::AddressOf(Mutability::Mut, place),
+                ))),
+            };
+
+            body.basic_blocks_mut()[bid]
+                .statements
+                .insert(sid + 1, addr_of_stmt);
+        }
+    }
 }
 
 impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
@@ -229,7 +388,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                 }
             }
             _ if !is_region_or_unsafe_ptr(value_ty) => {}
-            Rvalue::AddressOf(_, p)
+            Rvalue::AddressOf(_, p) | Rvalue::Ref(_, _, p)
                 if has_outer_deref(p)
                     && is_region_or_unsafe_ptr(place_ty(&remove_outer_deref(*p, self.tcx()))) =>
             {
@@ -286,27 +445,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     .dest(&dest)
                     .add_to(self);
             }
-            Rvalue::Ref(_, bkind, p) if has_outer_deref(p) => {
-                // this is a reborrow or field reference, i.e. _2 = &(*_1)
-                let source = remove_outer_deref(*p, self.tcx());
-                if let BorrowKind::Mut { .. } = bkind {
-                    // Instrument which local's address is taken
-                    self.loc(location, location, copy_fn)
-                        .arg_addr_of(*p)
-                        .source(&source)
-                        .dest(&dest)
-                        .add_to(self);
-                } else {
-                    // Instrument immutable borrows by tracing the reference itself
-                    self.loc(location, location.successor_within_block(), copy_fn)
-                        .arg_var(dest)
-                        .source(&source)
-                        .dest(&dest)
-                        .add_to(self);
-                };
-            }
             Rvalue::Ref(_, bkind, p) if !p.is_indirect() => {
-                // this is a reborrow or field reference, i.e. _2 = &(*_1)
                 let source = remove_outer_deref(*p, self.tcx());
                 if let BorrowKind::Mut { .. } = bkind {
                     // Instrument which local's address is taken
@@ -426,9 +565,44 @@ fn instrument_body<'a, 'tcx>(
     body_did: DefId,
 ) {
     let hooks = Hooks::new(tcx);
+
+    for (i, b) in body.basic_blocks().iter().enumerate() {
+        for s in &b.statements {
+            println!("bb{i:?} before: {s:?}");
+        }
+        println!("bb{i:?} before: {:?}", b.terminator())
+    }
+    println!();
+
+    let address_taken_locals = {
+        let mut local_visitor = CheckAddressTakenLocals::new(tcx, body);
+        local_visitor.visit_body(body);
+        local_visitor.address_taken
+    };
+    println!("address taken: {:?}", address_taken_locals);
+
+    let mut local_rewriter = SubAddressTakenLocals::new(tcx, address_taken_locals);
+    local_rewriter.visit_body(body);
+    println!(
+        "address taken substitutions: {:?}",
+        local_rewriter.local_substitute
+    );
+
+    // The local rewriter above rewrites address-taken locals with (*_x) where _x
+    // is a pointer, resulting in an unsafe operation. To allow this, set all scopes
+    // as unsafe
+    for scope in &mut body.source_scopes {
+        if let ClearCrossCrate::Set(data) = &mut scope.local_data {
+            data.safety = Safety::BuiltinUnsafe;
+        }
+    }
+
+    // collect instrumentation points
     let mut collector = CollectInstrumentationPoints::new(tcx, hooks, body);
     collector.visit_body(body);
     let points = collector.into_instrumentation_points();
+
+    // insert instrumentation
     let mut applier = InstrumentationApplier::new(state, tcx, body, body_did);
     applier.apply_points(&points);
 
@@ -437,6 +611,14 @@ fn instrument_body<'a, 'tcx>(
     if Some(body_did) == main_did {
         instrument_entry_fn(tcx, hooks, body);
     }
+
+    for (i, b) in body.basic_blocks().iter().enumerate() {
+        for s in &b.statements {
+            println!("bb{i:?} after: {s:?}");
+        }
+        println!("bb{i:?} after: {:?}", b.terminator())
+    }
+    println!();
 }
 
 /// Add initialization code to the body of a function known to be the binary entrypoint

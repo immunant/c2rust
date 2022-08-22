@@ -5,10 +5,11 @@ pub mod source;
 
 use c2rust_analysis_rt::mir_loc::{self, EventMetadata};
 use rustc_middle::{
-    mir::{Body, HasLocalDecls, LocalDecls, Location, Place, Rvalue},
+    mir::{Body, HasLocalDecls, Local, LocalDecls, Location, Place, Rvalue},
     ty::TyCtxt,
 };
 use rustc_span::def_id::DefId;
+use std::collections::{HashMap, HashSet};
 
 use crate::{arg::InstrumentationArg, hooks::Hooks, util::Convert};
 
@@ -24,6 +25,46 @@ pub struct InstrumentationPoint<'tcx> {
     pub is_cleanup: bool,
     pub after_call: bool,
     pub metadata: EventMetadata,
+}
+
+pub struct CheckAddressTakenLocals<'a, 'tcx: 'a> {
+    pub address_taken: HashSet<Local>,
+    tcx: TyCtxt<'tcx>,
+    body: &'a Body<'tcx>,
+}
+
+impl<'a, 'tcx: 'a> CheckAddressTakenLocals<'a, 'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>, body: &'a Body<'tcx>) -> Self {
+        Self {
+            address_taken: HashSet::new(),
+            tcx,
+            body,
+        }
+    }
+
+    pub fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+}
+
+pub struct SubAddressTakenLocals<'tcx> {
+    pub address_taken: HashSet<Local>,
+    pub local_substitute: HashMap<Local, Local>,
+    tcx: TyCtxt<'tcx>,
+}
+
+impl<'tcx> SubAddressTakenLocals<'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>, address_taken: HashSet<Local>) -> Self {
+        Self {
+            address_taken,
+            local_substitute: HashMap::new(),
+            tcx,
+        }
+    }
+
+    pub fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
 }
 
 pub struct CollectInstrumentationPoints<'a, 'tcx: 'a> {
@@ -51,6 +92,12 @@ impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
 }
 
 impl<'a, 'tcx: 'a> HasLocalDecls<'tcx> for CollectInstrumentationPoints<'a, 'tcx> {
+    fn local_decls(&self) -> &'a LocalDecls<'tcx> {
+        self.body.local_decls()
+    }
+}
+
+impl<'a, 'tcx: 'a> HasLocalDecls<'tcx> for CheckAddressTakenLocals<'a, 'tcx> {
     fn local_decls(&self) -> &'a LocalDecls<'tcx> {
         self.body.local_decls()
     }

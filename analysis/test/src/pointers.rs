@@ -360,6 +360,11 @@ pub fn shared_ref_foo(x: &u8) -> &u8 {
     x
 }
 #[no_mangle]
+pub unsafe extern "C" fn test_ref() {
+    let x = 2;
+    let y = &x;
+}
+#[no_mangle]
 pub unsafe extern "C" fn test_shared_ref() {
     let x = 2;
     let y = &x;
@@ -390,7 +395,17 @@ pub unsafe extern "C" fn test_ref_field() {
         field3: 0 as *const S,
         field4: t,
     };
+    let y = t;
     s.field4.field4 = s.field4.field4;
+    let x = &t;
+    s.field4 = t;
+}
+#[no_mangle]
+pub unsafe extern "C" fn test_addr_taken() {
+    let x = 2;
+    let y = 2 + x;
+    let px = std::ptr::addr_of!(x);
+    let z = x + y;
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_realloc_reassign() {
@@ -537,6 +552,8 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     let nums = &mut [2i32, 5i32, 3i32, 1i32, 6i32];
     insertion_sort(nums.len() as libc::c_int, nums as *mut libc::c_int);
     test_ref_field();
+    test_addr_taken();
+    test_ref();
     return 0i32;
 }
 pub fn main() {
