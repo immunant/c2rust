@@ -199,7 +199,7 @@ mod tests {
         process::Command,
     };
 
-    use color_eyre::eyre::{self, ensure, eyre};
+    use color_eyre::eyre::{self, ensure, eyre, Context};
 
     use crate::{Pdg, ToPrint};
 
@@ -242,6 +242,14 @@ mod tests {
         }
     }
 
+    impl Profile {
+        pub fn current() -> eyre::Result<Self> {
+            let profile =
+                env::var("PROFILE").wrap_err(eyre!("should be set by `build.rs` from `cargo`"))?;
+            Ok(profile.into())
+        }
+    }
+
     pub fn repo_dir() -> eyre::Result<PathBuf> {
         let crate_dir = env::var("CARGO_MANIFEST_DIR")?;
         let repo_dir = Path::new(&crate_dir)
@@ -265,7 +273,9 @@ mod tests {
                 "--bin",
                 "c2rust-instrument",
                 "--profile",
-                Profile::Release.name(),
+                // Compile `c2rust-instrument` with the same profile us, `c2rust-pdg`, was compiled in.
+                // Makes sense to match them, plus that one is probably already compiled.
+                Profile::current()?.name(),
                 "--",
                 "--metadata",
             ])
