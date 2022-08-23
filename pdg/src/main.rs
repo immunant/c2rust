@@ -258,7 +258,11 @@ mod tests {
         Ok(repo_dir.to_owned())
     }
 
-    fn pdg_snapshot_inner(test_dir: &Path, profile: Profile) -> eyre::Result<impl Display> {
+    fn pdg_snapshot_inner(
+        test_dir: &Path,
+        profile: Profile,
+        to_print: &[ToPrint],
+    ) -> eyre::Result<impl Display> {
         let runtime_path = repo_dir()?.join("analysis/runtime");
         let manifest_path = test_dir.join("Cargo.toml");
         let target_dir = test_dir.join("instrument.target");
@@ -294,22 +298,23 @@ mod tests {
 
         let pdg = Pdg::new(&metadata_path, &event_log_path)?;
         pdg.graphs.assert_all_tests();
-        let repr = pdg.repr({
-            use ToPrint::*;
-            &[Graphs, WritePermissions, Counts]
-        });
+        let repr = pdg.repr(to_print);
         Ok(repr.to_string())
     }
 
     pub fn pdg_snapshot(
         test_dir: impl AsRef<Path>,
         profile: Profile,
+        to_print: &[ToPrint],
     ) -> eyre::Result<impl Display> {
-        pdg_snapshot_inner(test_dir.as_ref(), profile)
+        pdg_snapshot_inner(test_dir.as_ref(), profile, to_print)
     }
 
     fn analysis_test_pdg_snapshot(profile: Profile) -> eyre::Result<impl Display> {
-        pdg_snapshot(repo_dir()?.join("analysis/test"), profile)
+        pdg_snapshot(repo_dir()?.join("analysis/test"), profile, {
+            use ToPrint::*;
+            &[Graphs, WritePermissions, Counts]
+        })
     }
 
     use crate::init;
