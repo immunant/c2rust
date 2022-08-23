@@ -24,10 +24,11 @@ mod query;
 mod util;
 
 use builder::{construct_pdg, read_event_log};
+use c2rust_analysis_rt::{events::Event, metadata::Metadata};
 use clap::{Parser, ValueEnum};
 use color_eyre::eyre;
+use graph::Graphs;
 use std::{
-    collections::HashSet,
     fmt::{self, Display, Formatter},
     path::{Path, PathBuf},
     sync::Once,
@@ -36,7 +37,7 @@ use std::{
 use crate::builder::read_metadata;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ValueEnum)]
-enum ToPrint {
+pub enum ToPrint {
     Graphs,
     Counts,
     Events,
@@ -51,10 +52,104 @@ impl Display for ToPrint {
     }
 }
 
+pub struct Pdg {
+    pub events: Vec<Event>,
+    pub metadata: Metadata,
+    pub graphs: Graphs,
+}
+
+impl Pdg {
+    pub fn new(metadata_path: &Path, event_log_path: &Path) -> eyre::Result<Self> {
+        let events = read_event_log(event_log_path)?;
+        let metadata = read_metadata(metadata_path)?;
+        let graphs = construct_pdg(&events, &metadata);
+        Ok(Self {
+            events,
+            metadata,
+            graphs,
+        })
+    }
+
+    pub fn repr<'a>(&'a self, to_print: &'a [ToPrint]) -> PdgRepr<'a> {
+        PdgRepr {
+            pdg: self,
+            to_print,
+        }
+    }
+}
+
+pub struct PdgRepr<'a> {
+    pub pdg: &'a Pdg,
+    pub to_print: &'a [ToPrint],
+}
+
+impl Display for PdgRepr<'_> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let Self {
+            pdg:
+                Pdg {
+                    events,
+                    metadata,
+                    graphs,
+                },
+            to_print,
+        } = self;
+        let should_print = |e| to_print.contains(&e);
+
+        if should_print(ToPrint::Metadata) {
+            writeln!(f, "{metadata:#?}")?;
+        }
+
+        if should_print(ToPrint::Events) {
+            for event in events.iter() {
+                let mir_loc = metadata.get(event.mir_loc);
+                let kind = &event.kind;
+                writeln!(f, "{mir_loc:?} -> {kind:?}")?;
+            }
+        }
+
+        if should_print(ToPrint::LatestAssignments) {
+            for ((func_hash, local), p) in &graphs.latest_assignment {
+                let func = &metadata.functions[func_hash];
+                writeln!(f, "({func}:{local:?}) => {p:?}")?;
+            }
+        }
+
+        for graph in &graphs.graphs {
+            let needs_write = graph
+                .needs_write_permission()
+                .map(|node_id| node_id.as_usize())
+                .collect::<Vec<_>>();
+            if should_print(ToPrint::Graphs) {
+                writeln!(f, "{graph}")?;
+            }
+            if should_print(ToPrint::WritePermissions) {
+                writeln!(f, "nodes_that_need_write = {needs_write:?}")?;
+            }
+            if should_print(ToPrint::Graphs) || should_print(ToPrint::WritePermissions) {
+                writeln!(f)?;
+            }
+        }
+
+        if should_print(ToPrint::Counts) {
+            let num_graphs = graphs.graphs.len();
+            let num_nodes = graphs
+                .graphs
+                .iter()
+                .map(|graph| graph.nodes.len())
+                .sum::<usize>();
+            writeln!(f, "num_graphs = {num_graphs}")?;
+            writeln!(f, "num_nodes = {num_nodes}")?;
+        }
+
+        Ok(())
+    }
+}
+
 /// Construct and query a PDG from an instrumented program's event log.
 #[derive(Debug, Parser)]
 #[clap(author, version, about, long_about = None)]
-struct Args {
+pub struct Args {
     /// Path to an event log from a run of an instrumented program.
     #[clap(long, value_parser)]
     event_log: PathBuf,
@@ -88,63 +183,10 @@ pub fn init() {
 fn main() -> eyre::Result<()> {
     init();
     let args = Args::parse();
-
-    let print_args = args.print.iter().collect::<HashSet<_>>();
-    let should_print = |to_print| print_args.contains(&to_print);
-
-    let events = read_event_log(Path::new(&args.event_log))?;
-    let metadata = read_metadata(Path::new(&args.metadata))?;
-    let metadata = &metadata;
-
-    if should_print(ToPrint::Metadata) {
-        println!("{metadata:#?}");
-    }
-
-    if should_print(ToPrint::Events) {
-        for event in &events {
-            let mir_loc = metadata.get(event.mir_loc);
-            let kind = &event.kind;
-            println!("{mir_loc:?} -> {kind:?}");
-        }
-    }
-
-    let pdg = construct_pdg(&events, metadata);
-    pdg.assert_all_tests();
-
-    if should_print(ToPrint::LatestAssignments) {
-        for ((func_hash, local), p) in &pdg.latest_assignment {
-            let func = &metadata.functions[func_hash];
-            println!("({func}:{local:?}) => {p:?}");
-        }
-    }
-
-    for graph in &pdg.graphs {
-        let needs_write = graph
-            .needs_write_permission()
-            .map(|node_id| node_id.as_usize())
-            .collect::<Vec<_>>();
-        if should_print(ToPrint::Graphs) {
-            println!("{graph}");
-        }
-        if should_print(ToPrint::WritePermissions) {
-            println!("nodes_that_need_write = {needs_write:?}");
-        }
-        if should_print(ToPrint::Graphs) || should_print(ToPrint::WritePermissions) {
-            println!();
-        }
-    }
-
-    if should_print(ToPrint::Counts) {
-        let num_graphs = pdg.graphs.len();
-        let num_nodes = pdg
-            .graphs
-            .iter()
-            .map(|graph| graph.nodes.len())
-            .sum::<usize>();
-        println!("num_graphs = {num_graphs}");
-        println!("num_nodes = {num_nodes}");
-    }
-
+    let pdg = Pdg::new(&args.metadata, &args.event_log)?;
+    pdg.graphs.assert_all_tests();
+    let repr = pdg.repr(&args.print);
+    println!("{repr}");
     Ok(())
 }
 
