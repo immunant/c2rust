@@ -120,8 +120,7 @@ fn main() -> anyhow::Result<()> {
     // Furthermore, doing it this way correctly forwards `--help` through to the subcommand
     // instead of `clap` intercepting it and displaying the top-level `--help`.
     let mut args = env::args_os();
-    args.next(); // skip exe name
-    let sub_command = args.next();
+    let sub_command = args.nth(1);
     let sub_command = sub_command
         .as_ref()
         .and_then(|arg| arg.to_str())
