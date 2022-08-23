@@ -468,7 +468,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     cargo.run(|cmd| {
         // Enable the runtime dependency.
         let cargo_target_dir = manifest_dir
-            .unwrap_or_else(|| Path::new(""))
+            .unwrap_or_else(|| Path::new("."))
             .join("instrument.target");
 
         // The [`rustc_wrapper`] might run in a different working directory if `--manifest-path` was passed.
