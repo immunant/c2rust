@@ -34,13 +34,13 @@ impl<'c> Translation<'c> {
     }
 
     pub fn match_vastart(&self, expr: CExprId) -> Option<CDeclId> {
-        let ast_context = &self.ast_context;
+        let ast = &self.ast_context;
 
         // `struct`-based `va_list` (e.g. x86_64).
         let match_vastart_struct = || {
-            match_or! { [ast_context[expr].kind]
+            match_or! { [ast[expr].kind]
             CExprKind::ImplicitCast(_, e, _, _, _) => e }
-            match_or! { [ast_context[e].kind]
+            match_or! { [ast[e].kind]
             CExprKind::DeclRef(_, va_id, _) => va_id }
             Some(va_id)
         };
@@ -49,11 +49,11 @@ impl<'c> Translation<'c> {
         //
         // Supporting this pattern is necessary to transpile apache httpd.
         let match_vastart_struct_member = || {
-            match_or! { [ast_context[expr].kind]
+            match_or! { [ast[expr].kind]
             CExprKind::ImplicitCast(_, me, _, _, _) => me }
-            match_or! { [ast_context[me].kind]
+            match_or! { [ast[me].kind]
             CExprKind::Member(_, e, _, _, _) => e }
-            match_or! { [ast_context[e].kind]
+            match_or! { [ast[e].kind]
             CExprKind::DeclRef(_, va_id, _) => va_id }
             Some(va_id)
         };
@@ -63,20 +63,20 @@ impl<'c> Translation<'c> {
         // Supporting this pattern is necessary to transpile
         // [graphviz](https://gitlab.com/graphviz/graphviz/-/blob/5.0.0/lib/sfio/sftable.c#L321).
         let match_vastart_struct_pointer_member = || {
-            match_or! { [ast_context[expr].kind]
+            match_or! { [ast[expr].kind]
             CExprKind::ImplicitCast(_, me, _, _, _) => me }
-            match_or! { [ast_context[me].kind]
+            match_or! { [ast[me].kind]
             CExprKind::Member(_, ie, _, _, _) => ie }
-            match_or! { [ast_context[ie].kind]
+            match_or! { [ast[ie].kind]
             CExprKind::ImplicitCast(_, e, _, _, _) => e }
-            match_or! { [ast_context[e].kind]
+            match_or! { [ast[e].kind]
             CExprKind::DeclRef(_, va_id, _) => va_id }
             Some(va_id)
         };
 
         // `char *` pointer-based `va_list` (e.g. x86).
         let match_vastart_pointer = || {
-            match_or! { [ast_context[expr].kind]
+            match_or! { [ast[expr].kind]
             CExprKind::DeclRef(_, va_id, _) => va_id }
             Some(va_id)
         };
