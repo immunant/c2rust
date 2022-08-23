@@ -466,7 +466,6 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     let metadata_file = MetadataFile::new(metadata_path)?;
 
     cargo.run(|cmd| {
-        // Enable the runtime dependency.
         let cargo_target_dir = manifest_dir
             .unwrap_or_else(|| Path::new("."))
             .join("instrument.target");
@@ -479,7 +478,9 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
             None => metadata_path,
         };
 
+        // Enable the runtime dependency.
         add_feature(&mut cargo_args, &["c2rust-analysis-rt"]);
+
         cmd.args(cargo_args)
             .env(RUSTC_WRAPPER_VAR, rustc_wrapper)
             .env(RUST_SYSROOT_VAR, &sysroot)
