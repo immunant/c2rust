@@ -23,7 +23,7 @@ macro_rules! match_or {
 }
 
 impl<'c> Translation<'c> {
-    /// Returns true iff `va_start`, `va_end`, or `va_copy` may be called on `decl_id`.
+    /// Returns `true` iff `va_start`, `va_end`, or `va_copy` may be called on `decl_id`.
     pub fn is_va_decl(&self, decl_id: CDeclId) -> bool {
         self.function_context
             .borrow()
@@ -34,7 +34,7 @@ impl<'c> Translation<'c> {
     }
 
     pub fn match_vastart(&self, expr: CExprId) -> Option<CDeclId> {
-        // struct-based va_list (e.g. x86_64)
+        /// `struct`-based `va_list` (e.g. x86_64).
         fn match_vastart_struct(ast_context: &TypedAstContext, expr: CExprId) -> Option<CDeclId> {
             match_or! { [ast_context[expr].kind]
             CExprKind::ImplicitCast(_, e, _, _, _) => e }
@@ -43,8 +43,9 @@ impl<'c> Translation<'c> {
             Some(va_id)
         }
 
-        // struct-based va_list (e.g. x86_64) where va_list is accessed as a struct member
-        // supporting this pattern is necessary to transpile apache httpd
+        /// `struct`-based `va_list` (e.g. x86_64) where `va_list` is accessed as a `struct` member.
+        /// 
+        /// Supporting this pattern is necessary to transpile apache httpd.
         fn match_vastart_struct_member(
             ast_context: &TypedAstContext,
             expr: CExprId,
@@ -58,8 +59,10 @@ impl<'c> Translation<'c> {
             Some(va_id)
         }
 
-        // struct-based va_list (e.g. x86_64) where va_list is accessed as a member of a struct pointer
-        // supporting this pattern is necessary to transpile [graphviz](https://gitlab.com/graphviz/graphviz/-/blob/5.0.0/lib/sfio/sftable.c#L321)
+        /// `struct`-based `va_list` (e.g. x86_64) where `va_list` is accessed as a member of a `struct *` pointer.
+        /// 
+        /// Supporting this pattern is necessary to transpile
+        /// [graphviz](https://gitlab.com/graphviz/graphviz/-/blob/5.0.0/lib/sfio/sftable.c#L321).
         fn match_vastart_struct_pointer_member(
             ast_context: &TypedAstContext,
             expr: CExprId,
@@ -75,7 +78,7 @@ impl<'c> Translation<'c> {
             Some(va_id)
         }
 
-        // char pointer-based va_list (e.g. x86)
+        /// `char *` pointer-based `va_list` (e.g. x86).
         fn match_vastart_pointer(ast_context: &TypedAstContext, expr: CExprId) -> Option<CDeclId> {
             match_or! { [ast_context[expr].kind]
             CExprKind::DeclRef(_, va_id, _) => va_id }
