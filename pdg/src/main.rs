@@ -290,7 +290,7 @@ mod tests {
             .env("INSTRUMENT_OUTPUT", &event_log_path)
             .env("INSTRUMENT_OUTPUT_APPEND", "false");
         let status = cmd.status()?;
-        ensure!(status.success(), eyre!("{cmd:?} failed: {status:?}"));
+        ensure!(status.success(), eyre!("{cmd:?} failed: {status}"));
 
         let pdg = Pdg::new(&metadata_path, &event_log_path)?;
         pdg.graphs.assert_all_tests();
