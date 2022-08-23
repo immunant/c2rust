@@ -107,7 +107,7 @@ impl<'c> Translation<'c> {
         CExprKind::DeclRef(_, decl_id, _) => decl_id }
         match_or! { [self.ast_context[decl_id].kind]
         CDeclKind::Function { ref name, .. } => name }
-        match name as &str {
+        match name.as_str() {
             "__builtin_va_start" => {
                 if args.len() != 2 {
                     return None;
