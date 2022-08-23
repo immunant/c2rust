@@ -325,8 +325,13 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
 
     // Create a new metadata file for the [`rustc_wrapper`]s to append to.
     // This is a temporary file at first and will be moved into place if it written to.
+    let prefix = {
+        let mut prefix = metadata_file_name.to_owned();
+        prefix.push(".");
+        prefix
+    };
     let metadata_file = tempfile::Builder::new()
-        .prefix(metadata_file_name)
+        .prefix(&prefix)
         .suffix(".new")
         .tempfile_in(metadata_dir)
         .context("create new (temp) metadata file")?;
