@@ -24,21 +24,19 @@ mod util;
 use crate::callbacks::{MirTransformCallbacks, INSTRUMENTER};
 
 use std::{
-    cmp::Ordering,
     env,
     ffi::{OsStr, OsString},
-    io::{Read, Seek, Write},
+    io::ErrorKind,
     iter,
     path::{Path, PathBuf},
     process::{self, Command, ExitStatus},
 };
 
-use fs_err::{File, OpenOptions};
+use fs_err::OpenOptions;
 use rustc_driver::{RunCompiler, TimePassesCallbacks};
 use rustc_session::config::CrateType;
-use std::io::SeekFrom;
 
-use anyhow::{anyhow, bail, ensure, Context};
+use anyhow::{anyhow, ensure, Context};
 use camino::Utf8Path;
 use clap::Parser;
 
@@ -287,101 +285,6 @@ fn set_rust_toolchain() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// An open metadata file containing [`Metadata`]s.
-///
-/// [`Metadata`]: c2rust_analysis_rt::metadata::Metadata
-struct MetadataFile<'a> {
-    /// The [`Path`] of the [`MetadataFile`].
-    path: &'a Path,
-    /// The open [`File`].
-    file: File,
-    /// It's current length.
-    len: u64,
-}
-
-impl<'a> MetadataFile<'a> {
-    /// Open and/or create the [`MetadataFile`] for the [`rustc_wrapper`]s to append to.
-    /// Note that we can't truncate it because in the case that no inputs have changed,
-    /// `cargo` won't recompile, so a new [`MetadataFile`] won't be regenerated.
-    /// We should keep the old one in that case.
-    pub fn open(path: &'a Path) -> anyhow::Result<Self> {
-        if let Some(dir) = path.parent() {
-            fs_err::create_dir_all(dir)?;
-        }
-        let file = OpenOptions::new()
-            .create(true)
-            .read(true) // For reading new [`Metadata`] at the end.
-            .write(true) // For creation and for writing new [`Metadata`] to the beginning.
-            .truncate(false)
-            .open(&path)
-            .context("open/create metadata file")?;
-        let len = file.metadata().context("read old metadata file len")?.len();
-        Ok(Self { path, file, len })
-    }
-
-    /// Call after the [`MetadataFile`] has been finished being used and potentially appended to.
-    /// This will delete any old, out-of-date [`Metadata`]s from the beginning of the [`MetadataFile`] if need be.
-    ///
-    /// [`Metadata`]: c2rust_analysis_rt::metadata::Metadata
-    pub fn finish(&mut self) -> anyhow::Result<()> {
-        let old_len = self.len;
-        if old_len == 0 {
-            // If the `old_len` is 0, then the metadata file is fresh.
-            // There was no old metadata that we need to delete now.
-        } else {
-            let new_len = self
-                .file
-                .metadata()
-                .context("read new metadata file len")?
-                .len();
-            use Ordering::*;
-            match new_len.cmp(&old_len) {
-                Less => {
-                    self.len = new_len;
-                    bail!(
-                        "metadata should never shrink: {old_len} to {new_len} bytes: {}",
-                        self.path.display()
-                    )
-                }
-                Equal => {
-                    // The metadata was never updated.
-                    // This means no inputs changed and `cargo` never recompiled,
-                    // so that old metadata is still valid.
-                }
-                Greater => {
-                    // New metadata was appended.
-                    // We now need to delete the old metadata.
-                    // Simply seek to the new metadata, read it into a buffer,
-                    // seek back to the beginning, write it, and then truncate to the correct length.
-                    let len = new_len - old_len;
-                    self.file
-                        .seek(SeekFrom::Start(old_len))
-                        .context("seek to new metadata")?;
-                    let mut buf = Vec::with_capacity(len.try_into().unwrap());
-                    self.file
-                        .read_to_end(&mut buf)
-                        .context("read new metadata at the end")?;
-                    self.file.rewind().context("rewind")?;
-                    self.file
-                        .write_all(&buf)
-                        .context("write new metadata to the beginning")?;
-                    self.file.set_len(len).context("truncate")?;
-                    self.len = len;
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
-impl Drop for MetadataFile<'_> {
-    /// Try to call [`Self::finish`].
-    fn drop(&mut self) {
-        // Make sure we don't forget to call this.
-        self.finish().unwrap();
-    }
-}
-
 /// Run as a `cargo` wrapper/plugin, the default invocation.
 fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     let Args {
@@ -410,7 +313,33 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         })?;
     }
 
-    let mut metadata_file = MetadataFile::open(&metadata_path)?;
+    // Create the metadata directory if it doesn't exist so that we're able to create the metadata file.
+    if let Some(metadata_dir) = metadata_path.parent() {
+        fs_err::create_dir_all(metadata_dir)?;
+    }
+
+    let old_metadata_path = metadata_path.with_extension("old"); // TODO(kkysen) use tempfile
+
+    // Move the old metadata file to a temporary file.
+    // We want new writes to the metadata file to be to a fresh file,
+    // but in the case that `cargo` doesn't invoke the [`rustc_wrapper`],
+    // we will want to restore the old metadata file, as it's still valid
+    // and we won't have generated a new metadata file.
+    let old_metadata_exists = match fs_err::rename(&metadata_path, &old_metadata_path) {
+        Ok(()) => Ok(true),
+        Err(e) => match e.kind() {
+            ErrorKind::NotFound => Ok(false),
+            _ => Err(e),
+        },
+    }
+    .context("move old metadata file to temporary")?;
+
+    // Create the metadata file for the [`rustc_wrapper`]s to append to.
+    let metadata_file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&metadata_path)
+        .context("create new metadata file")?;
 
     cargo.run(|cmd| {
         // Enable the runtime dependency.
@@ -421,7 +350,22 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
             .env(METADATA_VAR, &metadata_path);
     })?;
 
-    metadata_file.finish()?;
+    // If the metadata file is still empty,
+    // then we didn't generate a new one,
+    // so we need to restore the old metadata file from its temporary file.
+    // Of course, we only do this if there actually was an old metadata file.
+    // And in the case that there was no old metadata file
+    // and no new metadata file (shouldn't really happen, though),
+    // we clean up the empty metadata file.
+    if metadata_file.metadata()?.len() == 0 {
+        if old_metadata_exists {
+            fs_err::rename(&old_metadata_path, &metadata_path)?;
+        } else {
+            fs_err::remove_file(&metadata_path)?;
+        }
+    } else if old_metadata_exists {
+        fs_err::remove_file(&old_metadata_path)?;
+    }
 
     Ok(())
 }
