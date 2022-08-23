@@ -107,18 +107,18 @@ impl<'c> Translation<'c> {
         CExprKind::DeclRef(_, decl_id, _) => decl_id }
         match_or! { [self.ast_context[decl_id].kind]
         CDeclKind::Function { ref name, .. } => name }
-        match name.as_str() {
-            "__builtin_va_start" if args.len() == 2 => {
-                self.match_vastart(args[0]).map(VaPart::Start)
+        match (name.as_str(), args.as_slice()) {
+            ("__builtin_va_start", &[expr, _]) => {
+                self.match_vastart(expr).map(VaPart::Start)
             }
 
-            "__builtin_va_copy" if args.len() == 2 => {
-                self.match_vacopy(args[0], args[1])
+            ("__builtin_va_copy", &[dst_expr, src_expr]) => {
+                self.match_vacopy(dst_expr, src_expr)
                     .map(|(did, sid)| VaPart::Copy(did, sid))
             }
 
-            "__builtin_va_end" if args.len() == 1 => {
-                self.match_vaend(args[0]).map(VaPart::End)
+            ("__builtin_va_end", &[expr]) => {
+                self.match_vaend(expr).map(VaPart::End)
             }
 
             _ => None,
