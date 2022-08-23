@@ -58,18 +58,20 @@ struct Args {
     #[clap(long)]
     set_runtime: bool,
 
-    /// `$RUSTFLAGS`, but as a CLI argument, not an inheritable environment variable.
-    /// These flags are appended (space-separated) to the existing `$RUSTFLAGS`, if it exists.
+    /// Set `$RUSTFLAGS` for the instrumented `cargo`.
     ///
-    /// The reason this exists is twofold:
-    ///
-    /// 1. It would be convenient if `cargo` itself had such a `--rustflags` argument,
-    ///    so at least we can recreate it here ourselves.
-    ///
-    /// 2. If this binary is invoked by something like `cargo run --bin c2rust-instrument`,
-    ///    then it's impossible to set `$RUSTFLAGS` only for the inner `cargo` that you want to add them to
-    ///    without also adding them to the outer `cargo run` `cargo`.
-    ///    `--rustflags` lets you do that easily.
+    /// This allows setting `$RUSTFLAGS` for the inner `cargo` when `c2rust-instrument` is invoked via `cargo run`, for example.
+    /// If `$RUSTFLAGS` is already set, these `--rustflags` are appended with a space.
+    //
+    // The reason this exists is twofold:
+    //
+    // 1. It would be convenient if `cargo` itself had such a `--rustflags` argument,
+    //    so at least we can recreate it here ourselves.
+    //
+    // 2. If this binary is invoked by something like `cargo run --bin c2rust-instrument`,
+    //    then it's impossible to set `$RUSTFLAGS` only for the inner `cargo` that you want to add them to
+    //    without also adding them to the outer `cargo run` `cargo`.
+    //    `--rustflags` lets you do that easily.
     #[clap(long)]
     rustflags: Option<OsString>,
 
