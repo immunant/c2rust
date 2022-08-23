@@ -313,12 +313,23 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         })?;
     }
 
+    let metadata_file_name = metadata_path
+        .file_name()
+        .ok_or_else(|| anyhow!("--metadata has no file name: {}", metadata_path.display()))?;
+    let metadata_dir = metadata_path.parent();
+
     // Create the metadata directory if it doesn't exist so that we're able to create the metadata file.
-    if let Some(metadata_dir) = metadata_path.parent() {
+    if let Some(metadata_dir) = metadata_dir {
         fs_err::create_dir_all(metadata_dir)?;
     }
 
-    let old_metadata_path = metadata_path.with_extension("old"); // TODO(kkysen) use tempfile
+    let metadata_dir = metadata_dir.unwrap_or_else(|| Path::new("."));
+
+    let old_metadata_file = tempfile::Builder::new()
+        .prefix(metadata_file_name)
+        .suffix(".old")
+        .tempfile_in(metadata_dir)?;
+    let old_metadata_path = old_metadata_file.path();
 
     // Move the old metadata file to a temporary file.
     // We want new writes to the metadata file to be to a fresh file,

@@ -19,6 +19,7 @@ camino = "1.0"
 toml_edit = "0.14"
 fs2 = "0.4"
 env_logger = "0.9"
+tempfile = "3.3"
 
 [build-dependencies]
 c2rust-build-paths = { path = "../c2rust-build-paths" }
