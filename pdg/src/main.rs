@@ -362,4 +362,12 @@ mod tests {
         insta::assert_display_snapshot!(pdg);
         Ok(())
     }
+
+    #[test]
+    fn analysis_test_pdg_snapshot_release() -> eyre::Result<()> {
+        init();
+        let pdg = analysis_test_pdg_snapshot(Profile::Release)?;
+        insta::assert_display_snapshot!(pdg);
+        Ok(())
+    }
 }
