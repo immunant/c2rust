@@ -192,23 +192,122 @@ fn main() -> eyre::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::{env, path::Path, process::Command};
+    use std::{
+        env,
+        fmt::Display,
+        path::{Path, PathBuf},
+        process::Command,
+    };
 
-    use color_eyre::eyre;
+    use color_eyre::eyre::{self, ensure, eyre};
+
+    use crate::{Pdg, ToPrint};
+
+    pub enum Profile {
+        Debug,
+        Release,
+        // Will be used by future test code.
+        #[allow(dead_code)]
+        Other(String),
+    }
+
+    impl Profile {
+        pub fn name(&self) -> &str {
+            use Profile::*;
+            match self {
+                Debug => "dev",
+                Release => "release",
+                Other(other) => other.as_str(),
+            }
+        }
+
+        pub fn dir_name(&self) -> &str {
+            use Profile::*;
+            match self {
+                Debug => "debug",
+                Release => "release",
+                Other(other) => other.as_str(),
+            }
+        }
+    }
+
+    impl From<String> for Profile {
+        fn from(profile: String) -> Self {
+            use Profile::*;
+            match profile.as_str() {
+                "debug" => Debug,
+                "release" => Release,
+                _ => Other(profile),
+            }
+        }
+    }
+
+    pub fn repo_dir() -> eyre::Result<PathBuf> {
+        let crate_dir = env::var("CARGO_MANIFEST_DIR")?;
+        let repo_dir = Path::new(&crate_dir)
+            .parent()
+            .ok_or_else(|| eyre!("`$CARGO_MANIFEST_DIR` should have a parent"))?;
+        Ok(repo_dir.to_owned())
+    }
+
+    fn pdg_snapshot_inner(test_dir: &Path, profile: Profile) -> eyre::Result<impl Display> {
+        let runtime_path = repo_dir()?.join("analysis/runtime");
+        let manifest_path = test_dir.join("Cargo.toml");
+        let target_dir = test_dir.join("instrument.target");
+        let exe_dir = target_dir.join(profile.dir_name());
+        let metadata_path = exe_dir.join("metadata.bc");
+        let event_log_path = exe_dir.join("event.log.bc");
+
+        let mut cmd = Command::new("cargo");
+        cmd.current_dir(repo_dir()?)
+            .args(&[
+                "run",
+                "--bin",
+                "c2rust-instrument",
+                "--profile",
+                Profile::Release.name(),
+                "--",
+                "--metadata",
+            ])
+            .arg(&metadata_path)
+            .args(&["--set-runtime", "--runtime-path"])
+            .arg(&runtime_path)
+            .args(&["--", "run", "--manifest-path"])
+            .arg(&manifest_path)
+            .args(&["--profile", profile.name()])
+            .env("METADATA_FILE", &metadata_path)
+            .env("INSTRUMENT_BACKEND", "log")
+            .env("INSTRUMENT_OUTPUT", &event_log_path)
+            .env("INSTRUMENT_OUTPUT_APPEND", "false");
+        let status = cmd.status()?;
+        ensure!(status.success(), eyre!("{cmd:?} failed: {status:?}"));
+
+        let pdg = Pdg::new(&metadata_path, &event_log_path)?;
+        pdg.graphs.assert_all_tests();
+        let repr = pdg.repr({
+            use ToPrint::*;
+            &[Graphs, WritePermissions, Counts]
+        });
+        Ok(repr.to_string())
+    }
+
+    pub fn pdg_snapshot(
+        test_dir: impl AsRef<Path>,
+        profile: Profile,
+    ) -> eyre::Result<impl Display> {
+        pdg_snapshot_inner(test_dir.as_ref(), profile)
+    }
+
+    fn analysis_test_pdg_snapshot(profile: Profile) -> eyre::Result<impl Display> {
+        pdg_snapshot(repo_dir()?.join("analysis/test"), profile)
+    }
 
     use crate::init;
 
     #[test]
-    fn analysis_test_pdg_snapshot() -> eyre::Result<()> {
+    fn analysis_test_pdg_snapshot_debug() -> eyre::Result<()> {
         init();
-        env::set_current_dir("..")?;
-        let dir = Path::new("analysis/test");
-        let status = Command::new("scripts/pdg.sh")
-            .arg(dir)
-            .env("PROFILE", "debug")
-            .status()?;
-        assert!(status.success());
-        let pdg = fs_err::read_to_string(dir.join("pdg.log"))?;
+        let pdg = analysis_test_pdg_snapshot(Profile::Debug)?;
         insta::assert_display_snapshot!(pdg);
         Ok(())
     }
