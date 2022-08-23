@@ -43,22 +43,21 @@ impl SubCommand {
             let entry = entry?;
             let file_type = entry.file_type()?;
             let path = entry.path();
-            let name = match path.file_name()
+            let name = path
+                .file_name()
                 .and_then(|name| name.to_str())
                 .and_then(|name| name.strip_prefix(c2rust_name))
                 .and_then(|name| name.strip_prefix('-'))
                 .map(|name| name.to_owned())
                 .map(Cow::from)
                 .filter(|_| file_type.is_file() || file_type.is_symlink())
-                .filter(|_| path.is_executable())
-            {
-                Some(name) => name,
-                None => continue,
-            };
-            sub_commands.push(Self {
-                path: Some(path),
-                name,
-            });
+                .filter(|_| path.is_executable());
+            if let Some(name) = name {
+                sub_commands.push(Self {
+                    path: Some(path),
+                    name,
+                });
+            }
         }
         Ok(sub_commands)
     }
