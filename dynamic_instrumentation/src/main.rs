@@ -26,13 +26,11 @@ use crate::callbacks::{MirTransformCallbacks, INSTRUMENTER};
 use std::{
     env,
     ffi::{OsStr, OsString},
-    io::ErrorKind,
     iter,
     path::{Path, PathBuf},
     process::{self, Command, ExitStatus},
 };
 
-use fs_err::OpenOptions;
 use rustc_driver::{RunCompiler, TimePassesCallbacks};
 use rustc_session::config::CrateType;
 
@@ -325,32 +323,13 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
 
     let metadata_dir = metadata_dir.unwrap_or_else(|| Path::new("."));
 
-    let old_metadata_file = tempfile::Builder::new()
+    // Create a new metadata file for the [`rustc_wrapper`]s to append to.
+    // This is a temporary file at first and will be moved into place if it written to.
+    let metadata_file = tempfile::Builder::new()
         .prefix(metadata_file_name)
-        .suffix(".old")
-        .tempfile_in(metadata_dir)?;
-    let old_metadata_path = old_metadata_file.path();
-
-    // Move the old metadata file to a temporary file.
-    // We want new writes to the metadata file to be to a fresh file,
-    // but in the case that `cargo` doesn't invoke the [`rustc_wrapper`],
-    // we will want to restore the old metadata file, as it's still valid
-    // and we won't have generated a new metadata file.
-    let old_metadata_exists = match fs_err::rename(&metadata_path, &old_metadata_path) {
-        Ok(()) => Ok(true),
-        Err(e) => match e.kind() {
-            ErrorKind::NotFound => Ok(false),
-            _ => Err(e),
-        },
-    }
-    .context("move old metadata file to temporary")?;
-
-    // Create the metadata file for the [`rustc_wrapper`]s to append to.
-    let metadata_file = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&metadata_path)
-        .context("create new metadata file")?;
+        .suffix(".new")
+        .tempfile_in(metadata_dir)
+        .context("create new (temp) metadata file")?;
 
     cargo.run(|cmd| {
         // Enable the runtime dependency.
@@ -358,24 +337,17 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         cmd.args(cargo_args)
             .env(RUSTC_WRAPPER_VAR, rustc_wrapper)
             .env(RUST_SYSROOT_VAR, &sysroot)
-            .env(METADATA_VAR, &metadata_path);
+            .env(METADATA_VAR, metadata_file.path());
     })?;
 
-    // If the metadata file is still empty,
-    // then we didn't generate a new one,
-    // so we need to restore the old metadata file from its temporary file.
-    // Of course, we only do this if there actually was an old metadata file.
-    // And in the case that there was no old metadata file
-    // and no new metadata file (shouldn't really happen, though),
-    // we clean up the empty metadata file.
-    if metadata_file.metadata()?.len() == 0 {
-        if old_metadata_exists {
-            fs_err::rename(&old_metadata_path, &metadata_path)?;
-        } else {
-            fs_err::remove_file(&metadata_path)?;
-        }
-    } else if old_metadata_exists {
-        fs_err::remove_file(&old_metadata_path)?;
+    // If the metadata file is not empty,
+    // then it is a valid replacement for the (possibly) existing metadata file,
+    // so move it into place.
+    // Otherwise, [`NamedTempFile::close`] the file, removing it.
+    if metadata_file.as_file().metadata()?.len() > 0 {
+        fs_err::rename(metadata_file.path(), &metadata_path)?;
+    } else {
+        metadata_file.close()?;
     }
 
     Ok(())
