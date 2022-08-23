@@ -42,25 +42,22 @@ impl SubCommand {
         for entry in dir.read_dir()? {
             let entry = entry?;
             let file_type = entry.file_type()?;
-            if !(file_type.is_file() || file_type.is_symlink()) {
-                continue;
-            }
-            let file_name = entry.file_name();
-            let name = match Path::new(&file_name)
-                .to_str()
+            let path = entry.path();
+            let name = match path.file_name()
+                .and_then(|name| name.to_str())
                 .and_then(|name| name.strip_prefix(c2rust_name))
                 .and_then(|name| name.strip_prefix('-'))
+                .map(|name| name.to_owned())
+                .map(Cow::from)
+                .filter(|_| file_type.is_file() || file_type.is_symlink())
+                .filter(|_| path.is_executable())
             {
                 Some(name) => name,
                 None => continue,
             };
-            let path = entry.path();
-            if !path.is_executable() {
-                continue;
-            }
             sub_commands.push(Self {
                 path: Some(path),
-                name: name.to_owned().into(),
+                name,
             });
         }
         Ok(sub_commands)
