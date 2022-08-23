@@ -46,13 +46,11 @@ impl SubCommand {
                 continue;
             }
             let file_name = entry.file_name();
-            let file_name: &Utf8Path = Path::new(&file_name).try_into()?;
-            let file_name = file_name.as_str();
-            let name = match file_name.strip_prefix(c2rust_name) {
-                Some(name) => name,
-                None => continue,
-            };
-            let name = match name.strip_prefix('-') {
+            let name = match Path::new(&file_name)
+                .to_str()
+                .and_then(|name| name.strip_prefix(c2rust_name))
+                .and_then(|name| name.strip_prefix('-'))
+            {
                 Some(name) => name,
                 None => continue,
             };
