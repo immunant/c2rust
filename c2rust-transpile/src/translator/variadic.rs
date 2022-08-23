@@ -34,22 +34,21 @@ impl<'c> Translation<'c> {
     }
 
     pub fn match_vastart(&self, expr: CExprId) -> Option<CDeclId> {
-        /// `struct`-based `va_list` (e.g. x86_64).
-        fn match_vastart_struct(ast_context: &TypedAstContext, expr: CExprId) -> Option<CDeclId> {
+        let ast_context = &self.ast_context;
+
+        // `struct`-based `va_list` (e.g. x86_64).
+        let match_vastart_struct = || {
             match_or! { [ast_context[expr].kind]
             CExprKind::ImplicitCast(_, e, _, _, _) => e }
             match_or! { [ast_context[e].kind]
             CExprKind::DeclRef(_, va_id, _) => va_id }
             Some(va_id)
-        }
+        };
 
-        /// `struct`-based `va_list` (e.g. x86_64) where `va_list` is accessed as a `struct` member.
-        /// 
-        /// Supporting this pattern is necessary to transpile apache httpd.
-        fn match_vastart_struct_member(
-            ast_context: &TypedAstContext,
-            expr: CExprId,
-        ) -> Option<CDeclId> {
+        // `struct`-based `va_list` (e.g. x86_64) where `va_list` is accessed as a `struct` member.
+        //
+        // Supporting this pattern is necessary to transpile apache httpd.
+        let match_vastart_struct_member = || {
             match_or! { [ast_context[expr].kind]
             CExprKind::ImplicitCast(_, me, _, _, _) => me }
             match_or! { [ast_context[me].kind]
@@ -57,16 +56,13 @@ impl<'c> Translation<'c> {
             match_or! { [ast_context[e].kind]
             CExprKind::DeclRef(_, va_id, _) => va_id }
             Some(va_id)
-        }
+        };
 
-        /// `struct`-based `va_list` (e.g. x86_64) where `va_list` is accessed as a member of a `struct *` pointer.
-        /// 
-        /// Supporting this pattern is necessary to transpile
-        /// [graphviz](https://gitlab.com/graphviz/graphviz/-/blob/5.0.0/lib/sfio/sftable.c#L321).
-        fn match_vastart_struct_pointer_member(
-            ast_context: &TypedAstContext,
-            expr: CExprId,
-        ) -> Option<CDeclId> {
+        // `struct`-based `va_list` (e.g. x86_64) where `va_list` is accessed as a member of a `struct *` pointer.
+        //
+        // Supporting this pattern is necessary to transpile
+        // [graphviz](https://gitlab.com/graphviz/graphviz/-/blob/5.0.0/lib/sfio/sftable.c#L321).
+        let match_vastart_struct_pointer_member = || {
             match_or! { [ast_context[expr].kind]
             CExprKind::ImplicitCast(_, me, _, _, _) => me }
             match_or! { [ast_context[me].kind]
@@ -76,19 +72,19 @@ impl<'c> Translation<'c> {
             match_or! { [ast_context[e].kind]
             CExprKind::DeclRef(_, va_id, _) => va_id }
             Some(va_id)
-        }
+        };
 
-        /// `char *` pointer-based `va_list` (e.g. x86).
-        fn match_vastart_pointer(ast_context: &TypedAstContext, expr: CExprId) -> Option<CDeclId> {
+        // `char *` pointer-based `va_list` (e.g. x86).
+        let match_vastart_pointer = || {
             match_or! { [ast_context[expr].kind]
             CExprKind::DeclRef(_, va_id, _) => va_id }
             Some(va_id)
-        }
+        };
 
-        match_vastart_struct(&self.ast_context, expr)
-            .or_else(|| match_vastart_pointer(&self.ast_context, expr))
-            .or_else(|| match_vastart_struct_member(&self.ast_context, expr))
-            .or_else(|| match_vastart_struct_pointer_member(&self.ast_context, expr))
+        match_vastart_struct()
+            .or_else(match_vastart_pointer)
+            .or_else(match_vastart_struct_member)
+            .or_else(match_vastart_struct_pointer_member)
     }
 
     pub fn match_vaend(&self, expr: CExprId) -> Option<CDeclId> {
