@@ -30,6 +30,7 @@ use std::{
     collections::HashSet,
     fmt::{self, Display, Formatter},
     path::{Path, PathBuf},
+    sync::Once,
 };
 
 use crate::builder::read_metadata;
@@ -67,9 +68,25 @@ struct Args {
     print: Vec<ToPrint>,
 }
 
+static INIT: Once = Once::new();
+
+/// Initialize things before running any code (in [`main`] or tests).
+/// Call this as the first thing.
+/// Will do nothing if [`init`] has already run.
+pub fn init() {
+    INIT.call_once(|| {
+        // Throws an error if it's already been installed,
+        // but if it's already installed, then we're good.
+        // Shouldn't happen since we're inside of [`Once::call_once`],
+        // but good to be safe, as there's no downside.
+        let _: eyre::Result<()> = color_eyre::install();
+
+        env_logger::init();
+    });
+}
+
 fn main() -> eyre::Result<()> {
-    color_eyre::install()?;
-    env_logger::init();
+    init();
     let args = Args::parse();
 
     let print_args = args.print.iter().collect::<HashSet<_>>();
@@ -137,9 +154,11 @@ mod tests {
 
     use color_eyre::eyre;
 
+    use crate::init;
+
     #[test]
     fn analysis_test_pdg_snapshot() -> eyre::Result<()> {
-        color_eyre::install()?;
+        init();
         env::set_current_dir("..")?;
         let dir = Path::new("analysis/test");
         let status = Command::new("scripts/pdg.sh")
