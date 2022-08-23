@@ -93,12 +93,9 @@ impl<'c> Translation<'c> {
     }
 
     pub fn match_vacopy(&self, dst_expr: CExprId, src_expr: CExprId) -> Option<(CDeclId, CDeclId)> {
-        let dst_id = self.match_vastart(dst_expr);
-        let src_id = self.match_vastart(src_expr);
-        if let (Some(did), Some(sid)) = (dst_id, src_id) {
-            return Some((did, sid));
-        }
-        None
+        let dst_id = self.match_vastart(dst_expr)?;
+        let src_id = self.match_vastart(src_expr)?;
+        Some((dst_id, src_id))
     }
 
     pub fn match_vapart(&self, expr: CExprId) -> Option<VaPart> {
