@@ -355,6 +355,18 @@ impl MetadataFile {
     /// then it is a valid replacement for the (possibly) existing metadata file,
     /// so move it into place.
     /// Otherwise, [`NamedTempFile::close`] the file, removing it.
+    /// 
+    /// Note that there is no `impl `[`Drop`]` for `[`MetadataFile`] for a few reasons:
+    /// * A [`Drop`] `impl` prevents us from moving out of [`Self`],
+    ///   which is necessary to call [`NamedTempFile::close`], which takes `self`.
+    /// * A [`Drop`] `impl` would provide a safeguard for early `return`s (like through `?`) and panics,
+    ///   but in that case, that's not quite what we want to do,
+    ///   since that then may move an incomplete temporary [`MetadataFile`] into place,
+    ///   overwriting the old but valid [`MetadataFile`].
+    ///   Instead, by keeping the automatic [`Drop`] `impl`,
+    ///   it always calls [`NamedTempFile`]'s inner [`TempPath::drop`](tempfile::TempPath::drop), 
+    ///   which deletes the temporary [`MetadataFile`],
+    ///   and which I believe is the safer behavior here.
     pub fn close(self) -> anyhow::Result<()> {
         if self.file.as_file().metadata()?.len() > 0 {
             fs_err::rename(self.file.path(), &self.path)?;
