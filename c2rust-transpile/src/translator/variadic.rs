@@ -30,7 +30,7 @@ impl<'c> Translation<'c> {
             .va_list_decl_ids
             .as_ref()
             .map(|decls| decls.contains(&decl_id))
-            .unwrap_or_default()
+            .unwrap_or(false)
     }
 
     pub fn match_vastart(&self, expr: CExprId) -> Option<CDeclId> {
