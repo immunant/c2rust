@@ -37,6 +37,7 @@ use rustc_session::config::CrateType;
 use anyhow::{anyhow, ensure, Context};
 use camino::Utf8Path;
 use clap::Parser;
+use tempfile::NamedTempFile;
 
 /// Instrument memory accesses for dynamic analysis.
 #[derive(Debug, Parser)]
@@ -283,6 +284,65 @@ fn set_rust_toolchain() -> anyhow::Result<()> {
     Ok(())
 }
 
+pub struct MetadataFile {
+    /// The original and intended metadata path.
+    path: PathBuf,
+
+    /// The new, temporary metadata file.
+    file: NamedTempFile,
+}
+
+impl MetadataFile {
+    pub fn old_path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn new_path(&self) -> &Path {
+        self.file.path()
+    }
+
+    pub fn new(path: PathBuf) -> anyhow::Result<Self> {
+        let metadata_file_name = path
+            .file_name()
+            .ok_or_else(|| anyhow!("--metadata has no file name: {}", path.display()))?;
+        let metadata_dir = path.parent();
+
+        // Create the metadata directory if it doesn't exist so that we're able to create the metadata file.
+        if let Some(metadata_dir) = metadata_dir {
+            fs_err::create_dir_all(metadata_dir)?;
+        }
+
+        let metadata_dir = metadata_dir.unwrap_or_else(|| Path::new("."));
+
+        // Create a new metadata file for the [`rustc_wrapper`]s to append to.
+        // This is a temporary file at first and will be moved into place if it written to.
+        let prefix = {
+            let mut prefix = metadata_file_name.to_owned();
+            prefix.push(".");
+            prefix
+        };
+        let file = tempfile::Builder::new()
+            .prefix(&prefix)
+            .suffix(".new")
+            .tempfile_in(metadata_dir)
+            .context("create new (temp) metadata file")?;
+        Ok(Self { path, file })
+    }
+
+    /// If the metadata file is not empty,
+    /// then it is a valid replacement for the (possibly) existing metadata file,
+    /// so move it into place.
+    /// Otherwise, [`NamedTempFile::close`] the file, removing it.
+    pub fn close(self) -> anyhow::Result<()> {
+        if self.file.as_file().metadata()?.len() > 0 {
+            fs_err::rename(self.file.path(), &self.path)?;
+        } else {
+            self.file.close()?;
+        }
+        Ok(())
+    }
+}
+
 /// Run as a `cargo` wrapper/plugin, the default invocation.
 fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     let Args {
@@ -311,30 +371,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         })?;
     }
 
-    let metadata_file_name = metadata_path
-        .file_name()
-        .ok_or_else(|| anyhow!("--metadata has no file name: {}", metadata_path.display()))?;
-    let metadata_dir = metadata_path.parent();
-
-    // Create the metadata directory if it doesn't exist so that we're able to create the metadata file.
-    if let Some(metadata_dir) = metadata_dir {
-        fs_err::create_dir_all(metadata_dir)?;
-    }
-
-    let metadata_dir = metadata_dir.unwrap_or_else(|| Path::new("."));
-
-    // Create a new metadata file for the [`rustc_wrapper`]s to append to.
-    // This is a temporary file at first and will be moved into place if it written to.
-    let prefix = {
-        let mut prefix = metadata_file_name.to_owned();
-        prefix.push(".");
-        prefix
-    };
-    let metadata_file = tempfile::Builder::new()
-        .prefix(&prefix)
-        .suffix(".new")
-        .tempfile_in(metadata_dir)
-        .context("create new (temp) metadata file")?;
+    let metadata_file = MetadataFile::new(metadata_path)?;
 
     cargo.run(|cmd| {
         // Enable the runtime dependency.
@@ -342,18 +379,10 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         cmd.args(cargo_args)
             .env(RUSTC_WRAPPER_VAR, rustc_wrapper)
             .env(RUST_SYSROOT_VAR, &sysroot)
-            .env(METADATA_VAR, metadata_file.path());
+            .env(METADATA_VAR, metadata_file.new_path());
     })?;
 
-    // If the metadata file is not empty,
-    // then it is a valid replacement for the (possibly) existing metadata file,
-    // so move it into place.
-    // Otherwise, [`NamedTempFile::close`] the file, removing it.
-    if metadata_file.as_file().metadata()?.len() > 0 {
-        fs_err::rename(metadata_file.path(), &metadata_path)?;
-    } else {
-        metadata_file.close()?;
-    }
+    metadata_file.close()?;
 
     Ok(())
 }
