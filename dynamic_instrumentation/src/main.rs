@@ -84,7 +84,7 @@ fn exit_with_status(status: ExitStatus) {
 /// from where this binary was compiled and where it is running
 /// (it could be on a different machine with a different `$RUSTUP_HOME`).
 ///
-/// TODO(kkysen) deduplicate this with `rustc_private_link::SysRoot::resolve`
+/// TODO(kkysen) deduplicate this with `c2rust_build_paths::SysRoot::resolve`
 fn resolve_sysroot() -> anyhow::Result<PathBuf> {
     let rustc = env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
     let output = Command::new(rustc)

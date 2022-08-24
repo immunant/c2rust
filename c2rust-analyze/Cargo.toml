@@ -11,7 +11,7 @@ rustc-hash = "1.1.0"
 bitflags = "1.3.2"
 
 [build-dependencies]
-rustc-private-link = { path = "../rustc-private-link" }
+c2rust-build-paths = { path = "../c2rust-build-paths" }
 print_bytes = "0.6"
 
 [package.metadata.rust-analyzer]
