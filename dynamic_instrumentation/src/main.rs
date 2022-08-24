@@ -355,7 +355,7 @@ impl MetadataFile {
     /// then it is a valid replacement for the (possibly) existing metadata file,
     /// so move it into place.
     /// Otherwise, [`NamedTempFile::close`] the file, removing it.
-    /// 
+    ///
     /// Note that there is no `impl `[`Drop`]` for `[`MetadataFile`] for a few reasons:
     /// * A [`Drop`] `impl` prevents us from moving out of [`Self`],
     ///   which is necessary to call [`NamedTempFile::close`], which takes `self`.
@@ -364,9 +364,40 @@ impl MetadataFile {
     ///   since that then may move an incomplete temporary [`MetadataFile`] into place,
     ///   overwriting the old but valid [`MetadataFile`].
     ///   Instead, by keeping the automatic [`Drop`] `impl`,
-    ///   it always calls [`NamedTempFile`]'s inner [`TempPath::drop`](tempfile::TempPath::drop), 
+    ///   it always calls [`NamedTempFile`]'s inner [`TempPath::drop`](tempfile::TempPath::drop),
     ///   which deletes the temporary [`MetadataFile`],
     ///   and which I believe is the safer behavior here.
+    ///
+    /// TODO(kkysen)
+    /// There is a bug in the current implementation,
+    /// very related to [#632](https://github.com/immunant/c2rust/issues/632).
+    ///
+    /// By disabling incremental compilation in [`MirTransformCallbacks`]
+    /// instead of `cargo clean`ing the primary package,
+    /// which was done in [#626](https://github.com/immunant/c2rust/pull/626)
+    /// to fix [#624](https://github.com/immunant/c2rust/pull/624)
+    /// and [#625](https://github.com/immunant/c2rust/pull/625),
+    /// we now create complete [`Metadata`]s in each [`rustc_wrapper`] call,
+    /// and thus largely avoid the issue of managing incremental updates to the [`Metadata`].
+    ///
+    /// However, although the `rustc`s and [`rustc_wrapper`]s are atomic in this sense,
+    /// `cargo` is not.  That is, if none of the inputs changed,
+    /// `cargo` can skip calls to `rustc`/`$RUSTC_WRAPPER`.
+    /// We handle this general case in [`MetadataFile`] where all of the instrument crate targets
+    /// are either all rebuilt or none of them are rebuilt,
+    /// but if, for example, only a binary target needs rebuilding,
+    /// `cargo` will rebuild only that binary target
+    /// and not rebuild the library target again.
+    /// Thus, we'll overwrite the previous metadata file containing the library and binary targets
+    /// with a new metadata file containing only the binary target.
+    ///
+    /// The solution that I see to this, also proposed and discussed in
+    /// [#632](https://github.com/immunant/c2rust/issues/632) for similar reasons,
+    /// is to store a separate metadata file per target, i.e. per `rustc` call,
+    /// and thus lower [`MetadataFile`] into [`rustc_wrapper`] instead of [`cargo_wrapper`].
+    /// This would also fix any issues in [#632](https://github.com/immunant/c2rust/issues/632).
+    ///
+    /// [`Metadata`]: c2rust_analysis_rt::metadata::Metadata
     pub fn close(self) -> anyhow::Result<()> {
         if self.file.as_file().metadata()?.len() > 0 {
             fs_err::rename(self.file.path(), &self.path)?;
