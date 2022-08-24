@@ -277,7 +277,7 @@ mod tests {
                 "--bin",
                 "c2rust-instrument",
                 "--profile",
-                // Compile `c2rust-instrument` with the same profile us, `c2rust-pdg`, was compiled in.
+                // Compile `c2rust-instrument` with the same profile as `c2rust-pdg` was.
                 // Makes sense to match them, plus that one is probably already compiled.
                 Profile::current()?.name(),
                 "--",
