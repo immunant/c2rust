@@ -143,13 +143,13 @@ name = "c2rust"
 version = "0.16.0"
 dependencies = [
  "anyhow",
+ "c2rust-build-paths",
  "c2rust-transpile",
  "clap 2.34.0",
  "env_logger",
  "git-testament",
  "log",
  "regex",
- "rustc-private-link",
  "shlex",
 ]
 
@@ -169,10 +169,10 @@ name = "c2rust-analyze"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "c2rust-build-paths",
  "polonius-engine",
  "print_bytes",
  "rustc-hash",
- "rustc-private-link",
 ]
 
 [[package]]
@@ -229,12 +229,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "c2rust-build-paths"
+version = "0.1.0"
+dependencies = [
+ "print_bytes",
+]
+
+[[package]]
 name = "c2rust-instrument"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "bincode",
  "c2rust-analysis-rt",
+ "c2rust-build-paths",
  "camino",
  "cargo_metadata",
  "clap 3.2.16",
@@ -245,7 +253,6 @@ dependencies = [
  "itertools",
  "log",
  "once_cell",
- "rustc-private-link",
  "toml_edit",
 ]
 
@@ -255,6 +262,7 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "c2rust-analysis-rt",
+ "c2rust-build-paths",
  "clap 3.2.16",
  "color-eyre",
  "env_logger",
@@ -264,7 +272,6 @@ dependencies = [
  "itertools",
  "linked_hash_set",
  "log",
- "rustc-private-link",
  "serde",
 ]
 
@@ -1089,13 +1096,6 @@ name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
-
-[[package]]
-name = "rustc-private-link"
-version = "0.1.0"
-dependencies = [
- "print_bytes",
-]
 
 [[package]]
 name = "rustversion"

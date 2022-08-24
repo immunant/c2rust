@@ -22,7 +22,7 @@ fs2 = "0.4"
 env_logger = "0.9"
 
 [build-dependencies]
-rustc-private-link = { path = "../rustc-private-link" }
+c2rust-build-paths = { path = "../c2rust-build-paths" }
 
 [package.metadata.rust-analyzer] 
 rustc_private = true
