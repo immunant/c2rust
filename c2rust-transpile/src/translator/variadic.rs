@@ -98,14 +98,17 @@ impl<'c> Translation<'c> {
     }
 
     pub fn match_vapart(&self, expr: CExprId) -> Option<VaPart> {
+        let ast = &self.ast_context;
+
         let (func, args) = match_or! { [self.ast_context[expr].kind]
         CExprKind::Call(_, func, ref args) => (func, args) }?;
-        let fexp = match_or! { [self.ast_context[func].kind]
+        let fexp = match_or! { [ast[func].kind]
         CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _, _) => fexp }?;
-        let decl_id = match_or! { [self.ast_context[fexp].kind]
+        let decl_id = match_or! { [ast[fexp].kind]
         CExprKind::DeclRef(_, decl_id, _) => decl_id }?;
-        let name = match_or! { [self.ast_context[decl_id].kind]
+        let name = match_or! { [ast[decl_id].kind]
         CDeclKind::Function { ref name, .. } => name }?;
+
         match (name.as_str(), args.as_slice()) {
             ("__builtin_va_start", &[expr, _]) => self.match_vastart(expr).map(VaPart::Start),
             ("__builtin_va_copy", &[dst_expr, src_expr]) => self
