@@ -284,6 +284,8 @@ fn set_rust_toolchain() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A new metadata file, which is a temporary [`NamedTempFile`],
+/// and the [`Path`] it should end up as.
 pub struct MetadataFile {
     /// The original and intended metadata path.
     path: PathBuf,
@@ -293,29 +295,49 @@ pub struct MetadataFile {
 }
 
 impl MetadataFile {
+    /// The old, original, intended [`Path`] for the [`Metadata`].
+    ///
+    /// This is the location that existing [`Metadata`] may be at,
+    /// and where the [`Metadata`] will end after this program exits.
+    ///
+    /// [`Metadata`]: c2rust_analysis_rt::metadata::Metadata
     pub fn old_path(&self) -> &Path {
         &self.path
     }
 
+    /// The new, temporary [`Path`] for the [`Metadata`].
+    ///
+    /// This is the location of the new [`Metadata`] created
+    /// during the `cargo` invocation in [`cargo_wrapper`]
+    /// and later used (appended to) inside of the [`rustc_wrapper`]s.
+    /// It will later be moved back to [`Self::old_path`] if it is valid (i.e., not empty).
+    ///
+    /// [`Metadata`]: c2rust_analysis_rt::metadata::Metadata
     pub fn new_path(&self) -> &Path {
         self.file.path()
     }
 
+    /// Create a new [`MetadataFile`] that consists of
+    /// a temporary ([`NamedTempFile`]) metadata file for new [`Metadata`].
+    ///
+    /// This also creates the directory `path` is in if it does not already exist.
+    ///
+    /// Also, see [`Self::old_path`] and [`Self::new_path`]
+    /// for an explanation of the locations and uses of the [`Path`]s.
+    ///
+    /// [`Metadata`]: c2rust_analysis_rt::metadata::Metadata
     pub fn new(path: PathBuf) -> anyhow::Result<Self> {
         let metadata_file_name = path
             .file_name()
             .ok_or_else(|| anyhow!("--metadata has no file name: {}", path.display()))?;
         let metadata_dir = path.parent();
 
-        // Create the metadata directory if it doesn't exist so that we're able to create the metadata file.
         if let Some(metadata_dir) = metadata_dir {
             fs_err::create_dir_all(metadata_dir)?;
         }
 
         let metadata_dir = metadata_dir.unwrap_or_else(|| Path::new("."));
 
-        // Create a new metadata file for the [`rustc_wrapper`]s to append to.
-        // This is a temporary file at first and will be moved into place if it written to.
         let prefix = {
             let mut prefix = metadata_file_name.to_owned();
             prefix.push(".");
