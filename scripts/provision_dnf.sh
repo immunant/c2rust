@@ -24,6 +24,7 @@ dnf install --quiet --assumeyes \
     python3-devel \
     python3-pip \
     redhat-rpm-config \
+    strace \
     xz \
     zlib-devel
 
