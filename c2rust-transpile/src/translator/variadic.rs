@@ -58,7 +58,7 @@ impl<'c> Translation<'c> {
             Some(va_id)
         };
 
-        // `struct`-based `va_list` (e.g. x86_64) where `va_list` is accessed as a member of a `struct *` pointer.
+        // `struct`-based `va_list` (e.g. x86_64) where `va_list` is accessed as a member of a `struct *`.
         //
         // Supporting this pattern is necessary to transpile
         // [graphviz](https://gitlab.com/graphviz/graphviz/-/blob/5.0.0/lib/sfio/sftable.c#L321).
@@ -74,7 +74,7 @@ impl<'c> Translation<'c> {
             Some(va_id)
         };
 
-        // `char *` pointer-based `va_list` (e.g. x86).
+        // `char *`-based `va_list` (e.g. x86).
         let match_vastart_pointer = || {
             let va_id = match_or! { [ast[expr].kind]
             CExprKind::DeclRef(_, va_id, _) => va_id }?;
