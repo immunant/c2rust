@@ -26,6 +26,7 @@ clang-sys = "1.3"
 # Fixed by https://github.com/rust-lang/cmake-rs/pull/146 on 5/12/2022; waiting for next release.
 cmake = "=0.1.45"
 env_logger = "0.9"
+c2rust-build-paths = { path = "../c2rust-build-paths" }
 
 [features]
 default = []

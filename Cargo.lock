@@ -192,6 +192,7 @@ name = "c2rust-ast-exporter"
 version = "0.16.0"
 dependencies = [
  "bindgen",
+ "c2rust-build-paths",
  "clang-sys",
  "cmake",
  "env_logger",
