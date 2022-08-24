@@ -31,6 +31,7 @@ use std::{
     process::{self, Command, ExitStatus},
 };
 
+use fs_err::OpenOptions;
 use rustc_driver::{RunCompiler, TimePassesCallbacks};
 use rustc_session::config::CrateType;
 
@@ -46,6 +47,15 @@ struct Args {
     /// Path to the metadata output file storing instrumentation locations.
     #[clap(long, value_parser)]
     metadata: PathBuf,
+
+    /// Path to the `c2rust-analysis-rt` crate if you want to use a local version of it (vs. the crates.io one).
+    /// This is not used unless `--set-runtime` is also passed.
+    #[clap(long, value_parser)]
+    runtime_path: Option<PathBuf>,
+
+    /// Add the runtime as an optional dependency to the instrumented crate using `cargo add`.
+    #[clap(long)]
+    set_runtime: bool,
 
     /// `cargo` args.
     cargo_args: Vec<OsString>,
@@ -156,7 +166,7 @@ impl Cargo {
         f(&mut cmd);
         let status = cmd.status()?;
         if !status.success() {
-            eprintln!("error running: {cmd:?}");
+            eprintln!("error ({status}) running: {cmd:?}");
             exit_with_status(status);
         }
         Ok(())
@@ -285,6 +295,8 @@ fn set_rust_toolchain() -> anyhow::Result<()> {
 fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     let Args {
         metadata,
+        runtime_path,
+        set_runtime,
         mut cargo_args,
     } = Args::parse();
 
@@ -311,6 +323,24 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         cmd.args(&["clean", "--package", root_package.name.as_str()]);
     })?;
 
+    if set_runtime {
+        cargo.run(|cmd| {
+            cmd.args(&["add", "--optional", "c2rust-analysis-rt"]);
+            if let Some(runtime) = runtime_path {
+                // Since it's a local path, we don't need the internet,
+                // and running it offline saves a slow index sync.
+                cmd.args(&["--offline", "--path"]).arg(runtime);
+            }
+        })?;
+    }
+
+    // Create and truncate the metadata file for the [`rustc_wrapper`]s to append to.
+    OpenOptions::new()
+        .create(true)
+        .write(true) // need write for truncate
+        .truncate(true)
+        .open(&metadata)?;
+
     cargo.run(|cmd| {
         // Enable the runtime dependency.
         add_feature(&mut cargo_args, &["c2rust-analysis-rt"]);
@@ -324,6 +354,8 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
+    env_logger::init();
+
     let own_exe = env::current_exe()?;
 
     let wrapping_rustc = env::var_os(RUSTC_WRAPPER_VAR).as_deref() == Some(own_exe.as_os_str());

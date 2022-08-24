@@ -17,7 +17,8 @@ pub use cast::cast_ptr_to_usize;
 
 pub struct InstrumentationPoint<'tcx> {
     id: usize,
-    pub loc: Location,
+    pub original_location: Location,
+    pub instrumentation_location: Location,
     pub func: DefId,
     pub args: Vec<InstrumentationArg<'tcx>>,
     pub is_cleanup: bool,
@@ -25,7 +26,7 @@ pub struct InstrumentationPoint<'tcx> {
     pub metadata: EventMetadata,
 }
 
-pub struct InstrumentationAdder<'a, 'tcx: 'a> {
+pub struct CollectInstrumentationPoints<'a, 'tcx: 'a> {
     tcx: TyCtxt<'tcx>,
     hooks: Hooks<'tcx>,
     body: &'a Body<'tcx>,
@@ -33,7 +34,7 @@ pub struct InstrumentationAdder<'a, 'tcx: 'a> {
     assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
 }
 
-impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
+impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>, hooks: Hooks<'tcx>, body: &'a Body<'tcx>) -> Self {
         Self {
             tcx,
@@ -49,13 +50,13 @@ impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a> HasLocalDecls<'tcx> for InstrumentationAdder<'a, 'tcx> {
+impl<'a, 'tcx: 'a> HasLocalDecls<'tcx> for CollectInstrumentationPoints<'a, 'tcx> {
     fn local_decls(&self) -> &'a LocalDecls<'tcx> {
         self.body.local_decls()
     }
 }
 
-impl<'a, 'tcx: 'a> InstrumentationAdder<'a, 'tcx> {
+impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
     pub fn hooks(&self) -> &Hooks<'tcx> {
         &self.hooks
     }

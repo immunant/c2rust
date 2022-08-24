@@ -19,8 +19,7 @@ pub fn read_event_log(path: &Path) -> io::Result<Vec<Event>> {
 
 pub fn read_metadata(path: &Path) -> eyre::Result<Metadata> {
     let bytes = fs_err::read(path)?;
-    let metadata = bincode::deserialize(&bytes)?;
-    Ok(metadata)
+    Ok(Metadata::read(&bytes)?)
 }
 
 pub trait EventKindExt {
@@ -63,7 +62,7 @@ impl EventKindExt for EventKind {
     }
 
     fn parent(&self, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)> {
-        self.has_parent().then(|| obj)
+        self.has_parent().then_some(obj)
     }
 
     fn to_node_kind(&self) -> Option<NodeKind> {

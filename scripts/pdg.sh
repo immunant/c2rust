@@ -41,6 +41,7 @@ main() {
     local c2rust="${CWD}/${profile_dir}/c2rust"
     local c2rust_instrument="${CWD}/${profile_dir}/${instrument}"
     local metadata="${CWD}/${test_dir}/metadata.bc"
+    local runtime="${CWD}/analysis/runtime"
 
     (cd "${test_dir}"
         unset RUSTFLAGS # transpiled code has tons of warnings; don't allow `-D warnings`
@@ -52,9 +53,10 @@ main() {
 
         time "${c2rust_instrument}" \
             --metadata "${metadata}" \
+            --set-runtime \
+            --runtime-path "${runtime}" \
             -- run "${profile_args[@]}" \
-            -- "${args[@]}" \
-            1> instrument.out.log
+            -- "${args[@]}"
     )
     (cd pdg
         export RUST_BACKTRACE=full # print sources w/ color-eyre

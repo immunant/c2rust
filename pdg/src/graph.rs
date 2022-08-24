@@ -230,6 +230,7 @@ impl Display for Graph {
             .collect::<Vec<_>>();
         writeln!(f, "g {{")?;
         for line in pad_columns(&lines, sep, " ") {
+            let line = line.trim_end();
             writeln!(f, "\t{line}")?;
         }
         write!(f, "}}")?;

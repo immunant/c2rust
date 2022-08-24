@@ -1182,7 +1182,7 @@ impl CExprKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CastKind {
     BitCast,
     LValueToRValue,
@@ -1296,7 +1296,7 @@ impl UnOp {
 }
 
 /// Represents a binary operator in C (6.5.5 Multiplicative operators - 6.5.14 Logical OR operator)
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinOp {
     Multiply,     // *
     Divide,       // /
@@ -1521,7 +1521,7 @@ pub struct AsmOperand {
 }
 
 /// Type qualifiers (6.7.3)
-#[derive(Debug, Copy, Clone, Default, PartialEq)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
 pub struct Qualifiers {
     /// The `const` qualifier, which marks lvalues as non-assignable.
     ///
@@ -1557,7 +1557,7 @@ impl Qualifiers {
 }
 
 /// Qualified type
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct CQualTypeId {
     pub qualifiers: Qualifiers,
     pub ctype: CTypeId,
@@ -1580,7 +1580,7 @@ impl CQualTypeId {
 /// Represents a type in C (6.2.5 Types)
 ///
 /// Reflects the types in <http://clang.llvm.org/doxygen/classclang_1_1Type.html>
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CTypeKind {
     Void,
 

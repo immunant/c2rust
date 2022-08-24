@@ -81,6 +81,10 @@ pub fn categorize(context: PlaceContext) -> Option<DefUse> {
 
         // Debug info is neither def nor use.
         PlaceContext::NonUse(NonUseContext::VarDebugInfo) => None,
+
+        PlaceContext::MutatingUse(MutatingUseContext::Deinit | MutatingUseContext::SetDiscriminant) => {
+            panic!("These statements are not allowed in this MIR phase")
+        }
     }
 }
 
@@ -127,7 +131,7 @@ impl<'tcx> Visitor<'tcx> for DefUseVisitor<'tcx, '_> {
         }
     }
 
-    fn visit_local(&mut self, local: &Local, context: PlaceContext, location: Location) {
+    fn visit_local(&mut self, local: Local, context: PlaceContext, location: Location) {
         eprintln!(
             "visit local {:?} with context {:?} = {:?} at {:?}",
             local,
@@ -135,7 +139,7 @@ impl<'tcx> Visitor<'tcx> for DefUseVisitor<'tcx, '_> {
             categorize(context),
             location
         );
-        let var = self.maps.variable(*local);
+        let var = self.maps.variable(local);
         let point = self.maps.point_mid_location(location);
         match categorize(context) {
             Some(DefUse::Def) => {
@@ -255,7 +259,7 @@ impl<'tcx> Visitor<'tcx> for LoanInvalidatedAtVisitor<'tcx, '_> {
         }
     }
 
-    fn visit_local(&mut self, local: &Local, context: PlaceContext, location: Location) {
+    fn visit_local(&mut self, local: Local, context: PlaceContext, location: Location) {
         eprintln!(
             "loan_invalidated_at: visit local {:?} with context {:?} = {:?} at {:?}",
             local,
@@ -264,7 +268,7 @@ impl<'tcx> Visitor<'tcx> for LoanInvalidatedAtVisitor<'tcx, '_> {
             location
         );
 
-        let local_loans = self.loans.get(local).map_or(&[] as &[_], |x| x);
+        let local_loans = self.loans.get(&local).map_or(&[] as &[_], |x| x);
         for &(_path, loan, borrow_kind) in local_loans {
             // All paths rooted in this local overlap the local.
             self.access_loan_at_location(loan, borrow_kind, context, location);

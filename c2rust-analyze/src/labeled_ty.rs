@@ -153,7 +153,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
     /// Label a `Ty` using a callback.  The callback runs at every type constructor to produce a
     /// label for that node in the tree.
     pub fn label<F: FnMut(Ty<'tcx>) -> L>(&self, ty: Ty<'tcx>, f: &mut F) -> LabeledTy<'tcx, L> {
-        use rustc_middle::ty::TyKind::*;
+        use rustc_type_ir::TyKind::*;
         let label = f(ty);
         match ty.kind() {
             // Types with no arguments
@@ -166,11 +166,11 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                 let args = substs.types().map(|t| self.label(t, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Array(elem, _) => {
+            &Array(elem, _) => {
                 let args = [self.label(elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Slice(elem) => {
+            &Slice(elem) => {
                 let args = [self.label(elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
@@ -178,7 +178,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                 let args = [self.label(mty.ty, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Ref(_, mty, _) => {
+            &Ref(_, mty, _) => {
                 let args = [self.label(mty, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
@@ -199,10 +199,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                 self.mk(ty, self.mk_slice(&args), label)
             }
             Tuple(elems) => {
-                let args = elems
-                    .types()
-                    .map(|ty| self.label(ty, f))
-                    .collect::<Vec<_>>();
+                let args = elems.iter().map(|ty| self.label(ty, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
 
@@ -220,7 +217,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
     where
         F: FnMut(Ty<'tcx>) -> L,
     {
-        self.mk_slice(&tys.iter().map(|ty| self.label(ty, f)).collect::<Vec<_>>())
+        self.mk_slice(&tys.iter().map(|&ty| self.label(ty, f)).collect::<Vec<_>>())
     }
 
     /// Substitute in arguments for any type parameter references (`Param`) in a labeled type.
@@ -291,7 +288,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
     where
         F: FnMut(Ty<'tcx>, &[Ty<'tcx>], L) -> Ty<'tcx>,
     {
-        use rustc_middle::ty::TyKind::*;
+        use rustc_type_ir::TyKind::*;
         let args = lty
             .args
             .iter()

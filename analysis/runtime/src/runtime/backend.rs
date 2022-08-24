@@ -103,7 +103,7 @@ impl DetectBackend for DebugBackend {
         // TODO may want to deduplicate this with [`pdg::builder::read_metadata`] in [`Metadata::read`],
         // but that may require adding `color-eyre`/`eyre` as a dependency
         let bytes = fs_err::read(path)?;
-        let metadata = bincode::deserialize(&bytes)?;
+        let metadata = Metadata::read(&bytes)?;
         Ok(Self { metadata })
     }
 }

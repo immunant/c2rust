@@ -3,7 +3,7 @@ use crate::pointer_id::PointerTable;
 use crate::type_desc::{self, Ownership, Quantity};
 use crate::util::{self, Callee};
 use rustc_middle::mir::{
-    BasicBlock, Body, Location, Operand, Rvalue, Statement, StatementKind, Terminator,
+    BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
     TerminatorKind,
 };
 use rustc_span::{Span, DUMMY_SP};
@@ -132,6 +132,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             }
             StatementKind::FakeRead(..) => {}
             StatementKind::SetDiscriminant { .. } => todo!("statement {:?}", stmt),
+            StatementKind::Deinit(..) => {}
             StatementKind::StorageLive(..) => {}
             StatementKind::StorageDead(..) => {}
             StatementKind::Retag(..) => {}
@@ -163,14 +164,14 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 ref func,
                 ref args,
                 destination,
+                target: _,
                 ..
             } => {
                 let func_ty = func.ty(self.mir, tcx);
-                let pl_ty = destination.map(|(pl, _)| self.acx.type_of(pl));
+                let pl_ty = self.acx.type_of(destination);
 
                 if let Some(callee) = util::ty_callee(tcx, func_ty) {
                     // Special cases for particular functions.
-                    let pl_ty = pl_ty.unwrap();
                     match callee {
                         Callee::PtrOffset { .. } => {
                             self.visit_ptr_offset(&args[0], pl_ty);
@@ -249,21 +250,27 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             Rvalue::ShallowInitBox(ref _op, _ty) => {
                 // TODO
             }
+            Rvalue::CopyForDeref(pl) => {
+                self.enter_rvalue_operand(0, |v| v.visit_place(pl, expect_ty));
+            }
         }
     }
 
     fn visit_operand(&mut self, op: &Operand<'tcx>, expect_ty: LTy<'tcx>) {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
-                if let Some(ptr) = self.acx.ptr_of(pl) {
-                    let expect_ptr = expect_ty.label;
-                    self.emit_ptr_cast(ptr, expect_ptr);
-                }
-
-                // TODO: walk over `pl` to handle all derefs (casts, `*x` -> `(*x).get()`)
+                self.visit_place(pl, expect_ty);
             }
             Operand::Constant(..) => {}
         }
+    }
+
+    fn visit_place(&mut self, pl: Place<'tcx>, expect_ty: LTy<'tcx>) {
+        if let Some(ptr) = self.acx.ptr_of(pl) {
+            let expect_ptr = expect_ty.label;
+            self.emit_ptr_cast(ptr, expect_ptr);
+        }
+        // TODO: walk over `pl` to handle all derefs (casts, `*x` -> `(*x).get()`)
     }
 
     fn visit_operand_desc(

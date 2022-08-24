@@ -238,11 +238,13 @@ dependencies = [
  "camino",
  "cargo_metadata",
  "clap 3.2.16",
+ "env_logger",
  "fs-err",
+ "fs2",
  "indexmap",
  "itertools",
- "lazy_static",
  "log",
+ "once_cell",
  "rustc-private-link",
  "toml_edit",
 ]
@@ -622,6 +624,16 @@ name = "fs-err"
 version = "2.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5bd79fa345a495d3ae89fb7165fec01c0e72f41821d642dda363a1e97975652e"
+
+[[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
+]
 
 [[package]]
 name = "generic-array"

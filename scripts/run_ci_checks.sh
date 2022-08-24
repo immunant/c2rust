@@ -5,8 +5,10 @@ set -euox pipefail
 # Run the same checks that are run in CI in `azure-pipelines.yml`.
 
 # Deny all warnings, including in documentation.
-export RUSTFLAGS="-D warnings"
-export RUSTDOCFLAGS="-D warnings"
+if [[ "${ALLOW_WARNINGS:-0}" != "1" ]]; then
+    export RUSTFLAGS="-D warnings"
+    export RUSTDOCFLAGS="-D warnings"
+fi
 
 fmt() {
     cargo fmt --check
