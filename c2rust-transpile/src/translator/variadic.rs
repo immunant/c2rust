@@ -38,10 +38,8 @@ impl<'c> Translation<'c> {
 
         // `struct`-based `va_list` (e.g. x86_64).
         let match_vastart_struct = || {
-            let e = match_or! { [ast[expr].kind]
-            CExprKind::ImplicitCast(_, e, _, _, _) => e }?;
-            let va_id = match_or! { [ast[e].kind]
-            CExprKind::DeclRef(_, va_id, _) => va_id }?;
+            let e = match_or! { [ast[expr].kind] CExprKind::ImplicitCast(_, e, _, _, _) => e }?;
+            let va_id = match_or! { [ast[e].kind] CExprKind::DeclRef(_, va_id, _) => va_id }?;
             Some(va_id)
         };
 
@@ -49,12 +47,9 @@ impl<'c> Translation<'c> {
         //
         // Supporting this pattern is necessary to transpile apache httpd.
         let match_vastart_struct_member = || {
-            let me = match_or! { [ast[expr].kind]
-            CExprKind::ImplicitCast(_, me, _, _, _) => me }?;
-            let e = match_or! { [ast[me].kind]
-            CExprKind::Member(_, e, _, _, _) => e }?;
-            let va_id = match_or! { [ast[e].kind]
-            CExprKind::DeclRef(_, va_id, _) => va_id }?;
+            let me = match_or! { [ast[expr].kind] CExprKind::ImplicitCast(_, me, _, _, _) => me }?;
+            let e = match_or! { [ast[me].kind] CExprKind::Member(_, e, _, _, _) => e }?;
+            let va_id = match_or! { [ast[e].kind] CExprKind::DeclRef(_, va_id, _) => va_id }?;
             Some(va_id)
         };
 
@@ -63,21 +58,16 @@ impl<'c> Translation<'c> {
         // Supporting this pattern is necessary to transpile
         // [graphviz](https://gitlab.com/graphviz/graphviz/-/blob/5.0.0/lib/sfio/sftable.c#L321).
         let match_vastart_struct_pointer_member = || {
-            let me = match_or! { [ast[expr].kind]
-            CExprKind::ImplicitCast(_, me, _, _, _) => me }?;
-            let ie = match_or! { [ast[me].kind]
-            CExprKind::Member(_, ie, _, _, _) => ie }?;
-            let e = match_or! { [ast[ie].kind]
-            CExprKind::ImplicitCast(_, e, _, _, _) => e }?;
-            let va_id = match_or! { [ast[e].kind]
-            CExprKind::DeclRef(_, va_id, _) => va_id }?;
+            let me = match_or! { [ast[expr].kind] CExprKind::ImplicitCast(_, me, _, _, _) => me }?;
+            let ie = match_or! { [ast[me].kind] CExprKind::Member(_, ie, _, _, _) => ie }?;
+            let e = match_or! { [ast[ie].kind] CExprKind::ImplicitCast(_, e, _, _, _) => e }?;
+            let va_id = match_or! { [ast[e].kind] CExprKind::DeclRef(_, va_id, _) => va_id }?;
             Some(va_id)
         };
 
         // `char *`-based `va_list` (e.g. x86).
         let match_vastart_pointer = || {
-            let va_id = match_or! { [ast[expr].kind]
-            CExprKind::DeclRef(_, va_id, _) => va_id }?;
+            let va_id = match_or! { [ast[expr].kind] CExprKind::DeclRef(_, va_id, _) => va_id }?;
             Some(va_id)
         };
 
@@ -100,14 +90,11 @@ impl<'c> Translation<'c> {
     pub fn match_vapart(&self, expr: CExprId) -> Option<VaPart> {
         let ast = &self.ast_context;
 
-        let (func, args) = match_or! { [self.ast_context[expr].kind]
-        CExprKind::Call(_, func, ref args) => (func, args) }?;
-        let fexp = match_or! { [ast[func].kind]
-        CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _, _) => fexp }?;
-        let decl_id = match_or! { [ast[fexp].kind]
-        CExprKind::DeclRef(_, decl_id, _) => decl_id }?;
-        let name = match_or! { [ast[decl_id].kind]
-        CDeclKind::Function { ref name, .. } => name }?;
+        let (func, args) =
+            match_or! { [ast[expr].kind] CExprKind::Call(_, func, ref args) => (func, args) }?;
+        let fexp = match_or! { [ast[func].kind] CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _, _) => fexp }?;
+        let decl_id = match_or! { [ast[fexp].kind] CExprKind::DeclRef(_, decl_id, _) => decl_id }?;
+        let name = match_or! { [ast[decl_id].kind] CDeclKind::Function { ref name, .. } => name }?;
 
         match (name.as_str(), args.as_slice()) {
             ("__builtin_va_start", &[expr, _]) => self.match_vastart(expr).map(VaPart::Start),
