@@ -73,11 +73,27 @@ struct vastruct {
 
 // pattern first seen in apache (util_script.c)
 void valist_struct_member(const char *fmt, ...) {
-  struct vastruct thestruct;
+  struct vastruct a, b;
 
-  va_start(thestruct.args, fmt);
-  vprintf(fmt, thestruct.args);
-  va_end(thestruct.args);
+  va_start(a.args, fmt);
+  va_copy(b.args, a.args);
+  vprintf(fmt, a.args);
+  vprintf(fmt, b.args);
+  va_end(a.args);
+  va_end(b.args);
+}
+
+// pattern first seen in graphviz (sftable.c)
+void valist_struct_pointer_member(const char *fmt, ...) {
+  struct vastruct a, b;
+  struct vastruct *p = &a, *q = &b;
+
+  va_start(p->args, fmt);
+  va_copy(q->args, p->args);
+  vprintf(fmt, p->args);
+  vprintf(fmt, q->args);
+  va_end(p->args);
+  va_end(q->args);
 }
 
 // mirrors pattern from json-c's sprintbuf

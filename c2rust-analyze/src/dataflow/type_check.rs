@@ -196,6 +196,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 ref func,
                 ref args,
                 destination,
+                target: _,
                 ..
             } => {
                 let func_ty = func.ty(self.mir, tcx);
@@ -203,11 +204,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 match util::ty_callee(tcx, func_ty) {
                     Some(Callee::PtrOffset { .. }) => {
                         // We handle this like a pointer assignment.
-
-                        // `destination` must be `Some` because the function doesn't diverge.
-                        let destination = destination.unwrap();
                         let ctx = PlaceContext::MutatingUse(MutatingUseContext::Store);
-                        let pl_lty = self.visit_place(destination.0, ctx);
+                        let pl_lty = self.visit_place(destination, ctx);
                         assert!(args.len() == 2);
                         let rv_lty = self.visit_operand(&args[0]);
                         self.do_assign(pl_lty.label, rv_lty.label);
