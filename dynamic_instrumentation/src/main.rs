@@ -473,7 +473,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
 
         // The [`rustc_wrapper`] might run in a different working directory if `--manifest-path` was passed.
         let metadata_path = metadata_file.temp_path();
-        let metadata_path = if manifest_dir.is_some() {
+        let metadata_path = if !metadata_path.is_absolute() && manifest_dir.is_some() {
             Cow::Owned(fs_err::canonicalize(metadata_path)?)
         } else {
             Cow::Borrowed(metadata_path)
