@@ -525,10 +525,14 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
             Cow::Borrowed(metadata_path)
         };
 
-        let rustflags = [env::var_os("RUSTFLAGS"), rustflags]
-            .into_iter()
-            .flatten()
-            .join(OsStr::new(" "));
+        let rustflags = [
+            env::var_os("RUSTFLAGS"),
+            Some("-A warnings".into()),
+            rustflags,
+        ]
+        .into_iter()
+        .flatten()
+        .join(OsStr::new(" "));
 
         // Enable the runtime dependency.
         add_feature(&mut cargo_args, &["c2rust-analysis-rt"]);
