@@ -50,6 +50,7 @@ apt-get install -qq \
     python3-pip \
     python3-setuptools \
     software-properties-common \
+    strace \
     unzip \
     libncurses5-dev \
     luarocks \

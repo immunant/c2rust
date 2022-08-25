@@ -2,7 +2,7 @@ use std::{
     env,
     ffi::OsStr,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     str,
 };
 
@@ -70,4 +70,53 @@ impl SysRoot {
         print_cargo_path("rustc-link-search=native=", &lib);
         print_cargo_path("rustc-link-arg=-Wl,-rpath,", &lib);
     }
+}
+
+pub fn find_llvm_config() -> Option<PathBuf> {
+    // Explicitly provided path in LLVM_CONFIG_PATH
+    env::var_os("LLVM_CONFIG_PATH")
+        .map(PathBuf::from)
+        .or_else(|| {
+            // Relative to LLVM_LIB_DIR
+            env::var_os("LLVM_LIB_DIR")
+                .map(PathBuf::from)
+                .map(|mut lib_dir| {
+                    lib_dir.push("../bin/llvm-config");
+                    lib_dir.canonicalize().unwrap()
+                })
+        })
+        .or_else(|| {
+            // In PATH
+            [
+                "llvm-config-14",
+                "llvm-config-13",
+                "llvm-config-12",
+                "llvm-config-11",
+                "llvm-config-10",
+                "llvm-config-9",
+                "llvm-config-8",
+                "llvm-config-7",
+                "llvm-config-7.0",
+                "llvm-config",
+                // Homebrew install locations on MacOS
+                "/usr/local/opt/llvm@13/bin/llvm-config",
+                "/usr/local/opt/llvm@12/bin/llvm-config",
+                "/usr/local/opt/llvm@11/bin/llvm-config",
+                "/usr/local/opt/llvm@10/bin/llvm-config",
+                "/usr/local/opt/llvm@9/bin/llvm-config",
+                "/usr/local/opt/llvm@8/bin/llvm-config",
+                "/usr/local/opt/llvm/bin/llvm-config",
+            ]
+            .iter()
+            .map(Path::new)
+            .filter(|c| {
+                Command::new(c)
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .is_ok()
+            })
+            .map(PathBuf::from)
+            .next()
+        })
 }

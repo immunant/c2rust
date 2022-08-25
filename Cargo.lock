@@ -143,6 +143,7 @@ name = "c2rust"
 version = "0.16.0"
 dependencies = [
  "anyhow",
+ "c2rust-build-paths",
  "c2rust-transpile",
  "camino",
  "clap 2.34.0",
@@ -151,7 +152,6 @@ dependencies = [
  "is_executable",
  "log",
  "regex",
- "rustc-private-link",
  "shlex",
 ]
 
@@ -171,10 +171,10 @@ name = "c2rust-analyze"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "c2rust-build-paths",
  "polonius-engine",
  "print_bytes",
  "rustc-hash",
- "rustc-private-link",
 ]
 
 [[package]]
@@ -194,6 +194,7 @@ name = "c2rust-ast-exporter"
 version = "0.16.0"
 dependencies = [
  "bindgen",
+ "c2rust-build-paths",
  "clang-sys",
  "cmake",
  "env_logger",
@@ -231,14 +232,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "c2rust-build-paths"
+version = "0.1.0"
+dependencies = [
+ "print_bytes",
+]
+
+[[package]]
 name = "c2rust-instrument"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "bincode",
  "c2rust-analysis-rt",
+ "c2rust-build-paths",
  "camino",
- "cargo_metadata",
  "clap 3.2.16",
  "env_logger",
  "fs-err",
@@ -247,7 +255,7 @@ dependencies = [
  "itertools",
  "log",
  "once_cell",
- "rustc-private-link",
+ "tempfile",
  "toml_edit",
 ]
 
@@ -257,6 +265,7 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "c2rust-analysis-rt",
+ "c2rust-build-paths",
  "clap 3.2.16",
  "color-eyre",
  "env_logger",
@@ -266,7 +275,6 @@ dependencies = [
  "itertools",
  "linked_hash_set",
  "log",
- "rustc-private-link",
  "serde",
 ]
 
@@ -307,31 +315,6 @@ name = "camino"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "869119e97797867fd90f5e22af7d0bd274bd4635ebb9eb68c04f3f513ae6c412"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "cargo-platform"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbdb825da8a5df079a43676dbe042702f1707b1109f713a01420fbb4cc71fa27"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "cargo_metadata"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3abb7553d5b9b8421c6de7cb02606ff15e0c6eea7d8eadd75ef013fd636bec36"
-dependencies = [
- "camino",
- "cargo-platform",
- "semver",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "cc"
@@ -612,6 +595,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fastrand"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7a407cfaa3385c4ae6b23e84623d48c2798d06e3e6a1878f7f59f17b3f86499"
+dependencies = [
+ "instant",
+]
+
+[[package]]
 name = "fern"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -776,6 +768,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa9acdc6d67b75e626ad644734e8bc6df893d9cd2a834129065d3dd6158ea9c8"
 dependencies = [
  "winapi",
+]
+
+[[package]]
+name = "instant"
+version = "0.1.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a5bbe824c507c5da5956355e86a746d82e0e1464f65d862cc5e71da70e94b2c"
+dependencies = [
+ "cfg-if",
 ]
 
 [[package]]
@@ -1073,6 +1074,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "redox_syscall"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb5a58c1855b4b6819d59012155603f0b22ad30cad752600aadfcb695265519a"
+dependencies = [
+ "bitflags",
+]
+
+[[package]]
 name = "regex"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1090,6 +1100,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3f87b73ce11b1619a3c6332f45341e0047173771e8b8b73f87bfeefb7b56244"
 
 [[package]]
+name = "remove_dir_all"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3acd125665422973a33ac9d3dd2df85edad0f4ae9b00dafb1a05e43a9f5ef8e7"
+dependencies = [
+ "winapi",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1102,13 +1121,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
-name = "rustc-private-link"
-version = "0.1.0"
-dependencies = [
- "print_bytes",
-]
-
-[[package]]
 name = "rustversion"
 version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1119,15 +1131,6 @@ name = "ryu"
 version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3f6f92acf49d1b98f7a81226834412ada05458b7364277387724a237f062695"
-
-[[package]]
-name = "semver"
-version = "1.0.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2333e6df6d6598f2b1974829f853c2b4c5f4a6e503c10af918081aa6f8564e1"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "serde"
@@ -1291,6 +1294,20 @@ dependencies = [
  "quote",
  "syn",
  "unicode-xid",
+]
+
+[[package]]
+name = "tempfile"
+version = "3.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5cdb1ef4eaeeaddc8fbd371e5017057064af0911902ef36b39801f67cc6d79e4"
+dependencies = [
+ "cfg-if",
+ "fastrand",
+ "libc",
+ "redox_syscall",
+ "remove_dir_all",
+ "winapi",
 ]
 
 [[package]]

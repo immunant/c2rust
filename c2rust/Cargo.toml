@@ -29,7 +29,7 @@ shlex = "1.1"
 c2rust-transpile = { version = "0.16.0", path = "../c2rust-transpile" }
 
 [build-dependencies]
-rustc-private-link = { path = "../rustc-private-link" }
+c2rust-build-paths = { path = "../c2rust-build-paths" }
 
 [features]
 # Force static linking of LLVM

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::fmt::{self, Display, Formatter};
 use std::hash::{Hash, Hasher};
@@ -94,7 +95,7 @@ impl Debug for MirPlace {
 
 pub type MirLocId = u32;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Copy, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Clone, Debug)]
 pub struct Fingerprint(pub u64, pub u64);
 
 impl From<(u64, u64)> for Fingerprint {
@@ -109,7 +110,7 @@ impl From<Fingerprint> for (u64, u64) {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Copy, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Clone, Debug)]
 pub struct DefPathHash(pub Fingerprint);
 
 impl From<(u64, u64)> for DefPathHash {
@@ -130,15 +131,33 @@ pub struct Func {
     pub name: String,
 }
 
+impl Func {
+    fn cmp_fields(&self) -> impl Eq + Hash + Ord + '_ {
+        self.def_path_hash
+    }
+}
+
 impl PartialEq for Func {
     fn eq(&self, other: &Self) -> bool {
-        self.def_path_hash == other.def_path_hash
+        self.cmp_fields() == other.cmp_fields()
     }
 }
 
 impl Hash for Func {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.def_path_hash.hash(state);
+        self.cmp_fields().hash(state);
+    }
+}
+
+impl PartialOrd for Func {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.cmp_fields().partial_cmp(&other.cmp_fields())
+    }
+}
+
+impl Ord for Func {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.cmp_fields().cmp(&other.cmp_fields())
     }
 }
 
@@ -167,7 +186,7 @@ impl Default for TransferKind {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Eq, Clone, Default)]
 pub struct EventMetadata {
     /// Input [`Local`]s for an [`Event`](crate::events::Event).
     pub source: Option<MirPlace>,
@@ -177,6 +196,30 @@ pub struct EventMetadata {
     pub transfer_kind: TransferKind,
     /// Any string useful for debugging.
     pub debug_info: String,
+}
+
+impl EventMetadata {
+    fn eq_fields(&self) -> impl Eq + Hash + '_ {
+        let Self {
+            source,
+            destination,
+            transfer_kind,
+            debug_info: _,
+        } = self;
+        (source, destination, transfer_kind)
+    }
+}
+
+impl PartialEq for EventMetadata {
+    fn eq(&self, other: &Self) -> bool {
+        self.eq_fields() == other.eq_fields()
+    }
+}
+
+impl Hash for EventMetadata {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.eq_fields().hash(state);
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
