@@ -35,41 +35,43 @@ main() {
     fi
     local profile_args=(--profile "${profile}")
 
-    local instrument="c2rust-instrument"
-    cargo build "${profile_args[@]}" --bin "${instrument}"
+    local metadata="${test_dir}/metadata.bc"
+    local event_log="${test_dir}/log.bc"
+    local runtime="analysis/runtime"
 
-    local c2rust="${CWD}/${profile_dir}/c2rust"
-    local c2rust_instrument="${CWD}/${profile_dir}/${instrument}"
-    local metadata="${CWD}/${test_dir}/metadata.bc"
-    local runtime="${CWD}/analysis/runtime"
-
-    (cd "${test_dir}"
+    (
         unset RUSTFLAGS # transpiled code has tons of warnings; don't allow `-D warnings`
         export RUST_BACKTRACE=1
         export INSTRUMENT_BACKEND=log
-        export INSTRUMENT_OUTPUT=log.bc
+        export INSTRUMENT_OUTPUT="${event_log}"
         export INSTRUMENT_OUTPUT_APPEND=false
         export METADATA_FILE="${metadata}"
 
-        time "${c2rust_instrument}" \
+        cargo run \
+            --bin c2rust-instrument \
+            "${profile_args[@]}" \
+            -- \
             --metadata "${metadata}" \
             --set-runtime \
             --runtime-path "${runtime}" \
-            -- run "${profile_args[@]}" \
+            -- run \
+            --manifest-path "${test_dir}/Cargo.toml" \
+            "${profile_args[@]}" \
             -- "${args[@]}"
     )
-    (cd pdg
+    (
         export RUST_BACKTRACE=full # print sources w/ color-eyre
         export RUST_LOG=error
         cargo run \
+            --bin c2rust-pdg \
             "${profile_args[@]}" \
             -- \
-            --event-log "../${test_dir}/log.bc" \
+            --event-log "${event_log}" \
             --metadata "${metadata}" \
             --print graphs \
             --print write-permissions \
             --print counts \
-        > "../${test_dir}/pdg.log"
+        > "${test_dir}/pdg.log"
     )
 }
 

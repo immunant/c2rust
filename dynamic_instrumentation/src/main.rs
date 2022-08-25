@@ -24,6 +24,7 @@ mod util;
 use crate::callbacks::{MirTransformCallbacks, INSTRUMENTER};
 
 use std::{
+    borrow::Cow,
     env,
     ffi::{OsStr, OsString},
     iter,
@@ -36,7 +37,7 @@ use rustc_session::config::CrateType;
 
 use anyhow::{anyhow, ensure, Context};
 use camino::Utf8Path;
-use clap::Parser;
+use clap::{AppSettings, Parser};
 use tempfile::NamedTempFile;
 
 /// Instrument memory accesses for dynamic analysis.
@@ -58,6 +59,18 @@ struct Args {
 
     /// `cargo` args.
     cargo_args: Vec<OsString>,
+}
+
+/// `cargo` args that we intercept.
+#[derive(Debug, Parser)]
+#[clap(setting = AppSettings::IgnoreErrors)]
+struct InterceptedCargoArgs {
+    #[clap(long, value_parser)]
+    manifest_path: Option<PathBuf>,
+
+    /// Need this so `--` is allowed.
+    /// Not actually used.
+    extra_args: Vec<OsString>,
 }
 
 fn exit_with_status(status: ExitStatus) {
@@ -149,14 +162,12 @@ impl Cargo {
     }
 
     pub fn command(&self) -> Command {
-        let mut cmd = Command::new(&self.path);
-        cmd.env("CARGO_TARGET_DIR", "instrument.target");
-        cmd
+        Command::new(&self.path)
     }
 
-    pub fn run(&self, f: impl FnOnce(&mut Command)) -> anyhow::Result<()> {
+    pub fn run(&self, f: impl FnOnce(&mut Command) -> anyhow::Result<()>) -> anyhow::Result<()> {
         let mut cmd = self.command();
-        f(&mut cmd);
+        f(&mut cmd)?;
         let status = cmd.status()?;
         if !status.success() {
             eprintln!("error ({status}) running: {cmd:?}");
@@ -417,6 +428,16 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         mut cargo_args,
     } = Args::parse();
 
+    let args_for_cargo =
+        iter::once(OsStr::new("cargo")).chain(cargo_args.iter().map(OsString::as_os_str));
+    let InterceptedCargoArgs {
+        manifest_path,
+        extra_args: _,
+    } = InterceptedCargoArgs::parse_from(args_for_cargo);
+
+    let manifest_path = manifest_path.as_deref();
+    let manifest_dir = manifest_path.and_then(|path| path.parent());
+
     set_rust_toolchain()?;
 
     // Resolve the sysroot once in the [`cargo_wrapper`]
@@ -428,23 +449,45 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     if set_runtime {
         cargo.run(|cmd| {
             cmd.args(&["add", "--optional", "c2rust-analysis-rt"]);
-            if let Some(runtime) = runtime_path {
+            if let Some(mut runtime) = runtime_path {
+                if manifest_dir.is_some() {
+                    runtime = fs_err::canonicalize(runtime)?;
+                }
                 // Since it's a local path, we don't need the internet,
                 // and running it offline saves a slow index sync.
                 cmd.args(&["--offline", "--path"]).arg(runtime);
             }
+            if let Some(manifest_path) = manifest_path {
+                cmd.arg("--manifest-path").arg(manifest_path);
+            }
+            Ok(())
         })?;
     }
 
     let metadata_file = MetadataFile::new(metadata_path)?;
 
     cargo.run(|cmd| {
+        let cargo_target_dir = manifest_dir
+            .unwrap_or_else(|| Path::new("."))
+            .join("instrument.target");
+
+        // The [`rustc_wrapper`] might run in a different working directory if `--manifest-path` was passed.
+        let metadata_path = metadata_file.temp_path();
+        let metadata_path = if !metadata_path.is_absolute() && manifest_dir.is_some() {
+            Cow::Owned(fs_err::canonicalize(metadata_path)?)
+        } else {
+            Cow::Borrowed(metadata_path)
+        };
+
         // Enable the runtime dependency.
         add_feature(&mut cargo_args, &["c2rust-analysis-rt"]);
+
         cmd.args(cargo_args)
             .env(RUSTC_WRAPPER_VAR, rustc_wrapper)
             .env(RUST_SYSROOT_VAR, &sysroot)
-            .env(METADATA_VAR, metadata_file.temp_path());
+            .env("CARGO_TARGET_DIR", &cargo_target_dir)
+            .env(METADATA_VAR, metadata_path.as_ref());
+        Ok(())
     })?;
 
     metadata_file.close()?;
