@@ -1,5 +1,4 @@
 use anyhow::anyhow;
-use camino::Utf8Path;
 use clap::{crate_authors, App, AppSettings, Arg};
 use git_testament::{git_testament, render_testament};
 use is_executable::IsExecutable;
@@ -7,7 +6,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process;
 use std::process::Command;
 use std::str;
@@ -29,12 +28,11 @@ impl SubCommand {
     /// They are of the form `c2rust-{name}`.
     pub fn find_all() -> anyhow::Result<Vec<Self>> {
         let c2rust = env::current_exe()?;
-        let c2rust_name: &Utf8Path = c2rust
+        let c2rust_name = c2rust
             .file_name()
-            .map(Path::new)
-            .ok_or_else(|| anyhow!("no file name: {}", c2rust.display()))?
-            .try_into()?;
-        let c2rust_name = c2rust_name.as_str();
+            .ok_or_else(|| anyhow!("no file name for c2rust: {}", c2rust.display()))?
+            .to_str()
+            .ok_or_else(|| anyhow!("c2rust file name is not UTF-8: {}", c2rust.display()))?;
         let dir = c2rust
             .parent()
             .ok_or_else(|| anyhow!("no directory: {}", c2rust.display()))?;
