@@ -31,14 +31,13 @@ use std::{
     process::{self, Command, ExitStatus},
 };
 
-use fs_err::OpenOptions;
 use rustc_driver::{RunCompiler, TimePassesCallbacks};
 use rustc_session::config::CrateType;
 
 use anyhow::{anyhow, ensure, Context};
 use camino::Utf8Path;
-use cargo_metadata::MetadataCommand;
 use clap::Parser;
+use tempfile::NamedTempFile;
 
 /// Instrument memory accesses for dynamic analysis.
 #[derive(Debug, Parser)]
@@ -147,12 +146,6 @@ impl Cargo {
             .unwrap_or_else(|| "cargo".into())
             .into();
         Self { path }
-    }
-
-    pub fn metadata(&self) -> MetadataCommand {
-        let mut cmd = MetadataCommand::new();
-        cmd.cargo_path(&self.path);
-        cmd
     }
 
     pub fn command(&self) -> Command {
@@ -291,10 +284,134 @@ fn set_rust_toolchain() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A new metadata file, which is a temporary [`NamedTempFile`],
+/// and the [`Path`] it should end up as.
+pub struct MetadataFile {
+    /// The original and intended metadata path.
+    path: PathBuf,
+
+    /// The new, temporary metadata file.
+    file: NamedTempFile,
+}
+
+impl MetadataFile {
+    /// The old, original, intended, and final [`Path`] for the [`Metadata`].
+    ///
+    /// This is the location that existing [`Metadata`] may be at,
+    /// and where the [`Metadata`] will end after this program exits.
+    ///
+    /// [`Metadata`]: c2rust_analysis_rt::metadata::Metadata
+    pub fn final_path(&self) -> &Path {
+        &self.path
+    }
+
+    /// The new, temporary [`Path`] for the [`Metadata`].
+    ///
+    /// This is the location of the new [`Metadata`] created
+    /// during the `cargo` invocation in [`cargo_wrapper`]
+    /// and later used (appended to) inside of the [`rustc_wrapper`]s.
+    /// It will later be moved back to [`Self::final_path`] if it is valid (i.e., not empty).
+    ///
+    /// [`Metadata`]: c2rust_analysis_rt::metadata::Metadata
+    pub fn temp_path(&self) -> &Path {
+        self.file.path()
+    }
+
+    /// Create a new [`MetadataFile`] that consists of
+    /// a temporary ([`NamedTempFile`]) metadata file for new [`Metadata`].
+    ///
+    /// This also creates the directory `path` is in if it does not already exist.
+    ///
+    /// Also, see [`Self::final_path`] and [`Self::temp_path`]
+    /// for an explanation of the locations and uses of the [`Path`]s.
+    ///
+    /// [`Metadata`]: c2rust_analysis_rt::metadata::Metadata
+    pub fn new(path: PathBuf) -> anyhow::Result<Self> {
+        let metadata_file_name = path
+            .file_name()
+            .ok_or_else(|| anyhow!("--metadata has no file name: {}", path.display()))?;
+        let metadata_dir = path.parent();
+
+        if let Some(metadata_dir) = metadata_dir {
+            fs_err::create_dir_all(metadata_dir)?;
+        }
+
+        let metadata_dir = metadata_dir.unwrap_or_else(|| Path::new("."));
+
+        let prefix = {
+            let mut prefix = metadata_file_name.to_owned();
+            prefix.push(".");
+            prefix
+        };
+        let file = tempfile::Builder::new()
+            .prefix(&prefix)
+            .suffix(".new")
+            .tempfile_in(metadata_dir)
+            .context("create new (temp) metadata file")?;
+        Ok(Self { path, file })
+    }
+
+    /// If the metadata file is not empty,
+    /// then it is a valid replacement for the (possibly) existing metadata file,
+    /// so move it into place.
+    /// Otherwise, [`NamedTempFile::close`] the file, removing it.
+    ///
+    /// Note that there is no `impl `[`Drop`]` for `[`MetadataFile`] for a few reasons:
+    /// * A [`Drop`] `impl` prevents us from moving out of [`Self`],
+    ///   which is necessary to call [`NamedTempFile::close`], which takes `self`.
+    /// * A [`Drop`] `impl` would provide a safeguard for early `return`s (like through `?`) and panics,
+    ///   but in that case, that's not quite what we want to do,
+    ///   since that then may move an incomplete temporary [`MetadataFile`] into place,
+    ///   overwriting the old but valid [`MetadataFile`].
+    ///   Instead, by keeping the automatic [`Drop`] `impl`,
+    ///   it always calls [`NamedTempFile`]'s inner [`TempPath::drop`](tempfile::TempPath::drop),
+    ///   which deletes the temporary [`MetadataFile`],
+    ///   and which I believe is the safer behavior here.
+    ///
+    /// TODO(kkysen)
+    /// There is a bug in the current implementation,
+    /// very related to [#632](https://github.com/immunant/c2rust/issues/632).
+    ///
+    /// By disabling incremental compilation in [`MirTransformCallbacks`]
+    /// instead of `cargo clean`ing the primary package,
+    /// which was done in [#626](https://github.com/immunant/c2rust/pull/626)
+    /// to fix [#624](https://github.com/immunant/c2rust/pull/624)
+    /// and [#625](https://github.com/immunant/c2rust/pull/625),
+    /// we now create complete [`Metadata`]s in each [`rustc_wrapper`] call,
+    /// and thus largely avoid the issue of managing incremental updates to the [`Metadata`].
+    ///
+    /// However, although the `rustc`s and [`rustc_wrapper`]s are atomic in this sense,
+    /// `cargo` is not.  That is, if none of the inputs changed,
+    /// `cargo` can skip calls to `rustc`/`$RUSTC_WRAPPER`.
+    /// We handle this general case in [`MetadataFile`] where all of the instrument crate targets
+    /// are either all rebuilt or none of them are rebuilt,
+    /// but if, for example, only a binary target needs rebuilding,
+    /// `cargo` will rebuild only that binary target
+    /// and not rebuild the library target again.
+    /// Thus, we'll overwrite the previous metadata file containing the library and binary targets
+    /// with a new metadata file containing only the binary target.
+    ///
+    /// The solution that I see to this, also proposed and discussed in
+    /// [#632](https://github.com/immunant/c2rust/issues/632) for similar reasons,
+    /// is to store a separate metadata file per target, i.e. per `rustc` call,
+    /// and thus lower [`MetadataFile`] into [`rustc_wrapper`] instead of [`cargo_wrapper`].
+    /// This would also fix any issues in [#632](https://github.com/immunant/c2rust/issues/632).
+    ///
+    /// [`Metadata`]: c2rust_analysis_rt::metadata::Metadata
+    pub fn close(self) -> anyhow::Result<()> {
+        if self.file.as_file().metadata()?.len() > 0 {
+            fs_err::rename(self.file.path(), &self.path)?;
+        } else {
+            self.file.close()?;
+        }
+        Ok(())
+    }
+}
+
 /// Run as a `cargo` wrapper/plugin, the default invocation.
 fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     let Args {
-        metadata,
+        metadata: metadata_path,
         runtime_path,
         set_runtime,
         mut cargo_args,
@@ -308,21 +425,6 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
 
     let cargo = Cargo::new();
 
-    let cargo_metadata = cargo.metadata().exec()?;
-    let root_package = cargo_metadata
-        .root_package()
-        .ok_or_else(|| anyhow!("no root package found by `cargo`"))?;
-
-    cargo.run(|cmd| {
-        // Clean the primary package so that we always rebuild it
-        // and get up-to-date, complete instrumentation [`Metadata`].
-        // Incremental instrumentation is very tricky,
-        // so don't try that yet,
-        // and if we only need to rebuild the primary package,
-        // it usually isn't that slow.
-        cmd.args(&["clean", "--package", root_package.name.as_str()]);
-    })?;
-
     if set_runtime {
         cargo.run(|cmd| {
             cmd.args(&["add", "--optional", "c2rust-analysis-rt"]);
@@ -334,12 +436,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         })?;
     }
 
-    // Create and truncate the metadata file for the [`rustc_wrapper`]s to append to.
-    OpenOptions::new()
-        .create(true)
-        .write(true) // need write for truncate
-        .truncate(true)
-        .open(&metadata)?;
+    let metadata_file = MetadataFile::new(metadata_path)?;
 
     cargo.run(|cmd| {
         // Enable the runtime dependency.
@@ -347,8 +444,10 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         cmd.args(cargo_args)
             .env(RUSTC_WRAPPER_VAR, rustc_wrapper)
             .env(RUST_SYSROOT_VAR, &sysroot)
-            .env(METADATA_VAR, &metadata);
+            .env(METADATA_VAR, metadata_file.temp_path());
     })?;
+
+    metadata_file.close()?;
 
     Ok(())
 }
