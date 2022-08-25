@@ -213,7 +213,7 @@ struct LLVMInfo {
 impl LLVMInfo {
     fn new() -> Self {
         /// Invoke given `command`, if any, with the specified arguments.
-        fn invoke_command<I, S>(command: Option<&String>, args: I) -> Option<String>
+        fn invoke_command<I, S>(command: Option<&Path>, args: I) -> Option<String>
         where
             I: IntoIterator<Item = S>,
             S: AsRef<OsStr>,
@@ -239,7 +239,7 @@ impl LLVMInfo {
         let lib_dir = {
             let path_str = env::var("LLVM_LIB_DIR")
                 .ok()
-                .or_else(|| invoke_command(llvm_config.as_ref(), &["--libdir"]))
+                .or_else(|| invoke_command(llvm_config.as_deref(), &["--libdir"]))
                 .expect(llvm_config_missing);
             String::from(
                 Path::new(&path_str)
@@ -249,7 +249,7 @@ impl LLVMInfo {
             )
         };
 
-        let llvm_shared_libs = invoke_command(llvm_config.as_ref(), &["--libs", "--link-shared"]);
+        let llvm_shared_libs = invoke_command(llvm_config.as_deref(), &["--libs", "--link-shared"]);
 
         // <sysroot>/lib/rustlib/<target>/lib/ contains a libLLVM DSO for the
         // rust compiler. On MacOS, this lib is named libLLVM.dylib, which will
@@ -272,8 +272,11 @@ impl LLVMInfo {
                 let mut dylib_file = String::from("lib");
                 dylib_file.push_str(llvm_shared_libs.trim_start_matches("-l"));
                 dylib_file.push_str(dylib_suffix);
-                let sysroot =
-                    invoke_command(env::var("RUSTC").ok().as_ref(), &["--print=sysroot"]).unwrap();
+                let sysroot = invoke_command(
+                    env::var_os("RUSTC").map(PathBuf::from).as_deref(),
+                    &["--print=sysroot"],
+                )
+                .unwrap();
 
                 // Does <sysroot>/lib/rustlib/<target>/lib/<dylib_file> exist?
                 let mut libllvm_path = PathBuf::new();
@@ -295,7 +298,7 @@ impl LLVMInfo {
             } else {
                 vec!["--shared-mode"]
             };
-            invoke_command(llvm_config.as_ref(), &args).map_or(false, |c| c == "static")
+            invoke_command(llvm_config.as_deref(), &args).map_or(false, |c| c == "static")
         };
 
         let link_mode = if link_statically {
@@ -306,7 +309,7 @@ impl LLVMInfo {
 
         let llvm_major_version = {
             let version =
-                invoke_command(llvm_config.as_ref(), &["--version"]).expect(llvm_config_missing);
+                invoke_command(llvm_config.as_deref(), &["--version"]).expect(llvm_config_missing);
             let emsg = format!("invalid version string {}", version);
             version
                 .split('.')
@@ -333,7 +336,7 @@ impl LLVMInfo {
             args.push("FrontendOpenMP");
         }
 
-        let mut libs: Vec<String> = invoke_command(llvm_config.as_ref(), &args)
+        let mut libs: Vec<String> = invoke_command(llvm_config.as_deref(), &args)
             .unwrap_or_else(|| "-lLLVM".to_string())
             .split_whitespace()
             .map(|lib| String::from(lib.trim_start_matches("-l")))
@@ -342,7 +345,7 @@ impl LLVMInfo {
         libs.extend(
             env::var("LLVM_SYSTEM_LIBS")
                 .ok()
-                .or_else(|| invoke_command(llvm_config.as_ref(), &["--system-libs", link_mode]))
+                .or_else(|| invoke_command(llvm_config.as_deref(), &["--system-libs", link_mode]))
                 .unwrap_or_default()
                 .split_whitespace()
                 .map(|lib| String::from(lib.trim_start_matches("-l"))),

@@ -72,21 +72,18 @@ impl SysRoot {
     }
 }
 
-pub fn find_llvm_config() -> Option<String> {
+pub fn find_llvm_config() -> Option<PathBuf> {
     // Explicitly provided path in LLVM_CONFIG_PATH
-    env::var("LLVM_CONFIG_PATH")
-        .ok()
+    env::var_os("LLVM_CONFIG_PATH")
+        .map(PathBuf::from)
         .or_else(|| {
             // Relative to LLVM_LIB_DIR
-            env::var("LLVM_LIB_DIR").ok().map(|d| {
-                String::from(
-                    Path::new(&d)
-                        .join("../bin/llvm-config")
-                        .canonicalize()
-                        .unwrap()
-                        .to_string_lossy(),
-                )
-            })
+            env::var_os("LLVM_LIB_DIR")
+                .map(PathBuf::from)
+                .map(|mut lib_dir| {
+                    lib_dir.push("../bin/llvm-config");
+                    lib_dir.canonicalize().unwrap()
+                })
         })
         .or_else(|| {
             // In PATH
@@ -111,17 +108,15 @@ pub fn find_llvm_config() -> Option<String> {
                 "/usr/local/opt/llvm/bin/llvm-config",
             ]
             .iter()
-            .find_map(|c| {
-                if Command::new(c)
+            .map(Path::new)
+            .filter(|c| {
+                Command::new(c)
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
                     .spawn()
                     .is_ok()
-                {
-                    Some(String::from(*c))
-                } else {
-                    None
-                }
             })
+            .map(PathBuf::from)
+            .next()
         })
 }
