@@ -295,13 +295,13 @@ pub struct MetadataFile {
 }
 
 impl MetadataFile {
-    /// The old, original, intended [`Path`] for the [`Metadata`].
+    /// The old, original, intended, and final [`Path`] for the [`Metadata`].
     ///
     /// This is the location that existing [`Metadata`] may be at,
     /// and where the [`Metadata`] will end after this program exits.
     ///
     /// [`Metadata`]: c2rust_analysis_rt::metadata::Metadata
-    pub fn old_path(&self) -> &Path {
+    pub fn final_path(&self) -> &Path {
         &self.path
     }
 
@@ -310,10 +310,10 @@ impl MetadataFile {
     /// This is the location of the new [`Metadata`] created
     /// during the `cargo` invocation in [`cargo_wrapper`]
     /// and later used (appended to) inside of the [`rustc_wrapper`]s.
-    /// It will later be moved back to [`Self::old_path`] if it is valid (i.e., not empty).
+    /// It will later be moved back to [`Self::final_path`] if it is valid (i.e., not empty).
     ///
     /// [`Metadata`]: c2rust_analysis_rt::metadata::Metadata
-    pub fn new_path(&self) -> &Path {
+    pub fn temp_path(&self) -> &Path {
         self.file.path()
     }
 
@@ -322,7 +322,7 @@ impl MetadataFile {
     ///
     /// This also creates the directory `path` is in if it does not already exist.
     ///
-    /// Also, see [`Self::old_path`] and [`Self::new_path`]
+    /// Also, see [`Self::final_path`] and [`Self::temp_path`]
     /// for an explanation of the locations and uses of the [`Path`]s.
     ///
     /// [`Metadata`]: c2rust_analysis_rt::metadata::Metadata
@@ -444,7 +444,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         cmd.args(cargo_args)
             .env(RUSTC_WRAPPER_VAR, rustc_wrapper)
             .env(RUST_SYSROOT_VAR, &sysroot)
-            .env(METADATA_VAR, metadata_file.new_path());
+            .env(METADATA_VAR, metadata_file.temp_path());
     })?;
 
     metadata_file.close()?;
