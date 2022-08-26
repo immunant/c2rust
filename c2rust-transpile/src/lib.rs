@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use failure::Error;
+use itertools::Itertools;
 use log::{info, warn};
 use regex::Regex;
 use serde_derive::Serialize;
@@ -110,11 +111,12 @@ impl TranspilerConfig {
         for binary in &self.binaries {
             if !module_names.contains(binary) {
                 ok = false;
-                warn!("binary not used: {binary:?}");
+                warn!("binary not used: {binary}");
             }
         }
         if !ok {
-            info!("candidate modules for binaries are: {module_names:#?}");
+            let module_names = module_names.iter().format(", ");
+            info!("candidate modules for binaries are: {module_names}");
         }
         ok
     }
