@@ -1,10 +1,10 @@
 use crate::Graphs;
 use std::fmt::{self, Debug, Display, Formatter};
 
-/// Information generated from the PDG proper which is used as data for static analysis.
+/// Information generated from the PDG proper that is queried by static analysis.
 ///
-///Eventually will include information about what kinds of nodes the node flows to, as
-/// well as its ability to be used as a mutable reference.
+/// Eventually this will include information about what kinds of [`Node`]s the [`Node`] flows to,
+/// as well as its ability to be used as a `&mut`.
 #[derive(Hash, Clone, PartialEq, Debug)]
 pub struct NodeInfo {}
 
