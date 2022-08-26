@@ -37,7 +37,6 @@ use rustc_driver::{RunCompiler, TimePassesCallbacks};
 use rustc_session::config::CrateType;
 
 use anyhow::{anyhow, ensure, Context};
-use camino::Utf8Path;
 use clap::{AppSettings, Parser};
 use tempfile::NamedTempFile;
 
@@ -278,8 +277,11 @@ fn rustc_wrapper() -> anyhow::Result<()> {
     // but those must be separate crates, so we should be okay.
     let should_instrument = is_primary_package() && !is_build_script(&at_args)?;
     let sysroot = env_path_from_wrapper(RUST_SYSROOT_VAR)?;
-    let sysroot: &Utf8Path = sysroot.as_path().try_into()?;
-    at_args.extend(["--sysroot".into(), sysroot.as_str().into()]);
+    let sysroot = sysroot
+        .as_path()
+        .to_str()
+        .ok_or_else(|| anyhow!("sysroot path is not UTF-8: {}", sysroot.display()))?;
+    at_args.extend(["--sysroot".into(), sysroot.into()]);
     let result = if should_instrument {
         RunCompiler::new(&at_args, &mut MirTransformCallbacks).run()
     } else {

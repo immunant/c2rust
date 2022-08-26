@@ -145,7 +145,6 @@ dependencies = [
  "anyhow",
  "c2rust-build-paths",
  "c2rust-transpile",
- "camino",
  "clap 2.34.0",
  "env_logger",
  "git-testament",
@@ -246,7 +245,6 @@ dependencies = [
  "bincode",
  "c2rust-analysis-rt",
  "c2rust-build-paths",
- "camino",
  "clap 3.2.16",
  "env_logger",
  "fs-err",
@@ -309,12 +307,6 @@ dependencies = [
  "strum_macros",
  "syn",
 ]
-
-[[package]]
-name = "camino"
-version = "1.0.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "869119e97797867fd90f5e22af7d0bd274bd4635ebb9eb68c04f3f513ae6c412"
 
 [[package]]
 name = "cc"
