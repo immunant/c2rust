@@ -123,7 +123,7 @@ pub struct Node {
     /// Any string useful for debugging.
     pub debug_info: String,
     /// Information about the node computed from the raw pdg
-    pub flags: Option<NodeInfo>,
+    pub info: Option<NodeInfo>,
 }
 
 struct BlockStatement<'a> {
@@ -151,7 +151,7 @@ impl Node {
             kind,
             source,
             debug_info,
-            flags: _,
+            info,
         } = self;
         let src = ShortOption(source.as_ref());
         let dest = ShortOption(dest.as_ref());
@@ -160,9 +160,10 @@ impl Node {
             statement_idx,
         };
         let fn_ = function;
+        let n_info = info.as_ref().map(|i| i.to_string()).unwrap_or_default();
         write!(
             f,
-            "{kind}{sep}{src}{sep}=>{sep}{dest}{sep}@{sep}{bb_stmt}:{sep}fn {fn_};{sep}{debug_info};"
+            "{kind}{sep}{src}{sep}=>{sep}{dest}{sep}@{sep}{bb_stmt}:{sep}fn {fn_};{sep}{n_info}{sep}{debug_info};"
         )
     }
 }
