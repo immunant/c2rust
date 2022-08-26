@@ -9,6 +9,7 @@ use std::{
     fmt::{self, Debug, Formatter},
 };
 
+use crate::info::NodeInfo;
 use crate::util::pad_columns;
 use crate::util::ShortOption;
 
@@ -121,6 +122,8 @@ pub struct Node {
     pub source: Option<NodeId>,
     /// Any string useful for debugging.
     pub debug_info: String,
+    /// Information about the node computed from the raw pdg
+    pub flags: Option<NodeInfo>,
 }
 
 struct BlockStatement<'a> {
@@ -148,6 +151,7 @@ impl Node {
             kind,
             source,
             debug_info,
+            flags: _,
         } = self;
         let src = ShortOption(source.as_ref());
         let dest = ShortOption(dest.as_ref());
