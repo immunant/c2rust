@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use failure::Error;
-use log::warn;
+use log::{info, warn};
 use regex::Regex;
 use serde_derive::Serialize;
 
@@ -114,7 +114,7 @@ impl TranspilerConfig {
             }
         }
         if !ok {
-            warn!("candidate modules for binaries are: {module_names:#?}");
+            info!("candidate modules for binaries are: {module_names:#?}");
         }
         ok
     }
