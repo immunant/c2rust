@@ -192,23 +192,189 @@ fn main() -> eyre::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::{env, path::Path, process::Command};
+    use std::{
+        env,
+        fmt::Display,
+        path::{Path, PathBuf},
+        process::Command,
+    };
 
-    use color_eyre::eyre;
+    use color_eyre::eyre::{self, ensure, eyre, Context};
+
+    use crate::{Pdg, ToPrint};
+
+    pub enum Profile {
+        Debug,
+        Release,
+        // Will be used by future test code.
+        #[allow(dead_code)]
+        Other(String),
+    }
+
+    impl Profile {
+        pub fn name(&self) -> &str {
+            use Profile::*;
+            match self {
+                Debug => "dev",
+                Release => "release",
+                Other(other) => other.as_str(),
+            }
+        }
+
+        pub fn dir_name(&self) -> &str {
+            use Profile::*;
+            match self {
+                Debug => "debug",
+                Release => "release",
+                Other(other) => other.as_str(),
+            }
+        }
+    }
+
+    impl From<String> for Profile {
+        fn from(profile: String) -> Self {
+            use Profile::*;
+            match profile.as_str() {
+                "debug" => Debug,
+                "release" => Release,
+                _ => Other(profile),
+            }
+        }
+    }
+
+    impl Profile {
+        pub fn current() -> eyre::Result<Self> {
+            let profile =
+                env::var("PROFILE").wrap_err(eyre!("should be set by `build.rs` from `cargo`"))?;
+            Ok(profile.into())
+        }
+    }
+
+    pub fn repo_dir() -> eyre::Result<PathBuf> {
+        let crate_dir = env::var("CARGO_MANIFEST_DIR")?;
+        let repo_dir = Path::new(&crate_dir)
+            .parent()
+            .ok_or_else(|| eyre!("`$CARGO_MANIFEST_DIR` should have a parent"))?;
+        Ok(repo_dir.to_owned())
+    }
+
+    /// Instrument and run a test crate and return a snapshot (an `impl `[`Display`]) of its [`Pdg`].
+    ///
+    /// # Args
+    /// * `test_dir` is the directory of the test crate.
+    ///   It must contain a `Cargo.toml`.
+    ///
+    /// * `profile` is the [`Profile`] the test crate is compiled and run as.
+    ///
+    /// * `to_print` are the [`ToPrint`]s that should be printed in the [`Pdg`] snapshot.
+    ///
+    /// # Overview
+    ///
+    /// This instruments the `test_dir` crate using `c2rust-instrument` through `cargo run --bin c2rust-instrument`.
+    /// It is used through a separate binary and its CLI because `c2rust-instrument`
+    /// must have control over its `main` in order to invoke itself as a `$RUSTC_WRAPPER`.
+    ///
+    /// The instrumented binary, compiled with `profile`,
+    /// is then run via a `cargo run`, but done through `c2rust-instrument ... -- run`.
+    ///
+    /// Then the metadata and event log files created are read in by the `c2rust-pdg` code here.
+    /// All assertion tests are checked on the [`Pdg`]'s [`Graphs`](crate::Graphs).
+    /// Then, finally, the [`Pdg`] is snapshotted into an `impl `[`Display`], printing the [`ToPrint`]s in `to_print`.
+    ///
+    /// # Details
+    ///
+    /// `c2rust-instrument` is compiled with the same `$PROFILE`/`--profile`/`--release` that this current crate is.
+    ///
+    /// The metadata file and event log are placed in the same directory as the test binary built.
+    /// Thus, there should be no conflicts when building with different [`Profile`]s simultaneously.
+    ///
+    /// `--set-runtime` and `--runtime-path` are also passed to `c2rust-instrument`,
+    /// setting the runtime dependency to the correct path in case it's out-of-date.
+    ///
+    /// `$INSTRUMENT_OUTPUT_APPEND` is set to `false` as this runs the test binary only once,
+    /// so appending is not yet necessary.
+    fn pdg_snapshot_inner(
+        test_dir: &Path,
+        profile: Profile,
+        to_print: &[ToPrint],
+    ) -> eyre::Result<impl Display> {
+        let runtime_path = repo_dir()?.join("analysis/runtime");
+        let manifest_path = test_dir.join("Cargo.toml");
+        let target_dir = test_dir.join("instrument.target");
+        let exe_dir = target_dir.join(profile.dir_name());
+        let metadata_path = exe_dir.join("metadata.bc");
+        let event_log_path = exe_dir.join("event.log.bc");
+
+        let mut cmd = Command::new("cargo");
+        cmd.current_dir(repo_dir()?)
+            .args(&[
+                "run",
+                "--bin",
+                "c2rust-instrument",
+                "--profile",
+                // Compile `c2rust-instrument` with the same profile as `c2rust-pdg` was.
+                // Makes sense to match them, plus that one is probably already compiled.
+                Profile::current()?.name(),
+                "--",
+                "--metadata",
+            ])
+            .arg(&metadata_path)
+            .args(&["--set-runtime", "--runtime-path"])
+            .arg(&runtime_path)
+            .args(&["--", "run", "--manifest-path"])
+            .arg(&manifest_path)
+            .args(&["--profile", profile.name()])
+            .env("METADATA_FILE", &metadata_path)
+            .env("INSTRUMENT_BACKEND", "log")
+            .env("INSTRUMENT_OUTPUT", &event_log_path)
+            .env("INSTRUMENT_OUTPUT_APPEND", "false");
+        let status = cmd.status()?;
+        ensure!(status.success(), eyre!("{cmd:?} failed: {status}"));
+
+        let pdg = Pdg::new(&metadata_path, &event_log_path)?;
+        pdg.graphs.assert_all_tests();
+        let repr = pdg.repr(to_print);
+        Ok(repr.to_string())
+    }
+
+    /// Instrument and run a test crate and return a snapshot (an `impl `[`Display`]) of its [`Pdg`].
+    ///
+    /// # Args
+    /// * `test_dir` is the directory of the test crate.
+    ///   It must contain a `Cargo.toml`.
+    ///
+    /// * `profile` is the [`Profile`] the test crate is compiled and run as.
+    ///
+    /// * `to_print` are the [`ToPrint`]s that should be printed in the [`Pdg`] snapshot.
+    ///
+    /// # Overview
+    ///
+    /// This instruments the `test_dir` crate using `c2rust-instrument`, creating a metadata file.
+    /// The instrumented binary, compiled with `profile`, is then run, creating an event log.
+    /// Those are then read in by the `c2rust-pdg` code here to create a [`Pdg`].
+    /// All assertion tests are checked on the [`Pdg`]'s [`Graphs`](crate::Graphs).
+    /// Then, finally, the [`Pdg`] is snapshotted into an `impl `[`Display`], printing the [`ToPrint`]s in `to_print`.
+    pub fn pdg_snapshot(
+        test_dir: impl AsRef<Path>,
+        profile: Profile,
+        to_print: &[ToPrint],
+    ) -> eyre::Result<impl Display> {
+        pdg_snapshot_inner(test_dir.as_ref(), profile, to_print)
+    }
+
+    fn analysis_test_pdg_snapshot(profile: Profile) -> eyre::Result<impl Display> {
+        pdg_snapshot(repo_dir()?.join("analysis/test"), profile, {
+            use ToPrint::*;
+            &[Graphs, WritePermissions, Counts]
+        })
+    }
 
     use crate::init;
 
     #[test]
-    fn analysis_test_pdg_snapshot() -> eyre::Result<()> {
+    fn analysis_test_pdg_snapshot_debug() -> eyre::Result<()> {
         init();
-        env::set_current_dir("..")?;
-        let dir = Path::new("analysis/test");
-        let status = Command::new("scripts/pdg.sh")
-            .arg(dir)
-            .env("PROFILE", "debug")
-            .status()?;
-        assert!(status.success());
-        let pdg = fs_err::read_to_string(dir.join("pdg.log"))?;
+        let pdg = analysis_test_pdg_snapshot(Profile::Debug)?;
         insta::assert_display_snapshot!(pdg);
         Ok(())
     }
