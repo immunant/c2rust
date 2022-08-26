@@ -321,7 +321,7 @@ mod tests {
                 "--metadata",
             ])
             .arg(&metadata_path)
-            .args(&[/*"--set-runtime", */"--runtime-path"])
+            .args(&[/*"--set-runtime", */ "--runtime-path"])
             .arg(&runtime_path)
             // .args(&["--rustflags=-Zsanitizer=address"])
             .args(&["--", "run", "--manifest-path"])
