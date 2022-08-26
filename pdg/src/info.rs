@@ -76,34 +76,10 @@ fn collect_children (g: &Graph) -> HashMap<NodeId,Vec<NodeId>> {
     m
 }
 
-fn partition_into_alias_sets (g: &Graph) -> HashMap<(NodeId,Vec<Field>),Vec<NodeId>> {
-    let mut store_seen : HashMap<NodeId,(NodeId,Vec<Field>)> = HashMap::new();
-    let mut store_roots : HashMap<(NodeId,Vec<Field>),Vec<NodeId>> = HashMap::new();
-
-    for n_id in g.nodes.indices(){
-        let node = g.nodes.get(n_id).unwrap();
-        match node.source {
-            None => {
-                store_roots.insert((n_id,Vec::new()),vec![n_id]);
-                store_seen.insert(n_id,(n_id,Vec::new()))
-            },
-            Some(par_id) => {
-                let (parent_root,parent_fields) = store_seen.get(&par_id).unwrap().clone();
-                match node.kind {
-                    NodeKind::Field(f) => {
-                        let mut cp = parent_fields;
-                        cp.push(f);
-                        store_roots.entry((parent_root,cp.clone())).or_insert_with(Vec::new).push(n_id);
-                        store_seen.insert(n_id,(parent_root, cp))
-                    },
-                    _ => store_seen.insert(n_id,(parent_root, parent_fields)),
-                }
-            }
-        };
-    };
-    store_roots
-}
-
+///Given a list of nodes of the same parent and information about them,
+///determines which of them have any conflicts with any of the others.
+///Children which are not a field cannot be live at the same time as any other child.
+///Children which are a field cannot be live at the same time as any other one of the same field.
 fn check_sibling_conflict(
     g: &Graph,
     siblings: &mut Vec<NodeId>,
@@ -206,123 +182,14 @@ fn node_does_neg_offset(n: &Node) -> bool {
     matches!(n.kind, NodeKind::Offset(x) if x < 0)
 }
 
-fn add_children_to_vec(g: &Graph, parents: &HashSet<NodeId>, v: &mut Vec<NodeId>) {
-    v.extend(
-        g.nodes
-            .iter_enumerated()
-            .filter_map(|(id, node)| Some((id, node.source?)))
-            .filter(|(_, src_idx)| parents.contains(src_idx))
-            .map(|(id, _)| id),
-    );
-}
-
-fn check_flows_to_node_kind(
-    g: &Graph,
-    n: &NodeId,
-    node_check: fn(&Node) -> bool,
-) -> Option<NodeId> {
-    let mut seen = HashSet::new();
-    let mut to_view = vec![*n];
-    while let Some(node_id_to_check) = to_view.pop() {
-        if !seen.contains(&node_id_to_check) {
-            seen.insert(node_id_to_check);
-            let node_to_check: &Node = g.nodes.get(node_id_to_check).unwrap();
-            if node_check(node_to_check) {
-                return Some(node_id_to_check);
-            } else {
-                add_children_to_vec(g, &seen, &mut to_view);
-            }
-        }
-    }
-    None
-}
-
-fn greatest_desc(g: &Graph, n: &NodeId) -> NodeId {
-    let mut desc_seen = HashSet::<NodeId>::new();
-    let mut to_view = vec![*n];
-    let mut greatest_index = n.index();
-    let mut greatest_node_idx = *n;
-    while let Some(node_id_to_check) = to_view.pop() {
-        if !desc_seen.contains(&node_id_to_check) {
-            desc_seen.insert(node_id_to_check);
-            if node_id_to_check.index() > greatest_index {
-                greatest_index = node_id_to_check.index();
-                greatest_node_idx = node_id_to_check;
-            }
-            add_children_to_vec(g, &desc_seen, &mut to_view);
-        }
-    }
-    greatest_node_idx
-}
-
-/// Finds the highest-up ancestor of the given node n in g which is reached through Copy, Field, and
-/// Offset, and returns its index as well as the Fields through which it is reached, in order
-/// (the final element is the Field closest to the returned idx)
-fn calc_lineage(g: &Graph, n: &NodeId) -> (NodeId, Vec<Field>) {
-    let mut lineage = Vec::new();
-    let mut n_idx = *n;
-    loop {
-        let node = g.nodes.get(n_idx).unwrap();
-        let parent = match node.source {
-            None => break,
-            Some(p) => p,
-        };
-        n_idx = match node.kind {
-            NodeKind::Offset(_) => parent,
-            NodeKind::Copy => parent,
-            NodeKind::Field(f) => {
-                lineage.push(f);
-                parent
-            }
-            _ => break,
-        };
-    }
-    (n_idx, lineage)
-}
-
-pub fn check_whether_rules_obeyed(g: &Graph, n: &NodeId) -> Option<NodeId> {
-    let (oldest_ancestor, oldest_lineage) = calc_lineage(g, n);
-    let youngest_descendent = greatest_desc(g, n);
-    let mut to_view = vec![(oldest_ancestor, oldest_lineage)];
-    while let Some((cur_node_id, mut lineage)) = to_view.pop() {
-        if cur_node_id == *n {
-            continue;
-        }
-        if let NodeKind::Field(f) = g.nodes.get(cur_node_id).unwrap().kind {
-            match lineage.pop() {
-                None => continue,
-                Some(top_of_vec) => {
-                    if top_of_vec != f {
-                        continue;
-                    }
-                }
-            }
-        }
-        if lineage.is_empty()
-            && cur_node_id.index() >= n.index()
-            && cur_node_id.index() <= youngest_descendent.index()
-        {
-            return Some(cur_node_id);
-        }
-        to_view.extend(
-            g.nodes
-                .iter_enumerated()
-                .filter_map(|(id, node)| Some((id, node.source?)))
-                .filter(|(_, src_idx)| *src_idx == cur_node_id)
-                .map(|(id, _)| (id, lineage.clone())),
-        );
-    }
-    None
-}
-
 /// Takes a list of graphs, creates a NodeInfo object for each node in each graph, filling it with
 /// the correct flow information.
 pub fn augment_with_info(pdg: &mut Graphs) {
     let gs: &mut IndexVec<GraphId, Graph> = &mut pdg.graphs;
     for g in gs {
         let flow_info = create_flow_info(g);
-        let mut conflicting = determine_non_conflicting(&g,&collect_children(&g),&flow_info);
-        for (idx,node) in g.nodes.iter_enumerated_mut(){
+        let mut conflicting = determine_non_conflicting(&g, &collect_children(&g), &flow_info);
+        for (idx, node) in g.nodes.iter_enumerated_mut() {
             let node_flow = flow_info.get(&idx).unwrap();
             node.node_info = Some(NodeInfo {
                 flows_to_mutation: node_flow.flows_to_store,
