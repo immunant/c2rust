@@ -115,18 +115,18 @@ impl Display for PdgRepr<'_> {
             }
         }
 
-        for graph in &graphs.graphs {
-            let needs_write = graph
-                .needs_write_permission()
-                .map(|node_id| node_id.as_usize())
-                .collect::<Vec<_>>();
-            if should_print(ToPrint::Graphs) {
-                writeln!(f, "{graph}")?;
-            }
-            if should_print(ToPrint::WritePermissions) {
-                writeln!(f, "nodes_that_need_write = {needs_write:?}")?;
-            }
-            if should_print(ToPrint::Graphs) || should_print(ToPrint::WritePermissions) {
+        if should_print(ToPrint::Graphs) || should_print(ToPrint::WritePermissions) {
+            for graph in &graphs.graphs {
+                if should_print(ToPrint::Graphs) {
+                    writeln!(f, "{graph}")?;
+                }
+                if should_print(ToPrint::WritePermissions) {
+                    let needs_write = graph
+                        .needs_write_permission()
+                        .map(|node_id| node_id.as_usize())
+                        .collect::<Vec<_>>();
+                    writeln!(f, "nodes_that_need_write = {needs_write:?}")?;
+                }
                 writeln!(f)?;
             }
         }
