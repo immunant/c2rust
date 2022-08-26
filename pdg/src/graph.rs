@@ -122,7 +122,7 @@ pub struct Node {
     pub source: Option<NodeId>,
     /// Any string useful for debugging.
     pub debug_info: String,
-    /// Information about the node computed from the raw pdg
+    /// Information about the [`Node`] computed from the pdg.
     pub info: Option<NodeInfo>,
 }
 
