@@ -321,8 +321,9 @@ mod tests {
                 "--metadata",
             ])
             .arg(&metadata_path)
-            .args(&["--set-runtime", "--runtime-path"])
+            .args(&[/*"--set-runtime", */"--runtime-path"])
             .arg(&runtime_path)
+            // .args(&["--rustflags=-Zsanitizer=address"])
             .args(&["--", "run", "--manifest-path"])
             .arg(&manifest_path)
             .args(&["--profile", profile.name()])
@@ -367,6 +368,32 @@ mod tests {
     fn analysis_test_pdg_snapshot_release() -> eyre::Result<()> {
         init();
         let pdg = analysis_test_pdg_snapshot(Profile::Release)?;
+        insta::assert_display_snapshot!(pdg);
+        Ok(())
+    }
+
+    #[test]
+    #[ignore]
+    fn lighttpd_snapshot() -> eyre::Result<()> {
+        init();
+        // -D -f ~/work/rust/lighttpd-1.4.64/mylighttpd.conf -i 5
+        let pdg = pdg_snapshot(
+            repo_dir()?.join("../lighttpd/rust").as_path(),
+            Profile::Debug,
+            &[
+                "-D",
+                "-f",
+                "/home/kkysen/work/rust/lighttpd-1.4.64/mylighttpd.conf",
+                "-p",
+                // "-i",
+                // "1",
+                "-h",
+            ],
+            {
+                use ToPrint::*;
+                &[Graphs, Counts]
+            },
+        )?;
         insta::assert_display_snapshot!(pdg);
         Ok(())
     }

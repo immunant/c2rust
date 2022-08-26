@@ -14,7 +14,19 @@ extern "C" {
     fn calloc(_: libc::c_ulong, _: libc::c_ulong) -> *mut libc::c_void;
     fn realloc(_: *mut libc::c_void, _: libc::c_ulong) -> *mut libc::c_void;
     fn free(__ptr: *mut libc::c_void);
-    fn printf(_: *const libc::c_char, _: ...) -> libc::c_int;
+    // fn printf(_: *const libc::c_char, _: ...) -> libc::c_int;
+}
+
+// unsafe extern "C" fn printf(_: *const libc::c_char, _: ...) -> libc::c_int {
+//     0
+// }
+
+fn printf(fmt: *const libc::c_char, i: i32) -> libc::c_int {
+    use std::ffi::CStr;
+    assert_eq!(unsafe { CStr::from_ptr(fmt) }, CStr::from_bytes_with_nul(b"%i\n\x00").unwrap());
+    let s = format!("{i}\n");
+    print!("{s}");
+    s.len() as libc::c_int
 }
 
 /// Hidden from instrumentation so that we can polyfill [`reallocarray`] with it.
@@ -50,7 +62,7 @@ pub struct S {
     pub field4: T,
 }
 #[no_mangle]
-pub static mut global: *mut S = 0 as *const S as *mut S;
+pub static mut global: *mut S = std::ptr::null_mut();
 #[no_mangle]
 pub unsafe extern "C" fn malloc_wrapper(mut size: size_t) -> *mut libc::c_void {
     return malloc(size);
@@ -67,6 +79,7 @@ pub unsafe extern "C" fn recur(x: libc::c_int, s: *mut S) {
 #[no_mangle]
 pub unsafe extern "C" fn simple() {
     let mut x = malloc(mem::size_of::<S>() as c_ulong) as *mut S;
+    let mut x2 = x;
     let y = malloc(mem::size_of::<S>() as c_ulong) as *mut S;
     let z = std::ptr::addr_of!((*x).field);
     x = y;
@@ -76,9 +89,16 @@ pub unsafe extern "C" fn simple() {
     let k = (*x).field;
     let z = std::ptr::addr_of!((*x).field2);
     (*x).field3 = std::ptr::addr_of!(*x) as *const S;
-    recur(3, x);
+    (*y).field4 = T {
+        field: 0i32,
+        field2: 0u64,
+        field3: std::ptr::null(),
+        field4: 0i32,
+    };
     let s = *y;
     *x = s;
+    recur(3, x);
+    free(x2 as *mut libc::c_void);
 }
 #[no_mangle]
 pub unsafe extern "C" fn simple1() {
@@ -92,7 +112,7 @@ pub unsafe extern "C" fn simple1() {
     let addr_of_copy = std::ptr::addr_of!(x_copy_copy);
     let i_cast = x as usize;
     let x_from_int = i_cast as *const libc::c_void;
-    free(x as *mut libc::c_void);
+    free(z as *mut libc::c_void);
 }
 
 #[derive(Copy, Clone)]
@@ -177,6 +197,7 @@ pub unsafe extern "C" fn connection_accepted(
 unsafe extern "C" fn connection_close(mut srv: *mut server, mut con: *mut connection) {
     fdevent_fdnode_event_del((*srv).ev, (*con).fdn);
     fdevent_unregister((*srv).ev, (*con).fd);
+    free(con as *mut libc::c_void);
 }
 #[no_mangle]
 pub unsafe extern "C" fn fdevent_fdnode_event_del(mut ev: *mut fdevents, mut fdn: *mut fdnode) {
@@ -198,7 +219,7 @@ pub unsafe extern "C" fn fdevent_unregister(mut ev: *mut fdevents, mut fd: libc:
         return;
     }
     let ref mut fresh1 = *((*ev).fdarray).offset(fd as isize);
-    *fresh1 = 0 as *mut fdnode;
+    *fresh1 = std::ptr::null_mut();
     fdnode_free(fdn);
 }
 unsafe extern "C" fn fdnode_free(mut fdn: *mut fdnode) {
@@ -311,7 +332,7 @@ pub unsafe extern "C" fn invalid() {
         b"%i\n\x00" as *const u8 as *const libc::c_char,
         (*global).field,
     );
-    global = 0 as *mut S;
+    global = std::ptr::null_mut();
     free(s as *mut libc::c_void);
 }
 pub unsafe extern "C" fn testing() {
@@ -340,6 +361,7 @@ pub unsafe extern "C" fn test_arg() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
     foo(s);
     let t = s;
+    free(s as *mut libc::c_void);
 }
 #[no_mangle]
 pub unsafe extern "C" fn foo_rec(n: i32, bar: *mut libc::c_void) -> *mut libc::c_void {
@@ -355,6 +377,7 @@ pub unsafe extern "C" fn foo_rec(n: i32, bar: *mut libc::c_void) -> *mut libc::c
 pub unsafe extern "C" fn test_arg_rec() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
     let t = foo_rec(3, s);
+    free(s as *mut libc::c_void);
 }
 pub fn shared_ref_foo(x: &u8) -> &u8 {
     x
@@ -380,14 +403,14 @@ pub unsafe extern "C" fn test_ref_field() {
     let t =  T {
         field: 0i32,
         field2: 0u64,
-        field3: 0 as *const S,
+        field3: std::ptr::null(),
         field4: 0i32,
     };
 
     let ref mut s = S {
         field: 0i32,
         field2: 0u64,
-        field3: 0 as *const S,
+        field3: std::ptr::null(),
         field4: t,
     };
     s.field4.field4 = s.field4.field4;
@@ -407,6 +430,18 @@ pub unsafe extern "C" fn test_realloc_fresh() {
 #[no_mangle]
 pub unsafe extern "C" fn test_load_addr() {
     let s = malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
+    let t =  T {
+        field: 0i32,
+        field2: 0u64,
+        field3: std::ptr::null(),
+        field4: 0i32,
+    };
+    (*s) = S {
+        field: 0i32,
+        field2: 0u64,
+        field3: std::ptr::null(),
+        field4: t,
+    };
     let x = (*s);
     free(s as *mut libc::c_void);
 }
@@ -435,7 +470,7 @@ pub unsafe extern "C" fn test_load_other_store_self() {
 #[no_mangle]
 pub unsafe extern "C" fn test_load_self_store_self() {
     let s = calloc(
-        0i32 as libc::c_ulong,
+        1i32 as libc::c_ulong,
         ::std::mem::size_of::<S>() as libc::c_ulong,
     ) as *mut S;
     (*s).field4.field4 = (*s).field4.field4;
@@ -444,7 +479,7 @@ pub unsafe extern "C" fn test_load_self_store_self() {
 #[no_mangle]
 pub unsafe extern "C" fn test_load_self_store_self_inter() {
     let s = calloc(
-        0i32 as libc::c_ulong,
+        1i32 as libc::c_ulong,
         ::std::mem::size_of::<S>() as libc::c_ulong,
     ) as *mut S;
     let y = (*s).field;
@@ -511,7 +546,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     no_owner(1i32);
     invalid();
     testing();
-    simple1();
+    // simple1();
 
     lighttpd_test();
 
@@ -528,7 +563,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     test_store_addr();
     test_load_other_store_self();
     test_load_self_store_self();
-    test_load_self_store_self_inter();
+    // test_load_self_store_self_inter();
     test_ptr_int_ptr();
     test_load_value();
     test_store_value();
@@ -540,16 +575,13 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     return 0i32;
 }
 pub fn main() {
-    let mut args: Vec<*mut libc::c_char> = Vec::new();
-    for arg in ::std::env::args() {
-        println!("{:?}", arg);
-        args.push(
-            ::std::ffi::CString::new(arg)
-                .expect("Failed to convert argument into CString.")
-                .into_raw(),
-        );
-    }
-    args.push(::std::ptr::null_mut());
+    let args = ::std::env::args()
+        .map(|arg| ::std::ffi::CString::new(arg).expect("Failed to convert argument into CString."))
+        .collect::<Vec<_>>();
+    let mut args = args.iter()
+        .map(|arg| arg.as_ptr() as *mut libc::c_char)
+        .chain(::std::iter::once(::std::ptr::null_mut()))
+        .collect::<Vec<_>>();
     unsafe {
         main_0(
             (args.len() - 1) as libc::c_int,
