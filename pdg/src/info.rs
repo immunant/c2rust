@@ -13,7 +13,7 @@ impl Display for NodeInfo {
     }
 }
 
-pub fn add_flags(pdg: &mut Graphs) {
+pub fn add_info(pdg: &mut Graphs) {
     for g in &mut pdg.graphs {
         for mut node in &mut g.nodes {
             node.info = Some(NodeInfo {});

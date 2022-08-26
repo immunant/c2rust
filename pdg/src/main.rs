@@ -29,7 +29,7 @@ use c2rust_analysis_rt::{events::Event, metadata::Metadata};
 use clap::{Parser, ValueEnum};
 use color_eyre::eyre;
 use graph::Graphs;
-use info::add_flags;
+use info::add_info;
 use std::{
     fmt::{self, Display, Formatter},
     path::{Path, PathBuf},
@@ -186,7 +186,7 @@ fn main() -> eyre::Result<()> {
     init();
     let args = Args::parse();
     let mut pdg = Pdg::new(&args.metadata, &args.event_log)?;
-    add_flags(&mut pdg.graphs);
+    add_info(&mut pdg.graphs);
     pdg.graphs.assert_all_tests();
     let repr = pdg.repr(&args.print);
     println!("{repr}");
