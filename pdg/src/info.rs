@@ -5,6 +5,8 @@ use std::fmt::{self, Debug, Display, Formatter};
 ///
 /// Eventually this will include information about what kinds of [`Node`]s the [`Node`] flows to,
 /// as well as its ability to be used as a `&mut`.
+///
+/// [`Node`]: crate::graph::Node
 #[derive(Hash, Clone, PartialEq, Debug)]
 pub struct NodeInfo {}
 
