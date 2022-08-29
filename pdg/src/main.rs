@@ -261,7 +261,7 @@ mod tests {
     /// Instrument and run a test crate and return a snapshot (an `impl `[`Display`]) of its [`Pdg`].
     ///
     /// # Args
-    /// * `test_dir` is the directory of the test crate.
+    /// * `test_crate_dir` is the directory of the test crate.
     ///   It must contain a `Cargo.toml`.
     ///
     /// * `profile` is the [`Profile`] the test crate is compiled and run as.
@@ -270,7 +270,7 @@ mod tests {
     ///
     /// # Overview
     ///
-    /// This instruments the `test_dir` crate using `c2rust-instrument` through `cargo run --bin c2rust-instrument`.
+    /// This instruments the `test_crate_dir` crate using `c2rust-instrument` through `cargo run --bin c2rust-instrument`.
     /// It is used through a separate binary and its CLI because `c2rust-instrument`
     /// must have control over its `main` in order to invoke itself as a `$RUSTC_WRAPPER`.
     ///
@@ -293,14 +293,14 @@ mod tests {
     ///
     /// `$INSTRUMENT_OUTPUT_APPEND` is set to `false` as this runs the test binary only once,
     /// so appending is not yet necessary.
-    fn pdg_snapshot_inner(
-        test_dir: &Path,
+    fn pdg_snapshot(
+        test_crate_dir: &Path,
         profile: Profile,
         to_print: &[ToPrint],
     ) -> eyre::Result<impl Display> {
         let runtime_path = repo_dir()?.join("analysis/runtime");
-        let manifest_path = test_dir.join("Cargo.toml");
-        let target_dir = test_dir.join("instrument.target");
+        let manifest_path = test_crate_dir.join("Cargo.toml");
+        let target_dir = test_crate_dir.join("instrument.target");
         let exe_dir = target_dir.join(profile.dir_name());
         let metadata_path = exe_dir.join("metadata.bc");
         let event_log_path = exe_dir.join("event.log.bc");
@@ -337,33 +337,8 @@ mod tests {
         Ok(repr.to_string())
     }
 
-    /// Instrument and run a test crate and return a snapshot (an `impl `[`Display`]) of its [`Pdg`].
-    ///
-    /// # Args
-    /// * `test_dir` is the directory of the test crate.
-    ///   It must contain a `Cargo.toml`.
-    ///
-    /// * `profile` is the [`Profile`] the test crate is compiled and run as.
-    ///
-    /// * `to_print` are the [`ToPrint`]s that should be printed in the [`Pdg`] snapshot.
-    ///
-    /// # Overview
-    ///
-    /// This instruments the `test_dir` crate using `c2rust-instrument`, creating a metadata file.
-    /// The instrumented binary, compiled with `profile`, is then run, creating an event log.
-    /// Those are then read in by the `c2rust-pdg` code here to create a [`Pdg`].
-    /// All assertion tests are checked on the [`Pdg`]'s [`Graphs`](crate::Graphs).
-    /// Then, finally, the [`Pdg`] is snapshotted into an `impl `[`Display`], printing the [`ToPrint`]s in `to_print`.
-    pub fn pdg_snapshot(
-        test_dir: impl AsRef<Path>,
-        profile: Profile,
-        to_print: &[ToPrint],
-    ) -> eyre::Result<impl Display> {
-        pdg_snapshot_inner(test_dir.as_ref(), profile, to_print)
-    }
-
     fn analysis_test_pdg_snapshot(profile: Profile) -> eyre::Result<impl Display> {
-        pdg_snapshot(repo_dir()?.join("analysis/test"), profile, {
+        pdg_snapshot(repo_dir()?.join("analysis/test").as_path(), profile, {
             use ToPrint::*;
             &[Graphs, WritePermissions, Counts]
         })
