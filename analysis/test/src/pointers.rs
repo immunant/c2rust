@@ -540,16 +540,13 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     return 0i32;
 }
 pub fn main() {
-    let mut args: Vec<*mut libc::c_char> = Vec::new();
-    for arg in ::std::env::args() {
-        println!("{:?}", arg);
-        args.push(
-            ::std::ffi::CString::new(arg)
-                .expect("Failed to convert argument into CString.")
-                .into_raw(),
-        );
-    }
-    args.push(::std::ptr::null_mut());
+    let args = ::std::env::args()
+        .map(|arg| ::std::ffi::CString::new(arg).expect("Failed to convert argument into CString."))
+        .collect::<Vec<_>>();
+    let mut args = args.iter()
+        .map(|arg| arg.as_ptr() as *mut libc::c_char)
+        .chain(::std::iter::once(::std::ptr::null_mut()))
+        .collect::<Vec<_>>();
     unsafe {
         main_0(
             (args.len() - 1) as libc::c_int,
