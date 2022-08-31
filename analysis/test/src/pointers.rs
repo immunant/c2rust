@@ -38,7 +38,7 @@ pub type size_t = libc::c_ulong;
 pub struct T {
     pub field: libc::c_int,
     pub field2: libc::c_ulong,
-    pub field3: *const S,
+    pub field3: *mut S,
     pub field4: libc::c_int,
 }
 #[derive(Copy, Clone)]
@@ -46,7 +46,7 @@ pub struct T {
 pub struct S {
     pub field: libc::c_int,
     pub field2: libc::c_ulong,
-    pub field3: *const S,
+    pub field3: *mut S,
     pub field4: T,
 }
 #[no_mangle]
@@ -75,7 +75,7 @@ pub unsafe extern "C" fn simple() {
     (*x).field2 = 9u64;
     let k = (*x).field;
     let z = std::ptr::addr_of!((*x).field2);
-    (*x).field3 = std::ptr::addr_of!(*x) as *const S;
+    (*x).field3 = std::ptr::addr_of!(*x) as *mut S;
     recur(3, x);
     let s = *y;
     *x = s;
@@ -380,17 +380,44 @@ pub unsafe extern "C" fn test_ref_field() {
     let t =  T {
         field: 0i32,
         field2: 0u64,
-        field3: 0 as *const S,
+        field3: 0 as *mut S,
         field4: 0i32,
     };
 
     let ref mut s = S {
         field: 0i32,
         field2: 0u64,
-        field3: 0 as *const S,
+        field3: 0 as *mut S,
         field4: t,
     };
     s.field4.field4 = s.field4.field4;
+}
+#[no_mangle]
+pub unsafe extern "C" fn test_ref_field_addr() {
+    let t =  T {
+        field: 0i32,
+        field2: 0u64,
+        field3: 0 as *mut S,
+        field4: 0i32,
+    };
+    let s1 =  &mut S {
+        field: 0i32,
+        field2: 0u64,
+        field3: 0 as *mut S,
+        field4: t,
+    } as *mut S;
+
+    let ref mut s2 = S {
+        field: 0i32,
+        field2: 0u64,
+        field3: s1,
+        field4: t,
+    };
+
+    (*(s2.field3)).field3 = s2;
+    let x = std::ptr::addr_of!((*(*s2.field3).field3));
+    let y = std::ptr::addr_of!(((*s2.field3).field3));
+    // let z = *((*(s2.field3)).field3);
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_realloc_reassign() {
@@ -537,6 +564,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     let nums = &mut [2i32, 5i32, 3i32, 1i32, 6i32];
     insertion_sort(nums.len() as libc::c_int, nums as *mut libc::c_int);
     test_ref_field();
+    test_ref_field_addr();
     return 0i32;
 }
 pub fn main() {
