@@ -1,3 +1,10 @@
+// With a naive iteration order, reaching a fixpoint used to take 3 iterations.  By following a
+// postorder traversal of the callgraph, we reduce that to 2 iterations: the first iteration
+// computes all the right permissions, and the second checks that we've actually reached a
+// fixpoint.
+//
+// CHECK: reached fixpoint in 2 iterations
+
 // CHECK-LABEL: final labeling for "call1"
 // CHECK-DAG: ([[#@LINE+1]]: x): &mut i32
 pub unsafe fn call1(x: *mut i32) {

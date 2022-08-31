@@ -20,10 +20,14 @@ use crate::context::{
 };
 use crate::dataflow::DataflowConstraints;
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
+use crate::util::Callee;
+use rustc_hir::def_id::LocalDefId;
 use rustc_index::vec::IndexVec;
-use rustc_middle::mir::{BindingForm, LocalDecl, LocalInfo, LocalKind};
+use rustc_middle::mir::visit::Visitor;
+use rustc_middle::mir::{BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand};
 use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::ops::{Deref, DerefMut};
 
@@ -92,7 +96,7 @@ impl<T> DerefMut for MaybeUnset<T> {
 
 fn run(tcx: TyCtxt) {
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
-    let mut func_info = Vec::new();
+    let mut func_info = HashMap::new();
 
     #[derive(Default)]
     struct FuncInfo<'tcx> {
@@ -163,7 +167,7 @@ fn run(tcx: TyCtxt) {
         info.acx_data.set(acx.into_data());
         info.dataflow.set(dataflow);
         info.l_equiv.set(l_equiv);
-        func_info.push(info);
+        func_info.insert(ldid, info);
     }
 
     // Remap pointers based on equivalence classes, so all members of an equivalence class now use
@@ -172,7 +176,8 @@ fn run(tcx: TyCtxt) {
     eprintln!("g_equiv_map = {:?}", g_equiv_map);
     gacx.remap_pointers(&g_equiv_map, g_counter);
 
-    for (ldid, info) in tcx.hir().body_owners().zip(func_info.iter_mut()) {
+    for ldid in tcx.hir().body_owners() {
+        let info = func_info.get_mut(&ldid).unwrap();
         let (l_counter, l_equiv_map) = info.l_equiv.renumber(&g_equiv_map);
         eprintln!("l_equiv_map = {:?}", l_equiv_map);
         info.acx_data
@@ -184,15 +189,23 @@ fn run(tcx: TyCtxt) {
     // Compute permission and flag assignments.
     let mut gasn =
         GlobalAssignment::new(gacx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
-    for info in &mut func_info {
+    for info in func_info.values_mut() {
         let num_pointers = info.acx_data.num_pointers();
         let lasn = LocalAssignment::new(num_pointers, PermissionSet::UNIQUE, FlagSet::empty());
         info.lasn.set(lasn);
     }
 
+    let order = walk_callgraph(tcx);
+    eprintln!("callgraph traversal order:");
+    for &ldid in &order {
+        eprintln!("  {:?}", ldid);
+    }
+    let mut loop_count = 0;
     loop {
+        loop_count += 1;
         let old_gasn = gasn.clone();
-        for (ldid, info) in tcx.hir().body_owners().zip(func_info.iter_mut()) {
+        for &ldid in &order {
+            let info = func_info.get_mut(&ldid).unwrap();
             let ldid_const = WithOptConstParam::unknown(ldid);
             let name = tcx.item_name(ldid.to_def_id());
             let mir = tcx.mir_built(ldid_const);
@@ -218,8 +231,10 @@ fn run(tcx: TyCtxt) {
             break;
         }
     }
+    eprintln!("reached fixpoint in {} iterations", loop_count);
 
-    for (ldid, info) in tcx.hir().body_owners().zip(func_info.iter_mut()) {
+    for ldid in tcx.hir().body_owners() {
+        let info = func_info.get_mut(&ldid).unwrap();
         let ldid_const = WithOptConstParam::unknown(ldid);
         let name = tcx.item_name(ldid.to_def_id());
         let mir = tcx.mir_built(ldid_const);
@@ -365,6 +380,68 @@ fn describe_span(tcx: TyCtxt, span: Span) -> String {
     };
     let line = tcx.sess.source_map().lookup_char_pos(span.lo()).line;
     format!("{}: {}{}{}", line, src1, src2, src3)
+}
+
+/// Return all `body_owners`, ordered according to a postorder traversal of the graph of references
+/// between bodies.
+fn walk_callgraph(tcx: TyCtxt) -> Vec<LocalDefId> {
+    let mut seen = HashSet::new();
+    let mut order = Vec::new();
+    enum Visit {
+        Pre(LocalDefId),
+        Post(LocalDefId),
+    }
+    let mut stack = Vec::new();
+
+    for root_ldid in tcx.hir().body_owners() {
+        if seen.contains(&root_ldid) {
+            continue;
+        }
+        stack.push(Visit::Pre(root_ldid));
+        while let Some(x) = stack.pop() {
+            match x {
+                Visit::Pre(ldid) => {
+                    if seen.insert(ldid) {
+                        stack.push(Visit::Post(ldid));
+                        for_each_callee(tcx, ldid, |callee_ldid| {
+                            stack.push(Visit::Pre(callee_ldid));
+                        });
+                    }
+                }
+                Visit::Post(ldid) => {
+                    order.push(ldid);
+                }
+            }
+        }
+    }
+
+    order
+}
+
+fn for_each_callee(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(LocalDefId)) {
+    let ldid_const = WithOptConstParam::unknown(ldid);
+    let mir = tcx.mir_built(ldid_const);
+    let mir = mir.borrow();
+    let mir: &Body = &mir;
+
+    struct CalleeVisitor<'a, 'tcx, F> {
+        tcx: TyCtxt<'tcx>,
+        mir: &'a Body<'tcx>,
+        f: F,
+    }
+
+    impl<'tcx, F: FnMut(LocalDefId)> Visitor<'tcx> for CalleeVisitor<'_, 'tcx, F> {
+        fn visit_operand(&mut self, operand: &Operand<'tcx>, location: Location) {
+            let ty = operand.ty(self.mir, self.tcx);
+            if let Some(Callee::Other { def_id, .. }) = util::ty_callee(self.tcx, ty) {
+                if let Some(ldid) = def_id.as_local() {
+                    (self.f)(ldid);
+                }
+            }
+        }
+    }
+
+    CalleeVisitor { tcx, mir, f }.visit_body(mir);
 }
 
 struct AnalysisCallbacks;
