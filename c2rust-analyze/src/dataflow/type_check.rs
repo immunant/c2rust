@@ -235,12 +235,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         args: &[Operand<'tcx>],
         dest: Place<'tcx>,
     ) {
-        let tcx = self.acx.tcx();
-
         let sig = match self.acx.gacx.fn_sigs.get(&def_id) {
             Some(&x) => x,
             None => todo!("call to unknown function {:?}", def_id),
         };
+        if substs.non_erasable_generics().next().is_some() {
+            todo!("call to generic function {:?} {:?}", def_id, substs);
+        }
 
         // Process pseudo-assignments from `args` to the types declared in `sig`.
         for (arg_op, &input_lty) in args.iter().zip(sig.inputs.iter()) {

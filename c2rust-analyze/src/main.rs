@@ -431,7 +431,7 @@ fn for_each_callee(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(LocalDefId)) {
     }
 
     impl<'tcx, F: FnMut(LocalDefId)> Visitor<'tcx> for CalleeVisitor<'_, 'tcx, F> {
-        fn visit_operand(&mut self, operand: &Operand<'tcx>, location: Location) {
+        fn visit_operand(&mut self, operand: &Operand<'tcx>, _location: Location) {
             let ty = operand.ty(self.mir, self.tcx);
             if let Some(Callee::Other { def_id, .. }) = util::ty_callee(self.tcx, ty) {
                 if let Some(ldid) = def_id.as_local() {
