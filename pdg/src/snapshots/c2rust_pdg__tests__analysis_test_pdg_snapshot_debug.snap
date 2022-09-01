@@ -972,6 +972,6 @@ g {
 }
 nodes_that_need_write = [6, 5, 4, 0]
 
-num_graphs = 71
-num_nodes = 686
+num_graphs = 64
+num_nodes = 669
 

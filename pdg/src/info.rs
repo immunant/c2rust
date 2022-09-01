@@ -67,6 +67,7 @@ fn create_flow_info(g: &Graph) -> HashMap<NodeId, Flows> {
     f
 }
 
+/// Adds for each node in each of the graphs the correct information contained in NodeInfo.
 pub fn add_info(pdg: &mut Graphs) {
     for g in &mut pdg.graphs {
         let mut flows = create_flow_info(&g);
