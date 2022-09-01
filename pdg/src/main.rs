@@ -194,6 +194,7 @@ fn main() -> eyre::Result<()> {
 mod tests {
     use std::{
         env,
+        ffi::OsStr,
         fmt::Display,
         path::{Path, PathBuf},
         process::Command,
@@ -296,6 +297,7 @@ mod tests {
     fn pdg_snapshot(
         test_crate_dir: &Path,
         profile: Profile,
+        args: impl IntoIterator<Item = impl AsRef<OsStr>>,
         to_print: &[ToPrint],
     ) -> eyre::Result<impl Display> {
         let runtime_path = repo_dir()?.join("analysis/runtime");
@@ -324,6 +326,8 @@ mod tests {
             .args(&["--", "run", "--manifest-path"])
             .arg(&manifest_path)
             .args(&["--profile", profile.name()])
+            .arg("--")
+            .args(args)
             .env("METADATA_FILE", &metadata_path)
             .env("INSTRUMENT_BACKEND", "log")
             .env("INSTRUMENT_OUTPUT", &event_log_path)
@@ -338,10 +342,15 @@ mod tests {
     }
 
     fn analysis_test_pdg_snapshot(profile: Profile) -> eyre::Result<impl Display> {
-        pdg_snapshot(repo_dir()?.join("analysis/test").as_path(), profile, {
-            use ToPrint::*;
-            &[Graphs, WritePermissions, Counts]
-        })
+        pdg_snapshot(
+            repo_dir()?.join("analysis/test").as_path(),
+            profile,
+            &[] as &[&OsStr],
+            {
+                use ToPrint::*;
+                &[Graphs, WritePermissions, Counts]
+            },
+        )
     }
 
     use crate::init;
