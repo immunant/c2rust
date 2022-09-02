@@ -1,7 +1,7 @@
+use crate::graph::{Graph, NodeId, NodeKind};
 use crate::Graphs;
-use crate::graph::{Graph,NodeId,NodeKind};
-use std::fmt::{self, Debug, Display, Formatter};
 use std::collections::HashMap;
+use std::fmt::{self, Debug, Display, Formatter};
 
 /// Information generated from the PDG proper that is queried by static analysis.
 ///
@@ -15,10 +15,10 @@ pub struct NodeInfo {
 }
 
 /// Contains information about what kinds of [`Node`]s a [`Node`] flows to.
-/// Load and store kinds contain both Load/Store-Value and Load/Store-Addr. 
+/// Load and store kinds contain both Load/Store-Value and Load/Store-Addr.
 ///
 /// [`Node`]: crate::graph::Node
-#[derive(Debug, Hash, Clone, Copy,PartialEq,Default)]
+#[derive(Debug, Hash, Clone, Copy, PartialEq, Default)]
 pub struct FlowInfo {
     load: Option<NodeId>,
     store: Option<NodeId>,
@@ -44,14 +44,12 @@ impl Display for NodeInfo {
     }
 }
 
-
-
 /// Gathers information from a [`Graph`] (assumed to be acyclic and topologically sorted but not
 /// necessarily connected) for each [`Node`] in it whether there is a path following 'source' edges
 /// from any [`Node`] with a given property to the [`Node`] in question.
 /// [`Node`]: crate::graph::Node
-fn set_flow_info(g: &mut Graph)  {
-    let mut flow_map : HashMap<NodeId,FlowInfo> = HashMap::from_iter(
+fn set_flow_info(g: &mut Graph) {
+    let mut flow_map: HashMap<NodeId, FlowInfo> = HashMap::from_iter(
         g.nodes
             .iter_enumerated()
             .map(|(idx, node)| (idx, FlowInfo::new(idx, &node.kind))),
@@ -65,7 +63,9 @@ fn set_flow_info(g: &mut Graph)  {
             parent.pos_offset = parent.pos_offset.or(cur_node_flow_info.pos_offset);
             parent.neg_offset = parent.neg_offset.or(cur_node_flow_info.neg_offset);
         }
-        node.info = Some(NodeInfo {flows_to: cur_node_flow_info});
+        node.info = Some(NodeInfo {
+            flows_to: cur_node_flow_info,
+        });
     }
 }
 
