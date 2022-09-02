@@ -3,87 +3,42 @@ source: pdg/src/main.rs
 expression: pdg
 ---
 g {
-	n[0]: &_5  _    => _10 @ bb5[4]: fn main;  _10 = &mut _5;
-	n[1]: copy n[0] => _9  @ bb5[5]: fn main;  _9 = &mut (*_10);
-	n[2]: copy n[0] => _9  @ bb5[5]: fn main;  _9 = &mut (*_10);
+	n[0]: &_1  _    => _11 @ bb3[9]: fn main;   _11 = &_1;
+	n[1]: copy n[0] => _1  @ bb0[0]: fn deref;  _10 = deref(move _11);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: &_20 _    => _19 @ bb8[10]: fn main;    _19 = &_20;
-	n[1]: copy n[0] => _18 @ bb8[11]: fn main;    _18 = &(*_19);
-	n[2]: copy n[1] => _17 @ bb8[12]: fn main;    _17 = move _18 as &[&str] (Pointer(Unsize));
-	n[3]: copy n[2] => _1  @ bb0[0]:  fn new_v1;  _16 = new_v1(move _17, move _21);
+	n[0]: copy _    => _10 @ bb3[10]: fn main;  _10 = deref(move _11);
+	n[1]: copy n[0] => _9  @ bb4[0]:  fn main;  _9 = &(*_10);
+	n[2]: copy n[1] => _1  @ bb0[0]:  fn iter;  _8 = iter(move _9);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: &_13 _    => _27 @ bb8[21]: fn main;       _27 = &_13;
-	n[1]: copy n[0] => _26 @ bb8[22]: fn main;       _26 = &(*_27);
-	n[2]: copy n[1] => _1  @ bb0[0]:  fn new_debug;  _25 = new_debug(move _26);
+	n[0]: copy        _    => _14   @ bb6[4]: fn main;                _14 = null_mut();
+	n[1]: copy        n[0] => _1    @ bb0[0]: fn once;                _13 = once(move _14);
+	n[2]: value.store _    => _20.* @ bb4[7]: fn invalid;             (*_20) = const 0_usize as *mut pointers::S (PointerFromExposedAddress);
+	n[3]: value.store _    => _17.* @ bb8[4]: fn fdevent_unregister;  (*_17) = const 0_usize as *mut pointers::fdnode_st (PointerFromExposedAddress);
+	n[4]: int_to_ptr  _    => _2    @ bb0[2]: fn test_ref_field;      _2 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
+	n[5]: int_to_ptr  _    => _5    @ bb0[8]: fn test_ref_field;      _5 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: &_24 _    => _23 @ bb13[3]: fn main;    _23 = &_24;
-	n[1]: copy n[0] => _22 @ bb13[4]: fn main;    _22 = &(*_23);
-	n[2]: copy n[1] => _21 @ bb13[5]: fn main;    _21 = move _22 as &[std::fmt::ArgumentV1] (Pointer(Unsize));
-	n[3]: copy n[2] => _2  @ bb0[0]:  fn new_v1;  _16 = new_v1(move _17, move _21);
+	n[0]: &_5  _    => _19 @ bb10[8]: fn main;  _19 = &_5;
+	n[1]: copy n[0] => _1  @ bb0[0]:  fn len;   _18 = len(move _19);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: &_1 _ => _29 @ bb15[11]: fn main;  _29 = &mut _1;
+	n[0]: &_5 _ => _22 @ bb12[6]: fn main;  _22 = &mut _5;
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: copy _    => _35 @ bb16[3]: fn main;    _35 = const "Failed to convert argument into CString.";
-	n[1]: copy n[0] => _34 @ bb16[4]: fn main;    _34 = &(*_35);
-	n[2]: copy n[1] => _2  @ bb0[0]:  fn expect;  _31 = expect(move _32, move _34);
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: copy _    => _30 @ bb17[2]: fn main;  _30 = into_raw(move _31);
-	n[1]: copy n[0] => _2  @ bb0[0]:  fn push;  _28 = push(move _29, move _30);
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_5 _ => _10 @ bb5[4]: fn main;  _10 = &mut _5;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_1 _ => _37 @ bb27[4]: fn main;  _37 = &mut _1;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: copy        _    => _38   @ bb27[6]: fn main;                _38 = null_mut();
-	n[1]: copy        n[0] => _2    @ bb0[0]:  fn push;                _36 = push(move _37, move _38);
-	n[2]: value.store _    => _20.* @ bb4[7]:  fn invalid;             (*_20) = const 0_usize as *mut pointers::S (PointerFromExposedAddress);
-	n[3]: value.store _    => _17.* @ bb8[4]:  fn fdevent_unregister;  (*_17) = const 0_usize as *mut pointers::fdnode_st (PointerFromExposedAddress);
-	n[4]: int_to_ptr  _    => _2    @ bb0[2]:  fn test_ref_field;      _2 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
-	n[5]: int_to_ptr  _    => _5    @ bb0[8]:  fn test_ref_field;      _5 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_1  _    => _43 @ bb29[8]: fn main;  _43 = &_1;
-	n[1]: copy n[0] => _1  @ bb0[0]:  fn len;   _42 = len(move _43);
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: &_1 _ => _46 @ bb31[6]: fn main;  _46 = &mut _1;
-}
-nodes_that_need_write = []
-
-g {
-	n[0]: copy _    => _45 @ bb31[7]: fn main;    _45 = as_mut_ptr(move _46);
-	n[1]: copy n[0] => _2  @ bb0[0]:  fn main_0;  _39 = main_0(move _40, move _45);
+	n[0]: copy _    => _21 @ bb12[7]: fn main;    _21 = as_mut_ptr(move _22);
+	n[1]: copy n[0] => _2  @ bb0[0]:  fn main_0;  _15 = main_0(move _16, move _21);
 }
 nodes_that_need_write = []
 
