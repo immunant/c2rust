@@ -1,5 +1,5 @@
 use crate::Graphs;
-use crate::graph::{Graph,NodeId,Node,NodeKind};
+use crate::graph::{Graph,NodeId,NodeKind};
 use std::fmt::{self, Debug, Display, Formatter};
 use std::collections::HashMap;
 
@@ -16,6 +16,8 @@ pub struct NodeInfo {
 
 /// Contains information about what kinds of [`Node`]s a [`Node`] flows to.
 /// Load and store kinds contain both Load/Store-Value and Load/Store-Addr. 
+///
+/// [`Node`]: crate::graph::Node
 #[derive(Debug, Hash, Clone, Copy,PartialEq,Default)]
 pub struct FlowInfo {
     load: Option<NodeId>,
@@ -47,6 +49,7 @@ impl Display for NodeInfo {
 /// Gathers information from a [`Graph`] (assumed to be acyclic and topologically sorted but not
 /// necessarily connected) for each [`Node`] in it whether there is a path following 'source' edges
 /// from any [`Node`] with a given property to the [`Node`] in question.
+/// [`Node`]: crate::graph::Node
 fn set_flow_info(g: &mut Graph)  {
     let mut flow_map : HashMap<NodeId,FlowInfo> = HashMap::from_iter(
         g.nodes
@@ -54,21 +57,23 @@ fn set_flow_info(g: &mut Graph)  {
             .map(|(idx, node)| (idx, FlowInfo::new(idx, &node.kind))),
     );
     for (n_id, mut node) in g.nodes.iter_enumerated_mut().rev() {
-        let cur: FlowInfo = flow_map.remove(&n_id).unwrap();
+        let cur_node_flow_info: FlowInfo = flow_map.remove(&n_id).unwrap();
         if let Some(p_id) = node.source {
             let parent = flow_map.get_mut(&p_id).unwrap();
-            parent.load = parent.load.or(cur.load);
-            parent.store = parent.store.or(cur.store);
-            parent.pos_offset = parent.pos_offset.or(cur.pos_offset);
-            parent.neg_offset = parent.neg_offset.or(cur.neg_offset);
+            parent.load = parent.load.or(cur_node_flow_info.load);
+            parent.store = parent.store.or(cur_node_flow_info.store);
+            parent.pos_offset = parent.pos_offset.or(cur_node_flow_info.pos_offset);
+            parent.neg_offset = parent.neg_offset.or(cur_node_flow_info.neg_offset);
         }
-        node.info = Some(NodeInfo {flows_to: cur});
+        node.info = Some(NodeInfo {flows_to: cur_node_flow_info});
     }
 }
 
 /// Initialize [`Node::info`] for each [`Node`].
 ///
 /// This includes all of the information answering questions of the form "is there a [`Node`] that this is an ancestor of with trait X".
+///
+/// [`Node`]: crate::graph::Node
 pub fn add_info(pdg: &mut Graphs) {
     for mut g in &mut pdg.graphs {
         set_flow_info(&mut g);
