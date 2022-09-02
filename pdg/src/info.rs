@@ -11,17 +11,29 @@ use std::collections::HashMap;
 /// [`Node`]: crate::graph::Node
 #[derive(Hash, Clone, PartialEq, Debug)]
 pub struct NodeInfo {
-    flows_to: Flows,
+    flows_to: FlowInfo,
 }
 
 /// Contains information about what kinds of [`Node`]s a [`Node`] flows to.
 /// Load and store kinds contain both Load/Store-Value and Load/Store-Addr. 
 #[derive(Debug, Hash, Clone, Copy,PartialEq,Default)]
-pub struct Flows {
+pub struct FlowInfo {
     load: Option<NodeId>,
     store: Option<NodeId>,
     pos_offset: Option<NodeId>,
     neg_offset: Option<NodeId>,
+}
+
+impl FlowInfo {
+    //initializing flow information based on a node's kind
+    fn new(n_id: NodeId, k: &NodeKind) -> FlowInfo {
+        FlowInfo {
+            load: matches!(*k, NodeKind::LoadAddr | NodeKind::LoadValue).then(|| n_id),
+            store: matches!(*k, NodeKind::StoreAddr | NodeKind::StoreValue).then(|| n_id),
+            pos_offset: matches!(*k, NodeKind::Offset(x) if x > 0).then(|| n_id),
+            neg_offset: matches!(*k, NodeKind::Offset(x) if x < 0).then(|| n_id),
+        }
+    }
 }
 
 impl Display for NodeInfo {
@@ -30,27 +42,19 @@ impl Display for NodeInfo {
     }
 }
 
-fn init_flows(n_id: NodeId, n: &Node) -> Flows {
-    Flows {
-        load: matches!(n.kind, NodeKind::LoadAddr | NodeKind::LoadValue).then(|| n_id),
-        store: matches!(n.kind, NodeKind::StoreAddr | NodeKind::StoreValue).then(|| n_id),
-        pos_offset: matches!(n.kind, NodeKind::Offset(x) if x > 0).then(|| n_id),
-        neg_offset: matches!(n.kind, NodeKind::Offset(x) if x < 0).then(|| n_id),
-    }
-}
 
 
 /// Gathers information from a [`Graph`] (assumed to be acyclic and topologically sorted but not
 /// necessarily connected) for each [`Node`] in it whether there is a path following 'source' edges
 /// from any [`Node`] with a given property to the [`Node`] in question.
 fn set_flow_info(g: &mut Graph)  {
-    let mut flow_map : HashMap<NodeId,Flows> = HashMap::from_iter(
+    let mut flow_map : HashMap<NodeId,FlowInfo> = HashMap::from_iter(
         g.nodes
             .iter_enumerated()
-            .map(|(idx, node)| (idx, init_flows(idx, node))),
+            .map(|(idx, node)| (idx, FlowInfo::new(idx, &node.kind))),
     );
     for (n_id, mut node) in g.nodes.iter_enumerated_mut().rev() {
-        let cur: Flows = flow_map.remove(&n_id).unwrap();
+        let cur: FlowInfo = flow_map.remove(&n_id).unwrap();
         if let Some(p_id) = node.source {
             let parent = flow_map.get_mut(&p_id).unwrap();
             parent.load = parent.load.or(cur.load);
