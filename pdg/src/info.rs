@@ -16,7 +16,6 @@ impl Display for NodeInfo {
     }
 }
 
-
 /// Initializes the info field for each node to an empty one, because the current NodeInfo struct
 /// is empty.
 pub fn add_info(pdg: &mut Graphs) {
