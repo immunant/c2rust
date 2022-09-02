@@ -3,7 +3,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 /// Information generated from the PDG proper that is queried by static analysis.
 ///
-/// Eventually this will include information about what kinds of [`Node`]s the [`Node`] flows to,
+/// Eventually this will include information about what kinds of [`Node`]s the [`Node`] is an ancestor of,
 /// as well as its ability to be used as a `&mut`.
 ///
 /// [`Node`]: crate::graph::Node
