@@ -67,7 +67,12 @@ fn create_flow_info(g: &Graph) -> HashMap<NodeId, Flows> {
     f
 }
 
-/// Adds for each node in each of the graphs the correct information contained in NodeInfo.
+/// Initialize [`Node::info`] for each [`Node`].
+///
+/// This includes all of the information answering questions of the form "is there a [`Node`] that this is an ancestor of with trait X".
+///
+/// [`Node`]: crate::graph::Node
+/// [`Node::info`]: crate::graph::Node::info
 pub fn add_info(pdg: &mut Graphs) {
     for g in &mut pdg.graphs {
         let mut flows = create_flow_info(&g);
