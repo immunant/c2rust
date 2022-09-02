@@ -7,7 +7,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 /// as well as its ability to be used as a `&mut`.
 ///
 /// [`Node`]: crate::graph::Node
-#[derive(Hash, Clone, PartialEq, Debug)]
+#[derive(Hash, Clone, PartialEq, Eq, Debug)]
 pub struct NodeInfo {}
 
 impl Display for NodeInfo {
