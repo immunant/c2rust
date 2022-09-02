@@ -45,10 +45,7 @@ fn init_flows(n_id: NodeId, n: &Node) -> Flows {
 /// Gathers information from a [`Graph`] (assumed to be acyclic and topologically sorted but not
 /// necessarily connected) for each [`Node`] in it whether there is a path following 'source' edges
 /// from any [`Node`] with a given property to the [`Node`] in question.
-///
-/// [`Node`]: crate::graph::Node
-/// [`Graph`]: graph::graph::Graph
-fn create_flow_info(g: &Graph) -> HashMap<NodeId, Flows> {
+fn set_flow_info(g: &mut Graph) -> HashMap<NodeId, Flows> {
     let mut f = HashMap::from_iter(
         g.nodes
             .iter_enumerated()
@@ -64,20 +61,14 @@ fn create_flow_info(g: &Graph) -> HashMap<NodeId, Flows> {
             parent.neg_offset = parent.neg_offset.or(cur.neg_offset);
         }
     }
-    f
+    node.info = Some(NodeInfo { flows_to: flows.remove(&n_id).unwrap()});
 }
 
 /// Initialize [`Node::info`] for each [`Node`].
 ///
 /// This includes all of the information answering questions of the form "is there a [`Node`] that this is an ancestor of with trait X".
-///
-/// [`Node`]: crate::graph::Node
-/// [`Node::info`]: crate::graph::Node::info
 pub fn add_info(pdg: &mut Graphs) {
     for g in &mut pdg.graphs {
-        let mut flows = create_flow_info(&g);
-        for (n_id,mut node) in g.nodes.iter_enumerated_mut() {
-            node.info = Some(NodeInfo { flows_to: flows.remove(&n_id).unwrap()});
-        }
+        set_flow_info(&mut g);
     }
 }
