@@ -47,6 +47,7 @@ impl Display for NodeInfo {
 /// Gathers information from a [`Graph`] (assumed to be acyclic and topologically sorted but not
 /// necessarily connected) for each [`Node`] in it whether there is a path following 'source' edges
 /// from any [`Node`] with a given property to the [`Node`] in question.
+///
 /// [`Node`]: crate::graph::Node
 fn set_flow_info(g: &mut Graph) {
     let mut flow_map: HashMap<NodeId, FlowInfo> = HashMap::from_iter(
@@ -74,6 +75,7 @@ fn set_flow_info(g: &mut Graph) {
 /// This includes all of the information answering questions of the form "is there a [`Node`] that this is an ancestor of with trait X".
 ///
 /// [`Node`]: crate::graph::Node
+/// [`Node::info`]: crate::graph::Node::info
 pub fn add_info(pdg: &mut Graphs) {
     for mut g in &mut pdg.graphs {
         set_flow_info(&mut g);
