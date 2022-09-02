@@ -16,6 +16,7 @@ pub struct NodeInfo {
 
 /// Contains information about what kinds of [`Node`]s a [`Node`] flows to.
 /// Load and store kinds contain both Load/Store-Value and Load/Store-Addr.
+/// A node A is said to flow into B if it is the transitive 'source' of B.
 ///
 /// [`Node`]: crate::graph::Node
 #[derive(Debug, Hash, Clone, Copy, PartialEq, Default)]
