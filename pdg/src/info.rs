@@ -9,7 +9,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 /// and eventually will also include its ability to be used as a `&mut`.
 ///
 /// [`Node`]: crate::graph::Node
-#[derive(Hash, Clone, PartialEq, Debug)]
+#[derive(Hash, Clone, PartialEq, Eq, Debug)]
 pub struct NodeInfo {
     flows_to: FlowInfo,
 }
@@ -19,7 +19,7 @@ pub struct NodeInfo {
 /// A node A is said to flow into B if it is the transitive 'source' of B.
 ///
 /// [`Node`]: crate::graph::Node
-#[derive(Debug, Hash, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Hash, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FlowInfo {
     load: Option<NodeId>,
     store: Option<NodeId>,
