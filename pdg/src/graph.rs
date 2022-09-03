@@ -17,43 +17,48 @@ use crate::util::ShortOption;
 pub enum NodeKind {
     /// A [`Copy`](Self::Copy) from one [`Local`] to another.
     ///
-    /// This also covers casts such as `&mut T` to `&T` or `&T`
-    /// to `*const T` that don't change the type or value of the pointer.
+    /// This also covers casts such as `&mut T` to `&T` or `&T` to `*const T`
+    /// that don't change the type or value of the pointer.
     Copy,
 
     /// [`Field`] projection.
     ///
-    /// Used for operations like `_2 = &(*_1).0`.  Nested field accesses like
-    /// `_4 = &(*_1).x.y.z` are broken into multiple [`Node`]s, each covering one level.
+    /// Used for operations like `_2 = &(*_1).0`.
+    /// Nested field accesses like `_4 = &(*_1).x.y.z`
+    /// are broken into multiple [`Node`]s, each covering one level.
     Field(Field),
 
     /// Pointer arithmetic.
     ///
-    /// The [`isize`] is the concrete offset distance.  We use this to detect
-    /// when two pointers always refer to different indices.
+    /// The [`isize`] is the concrete offset distance.
+    /// We use this to detect when two pointers always refer to different indices.
     Offset(isize),
 
     // Operations that can't have a `source`.
     /// Get the address of a [`Local`].
     ///
     /// For address-taken [`Local`]s, the root node is an [`AddrOfLocal`](Self::AddrOfLocal)
-    /// attributed to the first [`Statement`](rustc_middle::mir::Statement) of the function.  Taking the address of the [`Local`], as in
-    /// `_2 = &_1`, appears as a copy of that root pointer, and reading or writing from the [`Local`]
+    /// attributed to the first [`Statement`](rustc_middle::mir::Statement) of the function.
+    /// Taking the address of the [`Local`], as in `_2 = &_1`,
+    /// appears as a copy of that root pointer,
+    /// and reading or writing from the [`Local`]
     /// shows up as a [`LoadAddr`](Self::LoadAddr) or [`StoreAddr`](Self::StoreAddr).
-    /// This allows us to track uses of the [`Local`] that
-    /// interfere with an existing reference, even when those uses don't go through a pointer.
+    /// This allows us to track uses of the [`Local`]
+    /// that interfere with an existing reference,
+    /// even when those uses don't go through a pointer.
     AddrOfLocal(Local),
 
     /// Get the address of a static.
     ///
-    /// These are treated the same as [`Local`]s, with an
-    /// [`_AddressOfStatic`](Self::_AddrOfStatic) attributed to the first [`Statement`](rustc_middle::mir::Statement).
+    /// These are treated the same as [`Local`]s,
+    /// with an [`_AddressOfStatic`](Self::_AddrOfStatic) attributed to
+    /// the first [`Statement`](rustc_middle::mir::Statement).
     _AddrOfStatic(DefPathHash),
 
     /// Heap allocation.
     ///
-    /// The [`usize`] is the number of array elements allocated; for allocations of
-    /// a single object, this value is 1.
+    /// The [`usize`] is the number of array elements allocated
+    /// For allocations of a single object, this value is 1.
     Alloc(usize),
 
     /// Int to pointer conversion.
@@ -69,9 +74,10 @@ pub enum NodeKind {
     // Operations that can't be the `source` of any other operation.
     /// Heap deallocation.
     ///
-    /// The object described by the current [`Graph`] is no longer valid after this
-    /// point.  Correct programs will only [`Free`](Self::Free) pointers produced by [`Alloc`](Self::Alloc), and will no longer
-    /// [`LoadAddr`](Self::LoadAddr) or [`StoreAddr`](Self::StoreAddr) any pointers derived from that [`Alloc`](Self::Alloc) afterward.
+    /// The object described by the current [`Graph`] is no longer valid after this point.
+    /// Correct programs will only [`Free`](Self::Free) pointers produced by [`Alloc`](Self::Alloc),
+    /// and will no longer [`LoadAddr`](Self::LoadAddr) or [`StoreAddr`](Self::StoreAddr)
+    /// any pointers derived from that [`Alloc`](Self::Alloc) afterward.
     Free,
 
     /// Pointer to int conversion.
