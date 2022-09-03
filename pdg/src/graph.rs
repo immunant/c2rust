@@ -20,26 +20,27 @@ pub enum NodeKind {
     Copy,
 
     /// Field projection.  Used for operations like `_2 = &(*_1).0`.  Nested field accesses like
-    /// `_4 = &(*_1).x.y.z` are broken into multiple `Node`s, each covering one level.
+    /// `_4 = &(*_1).x.y.z` are broken into multiple [`Node`]s, each covering one level.
     Field(Field),
 
-    /// Pointer arithmetic.  The `isize` is the concrete offset distance.  We use this to detect
+    /// Pointer arithmetic.  The [`isize`] is the concrete offset distance.  We use this to detect
     /// when two pointers always refer to different indices.
     Offset(isize),
 
     // Operations that can't have a `source`.
-    /// Get the address of a local.  For address-taken locals, the root node is an `AddrOfLocal`
+    /// Get the address of a local.  For address-taken locals, the root node is an [`AddrOfLocal`](Self::AddrOfLocal)
     /// attributed to the first statement of the function.  Taking the address of the local, as in
     /// `_2 = &_1`, appears as a copy of that root pointer, and reading or writing from the local
-    /// shows up as a `LoadAddr` or `StoreAddr`.  This allows us to track uses of the local that
+    /// shows up as a [`LoadAddr`](Self::LoadAddr) or [`StoreAddr`](Self::StoreAddr).
+    /// This allows us to track uses of the local that
     /// interfere with an existing reference, even when those uses don't go through a pointer.
     AddrOfLocal(Local),
 
     /// Get the address of a static.  These are treated the same as locals, with an
-    /// `_AddressOfStatic` attributed to the first statement.
+    /// [`_AddressOfStatic`](Self::_AddrOfStatic) attributed to the first statement.
     _AddrOfStatic(DefPathHash),
 
-    /// Heap allocation.  The `usize` is the number of array elements allocated; for allocations of
+    /// Heap allocation.  The [`usize`] is the number of array elements allocated; for allocations of
     /// a single object, this value is 1.
     Alloc(usize),
 
@@ -51,8 +52,8 @@ pub enum NodeKind {
 
     // Operations that can't be the `source` of any other operation.
     /// Heap deallocation.  The object described by the current graph is no longer valid after this
-    /// point.  Correct programs will only `Free` pointers produced by `Alloc`, and will no longer
-    /// `LoadAddr` or `StoreAddr` any pointers derived from that `Alloc` afterward.
+    /// point.  Correct programs will only [`Free`](Self::Free) pointers produced by [`Alloc`](Self::Alloc), and will no longer
+    /// [`LoadAddr`](Self::LoadAddr) or [`StoreAddr`](Self::StoreAddr) any pointers derived from that [`Alloc`](Self::Alloc) afterward.
     Free,
 
     /// Pointer to int conversion.  Details TBD.
@@ -63,7 +64,7 @@ pub enum NodeKind {
 
     /// The pointer appears as the address of a store operation.
     StoreAddr,
-    
+
     /// The pointer is stored through some other pointer.  Details TBD.
     StoreValue,
 }
