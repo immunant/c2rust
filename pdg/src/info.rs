@@ -78,7 +78,7 @@ fn set_flow_info(g: &mut Graph) {
 /// [`Node`]: crate::graph::Node
 /// [`Node::info`]: crate::graph::Node::info
 pub fn add_info(pdg: &mut Graphs) {
-    for mut g in &mut pdg.graphs {
-        set_flow_info(&mut g);
+    for g in &mut pdg.graphs {
+        set_flow_info(g);
     }
 }
