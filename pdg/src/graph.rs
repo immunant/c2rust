@@ -13,7 +13,7 @@ use crate::info::NodeInfo;
 use crate::util::pad_columns;
 use crate::util::ShortOption;
 
-#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
 pub enum NodeKind {
     /// A copy from one local to another.  This also covers casts such as `&mut T` to `&T` or `&T`
     /// to `*const T` that don't change the type or value of the pointer.
