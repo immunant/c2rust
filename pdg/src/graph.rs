@@ -36,7 +36,7 @@ pub enum NodeKind {
     AddrOfLocal(Local),
 
     /// Get the address of a static.  These are treated the same as locals, with an
-    /// `AddressOfStatic` attributed to the first statement.
+    /// `_AddressOfStatic` attributed to the first statement.
     _AddrOfStatic(DefPathHash),
 
     /// Heap allocation.  The `usize` is the number of array elements allocated; for allocations of
@@ -51,8 +51,8 @@ pub enum NodeKind {
 
     // Operations that can't be the `source` of any other operation.
     /// Heap deallocation.  The object described by the current graph is no longer valid after this
-    /// point.  Correct programs will only `Free` pointers produced by `Malloc`, and will no longer
-    /// `LoadAddr` or `StoreAddr` any pointers derived from that `Malloc` afterward.
+    /// point.  Correct programs will only `Free` pointers produced by `Alloc`, and will no longer
+    /// `LoadAddr` or `StoreAddr` any pointers derived from that `Alloc` afterward.
     Free,
 
     /// Pointer to int conversion.  Details TBD.
