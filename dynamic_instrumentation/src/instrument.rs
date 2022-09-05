@@ -160,12 +160,15 @@ impl<'tcx> MutVisitor<'tcx> for SubAddressTakenLocals<'tcx> {
         // if we have found an address-taken local `_1`, substitute with `(*_2)`
         if let Some(substitute) = self.local_substitute.get(&place.local) {
             if context.is_use()
-                && !context.is_place_assignment()
+                && (!context.is_place_assignment()
+                    || (context.is_place_assignment()
+                        && !place.is_indirect()
+                        && place.projection.len() > 0))
                 && !context.is_drop()
-                && !matches!(
-                    context,
-                    PlaceContext::NonMutatingUse(NonMutatingUseContext::Inspect)
-                )
+            && !matches!(
+                context,
+                PlaceContext::NonMutatingUse(NonMutatingUseContext::Inspect)
+            )
             {
                 let projection = {
                     let mut v = Vec::with_capacity(place.projection.len() + 1);
@@ -206,28 +209,35 @@ impl<'tcx> MutVisitor<'tcx> for SubAddressTakenLocals<'tcx> {
             body.local_decls.get_mut(*local).unwrap().mutability = Mutability::Mut;
         }
 
+        // mark location of address-taken arguments
+        for l in 1..body.arg_count + 1 {
+            let local = Local::from_u32(l as u32);
+            if let Some(substitute) = self.local_substitute.get(&local) {
+                println!("marking {local:?} = *{substitute:?}");
+                // put into first block, first statement
+                addr_taken_locals.push((Place::from(local), BasicBlock::from_u32(0), 0));
+            }
+        }
+
         // when the address-taken local is assigned to for the first time, we know it's active,
         // so mark the location of that assignment for the next step
         for (bid, block) in body.basic_blocks().iter_enumerated().rev() {
             for (sid, statement) in block.statements.iter().enumerate().rev() {
-                match &statement.kind {
-                    StatementKind::Assign(stmt) => {
-                        let (ref place, _) = **stmt;
-                        if let Some(l) = place.as_local().filter(|l| self.address_taken.contains(l))
-                        {
-                            // put just below first assignment
-                            addr_taken_locals.push((place.clone(), bid, sid));
-                            self.address_taken.remove(&l);
-                        }
+                if let StatementKind::Assign(stmt) = &statement.kind {
+                    let (ref place, _) = **stmt;
+                    if let Some(l) = place.as_local().filter(|l| self.address_taken.contains(l)) {
+                        // put just below first assignment
+                        println!("placing {place:?} in {bid:?}:{:?}", sid+1);
+                        addr_taken_locals.push((*place, bid, sid + 1));
+                        // self.address_taken.remove(&l);
                     }
-                    _ => (),
                 }
             }
             if let Some(term) = &block.terminator {
                 match &term.kind {
                     TerminatorKind::Call {
-                        func,
-                        args,
+                        func: _func,
+                        args: _args,
                         destination,
                         target,
                         ..
@@ -238,9 +248,23 @@ impl<'tcx> MutVisitor<'tcx> for SubAddressTakenLocals<'tcx> {
                         {
                             if let Some(next_block) = target {
                                 // put into first statement of following block
-                                addr_taken_locals.push((destination.clone(), *next_block, 0));
-                                self.address_taken.remove(&l);
+                                addr_taken_locals.push((*destination, *next_block, 0));
+                                // self.address_taken.remove(&l);
                             }
+                        }
+                    }
+                    TerminatorKind::DropAndReplace {
+                        place,
+                        value,
+                        target,
+                        unwind: _,
+                    } if value.place().is_some() => {
+                        if let Some(local_substitute) =
+                            place.as_local().and_then(|l| self.local_substitute.get(&l))
+                        {
+                            // put into first statement of following block
+                            addr_taken_locals.push((*place, *target, 0));
+                            self.local_substitute.insert(place.local, *local_substitute);
                         }
                     }
                     _ => (),
@@ -248,17 +272,14 @@ impl<'tcx> MutVisitor<'tcx> for SubAddressTakenLocals<'tcx> {
             }
         }
 
-        // also mark location of address-taken arguments
-        for l in &self.address_taken {
-            if l.as_usize() > 0 && l.as_usize() <= body.arg_count {
-                // put into first block, first statement
-                addr_taken_locals.push((Place::from(*l), BasicBlock::from_u32(0), 0));
-            }
-        }
-
         // visit places first, so that they're already re-written and so that we don't accidentally
         // rewrite locals in statements that we're about to insert
         self.super_body(body);
+
+        // sort the insertion locations by statement id descending so that statement insertion
+        // of sid N does not shift/invalidate insertion at M where M > N 
+        addr_taken_locals.sort_by_key(|(_, _bid, sid)| *sid);
+        let addr_taken_locals = addr_taken_locals.into_iter().rev();
 
         // Add `_y = &raw _x` for each address-taken local _x,
         // just below the original assignment `_x = ...`
@@ -277,7 +298,16 @@ impl<'tcx> MutVisitor<'tcx> for SubAddressTakenLocals<'tcx> {
 
             body.basic_blocks_mut()[bid]
                 .statements
-                .insert(sid + 1, addr_of_stmt);
+                .insert(sid, addr_of_stmt);
+        }
+
+        for (bid, block) in body.basic_blocks().iter_enumerated() {
+            for (sid, statement) in block.statements.iter().enumerate() {
+                println!("{bid:?}:{sid:?} after: {statement:?}");
+            }
+            if let Some(term) = &block.terminator {
+                println!("{bid:?} term after: {term:?}");
+            }
         }
     }
 }

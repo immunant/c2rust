@@ -7,7 +7,7 @@
     unused_assignments,
     unused_mut,
     unused_variables,
-    unused_parens,
+    unused_parens
 )]
 extern "C" {
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
@@ -18,10 +18,11 @@ extern "C" {
 }
 
 /// Hidden from instrumentation so that we can polyfill [`reallocarray`] with it.
-const REALLOC: unsafe extern "C" fn(*mut libc::c_void, libc::c_ulong) -> *mut libc::c_void = realloc;
+const REALLOC: unsafe extern "C" fn(*mut libc::c_void, libc::c_ulong) -> *mut libc::c_void =
+    realloc;
 
 /// Polyfill [`reallocarray`] as macOS does not have [`reallocarray`].
-/// 
+///
 /// Normally we'd only polyfill it on macOS, but then we'd need a different snapshot file for macOS,
 /// as polyfilling results in a couple of extra copies.
 /// Thus, we just polyfill always.
@@ -360,9 +361,9 @@ pub fn shared_ref_foo(x: &u8) -> &u8 {
     x
 }
 #[no_mangle]
-pub unsafe extern "C" fn test_ref() {
-    let x = 2;
-    let y = &x;
+pub unsafe extern "C" fn test_addr_taken_arg(mut t: T) {
+    t.field3 = 0 as *const S;
+    let z = &t;
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_shared_ref() {
@@ -382,7 +383,7 @@ pub unsafe extern "C" fn test_unique_ref() {
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_ref_field() {
-    let t =  T {
+    let t = T {
         field: 0i32,
         field2: 0u64,
         field3: 0 as *const S,
@@ -395,10 +396,7 @@ pub unsafe extern "C" fn test_ref_field() {
         field3: 0 as *const S,
         field4: t,
     };
-    let y = t;
     s.field4.field4 = s.field4.field4;
-    let x = &t;
-    s.field4 = t;
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_addr_taken() {
@@ -516,6 +514,56 @@ pub unsafe extern "C" fn insertion_sort(n: libc::c_int, p: *mut libc::c_int) {
         i += 1
     }
 }
+
+#[no_mangle]
+#[cold]
+pub unsafe extern "C" fn log_error_va_list_impl(mut ap: ::std::ffi::VaList) {}
+
+#[no_mangle]
+#[cold]
+pub unsafe extern "C" fn log_error(mut fmt: *const libc::c_char, mut args: ...) {
+    let mut ap: ::std::ffi::VaListImpl;
+    ap = args.clone();
+    log_error_va_list_impl(ap.as_va_list());
+}
+
+fn vsprintf(
+    _: *mut libc::c_char,
+    _: *const libc::c_char,
+) -> libc::c_int {
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ErrorMsg(
+    mut filename: *const libc::c_char,
+    mut format: *const libc::c_char,
+    mut args: ...
+) {
+    let mut errmsg: [libc::c_char; 10000] = [0; 10000];
+    // let mut prefix: [libc::c_char; 40] = [0; 40];
+    let mut ap: ::std::ffi::VaListImpl;
+    ap = args.clone();
+    let x = &errmsg;
+    // if lineno > 0 as libc::c_int {
+    //     sprintf(
+    //         prefix.as_mut_ptr(),
+    //         b"%.*s:%d: \0" as *const u8 as *const libc::c_char,
+    //         30 as libc::c_int - 10 as libc::c_int,
+    //         filename,
+    //         lineno,
+    //     );
+    // } else {
+    //     sprintf(
+    //         prefix.as_mut_ptr(),
+    //         b"%.*s: \0" as *const u8 as *const libc::c_char,
+    //         30 as libc::c_int - 10 as libc::c_int,
+    //         filename,
+    //     );
+    // }
+    // vsprintf(errmsg.as_mut_ptr(), format);
+}
+
 unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> libc::c_int {
     simple();
     exercise_allocator();
@@ -553,14 +601,21 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     insertion_sort(nums.len() as libc::c_int, nums as *mut libc::c_int);
     test_ref_field();
     test_addr_taken();
-    test_ref();
+    let mut t = T {
+        field: 0i32,
+        field2: 0u64,
+        field3: 0 as *const S,
+        field4: 0i32,
+    };
+    test_addr_taken_arg(t);
     return 0i32;
 }
 pub fn main() {
     let args = ::std::env::args()
         .map(|arg| ::std::ffi::CString::new(arg).expect("Failed to convert argument into CString."))
         .collect::<Vec<_>>();
-    let mut args = args.iter()
+    let mut args = args
+        .iter()
         .map(|arg| arg.as_ptr() as *mut libc::c_char)
         .chain(::std::iter::once(::std::ptr::null_mut()))
         .collect::<Vec<_>>();

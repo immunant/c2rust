@@ -1,6 +1,7 @@
 #![feature(extern_types)]
 #![feature(label_break_value)]
 #![feature(rustc_private)]
+#![feature(c_variadic)]
 
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
