@@ -9,10 +9,11 @@ use std::{
     fmt::{self, Debug, Formatter},
 };
 
+use crate::info::NodeInfo;
 use crate::util::pad_columns;
 use crate::util::ShortOption;
 
-#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
 pub enum NodeKind {
     /// A copy from one local to another.  This also covers casts such as `&mut T` to `&T` or `&T`
     /// to `*const T` that don't change the type or value of the pointer.
@@ -121,6 +122,8 @@ pub struct Node {
     pub source: Option<NodeId>,
     /// Any string useful for debugging.
     pub debug_info: String,
+    /// Information about the [`Node`] computed from the pdg.
+    pub info: Option<NodeInfo>,
 }
 
 struct BlockStatement<'a> {
@@ -148,6 +151,7 @@ impl Node {
             kind,
             source,
             debug_info,
+            info,
         } = self;
         let src = ShortOption(source.as_ref());
         let dest = ShortOption(dest.as_ref());
@@ -156,9 +160,10 @@ impl Node {
             statement_idx,
         };
         let fn_ = function;
+        let info = info.as_ref().map(|i| i.to_string()).unwrap_or_default();
         write!(
             f,
-            "{kind}{sep}{src}{sep}=>{sep}{dest}{sep}@{sep}{bb_stmt}:{sep}fn {fn_};{sep}{debug_info};"
+            "{kind}{sep}{src}{sep}=>{sep}{dest}{sep}@{sep}{bb_stmt}:{sep}fn {fn_};{sep}{info}{sep}{debug_info};"
         )
     }
 }

@@ -206,6 +206,7 @@ pub fn add_node(
             .map(|(_, nid)| nid),
         dest: event_metadata.destination.clone(),
         debug_info: event_metadata.debug_info.clone(),
+        info: None,
     };
 
     let graph_id = source
