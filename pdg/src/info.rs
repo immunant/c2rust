@@ -6,12 +6,19 @@ use std::fmt::{self, Debug, Display, Formatter};
 /// Information generated from the PDG proper that is queried by static analysis.
 ///
 /// Includes information about what kinds of [`Node`]s the [`Node`] flows to,
-/// and eventually will also include its ability to be used as a `&mut`.
+/// as well as its ability to be used as a `&mut`.
 ///
 /// [`Node`]: crate::graph::Node
 #[derive(Hash, Clone, PartialEq, Eq, Debug)]
 pub struct NodeInfo {
     flows_to: FlowInfo,
+    unique: bool
+}
+
+impl Display for NodeInfo {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "")
+    }
 }
 
 /// Contains information about what kinds of [`Node`]s a [`Node`] flows to.
@@ -27,8 +34,8 @@ pub struct FlowInfo {
     neg_offset: Option<NodeId>,
 }
 
-impl FlowInfo {
-    //initializing flow information based on a node's kind
+impl FlowInfo { 
+    ///Initializes a [`FlowInfo`] based on a node's [`NodeKind`]
     fn new(n_id: NodeId, k: &NodeKind) -> FlowInfo {
         FlowInfo {
             load: matches!(*k, NodeKind::LoadAddr | NodeKind::LoadValue).then(|| n_id),
@@ -36,12 +43,6 @@ impl FlowInfo {
             pos_offset: matches!(*k, NodeKind::Offset(x) if x > 0).then(|| n_id),
             neg_offset: matches!(*k, NodeKind::Offset(x) if x < 0).then(|| n_id),
         }
-    }
-}
-
-impl Display for NodeInfo {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "")
     }
 }
 
@@ -67,8 +68,12 @@ fn set_flow_info(g: &mut Graph) {
         }
         node.info = Some(NodeInfo {
             flows_to: cur_node_flow_info,
+            unique: false
         });
     }
+}
+
+fn set_uniqueness(g: &mut Graph){
 }
 
 /// Initialize [`Node::info`] for each [`Node`].
@@ -80,5 +85,6 @@ fn set_flow_info(g: &mut Graph) {
 pub fn add_info(pdg: &mut Graphs) {
     for g in &mut pdg.graphs {
         set_flow_info(g);
+        set_uniqueness(g);
     }
 }
