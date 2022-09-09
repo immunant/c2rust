@@ -1,10 +1,10 @@
 use crate::graph::{Graph, NodeId, NodeKind};
 use crate::Graphs;
 use rustc_middle::mir::Field;
-use std::collections::HashMap;
-use std::collections::hash_map::Entry;
-use std::fmt::{self, Debug, Display, Formatter};
 use std::cmp::max;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{self, Debug, Display, Formatter};
 
 /// Information generated from the PDG proper that is queried by static analysis.
 ///
@@ -79,6 +79,8 @@ fn set_flow_info(g: &mut Graph) {
 /// Gathers information from a [`Graph`] (assumed to be acyclic and topologically sorted but not
 /// necessarily connected) for each [`Node`] in it what its chronologically (judged by [`NodeId`])
 /// final descendent is.
+///
+/// [`Node`]: crate::graph::Node
 fn get_last_desc(g: &mut Graph) -> HashMap<NodeId, NodeId> {
     let mut desc_map: HashMap<NodeId, NodeId> =
         HashMap::from_iter(g.nodes.iter_enumerated().map(|(idx, _)| (idx, idx)));
@@ -93,6 +95,8 @@ fn get_last_desc(g: &mut Graph) -> HashMap<NodeId, NodeId> {
 }
 
 /// Finds the inverse of a [`Graph`], each [`Node`] mapping to a list of its children.
+///
+/// [`Node`]: crate::graph::Node
 fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<NodeId>> {
     let mut m = HashMap::new();
     for (par, chi) in g
@@ -102,7 +106,7 @@ fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<NodeId>> {
     {
         m.entry(par).or_insert_with(Vec::new).push(chi)
     }
-    for (par, chi) in g.nodes.iter_enumerated() {
+    for par in g.nodes.indices() {
         m.try_insert(par, Vec::new());
     }
     m
@@ -127,10 +131,30 @@ fn check_children_conflict(
         {
             return true;
         }
-        let my_entry : Entry<_,_> = if let NodeKind::Field(f) = sib_node.kind { max_descs.entry(Some(f)) } else {max_descs.entry(None)};
-        my_entry.and_modify(|past_last_desc| {*past_last_desc = max(*past_last_desc,my_last_desc)}).or_insert(my_last_desc);
+        let my_entry: Entry<_, _> = if let NodeKind::Field(f) = sib_node.kind {
+            max_descs.entry(Some(f))
+        } else {
+            max_descs.entry(None)
+        };
+        my_entry
+            .and_modify(|past_last_desc| *past_last_desc = max(*past_last_desc, my_last_desc))
+            .or_insert(my_last_desc);
     }
     false
+}
+
+fn set_uniqueness(g: &mut Graph) {
+    let children = collect_children(g);
+    let last_descs = get_last_desc(g);
+    let mut uniqueness: HashSet<NodeId> = HashSet::new();
+    for n_id in g.nodes.indices() {
+        if check_children_conflict(g, &n_id, &children, &last_descs) {
+            uniqueness.insert(n_id);
+        }
+    }
+    for (n_id, node) in g.nodes.iter_enumerated_mut() {
+        node.info.as_mut().unwrap().unique = uniqueness.contains(&n_id);
+    }
 }
 
 /// Initialize [`Node::info`] for each [`Node`].
@@ -142,6 +166,6 @@ fn check_children_conflict(
 pub fn add_info(pdg: &mut Graphs) {
     for g in &mut pdg.graphs {
         set_flow_info(g);
-        //set_uniqueness(g);
+        set_uniqueness(g);
     }
 }
