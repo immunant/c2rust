@@ -1,7 +1,10 @@
 use crate::graph::{Graph, NodeId, NodeKind};
 use crate::Graphs;
+use rustc_middle::mir::Field;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::fmt::{self, Debug, Display, Formatter};
+use std::cmp::max;
 
 /// Information generated from the PDG proper that is queried by static analysis.
 ///
@@ -12,7 +15,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 #[derive(Hash, Clone, PartialEq, Eq, Debug)]
 pub struct NodeInfo {
     flows_to: FlowInfo,
-    unique: bool
+    unique: bool,
 }
 
 impl Display for NodeInfo {
@@ -34,7 +37,7 @@ pub struct FlowInfo {
     neg_offset: Option<NodeId>,
 }
 
-impl FlowInfo { 
+impl FlowInfo {
     ///Initializes a [`FlowInfo`] based on a node's [`NodeKind`]
     fn new(n_id: NodeId, k: &NodeKind) -> FlowInfo {
         FlowInfo {
@@ -68,12 +71,66 @@ fn set_flow_info(g: &mut Graph) {
         }
         node.info = Some(NodeInfo {
             flows_to: cur_node_flow_info,
-            unique: false
+            unique: false,
         });
     }
 }
 
-fn set_uniqueness(g: &mut Graph){
+/// Gathers information from a [`Graph`] (assumed to be acyclic and topologically sorted but not
+/// necessarily connected) for each [`Node`] in it what its chronologically (judged by [`NodeId`])
+/// final descendent is.
+fn get_last_desc(g: &mut Graph) -> HashMap<NodeId, NodeId> {
+    let mut desc_map: HashMap<NodeId, NodeId> =
+        HashMap::from_iter(g.nodes.iter_enumerated().map(|(idx, _)| (idx, idx)));
+    for node in g.nodes.iter().rev() {
+        if let Some(p_id) = node.source {
+            let cur_node_last_desc: NodeId = *desc_map.get(&p_id).unwrap();
+            let parent_last_desc: NodeId = desc_map.remove(&p_id).unwrap();
+            desc_map.insert(p_id, std::cmp::max(cur_node_last_desc, parent_last_desc));
+        }
+    }
+    desc_map
+}
+
+/// Finds the inverse of a [`Graph`], each [`Node`] mapping to a list of its children.
+fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<NodeId>> {
+    let mut m = HashMap::new();
+    for (par, chi) in g
+        .nodes
+        .iter_enumerated()
+        .filter_map(|(idx, node)| Some((node.source?, idx)))
+    {
+        m.entry(par).or_insert_with(Vec::new).push(chi)
+    }
+    for (par, chi) in g.nodes.iter_enumerated() {
+        m.try_insert(par, Vec::new());
+    }
+    m
+}
+
+///Given a list of nodes of the same parent and information about them,
+///determines if any have conflicts with any of the others.
+///Children which are not a field cannot be live at the same time as any other child.
+///Children which are a field cannot be live at the same time as any other one of the same field.
+fn check_children_conflict(
+    g: &Graph,
+    n_id: &NodeId,
+    children: &HashMap<NodeId, Vec<NodeId>>,
+    descs: &HashMap<NodeId, NodeId>,
+) -> bool {
+    let mut max_descs: HashMap<Option<Field>, NodeId> = HashMap::new();
+    for id in children.get(n_id).unwrap() {
+        let sib_node = g.nodes.get(*id).unwrap();
+        let my_last_desc = descs.get(&id).unwrap().clone();
+        if matches!(max_descs.get(&None), Some(max_desc) if max_desc > id)
+            || matches!(sib_node.kind,NodeKind::Field(f) if matches!(max_descs.get(&Some(f)),Some(max_desc_field) if max_desc_field > id))
+        {
+            return true;
+        }
+        let my_entry : Entry<_,_> = if let NodeKind::Field(f) = sib_node.kind { max_descs.entry(Some(f)) } else {max_descs.entry(None)};
+        my_entry.and_modify(|past_last_desc| {*past_last_desc = max(*past_last_desc,my_last_desc)}).or_insert(my_last_desc);
+    }
+    false
 }
 
 /// Initialize [`Node::info`] for each [`Node`].
@@ -85,6 +142,6 @@ fn set_uniqueness(g: &mut Graph){
 pub fn add_info(pdg: &mut Graphs) {
     for g in &mut pdg.graphs {
         set_flow_info(g);
-        set_uniqueness(g);
+        //set_uniqueness(g);
     }
 }
