@@ -119,6 +119,9 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         self.next_ptr_id.num_pointers()
     }
 
+    /// Update all `PointerId`s in `self`, replacing each `p` with `map[p]`.  Also sets the "next
+    /// `PointerId`" counter to `counter`.  `map` and `counter` are usually computed together via
+    /// `GlobalEquivSet::renumber`.
     pub fn remap_pointers(
         &mut self,
         map: &GlobalPointerTable<PointerId>,
@@ -237,6 +240,9 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
 }
 
 impl<'tcx> AnalysisCtxtData<'tcx> {
+    /// Update all `PointerId`s in `self`, replacing each `p` with `map[p]`.  Also sets the "next
+    /// `PointerId`" counter to `counter`.  `map` and `counter` are usually computed together via
+    /// `LocalEquivSet::renumber`.
     pub fn remap_pointers(
         &mut self,
         lcx: LTyCtxt<'tcx>,
@@ -267,6 +273,8 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
     }
 }
 
+/// For every `PointerId` `p` that appears in `lty`, replace `p` with `map[p]` (except that
+/// `PointerId::NONE` is left unchanged) and return the updated `LTy`.
 fn remap_lty_pointers<'tcx, T>(lcx: LTyCtxt<'tcx>, map: &T, lty: LTy<'tcx>) -> LTy<'tcx>
 where
     T: Index<PointerId, Output = PointerId>,
