@@ -118,7 +118,6 @@ fn check_children_conflict(
     for id in children.get(n_id).unwrap() {
         let sib_node: &Node = g.nodes.get(*id).unwrap();
         let my_last_desc = descs.get(&id).unwrap().clone();
-        print!("{}\n", my_last_desc);
         if matches!(max_descs.get(&None), Some(max_desc) if max_desc > id)
             || matches!(sib_node.kind,NodeKind::Field(f) if matches!(max_descs.get(&Some(f)),Some(max_desc_field) if max_desc_field > id))
         {
@@ -133,7 +132,6 @@ fn check_children_conflict(
             .and_modify(|past_last_desc| *past_last_desc = max(*past_last_desc, my_last_desc))
             .or_insert(my_last_desc);
     }
-    print!("\n");
     false
 }
 
@@ -146,9 +144,6 @@ fn set_uniqueness(g: &mut Graph) {
             || check_children_conflict(g, &n_id, &children, &last_descs)
         {
             nonuniqueness.insert(n_id);
-            print!("{} is not unique\n", n_id);
-        } else {
-            print!("{} is unique\n", n_id);
         }
     }
     for (n_id, node) in g.nodes.iter_enumerated_mut() {
