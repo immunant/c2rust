@@ -55,8 +55,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             match proj {
                 ProjectionElem::Deref => {
                     // All derefs except the last are loads, to retrieve the pointer for the next
-                    // deref.  However, if the last deref is `&mut` (and is used mutably), then the
-                    // previous derefs must be `&mut` as well.
+                    // deref.  However, if the overall `Place` is used mutably (as indicated by
+                    // `mutbl`), then the previous derefs must be `&mut` as well.  The last deref
+                    // may not be a memory access at all; for example, `&(*p).x` does not actually
+                    // access the memory at `*p`.
                     if let Some(ptr) = prev_deref_ptr.take() {
                         self.record_access(ptr, mutbl);
                     }
