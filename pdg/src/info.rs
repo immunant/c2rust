@@ -99,7 +99,7 @@ fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<NodeId>> {
         m.entry(par).or_insert_with(Vec::new).push(chi)
     }
     for par in g.nodes.indices() {
-        m.try_insert(par, Vec::new());
+        let _ = m.try_insert(par, Vec::new());
     }
     m
 }
@@ -116,7 +116,7 @@ fn check_children_conflict(
 ) -> bool {
     let mut max_descs: HashMap<Option<Field>, NodeId> = HashMap::new();
     for id in children.get(n_id).unwrap() {
-        let sib_node = g.nodes.get(*id).unwrap();
+        let sib_node : &Node = g.nodes.get(*id).unwrap();
         let my_last_desc = descs.get(&id).unwrap().clone();
         print!("{}\n", my_last_desc);
         if matches!(max_descs.get(&None), Some(max_desc) if max_desc > id)
@@ -195,10 +195,6 @@ mod test {
 
     fn mk_copy(g: &mut Graph, source: NodeId) -> NodeId {
         mk_node(g, NodeKind::Copy, Some(source))
-    }
-
-    fn mk_load_addr(g: &mut Graph, source: NodeId) -> NodeId {
-        mk_node(g, NodeKind::LoadAddr, Some(source))
     }
 
     fn mk_store_addr(g: &mut Graph, source: NodeId) -> NodeId {
@@ -488,7 +484,6 @@ mod test {
         let c1 = mk_field(&mut g, a, 1_u32);
         let b2 = mk_field(&mut g, b1, 1_u32);
         let c2 = mk_store_addr(&mut g, c1);
-        let b3 = mk_store_addr(&mut g, b2);
 
         let pdg = build_pdg(g);
         assert!(!info(&pdg, a).unique);
