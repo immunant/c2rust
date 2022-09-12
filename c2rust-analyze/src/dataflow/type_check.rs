@@ -2,7 +2,6 @@ use super::DataflowConstraints;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
 use crate::util::{self, describe_rvalue, Callee, RvalueDesc};
 use rustc_hir::def_id::DefId;
-use rustc_middle::mir::visit::{MutatingUseContext, NonMutatingUseContext, PlaceContext};
 use rustc_middle::mir::{
     BinOp, Body, Mutability, Operand, Place, PlaceRef, ProjectionElem, Rvalue, Statement,
     StatementKind, Terminator, TerminatorKind,
@@ -44,17 +43,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    pub fn visit_place(&mut self, pl: Place<'tcx>, ctx: PlaceContext) -> LTy<'tcx> {
-        self.visit_place_ref(pl.as_ref(), ctx)
+    pub fn visit_place(&mut self, pl: Place<'tcx>, mutbl: Mutability) -> LTy<'tcx> {
+        self.visit_place_ref(pl.as_ref(), mutbl)
     }
 
-    pub fn visit_place_ref(&mut self, pl: PlaceRef<'tcx>, ctx: PlaceContext) -> LTy<'tcx> {
-        let mutbl = match ctx {
-            PlaceContext::NonMutatingUse(..) => Some(Mutability::Not),
-            PlaceContext::MutatingUse(..) => Some(Mutability::Mut),
-            PlaceContext::NonUse(..) => None,
-        };
-
+    pub fn visit_place_ref(&mut self, pl: PlaceRef<'tcx>, mutbl: Mutability) -> LTy<'tcx> {
         let mut lty = self.acx.local_tys[pl.local];
         let mut prev_deref_ptr = None;
 
@@ -65,9 +58,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     // deref.  However, if the last deref is `&mut` (and is used mutably), then the
                     // previous derefs must be `&mut` as well.
                     if let Some(ptr) = prev_deref_ptr.take() {
-                        if let Some(mutbl) = mutbl {
-                            self.record_access(ptr, mutbl);
-                        }
+                        self.record_access(ptr, mutbl);
                     }
                     prev_deref_ptr = Some(lty.label);
                     assert_eq!(lty.args.len(), 1);
@@ -86,9 +77,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
 
         if let Some(ptr) = prev_deref_ptr.take() {
-            if let Some(mutbl) = mutbl {
-                self.record_access(ptr, mutbl);
-            }
+            self.record_access(ptr, mutbl);
         }
 
         lty
@@ -99,8 +88,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
         match describe_rvalue(rv) {
             Some(RvalueDesc::Project { base, proj: _ }) => {
-                let ctx = PlaceContext::NonMutatingUse(NonMutatingUseContext::Copy);
-                let base_ty = self.visit_place_ref(base, ctx);
+                // TODO: mutability should probably depend on mutability of the output ref/ptr
+                let base_ty = self.visit_place_ref(base, Mutability::Not);
                 base_ty.label
             }
             Some(RvalueDesc::AddrOfLocal { local, proj: _ }) => self.acx.addr_of_local[local],
@@ -122,12 +111,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     pub fn visit_operand(&mut self, op: &Operand<'tcx>) -> LTy<'tcx> {
         match *op {
             Operand::Copy(pl) => {
-                let ctx = PlaceContext::NonMutatingUse(NonMutatingUseContext::Copy);
-                self.visit_place(pl, ctx)
+                self.visit_place(pl, Mutability::Not)
             }
             Operand::Move(pl) => {
-                let ctx = PlaceContext::NonMutatingUse(NonMutatingUseContext::Move);
-                self.visit_place(pl, ctx)
+                self.visit_place(pl, Mutability::Not)
             }
             Operand::Constant(ref c) => {
                 let ty = c.ty();
@@ -174,8 +161,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         match stmt.kind {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
-                let ctx = PlaceContext::MutatingUse(MutatingUseContext::Store);
-                let pl_lty = self.visit_place(pl, ctx);
+                let pl_lty = self.visit_place(pl, Mutability::Mut);
                 let pl_ptr = pl_lty.label;
 
                 // TODO: combine these
@@ -208,8 +194,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 match util::ty_callee(tcx, func_ty) {
                     Some(Callee::PtrOffset { .. }) => {
                         // We handle this like a pointer assignment.
-                        let ctx = PlaceContext::MutatingUse(MutatingUseContext::Store);
-                        let pl_lty = self.visit_place(destination, ctx);
+                        let pl_lty = self.visit_place(destination, Mutability::Mut);
                         assert!(args.len() == 2);
                         let rv_lty = self.visit_operand(&args[0]);
                         self.do_assign(pl_lty.label, rv_lty.label);
@@ -251,8 +236,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
 
         // Process a pseudo-assignment from the return type declared in `sig` to `dest`.
-        let ctx = PlaceContext::MutatingUse(MutatingUseContext::Store);
-        let dest_lty = self.visit_place(dest, ctx);
+        let dest_lty = self.visit_place(dest, Mutability::Mut);
         let output_lty = sig.output;
         self.do_assign(dest_lty.label, output_lty.label);
         self.do_unify_pointees(dest_lty, output_lty);
