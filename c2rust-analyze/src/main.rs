@@ -102,7 +102,7 @@ fn run(tcx: TyCtxt) {
     struct FuncInfo<'tcx> {
         acx_data: MaybeUnset<AnalysisCtxtData<'tcx>>,
         dataflow: MaybeUnset<DataflowConstraints>,
-        l_equiv: MaybeUnset<LocalEquivSet>,
+        local_equiv: MaybeUnset<LocalEquivSet>,
         lasn: MaybeUnset<LocalAssignment>,
     }
 
@@ -127,7 +127,7 @@ fn run(tcx: TyCtxt) {
         gacx.fn_sigs.insert(ldid.to_def_id(), lsig);
     }
 
-    let mut g_equiv = GlobalEquivSet::new(gacx.num_pointers());
+    let mut global_equiv = GlobalEquivSet::new(gacx.num_pointers());
     for ldid in tcx.hir().body_owners() {
         let ldid_const = WithOptConstParam::unknown(ldid);
         let mir = tcx.mir_built(ldid_const);
@@ -157,8 +157,8 @@ fn run(tcx: TyCtxt) {
         }
 
         let (dataflow, equiv_constraints) = dataflow::generate_constraints(&acx, &mir);
-        let mut l_equiv = LocalEquivSet::new(acx.num_pointers());
-        let mut equiv = g_equiv.and_mut(&mut l_equiv);
+        let mut local_equiv = LocalEquivSet::new(acx.num_pointers());
+        let mut equiv = global_equiv.and_mut(&mut local_equiv);
         for (a, b) in equiv_constraints {
             equiv.unify(a, b);
         }
@@ -166,24 +166,24 @@ fn run(tcx: TyCtxt) {
         let mut info = FuncInfo::default();
         info.acx_data.set(acx.into_data());
         info.dataflow.set(dataflow);
-        info.l_equiv.set(l_equiv);
+        info.local_equiv.set(local_equiv);
         func_info.insert(ldid, info);
     }
 
     // Remap pointers based on equivalence classes, so all members of an equivalence class now use
     // the same `PointerId`.
-    let (g_counter, g_equiv_map) = g_equiv.renumber();
-    eprintln!("g_equiv_map = {:?}", g_equiv_map);
-    gacx.remap_pointers(&g_equiv_map, g_counter);
+    let (global_counter, global_equiv_map) = global_equiv.renumber();
+    eprintln!("global_equiv_map = {:?}", global_equiv_map);
+    gacx.remap_pointers(&global_equiv_map, global_counter);
 
     for ldid in tcx.hir().body_owners() {
         let info = func_info.get_mut(&ldid).unwrap();
-        let (l_counter, l_equiv_map) = info.l_equiv.renumber(&g_equiv_map);
-        eprintln!("l_equiv_map = {l_equiv_map:?}");
+        let (local_counter, local_equiv_map) = info.local_equiv.renumber(&global_equiv_map);
+        eprintln!("local_equiv_map = {local_equiv_map:?}");
         info.acx_data
-            .remap_pointers(gacx.lcx, g_equiv_map.and(&l_equiv_map), l_counter);
-        info.dataflow.remap_pointers(g_equiv_map.and(&l_equiv_map));
-        info.l_equiv.clear();
+            .remap_pointers(gacx.lcx, global_equiv_map.and(&local_equiv_map), local_counter);
+        info.dataflow.remap_pointers(global_equiv_map.and(&local_equiv_map));
+        info.local_equiv.clear();
     }
 
     // Compute permission and flag assignments.
