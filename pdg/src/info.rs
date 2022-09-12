@@ -1,4 +1,4 @@
-use crate::graph::{Graph, NodeId, NodeKind, Node};
+use crate::graph::{Graph, Node, NodeId, NodeKind};
 use crate::Graphs;
 use rustc_middle::mir::Field;
 use std::cmp::max;
@@ -78,7 +78,7 @@ fn set_flow_info(g: &mut Graph) {
 fn get_last_desc(g: &mut Graph) -> HashMap<NodeId, NodeId> {
     let mut desc_map: HashMap<NodeId, NodeId> =
         HashMap::from_iter(g.nodes.iter_enumerated().map(|(idx, _)| (idx, idx)));
-    for (n_id,node) in g.nodes.iter_enumerated().rev() {
+    for (n_id, node) in g.nodes.iter_enumerated().rev() {
         if let Some(p_id) = node.source {
             let cur_node_last_desc: NodeId = *desc_map.get(&n_id).unwrap();
             let parent_last_desc: NodeId = desc_map.remove(&p_id).unwrap();
@@ -118,7 +118,7 @@ fn check_children_conflict(
     for id in children.get(n_id).unwrap() {
         let sib_node = g.nodes.get(*id).unwrap();
         let my_last_desc = descs.get(&id).unwrap().clone();
-        print!("{}\n",my_last_desc);
+        print!("{}\n", my_last_desc);
         if matches!(max_descs.get(&None), Some(max_desc) if max_desc > id)
             || matches!(sib_node.kind,NodeKind::Field(f) if matches!(max_descs.get(&Some(f)),Some(max_desc_field) if max_desc_field > id))
         {
@@ -141,14 +141,14 @@ fn set_uniqueness(g: &mut Graph) {
     let children = collect_children(g);
     let last_descs = get_last_desc(g);
     let mut nonuniqueness: HashSet<NodeId> = HashSet::new();
-    for (n_id,node) in g.nodes.iter_enumerated() {
+    for (n_id, node) in g.nodes.iter_enumerated() {
         if matches!(node.source, Some(p_id) if nonuniqueness.contains(&p_id))
-            || check_children_conflict(g, &n_id, &children, &last_descs) {
+            || check_children_conflict(g, &n_id, &children, &last_descs)
+        {
             nonuniqueness.insert(n_id);
-            print!("{} is not unique\n",n_id);
-        }
-        else {
-            print!("{} is unique\n",n_id);
+            print!("{} is not unique\n", n_id);
+        } else {
+            print!("{} is unique\n", n_id);
         }
     }
     for (n_id, node) in g.nodes.iter_enumerated_mut() {
@@ -166,7 +166,6 @@ pub fn add_info(pdg: &mut Graphs) {
         set_uniqueness(g);
     }
 }
-
 
 #[cfg(test)]
 mod test {
@@ -218,10 +217,7 @@ mod test {
     }
 
     fn info(pdg: &Graphs, id: NodeId) -> &NodeInfo {
-        pdg.graphs[0_u32.into()].nodes[id]
-            .info
-            .as_ref()
-            .unwrap()
+        pdg.graphs[0_u32.into()].nodes[id].info.as_ref().unwrap()
     }
 
     #[test]
