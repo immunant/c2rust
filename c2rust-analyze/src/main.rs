@@ -180,9 +180,13 @@ fn run(tcx: TyCtxt) {
         let info = func_info.get_mut(&ldid).unwrap();
         let (local_counter, local_equiv_map) = info.local_equiv.renumber(&global_equiv_map);
         eprintln!("local_equiv_map = {local_equiv_map:?}");
-        info.acx_data
-            .remap_pointers(gacx.lcx, global_equiv_map.and(&local_equiv_map), local_counter);
-        info.dataflow.remap_pointers(global_equiv_map.and(&local_equiv_map));
+        info.acx_data.remap_pointers(
+            gacx.lcx,
+            global_equiv_map.and(&local_equiv_map),
+            local_counter,
+        );
+        info.dataflow
+            .remap_pointers(global_equiv_map.and(&local_equiv_map));
         info.local_equiv.clear();
     }
 
