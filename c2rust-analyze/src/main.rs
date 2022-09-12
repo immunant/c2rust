@@ -179,7 +179,7 @@ fn run(tcx: TyCtxt) {
     for ldid in tcx.hir().body_owners() {
         let info = func_info.get_mut(&ldid).unwrap();
         let (l_counter, l_equiv_map) = info.l_equiv.renumber(&g_equiv_map);
-        eprintln!("l_equiv_map = {:?}", l_equiv_map);
+        eprintln!("l_equiv_map = {l_equiv_map:?}");
         info.acx_data
             .remap_pointers(gacx.lcx, g_equiv_map.and(&l_equiv_map), l_counter);
         info.dataflow.remap_pointers(g_equiv_map.and(&l_equiv_map));
@@ -198,7 +198,7 @@ fn run(tcx: TyCtxt) {
     let order = walk_callgraph(tcx);
     eprintln!("callgraph traversal order:");
     for &ldid in &order {
-        eprintln!("  {:?}", ldid);
+        eprintln!("  {ldid:?}");
     }
     let mut loop_count = 0;
     loop {
