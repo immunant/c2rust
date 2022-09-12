@@ -116,7 +116,7 @@ fn check_children_conflict(
 ) -> bool {
     let mut max_descs: HashMap<Option<Field>, NodeId> = HashMap::new();
     for id in children.get(n_id).unwrap() {
-        let sib_node : &Node = g.nodes.get(*id).unwrap();
+        let sib_node: &Node = g.nodes.get(*id).unwrap();
         let my_last_desc = descs.get(&id).unwrap().clone();
         print!("{}\n", my_last_desc);
         if matches!(max_descs.get(&None), Some(max_desc) if max_desc > id)
