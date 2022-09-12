@@ -104,10 +104,10 @@ fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<NodeId>> {
     m
 }
 
-///Given a list of nodes of the same parent and information about them,
-///determines if any have conflicts with any of the others.
-///Children which are not a field cannot be live at the same time as any other child.
-///Children which are a field cannot be live at the same time as any other one of the same field.
+/// Given a list of nodes of the same parent and information about them,
+/// determines if any have conflicts with any of the others.
+/// Children which are not a field cannot be live at the same time as any other child.
+/// Children which are a field cannot be live at the same time as any other one of the same field.
 fn check_children_conflict(
     g: &Graph,
     n_id: &NodeId,
