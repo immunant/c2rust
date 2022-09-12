@@ -118,6 +118,8 @@ fn check_children_conflict(
     for id in children.get(n_id).unwrap() {
         let sib_node: &Node = g.nodes.get(*id).unwrap();
         let my_last_desc = descs.get(&id).unwrap().clone();
+        //if the first below matches, then two siblings, neither a field, conflict
+        //if the second matches, then two siblings of the same field conflict
         if matches!(max_descs.get(&None), Some(max_desc) if max_desc > id)
             || matches!(sib_node.kind,NodeKind::Field(f) if matches!(max_descs.get(&Some(f)),Some(max_desc_field) if max_desc_field > id))
         {
