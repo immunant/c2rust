@@ -427,8 +427,8 @@ fn body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
             continue;
         }
         stack.push(Visit::Pre(root_ldid));
-        while let Some(x) = stack.pop() {
-            match x {
+        while let Some(visit) = stack.pop() {
+            match visit {
                 Visit::Pre(ldid) => {
                     if seen.insert(ldid) {
                         stack.push(Visit::Post(ldid));
