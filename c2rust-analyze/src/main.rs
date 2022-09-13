@@ -216,7 +216,7 @@ fn run(tcx: TyCtxt) {
 
     // Follow a postorder traversal, so that callers are visited after their callees.  This means
     // callee signatures will usually be up to date when we visit the call site.
-    let order = walk_callgraph(tcx);
+    let order = body_owners_postorder(tcx);
     eprintln!("callgraph traversal order:");
     for &ldid in &order {
         eprintln!("  {ldid:?}");
@@ -413,7 +413,7 @@ fn describe_span(tcx: TyCtxt, span: Span) -> String {
 
 /// Return all `body_owners`, ordered according to a postorder traversal of the graph of references
 /// between bodies.
-fn walk_callgraph(tcx: TyCtxt) -> Vec<LocalDefId> {
+fn body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
     let mut seen = HashSet::new();
     let mut order = Vec::new();
     enum Visit {
