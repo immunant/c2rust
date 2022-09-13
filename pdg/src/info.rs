@@ -508,22 +508,25 @@ mod test {
         // *f = 3;                                                                   //F2
         // a.z.r = 100;                                                              //A3(X4-6)
 
+        let (x,y,z) = (0_u32,1_u32,2_u32);
+        let (red,green,_blue) = (0_u32,1_u32,2_u32);
+
         let a = mk_addr_of_local(&mut g, 0_u32);
-        let b1 = mk_field(&mut g, a, 0_u32);
-        let c1 = mk_field(&mut g, a, 1_u32);
-        let x1 = mk_field(&mut g, a, 2_u32);
-        let x2 = mk_field(&mut g, x1, 0_u32);
+        let b1 = mk_field(&mut g, a, x);
+        let c1 = mk_field(&mut g, a, y);
+        let x1 = mk_field(&mut g, a, z);
+        let x2 = mk_field(&mut g, x1, red);
         let x3 = mk_store_addr(&mut g, x2);
         let b2 = mk_store_addr(&mut g, b1);
         let c2 = mk_store_addr(&mut g, c1);
         let d1 = mk_copy(&mut g, a);
         let d2 = mk_store_addr(&mut g, d1);
-        let e = mk_field(&mut g, a, 2_u32);
-        let f1 = mk_field(&mut g, e, 1_u32);
-        let gg = mk_field(&mut g, e, 1_u32);
+        let e = mk_field(&mut g, a, z);
+        let f1 = mk_field(&mut g, e, green);
+        let gg = mk_field(&mut g, e, green);
         let f2 = mk_store_addr(&mut g, f1);
-        let x4 = mk_field(&mut g, a, 2_u32);
-        let x5 = mk_field(&mut g, x4, 1_u32);
+        let x4 = mk_field(&mut g, a, z);
+        let x5 = mk_field(&mut g, x4, green);
         let x6 = mk_store_addr(&mut g, x5);
 
         let pdg = build_pdg(g);
