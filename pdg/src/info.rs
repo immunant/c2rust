@@ -357,19 +357,19 @@ mod test {
     #[test]
     fn okay_use_different_fields() {
         let mut g = Graph::default();
-        //let mut a = Point {x: 0, y:0}; // A
-        //let b = &mut a.x;              // B1
-        //let c = &mut a.y;              // C1
-        //*b = 1;                        // B2
-        //*c = 2;                        // C2
+        // let mut a = Point {x: 0, y:0}; // A
+        // let b = &mut a.x;              // B1
+        // let c = &mut a.y;              // C1
+        // *b = 1;                        // B2
+        // *c = 2;                        // C2
         //
-        //A
-        //|-------
-        //|x     |
-        //B1     |y
-        //|      C1
-        //B2     |
-        //       C2
+        // A
+        // |-------
+        // |x     |
+        // B1     |y
+        // |      C1
+        // B2     |
+        //        C2
         let a = mk_addr_of_local(&mut g, 0_u32);
         let b11 = mk_field(&mut g, a, 0_u32);
         let b1 = mk_copy(&mut g, b11);
@@ -389,24 +389,24 @@ mod test {
     #[test]
     fn same_fields_cousins() {
         let mut g = Graph::default();
-        //let mut a = Point {x: 0, y:0}; // A
-        //let j = &mut a;                // J
-        //let b = &mut j.x;              // B1
-        //let c = &mut j.x;              // C1
-        //*b = 1;                        // B2
-        //*c = 2;                        // C2
+        // let mut a = Point {x: 0, y:0}; // A
+        // let j = &mut a;                // J
+        // let b = &mut j.x;              // B1
+        // let c = &mut j.x;              // C1
+        // *b = 1;                        // B2
+        // *c = 2;                        // C2
         //
-        //A
-        //|-----------
-        //J          |
-        //|-------   |
-        //|x     |   |
-        //B1     |x  |
-        //|      C1  |y
-        //|      |   |
-        //B2     |   |
-        //       C2  |
-        //           D1
+        // A
+        // |-----------
+        // J          |
+        // |-------   |
+        // |x     |   |
+        // B1     |x  |
+        // |      C1  |y
+        // |      |   |
+        // B2     |   |
+        //        C2  |
+        //            D1
         let a = mk_addr_of_local(&mut g, 0_u32);
         let j = mk_copy(&mut g, a);
         let b11 = mk_field(&mut g, j, 0_u32);
@@ -430,19 +430,19 @@ mod test {
     #[test]
     fn field_vs_raw() {
         let mut g = Graph::default();
-        //let mut a = Point {x: 0, y:0}; // A
-        //let b = &mut a;                // B1
-        //let c = &mut a.y;              // C1
-        //*b = 1;                        // B2
-        //*c = 2;                        // C2
+        // let mut a = Point {x: 0, y:0}; // A
+        // let b = &mut a;                // B1
+        // let c = &mut a.y;              // C1
+        // *b = 1;                        // B2
+        // *c = 2;                        // C2
         //
-        //A
-        //|-------
-        //|      |
-        //B1     |y
-        //|      C1
-        //|      C2
-        //B2
+        // A
+        // |-------
+        // |      |
+        // B1     |y
+        // |      C1
+        // |      C2
+        // B2
         let a = mk_addr_of_local(&mut g, 0_u32);
         let b1 = mk_copy(&mut g, a);
         let c11 = mk_field(&mut g, a, 1_u32);
@@ -461,21 +461,21 @@ mod test {
     #[test]
     fn fields_different_levels() {
         let mut g = Graph::default();
-        //let mut a = Point {x: 0, y:0}; // A
-        //let b = &mut a;                // B1
-        //let c = &mut b.y;              // C1
-        //let bb = &mut b.y;             // B2
-        //*b = 1;                        // B3
-        //*c = 2;                        // C
+        // let mut a = Point {x: 0, y:0}; // A
+        // let b = &mut a;                // B1
+        // let c = &mut b.y;              // C1
+        // let bb = &mut b.y;             // B2
+        // *b = 1;                        // B3
+        // *c = 2;                        // C
         //
-        //A
-        //|-------
-        //|      |
-        //B1     |y
-        //|      C1
-        //|y
-        //B2
-        //
+        // A
+        // |-------
+        // |      |
+        // B1     |y
+        // |      C1
+        // |y
+        // B2
+
         let a = mk_addr_of_local(&mut g, 0_u32);
         let b1 = mk_copy(&mut g, a);
         let c1 = mk_field(&mut g, a, 1_u32);
@@ -494,19 +494,19 @@ mod test {
     #[test]
     fn lots_of_siblings() {
         let mut g = Graph::default();
-        //let mut a = ColorPoint {x: 0, y: 0, z: Color{ r: 100, g: 100, b: 100}};   //A1
-        //let b = &mut a.x;                                                         //B1
-        //let c = &mut a.y;                                                         //C1
-        //a.z.r = 200;                                                              //A2
-        //*b = 4;                                                                   //B2
-        //*c = 2;                                                                   //C2
-        //let d = &mut a;                                                           //D1
-        //*d = ColorPoint {x: 0, y: 0, z: Color {r: 20, g:200, b: 20}};             //D2
-        //let e = &mut a.z;                                                         //E
-        //let f = &mut e.g;                                                         //F1
-        //let g = &mut e.g;                                                         //G
-        //*f = 3;                                                                   //F2
-        //a.z.r = 100;                                                              //A3
+        // let mut a = ColorPoint {x: 0, y: 0, z: Color{ r: 100, g: 100, b: 100}};   //A1
+        // let b = &mut a.x;                                                         //B1
+        // let c = &mut a.y;                                                         //C1
+        // a.z.r = 200;                                                              //A2(X1-3)
+        // *b = 4;                                                                   //B2
+        // *c = 2;                                                                   //C2
+        // let d = &mut a;                                                           //D1
+        // *d = ColorPoint {x: 0, y: 0, z: Color {r: 20, g:200, b: 20}};             //D2
+        // let e = &mut a.z;                                                         //E
+        // let f = &mut e.g;                                                         //F1
+        // let g = &mut e.g;                                                         //G
+        // *f = 3;                                                                   //F2
+        // a.z.r = 100;                                                              //A3(X4-6)
 
         let a = mk_addr_of_local(&mut g, 0_u32);
         let b1 = mk_field(&mut g, a, 0_u32);
