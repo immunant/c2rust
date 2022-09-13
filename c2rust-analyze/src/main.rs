@@ -321,6 +321,7 @@ fn run(tcx: TyCtxt) {
 
 trait AssignPointerIds<'tcx> {
     fn lcx(&self) -> LTyCtxt<'tcx>;
+    
     fn new_pointer(&mut self) -> PointerId;
 
     fn assign_pointer_ids(&mut self, ty: Ty<'tcx>) -> LTy<'tcx> {
