@@ -508,8 +508,8 @@ mod test {
         // *f = 3;                                                                   //F2
         // a.z.r = 100;                                                              //A3(X4-6)
 
-        let (x,y,z) = (0_u32,1_u32,2_u32);
-        let (red,green,_blue) = (0_u32,1_u32,2_u32);
+        let (x, y, z) = (0_u32, 1_u32, 2_u32);
+        let (red, green, _blue) = (0_u32, 1_u32, 2_u32);
 
         let a = mk_addr_of_local(&mut g, 0_u32);
         let b1 = mk_field(&mut g, a, x);
