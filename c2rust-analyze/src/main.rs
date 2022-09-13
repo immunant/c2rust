@@ -204,7 +204,6 @@ fn run(tcx: TyCtxt) {
         info.local_equiv.clear();
     }
 
-
     // Compute permission and flag assignments.
 
     let mut gasn =
@@ -260,7 +259,6 @@ fn run(tcx: TyCtxt) {
         }
     }
     eprintln!("reached fixpoint in {} iterations", loop_count);
-
 
     // Print results for each function.
     for ldid in tcx.hir().body_owners() {
@@ -347,7 +345,7 @@ fn run(tcx: TyCtxt) {
 
 trait AssignPointerIds<'tcx> {
     fn lcx(&self) -> LTyCtxt<'tcx>;
-    
+
     fn new_pointer(&mut self) -> PointerId;
 
     fn assign_pointer_ids(&mut self, ty: Ty<'tcx>) -> LTy<'tcx> {
