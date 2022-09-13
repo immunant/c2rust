@@ -98,19 +98,29 @@ fn run(tcx: TyCtxt) {
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
 
+    /// Local information, specific to a single function.  Many of the data structures we use for
+    /// the pointer analysis have a "global" part that's shared between all functions and a "local"
+    /// part that's specific to the function being analyzed; this struct contains only the local
+    /// parts.  The different fields are set, used, and cleared at various points below.
     #[derive(Default)]
     struct FuncInfo<'tcx> {
+        /// Local analysis context data, such as `LTy`s for all MIR locals.  Combine with the
+        /// `GlobalAnalysisCtxt` to get a complete `AnalysisCtxt` for use within this function.
         acx_data: MaybeUnset<AnalysisCtxtData<'tcx>>,
+        /// Dataflow constraints gathered from the body of this function.  These are used for
+        /// propagating `READ`/`WRITE`/`OFFSET_ADD` and similar permissions.
         dataflow: MaybeUnset<DataflowConstraints>,
+        /// Local equivalence-class information.  Combine with the `GlobalEquivSet` to get a
+        /// complete `EquivSet`, which assigns an equivalence class to each `PointerId` that
+        /// appears in the function.  Used for renumbering `PointerId`s.
         local_equiv: MaybeUnset<LocalEquivSet>,
+        /// Local part of the permission/flag assignment.  Combine with the `GlobalAssignment` to
+        /// get a complete `Assignment` for this function, which maps every `PointerId` in this
+        /// function to a `PermissionSet` and `FlagSet`.
         lasn: MaybeUnset<LocalAssignment>,
     }
 
-    // Initial pass to gather equivalence constraints, which state that two pointer types must be
-    // converted to the same reference type.  Some additional data computed during this the process
-    // is kept around for use in later passes.
-
-    // TODO: assign global PointerIds
+    // Assign global `PointerId`s for all pointers that appear in function signatures.
     for ldid in tcx.hir().body_owners() {
         let sig = tcx.fn_sig(ldid.to_def_id());
         let sig = tcx.erase_late_bound_regions(sig);
@@ -127,6 +137,9 @@ fn run(tcx: TyCtxt) {
         gacx.fn_sigs.insert(ldid.to_def_id(), lsig);
     }
 
+    // Initial pass to assign local `PointerId`s and gather equivalence constraints, which state
+    // that two pointer types must be converted to the same reference type.  Some additional data
+    // computed during this the process is kept around for use in later passes.
     let mut global_equiv = GlobalEquivSet::new(gacx.num_pointers());
     for ldid in tcx.hir().body_owners() {
         let ldid_const = WithOptConstParam::unknown(ldid);
@@ -156,6 +169,7 @@ fn run(tcx: TyCtxt) {
             assert_eq!(local, l);
         }
 
+        // Compute local equivalence classes and dataflow constraints.
         let (dataflow, equiv_constraints) = dataflow::generate_constraints(&acx, &mir);
         let mut local_equiv = LocalEquivSet::new(acx.num_pointers());
         let mut equiv = global_equiv.and_mut(&mut local_equiv);
@@ -190,7 +204,9 @@ fn run(tcx: TyCtxt) {
         info.local_equiv.clear();
     }
 
+
     // Compute permission and flag assignments.
+
     let mut gasn =
         GlobalAssignment::new(gacx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
     for info in func_info.values_mut() {
@@ -199,6 +215,8 @@ fn run(tcx: TyCtxt) {
         info.lasn.set(lasn);
     }
 
+    // Follow a postorder traversal, so that callers are visited after their callees.  This means
+    // callee signatures will usually be up to date when we visit the call site.
     let order = walk_callgraph(tcx);
     eprintln!("callgraph traversal order:");
     for &ldid in &order {
@@ -206,6 +224,10 @@ fn run(tcx: TyCtxt) {
     }
     let mut loop_count = 0;
     loop {
+        // Loop until the global assignment reaches a fixpoint.  The inner loop also runs until a
+        // fixpoint, but it only considers a single function at a time.  The inner loop for one
+        // function can affect other functions by updating the `GlobalAssignment`, so we also need
+        // the outer loop, which runs until the `GlobalAssignment` converges as well.
         loop_count += 1;
         let old_gasn = gasn.clone();
         for &ldid in &order {
@@ -218,6 +240,8 @@ fn run(tcx: TyCtxt) {
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
             let mut asn = gasn.and(&mut info.lasn);
 
+            // `dataflow.propagate` and `borrowck_mir` both run until the assignment converges on a
+            // fixpoint, so there's no need to do multiple iterations here.
             info.dataflow.propagate(&mut asn.perms_mut());
 
             borrowck::borrowck_mir(
@@ -237,6 +261,8 @@ fn run(tcx: TyCtxt) {
     }
     eprintln!("reached fixpoint in {} iterations", loop_count);
 
+
+    // Print results for each function.
     for ldid in tcx.hir().body_owners() {
         let info = func_info.get_mut(&ldid).unwrap();
         let ldid_const = WithOptConstParam::unknown(ldid);
