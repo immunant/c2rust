@@ -515,53 +515,75 @@ pub unsafe extern "C" fn insertion_sort(n: libc::c_int, p: *mut libc::c_int) {
     }
 }
 
+/*
+    This is a minimal breaking example from lighttpd where instrumented code failed
+    to compile.
+*/
 #[no_mangle]
 #[cold]
-pub unsafe extern "C" fn log_error_va_list_impl(mut ap: ::std::ffi::VaList) {}
-
-#[no_mangle]
-#[cold]
-pub unsafe extern "C" fn log_error(mut fmt: *const libc::c_char, mut args: ...) {
+unsafe extern "C" fn log_error_va_list_impl(
+    mut errh: *const libc::c_void,
+    filename: *const libc::c_char,
+    line: libc::c_uint,
+    fmt: *const libc::c_char,
+    mut ap: ::std::ffi::VaList,
+    perr: libc::c_int,
+) {
+    let mut prefix: [libc::c_char; 40] = [0; 40];
+    vsprintf(prefix.as_mut_ptr(), fmt, ap.as_va_list());
+}
+pub unsafe extern "C" fn log_error(
+    errh: *mut libc::c_void,
+    filename: *const libc::c_char,
+    line: libc::c_uint,
+    mut fmt: *const libc::c_char,
+    mut args: ...
+) {
     let mut ap: ::std::ffi::VaListImpl;
     ap = args.clone();
-    log_error_va_list_impl(ap.as_va_list());
+    log_error_va_list_impl(errh, filename, line, fmt, ap.as_va_list(), 0 as libc::c_int);
 }
 
+
+/*
+    This is a minimal breaking example from lighttpd where instrumented code failed
+    to compile.
+*/
 fn vsprintf(
     _: *mut libc::c_char,
     _: *const libc::c_char,
+    _: ::std::ffi::VaList,
 ) -> libc::c_int {
     0
 }
-
 #[no_mangle]
 pub unsafe extern "C" fn ErrorMsg(
     mut filename: *const libc::c_char,
+    mut lineno: libc::c_int,
     mut format: *const libc::c_char,
     mut args: ...
 ) {
     let mut errmsg: [libc::c_char; 10000] = [0; 10000];
-    // let mut prefix: [libc::c_char; 40] = [0; 40];
+    let mut prefix: [libc::c_char; 40] = [0; 40];
     let mut ap: ::std::ffi::VaListImpl;
     ap = args.clone();
-    let x = &errmsg;
-    // if lineno > 0 as libc::c_int {
-    //     sprintf(
-    //         prefix.as_mut_ptr(),
-    //         b"%.*s:%d: \0" as *const u8 as *const libc::c_char,
-    //         30 as libc::c_int - 10 as libc::c_int,
-    //         filename,
-    //         lineno,
-    //     );
-    // } else {
-    //     sprintf(
-    //         prefix.as_mut_ptr(),
-    //         b"%.*s: \0" as *const u8 as *const libc::c_char,
-    //         30 as libc::c_int - 10 as libc::c_int,
-    //         filename,
-    //     );
-    // }
-    // vsprintf(errmsg.as_mut_ptr(), format);
+    if lineno > 0 as libc::c_int {
+        sprintf(
+            prefix.as_mut_ptr(),
+            b"%.*s:%d: \0" as *const u8 as *const libc::c_char,
+            30 as libc::c_int - 10 as libc::c_int,
+            filename,
+            lineno,
+        );
+    } else {
+        sprintf(
+            prefix.as_mut_ptr(),
+            b"%.*s: \0" as *const u8 as *const libc::c_char,
+            30 as libc::c_int - 10 as libc::c_int,
+            filename,
+        );
+    }
+    vsprintf(errmsg.as_mut_ptr(), format, ap.as_va_list());
 }
 
 unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> libc::c_int {

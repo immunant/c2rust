@@ -142,7 +142,7 @@ impl<'tcx> Visitor<'tcx> for CheckAddressTakenLocals<'_, 'tcx> {
         match rvalue {
             _ if !is_region_or_unsafe_ptr(value_ty) => {}
 
-            Rvalue::AddressOf(_, p) | Rvalue::Ref(_, _, p) if !p.is_indirect() => {
+            Rvalue::AddressOf(_, p) | Rvalue::Ref(_, _, p) if p.projection.is_empty() => {
                 self.address_taken.insert(p.local);
             }
             _ => (),
@@ -165,10 +165,10 @@ impl<'tcx> MutVisitor<'tcx> for SubAddressTakenLocals<'tcx> {
                         && !place.is_indirect()
                         && place.projection.len() > 0))
                 && !context.is_drop()
-            && !matches!(
-                context,
-                PlaceContext::NonMutatingUse(NonMutatingUseContext::Inspect)
-            )
+                && !matches!(
+                    context,
+                    PlaceContext::NonMutatingUse(NonMutatingUseContext::Inspect)
+                )
             {
                 let projection = {
                     let mut v = Vec::with_capacity(place.projection.len() + 1);
@@ -212,8 +212,7 @@ impl<'tcx> MutVisitor<'tcx> for SubAddressTakenLocals<'tcx> {
         // mark location of address-taken arguments
         for l in 1..body.arg_count + 1 {
             let local = Local::from_u32(l as u32);
-            if let Some(substitute) = self.local_substitute.get(&local) {
-                println!("marking {local:?} = *{substitute:?}");
+            if self.local_substitute.get(&local).is_some() {
                 // put into first block, first statement
                 addr_taken_locals.push((Place::from(local), BasicBlock::from_u32(0), 0));
             }
@@ -225,11 +224,13 @@ impl<'tcx> MutVisitor<'tcx> for SubAddressTakenLocals<'tcx> {
             for (sid, statement) in block.statements.iter().enumerate().rev() {
                 if let StatementKind::Assign(stmt) = &statement.kind {
                     let (ref place, _) = **stmt;
-                    if let Some(l) = place.as_local().filter(|l| self.address_taken.contains(l)) {
+                    if place
+                        .as_local()
+                        .filter(|l| self.address_taken.contains(l))
+                        .is_some()
+                    {
                         // put just below first assignment
-                        println!("placing {place:?} in {bid:?}:{:?}", sid+1);
                         addr_taken_locals.push((*place, bid, sid + 1));
-                        // self.address_taken.remove(&l);
                     }
                 }
             }
@@ -242,14 +243,14 @@ impl<'tcx> MutVisitor<'tcx> for SubAddressTakenLocals<'tcx> {
                         target,
                         ..
                     } => {
-                        if let Some(l) = destination
+                        if destination
                             .as_local()
                             .filter(|l| self.address_taken.contains(l))
+                            .is_some()
                         {
                             if let Some(next_block) = target {
                                 // put into first statement of following block
                                 addr_taken_locals.push((*destination, *next_block, 0));
-                                // self.address_taken.remove(&l);
                             }
                         }
                     }
@@ -277,37 +278,28 @@ impl<'tcx> MutVisitor<'tcx> for SubAddressTakenLocals<'tcx> {
         self.super_body(body);
 
         // sort the insertion locations by statement id descending so that statement insertion
-        // of sid N does not shift/invalidate insertion at M where M > N 
+        // for statements with indices N and M, where N < M, does not shift/invalidate index M
         addr_taken_locals.sort_by_key(|(_, _bid, sid)| *sid);
         let addr_taken_locals = addr_taken_locals.into_iter().rev();
 
         // Add `_y = &raw _x` for each address-taken local _x,
         // just below the original assignment `_x = ...`
-        for (place, bid, sid) in addr_taken_locals {
+        for (addr_taken_local, bid, sid) in addr_taken_locals {
             let addr_of_stmt = Statement {
                 source_info: SourceInfo::outermost(DUMMY_SP),
                 kind: StatementKind::Assign(Box::new((
                     self.local_substitute
-                        .get(&place.local)
+                        .get(&addr_taken_local.local)
                         .cloned()
                         .unwrap()
                         .into(),
-                    Rvalue::AddressOf(Mutability::Mut, place),
+                    Rvalue::AddressOf(Mutability::Mut, addr_taken_local),
                 ))),
             };
 
             body.basic_blocks_mut()[bid]
                 .statements
                 .insert(sid, addr_of_stmt);
-        }
-
-        for (bid, block) in body.basic_blocks().iter_enumerated() {
-            for (sid, statement) in block.statements.iter().enumerate() {
-                println!("{bid:?}:{sid:?} after: {statement:?}");
-            }
-            if let Some(term) = &block.terminator {
-                println!("{bid:?} term after: {term:?}");
-            }
         }
     }
 }
@@ -418,7 +410,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                 }
             }
             _ if !is_region_or_unsafe_ptr(value_ty) => {}
-            Rvalue::AddressOf(_, p) | Rvalue::Ref(_, _, p)
+            Rvalue::AddressOf(_, p)
                 if has_outer_deref(p)
                     && is_region_or_unsafe_ptr(place_ty(&remove_outer_deref(*p, self.tcx()))) =>
             {
@@ -474,6 +466,28 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     .source(op)
                     .dest(&dest)
                     .add_to(self);
+            }
+            Rvalue::Ref(_, bkind, p)
+                if has_outer_deref(p)
+                    && is_region_or_unsafe_ptr(place_ty(&remove_outer_deref(*p, self.tcx()))) =>
+            {
+                // this is a reborrow or field reference, i.e. _2 = &(*_1)
+                let source = remove_outer_deref(*p, self.tcx());
+                if let BorrowKind::Mut { .. } = bkind {
+                    // Instrument which local's address is taken
+                    self.loc(location, location, copy_fn)
+                        .arg_addr_of(*p)
+                        .source(&source)
+                        .dest(&dest)
+                        .add_to(self);
+                } else {
+                    // Instrument immutable borrows by tracing the reference itself
+                    self.loc(location, location.successor_within_block(), copy_fn)
+                        .arg_var(dest)
+                        .source(&source)
+                        .dest(&dest)
+                        .add_to(self);
+                };
             }
             Rvalue::Ref(_, bkind, p) if !p.is_indirect() => {
                 let source = remove_outer_deref(*p, self.tcx());

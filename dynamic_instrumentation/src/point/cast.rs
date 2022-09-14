@@ -76,7 +76,6 @@ pub fn cast_ptr_to_usize<'tcx>(
         // create a raw ptr with `addr_of!`.
         InstrumentationArg::AddrOf(arg) => {
             let arg_place = arg.place().expect("Can't get the address of a constant");
-            let arg_place = remove_outer_deref(arg_place, tcx);
 
             let arg_ty = arg_place.ty(locals, tcx).ty;
             let inner_ty = ty::TypeAndMut {

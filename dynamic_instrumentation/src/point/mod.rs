@@ -73,6 +73,7 @@ pub struct CollectInstrumentationPoints<'a, 'tcx: 'a> {
     body: &'a Body<'tcx>,
     instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
     assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
+    addr_taken_local_substitutions: HashMap<Local, Local>,
 }
 
 impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
@@ -83,6 +84,7 @@ impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
             body,
             instrumentation_points: Default::default(),
             assignment: Default::default(),
+            addr_taken_local_substitutions: Default::default(),
         }
     }
 

@@ -2,7 +2,6 @@
 #![feature(label_break_value)]
 #![feature(rustc_private)]
 #![feature(c_variadic)]
-
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
@@ -15,5 +14,6 @@ pub mod pointers;
 #[path = "stdlib.rs"]
 pub mod stdlib;
 
-fn main() { pointers::main() }
-
+fn main() {
+    pointers::main()
+}
