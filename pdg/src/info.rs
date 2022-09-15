@@ -265,16 +265,15 @@ mod test {
         assert!(!info(&pdg, c3).unique);
     }
 
+    /// let mut a = 0;   // A
+    /// let b = &mut a;  // B1
+    /// *b = 0;          // B2
+    /// let c = &mut a;  // C1
+    /// *c = 0;          // C2
+    /// *b = 0;          // B3
     #[test]
     fn unique_interleave_onesided() {
         let mut g = Graph::default();
-        // let mut a = 0;   // A
-        // let b = &mut a;  // B1
-        // *b = 0;          // B2
-        // let c = &mut a;  // C1
-        // *c = 0;          // C2
-        // *b = 0;          // B3
-        //
         // A
         // +----.
         // B1   |
