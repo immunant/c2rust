@@ -3,8 +3,8 @@ source: pdg/src/main.rs
 expression: pdg
 ---
 g {
-	n[0]: &_1  _    => _   @ bb3[0]:  fn main;   _23 = &raw mut _1;
-	n[1]: copy n[0] => _11 @ bb3[10]: fn main;   _11 = &(*_23);
+	n[0]: &_1  _    => _   @ bb3[0]:  fn main;   _24 = &raw mut _1;
+	n[1]: copy n[0] => _11 @ bb3[10]: fn main;   _11 = &(*_24);
 	n[2]: copy n[1] => _1  @ bb0[0]:  fn deref;  _10 = deref(move _11);
 }
 nodes_that_need_write = []
@@ -29,10 +29,10 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]: &_5  _    => _   @ bb10[0]: fn main;  _24 = &raw mut _5;
-	n[1]: copy n[0] => _19 @ bb10[9]: fn main;  _19 = &(*_24);
+	n[0]: &_5  _    => _   @ bb10[0]: fn main;  _23 = &raw mut _5;
+	n[1]: copy n[0] => _19 @ bb10[9]: fn main;  _19 = &(*_23);
 	n[2]: copy n[1] => _1  @ bb0[0]:  fn len;   _18 = len(move _19);
-	n[3]: copy n[0] => _22 @ bb12[6]: fn main;  _22 = &mut (*_24);
+	n[3]: copy n[0] => _22 @ bb12[6]: fn main;  _22 = &mut (*_23);
 }
 nodes_that_need_write = []
 
@@ -381,20 +381,20 @@ g {
 nodes_that_need_write = [3, 2, 1, 0]
 
 g {
-	n[0]: &_1         _    => _    @ bb0[2]:  fn testing;  _9 = &raw mut _1;
+	n[0]: &_1         _    => _    @ bb0[2]:  fn testing;  _8 = &raw mut _1;
 	n[1]: addr.store  n[0] => _    @ bb0[1]:  fn testing;  _1 = const 10_i32;
-	n[2]: copy        n[0] => _4   @ bb0[9]:  fn testing;  _4 = &mut (*_9);
+	n[2]: copy        n[0] => _4   @ bb0[9]:  fn testing;  _4 = &mut (*_8);
 	n[3]: copy        n[2] => _3   @ bb0[10]: fn testing;  _3 = &raw mut (*_4);
-	n[4]: copy        n[0] => _7   @ bb0[18]: fn testing;  _7 = &mut (*_9);
+	n[4]: copy        n[0] => _7   @ bb0[18]: fn testing;  _7 = &mut (*_8);
 	n[5]: copy        n[4] => _6   @ bb0[19]: fn testing;  _6 = &raw mut (*_7);
 	n[6]: value.store n[5] => _5.* @ bb0[20]: fn testing;  (*_5) = move _6;
 }
 nodes_that_need_write = [1, 0]
 
 g {
-	n[0]: &_3        _    => _  @ bb0[11]: fn testing;  _8 = &raw mut _3;
+	n[0]: &_3        _    => _  @ bb0[11]: fn testing;  _9 = &raw mut _3;
 	n[1]: addr.store n[0] => _  @ bb0[10]: fn testing;  _3 = &raw mut (*_4);
-	n[2]: copy       n[0] => _5 @ bb0[15]: fn testing;  _5 = &mut (*_8);
+	n[2]: copy       n[0] => _5 @ bb0[15]: fn testing;  _5 = &mut (*_9);
 	n[3]: addr.store n[2] => _  @ bb0[20]: fn testing;  (*_5) = move _6;
 }
 nodes_that_need_write = [3, 2, 1, 0]
@@ -627,20 +627,20 @@ g {
 nodes_that_need_write = [1, 0]
 
 g {
-	n[0]: &_1         _    => _    @ bb0[2]:  fn test_unique_ref;  _9 = &raw mut _1;
+	n[0]: &_1         _    => _    @ bb0[2]:  fn test_unique_ref;  _8 = &raw mut _1;
 	n[1]: addr.store  n[0] => _    @ bb0[1]:  fn test_unique_ref;  _1 = const 10_i32;
-	n[2]: copy        n[0] => _4   @ bb0[9]:  fn test_unique_ref;  _4 = &mut (*_9);
+	n[2]: copy        n[0] => _4   @ bb0[9]:  fn test_unique_ref;  _4 = &mut (*_8);
 	n[3]: copy        n[2] => _3   @ bb0[10]: fn test_unique_ref;  _3 = &raw mut (*_4);
-	n[4]: copy        n[0] => _7   @ bb0[18]: fn test_unique_ref;  _7 = &mut (*_9);
+	n[4]: copy        n[0] => _7   @ bb0[18]: fn test_unique_ref;  _7 = &mut (*_8);
 	n[5]: copy        n[4] => _6   @ bb0[19]: fn test_unique_ref;  _6 = &raw mut (*_7);
 	n[6]: value.store n[5] => _5.* @ bb0[20]: fn test_unique_ref;  (*_5) = move _6;
 }
 nodes_that_need_write = [1, 0]
 
 g {
-	n[0]: &_3        _    => _  @ bb0[11]: fn test_unique_ref;  _8 = &raw mut _3;
+	n[0]: &_3        _    => _  @ bb0[11]: fn test_unique_ref;  _9 = &raw mut _3;
 	n[1]: addr.store n[0] => _  @ bb0[10]: fn test_unique_ref;  _3 = &raw mut (*_4);
-	n[2]: copy       n[0] => _5 @ bb0[15]: fn test_unique_ref;  _5 = &mut (*_8);
+	n[2]: copy       n[0] => _5 @ bb0[15]: fn test_unique_ref;  _5 = &mut (*_9);
 	n[3]: addr.store n[2] => _  @ bb0[20]: fn test_unique_ref;  (*_5) = move _6;
 }
 nodes_that_need_write = [3, 2, 1, 0]
