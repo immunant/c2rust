@@ -382,7 +382,7 @@ mod test {
     }
 
     #[test]
-    /// let mut a = Point {x: 0, y:0};
+    /// let mut a = Point {x: 0, y: 0};
     /// let b = &mut a.x;
     /// let c = &mut a.y;
     /// *b = 1;
@@ -397,7 +397,7 @@ mod test {
         // B2     |
         //        C2
 
-        // let mut a = Point {x: 0, y:0};
+        // let mut a = Point {x: 0, y: 0};
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a.x;
         let b11 = mk_field(&mut g, a, 0_u32);
@@ -419,7 +419,7 @@ mod test {
     }
 
     #[test]
-    /// let mut a = Point {x: 0, y:0};
+    /// let mut a = Point {x: 0, y: 0};
     /// let j = &mut a;
     /// let b = &mut j.x;
     /// let c = &mut j.x;
@@ -440,7 +440,7 @@ mod test {
         //        C2  |
         //            D1
 
-        // let mut a = Point {x: 0, y:0};
+        // let mut a = Point {x: 0, y: 0};
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let j = &mut a;
         let j = mk_copy(&mut g, a);
@@ -469,7 +469,7 @@ mod test {
     }
 
     #[test]
-    /// let mut a = Point {x: 0, y:0};
+    /// let mut a = Point {x: 0, y: 0};
     /// let b = &mut a;
     /// let c = &mut a.y;
     /// *c = 2;
@@ -484,7 +484,7 @@ mod test {
         // |      C2
         // B2
 
-        // let mut a = Point {x: 0, y:0};
+        // let mut a = Point {x: 0, y: 0};
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a;
         let b1 = mk_copy(&mut g, a);
@@ -505,7 +505,7 @@ mod test {
     }
 
     #[test]
-    /// let mut a = Point {x: 0, y:0};
+    /// let mut a = Point {x: 0, y: 0};
     /// let b = &mut a;
     /// let c = &mut b.y;
     /// let bb = &mut b.y;
@@ -521,7 +521,7 @@ mod test {
         // |y
         // B2
 
-        // let mut a = Point {x: 0, y:0};
+        // let mut a = Point {x: 0, y: 0};
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a;
         let b1 = mk_copy(&mut g, a);
