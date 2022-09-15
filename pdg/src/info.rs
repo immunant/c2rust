@@ -38,7 +38,7 @@ pub struct FlowInfo {
 }
 
 impl FlowInfo {
-    /// Initializes a [`FlowInfo`] based on a node's [`NodeKind`]
+    /// Initializes a [`FlowInfo`] based on a [`Node`]'s [`NodeKind`]
     fn new(n_id: NodeId, k: &NodeKind) -> FlowInfo {
         FlowInfo {
             load: matches!(*k, NodeKind::LoadAddr | NodeKind::LoadValue).then(|| n_id),
@@ -106,7 +106,7 @@ fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<NodeId>> {
     m
 }
 
-/// Given a list of nodes of the same parent and information about them,
+/// Given a list of [`Node`]s of the same parent and information about them,
 /// determines if any have conflicts with any of the others.
 /// Children which are not a field cannot be live at the same time as any other child.
 /// Children which are a field cannot be live at the same time as any other one of the same field.
