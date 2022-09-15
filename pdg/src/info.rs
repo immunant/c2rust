@@ -816,15 +816,15 @@ mod test {
 
         let pdg = build_pdg(g);
 
-        assert!(info(&pdg, a).unique);
-        assert!(info(&pdg, x1).unique);
-        assert!(info(&pdg, x2).unique);
-        assert!(info(&pdg, x3).unique);
-        assert!(info(&pdg, x4).unique);
-        assert!(info(&pdg, y1).unique);
-        assert!(info(&pdg, y2).unique);
-        assert!(info(&pdg, y3).unique);
-        assert!(info(&pdg, y4).unique);
+        assert!(!info(&pdg, a).unique);
+        assert!(!info(&pdg, x1).unique);
+        assert!(!info(&pdg, x2).unique);
+        assert!(!info(&pdg, x3).unique);
+        assert!(!info(&pdg, x4).unique);
+        assert!(!info(&pdg, y1).unique);
+        assert!(!info(&pdg, y2).unique);
+        assert!(!info(&pdg, y3).unique);
+        assert!(!info(&pdg, y4).unique);
     }
 
     /// ```rust
