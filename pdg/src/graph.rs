@@ -66,20 +66,6 @@ pub enum NodeKind {
     /// Can't have a [`Node::source`].
     Alloc(usize),
 
-    /// Int to pointer conversion.
-    ///
-    /// Details TBD.
-    ///
-    /// Can't have a [`Node::source`].
-    IntToPtr,
-
-    /// The result of loading a value through some other pointer.
-    ///
-    /// Details TBD.
-    ///
-    /// Can't have a [`Node::source`].
-    LoadValue,
-
     /// Heap deallocation.
     ///
     /// The object described by the current [`Graph`] is no longer valid after this point.
@@ -90,12 +76,26 @@ pub enum NodeKind {
     /// Can't be the [`Node::source`] of any other operation.
     Free,
 
+    /// Int to pointer conversion.
+    ///
+    /// Details TBD.
+    ///
+    /// Can't have a [`Node::source`].
+    IntToPtr,
+
     /// Pointer to int conversion.
     ///
     /// Details TBD.
     ///
     /// Can't be the [`Node::source`] of any other operation.
     PtrToInt,
+
+    /// The result of loading a value through some other pointer.
+    ///
+    /// Details TBD.
+    ///
+    /// Can't have a [`Node::source`].
+    LoadValue,
 
     /// The pointer appears as the address of a load operation.
     ///
