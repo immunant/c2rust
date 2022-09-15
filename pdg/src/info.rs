@@ -207,6 +207,10 @@ mod test {
         mk_node(g, NodeKind::Field(field.into()), Some(source))
     }
 
+    fn mk_offset(g: &mut Graph, source: NodeId, i: isize) -> NodeId {
+        mk_node(g, NodeKind::Offset(i), Some(source))
+    }
+
     fn build_pdg(g: Graph) -> Graphs {
         let mut pdg = Graphs::default();
         pdg.graphs.push(g);
@@ -659,5 +663,335 @@ mod test {
         assert!(info(&pdg, x4).unique);
         assert!(info(&pdg, x5).unique);
         assert!(info(&pdg, x6).unique);
+    }
+
+    /// ```rust
+    /// let mut a = (1, 2);
+    /// let x = &mut a.0;
+    /// let y = &mut a.1;
+    /// *x = 1;
+    /// *y = 1;
+    /// *x = 2;
+    /// *y = 2;
+    /// ```
+    ///
+    /// ```
+    /// A
+    /// +------.
+    /// X1     |
+    /// |      Y1
+    /// X2     |
+    /// |      Y2
+    /// X3     |
+    ///        Y3
+    /// ```
+    #[test]
+    fn field_no_conflict() {
+        let mut g = Graph::default();
+
+        // let mut a = (1, (2, 3));
+        let a = mk_addr_of_local(&mut g, 0_u32);
+        // let x = &mut a.1.0;
+        let x1 = mk_field(&mut g, a, 0_u32);
+        // let y = &mut a.1.1;
+        let y1 = mk_field(&mut g, a, 1_u32);
+        // *x = 1;
+        let x2 = mk_store_addr(&mut g, x1);
+        // *y = 1;
+        let y2 = mk_store_addr(&mut g, y1);
+        // *x = 2;
+        let x3 = mk_store_addr(&mut g, x1);
+        // *y = 2;
+        let y3 = mk_store_addr(&mut g, y1);
+
+        let pdg = build_pdg(g);
+
+        assert!(info(&pdg, a).unique);
+        assert!(info(&pdg, x1).unique);
+        assert!(info(&pdg, x2).unique);
+        assert!(info(&pdg, x3).unique);
+        assert!(info(&pdg, y1).unique);
+        assert!(info(&pdg, y2).unique);
+        assert!(info(&pdg, y3).unique);
+    }
+
+    /// ```rust
+    /// let mut a = (1, (2, 3));
+    /// let x = &mut a.1.0;
+    /// let y = &mut a.1.1;
+    /// *x = 1;
+    /// *y = 1;
+    /// *x = 2;
+    /// *y = 2;
+    /// ```
+    ///
+    /// ```
+    /// A
+    /// +------.
+    /// X1     |
+    /// X2     |
+    /// |      Y1
+    /// |      Y2
+    /// X3     |
+    /// |      Y3
+    /// X4     |
+    ///        Y4
+    /// ```
+    #[test]
+    fn nested_field_no_conflict() {
+        let mut g = Graph::default();
+
+        // let mut a = (1, (2, 3));
+        let a = mk_addr_of_local(&mut g, 0_u32);
+        // let x = &mut a.1.0;
+        let x1 = mk_field(&mut g, a, 1_u32);
+        let x2 = mk_field(&mut g, x1, 0_u32);
+        // let y = &mut a.1.1;
+        let y1 = mk_field(&mut g, a, 1_u32);
+        let y2 = mk_field(&mut g, y1, 1_u32);
+        // *x = 1;
+        let x3 = mk_store_addr(&mut g, x2);
+        // *y = 1;
+        let y3 = mk_store_addr(&mut g, y2);
+        // *x = 2;
+        let x4 = mk_store_addr(&mut g, x2);
+        // *y = 2;
+        let y4 = mk_store_addr(&mut g, y2);
+
+        let pdg = build_pdg(g);
+
+        assert!(info(&pdg, a).unique);
+        assert!(info(&pdg, x1).unique);
+        assert!(info(&pdg, x2).unique);
+        assert!(info(&pdg, x3).unique);
+        assert!(info(&pdg, x4).unique);
+        assert!(info(&pdg, y1).unique);
+        assert!(info(&pdg, y2).unique);
+        assert!(info(&pdg, y3).unique);
+        assert!(info(&pdg, y4).unique);
+    }
+
+    /// ```rust
+    /// let mut a = (1, (2, 3));
+    /// let x = &mut a.1.0;
+    /// let y = &mut a.1.0;
+    /// *x = 1;
+    /// *y = 1;
+    /// *x = 2;
+    /// *y = 2;
+    /// ```
+    ///
+    /// ```
+    /// A
+    /// +------.
+    /// X1     |
+    /// X2     |
+    /// |      Y1
+    /// |      Y2
+    /// X3     |
+    /// |      Y3
+    /// X4     |
+    ///        Y4
+    /// ```
+    #[test]
+    fn nested_field_conflict() {
+        let mut g = Graph::default();
+
+        // let mut a = (1, (2, 3));
+        let a = mk_addr_of_local(&mut g, 0_u32);
+        // let x = &mut a.1.0;
+        let x1 = mk_field(&mut g, a, 1_u32);
+        let x2 = mk_field(&mut g, x1, 0_u32);
+        // let y = &mut a.1.0;
+        let y1 = mk_field(&mut g, a, 1_u32);
+        let y2 = mk_field(&mut g, y1, 0_u32);
+        // *x = 1;
+        let x3 = mk_store_addr(&mut g, x2);
+        // *y = 1;
+        let y3 = mk_store_addr(&mut g, y2);
+        // *x = 2;
+        let x4 = mk_store_addr(&mut g, x2);
+        // *y = 2;
+        let y4 = mk_store_addr(&mut g, y2);
+
+        let pdg = build_pdg(g);
+
+        assert!(info(&pdg, a).unique);
+        assert!(info(&pdg, x1).unique);
+        assert!(info(&pdg, x2).unique);
+        assert!(info(&pdg, x3).unique);
+        assert!(info(&pdg, x4).unique);
+        assert!(info(&pdg, y1).unique);
+        assert!(info(&pdg, y2).unique);
+        assert!(info(&pdg, y3).unique);
+        assert!(info(&pdg, y4).unique);
+    }
+
+    /// ```rust
+    /// let mut a = ([1, 2], [3, 4]);
+    /// let x = &mut a.0[0];
+    /// let y = &mut a.0[1];
+    /// *x = 1;
+    /// *y = 1;
+    /// *x = 2;
+    /// *y = 2;
+    /// ```
+    ///
+    /// ```
+    /// A
+    /// +------.
+    /// X1     |
+    /// X2     |
+    /// |      Y1
+    /// |      Y2
+    /// X3     |
+    /// |      Y3
+    /// X4     |
+    ///        Y4
+    /// ```
+    #[test]
+    fn field_offset_conflict() {
+        let mut g = Graph::default();
+
+        // let mut a = ([1, 2], [3, 4]);
+        let a = mk_addr_of_local(&mut g, 0_u32);
+        // let x = &mut a.0[0];
+        let x1 = mk_field(&mut g, a, 1_u32);
+        let x2 = mk_offset(&mut g, x1, 0);
+        // let y = &mut a.0[1];
+        let y1 = mk_field(&mut g, a, 1_u32);
+        let y2 = mk_offset(&mut g, y1, 1);
+        // *x = 1;
+        let x3 = mk_store_addr(&mut g, x2);
+        // *y = 1;
+        let y3 = mk_store_addr(&mut g, y2);
+        // *x = 2;
+        let x4 = mk_store_addr(&mut g, x2);
+        // *y = 2;
+        let y4 = mk_store_addr(&mut g, y2);
+
+        let pdg = build_pdg(g);
+
+        assert!(!info(&pdg, a).unique);
+        assert!(!info(&pdg, x1).unique);
+        assert!(!info(&pdg, x2).unique);
+        assert!(!info(&pdg, x3).unique);
+        assert!(!info(&pdg, x4).unique);
+        assert!(!info(&pdg, y1).unique);
+        assert!(!info(&pdg, y2).unique);
+        assert!(!info(&pdg, y3).unique);
+        assert!(!info(&pdg, y4).unique);
+    }
+
+    /// ```rust
+    /// let mut a = ([1, 2], [3, 4]);
+    /// let x = &mut a.0[0];
+    /// let y = &mut a.1[0];
+    /// *x = 1;
+    /// *y = 1;
+    /// *x = 2;
+    /// *y = 2;
+    /// ```
+    ///
+    /// ```
+    /// A
+    /// +------.
+    /// X1     |
+    /// X2     |
+    /// |      Y1
+    /// |      Y2
+    /// X3     |
+    /// |      Y3
+    /// X4     |
+    ///        Y4
+    /// ```
+    #[test]
+    fn field_offset_no_conflict() {
+        let mut g = Graph::default();
+
+        // let mut a = ([1, 2], [3, 4]);
+        let a = mk_addr_of_local(&mut g, 0_u32);
+        // let x = &mut a.0[0];
+        let x1 = mk_field(&mut g, a, 0_u32);
+        let x2 = mk_offset(&mut g, x1, 0);
+        // let y = &mut a.1[0];
+        let y1 = mk_field(&mut g, a, 1_u32);
+        let y2 = mk_offset(&mut g, y1, 0);
+        // *x = 1;
+        let x3 = mk_store_addr(&mut g, x2);
+        // *y = 1;
+        let y3 = mk_store_addr(&mut g, y2);
+        // *x = 2;
+        let x4 = mk_store_addr(&mut g, x2);
+        // *y = 2;
+        let y4 = mk_store_addr(&mut g, y2);
+
+        let pdg = build_pdg(g);
+
+        assert!(info(&pdg, a).unique);
+        assert!(info(&pdg, x1).unique);
+        assert!(info(&pdg, x2).unique);
+        assert!(info(&pdg, x3).unique);
+        assert!(info(&pdg, x4).unique);
+        assert!(info(&pdg, y1).unique);
+        assert!(info(&pdg, y2).unique);
+        assert!(info(&pdg, y3).unique);
+        assert!(info(&pdg, y4).unique);
+    }
+
+    /// ```rust
+    /// let mut a = [(1, 2)];
+    /// let x = &mut a[0].0;
+    /// let y = &mut a[0].1;
+    /// *x = 1;
+    /// *y = 1;
+    /// *x = 2;
+    /// *y = 2;
+    /// ```
+    ///
+    /// ```
+    /// A
+    /// +------.
+    /// X1     |
+    /// X2     |
+    /// |      Y1
+    /// |      Y2
+    /// X3     |
+    /// |      Y3
+    /// X4     |
+    ///        Y4
+    /// ```
+    #[test]
+    fn offset_field_no_conflict() {
+        let mut g = Graph::default();
+
+        // let mut a = ([1, 2], [3, 4]);
+        let a = mk_addr_of_local(&mut g, 0_u32);
+        // let x = &mut a[0].0;
+        let x1 = mk_offset(&mut g, a, 0);
+        let x2 = mk_field(&mut g, x1, 0_u32);
+        // let y = &mut a[0].1;
+        let y1 = mk_offset(&mut g, a, 0);
+        let y2 = mk_field(&mut g, y1, 1_u32);
+        // *x = 1;
+        let x3 = mk_store_addr(&mut g, x2);
+        // *y = 1;
+        let y3 = mk_store_addr(&mut g, y2);
+        // *x = 2;
+        let x4 = mk_store_addr(&mut g, x2);
+        // *y = 2;
+        let y4 = mk_store_addr(&mut g, y2);
+
+        let pdg = build_pdg(g);
+
+        assert!(info(&pdg, a).unique);
+        assert!(info(&pdg, x1).unique);
+        assert!(info(&pdg, x2).unique);
+        assert!(info(&pdg, x3).unique);
+        assert!(info(&pdg, x4).unique);
+        assert!(info(&pdg, y1).unique);
+        assert!(info(&pdg, y2).unique);
+        assert!(info(&pdg, y3).unique);
+        assert!(info(&pdg, y4).unique);
     }
 }
