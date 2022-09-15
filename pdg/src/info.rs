@@ -221,16 +221,15 @@ mod test {
     }
 
     #[test]
+    /// let mut a = 0;
+    /// let b = &mut a;
+    /// *b = 0;
+    /// let c = &mut a;
+    /// *c = 0;
+    /// *b = 0;
+    /// *c = 0;
     fn unique_interleave() {
         let mut g = Graph::default();
-        // let mut a = 0;   // A
-        // let b = &mut a;  // B1
-        // *b = 0;          // B2
-        // let c = &mut a;  // C1
-        // *c = 0;          // C2
-        // *b = 0;          // B3
-        // *c = 0;          // C3
-        //
         // A
         // +----.
         // B1   |
@@ -239,12 +238,20 @@ mod test {
         // |    +-C2
         // B3   |
         //      C3
+        
+        // let mut a = 0;
         let a = mk_addr_of_local(&mut g, 0_u32);
+        // let b = &mut a;
         let b1 = mk_copy(&mut g, a);
+        // *b = 0;
         let b2 = mk_store_addr(&mut g, b1);
+        // let c = &mut a;
         let c1 = mk_copy(&mut g, a);
+        // *c = 0;
         let c2 = mk_store_addr(&mut g, c1);
+        // *b = 0;
         let b3 = mk_store_addr(&mut g, b1);
+        // *c = 0;
         let c3 = mk_store_addr(&mut g, c1);
 
         let pdg = build_pdg(g);
@@ -292,15 +299,14 @@ mod test {
     }
 
     #[test]
+    /// let mut a = 0;
+    /// let b = &mut a;
+    /// *b = 0;
+    /// let c = &mut *b;
+    /// *c = 0;
+    /// *b = 0;
     fn unique_sub_borrow() {
         let mut g = Graph::default();
-        // let mut a = 0;   // A
-        // let b = &mut a;  // B1
-        // *b = 0;          // B2
-        // let c = &mut *b; // C1
-        // *c = 0;          // C2
-        // *b = 0;          // B3
-        //
         // A
         // |
         // B1
@@ -308,11 +314,18 @@ mod test {
         // +----C1
         // |    +-C2
         // B3
+        
+        // let mut a = 0;
         let a = mk_addr_of_local(&mut g, 0_u32);
+        // let b = &mut a;
         let b1 = mk_copy(&mut g, a);
+        // *b = 0;
         let b2 = mk_store_addr(&mut g, b1);
+        // let c = &mut *b;
         let c1 = mk_copy(&mut g, b1);
+        // *c = 0;
         let c2 = mk_store_addr(&mut g, c1);
+        // *c = 0;
         let b3 = mk_store_addr(&mut g, b1);
 
         let pdg = build_pdg(g);
@@ -325,16 +338,15 @@ mod test {
     }
 
     #[test]
+    /// let mut a = 0;
+    /// let b = &mut a;
+    /// *b = 0;
+    /// let c = &mut *b;
+    /// *c = 0;
+    /// *b = 0;
+    /// *c = 0;
     fn unique_sub_borrow_bad() {
         let mut g = Graph::default();
-        // let mut a = 0;   // A
-        // let b = &mut a;  // B1
-        // *b = 0;          // B2
-        // let c = &mut *b; // C1
-        // *c = 0;          // C2
-        // *b = 0;          // B3
-        // *c = 0;          // C3
-        //
         // A
         // |
         // B1
@@ -343,12 +355,20 @@ mod test {
         // |    +-C2
         // B3   |
         //      C3
+        
+        // let mut a = 0;
         let a = mk_addr_of_local(&mut g, 0_u32);
+        // let b = &mut a;
         let b1 = mk_copy(&mut g, a);
+        // *b = 0;
         let b2 = mk_store_addr(&mut g, b1);
+        // let c = &mut *b;
         let c1 = mk_copy(&mut g, b1);
+        // *c = 0;
         let c2 = mk_store_addr(&mut g, c1);
+        // *b = 0;
         let b3 = mk_store_addr(&mut g, b1);
+        // *c = 0;
         let c3 = mk_store_addr(&mut g, c1);
 
         let pdg = build_pdg(g);
@@ -362,14 +382,13 @@ mod test {
     }
 
     #[test]
+    /// let mut a = Point {x: 0, y:0};
+    /// let b = &mut a.x;
+    /// let c = &mut a.y;
+    /// *b = 1;
+    /// *c = 2;
     fn okay_use_different_fields() {
         let mut g = Graph::default();
-        // let mut a = Point {x: 0, y:0}; // A
-        // let b = &mut a.x;              // B1
-        // let c = &mut a.y;              // C1
-        // *b = 1;                        // B2
-        // *c = 2;                        // C2
-        //
         // A
         // |-------
         // |x     |
@@ -377,12 +396,18 @@ mod test {
         // |      C1
         // B2     |
         //        C2
+        
+        // let mut a = Point {x: 0, y:0};
         let a = mk_addr_of_local(&mut g, 0_u32);
+        // let b = &mut a.x;
         let b11 = mk_field(&mut g, a, 0_u32);
         let b1 = mk_copy(&mut g, b11);
+        // let c = &mut a.y;
         let c11 = mk_field(&mut g, a, 1_u32);
         let c1 = mk_copy(&mut g, c11);
+        // *b = 1;
         let b2 = mk_store_addr(&mut g, b1);
+        // *c = 2;
         let c2 = mk_store_addr(&mut g, c1);
 
         let pdg = build_pdg(g);
@@ -394,15 +419,15 @@ mod test {
     }
 
     #[test]
+    /// let mut a = Point {x: 0, y:0};
+    /// let j = &mut a;
+    /// let b = &mut j.x;
+    /// let c = &mut j.x;
+    /// *b = 1;
+    /// *c = 2;
+    /// *(a.y) = 3;
     fn same_fields_cousins() {
         let mut g = Graph::default();
-        // let mut a = Point {x: 0, y:0}; // A
-        // let j = &mut a;                // J
-        // let b = &mut j.x;              // B1
-        // let c = &mut j.x;              // C1
-        // *b = 1;                        // B2
-        // *c = 2;                        // C2
-        //
         // A
         // |-----------
         // J          |
@@ -414,15 +439,24 @@ mod test {
         // B2     |   |
         //        C2  |
         //            D1
+        
+        // let mut a = Point {x: 0, y:0};
         let a = mk_addr_of_local(&mut g, 0_u32);
+        // let j = &mut a;
         let j = mk_copy(&mut g, a);
+        // let b = &mut j.x;
         let b11 = mk_field(&mut g, j, 0_u32);
         let b1 = mk_copy(&mut g, b11);
+        // let c = &mut j.x;
         let c11 = mk_field(&mut g, j, 0_u32);
         let c1 = mk_copy(&mut g, c11);
+        // *b = 1;
         let b2 = mk_store_addr(&mut g, b1);
+        // *c = 2;
         let c2 = mk_store_addr(&mut g, c1);
+        // *(a.y) = 3;
         let d1 = mk_field(&mut g, a, 1_u32);
+        let d2 = mk_store_addr(&mut g, d1);
 
         let pdg = build_pdg(g);
         assert!(info(&pdg, a).unique);
@@ -431,18 +465,17 @@ mod test {
         assert!(!info(&pdg, b2).unique);
         assert!(!info(&pdg, c1).unique);
         assert!(!info(&pdg, c2).unique);
-        assert!(info(&pdg, d1).unique);
+        assert!(info(&pdg, d2).unique);
     }
 
     #[test]
+    /// let mut a = Point {x: 0, y:0};
+    /// let b = &mut a;
+    /// let c = &mut a.y;
+    /// *c = 2;
+    /// *b = 1;
     fn field_vs_raw() {
         let mut g = Graph::default();
-        // let mut a = Point {x: 0, y:0}; // A
-        // let b = &mut a;                // B1
-        // let c = &mut a.y;              // C1
-        // *b = 1;                        // B2
-        // *c = 2;                        // C2
-        //
         // A
         // |-------
         // |      |
@@ -450,11 +483,17 @@ mod test {
         // |      C1
         // |      C2
         // B2
+
+        // let mut a = Point {x: 0, y:0};
         let a = mk_addr_of_local(&mut g, 0_u32);
+        // let b = &mut a;
         let b1 = mk_copy(&mut g, a);
+        // let c = &mut a.y;
         let c11 = mk_field(&mut g, a, 1_u32);
         let c1 = mk_copy(&mut g, c11);
+        // *c = 2;
         let c2 = mk_store_addr(&mut g, c1);
+        // *b = 1;
         let b2 = mk_store_addr(&mut g, b1);
 
         let pdg = build_pdg(g);
@@ -466,15 +505,14 @@ mod test {
     }
 
     #[test]
+    /// let mut a = Point {x: 0, y:0};
+    /// let b = &mut a;
+    /// let c = &mut b.y;
+    /// let bb = &mut b.y;
+    /// *c = 2;
+    /// *bb = 1;
     fn fields_different_levels() {
         let mut g = Graph::default();
-        // let mut a = Point {x: 0, y:0}; // A
-        // let b = &mut a;                // B1
-        // let c = &mut b.y;              // C1
-        // let bb = &mut b.y;             // B2
-        // *b = 1;                        // B3
-        // *c = 2;                        // C
-        //
         // A
         // |-------
         // |      |
@@ -483,11 +521,18 @@ mod test {
         // |y
         // B2
 
+        // let mut a = Point {x: 0, y:0};
         let a = mk_addr_of_local(&mut g, 0_u32);
+        // let b = &mut a;
         let b1 = mk_copy(&mut g, a);
+        // let c = &mut b.y;
         let c1 = mk_field(&mut g, a, 1_u32);
-        let b2 = mk_field(&mut g, b1, 1_u32);
+        // let bb = &mut b.y;
+        let bb = mk_field(&mut g, b1, 1_u32);
+        // *c = 2;
         let c2 = mk_store_addr(&mut g, c1);
+        // *bb = 1;
+        let b2 = mk_store_addr(&mut g, bb);
 
         let pdg = build_pdg(g);
         assert!(!info(&pdg, a).unique);
@@ -499,39 +544,52 @@ mod test {
     }
 
     #[test]
+    /// let mut a = ColorPoint {x: 0, y: 0, z: Color{ r: 100, g: 100, b: 100}};
+    /// let b = &mut a.x;
+    /// let c = &mut a.y;
+    /// a.z.r = 200;
+    /// *b = 4;
+    /// *c = 2;
+    /// let d = &mut a;
+    /// *d = ColorPoint {x: 0, y: 0, z: Color {r: 20, g:200, b: 20}};
+    /// let e = &mut a.z;
+    /// let f = &mut e.g;
+    /// let g = &mut e.g;
+    /// *f = 3;
+    /// a.z.r = 100;
     fn lots_of_siblings() {
         let mut g = Graph::default();
-        // let mut a = ColorPoint {x: 0, y: 0, z: Color{ r: 100, g: 100, b: 100}};   //A1
-        // let b = &mut a.x;                                                         //B1
-        // let c = &mut a.y;                                                         //C1
-        // a.z.r = 200;                                                              //A2(X1-3)
-        // *b = 4;                                                                   //B2
-        // *c = 2;                                                                   //C2
-        // let d = &mut a;                                                           //D1
-        // *d = ColorPoint {x: 0, y: 0, z: Color {r: 20, g:200, b: 20}};             //D2
-        // let e = &mut a.z;                                                         //E
-        // let f = &mut e.g;                                                         //F1
-        // let g = &mut e.g;                                                         //G
-        // *f = 3;                                                                   //F2
-        // a.z.r = 100;                                                              //A3(X4-6)
 
         let (x, y, z) = (0_u32, 1_u32, 2_u32);
         let (red, green, _blue) = (0_u32, 1_u32, 2_u32);
 
+        // let mut a = ColorPoint {x: 0, y: 0, z: Color{ r: 100, g: 100, b: 100}};
         let a = mk_addr_of_local(&mut g, 0_u32);
+        // let b = &mut a.x;
         let b1 = mk_field(&mut g, a, x);
+        // let c = &mut a.y;
         let c1 = mk_field(&mut g, a, y);
+        // a.z.r = 200;
         let x1 = mk_field(&mut g, a, z);
         let x2 = mk_field(&mut g, x1, red);
         let x3 = mk_store_addr(&mut g, x2);
+        // *b = 4;
         let b2 = mk_store_addr(&mut g, b1);
+        // *c = 2;
         let c2 = mk_store_addr(&mut g, c1);
+        // let d = &mut a;
         let d1 = mk_copy(&mut g, a);
+        // *d = ColorPoint {x: 0, y: 0, z: Color {r: 20, g:200, b: 20}};
         let d2 = mk_store_addr(&mut g, d1);
+        // let e = &mut a.z;
         let e = mk_field(&mut g, a, z);
+        // let f = &mut e.g;
         let f1 = mk_field(&mut g, e, green);
+        // let g = &mut e.g;
         let gg = mk_field(&mut g, e, green);
+        // *f = 3;
         let f2 = mk_store_addr(&mut g, f1);
+        // a.z.r = 100;
         let x4 = mk_field(&mut g, a, z);
         let x5 = mk_field(&mut g, x4, green);
         let x6 = mk_store_addr(&mut g, x5);
