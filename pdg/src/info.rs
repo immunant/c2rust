@@ -220,7 +220,6 @@ mod test {
         pdg.graphs[0_u32.into()].nodes[id].info.as_ref().unwrap()
     }
 
-    #[test]
     /// let mut a = 0;
     /// let b = &mut a;
     /// *b = 0;
@@ -228,6 +227,7 @@ mod test {
     /// *c = 0;
     /// *b = 0;
     /// *c = 0;
+    #[test]
     fn unique_interleave() {
         let mut g = Graph::default();
         // A
@@ -298,13 +298,13 @@ mod test {
         assert!(!info(&pdg, c2).unique);
     }
 
-    #[test]
     /// let mut a = 0;
     /// let b = &mut a;
     /// *b = 0;
     /// let c = &mut *b;
     /// *c = 0;
     /// *b = 0;
+    #[test]
     fn unique_sub_borrow() {
         let mut g = Graph::default();
         // A
@@ -337,7 +337,6 @@ mod test {
         assert!(info(&pdg, c2).unique);
     }
 
-    #[test]
     /// let mut a = 0;
     /// let b = &mut a;
     /// *b = 0;
@@ -345,6 +344,7 @@ mod test {
     /// *c = 0;
     /// *b = 0;
     /// *c = 0;
+    #[test]
     fn unique_sub_borrow_bad() {
         let mut g = Graph::default();
         // A
@@ -381,12 +381,12 @@ mod test {
         assert!(!info(&pdg, c3).unique);
     }
 
-    #[test]
     /// let mut a = Point {x: 0, y: 0};
     /// let b = &mut a.x;
     /// let c = &mut a.y;
     /// *b = 1;
     /// *c = 2;
+    #[test]
     fn okay_use_different_fields() {
         let mut g = Graph::default();
         // A
@@ -418,7 +418,6 @@ mod test {
         assert!(info(&pdg, c2).unique);
     }
 
-    #[test]
     /// let mut a = Point {x: 0, y: 0};
     /// let j = &mut a;
     /// let b = &mut j.x;
@@ -426,6 +425,7 @@ mod test {
     /// *b = 1;
     /// *c = 2;
     /// *(a.y) = 3;
+    #[test]
     fn same_fields_cousins() {
         let mut g = Graph::default();
         // A
@@ -468,12 +468,12 @@ mod test {
         assert!(info(&pdg, d2).unique);
     }
 
-    #[test]
     /// let mut a = Point {x: 0, y: 0};
     /// let b = &mut a;
     /// let c = &mut a.y;
     /// *c = 2;
     /// *b = 1;
+    #[test]
     fn field_vs_raw() {
         let mut g = Graph::default();
         // A
@@ -504,13 +504,13 @@ mod test {
         assert!(!info(&pdg, c2).unique);
     }
 
-    #[test]
     /// let mut a = Point {x: 0, y: 0};
     /// let b = &mut a;
     /// let c = &mut b.y;
     /// let bb = &mut b.y;
     /// *c = 2;
     /// *bb = 1;
+    #[test]
     fn fields_different_levels() {
         let mut g = Graph::default();
         // A
@@ -543,7 +543,6 @@ mod test {
         assert!(!info(&pdg, b2).unique);
     }
 
-    #[test]
     /// let mut a = ColorPoint {x: 0, y: 0, z: Color{ r: 100, g: 100, b: 100}};
     /// let b = &mut a.x;
     /// let c = &mut a.y;
@@ -557,6 +556,7 @@ mod test {
     /// let g = &mut e.g;
     /// *f = 3;
     /// a.z.r = 100;
+    #[test]
     fn lots_of_siblings() {
         let mut g = Graph::default();
 
