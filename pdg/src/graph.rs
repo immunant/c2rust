@@ -34,7 +34,6 @@ pub enum NodeKind {
     /// We use this to detect when two pointers always refer to different indices.
     Offset(isize),
 
-    // Operations that can't have a `source`.
     /// Get the address of a [`Local`].
     ///
     /// For address-taken [`Local`]s, the root node is an [`AddrOfLocal`](Self::AddrOfLocal)
@@ -46,6 +45,8 @@ pub enum NodeKind {
     /// This allows us to track uses of the [`Local`]
     /// that interfere with an existing reference,
     /// even when those uses don't go through a pointer.
+    ///
+    /// Can't have a [`Node::source`].
     AddrOfLocal(Local),
 
     /// Get the address of a static.
@@ -53,47 +54,64 @@ pub enum NodeKind {
     /// These are treated the same as [`Local`]s,
     /// with an [`_AddressOfStatic`](Self::_AddrOfStatic) attributed to
     /// the first [`Statement`](rustc_middle::mir::Statement).
+    ///
+    /// Can't have a [`Node::source`].
     _AddrOfStatic(DefPathHash),
 
     /// Heap allocation.
     ///
     /// The [`usize`] is the number of array elements allocated
     /// For allocations of a single object, this value is 1.
+    ///
+    /// Can't have a [`Node::source`].
     Alloc(usize),
 
     /// Int to pointer conversion.
     ///
     /// Details TBD.
+    ///
+    /// Can't have a [`Node::source`].
     IntToPtr,
 
     /// The result of loading a value through some other pointer.
     ///
     /// Details TBD.
+    ///
+    /// Can't have a [`Node::source`].
     LoadValue,
 
-    // Operations that can't be the `source` of any other operation.
     /// Heap deallocation.
     ///
     /// The object described by the current [`Graph`] is no longer valid after this point.
     /// Correct programs will only [`Free`](Self::Free) pointers produced by [`Alloc`](Self::Alloc),
     /// and will no longer [`LoadAddr`](Self::LoadAddr) or [`StoreAddr`](Self::StoreAddr)
     /// any pointers derived from that [`Alloc`](Self::Alloc) afterward.
+    ///
+    /// Can't be the [`Node::source`] of any other operation.
     Free,
 
     /// Pointer to int conversion.
     ///
     /// Details TBD.
+    ///
+    /// Can't be the [`Node::source`] of any other operation.
     PtrToInt,
 
     /// The pointer appears as the address of a load operation.
+    ///
+    /// Can't be the [`Node::source`] of any other operation.
     LoadAddr,
 
     /// The pointer appears as the address of a store operation.
+    ///
+    /// Can't be the [`Node::source`] of any other operation.
     StoreAddr,
 
     /// The pointer is stored through some other pointer.
     ///
     /// Details TBD.
+    ///
+    /// Can't be the [`Node::source`] of any other operation.
     StoreValue,
 }
 
