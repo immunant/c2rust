@@ -15,6 +15,8 @@ use std::fmt::{self, Debug, Display, Formatter};
 #[derive(Hash, Clone, PartialEq, Eq, Debug)]
 pub struct NodeInfo {
     flows_to: FlowInfo,
+
+    /// Whether the [`Node`] can be used as a &mut
     unique: bool,
 }
 
@@ -36,7 +38,7 @@ pub struct FlowInfo {
 }
 
 impl FlowInfo {
-    ///Initializes a [`FlowInfo`] based on a node's [`NodeKind`]
+    /// Initializes a [`FlowInfo`] based on a node's [`NodeKind`]
     fn new(n_id: NodeId, k: &NodeKind) -> FlowInfo {
         FlowInfo {
             load: matches!(*k, NodeKind::LoadAddr | NodeKind::LoadValue).then(|| n_id),
@@ -118,10 +120,10 @@ fn check_children_conflict(
     for id in children.get(n_id).unwrap() {
         let sib_node: &Node = g.nodes.get(*id).unwrap();
         let my_last_desc = descs.get(&id).unwrap().clone();
-        //if the first below matches, then two siblings, neither a field, conflict
-        //if the second matches, then two siblings of the same field conflict
+        // if the first below matches, then two siblings, neither a field, conflict
+        // if the second matches, then two siblings of the same field conflict
         if matches!(max_descs.get(&None), Some(max_desc) if max_desc > id)
-            || matches!(sib_node.kind,NodeKind::Field(f) if matches!(max_descs.get(&Some(f)),Some(max_desc_field) if max_desc_field > id))
+            || matches!(sib_node.kind, NodeKind::Field(f) if matches!(max_descs.get(&Some(f)), Some(max_desc_field) if max_desc_field > id))
         {
             return true;
         }
@@ -142,6 +144,11 @@ fn set_uniqueness(g: &mut Graph) {
     let last_descs = get_last_desc(g);
     let mut nonuniqueness: HashSet<NodeId> = HashSet::new();
     for (n_id, node) in g.nodes.iter_enumerated() {
+        // If a node is not unique, none of its descendents can be unique.
+        // If any of a node's children conflict with each other, it is not unique.
+        // Because we traverse the graph visiting all parents before their children,
+        // just checking the immediate parent's uniqueness status is sufficient to guarantee the
+        // first condition.
         if matches!(node.source, Some(p_id) if nonuniqueness.contains(&p_id))
             || check_children_conflict(g, &n_id, &children, &last_descs)
         {
