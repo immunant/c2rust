@@ -941,13 +941,20 @@ mod test {
 
     /// ```rust
     /// let mut a = [(1, 2)];
-    /// let x = &mut a[0].0;
-    /// let y = &mut a[0].1;
+    /// let p = &mut a;
+    /// let x = &mut (*p)[0].0;
+    /// let y = &mut (*p)[0].1;
     /// *x = 1;
     /// *y = 1;
     /// *x = 2;
     /// *y = 2;
     /// ```
+    ///
+    /// Note that this code is accepted by rustc, but we'd like to reject it because some of the
+    /// transformations we plan to do will convert it to a form that rustc will reject.
+    /// Specifically, if `p` were a function argument and we changed it from `&mut [_]` to
+    /// something like `&mut Vec<_>` or a custom smart pointer type, rustc would reject the
+    /// modified code.
     ///
     /// ```
     /// A
@@ -962,16 +969,17 @@ mod test {
     ///        Y4
     /// ```
     #[test]
-    fn offset_field_no_conflict() {
+    fn offset_field_conflict() {
         let mut g = Graph::default();
 
         // let mut a = ([1, 2], [3, 4]);
-        let a = mk_addr_of_local(&mut g, 0_u32);
-        // let x = &mut a[0].0;
-        let x1 = mk_offset(&mut g, a, 0);
+        // let p = &mut a;
+        let p = mk_addr_of_local(&mut g, 0_u32);
+        // let x = &mut (*p)[0].0;
+        let x1 = mk_offset(&mut g, p, 0);
         let x2 = mk_field(&mut g, x1, 0_u32);
-        // let y = &mut a[0].1;
-        let y1 = mk_offset(&mut g, a, 0);
+        // let y = &mut (*p)[0].1;
+        let y1 = mk_offset(&mut g, p, 0);
         let y2 = mk_field(&mut g, y1, 1_u32);
         // *x = 1;
         let x3 = mk_store_addr(&mut g, x2);
@@ -984,14 +992,14 @@ mod test {
 
         let pdg = build_pdg(g);
 
-        assert!(info(&pdg, a).unique);
-        assert!(info(&pdg, x1).unique);
-        assert!(info(&pdg, x2).unique);
-        assert!(info(&pdg, x3).unique);
-        assert!(info(&pdg, x4).unique);
-        assert!(info(&pdg, y1).unique);
-        assert!(info(&pdg, y2).unique);
-        assert!(info(&pdg, y3).unique);
-        assert!(info(&pdg, y4).unique);
+        assert!(!info(&pdg, p).unique);
+        assert!(!info(&pdg, x1).unique);
+        assert!(!info(&pdg, x2).unique);
+        assert!(!info(&pdg, x3).unique);
+        assert!(!info(&pdg, x4).unique);
+        assert!(!info(&pdg, y1).unique);
+        assert!(!info(&pdg, y2).unique);
+        assert!(!info(&pdg, y3).unique);
+        assert!(!info(&pdg, y4).unique);
     }
 }
