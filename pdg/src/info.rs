@@ -227,17 +227,18 @@ mod test {
     /// *c = 0;
     /// *b = 0;
     /// *c = 0;
+    ///
+    /// A
+    /// +----.
+    /// B1   |
+    /// +-B2 |
+    /// |    C1
+    /// |    +-C2
+    /// B3   |
+    ///      C3
     #[test]
     fn unique_interleave() {
         let mut g = Graph::default();
-        // A
-        // +----.
-        // B1   |
-        // +-B2 |
-        // |    C1
-        // |    +-C2
-        // B3   |
-        //      C3
 
         // let mut a = 0;
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -271,16 +272,17 @@ mod test {
     /// let c = &mut a;  // C1
     /// *c = 0;          // C2
     /// *b = 0;          // B3
+    ///
+    /// A
+    /// +----.
+    /// B1   |
+    /// +-B2 |
+    /// |    C1
+    /// |    +-C2
+    /// B3
     #[test]
     fn unique_interleave_onesided() {
         let mut g = Graph::default();
-        // A
-        // +----.
-        // B1   |
-        // +-B2 |
-        // |    C1
-        // |    +-C2
-        // B3
 
         // let mut a = 0;   // A
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -310,16 +312,17 @@ mod test {
     /// let c = &mut *b;
     /// *c = 0;
     /// *b = 0;
+    ///
+    /// A
+    /// |
+    /// B1
+    /// +-B2
+    /// +----C1
+    /// |    +-C2
+    /// B3
     #[test]
     fn unique_sub_borrow() {
         let mut g = Graph::default();
-        // A
-        // |
-        // B1
-        // +-B2
-        // +----C1
-        // |    +-C2
-        // B3
 
         // let mut a = 0;
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -350,17 +353,18 @@ mod test {
     /// *c = 0;
     /// *b = 0;
     /// *c = 0;
+    ///
+    /// A
+    /// |
+    /// B1
+    /// +-B2
+    /// +----C1
+    /// |    +-C2
+    /// B3   |
+    ///      C3
     #[test]
     fn unique_sub_borrow_bad() {
         let mut g = Graph::default();
-        // A
-        // |
-        // B1
-        // +-B2
-        // +----C1
-        // |    +-C2
-        // B3   |
-        //      C3
 
         // let mut a = 0;
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -392,16 +396,17 @@ mod test {
     /// let c = &mut a.y;
     /// *b = 1;
     /// *c = 2;
+    ///
+    /// A
+    /// |-------
+    /// |x     |
+    /// B1     |y
+    /// |      C1
+    /// B2     |
+    ///        C2
     #[test]
     fn okay_use_different_fields() {
         let mut g = Graph::default();
-        // A
-        // |-------
-        // |x     |
-        // B1     |y
-        // |      C1
-        // B2     |
-        //        C2
 
         // let mut a = Point {x: 0, y: 0};
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -431,20 +436,21 @@ mod test {
     /// *b = 1;
     /// *c = 2;
     /// *(a.y) = 3;
+    ///
+    /// A
+    /// |-----------
+    /// J          |
+    /// |-------   |
+    /// |x     |   |
+    /// B1     |x  |
+    /// |      C1  |y
+    /// |      |   |
+    /// B2     |   |
+    ///        C2  |
+    ///            D1
     #[test]
     fn same_fields_cousins() {
         let mut g = Graph::default();
-        // A
-        // |-----------
-        // J          |
-        // |-------   |
-        // |x     |   |
-        // B1     |x  |
-        // |      C1  |y
-        // |      |   |
-        // B2     |   |
-        //        C2  |
-        //            D1
 
         // let mut a = Point {x: 0, y: 0};
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -479,16 +485,17 @@ mod test {
     /// let c = &mut a.y;
     /// *c = 2;
     /// *b = 1;
+    ///
+    /// A
+    /// |-------
+    /// |      |
+    /// B1     |y
+    /// |      C1
+    /// |      C2
+    /// B2
     #[test]
     fn field_vs_raw() {
         let mut g = Graph::default();
-        // A
-        // |-------
-        // |      |
-        // B1     |y
-        // |      C1
-        // |      C2
-        // B2
 
         // let mut a = Point {x: 0, y: 0};
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -516,16 +523,17 @@ mod test {
     /// let bb = &mut b.y;
     /// *c = 2;
     /// *bb = 1;
+    ///
+    /// A
+    /// |-------
+    /// |      |
+    /// B1     |y
+    /// |      C1
+    /// |y
+    /// B2
     #[test]
     fn fields_different_levels() {
         let mut g = Graph::default();
-        // A
-        // |-------
-        // |      |
-        // B1     |y
-        // |      C1
-        // |y
-        // B2
 
         // let mut a = Point {x: 0, y: 0};
         let a = mk_addr_of_local(&mut g, 0_u32);
