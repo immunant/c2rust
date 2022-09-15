@@ -28,7 +28,7 @@ use builder::{construct_pdg, read_event_log};
 use c2rust_analysis_rt::{events::Event, metadata::Metadata};
 use clap::{Parser, ValueEnum};
 use color_eyre::eyre;
-use graph::Graphs;
+use graph::{Graphs, NodeKind};
 use info::add_info;
 use std::{
     fmt::{self, Display, Formatter},
@@ -54,6 +54,7 @@ impl Display for ToPrint {
     }
 }
 
+#[derive(Clone)]
 pub struct Pdg {
     pub events: Vec<Event>,
     pub metadata: Metadata,
@@ -73,15 +74,23 @@ impl Pdg {
     }
 
     pub fn repr<'a>(&'a self, to_print: &'a [ToPrint]) -> PdgRepr<'a> {
+        let mut prettied_pdg = self.clone();
+        for graph in &mut prettied_pdg.graphs.graphs {
+            for node in &mut graph.nodes {
+                if let NodeKind::AddrOfLocal(..) = node.kind {
+                    node.dest = None;
+                }
+            }
+        }
         PdgRepr {
-            pdg: self,
+            pdg: prettied_pdg,
             to_print,
         }
     }
 }
 
 pub struct PdgRepr<'a> {
-    pub pdg: &'a Pdg,
+    pub pdg: Pdg,
     pub to_print: &'a [ToPrint],
 }
 

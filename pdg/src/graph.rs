@@ -255,7 +255,7 @@ impl Display for GraphId {
 }
 
 /// A collection of graphs describing the handling of one or more objects within the program.
-#[derive(Debug, Default, Eq, PartialEq)]
+#[derive(Debug, Default, Eq, PartialEq, Clone)]
 pub struct Graphs {
     /// The graphs.  Each graph describes one object, or one group of objects that were all handled
     /// identically.

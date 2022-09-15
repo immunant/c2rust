@@ -222,7 +222,7 @@ impl Hash for EventMetadata {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct MirLoc {
     pub func: Func,
     pub basic_block_idx: usize,
