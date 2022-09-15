@@ -15,7 +15,7 @@ use crate::util::ShortOption;
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum NodeKind {
-    /// A [`Copy`](Self::Copy) from one [`Local`] to another.
+    /// A copy from one [`Local`] to another.
     ///
     /// This also covers casts such as `&mut T` to `&T` or `&T` to `*const T`
     /// that don't change the type or value of the pointer.
