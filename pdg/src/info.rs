@@ -238,7 +238,7 @@ mod test {
         // |    +-C2
         // B3   |
         //      C3
-        
+
         // let mut a = 0;
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a;
@@ -314,7 +314,7 @@ mod test {
         // +----C1
         // |    +-C2
         // B3
-        
+
         // let mut a = 0;
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a;
@@ -355,7 +355,7 @@ mod test {
         // |    +-C2
         // B3   |
         //      C3
-        
+
         // let mut a = 0;
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a;
@@ -396,7 +396,7 @@ mod test {
         // |      C1
         // B2     |
         //        C2
-        
+
         // let mut a = Point {x: 0, y:0};
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a.x;
@@ -439,7 +439,7 @@ mod test {
         // B2     |   |
         //        C2  |
         //            D1
-        
+
         // let mut a = Point {x: 0, y:0};
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let j = &mut a;
