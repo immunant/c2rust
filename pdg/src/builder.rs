@@ -24,7 +24,6 @@ pub fn read_metadata(path: &Path) -> eyre::Result<Metadata> {
 
 pub trait EventKindExt {
     fn ptr(&self, metadata: &EventMetadata) -> Option<Pointer>;
-    fn has_parent(&self) -> bool;
     fn parent(&self, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)>;
     fn to_node_kind(&self) -> Option<NodeKind>;
 }
@@ -40,6 +39,7 @@ impl EventKindExt for EventKind {
             Ret(ptr) => ptr,
             LoadAddr(ptr) => ptr,
             StoreAddr(ptr) => ptr,
+            StoreAddrTaken(ptr) => ptr,
             LoadValue(ptr) => ptr,
             StoreValue(ptr) => ptr,
             CopyRef => return None, // FIXME
@@ -53,16 +53,12 @@ impl EventKindExt for EventKind {
         })
     }
 
-    fn has_parent(&self) -> bool {
-        use EventKind::*;
-        !matches!(
-            self,
-            Realloc { new_ptr: _, .. } | Alloc { ptr: _, .. } | AddrOfLocal(_, _) | Done
-        )
-    }
-
     fn parent(&self, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)> {
-        self.has_parent().then_some(obj)
+        use EventKind::*;
+        match self {
+            Realloc { .. } | Alloc { .. } | AddrOfLocal(..) | Done => None,
+            _ => Some(obj),
+        }
     }
 
     fn to_node_kind(&self) -> Option<NodeKind> {
@@ -75,6 +71,7 @@ impl EventKindExt for EventKind {
             Field(_, field) => NodeKind::Field(field.into()),
             LoadAddr(..) => NodeKind::LoadAddr,
             StoreAddr(..) => NodeKind::StoreAddr,
+            StoreAddrTaken(..) => NodeKind::StoreAddr,
             LoadValue(..) => NodeKind::LoadValue,
             StoreValue(..) => NodeKind::StoreValue,
             AddrOfLocal(_, local) => NodeKind::AddrOfLocal(local.as_u32().into()),
@@ -101,7 +98,7 @@ fn update_provenance(
         CopyPtr(ptr) => {
             // only insert if not already there
             if let Err(..) = provenances.try_insert(ptr, mapping) {
-                log::warn!("0x{:x} doesn't have a source", ptr);
+                log::warn!("0x{:x} already has a source", ptr);
             }
         }
         Realloc { new_ptr, .. } => {

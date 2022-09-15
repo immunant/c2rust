@@ -55,6 +55,8 @@ pub enum EventKind {
     /// The pointer appears as the address of a store operation.
     StoreAddr(Pointer),
 
+    StoreAddrTaken(Pointer),
+
     /// The pointer that appears as the address result of addr_of(Local)
     AddrOfLocal(Pointer, Local),
 
@@ -92,6 +94,7 @@ impl Debug for EventKind {
             Done => write!(f, "done"),
             LoadAddr(ptr) => write!(f, "load(0x{:x})", ptr),
             StoreAddr(ptr) => write!(f, "store(0x{:x})", ptr),
+            StoreAddrTaken(ptr) => write!(f, "store(0x{:x})", ptr),
             CopyRef => write!(f, "copy_ref"),
             AddrOfLocal(ptr, _) => write!(f, "addr_of_local = 0x{:x}", ptr),
             ToInt(ptr) => write!(f, "to_int(0x{:x})", ptr),

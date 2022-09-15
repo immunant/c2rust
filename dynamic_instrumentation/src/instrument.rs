@@ -343,6 +343,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
         let load_value_fn = self.hooks().find("load_value");
         let store_value_fn = self.hooks().find("store_value");
         let store_fn = self.hooks().find("ptr_store");
+        let store_addr_taken_fn = self.hooks().find("ptr_store_addr_taken");
         let load_fn = self.hooks().find("ptr_load");
 
         let dest = *dest;
@@ -363,6 +364,24 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
             PlaceContext::MutatingUse(MutatingUseContext::Store),
             location,
         );
+
+        match self.addr_taken_local_substitutions.get(&dest.local) {
+            Some(address) if dest.projection.is_empty() => {
+                let addr_of_local = Place::from(*address);
+                self.loc(
+                    location,
+                    location
+                        .successor_within_block() // to ensure `dest` is in scope
+                        .successor_within_block() // to be placed after address-taking statement
+                        .successor_within_block(), // to be placed after address-of-local instrumentation
+                    store_addr_taken_fn,
+                )
+                .arg_addr_of(dest)
+                .source(&addr_of_local)
+                .add_to(self);
+            }
+            _ => (),
+        }
 
         let mut add_load_instr = |p: &Place<'tcx>| {
             self.loc(location, location, load_fn)
@@ -642,7 +661,8 @@ fn instrument_body<'a, 'tcx>(
     }
 
     // collect instrumentation points
-    let mut collector = CollectInstrumentationPoints::new(tcx, hooks, body);
+    let mut collector =
+        CollectInstrumentationPoints::new(tcx, hooks, body, local_rewriter.local_substitute);
     collector.visit_body(body);
     let points = collector.into_instrumentation_points();
 

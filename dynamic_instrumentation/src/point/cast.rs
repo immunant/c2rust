@@ -8,10 +8,7 @@ use rustc_middle::{
 };
 use rustc_span::DUMMY_SP;
 
-use crate::{
-    arg::{ArgKind, InstrumentationArg},
-    mir_utils::remove_outer_deref,
-};
+use crate::arg::{ArgKind, InstrumentationArg};
 
 /// Cast an argument from pointer to `usize`, if needed.
 ///

@@ -73,18 +73,23 @@ pub struct CollectInstrumentationPoints<'a, 'tcx: 'a> {
     body: &'a Body<'tcx>,
     instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
     assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
-    addr_taken_local_substitutions: HashMap<Local, Local>,
+    pub addr_taken_local_substitutions: HashMap<Local, Local>,
 }
 
 impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>, hooks: Hooks<'tcx>, body: &'a Body<'tcx>) -> Self {
+    pub fn new(
+        tcx: TyCtxt<'tcx>,
+        hooks: Hooks<'tcx>,
+        body: &'a Body<'tcx>,
+        addr_taken_local_substitutions: HashMap<Local, Local>,
+    ) -> Self {
         Self {
             tcx,
             hooks,
             body,
             instrumentation_points: Default::default(),
             assignment: Default::default(),
-            addr_taken_local_substitutions: Default::default(),
+            addr_taken_local_substitutions,
         }
     }
 
