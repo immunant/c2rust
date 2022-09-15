@@ -281,11 +281,18 @@ mod test {
         // |    C1
         // |    +-C2
         // B3
+
+        // let mut a = 0;   // A
         let a = mk_addr_of_local(&mut g, 0_u32);
+        // let b = &mut a;  // B1
         let b1 = mk_copy(&mut g, a);
+        // *b = 0;          // B2
         let b2 = mk_store_addr(&mut g, b1);
+        // let c = &mut a;  // C1
         let c1 = mk_copy(&mut g, a);
+        // *c = 0;          // C2
         let c2 = mk_store_addr(&mut g, c1);
+        // *b = 0;          // B3
         let b3 = mk_store_addr(&mut g, b1);
 
         let pdg = build_pdg(g);
