@@ -14,7 +14,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 pub struct NodeInfo {
     flows_to: FlowInfo,
 
-    /// Whether the [`Node`] can be used as a &mut
+    /// Whether the [`Node`] can be used as a `&mut`.
     unique: bool,
 }
 
