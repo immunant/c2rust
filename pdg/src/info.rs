@@ -408,7 +408,7 @@ mod test {
     }
 
     /// ```rust
-    /// let mut a = Point {x: 0, y: 0};
+    /// let mut a = Point { x: 0, y: 0 };
     /// let b = &mut a.x;
     /// let c = &mut a.y;
     /// *b = 1;
@@ -428,7 +428,7 @@ mod test {
     fn okay_use_different_fields() {
         let mut g = Graph::default();
 
-        // let mut a = Point {x: 0, y: 0};
+        // let mut a = Point { x: 0, y: 0 };
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a.x;
         let b11 = mk_field(&mut g, a, 0_u32);
@@ -450,7 +450,7 @@ mod test {
     }
 
     /// ```rust
-    /// let mut a = Point {x: 0, y: 0};
+    /// let mut a = Point { x: 0, y: 0 };
     /// let j = &mut a;
     /// let b = &mut j.x;
     /// let c = &mut j.x;
@@ -476,7 +476,7 @@ mod test {
     fn same_fields_cousins() {
         let mut g = Graph::default();
 
-        // let mut a = Point {x: 0, y: 0};
+        // let mut a = Point { x: 0, y: 0 };
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let j = &mut a;
         let j = mk_copy(&mut g, a);
@@ -505,7 +505,7 @@ mod test {
     }
 
     /// ```rust
-    /// let mut a = Point {x: 0, y: 0};
+    /// let mut a = Point { x: 0, y: 0 };
     /// let b = &mut a;
     /// let c = &mut a.y;
     /// *c = 2;
@@ -525,7 +525,7 @@ mod test {
     fn field_vs_raw() {
         let mut g = Graph::default();
 
-        // let mut a = Point {x: 0, y: 0};
+        // let mut a = Point { x: 0, y: 0 };
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a;
         let b1 = mk_copy(&mut g, a);
@@ -546,7 +546,7 @@ mod test {
     }
 
     /// ```rust
-    /// let mut a = Point {x: 0, y: 0};
+    /// let mut a = Point { x: 0, y: 0 };
     /// let b = &mut a;
     /// let c = &mut b.y;
     /// let bb = &mut b.y;
@@ -567,7 +567,7 @@ mod test {
     fn fields_different_levels() {
         let mut g = Graph::default();
 
-        // let mut a = Point {x: 0, y: 0};
+        // let mut a = Point { x: 0, y: 0 };
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a;
         let b1 = mk_copy(&mut g, a);
@@ -590,14 +590,14 @@ mod test {
     }
 
     /// ```rust
-    /// let mut a = ColorPoint {x: 0, y: 0, z: Color{ r: 100, g: 100, b: 100}};
+    /// let mut a = ColorPoint { x: 0, y: 0, z: Color { r: 100, g: 100, b: 100 } };
     /// let b = &mut a.x;
     /// let c = &mut a.y;
     /// a.z.r = 200;
     /// *b = 4;
     /// *c = 2;
     /// let d = &mut a;
-    /// *d = ColorPoint {x: 0, y: 0, z: Color {r: 20, g:200, b: 20}};
+    /// *d = ColorPoint { x: 0, y: 0, z: Color { r: 20, g: 200, b: 20 } };
     /// let e = &mut a.z;
     /// let f = &mut e.g;
     /// let g = &mut e.g;
@@ -611,7 +611,7 @@ mod test {
         let (x, y, z) = (0_u32, 1_u32, 2_u32);
         let (red, green, _blue) = (0_u32, 1_u32, 2_u32);
 
-        // let mut a = ColorPoint {x: 0, y: 0, z: Color{ r: 100, g: 100, b: 100}};
+        // let mut a = ColorPoint { x: 0, y: 0, z: Color { r: 100, g: 100, b: 100 } };
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a.x;
         let b1 = mk_field(&mut g, a, x);
@@ -627,7 +627,7 @@ mod test {
         let c2 = mk_store_addr(&mut g, c1);
         // let d = &mut a;
         let d1 = mk_copy(&mut g, a);
-        // *d = ColorPoint {x: 0, y: 0, z: Color {r: 20, g:200, b: 20}};
+        // *d = ColorPoint { x: 0, y: 0, z: Color { r: 20, g: 200, b: 20 } };
         let d2 = mk_store_addr(&mut g, d1);
         // let e = &mut a.z;
         let e = mk_field(&mut g, a, z);
