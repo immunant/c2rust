@@ -128,11 +128,13 @@ fn check_children_conflict(
         if non_field_sibilings_conflict || same_field_siblings_conflicts {
             return true;
         }
-        let cur_last_desc = descs[id];
-        max_descs
-            .entry(sibling_field)
-            .and_modify(|past_last_desc| *past_last_desc = max(*past_last_desc, cur_last_desc))
-            .or_insert(cur_last_desc);
+        {
+            let cur = descs[id];
+            max_descs
+                .entry(sibling_field)
+                .and_modify(|past| *past = max(*past, cur))
+                .or_insert(cur);
+        }
     }
     false
 }
