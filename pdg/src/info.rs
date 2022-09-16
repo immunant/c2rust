@@ -111,14 +111,14 @@ fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<NodeId>> {
 /// Children which are a field cannot be live at the same time as any other one of the same field.
 fn check_children_conflict(
     g: &Graph,
-    n_id: &NodeId,
+    parent: &NodeId,
     children: &HashMap<NodeId, Vec<NodeId>>,
     descs: &HashMap<NodeId, NodeId>,
 ) -> bool {
     let mut max_descs = HashMap::new();
-    for id in &children[n_id] {
-        let conflicts = |field| matches!(max_descs.get(&field), Some(max_desc) if max_desc > id);
-        let sibling = &g.nodes[*id];
+    for child in &children[parent] {
+        let conflicts = |field| matches!(max_descs.get(&field), Some(max_desc) if max_desc > child);
+        let sibling = &g.nodes[*child];
         let sibling_field = match sibling.kind {
             NodeKind::Field(f) => Some(f),
             _ => None,
@@ -129,7 +129,7 @@ fn check_children_conflict(
             return true;
         }
         {
-            let cur = descs[id];
+            let cur = descs[child];
             max_descs
                 .entry(sibling_field)
                 .and_modify(|past| *past = max(*past, cur))
