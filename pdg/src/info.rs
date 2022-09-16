@@ -137,6 +137,8 @@ fn check_children_conflict(
     false
 }
 
+/// Compute and set [`NodeInfo::unique`].
+///
 /// If a [`Node`] is not [`unique`], none of its descendents can be [`unique`].
 /// If any of a node's children conflict with each other, it is not [`unique`].
 /// Because we traverse the [`Graph`] visiting all parents before their children,
