@@ -97,7 +97,7 @@ fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<NodeId>> {
     for (parent, child) in g
         .nodes
         .iter_enumerated()
-        .filter_map(|(child_id, child)| Some((child.source?, child_id)))
+        .filter_map(|(child, child_node)| Some((child_node.source?, child)))
     {
         children.get_mut(&parent).unwrap().push(child);
     }
