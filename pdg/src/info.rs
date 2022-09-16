@@ -123,16 +123,16 @@ fn check_children_conflict(
             NodeKind::Field(f) => Some(f),
             _ => None,
         };
-        let my_last_desc = descs[id];
         let non_field_sibilings_conflict = conflicts(None);
         let same_field_siblings_conflicts = matches!(sibling_field, Some(f) if conflicts(Some(f)));
         if non_field_sibilings_conflict || same_field_siblings_conflicts {
             return true;
         }
+        let cur_last_desc = descs[id];
         max_descs
             .entry(sibling_field)
-            .and_modify(|past_last_desc| *past_last_desc = max(*past_last_desc, my_last_desc))
-            .or_insert(my_last_desc);
+            .and_modify(|past_last_desc| *past_last_desc = max(*past_last_desc, cur_last_desc))
+            .or_insert(cur_last_desc);
     }
     false
 }
