@@ -950,12 +950,6 @@ mod test {
     /// *y = 2;
     /// ```
     ///
-    /// Note that this code is accepted by rustc, but we'd like to reject it because some of the
-    /// transformations we plan to do will convert it to a form that rustc will reject.
-    /// Specifically, if `p` were a function argument and we changed it from `&mut [_]` to
-    /// something like `&mut Vec<_>` or a custom smart pointer type, rustc would reject the
-    /// modified code.
-    ///
     /// ```text
     /// A
     /// +------.
@@ -968,6 +962,13 @@ mod test {
     /// X4     |
     ///        Y4
     /// ```
+    ///
+    /// Note that this code is accepted by `rustc`,
+    /// but we'd like to reject it because some of the transformations we plan to do
+    /// will convert it to a form that `rustc` will reject.
+    /// Specifically, if `p` were a function argument and we changed it
+    /// from `&mut [_]` to something like `&mut Vec<_>` or a custom smart pointer type,
+    /// `rustc` would reject the modified code.
     #[test]
     fn offset_field_conflict() {
         let mut g = Graph::default();
