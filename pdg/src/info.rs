@@ -4,6 +4,9 @@ use std::cmp::max;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Display, Formatter};
 
+/// Force an import of [`Node`] just for docs.
+const _: Option<Node> = None;
+
 /// Information generated from the PDG proper that is queried by static analysis.
 ///
 /// Includes information about what kinds of [`Node`]s the [`Node`] flows to,
