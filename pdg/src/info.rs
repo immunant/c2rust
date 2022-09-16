@@ -1,10 +1,11 @@
 use crate::graph::{Graph, Node, NodeId, NodeKind};
 use crate::Graphs;
-use rustc_middle::mir::Field;
 use std::cmp::max;
-use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Display, Formatter};
+
+/// Force an import of [`Node`] just for docs.
+const _: Option<Node> = None;
 
 /// Information generated from the PDG proper that is queried by static analysis.
 ///
@@ -117,29 +118,30 @@ fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<NodeId>> {
 /// Children which are a field cannot be live at the same time as any other one of the same field.
 fn check_children_conflict(
     g: &Graph,
-    n_id: &NodeId,
+    parent: &NodeId,
     children: &HashMap<NodeId, Vec<NodeId>>,
     descs: &HashMap<NodeId, NodeId>,
 ) -> bool {
-    let mut max_descs: HashMap<Option<Field>, NodeId> = HashMap::new();
-    for id in children.get(n_id).unwrap() {
-        let sib_node: &Node = g.nodes.get(*id).unwrap();
-        let my_last_desc = *descs.get(id).unwrap();
-        // if the first below matches, then two siblings, neither a field, conflict
-        // if the second matches, then two siblings of the same field conflict
-        if matches!(max_descs.get(&None), Some(max_desc) if max_desc > id)
-            || matches!(sib_node.kind, NodeKind::Field(f) if matches!(max_descs.get(&Some(f)), Some(max_desc_field) if max_desc_field > id))
-        {
+    let mut max_descs = HashMap::new();
+    for child in &children[parent] {
+        let conflicts = |field| matches!(max_descs.get(&field), Some(max_desc) if max_desc > child);
+        let sibling = &g.nodes[*child];
+        let sibling_field = match sibling.kind {
+            NodeKind::Field(f) => Some(f),
+            _ => None,
+        };
+        let non_field_sibilings_conflict = conflicts(None);
+        let same_field_siblings_conflicts = matches!(sibling_field, Some(f) if conflicts(Some(f)));
+        if non_field_sibilings_conflict || same_field_siblings_conflicts {
             return true;
         }
-        let my_entry: Entry<_, _> = if let NodeKind::Field(f) = sib_node.kind {
-            max_descs.entry(Some(f))
-        } else {
-            max_descs.entry(None)
-        };
-        my_entry
-            .and_modify(|past_last_desc| *past_last_desc = max(*past_last_desc, my_last_desc))
-            .or_insert(my_last_desc);
+        {
+            let cur = descs[child];
+            max_descs
+                .entry(sibling_field)
+                .and_modify(|past| *past = max(*past, cur))
+                .or_insert(cur);
+        }
     }
     false
 }
@@ -185,6 +187,7 @@ pub fn add_info(pdg: &mut Graphs) {
 mod test {
     use super::*;
     use c2rust_analysis_rt::mir_loc::Func;
+    use rustc_middle::mir::Field;
     use rustc_middle::mir::Local;
 
     fn mk_node(g: &mut Graph, kind: NodeKind, source: Option<NodeId>) -> NodeId {
