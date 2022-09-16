@@ -76,8 +76,7 @@ fn set_flow_info(g: &mut Graph) {
 /// necessarily connected) for each [`Node`] in it what its chronologically (judged by [`NodeId`])
 /// final descendent is.
 fn get_last_desc(g: &mut Graph) -> HashMap<NodeId, NodeId> {
-    let mut desc_map: HashMap<NodeId, NodeId> =
-        HashMap::from_iter(g.nodes.indices().map(|idx| (idx, idx)));
+    let mut desc_map: HashMap<NodeId, NodeId> = g.nodes.indices().map(|idx| (idx, idx)).collect();
     for (n_id, node) in g.nodes.iter_enumerated().rev() {
         if let Some(p_id) = node.source {
             let cur_node_last_desc: NodeId = *desc_map.get(&n_id).unwrap();
