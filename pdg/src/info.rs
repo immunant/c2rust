@@ -224,10 +224,16 @@ mod test {
 
     fn check_unique(pdg: &Graphs, unique: &[NodeId], non_unique: &[NodeId]) {
         for &unique in unique {
-            assert!(info(pdg, unique).unique);
+            assert!(
+                info(pdg, unique).unique,
+                "expected {unique} to be unique in {pdg}"
+            );
         }
         for &non_unique in non_unique {
-            assert!(!info(pdg, non_unique).unique);
+            assert!(
+                !info(pdg, non_unique).unique,
+                "expected {non_unique} to be non-unique in {pdg}"
+            );
         }
     }
 
