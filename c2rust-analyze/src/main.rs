@@ -187,7 +187,7 @@ fn run(tcx: TyCtxt) {
     // Remap pointers based on equivalence classes, so all members of an equivalence class now use
     // the same `PointerId`.
     let (global_counter, global_equiv_map) = global_equiv.renumber();
-    eprintln!("global_equiv_map = {global_equiv_map:?}", );
+    eprintln!("global_equiv_map = {global_equiv_map:?}");
     gacx.remap_pointers(&global_equiv_map, global_counter);
 
     for ldid in tcx.hir().body_owners() {

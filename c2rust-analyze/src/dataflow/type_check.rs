@@ -112,8 +112,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_operand(&mut self, op: &Operand<'tcx>) -> LTy<'tcx> {
         match *op {
-            Operand::Copy(pl) => self.visit_place(pl, Mutability::Not),
-            Operand::Move(pl) => self.visit_place(pl, Mutability::Not),
+            Operand::Copy(pl) | Operand::Move(pl) => self.visit_place(pl, Mutability::Not),
             Operand::Constant(ref c) => {
                 let ty = c.ty();
                 // TODO
