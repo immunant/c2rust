@@ -87,9 +87,9 @@ fn get_last_desc(g: &mut Graph) -> HashMap<NodeId, NodeId> {
         .rev()
         .filter_map(|(child_id, child)| Some((child_id, child.source?)))
     {
-        let cur_node_last_desc = desc_map[&child];
+        let child_last_desc = desc_map[&child];
         let parent_last_desc = desc_map.remove(&parent).unwrap();
-        desc_map.insert(parent, max(cur_node_last_desc, parent_last_desc));
+        desc_map.insert(parent, max(child_last_desc, parent_last_desc));
     }
     desc_map
 }
