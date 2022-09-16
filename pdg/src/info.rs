@@ -72,18 +72,25 @@ fn set_flow_info(g: &mut Graph) {
     }
 }
 
-/// Gathers information from a [`Graph`] (assumed to be acyclic and topologically sorted but not
-/// necessarily connected) for each [`Node`] in it what its chronologically (judged by [`NodeId`])
-/// final descendent is.
+/// Maps each [`Node`] in a [`Graph`] to its chronologically (according to [`NodeId`]) final descendant.
+///
+/// The [`Graph`] is assumed to be acyclic and topologically sorted, but not necessarily connected.
 fn get_last_desc(g: &mut Graph) -> HashMap<NodeId, NodeId> {
-    let mut desc_map: HashMap<NodeId, NodeId> =
-        HashMap::from_iter(g.nodes.iter_enumerated().map(|(idx, _)| (idx, idx)));
-    for (n_id, node) in g.nodes.iter_enumerated().rev() {
-        if let Some(p_id) = node.source {
-            let cur_node_last_desc: NodeId = *desc_map.get(&n_id).unwrap();
-            let parent_last_desc: NodeId = desc_map.remove(&p_id).unwrap();
-            desc_map.insert(p_id, std::cmp::max(cur_node_last_desc, parent_last_desc));
-        }
+    let mut desc_map = g
+        .nodes
+        .indices()
+        .map(|idx| (idx, idx))
+        .collect::<HashMap<_, _>>();
+    for (child, parent) in g
+        .nodes
+        .iter_enumerated()
+        .rev()
+        .filter_map(|(child, child_node)| Some((child, child_node.source?)))
+    {
+        let child = desc_map[&child];
+        desc_map
+            .entry(parent)
+            .and_modify(|parent| *parent = max(*parent, child));
     }
     desc_map
 }
