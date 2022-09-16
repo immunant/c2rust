@@ -150,11 +150,12 @@ fn set_uniqueness(g: &mut Graph) {
     let children = collect_children(g);
     let last_descs = get_last_desc(g);
     let mut non_uniqueness = HashSet::new();
-    for (n_id, node) in g.nodes.iter_enumerated() {
-        if matches!(node.source, Some(p_id) if non_uniqueness.contains(&p_id))
-            || check_children_conflict(g, &n_id, &children, &last_descs)
+    for (child, child_node) in g.nodes.iter_enumerated() {
+        let parent = child_node.source;
+        if matches!(parent, Some(parent) if non_uniqueness.contains(&parent))
+            || check_children_conflict(g, &child, &children, &last_descs)
         {
-            non_uniqueness.insert(n_id);
+            non_uniqueness.insert(child);
         }
     }
     for (n_id, node) in g.nodes.iter_enumerated_mut() {
