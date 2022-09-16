@@ -118,19 +118,19 @@ fn check_children_conflict(
     let mut max_descs = HashMap::new();
     for id in children.get(n_id).unwrap() {
         let conflicts = |field| matches!(max_descs.get(&field), Some(max_desc) if max_desc > id);
-        let sibling_kind = g.nodes[*id].kind;
+        let sibling = &g.nodes[*id];
+        let sibling_field = match sibling.kind {
+            NodeKind::Field(f) => Some(f),
+            _ => None,
+        };
         let my_last_desc = descs[id];
         let non_field_sibilings_conflict = conflicts(None);
-        let same_field_siblings_conflicts =
-            matches!(sibling_kind, NodeKind::Field(f) if conflicts(Some(f)));
+        let same_field_siblings_conflicts = matches!(sibling_field, Some(f) if conflicts(Some(f)));
         if non_field_sibilings_conflict || same_field_siblings_conflicts {
             return true;
         }
         max_descs
-            .entry(match sibling_kind {
-                NodeKind::Field(f) => Some(f),
-                _ => None,
-            })
+            .entry(sibling_field)
             .and_modify(|past_last_desc| *past_last_desc = max(*past_last_desc, my_last_desc))
             .or_insert(my_last_desc);
     }
