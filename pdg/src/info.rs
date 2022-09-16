@@ -222,6 +222,15 @@ mod test {
         pdg.graphs[0_u32.into()].nodes[id].info.as_ref().unwrap()
     }
 
+    fn check_unique(pdg: &Graphs, unique: &[NodeId], non_unique: &[NodeId]) {
+        for &unique in unique {
+            assert!(info(pdg, unique).unique);
+        }
+        for &non_unique in non_unique {
+            assert!(!info(pdg, non_unique).unique);
+        }
+    }
+
     /// ```rust
     /// let mut a = 0;
     /// let b = &mut a;
@@ -262,14 +271,7 @@ mod test {
         let c3 = mk_store_addr(&mut g, c1);
 
         let pdg = build_pdg(g);
-        assert!(!info(&pdg, a).unique);
-        assert!(!info(&pdg, b1).unique);
-        assert!(!info(&pdg, b2).unique);
-
-        assert!(!info(&pdg, b3).unique);
-        assert!(!info(&pdg, c1).unique);
-        assert!(!info(&pdg, c2).unique);
-        assert!(!info(&pdg, c3).unique);
+        check_unique(&pdg, &[], &[a, b1, b2, b3, c1, c2, c3]);
     }
 
     /// ```rust
@@ -308,12 +310,7 @@ mod test {
         let b3 = mk_store_addr(&mut g, b1);
 
         let pdg = build_pdg(g);
-        assert!(!info(&pdg, a).unique);
-        assert!(!info(&pdg, b1).unique);
-        assert!(!info(&pdg, b2).unique);
-        assert!(!info(&pdg, b3).unique);
-        assert!(!info(&pdg, c1).unique);
-        assert!(!info(&pdg, c2).unique);
+        check_unique(&pdg, &[], &[a, b1, b2, b3, c1, c2]);
     }
 
     /// ```rust
@@ -352,12 +349,7 @@ mod test {
         let b3 = mk_store_addr(&mut g, b1);
 
         let pdg = build_pdg(g);
-        assert!(info(&pdg, a).unique);
-        assert!(info(&pdg, b1).unique);
-        assert!(info(&pdg, b2).unique);
-        assert!(info(&pdg, b3).unique);
-        assert!(info(&pdg, c1).unique);
-        assert!(info(&pdg, c2).unique);
+        check_unique(&pdg, &[a, b1, b2, b3, c1, c2], &[]);
     }
 
     /// ```rust
@@ -400,13 +392,7 @@ mod test {
         let c3 = mk_store_addr(&mut g, c1);
 
         let pdg = build_pdg(g);
-        assert!(info(&pdg, a).unique);
-        assert!(!info(&pdg, b1).unique);
-        assert!(!info(&pdg, b2).unique);
-        assert!(!info(&pdg, b3).unique);
-        assert!(!info(&pdg, c1).unique);
-        assert!(!info(&pdg, c2).unique);
-        assert!(!info(&pdg, c3).unique);
+        check_unique(&pdg, &[a], &[b1, b2, b3, c1, c2, c3]);
     }
 
     /// ```rust
@@ -444,11 +430,7 @@ mod test {
         let c2 = mk_store_addr(&mut g, c1);
 
         let pdg = build_pdg(g);
-        assert!(info(&pdg, a).unique);
-        assert!(info(&pdg, b1).unique);
-        assert!(info(&pdg, b2).unique);
-        assert!(info(&pdg, c1).unique);
-        assert!(info(&pdg, c2).unique);
+        check_unique(&pdg, &[a, b1, b2, c1, c2], &[]);
     }
 
     /// ```rust
@@ -497,13 +479,7 @@ mod test {
         let d2 = mk_store_addr(&mut g, d1);
 
         let pdg = build_pdg(g);
-        assert!(info(&pdg, a).unique);
-        assert!(!info(&pdg, j).unique);
-        assert!(!info(&pdg, b1).unique);
-        assert!(!info(&pdg, b2).unique);
-        assert!(!info(&pdg, c1).unique);
-        assert!(!info(&pdg, c2).unique);
-        assert!(info(&pdg, d2).unique);
+        check_unique(&pdg, &[a, d2], &[j, b1, b2, c1, c2]);
     }
 
     /// ```rust
@@ -540,11 +516,7 @@ mod test {
         let b2 = mk_store_addr(&mut g, b1);
 
         let pdg = build_pdg(g);
-        assert!(!info(&pdg, a).unique);
-        assert!(!info(&pdg, b1).unique);
-        assert!(!info(&pdg, b2).unique);
-        assert!(!info(&pdg, c1).unique);
-        assert!(!info(&pdg, c2).unique);
+        check_unique(&pdg, &[], &[a, b1, b2, c1, c2]);
     }
 
     /// ```rust
@@ -583,12 +555,7 @@ mod test {
         let b2 = mk_store_addr(&mut g, bb);
 
         let pdg = build_pdg(g);
-        assert!(!info(&pdg, a).unique);
-        assert!(!info(&pdg, b1).unique);
-        assert!(!info(&pdg, b2).unique);
-        assert!(!info(&pdg, c1).unique);
-        assert!(!info(&pdg, c2).unique);
-        assert!(!info(&pdg, b2).unique);
+        check_unique(&pdg, &[], &[a, b1, b2, c1, c2]);
     }
 
     /// ```rust
@@ -645,24 +612,11 @@ mod test {
         let x6 = mk_store_addr(&mut g, x5);
 
         let pdg = build_pdg(g);
-
-        assert!(info(&pdg, a).unique);
-        assert!(info(&pdg, b1).unique);
-        assert!(info(&pdg, c1).unique);
-        assert!(info(&pdg, x1).unique);
-        assert!(info(&pdg, x2).unique);
-        assert!(info(&pdg, x3).unique);
-        assert!(info(&pdg, b2).unique);
-        assert!(info(&pdg, c2).unique);
-        assert!(info(&pdg, d1).unique);
-        assert!(info(&pdg, d2).unique);
-        assert!(!info(&pdg, e).unique);
-        assert!(!info(&pdg, f1).unique);
-        assert!(!info(&pdg, gg).unique);
-        assert!(!info(&pdg, f2).unique);
-        assert!(info(&pdg, x4).unique);
-        assert!(info(&pdg, x5).unique);
-        assert!(info(&pdg, x6).unique);
+        check_unique(
+            &pdg,
+            &[a, b1, c1, x1, x2, x3, b2, c2, d1, d2, x4, x5, x6],
+            &[e, f1, gg, f2],
+        );
     }
 
     /// ```rust
@@ -705,14 +659,7 @@ mod test {
         let y3 = mk_store_addr(&mut g, y1);
 
         let pdg = build_pdg(g);
-
-        assert!(info(&pdg, a).unique);
-        assert!(info(&pdg, x1).unique);
-        assert!(info(&pdg, x2).unique);
-        assert!(info(&pdg, x3).unique);
-        assert!(info(&pdg, y1).unique);
-        assert!(info(&pdg, y2).unique);
-        assert!(info(&pdg, y3).unique);
+        check_unique(&pdg, &[a, x1, x2, x3, y1, y2, y3], &[]);
     }
 
     /// ```rust
@@ -759,16 +706,7 @@ mod test {
         let y4 = mk_store_addr(&mut g, y2);
 
         let pdg = build_pdg(g);
-
-        assert!(info(&pdg, a).unique);
-        assert!(info(&pdg, x1).unique);
-        assert!(info(&pdg, x2).unique);
-        assert!(info(&pdg, x3).unique);
-        assert!(info(&pdg, x4).unique);
-        assert!(info(&pdg, y1).unique);
-        assert!(info(&pdg, y2).unique);
-        assert!(info(&pdg, y3).unique);
-        assert!(info(&pdg, y4).unique);
+        check_unique(&pdg, &[a, x1, x2, x3, x4, y1, y2, y3, y4], &[]);
     }
 
     /// ```rust
@@ -815,16 +753,7 @@ mod test {
         let y4 = mk_store_addr(&mut g, y2);
 
         let pdg = build_pdg(g);
-
-        assert!(!info(&pdg, a).unique);
-        assert!(!info(&pdg, x1).unique);
-        assert!(!info(&pdg, x2).unique);
-        assert!(!info(&pdg, x3).unique);
-        assert!(!info(&pdg, x4).unique);
-        assert!(!info(&pdg, y1).unique);
-        assert!(!info(&pdg, y2).unique);
-        assert!(!info(&pdg, y3).unique);
-        assert!(!info(&pdg, y4).unique);
+        check_unique(&pdg, &[], &[a, x1, x2, x3, x4, y1, y2, y3, y4]);
     }
 
     /// ```rust
@@ -871,16 +800,7 @@ mod test {
         let y4 = mk_store_addr(&mut g, y2);
 
         let pdg = build_pdg(g);
-
-        assert!(!info(&pdg, a).unique);
-        assert!(!info(&pdg, x1).unique);
-        assert!(!info(&pdg, x2).unique);
-        assert!(!info(&pdg, x3).unique);
-        assert!(!info(&pdg, x4).unique);
-        assert!(!info(&pdg, y1).unique);
-        assert!(!info(&pdg, y2).unique);
-        assert!(!info(&pdg, y3).unique);
-        assert!(!info(&pdg, y4).unique);
+        check_unique(&pdg, &[], &[a, x1, x2, x3, x4, y1, y2, y3, y4]);
     }
 
     /// ```rust
@@ -927,16 +847,7 @@ mod test {
         let y4 = mk_store_addr(&mut g, y2);
 
         let pdg = build_pdg(g);
-
-        assert!(info(&pdg, a).unique);
-        assert!(info(&pdg, x1).unique);
-        assert!(info(&pdg, x2).unique);
-        assert!(info(&pdg, x3).unique);
-        assert!(info(&pdg, x4).unique);
-        assert!(info(&pdg, y1).unique);
-        assert!(info(&pdg, y2).unique);
-        assert!(info(&pdg, y3).unique);
-        assert!(info(&pdg, y4).unique);
+        check_unique(&pdg, &[a, x1, x2, x3, x4, y1, y2, y3, y4], &[]);
     }
 
     /// ```rust
@@ -992,15 +903,6 @@ mod test {
         let y4 = mk_store_addr(&mut g, y2);
 
         let pdg = build_pdg(g);
-
-        assert!(!info(&pdg, p).unique);
-        assert!(!info(&pdg, x1).unique);
-        assert!(!info(&pdg, x2).unique);
-        assert!(!info(&pdg, x3).unique);
-        assert!(!info(&pdg, x4).unique);
-        assert!(!info(&pdg, y1).unique);
-        assert!(!info(&pdg, y2).unique);
-        assert!(!info(&pdg, y3).unique);
-        assert!(!info(&pdg, y4).unique);
+        check_unique(&pdg, &[], &[p, x1, x2, x3, x4, y1, y2, y3, y4]);
     }
 }
