@@ -85,7 +85,7 @@ fn get_last_desc(g: &mut Graph) -> HashMap<NodeId, NodeId> {
         .nodes
         .iter_enumerated()
         .rev()
-        .filter_map(|(child_id, child)| Some((child_id, child.source?)))
+        .filter_map(|(child, child_node)| Some((child, child_node.source?)))
     {
         let child = desc_map[&child];
         desc_map
