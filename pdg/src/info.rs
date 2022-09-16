@@ -140,7 +140,7 @@ fn check_children_conflict(
 fn set_uniqueness(g: &mut Graph) {
     let children = collect_children(g);
     let last_descs = get_last_desc(g);
-    let mut nonuniqueness: HashSet<NodeId> = HashSet::new();
+    let mut nonuniqueness = HashSet::new();
     for (n_id, node) in g.nodes.iter_enumerated() {
         // If a node is not unique, none of its descendents can be unique.
         // If any of a node's children conflict with each other, it is not unique.
