@@ -175,65 +175,97 @@ mod test {
     use c2rust_analysis_rt::mir_loc::Func;
     use rustc_middle::mir::Local;
 
-    fn mk_node(g: &mut Graph, kind: NodeKind, source: Option<NodeId>) -> NodeId {
-        g.nodes.push(Node {
-            function: Func {
-                def_path_hash: (1, 2).into(),
-                name: "fake_function".into(),
-            },
-            block: 0_u32.into(),
-            statement_idx: 0,
-            dest: None,
-            kind,
-            source,
-            info: None,
-            debug_info: "".into(),
-        })
+    #[derive(Debug)]
+    struct CheckedNode {
+        id: NodeId,
+        unique: bool,
+        stmt: &'static str,
     }
 
-    fn mk_addr_of_local(g: &mut Graph, local: impl Into<Local>) -> NodeId {
-        mk_node(g, NodeKind::AddrOfLocal(local.into()), None)
+    #[derive(Debug, Default)]
+    struct CheckedGraph {
+        graph: Graph,
+        checked_nodes: Vec<CheckedNode>,
     }
 
-    fn mk_copy(g: &mut Graph, source: NodeId) -> NodeId {
-        mk_node(g, NodeKind::Copy, Some(source))
-    }
-
-    fn mk_store_addr(g: &mut Graph, source: NodeId) -> NodeId {
-        mk_node(g, NodeKind::StoreAddr, Some(source))
-    }
-
-    fn mk_field(g: &mut Graph, source: NodeId, field: impl Into<Field>) -> NodeId {
-        mk_node(g, NodeKind::Field(field.into()), Some(source))
-    }
-
-    fn mk_offset(g: &mut Graph, source: NodeId, i: isize) -> NodeId {
-        mk_node(g, NodeKind::Offset(i), Some(source))
-    }
-
-    fn build_pdg(g: Graph) -> Graphs {
-        let mut pdg = Graphs::default();
-        pdg.graphs.push(g);
-        add_info(&mut pdg);
-        pdg
-    }
-
-    fn info(pdg: &Graphs, id: NodeId) -> &NodeInfo {
-        pdg.graphs[0_u32.into()].nodes[id].info.as_ref().unwrap()
-    }
-
-    fn check_unique(pdg: &Graphs, unique: &[NodeId], non_unique: &[NodeId]) {
-        for &unique in unique {
-            assert!(
-                info(pdg, unique).unique,
-                "expected {unique} to be unique in {pdg}"
-            );
+    impl CheckedGraph {
+        fn mk_node(
+            &mut self,
+            stmt: &'static str,
+            unique: bool,
+            kind: NodeKind,
+            source: Option<NodeId>,
+        ) -> NodeId {
+            let id = self.graph.nodes.push(Node {
+                function: Func {
+                    def_path_hash: (1, 2).into(),
+                    name: "fake_function".into(),
+                },
+                block: 0_u32.into(),
+                statement_idx: 0,
+                dest: None,
+                kind,
+                source,
+                info: None,
+                debug_info: stmt.into(),
+            });
+            let checked_node = CheckedNode { id, unique, stmt };
+            self.checked_nodes.push(checked_node);
+            id
         }
-        for &non_unique in non_unique {
-            assert!(
-                !info(pdg, non_unique).unique,
-                "expected {non_unique} to be non-unique in {pdg}"
-            );
+
+        fn mk_addr_of_local(
+            &mut self,
+            smt: &'static str,
+            unique: bool,
+            local: impl Into<Local>,
+        ) -> NodeId {
+            self.mk_node(smt, unique, NodeKind::AddrOfLocal(local.into()), None)
+        }
+
+        fn mk_copy(&mut self, smt: &'static str, unique: bool, source: NodeId) -> NodeId {
+            self.mk_node(smt, unique, NodeKind::Copy, Some(source))
+        }
+
+        fn mk_store_addr(&mut self, smt: &'static str, unique: bool, source: NodeId) -> NodeId {
+            self.mk_node(smt, unique, NodeKind::StoreAddr, Some(source))
+        }
+
+        fn mk_field(
+            &mut self,
+            stmt: &'static str,
+            unique: bool,
+            source: NodeId,
+            field: impl Into<Field>,
+        ) -> NodeId {
+            self.mk_node(stmt, unique, NodeKind::Field(field.into()), Some(source))
+        }
+
+        fn mk_offset(
+            &mut self,
+            stmt: &'static str,
+            unique: bool,
+            source: NodeId,
+            i: isize,
+        ) -> NodeId {
+            self.mk_node(stmt, unique, NodeKind::Offset(i), Some(source))
+        }
+
+        fn check_unique(self) {
+            let (pdg, gid) = {
+                let mut pdg = Graphs::default();
+                let gid = pdg.graphs.push(self.graph);
+                add_info(&mut pdg);
+                (pdg, gid)
+            };
+            for CheckedNode { id, unique, stmt } in self.checked_nodes.into_iter().rev() {
+                let info = pdg.graphs[gid].nodes[id].info.as_ref().unwrap();
+                let non = if unique { "" } else { "non-" };
+                assert_eq!(
+                    info.unique, unique,
+                    "expected {id} (`{stmt};`) to be {non}unique in {pdg}"
+                );
+            }
         }
     }
 
@@ -259,25 +291,17 @@ mod test {
     /// ```
     #[test]
     fn unique_interleave() {
-        let mut g = Graph::default();
+        let mut g = CheckedGraph::default();
 
-        // let mut a = 0;
-        let a = mk_addr_of_local(&mut g, 0_u32);
-        // let b = &mut a;
-        let b1 = mk_copy(&mut g, a);
-        // *b = 0;
-        let b2 = mk_store_addr(&mut g, b1);
-        // let c = &mut a;
-        let c1 = mk_copy(&mut g, a);
-        // *c = 0;
-        let c2 = mk_store_addr(&mut g, c1);
-        // *b = 0;
-        let b3 = mk_store_addr(&mut g, b1);
-        // *c = 0;
-        let c3 = mk_store_addr(&mut g, c1);
+        let a = g.mk_addr_of_local("let mut a = 0", false, 0_u32);
+        let b1 = g.mk_copy("let b = &mut a", false, a);
+        g.mk_store_addr("*b = 0", false, b1);
+        let c1 = g.mk_copy("let c = &mut a", false, a);
+        g.mk_store_addr("*c = 0", false, c1);
+        g.mk_store_addr("*b = 0", false, b1);
+        g.mk_store_addr("*c = 0", false, c1);
 
-        let pdg = build_pdg(g);
-        check_unique(&pdg, &[], &[a, b1, b2, b3, c1, c2, c3]);
+        g.check_unique();
     }
 
     /// ```rust
@@ -300,23 +324,16 @@ mod test {
     /// ```
     #[test]
     fn unique_interleave_onesided() {
-        let mut g = Graph::default();
+        let mut g = CheckedGraph::default();
 
-        // let mut a = 0;   // A
-        let a = mk_addr_of_local(&mut g, 0_u32);
-        // let b = &mut a;  // B1
-        let b1 = mk_copy(&mut g, a);
-        // *b = 0;          // B2
-        let b2 = mk_store_addr(&mut g, b1);
-        // let c = &mut a;  // C1
-        let c1 = mk_copy(&mut g, a);
-        // *c = 0;          // C2
-        let c2 = mk_store_addr(&mut g, c1);
-        // *b = 0;          // B3
-        let b3 = mk_store_addr(&mut g, b1);
+        let a = g.mk_addr_of_local("let mut a = 0", false, 0_u32);
+        let b1 = g.mk_copy("let b = &mut a", false, a);
+        g.mk_store_addr("*b = 0", false, b1);
+        let c1 = g.mk_copy("let c = &mut a", false, a);
+        g.mk_store_addr("*c = 0", false, c1);
+        g.mk_store_addr("*b = 0", false, b1);
 
-        let pdg = build_pdg(g);
-        check_unique(&pdg, &[], &[a, b1, b2, b3, c1, c2]);
+        g.check_unique();
     }
 
     /// ```rust
@@ -339,23 +356,16 @@ mod test {
     /// ```
     #[test]
     fn unique_sub_borrow() {
-        let mut g = Graph::default();
+        let mut g = CheckedGraph::default();
 
-        // let mut a = 0;
-        let a = mk_addr_of_local(&mut g, 0_u32);
-        // let b = &mut a;
-        let b1 = mk_copy(&mut g, a);
-        // *b = 0;
-        let b2 = mk_store_addr(&mut g, b1);
-        // let c = &mut *b;
-        let c1 = mk_copy(&mut g, b1);
-        // *c = 0;
-        let c2 = mk_store_addr(&mut g, c1);
-        // *c = 0;
-        let b3 = mk_store_addr(&mut g, b1);
+        let a = g.mk_addr_of_local("let mut a = 0", true, 0_u32);
+        let b1 = g.mk_copy("let b = &mut a", true, a);
+        g.mk_store_addr("*b = 0", true, b1);
+        let c1 = g.mk_copy("let c = &mut *b", true, b1);
+        g.mk_store_addr("*c = 0", true, c1);
+        g.mk_store_addr("*c = 0", true, b1);
 
-        let pdg = build_pdg(g);
-        check_unique(&pdg, &[a, b1, b2, b3, c1, c2], &[]);
+        g.check_unique();
     }
 
     /// ```rust
@@ -380,25 +390,17 @@ mod test {
     /// ```
     #[test]
     fn unique_sub_borrow_bad() {
-        let mut g = Graph::default();
+        let mut g = CheckedGraph::default();
 
-        // let mut a = 0;
-        let a = mk_addr_of_local(&mut g, 0_u32);
-        // let b = &mut a;
-        let b1 = mk_copy(&mut g, a);
-        // *b = 0;
-        let b2 = mk_store_addr(&mut g, b1);
-        // let c = &mut *b;
-        let c1 = mk_copy(&mut g, b1);
-        // *c = 0;
-        let c2 = mk_store_addr(&mut g, c1);
-        // *b = 0;
-        let b3 = mk_store_addr(&mut g, b1);
-        // *c = 0;
-        let c3 = mk_store_addr(&mut g, c1);
+        let a = g.mk_addr_of_local("let mut a = 0", true, 0_u32);
+        let b1 = g.mk_copy("let b = &mut a", false, a);
+        g.mk_store_addr("*b = 0", false, b1);
+        let c1 = g.mk_copy("let c = &mut *b", false, b1);
+        g.mk_store_addr("*c = 0", false, c1);
+        g.mk_store_addr("*b = 0", false, b1);
+        g.mk_store_addr("*c = 0", false, c1);
 
-        let pdg = build_pdg(g);
-        check_unique(&pdg, &[a], &[b1, b2, b3, c1, c2, c3]);
+        g.check_unique();
     }
 
     /// ```rust
@@ -420,23 +422,17 @@ mod test {
     /// ```
     #[test]
     fn okay_use_different_fields() {
-        let mut g = Graph::default();
+        let mut g = CheckedGraph::default();
 
-        // let mut a = Point { x: 0, y: 0 };
-        let a = mk_addr_of_local(&mut g, 0_u32);
-        // let b = &mut a.x;
-        let b11 = mk_field(&mut g, a, 0_u32);
-        let b1 = mk_copy(&mut g, b11);
-        // let c = &mut a.y;
-        let c11 = mk_field(&mut g, a, 1_u32);
-        let c1 = mk_copy(&mut g, c11);
-        // *b = 1;
-        let b2 = mk_store_addr(&mut g, b1);
-        // *c = 2;
-        let c2 = mk_store_addr(&mut g, c1);
+        let a = g.mk_addr_of_local("let mut a = Point { x: 0, y: 0 }", true, 0_u32);
+        let b11 = g.mk_field("let b = &mut a.x", true, a, 0_u32);
+        let b1 = g.mk_copy("let b = &mut a.x", true, b11);
+        let c11 = g.mk_field("let c = &mut a.y", true, a, 1_u32);
+        let c1 = g.mk_copy("let c = &mut a.y", true, c11);
+        g.mk_store_addr("*b = 1", true, b1);
+        g.mk_store_addr("*c = 2", true, c1);
 
-        let pdg = build_pdg(g);
-        check_unique(&pdg, &[a, b1, b2, c1, c2], &[]);
+        g.check_unique();
     }
 
     /// ```rust
@@ -464,28 +460,20 @@ mod test {
     /// ```
     #[test]
     fn same_fields_cousins() {
-        let mut g = Graph::default();
+        let mut g = CheckedGraph::default();
 
-        // let mut a = Point { x: 0, y: 0 };
-        let a = mk_addr_of_local(&mut g, 0_u32);
-        // let j = &mut a;
-        let j = mk_copy(&mut g, a);
-        // let b = &mut j.x;
-        let b11 = mk_field(&mut g, j, 0_u32);
-        let b1 = mk_copy(&mut g, b11);
-        // let c = &mut j.x;
-        let c11 = mk_field(&mut g, j, 0_u32);
-        let c1 = mk_copy(&mut g, c11);
-        // *b = 1;
-        let b2 = mk_store_addr(&mut g, b1);
-        // *c = 2;
-        let c2 = mk_store_addr(&mut g, c1);
-        // *(a.y) = 3;
-        let d1 = mk_field(&mut g, a, 1_u32);
-        let d2 = mk_store_addr(&mut g, d1);
+        let a = g.mk_addr_of_local("let mut a = Point { x: 0, y: 0 }", true, 0_u32);
+        let j = g.mk_copy("let j = &mut a", false, a);
+        let b11 = g.mk_field("let b = &mut j.x", false, j, 0_u32);
+        let b1 = g.mk_copy("let b = &mut j.x", false, b11);
+        let c11 = g.mk_field("let c = &mut j.x", false, j, 0_u32);
+        let c1 = g.mk_copy("let c = &mut j.x", false, c11);
+        g.mk_store_addr("*b = 1", false, b1);
+        g.mk_store_addr("*c = 2", false, c1);
+        let d1 = g.mk_field("*(a.y) = 3", true, a, 1_u32);
+        g.mk_store_addr("*(a.y) = 3", true, d1);
 
-        let pdg = build_pdg(g);
-        check_unique(&pdg, &[a, d2], &[j, b1, b2, c1, c2]);
+        g.check_unique();
     }
 
     /// ```rust
@@ -507,22 +495,16 @@ mod test {
     /// ```
     #[test]
     fn field_vs_raw() {
-        let mut g = Graph::default();
+        let mut g = CheckedGraph::default();
 
-        // let mut a = Point { x: 0, y: 0 };
-        let a = mk_addr_of_local(&mut g, 0_u32);
-        // let b = &mut a;
-        let b1 = mk_copy(&mut g, a);
-        // let c = &mut a.y;
-        let c11 = mk_field(&mut g, a, 1_u32);
-        let c1 = mk_copy(&mut g, c11);
-        // *c = 2;
-        let c2 = mk_store_addr(&mut g, c1);
-        // *b = 1;
-        let b2 = mk_store_addr(&mut g, b1);
+        let a = g.mk_addr_of_local("let mut a = Point { x: 0, y: 0 }", false, 0_u32);
+        let b1 = g.mk_copy("let b = &mut a", false, a);
+        let c11 = g.mk_field("let c = &mut a.y", false, a, 1_u32);
+        let c1 = g.mk_copy("let c = &mut a.y", false, c11);
+        g.mk_store_addr("*c = 2", false, c1);
+        g.mk_store_addr("*b = 1", false, b1);
 
-        let pdg = build_pdg(g);
-        check_unique(&pdg, &[], &[a, b1, b2, c1, c2]);
+        g.check_unique();
     }
 
     /// ```rust
@@ -545,23 +527,16 @@ mod test {
     /// ```
     #[test]
     fn fields_different_levels() {
-        let mut g = Graph::default();
+        let mut g = CheckedGraph::default();
 
-        // let mut a = Point { x: 0, y: 0 };
-        let a = mk_addr_of_local(&mut g, 0_u32);
-        // let b = &mut a;
-        let b1 = mk_copy(&mut g, a);
-        // let c = &mut b.y;
-        let c1 = mk_field(&mut g, a, 1_u32);
-        // let bb = &mut b.y;
-        let bb = mk_field(&mut g, b1, 1_u32);
-        // *c = 2;
-        let c2 = mk_store_addr(&mut g, c1);
-        // *bb = 1;
-        let b2 = mk_store_addr(&mut g, bb);
+        let a = g.mk_addr_of_local("let mut a = Point { x: 0, y: 0 }", false, 0_u32);
+        let b1 = g.mk_copy("let b = &mut a", false, a);
+        let c1 = g.mk_field("let c = &mut b.y", false, a, 1_u32);
+        let bb = g.mk_field("let bb = &mut b.y", false, b1, 1_u32);
+        g.mk_store_addr("*c = 2", false, c1);
+        g.mk_store_addr("*bb = 1", false, bb);
 
-        let pdg = build_pdg(g);
-        check_unique(&pdg, &[], &[a, b1, b2, c1, c2]);
+        g.check_unique();
     }
 
     /// ```rust
@@ -581,48 +556,38 @@ mod test {
     /// ```
     #[test]
     fn lots_of_siblings() {
-        let mut g = Graph::default();
+        let mut g = CheckedGraph::default();
 
         let (x, y, z) = (0_u32, 1_u32, 2_u32);
         let (red, green, _blue) = (0_u32, 1_u32, 2_u32);
 
-        // let mut a = ColorPoint { x: 0, y: 0, z: Color { r: 100, g: 100, b: 100 } };
-        let a = mk_addr_of_local(&mut g, 0_u32);
-        // let b = &mut a.x;
-        let b1 = mk_field(&mut g, a, x);
-        // let c = &mut a.y;
-        let c1 = mk_field(&mut g, a, y);
-        // a.z.r = 200;
-        let x1 = mk_field(&mut g, a, z);
-        let x2 = mk_field(&mut g, x1, red);
-        let x3 = mk_store_addr(&mut g, x2);
-        // *b = 4;
-        let b2 = mk_store_addr(&mut g, b1);
-        // *c = 2;
-        let c2 = mk_store_addr(&mut g, c1);
-        // let d = &mut a;
-        let d1 = mk_copy(&mut g, a);
-        // *d = ColorPoint { x: 0, y: 0, z: Color { r: 20, g: 200, b: 20 } };
-        let d2 = mk_store_addr(&mut g, d1);
-        // let e = &mut a.z;
-        let e = mk_field(&mut g, a, z);
-        // let f = &mut e.g;
-        let f1 = mk_field(&mut g, e, green);
-        // let g = &mut e.g;
-        let gg = mk_field(&mut g, e, green);
-        // *f = 3;
-        let f2 = mk_store_addr(&mut g, f1);
-        // a.z.r = 100;
-        let x4 = mk_field(&mut g, a, z);
-        let x5 = mk_field(&mut g, x4, green);
-        let x6 = mk_store_addr(&mut g, x5);
-
-        let pdg = build_pdg(g);
-        check_unique(
-            &pdg,
-            &[a, b1, c1, x1, x2, x3, b2, c2, d1, d2, x4, x5, x6],
-            &[e, f1, gg, f2],
+        let a = g.mk_addr_of_local(
+            "let mut a = ColorPoint { x: 0, y: 0, z: Color { r: 100, g: 100, b: 100 } }",
+            true,
+            0_u32,
         );
+        let b1 = g.mk_field("let b = &mut a.x", true, a, x);
+        let c1 = g.mk_field("let c = &mut a.y", true, a, y);
+        let x1 = g.mk_field("a.z.r = 200", true, a, z);
+        let x2 = g.mk_field("a.z.r = 200", true, x1, red);
+        g.mk_store_addr("a.z.r = 200", true, x2);
+        g.mk_store_addr("*b = 4", true, b1);
+        g.mk_store_addr("*c = 2", true, c1);
+        let d1 = g.mk_copy("let d = &mut a", true, a);
+        g.mk_store_addr(
+            "*d = ColorPoint { x: 0, y: 0, z: Color { r: 20, g: 200, b: 20 } }",
+            true,
+            d1,
+        );
+        let e = g.mk_field("let e = &mut a.z", false, a, z);
+        let f1 = g.mk_field("let f = &mut e.g", false, e, green);
+        g.mk_field("let g = &mut e.g", false, e, green);
+        g.mk_store_addr("*f = 3", false, f1);
+        let x4 = g.mk_field("a.z.r = 100", true, a, z);
+        let x5 = g.mk_field("a.z.r = 100", true, x4, green);
+        g.mk_store_addr("a.z.r = 100", true, x5);
+
+        g.check_unique();
     }
 
     /// ```rust
@@ -647,25 +612,17 @@ mod test {
     /// ```
     #[test]
     fn field_no_conflict() {
-        let mut g = Graph::default();
+        let mut g = CheckedGraph::default();
 
-        // let mut a = (1, (2, 3));
-        let a = mk_addr_of_local(&mut g, 0_u32);
-        // let x = &mut a.1.0;
-        let x1 = mk_field(&mut g, a, 0_u32);
-        // let y = &mut a.1.1;
-        let y1 = mk_field(&mut g, a, 1_u32);
-        // *x = 1;
-        let x2 = mk_store_addr(&mut g, x1);
-        // *y = 1;
-        let y2 = mk_store_addr(&mut g, y1);
-        // *x = 2;
-        let x3 = mk_store_addr(&mut g, x1);
-        // *y = 2;
-        let y3 = mk_store_addr(&mut g, y1);
+        let a = g.mk_addr_of_local("let mut a = (1, (2, 3))", true, 0_u32);
+        let x1 = g.mk_field("let x = &mut a.1.0", true, a, 0_u32);
+        let y1 = g.mk_field("let y = &mut a.1.1", true, a, 1_u32);
+        g.mk_store_addr("*x = 1", true, x1);
+        g.mk_store_addr("*y = 1", true, y1);
+        g.mk_store_addr("*x = 2", true, x1);
+        g.mk_store_addr("*y = 2", true, y1);
 
-        let pdg = build_pdg(g);
-        check_unique(&pdg, &[a, x1, x2, x3, y1, y2, y3], &[]);
+        g.check_unique();
     }
 
     /// ```rust
@@ -692,27 +649,19 @@ mod test {
     /// ```
     #[test]
     fn nested_field_no_conflict() {
-        let mut g = Graph::default();
+        let mut g = CheckedGraph::default();
 
-        // let mut a = (1, (2, 3));
-        let a = mk_addr_of_local(&mut g, 0_u32);
-        // let x = &mut a.1.0;
-        let x1 = mk_field(&mut g, a, 1_u32);
-        let x2 = mk_field(&mut g, x1, 0_u32);
-        // let y = &mut a.1.1;
-        let y1 = mk_field(&mut g, a, 1_u32);
-        let y2 = mk_field(&mut g, y1, 1_u32);
-        // *x = 1;
-        let x3 = mk_store_addr(&mut g, x2);
-        // *y = 1;
-        let y3 = mk_store_addr(&mut g, y2);
-        // *x = 2;
-        let x4 = mk_store_addr(&mut g, x2);
-        // *y = 2;
-        let y4 = mk_store_addr(&mut g, y2);
+        let a = g.mk_addr_of_local("let mut a = (1, (2, 3))", true, 0_u32);
+        let x1 = g.mk_field("let x = &mut a.1.0", true, a, 1_u32);
+        let x2 = g.mk_field("let x = &mut a.1.0", true, x1, 0_u32);
+        let y1 = g.mk_field("let y = &mut a.1.1", true, a, 1_u32);
+        let y2 = g.mk_field("let y = &mut a.1.1", true, y1, 1_u32);
+        g.mk_store_addr("*x = 1", true, x2);
+        g.mk_store_addr("*y = 1", true, y2);
+        g.mk_store_addr("*x = 2", true, x2);
+        g.mk_store_addr("*y = 2", true, y2);
 
-        let pdg = build_pdg(g);
-        check_unique(&pdg, &[a, x1, x2, x3, x4, y1, y2, y3, y4], &[]);
+        g.check_unique();
     }
 
     /// ```rust
@@ -739,27 +688,19 @@ mod test {
     /// ```
     #[test]
     fn nested_field_conflict() {
-        let mut g = Graph::default();
+        let mut g = CheckedGraph::default();
 
-        // let mut a = (1, (2, 3));
-        let a = mk_addr_of_local(&mut g, 0_u32);
-        // let x = &mut a.1.0;
-        let x1 = mk_field(&mut g, a, 1_u32);
-        let x2 = mk_field(&mut g, x1, 0_u32);
-        // let y = &mut a.1.0;
-        let y1 = mk_field(&mut g, a, 1_u32);
-        let y2 = mk_field(&mut g, y1, 0_u32);
-        // *x = 1;
-        let x3 = mk_store_addr(&mut g, x2);
-        // *y = 1;
-        let y3 = mk_store_addr(&mut g, y2);
-        // *x = 2;
-        let x4 = mk_store_addr(&mut g, x2);
-        // *y = 2;
-        let y4 = mk_store_addr(&mut g, y2);
+        let a = g.mk_addr_of_local("let mut a = (1, (2, 3))", false, 0_u32);
+        let x1 = g.mk_field("let x = &mut a.1.0", false, a, 1_u32);
+        let x2 = g.mk_field("let x = &mut a.1.0", false, x1, 0_u32);
+        let y1 = g.mk_field("let y = &mut a.1.0", false, a, 1_u32);
+        let y2 = g.mk_field("let y = &mut a.1.0", false, y1, 0_u32);
+        g.mk_store_addr("*x = 1", false, x2);
+        g.mk_store_addr("*y = 1", false, y2);
+        g.mk_store_addr("*x = 2", false, x2);
+        g.mk_store_addr("*y = 2", false, y2);
 
-        let pdg = build_pdg(g);
-        check_unique(&pdg, &[], &[a, x1, x2, x3, x4, y1, y2, y3, y4]);
+        g.check_unique();
     }
 
     /// ```rust
@@ -786,27 +727,19 @@ mod test {
     /// ```
     #[test]
     fn field_offset_conflict() {
-        let mut g = Graph::default();
+        let mut g = CheckedGraph::default();
 
-        // let mut a = ([1, 2], [3, 4]);
-        let a = mk_addr_of_local(&mut g, 0_u32);
-        // let x = &mut a.0[0];
-        let x1 = mk_field(&mut g, a, 1_u32);
-        let x2 = mk_offset(&mut g, x1, 0);
-        // let y = &mut a.0[1];
-        let y1 = mk_field(&mut g, a, 1_u32);
-        let y2 = mk_offset(&mut g, y1, 1);
-        // *x = 1;
-        let x3 = mk_store_addr(&mut g, x2);
-        // *y = 1;
-        let y3 = mk_store_addr(&mut g, y2);
-        // *x = 2;
-        let x4 = mk_store_addr(&mut g, x2);
-        // *y = 2;
-        let y4 = mk_store_addr(&mut g, y2);
+        let a = g.mk_addr_of_local("let mut a = ([1, 2], [3, 4])", false, 0_u32);
+        let x1 = g.mk_field("let x = &mut a.0[0]", false, a, 1_u32);
+        let x2 = g.mk_offset("let x = &mut a.0[0]", false, x1, 0);
+        let y1 = g.mk_field("let y = &mut a.0[1]", false, a, 1_u32);
+        let y2 = g.mk_offset("let y = &mut a.0[1]", false, y1, 1);
+        g.mk_store_addr("*x = 1", false, x2);
+        g.mk_store_addr("*y = 1", false, y2);
+        g.mk_store_addr("*x = 2", false, x2);
+        g.mk_store_addr("*y = 2", false, y2);
 
-        let pdg = build_pdg(g);
-        check_unique(&pdg, &[], &[a, x1, x2, x3, x4, y1, y2, y3, y4]);
+        g.check_unique();
     }
 
     /// ```rust
@@ -833,27 +766,19 @@ mod test {
     /// ```
     #[test]
     fn field_offset_no_conflict() {
-        let mut g = Graph::default();
+        let mut g = CheckedGraph::default();
 
-        // let mut a = ([1, 2], [3, 4]);
-        let a = mk_addr_of_local(&mut g, 0_u32);
-        // let x = &mut a.0[0];
-        let x1 = mk_field(&mut g, a, 0_u32);
-        let x2 = mk_offset(&mut g, x1, 0);
-        // let y = &mut a.1[0];
-        let y1 = mk_field(&mut g, a, 1_u32);
-        let y2 = mk_offset(&mut g, y1, 0);
-        // *x = 1;
-        let x3 = mk_store_addr(&mut g, x2);
-        // *y = 1;
-        let y3 = mk_store_addr(&mut g, y2);
-        // *x = 2;
-        let x4 = mk_store_addr(&mut g, x2);
-        // *y = 2;
-        let y4 = mk_store_addr(&mut g, y2);
+        let a = g.mk_addr_of_local("let mut a = ([1, 2], [3, 4])", true, 0_u32);
+        let x1 = g.mk_field("let x = &mut a.0[0]", true, a, 0_u32);
+        let x2 = g.mk_offset("let x = &mut a.0[0]", true, x1, 0);
+        let y1 = g.mk_field("let y = &mut a.1[0]", true, a, 1_u32);
+        let y2 = g.mk_offset("let y = &mut a.1[0]", true, y1, 0);
+        g.mk_store_addr("*x = 1", true, x2);
+        g.mk_store_addr("*y = 1", true, y2);
+        g.mk_store_addr("*x = 2", true, x2);
+        g.mk_store_addr("*y = 2", true, y2);
 
-        let pdg = build_pdg(g);
-        check_unique(&pdg, &[a, x1, x2, x3, x4, y1, y2, y3, y4], &[]);
+        g.check_unique();
     }
 
     /// ```rust
@@ -888,27 +813,18 @@ mod test {
     /// `rustc` would reject the modified code.
     #[test]
     fn offset_field_conflict() {
-        let mut g = Graph::default();
+        let mut g = CheckedGraph::default();
 
-        // let mut a = ([1, 2], [3, 4]);
-        // let p = &mut a;
-        let p = mk_addr_of_local(&mut g, 0_u32);
-        // let x = &mut (*p)[0].0;
-        let x1 = mk_offset(&mut g, p, 0);
-        let x2 = mk_field(&mut g, x1, 0_u32);
-        // let y = &mut (*p)[0].1;
-        let y1 = mk_offset(&mut g, p, 0);
-        let y2 = mk_field(&mut g, y1, 1_u32);
-        // *x = 1;
-        let x3 = mk_store_addr(&mut g, x2);
-        // *y = 1;
-        let y3 = mk_store_addr(&mut g, y2);
-        // *x = 2;
-        let x4 = mk_store_addr(&mut g, x2);
-        // *y = 2;
-        let y4 = mk_store_addr(&mut g, y2);
+        let p = g.mk_addr_of_local("let mut a = ([1, 2], [3, 4]); let p = &mut a", false, 0_u32);
+        let x1 = g.mk_offset("let x = &mut (*p)[0].0", false, p, 0);
+        let x2 = g.mk_field("let x = &mut (*p)[0].0", false, x1, 0_u32);
+        let y1 = g.mk_offset("let y = &mut (*p)[0].1", false, p, 0);
+        let y2 = g.mk_field("let y = &mut (*p)[0].1", false, y1, 1_u32);
+        g.mk_store_addr("*x = 1", false, x2);
+        g.mk_store_addr("*y = 1", false, y2);
+        g.mk_store_addr("*x = 2", false, x2);
+        g.mk_store_addr("*y = 2", false, y2);
 
-        let pdg = build_pdg(g);
-        check_unique(&pdg, &[], &[p, x1, x2, x3, x4, y1, y2, y3, y4]);
+        g.check_unique();
     }
 }
