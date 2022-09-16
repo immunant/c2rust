@@ -81,12 +81,15 @@ fn get_last_desc(g: &mut Graph) -> HashMap<NodeId, NodeId> {
         .indices()
         .map(|idx| (idx, idx))
         .collect::<HashMap<_, _>>();
-    for (n_id, node) in g.nodes.iter_enumerated().rev() {
-        if let Some(p_id) = node.source {
-            let cur_node_last_desc = *desc_map.get(&n_id).unwrap();
-            let parent_last_desc = desc_map.remove(&p_id).unwrap();
-            desc_map.insert(p_id, std::cmp::max(cur_node_last_desc, parent_last_desc));
-        }
+    for (n_id, p_id) in g
+        .nodes
+        .iter_enumerated()
+        .rev()
+        .filter_map(|(n_id, node)| Some((n_id, node.source?)))
+    {
+        let cur_node_last_desc = *desc_map.get(&n_id).unwrap();
+        let parent_last_desc = desc_map.remove(&p_id).unwrap();
+        desc_map.insert(p_id, std::cmp::max(cur_node_last_desc, parent_last_desc));
     }
     desc_map
 }
