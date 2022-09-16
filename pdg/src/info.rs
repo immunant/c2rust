@@ -1,6 +1,5 @@
 use crate::graph::{Graph, Node, NodeId, NodeKind};
 use crate::Graphs;
-use rustc_middle::mir::Field;
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Display, Formatter};
@@ -113,10 +112,10 @@ fn check_children_conflict(
     children: &HashMap<NodeId, Vec<NodeId>>,
     descs: &HashMap<NodeId, NodeId>,
 ) -> bool {
-    let mut max_descs: HashMap<Option<Field>, NodeId> = HashMap::new();
+    let mut max_descs = HashMap::new();
     for id in children.get(n_id).unwrap() {
         let conflicts = |field| matches!(max_descs.get(&field), Some(max_desc) if max_desc > id);
-        let sib_node: &Node = g.nodes.get(*id).unwrap();
+        let sib_node = g.nodes.get(*id).unwrap();
         let my_last_desc = *descs.get(id).unwrap();
         let non_field_sibilings_conflict = conflicts(None);
         let same_field_siblings_conflicts =
@@ -171,6 +170,7 @@ pub fn add_info(pdg: &mut Graphs) {
 mod test {
     use super::*;
     use c2rust_analysis_rt::mir_loc::Func;
+    use rustc_middle::mir::Field;
     use rustc_middle::mir::Local;
 
     fn mk_node(g: &mut Graph, kind: NodeKind, source: Option<NodeId>) -> NodeId {
