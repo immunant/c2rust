@@ -41,9 +41,10 @@ mod pointer_id;
 mod type_desc;
 mod util;
 
-/// A wrapper around `T` that dynamically tracks whether it's initialized or not.  `RefCell`
-/// dynamically tracks borrowing and panics if the rules are violated at run time; `MaybeUnset`
-/// dynamically tracks initialization and similarly panics if the value is accessed while unset.
+/// A wrapper around `T` that dynamically tracks whether it's initialized or not.
+/// [`RefCell`][std::cell::RefCell] dynamically tracks borrowing and panics if the rules are
+/// violated at run time; `MaybeUnset` dynamically tracks initialization and similarly panics if
+/// the value is accessed while unset.
 #[derive(Clone, Copy, Debug)]
 struct MaybeUnset<T>(Option<T>);
 
@@ -104,19 +105,19 @@ fn run(tcx: TyCtxt) {
     /// parts.  The different fields are set, used, and cleared at various points below.
     #[derive(Default)]
     struct FuncInfo<'tcx> {
-        /// Local analysis context data, such as `LTy`s for all MIR locals.  Combine with the
-        /// `GlobalAnalysisCtxt` to get a complete `AnalysisCtxt` for use within this function.
+        /// Local analysis context data, such as [`LTy`]s for all MIR locals.  Combine with the
+        /// [`GlobalAnalysisCtxt`] to get a complete [`AnalysisCtxt`] for use within this function.
         acx_data: MaybeUnset<AnalysisCtxtData<'tcx>>,
         /// Dataflow constraints gathered from the body of this function.  These are used for
         /// propagating `READ`/`WRITE`/`OFFSET_ADD` and similar permissions.
         dataflow: MaybeUnset<DataflowConstraints>,
-        /// Local equivalence-class information.  Combine with the `GlobalEquivSet` to get a
-        /// complete `EquivSet`, which assigns an equivalence class to each `PointerId` that
-        /// appears in the function.  Used for renumbering `PointerId`s.
+        /// Local equivalence-class information.  Combine with the [`GlobalEquivSet`] to get a
+        /// complete [`EquivSet`], which assigns an equivalence class to each [`PointerId`] that
+        /// appears in the function.  Used for renumbering [`PointerId`]s.
         local_equiv: MaybeUnset<LocalEquivSet>,
-        /// Local part of the permission/flag assignment.  Combine with the `GlobalAssignment` to
-        /// get a complete `Assignment` for this function, which maps every `PointerId` in this
-        /// function to a `PermissionSet` and `FlagSet`.
+        /// Local part of the permission/flag assignment.  Combine with the [`GlobalAssignment`] to
+        /// get a complete [`Assignment`] for this function, which maps every [`PointerId`] in this
+        /// function to a [`PermissionSet`] and [`FlagSet`].
         lasn: MaybeUnset<LocalAssignment>,
     }
 
