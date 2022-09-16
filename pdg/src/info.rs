@@ -137,24 +137,29 @@ fn check_children_conflict(
     false
 }
 
+/// Compute and set [`NodeInfo::unique`].
+///
+/// If a [`Node`] is not [`unique`], none of its descendents can be [`unique`].
+/// If any of a node's children conflict with each other, it is not [`unique`].
+/// Because we traverse the [`Graph`] visiting all parents before their children,
+/// just checking the immediate parent's [`unique`]ness status
+/// is sufficient to guarantee the first condition.
+///
+/// [`unique`]: NodeInfo::unique
 fn set_uniqueness(g: &mut Graph) {
     let children = collect_children(g);
     let last_descs = get_last_desc(g);
-    let mut nonuniqueness: HashSet<NodeId> = HashSet::new();
-    for (n_id, node) in g.nodes.iter_enumerated() {
-        // If a node is not unique, none of its descendents can be unique.
-        // If any of a node's children conflict with each other, it is not unique.
-        // Because we traverse the graph visiting all parents before their children,
-        // just checking the immediate parent's uniqueness status is sufficient to guarantee the
-        // first condition.
-        if matches!(node.source, Some(p_id) if nonuniqueness.contains(&p_id))
-            || check_children_conflict(g, &n_id, &children, &last_descs)
+    let mut non_uniqueness = HashSet::new();
+    for (child, child_node) in g.nodes.iter_enumerated() {
+        let parent = child_node.source;
+        if matches!(parent, Some(parent) if non_uniqueness.contains(&parent))
+            || check_children_conflict(g, &child, &children, &last_descs)
         {
-            nonuniqueness.insert(n_id);
+            non_uniqueness.insert(child);
         }
     }
     for (n_id, node) in g.nodes.iter_enumerated_mut() {
-        node.info.as_mut().unwrap().unique = !nonuniqueness.contains(&n_id);
+        node.info.as_mut().unwrap().unique = !non_uniqueness.contains(&n_id);
     }
 }
 
