@@ -116,7 +116,7 @@ fn check_children_conflict(
     descs: &HashMap<NodeId, NodeId>,
 ) -> bool {
     let mut max_descs = HashMap::new();
-    for id in children.get(n_id).unwrap() {
+    for id in &children[n_id] {
         let conflicts = |field| matches!(max_descs.get(&field), Some(max_desc) if max_desc > id);
         let sibling = &g.nodes[*id];
         let sibling_field = match sibling.kind {
