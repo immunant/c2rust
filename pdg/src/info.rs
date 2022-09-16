@@ -72,9 +72,9 @@ fn set_flow_info(g: &mut Graph) {
     }
 }
 
-/// Gathers information from a [`Graph`] (assumed to be acyclic and topologically sorted but not
-/// necessarily connected) for each [`Node`] in it what its chronologically (judged by [`NodeId`])
-/// final descendent is.
+/// Maps each [`Node`] in a [`Graph`] to its chronologically (according to [`NodeId`]) final descendant.
+///
+/// The [`Graph`] is assumed to be acyclic and topologically sorted, but not necessarily connected.
 fn get_last_desc(g: &mut Graph) -> HashMap<NodeId, NodeId> {
     let mut desc_map = g
         .nodes
