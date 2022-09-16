@@ -88,7 +88,7 @@ fn get_last_desc(g: &mut Graph) -> HashMap<NodeId, NodeId> {
     desc_map
 }
 
-/// Finds the inverse of a [`Graph`], each [`Node`] mapping to a list of its children.
+/// Finds the inverse of a [`Graph`], each [`Node`] mapping to a [`Vec`] of its children.
 fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<NodeId>> {
     let mut children = HashMap::<_, Vec<_>>::new();
     for parent in g.nodes.indices() {
