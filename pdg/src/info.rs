@@ -117,7 +117,7 @@ fn check_children_conflict(
     let mut max_descs: HashMap<Option<Field>, NodeId> = HashMap::new();
     for id in children.get(n_id).unwrap() {
         let sib_node: &Node = g.nodes.get(*id).unwrap();
-        let my_last_desc = descs.get(&id).unwrap().clone();
+        let my_last_desc = descs.get(id).unwrap().clone();
         // if the first below matches, then two siblings, neither a field, conflict
         // if the second matches, then two siblings of the same field conflict
         if matches!(max_descs.get(&None), Some(max_desc) if max_desc > id)
