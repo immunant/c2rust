@@ -2,7 +2,6 @@ use crate::graph::{Graph, Node, NodeId, NodeKind};
 use crate::Graphs;
 use rustc_middle::mir::Field;
 use std::cmp::max;
-use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Display, Formatter};
 
@@ -125,13 +124,12 @@ fn check_children_conflict(
         {
             return true;
         }
-        let my_key = if let NodeKind::Field(f) = sib_node.kind {
-            Some(f)
-        } else {
-            None
-        };
-        let my_entry: Entry<_, _> = max_descs.entry(my_key);
-        my_entry
+        max_descs
+            .entry(if let NodeKind::Field(f) = sib_node.kind {
+                Some(f)
+            } else {
+                None
+            })
             .and_modify(|past_last_desc| *past_last_desc = max(*past_last_desc, my_last_desc))
             .or_insert(my_last_desc);
     }
