@@ -125,11 +125,12 @@ fn check_children_conflict(
         {
             return true;
         }
-        let my_entry: Entry<_, _> = if let NodeKind::Field(f) = sib_node.kind {
-            max_descs.entry(Some(f))
+        let my_key = if let NodeKind::Field(f) = sib_node.kind {
+            Some(f)
         } else {
-            max_descs.entry(None)
+            None
         };
+        let my_entry: Entry<_, _> = max_descs.entry(my_key);
         my_entry
             .and_modify(|past_last_desc| *past_last_desc = max(*past_last_desc, my_last_desc))
             .or_insert(my_last_desc);
