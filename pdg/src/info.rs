@@ -115,11 +115,12 @@ fn check_children_conflict(
 ) -> bool {
     let mut max_descs: HashMap<Option<Field>, NodeId> = HashMap::new();
     for id in children.get(n_id).unwrap() {
+        let conflicts = |field| matches!(max_descs.get(&field), Some(max_desc) if max_desc > id);
         let sib_node: &Node = g.nodes.get(*id).unwrap();
         let my_last_desc = *descs.get(id).unwrap();
-        let non_field_sibilings_conflict =
-            matches!(max_descs.get(&None), Some(max_desc) if max_desc > id);
-        let same_field_siblings_conflicts = matches!(sib_node.kind, NodeKind::Field(f) if matches!(max_descs.get(&Some(f)), Some(max_desc_field) if max_desc_field > id));
+        let non_field_sibilings_conflict = conflicts(None);
+        let same_field_siblings_conflicts =
+            matches!(sib_node.kind, NodeKind::Field(f) if conflicts(Some(f)));
         if non_field_sibilings_conflict || same_field_siblings_conflicts {
             return true;
         }
