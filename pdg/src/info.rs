@@ -839,7 +839,7 @@ mod test {
     /// X2      Y2
     /// X3(f0)  Y3(f1)
     /// X4      Y4
-    ///
+    /// ```
     #[test]
     fn diff_field_conflict() {
         let mut g = Graph::default();
