@@ -807,6 +807,54 @@ mod test {
 
     /// ```rust
     /// let mut a = (1, (2, 3));
+    /// let mut x = &mut a.1;
+    /// let mut y = &mut a.1;
+    /// *(x.0) = 4;
+    /// *(y.1) = 2;
+    /// ```
+    ///
+    /// ```text
+    /// A--------
+    /// |       |
+    /// X1(f0)  Y1(f0)
+    /// X2      Y2
+    /// X3(f0)  Y3(f1)
+    /// X4      Y4
+    ///
+    #[test]
+    fn diff_field_conflict() {
+        let mut g = Graph::default();
+
+        //let mut a = (1, (2, 3));
+        let a = mk_addr_of_local(&mut g, 0_u32);
+        //let mut x = &mut a.1;
+        let x1 = mk_field(&mut g, a, 1_u32);
+        let x2 = mk_copy(&mut g, x1);
+        //let mut y = &mut a.1;
+        let y1 = mk_field(&mut g, a, 1_u32);
+        let y2 = mk_copy(&mut g, y1);
+        // *(x.0) = 4;
+        let x3 = mk_field(&mut g, x2, 0_u32);
+        let x4 = mk_store_addr(&mut g, x3);
+        // *(y.1) = 2;
+        let y3 = mk_field(&mut g, y2, 1_u32);
+        let y4 = mk_store_addr(&mut g, y3);
+
+        let pdg = build_pdg(g);
+
+        assert!(!info(&pdg, a).unique);
+        assert!(!info(&pdg, x1).unique);
+        assert!(!info(&pdg, x2).unique);
+        assert!(!info(&pdg, x3).unique);
+        assert!(!info(&pdg, x4).unique);
+        assert!(!info(&pdg, y1).unique);
+        assert!(!info(&pdg, y2).unique);
+        assert!(!info(&pdg, y3).unique);
+        assert!(!info(&pdg, y4).unique);
+    }
+
+    /// ```rust
+    /// let mut a = (1, (2, 3));
     /// let x = &mut a.1.0;
     /// let y = &mut a.1.0;
     /// *x = 1;
