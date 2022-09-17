@@ -1,9 +1,9 @@
 use crate::graph::{Graph, Node, NodeId, NodeKind};
 use crate::Graphs;
-use std::cmp::{max,min};
+use rustc_middle::mir::Field;
+use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Display, Formatter};
-use rustc_middle::mir::Field;
 
 /// Force an import of [`Node`] just for docs.
 const _: Option<Node> = None;
@@ -99,8 +99,8 @@ fn get_last_desc(g: &mut Graph) -> HashMap<NodeId, NodeId> {
 
 /// Finds the inverse of a [`Graph`], each [`Node`] mapping to a [`Vec`] of its immediate
 /// descendents and their relationship to the [`Node`] in terms of fields.
-fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<(NodeId,Vec<Field>)>> {
-    let mut children = HashMap::<_, Vec<(NodeId,Vec<Field>)>>::new();
+fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<(NodeId, Vec<Field>)>> {
+    let mut children = HashMap::<_, Vec<(NodeId, Vec<Field>)>>::new();
     for parent in g.nodes.indices() {
         children.entry(parent).or_default();
     }
@@ -111,22 +111,37 @@ fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<(NodeId,Vec<Field>)>> {
         .filter_map(|(child, child_node)| Some((child_node.source?, child, child_node)))
     {
         if let NodeKind::Field(f) = child_node.kind {
-            let my_children = children.remove(&child).unwrap().into_iter().map(|(gchild,mut gchildf)| (gchild,({gchildf.push(f); gchildf})));
-            children.insert(child,Vec::new());
+            let my_children =
+                children
+                    .remove(&child)
+                    .unwrap()
+                    .into_iter()
+                    .map(|(gchild, mut gchildf)| {
+                        (
+                            gchild,
+                            ({
+                                gchildf.push(f);
+                                gchildf
+                            }),
+                        )
+                    });
+            children.insert(child, Vec::new());
             children.get_mut(&parent).unwrap().extend(my_children);
-        }
-        else {
-            children.get_mut(&parent).unwrap().push((child,Vec::<_>::new()));
+        } else {
+            children
+                .get_mut(&parent)
+                .unwrap()
+                .push((child, Vec::<_>::new()));
         }
     }
     children
 }
 
-fn prefix(fs1:&Vec<Field>,fs2:&Vec<Field>) -> bool{
+fn prefix(fs1: &Vec<Field>, fs2: &Vec<Field>) -> bool {
     let len1 = fs1.len();
     let len2 = fs2.len();
-    for i in 0..min(len1,len2){
-        if fs1[len1-1-i] != fs2[len2-1-i] {
+    for i in 0..min(len1, len2) {
+        if fs1[len1 - 1 - i] != fs2[len2 - 1 - i] {
             return false;
         }
     }
@@ -139,15 +154,20 @@ fn prefix(fs1:&Vec<Field>,fs2:&Vec<Field>) -> bool{
 /// Children which are a field cannot be live at the same time as any other one of the same field.
 fn check_children_conflict(
     parent: &NodeId,
-    children: &HashMap<NodeId, Vec<(NodeId,Vec<Field>)>>,
+    children: &HashMap<NodeId, Vec<(NodeId, Vec<Field>)>>,
     descs: &HashMap<NodeId, NodeId>,
 ) -> bool {
-    let mut max_descs = HashMap::<Vec<Field>,NodeId>::new();
+    let mut max_descs = HashMap::<Vec<Field>, NodeId>::new();
     let mut node_children = children[parent].clone();
-    node_children.sort_by(|(id1,_),(id2,_)| id1.cmp(id2));
-    for (child,child_fields) in node_children {
-        let conflicts = |fields| matches!(max_descs.get(fields), Some(max_desc) if max_desc > &child);
-        if max_descs.keys().filter(|sib_fields| prefix(*sib_fields,&child_fields)).any(conflicts){
+    node_children.sort_by(|(id1, _), (id2, _)| id1.cmp(id2));
+    for (child, child_fields) in node_children {
+        let conflicts =
+            |fields| matches!(max_descs.get(fields), Some(max_desc) if max_desc > &child);
+        if max_descs
+            .keys()
+            .filter(|sib_fields| prefix(*sib_fields, &child_fields))
+            .any(conflicts)
+        {
             return true;
         }
         let cur = descs[&child];
@@ -249,7 +269,6 @@ mod test {
     fn info(pdg: &Graphs, id: NodeId) -> &NodeInfo {
         pdg.graphs[0_u32.into()].nodes[id].info.as_ref().unwrap()
     }
-
 
     /// ```rust
     /// let mut a = 0;
