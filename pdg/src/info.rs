@@ -1,6 +1,6 @@
 use crate::graph::{Graph, Node, NodeId, NodeKind};
 use crate::Graphs;
-use std::cmp::max;
+use std::cmp::{max,min};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Display, Formatter};
 use rustc_middle::mir::Field;
@@ -97,7 +97,8 @@ fn get_last_desc(g: &mut Graph) -> HashMap<NodeId, NodeId> {
     desc_map
 }
 
-/// Finds the inverse of a [`Graph`], each [`Node`] mapping to a [`Vec`] of its children.
+/// Finds the inverse of a [`Graph`], each [`Node`] mapping to a [`Vec`] of its immediate
+/// descendents and their relationship to the [`Node`] in terms of fields.
 fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<(NodeId,Vec<Field>)>> {
     let mut children = HashMap::<_, Vec<(NodeId,Vec<Field>)>>::new();
     for parent in g.nodes.indices() {
@@ -110,16 +111,26 @@ fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<(NodeId,Vec<Field>)>> {
         .filter_map(|(child, child_node)| Some((child_node.source?, child, child_node)))
     {
         if let NodeKind::Field(f) = child_node.kind {
-            let my_children = children.remove(&child).unwrap().into_iter().map(|(gchild,gchildf)| (gchild,({gchildf.push(f); gchildf})));
+            let my_children = children.remove(&child).unwrap().into_iter().map(|(gchild,mut gchildf)| (gchild,({gchildf.push(f); gchildf})));
+            children.insert(child,Vec::new());
             children.get_mut(&parent).unwrap().extend(my_children);
         }
         else {
             children.get_mut(&parent).unwrap().push((child,Vec::<_>::new()));
         }
     }
-    //children;
-    loop {
+    children
+}
+
+fn prefix(fs1:&Vec<Field>,fs2:&Vec<Field>) -> bool{
+    let len1 = fs1.len();
+    let len2 = fs2.len();
+    for i in 0..min(len1,len2){
+        if fs1[len1-1-i] != fs2[len2-1-i] {
+            return false;
+        }
     }
+    true
 }
 
 /// Given a list of [`Node`]s of the same parent and information about them,
@@ -127,31 +138,23 @@ fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<(NodeId,Vec<Field>)>> {
 /// Children which are not a field cannot be live at the same time as any other child.
 /// Children which are a field cannot be live at the same time as any other one of the same field.
 fn check_children_conflict(
-    g: &Graph,
     parent: &NodeId,
-    children: &HashMap<NodeId, Vec<NodeId>>,
+    children: &HashMap<NodeId, Vec<(NodeId,Vec<Field>)>>,
     descs: &HashMap<NodeId, NodeId>,
 ) -> bool {
-    let mut max_descs = HashMap::new();
-    for child in &children[parent] {
-        let conflicts = |field| matches!(max_descs.get(&field), Some(max_desc) if max_desc > child);
-        let sibling = &g.nodes[*child];
-        let sibling_field = match sibling.kind {
-            NodeKind::Field(f) => Some(f),
-            _ => None,
-        };
-        let non_field_sibilings_conflict = conflicts(None);
-        let same_field_siblings_conflicts = matches!(sibling_field, Some(f) if conflicts(Some(f)));
-        if non_field_sibilings_conflict || same_field_siblings_conflicts {
+    let mut max_descs = HashMap::<Vec<Field>,NodeId>::new();
+    let mut node_children = children[parent].clone();
+    node_children.sort_by(|(id1,_),(id2,_)| id1.cmp(id2));
+    for (child,child_fields) in node_children {
+        let conflicts = |fields| matches!(max_descs.get(fields), Some(max_desc) if max_desc > &child);
+        if max_descs.keys().filter(|sib_fields| prefix(*sib_fields,&child_fields)).any(conflicts){
             return true;
         }
-        {
-            let cur = descs[child];
-            max_descs
-                .entry(sibling_field)
-                .and_modify(|past| *past = max(*past, cur))
-                .or_insert(cur);
-        }
+        let cur = descs[&child];
+        max_descs
+            .entry(child_fields.clone())
+            .and_modify(|past| *past = max(*past, cur))
+            .or_insert(cur);
     }
     false
 }
@@ -172,7 +175,7 @@ fn set_uniqueness(g: &mut Graph) {
     for (child, child_node) in g.nodes.iter_enumerated() {
         let parent = child_node.source;
         if matches!(parent, Some(parent) if non_uniqueness.contains(&parent))
-            || check_children_conflict(g, &child, &children, &last_descs)
+            || check_children_conflict(&child, &children, &last_descs)
         {
             non_uniqueness.insert(child);
         }
@@ -246,6 +249,7 @@ mod test {
     fn info(pdg: &Graphs, id: NodeId) -> &NodeInfo {
         pdg.graphs[0_u32.into()].nodes[id].info.as_ref().unwrap()
     }
+
 
     /// ```rust
     /// let mut a = 0;
@@ -641,9 +645,11 @@ mod test {
         // let mut a = ColorPoint { x: 0, y: 0, z: Color { r: 100, g: 100, b: 100 } };
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a.x;
-        let b1 = mk_field(&mut g, a, x);
+        let bb1 = mk_field(&mut g, a, x);
+        let b1 = mk_copy(&mut g, bb1);
         // let c = &mut a.y;
-        let c1 = mk_field(&mut g, a, y);
+        let cc1 = mk_field(&mut g, a, y);
+        let c1 = mk_copy(&mut g, cc1);
         // a.z.r = 200;
         let x1 = mk_field(&mut g, a, z);
         let x2 = mk_field(&mut g, x1, red);
@@ -657,11 +663,14 @@ mod test {
         // *d = ColorPoint { x: 0, y: 0, z: Color { r: 20, g: 200, b: 20 } };
         let d2 = mk_store_addr(&mut g, d1);
         // let e = &mut a.z;
-        let e = mk_field(&mut g, a, z);
+        let ee = mk_field(&mut g, a, z);
+        let e = mk_copy(&mut g, ee);
         // let f = &mut e.g;
-        let f1 = mk_field(&mut g, e, green);
+        let ff1 = mk_field(&mut g, e, green);
+        let f1 = mk_copy(&mut g, ff1);
         // let g = &mut e.g;
-        let gg = mk_field(&mut g, e, green);
+        let ggg = mk_field(&mut g, e, green);
+        let gg = mk_copy(&mut g, ggg);
         // *f = 3;
         let f2 = mk_store_addr(&mut g, f1);
         // a.z.r = 100;
@@ -716,9 +725,9 @@ mod test {
 
         // let mut a = (1, (2, 3));
         let a = mk_addr_of_local(&mut g, 0_u32);
-        // let x = &mut a.1.0;
+        // let x = &mut a.0;
         let x1 = mk_field(&mut g, a, 0_u32);
-        // let y = &mut a.1.1;
+        // let y = &mut a.1;
         let y1 = mk_field(&mut g, a, 1_u32);
         // *x = 1;
         let x2 = mk_store_addr(&mut g, x1);
@@ -835,9 +844,9 @@ mod test {
         // *y = 1;
         let y3 = mk_store_addr(&mut g, y2);
         // *x = 2;
-        let x4 = mk_store_addr(&mut g, x2);
+        let x4 = mk_store_addr(&mut g, x3);
         // *y = 2;
-        let y4 = mk_store_addr(&mut g, y2);
+        let y4 = mk_store_addr(&mut g, y3);
 
         let pdg = build_pdg(g);
 
