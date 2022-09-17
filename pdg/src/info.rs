@@ -3,6 +3,7 @@ use crate::Graphs;
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Display, Formatter};
+use rustc_middle::mir::Field;
 
 /// Force an import of [`Node`] just for docs.
 const _: Option<Node> = None;
@@ -97,19 +98,28 @@ fn get_last_desc(g: &mut Graph) -> HashMap<NodeId, NodeId> {
 }
 
 /// Finds the inverse of a [`Graph`], each [`Node`] mapping to a [`Vec`] of its children.
-fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<NodeId>> {
-    let mut children = HashMap::<_, Vec<_>>::new();
+fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<(NodeId,Vec<Field>)>> {
+    let mut children = HashMap::<_, Vec<(NodeId,Vec<Field>)>>::new();
     for parent in g.nodes.indices() {
         children.entry(parent).or_default();
     }
-    for (parent, child) in g
+    for (parent, child, child_node) in g
         .nodes
         .iter_enumerated()
-        .filter_map(|(child, child_node)| Some((child_node.source?, child)))
+        .rev()
+        .filter_map(|(child, child_node)| Some((child_node.source?, child, child_node)))
     {
-        children.get_mut(&parent).unwrap().push(child);
+        if let NodeKind::Field(f) = child_node.kind {
+            let my_children = children.remove(&child).unwrap().into_iter().map(|(gchild,gchildf)| (gchild,({gchildf.push(f); gchildf})));
+            children.get_mut(&parent).unwrap().extend(my_children);
+        }
+        else {
+            children.get_mut(&parent).unwrap().push((child,Vec::<_>::new()));
+        }
     }
-    children
+    //children;
+    loop {
+    }
 }
 
 /// Given a list of [`Node`]s of the same parent and information about them,
