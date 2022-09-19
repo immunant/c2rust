@@ -65,7 +65,8 @@ impl Pdg {
     pub fn new(metadata_path: &Path, event_log_path: &Path) -> eyre::Result<Self> {
         let events = read_event_log(event_log_path)?;
         let metadata = read_metadata(metadata_path)?;
-        let graphs = construct_pdg(&events, &metadata);
+        let mut graphs = construct_pdg(&events, &metadata);
+        add_info(&mut graphs);
         Ok(Self {
             events,
             metadata,
@@ -194,8 +195,7 @@ pub fn init() {
 fn main() -> eyre::Result<()> {
     init();
     let args = Args::parse();
-    let mut pdg = Pdg::new(&args.metadata, &args.event_log)?;
-    add_info(&mut pdg.graphs);
+    let pdg = Pdg::new(&args.metadata, &args.event_log)?;
     pdg.graphs.assert_all_tests();
     let repr = pdg.repr(&args.print);
     println!("{repr}");
