@@ -199,6 +199,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
                         self.constraints.add_all_perms(rv_lty.label, perms);
                     }
+                    Some(Callee::MiscBuiltin) => {},
                     Some(Callee::Other { def_id, substs }) => {
                         self.visit_call_other(def_id, substs, args, destination);
                     }
