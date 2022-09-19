@@ -4,12 +4,12 @@ mod cast;
 pub mod source;
 
 use c2rust_analysis_rt::mir_loc::{self, EventMetadata};
+use indexmap::{IndexMap, IndexSet};
 use rustc_middle::{
     mir::{Body, HasLocalDecls, Local, LocalDecls, Location, Place, Rvalue},
     ty::TyCtxt,
 };
 use rustc_span::def_id::DefId;
-use std::collections::{HashMap, HashSet};
 
 use crate::{arg::InstrumentationArg, hooks::Hooks, util::Convert};
 
@@ -28,7 +28,7 @@ pub struct InstrumentationPoint<'tcx> {
 }
 
 pub struct CheckAddressTakenLocals<'a, 'tcx: 'a> {
-    pub address_taken: HashSet<Local>,
+    pub address_taken: IndexSet<Local>,
     tcx: TyCtxt<'tcx>,
     body: &'a Body<'tcx>,
 }
@@ -36,7 +36,7 @@ pub struct CheckAddressTakenLocals<'a, 'tcx: 'a> {
 impl<'a, 'tcx: 'a> CheckAddressTakenLocals<'a, 'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>, body: &'a Body<'tcx>) -> Self {
         Self {
-            address_taken: HashSet::new(),
+            address_taken: IndexSet::new(),
             tcx,
             body,
         }
@@ -48,16 +48,16 @@ impl<'a, 'tcx: 'a> CheckAddressTakenLocals<'a, 'tcx> {
 }
 
 pub struct SubAddressTakenLocals<'tcx> {
-    pub address_taken: HashSet<Local>,
-    pub local_substitute: HashMap<Local, Local>,
+    pub address_taken: IndexSet<Local>,
+    pub local_substitute: IndexMap<Local, Local>,
     tcx: TyCtxt<'tcx>,
 }
 
 impl<'tcx> SubAddressTakenLocals<'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>, address_taken: HashSet<Local>) -> Self {
+    pub fn new(tcx: TyCtxt<'tcx>, address_taken: IndexSet<Local>) -> Self {
         Self {
             address_taken,
-            local_substitute: HashMap::new(),
+            local_substitute: IndexMap::new(),
             tcx,
         }
     }
@@ -73,7 +73,7 @@ pub struct CollectInstrumentationPoints<'a, 'tcx: 'a> {
     body: &'a Body<'tcx>,
     instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
     assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
-    pub addr_taken_local_substitutions: HashMap<Local, Local>,
+    pub addr_taken_local_substitutions: IndexMap<Local, Local>,
 }
 
 impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
@@ -81,7 +81,7 @@ impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
         tcx: TyCtxt<'tcx>,
         hooks: Hooks<'tcx>,
         body: &'a Body<'tcx>,
-        addr_taken_local_substitutions: HashMap<Local, Local>,
+        addr_taken_local_substitutions: IndexMap<Local, Local>,
     ) -> Self {
         Self {
             tcx,

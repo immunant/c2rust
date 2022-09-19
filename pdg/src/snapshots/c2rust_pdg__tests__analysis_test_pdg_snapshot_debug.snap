@@ -3,8 +3,8 @@ source: pdg/src/main.rs
 expression: pdg
 ---
 g {
-	n[0]: &_1  _    => _   @ bb3[0]:  fn main;   _24 = &raw mut _1;
-	n[1]: copy n[0] => _11 @ bb3[10]: fn main;   _11 = &(*_24);
+	n[0]: &_1  _    => _   @ bb3[0]:  fn main;   _23 = &raw mut _1;
+	n[1]: copy n[0] => _11 @ bb3[10]: fn main;   _11 = &(*_23);
 	n[2]: copy n[1] => _1  @ bb0[0]:  fn deref;  _10 = deref(move _11);
 }
 nodes_that_need_write = []
@@ -27,10 +27,10 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]: &_5  _    => _   @ bb10[0]: fn main;  _23 = &raw mut _5;
-	n[1]: copy n[0] => _19 @ bb10[9]: fn main;  _19 = &(*_23);
+	n[0]: &_5  _    => _   @ bb10[0]: fn main;  _24 = &raw mut _5;
+	n[1]: copy n[0] => _19 @ bb10[9]: fn main;  _19 = &(*_24);
 	n[2]: copy n[1] => _1  @ bb0[0]:  fn len;   _18 = len(move _19);
-	n[3]: copy n[0] => _22 @ bb12[6]: fn main;  _22 = &mut (*_23);
+	n[3]: copy n[0] => _22 @ bb12[6]: fn main;  _22 = &mut (*_24);
 }
 nodes_that_need_write = []
 
