@@ -8,8 +8,8 @@ use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    Body, HasLocalDecls, Local, LocalDecls, Operand, Place, PlaceElem, PlaceRef, ProjectionElem,
-    Rvalue,
+    Body, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem, PlaceRef,
+    ProjectionElem, Rvalue,
 };
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
@@ -218,6 +218,98 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         }
     }
 
+    pub fn type_of_rvalue(&self, rv: &Rvalue<'tcx>, _loc: Location) -> LTy<'tcx> {
+        if let Some(desc) = describe_rvalue(rv) {
+            let ty = rv.ty(self, self.tcx());
+            if matches!(ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)) {
+                let (pointee_lty, proj, ptr) = match desc {
+                    RvalueDesc::Project { base, proj } => {
+                        let base_lty = self.type_of(base);
+                        eprintln!(
+                            "rvalue = {:?}, desc = {:?}, base_lty = {:?}",
+                            rv, desc, base_lty
+                        );
+                        (
+                            self.project(base_lty, &PlaceElem::Deref),
+                            proj,
+                            base_lty.label,
+                        )
+                    }
+                    RvalueDesc::AddrOfLocal { local, proj } => {
+                        (self.type_of(local), proj, self.addr_of_local[local])
+                    }
+                };
+
+                let mut pointee_lty = pointee_lty;
+                for p in proj {
+                    pointee_lty = self.project(pointee_lty, p);
+                }
+
+                let ty = rv.ty(self, self.tcx());
+                let pointee_ty = match *ty.kind() {
+                    TyKind::Ref(_, ty, _) => ty,
+                    TyKind::RawPtr(tm) => tm.ty,
+                    _ => unreachable!(
+                        "got RvalueDesc for non-pointer Rvalue {:?} (of type {:?})",
+                        rv, ty,
+                    ),
+                };
+                assert_eq!(pointee_ty, pointee_lty.ty);
+
+                let args = self.lcx().mk_slice(&[pointee_lty]);
+                return self.lcx().mk(pointee_ty, args, ptr);
+            }
+        }
+
+        match *rv {
+            Rvalue::Use(ref op) => self.type_of(op),
+            Rvalue::CopyForDeref(pl) => self.type_of(pl),
+            Rvalue::Repeat(ref op, _) => {
+                let op_lty = self.type_of(op);
+                let ty = rv.ty(self, self.tcx());
+                assert!(matches!(ty.kind(), TyKind::Array(..)));
+                let args = self.lcx().mk_slice(&[op_lty]);
+                self.lcx().mk(ty, args, PointerId::NONE)
+            }
+            Rvalue::Ref(..) | Rvalue::AddressOf(..) => {
+                unreachable!("should be handled by describe_rvalue case above")
+            }
+            Rvalue::ThreadLocalRef(..) => todo!("type_of ThreadLocalRef"),
+            Rvalue::Cast(_, ref op, ty) => {
+                let op_lty = self.type_of(op);
+
+                // We support this category of pointer casts as a special case.
+                let op_is_ptr = matches!(op_lty.ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
+                let op_pointee = op_is_ptr.then(|| op_lty.args[0]);
+                let ty_pointee = match *ty.kind() {
+                    TyKind::Ref(_, ty, _) => Some(ty),
+                    TyKind::RawPtr(tm) => Some(tm.ty),
+                    _ => None,
+                };
+                if op_pointee.is_some() && op_pointee.map(|lty| lty.ty) == ty_pointee {
+                    // The source and target types are both pointers, and they have identical
+                    // pointee types.  We label the target type with the same `PointerId`s as the
+                    // source type in all positions.  This works because the two types have the
+                    // same structure.
+                    return self.lcx().mk(ty, op_lty.args, op_lty.label);
+                }
+
+                label_no_pointers(self, ty)
+            }
+            Rvalue::Len(..)
+            | Rvalue::BinaryOp(..)
+            | Rvalue::CheckedBinaryOp(..)
+            | Rvalue::NullaryOp(..)
+            | Rvalue::UnaryOp(..)
+            | Rvalue::Discriminant(..) => {
+                let ty = rv.ty(self, self.tcx());
+                label_no_pointers(self, ty)
+            }
+            Rvalue::Aggregate(ref _kind, ref _vals) => todo!("type_of Aggregate"),
+            Rvalue::ShallowInitBox(ref _op, _ty) => todo!("type_of ShallowInitBox"),
+        }
+    }
+
     fn project(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
         match *proj {
             ProjectionElem::Deref => {
@@ -331,100 +423,6 @@ impl<'tcx> TypeOf<'tcx> for Operand<'tcx> {
         match *self {
             Operand::Move(pl) | Operand::Copy(pl) => acx.type_of(pl),
             Operand::Constant(ref c) => label_no_pointers(acx, c.ty()),
-        }
-    }
-}
-
-impl<'tcx> TypeOf<'tcx> for Rvalue<'tcx> {
-    fn type_of(&self, acx: &AnalysisCtxt<'_, 'tcx>) -> LTy<'tcx> {
-        if let Some(desc) = describe_rvalue(self) {
-            let ty = self.ty(acx, acx.tcx());
-            if matches!(ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)) {
-                let (pointee_lty, proj, ptr) = match desc {
-                    RvalueDesc::Project { base, proj } => {
-                        let base_lty = acx.type_of(base);
-                        eprintln!(
-                            "rvalue = {:?}, desc = {:?}, base_lty = {:?}",
-                            self, desc, base_lty
-                        );
-                        (
-                            acx.project(base_lty, &PlaceElem::Deref),
-                            proj,
-                            base_lty.label,
-                        )
-                    }
-                    RvalueDesc::AddrOfLocal { local, proj } => {
-                        (acx.type_of(local), proj, acx.addr_of_local[local])
-                    }
-                };
-
-                let mut pointee_lty = pointee_lty;
-                for p in proj {
-                    pointee_lty = acx.project(pointee_lty, p);
-                }
-
-                let ty = self.ty(acx, acx.tcx());
-                let pointee_ty = match *ty.kind() {
-                    TyKind::Ref(_, ty, _) => ty,
-                    TyKind::RawPtr(tm) => tm.ty,
-                    _ => unreachable!(
-                        "got RvalueDesc for non-pointer Rvalue {:?} (of type {:?})",
-                        self, ty,
-                    ),
-                };
-                assert_eq!(pointee_ty, pointee_lty.ty);
-
-                let args = acx.lcx().mk_slice(&[pointee_lty]);
-                return acx.lcx().mk(pointee_ty, args, ptr);
-            }
-        }
-
-        match *self {
-            Rvalue::Use(ref op) => acx.type_of(op),
-            Rvalue::CopyForDeref(pl) => acx.type_of(pl),
-            Rvalue::Repeat(ref op, _) => {
-                let op_lty = acx.type_of(op);
-                let ty = self.ty(acx, acx.tcx());
-                assert!(matches!(ty.kind(), TyKind::Array(..)));
-                let args = acx.lcx().mk_slice(&[op_lty]);
-                acx.lcx().mk(ty, args, PointerId::NONE)
-            }
-            Rvalue::Ref(..) | Rvalue::AddressOf(..) => {
-                unreachable!("should be handled by describe_rvalue case above")
-            }
-            Rvalue::ThreadLocalRef(..) => todo!("type_of ThreadLocalRef"),
-            Rvalue::Cast(_, ref op, ty) => {
-                let op_lty = acx.type_of(op);
-
-                // We support this category of pointer casts as a special case.
-                let op_is_ptr = matches!(op_lty.ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
-                let op_pointee = op_is_ptr.then(|| op_lty.args[0]);
-                let ty_pointee = match *ty.kind() {
-                    TyKind::Ref(_, ty, _) => Some(ty),
-                    TyKind::RawPtr(tm) => Some(tm.ty),
-                    _ => None,
-                };
-                if op_pointee.is_some() && op_pointee.map(|lty| lty.ty) == ty_pointee {
-                    // The source and target types are both pointers, and they have identical
-                    // pointee types.  We label the target type with the same `PointerId`s as the
-                    // source type in all positions.  This works because the two types have the
-                    // same structure.
-                    return acx.lcx().mk(ty, op_lty.args, op_lty.label);
-                }
-
-                label_no_pointers(acx, ty)
-            }
-            Rvalue::Len(..)
-            | Rvalue::BinaryOp(..)
-            | Rvalue::CheckedBinaryOp(..)
-            | Rvalue::NullaryOp(..)
-            | Rvalue::UnaryOp(..)
-            | Rvalue::Discriminant(..) => {
-                let ty = self.ty(acx, acx.tcx());
-                label_no_pointers(acx, ty)
-            }
-            Rvalue::Aggregate(ref _kind, ref _vals) => todo!("type_of Aggregate"),
-            Rvalue::ShallowInitBox(ref _op, _ty) => todo!("type_of ShallowInitBox"),
         }
     }
 }

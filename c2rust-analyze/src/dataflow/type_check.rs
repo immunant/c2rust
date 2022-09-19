@@ -3,8 +3,8 @@ use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
 use crate::util::{self, describe_rvalue, Callee, RvalueDesc};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
-    BinOp, Body, Mutability, Operand, Place, PlaceRef, ProjectionElem, Rvalue, Statement,
-    StatementKind, Terminator, TerminatorKind,
+    AggregateKind, BinOp, Body, Location, Mutability, Operand, Place, PlaceRef, ProjectionElem,
+    Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::{SubstsRef, TyKind};
 
@@ -151,7 +151,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    pub fn visit_statement(&mut self, stmt: &Statement<'tcx>) {
+    pub fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         eprintln!("visit_statement({:?})", stmt);
         // TODO(spernsteiner): other `StatementKind`s will be handled in the future
         #[allow(clippy::single_match)]
@@ -163,7 +163,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                 // TODO: combine these
                 let rv_ptr = self.visit_rvalue(rv);
-                let rv_lty = self.acx.type_of(rv);
+                let rv_lty = self.acx.type_of_rvalue(rv, loc);
 
                 self.do_assign(pl_ptr, rv_ptr);
                 self.do_unify_pointees(pl_lty, rv_lty);
@@ -252,9 +252,9 @@ pub fn visit<'tcx>(
         equiv_constraints: Vec::new(),
     };
 
-    for bb_data in mir.basic_blocks().iter() {
-        for stmt in bb_data.statements.iter() {
-            tc.visit_statement(stmt);
+    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+        for (i, stmt) in bb_data.statements.iter().enumerate() {
+            tc.visit_statement(stmt, Location { block: bb, statement_index: i });
         }
         tc.visit_terminator(bb_data.terminator());
     }
