@@ -69,10 +69,14 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
 
 #[derive(Debug)]
 pub enum Callee<'tcx> {
+    /// `<*mut T>::offset` or `<*const T>::offset`.
     PtrOffset {
         pointee_ty: Ty<'tcx>,
         mutbl: Mutability,
     },
+    /// A built-in or standard library function that requires no special handling.
+    MiscBuiltin,
+    /// Some other statically-known function, including functions defined in the current crate.
     Other {
         def_id: DefId,
         substs: SubstsRef<'tcx>,
@@ -84,6 +88,21 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> 
         TyKind::FnDef(did, substs) => (did, substs),
         _ => return None,
     };
+
+    if let Some(callee) = builtin_callee(tcx, did, substs) {
+        return Some(callee);
+    }
+    Some(Callee::Other {
+        def_id: did,
+        substs,
+    })
+}
+
+fn builtin_callee<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    did: DefId,
+    _substs: SubstsRef<'tcx>,
+) -> Option<Callee<'tcx>> {
     let name = tcx.item_name(did);
 
     match name.as_str() {
@@ -103,10 +122,24 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> 
             };
             Some(Callee::PtrOffset { pointee_ty, mutbl })
         }
-        _ => Some(Callee::Other {
-            def_id: did,
-            substs,
-        }),
+
+        "abort" => {
+            // std::process::abort
+            let path = tcx.def_path(did);
+            if tcx.crate_name(path.krate).as_str() != "std" {
+                return None;
+            }
+            if path.data.len() != 2 {
+                return None;
+            }
+            if path.data[0].to_string() != "process" {
+                return None;
+            }
+            debug_assert_eq!(path.data[1].to_string(), "abort");
+            Some(Callee::MiscBuiltin)
+        }
+
+        _ => None,
     }
 }
 

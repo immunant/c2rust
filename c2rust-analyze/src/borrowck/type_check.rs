@@ -209,7 +209,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         let rv_lty = self.visit_operand(&args[0]);
                         self.do_assign(pl_lty, rv_lty);
                     }
-                    _ => {}
+                    Some(Callee::MiscBuiltin) => {}
+                    Some(Callee::Other { .. }) => {
+                        // TODO
+                    }
+                    None => {}
                 }
             }
             // TODO(spernsteiner): handle other `TerminatorKind`s
