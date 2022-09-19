@@ -7,7 +7,7 @@
     unused_assignments,
     unused_mut,
     unused_variables,
-    unused_parens,
+    unused_parens
 )]
 extern "C" {
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
@@ -18,10 +18,11 @@ extern "C" {
 }
 
 /// Hidden from instrumentation so that we can polyfill [`reallocarray`] with it.
-const REALLOC: unsafe extern "C" fn(*mut libc::c_void, libc::c_ulong) -> *mut libc::c_void = realloc;
+const REALLOC: unsafe extern "C" fn(*mut libc::c_void, libc::c_ulong) -> *mut libc::c_void =
+    realloc;
 
 /// Polyfill [`reallocarray`] as macOS does not have [`reallocarray`].
-/// 
+///
 /// Normally we'd only polyfill it on macOS, but then we'd need a different snapshot file for macOS,
 /// as polyfilling results in a couple of extra copies.
 /// Thus, we just polyfill always.
@@ -377,7 +378,7 @@ pub unsafe extern "C" fn test_unique_ref() {
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_ref_field() {
-    let t =  T {
+    let t = T {
         field: 0i32,
         field2: 0u64,
         field3: 0 as *const S,
@@ -501,7 +502,7 @@ pub unsafe extern "C" fn insertion_sort(n: libc::c_int, p: *mut libc::c_int) {
         i += 1
     }
 }
-unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> libc::c_int {
+unsafe fn main_0() -> libc::c_int {
     simple();
     exercise_allocator();
     simple_analysis();
@@ -540,17 +541,15 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     return 0i32;
 }
 pub fn main() {
-    let args = ::std::env::args()
-        .map(|arg| ::std::ffi::CString::new(arg).expect("Failed to convert argument into CString."))
-        .collect::<Vec<_>>();
-    let mut args = args.iter()
-        .map(|arg| arg.as_ptr() as *mut libc::c_char)
-        .chain(::std::iter::once(::std::ptr::null_mut()))
-        .collect::<Vec<_>>();
+    // let args = ::std::env::args()
+    //     .map(|arg| ::std::ffi::CString::new(arg).expect("Failed to convert argument into CString."))
+    //     .collect::<Vec<_>>();
+    // let mut args = args
+    //     .iter()
+    //     .map(|arg| arg.as_ptr() as *mut libc::c_char)
+    //     .chain(::std::iter::once(::std::ptr::null_mut()))
+    //     .collect::<Vec<_>>();
     unsafe {
-        main_0(
-            (args.len() - 1) as libc::c_int,
-            args.as_mut_ptr() as *mut *mut libc::c_char,
-        );
+        main_0(        );
     }
 }
