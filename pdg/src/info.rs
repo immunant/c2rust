@@ -137,6 +137,8 @@ fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<(NodeId, Vec<Field>)>> {
     children
 }
 
+/// Checks if fs1 and fs2 are either prefixes of each other, which would make them aliases.
+/// Note: the fields were pushed on from the bottom up, so they are in reverse order.
 fn prefix(fs1: &Vec<Field>, fs2: &Vec<Field>) -> bool {
     let len1 = fs1.len();
     let len2 = fs2.len();
