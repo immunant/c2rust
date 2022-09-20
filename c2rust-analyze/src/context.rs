@@ -79,6 +79,10 @@ pub struct AnalysisCtxt<'a, 'tcx> {
     pub local_decls: &'a LocalDecls<'tcx>,
     pub local_tys: IndexVec<Local, LTy<'tcx>>,
     pub addr_of_local: IndexVec<Local, PointerId>,
+    /// Types for certain [`StatementKind::Assign`] [`Rvalue`]s.  Some `Rvalue`s introduce fresh
+    /// [`PointerId`]s; to keep those `PointerId`s consistent, the `Rvalue`'s type must be stored
+    /// rather than recomputed on the fly.
+    pub rvalue_tys: HashMap<Location, LTy<'tcx>>,
 
     next_ptr_id: NextLocalPointerId,
 }
@@ -86,6 +90,7 @@ pub struct AnalysisCtxt<'a, 'tcx> {
 pub struct AnalysisCtxtData<'tcx> {
     local_tys: IndexVec<Local, LTy<'tcx>>,
     addr_of_local: IndexVec<Local, PointerId>,
+    rvalue_tys: HashMap<Location, LTy<'tcx>>,
     next_ptr_id: NextLocalPointerId,
 }
 
@@ -158,6 +163,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             local_decls: &mir.local_decls,
             local_tys: IndexVec::new(),
             addr_of_local: IndexVec::new(),
+            rvalue_tys: HashMap::new(),
             next_ptr_id: NextLocalPointerId::new(),
         }
     }
@@ -170,6 +176,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         let AnalysisCtxtData {
             local_tys,
             addr_of_local,
+            rvalue_tys,
             next_ptr_id,
         } = data;
         AnalysisCtxt {
@@ -177,6 +184,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             local_decls: &mir.local_decls,
             local_tys,
             addr_of_local,
+            rvalue_tys,
             next_ptr_id,
         }
     }
@@ -185,6 +193,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         AnalysisCtxtData {
             local_tys: self.local_tys,
             addr_of_local: self.addr_of_local,
+            rvalue_tys: self.rvalue_tys,
             next_ptr_id: self.next_ptr_id,
         }
     }
@@ -218,7 +227,11 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         }
     }
 
-    pub fn type_of_rvalue(&self, rv: &Rvalue<'tcx>, _loc: Location) -> LTy<'tcx> {
+    pub fn type_of_rvalue(&self, rv: &Rvalue<'tcx>, loc: Location) -> LTy<'tcx> {
+        if let Some(&lty) = self.rvalue_tys.get(&loc) {
+            return lty;
+        }
+
         if let Some(desc) = describe_rvalue(rv) {
             let ty = rv.ty(self, self.tcx());
             if matches!(ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)) {
@@ -344,6 +357,7 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
         let AnalysisCtxtData {
             ref mut local_tys,
             ref mut addr_of_local,
+            ref mut rvalue_tys,
             ref mut next_ptr_id,
         } = *self;
 
@@ -355,6 +369,10 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
             if !ptr.is_none() {
                 *ptr = map[*ptr];
             }
+        }
+
+        for lty in rvalue_tys.values_mut() {
+            *lty = remap_lty_pointers(lcx, &map, *lty);
         }
 
         *next_ptr_id = counter;
