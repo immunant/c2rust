@@ -610,7 +610,11 @@ mod test {
     /// |      |
     /// B1     |y
     /// |      C1
-    /// |y
+    /// |      C2
+    /// |y     |
+    /// BB     |
+    /// BB1    |
+    /// |      C3
     /// B2
     /// ```
     #[test]
@@ -623,12 +627,14 @@ mod test {
         let b1 = mk_copy(&mut g, a);
         // let c = &mut b.y;
         let c1 = mk_field(&mut g, a, 1_u32);
+        let c2 = mk_copy(&mut g, c1);
         // let bb = &mut b.y;
         let bb = mk_field(&mut g, b1, 1_u32);
+        let bb1 = mk_copy(&mut g, bb);
         // *c = 2;
-        let c2 = mk_store_addr(&mut g, c1);
+        let c3 = mk_store_addr(&mut g, c2);
         // *bb = 1;
-        let b2 = mk_store_addr(&mut g, bb);
+        let b2 = mk_store_addr(&mut g, bb1);
 
         let pdg = build_pdg(g);
         assert!(!info(&pdg, a).unique);
@@ -636,7 +642,8 @@ mod test {
         assert!(!info(&pdg, b2).unique);
         assert!(!info(&pdg, c1).unique);
         assert!(!info(&pdg, c2).unique);
-        assert!(!info(&pdg, b2).unique);
+        assert!(!info(&pdg, c3).unique);
+        assert!(!info(&pdg, bb1).unique);
     }
 
     /// ```rust
@@ -732,11 +739,13 @@ mod test {
     /// A
     /// +------.
     /// X1     |
-    /// |      Y1
     /// X2     |
+    /// |      Y1
     /// |      Y2
     /// X3     |
-    ///        Y3
+    /// |      Y3
+    /// X4     |
+    ///        Y4
     /// ```
     #[test]
     fn field_no_conflict() {
@@ -746,16 +755,18 @@ mod test {
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let x = &mut a.0;
         let x1 = mk_field(&mut g, a, 0_u32);
+        let x2 = mk_copy(&mut g, x1);
         // let y = &mut a.1;
         let y1 = mk_field(&mut g, a, 1_u32);
+        let y2 = mk_copy(&mut g, y1);
         // *x = 1;
-        let x2 = mk_store_addr(&mut g, x1);
+        let x3 = mk_store_addr(&mut g, x2);
         // *y = 1;
-        let y2 = mk_store_addr(&mut g, y1);
+        let y3 = mk_store_addr(&mut g, y2);
         // *x = 2;
-        let x3 = mk_store_addr(&mut g, x1);
+        let x4 = mk_store_addr(&mut g, x3);
         // *y = 2;
-        let y3 = mk_store_addr(&mut g, y1);
+        let y4 = mk_store_addr(&mut g, y3);
 
         let pdg = build_pdg(g);
 
@@ -763,9 +774,11 @@ mod test {
         assert!(info(&pdg, x1).unique);
         assert!(info(&pdg, x2).unique);
         assert!(info(&pdg, x3).unique);
+        assert!(info(&pdg, x4).unique);
         assert!(info(&pdg, y1).unique);
         assert!(info(&pdg, y2).unique);
         assert!(info(&pdg, y3).unique);
+        assert!(info(&pdg, y4).unique);
     }
 
     /// ```rust
@@ -783,12 +796,14 @@ mod test {
     /// +------.
     /// X1     |
     /// X2     |
+    /// X3     |
     /// |      Y1
     /// |      Y2
-    /// X3     |
     /// |      Y3
     /// X4     |
-    ///        Y4
+    /// |      Y4
+    /// X5     |
+    ///        Y5
     /// ```
     #[test]
     fn nested_field_no_conflict() {
@@ -799,17 +814,19 @@ mod test {
         // let x = &mut a.1.0;
         let x1 = mk_field(&mut g, a, 1_u32);
         let x2 = mk_field(&mut g, x1, 0_u32);
+        let x3 = mk_copy(&mut g, x2);
         // let y = &mut a.1.1;
         let y1 = mk_field(&mut g, a, 1_u32);
         let y2 = mk_field(&mut g, y1, 1_u32);
+        let y3 = mk_copy(&mut g, y2);
         // *x = 1;
-        let x3 = mk_store_addr(&mut g, x2);
+        let x4 = mk_store_addr(&mut g, x3);
         // *y = 1;
-        let y3 = mk_store_addr(&mut g, y2);
+        let y4 = mk_store_addr(&mut g, y3);
         // *x = 2;
-        let x4 = mk_store_addr(&mut g, x2);
+        let x5 = mk_store_addr(&mut g, x4);
         // *y = 2;
-        let y4 = mk_store_addr(&mut g, y2);
+        let y5 = mk_store_addr(&mut g, y4);
 
         let pdg = build_pdg(g);
 
@@ -818,10 +835,13 @@ mod test {
         assert!(info(&pdg, x2).unique);
         assert!(info(&pdg, x3).unique);
         assert!(info(&pdg, x4).unique);
+        assert!(info(&pdg, x5).unique);
         assert!(info(&pdg, y1).unique);
         assert!(info(&pdg, y2).unique);
         assert!(info(&pdg, y3).unique);
         assert!(info(&pdg, y4).unique);
+        assert!(info(&pdg, y5).unique);
+
     }
 
     /// ```rust
@@ -903,17 +923,19 @@ mod test {
         // let x = &mut a.1.0;
         let x1 = mk_field(&mut g, a, 1_u32);
         let x2 = mk_field(&mut g, x1, 0_u32);
+        let x3 = mk_copy(&mut g, x2);
         // let y = &mut a.1.0;
         let y1 = mk_field(&mut g, a, 1_u32);
         let y2 = mk_field(&mut g, y1, 0_u32);
+        let y3 = mk_copy(&mut g, y2);
         // *x = 1;
-        let x3 = mk_store_addr(&mut g, x2);
-        // *y = 1;
-        let y3 = mk_store_addr(&mut g, y2);
-        // *x = 2;
         let x4 = mk_store_addr(&mut g, x3);
-        // *y = 2;
+        // *y = 1;
         let y4 = mk_store_addr(&mut g, y3);
+        // *x = 2;
+        let x5 = mk_store_addr(&mut g, x4);
+        // *y = 2;
+        let y5 = mk_store_addr(&mut g, y4);
 
         let pdg = build_pdg(g);
 
@@ -922,10 +944,12 @@ mod test {
         assert!(!info(&pdg, x2).unique);
         assert!(!info(&pdg, x3).unique);
         assert!(!info(&pdg, x4).unique);
+        assert!(!info(&pdg, x5).unique);
         assert!(!info(&pdg, y1).unique);
         assert!(!info(&pdg, y2).unique);
         assert!(!info(&pdg, y3).unique);
         assert!(!info(&pdg, y4).unique);
+        assert!(!info(&pdg, y5).unique);
     }
 
     /// ```rust
@@ -943,12 +967,14 @@ mod test {
     /// +------.
     /// X1     |
     /// X2     |
+    /// X3     |
     /// |      Y1
     /// |      Y2
-    /// X3     |
     /// |      Y3
     /// X4     |
-    ///        Y4
+    /// |      Y4
+    /// X5     |
+    ///        Y5
     /// ```
     #[test]
     fn field_offset_conflict() {
@@ -959,17 +985,19 @@ mod test {
         // let x = &mut a.0[0];
         let x1 = mk_field(&mut g, a, 1_u32);
         let x2 = mk_offset(&mut g, x1, 0);
+        let x3 = mk_copy(&mut g, x2);
         // let y = &mut a.0[1];
         let y1 = mk_field(&mut g, a, 1_u32);
         let y2 = mk_offset(&mut g, y1, 1);
+        let y3 = mk_copy(&mut g, y2);
         // *x = 1;
-        let x3 = mk_store_addr(&mut g, x2);
+        let x4 = mk_store_addr(&mut g, x3);
         // *y = 1;
-        let y3 = mk_store_addr(&mut g, y2);
+        let y4 = mk_store_addr(&mut g, y3);
         // *x = 2;
-        let x4 = mk_store_addr(&mut g, x2);
+        let x5 = mk_store_addr(&mut g, x4);
         // *y = 2;
-        let y4 = mk_store_addr(&mut g, y2);
+        let y5 = mk_store_addr(&mut g, y4);
 
         let pdg = build_pdg(g);
 
@@ -978,10 +1006,12 @@ mod test {
         assert!(!info(&pdg, x2).unique);
         assert!(!info(&pdg, x3).unique);
         assert!(!info(&pdg, x4).unique);
+        assert!(!info(&pdg, x5).unique);
         assert!(!info(&pdg, y1).unique);
         assert!(!info(&pdg, y2).unique);
         assert!(!info(&pdg, y3).unique);
         assert!(!info(&pdg, y4).unique);
+        assert!(!info(&pdg, y5).unique);
     }
 
     /// ```rust
@@ -999,12 +1029,14 @@ mod test {
     /// +------.
     /// X1     |
     /// X2     |
+    /// X3     |
     /// |      Y1
     /// |      Y2
-    /// X3     |
     /// |      Y3
     /// X4     |
-    ///        Y4
+    /// |      Y4
+    /// X5     |
+    ///        Y5
     /// ```
     #[test]
     fn field_offset_no_conflict() {
@@ -1015,17 +1047,19 @@ mod test {
         // let x = &mut a.0[0];
         let x1 = mk_field(&mut g, a, 0_u32);
         let x2 = mk_offset(&mut g, x1, 0);
+        let x3 = mk_copy(&mut g, x2);
         // let y = &mut a.1[0];
         let y1 = mk_field(&mut g, a, 1_u32);
         let y2 = mk_offset(&mut g, y1, 0);
+        let y3 = mk_copy(&mut g, y2);
         // *x = 1;
-        let x3 = mk_store_addr(&mut g, x2);
+        let x4 = mk_store_addr(&mut g, x3);
         // *y = 1;
-        let y3 = mk_store_addr(&mut g, y2);
+        let y4 = mk_store_addr(&mut g, y3);
         // *x = 2;
-        let x4 = mk_store_addr(&mut g, x2);
+        let x5 = mk_store_addr(&mut g, x4);
         // *y = 2;
-        let y4 = mk_store_addr(&mut g, y2);
+        let y5 = mk_store_addr(&mut g, y4);
 
         let pdg = build_pdg(g);
 
@@ -1034,10 +1068,12 @@ mod test {
         assert!(info(&pdg, x2).unique);
         assert!(info(&pdg, x3).unique);
         assert!(info(&pdg, x4).unique);
+        assert!(info(&pdg, x5).unique);
         assert!(info(&pdg, y1).unique);
         assert!(info(&pdg, y2).unique);
         assert!(info(&pdg, y3).unique);
         assert!(info(&pdg, y4).unique);
+        assert!(info(&pdg, y5).unique);
     }
 
     /// ```rust
@@ -1056,12 +1092,14 @@ mod test {
     /// +------.
     /// X1     |
     /// X2     |
+    /// X3     |
     /// |      Y1
     /// |      Y2
-    /// X3     |
     /// |      Y3
     /// X4     |
-    ///        Y4
+    /// |      Y4
+    /// X5     |
+    ///        Y5
     /// ```
     ///
     /// Note that this code is accepted by `rustc`,
@@ -1080,17 +1118,19 @@ mod test {
         // let x = &mut (*p)[0].0;
         let x1 = mk_offset(&mut g, p, 0);
         let x2 = mk_field(&mut g, x1, 0_u32);
+        let x3 = mk_copy(&mut g, x2);
         // let y = &mut (*p)[0].1;
         let y1 = mk_offset(&mut g, p, 0);
         let y2 = mk_field(&mut g, y1, 1_u32);
+        let y3 = mk_copy(&mut g, y2);
         // *x = 1;
-        let x3 = mk_store_addr(&mut g, x2);
+        let x4 = mk_store_addr(&mut g, x3);
         // *y = 1;
-        let y3 = mk_store_addr(&mut g, y2);
+        let y4 = mk_store_addr(&mut g, y3);
         // *x = 2;
-        let x4 = mk_store_addr(&mut g, x2);
+        let x5 = mk_store_addr(&mut g, x4);
         // *y = 2;
-        let y4 = mk_store_addr(&mut g, y2);
+        let y5 = mk_store_addr(&mut g, y4);
 
         let pdg = build_pdg(g);
 
@@ -1099,9 +1139,11 @@ mod test {
         assert!(!info(&pdg, x2).unique);
         assert!(!info(&pdg, x3).unique);
         assert!(!info(&pdg, x4).unique);
+        assert!(!info(&pdg, x5).unique);
         assert!(!info(&pdg, y1).unique);
         assert!(!info(&pdg, y2).unique);
         assert!(!info(&pdg, y3).unique);
         assert!(!info(&pdg, y4).unique);
+        assert!(!info(&pdg, y5).unique);
     }
 }
