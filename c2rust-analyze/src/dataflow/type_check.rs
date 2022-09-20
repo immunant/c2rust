@@ -89,9 +89,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 Rvalue::BinaryOp(..) => PointerId::NONE,
                 Rvalue::CheckedBinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
                 Rvalue::CheckedBinaryOp(..) => PointerId::NONE,
+                Rvalue::Len(..) => PointerId::NONE,
                 Rvalue::Cast(_, _, ty) => {
                     assert!(!matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)));
                     PointerId::NONE
+                }
+                Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
+                    AggregateKind::Array(..) => PointerId::NONE,
+                    ref kind => todo!("Rvalue::Aggregate({:?})", kind),
                 }
                 _ => panic!("TODO: handle assignment of {:?}", rv),
             },
