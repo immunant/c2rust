@@ -24,7 +24,10 @@ use crate::util::Callee;
 use rustc_hir::def_id::LocalDefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
-use rustc_middle::mir::{BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand};
+use rustc_middle::mir::{
+    AggregateKind, BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand, Rvalue,
+    StatementKind,
+};
 use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
@@ -168,6 +171,33 @@ fn run(tcx: TyCtxt) {
             let ptr = acx.new_pointer();
             let l = acx.addr_of_local.push(ptr);
             assert_eq!(local, l);
+        }
+
+        for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+            for (i, stmt) in bb_data.statements.iter().enumerate() {
+                let rv = match stmt.kind {
+                    StatementKind::Assign(ref x) => &x.1,
+                    _ => continue,
+                };
+                let lty = match *rv {
+                    Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
+                        AggregateKind::Array(elem_ty) => {
+                            let elem_lty = acx.assign_pointer_ids(elem_ty);
+                            let array_ty = rv.ty(&acx, acx.tcx());
+                            let args = acx.lcx().mk_slice(&[elem_lty]);
+                            acx.lcx().mk(array_ty, args, PointerId::NONE)
+                        }
+                        _ => continue,
+                    },
+                    // TODO: Rvalue::Cast (certain cases)
+                    _ => continue,
+                };
+                let loc = Location {
+                    block: bb,
+                    statement_index: i,
+                };
+                acx.rvalue_tys.insert(loc, lty);
+            }
         }
 
         // Compute local equivalence classes and dataflow constraints.
