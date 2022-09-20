@@ -629,6 +629,16 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     test_addr_taken_arg(t);
     return 0i32;
 }
+
+/*
+    This is a minimal breaking example where instrumented code failed
+    to compile.
+*/
+pub fn instrument_args_loop() {
+    let mut args: Vec<*mut libc::c_char> = Vec::new();
+    for arg in ::std::env::args() {}
+}
+
 pub fn main() {
     let args = ::std::env::args()
         .map(|arg| ::std::ffi::CString::new(arg).expect("Failed to convert argument into CString."))

@@ -368,12 +368,17 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                 // TODO: this is a hack that places the store_addr_taken_fn
                 // after other instrumentations that must be in place prior
                 // to this one.
+                let num_statements = self.body.basic_blocks()[location.block].statements.len();
+                let store_addr_taken_loc = Location {
+                    block: location.block,
+                    // +1 to ensure `dest` is in scope
+                    // +1 to be placed after address-taking statement
+                    // +1 to be placed after address-of-local instrumentation
+                    statement_index: std::cmp::min(num_statements - 1, location.statement_index + 3)
+                };
                 self.loc(
                     location,
-                    location
-                        .successor_within_block() // to ensure `dest` is in scope
-                        .successor_within_block() // to be placed after address-taking statement
-                        .successor_within_block(), // to be placed after address-of-local instrumentation
+                    store_addr_taken_loc, // to be placed after address-of-local instrumentation
                     store_addr_taken_fn,
                 )
                 .arg_addr_of(dest)
