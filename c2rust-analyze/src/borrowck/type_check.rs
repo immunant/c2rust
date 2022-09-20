@@ -4,8 +4,8 @@ use crate::context::PermissionSet;
 use crate::util::{self, Callee};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    BinOp, Body, BorrowKind, Local, LocalDecl, Location, Operand, Place, ProjectionElem, Rvalue,
-    Statement, StatementKind, Terminator, TerminatorKind,
+    BinOp, Body, BorrowKind, Local, LocalDecl, Location, Operand, Place, Rvalue, Statement,
+    StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::{TyCtxt, TyKind};
 use std::collections::HashMap;
@@ -34,21 +34,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     pub fn visit_place(&mut self, pl: Place<'tcx>) -> LTy<'tcx> {
         let mut lty = self.local_ltys[pl.local.index()];
         for proj in pl.projection {
-            match proj {
-                ProjectionElem::Deref => {
-                    assert_eq!(lty.args.len(), 1);
-                    lty = lty.args[0];
-                }
-
-                ProjectionElem::Field(f, _field_ty) => match lty.ty.kind() {
-                    TyKind::Tuple(..) => {
-                        lty = lty.args[f.as_usize()];
-                    }
-                    _ => todo!("field of {:?}", lty),
-                },
-
-                ref proj => panic!("unsupported projection {:?} in {:?}", proj, pl),
-            }
+            lty = util::lty_project(lty, &proj);
         }
         lty
     }

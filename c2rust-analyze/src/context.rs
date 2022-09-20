@@ -3,13 +3,12 @@ use crate::pointer_id::{
     GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
     PointerTableMut,
 };
-use crate::util::{describe_rvalue, RvalueDesc};
+use crate::util::{self, describe_rvalue, RvalueDesc};
 use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    Body, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem, PlaceRef,
-    ProjectionElem, Rvalue,
+    Body, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem, PlaceRef, Rvalue,
 };
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
@@ -323,24 +322,8 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         }
     }
 
-    fn project(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
-        match *proj {
-            ProjectionElem::Deref => {
-                assert!(matches!(lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)));
-                assert_eq!(lty.args.len(), 1);
-                lty.args[0]
-            }
-            ProjectionElem::Field(f, _) => match lty.kind() {
-                TyKind::Tuple(_) => lty.args[f.index()],
-                TyKind::Adt(..) => todo!("type_of Field(Adt)"),
-                _ => panic!("Field projection is unsupported on type {:?}", lty),
-            },
-            ProjectionElem::Index(..) | ProjectionElem::ConstantIndex { .. } => {
-                todo!("type_of Index")
-            }
-            ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
-            ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
-        }
+    pub fn project(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
+        util::lty_project(lty, proj)
     }
 }
 

@@ -1,7 +1,9 @@
+use crate::labeled_ty::LabeledTy;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
-use rustc_middle::mir::{Local, Mutability, Operand, PlaceElem, PlaceRef, Rvalue};
+use rustc_middle::mir::{Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue};
 use rustc_middle::ty::{DefIdTree, SubstsRef, Ty, TyCtxt, TyKind};
+use std::fmt::Debug;
 
 #[derive(Debug)]
 pub enum RvalueDesc<'tcx> {
@@ -138,5 +140,29 @@ fn builtin_callee<'tcx>(
         },
 
         _ => None,
+    }
+}
+
+
+pub fn lty_project<'tcx, L: Debug>(
+    lty: LabeledTy<'tcx, L>,
+    proj: &PlaceElem<'tcx>,
+) -> LabeledTy<'tcx, L> {
+    match *proj {
+        ProjectionElem::Deref => {
+            assert!(matches!(lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)));
+            assert_eq!(lty.args.len(), 1);
+            lty.args[0]
+        }
+        ProjectionElem::Field(f, _) => match lty.kind() {
+            TyKind::Tuple(_) => lty.args[f.index()],
+            TyKind::Adt(..) => todo!("type_of Field(Adt)"),
+            _ => panic!("Field projection is unsupported on type {:?}", lty),
+        },
+        ProjectionElem::Index(..) | ProjectionElem::ConstantIndex { .. } => {
+            todo!("type_of Index")
+        }
+        ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
+        ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
     }
 }
