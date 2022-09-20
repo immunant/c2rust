@@ -290,9 +290,14 @@ fn run(tcx: TyCtxt) {
     }
     eprintln!("reached fixpoint in {} iterations", loop_count);
 
-    // Print results for each function.
-    for &ldid in &all_fn_ldids {
-        let info = func_info.get_mut(&ldid).unwrap();
+    // Print results for each function.  We use declaration order (as reported by `body_owners`)
+    // since this makes FileCheck tests easier to write.
+    for ldid in tcx.hir().body_owners() {
+        // Skip any body owners that aren't listed in `func_info`.
+        let info = match func_info.get_mut(&ldid) {
+            Some(x) => x,
+            None => continue,
+        };
         let ldid_const = WithOptConstParam::unknown(ldid);
         let name = tcx.item_name(ldid.to_def_id());
         let mir = tcx.mir_built(ldid_const);
