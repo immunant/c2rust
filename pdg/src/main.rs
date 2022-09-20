@@ -75,23 +75,32 @@ impl Pdg {
     }
 
     pub fn repr<'a>(&'a self, to_print: &'a [ToPrint]) -> PdgRepr<'a> {
-        let mut prettied_pdg = self.clone();
-        for graph in &mut prettied_pdg.graphs.graphs {
+        PdgRepr {
+            pdg: self,
+            to_print,
+        }
+    }
+
+    pub fn remove_sources(&mut self) {
+        /*
+            The destination node of AddrOfLocal is always Some(local)
+            and is used in determining the sources of subsequent PDG
+            nodes. However, for the purposes of static analysis, it's
+            undesired and therefore destinations of AddrOfLocalNodes
+            are removed.
+        */
+        for graph in &mut self.graphs.graphs {
             for node in &mut graph.nodes {
                 if let NodeKind::AddrOfLocal(..) = node.kind {
                     node.dest = None;
                 }
             }
         }
-        PdgRepr {
-            pdg: prettied_pdg,
-            to_print,
-        }
     }
 }
 
 pub struct PdgRepr<'a> {
-    pub pdg: Pdg,
+    pub pdg: &'a Pdg,
     pub to_print: &'a [ToPrint],
 }
 
@@ -195,8 +204,9 @@ pub fn init() {
 fn main() -> eyre::Result<()> {
     init();
     let args = Args::parse();
-    let pdg = Pdg::new(&args.metadata, &args.event_log)?;
+    let mut pdg = Pdg::new(&args.metadata, &args.event_log)?;
     pdg.graphs.assert_all_tests();
+    pdg.remove_sources();
     let repr = pdg.repr(&args.print);
     println!("{repr}");
     Ok(())
@@ -347,8 +357,9 @@ mod tests {
         let status = cmd.status()?;
         ensure!(status.success(), eyre!("{cmd:?} failed: {status}"));
 
-        let pdg = Pdg::new(&metadata_path, &event_log_path)?;
+        let mut pdg = Pdg::new(&metadata_path, &event_log_path)?;
         pdg.graphs.assert_all_tests();
+        pdg.remove_sources();
         let repr = pdg.repr(to_print);
         Ok(repr.to_string())
     }
