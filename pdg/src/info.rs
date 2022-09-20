@@ -841,7 +841,6 @@ mod test {
         assert!(info(&pdg, y3).unique);
         assert!(info(&pdg, y4).unique);
         assert!(info(&pdg, y5).unique);
-
     }
 
     /// ```rust
