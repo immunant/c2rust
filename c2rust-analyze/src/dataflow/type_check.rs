@@ -48,34 +48,22 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     pub fn visit_place_ref(&mut self, pl: PlaceRef<'tcx>, mutbl: Mutability) -> LTy<'tcx> {
-        let mut lty = self.acx.local_tys[pl.local];
+        let mut lty = self.acx.type_of(pl.local);
         let mut prev_deref_ptr = None;
 
         for proj in pl.projection {
-            match proj {
-                ProjectionElem::Deref => {
-                    // All derefs except the last are loads, to retrieve the pointer for the next
-                    // deref.  However, if the overall `Place` is used mutably (as indicated by
-                    // `mutbl`), then the previous derefs must be `&mut` as well.  The last deref
-                    // may not be a memory access at all; for example, `&(*p).x` does not actually
-                    // access the memory at `*p`.
-                    if let Some(ptr) = prev_deref_ptr.take() {
-                        self.record_access(ptr, mutbl);
-                    }
-                    prev_deref_ptr = Some(lty.label);
-                    assert_eq!(lty.args.len(), 1);
-                    lty = lty.args[0];
+            if let ProjectionElem::Deref = proj {
+                // All derefs except the last are loads, to retrieve the pointer for the next
+                // deref.  However, if the overall `Place` is used mutably (as indicated by
+                // `mutbl`), then the previous derefs must be `&mut` as well.  The last deref
+                // may not be a memory access at all; for example, `&(*p).x` does not actually
+                // access the memory at `*p`.
+                if let Some(ptr) = prev_deref_ptr.take() {
+                    self.record_access(ptr, mutbl);
                 }
-
-                ProjectionElem::Field(f, _field_ty) => match lty.ty.kind() {
-                    TyKind::Tuple(..) => {
-                        lty = lty.args[f.as_usize()];
-                    }
-                    _ => todo!("field of {:?}", lty),
-                },
-
-                ref proj => panic!("unsupported projection {:?} in {:?}", proj, pl),
+                prev_deref_ptr = Some(lty.label);
             }
+            lty = self.acx.project(lty, proj);
         }
 
         if let Some(ptr) = prev_deref_ptr.take() {
