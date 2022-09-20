@@ -55,6 +55,10 @@ pub enum EventKind {
     /// The pointer appears as the address of a store operation.
     StoreAddr(Pointer),
 
+    /// An address-taken local is assigned to, which is semantically the
+    /// same as [`EventKind::StoreAddr`], but needs to be distinguished because
+    /// storing to address-taken locals does not imply write permissions
+    /// are necessary for its underlying address.
     StoreAddrTaken(Pointer),
 
     /// The pointer that appears as the address result of addr_of(Local)

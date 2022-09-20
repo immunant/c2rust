@@ -27,7 +27,12 @@ pub struct InstrumentationPoint<'tcx> {
     pub metadata: EventMetadata,
 }
 
+/// Gathers a set of all address-taken locals in a function
+/// body.
+///
+/// The set may include address-taken arguments.
 pub struct CheckAddressTakenLocals<'a, 'tcx: 'a> {
+    /// The set of address-taken locals.
     pub address_taken: IndexSet<Local>,
     tcx: TyCtxt<'tcx>,
     body: &'a Body<'tcx>,
@@ -47,13 +52,22 @@ impl<'a, 'tcx: 'a> CheckAddressTakenLocals<'a, 'tcx> {
     }
 }
 
-pub struct SubAddressTakenLocals<'tcx> {
+/// Rewrite all address-taken locals in terms of their underlying
+/// address.
+///
+/// For example, if `_1` is an address-taken local and `_3` is the local
+/// storing the address of `_1`, the statement `_2 = _1` will be
+/// rewritten as `_2 = (*_3)`.
+pub struct RewriteAddressTakenLocals<'tcx> {
+    /// The set of address-taken locals.
     pub address_taken: IndexSet<Local>,
+    /// A mapping from the address-taken local to the local
+    /// storing the former's address.
     pub local_substitute: IndexMap<Local, Local>,
     tcx: TyCtxt<'tcx>,
 }
 
-impl<'tcx> SubAddressTakenLocals<'tcx> {
+impl<'tcx> RewriteAddressTakenLocals<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>, address_taken: IndexSet<Local>) -> Self {
         Self {
             address_taken,

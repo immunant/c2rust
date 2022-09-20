@@ -29,7 +29,9 @@ use crate::hooks::Hooks;
 use crate::mir_utils::{has_outer_deref, remove_outer_deref, strip_all_deref};
 use crate::point::cast_ptr_to_usize;
 use crate::point::InstrumentationApplier;
-use crate::point::{CheckAddressTakenLocals, CollectInstrumentationPoints, SubAddressTakenLocals};
+use crate::point::{
+    CheckAddressTakenLocals, CollectInstrumentationPoints, RewriteAddressTakenLocals,
+};
 use crate::util::Convert;
 
 #[derive(Default)]
@@ -129,12 +131,6 @@ fn is_region_or_unsafe_ptr(ty: Ty) -> bool {
 
 impl<'tcx> Visitor<'tcx> for CheckAddressTakenLocals<'_, 'tcx> {
     fn visit_assign(&mut self, place: &Place<'tcx>, rvalue: &Rvalue<'tcx>, location: Location) {
-        let locals = self.local_decls().clone();
-        let ctx = self.tcx();
-
-        let _op_ty = |op: &Operand<'tcx>| op.ty(&locals, ctx);
-        let place_ty = |p: &Place<'tcx>| p.ty(&locals, ctx).ty;
-        let _local_ty = |p: &Place| place_ty(&p.local.into());
         let value_ty = rvalue.ty(self, self.tcx());
 
         self.super_assign(place, rvalue, location);
@@ -150,7 +146,7 @@ impl<'tcx> Visitor<'tcx> for CheckAddressTakenLocals<'_, 'tcx> {
     }
 }
 
-impl<'tcx> MutVisitor<'tcx> for SubAddressTakenLocals<'tcx> {
+impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
     fn visit_place(
         &mut self,
         mut place: &mut Place<'tcx>,
@@ -219,7 +215,8 @@ impl<'tcx> MutVisitor<'tcx> for SubAddressTakenLocals<'tcx> {
         }
 
         // when the address-taken local is assigned to for the first time, we know it's active,
-        // so mark the location of that assignment for the next step
+        // so mark the location of that assignment for the next step (which is to insert the
+        // statement taking the local's address)
         for (bid, block) in body.basic_blocks().iter_enumerated().rev() {
             for (sid, statement) in block.statements.iter().enumerate().rev() {
                 if let StatementKind::Assign(stmt) = &statement.kind {
@@ -368,6 +365,9 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
         match self.addr_taken_local_substitutions.get(&dest.local) {
             Some(address) if dest.projection.is_empty() => {
                 let addr_of_local = Place::from(*address);
+                // TODO: this is a hack that places the store_addr_taken_fn
+                // after other instrumentations that must be in place prior
+                // to this one.
                 self.loc(
                     location,
                     location
@@ -644,7 +644,7 @@ fn instrument_body<'a, 'tcx>(
     };
     println!("address taken: {:?}", address_taken_locals);
 
-    let mut local_rewriter = SubAddressTakenLocals::new(tcx, address_taken_locals);
+    let mut local_rewriter = RewriteAddressTakenLocals::new(tcx, address_taken_locals);
     local_rewriter.visit_body(body);
     println!(
         "address taken substitutions: {:?}",
