@@ -634,27 +634,14 @@ fn instrument_body<'a, 'tcx>(
 ) {
     let hooks = Hooks::new(tcx);
 
-    for (i, b) in body.basic_blocks().iter().enumerate() {
-        for s in &b.statements {
-            println!("bb{i:?} before: {s:?}");
-        }
-        println!("bb{i:?} before: {:?}", b.terminator())
-    }
-    println!();
-
     let address_taken_locals = {
         let mut local_visitor = CheckAddressTakenLocals::new(tcx, body);
         local_visitor.visit_body(body);
         local_visitor.address_taken
     };
-    println!("address taken: {:?}", address_taken_locals);
 
     let mut local_rewriter = RewriteAddressTakenLocals::new(tcx, address_taken_locals);
     local_rewriter.visit_body(body);
-    println!(
-        "address taken substitutions: {:?}",
-        local_rewriter.local_substitute
-    );
 
     // The local rewriter above rewrites address-taken locals with (*_x) where _x
     // is a pointer, resulting in an unsafe operation. To allow this, set all scopes
@@ -680,14 +667,6 @@ fn instrument_body<'a, 'tcx>(
     if Some(body_did) == main_did {
         instrument_entry_fn(tcx, hooks, body);
     }
-
-    for (i, b) in body.basic_blocks().iter().enumerate() {
-        for s in &b.statements {
-            println!("bb{i:?} after: {s:?}");
-        }
-        println!("bb{i:?} after: {:?}", b.terminator())
-    }
-    println!();
 }
 
 /// Add initialization code to the body of a function known to be the binary entrypoint

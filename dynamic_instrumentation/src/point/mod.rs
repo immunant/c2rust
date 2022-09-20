@@ -52,7 +52,7 @@ impl<'a, 'tcx: 'a> CheckAddressTakenLocals<'a, 'tcx> {
     }
 }
 
-/// Rewrite all address-taken locals in terms of their underlying
+/// Rewrites all address-taken locals in terms of their underlying
 /// address.
 ///
 /// For example, if `_1` is an address-taken local and `_3` is the local
@@ -84,7 +84,7 @@ impl<'tcx> RewriteAddressTakenLocals<'tcx> {
 pub struct CollectInstrumentationPoints<'a, 'tcx: 'a> {
     tcx: TyCtxt<'tcx>,
     hooks: Hooks<'tcx>,
-    body: &'a Body<'tcx>,
+    pub body: &'a Body<'tcx>,
     instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
     assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
     pub addr_taken_local_substitutions: IndexMap<Local, Local>,
