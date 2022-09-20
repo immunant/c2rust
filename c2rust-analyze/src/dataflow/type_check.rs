@@ -3,8 +3,8 @@ use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
 use crate::util::{self, describe_rvalue, Callee, RvalueDesc};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
-    BinOp, Body, Location, Mutability, Operand, Place, PlaceRef, ProjectionElem, Rvalue, Statement,
-    StatementKind, Terminator, TerminatorKind,
+    AggregateKind, BinOp, Body, Location, Mutability, Operand, Place, PlaceRef, ProjectionElem,
+    Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::SubstsRef;
 
@@ -95,6 +95,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Rvalue::AddressOf(..) => {
                 unreachable!("Rvalue::AddressOf should be handled by describe_rvalue instead")
             }
+            Rvalue::Len(pl) => {
+                self.visit_place(pl, Mutability::Not);
+            }
             Rvalue::Cast(_, ref op, _) => self.visit_operand(op),
             Rvalue::BinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
             Rvalue::BinaryOp(_, ref ops) => {
@@ -109,6 +112,18 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Rvalue::NullaryOp(..) => {}
             Rvalue::UnaryOp(_, ref op) => {
                 self.visit_operand(op);
+            }
+
+            Rvalue::Aggregate(ref kind, ref ops) => {
+                for op in ops {
+                    self.visit_operand(op);
+                }
+                match **kind {
+                    AggregateKind::Array(..) => {
+                        // TODO: pseudo-assignment from each elem to the overall array type
+                    }
+                    ref kind => todo!("Rvalue::Aggregate({:?})", kind),
+                }
             }
 
             _ => panic!("TODO: handle assignment of {:?}", rv),

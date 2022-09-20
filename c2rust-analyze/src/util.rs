@@ -159,7 +159,9 @@ pub fn lty_project<'tcx, L: Debug>(
             _ => panic!("Field projection is unsupported on type {:?}", lty),
         },
         ProjectionElem::Index(..) | ProjectionElem::ConstantIndex { .. } => {
-            todo!("type_of Index")
+            assert!(matches!(lty.kind(), TyKind::Array(..) | TyKind::Slice(..)));
+            assert_eq!(lty.args.len(), 1);
+            lty.args[0]
         }
         ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
         ProjectionElem::Downcast(..) => todo!("type_of Downcast"),

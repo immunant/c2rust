@@ -4,8 +4,8 @@ use crate::context::PermissionSet;
 use crate::util::{self, Callee};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    BinOp, Body, BorrowKind, Local, LocalDecl, Location, Operand, Place, Rvalue, Statement,
-    StatementKind, Terminator, TerminatorKind,
+    AggregateKind, BinOp, Body, BorrowKind, Local, LocalDecl, Location, Operand, Place, Rvalue,
+    Statement, StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::{TyCtxt, TyKind};
 use std::collections::HashMap;
@@ -156,6 +156,20 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 );
                 Label::default()
             }),
+
+            Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
+                AggregateKind::Array(..) => {
+                    // TODO
+                    let ty = rv.ty(self.local_decls, *self.ltcx);
+                    self.ltcx.label(ty, &mut |_ty| Label::default())
+                }
+                _ => panic!("unsupported rvalue AggregateKind {:?}", kind),
+            },
+
+            Rvalue::Len(..) => {
+                let ty = rv.ty(self.local_decls, *self.ltcx);
+                self.ltcx.label(ty, &mut |_| Label::default())
+            }
 
             ref rv => panic!("unsupported rvalue {:?}", rv),
         }
