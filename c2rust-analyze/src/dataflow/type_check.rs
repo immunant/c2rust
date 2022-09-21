@@ -6,7 +6,7 @@ use rustc_middle::mir::{
     AggregateKind, BinOp, Body, Location, Mutability, Operand, Place, PlaceRef, ProjectionElem,
     Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
-use rustc_middle::ty::SubstsRef;
+use rustc_middle::ty::{SubstsRef, TyKind};
 
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
 /// constraints as a side effect.
@@ -71,7 +71,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, _lty: LTy<'tcx>) {
+    pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, lty: LTy<'tcx>) {
         eprintln!("visit_rvalue({:?}), desc = {:?}", rv, describe_rvalue(rv));
 
         if let Some(desc) = describe_rvalue(rv) {
@@ -120,7 +120,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 }
                 match **kind {
                     AggregateKind::Array(..) => {
-                        // TODO: pseudo-assignment from each elem to the overall array type
+                        assert!(matches!(lty.kind(), TyKind::Array(..)));
+                        assert_eq!(lty.args.len(), 1);
+                        let elem_lty = lty.args[0];
+                        // Pseudo-assign from each operand to the element type of the array.
+                        for op in ops {
+                            let op_lty = self.acx.type_of(op);
+                            self.do_assign(elem_lty, op_lty);
+                        }
                     }
                     ref kind => todo!("Rvalue::Aggregate({:?})", kind),
                 }
@@ -142,23 +149,23 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     fn do_assign(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
-        if pl_lty.label == PointerId::NONE && rv_lty.label == PointerId::NONE {
-            return;
+        // If the top-level types are pointers, add a dataflow edge indicating that `rv` flows into
+        // `pl`.
+        if pl_lty.label != PointerId::NONE || rv_lty.label != PointerId::NONE {
+            assert!(pl_lty.label != PointerId::NONE);
+            assert!(rv_lty.label != PointerId::NONE);
+            self.add_edge(rv_lty.label, pl_lty.label);
         }
 
-        // Add a dataflow edge indicating that `rv` flows into `pl`.
-        assert!(pl_lty.label != PointerId::NONE);
-        assert!(rv_lty.label != PointerId::NONE);
-        self.add_edge(rv_lty.label, pl_lty.label);
-
         // Add equivalence constraints for all nested pointers beyond the top level.
-        assert_eq!(pl_lty.args.len(), 1);
-        assert_eq!(rv_lty.args.len(), 1);
+        assert_eq!(pl_lty.ty, rv_lty.ty);
+        for (pl_sub_lty, rv_sub_lty) in pl_lty.iter().zip(rv_lty.iter()) {
+            // Skip the top-level `LTy`s.
+            if pl_sub_lty as *const _ == pl_lty as *const _ {
+                debug_assert_eq!(rv_sub_lty as *const _, rv_lty as *const _);
+                continue;
+            }
 
-        let pl_pointee = pl_lty.args[0];
-        let rv_pointee = rv_lty.args[0];
-        assert_eq!(pl_pointee.ty, rv_pointee.ty);
-        for (pl_sub_lty, rv_sub_lty) in pl_pointee.iter().zip(rv_pointee.iter()) {
             eprintln!("equate {:?} = {:?}", pl_sub_lty, rv_sub_lty);
             if pl_sub_lty.label != PointerId::NONE || rv_sub_lty.label != PointerId::NONE {
                 assert!(pl_sub_lty.label != PointerId::NONE);
