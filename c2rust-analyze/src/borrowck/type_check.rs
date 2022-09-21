@@ -149,11 +149,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 })
             }
 
-            Rvalue::Cast(_, _, ty) => self.ltcx.label(ty, &mut |ty| {
+            Rvalue::Cast(_, _, ty) => self.ltcx.label(ty, &mut |_ty| {
+                // TODO: handle Unsize casts at minimum
+                /*
                 assert!(
                     !matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)),
                     "pointer Cast NYI"
                 );
+                */
                 Label::default()
             }),
 
