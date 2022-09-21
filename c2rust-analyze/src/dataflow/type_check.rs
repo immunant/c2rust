@@ -126,20 +126,17 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    fn do_assign(&mut self, pl_ptr: PointerId, rv_ptr: PointerId) {
-        if pl_ptr != PointerId::NONE || rv_ptr != PointerId::NONE {
-            assert!(pl_ptr != PointerId::NONE);
-            assert!(rv_ptr != PointerId::NONE);
-            self.add_edge(rv_ptr, pl_ptr);
-        }
-    }
-
-    fn do_unify_pointees(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
+    fn do_assign(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
         if pl_lty.label == PointerId::NONE && rv_lty.label == PointerId::NONE {
             return;
         }
+
+        // Add a dataflow edge indicating that `rv` flows into `pl`.
         assert!(pl_lty.label != PointerId::NONE);
         assert!(rv_lty.label != PointerId::NONE);
+        self.add_edge(rv_lty.label, pl_lty.label);
+
+        // Add equivalence constraints for all nested pointers beyond the top level.
         assert_eq!(pl_lty.args.len(), 1);
         assert_eq!(rv_lty.args.len(), 1);
 
@@ -165,14 +162,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let (pl, ref rv) = **x;
                 self.visit_place(pl, Mutability::Mut);
                 let pl_lty = self.acx.type_of(pl);
-                let pl_ptr = pl_lty.label;
 
                 let rv_lty = self.acx.type_of_rvalue(rv, loc);
                 self.visit_rvalue(rv, rv_lty);
-                let rv_ptr = rv_lty.label;
 
-                self.do_assign(pl_ptr, rv_ptr);
-                self.do_unify_pointees(pl_lty, rv_lty);
+                self.do_assign(pl_lty, rv_lty);
             }
             // TODO(spernsteiner): handle other `StatementKind`s
             _ => (),
@@ -202,8 +196,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         assert!(args.len() == 2);
                         self.visit_operand(&args[0]);
                         let rv_lty = self.acx.type_of(&args[0]);
-                        self.do_assign(pl_lty.label, rv_lty.label);
-                        self.do_unify_pointees(pl_lty, rv_lty);
+                        self.do_assign(pl_lty, rv_lty);
                         let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
                         self.constraints.add_all_perms(rv_lty.label, perms);
                     }
@@ -237,16 +230,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         for (arg_op, &input_lty) in args.iter().zip(sig.inputs.iter()) {
             self.visit_operand(arg_op);
             let arg_lty = self.acx.type_of(arg_op);
-            self.do_assign(input_lty.label, arg_lty.label);
-            self.do_unify_pointees(input_lty, arg_lty);
+            self.do_assign(input_lty, arg_lty);
         }
 
         // Process a pseudo-assignment from the return type declared in `sig` to `dest`.
         self.visit_place(dest, Mutability::Mut);
         let dest_lty = self.acx.type_of(dest);
         let output_lty = sig.output;
-        self.do_assign(dest_lty.label, output_lty.label);
-        self.do_unify_pointees(dest_lty, output_lty);
+        self.do_assign(dest_lty, output_lty);
     }
 }
 
