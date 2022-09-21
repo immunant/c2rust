@@ -8,9 +8,10 @@ use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    Body, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem, PlaceRef,
-    ProjectionElem, Rvalue,
+    Body, CastKind, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem,
+    PlaceRef, ProjectionElem, Rvalue,
 };
+use rustc_middle::ty::adjustment::PointerCast;
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
@@ -288,6 +289,38 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                 unreachable!("should be handled by describe_rvalue case above")
             }
             Rvalue::ThreadLocalRef(..) => todo!("type_of ThreadLocalRef"),
+            Rvalue::Cast(CastKind::Pointer(PointerCast::Unsize), ref op, ty) => {
+                let pointee_ty = match *ty.kind() {
+                    TyKind::Ref(_, ty, _) => ty,
+                    TyKind::RawPtr(tm) => tm.ty,
+                    _ => unreachable!("unsize cast has non-pointer output {:?}?", ty),
+                };
+
+                let op_lty = self.type_of(op);
+                assert!(matches!(
+                    op_lty.kind(),
+                    TyKind::Ref(..) | TyKind::RawPtr(..)
+                ));
+                assert_eq!(op_lty.args.len(), 1);
+                let op_pointee_lty = op_lty.args[0];
+
+                match *pointee_ty.kind() {
+                    TyKind::Slice(elem_ty) => {
+                        assert!(matches!(op_pointee_lty.kind(), TyKind::Array(..)));
+                        assert_eq!(op_pointee_lty.args.len(), 1);
+                        let elem_lty = op_pointee_lty.args[0];
+                        assert_eq!(elem_lty.ty, elem_ty);
+                        assert_eq!(op_pointee_lty.label, PointerId::NONE);
+
+                        let pointee_lty =
+                            self.lcx()
+                                .mk(pointee_ty, op_pointee_lty.args, op_pointee_lty.label);
+                        let args = self.lcx().mk_slice(&[pointee_lty]);
+                        self.lcx().mk(ty, args, op_lty.label)
+                    }
+                    _ => label_no_pointers(self, ty),
+                }
+            }
             Rvalue::Cast(_, ref op, ty) => {
                 let op_lty = self.type_of(op);
 
