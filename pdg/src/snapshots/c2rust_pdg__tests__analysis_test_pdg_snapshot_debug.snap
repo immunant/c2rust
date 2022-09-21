@@ -853,12 +853,12 @@ nodes_that_need_write = [3, 1, 0]
 
 g {
 	n[0]:  &_35       _     => _   @ bb30[4]:  fn main_0;          _49 = &raw mut _35;
-	n[1]:  copy       n[0]  => _34 @ bb30[5]:  fn main_0;          _34 = &mut (*_49);
-	n[2]:  addr.store n[0]  => _   @ bb30[3]:  fn main_0;          _35 = [const 2_i32, const 5_i32, const 3_i32, const 1_i32, const 6_i32];
-	n[3]:  copy       n[1]  => _40 @ bb30[12]: fn main_0;          _40 = &(*_34);
+	n[1]:  addr.store n[0]  => _   @ bb30[3]:  fn main_0;          _35 = [const 2_i32, const 5_i32, const 3_i32, const 1_i32, const 6_i32];
+	n[2]:  copy       n[0]  => _34 @ bb30[5]:  fn main_0;          _34 = &mut (*_49);
+	n[3]:  copy       n[2]  => _40 @ bb30[12]: fn main_0;          _40 = &(*_34);
 	n[4]:  copy       n[3]  => _39 @ bb30[13]: fn main_0;          _39 = move _40 as &[i32] (Pointer(Unsize));
 	n[5]:  copy       n[4]  => _1  @ bb0[0]:   fn len;             _38 = len(move _39);
-	n[6]:  copy       n[1]  => _42 @ bb31[5]:  fn main_0;          _42 = &raw mut (*_34);
+	n[6]:  copy       n[2]  => _42 @ bb31[5]:  fn main_0;          _42 = &raw mut (*_34);
 	n[7]:  copy       n[6]  => _41 @ bb31[6]:  fn main_0;          _41 = move _42 as *mut i32 (Pointer(ArrayToPointer));
 	n[8]:  copy       n[7]  => _2  @ bb0[0]:   fn insertion_sort;  _36 = insertion_sort(move _37, move _41);
 	n[9]:  copy       n[8]  => _10 @ bb3[3]:   fn insertion_sort;  _10 = _2;
@@ -931,7 +931,7 @@ g {
 	n[76]: offset[4]  n[75] => _46 @ bb24[13]: fn insertion_sort;  _46 = offset(move _47, move _48);
 	n[77]: addr.store n[76] => _   @ bb25[2]:  fn insertion_sort;  (*_46) = move _45;
 }
-nodes_that_need_write = [77, 76, 75, 68, 67, 66, 65, 64, 63, 56, 55, 54, 47, 46, 45, 35, 34, 33, 29, 28, 27, 17, 16, 15, 8, 7, 6, 1, 2, 0]
+nodes_that_need_write = [77, 76, 75, 68, 67, 66, 65, 64, 63, 56, 55, 54, 47, 46, 45, 35, 34, 33, 29, 28, 27, 17, 16, 15, 8, 7, 6, 2, 1, 0]
 
 g {
 	n[0]: &_4        _    => _  @ bb0[12]: fn test_ref_field;  _8 = &raw mut _4;

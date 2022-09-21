@@ -24,6 +24,7 @@ pub struct InstrumentationPoint<'tcx> {
     pub args: Vec<InstrumentationArg<'tcx>>,
     pub is_cleanup: bool,
     pub after_call: bool,
+    pub instrumentation_priority: usize,
     pub metadata: EventMetadata,
 }
 

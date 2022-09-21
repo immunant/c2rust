@@ -373,10 +373,9 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     block: location.block,
                     // +1 to ensure `dest` is in scope
                     // +1 to be placed after address-taking statement
-                    // +1 to be placed after address-of-local instrumentation
                     statement_index: std::cmp::min(
                         num_statements - 1,
-                        location.statement_index + 3,
+                        location.statement_index + 2,
                     ),
                 };
                 self.loc(
@@ -456,6 +455,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     .arg_index_of(p.local)
                     .source(p)
                     .dest(&dest)
+                    .instrumentation_priority(0)
                     .add_to(self);
             }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) if p.is_indirect() => {
@@ -525,6 +525,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                         .arg_index_of(p.local)
                         .source(&source)
                         .dest(&dest)
+                        .instrumentation_priority(0)
                         .add_to(self);
                 } else {
                     // Instrument immutable borrows by tracing the reference itself
@@ -533,6 +534,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                         .arg_index_of(p.local)
                         .source(&source)
                         .dest(&dest)
+                        .instrumentation_priority(0)
                         .add_to(self);
                 };
             }
