@@ -143,26 +143,31 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     fn do_assign(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
         // If the top-level types are pointers, add a dataflow edge indicating that `rv` flows into
         // `pl`.
-        if pl_lty.label != PointerId::NONE || rv_lty.label != PointerId::NONE {
-            assert!(pl_lty.label != PointerId::NONE);
-            assert!(rv_lty.label != PointerId::NONE);
-            self.add_edge(rv_lty.label, pl_lty.label);
-        }
+        self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
 
         // Add equivalence constraints for all nested pointers beyond the top level.
         assert_eq!(pl_lty.ty, rv_lty.ty);
-        for (pl_sub_lty, rv_sub_lty) in pl_lty.iter().zip(rv_lty.iter()) {
-            // Skip the top-level `LTy`s.
-            if pl_sub_lty as *const _ == pl_lty as *const _ {
-                debug_assert_eq!(rv_sub_lty as *const _, rv_lty as *const _);
-                continue;
-            }
+        for (&pl_sub_lty, &rv_sub_lty) in pl_lty.args.iter().zip(rv_lty.args.iter()) {
+            self.do_unify(pl_sub_lty, rv_sub_lty);
+        }
+    }
 
-            eprintln!("equate {:?} = {:?}", pl_sub_lty, rv_sub_lty);
-            if pl_sub_lty.label != PointerId::NONE || rv_sub_lty.label != PointerId::NONE {
-                assert!(pl_sub_lty.label != PointerId::NONE);
-                assert!(rv_sub_lty.label != PointerId::NONE);
-                self.add_equiv(pl_sub_lty.label, rv_sub_lty.label);
+    fn do_assign_pointer_ids(&mut self, pl_ptr: PointerId, rv_ptr: PointerId) {
+        if pl_ptr != PointerId::NONE || rv_ptr != PointerId::NONE {
+            assert!(pl_ptr != PointerId::NONE);
+            assert!(rv_ptr != PointerId::NONE);
+            self.add_edge(rv_ptr, pl_ptr);
+        }
+    }
+
+    fn do_unify(&mut self, lty1: LTy<'tcx>, lty2: LTy<'tcx>) {
+        assert_eq!(lty1.ty, lty2.ty);
+        for (sub_lty1, sub_lty2) in lty1.iter().zip(lty2.iter()) {
+            eprintln!("equate {:?} = {:?}", sub_lty1, sub_lty2);
+            if sub_lty1.label != PointerId::NONE || sub_lty2.label != PointerId::NONE {
+                assert!(sub_lty1.label != PointerId::NONE);
+                assert!(sub_lty2.label != PointerId::NONE);
+                self.add_equiv(sub_lty1.label, sub_lty2.label);
             }
         }
     }
@@ -214,10 +219,37 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
                         self.constraints.add_all_perms(rv_lty.label, perms);
                     }
+
+                    Some(Callee::SliceAsPtr { elem_ty, .. }) => {
+                        // We handle this like an assignment, but with some adjustments due to the
+                        // difference in input and output types.
+                        self.visit_place(destination, Mutability::Mut);
+                        let pl_lty = self.acx.type_of(destination);
+                        assert!(args.len() == 1);
+                        self.visit_operand(&args[0]);
+                        let rv_lty = self.acx.type_of(&args[0]);
+
+                        // Map `rv_lty = &[i32]` to `rv_elem_lty = i32`
+                        let rv_pointee_lty = rv_lty.args[0];
+                        let rv_elem_lty = match *rv_pointee_lty.kind() {
+                            TyKind::Array(..) | TyKind::Slice(..) => rv_pointee_lty.args[0],
+                            TyKind::Str => self.acx.lcx().label(elem_ty, &mut |_| PointerId::NONE),
+                            _ => unreachable!(),
+                        };
+
+                        // Map `pl_lty = *mut i32` to `pl_elem_lty = i32`
+                        let pl_elem_lty = pl_lty.args[0];
+
+                        self.do_unify(pl_elem_lty, rv_elem_lty);
+                        self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
+                    },
+
                     Some(Callee::MiscBuiltin) => {},
+
                     Some(Callee::Other { def_id, substs }) => {
                         self.visit_call_other(def_id, substs, args, destination);
                     }
+
                     None => {}
                 }
             }

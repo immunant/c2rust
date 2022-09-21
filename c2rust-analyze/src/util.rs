@@ -2,7 +2,7 @@ use crate::labeled_ty::LabeledTy;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue};
-use rustc_middle::ty::{DefIdTree, SubstsRef, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy};
 use std::fmt::Debug;
 
 #[derive(Debug)]
@@ -74,6 +74,15 @@ pub enum Callee<'tcx> {
         pointee_ty: Ty<'tcx>,
         mutbl: Mutability,
     },
+    /// `<[T]>::as_ptr` and `<[T]>::as_mut_ptr` methods.  Also covers the array and str versions.
+    SliceAsPtr {
+        /// The pointee type.  This is either `TyKind::Slice`, `TyKind::Array`, or `TyKind::Str`.
+        pointee_ty: Ty<'tcx>,
+        /// The slice element type.  For `str`, this is `u8`.
+        elem_ty: Ty<'tcx>,
+        /// Mutability of the output pointer.
+        mutbl: Mutability,
+    },
     /// A built-in or standard library function that requires no special handling.
     MiscBuiltin,
     /// Some other statically-known function, including functions defined in the current crate.
@@ -121,6 +130,30 @@ fn builtin_callee<'tcx>(
                 _ => return None,
             };
             Some(Callee::PtrOffset { pointee_ty, mutbl })
+        }
+
+        name@"as_ptr" | name@"as_mut_ptr" => {
+            // The `as_ptr` and `as_mut_ptr` inherent methods of `[T]`, `[T; n]`, and `str`.
+            let parent_did = tcx.parent(did);
+            if tcx.def_kind(parent_did) != DefKind::Impl {
+                return None;
+            }
+            if tcx.impl_trait_ref(parent_did).is_some() {
+                return None;
+            }
+            let parent_impl_ty = tcx.type_of(parent_did);
+            let elem_ty = match *parent_impl_ty.kind() {
+                TyKind::Array(ty, _) => ty,
+                TyKind::Slice(ty) => ty,
+                TyKind::Str => tcx.mk_mach_uint(UintTy::U8),
+                _ => return None,
+            };
+            let mutbl = match name {
+                "as_ptr" => Mutability::Not,
+                "as_mut_ptr" => Mutability::Mut,
+                _ => unreachable!(),
+            };
+            Some(Callee::SliceAsPtr { pointee_ty: parent_impl_ty, elem_ty, mutbl })
         }
 
         "abort" | "exit" => {

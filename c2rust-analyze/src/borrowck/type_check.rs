@@ -223,6 +223,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         let rv_lty = self.visit_operand(&args[0]);
                         self.do_assign(pl_lty, rv_lty);
                     }
+                    Some(Callee::SliceAsPtr { .. }) => {
+                        // TODO: handle this like a cast
+                    },
                     Some(Callee::MiscBuiltin) => {},
                     Some(Callee::Other { .. }) => {
                         // TODO
