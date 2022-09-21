@@ -233,6 +233,24 @@ it can be used similarly to `intercept-build`:
 bear <build command>
 ```
 
+#### ... with `compiledb`
+
+The `compiledb` package can also be used for makefile projects if the other tools don't work.
+Install via `pip` with:
+
+```sh
+pip install compiledb
+```
+
+Usage:
+
+```sh
+# After running
+./autogen.sh && ./configure # etc.
+# Run
+compiledb make
+```
+
 <!-- ANCHOR_END: translating-c-to-rust -->
 
 ## Contact
