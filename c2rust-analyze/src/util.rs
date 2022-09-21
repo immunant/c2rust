@@ -123,8 +123,8 @@ fn builtin_callee<'tcx>(
             Some(Callee::PtrOffset { pointee_ty, mutbl })
         }
 
-        "abort" => {
-            // std::process::abort
+        "abort" | "exit" => {
+            // `std::process::abort` and `std::process::exit`
             let path = tcx.def_path(did);
             if tcx.crate_name(path.krate).as_str() != "std" {
                 return None;
@@ -135,7 +135,6 @@ fn builtin_callee<'tcx>(
             if path.data[0].to_string() != "process" {
                 return None;
             }
-            debug_assert_eq!(path.data[1].to_string(), "abort");
             Some(Callee::MiscBuiltin)
         }
 
