@@ -311,7 +311,7 @@ fn run(tcx: TyCtxt) {
 
         // Print labeling and rewrites for the current function.
 
-        eprintln!("final labeling for {:?}:", name);
+        eprintln!("\nfinal labeling for {:?}:", name);
         let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
         let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
         for (local, decl) in mir.local_decls.iter_enumerated() {
