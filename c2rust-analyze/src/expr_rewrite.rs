@@ -39,6 +39,8 @@ pub enum RewriteKind {
     SliceFirst { mutbl: bool },
     /// Replace `ptr` with `&*ptr`, converting `&mut T` to `&T`.
     MutToImm,
+    /// Remove a call to `as_ptr` or `as_mut_ptr`.
+    RemoveAsPtr,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -175,6 +177,10 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     match callee {
                         Callee::PtrOffset { .. } => {
                             self.visit_ptr_offset(&args[0], pl_ty);
+                            return;
+                        }
+                        Callee::SliceAsPtr { .. } => {
+                            self.visit_slice_as_ptr(&args[0], pl_ty);
                             return;
                         }
                         _ => {}
@@ -318,6 +324,21 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         // If the result is `Single`, also insert an upcast.
         if result_qty == Quantity::Single {
             self.emit(RewriteKind::SliceFirst { mutbl });
+        }
+    }
+
+    fn visit_slice_as_ptr(&mut self, op: &Operand<'tcx>, result_lty: LTy<'tcx>) {
+        let op_lty = self.acx.type_of(op);
+        let op_ptr = op_lty.label;
+        let result_ptr = result_lty.label;
+
+        let (op_own, op_qty) =
+            type_desc::perms_to_desc(self.perms[op_ptr], self.flags[op_ptr]);
+        let (result_own, result_qty) =
+            type_desc::perms_to_desc(self.perms[result_ptr], self.flags[result_ptr]);
+
+        if op_own == result_own && op_qty == result_qty {
+            self.emit(RewriteKind::RemoveAsPtr);
         }
     }
 
