@@ -2267,7 +2267,11 @@ class TranslateASTVisitor final
             // C and C++ supports different string types, so
             // we need to identify the string literal type
             switch (SL->getKind()) {
+#if CLANG_VERSION_MAJOR >= 15
+            case clang::StringLiteral::StringKind::Ordinary:
+#else
             case clang::StringLiteral::StringKind::Ascii:
+#endif // CLANG_VERSION_MAJOR
                 cbor_encode_uint(array, StringTypeTag::TagAscii);
                 break;
             case clang::StringLiteral::StringKind::Wide:
