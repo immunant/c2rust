@@ -167,7 +167,7 @@ fn check_children_conflict(
             |fields| matches!(max_descs.get(fields), Some(max_desc) if max_desc > &child);
         if max_descs
             .keys()
-            .filter(|sib_fields| prefix(*sib_fields, &child_fields))
+            .filter(|sib_fields| prefix(sib_fields, &child_fields))
             .any(conflicts)
         {
             return true;
