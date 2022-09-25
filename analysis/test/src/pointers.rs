@@ -179,6 +179,7 @@ pub unsafe extern "C" fn connection_accepted(
 unsafe extern "C" fn connection_close(mut srv: *mut server, mut con: *mut connection) {
     fdevent_fdnode_event_del((*srv).ev, (*con).fdn);
     fdevent_unregister((*srv).ev, (*con).fd);
+    free(con as *mut libc::c_void);
 }
 #[no_mangle]
 pub unsafe extern "C" fn fdevent_fdnode_event_del(mut ev: *mut fdevents, mut fdn: *mut fdnode) {

@@ -520,6 +520,9 @@ g {
 	n[18]: addr.load   n[17] => _       @ bb0[4]:  fn connection_close;     _5 = ((*_2).1: *mut pointers::fdnode_st);
 	n[19]: field.0     n[16] => _8      @ bb1[7]:  fn connection_close;     _8 = ((*_2).0: i32);
 	n[20]: addr.load   n[19] => _       @ bb1[7]:  fn connection_close;     _8 = ((*_2).0: i32);
+	n[21]: copy        n[16] => _11     @ bb2[6]:  fn connection_close;     _11 = _2;
+	n[22]: copy        n[21] => _10     @ bb2[7]:  fn connection_close;     _10 = move _11 as *mut libc::c_void (Misc);
+	n[23]: free        n[22] => _9      @ bb2[9]:  fn connection_close;     _9 = free(move _10);
 }
 nodes_that_need_write = [12, 11, 3, 2, 1, 0]
 
@@ -932,5 +935,5 @@ g {
 nodes_that_need_write = [6, 5, 4, 0]
 
 num_graphs = 64
-num_nodes = 673
+num_nodes = 676
 
