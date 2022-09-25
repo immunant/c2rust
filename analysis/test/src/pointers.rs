@@ -76,6 +76,12 @@ pub unsafe extern "C" fn simple() {
     let k = (*x).field;
     let z = std::ptr::addr_of!((*x).field2);
     (*x).field3 = std::ptr::addr_of!(*x) as *const S;
+    (*y).field4 = T {
+        field: 0i32,
+        field2: 0u64,
+        field3: 0 as *const S,
+        field4: 0i32,
+    };
     let s = *y;
     *x = s;
     recur(3, x);
