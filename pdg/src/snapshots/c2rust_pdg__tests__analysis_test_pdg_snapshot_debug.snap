@@ -340,25 +340,30 @@ nodes_that_need_write = [4, 3, 2, 1, 0]
 g {
 	n[0]: alloc       _    => _2   @ bb1[2]: fn no_owner;  _2 = malloc(move _3);
 	n[1]: value.store n[0] => _5.* @ bb2[3]: fn no_owner;  (*_5) = move _2 as *mut pointers::S (Misc);
+	n[2]: value.load  _    => _12  @ bb6[6]: fn main_0;    _12 = (*_13);
+	n[3]: copy        n[2] => _11  @ bb6[7]: fn main_0;    _11 = move _12 as *mut libc::c_void (Misc);
+	n[4]: free        n[3] => _10  @ bb6[9]: fn main_0;    _10 = free(move _11);
 }
 nodes_that_need_write = []
 
 g {
 	n[0]:  copy       _     => _5  @ bb2[2]:  fn no_owner;  _5 = const {alloc8: *mut *mut pointers::S};
 	n[1]:  addr.store n[0]  => _   @ bb2[3]:  fn no_owner;  (*_5) = move _2 as *mut pointers::S (Misc);
-	n[2]:  copy       _     => _5  @ bb2[2]:  fn no_owner;  _5 = const {alloc8: *mut *mut pointers::S};
-	n[3]:  addr.store n[2]  => _   @ bb2[3]:  fn no_owner;  (*_5) = move _2 as *mut pointers::S (Misc);
-	n[4]:  copy       _     => _12 @ bb3[4]:  fn no_owner;  _12 = const {alloc8: *mut *mut pointers::S};
-	n[5]:  addr.load  n[4]  => _   @ bb3[5]:  fn no_owner;  _11 = (*_12);
-	n[6]:  copy       _     => _6  @ bb2[9]:  fn invalid;   _6 = const {alloc8: *mut *mut pointers::S};
-	n[7]:  addr.store n[6]  => _   @ bb2[10]: fn invalid;   (*_6) = move _5;
-	n[8]:  copy       _     => _19 @ bb3[17]: fn invalid;   _19 = const {alloc8: *mut *mut pointers::S};
-	n[9]:  field.0    n[8]  => _18 @ bb3[18]: fn invalid;   _18 = ((*(*_19)).0: i32);
-	n[10]: addr.load  n[9]  => _   @ bb3[18]: fn invalid;   _18 = ((*(*_19)).0: i32);
-	n[11]: copy       _     => _20 @ bb4[6]:  fn invalid;   _20 = const {alloc8: *mut *mut pointers::S};
-	n[12]: addr.store n[11] => _   @ bb4[7]:  fn invalid;   (*_20) = const 0_usize as *mut pointers::S (PointerFromExposedAddress);
+	n[2]:  copy       _     => _13 @ bb6[5]:  fn main_0;    _13 = const {alloc8: *mut *mut pointers::S};
+	n[3]:  addr.load  n[2]  => _   @ bb6[6]:  fn main_0;    _12 = (*_13);
+	n[4]:  copy       _     => _5  @ bb2[2]:  fn no_owner;  _5 = const {alloc8: *mut *mut pointers::S};
+	n[5]:  addr.store n[4]  => _   @ bb2[3]:  fn no_owner;  (*_5) = move _2 as *mut pointers::S (Misc);
+	n[6]:  copy       _     => _12 @ bb3[4]:  fn no_owner;  _12 = const {alloc8: *mut *mut pointers::S};
+	n[7]:  addr.load  n[6]  => _   @ bb3[5]:  fn no_owner;  _11 = (*_12);
+	n[8]:  copy       _     => _6  @ bb2[9]:  fn invalid;   _6 = const {alloc8: *mut *mut pointers::S};
+	n[9]:  addr.store n[8]  => _   @ bb2[10]: fn invalid;   (*_6) = move _5;
+	n[10]: copy       _     => _19 @ bb3[17]: fn invalid;   _19 = const {alloc8: *mut *mut pointers::S};
+	n[11]: field.0    n[10] => _18 @ bb3[18]: fn invalid;   _18 = ((*(*_19)).0: i32);
+	n[12]: addr.load  n[11] => _   @ bb3[18]: fn invalid;   _18 = ((*(*_19)).0: i32);
+	n[13]: copy       _     => _20 @ bb4[6]:  fn invalid;   _20 = const {alloc8: *mut *mut pointers::S};
+	n[14]: addr.store n[13] => _   @ bb4[7]:  fn invalid;   (*_20) = const 0_usize as *mut pointers::S (PointerFromExposedAddress);
 }
-nodes_that_need_write = [12, 11, 7, 6, 3, 2, 1, 0]
+nodes_that_need_write = [14, 13, 9, 8, 5, 4, 1, 0]
 
 g {
 	n[0]: alloc       _    => _2   @ bb1[2]: fn no_owner;  _2 = malloc(move _3);
@@ -854,13 +859,13 @@ g {
 nodes_that_need_write = [2, 0]
 
 g {
-	n[0]:  &_35       _     => _34 @ bb30[4]:  fn main_0;          _34 = &mut _35;
-	n[1]:  copy       n[0]  => _40 @ bb30[11]: fn main_0;          _40 = &(*_34);
-	n[2]:  copy       n[1]  => _39 @ bb30[12]: fn main_0;          _39 = move _40 as &[i32] (Pointer(Unsize));
-	n[3]:  copy       n[2]  => _1  @ bb0[0]:   fn len;             _38 = len(move _39);
-	n[4]:  copy       n[0]  => _42 @ bb31[5]:  fn main_0;          _42 = &raw mut (*_34);
-	n[5]:  copy       n[4]  => _41 @ bb31[6]:  fn main_0;          _41 = move _42 as *mut i32 (Pointer(ArrayToPointer));
-	n[6]:  copy       n[5]  => _2  @ bb0[0]:   fn insertion_sort;  _36 = insertion_sort(move _37, move _41);
+	n[0]:  &_39       _     => _38 @ bb31[4]:  fn main_0;          _38 = &mut _39;
+	n[1]:  copy       n[0]  => _44 @ bb31[11]: fn main_0;          _44 = &(*_38);
+	n[2]:  copy       n[1]  => _43 @ bb31[12]: fn main_0;          _43 = move _44 as &[i32] (Pointer(Unsize));
+	n[3]:  copy       n[2]  => _1  @ bb0[0]:   fn len;             _42 = len(move _43);
+	n[4]:  copy       n[0]  => _46 @ bb32[5]:  fn main_0;          _46 = &raw mut (*_38);
+	n[5]:  copy       n[4]  => _45 @ bb32[6]:  fn main_0;          _45 = move _46 as *mut i32 (Pointer(ArrayToPointer));
+	n[6]:  copy       n[5]  => _2  @ bb0[0]:   fn insertion_sort;  _40 = insertion_sort(move _41, move _45);
 	n[7]:  copy       n[6]  => _10 @ bb3[3]:   fn insertion_sort;  _10 = _2;
 	n[8]:  offset[1]  n[7]  => _9  @ bb3[9]:   fn insertion_sort;  _9 = offset(move _10, move _11);
 	n[9]:  addr.load  n[8]  => _   @ bb5[2]:   fn insertion_sort;  _8 = (*_9);
@@ -945,5 +950,5 @@ g {
 nodes_that_need_write = [6, 5, 4, 0]
 
 num_graphs = 64
-num_nodes = 686
+num_nodes = 691
 

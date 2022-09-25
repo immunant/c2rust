@@ -516,6 +516,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     analysis2();
     inter_function_analysis();
     no_owner(0i32);
+    free(global as *mut libc::c_void);
     no_owner(1i32);
     invalid();
     testing();
