@@ -2,7 +2,6 @@ use enum_dispatch::enum_dispatch;
 use fs_err::{File, OpenOptions};
 use std::fmt::Debug;
 use std::io::{stderr, BufWriter, Write};
-use std::sync::mpsc::Receiver;
 
 use bincode;
 
@@ -85,8 +84,8 @@ pub enum Backend {
 }
 
 impl Backend {
-    fn write_all(&mut self, rx: Receiver<Event>) {
-        for event in rx {
+    fn write_all(&mut self, events: impl IntoIterator<Item = Event>) {
+        for event in events {
             let done = matches!(event.kind, EventKind::Done);
             self.write(event);
             if done {
@@ -96,10 +95,10 @@ impl Backend {
         self.flush();
     }
 
-    pub fn run(&mut self, rx: Receiver<Event>) {
+    pub fn run(&mut self, events: impl IntoIterator<Item = Event>) {
         let (lock, cvar) = &*FINISHED;
         let mut finished = lock.lock().unwrap();
-        self.write_all(rx);
+        self.write_all(events);
         *finished = true;
         cvar.notify_one();
     }
