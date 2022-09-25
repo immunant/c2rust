@@ -76,9 +76,9 @@ pub unsafe extern "C" fn simple() {
     let k = (*x).field;
     let z = std::ptr::addr_of!((*x).field2);
     (*x).field3 = std::ptr::addr_of!(*x) as *const S;
-    recur(3, x);
     let s = *y;
     *x = s;
+    recur(3, x);
 }
 #[no_mangle]
 pub unsafe extern "C" fn simple1() {
