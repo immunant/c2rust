@@ -98,7 +98,7 @@ pub unsafe extern "C" fn simple1() {
     let addr_of_copy = std::ptr::addr_of!(x_copy_copy);
     let i_cast = x as usize;
     let x_from_int = i_cast as *const libc::c_void;
-    free(x as *mut libc::c_void);
+    free(z as *mut libc::c_void);
 }
 
 #[derive(Copy, Clone)]

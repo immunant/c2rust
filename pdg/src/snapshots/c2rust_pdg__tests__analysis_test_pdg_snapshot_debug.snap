@@ -410,21 +410,21 @@ g {
 	n[4]: free       n[3] => _6  @ bb3[2]:  fn simple1;  _6 = realloc(move _7, move _9);
 	n[5]: copy       n[1] => _16 @ bb4[20]: fn simple1;  _16 = _1;
 	n[6]: ptr_to_int n[5] => _   @ bb4[21]: fn simple1;  _15 = move _16 as usize (PointerExposeAddress);
-	n[7]: copy       n[1] => _21 @ bb4[33]: fn simple1;  _21 = _1;
-	n[8]: copy       n[7] => _20 @ bb4[34]: fn simple1;  _20 = move _21 as *mut libc::c_void (Misc);
-	n[9]: free       n[8] => _19 @ bb4[36]: fn simple1;  _19 = free(move _20);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: alloc      _    => _6  @ bb3[2]:  fn simple1;  _6 = realloc(move _7, move _9);
-	n[1]: copy       n[0] => _5  @ bb4[2]:  fn simple1;  _5 = move _6 as *mut pointers::S (Misc);
-	n[2]: copy       n[1] => _11 @ bb4[6]:  fn simple1;  _11 = _5;
-	n[3]: field.0    n[2] => _   @ bb4[8]:  fn simple1;  ((*_11).0: i32) = const 10_i32;
-	n[4]: addr.store n[3] => _   @ bb4[8]:  fn simple1;  ((*_11).0: i32) = const 10_i32;
-	n[5]: copy       n[1] => _12 @ bb4[10]: fn simple1;  _12 = _5;
-	n[6]: copy       n[2] => _13 @ bb4[13]: fn simple1;  _13 = _11;
-	n[7]: int_to_ptr _    => _17 @ bb4[27]: fn simple1;  _17 = move _18 as *const libc::c_void (PointerFromExposedAddress);
+	n[0]:  alloc      _    => _6  @ bb3[2]:  fn simple1;  _6 = realloc(move _7, move _9);
+	n[1]:  copy       n[0] => _5  @ bb4[2]:  fn simple1;  _5 = move _6 as *mut pointers::S (Misc);
+	n[2]:  copy       n[1] => _11 @ bb4[6]:  fn simple1;  _11 = _5;
+	n[3]:  field.0    n[2] => _   @ bb4[8]:  fn simple1;  ((*_11).0: i32) = const 10_i32;
+	n[4]:  addr.store n[3] => _   @ bb4[8]:  fn simple1;  ((*_11).0: i32) = const 10_i32;
+	n[5]:  copy       n[1] => _12 @ bb4[10]: fn simple1;  _12 = _5;
+	n[6]:  copy       n[2] => _13 @ bb4[13]: fn simple1;  _13 = _11;
+	n[7]:  int_to_ptr _    => _17 @ bb4[27]: fn simple1;  _17 = move _18 as *const libc::c_void (PointerFromExposedAddress);
+	n[8]:  copy       n[1] => _21 @ bb4[33]: fn simple1;  _21 = _5;
+	n[9]:  copy       n[8] => _20 @ bb4[34]: fn simple1;  _20 = move _21 as *mut libc::c_void (Misc);
+	n[10]: free       n[9] => _19 @ bb4[36]: fn simple1;  _19 = free(move _20);
 }
 nodes_that_need_write = [4, 3, 2, 1, 0]
 
