@@ -343,6 +343,7 @@ pub unsafe extern "C" fn test_arg() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
     foo(s);
     let t = s;
+    free(s as *mut libc::c_void);
 }
 #[no_mangle]
 pub unsafe extern "C" fn foo_rec(n: i32, bar: *mut libc::c_void) -> *mut libc::c_void {

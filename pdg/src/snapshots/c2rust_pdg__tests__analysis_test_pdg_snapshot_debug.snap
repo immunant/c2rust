@@ -589,6 +589,8 @@ g {
 	n[2]: copy  n[1] => _1 @ bb0[0]: fn foo;       _4 = foo(move _5);
 	n[3]: copy  n[2] => _2 @ bb0[1]: fn foo;       _2 = _1;
 	n[4]: copy  n[2] => _6 @ bb3[3]: fn test_arg;  _6 = _1;
+	n[5]: copy  n[2] => _8 @ bb3[7]: fn test_arg;  _8 = _1;
+	n[6]: free  n[5] => _7 @ bb3[8]: fn test_arg;  _7 = free(move _8);
 }
 nodes_that_need_write = []
 
@@ -935,5 +937,5 @@ g {
 nodes_that_need_write = [6, 5, 4, 0]
 
 num_graphs = 64
-num_nodes = 676
+num_nodes = 678
 
