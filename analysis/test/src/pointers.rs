@@ -16,6 +16,12 @@ extern "C" {
     fn free(__ptr: *mut libc::c_void);
 }
 
+#[cfg(not(feature = "miri"))]
+extern "C" {
+    fn printf(_: *const libc::c_char, _: ...) -> libc::c_int;
+}
+
+#[cfg(feature = "miri")]
 fn printf(fmt: *const libc::c_char, i: i32) -> libc::c_int {
     use std::ffi::CStr;
     assert_eq!(unsafe { CStr::from_ptr(fmt) }, CStr::from_bytes_with_nul(b"%i\n\x00").unwrap());
