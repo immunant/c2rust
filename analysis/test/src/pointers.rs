@@ -461,7 +461,7 @@ pub unsafe extern "C" fn test_load_self_store_self() {
 #[no_mangle]
 pub unsafe extern "C" fn test_load_self_store_self_inter() {
     let s = calloc(
-        0i32 as libc::c_ulong,
+        1i32 as libc::c_ulong,
         ::std::mem::size_of::<S>() as libc::c_ulong,
     ) as *mut S;
     let y = (*s).field;
