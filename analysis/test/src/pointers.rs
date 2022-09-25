@@ -14,7 +14,14 @@ extern "C" {
     fn calloc(_: libc::c_ulong, _: libc::c_ulong) -> *mut libc::c_void;
     fn realloc(_: *mut libc::c_void, _: libc::c_ulong) -> *mut libc::c_void;
     fn free(__ptr: *mut libc::c_void);
-    fn printf(_: *const libc::c_char, _: ...) -> libc::c_int;
+}
+
+fn printf(fmt: *const libc::c_char, i: i32) -> libc::c_int {
+    use std::ffi::CStr;
+    assert_eq!(unsafe { CStr::from_ptr(fmt) }, CStr::from_bytes_with_nul(b"%i\n\x00").unwrap());
+    let s = format!("{i}\n");
+    print!("{s}");
+    s.len() as libc::c_int
 }
 
 /// Hidden from instrumentation so that we can polyfill [`reallocarray`] with it.
