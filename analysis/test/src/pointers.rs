@@ -485,6 +485,7 @@ pub unsafe extern "C" fn test_store_value_field() {
     let t = malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
     (*t).field3 = s;
     (*s).field3 = (*t).field3;
+    free(t as *mut libc::c_void);
     free(s as *mut libc::c_void);
 }
 #[no_mangle]

@@ -817,19 +817,22 @@ g {
 	n[5]:  field.2     n[1] => _      @ bb4[10]: fn test_store_value_field;  ((*_1).2: *const pointers::S) = move _10;
 	n[6]:  addr.store  n[5] => _      @ bb4[10]: fn test_store_value_field;  ((*_1).2: *const pointers::S) = move _10;
 	n[7]:  value.store n[4] => _1.*.2 @ bb4[10]: fn test_store_value_field;  ((*_1).2: *const pointers::S) = move _10;
-	n[8]:  copy        n[1] => _13    @ bb4[15]: fn test_store_value_field;  _13 = _1;
-	n[9]:  copy        n[8] => _12    @ bb4[16]: fn test_store_value_field;  _12 = move _13 as *mut libc::c_void (Misc);
-	n[10]: free        n[9] => _11    @ bb4[18]: fn test_store_value_field;  _11 = free(move _12);
+	n[8]:  copy        n[1] => _16    @ bb5[5]:  fn test_store_value_field;  _16 = _1;
+	n[9]:  copy        n[8] => _15    @ bb5[6]:  fn test_store_value_field;  _15 = move _16 as *mut libc::c_void (Misc);
+	n[10]: free        n[9] => _14    @ bb5[8]:  fn test_store_value_field;  _14 = free(move _15);
 }
 nodes_that_need_write = [6, 5, 1, 0]
 
 g {
-	n[0]: alloc      _    => _6  @ bb3[2]: fn test_store_value_field;  _6 = malloc(move _7);
-	n[1]: copy       n[0] => _5  @ bb4[1]: fn test_store_value_field;  _5 = move _6 as *mut pointers::S (Misc);
-	n[2]: field.2    n[1] => _   @ bb4[6]: fn test_store_value_field;  ((*_5).2: *const pointers::S) = move _9 as *const pointers::S (Pointer(MutToConstPointer));
-	n[3]: addr.store n[2] => _   @ bb4[6]: fn test_store_value_field;  ((*_5).2: *const pointers::S) = move _9 as *const pointers::S (Pointer(MutToConstPointer));
-	n[4]: field.2    n[1] => _10 @ bb4[9]: fn test_store_value_field;  _10 = ((*_5).2: *const pointers::S);
-	n[5]: addr.load  n[4] => _   @ bb4[9]: fn test_store_value_field;  _10 = ((*_5).2: *const pointers::S);
+	n[0]: alloc      _    => _6  @ bb3[2]:  fn test_store_value_field;  _6 = malloc(move _7);
+	n[1]: copy       n[0] => _5  @ bb4[1]:  fn test_store_value_field;  _5 = move _6 as *mut pointers::S (Misc);
+	n[2]: field.2    n[1] => _   @ bb4[6]:  fn test_store_value_field;  ((*_5).2: *const pointers::S) = move _9 as *const pointers::S (Pointer(MutToConstPointer));
+	n[3]: addr.store n[2] => _   @ bb4[6]:  fn test_store_value_field;  ((*_5).2: *const pointers::S) = move _9 as *const pointers::S (Pointer(MutToConstPointer));
+	n[4]: field.2    n[1] => _10 @ bb4[9]:  fn test_store_value_field;  _10 = ((*_5).2: *const pointers::S);
+	n[5]: addr.load  n[4] => _   @ bb4[9]:  fn test_store_value_field;  _10 = ((*_5).2: *const pointers::S);
+	n[6]: copy       n[1] => _13 @ bb4[15]: fn test_store_value_field;  _13 = _5;
+	n[7]: copy       n[6] => _12 @ bb4[16]: fn test_store_value_field;  _12 = move _13 as *mut libc::c_void (Misc);
+	n[8]: free       n[7] => _11 @ bb4[18]: fn test_store_value_field;  _11 = free(move _12);
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
@@ -942,5 +945,5 @@ g {
 nodes_that_need_write = [6, 5, 4, 0]
 
 num_graphs = 64
-num_nodes = 683
+num_nodes = 686
 
