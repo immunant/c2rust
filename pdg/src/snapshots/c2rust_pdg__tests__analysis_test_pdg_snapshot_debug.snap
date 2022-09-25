@@ -615,6 +615,8 @@ g {
 	n[17]: copy  n[16] => _12 @ bb4[4]: fn foo_rec;       _12 = _7;
 	n[18]: copy  n[17] => _0  @ bb4[6]: fn foo_rec;       _0 = _12;
 	n[19]: copy  n[18] => _4  @ bb2[5]: fn test_arg_rec;  _4 = foo_rec(const 3_i32, move _5);
+	n[20]: copy  n[0]  => _7  @ bb3[4]: fn test_arg_rec;  _7 = _1;
+	n[21]: free  n[20] => _6  @ bb3[5]: fn test_arg_rec;  _6 = free(move _7);
 }
 nodes_that_need_write = []
 
@@ -937,5 +939,5 @@ g {
 nodes_that_need_write = [6, 5, 4, 0]
 
 num_graphs = 64
-num_nodes = 678
+num_nodes = 680
 
