@@ -418,9 +418,11 @@ pub unsafe extern "C" fn test_load_addr() {
 #[no_mangle]
 pub unsafe extern "C" fn test_overwrite() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
+    let s2 = s;
     let t = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
     s = t;
     free(s);
+    free(s2);
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_store_addr() {

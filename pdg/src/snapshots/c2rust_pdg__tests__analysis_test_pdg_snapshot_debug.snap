@@ -690,16 +690,19 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]: alloc _ => _1 @ bb1[2]: fn test_overwrite;  _1 = malloc(move _2);
+	n[0]: alloc _    => _1  @ bb1[2]: fn test_overwrite;  _1 = malloc(move _2);
+	n[1]: copy  n[0] => _4  @ bb2[3]: fn test_overwrite;  _4 = _1;
+	n[2]: copy  n[1] => _12 @ bb5[4]: fn test_overwrite;  _12 = _4;
+	n[3]: free  n[2] => _11 @ bb5[5]: fn test_overwrite;  _11 = free(move _12);
 }
 nodes_that_need_write = []
 
 g {
-	n[0]: alloc _    => _4 @ bb3[2]: fn test_overwrite;  _4 = malloc(move _5);
-	n[1]: copy  n[0] => _7 @ bb4[3]: fn test_overwrite;  _7 = _4;
-	n[2]: copy  n[1] => _1 @ bb4[4]: fn test_overwrite;  _1 = move _7;
-	n[3]: copy  n[2] => _9 @ bb4[8]: fn test_overwrite;  _9 = _1;
-	n[4]: free  n[3] => _8 @ bb4[9]: fn test_overwrite;  _8 = free(move _9);
+	n[0]: alloc _    => _5  @ bb3[2]: fn test_overwrite;  _5 = malloc(move _6);
+	n[1]: copy  n[0] => _8  @ bb4[3]: fn test_overwrite;  _8 = _5;
+	n[2]: copy  n[1] => _1  @ bb4[4]: fn test_overwrite;  _1 = move _8;
+	n[3]: copy  n[2] => _10 @ bb4[8]: fn test_overwrite;  _10 = _1;
+	n[4]: free  n[3] => _9  @ bb4[9]: fn test_overwrite;  _9 = free(move _10);
 }
 nodes_that_need_write = []
 
@@ -939,5 +942,5 @@ g {
 nodes_that_need_write = [6, 5, 4, 0]
 
 num_graphs = 64
-num_nodes = 680
+num_nodes = 683
 
