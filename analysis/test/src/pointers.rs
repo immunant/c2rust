@@ -67,6 +67,7 @@ pub unsafe extern "C" fn recur(x: libc::c_int, s: *mut S) {
 #[no_mangle]
 pub unsafe extern "C" fn simple() {
     let mut x = malloc(mem::size_of::<S>() as c_ulong) as *mut S;
+    let mut x2 = x;
     let y = malloc(mem::size_of::<S>() as c_ulong) as *mut S;
     let z = std::ptr::addr_of!((*x).field);
     x = y;
@@ -79,6 +80,7 @@ pub unsafe extern "C" fn simple() {
     recur(3, x);
     let s = *y;
     *x = s;
+    free(x2 as *mut libc::c_void);
 }
 #[no_mangle]
 pub unsafe extern "C" fn simple1() {
