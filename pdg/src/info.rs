@@ -14,10 +14,10 @@ const _: Option<Node> = None;
 /// as well as its ability to be used as a `&mut`.
 #[derive(Hash, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct NodeInfo {
-    flows_to: FlowInfo,
+    pub flows_to: FlowInfo,
 
     /// Whether the [`Node`] can be used as a `&mut`.
-    unique: bool,
+    pub unique: bool,
 }
 
 impl Display for NodeInfo {
@@ -31,10 +31,10 @@ impl Display for NodeInfo {
 /// A node A is said to flow into B if it is the transitive 'source' of B.
 #[derive(Debug, Hash, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct FlowInfo {
-    load: Option<NodeId>,
-    store: Option<NodeId>,
-    pos_offset: Option<NodeId>,
-    neg_offset: Option<NodeId>,
+    pub load: Option<NodeId>,
+    pub store: Option<NodeId>,
+    pub pos_offset: Option<NodeId>,
+    pub neg_offset: Option<NodeId>,
 }
 
 impl FlowInfo {
