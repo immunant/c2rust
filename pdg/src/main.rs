@@ -17,26 +17,17 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 
-mod assert;
-mod builder;
-mod graph;
-mod info;
-mod query;
-mod util;
-
-use builder::{construct_pdg, read_event_log};
 use c2rust_analysis_rt::{events::Event, metadata::Metadata};
 use clap::{Parser, ValueEnum};
 use color_eyre::eyre;
-use graph::Graphs;
-use info::add_info;
 use std::{
     fmt::{self, Display, Formatter},
     path::{Path, PathBuf},
     sync::Once,
 };
-
-use crate::builder::read_metadata;
+use c2rust_pdg::builder::{construct_pdg, read_event_log, read_metadata};
+use c2rust_pdg::graph::Graphs;
+use c2rust_pdg::info::add_info;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ValueEnum)]
 pub enum ToPrint {
