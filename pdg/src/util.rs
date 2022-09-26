@@ -7,6 +7,8 @@ use std::{
     hash::Hash,
 };
 
+pub mod serde;
+
 pub struct ShortOption<T>(pub Option<T>);
 
 impl<T: Display> Display for ShortOption<T> {
