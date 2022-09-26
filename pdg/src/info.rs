@@ -3,6 +3,7 @@ use rustc_middle::mir::Field;
 use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Display, Formatter};
+use serde::{Serialize, Deserialize};
 
 /// Force an import of [`Node`] just for docs.
 const _: Option<Node> = None;
@@ -11,7 +12,7 @@ const _: Option<Node> = None;
 ///
 /// Includes information about what kinds of [`Node`]s the [`Node`] flows to,
 /// as well as its ability to be used as a `&mut`.
-#[derive(Hash, Clone, PartialEq, Eq, Debug)]
+#[derive(Hash, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct NodeInfo {
     flows_to: FlowInfo,
 
@@ -28,7 +29,7 @@ impl Display for NodeInfo {
 /// Contains information about what kinds of [`Node`]s a [`Node`] flows to.
 /// Load and store kinds contain both Load/Store-Value and Load/Store-Addr.
 /// A node A is said to flow into B if it is the transitive 'source' of B.
-#[derive(Debug, Hash, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Hash, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct FlowInfo {
     load: Option<NodeId>,
     store: Option<NodeId>,
