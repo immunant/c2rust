@@ -182,6 +182,10 @@ fn main() -> eyre::Result<()> {
     pdg.graphs.assert_all_tests();
     let repr = pdg.repr(&args.print);
     println!("{repr}");
+
+    let f = std::fs::File::create("pdg.bc")?;
+    bincode::serialize_into(f, &pdg.graphs)?;
+
     Ok(())
 }
 
