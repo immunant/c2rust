@@ -1,7 +1,7 @@
 use enum_dispatch::enum_dispatch;
 use fs_err::{File, OpenOptions};
 use std::fmt::Debug;
-use std::io::BufWriter;
+use std::io::{BufWriter, Write};
 use std::sync::mpsc::Receiver;
 
 use bincode;
@@ -14,6 +14,8 @@ use crate::parse::{self, AsStr, GetChoices};
 #[enum_dispatch]
 pub(super) trait WriteEvent {
     fn write(&mut self, event: Event);
+
+    fn flush(&mut self);
 }
 
 pub(super) trait DetectBackend: Sized {
@@ -56,6 +58,8 @@ impl WriteEvent for DebugBackend {
         let mir_loc = self.metadata.get(event.mir_loc);
         eprintln!("{:?}: {:?}", mir_loc, event.kind);
     }
+
+    fn flush(&mut self) {}
 }
 
 pub struct LogBackend {
@@ -65,6 +69,10 @@ pub struct LogBackend {
 impl WriteEvent for LogBackend {
     fn write(&mut self, event: Event) {
         bincode::serialize_into(&mut self.writer, &event).unwrap();
+    }
+
+    fn flush(&mut self) {
+        self.writer.flush().unwrap();
     }
 }
 
@@ -80,9 +88,10 @@ impl Backend {
             let done = matches!(event.kind, EventKind::Done);
             self.write(event);
             if done {
-                return;
+                break;
             }
         }
+        self.flush();
     }
 
     pub fn run(&mut self, rx: Receiver<Event>) {
