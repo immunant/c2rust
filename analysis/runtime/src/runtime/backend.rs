@@ -16,10 +16,7 @@ pub(super) trait WriteEvent {
     fn write(&mut self, event: Event);
 }
 
-pub(super) trait DetectBackend
-where
-    Self: Sized,
-{
+pub(super) trait DetectBackend: Sized {
     fn detect() -> Result<Self, AnyError>;
 }
 
