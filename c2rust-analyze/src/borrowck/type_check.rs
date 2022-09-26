@@ -4,7 +4,7 @@ use crate::context::PermissionSet;
 use crate::util::{self, Callee};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    BinOp, Body, BorrowKind, Local, LocalDecl, Location, Operand, Place, ProjectionElem, Rvalue,
+    AggregateKind, BinOp, Body, BorrowKind, Local, LocalDecl, Location, Operand, Place, Rvalue,
     Statement, StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::{TyCtxt, TyKind};
@@ -34,21 +34,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     pub fn visit_place(&mut self, pl: Place<'tcx>) -> LTy<'tcx> {
         let mut lty = self.local_ltys[pl.local.index()];
         for proj in pl.projection {
-            match proj {
-                ProjectionElem::Deref => {
-                    assert_eq!(lty.args.len(), 1);
-                    lty = lty.args[0];
-                }
-
-                ProjectionElem::Field(f, _field_ty) => match lty.ty.kind() {
-                    TyKind::Tuple(..) => {
-                        lty = lty.args[f.as_usize()];
-                    }
-                    _ => todo!("field of {:?}", lty),
-                },
-
-                ref proj => panic!("unsupported projection {:?} in {:?}", proj, pl),
-            }
+            lty = util::lty_project(lty, &proj);
         }
         lty
     }
@@ -163,13 +149,30 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 })
             }
 
-            Rvalue::Cast(_, _, ty) => self.ltcx.label(ty, &mut |ty| {
+            Rvalue::Cast(_, _, ty) => self.ltcx.label(ty, &mut |_ty| {
+                // TODO: handle Unsize casts at minimum
+                /*
                 assert!(
                     !matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)),
                     "pointer Cast NYI"
                 );
+                */
                 Label::default()
             }),
+
+            Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
+                AggregateKind::Array(..) => {
+                    // TODO
+                    let ty = rv.ty(self.local_decls, *self.ltcx);
+                    self.ltcx.label(ty, &mut |_ty| Label::default())
+                },
+                _ => panic!("unsupported rvalue AggregateKind {:?}", kind),
+            },
+
+            Rvalue::Len(..) => {
+                let ty = rv.ty(self.local_decls, *self.ltcx);
+                self.ltcx.label(ty, &mut |_| Label::default())
+            },
 
             ref rv => panic!("unsupported rvalue {:?}", rv),
         }
@@ -223,6 +226,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         let rv_lty = self.visit_operand(&args[0]);
                         self.do_assign(pl_lty, rv_lty);
                     }
+                    Some(Callee::SliceAsPtr { .. }) => {
+                        // TODO: handle this like a cast
+                    },
+                    Some(Callee::MiscBuiltin) => {},
+                    Some(Callee::Other { .. }) => {
+                        // TODO
+                    },
                     None => {}
                 }
             }

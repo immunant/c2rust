@@ -1,12 +1,12 @@
 use super::DataflowConstraints;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
 use crate::util::{self, describe_rvalue, Callee, RvalueDesc};
-use rustc_middle::mir::visit::{MutatingUseContext, NonMutatingUseContext, PlaceContext};
+use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
-    BinOp, Body, Mutability, Operand, Place, PlaceRef, ProjectionElem, Rvalue, Statement,
-    StatementKind, Terminator, TerminatorKind,
+    AggregateKind, BinOp, Body, Location, Mutability, Operand, Place, PlaceRef, ProjectionElem,
+    Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
-use rustc_middle::ty::TyKind;
+use rustc_middle::ty::{SubstsRef, TyKind};
 
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
 /// constraints as a side effect.
@@ -43,97 +43,116 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    pub fn visit_place(&mut self, pl: Place<'tcx>, ctx: PlaceContext) -> LTy<'tcx> {
-        self.visit_place_ref(pl.as_ref(), ctx)
+    pub fn visit_place(&mut self, pl: Place<'tcx>, mutbl: Mutability) {
+        self.visit_place_ref(pl.as_ref(), mutbl)
     }
 
-    pub fn visit_place_ref(&mut self, pl: PlaceRef<'tcx>, ctx: PlaceContext) -> LTy<'tcx> {
-        let mut lty = self.acx.local_tys[pl.local];
+    pub fn visit_place_ref(&mut self, pl: PlaceRef<'tcx>, mutbl: Mutability) {
+        let mut lty = self.acx.type_of(pl.local);
         let mut prev_deref_ptr = None;
 
         for proj in pl.projection {
-            match proj {
-                ProjectionElem::Deref => {
-                    // All derefs except the last are loads, to retrieve the pointer for the next
-                    // deref.  The last deref is either a load or a store, depending on `ctx`.
-                    if let Some(ptr) = prev_deref_ptr.take() {
-                        self.record_access(ptr, Mutability::Not);
-                    }
-                    prev_deref_ptr = Some(lty.label);
-                    assert_eq!(lty.args.len(), 1);
-                    lty = lty.args[0];
+            if let ProjectionElem::Deref = proj {
+                // All derefs except the last are loads, to retrieve the pointer for the next
+                // deref.  However, if the overall `Place` is used mutably (as indicated by
+                // `mutbl`), then the previous derefs must be `&mut` as well.  The last deref
+                // may not be a memory access at all; for example, `&(*p).x` does not actually
+                // access the memory at `*p`.
+                if let Some(ptr) = prev_deref_ptr.take() {
+                    self.record_access(ptr, mutbl);
                 }
-
-                ProjectionElem::Field(f, _field_ty) => match lty.ty.kind() {
-                    TyKind::Tuple(..) => {
-                        lty = lty.args[f.as_usize()];
-                    }
-                    _ => todo!("field of {:?}", lty),
-                },
-
-                ref proj => panic!("unsupported projection {:?} in {:?}", proj, pl),
+                prev_deref_ptr = Some(lty.label);
             }
+            lty = self.acx.project(lty, proj);
         }
 
         if let Some(ptr) = prev_deref_ptr.take() {
-            match ctx {
-                PlaceContext::NonMutatingUse(..) => {
-                    self.record_access(ptr, Mutability::Not);
-                }
-                PlaceContext::MutatingUse(..) => {
-                    self.record_access(ptr, Mutability::Mut);
-                }
-                PlaceContext::NonUse(..) => {}
-            }
+            self.record_access(ptr, mutbl);
         }
-
-        lty
     }
 
-    pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>) -> PointerId {
+    pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, lty: LTy<'tcx>) {
         eprintln!("visit_rvalue({:?}), desc = {:?}", rv, describe_rvalue(rv));
 
-        match describe_rvalue(rv) {
-            Some(RvalueDesc::Project { base, proj: _ }) => {
-                let ctx = PlaceContext::NonMutatingUse(NonMutatingUseContext::Copy);
-                let base_ty = self.visit_place_ref(base, ctx);
-                base_ty.label
-            }
-            Some(RvalueDesc::AddrOfLocal { local, proj: _ }) => self.acx.addr_of_local[local],
-            None => match *rv {
-                Rvalue::Use(ref op) => self.visit_operand(op).label,
-                Rvalue::BinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
-                Rvalue::BinaryOp(..) => PointerId::NONE,
-                Rvalue::CheckedBinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
-                Rvalue::CheckedBinaryOp(..) => PointerId::NONE,
-                Rvalue::Cast(_, _, ty) => {
-                    assert!(!matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)));
-                    PointerId::NONE
+        if let Some(desc) = describe_rvalue(rv) {
+            match desc {
+                RvalueDesc::Project { base, proj: _ } => {
+                    // TODO: mutability should probably depend on mutability of the output ref/ptr
+                    self.visit_place_ref(base, Mutability::Not);
                 }
-                _ => panic!("TODO: handle assignment of {:?}", rv),
+                RvalueDesc::AddrOfLocal { .. } => {},
+            }
+            return;
+        }
+
+        match *rv {
+            Rvalue::Use(ref op) => self.visit_operand(op),
+            Rvalue::Repeat(..) => todo!("visit_rvalue Repeat"),
+            Rvalue::Ref(..) =>
+                unreachable!("Rvalue::Ref should be handled by describe_rvalue instead"),
+            Rvalue::ThreadLocalRef(..) => todo!("visit_rvalue ThreadLocalRef"),
+            Rvalue::AddressOf(..) =>
+                unreachable!("Rvalue::AddressOf should be handled by describe_rvalue instead"),
+            Rvalue::Len(pl) => { self.visit_place(pl, Mutability::Not); },
+            Rvalue::Cast(_, ref op, _) => self.visit_operand(op),
+            Rvalue::BinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
+            Rvalue::BinaryOp(_, ref ops) => {
+                self.visit_operand(&ops.0);
+                self.visit_operand(&ops.1);
+            },
+            Rvalue::CheckedBinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
+            Rvalue::CheckedBinaryOp(_, ref ops) => {
+                self.visit_operand(&ops.0);
+                self.visit_operand(&ops.1);
+            },
+            Rvalue::NullaryOp(..) => {},
+
+
+            Rvalue::Aggregate(ref kind, ref ops) => {
+                for op in ops {
+                    self.visit_operand(op);
+                }
+                match **kind {
+                    AggregateKind::Array(..) => {
+                        assert!(matches!(lty.kind(), TyKind::Array(..)));
+                        assert_eq!(lty.args.len(), 1);
+                        let elem_lty = lty.args[0];
+                        // Pseudo-assign from each operand to the element type of the array.
+                        for op in ops {
+                            let op_lty = self.acx.type_of(op);
+                            self.do_assign(elem_lty, op_lty);
+                        }
+                    },
+                    ref kind => todo!("Rvalue::Aggregate({:?})", kind),
+                }
+            }
+
+            _ => panic!("TODO: handle assignment of {:?}", rv),
+        }
+    }
+
+    pub fn visit_operand(&mut self, op: &Operand<'tcx>) {
+        match *op {
+            Operand::Copy(pl) | Operand::Move(pl) => { self.visit_place(pl, Mutability::Not); },
+            Operand::Constant(ref _c) => {
+                // TODO: addr of static may show up as `Operand::Constant`
             },
         }
     }
 
-    pub fn visit_operand(&mut self, op: &Operand<'tcx>) -> LTy<'tcx> {
-        match *op {
-            Operand::Copy(pl) => {
-                let ctx = PlaceContext::NonMutatingUse(NonMutatingUseContext::Copy);
-                self.visit_place(pl, ctx)
-            }
-            Operand::Move(pl) => {
-                let ctx = PlaceContext::NonMutatingUse(NonMutatingUseContext::Move);
-                self.visit_place(pl, ctx)
-            }
-            Operand::Constant(ref c) => {
-                let ty = c.ty();
-                // TODO
-                self.acx.lcx().label(ty, &mut |_| PointerId::NONE)
-            }
+    fn do_assign(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
+        // If the top-level types are pointers, add a dataflow edge indicating that `rv` flows into
+        // `pl`.
+        self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
+
+        // Add equivalence constraints for all nested pointers beyond the top level.
+        assert_eq!(pl_lty.ty, rv_lty.ty);
+        for (&pl_sub_lty, &rv_sub_lty) in pl_lty.args.iter().zip(rv_lty.args.iter()) {
+            self.do_unify(pl_sub_lty, rv_sub_lty);
         }
     }
 
-    fn do_assign(&mut self, pl_ptr: PointerId, rv_ptr: PointerId) {
+    fn do_assign_pointer_ids(&mut self, pl_ptr: PointerId, rv_ptr: PointerId) {
         if pl_ptr != PointerId::NONE || rv_ptr != PointerId::NONE {
             assert!(pl_ptr != PointerId::NONE);
             assert!(rv_ptr != PointerId::NONE);
@@ -141,45 +160,32 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    fn do_unify_pointees(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
-        if pl_lty.label == PointerId::NONE && rv_lty.label == PointerId::NONE {
-            return;
-        }
-        assert!(pl_lty.label != PointerId::NONE);
-        assert!(rv_lty.label != PointerId::NONE);
-        assert_eq!(pl_lty.args.len(), 1);
-        assert_eq!(rv_lty.args.len(), 1);
-
-        let pl_pointee = pl_lty.args[0];
-        let rv_pointee = rv_lty.args[0];
-        assert_eq!(pl_pointee.ty, rv_pointee.ty);
-        for (pl_sub_lty, rv_sub_lty) in pl_pointee.iter().zip(rv_pointee.iter()) {
-            eprintln!("equate {:?} = {:?}", pl_sub_lty, rv_sub_lty);
-            if pl_sub_lty.label != PointerId::NONE || rv_sub_lty.label != PointerId::NONE {
-                assert!(pl_sub_lty.label != PointerId::NONE);
-                assert!(rv_sub_lty.label != PointerId::NONE);
-                self.add_equiv(pl_sub_lty.label, rv_sub_lty.label);
+    fn do_unify(&mut self, lty1: LTy<'tcx>, lty2: LTy<'tcx>) {
+        assert_eq!(lty1.ty, lty2.ty);
+        for (sub_lty1, sub_lty2) in lty1.iter().zip(lty2.iter()) {
+            eprintln!("equate {:?} = {:?}", sub_lty1, sub_lty2);
+            if sub_lty1.label != PointerId::NONE || sub_lty2.label != PointerId::NONE {
+                assert!(sub_lty1.label != PointerId::NONE);
+                assert!(sub_lty2.label != PointerId::NONE);
+                self.add_equiv(sub_lty1.label, sub_lty2.label);
             }
         }
     }
 
-    pub fn visit_statement(&mut self, stmt: &Statement<'tcx>) {
+    pub fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         eprintln!("visit_statement({:?})", stmt);
         // TODO(spernsteiner): other `StatementKind`s will be handled in the future
         #[allow(clippy::single_match)]
         match stmt.kind {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
-                let ctx = PlaceContext::MutatingUse(MutatingUseContext::Store);
-                let pl_lty = self.visit_place(pl, ctx);
-                let pl_ptr = pl_lty.label;
+                self.visit_place(pl, Mutability::Mut);
+                let pl_lty = self.acx.type_of(pl);
 
-                // TODO: combine these
-                let rv_ptr = self.visit_rvalue(rv);
-                let rv_lty = self.acx.type_of(rv);
+                let rv_lty = self.acx.type_of_rvalue(rv, loc);
+                self.visit_rvalue(rv, rv_lty);
 
-                self.do_assign(pl_ptr, rv_ptr);
-                self.do_unify_pointees(pl_lty, rv_lty);
+                self.do_assign(pl_lty, rv_lty);
             }
             // TODO(spernsteiner): handle other `StatementKind`s
             _ => (),
@@ -204,20 +210,81 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 match util::ty_callee(tcx, func_ty) {
                     Some(Callee::PtrOffset { .. }) => {
                         // We handle this like a pointer assignment.
-                        let ctx = PlaceContext::MutatingUse(MutatingUseContext::Store);
-                        let pl_lty = self.visit_place(destination, ctx);
+                        self.visit_place(destination, Mutability::Mut);
+                        let pl_lty = self.acx.type_of(destination);
                         assert!(args.len() == 2);
-                        let rv_lty = self.visit_operand(&args[0]);
-                        self.do_assign(pl_lty.label, rv_lty.label);
+                        self.visit_operand(&args[0]);
+                        let rv_lty = self.acx.type_of(&args[0]);
+                        self.do_assign(pl_lty, rv_lty);
                         let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
                         self.constraints.add_all_perms(rv_lty.label, perms);
                     }
+
+                    Some(Callee::SliceAsPtr { elem_ty, .. }) => {
+                        // We handle this like an assignment, but with some adjustments due to the
+                        // difference in input and output types.
+                        self.visit_place(destination, Mutability::Mut);
+                        let pl_lty = self.acx.type_of(destination);
+                        assert!(args.len() == 1);
+                        self.visit_operand(&args[0]);
+                        let rv_lty = self.acx.type_of(&args[0]);
+
+                        // Map `rv_lty = &[i32]` to `rv_elem_lty = i32`
+                        let rv_pointee_lty = rv_lty.args[0];
+                        let rv_elem_lty = match *rv_pointee_lty.kind() {
+                            TyKind::Array(..) | TyKind::Slice(..) => rv_pointee_lty.args[0],
+                            TyKind::Str => self.acx.lcx().label(elem_ty, &mut |_| PointerId::NONE),
+                            _ => unreachable!(),
+                        };
+
+                        // Map `pl_lty = *mut i32` to `pl_elem_lty = i32`
+                        let pl_elem_lty = pl_lty.args[0];
+
+                        self.do_unify(pl_elem_lty, rv_elem_lty);
+                        self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
+                    },
+
+                    Some(Callee::MiscBuiltin) => {},
+
+                    Some(Callee::Other { def_id, substs }) => {
+                        self.visit_call_other(def_id, substs, args, destination);
+                    }
+
                     None => {}
                 }
             }
             // TODO(spernsteiner): handle other `TerminatorKind`s
             _ => (),
         }
+    }
+
+    fn visit_call_other(
+        &mut self,
+        def_id: DefId,
+        substs: SubstsRef<'tcx>,
+        args: &[Operand<'tcx>],
+        dest: Place<'tcx>,
+    ) {
+        let sig = match self.acx.gacx.fn_sigs.get(&def_id) {
+            Some(&x) => x,
+            None => todo!("call to unknown function {def_id:?}"),
+        };
+        if substs.non_erasable_generics().next().is_some() {
+            todo!("call to generic function {def_id:?} {substs:?}");
+        }
+
+        // Process pseudo-assignments from `args` to the types declared in `sig`.
+        for (arg_op, &input_lty) in args.iter().zip(sig.inputs.iter()) {
+            self.visit_operand(arg_op);
+            let arg_lty = self.acx.type_of(arg_op);
+            self.do_assign(input_lty, arg_lty);
+        }
+
+        // Process a pseudo-assignment from the return type declared in `sig` to `dest`.
+        self.visit_place(dest, Mutability::Mut);
+        let dest_lty = self.acx.type_of(dest);
+        let output_lty = sig.output;
+        self.do_assign(dest_lty, output_lty);
     }
 }
 
@@ -232,9 +299,9 @@ pub fn visit<'tcx>(
         equiv_constraints: Vec::new(),
     };
 
-    for bb_data in mir.basic_blocks().iter() {
-        for stmt in bb_data.statements.iter() {
-            tc.visit_statement(stmt);
+    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+        for (i, stmt) in bb_data.statements.iter().enumerate() {
+            tc.visit_statement(stmt, Location { block: bb, statement_index: i });
         }
         tc.visit_terminator(bb_data.terminator());
     }

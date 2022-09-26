@@ -98,11 +98,11 @@ impl NextGlobalPointerId {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 struct PointerTableInner<T>(Vec<T>);
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct LocalPointerTable<T>(PointerTableInner<T>);
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct GlobalPointerTable<T>(PointerTableInner<T>);
 pub struct PointerTable<'a, T> {
     global: &'a GlobalPointerTable<T>,
