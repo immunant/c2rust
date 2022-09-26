@@ -1925,7 +1925,7 @@ class TranslateASTVisitor final
         // Use the type from the definition in case the extern was an incomplete
         // type
         auto T = def->getType();
-        if(isa<AtomicType>(T)) {
+        if (isa<AtomicType>(T)) {
             printC11AtomicError(def);
             abort();
         }
@@ -2013,7 +2013,7 @@ class TranslateASTVisitor final
         auto byteSize = 0;
 
         auto t = D->getTypeForDecl();
-        if(isa<AtomicType>(t)) {
+        if (isa<AtomicType>(t)) {
             printC11AtomicError(D);
             abort();
         }
@@ -2091,7 +2091,7 @@ class TranslateASTVisitor final
         // exit early via code like `if (!D->isCompleteDefinition()) return true;`.
 
         auto t = D->getTypeForDecl();
-        if(isa<AtomicType>(t)) {
+        if (isa<AtomicType>(t)) {
             printC11AtomicError(D);
             abort();
         }
@@ -2154,7 +2154,7 @@ class TranslateASTVisitor final
 
         std::vector<void *> childIds;
         auto t = D->getType();
-        if(isa<AtomicType>(t)) {
+        if (isa<AtomicType>(t)) {
             printC11AtomicError(D);
             abort();
         }
@@ -2400,7 +2400,7 @@ void TypeEncoder::VisitEnumType(const EnumType *T) {
         cbor_encode_uint(local, uintptr_t(ed));
     });
 
-    if(ed != nullptr) astEncoder->VisitEnumDecl(ed);
+    if (ed != nullptr) astEncoder->VisitEnumDecl(ed);
 }
 
 void TypeEncoder::VisitRecordType(const RecordType *T) {
@@ -2507,7 +2507,7 @@ class TranslateConsumer : public clang::ASTConsumer {
             // 2. Track all of the top-level declarations
             cbor_encoder_create_array(&outer, &array, CborIndefiniteLength);
             for (auto d : translation_unit->decls()) {
-                if(!d->isCanonicalDecl() && isa<VarDecl>(d)) {
+                if (!d->isCanonicalDecl() && isa<VarDecl>(d)) {
                     auto canonical_decl = d->getCanonicalDecl();
                     auto var_decl = cast<VarDecl>(canonical_decl);
 
@@ -2519,7 +2519,7 @@ class TranslateConsumer : public clang::ASTConsumer {
                 }
 
                 // Empty-decls aren't exported. This avoids warnings during conversion.
-                if(isa<EmptyDecl>(d)) {
+                if (isa<EmptyDecl>(d)) {
                     continue;
                 }
 
@@ -2633,7 +2633,7 @@ class TranslateAction : public clang::ASTFrontendAction {
 #else
         const Language lang_c = Language::C;
 #endif // CLANG_VERSION_MAJOR
-        if(this->getCurrentFileKind().getLanguage() != lang_c) {
+        if (this->getCurrentFileKind().getLanguage() != lang_c) {
             return nullptr;
         }
 
@@ -2744,7 +2744,7 @@ Outputs process(int argc, const char *argv[], int *result) {
 #else
     Expected<CommonOptionsParser> parseResult =
         CommonOptionsParser::create(argc_, argv_.data(), MyToolCategory);
-    if(auto err = parseResult.takeError()) {
+    if (auto err = parseResult.takeError()) {
         logAllUnhandledErrors(std::move(err), errs(), "[Parse Error] ");
         assert(0 && "Failed to parse command line options");
     }
