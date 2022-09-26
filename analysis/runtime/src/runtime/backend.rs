@@ -1,7 +1,7 @@
 use enum_dispatch::enum_dispatch;
 use fs_err::{File, OpenOptions};
 use std::fmt::Debug;
-use std::io::{BufWriter, Write};
+use std::io::{stderr, BufWriter, Write};
 use std::sync::mpsc::Receiver;
 
 use bincode;
@@ -59,7 +59,9 @@ impl WriteEvent for DebugBackend {
         eprintln!("{:?}: {:?}", mir_loc, event.kind);
     }
 
-    fn flush(&mut self) {}
+    fn flush(&mut self) {
+        stderr().flush().unwrap();
+    }
 }
 
 pub struct LogBackend {
