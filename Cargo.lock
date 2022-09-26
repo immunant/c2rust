@@ -169,11 +169,14 @@ dependencies = [
 name = "c2rust-analyze"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "bitflags",
  "c2rust-build-paths",
+ "c2rust-pdg",
  "polonius-engine",
  "print_bytes",
  "rustc-hash",
+ "serde",
 ]
 
 [[package]]

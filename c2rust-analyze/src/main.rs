@@ -26,14 +26,16 @@ use rustc_hir::def_id::LocalDefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand, Rvalue,
-    StatementKind,
+    AggregateKind, BindingForm, Body, Local, LocalDecl, LocalInfo, LocalKind, Location, Operand,
+    Rvalue, StatementKind,
 };
 use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::ops::{Deref, DerefMut};
+
+use c2rust_pdg::graph::Graphs;
 
 mod borrowck;
 mod context;
@@ -102,6 +104,9 @@ impl<T> DerefMut for MaybeUnset<T> {
 fn run(tcx: TyCtxt) {
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
+
+    let f = std::fs::File::open("pdg.bc").unwrap();
+    let graphs: Graphs = bincode::deserialize_from(f).unwrap();
 
     /// Local information, specific to a single function.  Many of the data structures we use for
     /// the pointer analysis have a "global" part that's shared between all functions and a "local"
@@ -251,6 +256,98 @@ fn run(tcx: TyCtxt) {
         info.lasn.set(lasn);
     }
 
+    // Process PDG
+    let mut func_def_path_hash_to_ldid = HashMap::new();
+    for &ldid in &all_fn_ldids {
+        let def_path_hash: (u64, u64) = tcx.def_path_hash(ldid.to_def_id()).0.as_value();
+        eprintln!("def_path_hash {:?} = {:?}", def_path_hash, ldid);
+        func_def_path_hash_to_ldid.insert(def_path_hash, ldid);
+    }
+
+    for g in &graphs.graphs {
+        for n in &g.nodes {
+            let def_path_hash: (u64, u64) = n.function.def_path_hash.into();
+            let ldid = match func_def_path_hash_to_ldid.get(&def_path_hash) {
+                Some(&x) => x,
+                None => {
+                    eprintln!("pdg: unknown DefPathHash {:?} for function {:?}",
+                        n.function.def_path_hash, n.function.name);
+                    continue;
+                },
+            };
+            let info = func_info.get_mut(&ldid).unwrap();
+            let ldid_const = WithOptConstParam::unknown(ldid);
+            let mir = tcx.mir_built(ldid_const);
+            let mir = mir.borrow();
+            let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+            let mut asn = gasn.and(&mut info.lasn);
+
+            let dest_pl = match n.dest.as_ref() {
+                Some(x) => x,
+                None => {
+                    info.acx_data.set(acx.into_data());
+                    continue;
+                },
+            };
+            if dest_pl.projection.len() > 0 {
+                info.acx_data.set(acx.into_data());
+                continue;
+            }
+            let dest = dest_pl.local;
+            let dest = Local::from_u32(dest.index);
+
+            let ptr = match acx.ptr_of(dest) {
+                Some(x) => x,
+                None => {
+                    eprintln!("pdg: {}: local {:?} appears as dest, but has no PointerId",
+                        n.function.name, dest);
+                    info.acx_data.set(acx.into_data());
+                    continue;
+                },
+            };
+
+            let node_info = match n.info.as_ref() {
+                Some(x) => x,
+                None => {
+                    eprintln!("pdg: {}: node with dest {:?} is missing NodeInfo",
+                        n.function.name, dest);
+                    info.acx_data.set(acx.into_data());
+                    continue;
+                },
+            };
+
+            let old_perms = asn.perms()[ptr];
+            let mut perms = old_perms;
+            if node_info.flows_to.load.is_some() {
+                perms.insert(PermissionSet::READ);
+            }
+            if node_info.flows_to.store.is_some() {
+                perms.insert(PermissionSet::WRITE);
+            }
+            if node_info.flows_to.pos_offset.is_some() {
+                perms.insert(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+            }
+            if node_info.flows_to.neg_offset.is_some() {
+                perms.insert(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+            }
+            if !node_info.unique {
+                perms.remove(PermissionSet::UNIQUE);
+            }
+
+            if perms != old_perms {
+                let added = perms & !old_perms;
+                let removed = old_perms & !perms;
+                let kept = old_perms & perms;
+                eprintln!("pdg: changed {:?}: added {:?}, removed {:?}, kept {:?}",
+                          ptr, added, removed, kept);
+
+                asn.perms_mut()[ptr] = perms;
+            }
+
+            info.acx_data.set(acx.into_data());
+        }
+    }
+
     let mut loop_count = 0;
     loop {
         // Loop until the global assignment reaches a fixpoint.  The inner loop also runs until a
@@ -283,6 +380,20 @@ fn run(tcx: TyCtxt) {
 
             info.acx_data.set(acx.into_data());
         }
+
+        let mut num_changed = 0;
+        for (ptr, &old) in old_gasn.perms.iter() {
+            let new = gasn.perms[ptr];
+            if old != new {
+                let added = new & !old;
+                let removed = old & !new;
+                let kept = old & new;
+                eprintln!("changed {:?}: added {:?}, removed {:?}, kept {:?}",
+                    ptr, added, removed, kept);
+                num_changed += 1;
+            }
+        }
+        eprintln!("iteration {}: {} global pointers changed", loop_count, num_changed);
 
         if gasn == old_gasn {
             break;
