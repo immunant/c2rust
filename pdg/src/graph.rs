@@ -8,12 +8,13 @@ use std::{
     collections::HashMap,
     fmt::{self, Debug, Formatter},
 };
+use serde::{Serialize, Deserialize, Serializer, Deserializer};
 
 use crate::info::NodeInfo;
 use crate::util::pad_columns;
 use crate::util::ShortOption;
 
-#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy, Serialize, Deserialize)]
 pub enum NodeKind {
     /// A copy from one [`Local`] to another.
     ///
@@ -26,7 +27,7 @@ pub enum NodeKind {
     /// Used for operations like `_2 = &(*_1).0`.
     /// Nested field accesses like `_4 = &(*_1).x.y.z`
     /// are broken into multiple [`Node`]s, each covering one level.
-    Field(Field),
+    Field(#[serde(with = "crate::util::serde::FieldDef")] Field),
 
     /// Pointer arithmetic.
     ///
@@ -47,7 +48,7 @@ pub enum NodeKind {
     /// even when those uses don't go through a pointer.
     ///
     /// Can't have a [`Node::source`].
-    AddrOfLocal(Local),
+    AddrOfLocal(#[serde(with = "crate::util::serde::LocalDef")] Local),
 
     /// Get the address of a static.
     ///
@@ -151,7 +152,7 @@ impl Display for NodeKind {
 /// Each operation occurs at a point in time, but the timestamp is not stored explicitly.  Instead,
 /// nodes in each graph are stored in sequential order, and timing relationships can be identified
 /// by comparing `NodeId`s.
-#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
 pub struct Node {
     /// The function that contains this operation.
     ///
@@ -162,6 +163,7 @@ pub struct Node {
     /// modified by the operation.
     pub function: Func,
     /// The basic block that contains this operation.
+    #[serde(with = "crate::util::serde::BasicBlockDef")]
     pub block: BasicBlock,
     /// The index within the basic block of the MIR statement or terminator that performed this
     /// operation.  As in `rustc_middle::mir::Location`, an index less than the number of
@@ -235,6 +237,25 @@ newtype_index!(
     pub struct NodeId { DEBUG_FORMAT = "NodeId({})" }
 );
 
+impl Serialize for NodeId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.as_u32().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for NodeId {
+    fn deserialize<D>(deserializer: D) -> Result<NodeId, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = u32::deserialize(deserializer)?;
+        Ok(NodeId::from_u32(raw))
+    }
+}
+
 /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
 pub const _ROOT_NODE: NodeId = NodeId::from_u32(0);
 
@@ -260,11 +281,12 @@ impl Display for DisplayNode<'_> {
 }
 
 /// A pointer derivation graph, which tracks the handling of one object throughout its lifetime.
-#[derive(Debug, Default, Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Default, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
 pub struct Graph {
     /// The nodes in the graph.  Nodes are stored in increasing order by timestamp.  The first
     /// node, called the "root node", creates the object described by this graph, and all other
     /// nodes are derived from it.
+    #[serde(with = "crate::util::serde::index_vec")]
     pub nodes: IndexVec<NodeId, Node>,
 }
 
@@ -304,6 +326,25 @@ newtype_index!(
     pub struct GraphId { DEBUG_FORMAT = "GraphId({})" }
 );
 
+impl Serialize for GraphId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.as_u32().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for GraphId {
+    fn deserialize<D>(deserializer: D) -> Result<GraphId, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = u32::deserialize(deserializer)?;
+        Ok(GraphId::from_u32(raw))
+    }
+}
+
 impl Display for GraphId {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "g[{}]", self.as_usize())
@@ -311,10 +352,11 @@ impl Display for GraphId {
 }
 
 /// A collection of graphs describing the handling of one or more objects within the program.
-#[derive(Debug, Default, Eq, PartialEq)]
+#[derive(Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Graphs {
     /// The graphs.  Each graph describes one object, or one group of objects that were all handled
     /// identically.
+    #[serde(with = "crate::util::serde::index_vec")]
     pub graphs: IndexVec<GraphId, Graph>,
 
     /// Lookup table for finding all nodes in all graphs that store to a particular MIR local.
