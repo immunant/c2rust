@@ -1,5 +1,4 @@
-use crate::graph::{Graph, Node, NodeId, NodeKind};
-use crate::Graphs;
+use crate::graph::{Graph, Graphs, Node, NodeId, NodeKind};
 use rustc_middle::mir::Field;
 use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
