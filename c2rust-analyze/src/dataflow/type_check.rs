@@ -232,7 +232,7 @@ pub fn visit<'tcx>(
         equiv_constraints: Vec::new(),
     };
 
-    for bb_data in mir.basic_blocks().iter() {
+    for bb_data in mir.basic_blocks.iter() {
         for stmt in bb_data.statements.iter() {
             tc.visit_statement(stmt);
         }

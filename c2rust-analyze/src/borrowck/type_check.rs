@@ -252,7 +252,7 @@ pub fn visit<'tcx>(
         current_location: Location::START,
     };
 
-    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+    for (bb, bb_data) in mir.basic_blocks.iter_enumerated() {
         for (idx, stmt) in bb_data.statements.iter().enumerate() {
             tc.current_location = Location {
                 block: bb,

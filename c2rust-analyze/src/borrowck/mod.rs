@@ -121,7 +121,7 @@ fn run_polonius<'tcx>(
     //pretty::write_mir_fn(tcx, mir, &mut |_, _| Ok(()), &mut std::io::stdout()).unwrap();
 
     // Populate `cfg_edge`
-    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+    for (bb, bb_data) in mir.basic_blocks.iter_enumerated() {
         eprintln!("{:?}:", bb);
 
         for idx in 0..bb_data.statements.len() {

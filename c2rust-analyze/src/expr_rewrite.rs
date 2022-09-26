@@ -379,7 +379,7 @@ pub fn gen_expr_rewrites<'tcx>(
 
     let mut v = ExprRewriteVisitor::new(acx, asn, &mut out, mir);
 
-    for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
+    for (bb_id, bb) in mir.basic_blocks.iter_enumerated() {
         for (i, stmt) in bb.statements.iter().enumerate() {
             let loc = Location {
                 block: bb_id,

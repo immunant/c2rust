@@ -448,7 +448,7 @@ fn instrument_entry_fn<'tcx>(tcx: TyCtxt<'tcx>, hooks: Hooks, body: &mut Body<'t
 
     let mut return_blocks = vec![];
     let mut resume_blocks = vec![];
-    for (block, block_data) in body.basic_blocks().iter_enumerated() {
+    for (block, block_data) in body.basic_blocks.iter_enumerated() {
         match &block_data.terminator().kind {
             TerminatorKind::Return => {
                 return_blocks.push(block);
