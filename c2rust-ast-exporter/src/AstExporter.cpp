@@ -400,6 +400,9 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             case BuiltinType::UInt: return TagUInt;
             case BuiltinType::ULong: return TagULong;
             case BuiltinType::ULongLong: return TagULongLong;
+            // Constructed as a consequence of the conversion of
+            // built-in to normal vector types.
+            case BuiltinType::Float16: return TagHalf;
             case BuiltinType::Half: return TagHalf;     
             #if CLANG_VERSION_MAJOR >= 11
             case BuiltinType::BFloat16: return TagBFloat16;
