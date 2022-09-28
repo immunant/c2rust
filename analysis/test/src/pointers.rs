@@ -21,6 +21,18 @@ extern "C" {
     fn printf(_: *const libc::c_char, _: ...) -> libc::c_int;
 }
 
+/// `miri` does not support calling variadic functions like [`printf`],
+/// but we want to test for UB, leaks, etc. using `cargo miri run`.
+///
+/// Luckily, all [`printf`] calls in this module are monomorphic,
+/// in that they all have the same format string and same call signature,
+/// so we can replace it with a [`printf`] shim that preserves the behavior
+/// only for the exact monomorphic usages in this module.
+///
+/// Note that there is no way to detect `miri` is running,
+/// so we have to put this under a separate `miri` feature
+/// that should be enabled when testing under `miri` with
+/// `cargo miri run --features miri`.
 #[cfg(feature = "miri")]
 fn printf(fmt: *const libc::c_char, i: i32) -> libc::c_int {
     use std::ffi::CStr;
