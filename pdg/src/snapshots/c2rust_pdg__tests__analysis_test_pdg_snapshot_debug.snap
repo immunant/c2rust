@@ -21,10 +21,8 @@ g {
 	n[2]: int_to_ptr  _    => _17   @ bb4[29]: fn simple;              _17 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
 	n[3]: value.store _    => _20.* @ bb4[7]:  fn invalid;             (*_20) = const 0_usize as *mut pointers::S (PointerFromExposedAddress);
 	n[4]: value.store _    => _17.* @ bb8[4]:  fn fdevent_unregister;  (*_17) = const 0_usize as *mut pointers::fdnode_st (PointerFromExposedAddress);
-	n[5]: int_to_ptr  _    => _6    @ bb2[6]:  fn test_load_addr;      _6 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
-	n[6]: int_to_ptr  _    => _8    @ bb2[9]:  fn test_load_addr;      _8 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
-	n[7]: int_to_ptr  _    => _2    @ bb0[2]:  fn test_ref_field;      _2 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
-	n[8]: int_to_ptr  _    => _5    @ bb0[8]:  fn test_ref_field;      _5 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
+	n[5]: int_to_ptr  _    => _2    @ bb0[2]:  fn test_ref_field;      _2 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
+	n[6]: int_to_ptr  _    => _5    @ bb0[8]:  fn test_ref_field;      _5 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
 }
 nodes_that_need_write = []
 
@@ -690,15 +688,14 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]: alloc      _    => _2  @ bb1[2]:  fn test_load_addr;  _2 = malloc(move _3);
-	n[1]: copy       n[0] => _1  @ bb2[1]:  fn test_load_addr;  _1 = move _2 as *mut pointers::S (Misc);
-	n[2]: addr.store n[1] => _   @ bb2[15]: fn test_load_addr;  (*_1) = move _5;
-	n[3]: addr.load  n[1] => _   @ bb2[18]: fn test_load_addr;  _9 = (*_1);
-	n[4]: copy       n[1] => _12 @ bb2[23]: fn test_load_addr;  _12 = _1;
-	n[5]: copy       n[4] => _11 @ bb2[24]: fn test_load_addr;  _11 = move _12 as *mut libc::c_void (Misc);
-	n[6]: free       n[5] => _10 @ bb2[26]: fn test_load_addr;  _10 = free(move _11);
+	n[0]: alloc     _    => _2 @ bb1[2]:  fn test_load_addr;  _2 = calloc(const 1_u64, move _3);
+	n[1]: copy      n[0] => _1 @ bb2[1]:  fn test_load_addr;  _1 = move _2 as *mut pointers::S (Misc);
+	n[2]: addr.load n[1] => _  @ bb2[5]:  fn test_load_addr;  _5 = (*_1);
+	n[3]: copy      n[1] => _8 @ bb2[10]: fn test_load_addr;  _8 = _1;
+	n[4]: copy      n[3] => _7 @ bb2[11]: fn test_load_addr;  _7 = move _8 as *mut libc::c_void (Misc);
+	n[5]: free      n[4] => _6 @ bb2[13]: fn test_load_addr;  _6 = free(move _7);
 }
-nodes_that_need_write = [2, 1, 0]
+nodes_that_need_write = []
 
 g {
 	n[0]: alloc _    => _1  @ bb1[2]: fn test_overwrite;  _1 = malloc(move _2);
@@ -956,5 +953,5 @@ g {
 nodes_that_need_write = [6, 5, 4, 0]
 
 num_graphs = 64
-num_nodes = 697
+num_nodes = 694
 

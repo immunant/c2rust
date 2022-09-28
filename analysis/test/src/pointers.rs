@@ -417,18 +417,7 @@ pub unsafe extern "C" fn test_realloc_fresh() {
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_load_addr() {
-    let s = malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
-    *s = S {
-        field: 0i32,
-        field2: 0u64,
-        field3: 0 as *const S,
-        field4: T {
-            field: 0i32,
-            field2: 0u64,
-            field3: 0 as *const S,
-            field4: 0i32,
-        },
-    };
+    let s = calloc(1, ::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
     let x = (*s);
     free(s as *mut libc::c_void);
 }
