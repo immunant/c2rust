@@ -13,13 +13,13 @@ use super::{
     AnyError, FINISHED,
 };
 
-pub struct Runtime {
+pub struct ScopedRuntime {
     tx: SyncSender<Event>,
     finalized: OnceCell<()>,
 }
 
-impl Runtime {
-    /// Initialize the [`Runtime`], which includes [`thread::spawn`]ing, so it must be run post-`main`.
+impl ScopedRuntime {
+    /// Initialize the [`ScopedRuntime`], which includes [`thread::spawn`]ing, so it must be run post-`main`.
     ///
     /// It returns an error if [`Backend::detect`] returns an error.
     ///
@@ -35,11 +35,11 @@ impl Runtime {
         })
     }
 
-    /// Finalize the [`Runtime`], shutting it down.
+    /// Finalize the [`ScopedRuntime`], shutting it down.
     ///
     /// This can be called any number of times; it only finalizes once.
     ///
-    /// This does the same thing as [`Runtime::drop`]
+    /// This does the same thing as [`ScopedRuntime::drop`]
     /// except, of course, it's not a destructor.
     pub fn finalize(&self) {
         // only run finalizer once
@@ -57,9 +57,9 @@ impl Runtime {
         // Don't need to `forget(self)` since the finalizer can only run once anyways.
     }
 
-    /// Send an [`Event`] to the [`Runtime`].
+    /// Send an [`Event`] to the [`ScopedRuntime`].
     ///
-    /// If the [`Runtime`] has already been [`Runtime::finalize`]d,
+    /// If the [`ScopedRuntime`] has already been [`ScopedRuntime::finalize`]d,
     /// then the [`Event`] is silently dropped.
     /// Otherwise, it sends the [`Event`] to the channel,
     /// panicking if there is a [`SendError`](std::sync::mpsc::SendError).
@@ -71,17 +71,17 @@ impl Runtime {
                 self.tx.send(event).unwrap();
             }
             Some(()) => {
-                // Silently drop the [`Event`] as the [`Runtime`] has already been [`Runtime::finalize`]d.
+                // Silently drop the [`Event`] as the [`ScopedRuntime`] has already been [`ScopedRuntime::finalize`]d.
                 skip_event(event, SkipReason::AfterMain);
             }
         }
     }
 }
 
-impl Drop for Runtime {
-    /// Finalize the [`Runtime`], shutting it down.
+impl Drop for ScopedRuntime {
+    /// Finalize the [`ScopedRuntime`], shutting it down.
     ///
-    /// This does the same thing as [`Runtime::finalize`].
+    /// This does the same thing as [`ScopedRuntime::finalize`].
     fn drop(&mut self) {
         self.finalize();
     }

@@ -5,13 +5,13 @@ use once_cell::sync::OnceCell;
 use crate::events::Event;
 
 use super::{
-    scoped_runtime::Runtime,
+    scoped_runtime::ScopedRuntime,
     skip::{skip_event, SkipReason},
     AnyError,
 };
 
 pub struct GlobalRuntime {
-    runtime: OnceCell<Runtime>,
+    runtime: OnceCell<ScopedRuntime>,
 }
 
 impl GlobalRuntime {
@@ -27,10 +27,10 @@ impl GlobalRuntime {
 
     /// Send an [`Event`] to the [`GlobalRuntime`].
     ///
-    /// If the [`Runtime`] has been initialized, then it sends the [`Event`] to it,
+    /// If the [`ScopedRuntime`] has been initialized, then it sends the [`Event`] to it,
     /// panicking if there is a [`SendError`](std::sync::mpsc::SendError).
     ///
-    /// If the [`Runtime`] has not yet been initialized,
+    /// If the [`ScopedRuntime`] has not yet been initialized,
     /// which is done so by [`crate::initialize`],
     /// which is called at the start of `main`,
     /// then this means we are executing pre-`main`,
@@ -38,12 +38,12 @@ impl GlobalRuntime {
     /// and we cannot use threads yet as the Rust runtime is not fully initialized yet.
     /// Therefore, we silently drop the [`Event`].
     ///
-    /// It also silently drops the [`Event`] if the [`Runtime`]
-    /// has been [`Runtime::finalize`]d/[`GlobalRuntime::finalize`]d.
+    /// It also silently drops the [`Event`] if the [`ScopedRuntime`]
+    /// has been [`ScopedRuntime::finalize`]d/[`GlobalRuntime::finalize`]d.
     pub fn send_event(&self, event: Event) {
         match self.runtime.get() {
             None => {
-                // Silently drop the [`Event`] as the [`Runtime`] isn't ready/initialized yet.
+                // Silently drop the [`Event`] as the [`ScopedRuntime`] isn't ready/initialized yet.
                 skip_event(event, SkipReason::BeforeMain);
             }
             Some(runtime) => {
@@ -52,11 +52,11 @@ impl GlobalRuntime {
         }
     }
 
-    /// Try to initialize the [`GlobalRuntime`] with `Runtime::try_init`.
+    /// Try to initialize the [`GlobalRuntime`] with `ScopedRuntime::try_init`.
     ///
     /// This (or [`GlobalRuntime::init`]), on [`RUNTIME`], should be called at the top of `main`.
-    pub fn try_init(&self) -> Result<&Runtime, AnyError> {
-        self.runtime.get_or_try_init(Runtime::try_init)
+    pub fn try_init(&self) -> Result<&ScopedRuntime, AnyError> {
+        self.runtime.get_or_try_init(ScopedRuntime::try_init)
     }
 
     /// Same as [`GlobalRuntime::try_init`], if there is an error,
@@ -70,7 +70,7 @@ impl GlobalRuntime {
         }
     }
 
-    /// Finalize the [`GlobalRuntime`] by finalizing the [`Runtime`] if it has been initialized.
+    /// Finalize the [`GlobalRuntime`] by finalizing the [`ScopedRuntime`] if it has been initialized.
     ///
     /// This can be called as many times as you want.
     ///
