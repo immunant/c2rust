@@ -67,6 +67,7 @@ pub unsafe extern "C" fn recur(x: libc::c_int, s: *mut S) {
 #[no_mangle]
 pub unsafe extern "C" fn simple() {
     let mut x = malloc(mem::size_of::<S>() as c_ulong) as *mut S;
+    let mut x2 = x;
     let y = malloc(mem::size_of::<S>() as c_ulong) as *mut S;
     let z = std::ptr::addr_of!((*x).field);
     x = y;
@@ -85,6 +86,7 @@ pub unsafe extern "C" fn simple() {
     let s = *y;
     *x = s;
     recur(3, x);
+    free(x2 as *mut libc::c_void);
 }
 #[no_mangle]
 pub unsafe extern "C" fn simple1() {
@@ -183,6 +185,7 @@ pub unsafe extern "C" fn connection_accepted(
 unsafe extern "C" fn connection_close(mut srv: *mut server, mut con: *mut connection) {
     fdevent_fdnode_event_del((*srv).ev, (*con).fdn);
     fdevent_unregister((*srv).ev, (*con).fd);
+    free(con as *mut libc::c_void);
 }
 #[no_mangle]
 pub unsafe extern "C" fn fdevent_fdnode_event_del(mut ev: *mut fdevents, mut fdn: *mut fdnode) {
@@ -346,6 +349,7 @@ pub unsafe extern "C" fn test_arg() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
     foo(s);
     let t = s;
+    free(s as *mut libc::c_void);
 }
 #[no_mangle]
 pub unsafe extern "C" fn foo_rec(n: i32, bar: *mut libc::c_void) -> *mut libc::c_void {
@@ -361,6 +365,7 @@ pub unsafe extern "C" fn foo_rec(n: i32, bar: *mut libc::c_void) -> *mut libc::c
 pub unsafe extern "C" fn test_arg_rec() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
     let t = foo_rec(3, s);
+    free(s as *mut libc::c_void);
 }
 pub fn shared_ref_foo(x: &u8) -> &u8 {
     x
@@ -430,9 +435,11 @@ pub unsafe extern "C" fn test_load_addr() {
 #[no_mangle]
 pub unsafe extern "C" fn test_overwrite() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
+    let s2 = s;
     let t = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
     s = t;
     free(s);
+    free(s2);
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_store_addr() {
@@ -495,6 +502,7 @@ pub unsafe extern "C" fn test_store_value_field() {
     let t = malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
     (*t).field3 = s;
     (*s).field3 = (*t).field3;
+    free(t as *mut libc::c_void);
     free(s as *mut libc::c_void);
 }
 #[no_mangle]
@@ -525,6 +533,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     analysis2();
     inter_function_analysis();
     no_owner(0i32);
+    free(global as *mut libc::c_void);
     no_owner(1i32);
     invalid();
     testing();
