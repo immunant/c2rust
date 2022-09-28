@@ -138,7 +138,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             StatementKind::Retag(..) => {}
             StatementKind::AscribeUserType(..) => {}
             StatementKind::Coverage(..) => {}
-            StatementKind::CopyNonOverlapping(..) => todo!("statement {:?}", stmt),
+            StatementKind::Intrinsic(..) => todo!("statement {:?}", stmt),
             StatementKind::Nop => {}
         }
     }
