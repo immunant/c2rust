@@ -353,10 +353,10 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             // Copy-pasted from Type::getSveEltType introduced after Clang 10:
             // (Not extended for RISCV types
             // as they are not available in that version anyway).
+#if CLANG_VERSION_MAJOR >= 10
             auto ElemType = [&] {
                 switch (kind) {
                 default: llvm_unreachable("Unknown builtin SVE type!");
-#if CLANG_VERSION_MAJOR >= 10
                 case BuiltinType::SveInt8: return Ctx.SignedCharTy;
                 case BuiltinType::SveUint8: return Ctx.UnsignedCharTy;
                 case BuiltinType::SveBool: return Ctx.UnsignedCharTy;
@@ -369,13 +369,15 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
                 case BuiltinType::SveFloat16: return Ctx.Float16Ty;
                 case BuiltinType::SveFloat32: return Ctx.FloatTy;
                 case BuiltinType::SveFloat64: return Ctx.DoubleTy;
-#endif // CLANG_VERSION_MAJOR >= 10
                 }
             }();
             // All the SVE types present in Clang 10 are 128-bit vectors
             // (see `AArch64SVEACLETypes.def`), so we can divide 128 
             // by their element size to get element count.
             auto ElemCount = 128 / Context->getTypeSize(ElemType);
+#else
+            llvm_unreachable("LLVM version does not have any vector types");
+#endif // CLANG_VERSION_MAJOR >= 10
 #endif // CLANG_VERSION_MAJOR >= 11
             auto ElemTypeTag = encodeQualType(ElemType);
             encodeType(T, TagVectorType,
