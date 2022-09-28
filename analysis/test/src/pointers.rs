@@ -77,9 +77,15 @@ pub unsafe extern "C" fn simple() {
     let k = (*x).field;
     let z = std::ptr::addr_of!((*x).field2);
     (*x).field3 = std::ptr::addr_of!(*x) as *const S;
-    recur(3, x);
+    (*y).field4 = T {
+        field: 0i32,
+        field2: 0u64,
+        field3: 0 as *const S,
+        field4: 0i32,
+    };
     let s = *y;
     *x = s;
+    recur(3, x);
     free(x2 as *mut libc::c_void);
 }
 #[no_mangle]
@@ -94,7 +100,7 @@ pub unsafe extern "C" fn simple1() {
     let addr_of_copy = std::ptr::addr_of!(x_copy_copy);
     let i_cast = x as usize;
     let x_from_int = i_cast as *const libc::c_void;
-    free(x as *mut libc::c_void);
+    free(z as *mut libc::c_void);
 }
 
 #[derive(Copy, Clone)]
@@ -411,7 +417,7 @@ pub unsafe extern "C" fn test_realloc_fresh() {
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_load_addr() {
-    let s = malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
+    let s = calloc(1, ::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
     let x = (*s);
     free(s as *mut libc::c_void);
 }
@@ -442,7 +448,7 @@ pub unsafe extern "C" fn test_load_other_store_self() {
 #[no_mangle]
 pub unsafe extern "C" fn test_load_self_store_self() {
     let s = calloc(
-        0i32 as libc::c_ulong,
+        1i32 as libc::c_ulong,
         ::std::mem::size_of::<S>() as libc::c_ulong,
     ) as *mut S;
     (*s).field4.field4 = (*s).field4.field4;
@@ -451,7 +457,7 @@ pub unsafe extern "C" fn test_load_self_store_self() {
 #[no_mangle]
 pub unsafe extern "C" fn test_load_self_store_self_inter() {
     let s = calloc(
-        0i32 as libc::c_ulong,
+        1i32 as libc::c_ulong,
         ::std::mem::size_of::<S>() as libc::c_ulong,
     ) as *mut S;
     let y = (*s).field;
