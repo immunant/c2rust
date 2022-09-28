@@ -322,13 +322,21 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
         auto kind = T->getKind();
 
 #if CLANG_VERSION_MAJOR >= 10
-        // Handle built-in vector types as if they're normal vector types
-        if (kind >= BuiltinType::SveInt8 && kind <= BuiltinType::SveBool
+        // Recognize ARM vector types
+        const bool is_sve = kind >= BuiltinType::SveInt8 && kind <= BuiltinType::SveBool;
+#else
+        const bool is_sve = false;
+#endif // CLANG_VERSION_MAJOR >= 10
+
 #if CLANG_VERSION_MAJOR >= 13
-            /* RISC-V vector types */
-            || kind >= BuiltinType::RvvInt8mf8 && kind <= BuiltinType::RvvBool64
+        // Recognize RISC-V vector types
+        const bool is_rvv = kind >= BuiltinType::RvvInt8mf8 && kind <= BuiltinType::RvvBool64;
+#else
+        const bool is_rvv = false;
 #endif // CLANG_VERSION_MAJOR >= 13
-            ) {
+
+        // Handle built-in vector types as if they're normal vector types
+        if (is_sve || is_rvv) {
 // Declare ElemType and ElemCount as needed by various Clang versions
 #if CLANG_VERSION_MAJOR >= 11
             auto Info = Context->getBuiltinVectorTypeInfo(T);
@@ -348,6 +356,7 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             auto ElemType = [&] {
                 switch (kind) {
                 default: llvm_unreachable("Unknown builtin SVE type!");
+#if CLANG_VERSION_MAJOR >= 10
                 case BuiltinType::SveInt8: return Ctx.SignedCharTy;
                 case BuiltinType::SveUint8: return Ctx.UnsignedCharTy;
                 case BuiltinType::SveBool: return Ctx.UnsignedCharTy;
@@ -360,6 +369,7 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
                 case BuiltinType::SveFloat16: return Ctx.Float16Ty;
                 case BuiltinType::SveFloat32: return Ctx.FloatTy;
                 case BuiltinType::SveFloat64: return Ctx.DoubleTy;
+#endif // CLANG_VERSION_MAJOR >= 10
                 }
             }();
             // All the SVE types present in Clang 10 are 128-bit vectors
@@ -377,7 +387,6 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             VisitQualType(ElemType);
             return;
         }
-#endif // CLANG_VERSION_MAJOR >= 10
 
         const TypeTag tag = [&] {
             switch (kind) {
