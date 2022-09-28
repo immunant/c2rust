@@ -212,6 +212,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             }
             ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
             ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
+            ProjectionElem::OpaqueCast(..) => todo!("type_of OpaqueCast"),
         }
     }
 }
