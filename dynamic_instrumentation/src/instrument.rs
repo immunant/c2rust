@@ -373,10 +373,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     block: location.block,
                     // +1 to ensure `dest` is in scope
                     // +1 to be placed after address-taking statement
-                    statement_index: std::cmp::min(
-                        num_statements - 1,
-                        location.statement_index + 2,
-                    ),
+                    statement_index: std::cmp::min(num_statements, location.statement_index + 2),
                 };
                 self.loc(
                     location,

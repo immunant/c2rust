@@ -4,6 +4,7 @@ use c2rust_analysis_rt::metadata::Metadata;
 use c2rust_analysis_rt::mir_loc::{EventMetadata, Func, MirLoc, TransferKind};
 use color_eyre::eyre;
 use fs_err::File;
+use indexmap::IndexSet;
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::io::{self, BufReader};
@@ -22,10 +23,21 @@ pub fn read_metadata(path: &Path) -> eyre::Result<Metadata> {
     Ok(Metadata::read(&bytes)?)
 }
 
+fn parent(e: &NodeKind, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)> {
+    use NodeKind::*;
+    match e {
+        Alloc(..) | AddrOfLocal(..) => None,
+        _ => Some(obj),
+    }
+}
+
 pub trait EventKindExt {
     fn ptr(&self, metadata: &EventMetadata) -> Option<Pointer>;
-    fn parent(&self, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)>;
-    fn to_node_kind(&self) -> Option<NodeKind>;
+    fn to_node_kind(
+        &self,
+        func: Func,
+        address_taken: &mut IndexSet<(Func, u32)>,
+    ) -> Option<NodeKind>;
 }
 
 impl EventKindExt for EventKind {
@@ -53,15 +65,11 @@ impl EventKindExt for EventKind {
         })
     }
 
-    fn parent(&self, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)> {
-        use EventKind::*;
-        match self {
-            Realloc { .. } | Alloc { .. } | AddrOfLocal(..) | Done => None,
-            _ => Some(obj),
-        }
-    }
-
-    fn to_node_kind(&self) -> Option<NodeKind> {
+    fn to_node_kind(
+        &self,
+        func: Func,
+        address_taken: &mut IndexSet<(Func, u32)>,
+    ) -> Option<NodeKind> {
         use EventKind::*;
         Some(match *self {
             Alloc { .. } => NodeKind::Alloc(1),
@@ -74,7 +82,15 @@ impl EventKindExt for EventKind {
             StoreAddrTaken(..) => NodeKind::StoreAddr,
             LoadValue(..) => NodeKind::LoadValue,
             StoreValue(..) => NodeKind::StoreValue,
-            AddrOfLocal(_, local) => NodeKind::AddrOfLocal(local.as_u32().into()),
+            AddrOfLocal(_, local) => {
+                let func_clone = func.clone();
+                if address_taken.contains(&(func, local.as_u32())) {
+                    NodeKind::Copy
+                } else {
+                    address_taken.insert((func_clone, local.as_u32()));
+                    NodeKind::AddrOfLocal(local.as_u32().into())
+                }
+            }
             ToInt(_) => NodeKind::PtrToInt,
             FromInt(_) => NodeKind::IntToPtr,
             Ret(_) => return None,
@@ -120,17 +136,18 @@ fn update_provenance(
 pub fn add_node(
     graphs: &mut Graphs,
     provenances: &mut HashMap<Pointer, (GraphId, NodeId)>,
+    address_taken: &mut IndexSet<(Func, u32)>,
     event: &Event,
     metadata: &Metadata,
 ) -> Option<NodeId> {
-    let node_kind = event.kind.to_node_kind()?;
-
     let MirLoc {
         func,
         mut basic_block_idx,
         mut statement_idx,
         metadata: event_metadata,
     } = metadata.get(event.mir_loc);
+
+    let node_kind = event.kind.to_node_kind(func.clone(), address_taken)?;
 
     let this_func_hash = func.def_path_hash;
     let (src_fn, dest_fn) = match event_metadata.transfer_kind {
@@ -178,7 +195,7 @@ pub fn add_node(
                 }
             }
 
-            if src.projection.is_empty() {
+            if !matches!(event.kind, EventKind::AddrOfLocal(..)) && src.projection.is_empty() {
                 latest_assignment
             } else if let EventKind::Field(..) = event.kind {
                 latest_assignment
@@ -187,6 +204,14 @@ pub fn add_node(
             }
         })
     });
+
+    if let EventKind::AddrOfLocal(p, l) = event.kind {
+        if address_taken.contains(&(func.clone(), l.as_u32()))
+            && matches!(node_kind, NodeKind::Copy)
+        {
+            println!("addr_of_local {func:?}, {provenance:?}, {direct_source:?}, {source:?}");
+        }
+    }
 
     let function = Func {
         def_path_hash: dest_fn,
@@ -199,7 +224,7 @@ pub fn add_node(
         statement_idx,
         kind: node_kind,
         source: source
-            .and_then(|p| event.kind.parent(p))
+            .and_then(|p| parent(&node_kind, p))
             .map(|(_, nid)| nid),
         dest: event_metadata.destination.clone(),
         debug_info: event_metadata.debug_info.clone(),
@@ -209,7 +234,7 @@ pub fn add_node(
     let graph_id = source
         .or(direct_source)
         .or(provenance)
-        .and_then(|p| event.kind.parent(p))
+        .and_then(|p| parent(&node_kind, p))
         .map(|(gid, _)| gid)
         .unwrap_or_else(|| graphs.graphs.push(Graph::new()));
     let node_id = graphs.graphs[graph_id].nodes.push(node);
@@ -247,8 +272,15 @@ pub fn add_node(
 pub fn construct_pdg(events: &[Event], metadata: &Metadata) -> Graphs {
     let mut graphs = Graphs::new();
     let mut provenances = HashMap::new();
+    let mut address_taken = IndexSet::new();
     for event in events {
-        add_node(&mut graphs, &mut provenances, event, metadata);
+        add_node(
+            &mut graphs,
+            &mut provenances,
+            &mut address_taken,
+            event,
+            metadata,
+        );
     }
     // TODO(kkysen) check if I have to remove any `GraphId`s from `graphs.latest_assignment`
     graphs.graphs = graphs.graphs.into_iter().unique().collect();

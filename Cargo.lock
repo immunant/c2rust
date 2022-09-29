@@ -269,6 +269,7 @@ dependencies = [
  "env_logger",
  "fs-err",
  "indexed_vec",
+ "indexmap",
  "insta",
  "itertools",
  "linked_hash_set",

@@ -6,7 +6,7 @@ use std::fmt::Formatter;
 
 pub type Pointer = usize;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Event {
     pub mir_loc: MirLocId,
     pub kind: EventKind,

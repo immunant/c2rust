@@ -408,6 +408,39 @@ pub unsafe extern "C" fn test_addr_taken() {
     let z = x + y;
 }
 #[no_mangle]
+pub fn test_addr_taken_cond(cond: bool) {
+    // let x = if cond { ... } else { ... }; ... &x ...
+    let x = if cond { 1 } else { 2 };
+
+    let y = &x;
+    let a = x;
+}
+#[no_mangle]
+pub fn test_addr_taken_init_cond(cond: bool) {
+    // let mut x; if cond { x = 1; ... &x ... }; x = 2; ... &x ...
+    let mut x;
+    let mut y;
+    if cond {
+        x = 1;
+        y = &x;
+    }
+    x = 2;
+    let z = x;
+}
+#[no_mangle]
+pub unsafe fn test_addr_taken_loop() {
+    // loop { let x = ...; ... &x ... }
+    let mut count = 0;
+    loop {
+        let x = 2;
+        let z = if count % 2 == 0 { &x } else { &1 };
+        if count >= 3 {
+            break;
+        }
+        count += *z;
+    }
+}
+#[no_mangle]
 pub unsafe extern "C" fn test_realloc_reassign() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
     s = realloc(s, 2 * mem::size_of::<S>() as c_ulong);
@@ -627,6 +660,11 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
         field4: 0i32,
     };
     test_addr_taken_arg(t);
+    test_addr_taken_loop();
+    test_addr_taken_cond(true);
+    test_addr_taken_cond(false);
+    test_addr_taken_init_cond(true);
+    test_addr_taken_init_cond(false);
     return 0i32;
 }
 
