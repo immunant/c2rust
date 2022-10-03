@@ -67,12 +67,13 @@ def download_llvm_sources():
 
     # finally cmake files if we're building LLVM 15 or later
     if len(c.LLVM_ARCHIVE_FILES) == 4:
+        assert os.path.basename(c.LLVM_ARCHIVE_FILES[3]).startswith("cmake")
         with pb.local.cwd(os.path.join(c.LLVM_SRC, "cmake", "modules")):
             logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[3])
             cmake_modules_dir = os.path.join(c.LLVM_SRC, "cmake", "modules")
             # extract *.cmake files into llvm/cmake/modules
             tar("xf", c.LLVM_ARCHIVE_FILES[3],
-                "--wildcards", "*.cmake", "--strip-components=2",
+                "--strip-components=2",
                 "--directory", cmake_modules_dir)
 
 
@@ -103,6 +104,7 @@ def configure_and_build_llvm(args) -> None:
                      "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
                      "-DLLVM_TARGETS_TO_BUILD=host",
                      "-DLLVM_INCLUDE_BENCHMARKS=0",
+                     "-DCOMPILER_RT_ENABLE_IOS=OFF",
             ]
 
             invoke(cmake[cargs])
