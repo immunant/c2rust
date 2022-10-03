@@ -151,7 +151,15 @@ fn build_native(llvm_info: &LLVMInfo) {
     // BUILD_SHARED_LIBS=ON; programs linking to clang are required to
     // link to libclang-cpp.so instead of individual libraries.
     let use_libclang = if cfg!(target_os = "macos") {
-        false
+        // We hit an issue linking against the shared libraries for the homebrew
+        // version of LLVM 15 because they use a feature (opaque pointers) which
+        // are not understood by earlier versions of LLVM so we link against
+        // libclang unless static linking has been explicitly requested.
+        if cfg!(feature = "llvm-static") {
+            false
+        } else {
+            true
+        }
     } else {
         // target_os = "linux"
         let mut libclang_path = PathBuf::new();
@@ -184,10 +192,7 @@ fn build_native(llvm_info: &LLVMInfo) {
         ];
         if llvm_info.llvm_major_version >= 15 {
             // insert after clangSema
-            let sema_pos = clang_libs
-                .iter()
-                .position(|&r| r == "clangSema")
-                .unwrap();
+            let sema_pos = clang_libs.iter().position(|&r| r == "clangSema").unwrap();
             clang_libs.insert(sema_pos + 1, "clangSupport");
         }
 
