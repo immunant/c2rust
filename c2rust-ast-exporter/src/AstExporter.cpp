@@ -323,7 +323,12 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
 
 #if CLANG_VERSION_MAJOR >= 10
         // Handle built-in vector types as if they're normal vector types
-        if (kind >= BuiltinType::SveInt8 && kind <= BuiltinType::SveBool) {
+        if (kind >= BuiltinType::SveInt8 && kind <= BuiltinType::SveBool
+#if CLANG_VERSION_MAJOR >= 13
+            /* RISC-V vector types */
+            || kind >= BuiltinType::RvvInt8mf8 && kind <= BuiltinType::RvvBool64
+#endif // CLANG_VERSION_MAJOR >= 13
+            ) {
 // Declare ElemType and ElemCount as needed by various Clang versions
 #if CLANG_VERSION_MAJOR >= 11
             auto Info = Context->getBuiltinVectorTypeInfo(T);
@@ -338,6 +343,8 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
 #else // CLANG_VERSION_MAJOR >= 11
             auto &Ctx = *Context;
             // Copy-pasted from Type::getSveEltType introduced after Clang 10:
+            // (Not extended for RISCV types
+            // as they are not available in that version anyway).
             auto ElemType = [&] {
                 switch (kind) {
                 default: llvm_unreachable("Unknown builtin SVE type!");
@@ -393,6 +400,9 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             case BuiltinType::UInt: return TagUInt;
             case BuiltinType::ULong: return TagULong;
             case BuiltinType::ULongLong: return TagULongLong;
+            // Constructed as a consequence of the conversion of
+            // built-in to normal vector types.
+            case BuiltinType::Float16: return TagHalf;
             case BuiltinType::Half: return TagHalf;     
             #if CLANG_VERSION_MAJOR >= 11
             case BuiltinType::BFloat16: return TagBFloat16;
