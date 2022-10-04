@@ -61,7 +61,7 @@ impl EventKindExt for EventKind {
             Alloc { ptr, .. } => ptr,
             AddrOfLocal(lhs, _) => lhs,
             Offset(ptr, _, _) => ptr,
-            Done => return None,
+            Done | BeginBody => return None,
         })
     }
 
@@ -90,6 +90,10 @@ impl EventKindExt for EventKind {
                     address_taken.insert((func_clone, local.as_u32()));
                     NodeKind::AddrOfLocal(local.as_u32().into())
                 }
+            }
+            BeginBody => {
+                address_taken.clear();
+                return None;
             }
             ToInt(_) => NodeKind::PtrToInt,
             FromInt(_) => NodeKind::IntToPtr,

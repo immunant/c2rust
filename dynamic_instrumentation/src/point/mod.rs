@@ -86,7 +86,7 @@ pub struct CollectInstrumentationPoints<'a, 'tcx: 'a> {
     tcx: TyCtxt<'tcx>,
     hooks: Hooks<'tcx>,
     pub body: &'a Body<'tcx>,
-    instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
+    pub instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
     assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
     pub addr_taken_local_substitutions: IndexMap<Local, Local>,
 }

@@ -76,6 +76,8 @@ pub enum EventKind {
 
     Offset(Pointer, isize, Pointer),
 
+    BeginBody,
+
     Done,
 }
 
@@ -96,6 +98,7 @@ impl Debug for EventKind {
             } => write!(f, "realloc(0x{:x}, {}) -> 0x{:x}", old_ptr, size, new_ptr),
             Ret(ptr) => write!(f, "ret(0x{:x})", ptr),
             Done => write!(f, "done"),
+            BeginBody => write!(f, "begin body"),
             LoadAddr(ptr) => write!(f, "load(0x{:x})", ptr),
             StoreAddr(ptr) => write!(f, "store(0x{:x})", ptr),
             StoreAddrTaken(ptr) => write!(f, "store(0x{:x})", ptr),

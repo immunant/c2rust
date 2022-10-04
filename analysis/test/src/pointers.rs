@@ -652,6 +652,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     test_realloc_reassign();
     test_realloc_fresh();
     test_load_addr();
+    test_load_addr();
     test_overwrite();
     test_store_addr();
     test_load_other_store_self();

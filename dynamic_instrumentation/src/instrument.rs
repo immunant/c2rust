@@ -539,6 +539,19 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
         }
     }
 
+    fn visit_body(&mut self, body: &Body<'tcx>) {
+        // iterates over const functions
+        self.super_body(body);
+        if self.instrumentation_points.len() > 0 {
+            let body_begin_func = self.hooks().find("mark_begin_body");
+            let start_loc = Location {
+                block: BasicBlock::from_u32(0),
+                statement_index: 0,
+            };
+            self.loc(start_loc, start_loc, body_begin_func).add_to(self);
+        }
+    }
+
     fn visit_terminator(&mut self, terminator: &Terminator<'tcx>, location: Location) {
         self.super_terminator(terminator, location);
 
