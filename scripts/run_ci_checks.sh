@@ -42,7 +42,7 @@ test() {
     cargo test --release --exclude c2rust-analyze --workspace
 }
 
-# `test_translatory.py` compiles translated code,
+# `test_translator.py` compiles translated code,
 # which has tons of warnings.
 # `RUSTFLAGS="-D warnings"` would be inherited by that,
 # causing tons of errors, so unset that.
