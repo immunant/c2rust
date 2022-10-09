@@ -158,10 +158,10 @@ fn build_native(llvm_info: &LLVMInfo) {
         !cfg!(feature = "llvm-static")
     } else {
         // target_os = "linux"
-        let mut libclang_path = PathBuf::new();
-        libclang_path.push(llvm_lib_dir);
-        libclang_path.push("libclang-cpp.so");
-        libclang_path.exists()
+        [
+            llvm_lib_dir,
+            "libclang-cpp.so",
+        ].iter().collect::<PathBuf>().exists()
     };
 
     if use_libclang {
