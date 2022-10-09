@@ -44,7 +44,6 @@ jobs:
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       ./scripts/run_ci_checks.sh fmt
-      cargo fmt --check
     displayName: 'cargo fmt --check'
   
   - script: |
