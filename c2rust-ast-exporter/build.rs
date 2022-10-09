@@ -155,11 +155,7 @@ fn build_native(llvm_info: &LLVMInfo) {
         // version of LLVM 15 because they use a feature (opaque pointers) which
         // are not understood by earlier versions of LLVM so we link against
         // libclang unless static linking has been explicitly requested.
-        if cfg!(feature = "llvm-static") {
-            false
-        } else {
-            true
-        }
+        !cfg!(feature = "llvm-static")
     } else {
         // target_os = "linux"
         let mut libclang_path = PathBuf::new();
