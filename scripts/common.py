@@ -109,13 +109,13 @@ class Config:
     Reflect changes to all configuration variables that depend on LLVM_VER
     """
     def _init_llvm_ver_deps(self):
-        def llvm_major_ver_ge(test_ver) -> bool:
+        def llvm_major_ver() -> bool:
             (major, _, _) = self.LLVM_VER.split(".")
-            return int(major) >= test_ver
+            return int(major)
 
         def use_github_archive_urls():
             try:
-                return llvm_major_ver_ge(10)
+                return llvm_major_ver() >= 10
             except ValueError:
                 emsg = "invalid LLVM version: {}".format(self.LLVM_VER)
                 raise ValueError(emsg)
@@ -123,7 +123,7 @@ class Config:
         urls = self.GITHUB_LLVM_ARCHIVE_URLS if use_github_archive_urls() \
             else self.OLD_LLVM_ARCHIVE_URLS
         # LLVM 15 and later distributes cmake files in a separate archive
-        if llvm_major_ver_ge(15):
+        if llvm_major_ver() >= 15:
             urls.append(
                 'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/cmake-{ver}.src.tar.xz',
             )
