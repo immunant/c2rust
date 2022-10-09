@@ -46,6 +46,8 @@ test() {
 # which has tons of warnings.
 # `RUSTFLAGS="-D warnings"` would be inherited by that,
 # causing tons of errors, so unset that.
+# `test_translator.py` does not rebuild,
+# so changing `RUSTFLAGS` will not trigger a full rebuild.
 test-translator() {
     unset RUSTFLAGS
     ./scripts/test_translator.py tests/
