@@ -169,13 +169,18 @@ fn build_native(llvm_info: &LLVMInfo) {
     } else {
         // Link against these Clang libs. The ordering here is important! Libraries
         // must be listed before their dependencies when statically linking.
-        let mut clang_libs = vec![
+        [
             "clangTooling",
             "clangFrontend",
             "clangASTMatchers",
             "clangParse",
             "clangSerialization",
             "clangSema",
+            if llvm_info.llvm_major_version >= 15 {
+                "clangSupport"
+            } else {
+                ""
+            },
             "clangEdit",
             "clangAnalysis",
             "clangDriver",
@@ -185,16 +190,12 @@ fn build_native(llvm_info: &LLVMInfo) {
             "clangRewrite",
             "clangLex",
             "clangBasic",
-        ];
-        if llvm_info.llvm_major_version >= 15 {
-            // insert after clangSema
-            let sema_pos = clang_libs.iter().position(|&r| r == "clangSema").unwrap();
-            clang_libs.insert(sema_pos + 1, "clangSupport");
-        }
-
-        for lib in &clang_libs {
-            println!("cargo:rustc-link-lib={}", lib);
-        }
+        ]
+        .iter()
+        .filter(|s| !s.is_empty())
+        .for_each(|lib| {
+            println!("cargo:rustc-link-lib={lib}");
+        });
     }
 
     for lib in &llvm_info.libs {
