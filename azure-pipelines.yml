@@ -121,13 +121,6 @@ jobs:
       source $HOME/.cargo/env
       brew info llvm
     displayName: 'Provision macOS'
-
-  - script: |
-      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      export RUSTFLAGS="-D warnings"
-      export RUSTDOCFLAGS="-D warnings"
-      cargo fmt --check
-    displayName: 'cargo fmt --check'
   
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
