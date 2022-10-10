@@ -75,7 +75,7 @@ pub struct S {
     pub field4: T,
 }
 #[no_mangle]
-pub static mut global: *mut S = 0 as *const S as *mut S;
+pub static mut global: *mut S = std::ptr::null_mut();
 #[no_mangle]
 pub unsafe extern "C" fn malloc_wrapper(mut size: size_t) -> *mut libc::c_void {
     return malloc(size);
@@ -105,7 +105,7 @@ pub unsafe extern "C" fn simple() {
     (*y).field4 = T {
         field: 0i32,
         field2: 0u64,
-        field3: 0 as *const S,
+        field3: std::ptr::null(),
         field4: 0i32,
     };
     let s = *y;
@@ -232,7 +232,7 @@ pub unsafe extern "C" fn fdevent_unregister(mut ev: *mut fdevents, mut fd: libc:
         return;
     }
     let ref mut fresh1 = *((*ev).fdarray).offset(fd as isize);
-    *fresh1 = 0 as *mut fdnode;
+    *fresh1 = std::ptr::null_mut();
     fdnode_free(fdn);
 }
 unsafe extern "C" fn fdnode_free(mut fdn: *mut fdnode) {
@@ -345,7 +345,7 @@ pub unsafe extern "C" fn invalid() {
         b"%i\n\x00" as *const u8 as *const libc::c_char,
         (*global).field,
     );
-    global = 0 as *mut S;
+    global = std::ptr::null_mut();
     free(s as *mut libc::c_void);
 }
 pub unsafe extern "C" fn testing() {
@@ -416,14 +416,14 @@ pub unsafe extern "C" fn test_ref_field() {
     let t =  T {
         field: 0i32,
         field2: 0u64,
-        field3: 0 as *const S,
+        field3: std::ptr::null(),
         field4: 0i32,
     };
 
     let ref mut s = S {
         field: 0i32,
         field2: 0u64,
-        field3: 0 as *const S,
+        field3: std::ptr::null(),
         field4: t,
     };
     s.field4.field4 = s.field4.field4;
