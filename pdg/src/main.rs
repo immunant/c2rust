@@ -332,6 +332,7 @@ mod tests {
             .arg("--")
             .args(args)
             .env("METADATA_FILE", &metadata_path)
+            .env("INSTRUMENT_RUNTIME", "bg")
             .env("INSTRUMENT_BACKEND", "log")
             .env("INSTRUMENT_OUTPUT", &event_log_path)
             .env("INSTRUMENT_OUTPUT_APPEND", "false");

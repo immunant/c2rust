@@ -1,5 +1,8 @@
 use std::{
-    sync::mpsc::{self, SyncSender},
+    sync::{
+        mpsc::{self, SyncSender},
+        Mutex,
+    },
     thread,
 };
 
@@ -12,19 +15,21 @@ use crate::{
 };
 
 use super::{
-    backend::Backend,
+    backend::{Backend, WriteEvent},
     skip::{skip_event, SkipReason},
     AnyError, Detect, FINISHED,
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RuntimeKind {
+    MainThread,
     BackgroundThread,
 }
 
 impl AsStr for RuntimeKind {
     fn as_str(&self) -> &'static str {
         match self {
+            Self::MainThread => "fg",
             Self::BackgroundThread => "bg",
         }
     }
@@ -32,7 +37,7 @@ impl AsStr for RuntimeKind {
 
 impl GetChoices for RuntimeKind {
     fn choices() -> &'static [Self] {
-        &[Self::BackgroundThread]
+        &[Self::MainThread, Self::BackgroundThread]
     }
 }
 
@@ -67,6 +72,7 @@ trait Runtime: ExistingRuntime + Sized {
 
 #[enum_dispatch(ExistingRuntime)]
 pub enum ScopedRuntime {
+    MainThread(MainThreadRuntime),
     BackgroundThread(BackgroundThreadRuntime),
 }
 
@@ -74,6 +80,7 @@ impl ScopedRuntime {
     pub fn detect_kind(kind: RuntimeKind) -> Result<Self, AnyError> {
         let backend = Backend::detect()?;
         let this = match kind {
+            RuntimeKind::MainThread => Self::MainThread(MainThreadRuntime::try_init(backend)?),
             RuntimeKind::BackgroundThread => {
                 Self::BackgroundThread(BackgroundThreadRuntime::try_init(backend)?)
             }
@@ -85,6 +92,27 @@ impl ScopedRuntime {
 impl Detect for ScopedRuntime {
     fn detect() -> Result<Self, AnyError> {
         Self::detect_kind(RuntimeKind::detect()?)
+    }
+}
+
+pub struct MainThreadRuntime {
+    backend: Mutex<Backend>,
+}
+
+impl ExistingRuntime for MainThreadRuntime {
+    fn finalize(&self) {
+        self.backend.lock().unwrap().flush();
+    }
+
+    fn send_event(&self, event: Event) {
+        self.backend.lock().unwrap().write(event);
+    }
+}
+
+impl Runtime for MainThreadRuntime {
+    fn try_init(backend: Backend) -> Result<Self, AnyError> {
+        let backend = Mutex::new(backend);
+        Ok(Self { backend })
     }
 }
 
