@@ -8,9 +8,9 @@ use once_cell::sync::OnceCell;
 use crate::events::Event;
 
 use super::{
-    backend::{Backend, DetectBackend},
+    backend::Backend,
     skip::{skip_event, SkipReason},
-    AnyError, FINISHED,
+    AnyError, Detect, FINISHED,
 };
 
 pub struct ScopedRuntime {

@@ -6,7 +6,7 @@ use std::sync::mpsc::Receiver;
 
 use bincode;
 
-use super::{AnyError, FINISHED};
+use super::{AnyError, Detect, FINISHED};
 use crate::events::{Event, EventKind};
 use crate::metadata::Metadata;
 use crate::parse::{self, AsStr, GetChoices};
@@ -16,10 +16,6 @@ pub(super) trait WriteEvent {
     fn write(&mut self, event: Event);
 
     fn flush(&mut self);
-}
-
-pub(super) trait DetectBackend: Sized {
-    fn detect() -> Result<Self, AnyError>;
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -105,7 +101,7 @@ impl Backend {
     }
 }
 
-impl DetectBackend for DebugBackend {
+impl Detect for DebugBackend {
     fn detect() -> Result<Self, AnyError> {
         let path = parse::env::path("METADATA_FILE")?;
         // TODO may want to deduplicate this with [`pdg::builder::read_metadata`] in [`Metadata::read`],
@@ -116,7 +112,7 @@ impl DetectBackend for DebugBackend {
     }
 }
 
-impl DetectBackend for LogBackend {
+impl Detect for LogBackend {
     fn detect() -> Result<Self, AnyError> {
         let path = parse::env::path("INSTRUMENT_OUTPUT")?;
         let append: bool = *parse::env::one_of("INSTRUMENT_OUTPUT_APPEND")?;
@@ -131,7 +127,7 @@ impl DetectBackend for LogBackend {
     }
 }
 
-impl DetectBackend for BackendKind {
+impl Detect for BackendKind {
     fn detect() -> Result<Self, AnyError> {
         Ok(parse::env::one_of("INSTRUMENT_BACKEND").cloned()?)
     }
@@ -147,7 +143,7 @@ impl Backend {
     }
 }
 
-impl DetectBackend for Backend {
+impl Detect for Backend {
     fn detect() -> Result<Self, AnyError> {
         Self::detect_kind(BackendKind::detect()?)
     }
