@@ -365,4 +365,17 @@ mod tests {
         insta::assert_display_snapshot!(pdg);
         Ok(())
     }
+
+    #[test]
+    #[ignore]
+    fn analysis_test_miri() -> eyre::Result<()> {
+        init();
+        let mut cmd = Command::new("cargo");
+        cmd.current_dir(repo_dir()?.join("analysis/test"))
+            .args(&["miri", "run", "--features", "miri"])
+            .env("MIRIFLAGS", "");
+        let status = cmd.status()?;
+        ensure!(status.success(), eyre!("{cmd:?} failed: {status}"));
+        Ok(())
+    }
 }
