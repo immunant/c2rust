@@ -93,15 +93,12 @@ jobs:
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      export RUSTFLAGS="-D warnings"
-      export RUSTDOCFLAGS="-D warnings"
       # `test_translator.py` compiles translated code,
       # which has tons of warnings.
       # `RUSTFLAGS="-D warnings"` would be inherited by that,
-      # causing tons of errors, so unset that.
+      # causing tons of errors, so don't set that.
       # `test_translator.py` does not rebuild,
       # so changing `RUSTFLAGS` will not trigger a full rebuild.
-      unset RUSTFLAGS
       ./scripts/test_translator.py tests/
     displayName: 'Test translator (fast build)'
 
@@ -166,14 +163,11 @@ jobs:
     displayName: 'cargo test'
 
   - script: |
-      export RUSTFLAGS="-D warnings"
-      export RUSTDOCFLAGS="-D warnings"
       # `test_translator.py` compiles translated code,
       # which has tons of warnings.
       # `RUSTFLAGS="-D warnings"` would be inherited by that,
-      # causing tons of errors, so unset that.
+      # causing tons of errors, so don't set that.
       # `test_translator.py` does not rebuild,
       # so changing `RUSTFLAGS` will not trigger a full rebuild.
-      unset RUSTFLAGS
       ./scripts/test_translator.py tests/
     displayName: 'Test translator (fast build)'
