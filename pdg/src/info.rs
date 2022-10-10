@@ -40,11 +40,12 @@ pub struct FlowInfo {
 impl FlowInfo {
     /// Initializes a [`FlowInfo`] based on a [`Node`]'s [`NodeKind`]
     fn new(n_id: NodeId, k: NodeKind) -> FlowInfo {
+        use NodeKind::*;
         FlowInfo {
-            load: matches!(k, NodeKind::LoadAddr | NodeKind::LoadValue).then(|| n_id),
-            store: matches!(k, NodeKind::StoreAddr | NodeKind::StoreValue).then(|| n_id),
-            pos_offset: matches!(k, NodeKind::Offset(x) if x > 0).then(|| n_id),
-            neg_offset: matches!(k, NodeKind::Offset(x) if x < 0).then(|| n_id),
+            load: matches!(k, LoadAddr | LoadValue).then(|| n_id),
+            store: matches!(k, StoreAddr | StoreValue).then(|| n_id),
+            pos_offset: matches!(k, Offset(x) if x > 0).then(|| n_id),
+            neg_offset: matches!(k, Offset(x) if x < 0).then(|| n_id),
         }
     }
 }
