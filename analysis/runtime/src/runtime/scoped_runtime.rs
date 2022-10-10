@@ -6,13 +6,47 @@ use std::{
 use enum_dispatch::enum_dispatch;
 use once_cell::sync::OnceCell;
 
-use crate::events::Event;
+use crate::{
+    events::Event,
+    parse::{self, AsStr, GetChoices},
+};
 
 use super::{
     backend::Backend,
     skip::{skip_event, SkipReason},
     AnyError, Detect, FINISHED,
 };
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum RuntimeKind {
+    BackgroundThread,
+}
+
+impl AsStr for RuntimeKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::BackgroundThread => "bg",
+        }
+    }
+}
+
+impl GetChoices for RuntimeKind {
+    fn choices() -> &'static [Self] {
+        &[Self::BackgroundThread]
+    }
+}
+
+impl Default for RuntimeKind {
+    fn default() -> Self {
+        Self::BackgroundThread
+    }
+}
+
+impl Detect for RuntimeKind {
+    fn detect() -> Result<Self, AnyError> {
+        Ok(parse::env::one_of("INSTRUMENT_RUNTIME").cloned()?)
+    }
+}
 
 #[enum_dispatch]
 pub trait ExistingRuntime {
@@ -36,10 +70,21 @@ pub enum ScopedRuntime {
     BackgroundThread(BackgroundThreadRuntime),
 }
 
+impl ScopedRuntime {
+    pub fn detect_kind(kind: RuntimeKind) -> Result<Self, AnyError> {
+        let backend = Backend::detect()?;
+        let this = match kind {
+            RuntimeKind::BackgroundThread => {
+                Self::BackgroundThread(BackgroundThreadRuntime::try_init(backend)?)
+            }
+        };
+        Ok(this)
+    }
+}
+
 impl Detect for ScopedRuntime {
     fn detect() -> Result<Self, AnyError> {
-        let backend = Backend::detect()?;
-        Ok(Self::BackgroundThread(BackgroundThreadRuntime::try_init(backend)?))
+        Self::detect_kind(RuntimeKind::detect()?)
     }
 }
 
