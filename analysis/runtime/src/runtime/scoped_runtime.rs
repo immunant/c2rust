@@ -13,36 +13,34 @@ use super::{
     AnyError, Detect, FINISHED,
 };
 
+pub(super) trait ExistingRuntime {
+    /// Finalize the [`ExistingRuntime`].
+    ///
+    /// Similar to [`Drop::drop`], except it takes `&self`, not `&mut self`,
+    /// so it can be run in a [`OnceCell`].
+    fn finalize(&self);
+
+    fn send_event(&self, event: Event);
+}
+
+trait Runtime: ExistingRuntime + Sized {
+    fn try_init(backend: Backend) -> Result<Self, AnyError>;
+}
+
 pub struct ScopedRuntime {
     tx: SyncSender<Event>,
     finalized: OnceCell<()>,
 }
 
-impl ScopedRuntime {
-    /// Initialize the [`ScopedRuntime`], which includes [`thread::spawn`]ing, so it must be run post-`main`.
-    ///
-    /// It returns an error if [`Backend::detect`] returns an error.
-    ///
-    /// It's only `pub(super)` as `super` is the scope of the global [`super::FINISHED`],
-    /// which we have to prevent from being used multiple times.
-    pub(super) fn try_init() -> Result<Self, AnyError> {
-        let mut backend = Backend::detect()?;
-        let (tx, rx) = mpsc::sync_channel(1024);
-        thread::spawn(move || backend.run(rx));
-        Ok(Self {
-            tx,
-            finalized: OnceCell::new(),
-        })
-    }
-
+impl ExistingRuntime for ScopedRuntime {
     /// Finalize the [`ScopedRuntime`], shutting it down.
     ///
     /// This can be called any number of times; it only finalizes once.
     ///
     /// This does the same thing as [`ScopedRuntime::drop`]
     /// except, of course, it's not a destructor.
-    pub fn finalize(&self) {
-        // only run finalizer once
+    fn finalize(&self) {
+        // Only run the finalizer once.
         self.finalized.get_or_init(|| {
             // Notify the backend that we're done.
             self.tx.send(Event::done()).unwrap();
@@ -63,7 +61,7 @@ impl ScopedRuntime {
     /// then the [`Event`] is silently dropped.
     /// Otherwise, it sends the [`Event`] to the channel,
     /// panicking if there is a [`SendError`](std::sync::mpsc::SendError).
-    pub fn send_event(&self, event: Event) {
+    fn send_event(&self, event: Event) {
         match self.finalized.get() {
             None => {
                 // `.unwrap()` as we're in no place to handle an error here,
@@ -84,5 +82,25 @@ impl Drop for ScopedRuntime {
     /// This does the same thing as [`ScopedRuntime::finalize`].
     fn drop(&mut self) {
         self.finalize();
+    }
+}
+
+impl Runtime for ScopedRuntime {
+    /// Initialize the [`ScopedRuntime`], which includes [`thread::spawn`]ing,
+    /// so it must be run post-`main`.
+    fn try_init(mut backend: Backend) -> Result<Self, AnyError> {
+        let (tx, rx) = mpsc::sync_channel(1024);
+        thread::spawn(move || backend.run(rx));
+        Ok(Self {
+            tx,
+            finalized: OnceCell::new(),
+        })
+    }
+}
+
+impl Detect for ScopedRuntime {
+    fn detect() -> Result<Self, AnyError> {
+        let backend = Backend::detect()?;
+        Self::try_init(backend)
     }
 }

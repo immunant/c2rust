@@ -5,9 +5,9 @@ use once_cell::sync::OnceCell;
 use crate::events::Event;
 
 use super::{
-    scoped_runtime::ScopedRuntime,
+    scoped_runtime::{ExistingRuntime, ScopedRuntime},
     skip::{skip_event, SkipReason},
-    AnyError,
+    AnyError, Detect,
 };
 
 pub struct GlobalRuntime {
@@ -52,11 +52,11 @@ impl GlobalRuntime {
         }
     }
 
-    /// Try to initialize the [`GlobalRuntime`] with `ScopedRuntime::try_init`.
+    /// Try to initialize the [`GlobalRuntime`] with [`ScopedRuntime::detect`].
     ///
     /// This (or [`GlobalRuntime::init`]), on [`RUNTIME`], should be called at the top of `main`.
     pub fn try_init(&self) -> Result<&ScopedRuntime, AnyError> {
-        self.runtime.get_or_try_init(ScopedRuntime::try_init)
+        self.runtime.get_or_try_init(ScopedRuntime::detect)
     }
 
     /// Same as [`GlobalRuntime::try_init`], if there is an error,
