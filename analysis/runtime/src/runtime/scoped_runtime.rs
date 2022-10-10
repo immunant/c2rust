@@ -16,6 +16,8 @@ use super::{
 pub(super) trait ExistingRuntime {
     /// Finalize the [`ExistingRuntime`].
     ///
+    /// Must be idempotent, i.e. able to be called multiple times.
+    ///
     /// Similar to [`Drop::drop`], except it takes `&self`, not `&mut self`,
     /// so it can be run in a [`OnceCell`].
     fn finalize(&self);
@@ -33,12 +35,6 @@ pub struct ScopedRuntime {
 }
 
 impl ExistingRuntime for ScopedRuntime {
-    /// Finalize the [`ScopedRuntime`], shutting it down.
-    ///
-    /// This can be called any number of times; it only finalizes once.
-    ///
-    /// This does the same thing as [`ScopedRuntime::drop`]
-    /// except, of course, it's not a destructor.
     fn finalize(&self) {
         // Only run the finalizer once.
         self.finalized.get_or_init(|| {
