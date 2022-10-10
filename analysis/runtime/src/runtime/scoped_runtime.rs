@@ -13,7 +13,7 @@ use super::{
     AnyError, Detect, FINISHED,
 };
 
-pub(super) trait ExistingRuntime {
+pub trait ExistingRuntime {
     /// Finalize the [`ExistingRuntime`].
     ///
     /// Must be idempotent, i.e. able to be called multiple times.

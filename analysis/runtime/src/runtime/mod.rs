@@ -12,7 +12,7 @@ use once_cell::sync::Lazy;
 
 type AnyError = Box<dyn Error + Send + Sync + 'static>;
 
-trait Detect: Sized {
+pub trait Detect: Sized {
     fn detect() -> Result<Self, AnyError>;
 }
 
