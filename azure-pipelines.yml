@@ -149,9 +149,7 @@ jobs:
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
-      # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
-      # which we don't want to test here (it doesn't work out of the box on Arch and Fedora;
-      # see https://github.com/immunant/c2rust/issues/500).
+      # Don't build with `--all-features` (see analogous step for Linux).
       cargo build --release
     displayName: 'cargo build against host clang/LLVM (fast build)'
 
@@ -163,11 +161,6 @@ jobs:
     displayName: 'cargo test'
 
   - script: |
-      # `test_translator.py` compiles translated code,
-      # which has tons of warnings.
-      # `RUSTFLAGS="-D warnings"` would be inherited by that,
-      # causing tons of errors, so don't set that.
-      # `test_translator.py` does not rebuild,
-      # so changing `RUSTFLAGS` will not trigger a full rebuild.
+      # `RUSTFLAGS` not set (see analogous step for Linux).
       ./scripts/test_translator.py tests/
     displayName: 'Test translator (fast build)'
