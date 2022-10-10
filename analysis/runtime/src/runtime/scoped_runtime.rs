@@ -3,6 +3,7 @@ use std::{
     thread,
 };
 
+use enum_dispatch::enum_dispatch;
 use once_cell::sync::OnceCell;
 
 use crate::events::Event;
@@ -13,6 +14,7 @@ use super::{
     AnyError, Detect, FINISHED,
 };
 
+#[enum_dispatch]
 pub trait ExistingRuntime {
     /// Finalize the [`ExistingRuntime`].
     ///
@@ -29,12 +31,24 @@ trait Runtime: ExistingRuntime + Sized {
     fn try_init(backend: Backend) -> Result<Self, AnyError>;
 }
 
-pub struct ScopedRuntime {
+#[enum_dispatch(ExistingRuntime)]
+pub enum ScopedRuntime {
+    BackgroundThread(BackgroundThreadRuntime),
+}
+
+impl Detect for ScopedRuntime {
+    fn detect() -> Result<Self, AnyError> {
+        let backend = Backend::detect()?;
+        Ok(Self::BackgroundThread(BackgroundThreadRuntime::try_init(backend)?))
+    }
+}
+
+pub struct BackgroundThreadRuntime {
     tx: SyncSender<Event>,
     finalized: OnceCell<()>,
 }
 
-impl ExistingRuntime for ScopedRuntime {
+impl ExistingRuntime for BackgroundThreadRuntime {
     fn finalize(&self) {
         // Only run the finalizer once.
         self.finalized.get_or_init(|| {
@@ -51,9 +65,9 @@ impl ExistingRuntime for ScopedRuntime {
         // Don't need to `forget(self)` since the finalizer can only run once anyways.
     }
 
-    /// Send an [`Event`] to the [`ScopedRuntime`].
+    /// Send an [`Event`] to the [`BackgroundThreadRuntime`].
     ///
-    /// If the [`ScopedRuntime`] has already been [`ScopedRuntime::finalize`]d,
+    /// If the [`BackgroundThreadRuntime`] has already been [`BackgroundThreadRuntime::finalize`]d,
     /// then the [`Event`] is silently dropped.
     /// Otherwise, it sends the [`Event`] to the channel,
     /// panicking if there is a [`SendError`](std::sync::mpsc::SendError).
@@ -65,24 +79,24 @@ impl ExistingRuntime for ScopedRuntime {
                 self.tx.send(event).unwrap();
             }
             Some(()) => {
-                // Silently drop the [`Event`] as the [`ScopedRuntime`] has already been [`ScopedRuntime::finalize`]d.
+                // Silently drop the [`Event`] as the [`BackgroundThreadRuntime`] has already been [`BackgroundThreadRuntime::finalize`]d.
                 skip_event(event, SkipReason::AfterMain);
             }
         }
     }
 }
 
-impl Drop for ScopedRuntime {
-    /// Finalize the [`ScopedRuntime`], shutting it down.
+impl Drop for BackgroundThreadRuntime {
+    /// Finalize the [`BackgroundThreadRuntime`], shutting it down.
     ///
-    /// This does the same thing as [`ScopedRuntime::finalize`].
+    /// This does the same thing as [`BackgroundThreadRuntime::finalize`].
     fn drop(&mut self) {
         self.finalize();
     }
 }
 
-impl Runtime for ScopedRuntime {
-    /// Initialize the [`ScopedRuntime`], which includes [`thread::spawn`]ing,
+impl Runtime for BackgroundThreadRuntime {
+    /// Initialize the [`BackgroundThreadRuntime`], which includes [`thread::spawn`]ing,
     /// so it must be run post-`main`.
     fn try_init(mut backend: Backend) -> Result<Self, AnyError> {
         let (tx, rx) = mpsc::sync_channel(1024);
@@ -91,12 +105,5 @@ impl Runtime for ScopedRuntime {
             tx,
             finalized: OnceCell::new(),
         })
-    }
-}
-
-impl Detect for ScopedRuntime {
-    fn detect() -> Result<Self, AnyError> {
-        let backend = Backend::detect()?;
-        Self::try_init(backend)
     }
 }
