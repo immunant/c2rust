@@ -109,16 +109,24 @@ class Config:
     Reflect changes to all configuration variables that depend on LLVM_VER
     """
     def _init_llvm_ver_deps(self):
+        def llvm_major_ver_ge(test_ver) -> bool:
+            (major, _, _) = self.LLVM_VER.split(".")
+            return int(major) >= test_ver
+
         def use_github_archive_urls():
             try:
-                (major, _, _) = self.LLVM_VER.split(".")
-                return int(major) >= 10
+                return llvm_major_ver_ge(10)
             except ValueError:
                 emsg = "invalid LLVM version: {}".format(self.LLVM_VER)
                 raise ValueError(emsg)
-        
+
         urls = self.GITHUB_LLVM_ARCHIVE_URLS if use_github_archive_urls() \
             else self.OLD_LLVM_ARCHIVE_URLS
+        # LLVM 15 and later distributes cmake files in a separate archive
+        if llvm_major_ver_ge(15):
+            urls.append(
+                'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/cmake-{ver}.src.tar.xz',
+            )
         self.LLVM_ARCHIVE_URLS = [u.format(ver=self.LLVM_VER) for u in urls]
         self.LLVM_SIGNATURE_URLS = [s + ".sig" for s in self.LLVM_ARCHIVE_URLS]
         self.LLVM_ARCHIVE_FILES = [os.path.basename(s)
@@ -176,7 +184,7 @@ class Config:
         self.C2RUST_BIN = "c2rust"
         self.C2RUST_BIN = os.path.join(self.TARGET_DIR, self.C2RUST_BIN)
 
-        has_skip_sig = args and hasattr(args, 'llvm_skip_signature_checks') 
+        has_skip_sig = args and hasattr(args, 'llvm_skip_signature_checks')
         self.LLVM_SKIP_SIGNATURE_CHECKS = args.llvm_skip_signature_checks \
             if has_skip_sig else False
 

@@ -151,7 +151,11 @@ fn build_native(llvm_info: &LLVMInfo) {
     // BUILD_SHARED_LIBS=ON; programs linking to clang are required to
     // link to libclang-cpp.so instead of individual libraries.
     let use_libclang = if cfg!(target_os = "macos") {
-        false
+        // We hit an issue linking against the shared libraries for the homebrew
+        // version of LLVM 15 because they use a feature (opaque pointers) which
+        // are not understood by earlier versions of LLVM so we link against
+        // libclang unless static linking has been explicitly requested.
+        !cfg!(feature = "llvm-static")
     } else {
         // target_os = "linux"
         let mut libclang_path = PathBuf::new();
@@ -165,7 +169,7 @@ fn build_native(llvm_info: &LLVMInfo) {
     } else {
         // Link against these Clang libs. The ordering here is important! Libraries
         // must be listed before their dependencies when statically linking.
-        for lib in &[
+        let mut clang_libs = vec![
             "clangTooling",
             "clangFrontend",
             "clangASTMatchers",
@@ -181,7 +185,14 @@ fn build_native(llvm_info: &LLVMInfo) {
             "clangRewrite",
             "clangLex",
             "clangBasic",
-        ] {
+        ];
+        if llvm_info.llvm_major_version >= 15 {
+            // insert after clangSema
+            let sema_pos = clang_libs.iter().position(|&r| r == "clangSema").unwrap();
+            clang_libs.insert(sema_pos + 1, "clangSupport");
+        }
+
+        for lib in &clang_libs {
             println!("cargo:rustc-link-lib={}", lib);
         }
     }
@@ -208,6 +219,9 @@ struct LLVMInfo {
 
     /// List of libs we need to link against
     pub libs: Vec<String>,
+
+    /// LLVM Major version to link against
+    pub llvm_major_version: u32,
 }
 
 impl LLVMInfo {
@@ -335,6 +349,9 @@ impl LLVMInfo {
         if llvm_major_version >= 10 {
             args.push("FrontendOpenMP");
         }
+        if llvm_major_version >= 15 {
+            args.push("WindowsDriver");
+        }
 
         let mut libs: Vec<String> = invoke_command(llvm_config.as_deref(), &args)
             .unwrap_or_else(|| "-lLLVM".to_string())
@@ -351,6 +368,10 @@ impl LLVMInfo {
                 .map(|lib| String::from(lib.trim_start_matches("-l"))),
         );
 
-        Self { lib_dir, libs }
+        Self {
+            lib_dir,
+            libs,
+            llvm_major_version,
+        }
     }
 }

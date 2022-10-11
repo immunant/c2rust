@@ -58,18 +58,23 @@ def download_llvm_sources():
             tar("xf", os.path.join(c.ROOT_DIR, c.LLVM_ARCHIVE_FILES[2]))
             os.rename(c.LLVM_ARCHIVE_DIRS[2], "compiler-rt")
 
-    # finally clang, and clang-tools-extra.
+    # then clang
     with pb.local.cwd(os.path.join(c.LLVM_SRC, "tools")):
         if not os.path.isdir("clang"):
             logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[1])
             tar("xf", os.path.join(c.ROOT_DIR, c.LLVM_ARCHIVE_FILES[1]))
             os.rename(c.LLVM_ARCHIVE_DIRS[1], "clang")
 
-        # with pb.local.cwd("clang/tools"):
-        #     if not os.path.isdir("extra"):
-        #         logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[3])
-        #         tar("xf", os.path.join(c.ROOT_DIR, c.LLVM_ARCHIVE_FILES[3]))
-        #         os.rename(c.LLVM_ARCHIVE_DIRS[3], "extra")
+    # finally cmake files if we're building LLVM 15 or later
+    if len(c.LLVM_ARCHIVE_FILES) == 4:
+        assert os.path.basename(c.LLVM_ARCHIVE_FILES[3]).startswith("cmake")
+        with pb.local.cwd(os.path.join(c.LLVM_SRC, "cmake", "modules")):
+            logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[3])
+            cmake_modules_dir = os.path.join(c.LLVM_SRC, "cmake", "modules")
+            # extract *.cmake files into llvm/cmake/modules
+            tar("xf", c.LLVM_ARCHIVE_FILES[3],
+                "--strip-components=2",
+                "--directory", cmake_modules_dir)
 
 
 def configure_and_build_llvm(args) -> None:
@@ -97,7 +102,10 @@ def configure_and_build_llvm(args) -> None:
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
                      "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
                      "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
-                     "-DLLVM_TARGETS_TO_BUILD=host"]
+                     "-DLLVM_TARGETS_TO_BUILD=host",
+                     "-DLLVM_INCLUDE_BENCHMARKS=0",
+                     "-DCOMPILER_RT_ENABLE_IOS=OFF",
+            ]
 
             invoke(cmake[cargs])
 
@@ -260,8 +268,8 @@ def _parse_args():
                         help='build clang with this tool')
     llvm_ver_help = 'fetch and build specified version of clang/LLVM (default: {})'.format(c.LLVM_VER)
     # FIXME: build this list by globbing for scripts/llvm-*.0.*-key.asc
-    llvm_ver_choices = ["6.0.0", "6.0.1", "7.0.0", "7.0.1", "8.0.0", "9.0.0", 
-        "10.0.0", "10.0.1", "11.0.0", "11.1.0", "12.0.0"]
+    llvm_ver_choices = ["6.0.0", "6.0.1", "7.0.0", "7.0.1", "8.0.0", "9.0.0",
+        "10.0.0", "10.0.1", "11.0.0", "11.1.0", "12.0.0", "15.0.1"]
     parser.add_argument('--with-llvm-version', default=None,
                         action='store', dest='llvm_ver',
                         help=llvm_ver_help, choices=llvm_ver_choices)

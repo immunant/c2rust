@@ -14,12 +14,10 @@ fmt() {
     cargo fmt --check
 }
 
-# Soon to be superceded by the commented out `cargo clippy` below.
-# This is different from `cargo build`
-# as this uses `--all-features` to check everything.
+# Differs from `cargo build` since we can use `--all-features` here.
+# We plan to eventually replace `cargo check` with `cargo clippy`.
 check() {
     cargo check --tests --all-features
-    # cargo clippy --tests --all-features
 }
 
 doc() {
@@ -42,10 +40,12 @@ test() {
     cargo test --release --exclude c2rust-analyze --workspace
 }
 
-# `test_translatory.py` compiles translated code,
+# `test_translator.py` compiles translated code,
 # which has tons of warnings.
 # `RUSTFLAGS="-D warnings"` would be inherited by that,
 # causing tons of errors, so unset that.
+# `test_translator.py` does not rebuild,
+# so changing `RUSTFLAGS` will not trigger a full rebuild.
 test-translator() {
     unset RUSTFLAGS
     ./scripts/test_translator.py tests/
