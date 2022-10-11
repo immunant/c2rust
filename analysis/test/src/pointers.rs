@@ -7,7 +7,7 @@
     unused_assignments,
     unused_mut,
     unused_variables,
-    unused_parens,
+    unused_parens
 )]
 extern "C" {
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
@@ -36,17 +36,21 @@ extern "C" {
 #[cfg(feature = "miri")]
 fn printf(fmt: *const libc::c_char, i: i32) -> libc::c_int {
     use std::ffi::CStr;
-    assert_eq!(unsafe { CStr::from_ptr(fmt) }, CStr::from_bytes_with_nul(b"%i\n\x00").unwrap());
+    assert_eq!(
+        unsafe { CStr::from_ptr(fmt) },
+        CStr::from_bytes_with_nul(b"%i\n\x00").unwrap()
+    );
     let s = format!("{i}\n");
     print!("{s}");
     s.len() as libc::c_int
 }
 
 /// Hidden from instrumentation so that we can polyfill [`reallocarray`] with it.
-const REALLOC: unsafe extern "C" fn(*mut libc::c_void, libc::c_ulong) -> *mut libc::c_void = realloc;
+const REALLOC: unsafe extern "C" fn(*mut libc::c_void, libc::c_ulong) -> *mut libc::c_void =
+    realloc;
 
 /// Polyfill [`reallocarray`] as macOS does not have [`reallocarray`].
-/// 
+///
 /// Normally we'd only polyfill it on macOS, but then we'd need a different snapshot file for macOS,
 /// as polyfilling results in a couple of extra copies.
 /// Thus, we just polyfill always.
@@ -413,7 +417,7 @@ pub unsafe extern "C" fn test_unique_ref() {
 }
 #[no_mangle]
 pub unsafe extern "C" fn test_ref_field() {
-    let t =  T {
+    let t = T {
         field: 0i32,
         field2: 0u64,
         field3: 0 as *const S,
@@ -583,7 +587,8 @@ pub fn main() {
     let args = ::std::env::args()
         .map(|arg| ::std::ffi::CString::new(arg).expect("Failed to convert argument into CString."))
         .collect::<Vec<_>>();
-    let mut args = args.iter()
+    let mut args = args
+        .iter()
         .map(|arg| arg.as_ptr() as *mut libc::c_char)
         .chain(::std::iter::once(::std::ptr::null_mut()))
         .collect::<Vec<_>>();
