@@ -56,9 +56,9 @@ impl<'a, 'tcx: 'a> CheckAddressTakenLocals<'a, 'tcx> {
 /// Rewrites all address-taken locals in terms of their underlying
 /// address.
 ///
-/// For example, if `_1` is an address-taken local and `_3` is the local
-/// storing the address of `_1`, the statement `_2 = _1` will be
-/// rewritten as `_2 = (*_3)`.
+/// For example, if `_x` is an address-taken local and `_y` is the local
+/// storing the address of `_x`, the statement `_z = _x` will be
+/// rewritten as `_z = (*_y)`.
 pub struct RewriteAddressTakenLocals<'tcx> {
     /// The set of address-taken locals.
     pub address_taken: IndexSet<Local>,

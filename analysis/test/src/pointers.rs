@@ -36,7 +36,10 @@ extern "C" {
 #[cfg(feature = "miri")]
 fn printf(fmt: *const libc::c_char, i: i32) -> libc::c_int {
     use std::ffi::CStr;
-    assert_eq!(unsafe { CStr::from_ptr(fmt) }, CStr::from_bytes_with_nul(b"%i\n\x00").unwrap());
+    assert_eq!(
+        unsafe { CStr::from_ptr(fmt) },
+        CStr::from_bytes_with_nul(b"%i\n\x00").unwrap()
+    );
     let s = format!("{i}\n");
     print!("{s}");
     s.len() as libc::c_int

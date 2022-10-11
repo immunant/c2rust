@@ -130,6 +130,11 @@ fn is_region_or_unsafe_ptr(ty: Ty) -> bool {
 }
 
 impl<'tcx> Visitor<'tcx> for CheckAddressTakenLocals<'_, 'tcx> {
+    /// Checks the right hand side of each assignment statement for taking the
+    /// address of a local. This may happen explicitly with something like
+    /// std::ptr::addr_of! or implicitly by taking a reference & of a local.
+    /// Instances/locations of address-taking are saved for a later walk over the MIR
+    /// AST.
     fn visit_assign(&mut self, place: &Place<'tcx>, rvalue: &Rvalue<'tcx>, location: Location) {
         let value_ty = rvalue.ty(self, self.tcx());
 
@@ -147,13 +152,15 @@ impl<'tcx> Visitor<'tcx> for CheckAddressTakenLocals<'_, 'tcx> {
 }
 
 impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
+    /// Rewrites an address-taken local in terms of its underlying address.
     fn visit_place(
         &mut self,
         mut place: &mut Place<'tcx>,
         context: PlaceContext,
         location: Location,
     ) {
-        // if we have found an address-taken local `_1`, substitute with `(*_2)`
+        // If we have found an address-taken local `_x`, substitute with `(*_y)` where `_y`
+        // is the address of `_x`.
         if let Some(substitute) = self.local_substitute.get(&place.local) {
             if context.is_use()
                 && (!context.is_place_assignment()
@@ -166,12 +173,14 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
                     PlaceContext::NonMutatingUse(NonMutatingUseContext::Inspect)
                 )
             {
+                // add deref
                 let projection = {
                     let mut v = Vec::with_capacity(place.projection.len() + 1);
                     v.extend([ProjectionElem::Deref]);
                     v.extend(place.projection);
                     self.tcx().intern_place_elems(&v)
                 };
+                // replace `_x` with `_y`
                 place.local = *substitute;
                 place.projection = projection;
             }
@@ -185,7 +194,7 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
     }
 
     fn visit_body(&mut self, body: &mut Body<'tcx>) {
-        let mut addr_taken_locals = Vec::new();
+        let mut local_address_statements = Vec::new();
 
         // for each address-taken local, push a new local that will get assigned
         // its address
@@ -205,18 +214,29 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
             body.local_decls.get_mut(*local).unwrap().mutability = Mutability::Mut;
         }
 
-        // mark location of address-taken arguments
+        // START ADDRESS-TAKING STATEMENTS
+        //
+        // The code below appends context-dependent MIR locations to a collection
+        // that will later be used as reference for where to insert the first instance
+        // of taking the address of an already-determined-to-be address-taken local.
+        // E.g. if `_x` is an address-taken local, below is what determines where the
+        // statement `_y = &raw _x` will be placed.
+        // assign insertion location of address-taken arguments
         for l in 1..body.arg_count + 1 {
             let local = Local::from_u32(l as u32);
             if self.local_substitute.get(&local).is_some() {
                 // put into first block, first statement
-                addr_taken_locals.push((Place::from(local), BasicBlock::from_u32(0), 0));
+                local_address_statements.push((Place::from(local), BasicBlock::from_u32(0), 0));
             }
         }
 
         // when the address-taken local is assigned to for the first time, we know it's active,
-        // so mark the location of that assignment for the next step (which is to insert the
-        // statement taking the local's address)
+        // so insert `_y = &raw x` just below that assignment, which is neccessary because
+        // otherwise the address-taking statement would be taking the address of an uninitialized
+        // variable. For assignment statements, place `_y = &raw _x` one statement below. For
+        // terminators with a destination to the address-taken local, or drop and replace
+        // statements, put the address-taking statement in the first statement of the successor
+        // block
         for (bid, block) in body.basic_blocks().iter_enumerated().rev() {
             for (sid, statement) in block.statements.iter().enumerate().rev() {
                 if let StatementKind::Assign(stmt) = &statement.kind {
@@ -227,7 +247,7 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
                         .is_some()
                     {
                         // put just below first assignment
-                        addr_taken_locals.push((*place, bid, sid + 1));
+                        local_address_statements.push((*place, bid, sid + 1));
                     }
                 }
             }
@@ -247,7 +267,7 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
                         {
                             if let Some(next_block) = target {
                                 // put into first statement of following block
-                                addr_taken_locals.push((*destination, *next_block, 0));
+                                local_address_statements.push((*destination, *next_block, 0));
                             }
                         }
                     }
@@ -261,7 +281,7 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
                             place.as_local().and_then(|l| self.local_substitute.get(&l))
                         {
                             // put into first statement of following block
-                            addr_taken_locals.push((*place, *target, 0));
+                            local_address_statements.push((*place, *target, 0));
                             self.local_substitute.insert(place.local, *local_substitute);
                         }
                     }
@@ -270,18 +290,18 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
             }
         }
 
-        // visit places first, so that they're already re-written and so that we don't accidentally
-        // rewrite locals in statements that we're about to insert
+        // END ADDRESS-TAKING STATEMENTS
+        // visit places first before inserting `_y = &raw _x`, so that we don't accidentally
+        // rewrite `_y = &raw _x` into `y = &raw (*_y)`
         self.super_body(body);
 
         // sort the insertion locations by statement id descending so that statement insertion
         // for statements with indices N and M, where N < M, does not shift/invalidate index M
-        addr_taken_locals.sort_by_key(|(_, _bid, sid)| *sid);
-        let addr_taken_locals = addr_taken_locals.into_iter().rev();
+        local_address_statements.sort_by_key(|(_, _bid, sid)| *sid);
+        let local_address_statements = local_address_statements.into_iter().rev();
 
-        // Add `_y = &raw _x` for each address-taken local _x,
-        // just below the original assignment `_x = ...`
-        for (addr_taken_local, bid, sid) in addr_taken_locals {
+        // Add `_y = &raw _x` for each address-taken local _x
+        for (addr_taken_local, bid, sid) in local_address_statements {
             let addr_of_stmt = Statement {
                 source_info: SourceInfo::outermost(DUMMY_SP),
                 kind: StatementKind::Assign(Box::new((
@@ -362,12 +382,14 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
             location,
         );
 
+        // Instrument assignment to a local that is address-taken, even
+        // if its address was taken after this assignment statement
         match self.addr_taken_local_substitutions.get(&dest.local) {
             Some(address) if dest.projection.is_empty() => {
                 let addr_of_local = Place::from(*address);
                 // TODO: this is a hack that places the store_addr_taken_fn
-                // after other instrumentations that must be in place prior
-                // to this one.
+                // after the instrumentation for taking the address of that local,
+                // which must be in place prior to this instrumentation.
                 let num_statements = self.body.basic_blocks()[location.block].statements.len();
                 let store_addr_taken_loc = Location {
                     block: location.block,
@@ -540,7 +562,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
     }
 
     fn visit_body(&mut self, body: &Body<'tcx>) {
-        // iterates over const functions
+        // adds an instrumentation to mark the start of the body
         self.super_body(body);
         if self.instrumentation_points.len() > 0 {
             let body_begin_func = self.hooks().find("mark_begin_body");

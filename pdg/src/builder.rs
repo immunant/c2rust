@@ -1,7 +1,7 @@
 use crate::graph::{Graph, GraphId, Graphs, Node, NodeId, NodeKind};
 use c2rust_analysis_rt::events::{Event, EventKind, Pointer};
 use c2rust_analysis_rt::metadata::Metadata;
-use c2rust_analysis_rt::mir_loc::{EventMetadata, Func, MirLoc, TransferKind};
+use c2rust_analysis_rt::mir_loc::{EventMetadata, Func, Local, MirLoc, TransferKind};
 use color_eyre::eyre;
 use fs_err::File;
 use indexmap::IndexSet;
@@ -36,7 +36,7 @@ pub trait EventKindExt {
     fn to_node_kind(
         &self,
         func: Func,
-        address_taken: &mut IndexSet<(Func, u32)>,
+        address_taken: &mut IndexSet<(Func, Local)>,
     ) -> Option<NodeKind>;
 }
 
@@ -68,7 +68,7 @@ impl EventKindExt for EventKind {
     fn to_node_kind(
         &self,
         func: Func,
-        address_taken: &mut IndexSet<(Func, u32)>,
+        address_taken: &mut IndexSet<(Func, Local)>,
     ) -> Option<NodeKind> {
         use EventKind::*;
         Some(match *self {
@@ -83,15 +83,20 @@ impl EventKindExt for EventKind {
             LoadValue(..) => NodeKind::LoadValue,
             StoreValue(..) => NodeKind::StoreValue,
             AddrOfLocal(_, local) => {
+                // All but the first instance of AddrOfLocal in a given
+                // function body are considered copies of that local's address
                 let func_clone = func.clone();
-                if address_taken.contains(&(func, local.as_u32())) {
+                if address_taken.contains(&(func, local)) {
                     NodeKind::Copy
                 } else {
-                    address_taken.insert((func_clone, local.as_u32()));
+                    address_taken.insert((func_clone, local));
                     NodeKind::AddrOfLocal(local.as_u32().into())
                 }
             }
             BeginBody => {
+                // Reset the collection of address-taken locals, in order to
+                // properly consider the first instance of each address-taking
+                // event as that, and not as a copy.
                 address_taken.clear();
                 return None;
             }
@@ -140,7 +145,7 @@ fn update_provenance(
 pub fn add_node(
     graphs: &mut Graphs,
     provenances: &mut HashMap<Pointer, (GraphId, NodeId)>,
-    address_taken: &mut IndexSet<(Func, u32)>,
+    address_taken: &mut IndexSet<(Func, Local)>,
     event: &Event,
     metadata: &Metadata,
 ) -> Option<NodeId> {
@@ -208,14 +213,6 @@ pub fn add_node(
             }
         })
     });
-
-    if let EventKind::AddrOfLocal(p, l) = event.kind {
-        if address_taken.contains(&(func.clone(), l.as_u32()))
-            && matches!(node_kind, NodeKind::Copy)
-        {
-            println!("addr_of_local {func:?}, {provenance:?}, {direct_source:?}, {source:?}");
-        }
-    }
 
     let function = Func {
         def_path_hash: dest_fn,

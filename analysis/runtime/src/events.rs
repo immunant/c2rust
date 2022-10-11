@@ -57,7 +57,7 @@ pub enum EventKind {
 
     /// An address-taken local is assigned to, which is semantically the
     /// same as [`EventKind::StoreAddr`], but needs to be distinguished because
-    /// storing to address-taken locals does not imply write permissions
+    /// storing to an address-taken local does not imply write permissions
     /// are necessary for its underlying address.
     StoreAddrTaken(Pointer),
 
@@ -76,6 +76,10 @@ pub enum EventKind {
 
     Offset(Pointer, isize, Pointer),
 
+    /// Marks the start of events in a new function body.
+    /// Used to distinguish address-taken locals that are treated
+    /// as copies and ones that aren't; all but the first AddrOfLocal
+    /// events after a BeginBody event are treated as copies.
     BeginBody,
 
     Done,

@@ -151,6 +151,10 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
         self
     }
 
+    /// Sets the priority of this instrumentation. Lower value
+    /// signifies higher priority and implies that an instrumentation
+    /// with higher priority will be placed before one with lower
+    /// priority.
     pub fn instrumentation_priority(mut self, p: usize) -> Self {
         self.instrumentation_priority = p;
         self
