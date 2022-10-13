@@ -19,10 +19,10 @@ c2rust-ast-printer = { version = "0.16.0", path = "../c2rust-ast-printer" }
 c2rust-bitfields = { version = "0.3.0", path = "../c2rust-bitfields" }
 colored = "2.0"
 dtoa = "1.0"
-failure = "0.1.5"
+failure = "0.1.8"
 fern = { version = "0.6", features = ["colored"] }
-handlebars = "4.2"
-indexmap = { version = "1.0.1", features = ["serde-1"] }
+handlebars = "4.3"
+indexmap = { version = "1.9.1", features = ["serde-1"] }
 itertools = "0.10"
 libc = "0.2"
 log = "0.4"
@@ -33,9 +33,9 @@ regex = "1"
 serde = { version = "1.0", features = ["rc"] }
 serde_bencode = "0.2"
 serde_bytes = "0.11"
-serde_derive = "1.0.80"
+serde_derive = "1.0.145"
 serde_json = "1.0"
-smallvec = "1.0"
+smallvec = "1.10"
 strum = "0.24"
 strum_macros = "0.24"
 syn = { version = "1.0", features = ["full", "extra-traits", "parsing", "printing"]}
