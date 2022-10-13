@@ -9,6 +9,11 @@
     unused_variables,
     unused_parens
 )]
+
+use libc::*;
+use std::mem;
+pub type size_t = libc::c_ulong;
+
 extern "C" {
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
     fn calloc(_: libc::c_ulong, _: libc::c_ulong) -> *mut libc::c_void;
@@ -59,9 +64,6 @@ unsafe fn reallocarray(ptr: *mut libc::c_void, nmemb: size_t, size: size_t) -> *
     REALLOC(ptr, nmemb * size)
 }
 
-use libc::*;
-use std::mem;
-pub type size_t = libc::c_ulong;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct T {
@@ -70,6 +72,7 @@ pub struct T {
     pub field3: *const S,
     pub field4: libc::c_int,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct S {
@@ -78,12 +81,15 @@ pub struct S {
     pub field3: *const S,
     pub field4: T,
 }
+
 #[no_mangle]
 pub static mut global: *mut S = 0 as *const S as *mut S;
+
 #[no_mangle]
 pub unsafe extern "C" fn malloc_wrapper(mut size: size_t) -> *mut libc::c_void {
     return malloc(size);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn recur(x: libc::c_int, s: *mut S) {
     if x == 0 {
@@ -93,6 +99,7 @@ pub unsafe extern "C" fn recur(x: libc::c_int, s: *mut S) {
     recur(x - 1, s);
     let y = s;
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn simple() {
     let mut x = malloc(mem::size_of::<S>() as c_ulong) as *mut S;
@@ -117,6 +124,7 @@ pub unsafe extern "C" fn simple() {
     recur(3, x);
     free(x2 as *mut libc::c_void);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn simple1() {
     let mut x = malloc(mem::size_of::<S>() as c_ulong) as *mut S;
@@ -144,19 +152,23 @@ pub struct connection {
 pub struct server {
     pub ev: *mut fdevents,
 }
+
 pub struct fdevents {
     pub fdarray: *mut *mut fdnode,
 }
 
 pub type handler_t = libc::c_uint;
+
 pub type fdevent_handler =
     Option<unsafe extern "C" fn(*mut libc::c_void, libc::c_int) -> handler_t>;
+
 unsafe extern "C" fn connection_handle_fdevent(
     context: *mut libc::c_void,
     revents: libc::c_int,
 ) -> handler_t {
     return 1;
 }
+
 pub struct fdnode_st {
     pub handler: fdevent_handler,
     pub ctx: *mut libc::c_void,
@@ -164,6 +176,7 @@ pub struct fdnode_st {
     pub events: libc::c_int,
     pub fde_ndx: libc::c_int,
 }
+
 pub type fdnode = fdnode_st;
 
 unsafe extern "C" fn fdnode_init() -> *mut fdnode {
@@ -176,6 +189,7 @@ unsafe extern "C" fn fdnode_init() -> *mut fdnode {
     }
     return fdn;
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn fdevent_register(
     mut ev: *mut fdevents,
@@ -193,6 +207,7 @@ pub unsafe extern "C" fn fdevent_register(
     (*fdn).fde_ndx = -(1 as libc::c_int);
     return fdn;
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn connection_accepted(
     mut srv: *mut server,
@@ -211,17 +226,20 @@ pub unsafe extern "C" fn connection_accepted(
     );
     return con;
 }
+
 unsafe extern "C" fn connection_close(mut srv: *mut server, mut con: *mut connection) {
     fdevent_fdnode_event_del((*srv).ev, (*con).fdn);
     fdevent_unregister((*srv).ev, (*con).fd);
     free(con as *mut libc::c_void);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn fdevent_fdnode_event_del(mut ev: *mut fdevents, mut fdn: *mut fdnode) {
     if !fdn.is_null() {
         fdevent_fdnode_event_unsetter(ev, fdn);
     }
 }
+
 unsafe extern "C" fn fdevent_fdnode_event_unsetter(mut ev: *mut fdevents, mut fdn: *mut fdnode) {
     if -(1 as libc::c_int) == (*fdn).fde_ndx {
         return;
@@ -229,6 +247,7 @@ unsafe extern "C" fn fdevent_fdnode_event_unsetter(mut ev: *mut fdevents, mut fd
     (*fdn).fde_ndx = -(1 as libc::c_int);
     (*fdn).events = 0 as libc::c_int;
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn fdevent_unregister(mut ev: *mut fdevents, mut fd: libc::c_int) {
     let mut fdn: *mut fdnode = *((*ev).fdarray).offset(fd as isize);
@@ -239,9 +258,11 @@ pub unsafe extern "C" fn fdevent_unregister(mut ev: *mut fdevents, mut fd: libc:
     *fresh1 = 0 as *mut fdnode;
     fdnode_free(fdn);
 }
+
 unsafe extern "C" fn fdnode_free(mut fdn: *mut fdnode) {
     free(fdn as *mut libc::c_void);
 }
+
 pub unsafe extern "C" fn lighttpd_test() {
     let fdarr = malloc(::std::mem::size_of::<*mut fdnode>() as libc::c_ulong) as *mut *mut fdnode;
     let fdes = malloc(::std::mem::size_of::<fdevents>() as libc::c_ulong) as *mut fdevents;
@@ -307,6 +328,7 @@ pub unsafe extern "C" fn exercise_allocator() {
     }
     free(s as *mut libc::c_void);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn simple_analysis() {
     let mut s: *mut S = malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
@@ -314,6 +336,7 @@ pub unsafe extern "C" fn simple_analysis() {
     printf(b"%i\n\x00" as *const u8 as *const libc::c_char, (*s).field);
     free(s as *mut libc::c_void);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn inter_function_analysis() {
     let mut s: *mut S = malloc_wrapper(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
@@ -321,10 +344,12 @@ pub unsafe extern "C" fn inter_function_analysis() {
     printf(b"%i\n\x00" as *const u8 as *const libc::c_char, (*s).field);
     free(s as *mut libc::c_void);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn analysis2_helper(mut s: *mut S) {
     printf(b"%i\n\x00" as *const u8 as *const libc::c_char, (*s).field);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn analysis2() {
     let mut s: *mut S = malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
@@ -332,6 +357,7 @@ pub unsafe extern "C" fn analysis2() {
     analysis2_helper(s);
     free(s as *mut libc::c_void);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn no_owner(mut should_free: libc::c_int) {
     global = malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
@@ -339,6 +365,7 @@ pub unsafe extern "C" fn no_owner(mut should_free: libc::c_int) {
         free(global as *mut libc::c_void);
     };
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn invalid() {
     let mut s: *mut S = malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
@@ -352,6 +379,7 @@ pub unsafe extern "C" fn invalid() {
     global = 0 as *mut S;
     free(s as *mut libc::c_void);
 }
+
 pub unsafe extern "C" fn testing() {
     let mut x = 10i32;
     let mut y = 32i32;
@@ -359,20 +387,24 @@ pub unsafe extern "C" fn testing() {
     let ref mut fresh1 = ptr;
     *fresh1 = &mut x as *mut i32;
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_malloc_free() {
     let s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
     free(s);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_malloc_free_cast() {
     let s = malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
     free(s as *mut libc::c_void);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn foo(bar: *mut libc::c_void) {
     let baz = bar;
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_arg() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
@@ -380,6 +412,7 @@ pub unsafe extern "C" fn test_arg() {
     let t = s;
     free(s as *mut libc::c_void);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn foo_rec(n: i32, bar: *mut libc::c_void) -> *mut libc::c_void {
     if n != 0 {
@@ -390,15 +423,18 @@ pub unsafe extern "C" fn foo_rec(n: i32, bar: *mut libc::c_void) -> *mut libc::c
 
     bar
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_arg_rec() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
     let t = foo_rec(3, s);
     free(s as *mut libc::c_void);
 }
+
 pub fn shared_ref_foo(x: &u8) -> &u8 {
     x
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_addr_taken_arg(mut t: T) {
     t.field3 = 0 as *const S;
@@ -412,6 +448,7 @@ pub unsafe extern "C" fn test_shared_ref() {
     let foo = shared_ref_foo(z);
     let bar = std::ptr::addr_of!(*foo);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_unique_ref() {
     let mut x = 10i32;
@@ -420,6 +457,7 @@ pub unsafe extern "C" fn test_unique_ref() {
     let ref mut fresh1 = ptr;
     *fresh1 = &mut x as *mut i32;
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_ref_field() {
     let t = T {
@@ -437,6 +475,7 @@ pub unsafe extern "C" fn test_ref_field() {
     };
     s.field4.field4 = s.field4.field4;
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_addr_taken() {
     let x = 2;
@@ -483,18 +522,21 @@ pub unsafe extern "C" fn test_realloc_reassign() {
     s = realloc(s, 2 * mem::size_of::<S>() as c_ulong);
     free(s);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_realloc_fresh() {
     let s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
     let p = realloc(s, mem::size_of::<S>() as c_ulong);
     free(p);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_load_addr() {
     let s = calloc(1, ::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
     let x = (*s);
     free(s as *mut libc::c_void);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_overwrite() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
@@ -504,12 +546,14 @@ pub unsafe extern "C" fn test_overwrite() {
     free(s);
     free(s2);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_store_addr() {
     let s = malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
     (*s).field = 10i32;
     free(s as *mut libc::c_void);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_load_other_store_self() {
     let s = malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
@@ -519,6 +563,7 @@ pub unsafe extern "C" fn test_load_other_store_self() {
     free(s as *mut libc::c_void);
     free(t as *mut libc::c_void);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_load_self_store_self() {
     let s = calloc(
@@ -528,6 +573,7 @@ pub unsafe extern "C" fn test_load_self_store_self() {
     (*s).field4.field4 = (*s).field4.field4;
     free(s as *mut libc::c_void);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_load_self_store_self_inter() {
     let s = calloc(
@@ -538,6 +584,7 @@ pub unsafe extern "C" fn test_load_self_store_self_inter() {
     (*s).field = y;
     free(s as *mut libc::c_void);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_ptr_int_ptr() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
@@ -545,12 +592,14 @@ pub unsafe extern "C" fn test_ptr_int_ptr() {
     s = x as *mut libc::c_void;
     free(s);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_load_value() {
     let s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
     let ps = std::ptr::addr_of!(s);
     free(*ps);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_store_value() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
@@ -559,6 +608,7 @@ pub unsafe extern "C" fn test_store_value() {
     *ps = t;
     free(s);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_store_value_field() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
@@ -568,6 +618,7 @@ pub unsafe extern "C" fn test_store_value_field() {
     free(t as *mut libc::c_void);
     free(s as *mut libc::c_void);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn test_load_value_store_value() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
@@ -575,6 +626,7 @@ pub unsafe extern "C" fn test_load_value_store_value() {
     *ps = *ps;
     free(*ps);
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn insertion_sort(n: libc::c_int, p: *mut libc::c_int) {
     let mut i: libc::c_int = 1 as libc::c_int;
