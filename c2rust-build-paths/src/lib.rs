@@ -6,11 +6,11 @@ use std::{
     str,
 };
 
-use print_bytes::println_bytes;
+use print_bytes::println_lossy;
 
 fn print_cargo_path(name: &str, path: &Path) {
     print!("cargo:{name}");
-    println_bytes(path);
+    println_lossy(path);
 }
 
 pub struct SysRoot {

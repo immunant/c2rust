@@ -5,5 +5,5 @@ fn main() {
     sysroot.link_rustc_private();
 
     print!("cargo:rustc-env=C2RUST_TARGET_LIB_DIR=");
-    print_bytes::println_bytes(&sysroot.rustlib());
+    print_bytes::println_lossy(&sysroot.rustlib());
 }

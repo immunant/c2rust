@@ -157,7 +157,7 @@ dependencies = [
  "bitflags",
  "c2rust-build-paths",
  "polonius-engine",
- "print_bytes 0.6.2",
+ "print_bytes",
  "rustc-hash",
 ]
 
@@ -219,7 +219,7 @@ dependencies = [
 name = "c2rust-build-paths"
 version = "0.1.0"
 dependencies = [
- "print_bytes 0.6.2",
+ "print_bytes",
 ]
 
 [[package]]
@@ -972,16 +972,6 @@ checksum = "83fead41e178796ef8274dc612a7d8ce4c7e10ca35cd2c5b5ad24cac63aeb6c0"
 dependencies = [
  "proc-macro2",
  "syn",
-]
-
-[[package]]
-name = "print_bytes"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "795b19d28f1492b92e1122f26b85c36f75a629bee1a33692aabb3e767ae2805c"
-dependencies = [
- "print_bytes 0.7.0",
- "windows-sys",
 ]
 
 [[package]]
