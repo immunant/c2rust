@@ -82,7 +82,6 @@ args:
   - COMPILE_COMMANDS:
       help: Input compile_commands.json file
       required: true
-      index: 1
   - invalid-code:
       long: invalid-code
       help: How to handle violated invariants or invalid code
