@@ -1016,9 +1016,9 @@ dependencies = [
 
 [[package]]
 name = "print_bytes"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3057e36886667c470305bb076abc7f2f77a5662cb8de4124a4f5e6206ad2acd7"
+checksum = "22093b2707be2d786d367d44a9072a2271c4e2c7ba80d5a5eaf133c27a1f3c6e"
 dependencies = [
  "windows-sys",
 ]
