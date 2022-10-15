@@ -18,7 +18,7 @@ azure-devops = { project = "immunant/c2rust", pipeline = "immunant.c2rust", buil
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "3", features = ["yaml", "cargo"] }
+clap = { version = "3.2.22", features = ["yaml", "cargo"] }
 env_logger = "0.10"
 git-testament = "0.2.1"
 is_executable = "1.0"
