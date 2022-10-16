@@ -125,15 +125,18 @@ impl From<DefPathHash> for (u64, u64) {
     }
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Clone, Debug)]
+pub struct FuncId(pub DefPathHash);
+
 #[derive(Serialize, Deserialize, Eq, Clone)]
 pub struct Func {
-    pub def_path_hash: DefPathHash,
+    pub id: FuncId,
     pub name: String,
 }
 
 impl Func {
     fn cmp_fields(&self) -> impl Eq + Hash + Ord + '_ {
-        self.def_path_hash
+        self.id
     }
 }
 
@@ -176,8 +179,8 @@ impl Debug for Func {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TransferKind {
     None,
-    Arg(DefPathHash),
-    Ret(DefPathHash),
+    Arg(FuncId),
+    Ret(FuncId),
 }
 
 impl Default for TransferKind {
@@ -192,7 +195,7 @@ pub struct EventMetadata {
     pub source: Option<MirPlace>,
     /// Destination [`Local`] for an [`Event`](crate::events::Event).
     pub destination: Option<MirPlace>,
-    /// Destination func [`DefPathHash`] of [`Event`](crate::events::Event).
+    /// Destination func [`FuncId`] of [`Event`](crate::events::Event).
     pub transfer_kind: TransferKind,
     /// Any string useful for debugging.
     pub debug_info: String,

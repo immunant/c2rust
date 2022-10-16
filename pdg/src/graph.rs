@@ -1,5 +1,5 @@
-use c2rust_analysis_rt::mir_loc::MirPlace;
 use c2rust_analysis_rt::mir_loc::{self, DefPathHash, Func};
+use c2rust_analysis_rt::mir_loc::{FuncId, MirPlace};
 use rustc_index::newtype_index;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BasicBlock, Field, Local};
@@ -318,7 +318,7 @@ pub struct Graphs {
     pub graphs: IndexVec<GraphId, Graph>,
 
     /// Lookup table for finding all nodes in all graphs that store to a particular MIR local.
-    pub latest_assignment: HashMap<(mir_loc::DefPathHash, mir_loc::Local), (GraphId, NodeId)>,
+    pub latest_assignment: HashMap<(FuncId, mir_loc::Local), (GraphId, NodeId)>,
 }
 
 impl Graphs {

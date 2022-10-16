@@ -135,11 +135,11 @@ pub fn add_node(
         metadata: event_metadata,
     } = metadata.get(event.mir_loc);
 
-    let this_func_hash = func.def_path_hash;
+    let this_id = func.id;
     let (src_fn, dest_fn) = match event_metadata.transfer_kind {
-        TransferKind::None => (this_func_hash, this_func_hash),
-        TransferKind::Arg(p) => (this_func_hash, p),
-        TransferKind::Ret(p) => (p, this_func_hash),
+        TransferKind::None => (this_id, this_id),
+        TransferKind::Arg(id) => (this_id, id),
+        TransferKind::Ret(id) => (id, this_id),
     };
 
     if let TransferKind::Arg(_) = event_metadata.transfer_kind {
@@ -191,7 +191,7 @@ pub fn add_node(
     });
 
     let function = Func {
-        def_path_hash: dest_fn,
+        id: dest_fn,
         name: metadata.functions[&dest_fn].clone(),
     };
 
