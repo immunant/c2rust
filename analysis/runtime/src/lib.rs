@@ -2,7 +2,7 @@ pub mod events;
 mod handlers;
 pub mod metadata;
 pub mod mir_loc;
-mod parse;
+pub mod parse;
 pub mod runtime;
 
 pub use handlers::*;

@@ -203,6 +203,9 @@ mod tests {
         process::Command,
     };
 
+    use c2rust_analysis_rt::runtime::backend::BackendKind;
+    use c2rust_analysis_rt::{parse::AsStr, runtime::scoped_runtime::RuntimeKind};
+
     use color_eyre::eyre::{self, ensure, eyre, Context};
 
     use crate::{Pdg, ToPrint};
@@ -302,6 +305,7 @@ mod tests {
         profile: Profile,
         args: impl IntoIterator<Item = impl AsRef<OsStr>>,
         to_print: &[ToPrint],
+        runtime_kind: RuntimeKind,
     ) -> eyre::Result<impl Display> {
         let runtime_path = repo_dir()?.join("analysis/runtime");
         let manifest_path = test_crate_dir.join("Cargo.toml");
@@ -332,7 +336,8 @@ mod tests {
             .arg("--")
             .args(args)
             .env("METADATA_FILE", &metadata_path)
-            .env("INSTRUMENT_BACKEND", "log")
+            .env("INSTRUMENT_RUNTIME", runtime_kind.as_str())
+            .env("INSTRUMENT_BACKEND", BackendKind::Log.as_str())
             .env("INSTRUMENT_OUTPUT", &event_log_path)
             .env("INSTRUMENT_OUTPUT_APPEND", "false");
         let status = cmd.status()?;
@@ -344,7 +349,10 @@ mod tests {
         Ok(repr.to_string())
     }
 
-    fn analysis_test_pdg_snapshot(profile: Profile) -> eyre::Result<impl Display> {
+    fn analysis_test_pdg_snapshot(
+        profile: Profile,
+        runtime_kind: RuntimeKind,
+    ) -> eyre::Result<impl Display> {
         pdg_snapshot(
             repo_dir()?.join("analysis/test").as_path(),
             profile,
@@ -353,6 +361,7 @@ mod tests {
                 use ToPrint::*;
                 &[Graphs, WritePermissions, Counts]
             },
+            runtime_kind,
         )
     }
 
@@ -361,7 +370,7 @@ mod tests {
     #[test]
     fn analysis_test_pdg_snapshot_debug() -> eyre::Result<()> {
         init();
-        let pdg = analysis_test_pdg_snapshot(Profile::Debug)?;
+        let pdg = analysis_test_pdg_snapshot(Profile::Debug, Default::default())?;
         insta::assert_display_snapshot!(pdg);
         Ok(())
     }

@@ -1,48 +1,129 @@
 use std::{
-    sync::mpsc::{self, SyncSender},
+    sync::{
+        mpsc::{self, SyncSender},
+        Mutex,
+    },
     thread,
 };
 
+use enum_dispatch::enum_dispatch;
 use once_cell::sync::OnceCell;
 
-use crate::events::Event;
-
-use super::{
-    backend::{Backend, DetectBackend},
-    skip::{skip_event, SkipReason},
-    AnyError, FINISHED,
+use crate::{
+    events::Event,
+    parse::{self, AsStr, GetChoices},
 };
 
-pub struct Runtime {
+use super::{
+    backend::{Backend, WriteEvent},
+    skip::{skip_event, SkipReason},
+    AnyError, Detect, FINISHED,
+};
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum RuntimeKind {
+    MainThread,
+    BackgroundThread,
+}
+
+impl AsStr for RuntimeKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::MainThread => "fg",
+            Self::BackgroundThread => "bg",
+        }
+    }
+}
+
+impl GetChoices for RuntimeKind {
+    fn choices() -> &'static [Self] {
+        &[Self::MainThread, Self::BackgroundThread]
+    }
+}
+
+impl Default for RuntimeKind {
+    fn default() -> Self {
+        Self::BackgroundThread
+    }
+}
+
+impl Detect for RuntimeKind {
+    fn detect() -> Result<Self, AnyError> {
+        Ok(parse::env::one_of("INSTRUMENT_RUNTIME").cloned()?)
+    }
+}
+
+#[enum_dispatch]
+pub trait ExistingRuntime {
+    /// Finalize the [`ExistingRuntime`].
+    ///
+    /// Must be idempotent, i.e. able to be called multiple times.
+    ///
+    /// Similar to [`Drop::drop`], except it takes `&self`, not `&mut self`,
+    /// so it can be run in a [`OnceCell`].
+    fn finalize(&self);
+
+    fn send_event(&self, event: Event);
+}
+
+trait Runtime: ExistingRuntime + Sized {
+    fn try_init(backend: Backend) -> Result<Self, AnyError>;
+}
+
+#[enum_dispatch(ExistingRuntime)]
+pub enum ScopedRuntime {
+    MainThread(MainThreadRuntime),
+    BackgroundThread(BackgroundThreadRuntime),
+}
+
+impl ScopedRuntime {
+    pub fn detect_kind(kind: RuntimeKind) -> Result<Self, AnyError> {
+        let backend = Backend::detect()?;
+        let this = match kind {
+            RuntimeKind::MainThread => Self::MainThread(MainThreadRuntime::try_init(backend)?),
+            RuntimeKind::BackgroundThread => {
+                Self::BackgroundThread(BackgroundThreadRuntime::try_init(backend)?)
+            }
+        };
+        Ok(this)
+    }
+}
+
+impl Detect for ScopedRuntime {
+    fn detect() -> Result<Self, AnyError> {
+        Self::detect_kind(RuntimeKind::detect()?)
+    }
+}
+
+pub struct MainThreadRuntime {
+    backend: Mutex<Backend>,
+}
+
+impl ExistingRuntime for MainThreadRuntime {
+    fn finalize(&self) {
+        self.backend.lock().unwrap().flush();
+    }
+
+    fn send_event(&self, event: Event) {
+        self.backend.lock().unwrap().write(event);
+    }
+}
+
+impl Runtime for MainThreadRuntime {
+    fn try_init(backend: Backend) -> Result<Self, AnyError> {
+        let backend = Mutex::new(backend);
+        Ok(Self { backend })
+    }
+}
+
+pub struct BackgroundThreadRuntime {
     tx: SyncSender<Event>,
     finalized: OnceCell<()>,
 }
 
-impl Runtime {
-    /// Initialize the [`Runtime`], which includes [`thread::spawn`]ing, so it must be run post-`main`.
-    ///
-    /// It returns an error if [`Backend::detect`] returns an error.
-    ///
-    /// It's only `pub(super)` as `super` is the scope of the global [`super::FINISHED`],
-    /// which we have to prevent from being used multiple times.
-    pub(super) fn try_init() -> Result<Self, AnyError> {
-        let mut backend = Backend::detect()?;
-        let (tx, rx) = mpsc::sync_channel(1024);
-        thread::spawn(move || backend.run(rx));
-        Ok(Self {
-            tx,
-            finalized: OnceCell::new(),
-        })
-    }
-
-    /// Finalize the [`Runtime`], shutting it down.
-    ///
-    /// This can be called any number of times; it only finalizes once.
-    ///
-    /// This does the same thing as [`Runtime::drop`]
-    /// except, of course, it's not a destructor.
-    pub fn finalize(&self) {
-        // only run finalizer once
+impl ExistingRuntime for BackgroundThreadRuntime {
+    fn finalize(&self) {
+        // Only run the finalizer once.
         self.finalized.get_or_init(|| {
             // Notify the backend that we're done.
             self.tx.send(Event::done()).unwrap();
@@ -57,13 +138,13 @@ impl Runtime {
         // Don't need to `forget(self)` since the finalizer can only run once anyways.
     }
 
-    /// Send an [`Event`] to the [`Runtime`].
+    /// Send an [`Event`] to the [`BackgroundThreadRuntime`].
     ///
-    /// If the [`Runtime`] has already been [`Runtime::finalize`]d,
+    /// If the [`BackgroundThreadRuntime`] has already been [`BackgroundThreadRuntime::finalize`]d,
     /// then the [`Event`] is silently dropped.
     /// Otherwise, it sends the [`Event`] to the channel,
     /// panicking if there is a [`SendError`](std::sync::mpsc::SendError).
-    pub fn send_event(&self, event: Event) {
+    fn send_event(&self, event: Event) {
         match self.finalized.get() {
             None => {
                 // `.unwrap()` as we're in no place to handle an error here,
@@ -71,18 +152,31 @@ impl Runtime {
                 self.tx.send(event).unwrap();
             }
             Some(()) => {
-                // Silently drop the [`Event`] as the [`Runtime`] has already been [`Runtime::finalize`]d.
+                // Silently drop the [`Event`] as the [`BackgroundThreadRuntime`] has already been [`BackgroundThreadRuntime::finalize`]d.
                 skip_event(event, SkipReason::AfterMain);
             }
         }
     }
 }
 
-impl Drop for Runtime {
-    /// Finalize the [`Runtime`], shutting it down.
+impl Drop for BackgroundThreadRuntime {
+    /// Finalize the [`BackgroundThreadRuntime`], shutting it down.
     ///
-    /// This does the same thing as [`Runtime::finalize`].
+    /// This does the same thing as [`BackgroundThreadRuntime::finalize`].
     fn drop(&mut self) {
         self.finalize();
+    }
+}
+
+impl Runtime for BackgroundThreadRuntime {
+    /// Initialize the [`BackgroundThreadRuntime`], which includes [`thread::spawn`]ing,
+    /// so it must be run post-`main`.
+    fn try_init(mut backend: Backend) -> Result<Self, AnyError> {
+        let (tx, rx) = mpsc::sync_channel(1024);
+        thread::spawn(move || backend.run(rx));
+        Ok(Self {
+            tx,
+            finalized: OnceCell::new(),
+        })
     }
 }

@@ -12,4 +12,8 @@ use once_cell::sync::Lazy;
 
 type AnyError = Box<dyn Error + Send + Sync + 'static>;
 
+pub trait Detect: Sized {
+    fn detect() -> Result<Self, AnyError>;
+}
+
 static FINISHED: Lazy<(Mutex<bool>, Condvar)> = Lazy::new(|| (Mutex::new(false), Condvar::new()));
