@@ -370,7 +370,7 @@ mod tests {
     #[test]
     fn analysis_test_pdg_snapshot_debug() -> eyre::Result<()> {
         init();
-        let pdg = analysis_test_pdg_snapshot(Profile::Debug, RuntimeKind::BackgroundThread)?;
+        let pdg = analysis_test_pdg_snapshot(Profile::Debug, Default::default())?;
         insta::assert_display_snapshot!(pdg);
         Ok(())
     }
