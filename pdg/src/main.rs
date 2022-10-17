@@ -81,14 +81,12 @@ impl Pdg {
         }
     }
 
+    /// The destination node of AddrOfLocal is always Some(local)
+    /// and is used in determining the sources of subsequent PDG
+    /// nodes. However, for the purposes of static analysis, it's
+    /// undesired and therefore destinations of AddrOfLocalNodes
+    /// are removed.
     pub fn remove_sources(&mut self) {
-        /*
-            The destination node of AddrOfLocal is always Some(local)
-            and is used in determining the sources of subsequent PDG
-            nodes. However, for the purposes of static analysis, it's
-            undesired and therefore destinations of AddrOfLocalNodes
-            are removed.
-        */
         for graph in &mut self.graphs.graphs {
             for node in &mut graph.nodes {
                 if let NodeKind::AddrOfLocal(..) = node.kind {
