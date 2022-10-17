@@ -62,8 +62,8 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
         } = point;
         let mut args = args.clone();
 
-        if let TransferKind::Arg(def_path_hash) = metadata.transfer_kind {
-            let callee_id = tcx.def_path_hash_to_def_id(def_path_hash.convert(), &mut || {
+        if let TransferKind::Arg(func_id) = metadata.transfer_kind {
+            let callee_id = tcx.def_path_hash_to_def_id(func_id.0.convert(), &mut || {
                 panic!("cannot find DefId of callee func hash")
             });
             state.add_fn(callee_id, tcx);

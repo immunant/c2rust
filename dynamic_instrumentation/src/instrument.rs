@@ -1,6 +1,6 @@
 use anyhow::Context;
 use c2rust_analysis_rt::metadata::Metadata;
-use c2rust_analysis_rt::mir_loc::{self, EventMetadata, Func, MirLoc, MirLocId, TransferKind};
+use c2rust_analysis_rt::mir_loc::{EventMetadata, Func, FuncId, MirLoc, MirLocId, TransferKind};
 use c2rust_analysis_rt::HOOK_FUNCTIONS;
 use fs2::FileExt;
 use fs_err::OpenOptions;
@@ -31,7 +31,7 @@ use crate::util::Convert;
 #[derive(Default)]
 pub struct Instrumenter {
     mir_locs: Mutex<IndexSet<MirLoc>>,
-    functions: Mutex<HashMap<mir_loc::DefPathHash, String>>,
+    functions: Mutex<HashMap<FuncId, String>>,
 }
 
 impl Instrumenter {
@@ -46,7 +46,7 @@ impl Instrumenter {
 
     pub fn add_fn(&self, did: DefId, tcx: TyCtxt) {
         self.functions.lock().unwrap().insert(
-            tcx.def_path_hash(did).convert(),
+            FuncId(tcx.def_path_hash(did).convert()),
             tcx.item_name(did).to_string(),
         );
     }
@@ -93,17 +93,11 @@ impl Instrumenter {
         location: Location,
         metadata: EventMetadata,
     ) -> MirLocId {
-        let body_def = body_def.convert();
-        let fn_name = self
-            .functions
-            .lock()
-            .unwrap()
-            .get(&body_def)
-            .unwrap()
-            .clone();
+        let fn_id = FuncId(body_def.convert());
+        let fn_name = self.functions.lock().unwrap().get(&fn_id).unwrap().clone();
         let mir_loc = MirLoc {
             func: Func {
-                def_path_hash: body_def,
+                id: fn_id,
                 name: fn_name,
             },
             basic_block_idx: location.block.index(),
@@ -355,7 +349,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                 };
                 let func_kind = func.ty(self, self.tcx()).kind();
                 let transfer_kind = if let &ty::FnDef(def_id, _) = func_kind {
-                    TransferKind::Arg(self.tcx().def_path_hash(def_id).convert())
+                    TransferKind::Arg(FuncId(self.tcx().def_path_hash(def_id).convert()))
                 } else {
                     TransferKind::None
                 };
@@ -386,7 +380,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                             .source(args)
                             .dest(destination)
                             .after_call()
-                            .transfer(TransferKind::Ret(self.func_hash()))
+                            .transfer(TransferKind::Ret(self.func_id()))
                             .arg_vars(args.iter().cloned())
                             .add_to(self);
                     } else if is_region_or_unsafe_ptr(destination.ty(self, self.tcx()).ty) {
@@ -398,9 +392,9 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                         self.loc(location, instrumentation_location, arg_fn)
                             .source(&0)
                             .dest(destination)
-                            .transfer(TransferKind::Ret(
+                            .transfer(TransferKind::Ret(FuncId(
                                 self.tcx().def_path_hash(def_id).convert(),
-                            ))
+                            )))
                             .arg_var(*destination)
                             .add_to(self);
                     }

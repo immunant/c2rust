@@ -3,7 +3,7 @@ pub mod build;
 mod cast;
 pub mod source;
 
-use c2rust_analysis_rt::mir_loc::{self, EventMetadata};
+use c2rust_analysis_rt::mir_loc::{EventMetadata, FuncId};
 use rustc_middle::{
     mir::{Body, HasLocalDecls, LocalDecls, Location, Place, Rvalue},
     ty::TyCtxt,
@@ -75,9 +75,11 @@ impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
         self.assignment = old_assignment;
     }
 
-    pub fn func_hash(&self) -> mir_loc::DefPathHash {
-        self.tcx()
-            .def_path_hash(self.body.source.def_id())
-            .convert()
+    pub fn func_id(&self) -> FuncId {
+        FuncId(
+            self.tcx()
+                .def_path_hash(self.body.source.def_id())
+                .convert(),
+        )
     }
 }

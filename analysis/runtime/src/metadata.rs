@@ -7,12 +7,12 @@ use std::{
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::mir_loc::{DefPathHash, Func, MirLoc, MirLocId};
+use crate::mir_loc::{Func, FuncId, MirLoc, MirLocId};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Metadata {
     pub locs: Vec<MirLoc>,
-    pub functions: HashMap<DefPathHash, String>,
+    pub functions: HashMap<FuncId, String>,
 }
 
 impl Metadata {
@@ -57,11 +57,7 @@ impl FromIterator<Metadata> for Metadata {
 impl Debug for MirLoc {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let MirLoc {
-            func:
-                Func {
-                    def_path_hash: _,
-                    name: fn_name,
-                },
+            func: Func { name: fn_name, .. },
             basic_block_idx,
             statement_idx,
             metadata: _,

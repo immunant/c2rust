@@ -223,13 +223,14 @@ pub fn add_info(pdg: &mut Graphs) {
 mod test {
     use super::*;
     use c2rust_analysis_rt::mir_loc::Func;
+    use c2rust_analysis_rt::mir_loc::FuncId;
     use rustc_middle::mir::Field;
     use rustc_middle::mir::Local;
 
     fn mk_node(g: &mut Graph, kind: NodeKind, source: Option<NodeId>) -> NodeId {
         g.nodes.push(Node {
             function: Func {
-                def_path_hash: (1, 2).into(),
+                id: FuncId((1, 2).into()),
                 name: "fake_function".into(),
             },
             block: 0_u32.into(),
