@@ -642,10 +642,7 @@ pub unsafe extern "C" fn insertion_sort(n: libc::c_int, p: *mut libc::c_int) {
     }
 }
 
-/*
-    This is a minimal breaking example from lighttpd where instrumented code failed
-    to compile.
-*/
+/// This is a minimal breaking example from `lighttpd` where instrumented code failed to compile.
 #[no_mangle]
 #[cold]
 unsafe extern "C" fn log_error_va_list_impl(
@@ -671,10 +668,7 @@ pub unsafe extern "C" fn log_error(
     log_error_va_list_impl(errh, filename, line, fmt, ap.as_va_list(), 0 as libc::c_int);
 }
 
-/*
-    This is a minimal breaking example from lighttpd where instrumented code failed
-    to compile.
-*/
+/// This is a minimal breaking example from `lighttpd` where instrumented code failed to compile.
 fn vsprintf(_: *mut libc::c_char, _: *const libc::c_char, _: ::std::ffi::VaList) -> libc::c_int {
     0
 }
@@ -762,10 +756,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     return 0i32;
 }
 
-/*
-    This is a minimal breaking example where instrumented code failed
-    to compile.
-*/
+/// This is a minimal breaking example where instrumented code failed to compile.
 pub fn instrument_args_loop() {
     let mut args: Vec<*mut libc::c_char> = Vec::new();
     for arg in ::std::env::args() {}
