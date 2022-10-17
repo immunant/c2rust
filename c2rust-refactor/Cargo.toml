@@ -24,7 +24,7 @@ indexmap = { version = "1.0.1", features = ["serde-1"] }
 cargo = "0.44"
 clap = {version = "2.33", features = ["yaml"]}
 c2rust-analysis-rt = { path = "../analysis/runtime" }
-env_logger = "0.7"
+env_logger = "0.10"
 log = "0.4"
 rlua = "0.17"
 slotmap = {version = "0.4", features = ["unstable"]}

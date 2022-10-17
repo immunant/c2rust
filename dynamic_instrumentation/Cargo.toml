@@ -7,7 +7,7 @@ edition = "2021"
 anyhow = "1.0"
 bincode = "1.0.1"
 c2rust-analysis-rt = { path = "../analysis/runtime"}
-indexmap = "1.8"
+indexmap = "1.9"
 itertools = "0.10"
 once_cell = "1.13"
 log = "0.4"
@@ -15,9 +15,9 @@ fs-err = "2"
 clap = { version = "3.2", features = ["derive"] }
 # Used for parsing `rust-toolchain.toml`.
 # We don't need to edit at all, but `cargo` uses `toml-edit`, so we want to match it.
-toml_edit = "0.14"
+toml_edit = "0.18"
 fs2 = "0.4"
-env_logger = "0.9"
+env_logger = "0.10"
 tempfile = "3.3"
 
 [build-dependencies]
