@@ -656,6 +656,7 @@ unsafe extern "C" fn log_error_va_list_impl(
     let mut prefix: [libc::c_char; 40] = [0; 40];
     vsprintf(prefix.as_mut_ptr(), fmt, ap.as_va_list());
 }
+
 pub unsafe extern "C" fn log_error(
     errh: *mut libc::c_void,
     filename: *const libc::c_char,
@@ -672,6 +673,7 @@ pub unsafe extern "C" fn log_error(
 fn vsprintf(_: *mut libc::c_char, _: *const libc::c_char, _: ::std::ffi::VaList) -> libc::c_int {
     0
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn ErrorMsg(
     mut filename: *const libc::c_char,
