@@ -561,8 +561,8 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
         }
     }
 
+    /// Adds an instrumentation to mark the start of the body.
     fn visit_body(&mut self, body: &Body<'tcx>) {
-        // adds an instrumentation to mark the start of the body
         self.super_body(body);
         if self.instrumentation_points.len() > 0 {
             let body_begin_func = self.hooks().find("mark_begin_body");
