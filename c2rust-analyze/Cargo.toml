@@ -14,7 +14,7 @@ indexmap = "1.9.2"
 
 [build-dependencies]
 c2rust-build-paths = { path = "../c2rust-build-paths" }
-print_bytes = "0.7"
+print_bytes = "1.1"
 
 [dev-dependencies]
 c2rust-build-paths = { path = "../c2rust-build-paths" }
