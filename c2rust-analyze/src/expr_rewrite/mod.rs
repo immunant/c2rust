@@ -8,6 +8,8 @@ use rustc_middle::mir::{
 };
 use rustc_span::{Span, DUMMY_SP};
 
+mod span_index;
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ExprLoc {
     pub stmt: Location,
