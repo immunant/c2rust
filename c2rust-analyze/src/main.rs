@@ -661,15 +661,17 @@ fn run(tcx: TyCtxt) {
 
         eprintln!();
         let rewrites = expr_rewrite::gen_expr_rewrites(&acx, &asn, &mir);
-        for rw in &rewrites {
-            eprintln!(
-                "at {:?} ({}, {:?}):",
-                rw.loc.stmt,
-                describe_span(tcx, rw.loc.span),
-                rw.loc.sub,
+        for (loc, rws) in &rewrites {
+            let span = mir
+                .stmt_at(*loc)
+                .either(|stmt| stmt.source_info.span, |term| term.source_info.span);
+            let kind_str = mir.stmt_at(*loc).either(
+                |stmt| format!("{:?}", stmt.kind),
+                |term| format!("{:?}", term.kind),
             );
-            for kind in &rw.kinds {
-                eprintln!("  {:?}", kind);
+            eprintln!("at {:?} ({}; {}):", loc, kind_str, describe_span(tcx, span),);
+            for rw in rws {
+                eprintln!("  {:?}: {:?}", rw.sub_loc, rw.kind,);
             }
         }
     }
