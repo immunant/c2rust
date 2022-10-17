@@ -1,12 +1,12 @@
 use super::DataflowConstraints;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
 use crate::util::{self, describe_rvalue, Callee, RvalueDesc};
-use rustc_middle::mir::visit::{MutatingUseContext, NonMutatingUseContext, PlaceContext};
+use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
     BinOp, Body, Mutability, Operand, Place, PlaceRef, ProjectionElem, Rvalue, Statement,
     StatementKind, Terminator, TerminatorKind,
 };
-use rustc_middle::ty::TyKind;
+use rustc_middle::ty::{SubstsRef, TyKind};
 
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
 /// constraints as a side effect.
@@ -43,11 +43,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    pub fn visit_place(&mut self, pl: Place<'tcx>, ctx: PlaceContext) -> LTy<'tcx> {
-        self.visit_place_ref(pl.as_ref(), ctx)
+    pub fn visit_place(&mut self, pl: Place<'tcx>, mutbl: Mutability) -> LTy<'tcx> {
+        self.visit_place_ref(pl.as_ref(), mutbl)
     }
 
-    pub fn visit_place_ref(&mut self, pl: PlaceRef<'tcx>, ctx: PlaceContext) -> LTy<'tcx> {
+    pub fn visit_place_ref(&mut self, pl: PlaceRef<'tcx>, mutbl: Mutability) -> LTy<'tcx> {
         let mut lty = self.acx.local_tys[pl.local];
         let mut prev_deref_ptr = None;
 
@@ -55,9 +55,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             match proj {
                 ProjectionElem::Deref => {
                     // All derefs except the last are loads, to retrieve the pointer for the next
-                    // deref.  The last deref is either a load or a store, depending on `ctx`.
+                    // deref.  However, if the overall `Place` is used mutably (as indicated by
+                    // `mutbl`), then the previous derefs must be `&mut` as well.  The last deref
+                    // may not be a memory access at all; for example, `&(*p).x` does not actually
+                    // access the memory at `*p`.
                     if let Some(ptr) = prev_deref_ptr.take() {
-                        self.record_access(ptr, Mutability::Not);
+                        self.record_access(ptr, mutbl);
                     }
                     prev_deref_ptr = Some(lty.label);
                     assert_eq!(lty.args.len(), 1);
@@ -76,15 +79,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
 
         if let Some(ptr) = prev_deref_ptr.take() {
-            match ctx {
-                PlaceContext::NonMutatingUse(..) => {
-                    self.record_access(ptr, Mutability::Not);
-                }
-                PlaceContext::MutatingUse(..) => {
-                    self.record_access(ptr, Mutability::Mut);
-                }
-                PlaceContext::NonUse(..) => {}
-            }
+            self.record_access(ptr, mutbl);
         }
 
         lty
@@ -95,8 +90,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
         match describe_rvalue(rv) {
             Some(RvalueDesc::Project { base, proj: _ }) => {
-                let ctx = PlaceContext::NonMutatingUse(NonMutatingUseContext::Copy);
-                let base_ty = self.visit_place_ref(base, ctx);
+                // TODO: mutability should probably depend on mutability of the output ref/ptr
+                let base_ty = self.visit_place_ref(base, Mutability::Not);
                 base_ty.label
             }
             Some(RvalueDesc::AddrOfLocal { local, proj: _ }) => self.acx.addr_of_local[local],
@@ -117,14 +112,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_operand(&mut self, op: &Operand<'tcx>) -> LTy<'tcx> {
         match *op {
-            Operand::Copy(pl) => {
-                let ctx = PlaceContext::NonMutatingUse(NonMutatingUseContext::Copy);
-                self.visit_place(pl, ctx)
-            }
-            Operand::Move(pl) => {
-                let ctx = PlaceContext::NonMutatingUse(NonMutatingUseContext::Move);
-                self.visit_place(pl, ctx)
-            }
+            Operand::Copy(pl) | Operand::Move(pl) => self.visit_place(pl, Mutability::Not),
             Operand::Constant(ref c) => {
                 let ty = c.ty();
                 // TODO
@@ -170,8 +158,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         match stmt.kind {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
-                let ctx = PlaceContext::MutatingUse(MutatingUseContext::Store);
-                let pl_lty = self.visit_place(pl, ctx);
+                let pl_lty = self.visit_place(pl, Mutability::Mut);
                 let pl_ptr = pl_lty.label;
 
                 // TODO: combine these
@@ -204,13 +191,16 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 match util::ty_callee(tcx, func_ty) {
                     Some(Callee::PtrOffset { .. }) => {
                         // We handle this like a pointer assignment.
-                        let ctx = PlaceContext::MutatingUse(MutatingUseContext::Store);
-                        let pl_lty = self.visit_place(destination, ctx);
+                        let pl_lty = self.visit_place(destination, Mutability::Mut);
                         assert!(args.len() == 2);
                         let rv_lty = self.visit_operand(&args[0]);
                         self.do_assign(pl_lty.label, rv_lty.label);
+                        self.do_unify_pointees(pl_lty, rv_lty);
                         let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
                         self.constraints.add_all_perms(rv_lty.label, perms);
+                    }
+                    Some(Callee::Other { def_id, substs }) => {
+                        self.visit_call_other(def_id, substs, args, destination);
                     }
                     None => {}
                 }
@@ -218,6 +208,35 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             // TODO(spernsteiner): handle other `TerminatorKind`s
             _ => (),
         }
+    }
+
+    fn visit_call_other(
+        &mut self,
+        def_id: DefId,
+        substs: SubstsRef<'tcx>,
+        args: &[Operand<'tcx>],
+        dest: Place<'tcx>,
+    ) {
+        let sig = match self.acx.gacx.fn_sigs.get(&def_id) {
+            Some(&x) => x,
+            None => todo!("call to unknown function {def_id:?}"),
+        };
+        if substs.non_erasable_generics().next().is_some() {
+            todo!("call to generic function {def_id:?} {substs:?}");
+        }
+
+        // Process pseudo-assignments from `args` to the types declared in `sig`.
+        for (arg_op, &input_lty) in args.iter().zip(sig.inputs.iter()) {
+            let arg_lty = self.visit_operand(arg_op);
+            self.do_assign(input_lty.label, arg_lty.label);
+            self.do_unify_pointees(input_lty, arg_lty);
+        }
+
+        // Process a pseudo-assignment from the return type declared in `sig` to `dest`.
+        let dest_lty = self.visit_place(dest, Mutability::Mut);
+        let output_lty = sig.output;
+        self.do_assign(dest_lty.label, output_lty.label);
+        self.do_unify_pointees(dest_lty, output_lty);
     }
 }
 

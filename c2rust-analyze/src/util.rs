@@ -1,6 +1,7 @@
 use rustc_hir::def::DefKind;
+use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{Local, Mutability, Operand, PlaceElem, PlaceRef, Rvalue};
-use rustc_middle::ty::{DefIdTree, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{DefIdTree, SubstsRef, Ty, TyCtxt, TyKind};
 
 #[derive(Debug)]
 pub enum RvalueDesc<'tcx> {
@@ -70,10 +71,14 @@ pub enum Callee<'tcx> {
         pointee_ty: Ty<'tcx>,
         mutbl: Mutability,
     },
+    Other {
+        def_id: DefId,
+        substs: SubstsRef<'tcx>,
+    },
 }
 
 pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> {
-    let (did, _substs) = match *ty.kind() {
+    let (did, substs) = match *ty.kind() {
         TyKind::FnDef(did, substs) => (did, substs),
         _ => return None,
     };
@@ -96,6 +101,9 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> 
             };
             Some(Callee::PtrOffset { pointee_ty, mutbl })
         }
-        _ => None,
+        _ => Some(Callee::Other {
+            def_id: did,
+            substs,
+        }),
     }
 }
