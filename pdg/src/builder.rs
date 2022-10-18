@@ -148,11 +148,11 @@ pub fn add_node(
         statement_idx = 0;
     }
 
-    let head = event
+    let provenance = event
         .kind
         .ptr(event_metadata)
         .and_then(|ptr| provenances.get(&ptr).cloned());
-    let ptr = head.and_then(|(gid, _last_nid_ref)| {
+    let direct_source = provenance.and_then(|(gid, _last_nid_ref)| {
         graphs.graphs[gid]
             .nodes
             .iter()
@@ -166,7 +166,7 @@ pub fn add_node(
             .map(|nid| (gid, NodeId::from(nid)))
     });
 
-    let source = ptr.or_else(|| {
+    let source = direct_source.or_else(|| {
         event_metadata.source.as_ref().and_then(|src| {
             let latest_assignment = graphs.latest_assignment.get(&(src_fn, src.local)).cloned();
             if !src.projection.is_empty() {
@@ -185,7 +185,7 @@ pub fn add_node(
             } else if let EventKind::Field(..) = event.kind {
                 latest_assignment
             } else {
-                head
+                provenance
             }
         })
     });
@@ -209,8 +209,8 @@ pub fn add_node(
     };
 
     let graph_id = source
-        .or(ptr)
-        .or(head)
+        .or(direct_source)
+        .or(provenance)
         .and_then(|p| event.kind.parent(p))
         .map(|(gid, _)| gid)
         .unwrap_or_else(|| graphs.graphs.push(Graph::new()));
