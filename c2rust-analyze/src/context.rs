@@ -256,7 +256,7 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
         } = *self;
 
         for lty in local_tys {
-            *lty = remap_lty_pointers(lcx, &map, *lty);
+            *lty = remap_lty_pointers(lcx, &map, lty);
         }
 
         for ptr in addr_of_local {
