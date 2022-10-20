@@ -42,6 +42,7 @@ main() {
     (
         unset RUSTFLAGS # transpiled code has tons of warnings; don't allow `-D warnings`
         export RUST_BACKTRACE=1
+        export INSTRUMENT_RUNTIME=bg
         export INSTRUMENT_BACKEND=log
         export INSTRUMENT_OUTPUT="${event_log}"
         export INSTRUMENT_OUTPUT_APPEND=false
