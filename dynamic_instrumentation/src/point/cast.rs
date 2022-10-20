@@ -8,10 +8,7 @@ use rustc_middle::{
 };
 use rustc_span::DUMMY_SP;
 
-use crate::{
-    arg::{ArgKind, InstrumentationArg},
-    mir_utils::remove_outer_deref,
-};
+use crate::arg::{ArgKind, InstrumentationArg};
 
 /// Cast an argument from pointer to `usize`, if needed.
 ///
@@ -76,7 +73,6 @@ pub fn cast_ptr_to_usize<'tcx>(
         // create a raw ptr with `addr_of!`.
         InstrumentationArg::AddrOf(arg) => {
             let arg_place = arg.place().expect("Can't get the address of a constant");
-            let arg_place = remove_outer_deref(arg_place, tcx);
 
             let arg_ty = arg_place.ty(locals, tcx).ty;
             let inner_ty = ty::TypeAndMut {

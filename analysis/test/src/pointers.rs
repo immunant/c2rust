@@ -436,6 +436,11 @@ pub fn shared_ref_foo(x: &u8) -> &u8 {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn test_addr_taken_arg(mut t: T) {
+    t.field3 = 0 as *const S;
+    let z = &t;
+}
+#[no_mangle]
 pub unsafe extern "C" fn test_shared_ref() {
     let x = 2;
     let y = &x;
@@ -471,6 +476,46 @@ pub unsafe extern "C" fn test_ref_field() {
     s.field4.field4 = s.field4.field4;
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn test_addr_taken() {
+    let x = 2;
+    let y = 2 + x;
+    let px = std::ptr::addr_of!(x);
+    let z = x + y;
+}
+#[no_mangle]
+pub fn test_addr_taken_cond(cond: bool) {
+    // let x = if cond { ... } else { ... }; ... &x ...
+    let x = if cond { 1 } else { 2 };
+
+    let y = &x;
+    let a = x;
+}
+#[no_mangle]
+pub fn test_addr_taken_init_cond(cond: bool) {
+    // let mut x; if cond { x = 1; ... &x ... }; x = 2; ... &x ...
+    let mut x;
+    let mut y;
+    if cond {
+        x = 1;
+        y = &x;
+    }
+    x = 2;
+    let z = x;
+}
+#[no_mangle]
+pub unsafe fn test_addr_taken_loop() {
+    // loop { let x = ...; ... &x ... }
+    let mut count = 0;
+    loop {
+        let x = 2;
+        let z = if count % 2 == 0 { &x } else { &1 };
+        if count >= 3 {
+            break;
+        }
+        count += *z;
+    }
+}
 #[no_mangle]
 pub unsafe extern "C" fn test_realloc_reassign() {
     let mut s = malloc(::std::mem::size_of::<S>() as libc::c_ulong);
@@ -597,6 +642,69 @@ pub unsafe extern "C" fn insertion_sort(n: libc::c_int, p: *mut libc::c_int) {
     }
 }
 
+/// This is a minimal breaking example from `lighttpd` where instrumented code failed to compile.
+#[no_mangle]
+#[cold]
+unsafe extern "C" fn log_error_va_list_impl(
+    mut errh: *const libc::c_void,
+    filename: *const libc::c_char,
+    line: libc::c_uint,
+    fmt: *const libc::c_char,
+    mut ap: ::std::ffi::VaList,
+    perr: libc::c_int,
+) {
+    let mut prefix: [libc::c_char; 40] = [0; 40];
+    vsprintf(prefix.as_mut_ptr(), fmt, ap.as_va_list());
+}
+pub unsafe extern "C" fn log_error(
+    errh: *mut libc::c_void,
+    filename: *const libc::c_char,
+    line: libc::c_uint,
+    mut fmt: *const libc::c_char,
+    mut args: ...
+) {
+    let mut ap: ::std::ffi::VaListImpl;
+    ap = args.clone();
+    log_error_va_list_impl(errh, filename, line, fmt, ap.as_va_list(), 0 as libc::c_int);
+}
+
+/*
+    This is a minimal breaking example from lighttpd where instrumented code failed
+    to compile.
+*/
+fn vsprintf(_: *mut libc::c_char, _: *const libc::c_char, _: ::std::ffi::VaList) -> libc::c_int {
+    0
+}
+#[no_mangle]
+pub unsafe extern "C" fn ErrorMsg(
+    mut filename: *const libc::c_char,
+    mut lineno: libc::c_int,
+    mut format: *const libc::c_char,
+    mut args: ...
+) {
+    let mut errmsg: [libc::c_char; 10000] = [0; 10000];
+    let mut prefix: [libc::c_char; 40] = [0; 40];
+    let mut ap: ::std::ffi::VaListImpl;
+    ap = args.clone();
+    if lineno > 0 as libc::c_int {
+        sprintf(
+            prefix.as_mut_ptr(),
+            b"%.*s:%d: \0" as *const u8 as *const libc::c_char,
+            30 as libc::c_int - 10 as libc::c_int,
+            filename,
+            lineno,
+        );
+    } else {
+        sprintf(
+            prefix.as_mut_ptr(),
+            b"%.*s: \0" as *const u8 as *const libc::c_char,
+            30 as libc::c_int - 10 as libc::c_int,
+            filename,
+        );
+    }
+    vsprintf(errmsg.as_mut_ptr(), format, ap.as_va_list());
+}
+
 unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> libc::c_int {
     simple();
     exercise_allocator();
@@ -621,6 +729,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     test_realloc_reassign();
     test_realloc_fresh();
     test_load_addr();
+    test_load_addr();
     test_overwrite();
     test_store_addr();
     test_load_other_store_self();
@@ -634,7 +743,26 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     let nums = &mut [2i32, 5i32, 3i32, 1i32, 6i32];
     insertion_sort(nums.len() as libc::c_int, nums as *mut libc::c_int);
     test_ref_field();
+    test_addr_taken();
+    let mut t = T {
+        field: 0i32,
+        field2: 0u64,
+        field3: 0 as *const S,
+        field4: 0i32,
+    };
+    test_addr_taken_arg(t);
+    test_addr_taken_loop();
+    test_addr_taken_cond(true);
+    test_addr_taken_cond(false);
+    test_addr_taken_init_cond(true);
+    test_addr_taken_init_cond(false);
     return 0i32;
+}
+
+/// This is a minimal breaking example where instrumented code failed to compile.
+pub fn instrument_args_loop() {
+    let mut args: Vec<*mut libc::c_char> = Vec::new();
+    for arg in ::std::env::args() {}
 }
 
 pub fn main() {
