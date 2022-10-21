@@ -15,6 +15,30 @@ use crate::{arg::InstrumentationArg, hooks::Hooks, util::Convert};
 pub use apply::InstrumentationApplier;
 pub use cast::cast_ptr_to_usize;
 
+/// Sets the priority of an instrumentation point.
+#[derive(PartialEq, Eq, Ord, Default, Copy, Clone)]
+pub enum InstrumentationPriority {
+    /// Signifies higher priority and implies that an instrumentation
+    /// with early priority, will be placed before one with unspecified
+    /// priority.
+    Early,
+    #[default]
+    Unspecified,
+}
+
+impl PartialOrd for InstrumentationPriority {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        use InstrumentationPriority::*;
+        // We want instrumentations to be ordered early -> unspecified,
+        // which shall correspond to ordered ascending.
+        match (self, other) {
+            (Early, Unspecified) => Some(std::cmp::Ordering::Less),
+            (Unspecified, Early) => Some(std::cmp::Ordering::Greater),
+            _ => Some(std::cmp::Ordering::Equal),
+        }
+    }
+}
+
 pub struct InstrumentationPoint<'tcx> {
     id: usize,
     pub original_location: Location,
@@ -23,6 +47,7 @@ pub struct InstrumentationPoint<'tcx> {
     pub args: Vec<InstrumentationArg<'tcx>>,
     pub is_cleanup: bool,
     pub after_call: bool,
+    pub instrumentation_priority: InstrumentationPriority,
     pub metadata: EventMetadata,
 }
 

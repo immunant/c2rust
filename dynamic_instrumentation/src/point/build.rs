@@ -14,7 +14,7 @@ use crate::{
     util::Convert,
 };
 
-use super::{CollectInstrumentationPoints, InstrumentationPoint};
+use super::{CollectInstrumentationPoints, InstrumentationPoint, InstrumentationPriority};
 
 #[derive(Default)]
 struct InstrumentationPointBuilder<'tcx> {
@@ -31,6 +31,7 @@ impl<'tcx> CollectInstrumentationPoints<'_, 'tcx> {
         original_location: Location,
         instrumentation_location: Location,
         func: DefId,
+        instrumentation_priority: InstrumentationPriority,
     ) {
         let id = self.instrumentation_points.len();
         let InstrumentationPointBuilder {
@@ -47,6 +48,7 @@ impl<'tcx> CollectInstrumentationPoints<'_, 'tcx> {
             args,
             is_cleanup,
             after_call,
+            instrumentation_priority,
             metadata,
         });
     }
@@ -58,6 +60,7 @@ pub struct InstrumentationBuilder<'a, 'tcx: 'a> {
     original_location: Location,
     instrumentation_location: Location,
     func: DefId,
+    instrumentation_priority: InstrumentationPriority,
     point: InstrumentationPointBuilder<'tcx>,
 }
 
@@ -75,6 +78,7 @@ impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
             instrumentation_location,
             func,
             point: Default::default(),
+            instrumentation_priority: Default::default(),
         }
         .debug_mir()
     }
@@ -82,9 +86,16 @@ impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
     pub fn into_instrumentation_points(mut self) -> Vec<InstrumentationPoint<'tcx>> {
         // Sort by reverse location so that we can split blocks without
         // perturbing future statement indices
-        let key = |p: &InstrumentationPoint| (p.instrumentation_location, p.after_call, p.id);
+        let key = |p: &InstrumentationPoint| {
+            (
+                p.instrumentation_location,
+                p.after_call,
+                p.instrumentation_priority,
+                p.id,
+            )
+        };
         self.instrumentation_points
-            .sort_unstable_by(|a, b| key(a).cmp(&key(b)).reverse());
+            .sort_by(|a, b| key(a).cmp(&key(b)).reverse());
         self.instrumentation_points
     }
 }
@@ -137,6 +148,11 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
 
     pub fn dest(mut self, p: &Place) -> Self {
         self.point.metadata.destination = Some(p.convert());
+        self
+    }
+
+    pub fn instrumentation_priority(mut self, priority: InstrumentationPriority) -> Self {
+        self.instrumentation_priority = priority;
         self
     }
 
@@ -206,6 +222,7 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
             self.original_location,
             self.instrumentation_location,
             self.func,
+            self.instrumentation_priority,
         );
     }
 }
