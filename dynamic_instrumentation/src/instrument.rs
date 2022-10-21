@@ -23,9 +23,9 @@ use std::sync::Mutex;
 use crate::arg::{ArgKind, InstrumentationArg};
 use crate::hooks::Hooks;
 use crate::mir_utils::{has_outer_deref, remove_outer_deref, strip_all_deref};
-use crate::point::cast_ptr_to_usize;
 use crate::point::CollectInstrumentationPoints;
 use crate::point::InstrumentationApplier;
+use crate::point::{cast_ptr_to_usize, InstrumentationPriority};
 use crate::util::Convert;
 
 #[derive(Default)]
@@ -242,6 +242,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     .arg_index_of(p.local)
                     .source(p)
                     .dest(&dest)
+                    .instrumentation_priority(InstrumentationPriority::Early)
                     .add_to(self);
             }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) if p.is_indirect() => {
@@ -289,6 +290,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                         .arg_addr_of(*p)
                         .source(&source)
                         .dest(&dest)
+                        .instrumentation_priority(InstrumentationPriority::Early)
                         .add_to(self);
                 } else {
                     // Instrument immutable borrows by tracing the reference itself
@@ -296,6 +298,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                         .arg_var(dest)
                         .source(&source)
                         .dest(&dest)
+                        .instrumentation_priority(InstrumentationPriority::Early)
                         .add_to(self);
                 };
             }
