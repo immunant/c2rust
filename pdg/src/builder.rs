@@ -1,9 +1,10 @@
 use crate::graph::{Graph, GraphId, Graphs, Node, NodeId, NodeKind};
 use c2rust_analysis_rt::events::{Event, EventKind, Pointer};
 use c2rust_analysis_rt::metadata::Metadata;
-use c2rust_analysis_rt::mir_loc::{EventMetadata, Func, MirLoc, TransferKind};
+use c2rust_analysis_rt::mir_loc::{EventMetadata, Func, FuncId, Local, MirLoc, TransferKind};
 use color_eyre::eyre;
 use fs_err::File;
+use indexmap::IndexSet;
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::io::{self, BufReader};
@@ -22,11 +23,19 @@ pub fn read_metadata(path: &Path) -> eyre::Result<Metadata> {
     Ok(Metadata::read(&bytes)?)
 }
 
+fn parent(e: &NodeKind, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)> {
+    use NodeKind::*;
+    match e {
+        Alloc(..) | AddrOfLocal(..) => None,
+        _ => Some(obj),
+    }
+}
+
+type AddressTaken = IndexSet<(FuncId, Local)>;
+
 pub trait EventKindExt {
     fn ptr(&self, metadata: &EventMetadata) -> Option<Pointer>;
-    fn has_parent(&self) -> bool;
-    fn parent(&self, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)>;
-    fn to_node_kind(&self) -> Option<NodeKind>;
+    fn to_node_kind(&self, func: FuncId, address_taken: &mut AddressTaken) -> Option<NodeKind>;
 }
 
 impl EventKindExt for EventKind {
@@ -40,6 +49,7 @@ impl EventKindExt for EventKind {
             Ret(ptr) => ptr,
             LoadAddr(ptr) => ptr,
             StoreAddr(ptr) => ptr,
+            StoreAddrTaken(ptr) => ptr,
             LoadValue(ptr) => ptr,
             StoreValue(ptr) => ptr,
             CopyRef => return None, // FIXME
@@ -49,23 +59,11 @@ impl EventKindExt for EventKind {
             Alloc { ptr, .. } => ptr,
             AddrOfLocal(lhs, _) => lhs,
             Offset(ptr, _, _) => ptr,
-            Done => return None,
+            Done | BeginFuncBody => return None,
         })
     }
 
-    fn has_parent(&self) -> bool {
-        use EventKind::*;
-        !matches!(
-            self,
-            Realloc { new_ptr: _, .. } | Alloc { ptr: _, .. } | AddrOfLocal(_, _) | Done
-        )
-    }
-
-    fn parent(&self, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)> {
-        self.has_parent().then_some(obj)
-    }
-
-    fn to_node_kind(&self) -> Option<NodeKind> {
+    fn to_node_kind(&self, func: FuncId, address_taken: &mut AddressTaken) -> Option<NodeKind> {
         use EventKind::*;
         Some(match *self {
             Alloc { .. } => NodeKind::Alloc(1),
@@ -75,9 +73,26 @@ impl EventKindExt for EventKind {
             Field(_, field) => NodeKind::Field(field.into()),
             LoadAddr(..) => NodeKind::LoadAddr,
             StoreAddr(..) => NodeKind::StoreAddr,
+            StoreAddrTaken(..) => NodeKind::StoreAddr,
             LoadValue(..) => NodeKind::LoadValue,
             StoreValue(..) => NodeKind::StoreValue,
-            AddrOfLocal(_, local) => NodeKind::AddrOfLocal(local.as_u32().into()),
+            AddrOfLocal(_, local) => {
+                // All but the first instance of AddrOfLocal in a given
+                // function body are considered copies of that local's address
+                let (_, inserted) = address_taken.insert_full((func, local));
+                if inserted {
+                    NodeKind::AddrOfLocal(local.as_u32().into())
+                } else {
+                    NodeKind::Copy
+                }
+            }
+            BeginFuncBody => {
+                // Reset the collection of address-taken locals, in order to
+                // properly consider the first instance of each address-taking
+                // event as that, and not as a copy.
+                address_taken.clear();
+                return None;
+            }
             ToInt(_) => NodeKind::PtrToInt,
             FromInt(_) => NodeKind::IntToPtr,
             Ret(_) => return None,
@@ -101,7 +116,7 @@ fn update_provenance(
         CopyPtr(ptr) => {
             // only insert if not already there
             if let Err(..) = provenances.try_insert(ptr, mapping) {
-                log::warn!("0x{:x} doesn't have a source", ptr);
+                log::warn!("0x{:x} already has a source", ptr);
             }
         }
         Realloc { new_ptr, .. } => {
@@ -123,11 +138,10 @@ fn update_provenance(
 pub fn add_node(
     graphs: &mut Graphs,
     provenances: &mut HashMap<Pointer, (GraphId, NodeId)>,
+    address_taken: &mut AddressTaken,
     event: &Event,
     metadata: &Metadata,
 ) -> Option<NodeId> {
-    let node_kind = event.kind.to_node_kind()?;
-
     let MirLoc {
         func,
         mut basic_block_idx,
@@ -135,6 +149,7 @@ pub fn add_node(
         metadata: event_metadata,
     } = metadata.get(event.mir_loc);
 
+    let node_kind = event.kind.to_node_kind(func.id, address_taken)?;
     let this_id = func.id;
     let (src_fn, dest_fn) = match event_metadata.transfer_kind {
         TransferKind::None => (this_id, this_id),
@@ -180,7 +195,7 @@ pub fn add_node(
                 }
             }
 
-            if src.projection.is_empty() {
+            if !matches!(event.kind, EventKind::AddrOfLocal(..)) && src.projection.is_empty() {
                 latest_assignment
             } else if let EventKind::Field(..) = event.kind {
                 latest_assignment
@@ -201,7 +216,7 @@ pub fn add_node(
         statement_idx,
         kind: node_kind,
         source: source
-            .and_then(|p| event.kind.parent(p))
+            .and_then(|p| parent(&node_kind, p))
             .map(|(_, nid)| nid),
         dest: event_metadata.destination.clone(),
         debug_info: event_metadata.debug_info.clone(),
@@ -211,7 +226,7 @@ pub fn add_node(
     let graph_id = source
         .or(direct_source)
         .or(provenance)
-        .and_then(|p| event.kind.parent(p))
+        .and_then(|p| parent(&node_kind, p))
         .map(|(gid, _)| gid)
         .unwrap_or_else(|| graphs.graphs.push(Graph::new()));
     let node_id = graphs.graphs[graph_id].nodes.push(node);
@@ -249,8 +264,15 @@ pub fn add_node(
 pub fn construct_pdg(events: &[Event], metadata: &Metadata) -> Graphs {
     let mut graphs = Graphs::new();
     let mut provenances = HashMap::new();
+    let mut address_taken = AddressTaken::new();
     for event in events {
-        add_node(&mut graphs, &mut provenances, event, metadata);
+        add_node(
+            &mut graphs,
+            &mut provenances,
+            &mut address_taken,
+            event,
+            metadata,
+        );
     }
     // TODO(kkysen) check if I have to remove any `GraphId`s from `graphs.latest_assignment`
     graphs.graphs = graphs.graphs.into_iter().unique().collect();

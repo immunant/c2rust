@@ -4,8 +4,9 @@ mod cast;
 pub mod source;
 
 use c2rust_analysis_rt::mir_loc::{EventMetadata, FuncId};
+use indexmap::{IndexMap, IndexSet};
 use rustc_middle::{
-    mir::{Body, HasLocalDecls, LocalDecls, Location, Place, Rvalue},
+    mir::{Body, HasLocalDecls, Local, LocalDecls, Location, Place, Rvalue},
     ty::TyCtxt,
 };
 use rustc_span::def_id::DefId;
@@ -51,22 +52,81 @@ pub struct InstrumentationPoint<'tcx> {
     pub metadata: EventMetadata,
 }
 
+/// Collects a set of all address-taken locals in a function body.
+///
+/// The set may include address-taken arguments.
+pub struct CollectAddressTakenLocals<'a, 'tcx: 'a> {
+    /// The set of address-taken locals.
+    pub address_taken: IndexSet<Local>,
+    tcx: TyCtxt<'tcx>,
+    body: &'a Body<'tcx>,
+}
+
+impl<'a, 'tcx: 'a> CollectAddressTakenLocals<'a, 'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>, body: &'a Body<'tcx>) -> Self {
+        Self {
+            address_taken: IndexSet::new(),
+            tcx,
+            body,
+        }
+    }
+
+    pub fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+}
+
+/// Rewrites all address-taken locals in terms of their underlying address.
+///
+/// For example, if `_x` is an address-taken local and `_y` is the local
+/// storing the address of `_x`, the statement `_z = _x` will be
+/// rewritten as `_z = (*_y)`.
+pub struct RewriteAddressTakenLocals<'tcx> {
+    /// The set of address-taken locals.
+    pub address_taken: IndexSet<Local>,
+    /// A mapping from the address-taken local to the local
+    /// storing the former's address.
+    pub local_to_address: IndexMap<Local, Local>,
+    tcx: TyCtxt<'tcx>,
+}
+
+impl<'tcx> RewriteAddressTakenLocals<'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>, address_taken: IndexSet<Local>) -> Self {
+        Self {
+            address_taken,
+            local_to_address: IndexMap::new(),
+            tcx,
+        }
+    }
+
+    pub fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+}
+
 pub struct CollectInstrumentationPoints<'a, 'tcx: 'a> {
     tcx: TyCtxt<'tcx>,
     hooks: Hooks<'tcx>,
-    body: &'a Body<'tcx>,
-    instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
+    pub body: &'a Body<'tcx>,
+    pub instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
     assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
+    pub addr_taken_local_addresses: IndexMap<Local, Local>,
 }
 
 impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>, hooks: Hooks<'tcx>, body: &'a Body<'tcx>) -> Self {
+    pub fn new(
+        tcx: TyCtxt<'tcx>,
+        hooks: Hooks<'tcx>,
+        body: &'a Body<'tcx>,
+        addr_taken_local_addresses: IndexMap<Local, Local>,
+    ) -> Self {
         Self {
             tcx,
             hooks,
             body,
             instrumentation_points: Default::default(),
             assignment: Default::default(),
+            addr_taken_local_addresses,
         }
     }
 
@@ -76,6 +136,12 @@ impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
 }
 
 impl<'a, 'tcx: 'a> HasLocalDecls<'tcx> for CollectInstrumentationPoints<'a, 'tcx> {
+    fn local_decls(&self) -> &'a LocalDecls<'tcx> {
+        self.body.local_decls()
+    }
+}
+
+impl<'a, 'tcx: 'a> HasLocalDecls<'tcx> for CollectAddressTakenLocals<'a, 'tcx> {
     fn local_decls(&self) -> &'a LocalDecls<'tcx> {
         self.body.local_decls()
     }

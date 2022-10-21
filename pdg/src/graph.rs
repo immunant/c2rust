@@ -325,6 +325,24 @@ impl Graphs {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// The [`Node::dest`] node of [`AddrOfLocal`]is always `Some(local)`
+    /// and is used in determining the sources of subsequent PDG nodes.
+    /// However, for the purposes of static analysis, it's undesired
+    /// and therefore destinations of [`AddrOfLocal`] [`Node`]s are removed.
+    ///
+    /// [`AddrOfLocal`]: NodeKind::AddrOfLocal
+    /// [`Node`]: crate::graph::Node
+    /// [`Node::dest`]: crate::graph::Node::dest
+    pub fn remove_addr_of_local_sources(&mut self) {
+        for graph in &mut self.graphs {
+            for node in &mut graph.nodes {
+                if let NodeKind::AddrOfLocal(..) = node.kind {
+                    node.dest = None;
+                }
+            }
+        }
+    }
 }
 
 impl Display for Graphs {

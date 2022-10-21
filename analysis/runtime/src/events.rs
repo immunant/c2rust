@@ -6,7 +6,7 @@ use std::fmt::Formatter;
 
 pub type Pointer = usize;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Event {
     pub mir_loc: MirLocId,
     pub kind: EventKind,
@@ -55,6 +55,12 @@ pub enum EventKind {
     /// The pointer appears as the address of a store operation.
     StoreAddr(Pointer),
 
+    /// An address-taken local is assigned to, which is semantically the
+    /// same as [`StoreAddr`](Self::StoreAddr), but needs to be distinguished because
+    /// storing to an address-taken local does not imply write permissions
+    /// are necessary for its underlying address.
+    StoreAddrTaken(Pointer),
+
     /// The pointer that appears as the address result of addr_of(Local)
     AddrOfLocal(Pointer, Local),
 
@@ -69,6 +75,12 @@ pub enum EventKind {
     StoreValue(Pointer),
 
     Offset(Pointer, isize, Pointer),
+
+    /// Marks the start of events in a new function body.
+    /// Used to distinguish address-taken locals that are treated
+    /// as copies and ones that aren't; all but the first [`AddrOfLocal`](Self::AddrOfLocal)
+    /// events after a [`BeginFuncBody`](Self::BeginFuncBody) event are treated as copies.
+    BeginFuncBody,
 
     Done,
 }
@@ -90,8 +102,10 @@ impl Debug for EventKind {
             } => write!(f, "realloc(0x{:x}, {}) -> 0x{:x}", old_ptr, size, new_ptr),
             Ret(ptr) => write!(f, "ret(0x{:x})", ptr),
             Done => write!(f, "done"),
+            BeginFuncBody => write!(f, "begin func body"),
             LoadAddr(ptr) => write!(f, "load(0x{:x})", ptr),
             StoreAddr(ptr) => write!(f, "store(0x{:x})", ptr),
+            StoreAddrTaken(ptr) => write!(f, "store(0x{:x})", ptr),
             CopyRef => write!(f, "copy_ref"),
             AddrOfLocal(ptr, _) => write!(f, "addr_of_local = 0x{:x}", ptr),
             ToInt(ptr) => write!(f, "to_int(0x{:x})", ptr),

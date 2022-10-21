@@ -174,3 +174,17 @@ pub fn ptr_store(mir_loc: MirLocId, ptr: usize) {
         kind: EventKind::StoreAddr(ptr),
     });
 }
+
+pub fn ptr_store_addr_taken(mir_loc: MirLocId, ptr: usize) {
+    RUNTIME.send_event(Event {
+        mir_loc,
+        kind: EventKind::StoreAddrTaken(ptr),
+    });
+}
+
+pub fn mark_begin_body(mir_loc: MirLocId) {
+    RUNTIME.send_event(Event {
+        mir_loc,
+        kind: EventKind::BeginFuncBody,
+    })
+}

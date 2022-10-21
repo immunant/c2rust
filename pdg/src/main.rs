@@ -66,6 +66,7 @@ impl Pdg {
         let metadata = read_metadata(metadata_path)?;
         let mut graphs = construct_pdg(&events, &metadata);
         add_info(&mut graphs);
+        graphs.remove_addr_of_local_sources();
         Ok(Self {
             events,
             metadata,
