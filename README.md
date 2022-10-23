@@ -94,7 +94,7 @@ LLVM_CONFIG_PATH=llvm-config-14 cargo install c2rust
 On OS X with Homebrew LLVM, you need to point the build system at the LLVM installation as follows:
 
 ```sh
-LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo install c2rust
+LLVM_CONFIG_PATH=/opt/homebrew/opt/llvm/bin/llvm-config cargo install c2rust
 ```
 
 On Linux with Linuxbrew LLVM, you need to point the build system at the LLVM installation as follows:
