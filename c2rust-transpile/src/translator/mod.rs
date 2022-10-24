@@ -796,12 +796,16 @@ pub fn translate(
         // Header Reorganization: Submodule Item Stores
         for (file_id, ref mut mod_item_store) in t.items.borrow_mut().iter_mut() {
             if *file_id != t.main_file {
+                if tcfg.reorganize_definitions {
+                    t.use_feature("register_tool");
+                }
                 let mut submodule = make_submodule(
                     &t.ast_context,
                     mod_item_store,
                     *file_id,
                     &mut new_uses,
                     &t.mod_names,
+                    tcfg.reorganize_definitions,
                 );
                 let comments = t.comment_context.get_remaining_comments(*file_id);
                 submodule.set_span(match t.comment_store.borrow_mut().add_comments(&comments) {
@@ -974,6 +978,7 @@ fn make_submodule(
     file_id: FileId,
     use_item_store: &mut ItemStore,
     mod_names: &RefCell<IndexMap<String, PathBuf>>,
+    reorganize_definitions: bool,
 ) -> Box<Item> {
     let (mut items, foreign_items, uses) = item_store.drain();
     let file_path = ast_context.get_file_path(file_id);
@@ -1016,15 +1021,19 @@ fn make_submodule(
         items.push(mk().extern_("C").foreign_items(foreign_items));
     }
 
-    let file_path_str = file_path.map_or(mod_name.as_str(), |path| {
-        path.to_str().expect("Found invalid unicode")
-    });
-    mk().vis("pub")
-        .str_attr(
+    let module_builder = mk().vis("pub");
+    let module_builder = if reorganize_definitions {
+        let file_path_str = file_path.map_or(mod_name.as_str(), |path| {
+            path.to_str().expect("Found invalid unicode")
+        });
+        module_builder.str_attr(
             vec!["c2rust", "header_src"],
             format!("{}:{}", file_path_str, include_line_number),
         )
-        .mod_item(mod_name, Some(mk().mod_(items)))
+    } else {
+        module_builder
+    };
+    module_builder.mod_item(mod_name, Some(mk().mod_(items)))
 }
 
 // TODO(kkysen) shouldn't need `extern crate`
@@ -1308,8 +1317,9 @@ impl<'c> Translation<'c> {
             ],
         )];
 
-        features.push("register_tool");
-        pragmas.push(("register_tool", vec!["c2rust"]));
+        if self.features.borrow().contains("register_tool") {
+            pragmas.push(("register_tool", vec!["c2rust"]));
+        }
 
         if !features.is_empty() {
             pragmas.push(("feature", features));
@@ -4854,6 +4864,7 @@ impl<'c> Translation<'c> {
         let decl_file_id = self.ast_context.file_id(decl);
 
         if self.tcfg.reorganize_definitions {
+            self.use_feature("register_tool");
             let attrs = item_attrs(&mut item).expect("no attrs field on unexpected item variant");
             add_src_loc_attr(attrs, &decl.loc.as_ref().map(|x| x.begin()));
             let mut item_stores = self.items.borrow_mut();
@@ -4873,6 +4884,7 @@ impl<'c> Translation<'c> {
         let decl_file_id = self.ast_context.file_id(decl);
 
         if self.tcfg.reorganize_definitions {
+            self.use_feature("register_tool");
             let attrs = foreign_item_attrs(&mut item)
                 .expect("no attrs field on unexpected foreign item variant");
             add_src_loc_attr(attrs, &decl.loc.as_ref().map(|x| x.begin()));
