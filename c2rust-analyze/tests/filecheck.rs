@@ -6,24 +6,35 @@ use std::process::{Command, Stdio};
 fn detect_filecheck() -> Option<&'static str> {
     let candidates = [
         "FileCheck",
+        // Intel macOS homebrew location.
         "/usr/local/opt/llvm/bin/FileCheck",
+        // Arm macOS homebrew location.
+        "/opt/homebrew/opt/llvm/bin/FileCheck",
         "FileCheck-14",
         "/usr/local/opt/llvm@14/bin/FileCheck",
+        "/opt/homebrew/opt/llvm@14/bin/FileCheck",
         "FileCheck-13",
         "/usr/local/opt/llvm@13/bin/FileCheck",
+        "/opt/homebrew/opt/llvm@13/bin/FileCheck",
         "FileCheck-12",
         "/usr/local/opt/llvm@12/bin/FileCheck",
+        "/opt/homebrew/opt/llvm@12/bin/FileCheck",
         "FileCheck-11",
         "/usr/local/opt/llvm@11/bin/FileCheck",
+        "/opt/homebrew/opt/llvm@11/bin/FileCheck",
         "FileCheck-10",
         "/usr/local/opt/llvm@10/bin/FileCheck",
+        "/opt/homebrew/opt/llvm@10/bin/FileCheck",
         "FileCheck-9",
         "/usr/local/opt/llvm@9/bin/FileCheck",
+        "/opt/homebrew/opt/llvm@9/bin/FileCheck",
         "FileCheck-8",
         "/usr/local/opt/llvm@8/bin/FileCheck",
+        "/opt/homebrew/opt/llvm@8/bin/FileCheck",
         "FileCheck-7",
         "FileCheck-7.0",
         "/usr/local/opt/llvm@7/bin/FileCheck",
+        "/opt/homebrew/opt/llvm@7/bin/FileCheck",
     ];
 
     for filecheck in candidates {

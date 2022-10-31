@@ -67,7 +67,7 @@ For example, the official LLVM packages from [apt.llvm.org](https://apt.llvm.org
     nix-shell
     ```
 
-- **OS X:** XCode command-line tools and recent LLVM (we recommend the Homebrew version) are required.
+- **macOS:** Xcode command-line tools and recent LLVM (we recommend the Homebrew version) are required.
 
     ```sh
     xcode-select --install
@@ -91,11 +91,20 @@ like this, for example:
 LLVM_CONFIG_PATH=llvm-config-14 cargo install c2rust
 ```
 
-On OS X with Homebrew LLVM, you need to point the build system at the LLVM installation as follows:
+On macOS with Homebrew LLVM, you need to point the build system at the LLVM installation. The path for the installation is architecture dependent:
 
-```sh
-LLVM_CONFIG_PATH=/opt/homebrew/opt/llvm/bin/llvm-config cargo install c2rust
-```
+- **Intel Macs:**
+
+    ```sh
+    LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo install c2rust
+    ```
+
+
+- **Arm Macs:**
+
+    ```sh
+    LLVM_CONFIG_PATH=/opt/homebrew/opt/llvm/bin/llvm-config cargo install c2rust
+    ```
 
 On Linux with Linuxbrew LLVM, you need to point the build system at the LLVM installation as follows:
 
