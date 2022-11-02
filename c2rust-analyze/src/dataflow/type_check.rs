@@ -105,6 +105,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     assert!(!matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)));
                     PointerId::NONE
                 }
+                Rvalue::UnaryOp(..) => PointerId::NONE,
                 _ => panic!("TODO: handle assignment of {:?}", rv),
             },
         }
