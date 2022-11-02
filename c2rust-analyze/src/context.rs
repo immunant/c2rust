@@ -271,7 +271,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                 assert_eq!(pointee_ty, pointee_lty.ty);
 
                 let args = self.lcx().mk_slice(&[pointee_lty]);
-                return self.lcx().mk(pointee_ty, args, ptr);
+                return self.lcx().mk(ty, args, ptr);
             }
         }
 
