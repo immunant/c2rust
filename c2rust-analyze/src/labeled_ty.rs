@@ -166,9 +166,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
             // Types with arguments
             Adt(a, substs) if a.is_struct() => {
                 let args = a
-                    .variant(VariantIdx::new(0))
-                    .fields
-                    .iter()
+                    .all_fields()
                     .map(|field| self.label(field.ty(self.tcx, substs), f))
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
