@@ -71,6 +71,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     TyKind::Tuple(..) => {
                         lty = lty.args[f.as_usize()];
                     }
+                    TyKind::Adt(..) => {
+                        lty = lty.args[f.as_usize()];
+                    }
                     _ => todo!("field of {:?}", lty),
                 },
 

@@ -2,9 +2,11 @@
 //! use this, for example, to attach a Polonius `Origin` to every reference type.  Labeled type
 //! data is manipulated by reference, the same as with `Ty`s, and the data is stored in the same
 //! arena as the underlying `Ty`s.
+use crate::rustc_index::vec::Idx;
 use rustc_arena::DroplessArena;
 use rustc_middle::ty::subst::{GenericArg, GenericArgKind};
 use rustc_middle::ty::{Ty, TyCtxt, TyKind, TypeAndMut};
+use rustc_target::abi::VariantIdx;
 use std::convert::TryInto;
 use std::fmt;
 use std::marker::PhantomData;
@@ -162,6 +164,15 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
             }
 
             // Types with arguments
+            Adt(a, substs) if a.is_struct() => {
+                let args = a
+                    .variant(VariantIdx::new(0))
+                    .fields
+                    .iter()
+                    .map(|field| self.label(field.ty(self.tcx, substs), f))
+                    .collect::<Vec<_>>();
+                self.mk(ty, self.mk_slice(&args), label)
+            }
             Adt(_, substs) => {
                 let args = substs.types().map(|t| self.label(t, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
