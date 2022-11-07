@@ -6,7 +6,7 @@ use rustc_middle::mir::{
     BinOp, Body, Location, Mutability, Operand, Place, PlaceRef, ProjectionElem, Rvalue, Statement,
     StatementKind, Terminator, TerminatorKind,
 };
-use rustc_middle::ty::{SubstsRef, TyKind};
+use rustc_middle::ty::SubstsRef;
 
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
 /// constraints as a side effect.
@@ -43,99 +43,100 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    pub fn visit_place(&mut self, pl: Place<'tcx>, mutbl: Mutability) -> LTy<'tcx> {
+    pub fn visit_place(&mut self, pl: Place<'tcx>, mutbl: Mutability) {
         self.visit_place_ref(pl.as_ref(), mutbl)
     }
 
-    pub fn visit_place_ref(&mut self, pl: PlaceRef<'tcx>, mutbl: Mutability) -> LTy<'tcx> {
-        let mut lty = self.acx.local_tys[pl.local];
+    pub fn visit_place_ref(&mut self, pl: PlaceRef<'tcx>, mutbl: Mutability) {
+        let mut lty = self.acx.type_of(pl.local);
         let mut prev_deref_ptr = None;
 
         for proj in pl.projection {
-            match proj {
-                ProjectionElem::Deref => {
-                    // All derefs except the last are loads, to retrieve the pointer for the next
-                    // deref.  However, if the overall `Place` is used mutably (as indicated by
-                    // `mutbl`), then the previous derefs must be `&mut` as well.  The last deref
-                    // may not be a memory access at all; for example, `&(*p).x` does not actually
-                    // access the memory at `*p`.
-                    if let Some(ptr) = prev_deref_ptr.take() {
-                        self.record_access(ptr, mutbl);
-                    }
-                    prev_deref_ptr = Some(lty.label);
-                    assert_eq!(lty.args.len(), 1);
-                    lty = lty.args[0];
+            if let ProjectionElem::Deref = proj {
+                // All derefs except the last are loads, to retrieve the pointer for the next
+                // deref.  However, if the overall `Place` is used mutably (as indicated by
+                // `mutbl`), then the previous derefs must be `&mut` as well.  The last deref
+                // may not be a memory access at all; for example, `&(*p).x` does not actually
+                // access the memory at `*p`.
+                if let Some(ptr) = prev_deref_ptr.take() {
+                    self.record_access(ptr, mutbl);
                 }
-
-                ProjectionElem::Field(f, _field_ty) => match lty.ty.kind() {
-                    TyKind::Tuple(..) => {
-                        lty = lty.args[f.as_usize()];
-                    }
-                    _ => todo!("field of {:?}", lty),
-                },
-
-                ref proj => panic!("unsupported projection {:?} in {:?}", proj, pl),
+                prev_deref_ptr = Some(lty.label);
             }
+            lty = self.acx.project(lty, proj);
         }
 
         if let Some(ptr) = prev_deref_ptr.take() {
             self.record_access(ptr, mutbl);
         }
-
-        lty
     }
 
-    pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>) -> PointerId {
+    pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, _lty: LTy<'tcx>) {
         eprintln!("visit_rvalue({:?}), desc = {:?}", rv, describe_rvalue(rv));
 
-        match describe_rvalue(rv) {
-            Some(RvalueDesc::Project { base, proj: _ }) => {
-                // TODO: mutability should probably depend on mutability of the output ref/ptr
-                let base_ty = self.visit_place_ref(base, Mutability::Not);
-                base_ty.label
-            }
-            Some(RvalueDesc::AddrOfLocal { local, proj: _ }) => self.acx.addr_of_local[local],
-            None => match *rv {
-                Rvalue::Use(ref op) => self.visit_operand(op).label,
-                Rvalue::BinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
-                Rvalue::BinaryOp(..) => PointerId::NONE,
-                Rvalue::CheckedBinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
-                Rvalue::CheckedBinaryOp(..) => PointerId::NONE,
-                Rvalue::Cast(_, _, ty) => {
-                    assert!(!matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)));
-                    PointerId::NONE
+        if let Some(desc) = describe_rvalue(rv) {
+            match desc {
+                RvalueDesc::Project { base, proj: _ } => {
+                    // TODO: mutability should probably depend on mutability of the output ref/ptr
+                    self.visit_place_ref(base, Mutability::Not);
                 }
-                Rvalue::UnaryOp(..) => PointerId::NONE,
-                _ => panic!("TODO: handle assignment of {:?}", rv),
-            },
+                RvalueDesc::AddrOfLocal { .. } => {}
+            }
+            return;
+        }
+
+        match *rv {
+            Rvalue::Use(ref op) => self.visit_operand(op),
+            Rvalue::Repeat(..) => todo!("visit_rvalue Repeat"),
+            Rvalue::Ref(..) => {
+                unreachable!("Rvalue::Ref should be handled by describe_rvalue instead")
+            }
+            Rvalue::ThreadLocalRef(..) => todo!("visit_rvalue ThreadLocalRef"),
+            Rvalue::AddressOf(..) => {
+                unreachable!("Rvalue::AddressOf should be handled by describe_rvalue instead")
+            }
+            Rvalue::Cast(_, ref op, _) => self.visit_operand(op),
+            Rvalue::BinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
+            Rvalue::BinaryOp(_, ref ops) => {
+                self.visit_operand(&ops.0);
+                self.visit_operand(&ops.1);
+            }
+            Rvalue::CheckedBinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
+            Rvalue::CheckedBinaryOp(_, ref ops) => {
+                self.visit_operand(&ops.0);
+                self.visit_operand(&ops.1);
+            }
+            Rvalue::NullaryOp(..) => {}
+            Rvalue::UnaryOp(_, ref op) => {
+                self.visit_operand(op);
+            }
+
+            _ => panic!("TODO: handle assignment of {:?}", rv),
         }
     }
 
-    pub fn visit_operand(&mut self, op: &Operand<'tcx>) -> LTy<'tcx> {
+    pub fn visit_operand(&mut self, op: &Operand<'tcx>) {
         match *op {
-            Operand::Copy(pl) | Operand::Move(pl) => self.visit_place(pl, Mutability::Not),
-            Operand::Constant(ref c) => {
-                let ty = c.ty();
-                // TODO
-                self.acx.lcx().label(ty, &mut |_| PointerId::NONE)
+            Operand::Copy(pl) | Operand::Move(pl) => {
+                self.visit_place(pl, Mutability::Not);
+            }
+            Operand::Constant(ref _c) => {
+                // TODO: addr of static may show up as `Operand::Constant`
             }
         }
     }
 
-    fn do_assign(&mut self, pl_ptr: PointerId, rv_ptr: PointerId) {
-        if pl_ptr != PointerId::NONE || rv_ptr != PointerId::NONE {
-            assert!(pl_ptr != PointerId::NONE);
-            assert!(rv_ptr != PointerId::NONE);
-            self.add_edge(rv_ptr, pl_ptr);
-        }
-    }
-
-    fn do_unify_pointees(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
+    fn do_assign(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
         if pl_lty.label == PointerId::NONE && rv_lty.label == PointerId::NONE {
             return;
         }
+
+        // Add a dataflow edge indicating that `rv` flows into `pl`.
         assert!(pl_lty.label != PointerId::NONE);
         assert!(rv_lty.label != PointerId::NONE);
+        self.add_edge(rv_lty.label, pl_lty.label);
+
+        // Add equivalence constraints for all nested pointers beyond the top level.
         assert_eq!(pl_lty.args.len(), 1);
         assert_eq!(rv_lty.args.len(), 1);
 
@@ -159,15 +160,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         match stmt.kind {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
-                let pl_lty = self.visit_place(pl, Mutability::Mut);
-                let pl_ptr = pl_lty.label;
+                self.visit_place(pl, Mutability::Mut);
+                let pl_lty = self.acx.type_of(pl);
 
-                // TODO: combine these
-                let rv_ptr = self.visit_rvalue(rv);
                 let rv_lty = self.acx.type_of_rvalue(rv, loc);
+                self.visit_rvalue(rv, rv_lty);
 
-                self.do_assign(pl_ptr, rv_ptr);
-                self.do_unify_pointees(pl_lty, rv_lty);
+                self.do_assign(pl_lty, rv_lty);
             }
             // TODO(spernsteiner): handle other `StatementKind`s
             _ => (),
@@ -192,11 +191,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 match util::ty_callee(tcx, func_ty) {
                     Some(Callee::PtrOffset { .. }) => {
                         // We handle this like a pointer assignment.
-                        let pl_lty = self.visit_place(destination, Mutability::Mut);
+                        self.visit_place(destination, Mutability::Mut);
+                        let pl_lty = self.acx.type_of(destination);
                         assert!(args.len() == 2);
-                        let rv_lty = self.visit_operand(&args[0]);
-                        self.do_assign(pl_lty.label, rv_lty.label);
-                        self.do_unify_pointees(pl_lty, rv_lty);
+                        self.visit_operand(&args[0]);
+                        let rv_lty = self.acx.type_of(&args[0]);
+                        self.do_assign(pl_lty, rv_lty);
                         let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
                         self.constraints.add_all_perms(rv_lty.label, perms);
                     }
@@ -228,16 +228,16 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
         // Process pseudo-assignments from `args` to the types declared in `sig`.
         for (arg_op, &input_lty) in args.iter().zip(sig.inputs.iter()) {
-            let arg_lty = self.visit_operand(arg_op);
-            self.do_assign(input_lty.label, arg_lty.label);
-            self.do_unify_pointees(input_lty, arg_lty);
+            self.visit_operand(arg_op);
+            let arg_lty = self.acx.type_of(arg_op);
+            self.do_assign(input_lty, arg_lty);
         }
 
         // Process a pseudo-assignment from the return type declared in `sig` to `dest`.
-        let dest_lty = self.visit_place(dest, Mutability::Mut);
+        self.visit_place(dest, Mutability::Mut);
+        let dest_lty = self.acx.type_of(dest);
         let output_lty = sig.output;
-        self.do_assign(dest_lty.label, output_lty.label);
-        self.do_unify_pointees(dest_lty, output_lty);
+        self.do_assign(dest_lty, output_lty);
     }
 }
 
