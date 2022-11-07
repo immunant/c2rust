@@ -293,10 +293,11 @@ fn run(tcx: TyCtxt) {
     }
     eprintln!("reached fixpoint in {} iterations", loop_count);
 
-    // Print results for each function.  We use declaration order (as reported by `body_owners`)
-    // since this makes FileCheck tests easier to write.
+    // Print results for each function in `all_fn_ldids`, going in declaration order.  Concretely,
+    // we iterate over `body_owners()`, which is a superset of `all_fn_ldids`, and filter based on
+    // membership in `func_info`, which contains an entry for each ID in `all_fn_ldids`.
     for ldid in tcx.hir().body_owners() {
-        // Skip any body owners that aren't listed in `func_info`.
+        // Skip any body owners that aren't present in `func_info`, and also get the info itself.
         let info = match func_info.get_mut(&ldid) {
             Some(x) => x,
             None => continue,
