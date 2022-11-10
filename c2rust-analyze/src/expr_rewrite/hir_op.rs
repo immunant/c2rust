@@ -1,11 +1,13 @@
 use crate::expr_rewrite::mir_op::{self, MirRewrite};
 use crate::expr_rewrite::span_index::SpanIndex;
 use rustc_hir as hir;
+use rustc_hir::def::Res;
 use rustc_hir::intravisit;
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, Location};
 use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, PointerCast};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
+use rustc_span::Span;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -30,6 +32,12 @@ enum Rewrite {
     LitZero,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SoleLocationError {
+    NoMatch,
+    MultiMatch(Location, Location),
+}
+
 struct HirRewriteVisitor<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
     typeck_results: &'tcx TypeckResults<'tcx>,
@@ -39,41 +47,92 @@ struct HirRewriteVisitor<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
+    /// Find the sole `Location` where the provided filters match and the statement or terminator
+    /// has a span exactly equal to `target_span`.  Panics if there is no such location or if there
+    /// are multiple matching locations.
+    fn find_sole_location_matching(
+        &mut self,
+        target_span: Span,
+        mut filter_stmt: impl FnMut(&mir::Statement<'tcx>) -> bool,
+        mut filter_term: impl FnMut(&mir::Terminator<'tcx>) -> bool,
+    ) -> Result<Location, SoleLocationError> {
+        let mut found_loc = None;
+        for (span, &loc) in self.span_index.lookup(target_span) {
+            if span != target_span {
+                continue;
+            }
+            let matched = self
+                .mir
+                .stmt_at(loc)
+                .either(|s| filter_stmt(s), |t| filter_term(t));
+            if !matched {
+                continue;
+            }
+
+            if let Some(found_loc) = found_loc {
+                return Err(SoleLocationError::MultiMatch(found_loc, loc));
+            }
+            found_loc = Some(loc);
+        }
+
+        match found_loc {
+            Some(x) => Ok(x),
+            None => Err(SoleLocationError::NoMatch),
+        }
+    }
+
+    fn find_optional_location_matching(
+        &mut self,
+        target_span: Span,
+        filter_stmt: impl FnMut(&mir::Statement<'tcx>) -> bool,
+        filter_term: impl FnMut(&mir::Terminator<'tcx>) -> bool,
+    ) -> Result<Option<Location>, SoleLocationError> {
+        match self.find_sole_location_matching(target_span, filter_stmt, filter_term) {
+            Ok(x) => Ok(Some(x)),
+            Err(SoleLocationError::NoMatch) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     fn find_primary_location(&mut self, ex: &'tcx hir::Expr<'tcx>) -> Option<Location> {
+        let panic_sole_location_error = |err, desc| -> ! {
+            match err {
+                SoleLocationError::NoMatch => panic!("couldn't find {} for {:?}", desc, ex),
+                SoleLocationError::MultiMatch(loc1, loc2) => panic!(
+                    "expected to find only one {}, but got multiple:\n\
+                        expr = {:?}\n\
+                        first match = {:?}\n\
+                        second match = {:?}",
+                    desc,
+                    ex,
+                    self.mir.stmt_at(loc1),
+                    self.mir.stmt_at(loc2),
+                ),
+            }
+        };
+
         match ex.kind {
             hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
                 // We expect to find exactly one `TerminatorKind::Call` whose span exactly matches
                 // this `hir::Expr`.
-                let mut call_loc = None;
-                for (span, &loc) in self.span_index.lookup(ex.span) {
-                    if span != ex.span {
-                        continue;
-                    }
-                    let term = match self.mir.stmt_at(loc).right() {
-                        Some(x) => x,
-                        None => continue,
-                    };
-                    if !matches!(term.kind, mir::TerminatorKind::Call { .. }) {
-                        continue;
-                    }
-
-                    if let Some(call_loc) = call_loc {
-                        panic!(
-                            "expected to find only one Call, but got multiple:\n\
-                                expr = {:?}\n\
-                                first call = {:?}\n\
-                                second call = {:?}",
-                            ex,
-                            self.mir.stmt_at(call_loc).right().unwrap(),
-                            term,
-                        );
-                    }
-                    call_loc = Some(loc);
-                }
-
-                let call_loc = call_loc
-                    .unwrap_or_else(|| panic!("couldn't find Call terminator for {:?}", ex));
+                let call_loc = self
+                    .find_sole_location_matching(
+                        ex.span,
+                        |_stmt| false,
+                        |term| matches!(term.kind, mir::TerminatorKind::Call { .. }),
+                    )
+                    .unwrap_or_else(|err| panic_sole_location_error(err, "Call terminator"));
                 Some(call_loc)
+            }
+            hir::ExprKind::Path(hir::QPath::Resolved(_, p)) if matches!(p.res, Res::Local(..)) => {
+                let opt_assign_loc = self
+                    .find_optional_location_matching(
+                        ex.span,
+                        |stmt| matches!(stmt.kind, mir::StatementKind::Assign(..)),
+                        |_term| false,
+                    )
+                    .unwrap_or_else(|err| panic_sole_location_error(err, "Assign statement"));
+                opt_assign_loc
             }
             _ => {
                 eprintln!("warning: find_primary_location: unsupported expr {:?}", ex);
@@ -119,6 +178,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                     }
 
                     mir_op::RewriteKind::MutToImm => {
+                        // `p` -> `&*p`
                         let place = Rewrite::Deref(Box::new(hir_rw));
                         hir_rw = Rewrite::Ref(Box::new(place), hir::Mutability::Not);
                     }
