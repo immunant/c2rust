@@ -45,7 +45,7 @@ impl<'a, T> Iterator for RangeIter<'a, T> {
                 return None;
             }
             if data.hi > self.hi {
-                // This span extends beyond the requseted range.
+                // This span extends beyond the requested range.
                 continue;
             }
             return Some((span, value));

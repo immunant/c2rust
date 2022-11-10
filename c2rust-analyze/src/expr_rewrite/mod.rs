@@ -1,3 +1,4 @@
+mod hir_op;
 mod mir_op;
 mod span_index;
 

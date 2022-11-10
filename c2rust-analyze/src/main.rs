@@ -660,7 +660,8 @@ fn run(tcx: TyCtxt) {
         }
 
         eprintln!();
-        let rewrites = expr_rewrite::gen_expr_rewrites(&acx, &asn, &mir);
+        let hir_body_id = tcx.hir().body_owned_by(ldid);
+        let rewrites = expr_rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
         for (loc, rws) in &rewrites {
             let span = mir
                 .stmt_at(*loc)

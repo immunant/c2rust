@@ -372,6 +372,7 @@ pub fn gen_expr_rewrites<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,
     mir: &Body<'tcx>,
+    hir_body_id: rustc_hir::BodyId,
 ) -> HashMap<Location, Vec<MirRewrite>> {
     let mut out = HashMap::new();
 
@@ -394,6 +395,8 @@ pub fn gen_expr_rewrites<'tcx>(
             v.visit_terminator(term, loc);
         }
     }
+
+    super::hir_op::test_visitor(acx.tcx(), mir, hir_body_id, &out);
 
     out
 }
