@@ -8,7 +8,7 @@ use rustc_middle::mir::{self, Body, Location};
 use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, PointerCast};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::Span;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
 enum Rewrite {
@@ -44,6 +44,7 @@ struct HirRewriteVisitor<'a, 'tcx> {
     mir: &'a Body<'tcx>,
     span_index: SpanIndex<Location>,
     rewrites: &'a HashMap<Location, Vec<MirRewrite>>,
+    locations_visited: HashSet<Location>,
 }
 
 impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
@@ -173,6 +174,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
         let mut hir_rw = Rewrite::Identity;
 
         if let Some(loc) = self.find_primary_location(ex) {
+            self.locations_visited.insert(loc);
             let rws = self.rewrites.get(&loc).map_or(&[] as &[_], |v| v);
             for rw in rws {
                 match rw.kind {
@@ -285,8 +287,32 @@ pub fn test_visitor<'tcx>(
         mir,
         span_index,
         rewrites,
+        locations_visited: HashSet::new(),
     };
     intravisit::Visitor::visit_body(&mut v, hir);
 
-    // FIXME: make sure every mir_op rewrite was processed at least once
+    // Check that all locations with rewrites were visited at least once.
+    let mut locs = rewrites.keys().cloned().collect::<Vec<_>>();
+    locs.sort();
+    let mut found_unvisited_loc = false;
+    for loc in locs {
+        if v.locations_visited.contains(&loc) {
+            continue;
+        }
+        let rws = &rewrites[&loc];
+        if rws.len() == 0 {
+            continue;
+        }
+
+        found_unvisited_loc = true;
+        eprintln!("error: location {:?} has rewrites but wasn't visited", loc);
+        eprintln!("  stmt = {:?}", mir.stmt_at(loc));
+        eprintln!(
+            "  span = {:?}",
+            mir.stmt_at(loc)
+                .either(|s| s.source_info.span, |t| t.source_info.span)
+        );
+        eprintln!("  rewrites = {:?}", rws);
+    }
+    assert!(!found_unvisited_loc);
 }
