@@ -9,6 +9,7 @@ use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, PointerCast};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 
 #[derive(Debug)]
 enum Rewrite {
@@ -30,6 +31,80 @@ enum Rewrite {
     CastUsize(Box<Rewrite>),
     /// The integer literal `0`.
     LitZero,
+}
+
+impl Rewrite {
+    fn pretty(&self, f: &mut fmt::Formatter, prec: usize) -> fmt::Result {
+        fn parenthesize_if(
+            cond: bool,
+            f: &mut fmt::Formatter,
+            inner: impl FnOnce(&mut fmt::Formatter) -> fmt::Result,
+        ) -> fmt::Result {
+            if cond {
+                f.write_str("(")?;
+            }
+            inner(f)?;
+            if cond {
+                f.write_str(")")?;
+            }
+            Ok(())
+        }
+
+        // Precedence:
+        // - Index, SliceTail: 3
+        // - Ref, Deref: 2
+        // - CastUsize: 1
+
+        match *self {
+            Rewrite::Identity => write!(f, "$e"),
+            Rewrite::Subexpr(i) => write!(f, "${}", i),
+            Rewrite::Ref(ref rw, mutbl) => parenthesize_if(prec > 2, f, |f| {
+                match mutbl {
+                    hir::Mutability::Not => write!(f, "&")?,
+                    hir::Mutability::Mut => write!(f, "&mut ")?,
+                }
+                rw.pretty(f, 2)
+            }),
+            Rewrite::AddrOf(ref rw, mutbl) => {
+                match mutbl {
+                    hir::Mutability::Not => write!(f, "core::ptr::addr_of!")?,
+                    hir::Mutability::Mut => write!(f, "core::ptr::addr_of_mut!")?,
+                }
+                f.write_str("(")?;
+                rw.pretty(f, 0)?;
+                f.write_str(")")
+            }
+            Rewrite::Deref(ref rw) => parenthesize_if(prec > 2, f, |f| {
+                write!(f, "*")?;
+                rw.pretty(f, 2)
+            }),
+            Rewrite::Index(ref arr, ref idx) => parenthesize_if(prec > 3, f, |f| {
+                arr.pretty(f, 3)?;
+                write!(f, "[")?;
+                idx.pretty(f, 0)?;
+                write!(f, "]")
+            }),
+            Rewrite::SliceTail(ref arr, ref idx) => parenthesize_if(prec > 3, f, |f| {
+                arr.pretty(f, 3)?;
+                write!(f, "[")?;
+                // Rather than figure out the right precedence for `..`, just force
+                // parenthesization in this position.
+                idx.pretty(f, 999)?;
+                write!(f, " ..]")
+            }),
+            Rewrite::CastUsize(ref rw) => parenthesize_if(prec > 1, f, |f| {
+                rw.pretty(f, 1)?;
+                write!(f, " as usize")
+            }),
+            Rewrite::LitZero => write!(f, "0"),
+        }
+    }
+}
+
+impl fmt::Display for Rewrite {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.pretty(f, 0)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -342,7 +417,7 @@ pub fn test_visitor<'tcx>(
     // Print rewrites
     eprintln!("\ngenerated {} rewrites:", v.hir_rewrites.len());
     for (span, rw) in v.hir_rewrites {
-        eprintln!("  {:?}: {:?}", span, rw);
+        eprintln!("  {:?}: {}", span, rw);
     }
 
     // Check that all locations with rewrites were visited at least once.
@@ -369,4 +444,59 @@ pub fn test_visitor<'tcx>(
         eprintln!("  rewrites = {:?}", rws);
     }
     assert!(!found_unvisited_loc);
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn identity() -> Box<Rewrite> {
+        Box::new(Rewrite::Identity)
+    }
+
+    fn ref_(rw: Box<Rewrite>) -> Box<Rewrite> {
+        Box::new(Rewrite::Ref(rw, hir::Mutability::Not))
+    }
+
+    fn index(arr: Box<Rewrite>, idx: Box<Rewrite>) -> Box<Rewrite> {
+        Box::new(Rewrite::Index(arr, idx))
+    }
+
+    fn cast_usize(rw: Box<Rewrite>) -> Box<Rewrite> {
+        Box::new(Rewrite::CastUsize(rw))
+    }
+
+    /// Test precedence handling in `Rewrite::pretty`
+    #[test]
+    fn rewrite_pretty_precedence() {
+        // Ref vs Index
+        assert_eq!(ref_(index(identity(), identity())).to_string(), "&$e[$e]",);
+
+        assert_eq!(
+            index(ref_(identity()), ref_(identity())).to_string(),
+            "(&$e)[&$e]",
+        );
+
+        // Ref vs CastUsize
+        assert_eq!(cast_usize(ref_(identity())).to_string(), "&$e as usize",);
+
+        assert_eq!(ref_(cast_usize(identity())).to_string(), "&($e as usize)",);
+
+        // CastUsize vs Index
+        assert_eq!(
+            cast_usize(index(identity(), identity())).to_string(),
+            "$e[$e] as usize",
+        );
+
+        assert_eq!(
+            index(cast_usize(identity()), cast_usize(identity())).to_string(),
+            "($e as usize)[$e as usize]",
+        );
+
+        // Index vs Index
+        assert_eq!(
+            index(index(identity(), identity()), identity()).to_string(),
+            "$e[$e][$e]",
+        );
+    }
 }
