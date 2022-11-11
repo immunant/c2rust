@@ -661,19 +661,15 @@ fn run(tcx: TyCtxt) {
 
         eprintln!();
         let hir_body_id = tcx.hir().body_owned_by(ldid);
-        let rewrites = expr_rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
-        for (loc, rws) in &rewrites {
-            let span = mir
-                .stmt_at(*loc)
-                .either(|stmt| stmt.source_info.span, |term| term.source_info.span);
-            let kind_str = mir.stmt_at(*loc).either(
-                |stmt| format!("{:?}", stmt.kind),
-                |term| format!("{:?}", term.kind),
-            );
-            eprintln!("at {:?} ({}; {}):", loc, kind_str, describe_span(tcx, span),);
-            for rw in rws {
-                eprintln!("  {:?}: {:?}", rw.sub_loc, rw.kind,);
-            }
+        let hir_rewrites = expr_rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
+        // Print rewrites
+        eprintln!(
+            "\ngenerated {} rewrites for {:?}:",
+            hir_rewrites.len(),
+            name
+        );
+        for (span, rw) in hir_rewrites {
+            eprintln!("  {}: {}", describe_span(tcx, span), rw);
         }
     }
 }

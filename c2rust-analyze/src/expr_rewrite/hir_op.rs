@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 #[derive(Debug)]
-enum Rewrite {
+pub enum Rewrite {
     /// Take the original expression unchanged.
     Identity,
     /// Extract the subexpression at the given index.
@@ -374,13 +374,13 @@ fn mutbl_from_bool(m: bool) -> hir::Mutability {
     }
 }
 
-pub fn test_visitor<'tcx>(
+pub fn gen_hir_rewrites<'tcx>(
     tcx: TyCtxt<'tcx>,
     mir: &Body<'tcx>,
     hir_body_id: hir::BodyId,
     rewrites: &HashMap<Location, Vec<MirRewrite>>,
-) {
-    eprintln!("\n === test mir visitor ===");
+) -> Vec<(Span, Rewrite)> {
+    // Build `span_index`, which maps `Span`s to MIR `Locations`.
     let mut span_index_items = Vec::new();
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb_data.statements.iter().enumerate() {
@@ -399,6 +399,8 @@ pub fn test_visitor<'tcx>(
     }
 
     let span_index = SpanIndex::new(span_index_items);
+
+    // Run the visitor.
     let typeck_results = tcx.typeck_body(hir_body_id);
     let hir = tcx.hir().body(hir_body_id);
 
@@ -413,12 +415,6 @@ pub fn test_visitor<'tcx>(
         materialize_adjustments: false,
     };
     intravisit::Visitor::visit_body(&mut v, hir);
-
-    // Print rewrites
-    eprintln!("\ngenerated {} rewrites:", v.hir_rewrites.len());
-    for (span, rw) in v.hir_rewrites {
-        eprintln!("  {:?}: {}", span, rw);
-    }
 
     // Check that all locations with rewrites were visited at least once.
     let mut locs = rewrites.keys().cloned().collect::<Vec<_>>();
@@ -444,6 +440,8 @@ pub fn test_visitor<'tcx>(
         eprintln!("  rewrites = {:?}", rws);
     }
     assert!(!found_unvisited_loc);
+
+    v.hir_rewrites
 }
 
 #[cfg(test)]
