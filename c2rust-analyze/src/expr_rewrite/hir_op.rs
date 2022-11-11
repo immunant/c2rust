@@ -45,9 +45,41 @@ struct HirRewriteVisitor<'a, 'tcx> {
     span_index: SpanIndex<Location>,
     rewrites: &'a HashMap<Location, Vec<MirRewrite>>,
     locations_visited: HashSet<Location>,
+    hir_rewrites: Vec<(Span, Rewrite)>,
+    /// When `true`, any `Expr` where rustc added an implicit adjustment will be rewritten to make
+    /// that adjustment explicit.  Any node that emits a non-adjustment rewrite sets this flag when
+    /// visiting its children.  This is important to ensure that implicit ref/deref operations are
+    /// not simply discarded by our rewrites.
+    ///
+    /// For example, suppose we'd like to remove the `as_ptr` call from `arr.as_ptr()` to produce a
+    /// safe reference `&[T]` instead of a raw pointer `*const T`.  Simply eliminating the call,
+    /// leaving `arr`, is incorrect if `arr` has type `[T; 10]`.  In this case, rustc was adding an
+    /// implicit `Ref` adjustment, as if the programmer had written `(&arr).as_ptr()`.  The correct
+    /// rewriting of this code is therefore `&arr`, not `arr`.
+    ///
+    /// To get the right result, we rewrite in two steps.  First, we materialize the implicit `Ref`
+    /// adjustment that rustc applies to `arr`, producing the expression `(&arr).as_ptr()`.
+    /// Second, we remove the `as_ptr` call, leaving only `&arr`.
+    ///
+    /// However, we don't want to apply this `x.f()` to `(&x).f()` step on code that's already
+    /// safe, since it's unnecessary there and makes the code harder to read.  Our solution is to
+    /// materialize all adjustments but give the resulting rewrites `Condition::ParentChanged`, so
+    /// those rewrites only take effect within code that's already being rewritten for some other
+    /// reason.
+    materialize_adjustments: bool,
 }
 
 impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
+    /// If `set`, set `self.materialize_adjustments` to `true` while running the closure.  If `set`
+    /// is `false`, `self.materialize_adjustments` is left unchanged (inherited from the parent).
+    fn with_materialize_adjustments<R>(&mut self, set: bool, f: impl FnOnce(&mut Self) -> R) -> R {
+        let old = self.materialize_adjustments;
+        self.materialize_adjustments |= set;
+        let r = f(self);
+        self.materialize_adjustments = old;
+        r
+    }
+
     /// Find the sole `Location` where the provided filters match and the statement or terminator
     /// has a span exactly equal to `target_span`.  Panics if there is no such location or if there
     /// are multiple matching locations.
@@ -126,6 +158,8 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
                 Some(call_loc)
             }
             hir::ExprKind::Path(hir::QPath::Resolved(_, p)) if matches!(p.res, Res::Local(..)) => {
+                // Currently we only handle cases where the local is copied into a temporary.  If
+                // the local is used as-is in some other expression, this case will return `None`.
                 let opt_assign_loc = self
                     .find_optional_location_matching(
                         ex.span,
@@ -168,9 +202,6 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
     }
 
     fn visit_expr(&mut self, ex: &'tcx hir::Expr<'tcx>) {
-        // Emit rewrites on subexpressions first.
-        intravisit::walk_expr(self, ex);
-
         let mut hir_rw = Rewrite::Identity;
 
         if let Some(loc) = self.find_primary_location(ex) {
@@ -211,37 +242,52 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
             }
         }
 
-        // Materialize adjustments.
-        let adjusts = self.typeck_results.expr_adjustments(ex);
-        assert!(
-            adjusts.is_empty() || matches!(hir_rw, Rewrite::Identity),
-            "combining adjustments ({:?}) with rewrite ({:?}) is NYI",
-            adjusts,
-            hir_rw,
-        );
-        for adj in adjusts {
-            match adj.kind {
-                Adjust::NeverToAny => {
-                    // Should work fine with no explicit cast.
+        // Emit rewrites on subexpressions first.
+        let applied_mir_rewrite = !matches!(hir_rw, Rewrite::Identity);
+        self.with_materialize_adjustments(applied_mir_rewrite, |this| {
+            intravisit::walk_expr(this, ex);
+        });
+
+        // Materialize adjustments if requested by an ancestor.
+        if self.materialize_adjustments {
+            let adjusts = self.typeck_results.expr_adjustments(ex);
+            assert!(
+                adjusts.is_empty() || !applied_mir_rewrite,
+                "combining adjustments ({:?}) with rewrite ({:?}) is NYI",
+                adjusts,
+                hir_rw,
+            );
+            for adj in adjusts {
+                match adj.kind {
+                    Adjust::NeverToAny => {
+                        // Should work fine with no explicit cast.
+                    }
+                    Adjust::Deref(_) => {
+                        hir_rw = Rewrite::Deref(Box::new(hir_rw));
+                    }
+                    Adjust::Borrow(AutoBorrow::Ref(_, mutbl)) => {
+                        hir_rw = Rewrite::Ref(Box::new(hir_rw), mutbl.into());
+                    }
+                    Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => {
+                        hir_rw = Rewrite::AddrOf(Box::new(hir_rw), mutbl.into());
+                    }
+                    Adjust::Pointer(PointerCast::Unsize) => {
+                        // TODO: figure out what kind of unsize this is and insert an explicit cast
+                        // (e.g. `&x` -> `&x as &[_]`).  In many cases this should work without a cast.
+                    }
+                    Adjust::Pointer(cast) => todo!("Adjust::Pointer({:?})", cast),
                 }
-                Adjust::Deref(_) => {
-                    hir_rw = Rewrite::Deref(Box::new(hir_rw));
-                }
-                Adjust::Borrow(AutoBorrow::Ref(_, mutbl)) => {
-                    hir_rw = Rewrite::Ref(Box::new(hir_rw), mutbl.into());
-                }
-                Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => {
-                    hir_rw = Rewrite::AddrOf(Box::new(hir_rw), mutbl.into());
-                }
-                Adjust::Pointer(PointerCast::Unsize) => {
-                    // TODO: figure out what kind of unsize this is and insert an explicit cast
-                    // (e.g. `&x` -> `&x as &[_]`).  In many cases this should work without a cast.
-                }
-                Adjust::Pointer(cast) => todo!("Adjust::Pointer({:?})", cast),
             }
         }
 
-        eprintln!("rewrite {:?} at {:?}", hir_rw, ex.span);
+        // Emit the rewrite, if it's nontrivial.
+        if !matches!(hir_rw, Rewrite::Identity) {
+            eprintln!(
+                "rewrite {:?} at {:?} (materialize? {})",
+                hir_rw, ex.span, self.materialize_adjustments
+            );
+            self.hir_rewrites.push((ex.span, hir_rw));
+        }
     }
 }
 
@@ -288,8 +334,16 @@ pub fn test_visitor<'tcx>(
         span_index,
         rewrites,
         locations_visited: HashSet::new(),
+        hir_rewrites: Vec::new(),
+        materialize_adjustments: false,
     };
     intravisit::Visitor::visit_body(&mut v, hir);
+
+    // Print rewrites
+    eprintln!("\ngenerated {} rewrites:", v.hir_rewrites.len());
+    for (span, rw) in v.hir_rewrites {
+        eprintln!("  {:?}: {:?}", span, rw);
+    }
 
     // Check that all locations with rewrites were visited at least once.
     let mut locs = rewrites.keys().cloned().collect::<Vec<_>>();
