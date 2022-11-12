@@ -389,7 +389,7 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
         }
 
         for lty in rvalue_tys.values_mut() {
-            *lty = remap_lty_pointers(lcx, &map, *lty);
+            *lty = remap_lty_pointers(lcx, &map, lty);
         }
 
         *next_ptr_id = counter;
