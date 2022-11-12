@@ -3,6 +3,8 @@ pub mod build;
 mod cast;
 pub mod source;
 
+use std::cmp::Ordering;
+
 use c2rust_analysis_rt::mir_loc::{EventMetadata, FuncId};
 use indexmap::{IndexMap, IndexSet};
 use rustc_middle::{
@@ -28,14 +30,14 @@ pub enum InstrumentationPriority {
 }
 
 impl PartialOrd for InstrumentationPriority {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         use InstrumentationPriority::*;
         // We want instrumentations to be ordered early -> unspecified,
         // which shall correspond to ordered ascending.
         match (self, other) {
-            (Early, Unspecified) => Some(std::cmp::Ordering::Less),
-            (Unspecified, Early) => Some(std::cmp::Ordering::Greater),
-            _ => Some(std::cmp::Ordering::Equal),
+            (Early, Unspecified) => Some(Ordering::Less),
+            (Unspecified, Early) => Some(Ordering::Greater),
+            _ => Some(Ordering::Equal),
         }
     }
 }
