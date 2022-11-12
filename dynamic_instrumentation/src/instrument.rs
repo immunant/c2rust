@@ -680,9 +680,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
     }
 }
 
-fn mark_scopes_unsafe<'tcx>(
-    scopes: &mut rustc_index::vec::IndexVec<SourceScope, SourceScopeData<'tcx>>,
-) {
+fn mark_scopes_unsafe(scopes: &mut rustc_index::vec::IndexVec<SourceScope, SourceScopeData>) {
     for scope in scopes {
         if let ClearCrossCrate::Set(data) = &mut scope.local_data {
             data.safety = Safety::BuiltinUnsafe;
