@@ -126,10 +126,7 @@ fn main() -> anyhow::Result<()> {
     let matches = App::new("C2Rust")
         .version(&*render_testament!(TESTAMENT))
         .author(crate_authors!(", "))
-        .settings(&[
-            AppSettings::SubcommandRequiredElseHelp,
-            AppSettings::AllowExternalSubcommands,
-        ])
+        .settings(&[AppSettings::SubcommandRequiredElseHelp])
         .subcommands(sub_commands.keys().map(|name| {
             clap::SubCommand::with_name(name).arg(
                 Arg::with_name("args")
