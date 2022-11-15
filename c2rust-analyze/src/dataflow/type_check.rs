@@ -10,10 +10,32 @@ use rustc_middle::ty::{SubstsRef, TyKind};
 
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
 /// constraints as a side effect.
+///
+/// In general, the constraints we generate for an assignment are as follows:
+///
+/// * The outermost pointer type of the destination must have a subset of the permissions of the
+///   outermost pointer type of the source.  That is, the assignment may drop permissions as it
+///   copies the pointer from source to destination, but it cannot add any permissions.  Dropping
+///   permissions during the assignment corresponds to inserting a cast between pointer types.
+/// * All pointer types except the outermost must have equal permissions and flags in the source
+///   and destination.  This is necessary because we generally can't change the inner pointer type
+///   when performing a cast (for example, it's possible to convert `&[&[T]]` to `&&[T]` - take the
+///   address of the first element - but not to `&[&T]]`).
 struct TypeChecker<'tcx, 'a> {
     acx: &'a AnalysisCtxt<'a, 'tcx>,
     mir: &'a Body<'tcx>,
+    /// Subset constraints on pointer permissions.  For example, this contains constraints like
+    /// "the `PermissionSet` assigned to `PointerId` `l1` must be a subset of the `PermissionSet`
+    /// assigned to `l2`".  See `dataflow::Constraint` for a full description of supported
+    /// constraints.
     constraints: DataflowConstraints,
+    /// Equivalence constraints on pointer permissions and flags.  An entry `(l1, l2)` in this list
+    /// means that `PointerId`s `l1` and `l2` should be assigned exactly the same permissions and
+    /// flags.  This ensures that the two pointers will be rewritten to the same safe type.
+    ///
+    /// Higher-level code eventually feeds the constraints recorded here into the union-find data
+    /// structure defined in `crate::equiv`, so adding a constraint here has the effect of unifying
+    /// the equivalence classes of the two `PointerId`s.
     equiv_constraints: Vec<(PointerId, PointerId)>,
 }
 
@@ -160,6 +182,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
+    /// Add a dataflow edge indicating that `rv_ptr` flows into `pl_ptr`.  If both `PointerId`s are
+    /// `NONE`, this has no effect.
     fn do_assign_pointer_ids(&mut self, pl_ptr: PointerId, rv_ptr: PointerId) {
         if pl_ptr != PointerId::NONE || rv_ptr != PointerId::NONE {
             assert!(pl_ptr != PointerId::NONE);
@@ -168,6 +192,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
+    /// Unify corresponding `PointerId`s in `lty1` and `lty2`.
+    ///
+    /// The two inputs must have identical underlying types.  For any position where the underlying
+    /// type has a pointer, this function unifies the `PointerId`s that `lty1` and `lty2` have at
+    /// that position.  For example, given `lty1 = *mut /*l1*/ *const /*l2*/ u8` and `lty2 = *mut
+    /// /*l3*/ *const /*l4*/ u8`, this function will unify `l1` with `l3` and `l2` with `l4`.
     fn do_unify(&mut self, lty1: LTy<'tcx>, lty2: LTy<'tcx>) {
         assert_eq!(lty1.ty, lty2.ty);
         for (sub_lty1, sub_lty2) in lty1.iter().zip(lty2.iter()) {

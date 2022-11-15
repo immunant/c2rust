@@ -162,8 +162,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
             Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
                 AggregateKind::Array(..) => {
-                    // TODO
                     let ty = rv.ty(self.local_decls, *self.ltcx);
+                    // TODO: create fresh origins for all pointers in `ty`, and generate subset
+                    // relations between the regions of the array and the regions of its elements
                     self.ltcx.label(ty, &mut |_ty| Label::default())
                 }
                 _ => panic!("unsupported rvalue AggregateKind {:?}", kind),

@@ -337,6 +337,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             type_desc::perms_to_desc(self.perms[result_ptr], self.flags[result_ptr]);
 
         if op_own == result_own && op_qty == result_qty {
+            // Input and output types will be the same after rewriting, so the `as_ptr` call is not
+            // needed.
             self.emit(RewriteKind::RemoveAsPtr);
         }
     }
