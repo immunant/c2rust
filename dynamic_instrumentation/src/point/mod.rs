@@ -19,7 +19,7 @@ pub use apply::InstrumentationApplier;
 pub use cast::cast_ptr_to_usize;
 
 /// Sets the priority of an instrumentation point.
-#[derive(PartialEq, Eq, Ord, Default, Copy, Clone)]
+#[derive(PartialEq, Eq, Default, Copy, Clone)]
 pub enum InstrumentationPriority {
     /// Signifies higher priority and implies that an instrumentation
     /// with early priority, will be placed before one with unspecified
@@ -29,16 +29,22 @@ pub enum InstrumentationPriority {
     Unspecified,
 }
 
-impl PartialOrd for InstrumentationPriority {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+impl Ord for InstrumentationPriority {
+    fn cmp(&self, other: &Self) -> Ordering {
         use InstrumentationPriority::*;
         // We want instrumentations to be ordered early -> unspecified,
         // which shall correspond to ordered ascending.
         match (self, other) {
-            (Early, Unspecified) => Some(Ordering::Less),
-            (Unspecified, Early) => Some(Ordering::Greater),
-            _ => Some(Ordering::Equal),
+            (Early, Unspecified) => Ordering::Less,
+            (Unspecified, Early) => Ordering::Greater,
+            _ => Ordering::Equal,
         }
+    }
+}
+
+impl PartialOrd for InstrumentationPriority {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
