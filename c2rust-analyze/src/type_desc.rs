@@ -1,7 +1,7 @@
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet, PointerId};
 use rustc_hir::def::{DefKind, Res};
 use rustc_middle::ty::subst::GenericArg;
-use rustc_middle::ty::{ReErased, Ty, TyCtxt};
+use rustc_middle::ty::{ReErased, Ty, TyCtxt, TyKind};
 
 #[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -100,7 +100,7 @@ pub fn convert_type<'tcx>(
     let perms = asn.perms();
     let flags = asn.flags();
     acx.lcx().rewrite_unlabeled(lty, &mut |ty, args, label| {
-        if label == PointerId::NONE {
+        if label == PointerId::NONE || !matches!(ty.kind(), TyKind::RawPtr(..)) {
             return ty;
         }
         let ptr = label;

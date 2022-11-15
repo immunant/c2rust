@@ -21,6 +21,7 @@ use crate::context::{
 use crate::dataflow::DataflowConstraints;
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use crate::util::Callee;
+use rustc_hir::def::DefKind;
 use rustc_hir::def_id::LocalDefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
@@ -124,8 +125,16 @@ fn run(tcx: TyCtxt) {
         lasn: MaybeUnset<LocalAssignment>,
     }
 
+    // Follow a postorder traversal, so that callers are visited after their callees.  This means
+    // callee signatures will usually be up to date when we visit the call site.
+    let all_fn_ldids = fn_body_owners_postorder(tcx);
+    eprintln!("callgraph traversal order:");
+    for &ldid in &all_fn_ldids {
+        eprintln!("  {:?}", ldid);
+    }
+
     // Assign global `PointerId`s for all pointers that appear in function signatures.
-    for ldid in tcx.hir().body_owners() {
+    for &ldid in &all_fn_ldids {
         let sig = tcx.fn_sig(ldid.to_def_id());
         let sig = tcx.erase_late_bound_regions(sig);
 
@@ -145,7 +154,7 @@ fn run(tcx: TyCtxt) {
     // that two pointer types must be converted to the same reference type.  Some additional data
     // computed during this the process is kept around for use in later passes.
     let mut global_equiv = GlobalEquivSet::new(gacx.num_pointers());
-    for ldid in tcx.hir().body_owners() {
+    for &ldid in &all_fn_ldids {
         let ldid_const = WithOptConstParam::unknown(ldid);
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
@@ -221,7 +230,7 @@ fn run(tcx: TyCtxt) {
     eprintln!("global_equiv_map = {global_equiv_map:?}");
     gacx.remap_pointers(&global_equiv_map, global_counter);
 
-    for ldid in tcx.hir().body_owners() {
+    for &ldid in &all_fn_ldids {
         let info = func_info.get_mut(&ldid).unwrap();
         let (local_counter, local_equiv_map) = info.local_equiv.renumber(&global_equiv_map);
         eprintln!("local_equiv_map = {local_equiv_map:?}");
@@ -245,13 +254,6 @@ fn run(tcx: TyCtxt) {
         info.lasn.set(lasn);
     }
 
-    // Follow a postorder traversal, so that callers are visited after their callees.  This means
-    // callee signatures will usually be up to date when we visit the call site.
-    let order = body_owners_postorder(tcx);
-    eprintln!("callgraph traversal order:");
-    for &ldid in &order {
-        eprintln!("  {ldid:?}");
-    }
     let mut loop_count = 0;
     loop {
         // Loop until the global assignment reaches a fixpoint.  The inner loop also runs until a
@@ -260,7 +262,7 @@ fn run(tcx: TyCtxt) {
         // the outer loop, which runs until the `GlobalAssignment` converges as well.
         loop_count += 1;
         let old_gasn = gasn.clone();
-        for &ldid in &order {
+        for &ldid in &all_fn_ldids {
             let info = func_info.get_mut(&ldid).unwrap();
             let ldid_const = WithOptConstParam::unknown(ldid);
             let name = tcx.item_name(ldid.to_def_id());
@@ -291,9 +293,15 @@ fn run(tcx: TyCtxt) {
     }
     eprintln!("reached fixpoint in {} iterations", loop_count);
 
-    // Print results for each function.
+    // Print results for each function in `all_fn_ldids`, going in declaration order.  Concretely,
+    // we iterate over `body_owners()`, which is a superset of `all_fn_ldids`, and filter based on
+    // membership in `func_info`, which contains an entry for each ID in `all_fn_ldids`.
     for ldid in tcx.hir().body_owners() {
-        let info = func_info.get_mut(&ldid).unwrap();
+        // Skip any body owners that aren't present in `func_info`, and also get the info itself.
+        let info = match func_info.get_mut(&ldid) {
+            Some(x) => x,
+            None => continue,
+        };
         let ldid_const = WithOptConstParam::unknown(ldid);
         let name = tcx.item_name(ldid.to_def_id());
         let mir = tcx.mir_built(ldid_const);
@@ -304,7 +312,7 @@ fn run(tcx: TyCtxt) {
 
         // Print labeling and rewrites for the current function.
 
-        eprintln!("final labeling for {:?}:", name);
+        eprintln!("\nfinal labeling for {:?}:", name);
         let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
         let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
         for (local, decl) in mir.local_decls.iter_enumerated() {
@@ -442,9 +450,9 @@ fn describe_span(tcx: TyCtxt, span: Span) -> String {
     format!("{}: {}{}{}", line, src1, src2, src3)
 }
 
-/// Return all `body_owners`, ordered according to a postorder traversal of the graph of references
-/// between bodies.
-fn body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
+/// Return all `LocalDefId`s for all `fn`s that are `body_owners`, ordered according to a postorder
+/// traversal of the graph of references between bodies.
+fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
     let mut seen = HashSet::new();
     let mut order = Vec::new();
     enum Visit {
@@ -457,6 +465,16 @@ fn body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
         if seen.contains(&root_ldid) {
             continue;
         }
+
+        match tcx.def_kind(root_ldid) {
+            DefKind::Fn | DefKind::AssocFn => {}
+            DefKind::AnonConst => continue,
+            dk => panic!(
+                "unexpected def_kind {:?} for body_owner {:?}",
+                dk, root_ldid
+            ),
+        }
+
         stack.push(Visit::Pre(root_ldid));
         while let Some(visit) = stack.pop() {
             match visit {
@@ -493,11 +511,21 @@ fn for_each_callee(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(LocalDefId)) {
     impl<'tcx, F: FnMut(LocalDefId)> Visitor<'tcx> for CalleeVisitor<'_, 'tcx, F> {
         fn visit_operand(&mut self, operand: &Operand<'tcx>, _location: Location) {
             let ty = operand.ty(self.mir, self.tcx);
-            if let Some(Callee::Other { def_id, .. }) = util::ty_callee(self.tcx, ty) {
-                if let Some(ldid) = def_id.as_local() {
-                    (self.f)(ldid);
-                }
+            let def_id = match util::ty_callee(self.tcx, ty) {
+                Some(Callee::Other { def_id, .. }) => def_id,
+                _ => return,
+            };
+            let ldid = match def_id.as_local() {
+                Some(x) => x,
+                None => return,
+            };
+            if self.tcx.is_foreign_item(def_id) {
+                return;
             }
+            if !matches!(self.tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn) {
+                return;
+            }
+            (self.f)(ldid);
         }
     }
 

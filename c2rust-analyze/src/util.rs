@@ -2,7 +2,7 @@ use crate::labeled_ty::LabeledTy;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue};
-use rustc_middle::ty::{DefIdTree, SubstsRef, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy};
 use std::fmt::Debug;
 
 #[derive(Debug)]
@@ -69,10 +69,23 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
 
 #[derive(Debug)]
 pub enum Callee<'tcx> {
+    /// `<*mut T>::offset` or `<*const T>::offset`.
     PtrOffset {
         pointee_ty: Ty<'tcx>,
         mutbl: Mutability,
     },
+    /// `<[T]>::as_ptr` and `<[T]>::as_mut_ptr` methods.  Also covers the array and str versions.
+    SliceAsPtr {
+        /// The pointee type.  This is either `TyKind::Slice`, `TyKind::Array`, or `TyKind::Str`.
+        pointee_ty: Ty<'tcx>,
+        /// The slice element type.  For `str`, this is `u8`.
+        elem_ty: Ty<'tcx>,
+        /// Mutability of the output pointer.
+        mutbl: Mutability,
+    },
+    /// A built-in or standard library function that requires no special handling.
+    MiscBuiltin,
+    /// Some other statically-known function, including functions defined in the current crate.
     Other {
         def_id: DefId,
         substs: SubstsRef<'tcx>,
@@ -84,6 +97,21 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> 
         TyKind::FnDef(did, substs) => (did, substs),
         _ => return None,
     };
+
+    if let Some(callee) = builtin_callee(tcx, did, substs) {
+        return Some(callee);
+    }
+    Some(Callee::Other {
+        def_id: did,
+        substs,
+    })
+}
+
+fn builtin_callee<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    did: DefId,
+    _substs: SubstsRef<'tcx>,
+) -> Option<Callee<'tcx>> {
     let name = tcx.item_name(did);
 
     match name.as_str() {
@@ -103,10 +131,51 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> 
             };
             Some(Callee::PtrOffset { pointee_ty, mutbl })
         }
-        _ => Some(Callee::Other {
-            def_id: did,
-            substs,
-        }),
+
+        name @ "as_ptr" | name @ "as_mut_ptr" => {
+            // The `as_ptr` and `as_mut_ptr` inherent methods of `[T]`, `[T; n]`, and `str`.
+            let parent_did = tcx.parent(did);
+            if tcx.def_kind(parent_did) != DefKind::Impl {
+                return None;
+            }
+            if tcx.impl_trait_ref(parent_did).is_some() {
+                return None;
+            }
+            let parent_impl_ty = tcx.type_of(parent_did);
+            let elem_ty = match *parent_impl_ty.kind() {
+                TyKind::Array(ty, _) => ty,
+                TyKind::Slice(ty) => ty,
+                TyKind::Str => tcx.mk_mach_uint(UintTy::U8),
+                _ => return None,
+            };
+            let mutbl = match name {
+                "as_ptr" => Mutability::Not,
+                "as_mut_ptr" => Mutability::Mut,
+                _ => unreachable!(),
+            };
+            Some(Callee::SliceAsPtr {
+                pointee_ty: parent_impl_ty,
+                elem_ty,
+                mutbl,
+            })
+        }
+
+        "abort" | "exit" => {
+            // `std::process::abort` and `std::process::exit`
+            let path = tcx.def_path(did);
+            if tcx.crate_name(path.krate).as_str() != "std" {
+                return None;
+            }
+            if path.data.len() != 2 {
+                return None;
+            }
+            if path.data[0].to_string() != "process" {
+                return None;
+            }
+            Some(Callee::MiscBuiltin)
+        }
+
+        _ => None,
     }
 }
 
@@ -126,7 +195,9 @@ pub fn lty_project<'tcx, L: Debug>(
             _ => panic!("Field projection is unsupported on type {:?}", lty),
         },
         ProjectionElem::Index(..) | ProjectionElem::ConstantIndex { .. } => {
-            todo!("type_of Index")
+            assert!(matches!(lty.kind(), TyKind::Array(..) | TyKind::Slice(..)));
+            assert_eq!(lty.args.len(), 1);
+            lty.args[0]
         }
         ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
         ProjectionElem::Downcast(..) => todo!("type_of Downcast"),

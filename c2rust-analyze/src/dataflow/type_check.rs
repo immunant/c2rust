@@ -3,17 +3,39 @@ use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
 use crate::util::{self, describe_rvalue, Callee, RvalueDesc};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
-    BinOp, Body, Location, Mutability, Operand, Place, PlaceRef, ProjectionElem, Rvalue, Statement,
-    StatementKind, Terminator, TerminatorKind,
+    AggregateKind, BinOp, Body, Location, Mutability, Operand, Place, PlaceRef, ProjectionElem,
+    Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
-use rustc_middle::ty::SubstsRef;
+use rustc_middle::ty::{SubstsRef, TyKind};
 
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
 /// constraints as a side effect.
+///
+/// In general, the constraints we generate for an assignment are as follows:
+///
+/// * The outermost pointer type of the destination must have a subset of the permissions of the
+///   outermost pointer type of the source.  That is, the assignment may drop permissions as it
+///   copies the pointer from source to destination, but it cannot add any permissions.  Dropping
+///   permissions during the assignment corresponds to inserting a cast between pointer types.
+/// * All pointer types except the outermost must have equal permissions and flags in the source
+///   and destination.  This is necessary because we generally can't change the inner pointer type
+///   when performing a cast (for example, it's possible to convert `&[&[T]]` to `&&[T]` - take the
+///   address of the first element - but not to `&[&T]]`).
 struct TypeChecker<'tcx, 'a> {
     acx: &'a AnalysisCtxt<'a, 'tcx>,
     mir: &'a Body<'tcx>,
+    /// Subset constraints on pointer permissions.  For example, this contains constraints like
+    /// "the `PermissionSet` assigned to `PointerId` `l1` must be a subset of the `PermissionSet`
+    /// assigned to `l2`".  See `dataflow::Constraint` for a full description of supported
+    /// constraints.
     constraints: DataflowConstraints,
+    /// Equivalence constraints on pointer permissions and flags.  An entry `(l1, l2)` in this list
+    /// means that `PointerId`s `l1` and `l2` should be assigned exactly the same permissions and
+    /// flags.  This ensures that the two pointers will be rewritten to the same safe type.
+    ///
+    /// Higher-level code eventually feeds the constraints recorded here into the union-find data
+    /// structure defined in `crate::equiv`, so adding a constraint here has the effect of unifying
+    /// the equivalence classes of the two `PointerId`s.
     equiv_constraints: Vec<(PointerId, PointerId)>,
 }
 
@@ -71,7 +93,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, _lty: LTy<'tcx>) {
+    pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, lty: LTy<'tcx>) {
         eprintln!("visit_rvalue({:?}), desc = {:?}", rv, describe_rvalue(rv));
 
         if let Some(desc) = describe_rvalue(rv) {
@@ -95,6 +117,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Rvalue::AddressOf(..) => {
                 unreachable!("Rvalue::AddressOf should be handled by describe_rvalue instead")
             }
+            Rvalue::Len(pl) => {
+                self.visit_place(pl, Mutability::Not);
+            }
             Rvalue::Cast(_, ref op, _) => self.visit_operand(op),
             Rvalue::BinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
             Rvalue::BinaryOp(_, ref ops) => {
@@ -109,6 +134,25 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Rvalue::NullaryOp(..) => {}
             Rvalue::UnaryOp(_, ref op) => {
                 self.visit_operand(op);
+            }
+
+            Rvalue::Aggregate(ref kind, ref ops) => {
+                for op in ops {
+                    self.visit_operand(op);
+                }
+                match **kind {
+                    AggregateKind::Array(..) => {
+                        assert!(matches!(lty.kind(), TyKind::Array(..)));
+                        assert_eq!(lty.args.len(), 1);
+                        let elem_lty = lty.args[0];
+                        // Pseudo-assign from each operand to the element type of the array.
+                        for op in ops {
+                            let op_lty = self.acx.type_of(op);
+                            self.do_assign(elem_lty, op_lty);
+                        }
+                    }
+                    ref kind => todo!("Rvalue::Aggregate({:?})", kind),
+                }
             }
 
             _ => panic!("TODO: handle assignment of {:?}", rv),
@@ -127,28 +171,41 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     fn do_assign(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
-        if pl_lty.label == PointerId::NONE && rv_lty.label == PointerId::NONE {
-            return;
-        }
-
-        // Add a dataflow edge indicating that `rv` flows into `pl`.
-        assert!(pl_lty.label != PointerId::NONE);
-        assert!(rv_lty.label != PointerId::NONE);
-        self.add_edge(rv_lty.label, pl_lty.label);
+        // If the top-level types are pointers, add a dataflow edge indicating that `rv` flows into
+        // `pl`.
+        self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
 
         // Add equivalence constraints for all nested pointers beyond the top level.
-        assert_eq!(pl_lty.args.len(), 1);
-        assert_eq!(rv_lty.args.len(), 1);
+        assert_eq!(pl_lty.ty, rv_lty.ty);
+        for (&pl_sub_lty, &rv_sub_lty) in pl_lty.args.iter().zip(rv_lty.args.iter()) {
+            self.do_unify(pl_sub_lty, rv_sub_lty);
+        }
+    }
 
-        let pl_pointee = pl_lty.args[0];
-        let rv_pointee = rv_lty.args[0];
-        assert_eq!(pl_pointee.ty, rv_pointee.ty);
-        for (pl_sub_lty, rv_sub_lty) in pl_pointee.iter().zip(rv_pointee.iter()) {
-            eprintln!("equate {:?} = {:?}", pl_sub_lty, rv_sub_lty);
-            if pl_sub_lty.label != PointerId::NONE || rv_sub_lty.label != PointerId::NONE {
-                assert!(pl_sub_lty.label != PointerId::NONE);
-                assert!(rv_sub_lty.label != PointerId::NONE);
-                self.add_equiv(pl_sub_lty.label, rv_sub_lty.label);
+    /// Add a dataflow edge indicating that `rv_ptr` flows into `pl_ptr`.  If both `PointerId`s are
+    /// `NONE`, this has no effect.
+    fn do_assign_pointer_ids(&mut self, pl_ptr: PointerId, rv_ptr: PointerId) {
+        if pl_ptr != PointerId::NONE || rv_ptr != PointerId::NONE {
+            assert!(pl_ptr != PointerId::NONE);
+            assert!(rv_ptr != PointerId::NONE);
+            self.add_edge(rv_ptr, pl_ptr);
+        }
+    }
+
+    /// Unify corresponding `PointerId`s in `lty1` and `lty2`.
+    ///
+    /// The two inputs must have identical underlying types.  For any position where the underlying
+    /// type has a pointer, this function unifies the `PointerId`s that `lty1` and `lty2` have at
+    /// that position.  For example, given `lty1 = *mut /*l1*/ *const /*l2*/ u8` and `lty2 = *mut
+    /// /*l3*/ *const /*l4*/ u8`, this function will unify `l1` with `l3` and `l2` with `l4`.
+    fn do_unify(&mut self, lty1: LTy<'tcx>, lty2: LTy<'tcx>) {
+        assert_eq!(lty1.ty, lty2.ty);
+        for (sub_lty1, sub_lty2) in lty1.iter().zip(lty2.iter()) {
+            eprintln!("equate {:?} = {:?}", sub_lty1, sub_lty2);
+            if sub_lty1.label != PointerId::NONE || sub_lty2.label != PointerId::NONE {
+                assert!(sub_lty1.label != PointerId::NONE);
+                assert!(sub_lty2.label != PointerId::NONE);
+                self.add_equiv(sub_lty1.label, sub_lty2.label);
             }
         }
     }
@@ -200,9 +257,37 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
                         self.constraints.add_all_perms(rv_lty.label, perms);
                     }
+
+                    Some(Callee::SliceAsPtr { elem_ty, .. }) => {
+                        // We handle this like an assignment, but with some adjustments due to the
+                        // difference in input and output types.
+                        self.visit_place(destination, Mutability::Mut);
+                        let pl_lty = self.acx.type_of(destination);
+                        assert!(args.len() == 1);
+                        self.visit_operand(&args[0]);
+                        let rv_lty = self.acx.type_of(&args[0]);
+
+                        // Map `rv_lty = &[i32]` to `rv_elem_lty = i32`
+                        let rv_pointee_lty = rv_lty.args[0];
+                        let rv_elem_lty = match *rv_pointee_lty.kind() {
+                            TyKind::Array(..) | TyKind::Slice(..) => rv_pointee_lty.args[0],
+                            TyKind::Str => self.acx.lcx().label(elem_ty, &mut |_| PointerId::NONE),
+                            _ => unreachable!(),
+                        };
+
+                        // Map `pl_lty = *mut i32` to `pl_elem_lty = i32`
+                        let pl_elem_lty = pl_lty.args[0];
+
+                        self.do_unify(pl_elem_lty, rv_elem_lty);
+                        self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
+                    }
+
+                    Some(Callee::MiscBuiltin) => {}
+
                     Some(Callee::Other { def_id, substs }) => {
                         self.visit_call_other(def_id, substs, args, destination);
                     }
+
                     None => {}
                 }
             }
