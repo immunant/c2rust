@@ -8,11 +8,12 @@ use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    Body, CastKind, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem,
+    Body, CastKind, Field, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem,
     PlaceRef, Rvalue,
 };
 use rustc_middle::ty::adjustment::PointerCast;
-use rustc_middle::ty::{Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{AdtDef, Ty, TyCtxt, TyKind};
+use rustc_target::abi::VariantIdx;
 use std::collections::HashMap;
 use std::ops::Index;
 
@@ -71,6 +72,8 @@ pub struct GlobalAnalysisCtxt<'tcx> {
 
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
 
+    pub field_tys: HashMap<(AdtDef<'tcx>, Field, VariantIdx), LTy<'tcx>>,
+
     next_ptr_id: NextGlobalPointerId,
 }
 
@@ -101,6 +104,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             tcx,
             lcx: LabeledTyCtxt::new(tcx),
             fn_sigs: HashMap::new(),
+            field_tys: HashMap::new(),
             next_ptr_id: NextGlobalPointerId::new(),
         }
     }
@@ -137,6 +141,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             tcx: _,
             lcx,
             ref mut fn_sigs,
+            field_tys: _,
             ref mut next_ptr_id,
         } = *self;
 
@@ -357,7 +362,19 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     }
 
     pub fn project(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
-        util::lty_project(lty, proj)
+        let adt_func = |adtdef: AdtDef, field: Field| {
+            let fielddef_name = adtdef.all_fields().collect::<Vec<_>>()[usize::from(field)].name;
+            eprintln!("projecting into {adtdef:?}.{fielddef_name:}");
+            let res = *self
+                .gacx
+                .field_tys
+                .get(&(adtdef, field, VariantIdx::from_usize(0)))
+                .unwrap_or_else(|| {
+                    panic!("Could not find {adtdef:?}.{fielddef_name:?} in field type map")
+                });
+            res
+        };
+        util::lty_project(lty, proj, adt_func)
     }
 }
 

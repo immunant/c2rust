@@ -26,11 +26,12 @@ use rustc_hir::def_id::LocalDefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand, Rvalue,
-    StatementKind,
+    AggregateKind, BindingForm, Body, Field, LocalDecl, LocalInfo, LocalKind, Location, Operand,
+    Rvalue, StatementKind,
 };
 use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
+use rustc_target::abi::VariantIdx;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::ops::{Deref, DerefMut};
@@ -148,6 +149,23 @@ fn run(tcx: TyCtxt) {
 
         let lsig = LFnSig { inputs, output };
         gacx.fn_sigs.insert(ldid.to_def_id(), lsig);
+    }
+
+    // Label the field types of each struct.
+    for defldid in tcx.hir_crate_items(()).definitions() {
+        let defdid = defldid.to_def_id();
+        if let DefKind::Struct = tcx.def_kind(defdid) {
+            let defty = tcx.type_of(defdid).kind();
+            if let TyKind::Adt(adtdef, _) = defty {
+                for (fid, field) in adtdef.all_fields().enumerate() {
+                    let lty = gacx.assign_pointer_ids(tcx.type_of(field.did));
+                    gacx.field_tys.insert(
+                        (*adtdef, Field::from_usize(fid), VariantIdx::from_usize(0)),
+                        lty,
+                    );
+                }
+            }
+        }
     }
 
     // Initial pass to assign local `PointerId`s and gather equivalence constraints, which state

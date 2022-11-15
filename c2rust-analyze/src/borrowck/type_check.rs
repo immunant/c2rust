@@ -34,7 +34,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     pub fn visit_place(&mut self, pl: Place<'tcx>) -> LTy<'tcx> {
         let mut lty = self.local_ltys[pl.local.index()];
         for proj in pl.projection {
-            lty = util::lty_project(lty, &proj);
+            lty = util::lty_project(lty, &proj, |_, _| panic!("Adt not supported"));
         }
         lty
     }
