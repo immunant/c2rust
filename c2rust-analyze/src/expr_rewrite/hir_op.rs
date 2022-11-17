@@ -16,7 +16,7 @@ pub enum Rewrite {
     /// Take the original expression unchanged.
     Identity,
     /// Extract the subexpression at the given index.
-    Subexpr(usize),
+    Subexpr(usize, Span),
     /// `&e`, `&mut e`
     Ref(Box<Rewrite>, hir::Mutability),
     /// `core::ptr::addr_of!(e)`, `core::ptr::addr_of_mut!(e)`
@@ -57,7 +57,7 @@ impl Rewrite {
 
         match *self {
             Rewrite::Identity => write!(f, "$e"),
-            Rewrite::Subexpr(i) => write!(f, "${}", i),
+            Rewrite::Subexpr(i, _) => write!(f, "${}", i),
             Rewrite::Ref(ref rw, mutbl) => parenthesize_if(prec > 2, f, |f| {
                 match mutbl {
                     hir::Mutability::Not => write!(f, "&")?,
@@ -267,6 +267,50 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
             }
         }
     }
+
+    /// Get subexpression `idx` of `ex`.  Panics if the index is out of range for `ex`.  The
+    /// precise meaning of the index depends on the expression kind.
+    fn get_subexpr(&self, ex: &'tcx hir::Expr<'tcx>, idx: usize) -> Rewrite {
+        use hir::ExprKind::*;
+        let sub_ex = match (&ex.kind, idx) {
+            (&Box(e), 0) => e,
+            (&Array(es), i) => &es[i],
+            (&Call(_, args), i) => &args[i],
+            (&MethodCall(_, args, _), i) => &args[i],
+            (&Tup(es), i) => &es[i],
+            (&Binary(_, x, _), 0) => x,
+            (&Binary(_, _, y), 1) => y,
+            (&Unary(_, x), 0) => x,
+            (&Cast(e, _), 0) => e,
+            (&Type(e, _), 0) => e,
+            (&DropTemps(e), 0) => e,
+            (&If(cond, _, _), 0) => cond,
+            (&If(_, then, _), 1) => then,
+            (&If(_, _, Some(else_)), 2) => else_,
+            (&Match(e, _, _), 0) => e,
+            (&Assign(l, _, _), 0) => l,
+            (&Assign(_, r, _), 1) => r,
+            (&AssignOp(_, l, _), 0) => l,
+            (&AssignOp(_, _, r), 1) => r,
+            (&Field(e, _), 0) => e,
+            (&Index(arr, _), 0) => arr,
+            (&Index(_, e_idx), 1) => e_idx,
+            (&AddrOf(_, _, e), 0) => e,
+            (&Break(_, Some(e)), 0) => e,
+            (&Ret(Some(e)), 0) => e,
+            (&Struct(_, flds, base), i) => {
+                if i == flds.len() {
+                    base.unwrap()
+                } else {
+                    flds[i].expr
+                }
+            }
+            (&Repeat(e, _), 0) => e,
+            (&Yield(e, _), 0) => e,
+            _ => panic!("bad subexpression index {} for {:?}", idx, ex),
+        };
+        Rewrite::Subexpr(idx, sub_ex.span)
+    }
 }
 
 impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
@@ -288,8 +332,8 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                         assert!(matches!(hir_rw, Rewrite::Identity));
                         //assert_eq!(num_args, 2);
                         // `p.offset(i)` -> `&p[i as usize ..]`
-                        let arr = Rewrite::Subexpr(0);
-                        let idx = Rewrite::CastUsize(Box::new(Rewrite::Subexpr(1)));
+                        let arr = self.get_subexpr(ex, 0);
+                        let idx = Rewrite::CastUsize(Box::new(self.get_subexpr(ex, 1)));
                         let elem = Rewrite::SliceTail(Box::new(arr), Box::new(idx));
                         hir_rw = Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl));
                     }
@@ -311,7 +355,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                     mir_op::RewriteKind::RemoveAsPtr => {
                         assert!(matches!(hir_rw, Rewrite::Identity));
                         //assert_eq!(num_args, 1);
-                        hir_rw = Rewrite::Subexpr(0);
+                        hir_rw = self.get_subexpr(ex, 0);
                     }
                 }
             }
