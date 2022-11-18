@@ -11,12 +11,12 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-#[derive(Debug)]
-pub enum Rewrite {
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Rewrite<S = Span> {
     /// Take the original expression unchanged.
     Identity,
     /// Extract the subexpression at the given index.
-    Subexpr(usize, Span),
+    Subexpr(usize, S),
     /// `&e`, `&mut e`
     Ref(Box<Rewrite>, hir::Mutability),
     /// `core::ptr::addr_of!(e)`, `core::ptr::addr_of_mut!(e)`

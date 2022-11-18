@@ -3,6 +3,7 @@ use rustc_hir::BodyId;
 use rustc_middle::mir::Body;
 use rustc_span::Span;
 
+mod apply;
 mod hir_op;
 mod mir_op;
 mod span_index;
