@@ -72,7 +72,7 @@ pub struct GlobalAnalysisCtxt<'tcx> {
 
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
 
-    pub field_tys: HashMap<(DefId, Field, VariantIdx), LTy<'tcx>>,
+    pub field_tys: HashMap<DefId, LTy<'tcx>>,
 
     next_ptr_id: NextGlobalPointerId,
 }
@@ -368,7 +368,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             let res = *self
                 .gacx
                 .field_tys
-                .get(&(adtdef.did(), field, VariantIdx::from_usize(0)))
+                .get(&(adtdef.all_fields().nth(usize::from(field)).unwrap().did))
                 .unwrap_or_else(|| {
                     panic!("Could not find {adtdef:?}.{fielddef_name:?} in field type map")
                 });

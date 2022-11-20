@@ -157,16 +157,9 @@ fn run(tcx: TyCtxt) {
         if let DefKind::Struct = tcx.def_kind(defdid) {
             let defty = tcx.type_of(defdid).kind();
             if let TyKind::Adt(adtdef, _) = defty {
-                for (fid, field) in adtdef.all_fields().enumerate() {
+                for field in adtdef.all_fields() {
                     let lty = gacx.assign_pointer_ids(tcx.type_of(field.did));
-                    gacx.field_tys.insert(
-                        (
-                            adtdef.did(),
-                            Field::from_usize(fid),
-                            VariantIdx::from_usize(0),
-                        ),
-                        lty,
-                    );
+                    gacx.field_tys.insert(field.did, lty);
                 }
             }
         }
