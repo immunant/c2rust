@@ -329,7 +329,7 @@ mod tests {
                 "--metadata",
             ])
             .arg(&metadata_path)
-            .args(&["--set-runtime", "--runtime-path"])
+            .args(&["--runtime-path"])
             .arg(&runtime_path)
             .args(&["--", "run", "--manifest-path"])
             .arg(&manifest_path)
