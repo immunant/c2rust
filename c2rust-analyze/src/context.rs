@@ -363,15 +363,12 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
 
     pub fn project(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
         let adt_func = |adtdef: AdtDef, field: Field| {
-            let fielddef_name = adtdef.all_fields().collect::<Vec<_>>()[usize::from(field)].name;
+            let fielddef = adtdef.all_fields().nth(usize::from(field)).unwrap();
+            let fielddef_name = fielddef.name;
             eprintln!("projecting into {adtdef:?}.{fielddef_name:}");
-            let res = *self
-                .gacx
-                .field_tys
-                .get(&(adtdef.all_fields().nth(usize::from(field)).unwrap().did))
-                .unwrap_or_else(|| {
-                    panic!("Could not find {adtdef:?}.{fielddef_name:?} in field type map")
-                });
+            let res = *self.gacx.field_tys.get(&fielddef.did).unwrap_or_else(|| {
+                panic!("Could not find {adtdef:?}.{fielddef_name:?} in field type map")
+            });
             res
         };
         util::lty_project(lty, proj, adt_func)
