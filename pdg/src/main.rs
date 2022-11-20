@@ -350,7 +350,7 @@ mod tests {
         Ok(repr.to_string())
     }
 
-    fn analysis_test_pdg_snapshot(
+    fn analysis_tests_misc_pdg_snapshot(
         profile: Profile,
         runtime_kind: RuntimeKind,
     ) -> eyre::Result<impl Display> {
@@ -369,24 +369,24 @@ mod tests {
     use crate::init;
 
     #[test]
-    fn analysis_test_pdg_snapshot_debug() -> eyre::Result<()> {
+    fn analysis_tests_misc_pdg_snapshot_debug() -> eyre::Result<()> {
         init();
-        let pdg = analysis_test_pdg_snapshot(Profile::Debug, Default::default())?;
+        let pdg = analysis_tests_misc_pdg_snapshot(Profile::Debug, Default::default())?;
         insta::assert_display_snapshot!(pdg);
         Ok(())
     }
 
     #[test]
-    fn analysis_test_pdg_snapshot_release() -> eyre::Result<()> {
+    fn analysis_tests_misc_pdg_snapshot_release() -> eyre::Result<()> {
         init();
-        let pdg = analysis_test_pdg_snapshot(Profile::Release, Default::default())?;
+        let pdg = analysis_tests_misc_pdg_snapshot(Profile::Release, Default::default())?;
         insta::assert_display_snapshot!(pdg);
         Ok(())
     }
 
     #[test]
     #[ignore]
-    fn analysis_test_miri() -> eyre::Result<()> {
+    fn analysis_tests_misc_miri() -> eyre::Result<()> {
         init();
         let mut cmd = Command::new("cargo");
         cmd.current_dir(repo_dir()?.join("analysis/tests/misc"))
