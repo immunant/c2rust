@@ -154,13 +154,14 @@ fn run(tcx: TyCtxt) {
     // Label the field types of each struct.
     for ldid in tcx.hir_crate_items(()).definitions() {
         let did = ldid.to_def_id();
-        if let DefKind::Struct = tcx.def_kind(did) {
-            let defty = tcx.type_of(did).kind();
-            if let TyKind::Adt(adtdef, _) = defty {
-                for field in adtdef.all_fields() {
-                    let lty = gacx.assign_pointer_ids(tcx.type_of(field.did));
-                    gacx.field_tys.insert(field.did, lty);
-                }
+        if tcx.def_kind(did) != DefKind::Struct {
+            continue;
+        }
+        let defty = tcx.type_of(did).kind();
+        if let TyKind::Adt(adtdef, _) = defty {
+            for field in adtdef.all_fields() {
+                let lty = gacx.assign_pointer_ids(tcx.type_of(field.did));
+                gacx.field_tys.insert(field.did, lty);
             }
         }
     }
