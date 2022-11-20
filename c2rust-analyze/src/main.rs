@@ -157,12 +157,9 @@ fn run(tcx: TyCtxt) {
         if tcx.def_kind(did) != DefKind::Struct {
             continue;
         }
-        let defty = tcx.type_of(did).kind();
-        if let TyKind::Adt(adtdef, _) = defty {
-            for field in adtdef.all_fields() {
-                let lty = gacx.assign_pointer_ids(tcx.type_of(field.did));
-                gacx.field_tys.insert(field.did, lty);
-            }
+        for field in tcx.adt_def(did).all_fields() {
+            let lty = gacx.assign_pointer_ids(tcx.type_of(field.did));
+            gacx.field_tys.insert(field.did, lty);
         }
     }
 
