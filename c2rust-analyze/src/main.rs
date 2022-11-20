@@ -26,12 +26,11 @@ use rustc_hir::def_id::LocalDefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, Field, LocalDecl, LocalInfo, LocalKind, Location, Operand,
-    Rvalue, StatementKind,
+    AggregateKind, BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand, Rvalue,
+    StatementKind,
 };
 use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
-use rustc_target::abi::VariantIdx;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::ops::{Deref, DerefMut};

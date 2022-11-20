@@ -13,7 +13,6 @@ use rustc_middle::mir::{
 };
 use rustc_middle::ty::adjustment::PointerCast;
 use rustc_middle::ty::{AdtDef, Ty, TyCtxt, TyKind};
-use rustc_target::abi::VariantIdx;
 use std::collections::HashMap;
 use std::ops::Index;
 
