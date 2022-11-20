@@ -160,7 +160,11 @@ fn run(tcx: TyCtxt) {
                 for (fid, field) in adtdef.all_fields().enumerate() {
                     let lty = gacx.assign_pointer_ids(tcx.type_of(field.did));
                     gacx.field_tys.insert(
-                        (*adtdef, Field::from_usize(fid), VariantIdx::from_usize(0)),
+                        (
+                            adtdef.did(),
+                            Field::from_usize(fid),
+                            VariantIdx::from_usize(0),
+                        ),
                         lty,
                     );
                 }
