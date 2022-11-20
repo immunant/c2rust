@@ -355,7 +355,7 @@ mod tests {
         runtime_kind: RuntimeKind,
     ) -> eyre::Result<impl Display> {
         pdg_snapshot(
-            repo_dir()?.join("analysis/test").as_path(),
+            repo_dir()?.join("analysis/tests/misc").as_path(),
             profile,
             &[] as &[&OsStr],
             {
@@ -389,7 +389,7 @@ mod tests {
     fn analysis_test_miri() -> eyre::Result<()> {
         init();
         let mut cmd = Command::new("cargo");
-        cmd.current_dir(repo_dir()?.join("analysis/test"))
+        cmd.current_dir(repo_dir()?.join("analysis/tests/misc"))
             .args(&["miri", "run", "--features", "miri"])
             .env("MIRIFLAGS", "");
         let status = cmd.status()?;
