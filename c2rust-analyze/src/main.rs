@@ -153,7 +153,8 @@ fn run(tcx: TyCtxt) {
     // Label the field types of each struct.
     for ldid in tcx.hir_crate_items(()).definitions() {
         let did = ldid.to_def_id();
-        if tcx.def_kind(did) != DefKind::Struct {
+        use DefKind::*;
+        if !matches!(tcx.def_kind(did), Struct | Enum | Union) {
             continue;
         }
         for field in tcx.adt_def(did).all_fields() {
