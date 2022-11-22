@@ -141,7 +141,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             tcx: _,
             lcx,
             ref mut fn_sigs,
-            field_tys: _,
+            ref mut field_tys,
             ref mut next_ptr_id,
         } = *self;
 
@@ -153,6 +153,10 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
                     .collect::<Vec<_>>(),
             );
             sig.output = remap_lty_pointers(lcx, map, sig.output);
+        }
+
+        for labeled_field in field_tys.values_mut() {
+            *labeled_field = remap_lty_pointers(lcx, map, labeled_field);
         }
 
         *next_ptr_id = counter;
