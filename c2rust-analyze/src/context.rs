@@ -4,6 +4,7 @@ use crate::pointer_id::{
     PointerTableMut,
 };
 use crate::util::{self, describe_rvalue, RvalueDesc};
+use crate::AssignPointerIds;
 use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
@@ -12,7 +13,7 @@ use rustc_middle::mir::{
     PlaceRef, Rvalue,
 };
 use rustc_middle::ty::adjustment::PointerCast;
-use rustc_middle::ty::{AdtDef, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{AdtDef, FieldDef, Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
 
@@ -155,6 +156,17 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         }
 
         *next_ptr_id = counter;
+    }
+
+    pub fn label_field(&mut self, field: &FieldDef) {
+        let lty = self.assign_pointer_ids(self.tcx.type_of(field.did));
+        self.field_tys.insert(field.did, lty);
+    }
+
+    pub fn label_struct_fields(&mut self, did: DefId) {
+        for field in self.tcx.adt_def(did).all_fields() {
+            self.label_field(field);
+        }
     }
 }
 

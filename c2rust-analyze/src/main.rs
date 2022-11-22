@@ -157,10 +157,7 @@ fn run(tcx: TyCtxt) {
         if !matches!(tcx.def_kind(did), Struct | Enum | Union) {
             continue;
         }
-        for field in tcx.adt_def(did).all_fields() {
-            let lty = gacx.assign_pointer_ids(tcx.type_of(field.did));
-            gacx.field_tys.insert(field.did, lty);
-        }
+        gacx.label_struct_fields(did);
     }
 
     // Initial pass to assign local `PointerId`s and gather equivalence constraints, which state
