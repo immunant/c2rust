@@ -19,7 +19,7 @@ exclude = [
     "cross-checks/zero-malloc",
     "cross-checks/rust-checks",
     "examples",
-    "analysis/test",
+    "analysis/tests",
     "tests",
 ]
 
