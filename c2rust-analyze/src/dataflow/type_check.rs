@@ -284,6 +284,35 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                     Some(Callee::MiscBuiltin) => {}
 
+                    Some(Callee::Malloc) => {
+                        self.visit_place(destination, Mutability::Mut);
+                    }
+
+                    Some(Callee::Calloc) => {
+                        self.visit_place(destination, Mutability::Mut);
+                    }
+                    Some(Callee::Realloc) => {
+                        // We handle this like a pointer assignment.
+                        self.visit_place(destination, Mutability::Mut);
+                        let pl_lty = self.acx.type_of(destination);
+                        assert!(args.len() == 2);
+                        self.visit_operand(&args[0]);
+                        let rv_lty = self.acx.type_of(&args[0]);
+                        self.do_assign(pl_lty, rv_lty);
+                        let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
+                        self.constraints.add_all_perms(rv_lty.label, perms);
+                    }
+                    Some(Callee::Free) => {
+                        self.visit_place(destination, Mutability::Mut);
+                        assert!(args.len() == 1);
+                        self.visit_operand(&args[0]);
+                    }
+
+                    Some(Callee::IsNull) => {
+                        assert!(args.len() == 1);
+                        self.visit_operand(&args[0]);
+                    }
+
                     Some(Callee::Other { def_id, substs }) => {
                         self.visit_call_other(def_id, substs, args, destination);
                     }

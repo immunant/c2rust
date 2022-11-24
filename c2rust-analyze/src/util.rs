@@ -87,6 +87,16 @@ pub enum Callee<'tcx> {
     },
     /// A built-in or standard library function that requires no special handling.
     MiscBuiltin,
+    /// libc::malloc
+    Malloc,
+    /// libc::calloc
+    Calloc,
+    /// libc::free
+    Free,
+    /// libc::realloc
+    Realloc,
+    /// std::ptr::is_null
+    IsNull,
     /// Some other statically-known function, including functions defined in the current crate.
     Other {
         def_id: DefId,
@@ -177,7 +187,22 @@ fn builtin_callee<'tcx>(
             Some(Callee::MiscBuiltin)
         }
 
-        _ => None,
+        "size_of" => Some(Callee::MiscBuiltin),
+
+        "malloc" => Some(Callee::Malloc),
+
+        "calloc" => Some(Callee::Calloc),
+
+        "realloc" => Some(Callee::Realloc),
+
+        "free" => Some(Callee::Free),
+
+        "is_null" => Some(Callee::IsNull),
+
+        _ => {
+            eprintln!("name: {name:?}");
+            None
+        }
     }
 }
 

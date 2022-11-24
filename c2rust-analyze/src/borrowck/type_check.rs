@@ -238,6 +238,28 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     Some(Callee::Other { .. }) => {
                         // TODO
                     }
+                    Some(Callee::Malloc) => {
+                        // TODO
+                    }
+                    Some(Callee::Calloc) => {
+                        // TODO
+                    }
+                    Some(Callee::Realloc) => {
+                        // We handle this like a pointer assignment.
+                        let pl_lty = self.visit_place(destination);
+                        assert!(args.len() == 2);
+                        let rv_lty = self.visit_operand(&args[0]);
+                        self.do_assign(pl_lty, rv_lty);
+                    }
+                    Some(Callee::Free) => {
+                        let _pl_lty = self.visit_place(destination);
+                        assert!(args.len() == 1);
+                        let _rv_lty = self.visit_operand(&args[0]);
+                    }
+                    Some(Callee::IsNull) => {
+                        assert!(args.len() == 1);
+                        let _rv_lty = self.visit_operand(&args[0]);
+                    }
                     None => {}
                 }
             }
