@@ -175,6 +175,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.ltcx.label(ty, &mut |_| Label::default())
             }
 
+            Rvalue::UnaryOp(_, ref op) => {
+                self.visit_operand(op)
+            }
+
             ref rv => panic!("unsupported rvalue {:?}", rv),
         }
     }
