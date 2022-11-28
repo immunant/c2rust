@@ -8,7 +8,7 @@ fn detect_filecheck() -> Option<&'static str> {
         "FileCheck",
         // Intel macOS homebrew location.
         "/usr/local/opt/llvm/bin/FileCheck",
-        // Arm macOS homebrew location.
+        // Apple Silicon macOS homebrew location.
         "/opt/homebrew/opt/llvm/bin/FileCheck",
         "FileCheck-14",
         "/usr/local/opt/llvm@14/bin/FileCheck",

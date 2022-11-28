@@ -100,7 +100,7 @@ On macOS with Homebrew LLVM, you need to point the build system at the LLVM inst
     ```
 
 
-- **Arm Macs:**
+- **Apple Silicon Macs:**
 
     ```sh
     LLVM_CONFIG_PATH=/opt/homebrew/opt/llvm/bin/llvm-config cargo install c2rust

@@ -106,7 +106,7 @@ pub fn find_llvm_config() -> Option<PathBuf> {
                 "/usr/local/opt/llvm@9/bin/llvm-config",
                 "/usr/local/opt/llvm@8/bin/llvm-config",
                 "/usr/local/opt/llvm/bin/llvm-config",
-                // Homebrew install locations on Arm macOS
+                // Homebrew install locations on Apple Silicon macOS
                 "/opt/homebrew/opt/llvm@13/bin/llvm-config",
                 "/opt/homebrew/opt/llvm@12/bin/llvm-config",
                 "/opt/homebrew/opt/llvm@11/bin/llvm-config",
