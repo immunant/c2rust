@@ -98,7 +98,7 @@ pub fn find_llvm_config() -> Option<PathBuf> {
                 "llvm-config-7",
                 "llvm-config-7.0",
                 "llvm-config",
-                // Homebrew install locations on MacOS
+                // Homebrew install locations on Intel macOS
                 "/usr/local/opt/llvm@13/bin/llvm-config",
                 "/usr/local/opt/llvm@12/bin/llvm-config",
                 "/usr/local/opt/llvm@11/bin/llvm-config",
@@ -106,6 +106,14 @@ pub fn find_llvm_config() -> Option<PathBuf> {
                 "/usr/local/opt/llvm@9/bin/llvm-config",
                 "/usr/local/opt/llvm@8/bin/llvm-config",
                 "/usr/local/opt/llvm/bin/llvm-config",
+                // Homebrew install locations on Arm macOS
+                "/opt/homebrew/opt/llvm@13/bin/llvm-config",
+                "/opt/homebrew/opt/llvm@12/bin/llvm-config",
+                "/opt/homebrew/opt/llvm@11/bin/llvm-config",
+                "/opt/homebrew/opt/llvm@10/bin/llvm-config",
+                "/opt/homebrew/opt/llvm@9/bin/llvm-config",
+                "/opt/homebrew/opt/llvm@8/bin/llvm-config",
+                "/opt/homebrew/opt/llvm/bin/llvm-config",
             ]
             .iter()
             .map(Path::new)
