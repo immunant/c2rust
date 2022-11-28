@@ -8,6 +8,8 @@
 #![allow(dead_code)]
 #![allow(mutable_transmutes)]
 #![allow(unused_mut)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
 
 #[path = "lighttpd.rs"]
 pub mod lighttpd;
