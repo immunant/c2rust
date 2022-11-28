@@ -45,3 +45,6 @@ tests/**/*.o
 # Outputs of `c2rust refactor -r json,marks`
 rewrites.*.json
 marks.*.json
+
+# Outputs of `c2rust-analyze`
+inspect/
