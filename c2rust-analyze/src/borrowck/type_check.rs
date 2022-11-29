@@ -175,9 +175,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.ltcx.label(ty, &mut |_| Label::default())
             }
 
-            Rvalue::UnaryOp(_, ref op) => {
-                self.visit_operand(op)
-            }
+            Rvalue::UnaryOp(_, ref op) => self.visit_operand(op),
 
             ref rv => panic!("unsupported rvalue {:?}", rv),
         }
@@ -247,18 +245,22 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     Some(Callee::Realloc) => {
                         // We handle this like a pointer assignment.
                         let pl_lty = self.visit_place(destination);
-                        assert!(args.len() == 2);
-                        let rv_lty = self.visit_operand(&args[0]);
+                        let rv_lty = assert_matches!(&args[..], [p, _] => {
+                            self.visit_operand(p)
+                        });
+
                         self.do_assign(pl_lty, rv_lty);
                     }
                     Some(Callee::Free) => {
                         let _pl_lty = self.visit_place(destination);
-                        assert!(args.len() == 1);
-                        let _rv_lty = self.visit_operand(&args[0]);
+                        let _rv_lty = assert_matches!(&args[..], [p] => {
+                            self.visit_operand(p)
+                        });
                     }
                     Some(Callee::IsNull) => {
-                        assert!(args.len() == 1);
-                        let _rv_lty = self.visit_operand(&args[0]);
+                        let _rv_lty = assert_matches!(&args[..], [p] => {
+                            self.visit_operand(p)
+                        });
                     }
                     None => {}
                 }

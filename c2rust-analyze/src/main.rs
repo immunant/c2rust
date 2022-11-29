@@ -1,4 +1,5 @@
 #![feature(rustc_private)]
+#[macro_use] extern crate assert_matches;
 extern crate either;
 extern crate rustc_arena;
 extern crate rustc_ast;
