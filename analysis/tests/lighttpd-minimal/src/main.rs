@@ -1,4 +1,15 @@
+#![feature(extern_types)]
+#![feature(label_break_value)]
 #![feature(rustc_private)]
+#![feature(c_variadic)]
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(dead_code)]
+#![allow(mutable_transmutes)]
+#![allow(unused_mut)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
 
 extern crate libc;
 
@@ -65,3 +76,9 @@ pub unsafe extern "C" fn fdevent_unregister(mut ev: *mut fdevents, mut fd: libc:
 unsafe extern "C" fn fdnode_free(mut fdn: *mut fdnode) {}
 
 pub unsafe extern "C" fn lighttpd_test() {}
+
+fn main() {
+    unsafe {
+        lighttpd_test();
+    }
+}
