@@ -150,6 +150,16 @@ fn run(tcx: TyCtxt) {
         gacx.fn_sigs.insert(ldid.to_def_id(), lsig);
     }
 
+    // Label the field types of each struct.
+    for ldid in tcx.hir_crate_items(()).definitions() {
+        let did = ldid.to_def_id();
+        use DefKind::*;
+        if !matches!(tcx.def_kind(did), Struct | Enum | Union) {
+            continue;
+        }
+        gacx.label_struct_fields(did);
+    }
+
     // Initial pass to assign local `PointerId`s and gather equivalence constraints, which state
     // that two pointer types must be converted to the same reference type.  Some additional data
     // computed during this the process is kept around for use in later passes.

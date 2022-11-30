@@ -4,15 +4,16 @@ use crate::pointer_id::{
     PointerTableMut,
 };
 use crate::util::{self, describe_rvalue, RvalueDesc};
+use crate::AssignPointerIds;
 use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    Body, CastKind, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem,
+    Body, CastKind, Field, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem,
     PlaceRef, Rvalue,
 };
 use rustc_middle::ty::adjustment::PointerCast;
-use rustc_middle::ty::{Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{AdtDef, FieldDef, Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
 
@@ -71,6 +72,8 @@ pub struct GlobalAnalysisCtxt<'tcx> {
 
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
 
+    pub field_tys: HashMap<DefId, LTy<'tcx>>,
+
     next_ptr_id: NextGlobalPointerId,
 }
 
@@ -101,6 +104,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             tcx,
             lcx: LabeledTyCtxt::new(tcx),
             fn_sigs: HashMap::new(),
+            field_tys: HashMap::new(),
             next_ptr_id: NextGlobalPointerId::new(),
         }
     }
@@ -137,6 +141,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             tcx: _,
             lcx,
             ref mut fn_sigs,
+            ref mut field_tys,
             ref mut next_ptr_id,
         } = *self;
 
@@ -150,7 +155,22 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             sig.output = remap_lty_pointers(lcx, map, sig.output);
         }
 
+        for labeled_field in field_tys.values_mut() {
+            *labeled_field = remap_lty_pointers(lcx, map, labeled_field);
+        }
+
         *next_ptr_id = counter;
+    }
+
+    pub fn label_field(&mut self, field: &FieldDef) {
+        let lty = self.assign_pointer_ids(self.tcx.type_of(field.did));
+        self.field_tys.insert(field.did, lty);
+    }
+
+    pub fn label_struct_fields(&mut self, did: DefId) {
+        for field in self.tcx.adt_def(did).all_fields() {
+            self.label_field(field);
+        }
     }
 }
 
@@ -357,7 +377,16 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     }
 
     pub fn project(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
-        util::lty_project(lty, proj)
+        let adt_func = |adt_def: AdtDef, field: Field| {
+            let field_def = &adt_def.non_enum_variant().fields[field.index()];
+            let field_def_name = field_def.name;
+            eprintln!("projecting into {adt_def:?}.{field_def_name:}");
+            let res = *self.gacx.field_tys.get(&field_def.did).unwrap_or_else(|| {
+                panic!("Could not find {adt_def:?}.{field_def_name:?} in field type map")
+            });
+            res
+        };
+        util::lty_project(lty, proj, adt_func)
     }
 }
 
