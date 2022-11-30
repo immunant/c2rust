@@ -187,7 +187,20 @@ fn builtin_callee<'tcx>(
             Some(Callee::MiscBuiltin)
         }
 
-        "size_of" => Some(Callee::MiscBuiltin),
+        "size_of" => {
+            // `core::mem::size_of`
+            let path = tcx.def_path(did);
+            if tcx.crate_name(path.krate).as_str() != "core" {
+                return None;
+            }
+            if path.data.len() != 2 {
+                return None;
+            }
+            if path.data[0].to_string() != "mem" {
+                return None;
+            }
+            Some(Callee::MiscBuiltin)
+        },
 
         "malloc" => Some(Callee::Malloc),
 
