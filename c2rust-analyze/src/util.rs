@@ -95,7 +95,7 @@ pub enum Callee<'tcx> {
     Free,
     /// libc::realloc
     Realloc,
-    /// std::ptr::is_null
+    /// core::ptr::is_null
     IsNull,
     /// Some other statically-known function, including functions defined in the current crate.
     Other {
@@ -197,7 +197,20 @@ fn builtin_callee<'tcx>(
 
         "free" => Some(Callee::Free),
 
-        "is_null" => Some(Callee::IsNull),
+        "is_null" => {
+            // `core::ptr::is_null`
+            let path = tcx.def_path(did);
+            if tcx.crate_name(path.krate).as_str() != "core" {
+                return None;
+            }
+            if path.data.len() != 4 {
+                return None;
+            }
+            if path.data[0].to_string() != "ptr" {
+                return None;
+            }
+            Some(Callee::IsNull)
+        },
 
         _ => {
             eprintln!("name: {name:?}");
