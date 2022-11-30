@@ -377,12 +377,12 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     }
 
     pub fn project(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
-        let adt_func = |adtdef: AdtDef, field: Field| {
-            let field_def = &adtdef.non_enum_variant().fields[field.index()];
+        let adt_func = |adt_def: AdtDef, field: Field| {
+            let field_def = &adt_def.non_enum_variant().fields[field.index()];
             let field_def_name = field_def.name;
-            eprintln!("projecting into {adtdef:?}.{field_def_name:}");
+            eprintln!("projecting into {adt_def:?}.{field_def_name:}");
             let res = *self.gacx.field_tys.get(&field_def.did).unwrap_or_else(|| {
-                panic!("Could not find {adtdef:?}.{field_def_name:?} in field type map")
+                panic!("Could not find {adt_def:?}.{field_def_name:?} in field type map")
             });
             res
         };
