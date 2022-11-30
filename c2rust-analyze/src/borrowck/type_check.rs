@@ -2,6 +2,7 @@ use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubP
 use crate::borrowck::{LTy, LTyCtxt, Label};
 use crate::context::PermissionSet;
 use crate::util::{self, Callee};
+use assert_matches::assert_matches;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
     AggregateKind, BinOp, Body, BorrowKind, Local, LocalDecl, Location, Operand, Place, Rvalue,
