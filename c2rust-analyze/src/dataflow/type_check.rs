@@ -317,6 +317,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         self.visit_place(destination, Mutability::Mut);
                         assert!(args.len() == 1);
                         self.visit_operand(&args[0]);
+
+                        let rv_lty = self.acx.type_of(&args[0]);
+                        let perms = PermissionSet::FREE;
+                        self.constraints.add_all_perms(rv_lty.label, perms);
                     }
 
                     Some(Callee::IsNull) => {
