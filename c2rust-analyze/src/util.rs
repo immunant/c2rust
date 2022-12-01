@@ -200,15 +200,59 @@ fn builtin_callee<'tcx>(
                 return None;
             }
             Some(Callee::MiscBuiltin)
-        },
+        }
 
-        "malloc" => Some(Callee::Malloc),
+        "malloc" | "c2rust_test_typed_malloc" => {
+            if tcx
+                .codegen_fn_attrs(did)
+                .link_name
+                .filter(|s| s.as_str() == "malloc")
+                .is_some()
+                || matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod)
+            {
+                return Some(Callee::Malloc);
+            }
+            None
+        }
 
-        "calloc" => Some(Callee::Calloc),
+        "calloc" => {
+            if tcx
+                .codegen_fn_attrs(did)
+                .link_name
+                .filter(|s| s.as_str() == "calloc")
+                .is_some()
+                || matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod)
+            {
+                return Some(Callee::Calloc);
+            }
+            None
+        }
 
-        "realloc" => Some(Callee::Realloc),
+        "realloc" | "c2rust_test_typed_realloc" => {
+            if tcx
+                .codegen_fn_attrs(did)
+                .link_name
+                .filter(|s| s.as_str() == "realloc")
+                .is_some()
+                || matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod)
+            {
+                return Some(Callee::Realloc);
+            }
+            None
+        }
 
-        "free" => Some(Callee::Free),
+        "free" | "c2rust_test_typed_free" => {
+            if tcx
+                .codegen_fn_attrs(did)
+                .link_name
+                .filter(|s| s.as_str() == "malloc")
+                .is_some()
+                || matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod)
+            {
+                return Some(Callee::Free);
+            }
+            None
+        }
 
         "is_null" => {
             // `core::ptr::is_null`
@@ -223,7 +267,7 @@ fn builtin_callee<'tcx>(
                 return None;
             }
             Some(Callee::IsNull)
-        },
+        }
 
         _ => {
             eprintln!("name: {name:?}");
