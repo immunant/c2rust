@@ -292,15 +292,26 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         self.visit_place(destination, Mutability::Mut);
                     }
                     Some(Callee::Realloc) => {
-                        // We handle this like a pointer assignment.
                         self.visit_place(destination, Mutability::Mut);
                         let pl_lty = self.acx.type_of(destination);
                         assert!(args.len() == 2);
                         self.visit_operand(&args[0]);
                         let rv_lty = self.acx.type_of(&args[0]);
-                        self.do_assign(pl_lty, rv_lty);
-                        let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
+
+                        // input needs FREE permission
+                        let perms = PermissionSet::FREE;
                         self.constraints.add_all_perms(rv_lty.label, perms);
+
+                        // unify inner-most pointer types
+                        let mut rv_iter = rv_lty.iter();
+                        let mut pl_iter = pl_lty.iter();
+                        let _outermost_rv = rv_iter.next();
+                        let _outerpost_pl = pl_iter.next();
+                        // TODO: handle return types that are different:
+                        // realloc may return a *const void but take in *const *mut ...
+                        for (rv_inner, pl_inner) in rv_iter.zip(pl_iter) {
+                            self.do_unify(rv_inner, pl_inner);
+                        }
                     }
                     Some(Callee::Free) => {
                         self.visit_place(destination, Mutability::Mut);
