@@ -40,7 +40,7 @@ bitflags! {
         /// This pointer can be offset in the negative direction.
         const OFFSET_SUB = 0x0020;
         /// This pointer can be freed.
-        const FREE = 0x0030;
+        const FREE = 0x0040;
     }
 }
 
