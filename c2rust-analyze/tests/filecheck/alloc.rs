@@ -54,12 +54,16 @@ unsafe extern "C" fn free1(mut i: *mut i32) {
 unsafe extern "C" fn realloc1(mut i: *mut i32, len: libc::c_ulong) {
     let mut capacity = 1;
     let mut x = 1;
+    // CHECK-DAG: ([[#@LINE+1]]: mut elem): addr_of = UNIQUE, type = READ | WRITE | OFFSET_ADD | OFFSET_SUB
+    let mut elem = i;
     loop {
         if x == capacity {
             capacity *= 2;
             // CHECK-DAG: ([[#@LINE+1]]: i): addr_of = UNIQUE, type = FREE
             i = c2rust_test_typed_realloc(i, ::std::mem::size_of::<i32>() as libc::c_ulong);
         }
+        *elem = 1;
+        elem = elem.offset(1isize);
         if x == 10 {
             break;
         }
