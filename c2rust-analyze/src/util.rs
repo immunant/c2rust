@@ -209,7 +209,7 @@ fn builtin_callee<'tcx>(
             None
         }
 
-        "calloc" => {
+        "calloc" | "c2rust_test_typed_calloc" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Calloc);
             }
