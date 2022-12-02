@@ -203,52 +203,28 @@ fn builtin_callee<'tcx>(
         }
 
         "malloc" | "c2rust_test_typed_malloc" => {
-            if tcx
-                .codegen_fn_attrs(did)
-                .link_name
-                .filter(|s| s.as_str() == "malloc")
-                .is_some()
-                || matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod)
-            {
+            if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Malloc);
             }
             None
         }
 
         "calloc" => {
-            if tcx
-                .codegen_fn_attrs(did)
-                .link_name
-                .filter(|s| s.as_str() == "calloc")
-                .is_some()
-                || matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod)
-            {
+            if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Calloc);
             }
             None
         }
 
         "realloc" | "c2rust_test_typed_realloc" => {
-            if tcx
-                .codegen_fn_attrs(did)
-                .link_name
-                .filter(|s| s.as_str() == "realloc")
-                .is_some()
-                || matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod)
-            {
+            if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Realloc);
             }
             None
         }
 
         "free" | "c2rust_test_typed_free" => {
-            if tcx
-                .codegen_fn_attrs(did)
-                .link_name
-                .filter(|s| s.as_str() == "malloc")
-                .is_some()
-                || matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod)
-            {
+            if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Free);
             }
             None
