@@ -61,21 +61,58 @@ pub struct fdnode_st {
 
 pub type fdnode = fdnode_st;
 
-unsafe extern "C" fn connection_close(mut srv: *mut server, mut con: *mut connection) {}
+unsafe extern "C" fn fdnode_init() -> *mut libc::c_void /*TODO: handle *mut fdnode */ {
+    let fdn /*TODO: handle : *mut fdnode */ = calloc(
+        1 as libc::c_int as libc::c_ulong,
+        ::std::mem::size_of::<fdnode>() as libc::c_ulong,
+    ) /* TODO: handle cast as *mut fdnode */;
+    if fdn.is_null() {
+        // println!("It's null");
+    }
+
+    return fdn;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn connection_accepted(
+    mut srv: *mut server,
+    mut cnt: libc::c_int,
+) -> *mut libc::c_void /* TODO: handle *mut connection */ {
+    let con = malloc(::std::mem::size_of::<connection>() as libc::c_ulong); // TODO: handle as *mut connection;
+    return con;
+}
+
+unsafe extern "C" fn connection_close(
+    mut srv: *mut server,
+    mut con: *mut libc::c_void, /* TODO: handle *mut connection */
+) {
+    free(con /* TODO: handle cast as *mut libc::c_void */);
+}
 
 #[no_mangle]
 pub unsafe extern "C" fn fdevent_fdnode_event_del(mut ev: *mut fdevents, mut fdn: *mut fdnode) {
-    fdevent_fdnode_event_unsetter(ev, fdn);
+    if !fdn.is_null() {
+        fdevent_fdnode_event_unsetter(ev, fdn);
+    }
 }
 
 unsafe extern "C" fn fdevent_fdnode_event_unsetter(mut ev: *mut fdevents, mut fdn: *mut fdnode) {}
 
 #[no_mangle]
-pub unsafe extern "C" fn fdevent_unregister(mut ev: *mut fdevents, mut fd: libc::c_int) {}
+pub unsafe extern "C" fn fdevent_unregister(mut fds: *mut *mut fdnode, mut fd: libc::c_int) {
+    let mut fdn: *mut fdnode = *(fds).offset(fd as isize);
+}
 
-unsafe extern "C" fn fdnode_free(mut fdn: *mut fdnode) {}
+unsafe extern "C" fn fdnode_free(fdn: *mut libc::c_void) {
+    free(fdn /* TODO: handle cast as *mut libc::c_void */);
+}
 
-pub unsafe extern "C" fn lighttpd_test() {}
+pub unsafe extern "C" fn lighttpd_test() {
+    let fdarr = malloc(::std::mem::size_of::<*mut fdnode>() as libc::c_ulong); // TODO: handle cast as *mut *mut fdnode;
+    let fdes = malloc(::std::mem::size_of::<fdevents>() as libc::c_ulong); // TODO: handle cast as *mut fdevents;
+    free(fdarr /* TODO: handle cast as *mut libc::c_void */);
+    free(fdes /* TODO: handle cast as *mut libc::c_void */);
+}
 
 fn main() {
     unsafe {

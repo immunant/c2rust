@@ -87,6 +87,16 @@ pub enum Callee<'tcx> {
     },
     /// A built-in or standard library function that requires no special handling.
     MiscBuiltin,
+    /// libc::malloc
+    Malloc,
+    /// libc::calloc
+    Calloc,
+    /// libc::free
+    Free,
+    /// libc::realloc
+    Realloc,
+    /// core::ptr::is_null
+    IsNull,
     /// Some other statically-known function, including functions defined in the current crate.
     Other {
         def_id: DefId,
@@ -177,7 +187,70 @@ fn builtin_callee<'tcx>(
             Some(Callee::MiscBuiltin)
         }
 
-        _ => None,
+        "size_of" => {
+            // `core::mem::size_of`
+            let path = tcx.def_path(did);
+            if tcx.crate_name(path.krate).as_str() != "core" {
+                return None;
+            }
+            if path.data.len() != 2 {
+                return None;
+            }
+            if path.data[0].to_string() != "mem" {
+                return None;
+            }
+            Some(Callee::MiscBuiltin)
+        }
+
+        "malloc" | "c2rust_test_typed_malloc" => {
+            if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
+                return Some(Callee::Malloc);
+            }
+            None
+        }
+
+        "calloc" | "c2rust_test_typed_calloc" => {
+            if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
+                return Some(Callee::Calloc);
+            }
+            None
+        }
+
+        "realloc" | "c2rust_test_typed_realloc" => {
+            if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
+                return Some(Callee::Realloc);
+            }
+            None
+        }
+
+        "free" | "c2rust_test_typed_free" => {
+            if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
+                return Some(Callee::Free);
+            }
+            None
+        }
+
+        "is_null" => {
+            // The `offset` inherent method of `*const T` and `*mut T`.
+            let parent_did = tcx.parent(did);
+            if tcx.def_kind(parent_did) != DefKind::Impl {
+                return None;
+            }
+            if tcx.impl_trait_ref(parent_did).is_some() {
+                return None;
+            }
+            let parent_impl_ty = tcx.type_of(parent_did);
+            let (_pointee_ty, _mutbl) = match parent_impl_ty.kind() {
+                TyKind::RawPtr(tm) => (tm.ty, tm.mutbl),
+                _ => return None,
+            };
+            Some(Callee::IsNull)
+        }
+
+        _ => {
+            eprintln!("name: {name:?}");
+            None
+        }
     }
 }
 

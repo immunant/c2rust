@@ -2,6 +2,7 @@ use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubP
 use crate::borrowck::{LTy, LTyCtxt, Label};
 use crate::context::PermissionSet;
 use crate::util::{self, Callee};
+use assert_matches::assert_matches;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
     AggregateKind, BinOp, Body, BorrowKind, Local, LocalDecl, Location, Operand, Place, Rvalue,
@@ -175,6 +176,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.ltcx.label(ty, &mut |_| Label::default())
             }
 
+            Rvalue::UnaryOp(_, ref op) => self.visit_operand(op),
+
             ref rv => panic!("unsupported rvalue {:?}", rv),
         }
     }
@@ -233,6 +236,32 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     Some(Callee::MiscBuiltin) => {}
                     Some(Callee::Other { .. }) => {
                         // TODO
+                    }
+                    Some(Callee::Malloc) => {
+                        // TODO
+                    }
+                    Some(Callee::Calloc) => {
+                        // TODO
+                    }
+                    Some(Callee::Realloc) => {
+                        // We handle this like a pointer assignment.
+                        let pl_lty = self.visit_place(destination);
+                        let rv_lty = assert_matches!(&args[..], [p, _] => {
+                            self.visit_operand(p)
+                        });
+
+                        self.do_assign(pl_lty, rv_lty);
+                    }
+                    Some(Callee::Free) => {
+                        let _pl_lty = self.visit_place(destination);
+                        let _rv_lty = assert_matches!(&args[..], [p] => {
+                            self.visit_operand(p)
+                        });
+                    }
+                    Some(Callee::IsNull) => {
+                        let _rv_lty = assert_matches!(&args[..], [p] => {
+                            self.visit_operand(p)
+                        });
                     }
                     None => {}
                 }

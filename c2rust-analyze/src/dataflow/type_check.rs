@@ -170,16 +170,20 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    fn do_assign(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
-        // If the top-level types are pointers, add a dataflow edge indicating that `rv` flows into
-        // `pl`.
-        self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
-
+    fn do_equivalence_nested(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
         // Add equivalence constraints for all nested pointers beyond the top level.
         assert_eq!(pl_lty.ty, rv_lty.ty);
         for (&pl_sub_lty, &rv_sub_lty) in pl_lty.args.iter().zip(rv_lty.args.iter()) {
             self.do_unify(pl_sub_lty, rv_sub_lty);
         }
+    }
+
+    fn do_assign(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
+        // If the top-level types are pointers, add a dataflow edge indicating that `rv` flows into
+        // `pl`.
+        self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
+
+        self.do_equivalence_nested(pl_lty, rv_lty);
     }
 
     /// Add a dataflow edge indicating that `rv_ptr` flows into `pl_ptr`.  If both `PointerId`s are
@@ -283,6 +287,42 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
 
                     Some(Callee::MiscBuiltin) => {}
+
+                    Some(Callee::Malloc) => {
+                        self.visit_place(destination, Mutability::Mut);
+                    }
+
+                    Some(Callee::Calloc) => {
+                        self.visit_place(destination, Mutability::Mut);
+                    }
+                    Some(Callee::Realloc) => {
+                        self.visit_place(destination, Mutability::Mut);
+                        let pl_lty = self.acx.type_of(destination);
+                        assert!(args.len() == 2);
+                        self.visit_operand(&args[0]);
+                        let rv_lty = self.acx.type_of(&args[0]);
+
+                        // input needs FREE permission
+                        let perms = PermissionSet::FREE;
+                        self.constraints.add_all_perms(rv_lty.label, perms);
+
+                        // unify inner-most pointer types
+                        self.do_equivalence_nested(pl_lty, rv_lty);
+                    }
+                    Some(Callee::Free) => {
+                        self.visit_place(destination, Mutability::Mut);
+                        assert!(args.len() == 1);
+                        self.visit_operand(&args[0]);
+
+                        let rv_lty = self.acx.type_of(&args[0]);
+                        let perms = PermissionSet::FREE;
+                        self.constraints.add_all_perms(rv_lty.label, perms);
+                    }
+
+                    Some(Callee::IsNull) => {
+                        assert!(args.len() == 1);
+                        self.visit_operand(&args[0]);
+                    }
 
                     Some(Callee::Other { def_id, substs }) => {
                         self.visit_call_other(def_id, substs, args, destination);
