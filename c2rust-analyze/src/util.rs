@@ -231,17 +231,19 @@ fn builtin_callee<'tcx>(
         }
 
         "is_null" => {
-            // `core::ptr::is_null`
-            let path = tcx.def_path(did);
-            if tcx.crate_name(path.krate).as_str() != "core" {
+            // The `offset` inherent method of `*const T` and `*mut T`.
+            let parent_did = tcx.parent(did);
+            if tcx.def_kind(parent_did) != DefKind::Impl {
                 return None;
             }
-            if path.data.len() != 4 {
+            if tcx.impl_trait_ref(parent_did).is_some() {
                 return None;
             }
-            if path.data[0].to_string() != "ptr" {
-                return None;
-            }
+            let parent_impl_ty = tcx.type_of(parent_did);
+            let (_pointee_ty, _mutbl) = match parent_impl_ty.kind() {
+                TyKind::RawPtr(tm) => (tm.ty, tm.mutbl),
+                _ => return None,
+            };
             Some(Callee::IsNull)
         }
 
