@@ -170,16 +170,20 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    fn do_assign(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
-        // If the top-level types are pointers, add a dataflow edge indicating that `rv` flows into
-        // `pl`.
-        self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
-
+    fn do_equivalence_nested(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
         // Add equivalence constraints for all nested pointers beyond the top level.
         assert_eq!(pl_lty.ty, rv_lty.ty);
         for (&pl_sub_lty, &rv_sub_lty) in pl_lty.args.iter().zip(rv_lty.args.iter()) {
             self.do_unify(pl_sub_lty, rv_sub_lty);
         }
+    }
+
+    fn do_assign(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
+        // If the top-level types are pointers, add a dataflow edge indicating that `rv` flows into
+        // `pl`.
+        self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
+
+        self.do_equivalence_nested(pl_lty, rv_lty);
     }
 
     /// Add a dataflow edge indicating that `rv_ptr` flows into `pl_ptr`.  If both `PointerId`s are
@@ -303,15 +307,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         self.constraints.add_all_perms(rv_lty.label, perms);
 
                         // unify inner-most pointer types
-                        let mut rv_iter = rv_lty.iter();
-                        let mut pl_iter = pl_lty.iter();
-                        let _outermost_rv = rv_iter.next();
-                        let _outerpost_pl = pl_iter.next();
-                        // TODO: handle return types that are different:
-                        // realloc may return a *const void but take in *const *mut ...
-                        for (rv_inner, pl_inner) in rv_iter.zip(pl_iter) {
-                            self.do_unify(rv_inner, pl_inner);
-                        }
+                        self.do_equivalence_nested(pl_lty, rv_lty);
                     }
                     Some(Callee::Free) => {
                         self.visit_place(destination, Mutability::Mut);
