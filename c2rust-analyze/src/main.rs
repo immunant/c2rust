@@ -668,9 +668,10 @@ fn run(tcx: TyCtxt) {
             hir_rewrites.len(),
             name
         );
-        for (span, rw) in hir_rewrites {
+        for &(span, ref rw) in &hir_rewrites {
             eprintln!("  {}: {}", describe_span(tcx, span), rw);
         }
+        expr_rewrite::apply_rewrites(tcx, hir_rewrites);
     }
 }
 

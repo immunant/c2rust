@@ -1,7 +1,9 @@
-#![allow(dead_code)]
 use crate::expr_rewrite::hir_op::Rewrite;
-use rustc_span::{BytePos, Span};
+use rustc_hir::Mutability;
+use rustc_span::source_map::{FileName, SourceMap};
+use rustc_span::{BytePos, SourceFile, Span, SyntaxContext};
 use std::cmp::Reverse;
+use std::collections::HashMap;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum RewriteError<S = Span> {
@@ -169,6 +171,193 @@ impl<S: SpanLike> RewriteTree<S> {
 
         (out, errs)
     }
+}
+
+/// Split `rts` into the portion before `span`, the portion overlapping `span`, and the portion
+/// after `span`.  Nodes within `rts` should not overlap each other, and the list must be sorted by
+/// span; otherwise, the result are unspecified.
+fn partition_nodes<'a>(
+    rts: &'a [RewriteTree],
+    span: Span,
+) -> (&'a [RewriteTree], &'a [RewriteTree], &'a [RewriteTree]) {
+    let lo = span.lo();
+    let hi = span.hi();
+
+    // Collect nodes from the front of `rts` until we find one that overlaps or comes after `span`.
+    let i = rts
+        .iter()
+        .position(|rt| rt.span.hi() > lo)
+        .unwrap_or(rts.len());
+    let (before, rest) = rts.split_at(i);
+
+    // Collect nodes from the front of `rts` until we find one that comes strictly after `span`.
+    let j = rest
+        .iter()
+        .position(|rt| rt.span.lo() >= hi)
+        .unwrap_or(rest.len());
+    let (overlap, after) = rest.split_at(j);
+
+    (before, overlap, after)
+}
+
+struct Emitter<'a, F> {
+    file: &'a SourceFile,
+    emit: &'a mut F,
+}
+
+impl<'a, F: FnMut(&str)> Emitter<'a, F> {
+    fn emit_str(&mut self, s: &str) {
+        (self.emit)(s);
+    }
+
+    fn emit_parenthesized(&mut self, cond: bool, f: impl FnOnce(&mut Self)) {
+        if cond {
+            self.emit_str("(");
+        }
+        f(self);
+        if cond {
+            self.emit_str(")");
+        }
+    }
+
+    fn emit_rewrite(
+        &mut self,
+        rw: &Rewrite,
+        prec: usize,
+        emit_expr: &mut impl FnMut(&mut Self),
+        emit_subexpr: &mut impl FnMut(&mut Self, Span),
+    ) {
+        match *rw {
+            Rewrite::Identity => self.emit_parenthesized(true, |slf| {
+                emit_expr(slf);
+            }),
+            Rewrite::Subexpr(_, span) => self.emit_parenthesized(true, |slf| {
+                emit_subexpr(slf, span);
+            }),
+            Rewrite::Ref(ref rw, mutbl) => self.emit_parenthesized(prec > 2, |slf| {
+                match mutbl {
+                    Mutability::Not => slf.emit_str("&"),
+                    Mutability::Mut => slf.emit_str("&mut "),
+                }
+                slf.emit_rewrite(rw, 2, emit_expr, emit_subexpr);
+            }),
+            Rewrite::AddrOf(ref rw, mutbl) => {
+                match mutbl {
+                    Mutability::Not => self.emit_str("core::ptr::addr_of!"),
+                    Mutability::Mut => self.emit_str("core::ptr::addr_of_mut!"),
+                }
+                self.emit_parenthesized(true, |slf| {
+                    slf.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                });
+            }
+            Rewrite::Deref(ref rw) => self.emit_parenthesized(prec > 2, |slf| {
+                slf.emit_str("*");
+                slf.emit_rewrite(rw, 2, emit_expr, emit_subexpr);
+            }),
+            Rewrite::Index(ref arr, ref idx) => self.emit_parenthesized(prec > 3, |slf| {
+                slf.emit_rewrite(arr, 3, emit_expr, emit_subexpr);
+                slf.emit_str("[");
+                slf.emit_rewrite(idx, 0, emit_expr, emit_subexpr);
+                slf.emit_str("]");
+            }),
+            Rewrite::SliceTail(ref arr, ref idx) => self.emit_parenthesized(prec > 3, |slf| {
+                slf.emit_rewrite(arr, 3, emit_expr, emit_subexpr);
+                slf.emit_str("[");
+                // Rather than figure out the right precedence for `..`, just force
+                // parenthesization in this position.
+                slf.emit_rewrite(idx, 999, emit_expr, emit_subexpr);
+                slf.emit_str(" ..]");
+            }),
+            Rewrite::CastUsize(ref rw) => self.emit_parenthesized(prec > 1, |slf| {
+                slf.emit_rewrite(rw, 1, emit_expr, emit_subexpr);
+                slf.emit_str(" as usize");
+            }),
+            Rewrite::LitZero => {
+                self.emit_str("0");
+            }
+        }
+    }
+
+    fn emit_bytes(&mut self, lo: BytePos, hi: BytePos) {
+        assert!(
+            self.file.start_pos <= lo && hi <= self.file.end_pos,
+            "bytes {:?} .. {:?} are out of range for file {:?}",
+            lo,
+            hi,
+            self.file.name
+        );
+        let src = self
+            .file
+            .src
+            .as_ref()
+            .unwrap_or_else(|| panic!("source is not available for file {:?}", self.file.name));
+        self.emit_str(&src[lo.0 as usize..hi.0 as usize]);
+    }
+
+    fn emit_span_with_rewrites(&mut self, span: Span, rts: &[RewriteTree]) {
+        let (_, overlap, _) = partition_nodes(rts, span);
+
+        let mut pos = span.lo();
+        for rt in overlap {
+            // Every child node is contained by the span of some `Rewrite::Identity` or
+            // `Rewrite::Subexpr` in its parent node.
+            debug_assert!(span.contains(rt.span));
+
+            self.emit_bytes(pos, rt.span.lo());
+            self.emit_rewrite(
+                &rt.rw,
+                0,
+                &mut |slf| slf.emit_span_with_rewrites(rt.span, &rt.children),
+                &mut |slf, subexpr_span| slf.emit_span_with_rewrites(subexpr_span, &rt.children),
+            );
+            pos = rt.span.hi();
+        }
+
+        self.emit_bytes(pos, span.hi());
+    }
+}
+
+/// Apply rewrites `rws` to the source files covered by their `Span`s.  Returns a map giving the
+/// rewritten source code for each file that contains at least one rewritten `Span`.
+pub fn apply_rewrites(
+    source_map: &SourceMap,
+    rws: Vec<(Span, Rewrite)>,
+) -> HashMap<FileName, String> {
+    let (rts, errs) = RewriteTree::build(rws);
+    for (span, rw, err) in errs {
+        eprintln!(
+            "{:?}: warning: failed to apply rewrite {:?}: {:?}",
+            span, rw, err
+        );
+    }
+
+    let mut new_src = HashMap::new();
+    let mut rts = &rts as &[RewriteTree<Span>];
+    while rts.len() > 0 {
+        let file = source_map.lookup_source_file(rts[0].span.lo());
+        let idx = rts
+            .iter()
+            .position(|rt| rt.span.lo() >= file.end_pos)
+            .unwrap_or(rts.len());
+        assert!(idx > 0);
+        let (file_rts, rest) = rts.split_at(idx);
+        rts = rest;
+
+        let mut buf = String::new();
+        let mut emit = |s: &str| {
+            buf.push_str(s);
+        };
+        let mut emitter = Emitter {
+            file: &file,
+            emit: &mut emit,
+        };
+        let file_span = Span::new(file.start_pos, file.end_pos, SyntaxContext::root(), None);
+        emitter.emit_span_with_rewrites(file_span, file_rts);
+
+        new_src.insert(file.name.clone(), buf);
+    }
+
+    new_src
 }
 
 #[cfg(test)]
