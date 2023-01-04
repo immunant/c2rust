@@ -377,7 +377,7 @@ pub fn visit<'tcx>(
         equiv_constraints: Vec::new(),
     };
 
-    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+    for (bb, bb_data) in mir.basic_blocks.iter_enumerated() {
         for (i, stmt) in bb_data.statements.iter().enumerate() {
             tc.visit_statement(
                 stmt,
