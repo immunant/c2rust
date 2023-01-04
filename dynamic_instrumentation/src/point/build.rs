@@ -172,7 +172,7 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     }
 
     fn debug_mir_to_string(&self, loc: Location) -> String {
-        let block = &self.body.basic_blocks()[loc.block];
+        let block = &self.body.basic_blocks[loc.block];
         if loc.statement_index != block.statements.len() {
             return format!("{:?}", block.statements[loc.statement_index]);
         }

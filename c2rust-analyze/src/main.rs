@@ -449,7 +449,7 @@ fn run(tcx: TyCtxt) {
             assert_eq!(local, l);
         }
 
-        for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+        for (bb, bb_data) in mir.basic_blocks.iter_enumerated() {
             for (i, stmt) in bb_data.statements.iter().enumerate() {
                 let rv = match stmt.kind {
                     StatementKind::Assign(ref x) => &x.1,
