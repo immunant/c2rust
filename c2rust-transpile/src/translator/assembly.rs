@@ -134,7 +134,7 @@ fn parse_constraints(
     }
 
     // Handle register names
-    let mut constraints = constraints.replace('{', "\"").replace('}', "\"");
+    let mut constraints = constraints.replace(['{', '}'], "\"");
 
     // Convert (simple) constraints to ones rustc understands
     match &*constraints {
