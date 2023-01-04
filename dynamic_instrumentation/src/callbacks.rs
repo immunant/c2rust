@@ -34,7 +34,7 @@ impl rustc_driver::Callbacks for MirTransformCallbacks {
         let parse = queries.parse().unwrap();
         let mut parse = parse.peek_mut();
         parse.items.push(P(Item {
-            attrs: Vec::new(),
+            attrs: Default::default(),
             id: NodeId::from_u32(0),
             span: DUMMY_SP,
             vis: Visibility {
