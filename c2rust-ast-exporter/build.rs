@@ -253,7 +253,7 @@ impl LLVMInfo {
         let lib_dir = {
             let path_str = env::var("LLVM_LIB_DIR")
                 .ok()
-                .or_else(|| invoke_command(llvm_config.as_deref(), &["--libdir"]))
+                .or_else(|| invoke_command(llvm_config.as_deref(), ["--libdir"]))
                 .expect(llvm_config_missing);
             String::from(
                 Path::new(&path_str)
@@ -263,7 +263,7 @@ impl LLVMInfo {
             )
         };
 
-        let llvm_shared_libs = invoke_command(llvm_config.as_deref(), &["--libs", "--link-shared"]);
+        let llvm_shared_libs = invoke_command(llvm_config.as_deref(), ["--libs", "--link-shared"]);
 
         // <sysroot>/lib/rustlib/<target>/lib/ contains a libLLVM DSO for the
         // rust compiler. On MacOS, this lib is named libLLVM.dylib, which will
@@ -288,7 +288,7 @@ impl LLVMInfo {
                 dylib_file.push_str(dylib_suffix);
                 let sysroot = invoke_command(
                     env::var_os("RUSTC").map(PathBuf::from).as_deref(),
-                    &["--print=sysroot"],
+                    ["--print=sysroot"],
                 )
                 .unwrap();
 
@@ -323,7 +323,7 @@ impl LLVMInfo {
 
         let llvm_major_version = {
             let version =
-                invoke_command(llvm_config.as_deref(), &["--version"]).expect(llvm_config_missing);
+                invoke_command(llvm_config.as_deref(), ["--version"]).expect(llvm_config_missing);
             let emsg = format!("invalid version string {}", version);
             version
                 .split('.')
@@ -362,7 +362,7 @@ impl LLVMInfo {
         libs.extend(
             env::var("LLVM_SYSTEM_LIBS")
                 .ok()
-                .or_else(|| invoke_command(llvm_config.as_deref(), &["--system-libs", link_mode]))
+                .or_else(|| invoke_command(llvm_config.as_deref(), ["--system-libs", link_mode]))
                 .unwrap_or_default()
                 .split_whitespace()
                 .map(|lib| String::from(lib.trim_start_matches("-l"))),

@@ -21,7 +21,7 @@ impl SysRoot {
     pub fn resolve() -> Self {
         let rustc = env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
         let output = Command::new(rustc)
-            .args(&["--print", "sysroot"])
+            .args(["--print", "sysroot"])
             .output()
             .expect("could not invoke `rustc` to find rust sysroot");
         // trim, but `str::trim` doesn't exist on `[u8]`

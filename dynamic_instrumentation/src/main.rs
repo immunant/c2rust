@@ -117,7 +117,7 @@ fn exit_with_status(status: ExitStatus) {
 fn resolve_sysroot() -> anyhow::Result<PathBuf> {
     let rustc = env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
     let output = Command::new(rustc)
-        .args(&["--print", "sysroot"])
+        .args(["--print", "sysroot"])
         .output()
         .context("could not invoke `rustc` to find rust sysroot")?;
     // trim, but `str::trim` doesn't exist on `[u8]`
@@ -496,14 +496,14 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
 
     if set_runtime {
         cargo.run(|cmd| {
-            cmd.args(&["add", "--optional", "c2rust-analysis-rt"]);
+            cmd.args(["add", "--optional", "c2rust-analysis-rt"]);
             if let Some(mut runtime) = runtime_path {
                 if manifest_dir.is_some() {
                     runtime = fs_err::canonicalize(runtime)?;
                 }
                 // Since it's a local path, we don't need the internet,
                 // and running it offline saves a slow index sync.
-                cmd.args(&["--offline", "--path"]).arg(runtime);
+                cmd.args(["--offline", "--path"]).arg(runtime);
             }
             if let Some(manifest_path) = manifest_path {
                 cmd.arg("--manifest-path").arg(manifest_path);

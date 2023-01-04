@@ -88,7 +88,7 @@ impl SubCommand {
                 self.name
             )
         })?;
-        let status = Command::new(&path).args(args).status()?;
+        let status = Command::new(path).args(args).status()?;
         process::exit(status.code().unwrap_or(1));
     }
 }

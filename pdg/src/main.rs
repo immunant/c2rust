@@ -317,7 +317,7 @@ mod tests {
 
         let mut cmd = Command::new("cargo");
         cmd.current_dir(repo_dir()?)
-            .args(&[
+            .args([
                 "run",
                 "--bin",
                 "c2rust-instrument",
@@ -329,11 +329,11 @@ mod tests {
                 "--metadata",
             ])
             .arg(&metadata_path)
-            .args(&["--runtime-path"])
+            .args(["--runtime-path"])
             .arg(&runtime_path)
-            .args(&["--", "run", "--manifest-path"])
+            .args(["--", "run", "--manifest-path"])
             .arg(&manifest_path)
-            .args(&["--profile", profile.name()])
+            .args(["--profile", profile.name()])
             .arg("--")
             .args(args)
             .env("METADATA_FILE", &metadata_path)
@@ -390,7 +390,7 @@ mod tests {
         init();
         let mut cmd = Command::new("cargo");
         cmd.current_dir(repo_dir()?.join("analysis/tests/misc"))
-            .args(&["miri", "run", "--features", "miri"])
+            .args(["miri", "run", "--features", "miri"])
             .env("MIRIFLAGS", "");
         let status = cmd.status()?;
         ensure!(status.success(), eyre!("{cmd:?} failed: {status}"));

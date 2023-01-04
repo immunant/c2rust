@@ -83,7 +83,7 @@ pub fn emit_build_files<'lcmd>(
         .unwrap();
 
     if !build_dir.exists() {
-        fs::create_dir_all(&build_dir)
+        fs::create_dir_all(build_dir)
             .unwrap_or_else(|_| panic!("couldn't create build directory: {}", build_dir.display()));
     }
 
@@ -316,7 +316,7 @@ fn maybe_write_to_file(output_path: &Path, output: String, overwrite: bool) -> O
         return None;
     }
 
-    let mut file = match File::create(&output_path) {
+    let mut file = match File::create(output_path) {
         Ok(file) => file,
         Err(e) => panic!("Unable to open file for writing: {}", e),
     };

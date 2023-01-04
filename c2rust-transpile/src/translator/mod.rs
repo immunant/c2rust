@@ -451,8 +451,7 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&path
             .unwrap()
             .to_str()
             .unwrap()
-            .replace('.', "_")
-            .replace('-', "_")
+            .replace(['.', '-'], "_")
     }
 
     let mut file_path: String = path.map_or("internal".to_string(), path_to_str);
