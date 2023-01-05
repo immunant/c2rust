@@ -77,7 +77,7 @@ impl<W: Write> Printer<W> {
             .c_exprs
             .get(&expr_id)
             .map(|l| &l.kind)
-            .unwrap_or_else(|| panic!("Could not find expression with ID {:?}", expr_id));
+            .unwrap_or_else(|| panic!("Could not find expression with ID {expr_id:?}"));
         use CExprKind::*;
         match expr {
             BadExpr => {
@@ -114,7 +114,7 @@ impl<W: Write> Printer<W> {
                 use OffsetOfKind::*;
                 match kind {
                     Constant(val) => {
-                        self.writer.write_fmt(format_args!("{}", val))?;
+                        self.writer.write_fmt(format_args!("{val}"))?;
                     }
                     Variable(qty, decl_id, expr_id) => {
                         self.writer.write_all(b"offset_of!(")?;
@@ -259,7 +259,7 @@ impl<W: Write> Printer<W> {
                 weak,
                 ..
             } => {
-                self.writer.write_fmt(format_args!("{}(", name))?;
+                self.writer.write_fmt(format_args!("{name}("))?;
 
                 self.print_expr(ptr, context)?;
                 if let Some(val1) = val1 {
@@ -298,11 +298,9 @@ impl<W: Write> Printer<W> {
     pub fn print_lit(&mut self, lit: &CLiteral, _context: &TypedAstContext) -> Result<()> {
         use CLiteral::*;
         match *lit {
-            Integer(i, _) => self.writer.write_fmt(format_args!("{}", i)),
-            Floating(f, ref str) if str.is_empty() => self.writer.write_fmt(format_args!("{}", f)),
-            Floating(_, ref str) if str.is_empty() => {
-                self.writer.write_fmt(format_args!("{}", str))
-            }
+            Integer(i, _) => self.writer.write_fmt(format_args!("{i}")),
+            Floating(f, ref str) if str.is_empty() => self.writer.write_fmt(format_args!("{f}")),
+            Floating(_, ref str) if str.is_empty() => self.writer.write_fmt(format_args!("{str}")),
             _ => unimplemented!("Printer::print_lit"),
         }
     }
@@ -322,7 +320,7 @@ impl<W: Write> Printer<W> {
             .c_stmts
             .get(&stmt_id)
             .map(|l| &l.kind)
-            .unwrap_or_else(|| panic!("Could not find statement with ID {:?}", stmt_id));
+            .unwrap_or_else(|| panic!("Could not find statement with ID {stmt_id:?}"));
 
         use CStmtKind::*;
         match stmt {
@@ -500,7 +498,7 @@ impl<W: Write> Printer<W> {
             .c_decls
             .get(&decl_id)
             .map(|l| &l.kind)
-            .unwrap_or_else(|| panic!("Could not find declaration with ID {:?}", decl_id));
+            .unwrap_or_else(|| panic!("Could not find declaration with ID {decl_id:?}"));
 
         use CDeclKind::*;
         match decl {
@@ -515,7 +513,7 @@ impl<W: Write> Printer<W> {
                     self.writer.write_all(b"static ")?;
                 }
                 // TODO typ
-                self.writer.write_fmt(format_args!("{}", name))?;
+                self.writer.write_fmt(format_args!("{name}"))?;
                 self.writer.write_all(b"(\n")?;
                 self.indent();
                 for parameter in parameters {
@@ -567,7 +565,7 @@ impl<W: Write> Printer<W> {
             }
 
             Typedef { name, typ, .. } => {
-                self.writer.write_fmt(format_args!("typedef {} = ", name))?;
+                self.writer.write_fmt(format_args!("typedef {name} = "))?;
                 self.print_qtype(*typ, None, context)?;
                 if newline {
                     self.writer.write_all(b"\n")?;
@@ -577,7 +575,7 @@ impl<W: Write> Printer<W> {
             Enum { name, variants, .. } => {
                 self.writer.write_all(b"enum ")?;
                 match name {
-                    Some(n) => self.writer.write_fmt(format_args!("{} {{\n", n))?,
+                    Some(n) => self.writer.write_fmt(format_args!("{n} {{\n"))?,
                     None => self.writer.write_all(b"{\n")?,
                 }
 
@@ -595,8 +593,7 @@ impl<W: Write> Printer<W> {
             }
 
             EnumConstant { name, value, .. } => {
-                self.writer
-                    .write_fmt(format_args!("{} = {:?},", name, value))?;
+                self.writer.write_fmt(format_args!("{name} = {value:?},"))?;
                 if newline {
                     self.writer.write_all(b"\n")?;
                 }
@@ -605,7 +602,7 @@ impl<W: Write> Printer<W> {
             Struct { name, fields, .. } => {
                 self.writer.write_all(b"struct ")?;
                 match name {
-                    Some(n) => self.writer.write_fmt(format_args!("{} {{", n))?,
+                    Some(n) => self.writer.write_fmt(format_args!("{n} {{"))?,
                     None => self.writer.write_all(b"{\n")?,
                 }
                 self.indent();
@@ -624,7 +621,7 @@ impl<W: Write> Printer<W> {
             Union { name, fields, .. } => {
                 self.writer.write_all(b"union ")?;
                 match name {
-                    Some(n) => self.writer.write_fmt(format_args!("{} {{", n))?,
+                    Some(n) => self.writer.write_fmt(format_args!("{n} {{"))?,
                     None => self.writer.write_all(b"{\n")?,
                 }
                 self.indent();
@@ -649,11 +646,11 @@ impl<W: Write> Printer<W> {
             }
 
             MacroObject { name } => {
-                self.writer.write_fmt(format_args!("#define {} ", name))?;
+                self.writer.write_fmt(format_args!("#define {name} "))?;
             }
 
             MacroFunction { name, .. } => {
-                self.writer.write_fmt(format_args!("#define {}() ", name))?;
+                self.writer.write_fmt(format_args!("#define {name}() "))?;
             }
 
             &NonCanonicalDecl { canonical_decl } => {
@@ -663,7 +660,7 @@ impl<W: Write> Printer<W> {
                     .map(|s| s.as_str())
                     .unwrap_or("<unknown>");
                 self.writer
-                    .write_fmt(format_args!("// non-canonical decl for {}", name))?;
+                    .write_fmt(format_args!("// non-canonical decl for {name}"))?;
             }
 
             StaticAssert { .. } => {
@@ -683,8 +680,8 @@ impl<W: Write> Printer<W> {
         match name {
             None => self
                 .writer
-                .write_fmt(format_args!("<some_decl {:?}>", decl_id)),
-            Some(s) => self.writer.write_fmt(format_args!("{}", s)),
+                .write_fmt(format_args!("<some_decl {decl_id:?}>")),
+            Some(s) => self.writer.write_fmt(format_args!("{s}")),
         }
     }
 
@@ -698,14 +695,14 @@ impl<W: Write> Printer<W> {
             .c_types
             .get(&type_id)
             .map(|l| &l.kind)
-            .unwrap_or_else(|| panic!("Could not find type with ID {:?}", type_id));
+            .unwrap_or_else(|| panic!("Could not find type with ID {type_id:?}"));
         use CTypeKind::*;
         match ty {
             Pointer(ref qual_ty) => {
                 self.print_qtype(*qual_ty, None, context)?;
                 self.writer.write_all(b"*")?;
                 if let Some(i) = ident {
-                    self.writer.write_fmt(format_args!("{}", i))?;
+                    self.writer.write_fmt(format_args!("{i}"))?;
                 }
             }
             &ConstantArray(typ, len) => {
@@ -736,12 +733,12 @@ impl<W: Write> Printer<W> {
                 match decl {
                     CDeclKind::Enum {
                         name: Some(ref n), ..
-                    } => self.writer.write_fmt(format_args!(" {}", n))?,
+                    } => self.writer.write_fmt(format_args!(" {n}"))?,
                     CDeclKind::Enum { name: None, .. } => unimplemented!(),
                     _ => panic!("An enum type is supposed to point to an enum decl"),
                 }
                 if let Some(i) = ident {
-                    self.writer.write_fmt(format_args!(" {}", i))?;
+                    self.writer.write_fmt(format_args!(" {i}"))?;
                 }
             }
 
@@ -749,7 +746,7 @@ impl<W: Write> Printer<W> {
                 self.writer.write_all(ty.as_str().as_bytes())?;
 
                 if let Some(i) = ident {
-                    self.writer.write_fmt(format_args!(" {}", i))?;
+                    self.writer.write_fmt(format_args!(" {i}"))?;
                 }
             }
         };

@@ -31,9 +31,7 @@ pub fn cast_ptr_to_usize<'tcx>(
         InstrumentationArg::Op(ArgKind::AddressUsize(_arg)) => {
             assert!(
                 arg_ty.is_integral() || arg_ty.is_unit(),
-                "{:?}: {:?} is not of integral or unit type",
-                arg,
-                arg_ty
+                "{arg:?}: {arg_ty:?} is not of integral or unit type"
             );
             return None;
         }
@@ -63,9 +61,7 @@ pub fn cast_ptr_to_usize<'tcx>(
         InstrumentationArg::Op(ArgKind::RawPtr(arg)) => {
             assert!(
                 arg_ty.is_unsafe_ptr(),
-                "{:?}: {:?} is not an unsafe ptr",
-                arg,
-                arg_ty
+                "{arg:?}: {arg_ty:?} is not an unsafe ptr"
             );
             arg.to_copy()
         }

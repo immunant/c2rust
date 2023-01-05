@@ -73,7 +73,7 @@ fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Ty<'tcx> {
         .expect("failed to find module `core::cell`");
     let cell_mod = match cell_mod_child.res {
         Res::Def(DefKind::Mod, did) => did,
-        ref r => panic!("unexpected resolution {:?} for `core::cell`", r),
+        ref r => panic!("unexpected resolution {r:?} for `core::cell`"),
     };
 
     let cell_struct_child = tcx
@@ -83,7 +83,7 @@ fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Ty<'tcx> {
         .expect("failed to find struct `core::cell::Cell`");
     let cell_struct = match cell_struct_child.res {
         Res::Def(DefKind::Struct, did) => did,
-        ref r => panic!("unexpected resolution {:?} for `core::cell::Cell`", r),
+        ref r => panic!("unexpected resolution {r:?} for `core::cell::Cell`"),
     };
 
     let cell_adt = tcx.adt_def(cell_struct);

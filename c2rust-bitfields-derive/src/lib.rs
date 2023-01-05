@@ -86,7 +86,7 @@ fn parse_bitfield_attr(
             missing_fields.push("bits");
         }
 
-        let err_str = format!("Missing bitfield params: {:?}", missing_fields);
+        let err_str = format!("Missing bitfield params: {missing_fields:?}");
         let span = attr.path.segments.span();
 
         return Err(Error::new(span, err_str));
@@ -198,7 +198,7 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
         .iter()
         .map(|field_ident| {
             let span = Span::call_site().into();
-            let setter_name = &format!("set_{}", field_ident);
+            let setter_name = &format!("set_{field_ident}");
 
             Ident::new(setter_name, span)
         })

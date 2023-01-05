@@ -89,8 +89,7 @@ impl IdMapper {
                 let inserted = self.old_to_new.insert(old_id, new_id).is_some();
                 assert!(
                     !inserted,
-                    "get_or_create_new: overwrote an old id at {}",
-                    old_id
+                    "get_or_create_new: overwrote an old id at {old_id}"
                 );
                 new_id
             }
@@ -109,8 +108,7 @@ impl IdMapper {
             let inserted = self.old_to_new.insert(other_old_id, new_id).is_some();
             assert!(
                 !inserted,
-                "get_or_create_new: overwrote an old id at {}",
-                other_old_id
+                "get_or_create_new: overwrote an old id at {other_old_id}"
             );
             new_id
         })
@@ -162,7 +160,7 @@ fn parse_cast_kind(kind: &str) -> CastKind {
         "BuiltinFnToFnPtr" => CastKind::BuiltinFnToFnPtr,
         "ConstCast" => CastKind::ConstCast,
         "VectorSplat" => CastKind::VectorSplat,
-        k => panic!("Unsupported implicit cast: {}", k),
+        k => panic!("Unsupported implicit cast: {k}"),
     }
 }
 
@@ -263,7 +261,7 @@ impl ConversionContext {
                     "{}",
                     TranslationError::new(
                         None,
-                        err_msg(format!("Missing top-level node with id: {}", top_node)).context(
+                        err_msg(format!("Missing top-level node with id: {top_node}")).context(
                             TranslationErrorKind::InvalidClangAst(
                                 ClangAstParseErrorKind::MissingNode,
                             )
@@ -282,10 +280,11 @@ impl ConversionContext {
                         "{}",
                         TranslationError::new(
                             display_loc(untyped_context, &Some(node.loc)),
-                            err_msg(format!("Missing child {} of node {:?}", child, node,))
-                                .context(TranslationErrorKind::InvalidClangAst(
+                            err_msg(format!("Missing child {child} of node {node:?}",)).context(
+                                TranslationErrorKind::InvalidClangAst(
                                     ClangAstParseErrorKind::MissingChild,
-                                )),
+                                )
+                            ),
                         ),
                     );
                     invalid_clang_ast = true;
@@ -300,10 +299,11 @@ impl ConversionContext {
                         "{}",
                         TranslationError::new(
                             display_loc(untyped_context, &Some(node.loc)),
-                            err_msg(format!("Missing type {} for node: {:?}", type_id, node,))
-                                .context(TranslationErrorKind::InvalidClangAst(
+                            err_msg(format!("Missing type {type_id} for node: {node:?}",)).context(
+                                TranslationErrorKind::InvalidClangAst(
                                     ClangAstParseErrorKind::MissingType,
-                                )),
+                                )
+                            ),
                         ),
                     );
                     invalid_clang_ast = true;
@@ -752,7 +752,7 @@ impl ConversionContext {
                         Some("noreturn") => Some(Attribute::NoReturn),
                         Some("nullable") => Some(Attribute::Nullable),
                         Some("notnull") => Some(Attribute::NotNull),
-                        Some(other) => panic!("Unknown type attribute: {}", other),
+                        Some(other) => panic!("Unknown type attribute: {other}"),
                     };
 
                     let ty = CTypeKind::Attributed(ty, kind);
@@ -815,10 +815,7 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
-                t => panic!(
-                    "Type conversion not implemented for {:?} expecting {:?}",
-                    t, expected_ty
-                ),
+                t => panic!("Type conversion not implemented for {t:?} expecting {expected_ty:?}"),
             }
         } else {
             // Convert the node
@@ -945,7 +942,7 @@ impl ConversionContext {
                         Some("fallthrough") | Some("__fallthrough__") => {
                             attributes.push(Attribute::Fallthrough)
                         }
-                        Some(str) => panic!("Unknown statement attribute: {}", str),
+                        Some(str) => panic!("Unknown statement attribute: {str}"),
                         None => panic!("Invalid statement attribute"),
                     };
 
@@ -1017,8 +1014,7 @@ impl ConversionContext {
                         .insert(CStmtId(new_id), label_name.clone())
                     {
                         panic!(
-                            "Duplicate label name with id {}. Old name: {}. New name: {}",
-                            new_id, old_label_name, label_name,
+                            "Duplicate label name with id {new_id}. Old name: {old_label_name}. New name: {label_name}",
                         );
                     }
 
@@ -1178,7 +1174,7 @@ impl ConversionContext {
                         8 => IntBase::Oct,
                         10 => IntBase::Dec,
                         16 => IntBase::Hex,
-                        _ => panic!("Invalid base: {}", base),
+                        _ => panic!("Invalid base: {base}"),
                     };
 
                     let ty_old = node.type_id.expect("Expected expression to have type");
@@ -1258,7 +1254,7 @@ impl ConversionContext {
                         "__imag" => UnOp::Imag,
                         "__extension__" => UnOp::Extension,
                         "co_await" => UnOp::Coawait,
-                        o => panic!("Unexpected operator: {}", o),
+                        o => panic!("Unexpected operator: {o}"),
                     };
 
                     let operand_old = node.children[0].expect("Expected operand");
@@ -1500,7 +1496,7 @@ impl ConversionContext {
                         "sizeof" => UnTypeOp::SizeOf,
                         "alignof" => UnTypeOp::AlignOf,
                         "preferredalignof" => UnTypeOp::PreferredAlignOf,
-                        str => panic!("Unsupported operation: {}", str),
+                        str => panic!("Unsupported operation: {str}"),
                     };
 
                     let arg_ty = from_value(node.extras[1].clone()).expect("expected type id");
@@ -1601,7 +1597,7 @@ impl ConversionContext {
                                     from_value(entry[1].clone()).expect("expected array start"),
                                     from_value(entry[2].clone()).expect("expected array end"),
                                 ),
-                                n => panic!("invalid designator tag: {}", n),
+                                n => panic!("invalid designator tag: {n}"),
                             }
                         })
                         .collect();
@@ -1921,8 +1917,7 @@ impl ConversionContext {
 
                     assert!(
                         has_static_duration || has_thread_duration || !is_externally_visible,
-                        "Variable cannot be extern without also being static or thread-local: {}",
-                        ident
+                        "Variable cannot be extern without also being static or thread-local: {ident}"
                     );
 
                     let initializer = node
@@ -2140,7 +2135,7 @@ impl ConversionContext {
                     self.add_decl(new_id, located(node, static_assert));
                 }
 
-                t => panic!("Could not translate node {:?} as type {}", t, expected_ty),
+                t => panic!("Could not translate node {t:?} as type {expected_ty}"),
             }
         }
     }

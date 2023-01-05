@@ -56,7 +56,7 @@ impl fmt::Display for PointerId {
 
 impl fmt::Debug for PointerId {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "{}", self)
+        write!(fmt, "{self}")
     }
 }
 

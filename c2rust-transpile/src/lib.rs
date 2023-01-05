@@ -191,7 +191,7 @@ fn str_to_ident_checked(filename: &Option<String>, check_reserved: bool) -> Opti
     filename.as_ref().map(str_to_ident).map(|module| {
         // make sure the module name does not clash with keywords
         if check_reserved && RESERVED_NAMES.contains(&module.as_str()) {
-            format!("r#{}", module)
+            format!("r#{module}")
         } else {
             module
         }
@@ -470,11 +470,11 @@ fn transpile_single(
         Ok(cxt) => cxt,
     };
 
-    println!("Transpiling {}", file);
+    println!("Transpiling {file}");
 
     if tcfg.dump_untyped_context {
         println!("CBOR Clang AST");
-        println!("{:#?}", untyped_context);
+        println!("{untyped_context:#?}");
     }
 
     // Convert this into a typed AST
@@ -488,7 +488,7 @@ fn transpile_single(
 
     if tcfg.dump_typed_context {
         println!("Clang AST");
-        println!("{:#?}", typed_context);
+        println!("{typed_context:#?}");
     }
 
     if tcfg.pretty_typed_context {

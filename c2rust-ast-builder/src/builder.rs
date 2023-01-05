@@ -225,7 +225,7 @@ impl<'a> Make<Visibility> for &'a str {
                 in_token: None,
                 path: Box::new(mk().path("super")),
             }),
-            _ => panic!("unrecognized string for Visibility: {:?}", self),
+            _ => panic!("unrecognized string for Visibility: {self:?}"),
         }
     }
 }
@@ -257,7 +257,7 @@ impl<'a> Make<Mutability> for &'a str {
         match self {
             "" | "imm" | "immut" | "immutable" => Mutability::Immutable,
             "mut" | "mutable" => Mutability::Mutable,
-            _ => panic!("unrecognized string for Mutability: {:?}", self),
+            _ => panic!("unrecognized string for Mutability: {self:?}"),
         }
     }
 }
@@ -267,7 +267,7 @@ impl<'a> Make<Unsafety> for &'a str {
         match self {
             "" | "safe" | "normal" => Unsafety::Normal,
             "unsafe" => Unsafety::Unsafe,
-            _ => panic!("unrecognized string for Unsafety: {:?}", self),
+            _ => panic!("unrecognized string for Unsafety: {self:?}"),
         }
     }
 }
@@ -277,7 +277,7 @@ impl<'a> Make<Constness> for &'a str {
         match self {
             "" | "normal" | "not-const" => Constness::NotConst,
             "const" => Constness::Const,
-            _ => panic!("unrecognized string for Constness: {:?}", self),
+            _ => panic!("unrecognized string for Constness: {self:?}"),
         }
     }
 }
@@ -288,7 +288,7 @@ impl<'a> Make<UnOp> for &'a str {
             "deref" | "*" => UnOp::Deref(Default::default()),
             "not" | "!" => UnOp::Not(Default::default()),
             "neg" | "-" => UnOp::Neg(Default::default()),
-            _ => panic!("unrecognized string for UnOp: {:?}", self),
+            _ => panic!("unrecognized string for UnOp: {self:?}"),
         }
     }
 }
@@ -777,10 +777,7 @@ impl Builder {
             match a {
                 GenericArgument::Type(t) => GenericMethodArgument::Type(t),
                 GenericArgument::Const(c) => GenericMethodArgument::Const(c),
-                _ => panic!(
-                    "non-type-or-const generic argument found in method arguments: {:?}",
-                    a
-                ),
+                _ => panic!("non-type-or-const generic argument found in method arguments: {a:?}"),
             }
         }
         let turbofish = match seg.arguments {
@@ -1101,15 +1098,15 @@ impl Builder {
     // Literals
 
     pub fn int_lit(self, i: u128, ty: &str) -> Lit {
-        Lit::Int(LitInt::new(&format!("{}{}", i, ty), self.span))
+        Lit::Int(LitInt::new(&format!("{i}{ty}"), self.span))
     }
 
     pub fn int_unsuffixed_lit(self, i: u128) -> Lit {
-        Lit::Int(LitInt::new(&format!("{}", i), self.span))
+        Lit::Int(LitInt::new(&format!("{i}"), self.span))
     }
 
     pub fn float_lit(self, s: &str, ty: &str) -> Lit {
-        Lit::Float(LitFloat::new(&format!("{}{}", s, ty), self.span))
+        Lit::Float(LitFloat::new(&format!("{s}{ty}"), self.span))
     }
 
     pub fn float_unsuffixed_lit(self, s: &str) -> Lit {

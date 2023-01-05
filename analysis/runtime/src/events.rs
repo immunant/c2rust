@@ -89,31 +89,31 @@ impl Debug for EventKind {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         use EventKind::*;
         match *self {
-            CopyPtr(ptr) => write!(f, "copy(0x{:x})", ptr),
-            Field(ptr, id) => write!(f, "field(0x{:x}, {})", ptr, id),
+            CopyPtr(ptr) => write!(f, "copy(0x{ptr:x})"),
+            Field(ptr, id) => write!(f, "field(0x{ptr:x}, {id})"),
             Alloc { size, ptr } => {
-                write!(f, "malloc({}) -> 0x{:x}", size, ptr)
+                write!(f, "malloc({size}) -> 0x{ptr:x}")
             }
-            Free { ptr } => write!(f, "free(0x{:x})", ptr),
+            Free { ptr } => write!(f, "free(0x{ptr:x})"),
             Realloc {
                 old_ptr,
                 size,
                 new_ptr,
-            } => write!(f, "realloc(0x{:x}, {}) -> 0x{:x}", old_ptr, size, new_ptr),
-            Ret(ptr) => write!(f, "ret(0x{:x})", ptr),
+            } => write!(f, "realloc(0x{old_ptr:x}, {size}) -> 0x{new_ptr:x}"),
+            Ret(ptr) => write!(f, "ret(0x{ptr:x})"),
             Done => write!(f, "done"),
             BeginFuncBody => write!(f, "begin func body"),
-            LoadAddr(ptr) => write!(f, "load(0x{:x})", ptr),
-            StoreAddr(ptr) => write!(f, "store(0x{:x})", ptr),
-            StoreAddrTaken(ptr) => write!(f, "store(0x{:x})", ptr),
+            LoadAddr(ptr) => write!(f, "load(0x{ptr:x})"),
+            StoreAddr(ptr) => write!(f, "store(0x{ptr:x})"),
+            StoreAddrTaken(ptr) => write!(f, "store(0x{ptr:x})"),
             CopyRef => write!(f, "copy_ref"),
-            AddrOfLocal(ptr, _) => write!(f, "addr_of_local = 0x{:x}", ptr),
-            ToInt(ptr) => write!(f, "to_int(0x{:x})", ptr),
-            FromInt(ptr) => write!(f, "from_int(0x{:x})", ptr),
-            LoadValue(ptr) => write!(f, "load_value(0x{:x})", ptr),
-            StoreValue(ptr) => write!(f, "store_value(0x{:x})", ptr),
+            AddrOfLocal(ptr, _) => write!(f, "addr_of_local = 0x{ptr:x}"),
+            ToInt(ptr) => write!(f, "to_int(0x{ptr:x})"),
+            FromInt(ptr) => write!(f, "from_int(0x{ptr:x})"),
+            LoadValue(ptr) => write!(f, "load_value(0x{ptr:x})"),
+            StoreValue(ptr) => write!(f, "store_value(0x{ptr:x})"),
             Offset(ptr, offset, new_ptr) => {
-                write!(f, "offset(0x{:x}, {:?}, 0x{:x})", ptr, offset, new_ptr)
+                write!(f, "offset(0x{ptr:x}, {offset:?}, 0x{new_ptr:x})")
             }
         }
     }

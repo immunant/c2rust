@@ -40,11 +40,11 @@ impl DataflowConstraints {
         eprintln!("=== propagating ===");
         eprintln!("constraints:");
         for c in &self.constraints {
-            eprintln!("  {:?}", c);
+            eprintln!("  {c:?}");
         }
         eprintln!("hypothesis:");
         for (id, p) in hypothesis.iter() {
-            eprintln!("  {}: {:?}", id, p);
+            eprintln!("  {id}: {p:?}");
         }
 
         struct PropagatePerms;

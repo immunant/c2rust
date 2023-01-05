@@ -59,7 +59,7 @@ fn filecheck() {
         .ok()
         .or_else(|| detect_filecheck().map(|s| s.to_owned()))
         .unwrap_or_else(|| panic!("FileCheck not found - set FILECHECK=/path/to/FileCheck"));
-    eprintln!("detected FILECHECK={}", filecheck_bin);
+    eprintln!("detected FILECHECK={filecheck_bin}");
 
     for entry in fs::read_dir("tests/filecheck").unwrap() {
         let entry = entry.unwrap();

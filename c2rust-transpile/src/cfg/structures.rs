@@ -287,7 +287,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label,
                         Switch { expr, cases } => {
                             let branched_cases = cases
                                 .iter()
-                                .map(|&(ref pat, ref slbl)| Ok((pat.clone(), branch(slbl)?)))
+                                .map(|(pat, slbl)| Ok((pat.clone(), branch(slbl)?)))
                                 .collect::<TranslationResult<_>>()?;
 
                             S::mk_match(expr.clone(), branched_cases)
@@ -605,7 +605,7 @@ impl StructureState {
                 let (body, body_span) = self.to_stmt(*body, comment_store);
 
                 // TODO: this is ugly but it needn't be. We are just pattern matching on particular ASTs.
-                if let Some(stmt @ &Stmt::Expr(ref expr)) = body.first() {
+                if let Some(stmt @ Stmt::Expr(expr)) = body.first() {
                     let stmt_span = stmt.span();
                     let span = if !stmt_span.is_dummy() {
                         stmt_span

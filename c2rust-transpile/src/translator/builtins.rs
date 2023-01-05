@@ -679,7 +679,7 @@ impl<'c> Translation<'c> {
             } else {
                 Ok(WithStmts::new(
                     vec![mk().semi_stmt(mem_expr)],
-                    self.panic_or_err(&format!("__builtin_{} not used", name)),
+                    self.panic_or_err(&format!("__builtin_{name} not used")),
                 ))
             }
         })

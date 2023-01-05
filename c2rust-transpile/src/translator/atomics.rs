@@ -361,7 +361,7 @@ impl<'c> Translation<'c> {
             } else if func_name.starts_with("atomic_and") {
                 (BinOp::BitAnd(Default::default()), false)
             } else {
-                panic!("Unexpected atomic intrinsic name: {}", func_name)
+                panic!("Unexpected atomic intrinsic name: {func_name}")
             };
 
             // Since the value of `arg1` is used twice, we need to copy

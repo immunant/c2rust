@@ -57,27 +57,24 @@ pub fn borrowck_mir<'tcx>(
                     .iter()
                     .find(|&&(_, l, _)| l == loan)
                     .map(|&(_, _, point)| point)
-                    .unwrap_or_else(|| panic!("loan {:?} was never issued?", loan));
+                    .unwrap_or_else(|| panic!("loan {loan:?} was never issued?"));
                 let issued_loc = maps.get_point_location(issued_point);
                 let stmt = mir.stmt_at(issued_loc).left().unwrap_or_else(|| {
-                    panic!(
-                        "loan {:?} was issued by a terminator (at {:?})?",
-                        loan, issued_loc
-                    );
+                    panic!("loan {loan:?} was issued by a terminator (at {issued_loc:?})?");
                 });
                 let ptr = match stmt.kind {
                     StatementKind::Assign(ref x) => match describe_rvalue(&x.1) {
                         Some(RvalueDesc::Project { base, proj: _ }) => acx
                             .ptr_of(base)
-                            .unwrap_or_else(|| panic!("missing pointer ID for {:?}", base)),
+                            .unwrap_or_else(|| panic!("missing pointer ID for {base:?}")),
                         Some(RvalueDesc::AddrOfLocal { local, proj: _ }) => {
                             acx.addr_of_local[local]
                         }
                         None => panic!("loan {:?} was issued by unknown rvalue {:?}?", loan, x.1),
                     },
-                    _ => panic!("loan {:?} was issued by non-assign stmt {:?}?", loan, stmt),
+                    _ => panic!("loan {loan:?} was issued by non-assign stmt {stmt:?}?"),
                 };
-                eprintln!("want to drop UNIQUE from pointer {:?}", ptr);
+                eprintln!("want to drop UNIQUE from pointer {ptr:?}");
 
                 if hypothesis[ptr].contains(PermissionSet::UNIQUE) {
                     hypothesis[ptr].remove(PermissionSet::UNIQUE);
@@ -122,7 +119,7 @@ fn run_polonius<'tcx>(
 
     // Populate `cfg_edge`
     for (bb, bb_data) in mir.basic_blocks.iter_enumerated() {
-        eprintln!("{:?}:", bb);
+        eprintln!("{bb:?}:");
 
         for idx in 0..bb_data.statements.len() {
             eprintln!("  {}: {:?}", idx, bb_data.statements[idx]);
@@ -208,10 +205,10 @@ fn run_polonius<'tcx>(
     // Populate `var_defined/used/dropped_at` and `path_assigned/accessed_at_base`.
     def_use::visit(&mut facts, &mut maps, mir);
 
-    dump::dump_facts_to_dir(&facts, &maps, format!("inspect/{}", name)).unwrap();
+    dump::dump_facts_to_dir(&facts, &maps, format!("inspect/{name}")).unwrap();
 
     let output = polonius_engine::Output::compute(&facts, polonius_engine::Algorithm::Naive, true);
-    dump::dump_output_to_dir(&output, &maps, format!("inspect/{}", name)).unwrap();
+    dump::dump_output_to_dir(&output, &maps, format!("inspect/{name}")).unwrap();
 
     (facts, maps, output)
 }

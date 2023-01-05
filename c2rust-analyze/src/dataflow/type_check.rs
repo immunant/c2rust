@@ -50,7 +50,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     fn record_access(&mut self, ptr: PointerId, mutbl: Mutability) {
-        eprintln!("record_access({:?}, {:?})", ptr, mutbl);
+        eprintln!("record_access({ptr:?}, {mutbl:?})");
         if ptr == PointerId::NONE {
             return;
         }
@@ -155,7 +155,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 }
             }
 
-            _ => panic!("TODO: handle assignment of {:?}", rv),
+            _ => panic!("TODO: handle assignment of {rv:?}"),
         }
     }
 
@@ -205,7 +205,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     fn do_unify(&mut self, lty1: LTy<'tcx>, lty2: LTy<'tcx>) {
         assert_eq!(lty1.ty, lty2.ty);
         for (sub_lty1, sub_lty2) in lty1.iter().zip(lty2.iter()) {
-            eprintln!("equate {:?} = {:?}", sub_lty1, sub_lty2);
+            eprintln!("equate {sub_lty1:?} = {sub_lty2:?}");
             if sub_lty1.label != PointerId::NONE || sub_lty2.label != PointerId::NONE {
                 assert!(sub_lty1.label != PointerId::NONE);
                 assert!(sub_lty2.label != PointerId::NONE);
@@ -215,7 +215,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
-        eprintln!("visit_statement({:?})", stmt);
+        eprintln!("visit_statement({stmt:?})");
         // TODO(spernsteiner): other `StatementKind`s will be handled in the future
         #[allow(clippy::single_match)]
         match stmt.kind {

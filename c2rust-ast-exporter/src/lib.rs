@@ -39,7 +39,7 @@ pub fn get_untyped_ast(
 
     match clang_ast::process(items) {
         Ok(cxt) => Ok(cxt),
-        Err(e) => Err(Error::new(ErrorKind::InvalidData, format!("{:}", e))),
+        Err(e) => Err(Error::new(ErrorKind::InvalidData, format!("{e:}"))),
     }
 }
 

@@ -130,7 +130,7 @@ fn run(tcx: TyCtxt) {
     let all_fn_ldids = fn_body_owners_postorder(tcx);
     eprintln!("callgraph traversal order:");
     for &ldid in &all_fn_ldids {
-        eprintln!("  {:?}", ldid);
+        eprintln!("  {ldid:?}");
     }
 
     // Assign global `PointerId`s for all pointers that appear in function signatures.
@@ -301,7 +301,7 @@ fn run(tcx: TyCtxt) {
             break;
         }
     }
-    eprintln!("reached fixpoint in {} iterations", loop_count);
+    eprintln!("reached fixpoint in {loop_count} iterations");
 
     // Print results for each function in `all_fn_ldids`, going in declaration order.  Concretely,
     // we iterate over `body_owners()`, which is a superset of `all_fn_ldids`, and filter based on
@@ -322,7 +322,7 @@ fn run(tcx: TyCtxt) {
 
         // Print labeling and rewrites for the current function.
 
-        eprintln!("\nfinal labeling for {:?}:", name);
+        eprintln!("\nfinal labeling for {name:?}:");
         let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
         let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
         for (local, decl) in mir.local_decls.iter_enumerated() {
@@ -369,7 +369,7 @@ fn run(tcx: TyCtxt) {
             );
         }
 
-        eprintln!("\ntype assignment for {:?}:", name);
+        eprintln!("\ntype assignment for {name:?}:");
         for (local, decl) in mir.local_decls.iter_enumerated() {
             // TODO: apply `Cell` if `addr_of_local` indicates it's needed
             let ty = type_desc::convert_type(&acx, acx.local_tys[local], &asn);
@@ -386,7 +386,7 @@ fn run(tcx: TyCtxt) {
                 rw.loc.sub,
             );
             for kind in &rw.kinds {
-                eprintln!("  {:?}", kind);
+                eprintln!("  {kind:?}");
             }
         }
     }
@@ -457,7 +457,7 @@ fn describe_span(tcx: TyCtxt, span: Span) -> String {
         (&s[..], "", "")
     };
     let line = tcx.sess.source_map().lookup_char_pos(span.lo()).line;
-    format!("{}: {}{}{}", line, src1, src2, src3)
+    format!("{line}: {src1}{src2}{src3}")
 }
 
 /// Return all `LocalDefId`s for all `fn`s that are `body_owners`, ordered according to a postorder
@@ -479,10 +479,7 @@ fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
         match tcx.def_kind(root_ldid) {
             DefKind::Fn | DefKind::AssocFn => {}
             DefKind::AnonConst => continue,
-            dk => panic!(
-                "unexpected def_kind {:?} for body_owner {:?}",
-                dk, root_ldid
-            ),
+            dk => panic!("unexpected def_kind {dk:?} for body_owner {root_ldid:?}"),
         }
 
         stack.push(Visit::Pre(root_ldid));

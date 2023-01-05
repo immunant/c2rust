@@ -63,7 +63,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             .push((path, loan, borrow_kind));
         let point = self.current_point(SubPoint::Mid);
         self.facts.loan_issued_at.push((origin, loan, point));
-        eprintln!("issued loan {:?} = {:?} ({:?})", loan, pl, borrow_kind);
+        eprintln!("issued loan {loan:?} = {pl:?} ({borrow_kind:?})");
         origin
     }
 
@@ -168,7 +168,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     // relations between the regions of the array and the regions of its elements
                     self.ltcx.label(ty, &mut |_ty| Label::default())
                 }
-                _ => panic!("unsupported rvalue AggregateKind {:?}", kind),
+                _ => panic!("unsupported rvalue AggregateKind {kind:?}"),
             },
 
             Rvalue::Len(..) => {
@@ -178,12 +178,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
             Rvalue::UnaryOp(_, ref op) => self.visit_operand(op),
 
-            ref rv => panic!("unsupported rvalue {:?}", rv),
+            ref rv => panic!("unsupported rvalue {rv:?}"),
         }
     }
 
     fn do_assign(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
-        eprintln!("assign {:?} = {:?}", pl_lty, rv_lty);
+        eprintln!("assign {pl_lty:?} = {rv_lty:?}");
 
         let pl_origin = pl_lty.label.origin;
         let rv_origin = rv_lty.label.origin;

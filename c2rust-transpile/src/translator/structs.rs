@@ -224,7 +224,7 @@ impl<'a> Translation<'a> {
 
                         let bit_start = platform_bit_offset - start_bit;
                         let bit_end = bit_start + bitfield_width - 1;
-                        let bit_range = format!("{}..={}", bit_start, bit_end);
+                        let bit_range = format!("{bit_start}..={bit_end}");
 
                         attrs.push((field_name.clone(), ty, bit_range));
                     }
@@ -579,7 +579,7 @@ impl<'a> Translation<'a> {
 
                 // Now we must use the bitfield methods to initialize bitfields
                 for (field_name, val) in bitfield_inits {
-                    let field_name_setter = format!("set_{}", field_name);
+                    let field_name_setter = format!("set_{field_name}");
                     let struct_ident = mk().ident_expr("init");
                     is_unsafe |= val.is_unsafe();
                     let val = val
@@ -716,7 +716,7 @@ impl<'a> Translation<'a> {
                     .borrow()
                     .resolve_field_name(None, field_id)
                     .ok_or("Could not find bitfield name")?;
-                let setter_name = format!("set_{}", field_name);
+                let setter_name = format!("set_{field_name}");
                 let lhs_expr_read = mk().method_call_expr(lhs_expr.clone(), field_name, Vec::new());
                 // Allow the value of this assignment to be used as the RHS of other assignments
                 let val = lhs_expr_read.clone();

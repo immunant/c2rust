@@ -17,8 +17,8 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<Box<Expr>> {
         let lit = match base {
             IntBase::Dec => mk().int_unsuffixed_lit(val.into()),
-            IntBase::Hex => mk().float_unsuffixed_lit(&format!("0x{:x}", val)),
-            IntBase::Oct => mk().float_unsuffixed_lit(&format!("0o{:o}", val)),
+            IntBase::Hex => mk().float_unsuffixed_lit(&format!("0x{val:x}")),
+            IntBase::Oct => mk().float_unsuffixed_lit(&format!("0o{val:o}")),
         };
 
         let target_ty = self.convert_type(ty.ctype)?;
@@ -30,7 +30,7 @@ impl<'c> Translation<'c> {
     pub fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> Box<Expr> {
         let def_id = match self.ast_context.resolve_type(enum_type_id).kind {
             CTypeKind::Enum(def_id) => def_id,
-            _ => panic!("{:?} does not point to an `enum` type", enum_type_id),
+            _ => panic!("{enum_type_id:?} does not point to an `enum` type"),
         };
 
         let (variants, underlying_type_id) = match self.ast_context[def_id].kind {
@@ -39,7 +39,7 @@ impl<'c> Translation<'c> {
                 integral_type,
                 ..
             } => (variants, integral_type),
-            _ => panic!("{:?} does not point to an `enum` declaration", def_id),
+            _ => panic!("{def_id:?} does not point to an `enum` declaration"),
         };
 
         for &variant_id in variants {
@@ -55,7 +55,7 @@ impl<'c> Translation<'c> {
                         return mk().path_expr(vec![name]);
                     }
                 }
-                _ => panic!("{:?} does not point to an enum variant", variant_id),
+                _ => panic!("{variant_id:?} does not point to an enum variant"),
             }
         }
 
@@ -125,7 +125,7 @@ impl<'c> Translation<'c> {
                     }
                     CTypeKind::Double => mk().lit_expr(mk().float_lit(&str, "f64")),
                     CTypeKind::Float => mk().lit_expr(mk().float_lit(&str, "f32")),
-                    ref k => panic!("Unsupported floating point literal type {:?}", k),
+                    ref k => panic!("Unsupported floating point literal type {k:?}"),
                 };
                 Ok(WithStmts::new_val(val))
             }

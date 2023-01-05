@@ -261,10 +261,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                 let (pointee_lty, proj, ptr) = match desc {
                     RvalueDesc::Project { base, proj } => {
                         let base_lty = self.type_of(base);
-                        eprintln!(
-                            "rvalue = {:?}, desc = {:?}, base_lty = {:?}",
-                            rv, desc, base_lty
-                        );
+                        eprintln!("rvalue = {rv:?}, desc = {desc:?}, base_lty = {base_lty:?}");
                         (
                             self.project(base_lty, &PlaceElem::Deref),
                             proj,
@@ -499,8 +496,7 @@ fn label_no_pointers<'tcx>(acx: &AnalysisCtxt<'_, 'tcx>, ty: Ty<'tcx>) -> LTy<'t
     acx.lcx().label(ty, &mut |inner_ty| {
         assert!(
             !matches!(inner_ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)),
-            "unexpected pointer type in {:?}",
-            ty,
+            "unexpected pointer type in {ty:?}",
         );
         PointerId::NONE
     })

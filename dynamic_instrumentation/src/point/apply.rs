@@ -104,10 +104,7 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
                     InstrumentationArg::Op(ArgKind::RawPtr(Operand::Copy(*place)))
                 }
             } else {
-                panic!(
-                    "Expected a call terminator in block to instrument, found: {:?}",
-                    call
-                );
+                panic!("Expected a call terminator in block to instrument, found: {call:?}");
             };
 
             // push return value to argument list
