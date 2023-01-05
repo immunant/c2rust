@@ -688,10 +688,10 @@ fn mark_scopes_unsafe(scopes: &mut rustc_index::vec::IndexVec<SourceScope, Sourc
     }
 }
 
-fn instrument_body<'a, 'tcx>(
+fn instrument_body<'tcx>(
     state: &Instrumenter,
     tcx: TyCtxt<'tcx>,
-    body: &'a mut Body<'tcx>,
+    body: &mut Body<'tcx>,
     body_did: DefId,
 ) {
     let hooks = Hooks::new(tcx);
