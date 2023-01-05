@@ -115,21 +115,21 @@ pub fn ptr_field(mir_loc: MirLocId, ptr: usize, field_id: u32) {
 pub fn ptr_copy(mir_loc: MirLocId, ptr: usize) {
     RUNTIME.send_event(Event {
         mir_loc,
-        kind: EventKind::CopyPtr(ptr as usize),
+        kind: EventKind::CopyPtr(ptr),
     });
 }
 
 pub fn ptr_contrive(mir_loc: MirLocId, ptr: usize) {
     RUNTIME.send_event(Event {
         mir_loc,
-        kind: EventKind::FromInt(ptr as usize),
+        kind: EventKind::FromInt(ptr),
     });
 }
 
 pub fn ptr_to_int(mir_loc: MirLocId, ptr: usize) {
     RUNTIME.send_event(Event {
         mir_loc,
-        kind: EventKind::ToInt(ptr as usize),
+        kind: EventKind::ToInt(ptr),
     });
 }
 
