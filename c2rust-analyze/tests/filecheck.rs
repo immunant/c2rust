@@ -1,9 +1,11 @@
 use std::env;
 use std::fs;
 use std::os::unix::io::{AsRawFd, FromRawFd};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-fn detect_filecheck() -> Option<&'static str> {
+fn detect_filecheck() -> Option<&'static Path> {
     let candidates = [
         "FileCheck",
         // Intel macOS homebrew location.
@@ -44,7 +46,7 @@ fn detect_filecheck() -> Option<&'static str> {
             .stderr(Stdio::null())
             .status();
         if result.is_ok() {
-            return Some(filecheck);
+            return Some(&Path::new(filecheck));
         }
     }
     None
@@ -55,11 +57,11 @@ fn filecheck() {
     let lib_dir = env::var("C2RUST_TARGET_LIB_DIR").unwrap();
     let lib_dir = &lib_dir;
 
-    let filecheck_bin = env::var("FILECHECK")
-        .ok()
-        .or_else(|| detect_filecheck().map(|s| s.to_owned()))
+    let filecheck_bin = env::var_os("FILECHECK")
+        .map(PathBuf::from)
+        .or_else(|| detect_filecheck().map(|it| it.to_owned()))
         .unwrap_or_else(|| panic!("FileCheck not found - set FILECHECK=/path/to/FileCheck"));
-    eprintln!("detected FILECHECK={}", filecheck_bin);
+    eprintln!("detected FILECHECK={}", filecheck_bin.display());
 
     for entry in fs::read_dir("tests/filecheck").unwrap() {
         let entry = entry.unwrap();
