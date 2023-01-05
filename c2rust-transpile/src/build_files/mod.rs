@@ -318,11 +318,11 @@ fn maybe_write_to_file(output_path: &Path, output: String, overwrite: bool) -> O
 
     let mut file = match File::create(output_path) {
         Ok(file) => file,
-        Err(e) => panic!("Unable to open file for writing: {}", e),
+        Err(e) => panic!("Unable to open file for writing: {e}"),
     };
     match file.write_all(output.as_bytes()) {
         Ok(()) => (),
-        Err(e) => panic!("Unable to write translation to file: {}", e),
+        Err(e) => panic!("Unable to write translation to file: {e}"),
     };
 
     Some(PathBuf::from(output_path))

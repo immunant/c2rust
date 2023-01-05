@@ -133,7 +133,7 @@ impl LoopId {
     /// this to be usable as a loop label.
     pub fn pretty_print(&self) -> String {
         let &LoopId(loop_id) = self;
-        format!("l_{}", loop_id)
+        format!("l_{loop_id}")
     }
 }
 
@@ -243,7 +243,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
         &self
             .loops
             .get(&id)
-            .unwrap_or_else(|| panic!("There is no loop with id {:?}", id))
+            .unwrap_or_else(|| panic!("There is no loop with id {id:?}"))
             .0
     }
 }

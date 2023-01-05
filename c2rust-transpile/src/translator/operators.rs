@@ -32,7 +32,7 @@ impl From<c_ast::BinOp> for BinOp {
             c_ast::BinOp::And => BinOp::And(Default::default()),
             c_ast::BinOp::Or => BinOp::Or(Default::default()),
 
-            _ => panic!("C BinOp {:?} is not a valid Rust BinOp", op),
+            _ => panic!("C BinOp {op:?} is not a valid Rust BinOp"),
         }
     }
 }

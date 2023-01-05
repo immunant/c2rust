@@ -120,7 +120,7 @@ impl Detect for LogBackend {
             .write(true)
             .append(append)
             .truncate(!append)
-            .open(&path)?;
+            .open(path)?;
         let writer = BufWriter::new(file);
         Ok(Self { writer })
     }

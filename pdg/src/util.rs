@@ -12,7 +12,7 @@ pub struct ShortOption<T>(pub Option<T>);
 impl<T: Display> Display for ShortOption<T> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match &self.0 {
-            Some(this) => write!(f, "{}", this),
+            Some(this) => write!(f, "{this}"),
             None => write!(f, "_"),
         }
     }
@@ -21,7 +21,7 @@ impl<T: Display> Display for ShortOption<T> {
 impl<T: Debug> Debug for ShortOption<T> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match &self.0 {
-            Some(this) => write!(f, "{:?}", this),
+            Some(this) => write!(f, "{this:?}"),
             None => write!(f, "_"),
         }
     }
@@ -94,7 +94,7 @@ impl<T> Duplicates<T> {
                     _ => format!("({count}x) {duplicate}"),
                 })
                 .join(", ");
-            writeln!(f, "\t{}", duplicates)?;
+            writeln!(f, "\t{duplicates}")?;
         }
         write!(f, "and {} more...", num_remaining(self.len()))?;
         Ok(())
@@ -120,7 +120,7 @@ impl<T: Debug + Eq + Hash> Duplicates<T> {
         if self.is_empty() {
             return;
         }
-        panic!("unexpected duplicates: {:?}", self);
+        panic!("unexpected duplicates: {self:?}");
     }
 }
 
@@ -131,7 +131,7 @@ impl<T: Display + Eq + Hash> Duplicates<T> {
         if self.is_empty() {
             return;
         }
-        panic!("unexpected duplicates: {}", self);
+        panic!("unexpected duplicates: {self}");
     }
 }
 

@@ -278,7 +278,7 @@ pub fn lty_project<'tcx, L: Debug>(
         ProjectionElem::Field(f, _) => match lty.kind() {
             TyKind::Tuple(_) => lty.args[f.index()],
             TyKind::Adt(def, _) => adt_func(lty, *def, f),
-            _ => panic!("Field projection is unsupported on type {:?}", lty),
+            _ => panic!("Field projection is unsupported on type {lty:?}"),
         },
         ProjectionElem::Index(..) | ProjectionElem::ConstantIndex { .. } => {
             assert!(matches!(lty.kind(), TyKind::Array(..) | TyKind::Slice(..)));

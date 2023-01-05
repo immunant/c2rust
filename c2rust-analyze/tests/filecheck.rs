@@ -15,7 +15,7 @@ fn filecheck() {
         .unwrap_or_else(|| {
             let llvm_config = find_llvm_config().expect("llvm-config not found");
             let output = Command::new(llvm_config)
-                .args(&["--bindir"])
+                .args(["--bindir"])
                 .output()
                 .ok()
                 .filter(|output| output.status.success())

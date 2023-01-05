@@ -81,7 +81,7 @@ impl Display for MirPlace {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{:?}", self.local)?;
         for p in &self.projection {
-            write!(f, ".{}", p)?;
+            write!(f, ".{p}")?;
         }
         Ok(())
     }
@@ -89,7 +89,7 @@ impl Display for MirPlace {
 
 impl Debug for MirPlace {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "{self}")
     }
 }
 

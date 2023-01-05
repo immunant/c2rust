@@ -157,7 +157,7 @@ impl<'tcx> Visitor<'tcx> for DefUseVisitor<'tcx, '_> {
 
     fn visit_statement(&mut self, stmt: &Statement<'tcx>, location: Location) {
         self.super_statement(stmt, location);
-        eprintln!("visit stmt {:?} at {:?}", stmt, location);
+        eprintln!("visit stmt {stmt:?} at {location:?}");
 
         if let StatementKind::StorageDead(local) = stmt.kind {
             // Observed: `StorageDead` emits `path_moved_at_base` at the `Mid` point.

@@ -205,7 +205,7 @@ impl<K: Render + Ord, V: Render> OutputTable for FxHashMap<K, V> {
 
 impl OutputTable for bool {
     fn write(&self, out: &mut dyn Write, _maps: &AtomMaps) -> Result<(), Box<dyn Error>> {
-        writeln!(out, "{}", self)?;
+        writeln!(out, "{self}")?;
         Ok(())
     }
 }
@@ -332,7 +332,7 @@ impl Render for Loan {
 impl Render for Point {
     fn to_string(&self, maps: &AtomMaps) -> String {
         let (bb, idx, sub) = maps.get_point(*self);
-        format!("{:?}({:?}[{}])", sub, bb, idx)
+        format!("{sub:?}({bb:?}[{idx}])")
     }
 }
 

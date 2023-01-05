@@ -90,7 +90,7 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
 
         for i in 0.. {
             if self.is_target_used(&target) {
-                target = format!("{}_{}", basename, i);
+                target = format!("{basename}_{i}");
             } else {
                 break;
             }
@@ -174,7 +174,7 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     pub fn fresh(&mut self) -> String {
         let fresh = self.next_fresh;
         self.next_fresh += 1;
-        self.pick_name(&format!("fresh{}", fresh))
+        self.pick_name(&format!("fresh{fresh}"))
     }
 }
 

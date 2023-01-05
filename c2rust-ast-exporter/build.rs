@@ -21,9 +21,9 @@ fn main() {
 
     // Generate ast_tags and ExportResult bindings
     if let Err(e) = generate_bindings() {
-        eprintln!("{}", e);
+        eprintln!("{e}");
         if let Err(e) = check_clang_version() {
-            eprintln!("{}", e);
+            eprintln!("{e}");
         }
         process::exit(1);
     }
@@ -48,12 +48,10 @@ fn check_clang_version() -> Result<(), String> {
             return Err(format!(
                 "
 Bindgen requires a matching libclang and clang installation. Bindgen is using
-libclang version ({libclang}) which does not match the autodetected clang
-version ({clang}). If you have clang version {libclang} installed, please set
+libclang version ({libclang_version_str}) which does not match the autodetected clang
+version ({clang_version_str}). If you have clang version {libclang_version_str} installed, please set
 the `CLANG_PATH` environment variable to the path of this version of the clang
 binary.",
-                libclang = libclang_version_str,
-                clang = clang_version_str,
             ));
         }
     }
@@ -121,14 +119,14 @@ fn build_native(llvm_info: &LLVMInfo) {
 
     match env::var("C2RUST_AST_EXPORTER_LIB_DIR") {
         Ok(libdir) => {
-            println!("cargo:rustc-link-search=native={}", libdir);
+            println!("cargo:rustc-link-search=native={libdir}");
         }
         _ => {
             // Build libclangAstExporter.a with cmake
             let dst = Config::new("src")
                 // Where to find LLVM/Clang CMake files
-                .define("LLVM_DIR", &format!("{}/cmake/llvm", llvm_lib_dir))
-                .define("Clang_DIR", &format!("{}/cmake/clang", llvm_lib_dir))
+                .define("LLVM_DIR", &format!("{llvm_lib_dir}/cmake/llvm"))
+                .define("Clang_DIR", &format!("{llvm_lib_dir}/cmake/clang"))
                 // What to build
                 .build_target("clangAstExporter")
                 .build();
@@ -136,8 +134,8 @@ fn build_native(llvm_info: &LLVMInfo) {
             let out_dir = dst.display();
 
             // Set up search path for newly built tinycbor.a and libclangAstExporter.a
-            println!("cargo:rustc-link-search=native={}/build/lib", out_dir);
-            println!("cargo:rustc-link-search=native={}/build", out_dir);
+            println!("cargo:rustc-link-search=native={out_dir}/build/lib");
+            println!("cargo:rustc-link-search=native={out_dir}/build");
         }
     };
 
@@ -145,7 +143,7 @@ fn build_native(llvm_info: &LLVMInfo) {
     println!("cargo:rustc-link-lib=static=tinycbor");
     println!("cargo:rustc-link-lib=static=clangAstExporter");
 
-    println!("cargo:rustc-link-search=native={}", llvm_lib_dir);
+    println!("cargo:rustc-link-search=native={llvm_lib_dir}");
 
     // Some distro's, including arch and Fedora, no longer build with
     // BUILD_SHARED_LIBS=ON; programs linking to clang are required to
@@ -193,7 +191,7 @@ fn build_native(llvm_info: &LLVMInfo) {
         }
 
         for lib in &clang_libs {
-            println!("cargo:rustc-link-lib={}", lib);
+            println!("cargo:rustc-link-lib={lib}");
         }
     }
 
@@ -201,7 +199,7 @@ fn build_native(llvm_info: &LLVMInfo) {
         // IMPORTANT: We cannot specify static= or dylib= here because rustc
         // will reorder those libs before the clang libs above which don't have
         // static or dylib.
-        println!("cargo:rustc-link-lib={}", lib);
+        println!("cargo:rustc-link-lib={lib}");
     }
 
     // Link against the C++ std library.
@@ -312,7 +310,7 @@ impl LLVMInfo {
             } else {
                 vec!["--shared-mode"]
             };
-            invoke_command(llvm_config.as_deref(), &args).map_or(false, |c| c == "static")
+            invoke_command(llvm_config.as_deref(), args).map_or(false, |c| c == "static")
         };
 
         let link_mode = if link_statically {
@@ -324,7 +322,7 @@ impl LLVMInfo {
         let llvm_major_version = {
             let version =
                 invoke_command(llvm_config.as_deref(), ["--version"]).expect(llvm_config_missing);
-            let emsg = format!("invalid version string {}", version);
+            let emsg = format!("invalid version string {version}");
             version
                 .split('.')
                 .next()
