@@ -215,7 +215,7 @@ g {
 	n[18]: copy       n[1]  => _43 @ bb21[6]:  fn exercise_allocator;  _43 = _1;
 	n[19]: copy       n[18] => _42 @ bb21[7]:  fn exercise_allocator;  _42 = move _43 as *mut libc::c_void (Misc);
 	n[20]: copy       n[1]  => _4  @ bb0[1]:   fn reallocarray;        _4 = _1;
-	n[21]: copy       n[20] => _1  @ bb1[3]:   fn reallocarray;        _0 = const pointers::REALLOC(move _4, move _5);
+	n[21]: copy       n[20] => _1  @ bb1[3]:   fn reallocarray;        _0 = const _(move _4, move _5);
 	n[22]: free       n[19] => _41 @ bb22[2]:  fn exercise_allocator;  _41 = reallocarray(move _42, move _44, move _45);
 }
 nodes_that_need_write = [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
