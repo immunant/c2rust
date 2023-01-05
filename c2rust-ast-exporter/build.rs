@@ -83,7 +83,7 @@ fn generate_bindings() -> Result<(), &'static str> {
         .clang_arg("-xc++")
         // Finish the builder and generate the bindings.
         .generate()
-        .or(Err("Unable to generate AST bindings"))?;
+        .map_err(|_| "Unable to generate AST bindings")?;
 
     let cppbindings = bindgen::Builder::default()
         .header("src/ExportResult.hpp")
@@ -95,7 +95,7 @@ fn generate_bindings() -> Result<(), &'static str> {
         .clang_arg("-std=c++11")
         // Finish the builder and generate the bindings.
         .generate()
-        .or(Err("Unable to generate ExportResult bindings"))?;
+        .map_err(|_| "Unable to generate ExportResult bindings")?;
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
