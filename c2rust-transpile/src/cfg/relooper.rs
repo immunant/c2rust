@@ -154,10 +154,7 @@ impl RelooperState {
             let mut flipped_map: IndexMap<Label, IndexSet<Label>> = IndexMap::new();
             for (lbl, vals) in map {
                 for val in vals {
-                    flipped_map
-                        .entry(val)
-                        .or_insert(IndexSet::new())
-                        .insert(lbl.clone());
+                    flipped_map.entry(val).or_default().insert(lbl.clone());
                 }
             }
             flipped_map
@@ -289,7 +286,7 @@ impl RelooperState {
 
             let mut closure: IndexMap<V, IndexSet<V>> = IndexMap::new();
             for (f, t) in edges {
-                closure.entry(f).or_insert(IndexSet::new()).insert(t);
+                closure.entry(f).or_default().insert(t);
             }
 
             closure
@@ -433,7 +430,7 @@ impl RelooperState {
         for entry in &entries {
             reachable_from
                 .entry(entry.clone())
-                .or_insert(IndexSet::new())
+                .or_default()
                 .insert(entry.clone());
         }
 
@@ -577,10 +574,7 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                             StructureLabel::ExitTo(lbl) => (lbl, &mut merged_exit),
                             _ => panic!("simplify_structure: Nested precondition violated"),
                         };
-                        merged
-                            .entry(lbl.clone())
-                            .or_insert(Default::default())
-                            .push(pat.clone());
+                        merged.entry(lbl.clone()).or_default().push(pat.clone());
                     }
 
                     // When converting these patterns back into a vector, we have to be careful to

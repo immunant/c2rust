@@ -568,10 +568,7 @@ impl Cfg<Label, StmtOrDecl> {
                 _ => None,
             })
         {
-            c_label_to_goto
-                .entry(target)
-                .or_insert(IndexSet::new())
-                .insert(x);
+            c_label_to_goto.entry(target).or_default().insert(x);
         }
 
         let mut cfg_builder = CfgBuilder::new(c_label_to_goto);
@@ -1723,7 +1720,7 @@ impl CfgBuilder {
                 self.last_per_stmt_mut()
                     .c_labels_used
                     .entry(label_id)
-                    .or_insert(IndexSet::new())
+                    .or_default()
                     .insert(stmt_id);
 
                 Ok(None)
