@@ -1,6 +1,6 @@
 use rustc_middle::{
     mir::{Constant, ConstantKind, Local, Operand, Place},
-    ty::{self, ParamEnv, TyCtxt},
+    ty::{ParamEnv, TyCtxt},
 };
 use rustc_span::DUMMY_SP;
 
@@ -37,10 +37,6 @@ fn make_const(tcx: TyCtxt, idx: u32) -> Operand {
     Operand::Constant(Box::new(Constant {
         span: DUMMY_SP,
         user_ty: None,
-        literal: ConstantKind::Ty(ty::Const::from_bits(
-            tcx,
-            idx.into(),
-            ParamEnv::empty().and(tcx.types.u32),
-        )),
+        literal: ConstantKind::from_bits(tcx, idx.into(), ParamEnv::empty().and(tcx.types.u32)),
     }))
 }
