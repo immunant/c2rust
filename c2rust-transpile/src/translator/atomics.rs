@@ -318,7 +318,7 @@ impl<'c> Translation<'c> {
         // Emit `atomic_cxchg(a0, a1, a2).idx`
         let atomic_cxchg = mk().abs_path_expr(vec!["core", "intrinsics", intrinsic_name]);
         let call = mk().call_expr(atomic_cxchg, vec![dst, old_val, src_val]);
-        let field_idx = if returns_val { 0 } else { 1 };
+        let field_idx = (!returns_val).into();
         let call_expr = mk().anon_field_expr(call, field_idx);
         self.convert_side_effects_expr(
             ctx,
