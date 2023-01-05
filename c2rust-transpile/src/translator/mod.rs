@@ -4869,7 +4869,7 @@ impl<'c> Translation<'c> {
             let mut item_stores = self.items.borrow_mut();
             let items = item_stores
                 .entry(decl_file_id.unwrap())
-                .or_insert(ItemStore::new());
+                .or_default();
 
             items.add_item(item);
         } else {
@@ -4890,7 +4890,7 @@ impl<'c> Translation<'c> {
             let mut items = self.items.borrow_mut();
             let mod_block_items = items
                 .entry(decl_file_id.unwrap())
-                .or_insert(ItemStore::new());
+                .or_default();
 
             mod_block_items.add_foreign_item(item);
         } else {
@@ -4927,7 +4927,7 @@ impl<'c> Translation<'c> {
         self.items
             .borrow_mut()
             .entry(decl_file_id)
-            .or_insert(ItemStore::new())
+            .or_default()
             .add_use(module_path, ident_name);
     }
 

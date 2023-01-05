@@ -156,7 +156,7 @@ impl RelooperState {
                 for val in vals {
                     flipped_map
                         .entry(val)
-                        .or_insert(IndexSet::new())
+                        .or_default()
                         .insert(lbl.clone());
                 }
             }
@@ -289,7 +289,7 @@ impl RelooperState {
 
             let mut closure: IndexMap<V, IndexSet<V>> = IndexMap::new();
             for (f, t) in edges {
-                closure.entry(f).or_insert(IndexSet::new()).insert(t);
+                closure.entry(f).or_default().insert(t);
             }
 
             closure
@@ -433,7 +433,7 @@ impl RelooperState {
         for entry in &entries {
             reachable_from
                 .entry(entry.clone())
-                .or_insert(IndexSet::new())
+                .or_default()
                 .insert(entry.clone());
         }
 
@@ -579,7 +579,7 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                         };
                         merged
                             .entry(lbl.clone())
-                            .or_insert(Default::default())
+                            .or_default()
                             .push(pat.clone());
                     }
 
