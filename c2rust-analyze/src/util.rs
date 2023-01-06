@@ -257,7 +257,7 @@ fn builtin_callee<'tcx>(
 pub fn lty_project<'tcx, L: Debug>(
     lty: LabeledTy<'tcx, L>,
     proj: &PlaceElem<'tcx>,
-    adt_func: impl Fn(AdtDef<'tcx>, Field) -> LabeledTy<'tcx, L>,
+    mut adt_func: impl FnMut(AdtDef<'tcx>, Field, Ty<'tcx>) -> LabeledTy<'tcx, L>,
 ) -> LabeledTy<'tcx, L> {
     match *proj {
         ProjectionElem::Deref => {
@@ -265,9 +265,9 @@ pub fn lty_project<'tcx, L: Debug>(
             assert_eq!(lty.args.len(), 1);
             lty.args[0]
         }
-        ProjectionElem::Field(f, _) => match lty.kind() {
+        ProjectionElem::Field(f, field_ty) => match lty.kind() {
             TyKind::Tuple(_) => lty.args[f.index()],
-            TyKind::Adt(def, _) => adt_func(*def, f),
+            TyKind::Adt(def, _) => adt_func(*def, f, field_ty),
             _ => panic!("Field projection is unsupported on type {:?}", lty),
         },
         ProjectionElem::Index(..) | ProjectionElem::ConstantIndex { .. } => {

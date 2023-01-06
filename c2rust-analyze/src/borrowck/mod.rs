@@ -4,9 +4,12 @@ use crate::dataflow::DataflowConstraints;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::PointerTableMut;
 use crate::util::{describe_rvalue, RvalueDesc};
+use indexmap::{IndexMap, IndexSet};
+use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{Body, BorrowKind, Local, LocalKind, Place, StatementKind, START_BLOCK};
-use rustc_middle::ty::{List, TyKind};
+use rustc_middle::ty::{List, Region, Ty, TyKind};
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::hash::Hash;
 
 mod atoms;
@@ -15,13 +18,83 @@ mod dump;
 mod type_check;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
-pub struct Label {
+pub struct Label<'tcx> {
+    /// The [`Origin`] of this type
     pub origin: Option<Origin>,
+    /// The [Origins](`Origin`) associated with each lifetime
+    /// parameter of this type, if applicable
+    pub origin_params: Option<&'tcx [(OriginKind<'tcx>, Origin)]>,
     pub perm: PermissionSet,
 }
 
-pub type LTy<'tcx> = LabeledTy<'tcx, Label>;
-pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, Label>;
+pub type LTy<'tcx> = LabeledTy<'tcx, Label<'tcx>>;
+pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, Label<'tcx>>;
+
+/// Metadata describing lifetimes and lifetime parameters
+/// of a struct field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldMetadata<'tcx> {
+    /// The lifetime of the field, e.g. `*mut &'a mut foo_type`
+    /// would have an index set of {'h0, 'a}
+    pub lifetime: IndexSet<OriginKind<'tcx>>,
+    /// The lifetime parameters of a field, e.g. if a struct
+    /// `foo<'a, 'b>` is a field of `bar<'c, 'd>` as field: `foo<'c, 'd>`,
+    /// the lifetime params would be a set {'c, 'd}
+    pub lifetime_params: IndexSet<OriginKind<'tcx>>,
+    /// The type of the field when fully dereferenced, e.g.
+    /// `&mut &mut foo_type` would have a type of `foo_type`
+    pub fully_derefed_ty: Option<Ty<'tcx>>,
+}
+
+impl Default for FieldMetadata<'_> {
+    fn default() -> Self {
+        Self {
+            lifetime: IndexSet::new(),
+            lifetime_params: IndexSet::new(),
+            fully_derefed_ty: None,
+        }
+    }
+}
+
+/// Metadata describing the lifetime parameters and fields
+/// of a struct.
+#[derive(Clone, PartialEq, Eq)]
+pub struct AdtMetadata<'tcx> {
+    /// The lifetime parameters of a structure, including
+    /// hypothetical lifetimes derived from pointer fields.
+    pub lifetime_params: IndexSet<OriginKind<'tcx>>,
+    pub field_info: IndexMap<DefId, FieldMetadata<'tcx>>,
+}
+
+impl Default for AdtMetadata<'_> {
+    fn default() -> Self {
+        Self {
+            lifetime_params: IndexSet::new(),
+            field_info: IndexMap::new(),
+        }
+    }
+}
+
+/// An origin parameter to resolve in a MIR body
+/// that will get mapped to a concrete Origin to
+/// provide to polonius.
+#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+pub enum OriginKind<'tcx> {
+    /// An existing region, i.e. `'a` in `&'a foo`
+    Actual(Region<'tcx>),
+    /// A hypothesized region derived from a pointer type
+    /// e.g. `'h0` derived from the pointer in `*mut foo`
+    Hypothetical(i64),
+}
+
+impl<'tcx> std::fmt::Debug for OriginKind<'tcx> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            OriginKind::Actual(r) => write!(f, "{:}", r),
+            OriginKind::Hypothetical(h) => write!(f, "'h{h:?}"),
+        }
+    }
+}
 
 pub fn borrowck_mir<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
@@ -29,11 +102,14 @@ pub fn borrowck_mir<'tcx>(
     hypothesis: &mut PointerTableMut<PermissionSet>,
     name: &str,
     mir: &Body<'tcx>,
+    adt_metadata: &HashMap<DefId, AdtMetadata<'tcx>>,
+    field_tys: HashMap<DefId, crate::LTy<'tcx>>,
 ) {
     let mut i = 0;
     loop {
         eprintln!("run polonius");
-        let (facts, maps, output) = run_polonius(acx, hypothesis, name, mir);
+        let (facts, maps, output) =
+            run_polonius(acx, hypothesis, name, mir, adt_metadata, &field_tys);
         eprintln!(
             "polonius: iteration {}: {} errors, {} move_errors",
             i,
@@ -107,6 +183,8 @@ fn run_polonius<'tcx>(
     hypothesis: &PointerTableMut<PermissionSet>,
     name: &str,
     mir: &Body<'tcx>,
+    adt_metadata: &HashMap<DefId, AdtMetadata<'tcx>>,
+    field_tys: &HashMap<DefId, crate::LTy<'tcx>>,
 ) -> (AllFacts, AtomMaps<'tcx>, Output) {
     let tcx = acx.tcx();
     let mut facts = AllFacts::default();
@@ -179,6 +257,7 @@ fn run_polonius<'tcx>(
             hypothesis,
             &mut facts,
             &mut maps,
+            adt_metadata,
             acx.local_tys[local],
         );
         let var = maps.variable(local);
@@ -190,6 +269,17 @@ fn run_polonius<'tcx>(
         local_ltys.push(lty);
     }
 
+    // Gather field permissions
+    let mut field_permissions: HashMap<DefId, PermissionSet> = HashMap::new();
+    for (did, lty) in field_tys {
+        let perm = if lty.label.is_none() {
+            PermissionSet::empty()
+        } else {
+            hypothesis[lty.label]
+        };
+        field_permissions.insert(*did, perm);
+    }
+
     let mut loans = HashMap::<Local, Vec<(Path, Loan, BorrowKind)>>::new();
     // Populate `loan_issued_at` and `loans`.
     type_check::visit(
@@ -199,7 +289,9 @@ fn run_polonius<'tcx>(
         &mut maps,
         &mut loans,
         &local_ltys,
+        &field_permissions,
         mir,
+        adt_metadata,
     );
 
     // Populate `loan_invalidated_at`
@@ -221,6 +313,7 @@ fn assign_origins<'tcx>(
     hypothesis: &PointerTableMut<PermissionSet>,
     _facts: &mut AllFacts,
     maps: &mut AtomMaps<'tcx>,
+    adt_metadata: &HashMap<DefId, AdtMetadata<'tcx>>,
     lty: crate::LTy<'tcx>,
 ) -> LTy<'tcx> {
     ltcx.relabel(lty, &mut |lty| {
@@ -229,12 +322,68 @@ fn assign_origins<'tcx>(
         } else {
             hypothesis[lty.label]
         };
-        match lty.ty.kind() {
-            TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
-                let origin = Some(maps.origin());
-                Label { origin, perm }
+
+        let construct_adt_origins = |ty: &Ty, amaps: &mut AtomMaps| -> Option<&_> {
+            let mut fully_derefed_ty = ty;
+            loop {
+                match fully_derefed_ty.kind() {
+                    TyKind::RawPtr(ty) => {
+                        fully_derefed_ty = &ty.ty;
+                    }
+                    TyKind::Ref(_, ty, _) => {
+                        fully_derefed_ty = ty;
+                    }
+                    _ => break,
+                }
             }
-            _ => Label { origin: None, perm },
+            let adt_def = fully_derefed_ty.ty_adt_def()?;
+
+            // create a concrete origin for each actual or hypothetical
+            // lifetime parameter in this ADT
+            let origins: Vec<_> = adt_metadata
+                .get(&adt_def.did())?
+                .lifetime_params
+                .iter()
+                .map(|o| {
+                    let pairing = (*o, amaps.origin());
+                    eprintln!("pairing lifetime parameter with origin: {pairing:?}");
+                    pairing
+                })
+                .collect();
+
+            if origins.is_empty() {
+                return None;
+            }
+
+            Some(ltcx.arena().alloc_slice(&origins[..]))
+        };
+        match lty.ty.kind() {
+            TyKind::Ref(_, ty, _) => {
+                let origin = Some(maps.origin());
+                let origin_params = construct_adt_origins(ty, maps);
+                Label {
+                    origin,
+                    origin_params,
+                    perm,
+                }
+            }
+            TyKind::RawPtr(ty) => {
+                let origin = Some(maps.origin());
+                let origin_params = construct_adt_origins(&ty.ty, maps);
+                Label {
+                    origin,
+                    origin_params,
+                    perm,
+                }
+            }
+            _ => {
+                let origin_params = construct_adt_origins(&lty.ty, maps);
+                Label {
+                    origin: None,
+                    origin_params,
+                    perm,
+                }
+            }
         }
     })
 }

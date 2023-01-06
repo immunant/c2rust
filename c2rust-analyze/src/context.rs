@@ -13,7 +13,9 @@ use rustc_middle::mir::{
     PlaceRef, Rvalue,
 };
 use rustc_middle::ty::adjustment::PointerCast;
-use rustc_middle::ty::{AdtDef, FieldDef, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{
+    AdtDef, FieldDef, GenericArg, GenericArgKind, RegionKind, Ty, TyCtxt, TyKind, TypeAndMut,
+};
 use std::collections::HashMap;
 use std::ops::Index;
 
@@ -164,14 +166,46 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         *next_ptr_id = counter;
     }
 
-    pub fn label_field(&mut self, field: &FieldDef) {
-        let lty = self.assign_pointer_ids(self.tcx.type_of(field.did));
+    pub fn assn_ptr_to_field(&mut self, field: &FieldDef) {
+        let mut lty = self
+            .lcx
+            .label(self.tcx.type_of(field.did), &mut |_| PointerId::NONE);
+
+        // If this is an Adt, erase any lifetime bounds because they will
+        // be erased in the MIR body when visiting.
+        let ty = self
+            .lcx
+            .rewrite_unlabeled(lty, &mut |ty, _args, _label| match ty.kind() {
+                TyKind::Adt(def, substs) => {
+                    let mut subs = vec![];
+                    for sub in substs.iter() {
+                        subs.push(if let GenericArgKind::Lifetime(..) = sub.unpack() {
+                            let r = self.tcx.mk_region(RegionKind::ReErased);
+                            GenericArg::from(r)
+                        } else {
+                            sub
+                        });
+                    }
+                    let substs = self.tcx.mk_substs(subs.iter());
+                    self.tcx.mk_adt(*def, substs)
+                }
+                TyKind::Ref(_, ty, mutbl) => self.tcx.mk_ref(
+                    self.tcx.mk_region(RegionKind::ReErased),
+                    TypeAndMut {
+                        ty: *ty,
+                        mutbl: *mutbl,
+                    },
+                ),
+                _ => ty,
+            });
+
+        lty = self.assign_pointer_ids(ty);
         self.field_tys.insert(field.did, lty);
     }
 
-    pub fn label_struct_fields(&mut self, did: DefId) {
+    pub fn assn_ptr_to_fields(&mut self, did: DefId) {
         for field in self.tcx.adt_def(did).all_fields() {
-            self.label_field(field);
+            self.assn_ptr_to_field(field);
         }
     }
 }
@@ -379,7 +413,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     }
 
     pub fn project(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
-        let adt_func = |adt_def: AdtDef, field: Field| {
+        let adt_func = |adt_def: AdtDef, field: Field, _field_ty: Ty<'tcx>| {
             let field_def = &adt_def.non_enum_variant().fields[field.index()];
             let field_def_name = field_def.name;
             eprintln!("projecting into {adt_def:?}.{field_def_name:}");
