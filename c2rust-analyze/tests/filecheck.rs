@@ -1,7 +1,7 @@
+use c2rust_build_paths::{find_llvm_config, invoke_command};
 use std::env;
 use std::fs;
 use std::os::unix::io::{AsRawFd, FromRawFd};
-use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -60,7 +60,14 @@ fn filecheck() {
     let filecheck_bin = env::var_os("FILECHECK")
         .map(PathBuf::from)
         .or_else(|| detect_filecheck().map(|it| it.to_owned()))
-        .unwrap_or_else(|| panic!("FileCheck not found - set FILECHECK=/path/to/FileCheck"));
+        .unwrap_or_else(|| {
+            PathBuf::from(
+                invoke_command(find_llvm_config().as_deref(), &["--bindir"])
+                    .expect("llvm-config not found"),
+            )
+            .join("FileCheck")
+        });
+
     eprintln!("detected FILECHECK={}", filecheck_bin.display());
 
     for entry in fs::read_dir("tests/filecheck").unwrap() {

@@ -15,5 +15,8 @@ assert_matches = "1.5.0"
 c2rust-build-paths = { path = "../c2rust-build-paths" }
 print_bytes = "0.7"
 
+[dev-dependencies]
+c2rust-build-paths = { path = "../c2rust-build-paths" }
+
 [package.metadata.rust-analyzer]
 rustc_private = true
