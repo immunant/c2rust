@@ -5,53 +5,6 @@ use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-fn detect_filecheck() -> Option<&'static Path> {
-    let candidates = [
-        "FileCheck",
-        // Intel macOS homebrew location.
-        "/usr/local/opt/llvm/bin/FileCheck",
-        // Apple Silicon macOS homebrew location.
-        "/opt/homebrew/opt/llvm/bin/FileCheck",
-        "FileCheck-14",
-        "/usr/local/opt/llvm@14/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@14/bin/FileCheck",
-        "FileCheck-13",
-        "/usr/local/opt/llvm@13/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@13/bin/FileCheck",
-        "FileCheck-12",
-        "/usr/local/opt/llvm@12/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@12/bin/FileCheck",
-        "FileCheck-11",
-        "/usr/local/opt/llvm@11/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@11/bin/FileCheck",
-        "FileCheck-10",
-        "/usr/local/opt/llvm@10/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@10/bin/FileCheck",
-        "FileCheck-9",
-        "/usr/local/opt/llvm@9/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@9/bin/FileCheck",
-        "FileCheck-8",
-        "/usr/local/opt/llvm@8/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@8/bin/FileCheck",
-        "FileCheck-7",
-        "FileCheck-7.0",
-        "/usr/local/opt/llvm@7/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@7/bin/FileCheck",
-    ];
-
-    for filecheck in candidates {
-        let result = Command::new(filecheck)
-            .arg("--version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        if result.is_ok() {
-            return Some(&Path::new(filecheck));
-        }
-    }
-    None
-}
-
 #[test]
 fn filecheck() {
     let lib_dir = env::var("C2RUST_TARGET_LIB_DIR").unwrap();
