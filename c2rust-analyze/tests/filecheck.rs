@@ -59,7 +59,6 @@ fn filecheck() {
 
     let filecheck_bin = env::var_os("FILECHECK")
         .map(PathBuf::from)
-        .or_else(|| detect_filecheck().map(|it| it.to_owned()))
         .unwrap_or_else(|| {
             PathBuf::from(
                 invoke_command(find_llvm_config().as_deref(), &["--bindir"])
