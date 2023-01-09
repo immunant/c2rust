@@ -21,7 +21,7 @@ clap = { version = "3.2", features = ["derive"] }
 c2rust-build-paths = { path = "../c2rust-build-paths" }
 
 [dev-dependencies]
-insta = "1.15"
+insta = "1.17.1"
 
 [package.metadata.rust-analyzer] 
 rustc_private = true
