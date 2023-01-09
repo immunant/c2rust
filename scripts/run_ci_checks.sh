@@ -10,6 +10,8 @@ if [[ "${ALLOW_WARNINGS:-0}" != "1" ]]; then
     export RUSTDOCFLAGS="-D warnings"
 fi
 
+export CARGO_UNSTABLE_SPARSE_REGISTRY=true
+
 fmt() {
     cargo fmt --check
 }

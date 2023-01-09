@@ -54,6 +54,7 @@ jobs:
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
+      export CARGO_UNSTABLE_SPARSE_REGISTRY=true
       # Differs from `cargo build` since we can use `--all-features` here.
       # We plan to eventually replace `cargo check` with `cargo clippy`.
       cargo check --tests --all-features
@@ -126,6 +127,7 @@ jobs:
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
+      export CARGO_UNSTABLE_SPARSE_REGISTRY=true
       # Differs from `cargo build` since we can use `--all-features` here.
       # We plan to eventually replace `cargo check` with `cargo clippy`.
       cargo check --tests --all-features
