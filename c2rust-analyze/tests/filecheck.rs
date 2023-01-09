@@ -20,9 +20,9 @@ fn filecheck() {
                 .ok()
                 .filter(|output| output.status.success())
                 .expect("llvm-config error");
-            PathBuf::from(String::from_utf8(output.stdout).unwrap().trim().to_owned())
-        })
-        .join("FileCheck");
+            let bindir = PathBuf::from(String::from_utf8(output.stdout).unwrap().trim().to_owned());
+            bindir.join("FileCheck")
+        });
 
     eprintln!("detected FILECHECK={}", filecheck_bin.display());
 
