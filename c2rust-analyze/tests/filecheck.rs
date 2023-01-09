@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 
 #[test]
 fn filecheck() {
-    let lib_dir = env::var("C2RUST_TARGET_LIB_DIR").unwrap();
+    let lib_dir = env!("C2RUST_TARGET_LIB_DIR");
     let lib_dir = &lib_dir;
 
     let filecheck_bin = env::var_os("FILECHECK")
