@@ -86,7 +86,7 @@ jobs:
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
-      cargo test --release --exclude c2rust-analyze --workspace
+      cargo test --release --workspace
     displayName: 'cargo test'
   
   - script: |
@@ -150,7 +150,7 @@ jobs:
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
-      cargo test --release --exclude c2rust-analyze --workspace
+      cargo test --release --workspace
     displayName: 'cargo test'
 
   - script: |
