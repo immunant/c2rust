@@ -128,17 +128,3 @@ pub fn find_llvm_config() -> Option<PathBuf> {
             .next()
         })
 }
-
-pub fn invoke_command<I, S>(command: Option<&Path>, args: I) -> Option<String>
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<OsStr>,
-{
-    let command = command?;
-    let output = Command::new(command).args(args).output().ok()?;
-    if output.status.success() {
-        Some(String::from_utf8(output.stdout).unwrap().trim().to_owned())
-    } else {
-        None
-    }
-}
