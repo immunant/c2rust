@@ -13,8 +13,6 @@ use rustc_middle::mir::{
 use rustc_middle::ty::{AdtDef, FieldDef, Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 
-use super::AdtMetadata;
-
 struct TypeChecker<'tcx, 'a> {
     tcx: TyCtxt<'tcx>,
     ltcx: LTyCtxt<'tcx>,
@@ -39,12 +37,19 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_place(&mut self, pl: Place<'tcx>) -> LTy<'tcx> {
         let mut lty: LTy = self.local_ltys[pl.local.index()];
-        let map: &mut HashMap<OriginKind, Origin> = &mut lty
-            .label
-            .origin_params
-            .map(|params| HashMap::from_iter(params.to_vec()))
-            .unwrap_or_default();
-        let mut adt_func = |base_adt_def: AdtDef, field: Field, field_ty: Ty<'tcx>| {
+
+        let mut adt_func = |base_lty: LTy<'tcx>,
+                            base_adt_def: AdtDef,
+                            field: Field,
+                            field_ty: Ty<'tcx>| {
+            let mut base_origin_param_map: HashMap<OriginKind, Origin> = base_lty
+                .label
+                .origin_params
+                .map(|params| HashMap::from_iter(params.to_vec()))
+                .unwrap_or_default();
+
+            let mut field_origin_param_map = HashMap::new();
+
             let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field.index()];
             let perm = self.field_permissions[&field_def.did];
             let base_metadata = &self.adt_metadata.table[&base_adt_def.did()];
@@ -81,7 +86,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     .iter()
                     .zip(field_adt_metadata.lifetime_params.iter())
                 {
-                    if let Some((base_lifetime_param, og)) = map.get_key_value(field_lifetime_param)
+                    if let Some((base_lifetime_param, og)) =
+                        base_origin_param_map.get_key_value(field_lifetime_param)
                     {
                         eprintln!(
                                 "mapping {base_adt_def:?} lifetime parameter {base_lifetime_param:?} to \
@@ -89,11 +95,17 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                                 corresponding to its lifetime parameter {field_lifetime_param:?} within {base_adt_def:?}",
                                 field_def.name
                             );
-                        map.insert(*field_struct_lifetime_param, *og);
+                        field_origin_param_map.insert(*field_struct_lifetime_param, *og);
                     }
                 }
             }
 
+            let origin_params: Option<&_> = if field_origin_param_map.is_empty() {
+                None
+            } else {
+                let field_origin_params: Vec<_> = field_origin_param_map.into_iter().collect();
+                Some(self.ltcx.arena().alloc_slice(&field_origin_params[..]))
+            };
             let mut field_lifetimes = field_metadata.lifetime.clone();
             self.ltcx.label(field_ty, &mut |ty| {
                 let origin = match ty.kind() {
@@ -109,13 +121,16 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                     _ => field_lifetimes.get_index(0).cloned(),
                 }
-                .and_then(|o| map.get(&o))
+                .and_then(|o| {
+                    eprintln!("field origin {o:?}, {base_origin_param_map:?}");
+                    base_origin_param_map.get(&o)
+                })
                 .cloned();
 
                 Label {
                     origin,
                     perm,
-                    ..lty.label
+                    origin_params,
                 }
             })
         };
@@ -123,7 +138,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         for proj in pl.projection {
             lty = util::lty_project(lty, &proj, &mut adt_func);
         }
-        eprintln!("final label for {pl:?}: {:?}", lty.label);
+        eprintln!("final label for {pl:?}: {:?}", lty);
         lty
     }
 

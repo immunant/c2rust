@@ -325,19 +325,7 @@ fn assign_origins<'tcx>(
         };
 
         let construct_adt_origins = |ty: &Ty, amaps: &mut AtomMaps| -> Option<&_> {
-            let mut fully_derefed_ty = ty;
-            loop {
-                match fully_derefed_ty.kind() {
-                    TyKind::RawPtr(ty) => {
-                        fully_derefed_ty = &ty.ty;
-                    }
-                    TyKind::Ref(_, ty, _) => {
-                        fully_derefed_ty = ty;
-                    }
-                    _ => break,
-                }
-            }
-            let adt_def = fully_derefed_ty.ty_adt_def()?;
+            let adt_def = ty.ty_adt_def()?;
 
             // create a concrete origin for each actual or hypothetical
             // lifetime parameter in this ADT
@@ -360,29 +348,27 @@ fn assign_origins<'tcx>(
             Some(ltcx.arena().alloc_slice(&origins[..]))
         };
         match lty.ty.kind() {
-            TyKind::Ref(_, ty, _) => {
+            TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
                 let origin = Some(maps.origin());
-                let origin_params = construct_adt_origins(ty, maps);
                 Label {
                     origin,
-                    origin_params,
+                    origin_params: None,
                     perm,
                 }
             }
-            TyKind::RawPtr(ty) => {
-                let origin = Some(maps.origin());
-                let origin_params = construct_adt_origins(&ty.ty, maps);
+            TyKind::Adt(..) => {
+                let origin_params = construct_adt_origins(&lty.ty, maps);
                 Label {
-                    origin,
+                    origin: None,
                     origin_params,
                     perm,
                 }
             }
             _ => {
-                let origin_params = construct_adt_origins(&lty.ty, maps);
+                // let origin_params = construct_adt_origins(&lty.ty, maps);
                 Label {
                     origin: None,
-                    origin_params,
+                    origin_params: None,
                     perm,
                 }
             }
