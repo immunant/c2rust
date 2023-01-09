@@ -13,9 +13,7 @@ use rustc_middle::mir::{
     PlaceRef, Rvalue,
 };
 use rustc_middle::ty::adjustment::PointerCast;
-use rustc_middle::ty::{
-    AdtDef, FieldDef, GenericArg, GenericArgKind, RegionKind, Ty, TyCtxt, TyKind, TypeAndMut,
-};
+use rustc_middle::ty::{AdtDef, FieldDef, Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
 
@@ -167,39 +165,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     }
 
     pub fn assn_ptr_to_field(&mut self, field: &FieldDef) {
-        let mut lty = self
-            .lcx
-            .label(self.tcx.type_of(field.did), &mut |_| PointerId::NONE);
-
-        // If this is an Adt, erase any lifetime bounds because they will
-        // be erased in the MIR body when visiting.
-        let ty = self
-            .lcx
-            .rewrite_unlabeled(lty, &mut |ty, _args, _label| match ty.kind() {
-                TyKind::Adt(def, substs) => {
-                    let mut subs = vec![];
-                    for sub in substs.iter() {
-                        subs.push(if let GenericArgKind::Lifetime(..) = sub.unpack() {
-                            let r = self.tcx.mk_region(RegionKind::ReErased);
-                            GenericArg::from(r)
-                        } else {
-                            sub
-                        });
-                    }
-                    let substs = self.tcx.mk_substs(subs.iter());
-                    self.tcx.mk_adt(*def, substs)
-                }
-                TyKind::Ref(_, ty, mutbl) => self.tcx.mk_ref(
-                    self.tcx.mk_region(RegionKind::ReErased),
-                    TypeAndMut {
-                        ty: *ty,
-                        mutbl: *mutbl,
-                    },
-                ),
-                _ => ty,
-            });
-
-        lty = self.assign_pointer_ids(ty);
+        let lty = self.assign_pointer_ids(self.tcx.type_of(field.did));
         self.field_tys.insert(field.did, lty);
     }
 
@@ -324,7 +290,10 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                         rv, ty,
                     ),
                 };
-                assert_eq!(pointee_ty, pointee_lty.ty);
+                assert_eq!(
+                    self.tcx().erase_regions(pointee_ty),
+                    self.tcx().erase_regions(pointee_lty.ty)
+                );
 
                 let args = self.lcx().mk_slice(&[pointee_lty]);
                 return self.lcx().mk(ty, args, ptr);
