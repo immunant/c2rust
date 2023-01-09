@@ -1,3 +1,4 @@
+#![feature(rustc_private)]
 #![feature(c_variadic)]
 
 #[path = "pointers.rs"]
