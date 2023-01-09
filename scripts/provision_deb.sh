@@ -56,6 +56,16 @@ packages=(
     zlib1g-dev
 )
 
+if ! [[ -x "$(llvm-config --bindir)/FileCheck" ]]; then
+	IFS="." read -r major minor patch <<< "$(llvm-config --version)"
+    if [[ ${major} -gt 6 ]]; then
+        tools="llvm-${major}-tools"
+    else
+        tools="llvm-${major}.${minor}-tools"
+    fi
+    packages+=("${tools}")
+fi
+
 apt-get install -qq "${packages[@]}"
 
 apt-get clean # clear apt-caches to reduce image size
