@@ -42,7 +42,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             base_adt_def: AdtDef,
                             field: Field,
                             field_ty: Ty<'tcx>| {
-            let mut base_origin_param_map: HashMap<OriginKind, Origin> = base_lty
+            let base_origin_param_map: HashMap<OriginKind, Origin> = base_lty
                 .label
                 .origin_params
                 .map(|params| HashMap::from_iter(params.to_vec()))
