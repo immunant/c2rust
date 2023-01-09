@@ -2,6 +2,7 @@ use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubP
 use crate::borrowck::{LTy, LTyCtxt, Label, OriginKind};
 use crate::context::PermissionSet;
 use crate::util::{self, Callee};
+use crate::AdtMetadataTable;
 use assert_matches::assert_matches;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
@@ -24,7 +25,7 @@ struct TypeChecker<'tcx, 'a> {
     field_permissions: &'a HashMap<DefId, PermissionSet>,
     local_decls: &'a IndexVec<Local, LocalDecl<'tcx>>,
     current_location: Location,
-    adt_metadata: &'a HashMap<DefId, AdtMetadata<'tcx>>,
+    adt_metadata: &'a AdtMetadataTable<'tcx>,
 }
 
 impl<'tcx> TypeChecker<'tcx, '_> {
@@ -46,10 +47,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         let mut adt_func = |base_adt_def: AdtDef, field: Field, field_ty: Ty<'tcx>| {
             let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field.index()];
             let perm = self.field_permissions[&field_def.did];
-            let base_metadata = &self.adt_metadata[&base_adt_def.did()];
+            let base_metadata = &self.adt_metadata.table[&base_adt_def.did()];
             let field_metadata = &base_metadata.field_info[&field_def.did];
 
-            if let Some(field_adt_metadata) = self.adt_metadata.get(&field_def.did) {
+            if let Some(field_adt_metadata) = self.adt_metadata.table.get(&field_def.did) {
                 /*
                     If we're in this block, it means the current field is an ADT.
 
@@ -369,7 +370,7 @@ pub fn visit<'tcx>(
     local_ltys: &[LTy<'tcx>],
     field_permissions: &HashMap<DefId, PermissionSet>,
     mir: &Body<'tcx>,
-    adt_metadata: &HashMap<DefId, AdtMetadata<'tcx>>,
+    adt_metadata: &AdtMetadataTable<'tcx>,
 ) {
     let mut tc = TypeChecker {
         tcx,

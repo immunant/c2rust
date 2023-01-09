@@ -4,6 +4,7 @@ use crate::dataflow::DataflowConstraints;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::PointerTableMut;
 use crate::util::{describe_rvalue, RvalueDesc};
+use crate::AdtMetadataTable;
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{Body, BorrowKind, Local, LocalKind, Place, StatementKind, START_BLOCK};
@@ -102,7 +103,7 @@ pub fn borrowck_mir<'tcx>(
     hypothesis: &mut PointerTableMut<PermissionSet>,
     name: &str,
     mir: &Body<'tcx>,
-    adt_metadata: &HashMap<DefId, AdtMetadata<'tcx>>,
+    adt_metadata: &AdtMetadataTable<'tcx>,
     field_tys: HashMap<DefId, crate::LTy<'tcx>>,
 ) {
     let mut i = 0;
@@ -183,7 +184,7 @@ fn run_polonius<'tcx>(
     hypothesis: &PointerTableMut<PermissionSet>,
     name: &str,
     mir: &Body<'tcx>,
-    adt_metadata: &HashMap<DefId, AdtMetadata<'tcx>>,
+    adt_metadata: &AdtMetadataTable<'tcx>,
     field_tys: &HashMap<DefId, crate::LTy<'tcx>>,
 ) -> (AllFacts, AtomMaps<'tcx>, Output) {
     let tcx = acx.tcx();
@@ -313,7 +314,7 @@ fn assign_origins<'tcx>(
     hypothesis: &PointerTableMut<PermissionSet>,
     _facts: &mut AllFacts,
     maps: &mut AtomMaps<'tcx>,
-    adt_metadata: &HashMap<DefId, AdtMetadata<'tcx>>,
+    adt_metadata: &AdtMetadataTable<'tcx>,
     lty: crate::LTy<'tcx>,
 ) -> LTy<'tcx> {
     ltcx.relabel(lty, &mut |lty| {
@@ -341,6 +342,7 @@ fn assign_origins<'tcx>(
             // create a concrete origin for each actual or hypothetical
             // lifetime parameter in this ADT
             let origins: Vec<_> = adt_metadata
+                .table
                 .get(&adt_def.did())?
                 .lifetime_params
                 .iter()
