@@ -1,65 +1,30 @@
+use c2rust_build_paths::find_llvm_config;
 use std::env;
 use std::fs;
 use std::os::unix::io::{AsRawFd, FromRawFd};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
-
-fn detect_filecheck() -> Option<&'static str> {
-    let candidates = [
-        "FileCheck",
-        // Intel macOS homebrew location.
-        "/usr/local/opt/llvm/bin/FileCheck",
-        // Apple Silicon macOS homebrew location.
-        "/opt/homebrew/opt/llvm/bin/FileCheck",
-        "FileCheck-14",
-        "/usr/local/opt/llvm@14/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@14/bin/FileCheck",
-        "FileCheck-13",
-        "/usr/local/opt/llvm@13/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@13/bin/FileCheck",
-        "FileCheck-12",
-        "/usr/local/opt/llvm@12/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@12/bin/FileCheck",
-        "FileCheck-11",
-        "/usr/local/opt/llvm@11/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@11/bin/FileCheck",
-        "FileCheck-10",
-        "/usr/local/opt/llvm@10/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@10/bin/FileCheck",
-        "FileCheck-9",
-        "/usr/local/opt/llvm@9/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@9/bin/FileCheck",
-        "FileCheck-8",
-        "/usr/local/opt/llvm@8/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@8/bin/FileCheck",
-        "FileCheck-7",
-        "FileCheck-7.0",
-        "/usr/local/opt/llvm@7/bin/FileCheck",
-        "/opt/homebrew/opt/llvm@7/bin/FileCheck",
-    ];
-
-    for filecheck in candidates {
-        let result = Command::new(filecheck)
-            .arg("--version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        if result.is_ok() {
-            return Some(filecheck);
-        }
-    }
-    None
-}
 
 #[test]
 fn filecheck() {
     let lib_dir = env::var("C2RUST_TARGET_LIB_DIR").unwrap();
     let lib_dir = &lib_dir;
 
-    let filecheck_bin = env::var("FILECHECK")
-        .ok()
-        .or_else(|| detect_filecheck().map(|s| s.to_owned()))
-        .unwrap_or_else(|| panic!("FileCheck not found - set FILECHECK=/path/to/FileCheck"));
-    eprintln!("detected FILECHECK={}", filecheck_bin);
+    let filecheck_bin = env::var_os("FILECHECK")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            let llvm_config = find_llvm_config().expect("llvm-config not found");
+            let output = Command::new(llvm_config)
+                .args(&["--bindir"])
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .expect("llvm-config error");
+            let bindir = PathBuf::from(String::from_utf8(output.stdout).unwrap().trim().to_owned());
+            bindir.join("FileCheck")
+        });
+
+    eprintln!("detected FILECHECK={}", filecheck_bin.display());
 
     for entry in fs::read_dir("tests/filecheck").unwrap() {
         let entry = entry.unwrap();
