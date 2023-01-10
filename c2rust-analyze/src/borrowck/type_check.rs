@@ -91,7 +91,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         if let Ok(param) = OriginParam::try_from(field_lifetime_arg) {
                             param
                         } else {
-                            continue;
+                            panic!("'static lifetimes are not yet supported")
                         };
 
                     if let Some((base_lifetime_param, og)) =
@@ -129,7 +129,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                     _ => field_lifetimes.get_index(0).cloned(),
                 }
-                .and_then(|oa| OriginParam::try_from(&oa).ok())
+                .map(|oa| OriginParam::try_from(&oa).expect("'static lifetimes not yet supported"))
                 .and_then(|o| base_origin_param_map.get(&o))
                 .cloned();
 

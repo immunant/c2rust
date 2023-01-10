@@ -246,9 +246,8 @@ fn construct_adt_metadata(tcx: TyCtxt) -> AdtMetadataTable {
                     eprintln!("\t\tfound ADT field base type: {adt_field:?}");
                     for sub in substs.iter() {
                         if let GenericArgKind::Lifetime(r) = sub.unpack() {
-                            assert_matches!(r.kind(), ReEarlyBound(..) => {
-                                eprintln!("\tfound field lifetime {r:?} in {adt_def:?}.{adt_field:?}");
-                                adt_metadata_table.table.entry(*struct_did).and_modify(|adt| {
+                            eprintln!("\tfound field lifetime {r:?} in {adt_def:?}.{adt_field:?}");
+                            adt_metadata_table.table.entry(*struct_did).and_modify(|adt| {
                                     eprintln!("\t\t\tinserting {adt_field:?} lifetime param {r:?} into {adt_def:?}.{:} lifetime parameters", field.name);
 
                                     adt.field_info
@@ -257,7 +256,6 @@ fn construct_adt_metadata(tcx: TyCtxt) -> AdtMetadataTable {
                                         .lifetime_params
                                         .insert(OriginArg::Actual(r));
                                 });
-                            });
                         }
                     }
                     if let Some(adt_field_metadata) =
