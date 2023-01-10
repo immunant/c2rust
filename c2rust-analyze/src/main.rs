@@ -14,7 +14,7 @@ extern crate rustc_span;
 extern crate rustc_target;
 extern crate rustc_type_ir;
 
-use crate::borrowck::{AdtMetadata, OriginKind};
+use crate::borrowck::{AdtMetadata, OriginArg, OriginParam};
 use crate::context::{
     AnalysisCtxt, AnalysisCtxtData, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy,
     LTyCtxt, LocalAssignment, PermissionSet, PointerId,
@@ -22,6 +22,7 @@ use crate::context::{
 use crate::dataflow::DataflowConstraints;
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use crate::util::Callee;
+use assert_matches::assert_matches;
 use rustc_ast::Mutability;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
@@ -33,6 +34,7 @@ use rustc_middle::mir::{
 };
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
+use rustc_type_ir::RegionKind::ReEarlyBound;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::Debug;
@@ -134,12 +136,14 @@ fn construct_adt_metadata(tcx: TyCtxt) -> AdtMetadataTable {
             for sub in substs.iter() {
                 if let GenericArgKind::Lifetime(r) = sub.unpack() {
                     eprintln!("\tfound lifetime {r:?} in {adt_def:?}");
-                    let _ = adt_metadata_table
+                    assert_matches!(r.kind(), ReEarlyBound(eb) => {
+                        let _ = adt_metadata_table
                         .table
                         .entry(adt_def.did())
                         .and_modify(|metadata| {
-                            metadata.lifetime_params.insert(OriginKind::Actual(r));
+                            metadata.lifetime_params.insert(OriginParam::Actual(eb));
                         });
+                    });
                 }
             }
         } else {
@@ -187,33 +191,40 @@ fn construct_adt_metadata(tcx: TyCtxt) -> AdtMetadataTable {
                                 .table
                                 .entry(*struct_did)
                                 .and_modify(|adt| {
-                                    let origin = OriginKind::Hypothetical(next_hypo_origin_id);
-                                    eprintln!("\t\t\tinserting origin {origin:?} into {adt_def:?}");
+                                    let origin_arg = OriginArg::Hypothetical(next_hypo_origin_id);
+                                    let origin_param =
+                                        OriginParam::Hypothetical(next_hypo_origin_id);
+                                    eprintln!(
+                                        "\t\t\tinserting origin {origin_param:?} into {adt_def:?}"
+                                    );
 
-                                    adt.lifetime_params.insert(origin);
+                                    adt.lifetime_params.insert(origin_param);
                                     next_hypo_origin_id += 1;
                                     adt.field_info
                                         .entry(field.did)
                                         .or_default()
                                         .lifetime
-                                        .insert(origin);
+                                        .insert(origin_arg);
                                 });
                             fully_derefed_field_ty = ty.ty;
                         }
                         TyKind::Ref(reg, ty, _mutability) => {
                             eprintln!("\t\tfound reference field lifetime: {reg:}");
-                            let origin = OriginKind::Actual(*reg);
+                            let origin_arg = OriginArg::Actual(*reg);
                             adt_metadata_table
                                 .table
                                 .entry(*struct_did)
                                 .and_modify(|adt| {
-                                    eprintln!("\t\t\tinserting origin {origin:?} into {adt_def:?}");
-                                    adt.lifetime_params.insert(origin);
+                                    if let ReEarlyBound(eb) = reg.kind() {
+                                        eprintln!("\t\t\tinserting origin {eb:?} into {adt_def:?}");
+                                        adt.lifetime_params.insert(OriginParam::Actual(eb));
+                                    }
+
                                     adt.field_info
                                         .entry(field.did)
                                         .or_default()
                                         .lifetime
-                                        .insert(origin);
+                                        .insert(origin_arg);
                                 });
                             fully_derefed_field_ty = *ty;
                         }
@@ -235,15 +246,17 @@ fn construct_adt_metadata(tcx: TyCtxt) -> AdtMetadataTable {
                     eprintln!("\t\tfound ADT field base type: {adt_field:?}");
                     for sub in substs.iter() {
                         if let GenericArgKind::Lifetime(r) = sub.unpack() {
-                            eprintln!("\tfound field lifetime {r:?} in {adt_def:?}.{adt_field:?}");
-                            adt_metadata_table.table.entry(*struct_did).and_modify(|adt| {
-                                eprintln!("\t\t\tinserting {adt_field:?} lifetime param {r:?} into {adt_def:?}.{:} lifetime parameters", field.name);
+                            assert_matches!(r.kind(), ReEarlyBound(..) => {
+                                eprintln!("\tfound field lifetime {r:?} in {adt_def:?}.{adt_field:?}");
+                                adt_metadata_table.table.entry(*struct_did).and_modify(|adt| {
+                                    eprintln!("\t\t\tinserting {adt_field:?} lifetime param {r:?} into {adt_def:?}.{:} lifetime parameters", field.name);
 
-                                adt.field_info
-                                    .entry(field.did)
-                                    .or_default()
-                                    .lifetime_params
-                                    .insert(OriginKind::Actual(r));
+                                    adt.field_info
+                                        .entry(field.did)
+                                        .or_default()
+                                        .lifetime_params
+                                        .insert(OriginArg::Actual(r));
+                                });
                             });
                         }
                     }
@@ -252,14 +265,14 @@ fn construct_adt_metadata(tcx: TyCtxt) -> AdtMetadataTable {
                     {
                         for adt_field_lifetime_param in adt_field_metadata.lifetime_params.iter() {
                             adt_metadata_table.table.entry(*struct_did).and_modify(|adt| {
-                                if let OriginKind::Hypothetical(..) = adt_field_lifetime_param {
+                                if let OriginParam::Hypothetical(h) = adt_field_lifetime_param {
                                     eprintln!("\t\t\tbubbling {adt_field:?} origin {adt_field_lifetime_param:?} up into {adt_def:?} origins");
                                     adt.lifetime_params.insert(*adt_field_lifetime_param);
                                     adt.field_info
                                     .entry(field.did)
                                     .or_default()
                                     .lifetime_params
-                                    .insert(*adt_field_lifetime_param);
+                                    .insert(OriginArg::Hypothetical(*h));
                                 }
                             });
                         }

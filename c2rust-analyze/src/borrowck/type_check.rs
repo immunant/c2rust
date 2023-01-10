@@ -1,5 +1,5 @@
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubPoint};
-use crate::borrowck::{LTy, LTyCtxt, Label, OriginKind};
+use crate::borrowck::{LTy, LTyCtxt, Label, OriginParam};
 use crate::context::PermissionSet;
 use crate::util::{self, Callee};
 use crate::AdtMetadataTable;
@@ -43,7 +43,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             base_adt_def: AdtDef,
                             field: Field,
                             field_ty: Ty<'tcx>| {
-            let base_origin_param_map: IndexMap<OriginKind, Origin> = base_lty
+            let base_origin_param_map: IndexMap<OriginParam, Origin> = base_lty
                 .label
                 .origin_params
                 .map(|params| IndexMap::from_iter(params.to_vec()))
@@ -82,13 +82,20 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     lifetime parameter `'b` (which is already paired with concrete lifetime
                     `'0`) and `Foo` lifetime parameter `'a`. This mapping is created below.
                 */
-                for (field_lifetime_param, field_struct_lifetime_param) in field_metadata
+                for (field_lifetime_arg, field_struct_lifetime_param) in field_metadata
                     .lifetime_params
                     .iter()
                     .zip(field_adt_metadata.lifetime_params.iter())
                 {
+                    let field_lifetime_param =
+                        if let Ok(param) = OriginParam::try_from(field_lifetime_arg) {
+                            param
+                        } else {
+                            continue;
+                        };
+
                     if let Some((base_lifetime_param, og)) =
-                        base_origin_param_map.get_key_value(field_lifetime_param)
+                        base_origin_param_map.get_key_value(&field_lifetime_param)
                     {
                         eprintln!(
                                 "mapping {base_adt_def:?} lifetime parameter {base_lifetime_param:?} to \
@@ -122,6 +129,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                     _ => field_lifetimes.get_index(0).cloned(),
                 }
+                .and_then(|oa| OriginParam::try_from(&oa).ok())
                 .and_then(|o| base_origin_param_map.get(&o))
                 .cloned();
 

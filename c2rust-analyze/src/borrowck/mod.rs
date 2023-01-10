@@ -8,7 +8,8 @@ use crate::AdtMetadataTable;
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{Body, BorrowKind, Local, LocalKind, Place, StatementKind, START_BLOCK};
-use rustc_middle::ty::{List, Region, Ty, TyKind};
+use rustc_middle::ty::{EarlyBoundRegion, List, Region, Ty, TyKind};
+use rustc_type_ir::RegionKind::ReEarlyBound;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -24,7 +25,7 @@ pub struct Label<'tcx> {
     pub origin: Option<Origin>,
     /// The [Origins](`Origin`) associated with each lifetime
     /// parameter of this type, if applicable
-    pub origin_params: Option<&'tcx [(OriginKind<'tcx>, Origin)]>,
+    pub origin_params: Option<&'tcx [(OriginParam, Origin)]>,
     pub perm: PermissionSet,
 }
 
@@ -37,11 +38,11 @@ pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, Label<'tcx>>;
 pub struct FieldMetadata<'tcx> {
     /// The lifetime of the field, e.g. `*mut &'a mut foo_type`
     /// would have an index set of {'h0, 'a}
-    pub lifetime: IndexSet<OriginKind<'tcx>>,
+    pub lifetime: IndexSet<OriginArg<'tcx>>,
     /// The lifetime parameters of a field, e.g. if a struct
     /// `foo<'a, 'b>` is a field of `bar<'c, 'd>` as field: `foo<'c, 'd>`,
     /// the lifetime params would be a set {'c, 'd}
-    pub lifetime_params: IndexSet<OriginKind<'tcx>>,
+    pub lifetime_params: IndexSet<OriginArg<'tcx>>,
     /// The type of the field when fully dereferenced, e.g.
     /// `&mut &mut foo_type` would have a type of `foo_type`
     pub fully_derefed_ty: Option<Ty<'tcx>>,
@@ -63,7 +64,7 @@ impl Default for FieldMetadata<'_> {
 pub struct AdtMetadata<'tcx> {
     /// The lifetime parameters of a structure, including
     /// hypothetical lifetimes derived from pointer fields.
-    pub lifetime_params: IndexSet<OriginKind<'tcx>>,
+    pub lifetime_params: IndexSet<OriginParam>,
     pub field_info: IndexMap<DefId, FieldMetadata<'tcx>>,
 }
 
@@ -76,23 +77,61 @@ impl Default for AdtMetadata<'_> {
     }
 }
 
-/// An origin parameter to resolve in a MIR body
+/// An origin parameter of a type to resolve in a MIR body
 /// that will get mapped to a concrete Origin to
 /// provide to polonius.
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
-pub enum OriginKind<'tcx> {
-    /// An existing region, i.e. `'a` in `&'a foo`
+pub enum OriginParam {
+    /// An existing [`EarlyBoundRegion`], i.e. `'a` in `struct A<'a>`
+    Actual(EarlyBoundRegion),
+    /// A hypothesized region derived from a pointer type
+    /// e.g. `'h0` derived from the pointer in `*mut foo`
+    Hypothetical(i64),
+}
+
+/// An origin parameter of a field type resolve in a MIR body
+/// that will get mapped to a concrete Origin to
+/// provide to polonius.
+#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+pub enum OriginArg<'tcx> {
+    /// An existing [`Region`], i.e. `'a` in `&'a foo`.
+    /// Can be [RegionKind::ReEarlyBound](`rustc_type_ir::RegionKind`) or [RegionKind::ReStatic](`rustc_type_ir::RegionKind`)
     Actual(Region<'tcx>),
     /// A hypothesized region derived from a pointer type
     /// e.g. `'h0` derived from the pointer in `*mut foo`
     Hypothetical(i64),
 }
 
-impl<'tcx> std::fmt::Debug for OriginKind<'tcx> {
+impl<'tcx> std::fmt::Debug for OriginArg<'tcx> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self {
-            OriginKind::Actual(r) => write!(f, "{:}", r),
-            OriginKind::Hypothetical(h) => write!(f, "'h{h:?}"),
+            OriginArg::Actual(r) => write!(f, "{:}", r),
+            OriginArg::Hypothetical(h) => write!(f, "'h{h:?}"),
+        }
+    }
+}
+
+impl TryFrom<&OriginArg<'_>> for OriginParam {
+    type Error = ();
+    fn try_from(value: &OriginArg<'_>) -> Result<Self, Self::Error> {
+        Ok(match value {
+            OriginArg::Hypothetical(h) => OriginParam::Hypothetical(*h),
+            OriginArg::Actual(r) => {
+                if let ReEarlyBound(eb) = r.kind() {
+                    OriginParam::Actual(eb)
+                } else {
+                    return Err(());
+                }
+            }
+        })
+    }
+}
+
+impl std::fmt::Debug for OriginParam {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            OriginParam::Actual(r) => write!(f, "{:}", r.name),
+            OriginParam::Hypothetical(h) => write!(f, "'h{h:?}"),
         }
     }
 }
