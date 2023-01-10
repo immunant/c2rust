@@ -4,6 +4,7 @@ use crate::context::PermissionSet;
 use crate::util::{self, Callee};
 use crate::AdtMetadataTable;
 use assert_matches::assert_matches;
+use indexmap::IndexMap;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
@@ -42,13 +43,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             base_adt_def: AdtDef,
                             field: Field,
                             field_ty: Ty<'tcx>| {
-            let base_origin_param_map: HashMap<OriginKind, Origin> = base_lty
+            let base_origin_param_map: IndexMap<OriginKind, Origin> = base_lty
                 .label
                 .origin_params
-                .map(|params| HashMap::from_iter(params.to_vec()))
+                .map(|params| IndexMap::from_iter(params.to_vec()))
                 .unwrap_or_default();
 
-            let mut field_origin_param_map = HashMap::new();
+            let mut field_origin_param_map = IndexMap::new();
 
             let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field.index()];
             let perm = self.field_permissions[&field_def.did];
