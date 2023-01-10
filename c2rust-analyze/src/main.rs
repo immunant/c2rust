@@ -312,8 +312,8 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
                 }
                 if let Some(adt) = fmeta.fully_derefed_ty.and_then(|t| t.ty_adt_def()) {
                     write!(f, "{adt:?}")?;
-                    let fmeta = &self.table[&adt.did()];
-                    if !fmeta.lifetime_params.is_empty() {
+                    let f_adt_meta = &self.table[&adt.did()];
+                    if !f_adt_meta.lifetime_params.is_empty() {
                         write!(f, "<")?;
                         let f_params_str = fmeta
                             .lifetime_params
@@ -502,6 +502,7 @@ fn run(tcx: TyCtxt) {
     }
 
     let adt_metadata = construct_adt_metadata(tcx);
+    eprintln!("=== ADT Metadata ===");
     eprintln!("{adt_metadata:?}");
 
     let mut loop_count = 0;

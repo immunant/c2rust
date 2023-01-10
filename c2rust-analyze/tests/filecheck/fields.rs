@@ -1,28 +1,32 @@
+// CHECK-LABEL: === ADT Metadata ===
+// CHECK-DAG: struct Data<'d,'h0,'h1,'h2> {
 pub struct Data<'d> {
-    // final lifetime parameters: Data<'d, 'h0, 'h1, 'h2>
-
     // 1: hypothetical pointer field lifetime 'h0 -> Data<'d, 'h0>
-    pub pi: *mut i32, // &'h0 i32
+    // CHECK-DAG: pi: &'h0 i32
+    pub pi: *mut i32,
 
     // 2: hypothetical pointer field lifetime 'h1 -> Data<'d, 'h0, 'h1>
     // 3: A has no new parameters to bubble up
     // 8: A has new lifetime param 'h2 -> Data<'d, 'h0, 'h1, 'h2>
-    pub pa: *mut A<'d>, // &'h1 A<'a, 'h0, 'h1, 'h2>
+    // CHECK-DAG: pa: &'h1 A<'d,'h0,'h1,'h2>
+    pub pa: *mut A<'d>,
 
     // 4: A has no new parameters to bubble up
-    pub a: A<'d>, // A<'a, 'h0, 'h1, 'h2>
+    // CHECK-DAG: a: A<'d,'h0,'h1,'h2>
+    pub a: A<'d>,
 }
 
+// CHECK-DAG: struct A<'a,'h0,'h1,'h2> {
 pub struct A<'a> {
-    // final lifetime parameters: A<'a, 'h0, 'h1, 'h2>
-
     // 5: Data has new lifetime params 'h0 and 'h1 -> A<'a, 'h0, 'h1>
     // 9: Data has new lifetime param 'h2, but 'h2 is already in A
-    pub rd: &'a Data<'a>, // &'a Data<'a, 'h0, 'h1, 'h2>
+    // CHECK-DAG: rd: &'a Data<'a,'h0,'h1,'h2>
+    pub rd: &'a Data<'a>,
 
     // 6: hypothetical pointer field lifetime 'h2 -> A<'a, 'h0, 'h1, 'h2>
     // 7: A has new lifetime params to bubble up, but they're already present
-    pub pra: *mut &'a mut A<'a>, // &'h2 &'a A<'a, 'h0, 'h1, 'h2>
+    // CHECK-DAG: pra: &'h2 &'a A<'a,'h0,'h1,'h2>
+    pub pra: *mut &'a mut A<'a>,
 }
 
 // CHECK-LABEL: final labeling for "_field_access"
