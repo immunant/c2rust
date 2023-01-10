@@ -1,5 +1,6 @@
-use crate::expr_rewrite::mir_op::{self, MirRewrite};
-use crate::expr_rewrite::span_index::SpanIndex;
+use crate::rewrite::expr::mir_op::{self, MirRewrite};
+use crate::rewrite::span_index::SpanIndex;
+use crate::rewrite::Rewrite;
 use rustc_hir as hir;
 use rustc_hir::def::Res;
 use rustc_hir::intravisit;
@@ -9,103 +10,6 @@ use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, PointerCast};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
-use std::fmt;
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum Rewrite<S = Span> {
-    /// Take the original expression unchanged.
-    Identity,
-    /// Extract the subexpression at the given index.
-    Subexpr(usize, S),
-    /// `&e`, `&mut e`
-    Ref(Box<Rewrite>, hir::Mutability),
-    /// `core::ptr::addr_of!(e)`, `core::ptr::addr_of_mut!(e)`
-    AddrOf(Box<Rewrite>, hir::Mutability),
-    /// `*e`
-    Deref(Box<Rewrite>),
-    /// `arr[idx]`
-    Index(Box<Rewrite>, Box<Rewrite>),
-    /// `arr[idx..]`
-    SliceTail(Box<Rewrite>, Box<Rewrite>),
-    /// `e as usize`
-    CastUsize(Box<Rewrite>),
-    /// The integer literal `0`.
-    LitZero,
-}
-
-impl Rewrite {
-    fn pretty(&self, f: &mut fmt::Formatter, prec: usize) -> fmt::Result {
-        fn parenthesize_if(
-            cond: bool,
-            f: &mut fmt::Formatter,
-            inner: impl FnOnce(&mut fmt::Formatter) -> fmt::Result,
-        ) -> fmt::Result {
-            if cond {
-                f.write_str("(")?;
-            }
-            inner(f)?;
-            if cond {
-                f.write_str(")")?;
-            }
-            Ok(())
-        }
-
-        // Precedence:
-        // - Index, SliceTail: 3
-        // - Ref, Deref: 2
-        // - CastUsize: 1
-
-        match *self {
-            Rewrite::Identity => write!(f, "$e"),
-            Rewrite::Subexpr(i, _) => write!(f, "${}", i),
-            Rewrite::Ref(ref rw, mutbl) => parenthesize_if(prec > 2, f, |f| {
-                match mutbl {
-                    hir::Mutability::Not => write!(f, "&")?,
-                    hir::Mutability::Mut => write!(f, "&mut ")?,
-                }
-                rw.pretty(f, 2)
-            }),
-            Rewrite::AddrOf(ref rw, mutbl) => {
-                match mutbl {
-                    hir::Mutability::Not => write!(f, "core::ptr::addr_of!")?,
-                    hir::Mutability::Mut => write!(f, "core::ptr::addr_of_mut!")?,
-                }
-                f.write_str("(")?;
-                rw.pretty(f, 0)?;
-                f.write_str(")")
-            }
-            Rewrite::Deref(ref rw) => parenthesize_if(prec > 2, f, |f| {
-                write!(f, "*")?;
-                rw.pretty(f, 2)
-            }),
-            Rewrite::Index(ref arr, ref idx) => parenthesize_if(prec > 3, f, |f| {
-                arr.pretty(f, 3)?;
-                write!(f, "[")?;
-                idx.pretty(f, 0)?;
-                write!(f, "]")
-            }),
-            Rewrite::SliceTail(ref arr, ref idx) => parenthesize_if(prec > 3, f, |f| {
-                arr.pretty(f, 3)?;
-                write!(f, "[")?;
-                // Rather than figure out the right precedence for `..`, just force
-                // parenthesization in this position.
-                idx.pretty(f, 999)?;
-                write!(f, " ..]")
-            }),
-            Rewrite::CastUsize(ref rw) => parenthesize_if(prec > 1, f, |f| {
-                rw.pretty(f, 1)?;
-                write!(f, " as usize")
-            }),
-            Rewrite::LitZero => write!(f, "0"),
-        }
-    }
-}
-
-impl fmt::Display for Rewrite {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.pretty(f, 0)
-    }
-}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum SoleLocationError {

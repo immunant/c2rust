@@ -51,10 +51,10 @@ mod c_void_casts;
 mod context;
 mod dataflow;
 mod equiv;
-mod expr_rewrite;
 mod labeled_ty;
 mod log;
 mod pointer_id;
+mod rewrite;
 mod trivial;
 mod type_desc;
 mod util;
@@ -661,7 +661,7 @@ fn run(tcx: TyCtxt) {
 
         eprintln!();
         let hir_body_id = tcx.hir().body_owned_by(ldid);
-        let hir_rewrites = expr_rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
+        let hir_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
         // Print rewrites
         eprintln!(
             "\ngenerated {} rewrites for {:?}:",
@@ -671,7 +671,7 @@ fn run(tcx: TyCtxt) {
         for &(span, ref rw) in &hir_rewrites {
             eprintln!("  {}: {}", describe_span(tcx, span), rw);
         }
-        expr_rewrite::apply_rewrites(tcx, hir_rewrites);
+        rewrite::apply_rewrites(tcx, hir_rewrites);
     }
 }
 

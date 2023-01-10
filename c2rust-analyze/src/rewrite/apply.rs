@@ -1,4 +1,4 @@
-use crate::expr_rewrite::hir_op::Rewrite;
+use crate::rewrite::Rewrite;
 use rustc_hir::Mutability;
 use rustc_span::source_map::{FileName, SourceMap};
 use rustc_span::{BytePos, SourceFile, Span, SyntaxContext};
