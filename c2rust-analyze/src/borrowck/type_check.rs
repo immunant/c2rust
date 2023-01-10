@@ -122,10 +122,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                     _ => field_lifetimes.get_index(0).cloned(),
                 }
-                .and_then(|o| {
-                    eprintln!("field origin {o:?}, {base_origin_param_map:?}");
-                    base_origin_param_map.get(&o)
-                })
+                .and_then(|o| base_origin_param_map.get(&o))
                 .cloned();
 
                 Label {
