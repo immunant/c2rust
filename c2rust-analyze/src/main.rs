@@ -263,6 +263,12 @@ fn construct_adt_metadata(tcx: TyCtxt) -> AdtMetadataTable {
                     if let Some(adt_field_metadata) =
                         adt_metadata_table.table.get(&adt_field.did()).cloned()
                     {
+                        // add a metadata entry for the struct field matching the metadata entry
+                        // for the struct definition of said field
+                        adt_metadata_table
+                            .table
+                            .insert(field.did, adt_field_metadata.clone());
+
                         for adt_field_lifetime_param in adt_field_metadata.lifetime_params.iter() {
                             adt_metadata_table.table.entry(*struct_did).and_modify(|adt| {
                                 if let OriginParam::Hypothetical(h) = adt_field_lifetime_param {
@@ -277,12 +283,6 @@ fn construct_adt_metadata(tcx: TyCtxt) -> AdtMetadataTable {
                             });
                         }
                     }
-                    // add a metadata entry for the struct field matching the metadata entry
-                    // for the struct definition of said field
-                    adt_metadata_table.table.insert(
-                        field.did,
-                        adt_metadata_table.table[&adt_field.did()].clone(),
-                    );
                 }
             }
 
@@ -325,17 +325,18 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
                 }
                 if let Some(adt) = fmeta.fully_derefed_ty.and_then(|t| t.ty_adt_def()) {
                     write!(f, "{adt:?}")?;
-                    let f_adt_meta = &self.table[&adt.did()];
-                    if !f_adt_meta.lifetime_params.is_empty() {
-                        write!(f, "<")?;
-                        let f_params_str = fmeta
-                            .lifetime_params
-                            .iter()
-                            .map(|p| format!("{:?}", p))
-                            .collect::<Vec<_>>()
-                            .join(",");
-                        write!(f, "{f_params_str:}")?;
-                        write!(f, ">")?;
+                    if let Some(f_adt_meta) = &self.table.get(&adt.did()) {
+                        if !f_adt_meta.lifetime_params.is_empty() {
+                            write!(f, "<")?;
+                            let f_params_str = fmeta
+                                .lifetime_params
+                                .iter()
+                                .map(|p| format!("{:?}", p))
+                                .collect::<Vec<_>>()
+                                .join(",");
+                            write!(f, "{f_params_str:}")?;
+                            write!(f, ">")?;
+                        }
                     }
                 } else {
                     write!(f, "{:?}", fmeta.fully_derefed_ty.unwrap())?;
