@@ -42,20 +42,10 @@ pub struct FieldMetadata<'tcx> {
     /// The lifetime parameters of a field, e.g. if a struct
     /// `foo<'a, 'b>` is a field of `bar<'c, 'd>` as field: `foo<'c, 'd>`,
     /// the lifetime params would be a set {'c, 'd}
-    pub lifetime_params: IndexSet<OriginArg<'tcx>>,
+    pub lifetime_params: LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>,
     /// The type of the field when fully dereferenced, e.g.
     /// `&mut &mut foo_type` would have a type of `foo_type`
     pub fully_derefed_ty: Option<Ty<'tcx>>,
-}
-
-impl Default for FieldMetadata<'_> {
-    fn default() -> Self {
-        Self {
-            lifetime: IndexSet::new(),
-            lifetime_params: IndexSet::new(),
-            fully_derefed_ty: None,
-        }
-    }
 }
 
 /// Metadata describing the lifetime parameters and fields

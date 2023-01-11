@@ -84,6 +84,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 */
                 for (field_lifetime_arg, field_struct_lifetime_param) in field_metadata
                     .lifetime_params
+                    .label
                     .iter()
                     .zip(field_adt_metadata.lifetime_params.iter())
                 {
