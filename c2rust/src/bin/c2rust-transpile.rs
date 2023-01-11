@@ -1,4 +1,3 @@
-use clap::{load_yaml, App};
 use clap::{Parser, ValueEnum};
 use regex::Regex;
 use std::collections::HashSet;
@@ -145,6 +144,10 @@ struct Args {
     /// Logging level
     #[clap(long = "log-level", value_enum, default_value = "warn")]
     log_level: LogLevel,
+
+    /// Fail when the control-flow graph generates branching constructs
+    #[clap(long)]
+    fail_on_multiple: bool,
 }
 
 #[derive(Debug, ValueEnum, Clone)]
@@ -165,8 +168,6 @@ enum LogLevel {
 
 fn main() {
     let args = Args::parse();
-    let yaml = load_yaml!("../transpile.yaml");
-    let matches = App::from_yaml(yaml).get_matches();
 
     // Build a TranspilerConfig from the command line
     let cc_json_path = Path::new(&args.compile_commands);
@@ -209,7 +210,7 @@ fn main() {
 
         incremental_relooper: !args.no_incremental_relooper,
         fail_on_error: args.fail_on_error,
-        fail_on_multiple: matches.is_present("fail-on-multiple"),
+        fail_on_multiple: args.fail_on_multiple,
         filter: {
             if args.filter.is_some() {
                 let filter = args.filter.unwrap();
