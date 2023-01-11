@@ -187,14 +187,13 @@ fn main() {
         .map(|s| Diagnostic::from_str(s).unwrap())
         .collect();
 
-    let log_level = match matches.value_of("log-level") {
-        Some("off") => log::LevelFilter::Off,
-        Some("error") => log::LevelFilter::Error,
-        Some("warn") => log::LevelFilter::Warn,
-        Some("info") => log::LevelFilter::Info,
-        Some("debug") => log::LevelFilter::Debug,
-        Some("trace") => log::LevelFilter::Trace,
-        _ => panic!("Invalid log level"),
+    let log_level = match args.log_level {
+        LogLevel::Off => log::LevelFilter::Off,
+        LogLevel::Error => log::LevelFilter::Error,
+        LogLevel::Warn => log::LevelFilter::Warn,
+        LogLevel::Info => log::LevelFilter::Info,
+        LogLevel::Debug => log::LevelFilter::Debug,
+        LogLevel::Trace => log::LevelFilter::Trace,
     };
 
     let mut tcfg = TranspilerConfig {
