@@ -162,12 +162,14 @@ enum LogLevel {
     Debug,
     Trace,
 }
+
 fn main() {
+    let args = Args::parse();
     let yaml = load_yaml!("../transpile.yaml");
     let matches = App::from_yaml(yaml).get_matches();
 
     // Build a TranspilerConfig from the command line
-    let cc_json_path = Path::new(matches.value_of("COMPILE_COMMANDS").unwrap());
+    let cc_json_path = Path::new(&args.compile_commands);
     let cc_json_path = cc_json_path.canonicalize().unwrap_or_else(|_| {
         panic!(
             "Could not find compile_commands.json file at path: {}",
