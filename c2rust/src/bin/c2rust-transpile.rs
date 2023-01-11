@@ -1,4 +1,5 @@
 use clap::{load_yaml, App};
+use clap::{Parser, ValueEnum};
 use regex::Regex;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -6,6 +7,161 @@ use std::str::FromStr;
 
 use c2rust_transpile::{Diagnostic, ReplaceMode, TranspilerConfig};
 
+#[derive(Debug, Parser)]
+#[clap(author, version, about, long_about = None, trailing_var_arg = true)]
+struct Args {
+    /// Adds a prefix to all function names. Generally only useful for testing
+    #[clap(long)]
+    prefix_function_names: Option<String>,
+
+    /// Prints out CBOR based Clang AST
+    #[clap(long)]
+    dump_untyped_clang_ast: bool,
+
+    /// Prints out the parsed typed Clang AST
+    #[clap(long)]
+    dump_typed_clang_ast: bool,
+
+    /// Pretty-prints out the parsed typed Clang AST
+    #[clap(long)]
+    pretty_typed_clang_ast: bool,
+
+    /// Debug Clang AST exporter plugin
+    #[clap(long)]
+    debug_ast_exporter: bool,
+
+    /// Verbose mode
+    #[clap(long)]
+    verbose: bool,
+
+    /// Enable translation of some C macros into consts
+    #[clap(long)]
+    translate_const_macros: bool,
+
+    /// "Enable translation of some C function macros into invalid Rust code. WARNING: resulting code will not compile."
+    #[clap(long)]
+    translate_fn_macros: bool,
+
+    /// Disable relooping function bodies incrementally
+    #[clap(long)]
+    no_incremental_relooper: bool,
+
+    /// Do not run a pass to simplify structures
+    #[clap(long)]
+    no_simplify_structures: bool,
+
+    /// Don't keep/use information about C loops
+    #[clap(long)]
+    ignore_c_loop_info: bool,
+
+    /// Don't keep/use information about C branches
+    #[clap(long)]
+    ignore_c_multiple_info: bool,
+
+    /// Dumps into files DOT visualizations of the CFGs of every function
+    #[clap(long)]
+    dump_function_cfgs: bool,
+
+    /// Dumps into files JSON visualizations of the CFGs of every function
+    #[clap(long)]
+    json_function_cfgs: bool,
+
+    /// Dump into the DOT file visualizations liveness information
+    #[clap(long, requires = "dump-function-cfgs")]
+    dump_cfgs_liveness: bool,
+
+    /// Dumps out to STDERR the intermediate structures produced by relooper
+    #[clap(long)]
+    dump_structures: bool,
+
+    /// Generate readable 'current_block' values in relooper
+    #[clap(long)]
+    debug_labels: bool,
+
+    /// Input compile_commands.json file
+    #[clap()]
+    compile_commands: PathBuf,
+
+    /// How to handle violated invariants or invalid code
+    #[clap(long, value_enum, default_value = "compile_error")]
+    invalid_code: InvalidCodes,
+
+    /// Emit .rs files as modules instead of crates, excluding the crate preambles
+    #[clap(long)]
+    emit_modules: bool,
+
+    /// Emit Rust build files, i.e., Cargo.toml for a library (and one or more binaries if -b/--binary is given). Implies --emit-modules.
+    #[clap(short = 'e', long)]
+    emit_build_files: bool,
+
+    /// Path to output directory. Rust sources will be emitted in DIR/src/ and build files will be emitted in DIR/.
+    #[clap(short = 'o', long, value_name = "DIR")]
+    output_dir: Option<String>,
+
+    /// Only transpile files matching filter
+    #[clap(short = 'f', long)]
+    filter: Option<String>,
+
+    /// Fail to translate a module when a portion is not able to be translated
+    #[clap(long)]
+    fail_on_error: bool,
+
+    /// Emit Rust build files for a binary using the main function in the specified translation unit (implies -e/--emit-build-files)
+    #[clap(short = 'b', long = "binary", multiple = true, number_of_values = 1)]
+    binary: Option<Vec<String>>,
+
+    /// Emit files even if it causes existing files to be overwritten
+    #[clap(long)]
+    overwrite_existing: bool,
+
+    /// Reduces the number of explicit type annotations where it should be safe to do so
+    #[clap(long)]
+    reduce_type_annotations: bool,
+
+    /// Output file in such a way that the refactoring tool can deduplicate code
+    #[clap(short = 'r', long)]
+    reorganize_definitions: bool,
+
+    /// Extra arguments to pass to clang frontend during parsing the input C file
+    #[clap(long, multiple = true)]
+    extra_clang_args: Option<Vec<String>>,
+
+    /// Enable the specified warning (all enables all warnings)
+    #[clap(short = 'W', long)]
+    warn: Option<String>,
+
+    /// Emit code using core rather than std
+    #[clap(long)]
+    emit_no_std: bool,
+
+    /// Disable running refactoring tool after translation
+    #[clap(long)]
+    disable_refactoring: bool,
+
+    /// Include static and inline functions in translation
+    #[clap(long)]
+    preserve_unused_functions: bool,
+
+    /// Logging level
+    #[clap(long = "log-level", value_enum, default_value = "warn")]
+    log_level: LogLevel,
+}
+
+#[derive(Debug, ValueEnum, Clone)]
+enum InvalidCodes {
+    Panic,
+    CompileError,
+}
+
+#[derive(Debug, ValueEnum, Clone)]
+enum LogLevel {
+    Off,
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
 fn main() {
     let yaml = load_yaml!("../transpile.yaml");
     let matches = App::from_yaml(yaml).get_matches();
