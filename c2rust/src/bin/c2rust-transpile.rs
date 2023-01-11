@@ -176,10 +176,10 @@ fn main() {
             cc_json_path.display()
         )
     });
-    let extra_args: Vec<&str> = match matches.values_of("extra-clang-args") {
-        Some(args) => args.collect(),
-        None => Vec::new(),
-    };
+
+    let extra_args = args.extra_clang_args.unwrap();
+    let extra_args = extra_args.iter().map(AsRef::as_ref).collect::<Vec<&str>>();
+    let extra_args = extra_args.as_slice();
 
     let enabled_warnings: HashSet<Diagnostic> = matches
         .values_of("warn")
@@ -271,5 +271,5 @@ fn main() {
         tcfg.emit_modules = true
     };
 
-    c2rust_transpile::transpile(tcfg, &cc_json_path, &extra_args);
+    c2rust_transpile::transpile(tcfg, &cc_json_path, extra_args);
 }
