@@ -36,7 +36,7 @@ use rustc_middle::mir::{
 };
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
-use rustc_type_ir::RegionKind::ReEarlyBound;
+use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::Debug;
@@ -212,6 +212,7 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
                         }
                         TyKind::Ref(reg, ty, _mutability) => {
                             eprintln!("\t\tfound reference field lifetime: {reg:}");
+                            assert_matches!(reg.kind(), ReEarlyBound(..) | ReStatic);
                             let origin_arg = OriginArg::Actual(*reg);
                             adt_metadata_table
                                 .table
@@ -238,6 +239,7 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
                             if let GenericArgKind::Lifetime(r) = sub.unpack() {
                                 eprintln!("\tfound field lifetime {r:?} in {adt_def:?}.{adt_field:?}");
                                 eprintln!("\t\t\tinserting {adt_field:?} lifetime param {r:?} into {adt_def:?}.{:} lifetime parameters", field.name);
+                                assert_matches!(r.kind(), ReEarlyBound(..) | ReStatic);
                                 field_lifetime_params.insert(OriginArg::Actual(r));
                             }
                         }
