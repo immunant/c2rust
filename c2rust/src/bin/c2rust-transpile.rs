@@ -197,29 +197,29 @@ fn main() {
     };
 
     let mut tcfg = TranspilerConfig {
-        dump_untyped_context: matches.is_present("dump-untyped-clang-ast"),
-        dump_typed_context: matches.is_present("dump-typed-clang-ast"),
-        pretty_typed_context: matches.is_present("pretty-typed-clang-ast"),
-        dump_function_cfgs: matches.is_present("dump-function-cfgs"),
-        json_function_cfgs: matches.is_present("json-function-cfgs"),
-        dump_cfg_liveness: matches.is_present("dump-cfgs-liveness"),
-        dump_structures: matches.is_present("dump-structures"),
-        debug_ast_exporter: matches.is_present("debug-ast-exporter"),
-        verbose: matches.is_present("verbose"),
+        dump_untyped_context: args.dump_untyped_clang_ast,
+        dump_typed_context: args.dump_typed_clang_ast,
+        pretty_typed_context: args.pretty_typed_clang_ast,
+        dump_function_cfgs: args.dump_function_cfgs,
+        json_function_cfgs: args.json_function_cfgs,
+        dump_cfg_liveness: args.dump_cfgs_liveness,
+        dump_structures: args.dump_structures,
+        debug_ast_exporter: args.debug_ast_exporter,
+        verbose: args.verbose,
 
-        incremental_relooper: !matches.is_present("no-incremental-relooper"),
-        fail_on_error: matches.is_present("fail-on-error"),
+        incremental_relooper: !args.no_incremental_relooper,
+        fail_on_error: args.fail_on_error,
         fail_on_multiple: matches.is_present("fail-on-multiple"),
         filter: {
-            if matches.is_present("filter") {
-                let filter = matches.value_of("filter").unwrap();
-                Some(Regex::new(filter).unwrap())
+            if args.filter.is_some() {
+                let filter = args.filter.unwrap();
+                Some(Regex::new(filter.as_str()).unwrap())
             } else {
                 None
             }
         },
-        debug_relooper_labels: matches.is_present("debug-labels"),
-        prefix_function_names: matches.value_of("prefix-function-names").map(String::from),
+        debug_relooper_labels: args.debug_labels,
+        prefix_function_names: args.prefix_function_names,
 
         // We used to guard asm translation with a command-line
         // option. Defaulting to enabled now, can add an option to disable if
@@ -231,33 +231,29 @@ fn main() {
         // stable rust output.
         translate_valist: true,
 
-        translate_const_macros: matches.is_present("translate-const-macros"),
-        translate_fn_macros: matches.is_present("translate-fn-macros"),
-        disable_refactoring: matches.is_present("disable-refactoring"),
-        preserve_unused_functions: matches.is_present("preserve-unused-functions"),
+        translate_const_macros: args.translate_const_macros,
+        translate_fn_macros: args.translate_fn_macros,
+        disable_refactoring: args.disable_refactoring,
+        preserve_unused_functions: args.preserve_unused_functions,
 
-        use_c_loop_info: !matches.is_present("ignore-c-loop-info"),
-        use_c_multiple_info: !matches.is_present("ignore-c-multiple-info"),
-        simplify_structures: !matches.is_present("no-simplify-structures"),
-        overwrite_existing: matches.is_present("overwrite-existing"),
-        reduce_type_annotations: matches.is_present("reduce-type-annotations"),
-        reorganize_definitions: matches.is_present("reorganize-definitions"),
-        emit_modules: matches.is_present("emit-modules"),
-        emit_build_files: matches.is_present("emit-build-files"),
-        output_dir: matches.value_of("output-dir").map(PathBuf::from),
-        binaries: matches
-            .values_of("binary")
-            .map(|values| values.map(String::from).collect())
-            .unwrap_or_default(),
+        use_c_loop_info: !args.ignore_c_loop_info,
+        use_c_multiple_info: !args.ignore_c_multiple_info,
+        simplify_structures: !args.no_simplify_structures,
+        overwrite_existing: args.overwrite_existing,
+        reduce_type_annotations: args.reduce_type_annotations,
+        reorganize_definitions: args.reorganize_definitions,
+        emit_modules: args.emit_modules,
+        emit_build_files: args.emit_build_files,
+        output_dir: args.output_dir.map(PathBuf::from),
+        binaries: args.binary.unwrap_or_default(),
         panic_on_translator_failure: {
-            match matches.value_of("invalid-code") {
-                Some("panic") => true,
-                Some("compile_error") => false,
-                _ => panic!("Invalid option"),
+            match args.invalid_code {
+                InvalidCodes::Panic => true,
+                InvalidCodes::CompileError => false,
             }
         },
         replace_unsupported_decls: ReplaceMode::Extern,
-        emit_no_std: matches.is_present("emit-no-std"),
+        emit_no_std: args.emit_no_std,
         enabled_warnings,
         log_level,
     };
