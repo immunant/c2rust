@@ -181,9 +181,9 @@ fn main() {
     let extra_args = extra_args.iter().map(AsRef::as_ref).collect::<Vec<&str>>();
     let extra_args = extra_args.as_slice();
 
-    let enabled_warnings: HashSet<Diagnostic> = matches
-        .values_of("warn")
-        .unwrap_or_default()
+    let enabled_warnings: HashSet<Diagnostic> = args
+        .warn
+        .iter()
         .map(|s| Diagnostic::from_str(s).unwrap())
         .collect();
 
