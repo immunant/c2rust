@@ -36,16 +36,13 @@ pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, Label<'tcx>>;
 /// of a struct field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldMetadata<'tcx> {
-    /// The lifetime of the field, e.g. `*mut &'a mut foo_type`
-    /// would have an index set of {'h0, 'a}
-    pub lifetime: IndexSet<OriginArg<'tcx>>,
     /// The lifetime parameters of a field, e.g. if a struct
     /// `foo<'a, 'b>` is a field of `bar<'c, 'd>` as field: `foo<'c, 'd>`,
-    /// the lifetime params would be a set {'c, 'd}
+    /// the lifetime params would be a set {'c, 'd}. For a reference such
+    /// as &'r foo<'c, 'd>, the lifetime params in the label would be
+    /// {'r}, and {'c, 'd} would be the label of the sole argument
+    /// of the labeled reference type
     pub lifetime_params: LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>,
-    /// The type of the field when fully dereferenced, e.g.
-    /// `&mut &mut foo_type` would have a type of `foo_type`
-    pub fully_derefed_ty: Option<Ty<'tcx>>,
 }
 
 /// Metadata describing the lifetime parameters and fields

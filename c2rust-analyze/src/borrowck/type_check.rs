@@ -11,7 +11,7 @@ use rustc_middle::mir::{
     AggregateKind, BinOp, Body, BorrowKind, Field, Local, LocalDecl, Location, Operand, Place,
     Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
-use rustc_middle::ty::{AdtDef, FieldDef, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{AdtDef, FieldDef, TyCtxt, TyKind};
 use std::collections::HashMap;
 
 struct TypeChecker<'tcx, 'a> {
@@ -39,107 +39,115 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     pub fn visit_place(&mut self, pl: Place<'tcx>) -> LTy<'tcx> {
         let mut lty: LTy = self.local_ltys[pl.local.index()];
 
-        let mut adt_func = |base_lty: LTy<'tcx>,
-                            base_adt_def: AdtDef,
-                            field: Field,
-                            field_ty: Ty<'tcx>| {
+        let mut adt_func = |base_lty: LTy<'tcx>, base_adt_def: AdtDef, field: Field| {
             let base_origin_param_map: IndexMap<OriginParam, Origin> = base_lty
                 .label
                 .origin_params
                 .map(|params| IndexMap::from_iter(params.to_vec()))
                 .unwrap_or_default();
-
-            let mut field_origin_param_map = IndexMap::new();
-
             let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field.index()];
             let perm = self.field_permissions[&field_def.did];
             let base_metadata = &self.adt_metadata.table[&base_adt_def.did()];
             let field_metadata = &base_metadata.field_info[&field_def.did];
 
-            if let Some(field_adt_metadata) = self.adt_metadata.table.get(&field_def.did) {
-                /*
-                    If we're in this block, it means the current field is an ADT.
-
-                    That field's type may have its own lifetime parameters. In the following:
-
-                    ```
-                    struct Foo<'a> {
-                        a: &'a i32
-                    }
-
-                    struct Bar<'b> {
-                        foo: Foo<'b>
-                    }
-
-                    fn some_func() {
-                        let bar: Bar<'0> = ...;
-                        bar.foo.a: &'? i32 = ...;
-                    }
-                    ```
-
-                    We want to know that the lifetime `'?` gets resolved to the concrete
-                    origin `'0`. To do this, a mapping needs to be made between `bar.foo`
-                    lifetime parameter `'b` (which is already paired with concrete lifetime
-                    `'0`) and `Foo` lifetime parameter `'a`. This mapping is created below.
-                */
-                for (field_lifetime_arg, field_struct_lifetime_param) in field_metadata
-                    .lifetime_params
-                    .label
-                    .iter()
-                    .zip(field_adt_metadata.lifetime_params.iter())
-                {
-                    let field_lifetime_param =
-                        if let Ok(param) = OriginParam::try_from(field_lifetime_arg) {
-                            param
-                        } else {
-                            panic!("'static lifetimes are not yet supported")
-                        };
-
-                    if let Some((base_lifetime_param, og)) =
-                        base_origin_param_map.get_key_value(&field_lifetime_param)
-                    {
-                        eprintln!(
-                                "mapping {base_adt_def:?} lifetime parameter {base_lifetime_param:?} to \
-                                {base_adt_def:?}.{:} struct definition lifetime parameter {field_struct_lifetime_param:?}, \
-                                corresponding to its lifetime parameter {field_lifetime_param:?} within {base_adt_def:?}",
-                                field_def.name
-                            );
-                        field_origin_param_map.insert(*field_struct_lifetime_param, *og);
-                    }
-                }
-            }
-
-            let origin_params: Option<&_> = if field_origin_param_map.is_empty() {
-                None
-            } else {
-                let field_origin_params: Vec<_> = field_origin_param_map.into_iter().collect();
-                Some(self.ltcx.arena().alloc_slice(&field_origin_params[..]))
-            };
-            let mut field_lifetimes = field_metadata.lifetime.clone();
-            self.ltcx.label(field_ty, &mut |ty| {
-                let origin = match ty.kind() {
+            self.ltcx.relabel(
+                field_metadata.lifetime_params,
+                &mut |flty| match flty.kind() {
                     TyKind::Ref(..) | TyKind::RawPtr(..) => {
-                        // remove the outermost lifetime when moving a
-                        // reference layer deeper, to reflect the corresponding
-                        // dereferenced-value's lifetime. e.g. we would want a label
-                        // for `*(&'a mut &'b mut foo)` to have an origin
-                        // corresponding to `'b`, so we remove `'a` from the lifetime
-                        // set so that `'b` can be retrieved in the recursive call to
-                        // ltcx.label with type kind `Ref(foo)`
-                        field_lifetimes.swap_remove_index(0)
-                    }
-                    _ => field_lifetimes.get_index(0).cloned(),
-                }
-                .map(|oa| OriginParam::try_from(&oa).expect("'static lifetimes not yet supported"))
-                .and_then(|o| base_origin_param_map.get(&o))
-                .cloned();
+                        let origin = {
+                            assert!(flty.label.len() == 1);
+                            Some(flty.label[0])
+                        }
+                        .map(|oa| {
+                            OriginParam::try_from(&oa)
+                                .expect("'static lifetimes not yet supported")
+                        })
+                        .and_then(|o| {
+                            eprintln!(
+                                "finding {o:?} in {base_adt_def:?} {base_origin_param_map:?}"
+                            );
+                            base_origin_param_map.get(&o)
+                        })
+                        .cloned();
 
-                Label {
-                    origin,
-                    perm,
-                    origin_params,
-                }
-            })
+                        Label {
+                            origin,
+                            perm,
+                            origin_params: None,
+                        }
+                    }
+                    TyKind::Adt(fadt_def, _) => {
+                        /*
+                            If we're in this block, it means the current field is an ADT.
+
+                            That field's type may have its own lifetime parameters. In the following:
+
+                            ```
+                            struct Foo<'a> {
+                                a: &'a i32
+                            }
+
+                            struct Bar<'b> {
+                                foo: Foo<'b>
+                            }
+
+                            fn some_func() {
+                                let bar: Bar<'0> = ...;
+                                bar.foo.a: &'? i32 = ...;
+                            }
+                            ```
+
+                            We want to know that the lifetime `'?` gets resolved to the concrete
+                            origin `'0`. To do this, a mapping needs to be made between `bar.foo`
+                            lifetime parameter `'b` (which is already paired with concrete lifetime
+                            `'0`) and `Foo` lifetime parameter `'a`. This mapping is created below.
+                        */
+                        let mut field_origin_param_map = IndexMap::new();
+                        let field_adt_metadata = &self.adt_metadata.table[&fadt_def.did()];
+                        for (field_lifetime_arg, field_struct_lifetime_param) in flty
+                            .label
+                            .iter().zip(field_adt_metadata.lifetime_params.iter())
+                        {
+                            let field_lifetime_param =
+                                if let Ok(param) = OriginParam::try_from(field_lifetime_arg) {
+                                    param
+                                } else {
+                                    panic!("'static lifetimes are not yet supported")
+                                };
+
+                            if let Some((base_lifetime_param, og)) =
+                                base_origin_param_map.get_key_value(&field_lifetime_param)
+                            {
+                                eprintln!(
+                                        "mapping {base_adt_def:?} lifetime parameter {base_lifetime_param:?} to \
+                                        {base_adt_def:?}.{:} struct definition lifetime parameter {field_struct_lifetime_param:?}, \
+                                        corresponding to its lifetime parameter {field_lifetime_param:?} within {base_adt_def:?}",
+                                        field_def.name
+                                    );
+                                field_origin_param_map.insert(*field_struct_lifetime_param, *og);
+                            }
+                        }
+                        let origin_params: Option<&_> = if field_origin_param_map.is_empty() {
+                            None
+                        } else {
+                            let field_origin_params: Vec<_> = field_origin_param_map.into_iter().collect();
+                            Some(self.ltcx.arena().alloc_slice(&field_origin_params[..]))
+                        };
+                        Label {
+                            origin: None,
+                            origin_params,
+                            perm
+                        }
+                    }
+                    _ => {
+                        Label {
+                            origin: None,
+                            origin_params: None,
+                            perm
+                        }
+                    }
+                },
+            )
         };
 
         for proj in pl.projection {
