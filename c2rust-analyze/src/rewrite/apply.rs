@@ -154,7 +154,7 @@ impl<S: SpanLike> RewriteTree<S> {
             //
             // Specifically: if there is a parent, check that either the current item's span is
             // contained in the parent span and the parent's rewrite contains `Rewrite::Identity`,
-            // or the current item's span is contained in the span of some `Rewrite::Subexpr` in
+            // or the current item's span is contained in the span of some `Rewrite::Sub` in
             // the parent rewrite.
 
             // Push a new node onto the stack.
@@ -231,7 +231,7 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
             Rewrite::Identity => self.emit_parenthesized(true, |slf| {
                 emit_expr(slf);
             }),
-            Rewrite::Subexpr(_, span) => self.emit_parenthesized(true, |slf| {
+            Rewrite::Sub(_, span) => self.emit_parenthesized(true, |slf| {
                 emit_subexpr(slf, span);
             }),
             Rewrite::Ref(ref rw, mutbl) => self.emit_parenthesized(prec > 2, |slf| {
@@ -300,7 +300,7 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
         let mut pos = span.lo();
         for rt in overlap {
             // Every child node is contained by the span of some `Rewrite::Identity` or
-            // `Rewrite::Subexpr` in its parent node.
+            // `Rewrite::Sub` in its parent node.
             debug_assert!(span.contains(rt.span));
 
             self.emit_bytes(pos, rt.span.lo());
@@ -373,7 +373,7 @@ mod test {
     }
 
     fn mk_rewrite(i: usize) -> Rewrite<FakeSpan> {
-        Rewrite::Subexpr(i, (0, 0))
+        Rewrite::Sub(i, (0, 0))
     }
 
     fn mk_rt(

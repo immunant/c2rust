@@ -213,7 +213,7 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
             (&Yield(e, _), 0) => e,
             _ => panic!("bad subexpression index {} for {:?}", idx, ex),
         };
-        Rewrite::Subexpr(idx, sub_ex.span)
+        Rewrite::Sub(idx, sub_ex.span)
     }
 }
 

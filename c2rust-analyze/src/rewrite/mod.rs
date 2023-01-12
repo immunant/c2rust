@@ -14,7 +14,7 @@ pub enum Rewrite<S = Span> {
     /// Take the original expression unchanged.
     Identity,
     /// Extract the subexpression at the given index.
-    Subexpr(usize, S),
+    Sub(usize, S),
     /// `&e`, `&mut e`
     Ref(Box<Rewrite>, Mutability),
     /// `core::ptr::addr_of!(e)`, `core::ptr::addr_of_mut!(e)`
@@ -55,7 +55,7 @@ impl Rewrite {
 
         match *self {
             Rewrite::Identity => write!(f, "$e"),
-            Rewrite::Subexpr(i, _) => write!(f, "${}", i),
+            Rewrite::Sub(i, _) => write!(f, "${}", i),
             Rewrite::Ref(ref rw, mutbl) => parenthesize_if(prec > 2, f, |f| {
                 match mutbl {
                     Mutability::Not => write!(f, "&")?,
