@@ -124,3 +124,58 @@ pub fn apply_rewrites(tcx: TyCtxt, rewrites: Vec<(Span, Rewrite)>) {
         eprintln!(" ===== END {:?} =====", filename);
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn identity() -> Box<Rewrite> {
+        Box::new(Rewrite::Identity)
+    }
+
+    fn ref_(rw: Box<Rewrite>) -> Box<Rewrite> {
+        Box::new(Rewrite::Ref(rw, Mutability::Not))
+    }
+
+    fn index(arr: Box<Rewrite>, idx: Box<Rewrite>) -> Box<Rewrite> {
+        Box::new(Rewrite::Index(arr, idx))
+    }
+
+    fn cast_usize(rw: Box<Rewrite>) -> Box<Rewrite> {
+        Box::new(Rewrite::CastUsize(rw))
+    }
+
+    /// Test precedence handling in `Rewrite::pretty`
+    #[test]
+    fn rewrite_pretty_precedence() {
+        // Ref vs Index
+        assert_eq!(ref_(index(identity(), identity())).to_string(), "&$e[$e]",);
+
+        assert_eq!(
+            index(ref_(identity()), ref_(identity())).to_string(),
+            "(&$e)[&$e]",
+        );
+
+        // Ref vs CastUsize
+        assert_eq!(cast_usize(ref_(identity())).to_string(), "&$e as usize",);
+
+        assert_eq!(ref_(cast_usize(identity())).to_string(), "&($e as usize)",);
+
+        // CastUsize vs Index
+        assert_eq!(
+            cast_usize(index(identity(), identity())).to_string(),
+            "$e[$e] as usize",
+        );
+
+        assert_eq!(
+            index(cast_usize(identity()), cast_usize(identity())).to_string(),
+            "($e as usize)[$e as usize]",
+        );
+
+        // Index vs Index
+        assert_eq!(
+            index(index(identity(), identity()), identity()).to_string(),
+            "$e[$e][$e]",
+        );
+    }
+}
