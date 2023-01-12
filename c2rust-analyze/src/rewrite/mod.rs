@@ -15,6 +15,8 @@ pub enum Rewrite<S = Span> {
     Identity,
     /// Extract the subexpression at the given index.
     Sub(usize, S),
+
+    // Expression builders
     /// `&e`, `&mut e`
     Ref(Box<Rewrite>, Mutability),
     /// `core::ptr::addr_of!(e)`, `core::ptr::addr_of_mut!(e)`
@@ -29,6 +31,14 @@ pub enum Rewrite<S = Span> {
     CastUsize(Box<Rewrite>),
     /// The integer literal `0`.
     LitZero,
+
+    // Type builders
+    /// `*const T`, `*mut T`
+    TyPtr(Box<Rewrite>, Mutability),
+    /// `&T`, `&mut T`
+    TyRef(Box<Rewrite>, Mutability),
+    /// `Foo<T1, T2>`
+    TyCtor(String, Vec<Rewrite>),
 }
 
 impl Rewrite {
@@ -48,14 +58,17 @@ impl Rewrite {
             Ok(())
         }
 
-        // Precedence:
+        // Expr precedence:
         // - Index, SliceTail: 3
         // - Ref, Deref: 2
         // - CastUsize: 1
+        //
+        // Currently, we don't have any type builders that require parenthesization.
 
         match *self {
             Rewrite::Identity => write!(f, "$e"),
             Rewrite::Sub(i, _) => write!(f, "${}", i),
+
             Rewrite::Ref(ref rw, mutbl) => parenthesize_if(prec > 2, f, |f| {
                 match mutbl {
                     Mutability::Not => write!(f, "&")?,
@@ -95,6 +108,28 @@ impl Rewrite {
                 write!(f, " as usize")
             }),
             Rewrite::LitZero => write!(f, "0"),
+
+            Rewrite::TyPtr(ref rw, mutbl) => {
+                match mutbl {
+                    Mutability::Not => write!(f, "*const ")?,
+                    Mutability::Mut => write!(f, "*mut ")?,
+                }
+                rw.pretty(f, 0)
+            }
+            Rewrite::TyRef(ref rw, mutbl) => {
+                match mutbl {
+                    Mutability::Not => write!(f, "&")?,
+                    Mutability::Mut => write!(f, "&mut ")?,
+                }
+                rw.pretty(f, 0)
+            }
+            Rewrite::TyCtor(ref name, ref rws) => {
+                write!(f, "{}<", name)?;
+                for rw in rws {
+                    rw.pretty(f, 0)?;
+                }
+                write!(f, ">")
+            }
         }
     }
 }

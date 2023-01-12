@@ -234,6 +234,7 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
             Rewrite::Sub(_, span) => self.emit_parenthesized(true, |slf| {
                 emit_subexpr(slf, span);
             }),
+
             Rewrite::Ref(ref rw, mutbl) => self.emit_parenthesized(prec > 2, |slf| {
                 match mutbl {
                     Mutability::Not => slf.emit_str("&"),
@@ -274,6 +275,29 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
             }),
             Rewrite::LitZero => {
                 self.emit_str("0");
+            }
+
+            Rewrite::TyPtr(ref rw, mutbl) => {
+                match mutbl {
+                    Mutability::Not => self.emit_str("*const "),
+                    Mutability::Mut => self.emit_str("*mut "),
+                }
+                self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+            }
+            Rewrite::TyRef(ref rw, mutbl) => {
+                match mutbl {
+                    Mutability::Not => self.emit_str("&"),
+                    Mutability::Mut => self.emit_str("&mut "),
+                }
+                self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+            }
+            Rewrite::TyCtor(ref name, ref rws) => {
+                self.emit_str(name);
+                self.emit_str("<");
+                for rw in rws {
+                    self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                }
+                self.emit_str(">");
             }
         }
     }
