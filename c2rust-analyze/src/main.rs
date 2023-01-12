@@ -589,6 +589,7 @@ fn run(tcx: TyCtxt) {
     // Print results for each function in `all_fn_ldids`, going in declaration order.  Concretely,
     // we iterate over `body_owners()`, which is a superset of `all_fn_ldids`, and filter based on
     // membership in `func_info`, which contains an entry for each ID in `all_fn_ldids`.
+    let mut all_rewrites = Vec::new();
     for ldid in tcx.hir().body_owners() {
         // Skip any body owners that aren't present in `func_info`, and also get the info itself.
         let info = match func_info.get_mut(&ldid) {
@@ -671,8 +672,11 @@ fn run(tcx: TyCtxt) {
         for &(span, ref rw) in &hir_rewrites {
             eprintln!("  {}: {}", describe_span(tcx, span), rw);
         }
-        rewrite::apply_rewrites(tcx, hir_rewrites);
+        all_rewrites.extend(hir_rewrites);
     }
+
+    // Apply rewrite to all functions at once.
+    rewrite::apply_rewrites(tcx, all_rewrites);
 }
 
 trait AssignPointerIds<'tcx> {
