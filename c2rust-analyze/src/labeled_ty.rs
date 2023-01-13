@@ -262,8 +262,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
     where
         F: FnMut(LabeledTy<'tcx, L2>) -> L,
     {
-        let args = self.relabel_slice(lty.args, func);
-        self.mk(lty.ty, args, func(lty))
+        self.relabel_with_args(lty, &mut |lty, _| func(lty))
     }
 
     /// Replace the labels on several labeled types.
@@ -275,10 +274,35 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
     where
         F: FnMut(LabeledTy<'tcx, L2>) -> L,
     {
+        self.relabel_slice_with_args(ltys, &mut |lty, _| func(lty))
+    }
+
+    /// Run a callback to replace the labels on a type.
+    pub fn relabel_with_args<L2, F>(
+        &self,
+        lty: LabeledTy<'tcx, L2>,
+        func: &mut F,
+    ) -> LabeledTy<'tcx, L>
+    where
+        F: FnMut(LabeledTy<'tcx, L2>, &'tcx [LabeledTy<'tcx, L>]) -> L,
+    {
+        let args = self.relabel_slice_with_args(lty.args, func);
+        self.mk(lty.ty, args, func(lty, args))
+    }
+
+    /// Replace the labels on several labeled types.
+    pub fn relabel_slice_with_args<L2, F>(
+        &self,
+        ltys: &[LabeledTy<'tcx, L2>],
+        func: &mut F,
+    ) -> &'tcx [LabeledTy<'tcx, L>]
+    where
+        F: FnMut(LabeledTy<'tcx, L2>, &'tcx [LabeledTy<'tcx, L>]) -> L,
+    {
         let ltys = ltys
             .iter()
             .cloned()
-            .map(|lty| self.relabel(lty, func))
+            .map(|lty| self.relabel_with_args(lty, func))
             .collect::<Vec<_>>();
         self.mk_slice(&ltys)
     }
