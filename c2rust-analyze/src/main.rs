@@ -32,8 +32,8 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand, Rvalue,
-    StatementKind,
+    AggregateKind, BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand, Place,
+    Rvalue, StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::tls;
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
@@ -356,7 +356,7 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
     }
 }
 
-fn run(tcx: TyCtxt) {
+fn run<'tcx>(tcx: TyCtxt<'tcx>) {
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
 
@@ -424,7 +424,7 @@ fn run(tcx: TyCtxt) {
     for &ldid in &all_fn_ldids {
         let ldid_const = WithOptConstParam::unknown(ldid);
         let mir = tcx.mir_built(ldid_const);
-        let mir = mir.borrow();
+        let mir: std::cell::Ref<Body> = mir.borrow();
         let lsig = *gacx.fn_sigs.get(&ldid.to_def_id()).unwrap();
 
         let mut acx = gacx.function_context(&mir);
@@ -449,13 +449,65 @@ fn run(tcx: TyCtxt) {
             assert_eq!(local, l);
         }
 
+        // Find all calls to `malloc`, `calloc`, `realloc`, and `free`
+        // and track their destination locals as being libc::c_void
+        // pointers to special-case downstream casts
+        for bb_data in mir.basic_blocks().iter() {
+            if let Some(term) = &bb_data.terminator {
+                let term: &Terminator = term;
+                if let TerminatorKind::Call {
+                    ref func,
+                    ref args,
+                    destination,
+                    target: _,
+                    ..
+                } = term.kind
+                {
+                    let func_ty = func.ty(&mir.local_decls, tcx);
+                    use crate::util::Callee::*;
+
+                    let assert_libc_cvoid = |p: &Place<'tcx>| {
+                        let deref_ty = p
+                            .ty(acx.local_decls, acx.tcx())
+                            .ty
+                            .builtin_deref(true)
+                            .unwrap()
+                            .ty
+                            .kind();
+                        assert_matches!(deref_ty, TyKind::Adt(adt, _) => {
+                            assert_eq!(tcx.def_path(adt.did()).data[0].to_string(), "ffi");
+                            assert_eq!(tcx.item_name(adt.did()).as_str(), "c_void");
+                        });
+                    };
+
+                    match util::ty_callee(tcx, func_ty) {
+                        Some(Malloc | Calloc) => {
+                            assert_libc_cvoid(&destination);
+                            acx.c_void_ptrs.insert(destination);
+                        }
+                        Some(Realloc) => {
+                            assert_libc_cvoid(&destination);
+                            acx.c_void_ptrs.insert(destination);
+                            acx.c_void_ptrs.insert(args[0].place().unwrap());
+                        }
+                        Some(Free) => {
+                            assert_libc_cvoid(&args[0].place().unwrap());
+                            acx.c_void_ptrs.insert(args[0].place().unwrap());
+                        }
+
+                        _ => {}
+                    }
+                }
+            }
+        }
+
         for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
             for (i, stmt) in bb_data.statements.iter().enumerate() {
-                let rv = match stmt.kind {
-                    StatementKind::Assign(ref x) => &x.1,
+                let (lhs, rv) = match &stmt.kind {
+                    StatementKind::Assign(x) => *x.clone(),
                     _ => continue,
                 };
-                let lty = match *rv {
+                let lty = match rv {
                     Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
                         AggregateKind::Array(elem_ty) => {
                             let elem_lty = acx.assign_pointer_ids(elem_ty);
@@ -465,7 +517,23 @@ fn run(tcx: TyCtxt) {
                         }
                         _ => continue,
                     },
-                    // TODO: Rvalue::Cast (certain cases)
+                    Rvalue::Cast(_, ref op, _) => {
+                        if let Some(p) = op.place().filter(|p| acx.c_void_ptrs.contains(p)) {
+                            // This is a special case for types being casted from *libc::c_void to a pointer
+                            // to some other type, e.g. `let foo = malloc(..) as *mut Foo;`
+                            // carry over the pointer id of *libc::c_void, but match the pointer ids
+                            // of the casted-to-type for the rest
+                            acx.special_casts.insert(p, lhs);
+                        }
+
+                        if acx.c_void_ptrs.contains(&lhs) {
+                            // This is a special case for types being casted to *libc::c_void
+                            // acx.special_casts.insert(p, lhs);
+                            acx.special_casts.insert(lhs, op.place().unwrap());
+                        }
+
+                        continue;
+                    }
                     _ => continue,
                 };
                 let loc = Location {

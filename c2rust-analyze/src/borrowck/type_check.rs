@@ -25,6 +25,19 @@ struct TypeChecker<'tcx, 'a> {
     local_decls: &'a IndexVec<Local, LocalDecl<'tcx>>,
     current_location: Location,
     adt_metadata: &'a AdtMetadataTable<'tcx>,
+    /// A mapping for substituting [`Place`]s adhering to the
+    /// following pattern
+    /// ```
+    /// _1 = malloc(...);
+    /// _2 = _1 as *mut T;
+    /// ```
+    ///
+    /// In this case, `_1` would be mapped to `_2`, which is indicative
+    /// of the amended statement:
+    /// ```
+    /// _2 = malloc(...);
+    /// ```
+    special_casts: &'a HashMap<Place<'tcx>, Place<'tcx>>,
 }
 
 impl<'tcx> TypeChecker<'tcx, '_> {
@@ -281,7 +294,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 */
                 Label::default()
             }),
-
             Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
                 AggregateKind::Array(..) => {
                     let ty = rv.ty(self.local_decls, *self.ltcx);
@@ -335,6 +347,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         match stmt.kind {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
+
+                if matches!(rv, Rvalue::Cast(_, Operand::Copy(p) | Operand::Move(p), _) if self.special_casts.contains_key(&p))
+                {
+                    // skip this cast, because the local that is getting casted
+                    // originates from a call to an allocation that is handled
+                    // in a way that effectively elides the cast
+                    return;
+                }
+
                 let pl_lty = self.visit_place(pl);
                 let rv_lty = self.visit_rvalue(rv, pl_lty);
                 self.do_assign(pl_lty, rv_lty);
@@ -419,6 +440,7 @@ pub fn visit_body<'tcx>(
     field_permissions: &HashMap<DefId, PermissionSet>,
     mir: &Body<'tcx>,
     adt_metadata: &AdtMetadataTable<'tcx>,
+    special_casts: &HashMap<Place<'tcx>, Place<'tcx>>,
 ) {
     let mut tc = TypeChecker {
         tcx,
@@ -431,6 +453,7 @@ pub fn visit_body<'tcx>(
         local_decls: &mir.local_decls,
         current_location: Location::START,
         adt_metadata,
+        special_casts,
     };
 
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {

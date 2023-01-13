@@ -6,6 +6,7 @@ use crate::pointer_id::{
 use crate::util::{self, describe_rvalue, RvalueDesc};
 use crate::AssignPointerIds;
 use bitflags::bitflags;
+use indexmap::IndexSet;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
@@ -84,11 +85,25 @@ pub struct AnalysisCtxt<'a, 'tcx> {
 
     pub local_decls: &'a LocalDecls<'tcx>,
     pub local_tys: IndexVec<Local, LTy<'tcx>>,
+    pub c_void_ptrs: IndexSet<Place<'tcx>>,
     pub addr_of_local: IndexVec<Local, PointerId>,
     /// Types for certain [`Rvalue`]s.  Some `Rvalue`s introduce fresh [`PointerId`]s; to keep
     /// those `PointerId`s consistent, the `Rvalue`'s type must be stored rather than recomputed on
     /// the fly.
     pub rvalue_tys: HashMap<Location, LTy<'tcx>>,
+    /// A mapping for substituting [`Place`]s adhering to the
+    /// following pattern
+    /// ```
+    /// _1 = malloc(...);
+    /// _2 = _1 as *mut T;
+    /// ```
+    ///
+    /// In this case, `_1` would be mapped to `_2`, which is indicative
+    /// of the amended statement:
+    /// ```
+    /// _2 = malloc(...);
+    /// ```
+    pub special_casts: HashMap<Place<'tcx>, Place<'tcx>>,
 
     next_ptr_id: NextLocalPointerId,
 }
@@ -185,6 +200,8 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             gacx,
             local_decls: &mir.local_decls,
             local_tys: IndexVec::new(),
+            c_void_ptrs: IndexSet::new(),
+            special_casts: HashMap::new(),
             addr_of_local: IndexVec::new(),
             rvalue_tys: HashMap::new(),
             next_ptr_id: NextLocalPointerId::new(),
@@ -206,6 +223,8 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             gacx,
             local_decls: &mir.local_decls,
             local_tys,
+            c_void_ptrs: IndexSet::new(),
+            special_casts: HashMap::new(),
             addr_of_local,
             rvalue_tys,
             next_ptr_id,
