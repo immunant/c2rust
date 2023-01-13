@@ -38,14 +38,14 @@ struct Args {
     debug_ast_exporter: bool,
 
     /// Verbose mode
-    #[clap(long)]
+    #[clap(short = 'v', long)]
     verbose: bool,
 
     /// Enable translation of some C macros into consts
     #[clap(long)]
     translate_const_macros: bool,
 
-    /// "Enable translation of some C function macros into invalid Rust code. WARNING: resulting code will not compile."
+    /// Enable translation of some C function macros into invalid Rust code. WARNING: resulting code will not compile.
     #[clap(long)]
     translate_fn_macros: bool,
 
@@ -82,7 +82,7 @@ struct Args {
     dump_structures: bool,
 
     /// Generate readable 'current_block' values in relooper
-    #[clap(long)]
+    #[clap(long = "ddebug-labels")]
     debug_labels: bool,
 
     /// Input compile_commands.json file
@@ -130,11 +130,11 @@ struct Args {
     reorganize_definitions: bool,
 
     /// Extra arguments to pass to clang frontend during parsing the input C file
-    #[clap(long, multiple = true)]
-    extra_clang_args: Option<Vec<String>>,
+    #[clap(multiple = true)]
+    extra_clang_args: Vec<String>,
 
     /// Enable the specified warning (all enables all warnings)
-    #[clap(short = 'W', long)]
+    #[clap(short = 'W')]
     warn: Option<String>,
 
     /// Emit code using core rather than std
@@ -150,7 +150,7 @@ struct Args {
     preserve_unused_functions: bool,
 
     /// Logging level
-    #[clap(long = "log-level", value_enum, default_value_t = LogLevel::Info)]
+    #[clap(long = "log-level", value_enum, default_value_t = LogLevel::Warn)]
     log_level: LogLevel,
 
     /// Fail when the control-flow graph generates branching constructs
@@ -186,7 +186,7 @@ fn main() {
         )
     });
 
-    let extra_args = args.extra_clang_args.unwrap();
+    let extra_args = args.extra_clang_args;
     let extra_args = extra_args.iter().map(AsRef::as_ref).collect::<Vec<&str>>();
     let extra_args = extra_args.as_slice();
 
