@@ -37,6 +37,8 @@ pub enum Rewrite<S = Span> {
     TyPtr(Box<Rewrite>, Mutability),
     /// `&T`, `&mut T`
     TyRef(Box<Rewrite>, Mutability),
+    /// `[T]`
+    TySlice(Box<Rewrite>),
     /// `Foo<T1, T2>`
     TyCtor(String, Vec<Rewrite>),
 }
@@ -122,6 +124,11 @@ impl Rewrite {
                     Mutability::Mut => write!(f, "&mut ")?,
                 }
                 rw.pretty(f, 0)
+            }
+            Rewrite::TySlice(ref rw) => {
+                write!(f, "[")?;
+                rw.pretty(f, 0)?;
+                write!(f, "]")
             }
             Rewrite::TyCtor(ref name, ref rws) => {
                 write!(f, "{}<", name)?;

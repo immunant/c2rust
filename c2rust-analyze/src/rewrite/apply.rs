@@ -291,6 +291,11 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
                 }
                 self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
             }
+            Rewrite::TySlice(ref rw) => {
+                self.emit_str("[");
+                self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                self.emit_str("]");
+            }
             Rewrite::TyCtor(ref name, ref rws) => {
                 self.emit_str(name);
                 self.emit_str("<");
