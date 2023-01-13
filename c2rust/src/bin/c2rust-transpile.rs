@@ -82,7 +82,7 @@ struct Args {
     compile_commands: PathBuf,
 
     /// How to handle violated invariants or invalid code
-    #[clap(long, value_enum, default_value = "compile_error")]
+    #[clap(long, value_enum, default_value_t = InvalidCodes::CompileError)]
     invalid_code: InvalidCodes,
 
     /// Emit .rs files as modules instead of crates, excluding the crate preambles
@@ -142,7 +142,7 @@ struct Args {
     preserve_unused_functions: bool,
 
     /// Logging level
-    #[clap(long = "log-level", value_enum, default_value = "warn")]
+    #[clap(long = "log-level", value_enum, default_value_t = LogLevel::Info)]
     log_level: LogLevel,
 
     /// Fail when the control-flow graph generates branching constructs
