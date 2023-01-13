@@ -7,7 +7,15 @@ use std::str::FromStr;
 use c2rust_transpile::{Diagnostic, ReplaceMode, TranspilerConfig};
 
 #[derive(Debug, Parser)]
-#[clap(author, version, about, long_about = None, trailing_var_arg = true)]
+#[clap(
+name = "transpile",
+author = "- The C2Rust Project Developers <c2rust@immunant.com>
+- Eric Mertens <emertens@galois.com>
+- Alec Theriault <atheriault@galois.com>",
+version,
+about = "Translate C code to equivalent Rust code",
+long_about = None,
+trailing_var_arg = true)]
 struct Args {
     /// Adds a prefix to all function names. Generally only useful for testing
     #[clap(long)]
