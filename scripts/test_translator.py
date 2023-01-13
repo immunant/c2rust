@@ -31,7 +31,7 @@ from rust_file import (
     RustMod,
     RustVisibility,
 )
-from typing import Generator, List, Optional, Set, Iterable
+from typing import Any, Dict, Generator, List, Optional, Set, Iterable
 
 # Tools we will need
 clang = get_cmd_or_die("clang")
@@ -63,9 +63,7 @@ class CStaticLibrary:
 
 
 class CFile:
-    def __init__(self, log_level: str, path: str, flags: Set[str] = None) -> None:
-        if not flags:
-            flags = set()
+    def __init__(self, log_level: str, path: str, flags: Set[str] = set()) -> None:
 
         self.log_level = log_level
         self.path = path
@@ -75,7 +73,7 @@ class CFile:
         self.reorganize_definitions = "reorganize_definitions" in flags
         self.emit_build_files = "emit_build_files" in flags
 
-    def translate(self, cc_db, ld_lib_path, extra_args: List[str] = []) -> RustFile:
+    def translate(self, cc_db: str, ld_lib_path: str, extra_args: List[str] = []) -> RustFile:
         extensionless_file, _ = os.path.splitext(self.path)
 
         # run the transpiler
@@ -154,11 +152,11 @@ def build_static_library(c_files: Iterable[CFile],
 
     # create .o files
     args = ["-c", "-fPIC"]
-    args.append(target_args(target))
+    args += target_args(target)
     paths = [c_file.path for c_file in c_files]
 
     if len(paths) == 0:
-        return
+        return None
     else:
         args += paths
 
@@ -201,8 +199,8 @@ class TestFunction:
 
 
 class TestFile(RustFile):
-    def __init__(self, path: str, test_functions: List[TestFunction] = None,
-                 flags: Set[str] = None) -> None:
+    def __init__(self, path: str, test_functions: Optional[List[TestFunction]] = None,
+                 flags: Optional[Set[str]] = None) -> None:
         if not flags:
             flags = set()
 
@@ -215,7 +213,7 @@ class TestFile(RustFile):
 
 
 class TestDirectory:
-    def __init__(self, full_path: str, files: str, keep: List[str], log_level: str) -> None:
+    def __init__(self, full_path: str, files: 're.Pattern', keep: List[str], log_level: str) -> None:
         self.c_files = []
         self.rs_test_files = []
         self.full_path = full_path
@@ -224,7 +222,7 @@ class TestDirectory:
         self.name = os.path.basename(full_path)
         self.keep = keep
         self.log_level = log_level
-        self.generated_files = {
+        self.generated_files: Dict[str, List[Any]] = {
             "rust_src": [],
             "c_obj": [],
             "c_lib": [],
@@ -275,7 +273,7 @@ class TestDirectory:
             file_flags = {flag.strip() for flag in flag_str.split(',')}
 
         if "skip_translation" in file_flags:
-            return
+            return None
 
         return CFile(self.log_level, path, file_flags)
 
@@ -382,6 +380,8 @@ class TestDirectory:
             outcomes.append(TestOutcome.UnexpectedFailure)
 
             return outcomes
+
+        assert static_library is not None  # for mypy
 
         self.generated_files["c_lib"].append(static_library)
         self.generated_files["c_obj"].extend(static_library.obj_files)
@@ -491,7 +491,7 @@ class TestDirectory:
         ]
         test_main = RustFunction("main",
                                  visibility=RustVisibility.Public,
-                                 body=test_main_body)
+                                 body=[str(stmt) for stmt in test_main_body])
 
         rust_file_builder.add_function(test_main)
 
@@ -507,7 +507,7 @@ class TestDirectory:
                 args.append('--release')
 
             if self.target:
-                args.append(["--target", self.target])
+                args += ["--target", self.target]
 
             retcode, stdout, stderr = cargo[args].run(retcode=None)
 
@@ -608,7 +608,7 @@ def readable_directory(directory: str) -> str:
 
 def get_testdirectories(
         directory: str,
-        files: str,
+        files: 're.Pattern',
         keep: List[str],
         log_level: str,
 ) -> Generator[TestDirectory, None, None]:

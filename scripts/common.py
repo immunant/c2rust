@@ -12,7 +12,7 @@ import platform
 import multiprocessing
 
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List, NoReturn, Optional, Tuple, Union
 
 import plumbum as pb
 
@@ -30,10 +30,8 @@ class Colors:
 
 
 class Config:
-    BUILD_SUFFIX = ""
     # use custom build directory suffix if requested via env. variable
-    if os.getenv('C2RUST_BUILD_SUFFIX'):
-        BUILD_SUFFIX = os.getenv('C2RUST_BUILD_SUFFIX')
+    BUILD_SUFFIX = os.getenv('C2RUST_BUILD_SUFFIX') or ""
     BUILD_TYPE = "release"
 
     NCPUS = str(multiprocessing.cpu_count())
@@ -108,12 +106,12 @@ class Config:
     """
     Reflect changes to all configuration variables that depend on LLVM_VER
     """
-    def _init_llvm_ver_deps(self):
-        def llvm_major_ver_ge(test_ver) -> bool:
+    def _init_llvm_ver_deps(self) -> None:
+        def llvm_major_ver_ge(test_ver: int) -> bool:
             (major, _, _) = self.LLVM_VER.split(".")
             return int(major) >= test_ver
 
-        def use_github_archive_urls():
+        def use_github_archive_urls() -> bool:
             try:
                 return llvm_major_ver_ge(10)
             except ValueError:
@@ -150,18 +148,17 @@ class Config:
             self.BUILD_DIR,
             'clang-xcheck-plugin')
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._init_llvm_ver_deps()
-        self.TRANSPILER = None  # set in `update_args`
-        self.RREF_BIN = None    # set in `update_args`
-        self.C2RUST_BIN = None  # set in `update_args`
-        self.TARGET_DIR = None  # set in `update_args`
+        self.TRANSPILER: str = ""  # set in `update_args`
+        self.RREF_BIN: str = ""    # set in `update_args`
+        self.C2RUST_BIN: str = ""  # set in `update_args`
+        self.TARGET_DIR: str = ""  # set in `update_args`
         self.update_args()
 
-    def update_args(self, args=None):
+    def update_args(self, args: Optional[Any] = None) -> None:
         build_type = 'debug' if args and args.debug else 'release'
-        has_ver = args and hasattr(args, 'llvm_ver') and args.llvm_ver
-        llvm_ver = args.llvm_ver if has_ver else self.LLVM_VER
+        llvm_ver = getattr(args, 'llvm_ver', self.LLVM_VER)
 
         self.BUILD_TYPE = build_type
         self.LLVM_VER = llvm_ver
@@ -184,12 +181,10 @@ class Config:
         self.C2RUST_BIN = "c2rust"
         self.C2RUST_BIN = os.path.join(self.TARGET_DIR, self.C2RUST_BIN)
 
-        has_skip_sig = args and hasattr(args, 'llvm_skip_signature_checks')
-        self.LLVM_SKIP_SIGNATURE_CHECKS = args.llvm_skip_signature_checks \
-            if has_skip_sig else False
+        self.LLVM_SKIP_SIGNATURE_CHECKS = getattr(args, 'llvm_skip_signature_checks', False)
 
     @staticmethod
-    def add_args(parser: argparse.ArgumentParser):
+    def add_args(parser: argparse.ArgumentParser) -> None:
         """Add common command-line arguments that CommonGlobals understands to
         construct necessary paths.
         """
@@ -203,7 +198,7 @@ class Config:
 config = Config()
 
 
-def update_or_init_submodule(submodule_path: str):
+def update_or_init_submodule(submodule_path: str) -> None:
     git = get_cmd_or_die("git")
     invoke_quietly(git, "submodule", "update", "--init", submodule_path)
     logging.debug("updated submodule %s", submodule_path)
@@ -254,7 +249,7 @@ def on_linux() -> bool:
     return platform.system() == "Linux"
 
 
-def regex(raw: str):
+def regex(raw: str) -> 're.Pattern':
     """
     Check that a string is a valid regex
     """
@@ -266,7 +261,7 @@ def regex(raw: str):
         raise argparse.ArgumentTypeError(msg)
 
 
-def die(emsg, ecode=1):
+def die(emsg: str, ecode: int = 1) -> NoReturn:
     """
     log fatal error and exit with specified error code.
     """
@@ -274,7 +269,7 @@ def die(emsg, ecode=1):
     quit(ecode)
 
 
-def est_parallel_link_jobs():
+def est_parallel_link_jobs() -> int:
     """
     estimate the highest number of parallel link jobs we can
     run without causing the machine to swap. we conservatively
@@ -287,15 +282,15 @@ def est_parallel_link_jobs():
     return int(mem_total / mem_per_job)
 
 
-def invoke(cmd, *arguments):
+def invoke(cmd: Command, *arguments: Union[str, List[str]]) -> Tuple[int, str, str]:
     return _invoke(True, cmd, *arguments)
 
 
-def invoke_quietly(cmd, *arguments):
+def invoke_quietly(cmd: Command, *arguments: Union[str, List[str]]) -> Tuple[int, str, str]:
     return _invoke(False, cmd, *arguments)
 
 
-def _invoke(console_output, cmd, *arguments):
+def _invoke(console_output: bool, cmd: Command, *arguments: Union[str, List[str]]) -> Tuple[int, str, str]:
     try:
         if console_output:
             retcode, stdout, stderr = cmd[arguments] & pb.TEE()
@@ -324,7 +319,7 @@ def get_cmd_or_die(cmd: str) -> Command:
         die("{} not in path".format(cmd), errno.ENOENT)
 
 
-def ensure_dir(path):
+def ensure_dir(path: str) -> None:
     if not os.path.exists(path):
         logging.debug("creating dir %s", path)
         os.makedirs(path, mode=0o744)
@@ -332,13 +327,13 @@ def ensure_dir(path):
         die("%s is not a directory", path)
 
 
-def is_elf_exe(path):
+def is_elf_exe(path: str) -> bool:
     _file = pb.local.get('file')
     out = _file(path)
     return "LSB" in out and "ELF" in out and "Mach-O" not in out
 
 
-def git_ignore_dir(path):
+def git_ignore_dir(path: str) -> None:
     """
     make sure directory has a `.gitignore` file with a wildcard pattern in it.
     """
@@ -348,7 +343,7 @@ def git_ignore_dir(path):
             handle.write("*\n")
 
 
-def setup_logging(log_level=logging.INFO):
+def setup_logging(log_level: int = logging.INFO) -> None:
     logging.basicConfig(
         filename=sys.argv[0].replace(".py", ".log"),
         filemode='w',
@@ -360,7 +355,7 @@ def setup_logging(log_level=logging.INFO):
     logging.root.addHandler(console)
 
 
-def binary_in_path(binary_name) -> bool:
+def binary_in_path(binary_name: str) -> bool:
     try:
         # raises CommandNotFound exception if not available.
         _ = pb.local[binary_name]
@@ -369,14 +364,14 @@ def binary_in_path(binary_name) -> bool:
         return False
 
 
-def json_pp_obj(json_obj) -> str:
+def json_pp_obj(json_obj: Any) -> str:
     return json.dumps(json_obj,
                       sort_keys=True,
                       indent=2,
                       separators=(',', ': '))
 
 
-def ensure_rustc_version(expected_version_str: str):
+def ensure_rustc_version(expected_version_str: str) -> None:
     rustc = get_cmd_or_die("rustc")
     rustup = get_cmd_or_die("rustup")
     actual_version = rustup("run", config.CUSTOM_RUST_NAME, rustc["--version"])
@@ -387,7 +382,7 @@ def ensure_rustc_version(expected_version_str: str):
         die(emsg)
 
 
-def ensure_rustfmt_version():
+def ensure_rustfmt_version() -> None:
     expected_version_str = "0.10.0 ( ) DEPRECATED: use rustfmt-nightly\n"
     rustfmt = get_cmd_or_die("rustfmt")
     rustup = get_cmd_or_die("rustup")
@@ -400,7 +395,7 @@ def ensure_rustfmt_version():
         die(emsg)
 
 
-def get_ninja_build_type(ninja_build_file):
+def get_ninja_build_type(ninja_build_file: str) -> str:
     signature = "# CMAKE generated file: DO NOT EDIT!" + os.linesep
     with open(ninja_build_file, "r") as handle:
         lines = handle.readlines()
@@ -414,10 +409,9 @@ def get_ninja_build_type(ninja_build_file):
                 return m.group(1)
         die("missing content in ninja.build: " + ninja_build_file)
 
-
 def export_ast_from(ast_expo: pb.commands.BaseCommand,
                     cc_db_path: str,
-                    **kwargs) -> str:
+                    **kwargs: str) -> str:
     """
     run c2rust-ast-exporter for a single compiler invocation.
 
@@ -462,12 +456,12 @@ def export_ast_from(ast_expo: pb.commands.BaseCommand,
 
 
 def transpile(cc_db_path: str,
-              filter: str = None,
+              filter: Optional[str] = None,
               extra_transpiler_args: List[str] = [],
               emit_build_files: bool = True,
-              output_dir: str = None,
+              output_dir: Optional[str] = None,
               emit_modules: bool = False,
-              main_module_for_build_files: str = None,
+              main_module_for_build_files: Optional[str] = None,
               cross_checks: bool = False,
               use_fakechecks: bool = False,
               cross_check_config: List[str] = [],
@@ -513,7 +507,7 @@ def transpile(cc_db_path: str,
     return retcode == 0
 
 
-def _get_gpg_cmd():
+def _get_gpg_cmd() -> Command:
     # on macOS, run `brew install gpg`
     gpg = None
     try:
@@ -579,10 +573,10 @@ def check_sig(afile: str, asigfile: str) -> None:
         die("gpg signature check failed: " + pee.message)
 
 
-def download_archive(aurl: str, afile: str, asig: str = None):
+def download_archive(aurl: str, afile: str, asig: Optional[str] = None) -> None:
     curl = get_cmd_or_die("curl")
 
-    def _download_helper(url: str, ofile: str):
+    def _download_helper(url: str, ofile: str) -> None:
         if not os.path.isfile(ofile):
             logging.info("downloading %s", os.path.basename(ofile))
             curl_args = [

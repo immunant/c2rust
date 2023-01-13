@@ -27,7 +27,7 @@ C_COMPILER = "clang"
 RUST_COMPILER = "rustc"
 CSMITH_TIMEOUT = 5 # seconds to wait for C compiled executable to run
 
-def validate_csmith_home():
+def validate_csmith_home() -> None:
     """Check that csmith.h can be found in CSMITH_HOME."""
     csmith_header = os.path.join(CSMITH_HOME, 'csmith.h')
     if not os.access(csmith_header, os.R_OK):
@@ -36,7 +36,7 @@ def validate_csmith_home():
               'directory containing this header.')
         exit(1)
 
-def create_compile_commands(dirname, output_c_name):
+def create_compile_commands(dirname: str, output_c_name: str) -> str:
     """Create a compile commands file suitable for compiling the given csmith source file."""
 
     compile_commands_settings = [{
@@ -53,21 +53,21 @@ def create_compile_commands(dirname, output_c_name):
 
     return compile_commands_name
 
-def generate_c_source(dirname, output_c_name):
+def generate_c_source(dirname: str, output_c_name: str) -> None:
     """Generate a C source file using csmith."""
 
     with open(output_c_name, 'w') as output_c:
         logging.info("Generating C source file with csmith")
         subprocess.run(CSMITH_CMD, cwd=dirname, stdout=output_c, check=True)
 
-def transpile_file(dirname, output_c_name):
+def transpile_file(dirname: str, output_c_name: str) -> None:
     """Translate the given C file to Rust."""
 
     compile_commands_name = create_compile_commands(dirname, output_c_name)
     common.transpile(compile_commands_name,
                      emit_build_files=False)
 
-def compile_c_file(output_c_name, output_c_exe_name):
+def compile_c_file(output_c_name: str, output_c_exe_name: str) -> None:
     """Compile the given C source file to produce the given executable."""
 
     logging.info("Compiling C source file with clang")
@@ -82,7 +82,7 @@ def compile_c_file(output_c_name, output_c_exe_name):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL)
 
-def execute_driver(exe_name):
+def execute_driver(exe_name: str) -> bytes:
     """Execute the given executable and return its stdout output."""
 
     logging.info("Executing: %s", exe_name)
@@ -95,7 +95,7 @@ def execute_driver(exe_name):
     logging.info("Execution finished: %s", expected_output)
     return expected_output
 
-def compile_rust_file(output_c_name, output_rs_name, output_rs_exec_name):
+def compile_rust_file(output_c_name: str, output_rs_name: str, output_rs_exec_name: str) -> None:
     """Compile the given Rust source file."""
 
     logging.info("Compiling translated Rust")
@@ -108,7 +108,7 @@ def compile_rust_file(output_c_name, output_rs_name, output_rs_exec_name):
         copyfile(output_rs_name, 'output.rs')
         raise
 
-def main():
+def main() -> None:
     """Generate a new csmith test case and compare its execution to the translated Rust version."""
 
     validate_csmith_home()

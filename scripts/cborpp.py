@@ -16,7 +16,7 @@ except ImportError:
     sys.exit(errno.ENOENT)
 
 
-def _parse_args():
+def _parse_args() -> argparse.Namespace:
     """
     define and parse command line arguments here.
     """
@@ -142,7 +142,7 @@ TAGS = {
 }
 
 
-def _main():
+def _main() -> None:
     args = _parse_args()
     try:
         array = cbor2.load(args.cbor)

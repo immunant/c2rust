@@ -4,7 +4,7 @@ import os
 from enum import Enum
 from common import get_cmd_or_die, NonZeroReturn
 from plumbum.machines.local import LocalCommand
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable, List, Optional, Set, Tuple
 
 rustc = get_cmd_or_die("rustc")
 
@@ -63,11 +63,11 @@ class RustFile:
                 return get_cmd_or_die(extensionless_file)
             # TODO: Support saving lib file
 
-        return
+        return None
 
 
 class RustMod:
-    def __init__(self, name: str, visibility: RustVisibility = None) -> None:
+    def __init__(self, name: str, visibility: Optional[RustVisibility] = None) -> None:
         self.name = name
         self.visibility = visibility or RustVisibility.Private
 
@@ -77,12 +77,15 @@ class RustMod:
     def __hash__(self) -> int:
         return hash((self.visibility, self.name))
 
-    def __eq__(self, other: "RustMod") -> bool:
-        return self.name == other.name and self.visibility == other.visibility
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, RustMod):
+            return self.name == other.name and self.visibility == other.visibility
+        else:
+            return False
 
 
 class RustUse:
-    def __init__(self, use: List[str], visibility: RustVisibility = None) -> str:
+    def __init__(self, use: List[str], visibility: Optional[RustVisibility] = None):
         self.use = "::".join(use)
         self.visibility = visibility or RustVisibility.Private
 
@@ -92,14 +95,17 @@ class RustUse:
     def __hash__(self) -> int:
         return hash((self.use, self.visibility))
 
-    def __eq__(self, other: "RustUse") -> bool:
-        return self.use == other.use and self.visibility == other.visibility
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, RustUse):
+            return self.use == other.use and self.visibility == other.visibility
+        else:
+            return False
 
 
 # TODO: Support params, lifetimes, generics, etc if needed
 class RustFunction:
-    def __init__(self, name: str, visibility: RustVisibility = None,
-                 body: List[str] = None) -> None:
+    def __init__(self, name: str, visibility: Optional[RustVisibility] = None,
+                 body: Optional[List[str]] = None) -> None:
         self.name = name
         self.visibility = visibility or RustVisibility.Private
         self.body = body or []
@@ -133,12 +139,12 @@ class RustMatch:
 
 class RustFileBuilder:
     def __init__(self) -> None:
-        self.features = set()
-        self.pragmas = []
-        self.extern_crates = set()
-        self.mods = set()
-        self.uses = set()
-        self.functions = []
+        self.features: Set[str] = set()
+        self.pragmas: List[Tuple[str, Iterable[str]]] = []
+        self.extern_crates: Set[str] = set()
+        self.mods: Set[RustMod] = set()
+        self.uses: Set[RustUse] = set()
+        self.functions: List[RustFunction] = []
 
     def __str__(self) -> str:
         buffer = ""

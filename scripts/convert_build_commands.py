@@ -5,25 +5,27 @@ import glob
 import json
 import os
 import sys
+from typing import Any, Dict, List, Optional
 
-def get_fake():
-    get_fake.ctr += 1
-    return get_fake.ctr
-get_fake.ctr = -1
+def get_fake() -> int:
+    get_fake.ctr += 1  # type: ignore
+    return get_fake.ctr  # type: ignore
+get_fake.ctr = -1  # type: ignore
 
 class EntryInfo:
-    def __init__(self, e):
+    def __init__(self, e: Dict[str, Any]):
         self.entry = e
-        self.new_args = []
-        self.c_inputs = []
-        self.rest_inputs = []
-        self.libs = []
-        self.lib_dirs = []
+        self.new_args: List[str] = []
+        self.c_inputs: List[str] = []
+        self.rest_inputs: List[str] = []
+        self.libs: List[str] = []
+        self.lib_dirs: List[str] = []
         self.compile_only = False
         self.shared_lib = False
         self.output = None
 
-def convert_entries(entries, out_dir=None):
+def convert_entries(entries: List[Dict[str, Any]],
+        out_dir: Optional[str] = None) -> List[Dict[str, Any]]:
     entry_infos = []
     for entry in entries:
         old_args, entry["arguments"] = entry["arguments"], []
@@ -43,6 +45,7 @@ def convert_entries(entries, out_dir=None):
             elif arg == "-o":
                 ei.output = next(arg_iter)
                 ei.new_args.append(arg)
+                assert ei.output is not None
                 ei.new_args.append(ei.output)
 
             elif arg[:2] == "-o":
@@ -120,7 +123,7 @@ def convert_entries(entries, out_dir=None):
     return new_entries
 
 
-def main():
+def main() -> None:
     if len(sys.argv) != 3:
         sys.exit("Usage: convert_build_commands <build commands directory> <compilation database file>")
 
