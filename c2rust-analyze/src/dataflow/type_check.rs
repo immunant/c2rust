@@ -248,12 +248,18 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         match stmt.kind {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
+                if matches!(rv, Rvalue::Cast(_, Operand::Copy(p) | Operand::Move(p), _) if self.acx.special_casts.contains_key(&p) || self.acx.special_casts.contains_key(&pl))
+                {
+                    // skip this cast, because the local that is getting casted
+                    // originates from a call to an allocation that is handled
+                    // in a way that effectively elides the cast
+                    return;
+                }
                 self.visit_place(pl, Mutability::Mut);
                 let pl_lty = self.acx.type_of(pl);
 
                 let rv_lty = self.acx.type_of_rvalue(rv, loc);
                 self.visit_rvalue(rv, rv_lty);
-
                 self.do_assign(pl_lty, rv_lty);
             }
             // TODO(spernsteiner): handle other `StatementKind`s
@@ -324,18 +330,39 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
 
                     Callee::Malloc => {
-                        self.visit_place(destination, Mutability::Mut);
+                        let destination = self
+                            .acx
+                            .special_casts
+                            .get(&destination)
+                            .unwrap_or(&destination);
+                        self.visit_place(*destination, Mutability::Mut);
                     }
 
                     Callee::Calloc => {
-                        self.visit_place(destination, Mutability::Mut);
+                        let destination = self
+                            .acx
+                            .special_casts
+                            .get(&destination)
+                            .unwrap_or(&destination);
+                        self.visit_place(*destination, Mutability::Mut);
                     }
                     Callee::Realloc => {
-                        self.visit_place(destination, Mutability::Mut);
+                        let destination = self
+                            .acx
+                            .special_casts
+                            .get(&destination)
+                            .unwrap_or(&destination);
+                        let input_ptr_pl = args[0].place().unwrap();
+                        let first_arg = self
+                            .acx
+                            .special_casts
+                            .get(&input_ptr_pl)
+                            .unwrap_or(&input_ptr_pl);
+                        self.visit_place(*destination, Mutability::Mut);
                         let pl_lty = self.acx.type_of(destination);
                         assert!(args.len() == 2);
-                        self.visit_operand(&args[0]);
-                        let rv_lty = self.acx.type_of(&args[0]);
+                        self.visit_place(input_ptr_pl, Mutability::Not);
+                        let rv_lty = self.acx.type_of(first_arg);
 
                         // input needs FREE permission
                         let perms = PermissionSet::FREE;
@@ -345,11 +372,16 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         self.do_equivalence_nested(pl_lty, rv_lty);
                     }
                     Callee::Free => {
+                        let input_ptr_pl = args[0].place().unwrap();
+                        let first_arg = self
+                            .acx
+                            .special_casts
+                            .get(&input_ptr_pl)
+                            .unwrap_or(&input_ptr_pl);
                         self.visit_place(destination, Mutability::Mut);
                         assert!(args.len() == 1);
-                        self.visit_operand(&args[0]);
 
-                        let rv_lty = self.acx.type_of(&args[0]);
+                        let rv_lty = self.acx.type_of(first_arg);
                         let perms = PermissionSet::FREE;
                         self.constraints.add_all_perms(rv_lty.label, perms);
                     }

@@ -72,7 +72,8 @@ impl DataflowConstraints {
                 let PROPAGATE_UP = PermissionSet::READ
                     | PermissionSet::WRITE
                     | PermissionSet::OFFSET_ADD
-                    | PermissionSet::OFFSET_SUB;
+                    | PermissionSet::OFFSET_SUB
+                    | PermissionSet::FREE;
 
                 (
                     old_a & !(!old_b & PROPAGATE_DOWN),
