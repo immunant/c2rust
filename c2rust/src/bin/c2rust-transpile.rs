@@ -66,7 +66,7 @@ struct Args {
     ignore_c_multiple_info: bool,
 
     /// Dumps into files DOT visualizations of the CFGs of every function
-    #[clap(long)]
+    #[clap(long = "ddump-function-cfgs")]
     dump_function_cfgs: bool,
 
     /// Dumps into files JSON visualizations of the CFGs of every function
@@ -74,11 +74,11 @@ struct Args {
     json_function_cfgs: bool,
 
     /// Dump into the DOT file visualizations liveness information
-    #[clap(long, requires = "dump-function-cfgs")]
+    #[clap(long = "ddump-cfgs-liveness", requires = "dump-function-cfgs")]
     dump_cfgs_liveness: bool,
 
     /// Dumps out to STDERR the intermediate structures produced by relooper
-    #[clap(long)]
+    #[clap(long = "ddump-structures")]
     dump_structures: bool,
 
     /// Generate readable 'current_block' values in relooper
