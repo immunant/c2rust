@@ -198,6 +198,15 @@ class Config:
 config = Config()
 
 
+def get_host_triplet() -> str:
+    if on_linux():
+        return "x86_64-unknown-linux-gnu"
+    elif on_mac():
+        return "x86_64-apple-darwin"
+    else:
+        assert False, "not implemented"
+
+
 def update_or_init_submodule(submodule_path: str) -> None:
     git = get_cmd_or_die("git")
     invoke_quietly(git, "submodule", "update", "--init", submodule_path)
