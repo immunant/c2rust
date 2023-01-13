@@ -333,7 +333,7 @@ def ensure_dir(path: str) -> None:
         logging.debug("creating dir %s", path)
         os.makedirs(path, mode=0o744)
     if not os.path.isdir(path):
-        die("%s is not a directory", path)
+        die("%s is not a directory" % path)
 
 
 def is_elf_exe(path: str) -> bool:
@@ -556,9 +556,9 @@ def check_sig(afile: str, asigfile: str) -> None:
                 logging.warning("could not remove %s: not found.", f)
 
     if not os.path.isfile(afile):
-        die("archive file not found: %s", afile)
+        die("archive file not found: %s" % afile)
     if not os.path.isfile(asigfile):
-        die("signature file not found: %s", asigfile)
+        die("signature file not found: %s" % asigfile)
 
     # check that archive matches signature
     try:
