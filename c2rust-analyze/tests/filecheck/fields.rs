@@ -29,10 +29,10 @@ pub struct A<'a> {
     pub pra: *mut &'a mut A<'a>,
 }
 
-// CHECK-DAG: struct VecTup<'a,'h3,'h4> {
+// CHECK-DAG: struct VecTup<'a,'h3,'h4,'h0,'h1,'h2> {
 struct VecTup<'a> {
-    // CHECK-DAG: bar: &'h3 std::vec::Vec<(VecTup<'a,'h3,'h4>,&'h4 i32),std::alloc::Global>
-    bar: *mut Vec<(VecTup<'a>, *mut i32)>,
+    // CHECK-DAG: bar: &'h3 std::vec::Vec<(VecTup<'a,'h3,'h4,'h0,'h1,'h2>,&'h4 A<'a,'h0,'h1,'h2>),std::alloc::Global>
+    bar: *mut Vec<(VecTup<'a>, *mut A<'a>)>,
 }
 
 // let rd = (*(**ppd).a.pra).rd
