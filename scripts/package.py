@@ -137,7 +137,8 @@ class Driver:
         print(cmd)
         result = True
         if not dry_run:
-            result = invoke(cmd)
+            code, stdout, stderr = invoke(cmd)
+            result = code == 0
         print()
         return result
 
