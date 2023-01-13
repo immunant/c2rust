@@ -50,7 +50,7 @@ CRATES = [
 def confirm(prompt: str) -> bool:
     response = input(prompt + ' [y/N] ')
     try:
-        return strtobool(response)
+        return bool(strtobool(response))
     except ValueError:
         pass
     return False
