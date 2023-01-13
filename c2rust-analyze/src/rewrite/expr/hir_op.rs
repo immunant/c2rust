@@ -42,9 +42,8 @@ struct HirRewriteVisitor<'a, 'tcx> {
     ///
     /// However, we don't want to apply this `x.f()` to `(&x).f()` step on code that's already
     /// safe, since it's unnecessary there and makes the code harder to read.  Our solution is to
-    /// materialize all adjustments but give the resulting rewrites `Condition::ParentChanged`, so
-    /// those rewrites only take effect within code that's already being rewritten for some other
-    /// reason.
+    /// only materialize adjustments within the children (and further descendants) of nodes that
+    /// are already being rewritten for some other reason.
     materialize_adjustments: bool,
 }
 
@@ -60,8 +59,8 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
     }
 
     /// Find the sole `Location` where the provided filters match and the statement or terminator
-    /// has a span exactly equal to `target_span`.  Panics if there is no such location or if there
-    /// are multiple matching locations.
+    /// has a span exactly equal to `target_span`.  Returns `Err` if there is no such location or
+    /// if there are multiple matching locations.
     fn find_sole_location_matching(
         &mut self,
         target_span: Span,
