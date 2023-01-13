@@ -654,25 +654,24 @@ fn run(tcx: TyCtxt) {
         }
 
         eprintln!("\ntype assignment for {:?}:", name);
-        for (local, decl) in mir.local_decls.iter_enumerated() {
-            // TODO: apply `Cell` if `addr_of_local` indicates it's needed
-            let ty = type_desc::convert_type(&acx, acx.local_tys[local], &asn);
-            eprintln!("{:?} ({}): {:?}", local, describe_local(tcx, decl), ty,);
-        }
+        rewrite::dump_rewritten_local_tys(&acx, &asn, &mir, describe_local);
 
         eprintln!();
         let hir_body_id = tcx.hir().body_owned_by(ldid);
-        let hir_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
+        let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
+        let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
         // Print rewrites
         eprintln!(
-            "\ngenerated {} rewrites for {:?}:",
-            hir_rewrites.len(),
+            "\ngenerated {} expr rewrites + {} ty rewrites for {:?}:",
+            expr_rewrites.len(),
+            ty_rewrites.len(),
             name
         );
-        for &(span, ref rw) in &hir_rewrites {
+        for &(span, ref rw) in expr_rewrites.iter().chain(ty_rewrites.iter()) {
             eprintln!("  {}: {}", describe_span(tcx, span), rw);
         }
-        all_rewrites.extend(hir_rewrites);
+        all_rewrites.extend(expr_rewrites);
+        all_rewrites.extend(ty_rewrites);
     }
 
     // Apply rewrite to all functions at once.

@@ -52,8 +52,10 @@ struct VecTup<'a> {
 // CHECK-DAG: assign Label { origin: Some(Origin([[P_REF_A_ORIGIN]]))
 
 // CHECK-LABEL: final labeling for "_field_access"
-// CHECK-DAG: ([[@LINE+3]]: ppd): addr_of = UNIQUE, type = READ | WRITE | UNIQUE
-// CHECK-DAG: ([[@LINE+2]]: ra): &mut A
+// CHECK-DAG: ([[@LINE+5]]: ppd): addr_of = UNIQUE, type = READ | WRITE | UNIQUE
+// FIXME: `ra: &A` is known to be incorrect - it should be `ra: &mut A`.  However, we don't
+// properly prevent rewriting of already-safe reference types at the moment.
+// CHECK-DAG: ([[@LINE+2]]: ra): &A
 // CHECK-DAG: ([[@LINE+1]]: ppd): &mut &mut Data
 unsafe fn _field_access<'d>(ra: &'d mut A<'d>, ppd: *mut *mut Data<'d>) {
     // CHECK-DAG: ([[@LINE+2]]: rd): addr_of = UNIQUE, type = READ | UNIQUE

@@ -6,8 +6,11 @@ use std::fmt;
 mod apply;
 mod expr;
 mod span_index;
+mod ty;
 
 pub use self::expr::gen_expr_rewrites;
+pub use self::ty::dump_rewritten_local_tys;
+pub use self::ty::gen_ty_rewrites;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Rewrite<S = Span> {
@@ -33,6 +36,8 @@ pub enum Rewrite<S = Span> {
     LitZero,
 
     // Type builders
+    /// Emit a complete pretty-printed type, discarding the original annotation.
+    PrintTy(String),
     /// `*const T`, `*mut T`
     TyPtr(Box<Rewrite>, Mutability),
     /// `&T`, `&mut T`
@@ -111,6 +116,9 @@ impl Rewrite {
             }),
             Rewrite::LitZero => write!(f, "0"),
 
+            Rewrite::PrintTy(ref s) => {
+                write!(f, "{}", s)
+            }
             Rewrite::TyPtr(ref rw, mutbl) => {
                 match mutbl {
                     Mutability::Not => write!(f, "*const ")?,

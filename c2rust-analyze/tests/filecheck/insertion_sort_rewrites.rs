@@ -5,7 +5,7 @@
 extern crate libc;
 
 #[no_mangle]
-// CHECK-LABEL: generated 8 rewrites for "insertion_sort"
+// CHECK-LABEL: generated 8 expr rewrites + {{[0-9]*}} ty rewrites for "insertion_sort"
 pub unsafe extern "C" fn insertion_sort(n: libc::c_int, p: *mut libc::c_int) {
     let mut i: libc::c_int = 1 as libc::c_int;
     while i < n {

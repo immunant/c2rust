@@ -277,6 +277,9 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
                 self.emit_str("0");
             }
 
+            Rewrite::PrintTy(ref s) => {
+                self.emit_str(s);
+            }
             Rewrite::TyPtr(ref rw, mutbl) => {
                 match mutbl {
                     Mutability::Not => self.emit_str("*const "),

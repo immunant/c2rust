@@ -292,7 +292,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         let arg_expect_qty = match result_qty {
             Quantity::Single => Quantity::Slice,
             Quantity::Slice => Quantity::Slice,
-            Quantity::OffsetPtr => todo!("OffsetPtr"),
+            Quantity::OffsetPtr => Quantity::OffsetPtr,
         };
 
         self.enter_call_arg(0, |v| {
