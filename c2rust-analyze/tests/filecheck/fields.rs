@@ -29,6 +29,12 @@ pub struct A<'a> {
     pub pra: *mut &'a mut A<'a>,
 }
 
+// CHECK-DAG: struct VecTup<'a,'h3,'h4> {
+struct VecTup<'a> {
+    // CHECK-DAG: bar: &'h3 std::vec::Vec<(VecTup<'a,'h3,'h4>,&'h4 i32),std::alloc::Global>
+    bar: *mut Vec<(VecTup<'a>, *mut i32)>,
+}
+
 // let rd = (*(**ppd).a.pra).rd
 // CHECK-DAG: Label { origin: Some(Origin([[REF_D_ORIGIN:[0-9]+]])), origin_params: None{{.*}}}#&'a Data
 // CHECK-DAG: Label { origin: None, origin_params: Some([('d, Origin([[REF_D_ORIGIN]])){{.*}}}#Data

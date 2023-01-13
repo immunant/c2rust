@@ -25,6 +25,7 @@ use crate::labeled_ty::LabeledTyCtxt;
 use crate::util::Callee;
 use assert_matches::assert_matches;
 use indexmap::IndexSet;
+use labeled_ty::LabeledTy;
 use rustc_ast::Mutability;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
@@ -295,6 +296,38 @@ pub struct AdtMetadataTable<'tcx> {
 
 impl<'tcx> Debug for AdtMetadataTable<'tcx> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt_string(lty: LabeledTy<'_, &[OriginArg]>) -> String {
+            let args: Vec<String> = lty.args.iter().map(|t| fmt_string(t)).collect();
+            use rustc_type_ir::TyKind::*;
+            match lty.kind() {
+                Ref(..) | RawPtr(..) => {
+                    format!("&{:?} {:}", lty.label[0], args[0])
+                }
+                Adt(adt, _) => {
+                    let mut s = format!("{adt:?}");
+                    let params = lty
+                        .label
+                        .iter()
+                        .map(|p| format!("{:?}", p))
+                        .into_iter()
+                        .chain(args.into_iter())
+                        .collect::<Vec<_>>()
+                        .join(",");
+
+                    if !params.is_empty() {
+                        s.push('<');
+                        s.push_str(&params);
+                        s.push('>');
+                    }
+                    s
+                }
+                Tuple(_) => {
+                    format!("({:})", args.join(","))
+                }
+                _ => format!("{:?}", lty.ty),
+            }
+        }
+
         for k in &self.struct_dids {
             let adt = &self.table[k];
             write!(f, "struct {:}", self.tcx.item_name(*k))?;
@@ -308,34 +341,10 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
             write!(f, "{lifetime_params_str:}")?;
             writeln!(f, "> {{")?;
             for (fdid, fmeta) in &adt.field_info {
-                // writeln!(f, "{:?}", fmeta.lifetime_params);
                 write!(f, "\t{:}: ", self.tcx.item_name(*fdid))?;
-                for lty in fmeta.lifetime_params.iter() {
-                    match lty.kind() {
-                        TyKind::Ref(..) | TyKind::RawPtr(..) => {
-                            write!(f, "&{:?} ", lty.label[0])?;
-                        }
-                        TyKind::Adt(adt, _) => {
-                            write!(f, "{adt:?}")?;
-                            if let Some(f_adt_meta) = &self.table.get(&adt.did()) {
-                                if !f_adt_meta.lifetime_params.is_empty() {
-                                    write!(f, "<")?;
-                                    let f_params_str = lty
-                                        .label
-                                        .iter()
-                                        .map(|p| format!("{:?}", p))
-                                        .collect::<Vec<_>>()
-                                        .join(",");
-                                    write!(f, "{f_params_str:}")?;
-                                    write!(f, ">")?;
-                                }
-                            }
-                        }
-                        _ => {
-                            write!(f, "{:?}", lty.ty)?;
-                        }
-                    }
-                }
+                let field_string_lty = fmt_string(fmeta.lifetime_params);
+
+                write!(f, "{field_string_lty:}")?;
 
                 writeln!(f)?;
             }
