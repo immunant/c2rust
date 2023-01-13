@@ -416,7 +416,7 @@ class TestDirectory:
 
             try:
                 logging.debug("translating %s", c_file_short)
-                translated_rust_file = c_file.translate(self.generated_files["cc_db"],
+                translated_rust_file = c_file.translate(self.generated_files["cc_db"][0],
                                                         ld_lib_path,
                                                         extra_args=target_args(self.target))
             except NonZeroReturn as exception:
