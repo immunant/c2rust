@@ -37,7 +37,7 @@ def convert_entries(entries: List[Dict[str, Any]],
             if arg in {"-D", "-U", "-I", "-include"}:
                 # TODO: use the full list of `Separate` options from gcc
                 ei.new_args.append(arg)
-                ei.append(next(arg_iter))
+                ei.new_args.append(next(arg_iter))
 
             elif arg == "-c":
                 ei.compile_only = True
