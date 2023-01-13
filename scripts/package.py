@@ -7,9 +7,13 @@ import re
 
 import toml
 
+from typing import Any, Callable, Dict, Optional, Tuple
+
+
 from common import (
     config as c,
     Colors,
+    Command,
     get_cmd_or_die,
     invoke,
     invoke_quietly,
@@ -43,7 +47,7 @@ CRATES = [
 ]
 
 
-def confirm(prompt):
+def confirm(prompt: str) -> bool:
     response = input(prompt + ' [y/N] ')
     try:
         return strtobool(response)
@@ -52,26 +56,26 @@ def confirm(prompt):
     return False
 
 
-def print_error(msg):
+def print_error(msg: str) -> None:
     print(Colors.FAIL + 'ERROR: ' + Colors.NO_COLOR + msg)
 
 
-def print_warning(msg):
+def print_warning(msg: str) -> None:
     print(Colors.WARNING + 'WARNING: ' + Colors.NO_COLOR + msg)
 
 
 class Driver:
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace):
         self.crates = args.crates if args.crates else []
         self.dry_run = args.dry_run
         self.subcommand = args.subcommand
         self.version = args.version
         self.args = args
 
-    def run(self):
+    def run(self) -> Any:
         getattr(self, self.subcommand)()
 
-    def check(self):
+    def check(self) -> bool:
         # Make sure any changed crates have updated versions
         ok = self._in_crates(self._check_version)
 
@@ -100,10 +104,10 @@ class Driver:
 
         return ok
 
-    def package(self):
+    def package(self) -> None:
         self._in_crates(self._package)
 
-    def publish(self):
+    def publish(self) -> None:
         if not self.check():
             print_error('Checks failed, cannot publish until errors are resolved.')
             exit(1)
@@ -126,7 +130,7 @@ class Driver:
 
         self._in_crates(self._publish)
 
-    def _invoke(self, cmd, dry_run=None):
+    def _invoke(self, cmd: Command, dry_run: Optional[bool] = None) -> bool:
         if dry_run is None:
             dry_run = self.dry_run
 
@@ -137,7 +141,7 @@ class Driver:
         print()
         return result
 
-    def _in_crates(self, callback):
+    def _in_crates(self, callback: Callable[..., Any]) -> Any:
         """Run the given callback in the crates with the provided names. If crates is
         empty, run the callback for all CRATES
         """
@@ -152,7 +156,7 @@ class Driver:
                         ok = False
         return ok
 
-    def _check_version(self, crate_name, cargo_toml):
+    def _check_version(self, crate_name: str, cargo_toml: Dict[str, Any]) -> bool:
         old_version = cargo_toml['package']['version']
         try:
             diff_since_last_tag = git('diff', old_version, '--', '.').strip()
@@ -165,11 +169,11 @@ class Driver:
             return False
         return True
 
-    def _package(self, crate_name, cargo_toml):
+    def _package(self, crate_name: str, cargo_toml: Dict[str, Any]) -> bool:
         cmd = cargo['package', '--color', 'always', '--no-verify', '--allow-dirty']
         return self._invoke(cmd)
 
-    def _git_push_tag(self):
+    def _git_push_tag(self) -> bool:
         remotes = git('remote', '--verbose')
         matches = re.search(r'(\S+)\s+git@github\.com:immunant/c2rust\.git', remotes)
         if not matches:
@@ -194,7 +198,7 @@ class Driver:
                 return False
         return True
 
-    def _publish(self, crate_name, cargo_toml):
+    def _publish(self, crate_name: str, cargo_toml: Dict[str, Any]) -> bool:
         args = ['publish']
         if self.dry_run:
             args += ['--dry-run']
@@ -202,7 +206,7 @@ class Driver:
         return self._invoke(cmd)
 
 
-def _parse_args():
+def _parse_args() -> argparse.Namespace:
     """
     define and parse command line arguments here.
     """
@@ -224,7 +228,7 @@ def _parse_args():
     return parser.parse_args()
 
 
-def main():
+def main() -> None:
     setup_logging()
     args = _parse_args()
     Driver(args).run()

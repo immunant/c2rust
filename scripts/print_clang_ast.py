@@ -5,11 +5,11 @@ import sys
 import json
 import logging
 import subprocess
-from typing import List
+from typing import Any, Dict, List
 from common import setup_logging, die, get_cmd_or_die
 
 
-def dump_ast(cmd):
+def dump_ast(cmd: Dict[str, Any]) -> None:
     args: List[str] = cmd["arguments"]
     assert len(args) >= 3 and args[1] == "-c"
     args[0] = "clang"
@@ -26,7 +26,7 @@ def dump_ast(cmd):
         os.chdir(olddir)
 
 
-def main():
+def main() -> None:
     setup_logging()
     if not len(sys.argv) == 3:
         print(

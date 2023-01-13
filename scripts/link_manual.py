@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os.path
+from typing import List
 
 from common import (
     get_cmd_or_die,
@@ -11,7 +12,7 @@ from common import (
 EXTENSIONS = ['*.md', '*.png', '*.html', '*.css']
 
 
-def list_files(untracked=False):
+def list_files(untracked: bool = False) -> List[str]:
     git = get_cmd_or_die('git')
     args = ['ls-files', '--cached', '--exclude-standard']
     if untracked:
@@ -21,7 +22,7 @@ def list_files(untracked=False):
     return [f for f in files if not os.path.islink(f)]
 
 
-def _main():
+def _main() -> None:
     candidates = list_files()
     for f in candidates:
         # skip files in manual/

@@ -8,6 +8,8 @@ import multiprocessing
 import re
 import sys
 
+from typing import Dict, List, Optional
+
 from common import (
     config as c,
     pb,
@@ -42,7 +44,7 @@ EXAMPLES = [
 ]
 
 
-def build_path(path, new: str, is_dir: bool) -> str:
+def build_path(path: str, new: str, is_dir: bool) -> str:
     err_msg = "`{}` does not exist in {}".format(new, path)
 
     new_path = os.path.join(path, new)
@@ -53,16 +55,16 @@ def build_path(path, new: str, is_dir: bool) -> str:
     return new_path
 
 
-def print_blue(msg: str):
+def print_blue(msg: str) -> None:
     print(Colors.OKBLUE + msg + Colors.NO_COLOR)
 
 
 class Test:
-    def __init__(self, args=None):
+    def __init__(self, args: argparse.Namespace):
         self.args = args
         self.project_name = ''
-        self.transpiler_args = []
-        self.ib_cmd = []
+        self.transpiler_args: List[str] = []
+        self.ib_cmd: List[str] = []
         self.example_dir = ''
         self.repo_dir = ''
         # Source directory where `Crate` files will live,
@@ -70,27 +72,27 @@ class Test:
         self.rust_src = ''
         self.cc_db = ''
 
-    def init_submodule(self):
+    def init_submodule(self) -> None:
         if self.args.regex_examples.fullmatch(self.project_name):
             print_blue("Initializing {}...".format(self.project_name))
             with pb.local.cwd(self.example_dir):
                 invoke(git, ['submodule', 'update', '--init', 'repo'])
 
-    def deinit_submodule(self):
+    def deinit_submodule(self) -> None:
         if self.args.regex_examples.fullmatch(self.project_name) and self.args.deinit:
             print_blue("Deinitializing {}...".format(self.project_name))
             with pb.local.cwd(self.example_dir):
                 invoke(git, ['submodule', 'deinit', 'repo', '-f'])
 
     # Should be used on projects that utilize GNU Build Systems
-    def autotools(self, configure_args=[]):
+    def autotools(self, configure_args: List[str] = []) -> None:
         with pb.local.cwd(self.repo_dir):
             invoke(pb.local['./autogen.sh'])
             with pb.local.env(CFLAGS="-g -O0"):
                 invoke(pb.local['./configure'], configure_args)
 
     # `gen_cc_db` generates the `compile_commands.json` for a project
-    def gen_cc_db(self):
+    def gen_cc_db(self) -> None:
         with pb.local.cwd(self.repo_dir):
             invoke(make, ['clean'])
             invoke(intercept_build, *self.ib_cmd)
@@ -99,7 +101,7 @@ class Test:
 
     # `transpile` in most cases runs the transpile function from `common.py`,
     # which in turn just calls `c2rust transpile *args`
-    def transpile(self):
+    def transpile(self) -> None:
         with pb.local.cwd(self.repo_dir):
             transpile(self.cc_db,
                       emit_build_files=False,
@@ -107,14 +109,14 @@ class Test:
 
     # `build` is the main builder function, this is where either the `Crate`
     # will be built or rustc will be called directly
-    def build(self):
+    def build(self) -> None:
         with pb.local.cwd(self.rust_src):
             invoke(cargo, ['build', '-j{}'.format(NUM_JOBS)])
 
-    def test(self):
+    def test(self) -> None:
         pass
 
-    def build_and_test(self):
+    def build_and_test(self) -> None:
         self.gen_cc_db()
         self.transpile()
         self.build()
@@ -122,7 +124,7 @@ class Test:
 
 
 class Genann(Test):
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.project_name = 'genann'
         self.example_dir = build_path(
@@ -134,10 +136,10 @@ class Genann(Test):
         self.ib_cmd = ['make']
         self.init_submodule()
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.deinit_submodule()
 
-    def test(self):
+    def test(self) -> None:
         rm = get_cmd_or_die('rm')
         ln = get_cmd_or_die('ln')
         for N in (1, 4):
@@ -153,7 +155,7 @@ class Genann(Test):
 
     # Helper function that transpiles whatever test is
     # passed in as `main`
-    def _transpile_example(self, main: str):
+    def _transpile_example(self, main: str) -> None:
         transpile(self.cc_db,
                   emit_build_files=False,
                   extra_transpiler_args=['--emit-build-files', '--binary', main,
@@ -162,7 +164,7 @@ class Genann(Test):
 
 
 class Grabc(Test):
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.project_name = 'grabc'
         self.transpiler_args = ['--overwrite-existing']
@@ -173,16 +175,16 @@ class Grabc(Test):
         self.build_flags = ['grabc.rs', '-L/usr/x11R6/lib', '-lX11']
         self.init_submodule()
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.deinit_submodule()
 
-    def build(self):
+    def build(self) -> None:
         with pb.local.cwd(self.repo_dir):
             invoke(rustc, *self.build_flags)
 
 
 class Libxml2(Test):
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.project_name = 'libxml2'
         self.transpiler_args = []
@@ -190,14 +192,14 @@ class Libxml2(Test):
         self.example_dir = build_path(
             c.EXAMPLES_DIR, self.project_name, is_dir=True)
         self.repo_dir = build_path(self.example_dir, 'repo', is_dir=True)
-        self.build_flags = []
+        self.build_flags: List[str] = []
         self.init_submodule()
         self.rust_src = os.path.join(self.repo_dir, 'rust')
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.deinit_submodule()
 
-    def gen_cc_db(self):
+    def gen_cc_db(self) -> None:
         # Without --disable-static, libtool builds two copies of many source
         # files. We can't handle that, so we disable that behavior here.
         self.autotools(['--disable-static'])
@@ -205,15 +207,15 @@ class Libxml2(Test):
             invoke(make, ['clean'])
             invoke(intercept_build, *self.ib_cmd)
 
-    def transpile(self):
+    def transpile(self) -> None:
         with pb.local.cwd(self.example_dir):
             invoke(pb.local['./translate.py'])
             invoke(pb.local['./patch_translated_code.py'])
 
     # Iterates through the list of tests, and then runs each one
-    def test(self):
+    def test(self) -> None:
         # testname -> input_file
-        tests = {
+        tests: Dict[str, List[str]] = {
             "xmllint": ['test/bigname.xml'],
             "runtest": [],
             "testapi": [],
@@ -243,7 +245,7 @@ class Libxml2(Test):
 
 
 class Lil(Test):
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.project_name = 'lil'
         self.example_dir = build_path(
@@ -254,15 +256,15 @@ class Lil(Test):
                                 '--overwrite-existing',
                                 '--output-dir', self.rust_src]
         self.ib_cmd = ['make']
-        self.build_flags = []
+        self.build_flags: List[str] = []
         self.init_submodule()
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.deinit_submodule()
 
 
 class Snudown(Test):
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.project_name = 'snudown'
         self.transpiler_args = ['--overwrite-existing']
@@ -273,25 +275,25 @@ class Snudown(Test):
         self.build_flags = ['setup.py', 'build', '--translate']
         self.init_submodule()
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.deinit_submodule()
 
-    def gen_cc_db(self):
+    def gen_cc_db(self) -> None:
         pass
 
-    def transpile(self):
+    def transpile(self) -> None:
         pass
 
-    def build(self):
+    def build(self) -> None:
         with pb.local.cwd(self.repo_dir):
             invoke(python, *self.build_flags)
 
-    def test(self):
+    def test(self) -> None:
         with pb.local.cwd(self.repo_dir):
             invoke(python, ['setup.py', 'test'])
 
 class TinyCC(Test):
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.project_name = 'tinycc'
         self.transpiler_args = []
@@ -299,33 +301,33 @@ class TinyCC(Test):
         self.example_dir = build_path(
             c.EXAMPLES_DIR, self.project_name, is_dir=True)
         self.repo_dir = build_path(self.example_dir, 'repo', is_dir=True)
-        self.build_flags = []
+        self.build_flags: List[str] = []
         self.init_submodule()
         self.rust_src = os.path.join(self.repo_dir, 'rust')
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.deinit_submodule()
 
-    def autotools(self):
+    def autotools(self, configure_args: List[str] = []) -> None:
         os.chdir(self.repo_dir)
         invoke(pb.local['./configure'])
 
-    def gen_cc_db(self):
+    def gen_cc_db(self) -> None:
         self.autotools()
         with pb.local.cwd(self.repo_dir):
             invoke(make, ['clean'])
             invoke(intercept_build, *self.ib_cmd)
 
-    def transpile(self):
+    def transpile(self) -> None:
         with pb.local.cwd(self.example_dir):
             invoke(pb.local['./translate.py'])
 
-    def test(self):
+    def test(self) -> None:
         with pb.local.cwd(self.repo_dir):
             invoke(make, ['rust-test'])
 
 class Tmux(Test):
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.project_name = 'tmux'
         self.transpiler_args = []
@@ -333,26 +335,26 @@ class Tmux(Test):
         self.example_dir = build_path(
             c.EXAMPLES_DIR, self.project_name, is_dir=True)
         self.repo_dir = build_path(self.example_dir, 'repo', is_dir=True)
-        self.build_flags = []
+        self.build_flags: List[str] = []
         self.init_submodule()
         self.rust_src = os.path.join(self.repo_dir, 'rust')
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.deinit_submodule()
 
-    def gen_cc_db(self):
+    def gen_cc_db(self) -> None:
         self.autotools()
         with pb.local.cwd(self.repo_dir):
             invoke(make, ['clean'])
             invoke(intercept_build, *self.ib_cmd)
 
-    def transpile(self):
+    def transpile(self) -> None:
         with pb.local.cwd(self.example_dir):
             invoke(pb.local['./translate.py'])
 
 
 class Urlparser(Test):
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.project_name = 'urlparser'
         self.transpiler_args = ['--overwrite-existing']
@@ -363,16 +365,16 @@ class Urlparser(Test):
         self.build_flags = ['test.rs']
         self.init_submodule()
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.deinit_submodule()
 
-    def build(self):
+    def build(self) -> None:
         with pb.local.cwd(self.repo_dir):
             invoke(rustc, *self.build_flags)
 
 
 class Xzoom(Test):
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.project_name = 'xzoom'
         self.transpiler_args = ['--overwrite-existing']
@@ -384,21 +386,21 @@ class Xzoom(Test):
         self.build_flags = ['xzoom.rs', '-L/usr/x11R6/lib', '-lX11']
         self.init_submodule()
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.deinit_submodule()
 
-    def gen_cc_db(self):
+    def gen_cc_db(self) -> None:
         with pb.local.cwd(self.repo_dir):
             invoke(intercept_build, *self.ib_cmd)
             self.cc_db = build_path(self.repo_dir, 'compile_commands.json',
                                     is_dir=False)
 
-    def build(self):
+    def build(self) -> None:
         with pb.local.cwd(self.repo_dir):
             invoke(rustc, *self.build_flags)
 
 
-def _is_excluded(name):
+def _is_excluded(name: str) -> bool:
     """
     The examples that use x11 and the `f128` crate need to be excluded on macOS.
     This function can be extended to exclude examples
@@ -414,7 +416,7 @@ def _is_excluded(name):
     return name in mac_exclusion_set and on_mac()
 
 
-def _parser_args():
+def _parser_args() -> argparse.Namespace:
     desc = 'Build and test examples.'
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument(
@@ -431,7 +433,7 @@ def _parser_args():
     return args
 
 
-def run(args):
+def run(args: argparse.Namespace) -> None:
     examples = [
         Genann(args),
         Grabc(args),
@@ -452,7 +454,7 @@ def run(args):
           Colors.NO_COLOR)
 
 
-def main():
+def main() -> None:
     setup_logging()
     args = _parser_args()
     run(args)

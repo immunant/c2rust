@@ -25,12 +25,14 @@ from common import (
 )
 
 
-def download_llvm_sources():
+def download_llvm_sources() -> None:
     tar = get_cmd_or_die("tar")
 
     if not c.LLVM_SKIP_SIGNATURE_CHECKS:
         # make sure we have the gpg public key installed first
         install_sig(c.LLVM_PUBKEY)
+
+    assert c.LLVM_ARCHIVE_URLS is not None  # for mypy
 
     with pb.local.cwd(c.BUILD_DIR):
         # download archives and signatures
@@ -41,7 +43,7 @@ def download_llvm_sources():
                 c.LLVM_ARCHIVE_DIRS):
 
             if c.LLVM_SKIP_SIGNATURE_CHECKS:
-                asig = None
+                asig = None  # type: ignore
             # download archive and (by default) its signature
             download_archive(aurl, afile, asig)
 
@@ -77,7 +79,7 @@ def download_llvm_sources():
                 "--directory", cmake_modules_dir)
 
 
-def configure_and_build_llvm(args) -> None:
+def configure_and_build_llvm(args: argparse.Namespace) -> None:
     """
     run cmake as needed to generate ninja buildfiles. then run ninja.
     """
@@ -165,8 +167,8 @@ def configure_and_build_llvm(args) -> None:
             'llvm-config',
             'install-clang-headers', 'install-compiler-rt-headers',
             'FileCheck', 'count', 'not']
-        (major, _minor, _point) = c.LLVM_VER.split(".")
-        major = int(major)
+        (major_str, _minor, _point) = c.LLVM_VER.split(".")
+        major = int(major_str)
         if major >= 7 and major < 10:
             nice_args += [
                 'LLVMDebugInfoMSF',
@@ -188,7 +190,7 @@ def configure_and_build_llvm(args) -> None:
         os.makedirs(os.path.join(c.LLVM_INSTALL, 'bin'), exist_ok=True)
 
 
-def need_cargo_clean(args) -> bool:
+def need_cargo_clean(args: argparse.Namespace) -> bool:
     """
     Cargo may not pick up changes in c.BUILD_DIR that would require
     a rebuild. This function tries to detect when we need to clean.
@@ -213,7 +215,7 @@ def need_cargo_clean(args) -> bool:
     return False
 
 
-def build_transpiler(args):
+def build_transpiler(args: argparse.Namespace) -> None:
     nice = get_cmd_or_die("nice")
     cargo = get_cmd_or_die("cargo")
 
@@ -254,7 +256,7 @@ def build_transpiler(args):
             invoke(nice, *build_flags)
 
 
-def _parse_args():
+def _parse_args() -> argparse.Namespace:
     """
     define and parse command line arguments here.
     """
@@ -296,7 +298,7 @@ def _parse_args():
     return args
 
 
-def binary_in_path(binary_name) -> bool:
+def binary_in_path(binary_name: str) -> bool:
     try:
         # raises CommandNotFound exception if not available.
         _ = pb.local[binary_name]  # noqa: F841
@@ -305,7 +307,7 @@ def binary_in_path(binary_name) -> bool:
         return False
 
 
-def c2rust_bin_path(args):
+def c2rust_bin_path(args: argparse.Namespace) -> str:
     c2rust_bin_path = 'target/debug/c2rust' if args.debug \
                       else 'target/release/c2rust'
     c2rust_bin_path = os.path.join(c.ROOT_DIR, c2rust_bin_path)
@@ -314,14 +316,14 @@ def c2rust_bin_path(args):
     return os.path.relpath(c2rust_bin_path, abs_curdir)
 
 
-def print_success_msg(args):
+def print_success_msg(args: argparse.Namespace) -> None:
     """
     print a helpful message on how to run the c2rust binary.
     """
     print("success! you may now run", c2rust_bin_path(args))
 
 
-def _main():
+def _main() -> None:
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 

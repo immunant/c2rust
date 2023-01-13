@@ -15,7 +15,7 @@ def query_toml(path: Path, query: Iterable[str]) -> Any:
     return result
 
 
-def main():
+def main() -> None:
     parser = ArgumentParser()
     parser.add_argument("query", type=str, help="the TOML query, with fields separated by .")
     parser.add_argument("path", type=Path, help="the path to a TOML file")

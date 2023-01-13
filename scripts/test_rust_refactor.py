@@ -86,7 +86,7 @@ def run_tests(testcases: List[str]) -> None:
                         logging.debug("".join(lines))
 
 
-def main():
+def main() -> None:
     # TODO: implement rustfmt and diff actions from `run-test.sh`
 
     setup_logging()
