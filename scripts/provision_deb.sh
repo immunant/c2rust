@@ -15,16 +15,7 @@ SCRIPT_DIR="$(dirname "$0")"
 # Configure apt to avoid to avoid provisioning slowdowns
 echo "Acquire::ForceIPv4 \"true\";" > /etc/apt/apt.conf.d/99force-ipv4
 
-# Retry the `apt-get update` command a few times upon failure
-# to work around transient network problems in CI.
-n=0
-tries=5
-until [ $n -ge $tries ]
-do
-    apt-get update -qq && break
-    n=$[$n+1]
-    sleep 30
-done
+apt-get update -qq
 
 apt-get install -y --no-install-recommends \
     apt-utils \
