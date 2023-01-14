@@ -159,6 +159,7 @@ struct Args {
 }
 
 #[derive(Debug, ValueEnum, Clone)]
+#[clap(rename_all = "snake_case")]
 enum InvalidCodes {
     Panic,
     CompileError,
