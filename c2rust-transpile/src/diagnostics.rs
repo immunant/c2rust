@@ -15,7 +15,7 @@ use c2rust_ast_exporter::get_clang_major_version;
 const DEFAULT_WARNINGS: &[Diagnostic] = &[Diagnostic::ClangAst];
 
 #[derive(PartialEq, Eq, Hash, Debug, Display, EnumString, Clone)]
-#[strum(serialize_all = "kebab_case")]
+#[strum(serialize_all = "kebab-case")]
 pub enum Diagnostic {
     All,
     Comments,
