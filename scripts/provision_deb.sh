@@ -30,31 +30,33 @@ apt-get install -y --no-install-recommends \
     apt-utils \
     apt-transport-https \
     ca-certificates
-# gnupg2: required for gnupg2 key retrieval
-# llvm: required for llvm-config
-apt-get install -qq \
-    clang \
-    cmake \
-    curl \
-    dirmngr \
-    git \
-    gnupg2 \
-    gperf \
-    htop \
-    libclang-dev \
-    libssl-dev \
-    llvm \
-    ninja-build \
-    pkg-config \
-    python-dev \
-    python3-pip \
-    python3-setuptools \
-    software-properties-common \
-    strace \
-    unzip \
-    libncurses5-dev \
-    luarocks \
+
+packages=(
+    clang
+    cmake
+    curl
+    dirmngr
+    git
+    gnupg2 # required for gnupg2 key retrieval
+    gperf
+    htop
+    libclang-dev
+    libssl-dev
+    llvm # required for llvm-config
+    ninja-build
+    pkg-config
+    python-dev
+    python3-pip
+    python3-setuptools
+    software-properties-common
+    strace
+    unzip
+    libncurses5-dev
+    luarocks
     zlib1g-dev
+)
+
+apt-get install -qq "${packages[@]}"
 
 apt-get clean # clear apt-caches to reduce image size
 
