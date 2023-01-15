@@ -221,12 +221,7 @@ fn main() {
         fail_on_error: args.fail_on_error,
         fail_on_multiple: args.fail_on_multiple,
         filter: {
-            if args.filter.is_some() {
-                let filter = args.filter.unwrap();
-                Some(Regex::new(filter.as_str()).unwrap())
-            } else {
-                None
-            }
+            args.filter.map(|filter| Regex::new(filter.as_str()).unwrap())
         },
         debug_relooper_labels: args.debug_labels,
         prefix_function_names: args.prefix_function_names,
