@@ -187,8 +187,7 @@ fn main() {
         )
     });
 
-    let extra_args = args.extra_clang_args;
-    let extra_args = extra_args.iter().map(AsRef::as_ref).collect::<Vec<&str>>();
+    let extra_args = args.extra_clang_args.iter().map(AsRef::as_ref).collect::<Vec<&str>>();
     let extra_args = extra_args.as_slice();
 
     let enabled_warnings: HashSet<Diagnostic> = args
