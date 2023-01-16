@@ -45,21 +45,12 @@ pub struct FieldMetadata<'tcx> {
 }
 
 /// Metadata describing the lifetime parameters and fields of a `struct`.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Default)]
 pub struct AdtMetadata<'tcx> {
     /// The lifetime parameters of a structure, including
     /// hypothetical lifetimes derived from pointer fields.
     pub lifetime_params: IndexSet<OriginParam>,
     pub field_info: IndexMap<DefId, FieldMetadata<'tcx>>,
-}
-
-impl Default for AdtMetadata<'_> {
-    fn default() -> Self {
-        Self {
-            lifetime_params: IndexSet::new(),
-            field_info: IndexMap::new(),
-        }
-    }
 }
 
 /// An origin parameter of a type to resolve in a MIR body
