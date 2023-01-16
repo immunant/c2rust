@@ -32,8 +32,7 @@ pub struct Label<'tcx> {
 pub type LTy<'tcx> = LabeledTy<'tcx, Label<'tcx>>;
 pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, Label<'tcx>>;
 
-/// Metadata describing lifetimes and lifetime parameters
-/// of a struct field.
+/// Metadata describing lifetimes and lifetime parameters of a `struct` field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldMetadata<'tcx> {
     /// The lifetime parameters of a field, e.g. if a struct
