@@ -65,8 +65,7 @@ impl Default for AdtMetadata<'_> {
 }
 
 /// An origin parameter of a type to resolve in a MIR body
-/// that will get mapped to a concrete Origin to
-/// provide to polonius.
+/// that will get mapped to a concrete [`Origin`] to provide to polonius.
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
 pub enum OriginParam {
     /// An existing [`EarlyBoundRegion`], i.e. `'a` in `struct A<'a>`
