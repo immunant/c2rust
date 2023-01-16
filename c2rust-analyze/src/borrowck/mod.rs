@@ -71,7 +71,7 @@ impl Default for AdtMetadata<'_> {
 pub enum OriginParam {
     /// An existing [`EarlyBoundRegion`], i.e. `'a` in `struct A<'a>`
     Actual(EarlyBoundRegion),
-    /// A hypothesized region derived from a pointer type
+    /// A hypothesized region derived from a pointer type,
     /// e.g. `'h0` derived from the pointer in `*mut foo`
     Hypothetical(i64),
 }
