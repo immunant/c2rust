@@ -77,8 +77,7 @@ pub enum OriginParam {
 }
 
 /// An origin arg of a field type resolve in a MIR body
-/// that will get mapped to a concrete Origin to
-/// provide to polonius.
+/// that will get mapped to a concrete [`Origin`] to provide to polonius.
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
 pub enum OriginArg<'tcx> {
     /// An existing [`Region`], i.e. `'a` in `&'a foo`.
