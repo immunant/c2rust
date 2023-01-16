@@ -87,7 +87,7 @@ pub enum OriginArg<'tcx> {
 }
 
 impl<'tcx> Debug for OriginArg<'tcx> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match &self {
             OriginArg::Actual(r) => write!(f, "{:}", r),
             OriginArg::Hypothetical(h) => write!(f, "'h{h:?}"),
