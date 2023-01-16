@@ -44,8 +44,7 @@ pub struct FieldMetadata<'tcx> {
     pub lifetime_params: LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>,
 }
 
-/// Metadata describing the lifetime parameters and fields
-/// of a struct.
+/// Metadata describing the lifetime parameters and fields of a `struct`.
 #[derive(Clone, PartialEq, Eq)]
 pub struct AdtMetadata<'tcx> {
     /// The lifetime parameters of a structure, including
