@@ -303,7 +303,7 @@ fn run_polonius<'tcx>(
         (*did, perm)
     }).collect::<HashMap<_, _>>();
 
-    let mut loans = HashMap::<Local, Vec<(Path, Loan, BorrowKind)>>::new();
+    let mut loans = HashMap::new();
     // Populate `loan_issued_at` and `loans`.
     type_check::visit(
         tcx,
