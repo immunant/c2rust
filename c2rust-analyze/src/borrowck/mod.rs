@@ -23,7 +23,7 @@ mod type_check;
 pub struct Label<'tcx> {
     /// The [`Origin`] of this type
     pub origin: Option<Origin>,
-    /// The [Origins](`Origin`) associated with each lifetime
+    /// The [`Origin`]s associated with each lifetime
     /// parameter of this type, if applicable
     pub origin_params: Option<&'tcx [(OriginParam, Origin)]>,
     pub perm: PermissionSet,
