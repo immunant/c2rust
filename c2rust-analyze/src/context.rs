@@ -164,14 +164,14 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         *next_ptr_id = counter;
     }
 
-    pub fn assn_ptr_to_field(&mut self, field: &FieldDef) {
+    pub fn assign_pointer_to_field(&mut self, field: &FieldDef) {
         let lty = self.assign_pointer_ids(self.tcx.type_of(field.did));
         self.field_tys.insert(field.did, lty);
     }
 
-    pub fn assn_ptr_to_fields(&mut self, did: DefId) {
+    pub fn assign_pointer_to_fields(&mut self, did: DefId) {
         for field in self.tcx.adt_def(did).all_fields() {
-            self.assn_ptr_to_field(field);
+            self.assign_pointer_to_field(field);
         }
     }
 }

@@ -78,7 +78,7 @@ pub enum OriginParam {
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
 pub enum OriginArg<'tcx> {
     /// An existing [`Region`], i.e. `'a` in `&'a foo`.
-    /// Can be [RegionKind::ReEarlyBound](`rustc_type_ir::RegionKind::ReEarlyBound`) 
+    /// Can be [RegionKind::ReEarlyBound](`rustc_type_ir::RegionKind::ReEarlyBound`)
     /// or [RegionKind::ReStatic](`rustc_type_ir::RegionKind::ReStatic`)
     Actual(Region<'tcx>),
     /// A hypothesized region derived from a pointer type
