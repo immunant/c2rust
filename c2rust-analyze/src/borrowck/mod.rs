@@ -294,15 +294,14 @@ fn run_polonius<'tcx>(
     }
 
     // Gather field permissions
-    let mut field_permissions: HashMap<DefId, PermissionSet> = HashMap::new();
-    for (did, lty) in field_tys {
+    let field_permissions = field_tys.iter().map(|(did, lty)| {
         let perm = if lty.label.is_none() {
             PermissionSet::empty()
         } else {
             hypothesis[lty.label]
         };
-        field_permissions.insert(*did, perm);
-    }
+        (*did, perm)
+    }).collect::<HashMap<_, _>>();
 
     let mut loans = HashMap::<Local, Vec<(Path, Loan, BorrowKind)>>::new();
     // Populate `loan_issued_at` and `loans`.
