@@ -76,7 +76,7 @@ pub enum OriginParam {
     Hypothetical(i64),
 }
 
-/// An origin parameter of a field type resolve in a MIR body
+/// An origin arg of a field type resolve in a MIR body
 /// that will get mapped to a concrete Origin to
 /// provide to polonius.
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
