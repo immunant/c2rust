@@ -25,7 +25,7 @@ pub struct Label<'tcx> {
     pub origin: Option<Origin>,
     /// The [`Origin`]s associated with each lifetime
     /// parameter of this type, if applicable
-    pub origin_params: Option<&'tcx [(OriginParam, Origin)]>,
+    pub origin_params: &'tcx [(OriginParam, Origin)],
     pub perm: PermissionSet,
 }
 
@@ -337,35 +337,34 @@ fn assign_origins<'tcx>(
             hypothesis[lty.label]
         };
 
-        let construct_adt_origins = |ty: &Ty, amaps: &mut AtomMaps| -> Option<&_> {
-            let adt_def = ty.ty_adt_def()?;
+        let construct_adt_origins = |ty: &Ty, amaps: &mut AtomMaps| -> &[_] {
+            let adt_def = ty.ty_adt_def().unwrap();
 
             // create a concrete origin for each actual or hypothetical
             // lifetime parameter in this ADT
             let origins: Vec<_> = adt_metadata
                 .table
-                .get(&adt_def.did())?
-                .lifetime_params
-                .iter()
-                .map(|o| {
-                    let pairing = (*o, amaps.origin());
-                    eprintln!("pairing lifetime parameter with origin: {pairing:?}");
-                    pairing
+                .get(&adt_def.did())
+                .map(|adt| {
+                    adt.lifetime_params
+                        .iter()
+                        .map(|o| {
+                            let pairing = (*o, amaps.origin());
+                            eprintln!("pairing lifetime parameter with origin: {pairing:?}");
+                            pairing
+                        })
+                        .collect()
                 })
-                .collect();
+                .unwrap_or_default();
 
-            if origins.is_empty() {
-                return None;
-            }
-
-            Some(ltcx.arena().alloc_slice(&origins[..]))
+            ltcx.arena().alloc_from_iter(origins)
         };
         match lty.ty.kind() {
             TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
                 let origin = Some(maps.origin());
                 Label {
                     origin,
-                    origin_params: None,
+                    origin_params: &[],
                     perm,
                 }
             }
@@ -377,14 +376,11 @@ fn assign_origins<'tcx>(
                     perm,
                 }
             }
-            _ => {
-                // let origin_params = construct_adt_origins(&lty.ty, maps);
-                Label {
-                    origin: None,
-                    origin_params: None,
-                    perm,
-                }
-            }
+            _ => Label {
+                origin: None,
+                origin_params: &[],
+                perm,
+            },
         }
     })
 }

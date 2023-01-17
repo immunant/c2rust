@@ -36,19 +36,19 @@ struct VecTup<'a> {
 }
 
 // let rd = (*(**ppd).a.pra).rd
-// CHECK-DAG: Label { origin: Some(Origin([[REF_D_ORIGIN:[0-9]+]])), origin_params: None{{.*}}}#&'a Data
-// CHECK-DAG: Label { origin: None, origin_params: Some([('d, Origin([[REF_D_ORIGIN]])){{.*}}}#Data
+// CHECK-DAG: Label { origin: Some(Origin([[REF_D_ORIGIN:[0-9]+]])), origin_params: []{{.*}}}#&'a Data
+// CHECK-DAG: Label { origin: None, origin_params: [('d, Origin([[REF_D_ORIGIN]]){{.*}}}#Data
 // CHECK-DAG: assign Label { origin: Some(Origin({{[0-9]+}})){{.*}} = Label { origin: Some(Origin([[REF_D_ORIGIN]]))
 
 // *(*(**ppd).pa).pra = ra
-// CHECK-DAG: Label { origin: Some(Origin([[REF_A_ORIGIN:[0-9]+]])), origin_params: None{{.*}}}#&'a mut A
-// CHECK-DAG: Label { origin: None, origin_params: Some([('a, Origin([[REF_A_ORIGIN]])){{.*}}#A
+// CHECK-DAG: Label { origin: Some(Origin([[REF_A_ORIGIN:[0-9]+]])), origin_params: []{{.*}}}#&'a mut A
+// CHECK-DAG: Label { origin: None, origin_params: [('a, Origin([[REF_A_ORIGIN]]){{.*}}#A
 // CHECK-DAG: assign Label { origin: Some(Origin([[REF_A_ORIGIN]]))
 
 // (*(**ppd).pa).pra = (*(**ppd).pa).pra
-// CHECK-DAG: Label { origin: Some(Origin([[P_REF_A_ORIGIN:[0-9]+]])), origin_params: None{{.*}}}#*mut &'a mut A
-// CHECK-DAG: Label { origin: Some(Origin([[REF_A_ORIGIN:[0-9]+]])), origin_params: None{{.*}}}#&'a mut A
-// CHECK-DAG: Label { origin: None, origin_params: Some([('a, Origin([[REF_A_ORIGIN]])){{.*}}('h2, Origin([[P_REF_A_ORIGIN]]))]){{.*}}}#A
+// CHECK-DAG: Label { origin: Some(Origin([[P_REF_A_ORIGIN:[0-9]+]])), origin_params: []{{.*}}}#*mut &'a mut A
+// CHECK-DAG: Label { origin: Some(Origin([[REF_A_ORIGIN:[0-9]+]])), origin_params: []{{.*}}}#&'a mut A
+// CHECK-DAG: Label { origin: None, origin_params: [('a, Origin([[REF_A_ORIGIN]])){{.*}}('h2, Origin([[P_REF_A_ORIGIN]]))]{{.*}}}#A
 // CHECK-DAG: assign Label { origin: Some(Origin([[P_REF_A_ORIGIN]]))
 
 // CHECK-LABEL: final labeling for "_field_access"

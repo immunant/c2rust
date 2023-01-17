@@ -40,11 +40,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         let mut lty: LTy = self.local_ltys[pl.local.index()];
 
         let mut adt_func = |base_lty: LTy<'tcx>, base_adt_def: AdtDef, field: Field| {
-            let base_origin_param_map: IndexMap<OriginParam, Origin> = base_lty
-                .label
-                .origin_params
-                .map(|params| IndexMap::from_iter(params.to_vec()))
-                .unwrap_or_default();
+            let base_origin_param_map: IndexMap<OriginParam, Origin> =
+                IndexMap::from_iter(base_lty.label.origin_params.to_vec());
             let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field.index()];
             let perm = self.field_permissions[&field_def.did];
             let base_metadata = &self.adt_metadata.table[&base_adt_def.did()];
@@ -73,7 +70,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         Label {
                             origin,
                             perm,
-                            origin_params: None,
+                            origin_params: &[],
                         }
                     }
                     TyKind::Adt(fadt_def, _) => {
@@ -127,12 +124,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                                 field_origin_param_map.insert(*field_struct_lifetime_param, *og);
                             }
                         }
-                        let origin_params: Option<&_> = if field_origin_param_map.is_empty() {
-                            None
-                        } else {
-                            let field_origin_params: Vec<_> = field_origin_param_map.into_iter().collect();
-                            Some(self.ltcx.arena().alloc_slice(&field_origin_params[..]))
-                        };
+                        let origin_params= self.ltcx.arena().alloc_from_iter(field_origin_param_map.into_iter());
                         Label {
                             origin: None,
                             origin_params,
@@ -142,7 +134,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     _ => {
                         Label {
                             origin: None,
-                            origin_params: None,
+                            origin_params: &[],
                             perm
                         }
                     }
@@ -207,7 +199,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let pl_lty = self.visit_place(pl_deref);
                 let label = Label {
                     origin: Some(origin),
-                    origin_params: None,
+                    origin_params: &[],
                     perm,
                 };
                 let lty = self.ltcx.mk(ty, self.ltcx.mk_slice(&[pl_lty]), label);
@@ -222,7 +214,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let origin = self.issue_loan(pl, borrow_kind);
                 let label = Label {
                     origin: Some(origin),
-                    origin_params: None,
+                    origin_params: &[],
                     perm,
                 };
                 let ty = rv.ty(self.local_decls, *self.ltcx);
@@ -248,7 +240,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let pl_lty = self.visit_place(pl);
                 let label = Label {
                     origin: Some(origin),
-                    origin_params: None,
+                    origin_params: &[],
                     perm,
                 };
                 let lty = self.ltcx.mk(ty, self.ltcx.mk_slice(&[pl_lty]), label);
@@ -314,18 +306,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         for (pl_lty, rv_lty) in pl_lty.iter().zip(rv_lty.iter()) {
             let pl_origin_params = pl_lty.label.origin_params;
             let rv_origin_params = rv_lty.label.origin_params;
-            if let (Some(pl_origin_params), Some(rv_origin_params)) =
-                (pl_origin_params, rv_origin_params)
+            assert_eq!(pl_origin_params.len(), rv_origin_params.len());
+            for (pl_origin_param, rv_origin_param) in
+                pl_origin_params.iter().zip(rv_origin_params.iter())
             {
-                assert_eq!(pl_origin_params.len(), rv_origin_params.len());
-                for (pl_origin_param, rv_origin_param) in
-                    pl_origin_params.iter().zip(rv_origin_params.iter())
-                {
-                    let point = self.current_point(SubPoint::Mid);
-                    self.facts
-                        .subset_base
-                        .push((rv_origin_param.1, pl_origin_param.1, point));
-                }
+                let point = self.current_point(SubPoint::Mid);
+                self.facts
+                    .subset_base
+                    .push((rv_origin_param.1, pl_origin_param.1, point));
             }
         }
     }
