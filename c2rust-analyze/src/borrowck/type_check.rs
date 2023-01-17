@@ -296,24 +296,25 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     fn do_assign(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
         eprintln!("assign {:?} = {:?}", pl_lty, rv_lty);
 
+        let mut add_subset_base = |pl: Origin, rv: Origin| {
+            let point = self.current_point(SubPoint::Mid);
+            self.facts.subset_base.push((rv, pl, point));
+        };
+
         let pl_origin = pl_lty.label.origin;
         let rv_origin = rv_lty.label.origin;
         if let (Some(pl_origin), Some(rv_origin)) = (pl_origin, rv_origin) {
-            let point = self.current_point(SubPoint::Mid);
-            self.facts.subset_base.push((rv_origin, pl_origin, point));
+            add_subset_base(pl_origin, rv_origin);
         }
 
         for (pl_lty, rv_lty) in pl_lty.iter().zip(rv_lty.iter()) {
             let pl_origin_params = pl_lty.label.origin_params;
             let rv_origin_params = rv_lty.label.origin_params;
             assert_eq!(pl_origin_params.len(), rv_origin_params.len());
-            for (pl_origin_param, rv_origin_param) in
+            for (&(_, pl_origin), &(_, rv_origin)) in
                 pl_origin_params.iter().zip(rv_origin_params.iter())
             {
-                let point = self.current_point(SubPoint::Mid);
-                self.facts
-                    .subset_base
-                    .push((rv_origin_param.1, pl_origin_param.1, point));
+                add_subset_base(pl_origin, rv_origin)
             }
         }
     }
