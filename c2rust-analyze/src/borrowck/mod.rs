@@ -1,4 +1,4 @@
-use self::atoms::{AllFacts, AtomMaps, Loan, Origin, Output, Path, SubPoint};
+use self::atoms::{AllFacts, AtomMaps, Origin, Output, SubPoint};
 use crate::context::{AnalysisCtxt, PermissionSet};
 use crate::dataflow::DataflowConstraints;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
@@ -7,11 +7,11 @@ use crate::util::{describe_rvalue, RvalueDesc};
 use crate::AdtMetadataTable;
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::def_id::DefId;
-use rustc_middle::mir::{Body, BorrowKind, Local, LocalKind, Place, StatementKind, START_BLOCK};
+use rustc_middle::mir::{Body, LocalKind, Place, StatementKind, START_BLOCK};
 use rustc_middle::ty::{EarlyBoundRegion, List, Region, Ty, TyKind};
 use rustc_type_ir::RegionKind::ReEarlyBound;
 use std::collections::HashMap;
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 
 mod atoms;
@@ -78,7 +78,7 @@ pub enum OriginArg<'tcx> {
 }
 
 impl<'tcx> Debug for OriginArg<'tcx> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match &self {
             OriginArg::Actual(r) => write!(f, "{:}", r),
             OriginArg::Hypothetical(h) => write!(f, "'h{h:?}"),
@@ -285,14 +285,17 @@ fn run_polonius<'tcx>(
     }
 
     // Gather field permissions
-    let field_permissions = field_tys.iter().map(|(did, lty)| {
-        let perm = if lty.label.is_none() {
-            PermissionSet::empty()
-        } else {
-            hypothesis[lty.label]
-        };
-        (*did, perm)
-    }).collect::<HashMap<_, _>>();
+    let field_permissions = field_tys
+        .iter()
+        .map(|(did, lty)| {
+            let perm = if lty.label.is_none() {
+                PermissionSet::empty()
+            } else {
+                hypothesis[lty.label]
+            };
+            (*did, perm)
+        })
+        .collect::<HashMap<_, _>>();
 
     let mut loans = HashMap::new();
     // Populate `loan_issued_at` and `loans`.
