@@ -32,7 +32,8 @@ pub struct Label<'tcx> {
 pub type LTy<'tcx> = LabeledTy<'tcx, Label<'tcx>>;
 pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, Label<'tcx>>;
 
-/// Metadata describing lifetimes and lifetime parameters of a `struct` field.
+/// Metadata describing lifetimes and lifetime parameters of a
+/// [TyKind::Adt](`rustc_type_ir::TyKind::Adt`) field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldMetadata<'tcx> {
     /// The lifetime parameters of a field, e.g. if a struct
@@ -44,7 +45,8 @@ pub struct FieldMetadata<'tcx> {
     pub lifetime_params: LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>,
 }
 
-/// Metadata describing the lifetime parameters and fields of a `struct`.
+/// Metadata describing the lifetime parameters and fields of a
+/// [TyKind::Adt](`rustc_type_ir::TyKind::Adt`) field.
 #[derive(Clone, PartialEq, Eq, Default)]
 pub struct AdtMetadata<'tcx> {
     /// The lifetime parameters of a structure, including
