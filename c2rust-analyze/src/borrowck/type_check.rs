@@ -100,7 +100,17 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             `'0`) and `Foo` lifetime parameter `'a`. This mapping is created below.
                         */
                         let mut field_origin_param_map = IndexMap::new();
-                        let field_adt_metadata = &self.adt_metadata.table[&fadt_def.did()];
+                        eprintln!("{:?}", fadt_def.did());
+                        let field_adt_metadata = if let Some(field_adt_metadata) = self.adt_metadata.table.get(&fadt_def.did()) {
+                            field_adt_metadata
+                        } else {
+                            return Label {
+                                origin: None,
+                                origin_params: &[],
+                                perm
+                            };
+                        };
+
                         for (field_lifetime_arg, field_struct_lifetime_param) in flty
                             .label
                             .iter().zip(field_adt_metadata.lifetime_params.iter())
