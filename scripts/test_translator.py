@@ -121,6 +121,7 @@ class CFile:
 
         return RustFile(extensionless_file + ".rs")
 
+
 def get_native_arch() -> str:
     rustc_cfg_args = ["--print", "cfg"]
     retcode, stdout, stderr = rustc[rustc_cfg_args].run(retcode=None)
@@ -129,17 +130,20 @@ def get_native_arch() -> str:
             return line.split("=")[1].replace('"', '')
     raise KeyError
 
+
 def rustc_has_target(target: str) -> bool:
     args = ["--target", target, "--print", "target-libdir"]
     stdout = rustc[args]()
     target_libdir = Path(stdout.strip())
     return target_libdir.exists()
 
+
 def target_args(target: Optional[str]) -> List[str]:
     if target:
         return ["-target", target]
     else:
         return ["-march=native"]
+
 
 def build_static_library(c_files: Iterable[CFile],
                          output_path: str,
@@ -335,6 +339,13 @@ class TestDirectory:
             fh.write(compile_commands)
 
     def run(self) -> List[TestOutcome]:
+        if self.target and not rustc_has_target(self.target):
+            self.print_status(Colors.OKBLUE, "SKIPPED",
+                              "building test {} because the {} target is not installed"
+                              .format(self.name, self.target))
+            sys.stdout.write('\n')
+            return []
+
         outcomes = []
 
         any_tests = any(test_fn for test_file in self.rs_test_files
@@ -386,7 +397,6 @@ class TestDirectory:
             "register_tool",
         ])
         rust_file_builder.add_pragma("register_tool", ["c2rust"])
-
 
         # Ensure that path to rustc's lib dir is in`LD_LIBRARY_PATH`
         ld_lib_path = get_rust_toolchain_libpath()
@@ -497,12 +507,6 @@ class TestDirectory:
                 args.append('--release')
 
             if self.target:
-                if not rustc_has_target(self.target):
-                    self.print_status(Colors.OKBLUE, "SKIPPED",
-                      "building test {} because the {} target is not installed"
-                      .format(self.name, self.target))
-                    sys.stdout.write('\n')
-                    return []
                 args.append(["--target", self.target])
 
             retcode, stdout, stderr = cargo[args].run(retcode=None)
