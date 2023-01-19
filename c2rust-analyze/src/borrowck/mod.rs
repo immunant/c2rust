@@ -301,7 +301,7 @@ fn run_polonius<'tcx>(
 
     let mut loans = HashMap::new();
     // Populate `loan_issued_at` and `loans`.
-    type_check::visit(
+    type_check::visit_body(
         tcx,
         ltcx,
         &mut facts,

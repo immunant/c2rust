@@ -408,7 +408,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 }
 
-pub fn visit<'tcx>(
+#[allow(clippy::too_many_arguments)]
+pub fn visit_body<'tcx>(
     tcx: TyCtxt<'tcx>,
     ltcx: LTyCtxt<'tcx>,
     facts: &mut AllFacts,
