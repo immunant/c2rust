@@ -99,7 +99,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             lifetime argument `'b` (which is already paired with concrete lifetime
                             `'0`) and `Foo` lifetime parameter `'a`. This mapping is created below.
                         */
-                        let mut field_origin_param_map = IndexMap::new();
+                        let mut field_origin_param_map = vec![];
                         eprintln!("{:?}", fadt_def.did());
                         let field_adt_metadata = if let Some(field_adt_metadata) = self.adt_metadata.table.get(&fadt_def.did()) {
                             field_adt_metadata
@@ -131,7 +131,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                                         corresponding to its lifetime parameter {field_lifetime_param:?} within {base_adt_def:?}",
                                         field_def.name
                                     );
-                                field_origin_param_map.insert(*field_struct_lifetime_param, *og);
+                                field_origin_param_map.push((*field_struct_lifetime_param, *og));
                             }
                         }
                         let origin_params= self.ltcx.arena().alloc_from_iter(field_origin_param_map.into_iter());
