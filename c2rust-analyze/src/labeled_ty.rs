@@ -127,7 +127,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
         }
     }
 
-    fn arena(&self) -> &'tcx DroplessArena {
+    pub fn arena(&self) -> &'tcx DroplessArena {
         &self.tcx.arena.dropless
     }
 

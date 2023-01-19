@@ -164,14 +164,14 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         *next_ptr_id = counter;
     }
 
-    pub fn label_field(&mut self, field: &FieldDef) {
+    pub fn assign_pointer_to_field(&mut self, field: &FieldDef) {
         let lty = self.assign_pointer_ids(self.tcx.type_of(field.did));
         self.field_tys.insert(field.did, lty);
     }
 
-    pub fn label_struct_fields(&mut self, did: DefId) {
+    pub fn assign_pointer_to_fields(&mut self, did: DefId) {
         for field in self.tcx.adt_def(did).all_fields() {
-            self.label_field(field);
+            self.assign_pointer_to_field(field);
         }
     }
 }
@@ -290,7 +290,10 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                         rv, ty,
                     ),
                 };
-                assert_eq!(pointee_ty, pointee_lty.ty);
+                assert_eq!(
+                    self.tcx().erase_regions(pointee_ty),
+                    self.tcx().erase_regions(pointee_lty.ty)
+                );
 
                 let args = self.lcx().mk_slice(&[pointee_lty]);
                 return self.lcx().mk(ty, args, ptr);
@@ -379,7 +382,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     }
 
     pub fn project(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
-        let adt_func = |adt_def: AdtDef, field: Field| {
+        let adt_func = |_lty: LTy, adt_def: AdtDef, field: Field| {
             let field_def = &adt_def.non_enum_variant().fields[field.index()];
             let field_def_name = field_def.name;
             eprintln!("projecting into {adt_def:?}.{field_def_name:}");

@@ -172,7 +172,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     fn do_equivalence_nested(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
         // Add equivalence constraints for all nested pointers beyond the top level.
-        assert_eq!(pl_lty.ty, rv_lty.ty);
+        assert_eq!(
+            self.acx.tcx().erase_regions(pl_lty.ty),
+            self.acx.tcx().erase_regions(rv_lty.ty)
+        );
         for (&pl_sub_lty, &rv_sub_lty) in pl_lty.args.iter().zip(rv_lty.args.iter()) {
             self.do_unify(pl_sub_lty, rv_sub_lty);
         }
@@ -203,7 +206,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     /// that position.  For example, given `lty1 = *mut /*l1*/ *const /*l2*/ u8` and `lty2 = *mut
     /// /*l3*/ *const /*l4*/ u8`, this function will unify `l1` with `l3` and `l2` with `l4`.
     fn do_unify(&mut self, lty1: LTy<'tcx>, lty2: LTy<'tcx>) {
-        assert_eq!(lty1.ty, lty2.ty);
+        assert_eq!(
+            self.acx.tcx().erase_regions(lty1.ty),
+            self.acx.tcx().erase_regions(lty2.ty)
+        );
         for (sub_lty1, sub_lty2) in lty1.iter().zip(lty2.iter()) {
             eprintln!("equate {:?} = {:?}", sub_lty1, sub_lty2);
             if sub_lty1.label != PointerId::NONE || sub_lty2.label != PointerId::NONE {

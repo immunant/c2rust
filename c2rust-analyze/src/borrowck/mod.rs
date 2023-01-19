@@ -1,12 +1,17 @@
-use self::atoms::{AllFacts, AtomMaps, Loan, Origin, Output, Path, SubPoint};
+use self::atoms::{AllFacts, AtomMaps, Origin, Output, SubPoint};
 use crate::context::{AnalysisCtxt, PermissionSet};
 use crate::dataflow::DataflowConstraints;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::PointerTableMut;
 use crate::util::{describe_rvalue, RvalueDesc};
-use rustc_middle::mir::{Body, BorrowKind, Local, LocalKind, Place, StatementKind, START_BLOCK};
-use rustc_middle::ty::{List, TyKind};
+use crate::AdtMetadataTable;
+use indexmap::{IndexMap, IndexSet};
+use rustc_hir::def_id::DefId;
+use rustc_middle::mir::{Body, LocalKind, Place, StatementKind, START_BLOCK};
+use rustc_middle::ty::{EarlyBoundRegion, List, Region, Ty, TyKind};
+use rustc_type_ir::RegionKind::ReEarlyBound;
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 
 mod atoms;
@@ -15,13 +20,98 @@ mod dump;
 mod type_check;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
-pub struct Label {
+pub struct Label<'tcx> {
+    /// The [`Origin`] of this type
     pub origin: Option<Origin>,
+    /// The [`Origin`]s associated with each lifetime
+    /// parameter of this type, if applicable
+    pub origin_params: &'tcx [(OriginParam, Origin)],
     pub perm: PermissionSet,
 }
 
-pub type LTy<'tcx> = LabeledTy<'tcx, Label>;
-pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, Label>;
+pub type LTy<'tcx> = LabeledTy<'tcx, Label<'tcx>>;
+pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, Label<'tcx>>;
+
+/// Metadata describing lifetimes and [`OriginArg`] of a
+/// [TyKind::Adt](`rustc_type_ir::TyKind::Adt`) field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldMetadata<'tcx> {
+    /// The [`OriginArg`]s of a field, e.g. if a struct
+    /// `foo<'a, 'b>` is a field of `bar<'c, 'd>` as field: `foo<'c, 'd>`,
+    /// the origin arguments would be a set {'c, 'd}. For a reference such
+    /// as &'r foo<'c, 'd>, the origin arguments in the label would be
+    /// {'r}, and {'c, 'd} would be the label of the sole argument
+    /// of the labeled reference type
+    pub origin_args: LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>,
+}
+
+/// Metadata describing the lifetime parameters and fields of a
+/// [TyKind::Adt](`rustc_type_ir::TyKind::Adt`) field.
+#[derive(Clone, PartialEq, Eq, Default)]
+pub struct AdtMetadata<'tcx> {
+    /// The lifetime parameters of a structure, including
+    /// hypothetical lifetimes derived from pointer fields.
+    pub lifetime_params: IndexSet<OriginParam>,
+    pub field_info: IndexMap<DefId, FieldMetadata<'tcx>>,
+}
+
+/// An origin parameter of a type to resolve in a MIR body
+/// that will get mapped to a concrete [`Origin`] to provide to polonius.
+#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+pub enum OriginParam {
+    /// An existing [`EarlyBoundRegion`], i.e. `'a` in `struct A<'a>`
+    Actual(EarlyBoundRegion),
+    /// A hypothesized region derived from a pointer type,
+    /// e.g. `'h0` derived from the pointer in `*mut foo`
+    Hypothetical(i64),
+}
+
+/// An origin arg of a field type resolve in a MIR body
+/// that will get mapped to a concrete [`Origin`] to provide to polonius.
+#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+pub enum OriginArg<'tcx> {
+    /// An existing [`Region`], i.e. `'a` in `&'a foo`.
+    /// Can be [RegionKind::ReEarlyBound](`rustc_type_ir::RegionKind::ReEarlyBound`)
+    /// or [RegionKind::ReStatic](`rustc_type_ir::RegionKind::ReStatic`)
+    Actual(Region<'tcx>),
+    /// A hypothesized region derived from a pointer type
+    /// e.g. `'h0` derived from the pointer in `*mut foo`
+    Hypothetical(i64),
+}
+
+impl<'tcx> Debug for OriginArg<'tcx> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match &self {
+            OriginArg::Actual(r) => write!(f, "{:}", r),
+            OriginArg::Hypothetical(h) => write!(f, "'h{h:?}"),
+        }
+    }
+}
+
+impl TryFrom<&OriginArg<'_>> for OriginParam {
+    type Error = ();
+    fn try_from(value: &OriginArg<'_>) -> Result<Self, Self::Error> {
+        Ok(match value {
+            OriginArg::Hypothetical(h) => OriginParam::Hypothetical(*h),
+            OriginArg::Actual(r) => {
+                if let ReEarlyBound(eb) = r.kind() {
+                    OriginParam::Actual(eb)
+                } else {
+                    return Err(());
+                }
+            }
+        })
+    }
+}
+
+impl std::fmt::Debug for OriginParam {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            OriginParam::Actual(r) => write!(f, "{:}", r.name),
+            OriginParam::Hypothetical(h) => write!(f, "'h{h:?}"),
+        }
+    }
+}
 
 pub fn borrowck_mir<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
@@ -29,11 +119,14 @@ pub fn borrowck_mir<'tcx>(
     hypothesis: &mut PointerTableMut<PermissionSet>,
     name: &str,
     mir: &Body<'tcx>,
+    adt_metadata: &AdtMetadataTable<'tcx>,
+    field_tys: HashMap<DefId, crate::LTy<'tcx>>,
 ) {
     let mut i = 0;
     loop {
         eprintln!("run polonius");
-        let (facts, maps, output) = run_polonius(acx, hypothesis, name, mir);
+        let (facts, maps, output) =
+            run_polonius(acx, hypothesis, name, mir, adt_metadata, &field_tys);
         eprintln!(
             "polonius: iteration {}: {} errors, {} move_errors",
             i,
@@ -107,6 +200,8 @@ fn run_polonius<'tcx>(
     hypothesis: &PointerTableMut<PermissionSet>,
     name: &str,
     mir: &Body<'tcx>,
+    adt_metadata: &AdtMetadataTable<'tcx>,
+    field_tys: &HashMap<DefId, crate::LTy<'tcx>>,
 ) -> (AllFacts, AtomMaps<'tcx>, Output) {
     let tcx = acx.tcx();
     let mut facts = AllFacts::default();
@@ -179,6 +274,7 @@ fn run_polonius<'tcx>(
             hypothesis,
             &mut facts,
             &mut maps,
+            adt_metadata,
             acx.local_tys[local],
         );
         let var = maps.variable(local);
@@ -190,16 +286,31 @@ fn run_polonius<'tcx>(
         local_ltys.push(lty);
     }
 
-    let mut loans = HashMap::<Local, Vec<(Path, Loan, BorrowKind)>>::new();
+    // Gather field permissions
+    let field_permissions = field_tys
+        .iter()
+        .map(|(did, lty)| {
+            let perm = if lty.label.is_none() {
+                PermissionSet::empty()
+            } else {
+                hypothesis[lty.label]
+            };
+            (*did, perm)
+        })
+        .collect::<HashMap<_, _>>();
+
+    let mut loans = HashMap::new();
     // Populate `loan_issued_at` and `loans`.
-    type_check::visit(
+    type_check::visit_body(
         tcx,
         ltcx,
         &mut facts,
         &mut maps,
         &mut loans,
         &local_ltys,
+        &field_permissions,
         mir,
+        adt_metadata,
     );
 
     // Populate `loan_invalidated_at`
@@ -221,6 +332,7 @@ fn assign_origins<'tcx>(
     hypothesis: &PointerTableMut<PermissionSet>,
     _facts: &mut AllFacts,
     maps: &mut AtomMaps<'tcx>,
+    adt_metadata: &AdtMetadataTable<'tcx>,
     lty: crate::LTy<'tcx>,
 ) -> LTy<'tcx> {
     ltcx.relabel(lty, &mut |lty| {
@@ -229,12 +341,51 @@ fn assign_origins<'tcx>(
         } else {
             hypothesis[lty.label]
         };
+
+        let construct_adt_origins = |ty: &Ty, amaps: &mut AtomMaps| -> &[_] {
+            let adt_def = ty.ty_adt_def().unwrap();
+
+            // create a concrete origin for each actual or hypothetical
+            // lifetime parameter in this ADT
+            let origins: Vec<_> = adt_metadata
+                .table
+                .get(&adt_def.did())
+                .map(|adt| {
+                    adt.lifetime_params
+                        .iter()
+                        .map(|o| {
+                            let pairing = (*o, amaps.origin());
+                            eprintln!("pairing lifetime parameter with origin: {pairing:?}");
+                            pairing
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            ltcx.arena().alloc_from_iter(origins)
+        };
         match lty.ty.kind() {
             TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
                 let origin = Some(maps.origin());
-                Label { origin, perm }
+                Label {
+                    origin,
+                    origin_params: &[],
+                    perm,
+                }
             }
-            _ => Label { origin: None, perm },
+            TyKind::Adt(..) => {
+                let origin_params = construct_adt_origins(&lty.ty, maps);
+                Label {
+                    origin: None,
+                    origin_params,
+                    perm,
+                }
+            }
+            _ => Label {
+                origin: None,
+                origin_params: &[],
+                perm,
+            },
         }
     })
 }
