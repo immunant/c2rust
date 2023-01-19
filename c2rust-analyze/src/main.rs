@@ -35,6 +35,7 @@ use rustc_middle::mir::{
     AggregateKind, BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand, Rvalue,
     StatementKind,
 };
+use rustc_middle::ty::tls;
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
@@ -123,7 +124,6 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
         .collect();
 
     let mut adt_metadata_table = AdtMetadataTable {
-        tcx,
         table: HashMap::new(),
         struct_dids,
     };
@@ -288,7 +288,6 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
 }
 
 pub struct AdtMetadataTable<'tcx> {
-    pub tcx: TyCtxt<'tcx>,
     pub table: HashMap<DefId, AdtMetadata<'tcx>>,
     pub struct_dids: Vec<DefId>,
 }
@@ -327,30 +326,33 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
             }
         }
 
-        for k in &self.struct_dids {
-            let adt = &self.table[k];
-            write!(f, "struct {:}", self.tcx.item_name(*k))?;
-            write!(f, "<")?;
-            let lifetime_params_str = adt
-                .lifetime_params
-                .iter()
-                .map(|p| format!("{:?}", p))
-                .collect::<Vec<_>>()
-                .join(",");
-            write!(f, "{lifetime_params_str:}")?;
-            writeln!(f, "> {{")?;
-            for (fdid, fmeta) in &adt.field_info {
-                write!(f, "\t{:}: ", self.tcx.item_name(*fdid))?;
-                let field_string_lty = fmt_string(fmeta.origin_args);
+        tls::with_opt(|tcx| {
+            let tcx = tcx.unwrap();
+            for k in &self.struct_dids {
+                let adt = &self.table[k];
+                write!(f, "struct {:}", tcx.item_name(*k))?;
+                write!(f, "<")?;
+                let lifetime_params_str = adt
+                    .lifetime_params
+                    .iter()
+                    .map(|p| format!("{:?}", p))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                write!(f, "{lifetime_params_str:}")?;
+                writeln!(f, "> {{")?;
+                for (fdid, fmeta) in &adt.field_info {
+                    write!(f, "\t{:}: ", tcx.item_name(*fdid))?;
+                    let field_string_lty = fmt_string(fmeta.origin_args);
 
-                write!(f, "{field_string_lty:}")?;
+                    write!(f, "{field_string_lty:}")?;
 
-                writeln!(f)?;
+                    writeln!(f)?;
+                }
+
+                writeln!(f, "}}\n")?;
             }
-
-            writeln!(f, "}}\n")?;
-        }
-        writeln!(f)
+            writeln!(f)
+        })
     }
 }
 
