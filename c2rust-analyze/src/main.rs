@@ -165,6 +165,7 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
             the metadata gathered for each struct reaches a fixed point.
         */
         loop_count += 1;
+        assert!(loop_count < 1000);
 
         eprintln!("---- running fixed point struct field analysis iteration #{loop_count:?} ----");
         let old_adt_metadata = adt_metadata_table.table.clone();
