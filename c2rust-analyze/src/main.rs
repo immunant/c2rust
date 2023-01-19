@@ -177,10 +177,8 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
             for field in adt_def.all_fields() {
                 let field_ty: Ty = tcx.type_of(field.did);
                 eprintln!("\t{adt_def:?}.{:}", field.name);
-                let mut fully_derefed_field_ty = None;
                 let field_origin_args = ltcx.label(field_ty, &mut |ty| {
                     let mut field_origin_args = IndexSet::new();
-                    fully_derefed_field_ty = Some(ty);
                     match ty.kind() {
                         TyKind::RawPtr(ty) => {
                             eprintln!(
