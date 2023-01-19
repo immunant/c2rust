@@ -255,7 +255,7 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
                     }
 
                     if field_origin_args.is_empty() {
-                        return &mut [];
+                        return &[];
                     }
                     let field_origin_args: Vec<_> = field_origin_args.into_iter().collect();
                     ltcx.arena().alloc_slice(&field_origin_args[..])
