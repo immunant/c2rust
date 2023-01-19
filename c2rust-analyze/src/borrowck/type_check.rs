@@ -48,7 +48,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             let field_metadata = &base_metadata.field_info[&field_def.did];
 
             self.ltcx.relabel(
-                field_metadata.lifetime_params,
+                field_metadata.origin_args,
                 &mut |flty| match flty.kind() {
                     TyKind::Ref(..) | TyKind::RawPtr(..) => {
                         let origin = {
@@ -96,7 +96,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                             We want to know that the lifetime `'?` gets resolved to the concrete
                             origin `'0`. To do this, a mapping needs to be made between `bar.foo`
-                            lifetime parameter `'b` (which is already paired with concrete lifetime
+                            lifetime argument `'b` (which is already paired with concrete lifetime
                             `'0`) and `Foo` lifetime parameter `'a`. This mapping is created below.
                         */
                         let mut field_origin_param_map = IndexMap::new();

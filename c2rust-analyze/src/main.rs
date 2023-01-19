@@ -178,8 +178,8 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
                 let field_ty: Ty = tcx.type_of(field.did);
                 eprintln!("\t{adt_def:?}.{:}", field.name);
                 let mut fully_derefed_field_ty = None;
-                let field_lifetime_params = ltcx.label(field_ty, &mut |ty| {
-                    let mut field_lifetime_params = IndexSet::new();
+                let field_origin_args = ltcx.label(field_ty, &mut |ty| {
+                    let mut field_origin_args = IndexSet::new();
                     fully_derefed_field_ty = Some(ty);
                     match ty.kind() {
                         TyKind::RawPtr(ty) => {
@@ -204,7 +204,7 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
 
                                     adt.lifetime_params.insert(origin_param);
                                     next_hypo_origin_id += 1;
-                                    field_lifetime_params.insert(origin_arg);
+                                    field_origin_args.insert(origin_arg);
                                 });
                         }
                         TyKind::Ref(reg, _ty, _mutability) => {
@@ -220,7 +220,7 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
                                         adt.lifetime_params.insert(OriginParam::Actual(eb));
                                     }
 
-                                    field_lifetime_params.insert(origin_arg);
+                                    field_origin_args.insert(origin_arg);
                                 });
                         }
                         TyKind::Adt(adt_field, substs) => {
@@ -230,7 +230,7 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
                                     eprintln!("\tfound field lifetime {r:?} in {adt_def:?}.{adt_field:?}");
                                     eprintln!("\t\t\tinserting {adt_field:?} lifetime param {r:?} into {adt_def:?}.{:} lifetime parameters", field.name);
                                     assert_matches!(r.kind(), ReEarlyBound(..) | ReStatic);
-                                    field_lifetime_params.insert(OriginArg::Actual(r));
+                                    field_origin_args.insert(OriginArg::Actual(r));
                                 }
                             }
                             if let Some(adt_field_metadata) =
@@ -246,7 +246,7 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
                                     adt_metadata_table.table.entry(*struct_did).and_modify(|adt| {
                                         if let OriginParam::Hypothetical(h) = adt_field_lifetime_param {
                                             eprintln!("\t\t\tbubbling {adt_field:?} origin {adt_field_lifetime_param:?} up into {adt_def:?} origins");
-                                            field_lifetime_params.insert(OriginArg::Hypothetical(*h));
+                                            field_origin_args.insert(OriginArg::Hypothetical(*h));
                                             adt.lifetime_params.insert(*adt_field_lifetime_param);
                                         }
                                     });
@@ -256,11 +256,11 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
                         _ => (),
                     }
 
-                    if field_lifetime_params.is_empty() {
+                    if field_origin_args.is_empty() {
                         return &mut [];
                     }
-                    let field_lifetime_params: Vec<_> = field_lifetime_params.into_iter().collect();
-                    ltcx.arena().alloc_slice(&field_lifetime_params[..])
+                    let field_origin_args: Vec<_> = field_origin_args.into_iter().collect();
+                    ltcx.arena().alloc_slice(&field_origin_args[..])
                 });
 
                 adt_metadata_table
@@ -270,7 +270,7 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
                         adt.field_info.insert(
                             field.did,
                             FieldMetadata {
-                                lifetime_params: field_lifetime_params,
+                                origin_args: field_origin_args,
                             },
                         );
                     });
@@ -342,7 +342,7 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
             writeln!(f, "> {{")?;
             for (fdid, fmeta) in &adt.field_info {
                 write!(f, "\t{:}: ", self.tcx.item_name(*fdid))?;
-                let field_string_lty = fmt_string(fmeta.lifetime_params);
+                let field_string_lty = fmt_string(fmeta.origin_args);
 
                 write!(f, "{field_string_lty:}")?;
 

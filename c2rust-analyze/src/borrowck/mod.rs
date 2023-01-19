@@ -32,17 +32,17 @@ pub struct Label<'tcx> {
 pub type LTy<'tcx> = LabeledTy<'tcx, Label<'tcx>>;
 pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, Label<'tcx>>;
 
-/// Metadata describing lifetimes and lifetime parameters of a
+/// Metadata describing lifetimes and [`OriginArg`] of a
 /// [TyKind::Adt](`rustc_type_ir::TyKind::Adt`) field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldMetadata<'tcx> {
-    /// The lifetime parameters of a field, e.g. if a struct
+    /// The [`OriginArg`]s of a field, e.g. if a struct
     /// `foo<'a, 'b>` is a field of `bar<'c, 'd>` as field: `foo<'c, 'd>`,
-    /// the lifetime params would be a set {'c, 'd}. For a reference such
-    /// as &'r foo<'c, 'd>, the lifetime params in the label would be
+    /// the origin arguments would be a set {'c, 'd}. For a reference such
+    /// as &'r foo<'c, 'd>, the origin arguments in the label would be
     /// {'r}, and {'c, 'd} would be the label of the sole argument
     /// of the labeled reference type
-    pub lifetime_params: LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>,
+    pub origin_args: LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>,
 }
 
 /// Metadata describing the lifetime parameters and fields of a
