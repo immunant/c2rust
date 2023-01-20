@@ -134,6 +134,23 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
                     .unwrap_or_else(|err| panic_sole_location_error(err, "Assign statement"));
                 opt_assign_loc
             }
+            hir::ExprKind::Field(..) => {
+                // Currently we only handle the case where the value retrieved from the field is
+                // stored into a temporary.  If it's stored into a local or some other place (e.g.
+                // `let y = x.f;`, or `y = x.f;` alone), then this case will return `None`.
+                //
+                // Also, for chained field accesses, this only matches the outermost ones.  Code
+                // like `x.0.0` translates into a single MIR statement with the span of the overall
+                // expression.
+                let opt_assign_loc = self
+                    .find_optional_location_matching(
+                        ex.span,
+                        |stmt| matches!(stmt.kind, mir::StatementKind::Assign(..)),
+                        |_term| false,
+                    )
+                    .unwrap_or_else(|err| panic_sole_location_error(err, "Assign statement"));
+                opt_assign_loc
+            }
             _ => {
                 eprintln!("warning: find_primary_location: unsupported expr {:?}", ex);
                 None
