@@ -6,6 +6,7 @@ pip
 plumbum >= 1.6.3
 psutil
 pygments
+python-dateutil
 typing;python_version<"3.5"
 scan-build
 pyyaml
