@@ -13,23 +13,6 @@ import dateutil.parser
 import plumbum as pb
 
 
-@dataclass
-class Args:
-    repo: Optional[str] = None
-    after: Optional[datetime] = None
-    before: Optional[datetime] = None
-    list: bool = False
-    datetime_format: str = "%c"
-
-
-def detect_repo() -> str:
-    git = pb.local["git"]
-    remote_url = urlparse(git["config", "--get", "remote.origin.url"]())
-    assert remote_url.netloc == "github.com"
-    remote_path = Path(remote_url.path)
-    return str(remote_path.with_suffix("")).lstrip("/")
-
-
 Json = Dict[str, Any]
 
 
@@ -49,12 +32,12 @@ class User:
         self.login = login
         self.name = name
         self.is_bot = is_bot
-    
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, User):
             return NotImplemented
         return self.login == other.login
-    
+
     def __hash__(self) -> int:
         return hash(self.login)
 
@@ -136,6 +119,20 @@ class PR(Issue):
             self.mergedAt = mergedAt
 
 
+def detect_repo() -> str:
+    git = pb.local["git"]
+    remote_url = urlparse(git["config", "--get", "remote.origin.url"]())
+    assert remote_url.netloc == "github.com"
+    remote_path = Path(remote_url.path)
+    return str(remote_path.with_suffix("")).lstrip("/")
+
+
+def localize_tz(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    return dt.astimezone(tz=dt.tzinfo)
+
+
 @dataclass
 class TimeRange:
     start: Optional[datetime] = None
@@ -151,10 +148,13 @@ class TimeRange:
         return True
 
 
-def localize_tz(dt: Optional[datetime]) -> Optional[datetime]:
-    if dt is None:
-        return None
-    return dt.astimezone(tz=dt.tzinfo)
+@dataclass
+class Args:
+    repo: Optional[str] = None
+    after: Optional[datetime] = None
+    before: Optional[datetime] = None
+    list: bool = False
+    datetime_format: str = "%c"
 
 
 def main() -> None:
@@ -164,8 +164,8 @@ def main() -> None:
     parser.add_argument("--before", type=dateutil.parser.parse, help="summarize before this date")
     parser.add_argument("--list", default=False, action='store_true', help="list each PR/issue")
     parser.add_argument("--datetime-format", type=str, help="a strftime format string", default="%c")
+
     args = Args(**parser.parse_args().__dict__)
-    print(args)
 
     if args.repo is None:
         repo = detect_repo()
@@ -210,7 +210,7 @@ def main() -> None:
 
     def merged(t: PR) -> Optional[datetime]:
         return t.mergedAt
-    
+
     def by_collaborators(author: User) -> bool:
         return author in collaborators()
 
@@ -234,7 +234,7 @@ def main() -> None:
 
     summarize(PR, opened)
     summarize(PR, merged)
-    
+
     summarize(Issue, opened)
     summarize(Issue, closed)
 
