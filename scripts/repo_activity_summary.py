@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 from dataclasses import dataclass, field
 import dataclasses
 from datetime import datetime
+from functools import cache
 import json
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Type, TypeVar, Union
@@ -157,6 +158,7 @@ def main() -> None:
 
     T = TypeVar("T", Issue, PR)
 
+    @cache
     def list(T: Type[T]) -> List[T]:
         response_str = gh[
             T.__name__.lower(),
@@ -169,14 +171,11 @@ def main() -> None:
         response_json = json.loads(response_str)
         return [T(**item) for item in response_json]
 
-    def list_collaborators() -> List[User]:
+    @cache
+    def collaborators() -> List[User]:
         response_str = gh["api", "-H", "Accept: application/vnd.github+json", f"/repos/{repo}/collaborators", "--jq", "[.[] | {login}]"]()
         response_json = json.loads(response_str)
         return [User(**item) for item in response_json]
-
-    collaborators = list_collaborators()
-    prs = list(PR)
-    issues = list(Issue)
 
     def filter(all: Iterable[T], get_time: Callable[[T], Optional[datetime]]) -> List[T]:
         return [t for t in all if get_time(t) in time_range]
@@ -193,11 +192,11 @@ def main() -> None:
     def merged(t: PR) -> Optional[datetime]:
         return t.mergedAt
 
-    print(len(filter(prs, opened)))
-    print(len(filter(prs, merged)))
+    print(len(filter(list(PR), opened)))
+    print(len(filter(list(PR), merged)))
 
-    print(len(filter(issues, opened)))
-    print(len(filter(issues, closed)))
+    print(len(filter(list(Issue), opened)))
+    print(len(filter(list(Issue), closed)))
 
 
 if __name__ == "__main__":
