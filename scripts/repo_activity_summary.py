@@ -154,7 +154,7 @@ def main() -> None:
     parser.add_argument("--repo", type=str, help="the GitHub repo (defaults to the current repo)")
     parser.add_argument("--after", type=dateutil.parser.parse, help="summarize after this date")
     parser.add_argument("--before", type=dateutil.parser.parse, help="summarize before this date")
-    parser.add_argument("--list", type=bool, help="list each PR/issue")
+    parser.add_argument("--list", default=False, action='store_true', help="list each PR/issue")
     parser.add_argument("--datetime-format", type=str, help="a strftime format string", default="%c")
     args = Args(**parser.parse_args().__dict__)
     print(args)
