@@ -116,6 +116,19 @@ class PR(Issue):
         else:
             self.mergedAt = mergedAt
 
+@dataclass
+class TimeRange:
+    start: Optional[datetime] = None
+    end: Optional[datetime] = None
+    
+    def __contains__(self, time: Optional[datetime]) -> bool:
+        if time is None:
+            return False
+        if self.start is not None and time <= self.start:
+            return False
+        if self.end is not None and time >= self.end:
+            return False
+        return True
 
 def main() -> None:
     parser = ArgumentParser(description="summarize repo activity (PR/issues) during a time period (requires gh)")
@@ -130,6 +143,8 @@ def main() -> None:
         repo = detect_repo()
     else:
         repo = args.repo
+
+    time_range = TimeRange(start=args.after, end=args.before)
 
     gh = pb.local["gh"]
 
