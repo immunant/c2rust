@@ -205,8 +205,13 @@ def main() -> None:
         return t.mergedAt
 
     def summarize(T: Type[T], get_time: Callable[[T], Optional[datetime]]) -> None:
+        time_name = get_time.__name__
         filtered = filter(list(T), get_time)
-        print(f"{get_time.__name__} {len(filtered)} {T.name()}s")
+        print(f"{time_name} {len(filtered)} {T.name()}s")
+        if args.list:
+            for t in filtered:
+                time = get_time(t).strftime("%c")
+                print(f"\t#{t.number} ({time_name} {time}) by @{t.author.login} ({t.author.name}): {t.title}")
 
     summarize(PR, opened)
     summarize(PR, merged)
