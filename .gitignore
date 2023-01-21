@@ -48,3 +48,6 @@ marks.*.json
 
 # Outputs of `c2rust-analyze`
 inspect/
+
+# `scripts/repo_activity_summary.py`'s cache
+.repo/

@@ -7,7 +7,7 @@ from datetime import datetime
 from functools import cache
 import json
 from pathlib import Path
-from typing import Any, Callable, Dict, Hashable, Iterable, List, Optional, Type, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
 from urllib.parse import urlparse
 import dateutil.parser
 import plumbum as pb
@@ -155,6 +155,7 @@ class Args:
     before: Optional[datetime] = None
     list: bool = False
     datetime_format: str = "%c"
+    cache: bool = False
 
 
 def main() -> None:
@@ -164,6 +165,7 @@ def main() -> None:
     parser.add_argument("--before", type=dateutil.parser.parse, help="summarize before this date")
     parser.add_argument("--list", default=False, action='store_true', help="list each PR/issue")
     parser.add_argument("--datetime-format", type=str, help="a strftime format string", default="%c")
+    parser.add_argument("--cache", default=False, action='store_true', help="cache gh API results")
 
     args = Args(**parser.parse_args().__dict__)
 
@@ -182,14 +184,22 @@ def main() -> None:
 
     @cache
     def list(T: Type[T]) -> List[T]:
-        response_str = gh[
-            T.__name__.lower(),
-            "list",
-            "--repo", repo,
-            "--state", "all",
-            "--limit", int(1e6),
-            "--json", ",".join(field.name for field in dataclasses.fields(T)),
-        ]()
+        name = T.__name__.lower()
+        path = Path(f".repo/{repo}/{name}.json")
+        if args.cache and path.exists():
+            response_str = path.read_text()
+        else:
+            response_str = gh[
+                name,
+                "list",
+                "--repo", repo,
+                "--state", "all",
+                "--limit", int(1e6),
+                "--json", ",".join(field.name for field in dataclasses.fields(T)),
+            ]()
+            if args.cache:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(response_str)
         response_json = json.loads(response_str)
         return [T(**item) for item in response_json]
 
