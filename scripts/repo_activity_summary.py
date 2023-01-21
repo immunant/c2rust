@@ -210,6 +210,12 @@ def main() -> None:
 
     def merged(t: PR) -> Optional[datetime]:
         return t.mergedAt
+    
+    def by_collaborators(author: User) -> bool:
+        return author in collaborators()
+
+    def by_community(author: User) -> bool:
+        return author not in collaborators()
 
     def summarize(T: Type[T], get_time: Callable[[T], Optional[datetime]]) -> None:
         time_name = get_time.__name__
@@ -217,10 +223,14 @@ def main() -> None:
         in_time_range = [t for t in list(T) if get_time(t) in time_range]
         print(f"{time_name} {len(in_time_range)} {T.name()}s")
 
-        if args.list:
-            for t in in_time_range:
-                time = get_time(t).strftime(args.datetime_format)
-                print(f"\t#{t.number} ({time_name} {time}) by @{t.author.login} ({t.author.name}): {t.title}")
+        for by in (by_collaborators, by_community):
+            by_them = [t for t in in_time_range if by(t.author)]
+            by_name = by.__name__.replace("_", " ")
+            print(f"\t{by_name}: {time_name} {len(by_them)} {T.name()}s")
+            if args.list:
+                for t in by_them:
+                    time = get_time(t).strftime(args.datetime_format)
+                    print(f"\t\t#{t.number} ({time_name} {time}) by @{t.author.login} ({t.author.name}): {t.title}")
 
     summarize(PR, opened)
     summarize(PR, merged)
