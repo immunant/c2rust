@@ -19,6 +19,7 @@ class Args:
     after: Optional[datetime] = None
     before: Optional[datetime] = None
     list: bool = False
+    datetime_format: str = "%c"
 
 
 def detect_repo() -> str:
@@ -154,6 +155,7 @@ def main() -> None:
     parser.add_argument("--after", type=dateutil.parser.parse, help="summarize after this date")
     parser.add_argument("--before", type=dateutil.parser.parse, help="summarize before this date")
     parser.add_argument("--list", type=bool, help="list each PR/issue")
+    parser.add_argument("--datetime-format", type=str, help="a strftime format string", default="%c")
     args = Args(**parser.parse_args().__dict__)
     print(args)
 
@@ -210,7 +212,7 @@ def main() -> None:
         print(f"{time_name} {len(filtered)} {T.name()}s")
         if args.list:
             for t in filtered:
-                time = get_time(t).strftime("%c")
+                time = get_time(t).strftime(args.datetime_format)
                 print(f"\t#{t.number} ({time_name} {time}) by @{t.author.login} ({t.author.name}): {t.title}")
 
     summarize(PR, opened)
