@@ -6,7 +6,7 @@ import dataclasses
 from datetime import datetime
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, TypeVar, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Type, TypeVar, Union
 from urllib.parse import urlparse
 import dateutil.parser
 import plumbum as pb
@@ -174,9 +174,30 @@ def main() -> None:
         response_json = json.loads(response_str)
         return [User(**item) for item in response_json]
 
-    print(list_collaborators())
-    print(list(PR))
-    print(list(Issue))
+    collaborators = list_collaborators()
+    prs = list(PR)
+    issues = list(Issue)
+
+    def filter(all: Iterable[T], get_time: Callable[[T], Optional[datetime]]) -> List[T]:
+        return [t for t in all if get_time(t) in time_range]
+    
+    def opened(t: T) -> datetime:
+        return t.createdAt
+
+    def updated(t: T) -> datetime:
+        return t.updatedAt
+
+    def closed(t: T) -> Optional[datetime]:
+        return t.closedAt
+    
+    def merged(t: PR) -> Optional[datetime]:
+        return t.mergedAt
+
+    print(len(filter(prs, opened)))
+    print(len(filter(prs, merged)))
+
+    print(len(filter(issues, opened)))
+    print(len(filter(issues, closed)))
 
 
 if __name__ == "__main__":
