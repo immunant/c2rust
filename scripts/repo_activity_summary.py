@@ -49,6 +49,14 @@ class User:
         self.login = login
         self.name = name
         self.is_bot = is_bot
+    
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, User):
+            return NotImplemented
+        return self.login == other.login
+    
+    def __hash__(self) -> int:
+        return hash(self.login)
 
 
 @dataclass
