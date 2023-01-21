@@ -199,9 +199,6 @@ def main() -> None:
         response_json = json.loads(response_str)
         return [User(**item) for item in response_json]
 
-    def filter(all: Iterable[T], get_time: Callable[[T], Optional[datetime]]) -> List[T]:
-        return [t for t in all if get_time(t) in time_range]
-
     def opened(t: T) -> datetime:
         return t.createdAt
 
@@ -216,10 +213,12 @@ def main() -> None:
 
     def summarize(T: Type[T], get_time: Callable[[T], Optional[datetime]]) -> None:
         time_name = get_time.__name__
-        filtered = filter(list(T), get_time)
-        print(f"{time_name} {len(filtered)} {T.name()}s")
+
+        in_time_range = [t for t in list(T) if get_time(t) in time_range]
+        print(f"{time_name} {len(in_time_range)} {T.name()}s")
+
         if args.list:
-            for t in filtered:
+            for t in in_time_range:
                 time = get_time(t).strftime(args.datetime_format)
                 print(f"\t#{t.number} ({time_name} {time}) by @{t.author.login} ({t.author.name}): {t.title}")
 
