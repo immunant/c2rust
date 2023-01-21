@@ -130,6 +130,11 @@ class TimeRange:
             return False
         return True
 
+def localize_tz(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    return dt.astimezone(tz=dt.tzinfo)
+
 def main() -> None:
     parser = ArgumentParser(description="summarize repo activity (PR/issues) during a time period (requires gh)")
     parser.add_argument("--repo", type=str, help="the GitHub repo (defaults to the current repo)")
@@ -144,6 +149,8 @@ def main() -> None:
     else:
         repo = args.repo
 
+    args.after = localize_tz(args.after)
+    args.before = localize_tz(args.before)
     time_range = TimeRange(start=args.after, end=args.before)
 
     gh = pb.local["gh"]
