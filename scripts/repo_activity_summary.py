@@ -7,7 +7,7 @@ from datetime import datetime
 from functools import cache
 import json
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Type, TypeVar, Union
+from typing import Any, Callable, Dict, Hashable, Iterable, List, Optional, Type, TypeVar, Union
 from urllib.parse import urlparse
 import dateutil.parser
 import plumbum as pb
@@ -49,6 +49,7 @@ class User:
         self.name = name
         self.is_bot = is_bot
 
+
 @dataclass
 class Issue:
     number: int
@@ -58,6 +59,10 @@ class Issue:
     createdAt: datetime
     updatedAt: datetime
     closedAt: Optional[datetime]
+
+    @classmethod
+    def name(cls) -> str:
+        return "issue"
 
     def __init__(
             self,
@@ -93,6 +98,10 @@ class Issue:
 class PR(Issue):
     mergedAt: Optional[datetime]
 
+    @classmethod
+    def name(cls) -> str:
+        return "PR"
+
     def __init__(
             self,
             number: int,
@@ -102,7 +111,7 @@ class PR(Issue):
             createdAt: Union[datetime, str],
             updatedAt: Union[datetime, str],
             closedAt: Optional[Union[datetime, str]], mergedAt: Optional[Union[datetime, str]],
-            ) -> None:
+    ) -> None:
         super().__init__(
             number=number,
             author=author,
@@ -117,11 +126,12 @@ class PR(Issue):
         else:
             self.mergedAt = mergedAt
 
+
 @dataclass
 class TimeRange:
     start: Optional[datetime] = None
     end: Optional[datetime] = None
-    
+
     def __contains__(self, time: Optional[datetime]) -> bool:
         if time is None:
             return False
@@ -131,10 +141,12 @@ class TimeRange:
             return False
         return True
 
+
 def localize_tz(dt: Optional[datetime]) -> Optional[datetime]:
     if dt is None:
         return None
     return dt.astimezone(tz=dt.tzinfo)
+
 
 def main() -> None:
     parser = ArgumentParser(description="summarize repo activity (PR/issues) during a time period (requires gh)")
@@ -179,7 +191,7 @@ def main() -> None:
 
     def filter(all: Iterable[T], get_time: Callable[[T], Optional[datetime]]) -> List[T]:
         return [t for t in all if get_time(t) in time_range]
-    
+
     def opened(t: T) -> datetime:
         return t.createdAt
 
@@ -188,15 +200,19 @@ def main() -> None:
 
     def closed(t: T) -> Optional[datetime]:
         return t.closedAt
-    
+
     def merged(t: PR) -> Optional[datetime]:
         return t.mergedAt
 
-    print(len(filter(list(PR), opened)))
-    print(len(filter(list(PR), merged)))
+    def summarize(T: Type[T], get_time: Callable[[T], Optional[datetime]]) -> None:
+        filtered = filter(list(T), get_time)
+        print(f"{get_time.__name__} {len(filtered)} {T.name()}s")
 
-    print(len(filter(list(Issue), opened)))
-    print(len(filter(list(Issue), closed)))
+    summarize(PR, opened)
+    summarize(PR, merged)
+    
+    summarize(Issue, opened)
+    summarize(Issue, closed)
 
 
 if __name__ == "__main__":
