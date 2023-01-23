@@ -38,6 +38,8 @@ pub struct server {
     pub lim_conns: uint32_t,
 }
 
+#[derive(Copy, Clone)]
+#[repr(C)]
 pub struct fdevents {
     pub fdarray: *mut *mut fdnode,
 }
@@ -54,6 +56,8 @@ unsafe extern "C" fn connection_handle_fdevent(
     return 1;
 }
 
+#[derive(Copy, Clone)]
+#[repr(C)]
 pub struct fdnode_st {
     pub fd: libc::c_int,
     pub events: libc::c_int,
