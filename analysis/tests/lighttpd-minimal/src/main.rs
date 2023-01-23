@@ -72,7 +72,7 @@ unsafe extern "C" fn connection_handle_fdevent(
 pub unsafe extern "C" fn connection_accepted(
     mut srv: *mut server,
     mut cnt: libc::c_int,
-    fdn: *mut fdnode,     // TODO: remove when casts from c_void are handled
+    fdn: *mut fdnode,         // TODO: remove when casts from c_void are handled
     mut con: *mut connection, // TODO: remove when casts from c_void are handled
 ) -> *mut connection {
     // let con = malloc(::std::mem::size_of::<connection>() as libc::c_ulong); // TODO: handle as *mut connection;
@@ -80,8 +80,7 @@ pub unsafe extern "C" fn connection_accepted(
     (*srv).con_opened += 1;
     con = connections_get_new_connection(srv, con);
     (*con).fd = cnt;
-    (*con)
-        .fdn = fdevent_register(
+    (*con).fdn = fdevent_register(
         (*srv).ev,
         (*con).fd,
         // Some(
@@ -89,7 +88,7 @@ pub unsafe extern "C" fn connection_accepted(
         //         as unsafe extern "C" fn(*mut libc::c_void, libc::c_int) -> handler_t,
         // ),
         // con as *mut libc::c_void,
-        fdn
+        fdn,
     );
     return con;
 }
@@ -121,7 +120,7 @@ pub unsafe extern "C" fn fdevent_register(
     mut fd: libc::c_int,
     // mut handler: fdevent_handler,
     // mut ctx: *mut libc::c_void,
-    fdn: *mut fdnode
+    fdn: *mut fdnode,
 ) -> *mut fdnode {
     let ref mut fresh0 = *((*ev).fdarray).offset(fd as isize);
     *fresh0 = fdnode_init(fdn);
