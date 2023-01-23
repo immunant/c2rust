@@ -30,11 +30,6 @@ pub struct server {
     pub conns_pool: *mut connection,
 }
 
-pub type fdevent_handler =
-    Option<unsafe extern "C" fn(*mut libc::c_void, libc::c_int) -> handler_t>;
-
-pub type handler_t = libc::c_uint;
-
 pub type fdnode = fdnode_st;
 
 #[derive(Copy, Clone)]
@@ -45,6 +40,11 @@ pub struct fdnode_st {
     pub events: libc::c_int,
     pub fde_ndx: libc::c_int,
 }
+
+pub type fdevent_handler =
+    Option<unsafe extern "C" fn(*mut libc::c_void, libc::c_int) -> handler_t>;
+
+pub type handler_t = libc::c_uint;
 
 #[derive(Copy, Clone)]
 #[repr(C)]
