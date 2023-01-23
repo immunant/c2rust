@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 
-from argparse import ArgumentParser
-from dataclasses import dataclass, field
 import dataclasses
+import json
+from argparse import ArgumentParser
+from dataclasses import dataclass
 from datetime import datetime
 from functools import cache
-import json
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
 from urllib.parse import urlparse
+
 import dateutil.parser
 import plumbum as pb
-
 
 Json = Dict[str, Any]
 
