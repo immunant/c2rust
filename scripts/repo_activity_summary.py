@@ -174,9 +174,10 @@ def main() -> None:
     else:
         repo = args.repo
 
-    args.after = localize_tz(args.after)
-    args.before = localize_tz(args.before)
-    time_range = TimeRange(start=args.after, end=args.before)
+    time_range = TimeRange(
+        start=localize_tz(args.after),
+        end=localize_tz(args.before),
+    )
 
     gh = pb.local["gh"]
 
@@ -205,7 +206,14 @@ def main() -> None:
 
     @cache
     def collaborators() -> List[User]:
-        response_str = gh["api", "-H", "Accept: application/vnd.github+json", f"/repos/{repo}/collaborators", "--jq", "[.[] | {login}]"]()
+        response_str = gh[
+            "api",
+            "-H",
+            "Accept: application/vnd.github+json",
+            f"/repos/{repo}/collaborators",
+            "--jq",
+            "[.[] | {login}]",
+        ]()
         response_json = json.loads(response_str)
         return [User(**item) for item in response_json]
 
