@@ -1062,28 +1062,16 @@ pub unsafe extern "C" fn connection_accepted(
         // con as *mut libc::c_void,
         fdn,
     );
-    // (*con)
-    //     .network_read = Some(
+    // (*con).network_read = Some(
     //     connection_read_cq
-    //         as unsafe extern "C" fn(
-    //             *mut connection,
-    //             *mut chunkqueue,
-    //             off_t,
-    //         ) -> libc::c_int,
+    //         as unsafe extern "C" fn(*mut connection, *mut chunkqueue, off_t) -> libc::c_int,
     // );
-    // (*con)
-    //     .network_write = Some(
+    // (*con).network_write = Some(
     //     connection_write_cq
-    //         as unsafe extern "C" fn(
-    //             *mut connection,
-    //             *mut chunkqueue,
-    //             off_t,
-    //         ) -> libc::c_int,
+    //         as unsafe extern "C" fn(*mut connection, *mut chunkqueue, off_t) -> libc::c_int,
     // );
-    // (*con)
-    //     .reqbody_read = Some(
-    //     connection_handle_read_post_state
-    //         as unsafe extern "C" fn(*mut request_st) -> handler_t,
+    // (*con).reqbody_read = Some(
+    //     connection_handle_read_post_state as unsafe extern "C" fn(*mut request_st) -> handler_t,
     // );
     let r: *mut request_st = &mut (*con).request;
     (*r).state = CON_STATE_REQUEST_START;
@@ -1097,11 +1085,12 @@ pub unsafe extern "C" fn connection_accepted(
     (*con).is_ssl_sock = (*srv_socket).is_ssl as libc::c_char;
     (*con).proto_default_port = 80 as libc::c_int as uint16_t;
     // config_cond_cache_reset(r);
-    (*r)
-        .conditional_is_valid = ((1 as libc::c_int) << COMP_SERVER_SOCKET as libc::c_int
-        | (1 as libc::c_int) << COMP_HTTP_REMOTE_IP as libc::c_int) as uint32_t;
-    if HANDLER_GO_ON as libc::c_int as libc::c_uint != 0 // <-- TODO: remove
-        // != plugins_call_handle_connection_accept(con) as libc::c_uint
+    (*r).conditional_is_valid = ((1 as libc::c_int) << COMP_SERVER_SOCKET as libc::c_int
+        | (1 as libc::c_int) << COMP_HTTP_REMOTE_IP as libc::c_int)
+        as uint32_t;
+    if HANDLER_GO_ON as libc::c_int as libc::c_uint != 0
+    // ^^^ TODO: remove
+    // != plugins_call_handle_connection_accept(con) as libc::c_uint
     {
         connection_reset(con);
         connection_close(con);
