@@ -10,14 +10,14 @@ extern crate libc;
 use libc::*;
 use std::mem;
 
-pub type size_t = libc::c_ulong;
-
 extern "C" {
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
     fn realloc(_: *mut libc::c_void, _: libc::c_ulong) -> *mut libc::c_void;
     fn calloc(_: libc::c_ulong, _: libc::c_ulong) -> *mut libc::c_void;
     fn free(__ptr: *mut libc::c_void);
 }
+
+pub type size_t = libc::c_ulong;
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -50,13 +50,6 @@ pub type fdevent_handler =
 
 pub type handler_t = libc::c_uint;
 
-unsafe extern "C" fn connection_handle_fdevent(
-    context: *mut libc::c_void,
-    revents: libc::c_int,
-) -> handler_t {
-    return 1;
-}
-
 pub type fdnode = fdnode_st;
 
 #[derive(Copy, Clone)]
@@ -66,6 +59,13 @@ pub struct fdnode_st {
     pub fd: libc::c_int,
     pub events: libc::c_int,
     pub fde_ndx: libc::c_int,
+}
+
+unsafe extern "C" fn connection_handle_fdevent(
+    context: *mut libc::c_void,
+    revents: libc::c_int,
+) -> handler_t {
+    return 1;
 }
 
 #[no_mangle]
