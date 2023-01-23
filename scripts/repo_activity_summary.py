@@ -244,11 +244,12 @@ def main() -> None:
         for by in (by_collaborators, by_community):
             by_them = [t for t in in_time_range if by(t.author)]
             by_name = by.__name__.replace("_", " ")
-            print(f"\t{by_name}: {time_name} {len(by_them)} {T.name()}s")
+            print(f"\t{by_name}: {len(by_them)}")
             if args.list:
                 for t in by_them:
                     time = get_time(t).strftime(args.datetime_format)
                     print(f"\t\t#{t.number} ({time_name} {time}) by @{t.author.login} ({t.author.name}): {t.title}")
+        
 
     summarize(PR, opened)
     summarize(PR, merged)
