@@ -15,7 +15,8 @@ fn test_lighttpd_minimal() {
         .arg(lib_dir)
         .arg("--crate-type")
         .arg("rlib");
-    let status = cmd.status().unwrap();
+    let output = cmd.output().unwrap();
+    let status = output.status;
     assert!(
         status.success(),
         "{path:?}: c2rust-analyze failed with status {status:?}",
