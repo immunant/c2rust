@@ -9,13 +9,14 @@ extern crate libc;
 
 use libc::*;
 use std::mem;
+
 pub type size_t = libc::c_ulong;
 
 extern "C" {
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
     fn realloc(_: *mut libc::c_void, _: libc::c_ulong) -> *mut libc::c_void;
-    fn free(__ptr: *mut libc::c_void);
     fn calloc(_: libc::c_ulong, _: libc::c_ulong) -> *mut libc::c_void;
+    fn free(__ptr: *mut libc::c_void);
 }
 
 #[derive(Copy, Clone)]
@@ -31,11 +32,11 @@ pub struct connection {
 #[repr(C)]
 pub struct server {
     pub ev: *mut fdevents,
-    pub cur_fds: libc::c_int,
     pub con_opened: libc::c_int,
+    pub cur_fds: libc::c_int,
+    pub lim_conns: uint32_t,
     pub conns: *mut connection,
     pub conns_pool: *mut connection,
-    pub lim_conns: uint32_t,
 }
 
 #[derive(Copy, Clone)]
@@ -44,10 +45,10 @@ pub struct fdevents {
     pub fdarray: *mut *mut fdnode,
 }
 
-pub type handler_t = libc::c_uint;
-
 pub type fdevent_handler =
     Option<unsafe extern "C" fn(*mut libc::c_void, libc::c_int) -> handler_t>;
+
+pub type handler_t = libc::c_uint;
 
 unsafe extern "C" fn connection_handle_fdevent(
     context: *mut libc::c_void,
@@ -56,16 +57,16 @@ unsafe extern "C" fn connection_handle_fdevent(
     return 1;
 }
 
+pub type fdnode = fdnode_st;
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct fdnode_st {
+    pub ctx: *mut libc::c_void,
     pub fd: libc::c_int,
     pub events: libc::c_int,
     pub fde_ndx: libc::c_int,
-    pub ctx: *mut libc::c_void,
 }
-
-pub type fdnode = fdnode_st;
 
 #[no_mangle]
 pub unsafe extern "C" fn connection_accepted(
