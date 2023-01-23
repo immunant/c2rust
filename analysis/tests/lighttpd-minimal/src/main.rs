@@ -213,6 +213,7 @@ pub struct timespec {
     pub tv_sec: __time_t,
     pub tv_nsec: __syscall_slong_t,
 }
+
 pub type uint8_t = __uint8_t;
 pub type uint16_t = __uint16_t;
 pub type uint32_t = __uint32_t;
@@ -220,6 +221,7 @@ pub type uint64_t = __uint64_t;
 pub type uintptr_t = libc::c_ulong;
 pub type unix_time64_t = time_t;
 pub type unix_timespec64_t = timespec;
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct server {
@@ -261,6 +263,7 @@ pub struct server {
     pub argv: *mut *mut libc::c_char,
     pub match_data: *mut libc::c_void,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct C2RustUnnamed {
@@ -268,6 +271,7 @@ pub struct C2RustUnnamed {
     pub used: uint32_t,
     pub size: uint32_t,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct server_socket_array {
@@ -275,6 +279,7 @@ pub struct server_socket_array {
     pub size: uint32_t,
     pub used: uint32_t,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct server_socket {
@@ -287,6 +292,7 @@ pub struct server_socket {
     pub srv: *mut server,
     pub srv_token: *mut buffer,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct buffer {
@@ -294,7 +300,9 @@ pub struct buffer {
     pub used: uint32_t,
     pub size: uint32_t,
 }
+
 pub type fdnode = fdnode_st;
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct fdnode_st {
@@ -304,14 +312,17 @@ pub struct fdnode_st {
     pub events: libc::c_int,
     pub fde_ndx: libc::c_int,
 }
+
 pub type fdevent_handler =
     Option<unsafe extern "C" fn(*mut libc::c_void, libc::c_int) -> handler_t>;
 pub type handler_t = libc::c_uint;
+
 pub const HANDLER_ERROR: handler_t = 4;
 pub const HANDLER_WAIT_FOR_EVENT: handler_t = 3;
 pub const HANDLER_COMEBACK: handler_t = 2;
 pub const HANDLER_FINISHED: handler_t = 1;
 pub const HANDLER_GO_ON: handler_t = 0;
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub union sock_addr {
@@ -320,19 +331,23 @@ pub union sock_addr {
     pub un: sockaddr_un,
     pub plain: sockaddr,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct sockaddr {
     pub sa_family: sa_family_t,
     pub sa_data: [libc::c_char; 14],
 }
+
 pub type sa_family_t = libc::c_ushort;
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct sockaddr_un {
     pub sun_family: sa_family_t,
     pub sun_path: [libc::c_char; 108],
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct sockaddr_in {
@@ -341,13 +356,16 @@ pub struct sockaddr_in {
     pub sin_addr: in_addr,
     pub sin_zero: [libc::c_uchar; 8],
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct in_addr {
     pub s_addr: in_addr_t,
 }
+
 pub type in_addr_t = uint32_t;
 pub type in_port_t = uint16_t;
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct sockaddr_in6 {
@@ -357,11 +375,13 @@ pub struct sockaddr_in6 {
     pub sin6_addr: in6_addr,
     pub sin6_scope_id: uint32_t,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct in6_addr {
     pub __in6_u: C2RustUnnamed_0,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub union C2RustUnnamed_0 {
@@ -369,6 +389,7 @@ pub union C2RustUnnamed_0 {
     pub __u6_addr16: [uint16_t; 8],
     pub __u6_addr32: [uint32_t; 4],
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct server_config {
@@ -410,6 +431,7 @@ pub struct server_config {
     pub config_touched: *mut array,
     pub empty_array: array,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct array {
@@ -418,6 +440,7 @@ pub struct array {
     pub used: uint32_t,
     pub size: uint32_t,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct data_unset {
@@ -425,12 +448,15 @@ pub struct data_unset {
     pub fn_0: *const data_methods,
     pub type_0: data_type_t,
 }
+
 pub type data_type_t = libc::c_uint;
+
 pub const TYPE_OTHER: data_type_t = 4;
 pub const TYPE_CONFIG: data_type_t = 3;
 pub const TYPE_INTEGER: data_type_t = 2;
 pub const TYPE_ARRAY: data_type_t = 1;
 pub const TYPE_STRING: data_type_t = 0;
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct data_methods {
@@ -438,7 +464,9 @@ pub struct data_methods {
     pub free: Option<unsafe extern "C" fn(*mut data_unset) -> ()>,
     pub insert_dup: Option<unsafe extern "C" fn(*mut data_unset, *mut data_unset) -> ()>,
 }
+
 pub type log_error_st = fdlog_st;
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct fdlog_st {
@@ -447,11 +475,14 @@ pub struct fdlog_st {
     pub b: buffer,
     pub fn_0: *const libc::c_char,
 }
+
 pub type C2RustUnnamed_1 = libc::c_uint;
+
 pub const FDLOG_PIPE: C2RustUnnamed_1 = 3;
 pub const FDLOG_SYSLOG: C2RustUnnamed_1 = 2;
 pub const FDLOG_FD: C2RustUnnamed_1 = 1;
 pub const FDLOG_FILE: C2RustUnnamed_1 = 0;
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct connection {
@@ -492,6 +523,7 @@ pub struct connection {
     pub next: *mut connection,
     pub prev: *mut connection,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct request_st {
@@ -550,6 +582,7 @@ pub struct request_st {
     pub tmp_sce: *mut stat_cache_entry,
     pub cond_captures: libc::c_int,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct stat_cache_entry {
@@ -562,6 +595,7 @@ pub struct stat_cache_entry {
     pub content_type: buffer,
     pub st: stat,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct stat {
@@ -581,6 +615,7 @@ pub struct stat {
     pub st_ctim: timespec,
     pub __glibc_reserved: [__syscall_slong_t; 3],
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct chunkqueue {
@@ -592,6 +627,7 @@ pub struct chunkqueue {
     pub upload_temp_file_size: off_t,
     pub tempdir_idx: libc::c_uint,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct chunk {
@@ -601,6 +637,7 @@ pub struct chunk {
     pub offset: off_t,
     pub file: C2RustUnnamed_2,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct C2RustUnnamed_2 {
@@ -611,6 +648,7 @@ pub struct C2RustUnnamed_2 {
     pub ref_0: *mut libc::c_void,
     pub refchg: Option<unsafe extern "C" fn(*mut libc::c_void, libc::c_int) -> ()>,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct C2RustUnnamed_3 {
@@ -618,10 +656,14 @@ pub struct C2RustUnnamed_3 {
     pub length: size_t,
     pub offset: off_t,
 }
+
 pub type C2RustUnnamed_4 = libc::c_uint;
+
 pub const FILE_CHUNK: C2RustUnnamed_4 = 1;
 pub const MEM_CHUNK: C2RustUnnamed_4 = 0;
+
 pub type http_method_t = libc::c_int;
+
 pub const HTTP_METHOD_VERSION_CONTROL: http_method_t = 37;
 pub const HTTP_METHOD_UPDATEREDIRECTREF: http_method_t = 36;
 pub const HTTP_METHOD_UPDATE: http_method_t = 35;
@@ -662,6 +704,7 @@ pub const HTTP_METHOD_HEAD: http_method_t = 1;
 pub const HTTP_METHOD_GET: http_method_t = 0;
 pub const HTTP_METHOD_UNSET: http_method_t = -1;
 pub const HTTP_METHOD_PRI: http_method_t = -2;
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct response_dechunk {
@@ -669,6 +712,7 @@ pub struct response_dechunk {
     pub b: buffer,
     pub done: libc::c_int,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct physical {
@@ -677,6 +721,7 @@ pub struct physical {
     pub doc_root: buffer,
     pub rel_path: buffer,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct request_uri {
@@ -685,6 +730,7 @@ pub struct request_uri {
     pub path: buffer,
     pub query: buffer,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct request_config {
@@ -727,6 +773,7 @@ pub struct request_config {
     pub errorfile_prefix: *const buffer,
     pub serrh: *mut fdlog_st,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct cond_match_t {
@@ -735,12 +782,14 @@ pub struct cond_match_t {
     pub captures: libc::c_int,
     pub matches: *mut libc::c_void,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct cond_cache_t {
     pub result: int8_t,
     pub local_result: int8_t,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct plugin {
@@ -785,12 +834,16 @@ pub struct plugin {
     pub version: size_t,
     pub lib: *mut libc::c_void,
 }
+
 pub type http_version_t = libc::c_int;
+
 pub const HTTP_VERSION_2: http_version_t = 2;
 pub const HTTP_VERSION_1_1: http_version_t = 1;
 pub const HTTP_VERSION_1_0: http_version_t = 0;
 pub const HTTP_VERSION_UNSET: http_version_t = -1;
+
 pub type request_state_t = libc::c_uint;
+
 pub const CON_STATE_CLOSE: request_state_t = 10;
 pub const CON_STATE_ERROR: request_state_t = 9;
 pub const CON_STATE_RESPONSE_END: request_state_t = 8;
@@ -802,6 +855,7 @@ pub const CON_STATE_REQUEST_END: request_state_t = 3;
 pub const CON_STATE_READ: request_state_t = 2;
 pub const CON_STATE_REQUEST_START: request_state_t = 1;
 pub const CON_STATE_CONNECT: request_state_t = 0;
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct h2con {
@@ -821,6 +875,7 @@ pub struct h2con {
     pub encoder: lshpack_enc,
     pub half_closed_ts: unix_time64_t,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct lshpack_enc {
@@ -837,14 +892,18 @@ pub struct lshpack_enc {
     pub hpe_hist_wrapped: libc::c_int,
     pub hpe_flags: C2RustUnnamed_5,
 }
+
 pub type C2RustUnnamed_5 = libc::c_uint;
+
 pub const LSHPACK_ENC_USE_HIST: C2RustUnnamed_5 = 1;
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct lshpack_enc_head {
     pub stqh_first: *mut lshpack_enc_table_entry,
     pub stqh_last: *mut *mut lshpack_enc_table_entry,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct lshpack_dec {
@@ -854,6 +913,7 @@ pub struct lshpack_dec {
     pub hpd_cur_capacity: libc::c_uint,
     pub hpd_state: libc::c_uint,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct lshpack_arr {
@@ -862,6 +922,7 @@ pub struct lshpack_arr {
     pub off: libc::c_uint,
     pub els: *mut uintptr_t,
 }
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct data_string {
@@ -871,8 +932,10 @@ pub struct data_string {
     pub ext: libc::c_int,
     pub value: buffer,
 }
+
 pub type socklen_t = __socklen_t;
 pub type __socket_type = libc::c_uint;
+
 pub const SOCK_NONBLOCK: __socket_type = 2048;
 pub const SOCK_CLOEXEC: __socket_type = 524288;
 pub const SOCK_PACKET: __socket_type = 10;
@@ -882,11 +945,15 @@ pub const SOCK_RDM: __socket_type = 4;
 pub const SOCK_RAW: __socket_type = 3;
 pub const SOCK_DGRAM: __socket_type = 2;
 pub const SOCK_STREAM: __socket_type = 1;
+
 pub type C2RustUnnamed_6 = libc::c_uint;
+
 pub const SHUT_RDWR: C2RustUnnamed_6 = 2;
 pub const SHUT_WR: C2RustUnnamed_6 = 1;
 pub const SHUT_RD: C2RustUnnamed_6 = 0;
+
 pub type C2RustUnnamed_7 = libc::c_uint;
+
 pub const IPPROTO_MAX: C2RustUnnamed_7 = 263;
 pub const IPPROTO_MPTCP: C2RustUnnamed_7 = 262;
 pub const IPPROTO_RAW: C2RustUnnamed_7 = 255;
@@ -915,7 +982,9 @@ pub const IPPROTO_IPIP: C2RustUnnamed_7 = 4;
 pub const IPPROTO_IGMP: C2RustUnnamed_7 = 2;
 pub const IPPROTO_ICMP: C2RustUnnamed_7 = 1;
 pub const IPPROTO_IP: C2RustUnnamed_7 = 0;
+
 pub type request_h2error_t = libc::c_uint;
+
 pub const H2_E_HTTP_1_1_REQUIRED: request_h2error_t = 13;
 pub const H2_E_INADEQUATE_SECURITY: request_h2error_t = 12;
 pub const H2_E_ENHANCE_YOUR_CALM: request_h2error_t = 11;
@@ -933,7 +1002,9 @@ pub const H2_E_NO_ERROR: request_h2error_t = 0;
 pub const COMP_HTTP_REMOTE_IP: C2RustUnnamed_9 = 8;
 pub const COMP_SERVER_SOCKET: C2RustUnnamed_9 = 1;
 pub const HTTP_HEADER_UPGRADE: http_header_e = 49;
+
 pub type http_header_e = libc::c_uint;
+
 pub const HTTP_HEADER_X_XSS_PROTECTION: http_header_e = 58;
 pub const HTTP_HEADER_X_FRAME_OPTIONS: http_header_e = 57;
 pub const HTTP_HEADER_X_FORWARDED_PROTO: http_header_e = 56;
@@ -993,14 +1064,18 @@ pub const HTTP_HEADER_ACCEPT_ENCODING: http_header_e = 2;
 pub const HTTP_HEADER_ACCEPT: http_header_e = 1;
 pub const HTTP_HEADER_OTHER: http_header_e = 0;
 pub const H2_STATE_HALF_CLOSED_REMOTE: C2RustUnnamed_8 = 5;
+
 pub type C2RustUnnamed_8 = libc::c_uint;
+
 pub const H2_STATE_CLOSED: C2RustUnnamed_8 = 6;
 pub const H2_STATE_HALF_CLOSED_LOCAL: C2RustUnnamed_8 = 4;
 pub const H2_STATE_OPEN: C2RustUnnamed_8 = 3;
 pub const H2_STATE_RESERVED_REMOTE: C2RustUnnamed_8 = 2;
 pub const H2_STATE_RESERVED_LOCAL: C2RustUnnamed_8 = 1;
 pub const H2_STATE_IDLE: C2RustUnnamed_8 = 0;
+
 pub type C2RustUnnamed_9 = libc::c_uint;
+
 pub const COMP_LAST_ELEMENT: C2RustUnnamed_9 = 13;
 pub const COMP_HTTP_REQUEST_HEADER: C2RustUnnamed_9 = 12;
 pub const COMP_HTTP_REQUEST_METHOD: C2RustUnnamed_9 = 11;
