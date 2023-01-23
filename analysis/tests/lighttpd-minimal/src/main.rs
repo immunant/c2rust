@@ -167,7 +167,6 @@ extern "C" {
         b: *mut buffer,
         saddr: *const sock_addr,
     ) -> libc::c_int;
-    fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
     fn calloc(_: libc::c_ulong, _: libc::c_ulong) -> *mut libc::c_void;
     fn free(_: *mut libc::c_void);
     fn close(__fd: libc::c_int) -> libc::c_int;
@@ -1028,14 +1027,27 @@ unsafe extern "C" fn connection_handle_fdevent(
     return 1;
 }
 
+unsafe extern "C" fn connection_reset(mut con: *mut connection) {
+    let r: *mut request_st = &mut (*con).request;
+    // request_reset(r);
+    (*r).bytes_read_ckpt = 0 as libc::c_int as off_t;
+    (*r).bytes_written_ckpt = 0 as libc::c_int as off_t;
+    (*con).is_readable = 1 as libc::c_int as libc::c_schar;
+    (*con).bytes_written = 0 as libc::c_int as off_t;
+    (*con).bytes_written_cur_second = 0 as libc::c_int as off_t;
+    (*con).bytes_read = 0 as libc::c_int as off_t;
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn connection_accepted(
     mut srv: *mut server,
+    mut srv_socket: *const server_socket,
+    mut cnt_addr: *mut sock_addr,
     mut cnt: libc::c_int,
     fdn: *mut fdnode,         // TODO: remove when casts from c_void are handled
     mut con: *mut connection, // TODO: remove when casts from c_void are handled
 ) -> *mut connection {
-    // let con = malloc(::std::mem::size_of::<connection>() as libc::c_ulong); // TODO: handle as *mut connection;
+    // let mut con: *mut connection = 0 as *mut connection;
     (*srv).cur_fds += 1;
     (*srv).con_opened += 1;
     con = connections_get_new_connection(srv, con);
@@ -1050,6 +1062,92 @@ pub unsafe extern "C" fn connection_accepted(
         // con as *mut libc::c_void,
         fdn,
     );
+    // (*con)
+    //     .network_read = Some(
+    //     connection_read_cq
+    //         as unsafe extern "C" fn(
+    //             *mut connection,
+    //             *mut chunkqueue,
+    //             off_t,
+    //         ) -> libc::c_int,
+    // );
+    // (*con)
+    //     .network_write = Some(
+    //     connection_write_cq
+    //         as unsafe extern "C" fn(
+    //             *mut connection,
+    //             *mut chunkqueue,
+    //             off_t,
+    //         ) -> libc::c_int,
+    // );
+    // (*con)
+    //     .reqbody_read = Some(
+    //     connection_handle_read_post_state
+    //         as unsafe extern "C" fn(*mut request_st) -> handler_t,
+    // );
+    let r: *mut request_st = &mut (*con).request;
+    (*r).state = CON_STATE_REQUEST_START;
+    // (*con).connection_start = log_monotonic_secs;
+    (*con).dst_addr = *cnt_addr;
+    // sock_addr_cache_inet_ntop_copy_buffer(
+    //     &mut (*con).dst_addr_buf,
+    //     &mut (*con).dst_addr,
+    // );
+    (*con).srv_socket = srv_socket;
+    (*con).is_ssl_sock = (*srv_socket).is_ssl as libc::c_char;
+    (*con).proto_default_port = 80 as libc::c_int as uint16_t;
+    // config_cond_cache_reset(r);
+    (*r)
+        .conditional_is_valid = ((1 as libc::c_int) << COMP_SERVER_SOCKET as libc::c_int
+        | (1 as libc::c_int) << COMP_HTTP_REMOTE_IP as libc::c_int) as uint32_t;
+    if HANDLER_GO_ON as libc::c_int as libc::c_uint != 0 // <-- TODO: remove
+        // != plugins_call_handle_connection_accept(con) as libc::c_uint
+    {
+        connection_reset(con);
+        connection_close(con);
+        return con; // 0 as *mut connection;
+    }
+    if (*r).http_status < 0 as libc::c_int {
+        (*r).state = CON_STATE_WRITE;
+    }
+    return con;
+}
+
+#[cold]
+unsafe extern "C" fn connection_init(
+    mut srv: *mut server,
+    mut con: *mut connection,
+) -> *mut connection {
+    // let con: *mut connection = calloc(
+    //     1 as libc::c_int as libc::c_ulong,
+    //     ::std::mem::size_of::<connection>() as libc::c_ulong,
+    // ) as *mut connection;
+    if con.is_null() {
+        // ck_assert_failed(
+        //     b"src/connections.c\0" as *const u8 as *const libc::c_char,
+        //     500 as libc::c_int as libc::c_uint,
+        //     b"((void*)0) != con\0" as *const u8 as *const libc::c_char,
+        // );
+    }
+    (*con).srv = srv;
+    (*con).plugin_slots = (*srv).plugin_slots;
+    (*con).config_data_base = (*srv).config_data_base;
+    let r: *mut request_st = &mut (*con).request;
+    // request_init_data(r, con, srv);
+    (*con).write_queue = &mut (*r).write_queue;
+    (*con).read_queue = &mut (*r).read_queue;
+    // (*con).plugin_ctx = calloc(
+    //     1 as libc::c_int as libc::c_ulong,
+    //     (((*srv).plugins.used).wrapping_add(1 as libc::c_int as libc::c_uint) as libc::c_ulong)
+    //         .wrapping_mul(::std::mem::size_of::<*mut libc::c_void>() as libc::c_ulong),
+    // ) as *mut *mut libc::c_void;
+    if ((*con).plugin_ctx).is_null() {
+        // ck_assert_failed(
+        //     b"src/connections.c\0" as *const u8 as *const libc::c_char,
+        //     513 as libc::c_int as libc::c_uint,
+        //     b"((void*)0) != con->plugin_ctx\0" as *const u8 as *const libc::c_char,
+        // );
+    }
     return con;
 }
 
@@ -1063,8 +1161,8 @@ unsafe extern "C" fn connections_get_new_connection(
         con = (*srv).conns_pool;
         (*srv).conns_pool = (*con).next;
     } else {
-        // con = connection_init(srv);
-        // connection_reset(con);
+        con = connection_init(srv, con);
+        connection_reset(con);
     }
     (*con).next = (*srv).conns;
     if !((*con).next).is_null() {
@@ -1109,11 +1207,59 @@ unsafe extern "C" fn fdnode_init(fdn: *mut fdnode) -> *mut fdnode {
     fdn
 }
 
-unsafe extern "C" fn connection_close(
-    mut srv: *mut server,
-    mut con: *mut libc::c_void, /* TODO: handle *mut connection */
-) {
-    free(con /* TODO: handle cast as *mut libc::c_void */);
+unsafe extern "C" fn connection_del(mut srv: *mut server, mut con: *mut connection) {
+    if !((*con).next).is_null() {
+        (*(*con).next).prev = (*con).prev;
+    }
+    if !((*con).prev).is_null() {
+        (*(*con).prev).next = (*con).next;
+    } else {
+        (*srv).conns = (*con).next;
+    }
+    (*con).prev = con; // 0 as *mut connection;
+    (*con).next = (*srv).conns_pool;
+    (*srv).conns_pool = con;
+    // (*srv).lim_conns = ((*srv).lim_conns).wrapping_add(1);
+}
+
+unsafe extern "C" fn connection_close(mut con: *mut connection) {
+    if (*con).fd < 0 as libc::c_int {
+        (*con).fd = -(*con).fd;
+    }
+    // plugins_call_handle_connection_close(con);
+    let srv: *mut server = (*con).srv;
+    let r: *mut request_st = &mut (*con).request;
+    // request_reset_ex(r);
+    (*r).state = CON_STATE_CONNECT;
+    // chunkqueue_reset((*con).read_queue);
+    (*con).request_count = 0 as libc::c_int as uint32_t;
+    (*con).is_ssl_sock = 0 as libc::c_int as libc::c_char;
+    (*con).revents_err = 0 as libc::c_int as uint16_t;
+    fdevent_fdnode_event_del((*srv).ev, (*con).fdn);
+    fdevent_unregister((*srv).ev, (*con).fd);
+    // (*con).fdn = 0 as *mut fdnode;
+    // if 0 as libc::c_int == close((*con).fd) {
+    //     (*srv).cur_fds -= 1;
+    // } else {
+    //     log_perror(
+    //         (*r).conf.errh,
+    //         b"src/connections.c\0" as *const u8 as *const libc::c_char,
+    //         101 as libc::c_int as libc::c_uint,
+    //         b"(warning) close: %d\0" as *const u8 as *const libc::c_char,
+    //         (*con).fd,
+    //     );
+    // }
+    if (*r).conf.log_state_handling != 0 {
+        // log_error(
+        //     (*r).conf.errh,
+        //     b"src/connections.c\0" as *const u8 as *const libc::c_char,
+        //     105 as libc::c_int as libc::c_uint,
+        //     b"connection closed for fd %d\0" as *const u8 as *const libc::c_char,
+        //     (*con).fd,
+        // );
+    }
+    (*con).fd = -(1 as libc::c_int);
+    connection_del(srv, con);
 }
 
 #[no_mangle]
@@ -1147,8 +1293,14 @@ unsafe extern "C" fn fdnode_free(fdn: *mut libc::c_void) {
 }
 
 pub unsafe extern "C" fn lighttpd_test() {
-    let fdarr = malloc(::std::mem::size_of::<*mut fdnode>() as libc::c_ulong); // TODO: handle cast as *mut *mut fdnode;
-    let fdes = malloc(::std::mem::size_of::<fdevents>() as libc::c_ulong); // TODO: handle cast as *mut fdevents;
+    let fdarr = calloc(
+        0 as libc::c_int as libc::c_ulong,
+        ::std::mem::size_of::<*mut fdnode>() as libc::c_ulong,
+    ); // TODO: handle cast as *mut *mut fdnode;
+    let fdes = calloc(
+        0 as libc::c_int as libc::c_ulong,
+        ::std::mem::size_of::<fdevents>() as libc::c_ulong,
+    ); // TODO: handle cast as *mut fdevents;
     free(fdarr /* TODO: handle cast as *mut libc::c_void */);
     free(fdes /* TODO: handle cast as *mut libc::c_void */);
 }
