@@ -21,15 +21,6 @@ pub type size_t = libc::c_ulong;
 
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub struct connection {
-    pub fd: libc::c_int,
-    pub fdn: *mut fdnode,
-    pub next: *mut connection,
-    pub prev: *mut connection,
-}
-
-#[derive(Copy, Clone)]
-#[repr(C)]
 pub struct server {
     pub ev: *mut fdevents,
     pub con_opened: libc::c_int,
@@ -37,6 +28,15 @@ pub struct server {
     pub lim_conns: uint32_t,
     pub conns: *mut connection,
     pub conns_pool: *mut connection,
+}
+
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct connection {
+    pub fd: libc::c_int,
+    pub fdn: *mut fdnode,
+    pub next: *mut connection,
+    pub prev: *mut connection,
 }
 
 #[derive(Copy, Clone)]
