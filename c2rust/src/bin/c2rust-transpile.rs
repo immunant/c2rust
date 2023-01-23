@@ -158,7 +158,7 @@ struct Args {
     fail_on_multiple: bool,
 }
 
-#[derive(Debug, ValueEnum, Clone)]
+#[derive(Debug, PartialEq, Eq, ValueEnum, Clone)]
 #[clap(rename_all = "snake_case")]
 enum InvalidCodes {
     Panic,
@@ -250,12 +250,7 @@ fn main() {
         emit_build_files: args.emit_build_files,
         output_dir: args.output_dir.map(PathBuf::from),
         binaries: args.binary.unwrap_or_default(),
-        panic_on_translator_failure: {
-            match args.invalid_code {
-                InvalidCodes::Panic => true,
-                InvalidCodes::CompileError => false,
-            }
-        },
+        panic_on_translator_failure: args.invalid_code == InvalidCodes::Panic,
         replace_unsupported_decls: ReplaceMode::Extern,
         emit_no_std: args.emit_no_std,
         enabled_warnings,
