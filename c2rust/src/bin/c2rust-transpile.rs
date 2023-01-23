@@ -1,7 +1,6 @@
 use clap::{Parser, ValueEnum};
 use log::LevelFilter;
 use regex::Regex;
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use c2rust_transpile::{Diagnostic, ReplaceMode, TranspilerConfig};
@@ -181,10 +180,10 @@ fn main() {
         .extra_clang_args
         .iter()
         .map(AsRef::as_ref)
-        .collect::<Vec<&str>>();
+        .collect::<Vec<_>>();
     let extra_args = extra_args.as_slice();
 
-    let enabled_warnings: HashSet<Diagnostic> = args.warn.into_iter().collect();
+    let enabled_warnings = args.warn.into_iter().collect();
 
     let mut tcfg = TranspilerConfig {
         dump_untyped_context: args.dump_untyped_clang_ast,
