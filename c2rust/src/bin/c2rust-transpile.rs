@@ -168,23 +168,6 @@ fn main() {
     let args = Args::parse();
 
     // Build a TranspilerConfig from the command line
-    let cc_json_path = Path::new(&args.compile_commands);
-    let cc_json_path = cc_json_path.canonicalize().unwrap_or_else(|_| {
-        panic!(
-            "Could not find compile_commands.json file at path: {}",
-            cc_json_path.display()
-        )
-    });
-
-    let extra_args = args
-        .extra_clang_args
-        .iter()
-        .map(AsRef::as_ref)
-        .collect::<Vec<_>>();
-    let extra_args = extra_args.as_slice();
-
-    let enabled_warnings = args.warn.into_iter().collect();
-
     let mut tcfg = TranspilerConfig {
         dump_untyped_context: args.dump_untyped_clang_ast,
         dump_typed_context: args.dump_typed_clang_ast,
@@ -231,7 +214,7 @@ fn main() {
         panic_on_translator_failure: args.invalid_code == InvalidCodes::Panic,
         replace_unsupported_decls: ReplaceMode::Extern,
         emit_no_std: args.emit_no_std,
-        enabled_warnings,
+        enabled_warnings: args.warn.into_iter().collect(),
         log_level: args.log_level,
     };
     // binaries imply emit-build-files
@@ -243,5 +226,19 @@ fn main() {
         tcfg.emit_modules = true
     };
 
-    c2rust_transpile::transpile(tcfg, &cc_json_path, extra_args);
+    let cc_json_path = Path::new(&args.compile_commands);
+    let cc_json_path = cc_json_path.canonicalize().unwrap_or_else(|_| {
+        panic!(
+            "Could not find compile_commands.json file at path: {}",
+            cc_json_path.display()
+        )
+    });
+
+    let extra_args = args
+        .extra_clang_args
+        .iter()
+        .map(AsRef::as_ref)
+        .collect::<Vec<_>>();
+
+    c2rust_transpile::transpile(tcfg, &cc_json_path, &extra_args);
 }
