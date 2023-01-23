@@ -1,8 +1,8 @@
 use clap::{Parser, ValueEnum};
+use log::LevelFilter;
 use regex::Regex;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 use c2rust_transpile::{Diagnostic, ReplaceMode, TranspilerConfig};
 
@@ -103,11 +103,11 @@ struct Args {
 
     /// Path to output directory. Rust sources will be emitted in DIR/src/ and build files will be emitted in DIR/.
     #[clap(short = 'o', long, value_name = "DIR")]
-    output_dir: Option<String>,
+    output_dir: Option<PathBuf>,
 
     /// Only transpile files matching filter
     #[clap(short = 'f', long)]
-    filter: Option<String>,
+    filter: Option<Regex>,
 
     /// Fail to translate a module when a portion is not able to be translated
     #[clap(long)]
@@ -135,7 +135,7 @@ struct Args {
 
     /// Enable the specified warning (all enables all warnings)
     #[clap(short = 'W')]
-    warn: Option<String>,
+    warn: Option<Diagnostic>,
 
     /// Emit code using core rather than std
     #[clap(long)]
@@ -150,8 +150,8 @@ struct Args {
     preserve_unused_functions: bool,
 
     /// Logging level
-    #[clap(long = "log-level", value_enum, default_value_t = LogLevel::Warn)]
-    log_level: LogLevel,
+    #[clap(long, default_value_t = LevelFilter::Warn)]
+    log_level: LevelFilter,
 
     /// Fail when the control-flow graph generates branching constructs
     #[clap(long)]
@@ -163,16 +163,6 @@ struct Args {
 enum InvalidCodes {
     Panic,
     CompileError,
-}
-
-#[derive(Debug, ValueEnum, Clone)]
-enum LogLevel {
-    Off,
-    Error,
-    Warn,
-    Info,
-    Debug,
-    Trace,
 }
 
 fn main() {
@@ -192,18 +182,8 @@ fn main() {
 
     let enabled_warnings: HashSet<Diagnostic> = args
         .warn
-        .iter()
-        .map(|s| Diagnostic::from_str(s).unwrap())
+        .into_iter()
         .collect();
-
-    let log_level = match args.log_level {
-        LogLevel::Off => log::LevelFilter::Off,
-        LogLevel::Error => log::LevelFilter::Error,
-        LogLevel::Warn => log::LevelFilter::Warn,
-        LogLevel::Info => log::LevelFilter::Info,
-        LogLevel::Debug => log::LevelFilter::Debug,
-        LogLevel::Trace => log::LevelFilter::Trace,
-    };
 
     let mut tcfg = TranspilerConfig {
         dump_untyped_context: args.dump_untyped_clang_ast,
@@ -219,9 +199,7 @@ fn main() {
         incremental_relooper: !args.no_incremental_relooper,
         fail_on_error: args.fail_on_error,
         fail_on_multiple: args.fail_on_multiple,
-        filter: {
-            args.filter.map(|filter| Regex::new(filter.as_str()).unwrap())
-        },
+        filter: args.filter,
         debug_relooper_labels: args.debug_labels,
         prefix_function_names: args.prefix_function_names,
 
@@ -248,13 +226,13 @@ fn main() {
         reorganize_definitions: args.reorganize_definitions,
         emit_modules: args.emit_modules,
         emit_build_files: args.emit_build_files,
-        output_dir: args.output_dir.map(PathBuf::from),
+        output_dir: args.output_dir,
         binaries: args.binary.unwrap_or_default(),
         panic_on_translator_failure: args.invalid_code == InvalidCodes::Panic,
         replace_unsupported_decls: ReplaceMode::Extern,
         emit_no_std: args.emit_no_std,
         enabled_warnings,
-        log_level,
+        log_level: args.log_level,
     };
     // binaries imply emit-build-files
     if !tcfg.binaries.is_empty() {
