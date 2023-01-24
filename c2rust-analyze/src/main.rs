@@ -742,7 +742,7 @@ fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
 
         match tcx.def_kind(root_ldid) {
             DefKind::Fn | DefKind::AssocFn => {}
-            DefKind::AnonConst => continue,
+            DefKind::AnonConst | DefKind::Const => continue,
             dk => panic!(
                 "unexpected def_kind {:?} for body_owner {:?}",
                 dk, root_ldid
