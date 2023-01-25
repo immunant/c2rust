@@ -404,7 +404,7 @@ pub fn signed_int_expr(value: i64) -> Box<Expr> {
     if value < 0 {
         mk().unary_expr(
             UnOp::Neg(Default::default()),
-            mk().lit_expr(mk().int_lit((-value) as u128, "")),
+            mk().lit_expr(mk().int_lit(u128::from(value.unsigned_abs()), "")),
         )
     } else {
         mk().lit_expr(mk().int_lit(value as u128, ""))
