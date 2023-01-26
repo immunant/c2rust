@@ -3986,7 +3986,7 @@ impl<'c> Translation<'c> {
 
             ConstIntExpr::I(n) => mk().unary_expr(
                 UnOp::Neg(Default::default()),
-                mk().lit_expr(mk().int_unsuffixed_lit((-n) as u128)),
+                mk().lit_expr(mk().int_unsuffixed_lit(n.unsigned_abs() as u128)),
             ),
         };
         Ok(expr)
