@@ -52,16 +52,16 @@ struct VecTup<'a> {
 // CHECK-DAG: assign Label { origin: Some(Origin([[P_REF_A_ORIGIN]]))
 
 // CHECK-LABEL: final labeling for "_field_access"
-// CHECK-DAG: ([[#@LINE+3]]: ppd): addr_of = UNIQUE, type = READ | WRITE | UNIQUE
-// CHECK-DAG: ([[#@LINE+2]]: ra): &mut A
-// CHECK-DAG: ([[#@LINE+1]]: ppd): &mut &mut Data
+// CHECK-DAG: ([[@LINE+3]]: ppd): addr_of = UNIQUE, type = READ | WRITE | UNIQUE
+// CHECK-DAG: ([[@LINE+2]]: ra): &mut A
+// CHECK-DAG: ([[@LINE+1]]: ppd): &mut &mut Data
 unsafe fn _field_access<'d>(ra: &'d mut A<'d>, ppd: *mut *mut Data<'d>) {
-    // CHECK-DAG: ([[#@LINE+2]]: rd): addr_of = UNIQUE, type = READ | UNIQUE
-    // CHECK-DAG: ([[#@LINE+1]]: rd): &Data
+    // CHECK-DAG: ([[@LINE+2]]: rd): addr_of = UNIQUE, type = READ | UNIQUE
+    // CHECK-DAG: ([[@LINE+1]]: rd): &Data
     let rd = (*(**ppd).a.pra).rd;
 
-    // CHECK-DAG: ([[#@LINE+2]]: pi): addr_of = UNIQUE, type = READ | WRITE | UNIQUE
-    // CHECK-DAG: ([[#@LINE+1]]: pi): &mut i32
+    // CHECK-DAG: ([[@LINE+2]]: pi): addr_of = UNIQUE, type = READ | WRITE | UNIQUE
+    // CHECK-DAG: ([[@LINE+1]]: pi): &mut i32
     let pi = rd.pi;
     *pi = 3;
     let _i = *pi;
