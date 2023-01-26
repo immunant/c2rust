@@ -106,12 +106,12 @@ def _test_minimal(code_snippet: str) -> bool:
     return True  # if we get this far, test passed
 
 
-def test_minimal(_: argparse.Namespace) -> None:
-    _test_minimal(minimal_snippet)
+def test_minimal(_: argparse.Namespace) -> bool:
+    return _test_minimal(minimal_snippet)
 
 
-def test_hello_world(_: argparse.Namespace) -> None:
-    _test_minimal(hello_world_snippet)
+def test_hello_world(_: argparse.Namespace) -> bool:
+    return _test_minimal(hello_world_snippet)
 
 
 def test_json_c(args: argparse.Namespace) -> bool:
