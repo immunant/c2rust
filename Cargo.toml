@@ -23,7 +23,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.16.0"
+version = "0.17.0"
 authors = ["The C2Rust Project Developers <c2rust@immunant.com>"]
 edition = "2021"
 readme = "README.md"
