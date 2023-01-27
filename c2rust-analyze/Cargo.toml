@@ -19,11 +19,11 @@ assert_matches = "1.5.0"
 indexmap = "1.9.2"
 
 [build-dependencies]
-c2rust-build-paths = { path = "../c2rust-build-paths" }
+c2rust-build-paths = { path = "../c2rust-build-paths" , version = "0.17.0" }
 print_bytes = "1.1"
 
 [dev-dependencies]
-c2rust-build-paths = { path = "../c2rust-build-paths" }
+c2rust-build-paths = { path = "../c2rust-build-paths" , version = "0.17.0" }
 
 [package.metadata.rust-analyzer]
 rustc_private = true

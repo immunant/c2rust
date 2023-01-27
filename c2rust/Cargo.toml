@@ -25,10 +25,10 @@ is_executable = "1.0"
 log = "0.4"
 regex = "1.3"
 shlex = "1.1"
-c2rust-transpile = { version = "0.16.0", path = "../c2rust-transpile" }
+c2rust-transpile = { version = "0.17.0", path = "../c2rust-transpile" }
 
 [build-dependencies]
-c2rust-build-paths = { path = "../c2rust-build-paths" }
+c2rust-build-paths = { path = "../c2rust-build-paths" , version = "0.17.0" }
 
 [features]
 # Force static linking of LLVM
