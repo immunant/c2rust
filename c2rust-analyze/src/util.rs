@@ -76,27 +76,37 @@ pub enum Callee<'tcx> {
         pointee_ty: Ty<'tcx>,
         mutbl: Mutability,
     },
+
     /// `<[T]>::as_ptr` and `<[T]>::as_mut_ptr` methods.  Also covers the array and str versions.
     SliceAsPtr {
         /// The pointee type.  This is either `TyKind::Slice`, `TyKind::Array`, or `TyKind::Str`.
         pointee_ty: Ty<'tcx>,
+
         /// The slice element type.  For `str`, this is `u8`.
         elem_ty: Ty<'tcx>,
+
         /// Mutability of the output pointer.
         mutbl: Mutability,
     },
+
     /// A built-in or standard library function that requires no special handling.
     MiscBuiltin,
+
     /// libc::malloc
     Malloc,
+
     /// libc::calloc
     Calloc,
+
     /// libc::free
     Free,
+
     /// libc::realloc
     Realloc,
+
     /// core::ptr::is_null
     IsNull,
+
     /// Some other statically-known function, including functions defined in the current crate.
     Other {
         def_id: DefId,
