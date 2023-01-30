@@ -1,22 +1,22 @@
 [workspace]
 members = [
+    "analysis/runtime",
     "c2rust",
     "c2rust-analyze",
-    "c2rust-transpile",
+    "c2rust-asm-casts",
     "c2rust-ast-builder",
     "c2rust-ast-exporter",
     "c2rust-ast-printer",
     "c2rust-bitfields",
-    "c2rust-asm-casts",
-    "analysis/runtime",
+    "c2rust-build-paths",
+    "c2rust-transpile",
     "dynamic_instrumentation",
     "pdg",
-    "c2rust-build-paths",
 ]
 exclude = [
+    "analysis/tests",
     "c2rust-macros",
     "examples",
-    "analysis/tests",
     "tests",
 ]
 
