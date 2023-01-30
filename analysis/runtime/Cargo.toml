@@ -5,8 +5,6 @@ authors = ["The C2Rust Development Team <c2rust@immunant.com>",
            "Stephen Crane <sjc@immunant.com>"]
 edition = "2021"
 
-[lib]
-
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 bincode = "1.0.1"
