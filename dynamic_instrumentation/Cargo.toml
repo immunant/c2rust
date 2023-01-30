@@ -2,6 +2,7 @@
 name = "c2rust-instrument"
 version = "0.1.0"
 edition = "2021"
+description = "C2Rust instrumentation of Rust code for dynamic analysis"
 
 [dependencies]
 anyhow = "1.0"

@@ -2,6 +2,7 @@
 name = "c2rust-build-paths"
 version = "0.1.0"
 edition = "2021"
+description = "C2Rust utilities related to build paths, primarily at build time"
 
 [dependencies]
 print_bytes = "1.1"

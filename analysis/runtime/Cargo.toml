@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["The C2Rust Development Team <c2rust@immunant.com>",
            "Stephen Crane <sjc@immunant.com>"]
 edition = "2021"
+description = "C2Rust runtime for recording dynamic analysis, targeted by c2rust-instrument and consumed by c2rust-pdg"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

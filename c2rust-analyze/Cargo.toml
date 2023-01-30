@@ -2,6 +2,7 @@
 name = "c2rust-analyze"
 version = "0.1.0"
 edition = "2021"
+description = "C2Rust analysis implementation for lifting unsafe Rust to safe Rust"
 
 [dependencies]
 polonius-engine = "0.13.0"

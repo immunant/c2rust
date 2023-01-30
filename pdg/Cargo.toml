@@ -2,6 +2,7 @@
 name = "c2rust-pdg"
 version = "0.1.0"
 edition = "2021"
+description = "Pointer Derivation Graph used for dynamic analysis by C2Rust"
 
 [dependencies]
 bincode = "1.0"
