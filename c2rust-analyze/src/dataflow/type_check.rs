@@ -292,7 +292,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
                     }
 
-                    Some(Callee::MiscBuiltin) => {}
+                    Some(Callee::Trivial) => {}
 
                     Some(Callee::Malloc) => {
                         self.visit_place(destination, Mutability::Mut);
