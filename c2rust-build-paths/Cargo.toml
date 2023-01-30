@@ -1,8 +1,15 @@
 [package]
 name = "c2rust-build-paths"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 description = "C2Rust utilities related to build paths, primarily at build time"
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 print_bytes = "1.1"

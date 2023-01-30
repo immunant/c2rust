@@ -22,5 +22,16 @@ exclude = [
     "tests",
 ]
 
+[workspace.package]
+version = "0.16.0"
+authors = ["The C2Rust Project Developers <c2rust@immunant.com>"]
+edition = "2021"
+readme = "README.md"
+homepage = "https://c2rust.com/"
+repository = "https://github.com/immunant/c2rust/"
+license = "BSD-3-Clause"
+keywords = ["transpiler", "migration", "translation", "c"]
+categories = ["development-tools", "development-tools::ffi", "command-line-utilities"]
+
 [profile.dev.package."*"]
 opt-level = 3
