@@ -17,6 +17,7 @@ members = [
 exclude = [
     "analysis/tests",
     "c2rust-macros",
+    "c2rust-refactor",
     "examples",
     "tests",
 ]
