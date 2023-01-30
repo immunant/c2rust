@@ -1,11 +1,15 @@
 [package]
 name = "c2rust-ast-printer"
-version = "0.16.0"
-authors = ["The Rust Project Developers", "Stephen Crane <sjc@immunant.com>"]
-edition = "2021"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/immunant/c2rust"
+version.workspace = true
+authors = ["The C2Rust Project Developers <c2rust@immunant.com>", "The Rust Project Developers"]
+edition.workspace = true
 description = "Customized version of libsyntax rust pretty-printer"
+readme = "README.md"
+homepage.workspace = true
+repository.workspace = true
+license = "MIT OR Apache-2.0"
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 log = "0.4"

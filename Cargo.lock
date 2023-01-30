@@ -140,7 +140,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-analysis-rt"
-version = "0.1.0"
+version = "0.16.0"
 dependencies = [
  "bincode",
  "enum_dispatch",
@@ -151,7 +151,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-analyze"
-version = "0.1.0"
+version = "0.16.0"
 dependencies = [
  "assert_matches",
  "bitflags",
@@ -164,7 +164,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-asm-casts"
-version = "0.2.0"
+version = "0.16.0"
 
 [[package]]
 name = "c2rust-ast-builder"
@@ -201,7 +201,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-bitfields"
-version = "0.3.0"
+version = "0.16.0"
 dependencies = [
  "c2rust-bitfields-derive",
  "libc",
@@ -209,7 +209,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-bitfields-derive"
-version = "0.2.1"
+version = "0.16.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -218,14 +218,14 @@ dependencies = [
 
 [[package]]
 name = "c2rust-build-paths"
-version = "0.1.0"
+version = "0.16.0"
 dependencies = [
  "print_bytes",
 ]
 
 [[package]]
 name = "c2rust-instrument"
-version = "0.1.0"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -245,7 +245,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-pdg"
-version = "0.1.0"
+version = "0.16.0"
 dependencies = [
  "bincode",
  "c2rust-analysis-rt",
