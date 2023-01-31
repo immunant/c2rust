@@ -6,7 +6,7 @@ project(ASTExporter)
 #################################################
 set(TINYCBOR_URL "https://github.com/intel/tinycbor/archive/v0.6.0.tar.gz"
     CACHE STRING "tinycbor download URL")
-set(TINYCBOR_MD5 "44eea4241ca98db5a601fa0734d64a0d" CACHE STRING "tinycbor archive md5 sum")
+set(TINYCBOR_MD5 "3663e683dbf03f49cb7057ed316a7563" CACHE STRING "tinycbor archive md5 sum")
 set(TINYCBOR_PREFIX "${CMAKE_BINARY_DIR}/tinycbor" CACHE STRING "tinycbor install prefix")
 
 include(ExternalProject)
