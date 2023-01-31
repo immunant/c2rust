@@ -80,3 +80,17 @@ int test_switch(int x) {
 
   return 0;
 }
+
+// This must not be translated into a const expression in rust
+// even with translate_const_macros
+// The generated code will simply not compile if it still does
+#define TEST_CALL_MACRO (not_pure_fn())
+
+static global = 6;
+int not_pure_fn() {
+    return global;
+}
+
+int test_no_const_fn_call() {
+  return TEST_CALL_MACRO;
+}

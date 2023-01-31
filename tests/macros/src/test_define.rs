@@ -1,6 +1,7 @@
 use crate::define::{rust_fns, rust_stmt_expr_inc};
 use crate::define::{rust_reference_define, TEST_CONST1, TEST_CONST2, TEST_PARENS};
 use crate::define::{rust_test_zstd, ZSTD_WINDOWLOG_MAX_32, ZSTD_WINDOWLOG_MAX_64};
+use crate::define::{rust_test_no_const_fn_call};
 use libc::{c_int, c_uint, c_ulong};
 
 #[link(name = "test")]
@@ -23,4 +24,10 @@ pub fn test_macro_stmt_expr() {
     let ret = unsafe { rust_stmt_expr_inc() };
 
     assert_eq!(ret, 2);
+}
+
+pub fn test_no_const_fn_call() {
+    let ret = unsafe {rust_test_no_const_fn_call()};
+
+    assert_eq!(ret, 6);
 }
