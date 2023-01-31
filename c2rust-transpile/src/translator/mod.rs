@@ -2235,13 +2235,16 @@ impl<'c> Translation<'c> {
                 // This actually should be catched by `to_unsafe_pure_expr` see below
                 // but a function call expression is translated as having no sideeffects by `convert_expr` (above)
                 // which is not necessarily correct, we just might not know them (e.g only decl in header exists).
-                // So we catch this here until there is a way to express unknown sideeffects of an expression. 
+                // So we catch this here until there is a way to express unknown sideeffects of an expression.
                 let expr = match expr.result_map(|v| {
-                    if matches!(*v, Expr::Call(_)) {Err(())}
-                    else {Ok(v)}
+                    if matches!(*v, Expr::Call(_)) {
+                        Err(())
+                    } else {
+                        Ok(v)
+                    }
                 }) {
                     Ok(v) => v,
-                    Err(_) => return Err(format_err!("Can not expand macro to function call"))
+                    Err(_) => return Err(format_err!("Can not expand macro to function call")),
                 };
 
                 // Join ty and cur_ty to the smaller of the two types. If the
