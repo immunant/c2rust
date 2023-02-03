@@ -1,0 +1,80 @@
+From 2c18a0503e1f8ea41b8b94b5771b38a149f8171f Mon Sep 17 00:00:00 2001
+From: chrysn <chrysn@fsfe.org>
+Date: Wed, 8 Jun 2022 13:26:19 +0200
+Subject: [PATCH] C11 atomics: Add tag, move information over to Rust side
+
+---
+ c2rust-ast-exporter/src/AstExporter.cpp  | 22 +++++++++++++---------
+ c2rust-ast-exporter/src/ast_tags.hpp     |  2 ++
+ c2rust-transpile/src/c_ast/conversion.rs |  5 +++++
+ 3 files changed, 20 insertions(+), 9 deletions(-)
+
+diff --git a/c2rust-ast-exporter/src/AstExporter.cpp b/c2rust-ast-exporter/src/AstExporter.cpp
+index 56cce5c93..480a53390 100644
+--- a/c2rust-ast-exporter/src/AstExporter.cpp
++++ b/c2rust-ast-exporter/src/AstExporter.cpp
+@@ -273,6 +273,8 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
+ 
+     void VisitVariableArrayType(const VariableArrayType *T);
+ 
++    void VisitAtomicType(const AtomicType *AT);
++
+     void VisitIncompleteArrayType(const IncompleteArrayType *T) {
+         auto t = T->getElementType();
+         auto qt = encodeQualType(t);
+@@ -2409,15 +2411,17 @@ void TypeEncoder::VisitVariableArrayType(const VariableArrayType *T) {
+ 
+     VisitQualType(t);
+ }
+-//
+-//void TypeEncoder::VisitAtomicType(const AtomicType *AT) {
+-//    std::string msg =
+-//            "C11 Atomic types are not supported. Aborting.";
+-////    auto horse = AT->get
+-////    astEncoder->printError(msg, AT);
+-//    AT->getValueType()->dump();
+-//    abort();
+-//}
++
++void TypeEncoder::VisitAtomicType(const AtomicType *AT) {
++  auto t = AT->getValueType();
++  auto qt = encodeQualType(t);
++
++  encodeType(AT, TagAtomicType, [qt](CborEncoder *local) {
++      cbor_encode_uint(local, qt);
++  });
++
++  VisitQualType(t);
++}
+ 
+ class TranslateConsumer : public clang::ASTConsumer {
+     Outputs *outputs;
+diff --git a/c2rust-ast-exporter/src/ast_tags.hpp b/c2rust-ast-exporter/src/ast_tags.hpp
+index 9443d13fc..74e992b05 100644
+--- a/c2rust-ast-exporter/src/ast_tags.hpp
++++ b/c2rust-ast-exporter/src/ast_tags.hpp
+@@ -142,6 +142,8 @@ enum TypeTag {
+     TagComplexType,
+     TagHalf,
+     TagBFloat16,
++
++    TagAtomicType,
+ };
+ 
+ enum StringTypeTag {
+diff --git a/c2rust-transpile/src/c_ast/conversion.rs b/c2rust-transpile/src/c_ast/conversion.rs
+index 45ea7bf81..b31339649 100644
+--- a/c2rust-transpile/src/c_ast/conversion.rs
++++ b/c2rust-transpile/src/c_ast/conversion.rs
+@@ -826,6 +826,11 @@ impl ConversionContext {
+                     self.processed_nodes.insert(new_id, OTHER_TYPE);
+                 }
+ 
++                TypeTag::TagAtomicType => {
++                    // Next step in atomics implementation: Transfer to a CTypeKind
++                    panic!("C11 Atomics are not implemented in C2Rust yet.");
++                }
++
+                 t => panic!(
+                     "Type conversion not implemented for {:?} expecting {:?}",
+                     t, expected_ty
