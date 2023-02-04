@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 mod diagnostics;
 
 pub mod build_files;
