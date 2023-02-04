@@ -22,9 +22,7 @@ use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::set_span::SetSpan;
 use crate::rust_ast::{pos_to_span, SpanExt};
-use crate::translator::atomics::ConvertAtomicArgs;
 use crate::translator::named_references::NamedReference;
-use crate::translator::operators::ConvertBinaryExprArgs;
 use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_printer::pprust::{self};
 
@@ -38,8 +36,8 @@ use crate::{c_ast, format_translation_err};
 use crate::{ExternCrate, ExternCrateDetails, TranspilerConfig};
 use c2rust_ast_exporter::clang_ast::LRValue;
 
-pub mod assembly;
-pub mod atomics;
+mod assembly;
+mod atomics;
 mod builtins;
 mod comments;
 mod literals;
@@ -1196,32 +1194,6 @@ struct ConvertedVariable {
     pub init: TranslationResult<WithStmts<Box<Expr>>>,
 }
 
-/// Args for [`Translation::convert_function`].
-struct ConvertFunctionArgs<'a> {
-    span: Span,
-    is_global: bool,
-    is_inline: bool,
-    is_main: bool,
-    is_variadic: bool,
-    is_extern: bool,
-    new_name: &'a str,
-    name: &'a str,
-    arguments: &'a [(CDeclId, String, CQualTypeId)],
-    return_type: Option<CQualTypeId>,
-    body: Option<CStmtId>,
-    attrs: &'a IndexSet<c_ast::Attribute>,
-}
-
-/// Args for [`Translation::convert_cast`].
-struct ConvertCastArgs {
-    source_ty: CQualTypeId,
-    ty: CQualTypeId,
-    val: WithStmts<Box<Expr>>,
-    expr: Option<CExprId>,
-    kind: Option<CastKind>,
-    opt_field_id: Option<CFieldId>,
-}
-
 impl<'c> Translation<'c> {
     pub fn new(
         mut ast_context: TypedAstContext,
@@ -1929,39 +1901,35 @@ impl<'c> Translation<'c> {
 
                 let converted_function = self.convert_function(
                     ctx,
-                    ConvertFunctionArgs {
-                        span,
-                        is_global,
-                        is_inline,
-                        is_main,
-                        is_variadic,
-                        is_extern,
-                        new_name,
-                        name,
-                        arguments: &args,
-                        return_type: ret,
-                        body,
-                        attrs,
-                    },
+                    span,
+                    is_global,
+                    is_inline,
+                    is_main,
+                    is_variadic,
+                    is_extern,
+                    new_name,
+                    name,
+                    &args,
+                    ret,
+                    body,
+                    attrs,
                 );
 
                 converted_function.or_else(|e| match self.tcfg.replace_unsupported_decls {
                     ReplaceMode::Extern if body.is_none() => self.convert_function(
                         ctx,
-                        ConvertFunctionArgs {
-                            span,
-                            is_global,
-                            is_inline: false,
-                            is_main,
-                            is_variadic,
-                            is_extern,
-                            new_name,
-                            name,
-                            arguments: &args,
-                            return_type: ret,
-                            body: None,
-                            attrs,
-                        },
+                        span,
+                        is_global,
+                        false,
+                        is_main,
+                        is_variadic,
+                        is_extern,
+                        new_name,
+                        name,
+                        &args,
+                        ret,
+                        None,
+                        attrs,
                     ),
                     _ => Err(e),
                 })
@@ -2264,23 +2232,19 @@ impl<'c> Translation<'c> {
     fn convert_function(
         &self,
         ctx: ExprContext,
-        args: ConvertFunctionArgs,
+        span: Span,
+        is_global: bool,
+        is_inline: bool,
+        is_main: bool,
+        is_variadic: bool,
+        is_extern: bool,
+        new_name: &str,
+        name: &str,
+        arguments: &[(CDeclId, String, CQualTypeId)],
+        return_type: Option<CQualTypeId>,
+        body: Option<CStmtId>,
+        attrs: &IndexSet<c_ast::Attribute>,
     ) -> TranslationResult<ConvertedDecl> {
-        let ConvertFunctionArgs {
-            span,
-            is_global,
-            is_inline,
-            is_main,
-            is_variadic,
-            is_extern,
-            new_name,
-            name,
-            arguments,
-            return_type,
-            body,
-            attrs,
-        } = args;
-
         self.function_context.borrow_mut().enter_new(name);
 
         self.with_scope(|| {
@@ -3521,14 +3485,12 @@ impl<'c> Translation<'c> {
                 }
                 self.convert_cast(
                     ctx,
-                    ConvertCastArgs {
-                        source_ty,
-                        ty,
-                        val,
-                        expr: Some(expr),
-                        kind: Some(kind),
-                        opt_field_id,
-                    },
+                    source_ty,
+                    ty,
+                    val,
+                    Some(expr),
+                    Some(kind),
+                    opt_field_id,
                 )
             }
 
@@ -3613,17 +3575,7 @@ impl<'c> Translation<'c> {
             }
 
             Binary(type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id) => self
-                .convert_binary_expr(
-                    ctx,
-                    ConvertBinaryExprArgs {
-                        type_id,
-                        op,
-                        lhs,
-                        rhs,
-                        opt_lhs_type_id,
-                        opt_res_type_id,
-                    },
-                )
+                .convert_binary_expr(ctx, type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id)
                 .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
             ArraySubscript(_, ref lhs, ref rhs, _) => {
@@ -3963,18 +3915,7 @@ impl<'c> Translation<'c> {
                 val2,
                 weak,
                 ..
-            } => self.convert_atomic(
-                ctx,
-                ConvertAtomicArgs {
-                    name,
-                    ptr_id: ptr,
-                    order_id: order,
-                    val1_id: val1,
-                    order_fail_id: order_fail,
-                    val2_id: val2,
-                    weak_id: weak,
-                },
-            ),
+            } => self.convert_atomic(ctx, name, ptr, order, val1, order_fail, val2, weak),
         }
     }
 
@@ -4045,14 +3986,12 @@ impl<'c> Translation<'c> {
                     return self
                         .convert_cast(
                             ctx,
-                            ConvertCastArgs {
-                                source_ty: CQualTypeId::new(macro_ty),
-                                ty: expr_ty,
-                                val,
-                                expr: None,
-                                kind: None,
-                                opt_field_id: None,
-                            },
+                            CQualTypeId::new(macro_ty),
+                            expr_ty,
+                            val,
+                            None,
+                            None,
+                            None,
                         )
                         .map(Some);
                 } else {
@@ -4196,17 +4135,13 @@ impl<'c> Translation<'c> {
     fn convert_cast(
         &self,
         ctx: ExprContext,
-        args: ConvertCastArgs,
+        source_ty: CQualTypeId,
+        ty: CQualTypeId,
+        val: WithStmts<Box<Expr>>,
+        expr: Option<CExprId>,
+        kind: Option<CastKind>,
+        opt_field_id: Option<CFieldId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let ConvertCastArgs {
-            source_ty,
-            ty,
-            val,
-            expr,
-            kind,
-            opt_field_id,
-        } = args;
-
         let source_ty_kind = &self.ast_context.resolve_type(source_ty.ctype).kind;
         let target_ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
 

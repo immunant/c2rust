@@ -19,7 +19,6 @@ use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::CLabelId;
 use crate::diagnostics::TranslationResult;
 use crate::rust_ast::SpanExt;
-use crate::translator::assembly::ConvertAsmArgs;
 use c2rust_ast_printer::pprust;
 use proc_macro2::Span;
 use std::collections::hash_map::DefaultHasher;
@@ -1950,14 +1949,12 @@ impl CfgBuilder {
             } => {
                 wip.extend(translator.convert_asm(
                     ctx,
-                    ConvertAsmArgs {
-                        span: Span::call_site(),
-                        is_volatile,
-                        asm,
-                        inputs,
-                        outputs,
-                        clobbers,
-                    },
+                    Span::call_site(),
+                    is_volatile,
+                    asm,
+                    inputs,
+                    outputs,
+                    clobbers,
                 )?);
                 Ok(Some(wip))
             }
