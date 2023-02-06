@@ -266,7 +266,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
     }
 
     /// Replace the labels on several labeled types.
-    pub fn relabel_slice<L2, F>(
+    pub fn _relabel_slice<L2, F>(
         &self,
         ltys: &[LabeledTy<'tcx, L2>],
         func: &mut F,

@@ -14,7 +14,7 @@ pub enum RewriteError<S = Span> {
     Conflict,
     /// The provided rewrite affects code that would be discarded by a rewrite of a containing
     /// expression.  `.0` is the span of the containing expression, and `.1` is its rewrite.
-    Discarded(S, Box<Rewrite<S>>),
+    _Discarded(S, Box<Rewrite<S>>),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -155,7 +155,7 @@ impl<S: SpanLike> RewriteTree<S> {
             // Specifically: if there is a parent, check that either the current item's span is
             // contained in the parent span and the parent's rewrite contains `Rewrite::Identity`,
             // or the current item's span is contained in the span of some `Rewrite::Sub` in
-            // the parent rewrite.
+            // the parent rewrite.  If this doesn't hold, then produce `RewriteError::Discarded`.
 
             // Push a new node onto the stack.
             stack.push(RewriteTree {

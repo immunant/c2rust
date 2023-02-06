@@ -165,7 +165,7 @@ pub fn apply_rewrites(tcx: TyCtxt, rewrites: Vec<(Span, Rewrite)>) {
             // Omit filecheck directives from the debug output, as filecheck can get confused due
             // to directives matching themselves (e.g. `// CHECK: foo` will match the `foo` in the
             // line `// CHECK: foo`).
-            if let Some((pre, post)) = line.split_once("// CHECK") {
+            if let Some((pre, _post)) = line.split_once("// CHECK") {
                 eprintln!("{}// (FileCheck directive omitted)", pre);
             } else {
                 eprintln!("{}", line);

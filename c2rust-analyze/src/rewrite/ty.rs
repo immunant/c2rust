@@ -7,7 +7,6 @@ use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Namespace, Res};
 use rustc_hir::def_id::LocalDefId;
 use rustc_hir::intravisit;
-use rustc_hir::HirId;
 use rustc_hir::Mutability;
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, LocalDecl};
@@ -30,7 +29,6 @@ type RwLTy<'tcx> = LabeledTy<'tcx, RewriteLabel>;
 /// Given an `LTy`, which is labeled with `PointerId`s, determine which rewrites to apply based on
 /// the permissions and flags inferred for each `PointerId`.
 fn relabel_rewrites<'tcx>(
-    acx: &AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,
     lcx: LabeledTyCtxt<'tcx, RewriteLabel>,
     lty: LTy<'tcx>,
@@ -307,7 +305,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
 pub fn gen_ty_rewrites<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,
-    mir: &Body<'tcx>,
+    _mir: &Body<'tcx>,
     ldid: LocalDefId,
 ) -> Vec<(Span, Rewrite)> {
     let rw_lcx = LabeledTyCtxt::new(acx.tcx());
@@ -331,12 +329,12 @@ pub fn gen_ty_rewrites<'tcx>(
 
     assert_eq!(lty_sig.inputs.len(), hir_sig.decl.inputs.len());
     for (&lty, hir_ty) in lty_sig.inputs.iter().zip(hir_sig.decl.inputs.iter()) {
-        let rw_lty = relabel_rewrites(acx, asn, rw_lcx, lty);
+        let rw_lty = relabel_rewrites(asn, rw_lcx, lty);
         v.handle_ty(rw_lty, hir_ty);
     }
 
     if let hir::FnRetTy::Return(hir_ty) = hir_sig.decl.output {
-        let rw_lty = relabel_rewrites(acx, asn, rw_lcx, lty_sig.output);
+        let rw_lty = relabel_rewrites(asn, rw_lcx, lty_sig.output);
         v.handle_ty(rw_lty, hir_ty);
     }
 
@@ -360,7 +358,7 @@ pub fn dump_rewritten_local_tys<'tcx>(
     let rw_lcx = LabeledTyCtxt::new(acx.tcx());
     for (local, decl) in mir.local_decls.iter_enumerated() {
         // TODO: apply `Cell` if `addr_of_local` indicates it's needed
-        let rw_lty = relabel_rewrites(acx, asn, rw_lcx, acx.local_tys[local]);
+        let rw_lty = relabel_rewrites(asn, rw_lcx, acx.local_tys[local]);
         let ty = mk_rewritten_ty(rw_lcx, rw_lty);
         eprintln!(
             "{:?} ({}): {:?}",

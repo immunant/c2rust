@@ -1,7 +1,4 @@
-use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet, PointerId};
-use rustc_hir::def::{DefKind, Res};
-use rustc_middle::ty::subst::GenericArg;
-use rustc_middle::ty::{ReErased, Ty, TyCtxt, TyKind};
+use crate::context::{FlagSet, PermissionSet};
 
 #[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
