@@ -168,7 +168,8 @@ fn filter_duplicate_cmds(v: Vec<Rc<CompileCmd>>) -> Vec<Rc<CompileCmd>> {
     cmds
 }
 
-/// Read `compile_commands` file and optionally ignore any entries not matching `filter`.
+/// Read `compile_commands` file, optionally ignore any entries not matching
+/// `filter`, and filter out any .S files since they're likely assembly files.
 pub fn get_compile_commands(
     compile_commands: &Path,
     filter: &Option<Regex>,
@@ -186,6 +187,16 @@ pub fn get_compile_commands(
     } else {
         v
     };
+
+    // Filter out any assembly files
+    let v = v
+        .into_iter()
+        .filter(|c| {
+            let file = c.file.to_str().unwrap();
+            let likely_asm = file.ends_with(".S") || file.ends_with(".s");
+            !likely_asm
+        })
+        .collect::<Vec<Rc<CompileCmd>>>();
 
     let mut lcmds = build_link_commands(v)?;
 
