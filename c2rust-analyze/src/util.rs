@@ -89,14 +89,17 @@ pub enum Callee<'tcx> {
         mutbl: Mutability,
     },
 
-    /// A [`Trivial`] library function that requires no special handling.
+    /// A [`Trivial`] library function is one that has no effect on pointer permissions in its caller.
+    ///
+    /// Thus, a [`Trivial`] function call requires no special handling.
     ///
     /// A function is [`Trivial`] if it has no argument or return types that are or contain a pointer.
     /// Note that "contains a pointer" is calculated recursively.
     /// There must not be any raw pointer accessible from that type.
     ///
-    /// Int-to-ptr casts a la [`std::ptr::from_exposed_addr`] are not considered for this,
-    /// as doing so is very difficult and out of scope for now.
+    /// We ignore the possibility that a function may perform
+    /// int-to-ptr casts (a la [`std::ptr::from_exposed_addr`]) internally,
+    /// as handling such casts is very difficult and out of scope for now.
     ///
     /// References are allowed, because the existence of that reference in the first place
     /// carries much stronger semantics, so in the case that the reference is casted to a raw pointer,
