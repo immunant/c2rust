@@ -162,6 +162,8 @@ fn parse_cast_kind(kind: &str) -> CastKind {
         "BuiltinFnToFnPtr" => CastKind::BuiltinFnToFnPtr,
         "ConstCast" => CastKind::ConstCast,
         "VectorSplat" => CastKind::VectorSplat,
+        "AtomicToNonAtomic" => CastKind::AtomicToNonAtomic,
+        "NonAtomicToAtomic" => CastKind::NonAtomicToAtomic,
         k => panic!("Unsupported implicit cast: {}", k),
     }
 }
@@ -816,8 +818,11 @@ impl ConversionContext {
                 }
 
                 TypeTag::TagAtomicType => {
-                    // Next step in atomics implementation: Transfer to a CTypeKind
-                    panic!("C11 Atomics are not implemented in C2Rust yet.");
+                    let qt = from_value(ty_node.extras[0].clone()).expect("Inner type not found");
+                    let qt_new = self.visit_qualified_type(qt);
+                    let atomic_ty = CTypeKind::Atomic(qt_new);
+                    self.add_type(new_id, not_located(atomic_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
                 t => panic!(
@@ -1760,6 +1765,11 @@ impl ConversionContext {
 
                     let typ = node.type_id.expect("Expected expression to have type");
                     let typ = self.visit_qualified_type(typ);
+
+                    // Perhaps as an optimization since atomic_init has no order,
+                    // clang stores val1 in the position otherwise used for order
+                    let is_atomic = name == "__c11_atomic_init" || name == "__opencl_atomic_init";
+                    let val1 = if is_atomic { Some(order) } else { val1 };
 
                     let e = CExprKind::Atomic {
                         typ,
