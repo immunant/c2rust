@@ -4,8 +4,12 @@ use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
     Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
 };
-use rustc_middle::ty::{AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy};
+use rustc_middle::ty::{
+    AdtDef, Binder, DefIdTree, FnSig, SubstsRef, Ty, TyCtxt, TyKind, TypeSuperVisitable,
+    TypeVisitable, TypeVisitor, UintTy,
+};
 use std::fmt::Debug;
+use std::ops::ControlFlow;
 
 #[derive(Debug)]
 pub enum RvalueDesc<'tcx> {
@@ -145,11 +149,92 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> 
     })
 }
 
+trait IsTrivial {
+    /// Something [`is_trivial`] if it has no effect on pointer permissions,
+    /// and thus requires no special handling.
+    /// That is, it must contain no raw pointers.
+    ///
+    /// See [`Trivial`] for more info.
+    ///
+    /// [`is_trivial`]: Self::is_trivial
+    /// [`Trivial`]: Callee::Trivial
+    fn is_trivial(&self) -> bool;
+}
+
+impl IsTrivial for Ty<'_> {
+    /// A [`Ty`] [`is_trivial`] if
+    /// it is not a (raw) pointer and contains no (raw) pointers.
+    ///
+    /// [`is_trivial`]: IsTrivial::is_trivial
+    fn is_trivial(&self) -> bool {
+        // Similar logic to [`Ty::contains`].
+        struct Visitor;
+
+        impl<'tcx> TypeVisitor<'tcx> for Visitor {
+            type BreakTy = ();
+
+            fn visit_ty(&mut self, ty: Ty<'tcx>) -> ControlFlow<Self::BreakTy> {
+                if ty.is_unsafe_ptr() {
+                    ControlFlow::BREAK
+                } else {
+                    ty.super_visit_with(self)
+                }
+            }
+        }
+
+        self.visit_with(&mut Visitor) != ControlFlow::BREAK
+    }
+}
+
+impl IsTrivial for FnSig<'_> {
+    /// A [`FnSig`] [`is_trivial`] if
+    /// all of its argument and return types are [`Trivial`].
+    ///
+    /// [`is_trivial`]: IsTrivial::is_trivial
+    /// [`Trivial`]: Callee::Trivial
+    fn is_trivial(&self) -> bool {
+        self.inputs_and_output.iter().all(|ty| ty.is_trivial())
+    }
+}
+
+impl IsTrivial for Binder<'_, FnSig<'_>> {
+    /// A [`Binder`]`<`[`FnSig`]`>` [`is_trivial`] if
+    /// the [`FnSig`] without the [`Binder`] is trivial.
+    ///
+    /// Lifetimes do not affect [`Trivial`]ity,
+    /// so we can ignore higher-kinded lifetimes from the [`Binder`].
+    ///
+    /// [`is_trivial`]: IsTrivial::is_trivial
+    /// [`Trivial`]: Callee::Trivial
+    fn is_trivial(&self) -> bool {
+        // We don't care about higher-kinded lifetimes here, as we don't care about lifetimes at all.
+        self.skip_binder().is_trivial()
+    }
+}
+
+/// A callee [`is_trivial`] if
+/// its [`FnSig`] [`is_trivial`] after [`subst_and_normalize_erasing_regions`].
+///
+/// [`is_trivial`]: IsTrivial::is_trivial
+/// [`subst_and_normalize_erasing_regions`]: TyCtxt::subst_and_normalize_erasing_regions
+fn is_callee_trivial<'tcx>(tcx: TyCtxt<'tcx>, did: DefId, substs: SubstsRef<'tcx>) -> bool {
+    let param_env = tcx.param_env(did);
+    let did = tcx.subst_and_normalize_erasing_regions(substs, param_env, did);
+
+    // Typed because rust-analyzer can't resolve it.
+    let fn_sig: Binder<FnSig> = tcx.fn_sig(did);
+    fn_sig.is_trivial()
+}
+
 fn builtin_callee<'tcx>(
     tcx: TyCtxt<'tcx>,
     did: DefId,
-    _substs: SubstsRef<'tcx>,
+    substs: SubstsRef<'tcx>,
 ) -> Option<Callee<'tcx>> {
+    if is_callee_trivial(tcx, did, substs) {
+        return Some(Callee::Trivial);
+    }
+
     let name = tcx.item_name(did);
 
     match name.as_str() {

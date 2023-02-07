@@ -1,3 +1,4 @@
+#![feature(control_flow_enum)]
 #![feature(rustc_private)]
 extern crate either;
 extern crate rustc_arena;
