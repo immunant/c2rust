@@ -369,7 +369,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     Some(Callee::SliceAsPtr { .. }) => {
                         // TODO: handle this like a cast
                     }
-                    Some(Callee::MiscBuiltin) => {}
+                    Some(Callee::Trivial) => {}
                     Some(Callee::Other { .. }) => {
                         // TODO
                     }

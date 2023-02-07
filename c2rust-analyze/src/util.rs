@@ -89,8 +89,24 @@ pub enum Callee<'tcx> {
         mutbl: Mutability,
     },
 
-    /// A built-in or standard library function that requires no special handling.
-    MiscBuiltin,
+    /// A [`Trivial`] library function is one that has no effect on pointer permissions in its caller.
+    ///
+    /// Thus, a [`Trivial`] function call requires no special handling.
+    ///
+    /// A function is [`Trivial`] if it has no argument or return types that are or contain a pointer.
+    /// Note that "contains a pointer" is calculated recursively.
+    /// There must not be any raw pointer accessible from that type.
+    ///
+    /// We ignore the possibility that a function may perform
+    /// int-to-ptr casts (a la [`std::ptr::from_exposed_addr`]) internally,
+    /// as handling such casts is very difficult and out of scope for now.
+    ///
+    /// References are allowed, because the existence of that reference in the first place
+    /// carries much stronger semantics, so in the case that the reference is casted to a raw pointer,
+    /// we can simply use the pointer permissions guaranteed by that reference.
+    ///
+    /// [`Trivial`]: Self::Trivial
+    Trivial,
 
     /// libc::malloc
     Malloc,
@@ -194,7 +210,7 @@ fn builtin_callee<'tcx>(
             if path.data[0].to_string() != "process" {
                 return None;
             }
-            Some(Callee::MiscBuiltin)
+            Some(Callee::Trivial)
         }
 
         "size_of" => {
@@ -209,7 +225,7 @@ fn builtin_callee<'tcx>(
             if path.data[0].to_string() != "mem" {
                 return None;
             }
-            Some(Callee::MiscBuiltin)
+            Some(Callee::Trivial)
         }
 
         "malloc" | "c2rust_test_typed_malloc" => {
