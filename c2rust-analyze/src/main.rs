@@ -467,8 +467,6 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                 } = term.kind
                 {
                     let func_ty = func.ty(&mir.local_decls, tcx);
-                    use crate::util::Callee::*;
-
                     let mut add_c_void_ptr = |p: &Place<'tcx>| {
                         let deref_ty = p
                             .ty(acx.local_decls, acx.tcx())
@@ -485,6 +483,7 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                         acx.c_void_ptrs.insert(*p);
                     };
 
+                    use crate::util::Callee::*;
                     match util::ty_callee(tcx, func_ty) {
                         Malloc | Calloc => {
                             add_c_void_ptr(&destination);
