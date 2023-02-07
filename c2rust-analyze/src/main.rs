@@ -469,7 +469,7 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                     let func_ty = func.ty(&mir.local_decls, tcx);
                     use crate::util::Callee::*;
 
-                    let assert_libc_cvoid = |p: &Place<'tcx>| {
+                    let mut add_c_void_ptr = |p: &Place<'tcx>| {
                         let deref_ty = p
                             .ty(acx.local_decls, acx.tcx())
                             .ty
@@ -481,21 +481,20 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                             assert_eq!(tcx.def_path(adt.did()).data[0].to_string(), "ffi");
                             assert_eq!(tcx.item_name(adt.did()).as_str(), "c_void");
                         });
+
+                        acx.c_void_ptrs.insert(*p);
                     };
 
                     match util::ty_callee(tcx, func_ty) {
                         Malloc | Calloc => {
-                            assert_libc_cvoid(&destination);
-                            acx.c_void_ptrs.insert(destination);
+                            add_c_void_ptr(&destination);
                         }
                         Realloc => {
-                            assert_libc_cvoid(&destination);
-                            acx.c_void_ptrs.insert(destination);
-                            acx.c_void_ptrs.insert(args[0].place().unwrap());
+                            add_c_void_ptr(&destination);
+                            add_c_void_ptr(&args[0].place().unwrap());
                         }
                         Free => {
-                            assert_libc_cvoid(&args[0].place().unwrap());
-                            acx.c_void_ptrs.insert(args[0].place().unwrap());
+                            add_c_void_ptr(&args[0].place().unwrap());
                         }
 
                         _ => {}
