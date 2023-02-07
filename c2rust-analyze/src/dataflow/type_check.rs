@@ -227,7 +227,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         match stmt.kind {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
-                if self.acx.special_casts.is_special(&pl, rv) {
+                if self.acx.c_void_casts.is_special(&pl, rv) {
                     // skip this cast, because the local that is getting casted
                     // originates from a call to an allocation that is handled
                     // in a way that effectively elides the cast
@@ -300,18 +300,18 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     Some(Callee::Trivial) => {}
 
                     Some(Callee::Malloc) => {
-                        let destination = self.acx.special_casts.get_or_default_to(&destination);
+                        let destination = self.acx.c_void_casts.get_or_default_to(&destination);
                         self.visit_place(destination, Mutability::Mut);
                     }
 
                     Some(Callee::Calloc) => {
-                        let destination = self.acx.special_casts.get_or_default_to(&destination);
+                        let destination = self.acx.c_void_casts.get_or_default_to(&destination);
                         self.visit_place(destination, Mutability::Mut);
                     }
                     Some(Callee::Realloc) => {
-                        let destination = self.acx.special_casts.get_or_default_to(&destination);
+                        let destination = self.acx.c_void_casts.get_or_default_to(&destination);
                         let input_ptr_pl = args[0].place().unwrap();
-                        let first_arg = self.acx.special_casts.get_or_default_to(&input_ptr_pl);
+                        let first_arg = self.acx.c_void_casts.get_or_default_to(&input_ptr_pl);
                         self.visit_place(destination, Mutability::Mut);
                         let pl_lty = self.acx.type_of(destination);
                         assert!(args.len() == 2);
@@ -327,7 +327,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                     Some(Callee::Free) => {
                         let input_ptr_pl = args[0].place().unwrap();
-                        let first_arg = self.acx.special_casts.get_or_default_to(&input_ptr_pl);
+                        let first_arg = self.acx.c_void_casts.get_or_default_to(&input_ptr_pl);
                         self.visit_place(destination, Mutability::Mut);
                         assert!(args.len() == 1);
 
