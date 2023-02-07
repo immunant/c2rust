@@ -523,13 +523,12 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                             // to some other type, e.g. `let foo = malloc(..) as *mut Foo;`
                             // carry over the pointer id of *libc::c_void, but match the pointer ids
                             // of the casted-to-type for the rest
-                            acx.special_casts.insert(p, lhs);
+                            acx.special_casts.0.insert(p, lhs);
                         }
 
                         if acx.c_void_ptrs.contains(&lhs) {
                             // This is a special case for types being casted to *libc::c_void
-                            // acx.special_casts.insert(p, lhs);
-                            acx.special_casts.insert(lhs, op.place().unwrap());
+                            acx.special_casts.0.insert(lhs, op.place().unwrap());
                         }
 
                         continue;

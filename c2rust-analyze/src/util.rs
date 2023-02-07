@@ -2,10 +2,20 @@ use crate::labeled_ty::LabeledTy;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
-    Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
+    Field, Local, Mutability, Operand, Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
 };
 use rustc_middle::ty::{AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy};
+use std::collections::HashMap;
 use std::fmt::Debug;
+
+#[derive(Default)]
+pub struct SpecialCasts<'tcx>(pub HashMap<Place<'tcx>, Place<'tcx>>);
+
+impl<'tcx> SpecialCasts<'tcx> {
+    pub fn is_special(&self, lhs: &Place<'tcx>, rv: &Rvalue<'tcx>) -> bool {
+        matches!(rv, Rvalue::Cast(_, Operand::Copy(p) | Operand::Move(p), _) if self.0.contains_key(p) || self.0.contains_key(lhs))
+    }
+}
 
 #[derive(Debug)]
 pub enum RvalueDesc<'tcx> {

@@ -227,8 +227,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         match stmt.kind {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
-                if matches!(rv, Rvalue::Cast(_, Operand::Copy(p) | Operand::Move(p), _) if self.acx.special_casts.contains_key(&p) || self.acx.special_casts.contains_key(&pl))
-                {
+                if self.acx.special_casts.is_special(&pl, rv) {
                     // skip this cast, because the local that is getting casted
                     // originates from a call to an allocation that is handled
                     // in a way that effectively elides the cast
@@ -304,6 +303,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         let destination = self
                             .acx
                             .special_casts
+                            .0
                             .get(&destination)
                             .unwrap_or(&destination);
                         self.visit_place(*destination, Mutability::Mut);
@@ -313,6 +313,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         let destination = self
                             .acx
                             .special_casts
+                            .0
                             .get(&destination)
                             .unwrap_or(&destination);
                         self.visit_place(*destination, Mutability::Mut);
@@ -321,12 +322,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         let destination = self
                             .acx
                             .special_casts
+                            .0
                             .get(&destination)
                             .unwrap_or(&destination);
                         let input_ptr_pl = args[0].place().unwrap();
                         let first_arg = self
                             .acx
                             .special_casts
+                            .0
                             .get(&input_ptr_pl)
                             .unwrap_or(&input_ptr_pl);
                         self.visit_place(*destination, Mutability::Mut);
@@ -347,6 +350,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         let first_arg = self
                             .acx
                             .special_casts
+                            .0
                             .get(&input_ptr_pl)
                             .unwrap_or(&input_ptr_pl);
                         self.visit_place(destination, Mutability::Mut);

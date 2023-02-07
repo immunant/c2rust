@@ -3,7 +3,7 @@ use crate::pointer_id::{
     GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
     PointerTableMut,
 };
-use crate::util::{self, describe_rvalue, RvalueDesc};
+use crate::util::{self, describe_rvalue, RvalueDesc, SpecialCasts};
 use crate::AssignPointerIds;
 use bitflags::bitflags;
 use indexmap::IndexSet;
@@ -103,7 +103,7 @@ pub struct AnalysisCtxt<'a, 'tcx> {
     /// ```
     /// _2 = malloc(...);
     /// ```
-    pub special_casts: HashMap<Place<'tcx>, Place<'tcx>>,
+    pub special_casts: SpecialCasts<'tcx>,
 
     next_ptr_id: NextLocalPointerId,
 }
@@ -201,7 +201,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             local_decls: &mir.local_decls,
             local_tys: IndexVec::new(),
             c_void_ptrs: IndexSet::new(),
-            special_casts: HashMap::new(),
+            special_casts: SpecialCasts::default(),
             addr_of_local: IndexVec::new(),
             rvalue_tys: HashMap::new(),
             next_ptr_id: NextLocalPointerId::new(),
@@ -224,7 +224,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             local_decls: &mir.local_decls,
             local_tys,
             c_void_ptrs: IndexSet::new(),
-            special_casts: HashMap::new(),
+            special_casts: SpecialCasts::default(),
             addr_of_local,
             rvalue_tys,
             next_ptr_id,
