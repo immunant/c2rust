@@ -16,6 +16,10 @@ impl<'tcx> SpecialCasts<'tcx> {
     pub fn is_special(&self, lhs: &Place<'tcx>, rv: &Rvalue<'tcx>) -> bool {
         matches!(rv, Rvalue::Cast(_, Operand::Copy(p) | Operand::Move(p), _) if self.0.contains_key(p) || self.0.contains_key(lhs))
     }
+
+    pub fn get_or_default_to(&self, p: &Place<'tcx>) -> Place<'tcx> {
+        self.0.get(p).unwrap_or(p).clone()
+    }
 }
 
 #[derive(Debug)]

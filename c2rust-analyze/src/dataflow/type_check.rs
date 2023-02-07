@@ -329,39 +329,19 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
 
                     Callee::Malloc => {
-                        let destination = self
-                            .acx
-                            .special_casts
-                            .0
-                            .get(&destination)
-                            .unwrap_or(&destination);
-                        self.visit_place(*destination, Mutability::Mut);
+                        let destination = self.acx.special_casts.get_or_default_to(&destination);
+                        self.visit_place(destination, Mutability::Mut);
                     }
 
                     Callee::Calloc => {
-                        let destination = self
-                            .acx
-                            .special_casts
-                            .0
-                            .get(&destination)
-                            .unwrap_or(&destination);
-                        self.visit_place(*destination, Mutability::Mut);
+                        let destination = self.acx.special_casts.get_or_default_to(&destination);
+                        self.visit_place(destination, Mutability::Mut);
                     }
                     Callee::Realloc => {
-                        let destination = self
-                            .acx
-                            .special_casts
-                            .0
-                            .get(&destination)
-                            .unwrap_or(&destination);
+                        let destination = self.acx.special_casts.get_or_default_to(&destination);
                         let input_ptr_pl = args[0].place().unwrap();
-                        let first_arg = self
-                            .acx
-                            .special_casts
-                            .0
-                            .get(&input_ptr_pl)
-                            .unwrap_or(&input_ptr_pl);
-                        self.visit_place(*destination, Mutability::Mut);
+                        let first_arg = self.acx.special_casts.get_or_default_to(&input_ptr_pl);
+                        self.visit_place(destination, Mutability::Mut);
                         let pl_lty = self.acx.type_of(destination);
                         assert!(args.len() == 2);
                         self.visit_place(input_ptr_pl, Mutability::Not);
@@ -376,12 +356,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                     Callee::Free => {
                         let input_ptr_pl = args[0].place().unwrap();
-                        let first_arg = self
-                            .acx
-                            .special_casts
-                            .0
-                            .get(&input_ptr_pl)
-                            .unwrap_or(&input_ptr_pl);
+                        let first_arg = self.acx.special_casts.get_or_default_to(&input_ptr_pl);
                         self.visit_place(destination, Mutability::Mut);
                         assert!(args.len() == 1);
 
