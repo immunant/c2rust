@@ -424,7 +424,7 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
     for &ldid in &all_fn_ldids {
         let ldid_const = WithOptConstParam::unknown(ldid);
         let mir = tcx.mir_built(ldid_const);
-        let mir: std::cell::Ref<Body> = mir.borrow();
+        let mir = mir.borrow();
         let lsig = *gacx.fn_sigs.get(&ldid.to_def_id()).unwrap();
 
         let mut acx = gacx.function_context(&mir);
