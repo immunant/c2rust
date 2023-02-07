@@ -1220,7 +1220,7 @@ unsafe extern "C" fn connections_get_new_connection(
     mut con: *mut connection,
 ) -> *mut connection {
     // let mut con: *mut connection = 0 as *mut connection;
-    // (*srv).lim_conns = ((*srv).lim_conns).wrapping_sub(1);
+    (*srv).lim_conns = ((*srv).lim_conns).wrapping_sub(1);
     if !((*srv).conns_pool).is_null() {
         con = (*srv).conns_pool;
         (*srv).conns_pool = (*con).next;
@@ -1283,7 +1283,7 @@ unsafe extern "C" fn connection_del(mut srv: *mut server, mut con: *mut connecti
     (*con).prev = con; // 0 as *mut connection;
     (*con).next = (*srv).conns_pool;
     (*srv).conns_pool = con;
-    // (*srv).lim_conns = ((*srv).lim_conns).wrapping_add(1);
+    (*srv).lim_conns = ((*srv).lim_conns).wrapping_add(1);
 }
 
 unsafe extern "C" fn connection_close(mut con: *mut connection) {
@@ -1302,9 +1302,9 @@ unsafe extern "C" fn connection_close(mut con: *mut connection) {
     fdevent_fdnode_event_del((*srv).ev, (*con).fdn);
     fdevent_unregister((*srv).ev, (*con).fd);
     // (*con).fdn = 0 as *mut fdnode;
-    // if 0 as libc::c_int == close((*con).fd) {
-    //     (*srv).cur_fds -= 1;
-    // } else {
+    if 0 as libc::c_int == close((*con).fd) {
+        (*srv).cur_fds -= 1;
+    } else {
     //     log_perror(
     //         (*r).conf.errh,
     //         b"src/connections.c\0" as *const u8 as *const libc::c_char,
@@ -1312,7 +1312,7 @@ unsafe extern "C" fn connection_close(mut con: *mut connection) {
     //         b"(warning) close: %d\0" as *const u8 as *const libc::c_char,
     //         (*con).fd,
     //     );
-    // }
+    }
     if (*r).conf.log_state_handling != 0 {
         // log_error(
         //     (*r).conf.errh,
