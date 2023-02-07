@@ -13,9 +13,9 @@ on:
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   # This workflow contains a single job called "build"
-  build-on-ubuntu-1804:
+  build-on-ubuntu-2004:
     # The type of runner that the job will run on
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -79,7 +79,7 @@ jobs:
         sudo apt-get -qq update
         sudo apt-get -qq install    \
             libbrotli-dev           \
-            libclang-9-dev          \
+            libclang-12-dev         \
             libgcrypt20             \
             libreadline-dev         \
             libidn2-dev             \
@@ -102,7 +102,7 @@ jobs:
     # Working dir is /home/runner/work/c2rust/c2rust
     - name: Build c2rust
       run: |
-        export LLVM_CONFIG_PATH=/usr/bin/llvm-config-9
+        export LLVM_CONFIG_PATH=/usr/bin/llvm-config-12
         cargo build --release
 
     # TODO(pl): figure out why compile_commands.json may cause json-c to fail
