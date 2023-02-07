@@ -1,7 +1,7 @@
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubPoint};
 use crate::borrowck::{LTy, LTyCtxt, Label, OriginParam};
 use crate::context::PermissionSet;
-use crate::util::{self, ty_callee, Callee};
+use crate::util::{self, ty_callee, Callee, SpecialCasts};
 use crate::AdtMetadataTable;
 use assert_matches::assert_matches;
 use indexmap::IndexMap;
@@ -37,7 +37,7 @@ struct TypeChecker<'tcx, 'a> {
     /// ```
     /// _2 = malloc(...);
     /// ```
-    special_casts: &'a HashMap<Place<'tcx>, Place<'tcx>>,
+    special_casts: &'a SpecialCasts<'tcx>,
 }
 
 impl<'tcx> TypeChecker<'tcx, '_> {
@@ -357,8 +357,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
 
-                if matches!(rv, Rvalue::Cast(_, Operand::Copy(p) | Operand::Move(p), _) if self.special_casts.contains_key(&p))
-                {
+                if self.special_casts.is_special(&pl, &rv) {
                     // skip this cast, because the local that is getting casted
                     // originates from a call to an allocation that is handled
                     // in a way that effectively elides the cast
@@ -452,7 +451,7 @@ pub fn visit_body<'tcx>(
     field_permissions: &HashMap<DefId, PermissionSet>,
     mir: &Body<'tcx>,
     adt_metadata: &AdtMetadataTable<'tcx>,
-    special_casts: &HashMap<Place<'tcx>, Place<'tcx>>,
+    special_casts: &SpecialCasts<'tcx>,
 ) {
     let mut tc = TypeChecker {
         tcx,
