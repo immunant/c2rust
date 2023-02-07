@@ -450,7 +450,7 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
         }
 
         // Find all calls to `malloc`, `calloc`, `realloc`, and `free`
-        // and track their destination locals as being libc::c_void
+        // and track their destination locals as being c_void
         // pointers to special-case downstream casts
         for bb_data in mir.basic_blocks().iter() {
             if let Some(term) = &bb_data.terminator {
@@ -518,15 +518,15 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                     },
                     Rvalue::Cast(_, ref op, _) => {
                         if let Some(p) = op.place().filter(|p| acx.c_void_ptrs.contains(p)) {
-                            // This is a special case for types being casted from *libc::c_void to a pointer
+                            // This is a special case for types being casted from *c_void to a pointer
                             // to some other type, e.g. `let foo = malloc(..) as *mut Foo;`
-                            // carry over the pointer id of *libc::c_void, but match the pointer ids
+                            // carry over the pointer id of *c_void, but match the pointer ids
                             // of the casted-to-type for the rest
                             acx.c_void_casts.0.insert(p, lhs);
                         }
 
                         if acx.c_void_ptrs.contains(&lhs) {
-                            // This is a special case for types being casted to *libc::c_void
+                            // This is a special case for types being casted to *c_void
                             acx.c_void_casts.0.insert(lhs, op.place().unwrap());
                         }
 
