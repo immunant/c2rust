@@ -10,9 +10,9 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 #[derive(Default)]
-pub struct SpecialCasts<'tcx>(pub HashMap<Place<'tcx>, Place<'tcx>>);
+pub struct CVoidCasts<'tcx>(pub HashMap<Place<'tcx>, Place<'tcx>>);
 
-impl<'tcx> SpecialCasts<'tcx> {
+impl<'tcx> CVoidCasts<'tcx> {
     pub fn is_special(&self, lhs: &Place<'tcx>, rv: &Rvalue<'tcx>) -> bool {
         matches!(rv, Rvalue::Cast(_, Operand::Copy(p) | Operand::Move(p), _) if self.0.contains_key(p) || self.0.contains_key(lhs))
     }

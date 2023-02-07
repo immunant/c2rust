@@ -1,7 +1,7 @@
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubPoint};
 use crate::borrowck::{LTy, LTyCtxt, Label, OriginParam};
 use crate::context::PermissionSet;
-use crate::util::{self, ty_callee, Callee, SpecialCasts};
+use crate::util::{self, ty_callee, CVoidCasts, Callee};
 use crate::AdtMetadataTable;
 use assert_matches::assert_matches;
 use indexmap::IndexMap;
@@ -37,7 +37,7 @@ struct TypeChecker<'tcx, 'a> {
     /// ```
     /// _2 = malloc(...);
     /// ```
-    special_casts: &'a SpecialCasts<'tcx>,
+    c_void_casts: &'a CVoidCasts<'tcx>,
 }
 
 impl<'tcx> TypeChecker<'tcx, '_> {
@@ -357,7 +357,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
 
-                if self.special_casts.is_special(&pl, &rv) {
+                if self.c_void_casts.is_special(&pl, &rv) {
                     // skip this cast, because the local that is getting casted
                     // originates from a call to an allocation that is handled
                     // in a way that effectively elides the cast
@@ -451,7 +451,7 @@ pub fn visit_body<'tcx>(
     field_permissions: &HashMap<DefId, PermissionSet>,
     mir: &Body<'tcx>,
     adt_metadata: &AdtMetadataTable<'tcx>,
-    special_casts: &SpecialCasts<'tcx>,
+    c_void_casts: &CVoidCasts<'tcx>,
 ) {
     let mut tc = TypeChecker {
         tcx,
@@ -464,7 +464,7 @@ pub fn visit_body<'tcx>(
         local_decls: &mir.local_decls,
         current_location: Location::START,
         adt_metadata,
-        special_casts,
+        c_void_casts,
     };
 
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
