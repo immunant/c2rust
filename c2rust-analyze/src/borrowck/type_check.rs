@@ -27,7 +27,7 @@ struct TypeChecker<'tcx, 'a> {
     adt_metadata: &'a AdtMetadataTable<'tcx>,
     /// A mapping for substituting [`Place`]s adhering to the
     /// following pattern
-    /// ```
+    /// ```mir
     /// _1 = malloc(...);
     /// _2 = _1 as *mut T;
     /// ```

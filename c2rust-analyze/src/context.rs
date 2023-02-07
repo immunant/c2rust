@@ -93,7 +93,7 @@ pub struct AnalysisCtxt<'a, 'tcx> {
     pub rvalue_tys: HashMap<Location, LTy<'tcx>>,
     /// A mapping for substituting [`Place`]s adhering to the
     /// following pattern
-    /// ```
+    /// ```mir
     /// _1 = malloc(...);
     /// _2 = _1 as *mut T;
     /// ```
