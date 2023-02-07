@@ -462,7 +462,6 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                     ref func,
                     ref args,
                     destination,
-                    target: _,
                     ..
                 } = term.kind
                 {
