@@ -85,18 +85,6 @@ pub struct AnalysisCtxt<'a, 'tcx> {
     pub local_decls: &'a LocalDecls<'tcx>,
     pub local_tys: IndexVec<Local, LTy<'tcx>>,
     pub c_void_ptrs: HashSet<Place<'tcx>>,
-    /// A mapping for substituting [`Place`]s adhering to the
-    /// following pattern
-    /// ```mir
-    /// _1 = malloc(...);
-    /// _2 = _1 as *mut T;
-    /// ```
-    ///
-    /// In this case, `_1` would be mapped to `_2`, which is indicative
-    /// of the amended statement:
-    /// ```
-    /// _2 = malloc(...);
-    /// ```
     pub c_void_casts: CVoidCasts<'tcx>,
     pub addr_of_local: IndexVec<Local, PointerId>,
     /// Types for certain [`Rvalue`]s.  Some `Rvalue`s introduce fresh [`PointerId`]s; to keep

@@ -25,18 +25,6 @@ struct TypeChecker<'tcx, 'a> {
     local_decls: &'a IndexVec<Local, LocalDecl<'tcx>>,
     current_location: Location,
     adt_metadata: &'a AdtMetadataTable<'tcx>,
-    /// A mapping for substituting [`Place`]s adhering to the
-    /// following pattern
-    /// ```mir
-    /// _1 = malloc(...);
-    /// _2 = _1 as *mut T;
-    /// ```
-    ///
-    /// In this case, `_1` would be mapped to `_2`, which is indicative
-    /// of the amended statement:
-    /// ```
-    /// _2 = malloc(...);
-    /// ```
     c_void_casts: &'a CVoidCasts<'tcx>,
 }
 
