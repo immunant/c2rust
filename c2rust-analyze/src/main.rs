@@ -462,6 +462,7 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                     ref func,
                     ref args,
                     destination,
+                    target,
                     ..
                 } = term.kind
                 {
@@ -482,17 +483,98 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                         acx.c_void_ptrs.insert(*p);
                     };
 
+                    let find_last_cast_in_block = || {
+                        bb_data.statements
+                            .iter()
+                            .rev()
+                            .find(|s| matches!(&s.kind, StatementKind::Assign(x) if matches!(x.1, Rvalue::Cast(..))))
+                    };
+
+                    let find_next_cast_in_block = || {
+                        let successor = target.unwrap();
+                        mir.basic_blocks()[successor]
+                            .statements
+                            .iter()
+                            .find(|s| matches!(s.kind, StatementKind::Assign(..)))
+                    };
+
                     use Callee::*;
                     match util::ty_callee(tcx, func_ty) {
                         Malloc | Calloc => {
                             add_c_void_ptr(&destination);
+                            let cast = find_next_cast_in_block();
+                            if cast.is_none() {
+                                continue;
+                            }
+                            if let StatementKind::Assign(ref x) = cast.unwrap().kind {
+                                let (lhs, ref rv) = **x;
+                                if let Rvalue::Cast(_, ref op, _) = rv {
+                                    let op = op.place().expect(
+                                        "Rvalue::Cast is not Operant::Constant so it has a Place",
+                                    );
+                                    if acx.c_void_ptrs.contains(&op) {
+                                        // This is a special case for types being casted from *c_void to a pointer
+                                        // to some other type, e.g. `let foo = malloc(..) as *mut Foo;`
+                                        // carry over the pointer id of *c_void, but match the pointer ids
+                                        // of the casted-to-type for the rest
+                                        acx.c_void_casts.0.insert(op, lhs);
+                                    }
+                                }
+                            }
                         }
                         Realloc => {
                             add_c_void_ptr(&destination);
                             add_c_void_ptr(&args[0].place().unwrap());
+                            let cast = find_next_cast_in_block();
+                            if cast.is_none() {
+                                continue;
+                            }
+                            if let StatementKind::Assign(ref x) = cast.unwrap().kind {
+                                let (lhs, ref rv) = **x;
+                                if let Rvalue::Cast(_, ref op, _) = rv {
+                                    let op = op.place().expect(
+                                        "Rvalue::Cast is not Operant::Constant so it has a Place",
+                                    );
+                                    if acx.c_void_ptrs.contains(&op) {
+                                        // This is a special case for types being casted from *c_void to a pointer
+                                        // to some other type, e.g. `let foo = malloc(..) as *mut Foo;`
+                                        // carry over the pointer id of *c_void, but match the pointer ids
+                                        // of the casted-to-type for the rest
+                                        acx.c_void_casts.0.insert(op, lhs);
+                                    }
+                                }
+                            }
+                            let suspected_cast = find_last_cast_in_block();
+                            if suspected_cast.is_none() {
+                                continue;
+                            }
+                            eprintln!("suspected realloc cast: {:?}", suspected_cast);
+                            if let StatementKind::Assign(ref x) = suspected_cast.unwrap().kind {
+                                let (lhs, ref rv) = **x;
+                                if let Rvalue::Cast(_, ref op, _) = rv {
+                                    if acx.c_void_ptrs.contains(&lhs) {
+                                        // This is a special case for types being casted to *c_void
+                                        acx.c_void_casts.0.insert(lhs, op.place().unwrap());
+                                    }
+                                }
+                            }
                         }
                         Free => {
                             add_c_void_ptr(&args[0].place().unwrap());
+                            eprintln!("suspected free cast: {:?}", bb_data);
+                            let suspected_cast = find_last_cast_in_block();
+                            if suspected_cast.is_none() {
+                                continue;
+                            }
+                            if let StatementKind::Assign(ref x) = suspected_cast.unwrap().kind {
+                                let (lhs, ref rv) = **x;
+                                if let Rvalue::Cast(_, ref op, _) = rv {
+                                    if acx.c_void_ptrs.contains(&lhs) {
+                                        // This is a special case for types being casted to *c_void
+                                        acx.c_void_casts.0.insert(lhs, op.place().unwrap());
+                                    }
+                                }
+                            }
                         }
 
                         _ => {}
@@ -503,7 +585,7 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
 
         for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
             for (i, stmt) in bb_data.statements.iter().enumerate() {
-                let (lhs, rv) = match &stmt.kind {
+                let (_, rv) = match &stmt.kind {
                     StatementKind::Assign(x) => *x.clone(),
                     _ => continue,
                 };
@@ -517,25 +599,14 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                         }
                         _ => continue,
                     },
-                    Rvalue::Cast(_, ref op, _) => {
-                        let p = op
-                            .place()
-                            .expect("Rvalue::Cast is not Operant::Constant so it has a Place");
-                        if acx.c_void_ptrs.contains(&p) {
-                            // This is a special case for types being casted from *c_void to a pointer
-                            // to some other type, e.g. `let foo = malloc(..) as *mut Foo;`
-                            // carry over the pointer id of *c_void, but match the pointer ids
-                            // of the casted-to-type for the rest
-                            acx.c_void_casts.0.insert(p, lhs);
-                        }
+                    // Rvalue::Cast(_, ref op, _) if op.place().is_some() => {
+                    //     if acx.c_void_ptrs.contains(&lhs) {
+                    //         // This is a special case for types being casted to *c_void
+                    //         acx.c_void_casts.0.insert(lhs, op.place().unwrap());
+                    //     }
 
-                        if acx.c_void_ptrs.contains(&lhs) {
-                            // This is a special case for types being casted to *c_void
-                            acx.c_void_casts.0.insert(lhs, op.place().unwrap());
-                        }
-
-                        continue;
-                    }
+                    //     continue;
+                    // }
                     _ => continue,
                 };
                 let loc = Location {
