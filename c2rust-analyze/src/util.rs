@@ -24,12 +24,12 @@ use std::fmt::Debug;
 pub struct CVoidCasts<'tcx>(pub HashMap<Place<'tcx>, Place<'tcx>>);
 
 impl<'tcx> CVoidCasts<'tcx> {
-    pub fn is_special(&self, lhs: &Place<'tcx>, rv: &Rvalue<'tcx>) -> bool {
+    pub fn contains(&self, lhs: &Place<'tcx>, rv: &Rvalue<'tcx>) -> bool {
         matches!(rv, Rvalue::Cast(_, Operand::Copy(p) | Operand::Move(p), _) if self.0.contains_key(p) || self.0.contains_key(lhs))
     }
 
     pub fn get_or_default_to(&self, p: &Place<'tcx>) -> Place<'tcx> {
-        self.0.get(p).unwrap_or(p).clone()
+        *self.0.get(p).unwrap_or(p)
     }
 }
 
