@@ -345,7 +345,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
 
-                if self.c_void_casts.is_special(&pl, &rv) {
+                if self.c_void_casts.contains(&pl, rv) {
                     // skip this cast, because the local that is getting casted
                     // originates from a call to an allocation that is handled
                     // in a way that effectively elides the cast
