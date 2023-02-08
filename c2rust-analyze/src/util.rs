@@ -8,6 +8,18 @@ use rustc_middle::ty::{AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy}
 use std::collections::HashMap;
 use std::fmt::Debug;
 
+/// A mapping for substituting [`Place`]s adhering to the
+/// following pattern
+/// ```mir
+/// _1 = malloc(...);
+/// _2 = _1 as *mut T;
+/// ```
+///
+/// In this case, `_1` would be mapped to `_2`, which is indicative
+/// of the amended statement:
+/// ```
+/// _2 = malloc(...);
+/// ```
 #[derive(Default)]
 pub struct CVoidCasts<'tcx>(pub HashMap<Place<'tcx>, Place<'tcx>>);
 
