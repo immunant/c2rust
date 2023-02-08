@@ -515,7 +515,9 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                         _ => continue,
                     },
                     Rvalue::Cast(_, ref op, _) => {
-                        let p = op.place().expect("Rvalue::Cast is not Operant::Constant so it has a Place");
+                        let p = op
+                            .place()
+                            .expect("Rvalue::Cast is not Operant::Constant so it has a Place");
                         if acx.c_void_ptrs.contains(&p) {
                             // This is a special case for types being casted from *c_void to a pointer
                             // to some other type, e.g. `let foo = malloc(..) as *mut Foo;`
