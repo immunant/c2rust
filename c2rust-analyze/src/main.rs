@@ -482,7 +482,7 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                         acx.c_void_ptrs.insert(*p);
                     };
 
-                    use crate::util::Callee::*;
+                    use Callee::*;
                     match util::ty_callee(tcx, func_ty) {
                         Malloc | Calloc => {
                             add_c_void_ptr(&destination);
