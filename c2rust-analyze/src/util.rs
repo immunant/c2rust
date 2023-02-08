@@ -28,7 +28,7 @@ impl<'tcx> CVoidCasts<'tcx> {
     /// Checks if the casted-to or casted-from value
     /// is a c_void pointer.
     pub fn contains(&self, lhs: &Place<'tcx>, rv: &Rvalue<'tcx>) -> bool {
-        matches!(rv, Rvalue::Cast(_, Operand::Copy(p) | Operand::Move(p), _) if self.0.contains_key(p) || self.0.contains_key(lhs))
+        matches!(rv, Rvalue::Cast(_, Operand::Copy(p) | Operand::Move(p), _) if self.0.contains_key(p)) || self.0.contains_key(lhs)
     }
 
     pub fn get_or_default_to(&self, p: &Place<'tcx>) -> Place<'tcx> {
