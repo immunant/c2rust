@@ -69,7 +69,7 @@ unsafe extern "C" fn realloc1(mut i: *mut i32, len: libc::c_ulong) {
             // CHECK-DAG: ([[@LINE+2]]: i{{.*}}): addr_of = UNIQUE, type = FREE
             i = realloc(
                 i as *mut libc::c_void,
-                ::std::mem::size_of::<i32>() as libc::c_ulong,
+                4 as libc::c_ulong,
             ) as *mut i32;
         }
         *elem = 1;
