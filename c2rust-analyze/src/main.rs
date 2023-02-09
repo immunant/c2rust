@@ -464,114 +464,90 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                 } = term.kind
                 {
                     let func_ty = func.ty(&mir.local_decls, tcx);
-                    let mut add_c_void_ptr = |p: &Place<'tcx>| {
-                        let deref_ty = p
-                            .ty(acx.local_decls, acx.tcx())
-                            .ty
-                            .builtin_deref(true)
-                            .unwrap()
-                            .ty
-                            .kind();
-                        assert_matches!(deref_ty, TyKind::Adt(adt, _) => {
-                            assert_eq!(tcx.def_path(adt.did()).data[0].to_string(), "ffi");
-                            assert_eq!(tcx.item_name(adt.did()).as_str(), "c_void");
-                        });
 
-                        acx.c_void_ptrs.insert(*p);
+                    // Finds casts associated with the special functions malloc, calloc,
+                    // realloc, and free. For the first three, there is expected to be
+                    // a cast from void* to an arbitrary type in the subsequent block.
+                    // For realloc and free, there is expected to be a cast to void*
+                    // from an arbitrary type in the same block.
+                    let mut handle_c_void_cast =
+                        |p: &Place<'tcx>, f: &dyn Fn() -> Option<(Place<'tcx>, Place<'tcx>)>| {
+                            let deref_ty = p
+                                .ty(acx.local_decls, acx.tcx())
+                                .ty
+                                .builtin_deref(true)
+                                .unwrap()
+                                .ty
+                                .kind();
+                            assert_matches!(deref_ty, TyKind::Adt(adt, _) => {
+                                assert_eq!(tcx.def_path(adt.did()).data[0].to_string(), "ffi");
+                                assert_eq!(tcx.item_name(adt.did()).as_str(), "c_void");
+                            });
+
+                            acx.c_void_ptrs.insert(*p);
+
+                            if let Some((casted_from_void_ptr, void_ptr)) = f() {
+                                if acx.c_void_ptrs.contains(&void_ptr) {
+                                    // This is a special case for types being casted from *c_void to a pointer
+                                    // to some other type, e.g. `let foo = malloc(..) as *mut Foo;`
+                                    // carry over the pointer id of *c_void, but match the pointer ids
+                                    // of the casted-to-type for the rest
+                                    acx.c_void_casts.0.insert(void_ptr, casted_from_void_ptr);
+                                }
+                            }
+                        };
+
+                    let find_last_cast_curr_block = || {
+                        bb_data.statements.iter().rev().find_map(|s| match &s.kind {
+                            StatementKind::Assign(x) => match &x.1 {
+                                Rvalue::Cast(_, op, _) => Some((
+                                    op.place().expect(
+                                        "Rvalue::Cast is not Operant::Constant so it has a Place",
+                                    ),
+                                    x.0,
+                                )),
+                                _ => None,
+                            },
+                            _ => None,
+                        })
                     };
 
-                    let find_last_cast_in_block = || {
-                        bb_data.statements
-                            .iter()
-                            .rev()
-                            .find(|s| matches!(&s.kind, StatementKind::Assign(x) if matches!(x.1, Rvalue::Cast(..))))
-                    };
-
-                    let find_next_cast_in_block = || {
+                    let find_first_cast_succ_block = || {
                         let successor = target.unwrap();
                         mir.basic_blocks()[successor]
                             .statements
                             .iter()
-                            .find(|s| matches!(s.kind, StatementKind::Assign(..)))
+                            .find_map(|s| match &s.kind {
+                                StatementKind::Assign(x) => match &x.1 {
+                                    Rvalue::Cast(_, op, _) => Some((
+                                        x.0,
+                                        op.place().expect(
+                                            "Rvalue::Cast is not Operant::Constant so it has a Place",
+                                        ),
+                                    )),
+                                    _ => None,
+                                },
+                                _ => None,
+                            })
                     };
 
                     use Callee::*;
                     match util::ty_callee(tcx, func_ty) {
                         Some(Malloc | Calloc) => {
-                            add_c_void_ptr(&destination);
-                            let cast = find_next_cast_in_block();
-                            if cast.is_none() {
-                                continue;
-                            }
-                            if let StatementKind::Assign(ref x) = cast.unwrap().kind {
-                                let (lhs, ref rv) = **x;
-                                if let Rvalue::Cast(_, ref op, _) = rv {
-                                    let op = op.place().expect(
-                                        "Rvalue::Cast is not Operant::Constant so it has a Place",
-                                    );
-                                    if acx.c_void_ptrs.contains(&op) {
-                                        // This is a special case for types being casted from *c_void to a pointer
-                                        // to some other type, e.g. `let foo = malloc(..) as *mut Foo;`
-                                        // carry over the pointer id of *c_void, but match the pointer ids
-                                        // of the casted-to-type for the rest
-                                        acx.c_void_casts.0.insert(op, lhs);
-                                    }
-                                }
-                            }
+                            handle_c_void_cast(&destination, &find_first_cast_succ_block);
                         }
                         Some(Realloc) => {
-                            add_c_void_ptr(&destination);
-                            add_c_void_ptr(&args[0].place().unwrap());
-                            let cast = find_next_cast_in_block();
-                            if cast.is_none() {
-                                continue;
-                            }
-                            if let StatementKind::Assign(ref x) = cast.unwrap().kind {
-                                let (lhs, ref rv) = **x;
-                                if let Rvalue::Cast(_, ref op, _) = rv {
-                                    let op = op.place().expect(
-                                        "Rvalue::Cast is not Operant::Constant so it has a Place",
-                                    );
-                                    if acx.c_void_ptrs.contains(&op) {
-                                        // This is a special case for types being casted from *c_void to a pointer
-                                        // to some other type, e.g. `let foo = malloc(..) as *mut Foo;`
-                                        // carry over the pointer id of *c_void, but match the pointer ids
-                                        // of the casted-to-type for the rest
-                                        acx.c_void_casts.0.insert(op, lhs);
-                                    }
-                                }
-                            }
-                            let suspected_cast = find_last_cast_in_block();
-                            if suspected_cast.is_none() {
-                                continue;
-                            }
-                            eprintln!("suspected realloc cast: {:?}", suspected_cast);
-                            if let StatementKind::Assign(ref x) = suspected_cast.unwrap().kind {
-                                let (lhs, ref rv) = **x;
-                                if let Rvalue::Cast(_, ref op, _) = rv {
-                                    if acx.c_void_ptrs.contains(&lhs) {
-                                        // This is a special case for types being casted to *c_void
-                                        acx.c_void_casts.0.insert(lhs, op.place().unwrap());
-                                    }
-                                }
-                            }
+                            handle_c_void_cast(&destination, &find_first_cast_succ_block);
+                            handle_c_void_cast(
+                                &args[0].place().unwrap(),
+                                &find_last_cast_curr_block,
+                            );
                         }
                         Some(Free) => {
-                            add_c_void_ptr(&args[0].place().unwrap());
-                            eprintln!("suspected free cast: {:?}", bb_data);
-                            let suspected_cast = find_last_cast_in_block();
-                            if suspected_cast.is_none() {
-                                continue;
-                            }
-                            if let StatementKind::Assign(ref x) = suspected_cast.unwrap().kind {
-                                let (lhs, ref rv) = **x;
-                                if let Rvalue::Cast(_, ref op, _) = rv {
-                                    if acx.c_void_ptrs.contains(&lhs) {
-                                        // This is a special case for types being casted to *c_void
-                                        acx.c_void_casts.0.insert(lhs, op.place().unwrap());
-                                    }
-                                }
-                            }
+                            handle_c_void_cast(
+                                &args[0].place().unwrap(),
+                                &find_last_cast_curr_block,
+                            );
                         }
 
                         _ => {}
