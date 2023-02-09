@@ -470,32 +470,36 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                     // a cast from void* to an arbitrary type in the subsequent block.
                     // For realloc and free, there is expected to be a cast to void*
                     // from an arbitrary type in the same block.
-                    let mut handle_c_void_cast =
-                        |p: &Place<'tcx>, f: &dyn Fn() -> Option<(Place<'tcx>, Place<'tcx>)>| {
-                            let deref_ty = p
-                                .ty(acx.local_decls, acx.tcx())
-                                .ty
-                                .builtin_deref(true)
-                                .unwrap()
-                                .ty
-                                .kind();
-                            assert_matches!(deref_ty, TyKind::Adt(adt, _) => {
-                                assert_eq!(tcx.def_path(adt.did()).data[0].to_string(), "ffi");
-                                assert_eq!(tcx.item_name(adt.did()).as_str(), "c_void");
-                            });
+                    let mut handle_c_void_cast = |void_ptr_pl: &Place<'tcx>,
+                                                  find_cast: &dyn Fn() -> Option<(
+                        Place<'tcx>,
+                        Place<'tcx>,
+                    )>| {
+                        let deref_ty = void_ptr_pl
+                            .ty(acx.local_decls, acx.tcx())
+                            .ty
+                            .builtin_deref(true)
+                            .unwrap()
+                            .ty
+                            .kind();
+                        assert_matches!(deref_ty, TyKind::Adt(adt, _) => {
+                            assert_eq!(tcx.def_path(adt.did()).data[0].to_string(), "ffi");
+                            assert_eq!(tcx.item_name(adt.did()).as_str(), "c_void");
+                        });
 
-                            acx.c_void_ptrs.insert(*p);
+                        acx.c_void_ptrs.insert(*void_ptr_pl);
 
-                            if let Some((casted_from_void_ptr, void_ptr)) = f() {
-                                if acx.c_void_ptrs.contains(&void_ptr) {
-                                    // This is a special case for types being casted from *c_void to a pointer
-                                    // to some other type, e.g. `let foo = malloc(..) as *mut Foo;`
-                                    // carry over the pointer id of *c_void, but match the pointer ids
-                                    // of the casted-to-type for the rest
-                                    acx.c_void_casts.0.insert(void_ptr, casted_from_void_ptr);
-                                }
+                        if let Some((casted_from_void_ptr, void_ptr)) = find_cast() {
+                            // assert_eq!(void_ptr, *p);
+                            if void_ptr == *void_ptr_pl && acx.c_void_ptrs.contains(&void_ptr) {
+                                // This is a special case for types being casted from *c_void to a pointer
+                                // to some other type, e.g. `let foo = malloc(..) as *mut Foo;`
+                                // carry over the pointer id of *c_void, but match the pointer ids
+                                // of the casted-to-type for the rest
+                                acx.c_void_casts.0.insert(void_ptr, casted_from_void_ptr);
                             }
-                        };
+                        }
+                    };
 
                     let find_last_cast_curr_block = || {
                         bb_data.statements.iter().rev().find_map(|s| match &s.kind {
