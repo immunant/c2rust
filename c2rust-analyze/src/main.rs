@@ -487,11 +487,8 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                             assert_eq!(tcx.item_name(adt.did()).as_str(), "c_void");
                         });
 
-                        acx.c_void_ptrs.insert(*void_ptr);
-
                         if let Some((casted, castee)) = find_cast() {
-                            // assert_eq!(void_ptr, *p);
-                            if castee == *void_ptr && acx.c_void_ptrs.contains(&castee) {
+                            if castee == *void_ptr {
                                 // This is a special case for types being casted from *c_void to a pointer
                                 // to some other type, e.g. `let foo = malloc(..) as *mut Foo;`
                                 // carry over the pointer id of *c_void, but match the pointer ids
@@ -576,14 +573,6 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                         }
                         _ => continue,
                     },
-                    // Rvalue::Cast(_, ref op, _) if op.place().is_some() => {
-                    //     if acx.c_void_ptrs.contains(&lhs) {
-                    //         // This is a special case for types being casted to *c_void
-                    //         acx.c_void_casts.0.insert(lhs, op.place().unwrap());
-                    //     }
-
-                    //     continue;
-                    // }
                     _ => continue,
                 };
                 let loc = Location {
