@@ -4,12 +4,12 @@ use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
     Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
 };
+use rustc_middle::ty::GenSig;
 use rustc_middle::ty::{
-    AdtDef, Binder, DefIdTree, FnSig, SubstsRef, Ty, TyCtxt, TyKind, TypeSuperVisitable,
-    TypeVisitable, TypeVisitor, UintTy,
+    self, subst::Subst, AdtDef, Binder, DefIdTree, EarlyBinder, FnSig, SubstsRef, Ty, TyCtxt,
+    TyKind, UintTy,
 };
 use std::fmt::Debug;
-use std::ops::ControlFlow;
 
 #[derive(Debug)]
 pub enum RvalueDesc<'tcx> {
@@ -140,7 +140,7 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> 
         _ => return None,
     };
 
-    if let Some(callee) = builtin_callee(tcx, did, substs) {
+    if let Some(callee) = builtin_callee(tcx, ty, did) {
         return Some(callee);
     }
     Some(Callee::Other {
@@ -149,89 +149,8 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> 
     })
 }
 
-trait IsTrivial {
-    /// Something [`is_trivial`] if it has no effect on pointer permissions,
-    /// and thus requires no special handling.
-    /// That is, it must contain no raw pointers.
-    ///
-    /// See [`Trivial`] for more info.
-    ///
-    /// [`is_trivial`]: Self::is_trivial
-    /// [`Trivial`]: Callee::Trivial
-    fn is_trivial(&self) -> bool;
-}
-
-impl IsTrivial for Ty<'_> {
-    /// A [`Ty`] [`is_trivial`] if
-    /// it is not a (raw) pointer and contains no (raw) pointers.
-    ///
-    /// [`is_trivial`]: IsTrivial::is_trivial
-    fn is_trivial(&self) -> bool {
-        // Similar logic to [`Ty::contains`].
-        struct Visitor;
-
-        impl<'tcx> TypeVisitor<'tcx> for Visitor {
-            type BreakTy = ();
-
-            fn visit_ty(&mut self, ty: Ty<'tcx>) -> ControlFlow<Self::BreakTy> {
-                if ty.is_unsafe_ptr() {
-                    ControlFlow::BREAK
-                } else {
-                    ty.super_visit_with(self)
-                }
-            }
-        }
-
-        self.visit_with(&mut Visitor) != ControlFlow::BREAK
-    }
-}
-
-impl IsTrivial for FnSig<'_> {
-    /// A [`FnSig`] [`is_trivial`] if
-    /// all of its argument and return types are [`Trivial`].
-    ///
-    /// [`is_trivial`]: IsTrivial::is_trivial
-    /// [`Trivial`]: Callee::Trivial
-    fn is_trivial(&self) -> bool {
-        self.inputs_and_output.iter().all(|ty| ty.is_trivial())
-    }
-}
-
-impl IsTrivial for Binder<'_, FnSig<'_>> {
-    /// A [`Binder`]`<`[`FnSig`]`>` [`is_trivial`] if
-    /// the [`FnSig`] without the [`Binder`] is trivial.
-    ///
-    /// Lifetimes do not affect [`Trivial`]ity,
-    /// so we can ignore higher-kinded lifetimes from the [`Binder`].
-    ///
-    /// [`is_trivial`]: IsTrivial::is_trivial
-    /// [`Trivial`]: Callee::Trivial
-    fn is_trivial(&self) -> bool {
-        // We don't care about higher-kinded lifetimes here, as we don't care about lifetimes at all.
-        self.skip_binder().is_trivial()
-    }
-}
-
-/// A callee [`is_trivial`] if
-/// its [`FnSig`] [`is_trivial`] after [`subst_and_normalize_erasing_regions`].
-///
-/// [`is_trivial`]: IsTrivial::is_trivial
-/// [`subst_and_normalize_erasing_regions`]: TyCtxt::subst_and_normalize_erasing_regions
-fn is_callee_trivial<'tcx>(tcx: TyCtxt<'tcx>, did: DefId, substs: SubstsRef<'tcx>) -> bool {
-    let param_env = tcx.param_env(did);
-    let did = tcx.subst_and_normalize_erasing_regions(substs, param_env, did);
-
-    // Typed because rust-analyzer can't resolve it.
-    let fn_sig: Binder<FnSig> = tcx.fn_sig(did);
-    fn_sig.is_trivial()
-}
-
-fn builtin_callee<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    did: DefId,
-    substs: SubstsRef<'tcx>,
-) -> Option<Callee<'tcx>> {
-    if is_callee_trivial(tcx, did, substs) {
+fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, did: DefId) -> Option<Callee<'tcx>> {
+    if ty.fn_sig(tcx).is_trivial(tcx) {
         return Some(Callee::Trivial);
     }
 
@@ -361,6 +280,134 @@ fn builtin_callee<'tcx>(
         _ => {
             eprintln!("name: {name:?}");
             None
+        }
+    }
+}
+
+trait IsTrivial<'tcx> {
+    /// Something [`is_trivial`] if it has no effect on pointer permissions,
+    /// and thus requires no special handling.
+    /// That is, it must contain no raw pointers.
+    ///
+    /// See [`Trivial`] for more info.
+    ///
+    /// [`is_trivial`]: Self::is_trivial
+    /// [`Trivial`]: Callee::Trivial
+    fn is_trivial(&self, tcx: TyCtxt<'tcx>) -> bool;
+}
+
+impl<'tcx, T: IsTrivial<'tcx>> IsTrivial<'tcx> for &T {
+    fn is_trivial(&self, tcx: TyCtxt<'tcx>) -> bool {
+        (*self).is_trivial(tcx)
+    }
+}
+
+fn are_all_trivial<'tcx, T, I>(tcx: TyCtxt<'tcx>, ts: I) -> bool
+where
+    I: IntoIterator<Item = T>,
+    T: IsTrivial<'tcx>,
+{
+    ts.into_iter().all(|t| t.is_trivial(tcx))
+}
+
+impl<'tcx> IsTrivial<'tcx> for Binder<'tcx, FnSig<'tcx>> {
+    /// A [`Binder`]`<`[`FnSig`]`>` [`is_trivial`] if
+    /// the [`FnSig`] without the [`Binder`] is trivial.
+    ///
+    /// Lifetimes do not affect [`Trivial`]ity,
+    /// so we can ignore higher-kinded lifetimes from the [`Binder`].
+    ///
+    /// [`is_trivial`]: IsTrivial::is_trivial
+    /// [`Trivial`]: Callee::Trivial
+    fn is_trivial(&self, tcx: TyCtxt<'tcx>) -> bool {
+        // We don't care about higher-kinded lifetimes here, as we don't care about lifetimes at all.
+        self.skip_binder().is_trivial(tcx)
+    }
+}
+
+impl<'tcx> IsTrivial<'tcx> for FnSig<'tcx> {
+    /// A [`FnSig`] [`is_trivial`] if
+    /// all of its argument and return types are [`Trivial`].
+    ///
+    /// [`is_trivial`]: IsTrivial::is_trivial
+    /// [`Trivial`]: Callee::Trivial
+    fn is_trivial(&self, tcx: TyCtxt<'tcx>) -> bool {
+        are_all_trivial(tcx, self.inputs_and_output)
+    }
+}
+
+impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
+    /// A [`Ty`] [`is_trivial`] if
+    /// it is not a (raw) pointer and contains no (raw) pointers.
+    ///
+    /// [`is_trivial`]: IsTrivial::is_trivial
+    fn is_trivial(&self, tcx: TyCtxt<'tcx>) -> bool {
+        match *self.kind() {
+            ty::RawPtr(..) => false, // raw pointers are never trivial, can break out early
+
+            ty::Bool | ty::Char | ty::Str | ty::Int(..) | ty::Uint(..) | ty::Float(..) => true, // primitive types are trivial
+
+            ty::Never => true,
+
+            ty::Foreign(..) => false, // no introspection into a foreign, extern type, but as it's extern, it likely contains raw pointers
+
+            // delegate to the inner type
+            ty::Ref(_, ty, _) | ty::Slice(ty) | ty::Array(ty, _) => ty.is_trivial(tcx),
+
+            // delegate to all inner types
+            ty::Tuple(tys) => are_all_trivial(tcx, tys),
+            ty::Adt(adt_def, substs) => {
+                are_all_trivial(tcx, adt_def.all_fields().map(|field| field.ty(tcx, substs)))
+            }
+
+            // don't know, as dyn Trait could be anything
+            ty::Dynamic(trait_ty, _reg) => {
+                // TODO(kkysen) should we conservatively assume it's non-trivial?
+                todo!("unsure how to check dyn Trait for accessible pointers: {trait_ty:?}")
+            }
+
+            // check through the function signature
+            ty::FnPtr(..) | ty::FnDef(..) => self.fn_sig(tcx).is_trivial(tcx),
+
+            // check through the enclosed type and the function signature
+            ty::Closure(_, substs) => {
+                let closure = substs.as_closure();
+                closure.tupled_upvars_ty().is_trivial(tcx) && closure.sig().is_trivial(tcx)
+            }
+
+            // similar to closures, check all possible types created by the generator
+            ty::Generator(_, substs, _) => {
+                let generator = substs.as_generator();
+                let GenSig {
+                    resume_ty,
+                    yield_ty,
+                    return_ty,
+                } = generator.sig();
+                are_all_trivial(
+                    tcx,
+                    [
+                        generator.tupled_upvars_ty(),
+                        resume_ty,
+                        yield_ty,
+                        return_ty,
+                        generator.witness(),
+                    ],
+                )
+            }
+
+            // try to get the actual type and delegate to it
+            ty::Opaque(did, substs) => EarlyBinder(tcx.type_of(did))
+                .subst(tcx, substs)
+                .is_trivial(tcx),
+
+            // not sure how to handle yet, and may never come up anyways
+            ty::GeneratorWitness(..)
+            | ty::Projection(..)
+            | ty::Error(_)
+            | ty::Infer(_)
+            | ty::Placeholder(..)
+            | ty::Bound(..)
+            | ty::Param(..) => todo!("unsupported TyKind: {self:?}"),
         }
     }
 }
