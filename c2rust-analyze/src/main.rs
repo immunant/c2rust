@@ -470,12 +470,12 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                     // a cast from void* to an arbitrary type in the subsequent block.
                     // For realloc and free, there is expected to be a cast to void*
                     // from an arbitrary type in the same block.
-                    let mut handle_c_void_cast = |void_ptr_pl: &Place<'tcx>,
+                    let mut handle_c_void_cast = |void_ptr: &Place<'tcx>,
                                                   find_cast: &dyn Fn() -> Option<(
                         Place<'tcx>,
                         Place<'tcx>,
                     )>| {
-                        let deref_ty = void_ptr_pl
+                        let deref_ty = void_ptr
                             .ty(acx.local_decls, acx.tcx())
                             .ty
                             .builtin_deref(true)
@@ -487,16 +487,16 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                             assert_eq!(tcx.item_name(adt.did()).as_str(), "c_void");
                         });
 
-                        acx.c_void_ptrs.insert(*void_ptr_pl);
+                        acx.c_void_ptrs.insert(*void_ptr);
 
-                        if let Some((casted_from_void_ptr, void_ptr)) = find_cast() {
+                        if let Some((casted, castee)) = find_cast() {
                             // assert_eq!(void_ptr, *p);
-                            if void_ptr == *void_ptr_pl && acx.c_void_ptrs.contains(&void_ptr) {
+                            if castee == *void_ptr && acx.c_void_ptrs.contains(&castee) {
                                 // This is a special case for types being casted from *c_void to a pointer
                                 // to some other type, e.g. `let foo = malloc(..) as *mut Foo;`
                                 // carry over the pointer id of *c_void, but match the pointer ids
                                 // of the casted-to-type for the rest
-                                acx.c_void_casts.0.insert(void_ptr, casted_from_void_ptr);
+                                acx.c_void_casts.0.insert(castee, casted);
                             }
                         }
                     };
