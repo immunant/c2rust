@@ -81,10 +81,24 @@ unsafe extern "C" fn realloc1(mut i: *mut i32, len: libc::c_ulong) {
     }
 }
 
-// CHECK-LABEL: final labeling for "alloc_and_free"
-pub unsafe extern "C" fn alloc_and_free(mut cnt: libc::c_int) {
+// CHECK-LABEL: final labeling for "alloc_and_free1"
+pub unsafe extern "C" fn alloc_and_free1(mut cnt: libc::c_int) {
     // CHECK-DAG: ([[@LINE+1]]: i): addr_of = UNIQUE, type = UNIQUE | FREE#
     let i = malloc(::std::mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
     // CHECK-DAG: ([[@LINE+1]]: i{{.*}}): {{.*}}type = UNIQUE | FREE#
     free(i as *mut libc::c_void);
+}
+
+
+// CHECK-LABEL: final labeling for "alloc_and_free2"
+pub unsafe extern "C" fn alloc_and_free2(mut cnt: libc::c_int) {
+    // CHECK-DAG: ([[@LINE+1]]: i): addr_of = UNIQUE, type = READ | WRITE | UNIQUE | FREE#
+    let i = malloc(::std::mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
+    if !i.is_null() {
+        // CHECK-DAG: ([[@LINE+1]]: mut b): addr_of = UNIQUE, type = READ | WRITE | UNIQUE#
+        let mut b = i;
+        *b = 2;
+        // CHECK-DAG: ([[@LINE+1]]: i): {{.*}}type = UNIQUE | FREE#
+        free(i as *mut libc::c_void);
+    }
 }
