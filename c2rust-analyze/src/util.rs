@@ -150,7 +150,9 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> 
 }
 
 fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, did: DefId) -> Option<Callee<'tcx>> {
-    if ty.fn_sig(tcx).is_trivial(tcx) {
+    let is_trivial = ty.fn_sig(tcx).is_trivial(tcx);
+    eprintln!("{ty:?} is trivial: {is_trivial}");
+    if is_trivial {
         return Some(Callee::Trivial);
     }
 
