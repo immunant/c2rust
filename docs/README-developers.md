@@ -111,6 +111,10 @@ accessing the documentation for those is trickier.
 from [`rust-toolchain.toml`](../rust-toolchain.toml),
 so they must be run inside the workspace.
 
+Also, not all components are always available for every version on every platform.
+[rust-lang.github.io/rustup-components-history/](https://rust-lang.github.io/rustup-components-history/)
+can be consulted to check this for each toolchain version.
+
 #### `rust-src`
 
 `rust-src` is the `rustup` component containing `rustc`'s source code.
