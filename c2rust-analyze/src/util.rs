@@ -342,6 +342,11 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
     ///
     /// [`is_trivial`]: IsTrivial::is_trivial
     fn is_trivial(&self, tcx: TyCtxt<'tcx>) -> bool {
+        let not_sure_yet = |is_trivial: bool| {
+            eprintln!("assuming non-trivial for now as a safe backup (guessed {is_trivial:?}): ty = {self:?}");
+            false
+        };
+
         match *self.kind() {
             ty::RawPtr(..) => false, // raw pointers are never trivial, can break out early
 
@@ -362,20 +367,30 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
 
             // don't know, as `dyn Trait` could be anything
             ty::Dynamic(trait_ty, _reg) => {
-                todo!("unsure how to check `dyn Trait` for accessible pointers, so assuming non-trivial: ty = {self:?}, trait_ty = {trait_ty:?}")
+                eprintln!("unsure how to check `dyn Trait` for accessible pointers, so assuming non-trivial: ty = {self:?}, trait_ty = {trait_ty:?}");
+                false
             }
+
+            // For the below [`TyKind`]s, we're not yet certain about their triviality,
+            // so they use `not_sure_yet` to return `false` as a safe backup,
+            // along with printing a message about this assumption,
+            // which includes a potential guess.
+            // This allows us to keep the potentially correct code for these,
+            // even if we haven't verified yet if they're implemented correctly.
 
             // function ptrs/defs carry no data, so they should be trivial
             // but for now, assume they're non-trivial as a safe backup
-            ty::FnPtr(..) | ty::FnDef(..) => true,
+            ty::FnPtr(..) | ty::FnDef(..) => not_sure_yet(true),
 
             // the function part of the closure should be trivial,
             // so just check the enclosed type (upvars) for triviality,
             // but for now, assume they're non-trivial as a safe backup
-            ty::Closure(_, substs) => substs.as_closure().tupled_upvars_ty().is_trivial(tcx),
+            ty::Closure(_, substs) => {
+                not_sure_yet(substs.as_closure().tupled_upvars_ty().is_trivial(tcx))
+            }
 
             // similar to closures, check all possible types created by the generator
-            ty::Generator(_, substs, _) => {
+            ty::Generator(_, substs, _) => not_sure_yet({
                 let generator = substs.as_generator();
                 let GenSig {
                     resume_ty,
@@ -392,12 +407,14 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
                         generator.witness(),
                     ],
                 )
-            }
+            }),
 
             // try to get the actual type and delegate to it
-            ty::Opaque(did, substs) => EarlyBinder(tcx.type_of(did))
-                .subst(tcx, substs)
-                .is_trivial(tcx),
+            ty::Opaque(did, substs) => not_sure_yet(
+                EarlyBinder(tcx.type_of(did))
+                    .subst(tcx, substs)
+                    .is_trivial(tcx),
+            ),
 
             // not sure how to handle yet, and may never come up anyways
             ty::GeneratorWitness(..)
@@ -406,7 +423,7 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
             | ty::Infer(_)
             | ty::Placeholder(..)
             | ty::Bound(..)
-            | ty::Param(..) => todo!("unsupported TyKind: {self:?}"),
+            | ty::Param(..) => not_sure_yet(false),
         }
     }
 }
