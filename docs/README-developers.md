@@ -107,6 +107,10 @@ However, as the `#![feature(rustc_private)]` crates
 are not normal dependencies managed through `cargo`,
 accessing the documentation for those is trickier.
 
+\* Note: The following `rustup` commands auto-detect the toolchain
+from [`rust-toolchain.toml`](../rust-toolchain.toml),
+so they must be run inside the workspace.
+
 #### `rust-src`
 
 `rust-src` is the `rustup` component containing `rustc`'s source code.
