@@ -360,20 +360,19 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
                 are_all_trivial(tcx, adt_def.all_fields().map(|field| field.ty(tcx, substs)))
             }
 
-            // don't know, as dyn Trait could be anything
+            // don't know, as `dyn Trait` could be anything
             ty::Dynamic(trait_ty, _reg) => {
-                // TODO(kkysen) should we conservatively assume it's non-trivial?
-                todo!("unsure how to check dyn Trait for accessible pointers: {trait_ty:?}")
+                todo!("unsure how to check `dyn Trait` for accessible pointers, so assuming non-trivial: ty = {self:?}, trait_ty = {trait_ty:?}")
             }
 
-            // check through the function signature
-            ty::FnPtr(..) | ty::FnDef(..) => self.fn_sig(tcx).is_trivial(tcx),
+            // function ptrs/defs carry no data, so they should be trivial
+            // but for now, assume they're non-trivial as a safe backup
+            ty::FnPtr(..) | ty::FnDef(..) => true,
 
-            // check through the enclosed type and the function signature
-            ty::Closure(_, substs) => {
-                let closure = substs.as_closure();
-                closure.tupled_upvars_ty().is_trivial(tcx) && closure.sig().is_trivial(tcx)
-            }
+            // the function part of the closure should be trivial,
+            // so just check the enclosed type (upvars) for triviality,
+            // but for now, assume they're non-trivial as a safe backup
+            ty::Closure(_, substs) => substs.as_closure().tupled_upvars_ty().is_trivial(tcx),
 
             // similar to closures, check all possible types created by the generator
             ty::Generator(_, substs, _) => {
