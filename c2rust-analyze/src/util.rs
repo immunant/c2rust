@@ -10,14 +10,18 @@ use std::fmt::Debug;
 
 /// A mapping for substituting [`Place`]s adhering to the
 /// following pattern
+///
 /// ```mir
 /// _1 = malloc(...);
 /// _2 = _1 as *mut T;
 /// ```
 ///
+/// where `_1` is [`*c_void`](core::ffi::c_void).
+///
 /// In this case, `_1` would be mapped to `_2`, which is indicative
 /// of the amended statement:
-/// ```
+///
+/// ```mir
 /// _2 = malloc(...);
 /// ```
 #[derive(Default)]
