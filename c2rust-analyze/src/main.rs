@@ -33,7 +33,7 @@ use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
     AggregateKind, BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand, Place,
-    Rvalue, StatementKind, Terminator, TerminatorKind,
+    Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::tls;
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
@@ -498,38 +498,34 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
                         }
                     };
 
-                    let find_last_cast_curr_block = || {
-                        bb_data.statements.iter().rev().find_map(|s| match &s.kind {
-                            StatementKind::Assign(x) => match &x.1 {
-                                Rvalue::Cast(_, op, _) => Some((
-                                    op.place().expect(
-                                        "Rvalue::Cast is not Operant::Constant so it has a Place",
-                                    ),
-                                    x.0,
-                                )),
-                                _ => None,
-                            },
+                    let get_cast_op = |s: &Statement<'tcx>| match &s.kind {
+                        StatementKind::Assign(x) => match &x.1 {
+                            Rvalue::Cast(_, op, _) => Some((
+                                x.0,
+                                op.place().expect(
+                                    "Rvalue::Cast is not Operant::Constant so it has a Place",
+                                ),
+                            )),
                             _ => None,
-                        })
+                        },
+                        _ => None,
+                    };
+
+                    let find_last_cast_curr_block = || {
+                        bb_data
+                            .statements
+                            .iter()
+                            .rev()
+                            .find_map(|s| get_cast_op(s))
+                            .map(|(casted_to, casted_from)| (casted_from, casted_to))
                     };
 
                     let find_first_cast_succ_block = || {
-                        let successor = target.unwrap();
-                        mir.basic_blocks()[successor]
+                        let successor_block_id = target.unwrap();
+                        mir.basic_blocks()[successor_block_id]
                             .statements
                             .iter()
-                            .find_map(|s| match &s.kind {
-                                StatementKind::Assign(x) => match &x.1 {
-                                    Rvalue::Cast(_, op, _) => Some((
-                                        x.0,
-                                        op.place().expect(
-                                            "Rvalue::Cast is not Operant::Constant so it has a Place",
-                                        ),
-                                    )),
-                                    _ => None,
-                                },
-                                _ => None,
-                            })
+                            .find_map(|s| get_cast_op(s))
                     };
 
                     use Callee::*;
