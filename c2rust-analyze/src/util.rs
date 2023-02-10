@@ -24,8 +24,7 @@ use std::fmt::Debug;
 pub struct CVoidCasts<'tcx>(pub HashMap<Place<'tcx>, Place<'tcx>>);
 
 impl<'tcx> CVoidCasts<'tcx> {
-    /// Checks if the casted-to or casted-from value
-    /// is a c_void pointer.
+    /// Checks if the casted-to or casted-from value is a [`*c_void`](core::ffi::c_void).
     pub fn contains(&self, lhs: &Place<'tcx>, rv: &Rvalue<'tcx>) -> bool {
         matches!(rv, Rvalue::Cast(_, Operand::Copy(p) | Operand::Move(p), _) if self.0.contains_key(p))
             || self.0.contains_key(lhs)
