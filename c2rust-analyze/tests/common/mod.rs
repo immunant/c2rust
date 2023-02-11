@@ -23,7 +23,7 @@ impl Analyze {
         let manifest_path = dir.join("Cargo.toml");
         let rs_path = dir.join(rs_path); // allow relative paths, or override with an absolute path
 
-        let _directives = fs::read_to_string(&rs_path)
+        let directives = fs::read_to_string(&rs_path)
             .unwrap()
             .split('\n')
             .flat_map(|line| {
@@ -57,7 +57,7 @@ impl Analyze {
             .stdout(output_stdout)
             .stderr(output_stderr);
         let status = cmd.status().unwrap();
-        if !status.success() {
+        if !status.success() && !directives.contains("allow_crash") {
             let message = format!(
                 "c2rust-analyze failed with status {status}:\n> {cmd:?} > {output_path:?} 2>&1\n"
             );
