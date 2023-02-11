@@ -376,8 +376,8 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                 let ty = rv.ty(self, self.tcx());
                 label_no_pointers(self, ty)
             }
-            Rvalue::Aggregate(ref _kind, ref _vals) => todo!("type_of Aggregate"),
-            Rvalue::ShallowInitBox(ref _op, _ty) => todo!("type_of ShallowInitBox"),
+            Rvalue::Aggregate(ref _kind, ref _vals) => todo!("type_of Aggregate: rv = {rv:?}"),
+            Rvalue::ShallowInitBox(ref _op, _ty) => todo!("type_of ShallowInitBox: rv = {rv:?}"),
         }
     }
 
