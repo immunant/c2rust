@@ -3,42 +3,10 @@ use crate::trivial::IsTrivial;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
-    Field, Local, Mutability, Operand, Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
+    Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
 };
 use rustc_middle::ty::{self, AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy};
-use std::collections::HashMap;
 use std::fmt::Debug;
-
-/// A mapping for substituting [`Place`]s adhering to the
-/// following pattern
-///
-/// ```mir
-/// _1 = malloc(...);
-/// _2 = _1 as *mut T;
-/// ```
-///
-/// where `_1` is [`*c_void`](core::ffi::c_void).
-///
-/// In this case, `_1` would be mapped to `_2`, which is indicative
-/// of the amended statement:
-///
-/// ```mir
-/// _2 = malloc(...);
-/// ```
-#[derive(Default)]
-pub struct CVoidCasts<'tcx>(pub HashMap<Place<'tcx>, Place<'tcx>>);
-
-impl<'tcx> CVoidCasts<'tcx> {
-    /// Checks if the casted-to or casted-from value is a [`*c_void`](core::ffi::c_void).
-    pub fn contains(&self, lhs: &Place<'tcx>, rv: &Rvalue<'tcx>) -> bool {
-        matches!(rv, Rvalue::Cast(_, Operand::Copy(p) | Operand::Move(p), _) if self.0.contains_key(p))
-            || self.0.contains_key(lhs)
-    }
-
-    pub fn get_or_default_to(&self, p: &Place<'tcx>) -> Place<'tcx> {
-        *self.0.get(p).unwrap_or(p)
-    }
-}
 
 #[derive(Debug)]
 pub enum RvalueDesc<'tcx> {

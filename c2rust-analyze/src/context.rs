@@ -1,9 +1,10 @@
+use crate::c_void_casts::CVoidCasts;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::{
     GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
     PointerTableMut,
 };
-use crate::util::{self, describe_rvalue, CVoidCasts, RvalueDesc};
+use crate::util::{self, describe_rvalue, RvalueDesc};
 use crate::AssignPointerIds;
 use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
