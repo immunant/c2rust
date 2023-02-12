@@ -32,8 +32,8 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand, Place,
-    Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
+    AggregateKind, BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand, Rvalue,
+    StatementKind,
 };
 use rustc_middle::ty::tls;
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
@@ -45,6 +45,7 @@ use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
 mod borrowck;
+mod c_void_casts;
 mod context;
 mod dataflow;
 mod equiv;
@@ -356,7 +357,7 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
     }
 }
 
-fn run<'tcx>(tcx: TyCtxt<'tcx>) {
+fn run(tcx: TyCtxt) {
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
 
@@ -449,109 +450,7 @@ fn run<'tcx>(tcx: TyCtxt<'tcx>) {
             assert_eq!(local, l);
         }
 
-        // Find all calls to `malloc`, `calloc`, `realloc`, and `free`
-        // and track their destination locals as being c_void
-        // pointers to special-case downstream casts
-        for bb_data in mir.basic_blocks().iter() {
-            if let Some(term) = &bb_data.terminator {
-                let term: &Terminator = term;
-                if let TerminatorKind::Call {
-                    ref func,
-                    ref args,
-                    destination,
-                    target,
-                    ..
-                } = term.kind
-                {
-                    let func_ty = func.ty(&mir.local_decls, tcx);
-
-                    // Finds casts associated with the special functions malloc, calloc,
-                    // realloc, and free. For the first three, there is expected to be
-                    // a cast from void* to an arbitrary type in the subsequent block.
-                    // For realloc and free, there is expected to be a cast to void*
-                    // from an arbitrary type in the same block.
-                    let mut handle_c_void_cast = |void_ptr: &Place<'tcx>,
-                                                  find_cast: &dyn Fn() -> Option<(
-                        Place<'tcx>,
-                        Place<'tcx>,
-                    )>| {
-                        let deref_ty = void_ptr
-                            .ty(acx.local_decls, acx.tcx())
-                            .ty
-                            .builtin_deref(true)
-                            .unwrap()
-                            .ty
-                            .kind();
-                        assert_matches!(deref_ty, TyKind::Adt(adt, _) => {
-                            assert_eq!(tcx.def_path(adt.did()).data[0].to_string(), "ffi");
-                            assert_eq!(tcx.item_name(adt.did()).as_str(), "c_void");
-                        });
-
-                        if let Some((casted, castee)) = find_cast() {
-                            if castee == *void_ptr {
-                                // This is a special case for types being casted from *c_void to a pointer
-                                // to some other type, e.g. `let foo = malloc(..) as *mut Foo;`
-                                // carry over the pointer id of *c_void, but match the pointer ids
-                                // of the casted-to-type for the rest
-                                acx.c_void_casts.0.insert(castee, casted);
-                            }
-                        }
-                    };
-
-                    let get_cast_op = |s: &Statement<'tcx>| match &s.kind {
-                        StatementKind::Assign(x) => match &x.1 {
-                            Rvalue::Cast(_, op, _) => Some((
-                                x.0,
-                                op.place().expect(
-                                    "Rvalue::Cast is not Operant::Constant so it has a Place",
-                                ),
-                            )),
-                            _ => None,
-                        },
-                        _ => None,
-                    };
-
-                    let find_last_cast_curr_block = || {
-                        bb_data
-                            .statements
-                            .iter()
-                            .rev()
-                            .find_map(|s| get_cast_op(s))
-                            .map(|(casted_to, casted_from)| (casted_from, casted_to))
-                    };
-
-                    let find_first_cast_succ_block = || {
-                        let successor_block_id = target.unwrap();
-                        mir.basic_blocks()[successor_block_id]
-                            .statements
-                            .iter()
-                            .find_map(|s| get_cast_op(s))
-                    };
-
-                    use Callee::*;
-                    match util::ty_callee(tcx, func_ty) {
-                        Some(Malloc | Calloc) => {
-                            handle_c_void_cast(&destination, &find_first_cast_succ_block);
-                        }
-                        Some(Realloc) => {
-                            handle_c_void_cast(&destination, &find_first_cast_succ_block);
-                            handle_c_void_cast(
-                                &args[0].place().unwrap(),
-                                &find_last_cast_curr_block,
-                            );
-                        }
-                        Some(Free) => {
-                            handle_c_void_cast(
-                                &args[0].place().unwrap(),
-                                &find_last_cast_curr_block,
-                            );
-                        }
-
-                        _ => {}
-                    }
-                }
-            }
-        }
+        acx.c_void_casts.insert_all_from_mir(&mir, tcx);
 
         for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
             for (i, stmt) in bb_data.statements.iter().enumerate() {

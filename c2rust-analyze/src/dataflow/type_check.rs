@@ -1,4 +1,5 @@
 use super::DataflowConstraints;
+use crate::c_void_casts::CVoidCastDirection;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
 use crate::util::{self, describe_rvalue, Callee, RvalueDesc};
 use rustc_hir::def_id::DefId;
@@ -222,17 +223,16 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         eprintln!("visit_statement({:?})", stmt);
+
+        if self.acx.c_void_casts.should_skip_stmt(stmt) {
+            return;
+        }
+
         // TODO(spernsteiner): other `StatementKind`s will be handled in the future
         #[allow(clippy::single_match)]
         match stmt.kind {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
-                if self.acx.c_void_casts.contains(&pl, rv) {
-                    // skip this cast, because the local that is getting casted
-                    // originates from a call to an allocation that is handled
-                    // in a way that effectively elides the cast
-                    return;
-                }
                 self.visit_place(pl, Mutability::Mut);
                 let pl_lty = self.acx.type_of(pl);
 
@@ -299,24 +299,28 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                     Some(Callee::Trivial) => {}
 
-                    Some(Callee::Malloc) => {
-                        let destination = self.acx.c_void_casts.get_or_default_to(&destination);
-                        self.visit_place(destination, Mutability::Mut);
-                    }
-
-                    Some(Callee::Calloc) => {
-                        let destination = self.acx.c_void_casts.get_or_default_to(&destination);
-                        self.visit_place(destination, Mutability::Mut);
+                    Some(Callee::Malloc | Callee::Calloc) => {
+                        let out_ptr = self
+                            .acx
+                            .c_void_casts
+                            .get_adjusted_place(CVoidCastDirection::From, destination);
+                        self.visit_place(out_ptr, Mutability::Mut);
                     }
                     Some(Callee::Realloc) => {
-                        let destination = self.acx.c_void_casts.get_or_default_to(&destination);
-                        let input_ptr_pl = args[0].place().unwrap();
-                        let first_arg = self.acx.c_void_casts.get_or_default_to(&input_ptr_pl);
-                        self.visit_place(destination, Mutability::Mut);
-                        let pl_lty = self.acx.type_of(destination);
+                        let out_ptr = self
+                            .acx
+                            .c_void_casts
+                            .get_adjusted_place(CVoidCastDirection::From, destination);
+                        let in_ptr = args[0].place().unwrap();
+                        let in_ptr = self
+                            .acx
+                            .c_void_casts
+                            .get_adjusted_place(CVoidCastDirection::To, in_ptr);
+                        self.visit_place(out_ptr, Mutability::Mut);
+                        let pl_lty = self.acx.type_of(out_ptr);
                         assert!(args.len() == 2);
-                        self.visit_place(input_ptr_pl, Mutability::Not);
-                        let rv_lty = self.acx.type_of(first_arg);
+                        self.visit_place(in_ptr, Mutability::Not);
+                        let rv_lty = self.acx.type_of(in_ptr);
 
                         // input needs FREE permission
                         let perms = PermissionSet::FREE;
@@ -326,12 +330,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         self.do_equivalence_nested(pl_lty, rv_lty);
                     }
                     Some(Callee::Free) => {
-                        let input_ptr_pl = args[0].place().unwrap();
-                        let first_arg = self.acx.c_void_casts.get_or_default_to(&input_ptr_pl);
+                        let in_ptr = args[0].place().unwrap();
+                        let in_ptr = self
+                            .acx
+                            .c_void_casts
+                            .get_adjusted_place(CVoidCastDirection::To, in_ptr);
                         self.visit_place(destination, Mutability::Mut);
                         assert!(args.len() == 1);
 
-                        let rv_lty = self.acx.type_of(first_arg);
+                        let rv_lty = self.acx.type_of(in_ptr);
                         let perms = PermissionSet::FREE;
                         self.constraints.add_all_perms(rv_lty.label, perms);
                     }
