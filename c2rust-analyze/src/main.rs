@@ -45,6 +45,7 @@ use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
 mod borrowck;
+mod c_void_casts;
 mod context;
 mod dataflow;
 mod equiv;
@@ -448,6 +449,8 @@ fn run(tcx: TyCtxt) {
             let l = acx.addr_of_local.push(ptr);
             assert_eq!(local, l);
         }
+
+        acx.c_void_casts.insert_all_from_mir(&mir, tcx);
 
         for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
             for (i, stmt) in bb_data.statements.iter().enumerate() {

@@ -1,11 +1,13 @@
-use crate::labeled_ty::LabeledTy;
+use std::fmt::Debug;
+
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
-use rustc_middle::mir::{
-    Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
+use rustc_middle::{
+    mir::{Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue},
+    ty::{AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy},
 };
-use rustc_middle::ty::{AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy};
-use std::fmt::Debug;
+
+use crate::labeled_ty::LabeledTy;
 
 #[derive(Debug)]
 pub enum RvalueDesc<'tcx> {

@@ -1,5 +1,6 @@
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubPoint};
 use crate::borrowck::{LTy, LTyCtxt, Label, OriginParam};
+use crate::c_void_casts::CVoidCasts;
 use crate::context::PermissionSet;
 use crate::util::{self, Callee};
 use crate::AdtMetadataTable;
@@ -25,6 +26,7 @@ struct TypeChecker<'tcx, 'a> {
     local_decls: &'a IndexVec<Local, LocalDecl<'tcx>>,
     current_location: Location,
     adt_metadata: &'a AdtMetadataTable<'tcx>,
+    c_void_casts: &'a CVoidCasts<'tcx>,
 }
 
 impl<'tcx> TypeChecker<'tcx, '_> {
@@ -330,6 +332,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>) {
+        if self.c_void_casts.should_skip_stmt(stmt) {
+            return;
+        }
+
         // TODO(spernsteiner): other `StatementKind`s will be handled in the future
         #[allow(clippy::single_match)]
         match stmt.kind {
@@ -419,6 +425,7 @@ pub fn visit_body<'tcx>(
     field_permissions: &HashMap<DefId, PermissionSet>,
     mir: &Body<'tcx>,
     adt_metadata: &AdtMetadataTable<'tcx>,
+    c_void_casts: &CVoidCasts<'tcx>,
 ) {
     let mut tc = TypeChecker {
         tcx,
@@ -431,6 +438,7 @@ pub fn visit_body<'tcx>(
         local_decls: &mir.local_decls,
         current_location: Location::START,
         adt_metadata,
+        c_void_casts,
     };
 
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
