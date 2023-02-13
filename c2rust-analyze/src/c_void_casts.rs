@@ -369,4 +369,10 @@ impl<'tcx> CVoidCasts<'tcx> {
             }
         }
     }
+
+    pub fn new(mir: &Body<'tcx>, tcx: TyCtxt<'tcx>) -> Self {
+        let mut this = Self::default();
+        this.insert_all_from_mir(mir, tcx);
+        this
+    }
 }
