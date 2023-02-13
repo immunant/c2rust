@@ -182,11 +182,12 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         gacx: &'a mut GlobalAnalysisCtxt<'tcx>,
         mir: &'a Body<'tcx>,
     ) -> AnalysisCtxt<'a, 'tcx> {
+        let tcx = gacx.tcx;
         AnalysisCtxt {
             gacx,
             local_decls: &mir.local_decls,
             local_tys: IndexVec::new(),
-            c_void_casts: CVoidCasts::default(),
+            c_void_casts: CVoidCasts::new(mir, tcx),
             addr_of_local: IndexVec::new(),
             rvalue_tys: HashMap::new(),
             next_ptr_id: NextLocalPointerId::new(),
