@@ -1,13 +1,22 @@
-//! allow_crash
-
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicPtr};
 use std::sync::{Mutex, RwLock};
 
-fn f<T>(_t: T) {}
-
 fn f4<A, B, C, D>(_a: A, _b: B, _c: C, _d: D) {}
+
+// TODO(kkysen) generic calls are not monomorphized in time
+// and thus cannot yet be evaluated for triviality (or default to false)
+macro_rules! f {
+    ($t:ty) => {{
+        #[allow(unused)]
+        fn f(t: $t) {
+            if false {
+                f(t);
+            }
+        }
+    }};
+}
 
 #[allow(dead_code)]
 struct Trivial<'a> {
@@ -21,35 +30,36 @@ struct NonTrivial {
     a: *mut i32,
 }
 
+enum Never {}
+
 fn main() {
     {
         // trivial
 
-        f(()); // CHECK: fn(()) {f::<()>} is trivial: true
-        f(1); // CHECK: fn(i32) {f::<i32>} is trivial: true
-        f(2usize); // CHECK: fn(usize) {f::<usize>} is trivial: true
-        f(3.14); // CHECK: fn(f64) {f::<f64>} is trivial: true
-        f(""); // CHECK: fn(&str) {f::<&str>} is trivial: true
-        f(("", 1)); // CHECK: fn((&str, i32)) {f::<(&str, i32)>} is trivial: true
+        f4(1, "", 1u128, 1.1); // CHECK: fn(i32, &str, u128, f64) {f4::<i32, &str, u128, f64>} is trivial: true
 
-        f([0usize; 0]); // CHECK: fn([usize; 0]) {f::<[usize; 0]>} is trivial: true
-        f(['a', 'b', 'c']); // CHECK: fn([char; 3]) {f::<[char; 3]>} is trivial: true
-        f(b"abc"); // CHECK: fn(&[u8; 3]) {f::<&[u8; 3]>} is trivial: true
+        f!(()); // CHECK: fn(()) {main::f} is trivial: true
+        f!(i32); // CHECK: fn(i32) {main::f} is trivial: true
+        f!(usize); // CHECK: fn(usize) {main::f} is trivial: true
+        f!(f64); // CHECK: fn(f64) {main::f} is trivial: true
+        f!(&str); // CHECK: for<'r> fn(&'r str) {main::f} is trivial: true
 
-        f4((), 1, "", [b""; 4]); // CHECK: fn((), i32, &str, [&[u8; 0]; 4]) {f4::<(), i32, &str, [&[u8; 0]; 4]>} is trivial: true
-        f(Some("")); // CHECK: fn(std::option::Option<&str>) {f::<std::option::Option<&str>>} is trivial: true
-        Path::new(""); // CHECK: for<'r> fn(&'r str) -> &'r std::path::Path {std::path::Path::new::<str>} is trivial: true
-        Cell::new(0); // CHECK: fn(i32) -> std::cell::Cell<i32> {std::cell::Cell::<i32>::new} is trivial: true
-        RefCell::new(0); // CHECK: fn(i32) -> std::cell::RefCell<i32> {std::cell::RefCell::<i32>::new} is trivial: true
-        let _ = AtomicBool::new(true); // CHECK: fn(bool) -> std::sync::atomic::AtomicBool {std::sync::atomic::AtomicBool::new} is trivial: true
-        
-        Mutex::new(0); // CHECK: fn(i32) -> std::sync::Mutex<i32> {std::sync::Mutex::<i32>::new} is trivial: true
-        RwLock::new(0); // CHECK: fn(i32) -> std::sync::RwLock<i32> {std::sync::RwLock::<i32>::new} is trivial: true
+        f!((&str, i32)); // CHECK: for<'r> fn((&'r str, i32)) {main::f} is trivial: true
+        f!([usize; 0]); // CHECK: fn([usize; 0]) {main::f} is trivial: true
+        f!([char; 3]); // CHECK: fn([char; 3]) {main::f} is trivial: true
+        f!(&[u8; 3]); // for<'r> fn(&'r [u8; 3]) {main::f} is trivial: true
 
-        // custom structs
-        // can't use normal initialization b/c we don't have aggregate initialization support yet,
-        // but we just need the type, so we can use None::<T>
-        f(None::<Trivial>); // CHECK: fn(std::option::Option<Trivial>) {f::<std::option::Option<Trivial>>} is trivial: true
+        f!(&Path); // CHECK: for<'r> fn(&'r std::path::Path) {main::f} is trivial: true
+        f!(Cell<()>); // CHECK: fn(std::cell::Cell<()>) {main::f} is trivial: true
+        f!(RefCell<()>); // CHECK: fn(std::cell::RefCell<()>) {main::f} is trivial: true
+        f!(AtomicBool); // CHECK: fn(std::sync::atomic::AtomicBool) {main::f} is trivial: true
+
+        f!(Mutex<()>); // CHECK: fn(std::sync::Mutex<()>) {main::f} is trivial: true
+        f!(RwLock<()>); // CHECK: fn(std::sync::RwLock<()>) {main::f} is trivial: true
+
+        f!(Trivial); // CHECK: for<'r> fn(Trivial<'r>) {main::f} is trivial: true
+
+        f!(Never); // CHECK: fn(Never) {main::f} is trivial: true
     }
 
     {
@@ -58,21 +68,17 @@ fn main() {
         // std smart pointers and containers, while safe, have internal pointers,
         // so currently they're non trivial
         // see #820
-        let _ = Vec::<&str>::new(); // CHECK: fn() -> std::vec::Vec<&str> {std::vec::Vec::<&str>::new} is trivial: false
-        let _ = Box::new(0); // CHECK: fn(i32) -> std::boxed::Box<i32> {std::boxed::Box::<i32>::new} is trivial: false
-        let _ = PathBuf::from(""); // CHECK: fn(&str) -> std::path::PathBuf {<std::path::PathBuf as std::convert::From<&str>>::from} is trivial: false
-        f(None::<AtomicPtr<i32>>); // CHECK: fn(std::option::Option<std::sync::atomic::AtomicPtr<i32>>) {f::<std::option::Option<std::sync::atomic::AtomicPtr<i32>>>} is trivial: false
+        f!(Vec<&str>); // for<'r> fn(std::vec::Vec<&'r str>) {main::f} is trivial: false
+        f!(Box<()>); // CHECK: fn(std::boxed::Box<()>) {main::f} is trivial: false
+        f!(PathBuf); // CHECK: fn(std::path::PathBuf) {main::f} is trivial: false
 
-        f(Some(b"" as *const u8)); // CHECK: fn(std::option::Option<*const u8>) {f::<std::option::Option<*const u8>>} is trivial: false
+        f!(AtomicPtr<()>); // CHECK: fn(std::sync::atomic::AtomicPtr<()>) {main::f} is trivial: false
 
-        // custom structs
-        // can't use normal initialization b/c we don't have aggregate initialization support yet,
-        // but we just need the type, so we can use None::<T>
-        f(None::<NonTrivial>); // CHECK: fn(std::option::Option<NonTrivial>) {f::<std::option::Option<NonTrivial>>} is trivial: false
+        f!(*const u8); // CHECK: fn(*const u8) {main::f} is trivial: false
+        f!(*mut i32); // CHECK: fn(*mut i32) {main::f} is trivial: false
+
+        f!(NonTrivial); // CHECK: fn(NonTrivial) {main::f} is trivial: false
     }
 
-    // TODO test self-referential types
-
-    #[allow(unreachable_code)]
-    f(panic!()); // CHECK: fn(&str) -> ! {std::rt::begin_panic::<&str>} is trivial: true
+    // TODO(kkysen) test self-referential types
 }
