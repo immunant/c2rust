@@ -18,16 +18,9 @@ use std::mem;
 pub type size_t = libc::c_ulong;
 
 extern "C" {
-    fn c2rust_test_typed_malloc(_: libc::c_ulong) -> *mut i32;
-    fn c2rust_test_typed_realloc(_: *mut i32, _: libc::c_ulong) -> *mut i32;
-    fn c2rust_test_typed_free(__ptr: *mut i32);
-    fn c2rust_test_typed_calloc(_: libc::c_ulong, _: libc::c_ulong) -> *mut i32;
-}
-
-extern "C" {
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
     fn realloc(_: *mut libc::c_void, _: libc::c_ulong) -> *mut libc::c_void;
-    fn free(__ptr: *mut libc::c_void);
+    fn free(_: *mut libc::c_void);
     fn calloc(_: libc::c_ulong, _: libc::c_ulong) -> *mut libc::c_void;
 }
 
