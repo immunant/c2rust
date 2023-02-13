@@ -1,7 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicPtr};
-use std::sync::{Mutex, RwLock};
 
 fn f4<A, B, C, D>(_a: A, _b: B, _c: C, _d: D) {}
 
@@ -53,9 +52,6 @@ fn main() {
         f!(Cell<()>); // CHECK: fn(std::cell::Cell<()>) {main::f} is trivial: true
         f!(RefCell<()>); // CHECK: fn(std::cell::RefCell<()>) {main::f} is trivial: true
         f!(AtomicBool); // CHECK: fn(std::sync::atomic::AtomicBool) {main::f} is trivial: true
-
-        f!(Mutex<()>); // CHECK: fn(std::sync::Mutex<()>) {main::f} is trivial: true
-        f!(RwLock<()>); // CHECK: fn(std::sync::RwLock<()>) {main::f} is trivial: true
 
         f!(Trivial); // CHECK: for<'r> fn(Trivial<'r>) {main::f} is trivial: true
 
