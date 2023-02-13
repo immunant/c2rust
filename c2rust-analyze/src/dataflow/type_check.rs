@@ -109,7 +109,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
         match *rv {
             Rvalue::Use(ref op) => self.visit_operand(op),
-            Rvalue::Repeat(..) => todo!("visit_rvalue Repeat"),
+            Rvalue::Repeat(ref op, _) => {
+                assert!(matches!(lty.kind(), TyKind::Array(..)));
+                assert_eq!(lty.args.len(), 1);
+                let elem_lty = lty.args[0];
+                // Pseudo-assign from the operand to the element type of the array.
+                let op_lty = self.acx.type_of(op);
+                self.do_assign(elem_lty, op_lty);
+            }
             Rvalue::Ref(..) => {
                 unreachable!("Rvalue::Ref should be handled by describe_rvalue instead")
             }
