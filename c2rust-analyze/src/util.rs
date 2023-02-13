@@ -260,28 +260,28 @@ fn builtin_callee<'tcx>(
             Some(Callee::Trivial)
         }
 
-        "malloc" | "c2rust_test_typed_malloc" => {
+        "malloc" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Malloc);
             }
             None
         }
 
-        "calloc" | "c2rust_test_typed_calloc" => {
+        "calloc" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Calloc);
             }
             None
         }
 
-        "realloc" | "c2rust_test_typed_realloc" => {
+        "realloc" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Realloc);
             }
             None
         }
 
-        "free" | "c2rust_test_typed_free" => {
+        "free" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Free);
             }
