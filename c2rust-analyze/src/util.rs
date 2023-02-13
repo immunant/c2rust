@@ -345,7 +345,8 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
     /// [`is_trivial`]: IsTrivial::is_trivial
     fn is_trivial(&self, tcx: TyCtxt<'tcx>) -> bool {
         let not_sure_yet = |is_trivial: bool| {
-            eprintln!("assuming non-trivial for now as a safe backup (guessed {is_trivial:?}): ty = {self:?}");
+            let kind = self.kind();
+            eprintln!("assuming non-trivial for now as a safe backup (guessed {is_trivial:?}): ty.kind() = {kind:?}, ty = {self:?}");
             false
         };
 
