@@ -3,7 +3,10 @@ use std::fmt::Debug;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_middle::{
-    mir::{Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue},
+    mir::{
+        Field, Local, Mutability, Operand, Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
+        Statement, StatementKind,
+    },
     ty::{AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy},
 };
 
@@ -306,4 +309,21 @@ pub fn lty_project<'tcx, L: Debug>(
         ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
         ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
     }
+}
+
+pub fn get_cast_place<'tcx>(rv: &Rvalue<'tcx>) -> Option<Place<'tcx>> {
+    match rv {
+        Rvalue::Cast(_, op, _) => op.place(),
+        _ => None,
+    }
+}
+
+pub fn get_assign_sides<'tcx, 'a>(
+    stmt: &'a Statement<'tcx>,
+) -> Option<(Place<'tcx>, &'a Rvalue<'tcx>)> {
+    let (pl, ref rv) = match &stmt.kind {
+        StatementKind::Assign(it) => Some(&**it),
+        _ => None,
+    }?;
+    Some((*pl, rv))
 }
