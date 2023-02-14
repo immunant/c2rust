@@ -96,3 +96,100 @@ More details about tests can be found in the [tests folder](../tests/).
 
 *Note*: These run integration tests that invoke `c2rust transpile`.
 `cargo test` only runs unit tests and doc tests as of now.
+
+## Documentation
+
+Local documentation can be built with the normal `cargo doc` and `cargo doc --open`.
+
+### `rustc`
+
+However, as the `#![feature(rustc_private)]` crates
+are not normal dependencies managed through `cargo`,
+accessing the documentation for those is trickier.
+
+\* Note: The following `rustup` commands auto-detect the toolchain
+from [`rust-toolchain.toml`](../rust-toolchain.toml),
+so they must be run inside the workspace.
+
+Also, not all components are always available for every version on every platform.
+[rust-lang.github.io/rustup-components-history/](https://rust-lang.github.io/rustup-components-history/)
+can be consulted to check this for each toolchain version.
+
+#### `rust-src`
+
+`rust-src` is the `rustup` component containing `rustc`'s source code.
+This is needed to view `rustc`'s source when developing.
+
+`rust-src` is included in our [`rust-toolchain.toml`](../rust-toolchain.toml),
+so it will automatically be installed.  Otherwise,
+
+```sh
+rustup component add rust-src
+```
+
+will work.
+
+#### `rustc-docs`
+
+`rustc-docs` (not `rust-docs`) is the `rustup` component
+containing the `rustdoc` docs for `rustc`.
+This is different from `rust-docs`, the `rustup` component
+containing the `rustdoc` docs for `std`, various books on Rust,
+and other miscellaneous documentation.
+
+Unfortunately, the `rustc-docs` and `rust-docs` components
+are currently mutually incompatible, as they install to the same location:
+`share/doc/rust/html`.
+See [`rust-lang/rustup#3196`](https://github.com/rust-lang/rustup/issues/3196).
+
+Thus, `rustc-docs` is not included in [`rust-toolchain.toml`](../rust-toolchain.toml)
+to avoid any build errors with `rust-docs`, which is installed by default.
+
+To install `rustc-docs`, run
+
+```sh
+rustup component remove rust-docs
+rustup component add rustc-docs
+```
+
+`rustup doc` doesn't work with `rustc-docs`, only with `rust-docs`.
+To view it, simply open
+
+```sh
+$(rustc --print sysroot)/share/doc/rust/html/rustc/index.html
+```
+
+`rustc-docs` for the latest `nightly` are available at
+[doc.rust-lang.org/nightly/nightly-rustc/](https://doc.rust-lang.org/nightly/nightly-rustc/),
+but as we are not pinned to the latest `nightly`,
+the local `rustc-docs` version will be the correct docs.
+
+`rust-docs` is always available for every version, however,
+and is far more stable, so that can be accessed online
+while the component is removed locally for our `nightly` toolchain:
+
+- [doc.rust-lang.org](https://doc.rust-lang.org/)
+- [doc.rust-lang.org/std/](https://doc.rust-lang.org/std/)
+
+#### `rust-analyzer`
+
+To allow `rust-analyzer` to view and analyze `rustc`'s source in VS Code,
+add this to your `.vscode/settings.json`:
+
+```json
+{
+    "rust-analyzer.rustc.source": "discover"
+}
+```
+
+Also recommended are:
+
+```json
+{
+    "rust-analyzer.rustc.source": "discover",
+    "rust-analyzer.cargo.features": "all",
+    "rust-analyzer.checkOnSave.command": "clippy",
+    "rust-analyzer.procMacro.attributes.enable": true,
+    "cmake.configureOnOpen": true
+}
+```
