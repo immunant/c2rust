@@ -2,13 +2,13 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 
 use rustc_middle::{
-    mir::{Body, LocalDecls, Place, Rvalue, Statement, StatementKind, Terminator, TerminatorKind},
+    mir::{Body, LocalDecls, Place, Statement, Terminator, TerminatorKind},
     ty::{TyCtxt, TyKind},
 };
 
 use assert_matches::assert_matches;
 
-use crate::util::{ty_callee, Callee};
+use crate::util::{get_assign_sides, get_cast_place, ty_callee, Callee};
 
 /// The direction of a [`*c_void`](core::ffi::c_void) cast.
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -92,26 +92,7 @@ impl<'tcx> CVoidPtr<'tcx> {
             Err(place)
         }
     }
-}
 
-fn get_cast_place<'tcx>(rv: &Rvalue<'tcx>) -> Option<Place<'tcx>> {
-    match rv {
-        Rvalue::Cast(_, op, _) => op.place(),
-        _ => None,
-    }
-}
-
-fn get_assign_sides<'tcx, 'a>(
-    stmt: &'a Statement<'tcx>,
-) -> Option<(Place<'tcx>, &'a Rvalue<'tcx>)> {
-    let (pl, ref rv) = match &stmt.kind {
-        StatementKind::Assign(it) => Some(&**it),
-        _ => None,
-    }?;
-    Some((*pl, rv))
-}
-
-impl<'tcx> CVoidPtr<'tcx> {
     /// Try to get the appropriate [`CVoidCast`]
     /// from this [`Statement`] in the given [`CVoidCastDirection`].
     ///
@@ -281,10 +262,11 @@ impl<'tcx> CVoidCasts<'tcx> {
     /// * the lhs [`Place`] of the [`Assign`] is a [`CVoidPtr`] in the [`To`] direction,
     ///     as in the [`To`] direction, the [`CVoidPtr`] is on the lhs.
     ///
-    /// * the rhs [`Place`] of the [`Rvalue::Cast`] of the [`Assign`] is a [`CVoidPtr`] in the [`From`] direction,
+    /// * the rhs [`Place`] of the [`Cast`] of the [`Assign`] is a [`CVoidPtr`] in the [`From`] direction,
     ///     as in the [`From`] direction, the [`CVoidPtr`] is on the rhs.
     ///
-    /// [`Assign`]: StatementKind::Assign
+    /// [`Assign`]: rustc_middle::mir::StatementKind::Assign
+    /// [`Cast`]: rustc_middle::mir::Rvalue::Cast
     /// [`From`]: CVoidCastDirection::From
     /// [`To`]: CVoidCastDirection::To
     pub fn should_skip_stmt(&self, stmt: &Statement<'tcx>) -> bool {
