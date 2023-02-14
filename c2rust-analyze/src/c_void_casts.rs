@@ -270,12 +270,15 @@ impl<'tcx> CVoidCasts<'tcx> {
     /// [`From`]: CVoidCastDirection::From
     /// [`To`]: CVoidCastDirection::To
     pub fn should_skip_stmt(&self, stmt: &Statement<'tcx>) -> bool {
-        || -> Option<bool> {
-            let (lhs, rv) = get_assign_sides(stmt)?;
-            let skip = self.to.contains(lhs) || self.from.contains(get_cast_place(rv)?);
-            Some(skip)
-        }()
-        .unwrap_or_default()
+        let (lhs, rv) = match get_assign_sides(stmt) {
+            None => return false,
+            Some(it) => it,
+        };
+        self.to.contains(lhs)
+            || self.from.contains(match get_cast_place(rv) {
+                None => return false,
+                Some(it) => it,
+            })
     }
 
     /// Insert all applicable [`*c_void`] casts
