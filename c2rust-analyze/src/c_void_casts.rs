@@ -231,7 +231,7 @@ impl<'tcx> CVoidCasts<'tcx> {
         }
     }
 
-    pub fn direction_mut(
+    fn direction_mut(
         &mut self,
         direction: CVoidCastDirection,
     ) -> &mut CVoidCastsUniDirectional<'tcx> {
@@ -252,7 +252,7 @@ impl<'tcx> CVoidCasts<'tcx> {
     }
 
     /// See [`CVoidCastsUniDirectional::insert`].
-    pub fn insert(&mut self, direction: CVoidCastDirection, cast: CVoidCast<'tcx>) {
+    fn insert(&mut self, direction: CVoidCastDirection, cast: CVoidCast<'tcx>) {
         self.direction_mut(direction).insert(cast)
     }
 
@@ -283,7 +283,7 @@ impl<'tcx> CVoidCasts<'tcx> {
     }
 
     /// Insert all applicable [`*c_void`] casts
-    /// from the `mir` [`Body`] into this [`CVoidCasts`].
+    /// from a function [`Body`] into this [`CVoidCasts`].
     ///
     /// That is, find all calls to:
     ///
@@ -294,9 +294,12 @@ impl<'tcx> CVoidCasts<'tcx> {
     ///
     /// and insert their casts to and from [`*c_void`].
     ///
+    /// Note that since [`Place`]s are local to a function [`Body`],
+    /// a [`CVoidCasts`] is only valid when it contains things from one [`Body`].
+    ///
     /// [`*c_void`]: core::ffi::c_void
-    pub fn insert_all_from_mir(&mut self, mir: &Body<'tcx>, tcx: TyCtxt<'tcx>) {
-        for bb_data in mir.basic_blocks().iter() {
+    fn insert_all_from_body(&mut self, body: &Body<'tcx>, tcx: TyCtxt<'tcx>) {
+        for bb_data in body.basic_blocks().iter() {
             if let Some(term) = &bb_data.terminator {
                 let term: &Terminator = term;
                 if let TerminatorKind::Call {
@@ -307,14 +310,14 @@ impl<'tcx> CVoidCasts<'tcx> {
                     ..
                 } = term.kind
                 {
-                    let func_ty = func.ty(&mir.local_decls, tcx);
+                    let func_ty = func.ty(&body.local_decls, tcx);
 
                     // For [`CVoidCastDirection::From`], we only count
                     // a cast from `*c_void` to an arbitrary type in the subsequent block,
                     // searching forward.
                     let find_first_cast_succ_block = |get_cast| {
                         let successor_block_id = target.unwrap();
-                        mir.basic_blocks()[successor_block_id]
+                        body.basic_blocks()[successor_block_id]
                             .statements
                             .iter()
                             .find_map(get_cast)
@@ -335,7 +338,7 @@ impl<'tcx> CVoidCasts<'tcx> {
                             From => destination,
                             To => args[0].place().unwrap(),
                         };
-                        let c_void_ptr = CVoidPtr::checked(c_void_ptr, &mir.local_decls, tcx);
+                        let c_void_ptr = CVoidPtr::checked(c_void_ptr, &body.local_decls, tcx);
                         let get_cast = move |stmt: &Statement<'tcx>| {
                             c_void_ptr.get_cast_from_stmt(direction, stmt)
                         };
@@ -352,9 +355,9 @@ impl<'tcx> CVoidCasts<'tcx> {
         }
     }
 
-    pub fn new(mir: &Body<'tcx>, tcx: TyCtxt<'tcx>) -> Self {
+    pub fn new(body: &Body<'tcx>, tcx: TyCtxt<'tcx>) -> Self {
         let mut this = Self::default();
-        this.insert_all_from_mir(mir, tcx);
+        this.insert_all_from_body(body, tcx);
         this
     }
 }
