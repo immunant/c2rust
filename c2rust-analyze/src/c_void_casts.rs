@@ -171,7 +171,7 @@ impl<'tcx> CVoidCastsUniDirectional<'tcx> {
     /// That is, if `place` is a [`CVoidPtr`] in this map of [`CVoidCast`]s,
     /// then the [`Place`] of its other, property-typed pointer is returned.
     /// Otherwise, the same `place` is returned, as no adjustments are necessary.
-    pub fn get_adjusted_place(&self, place: Place<'tcx>) -> Place<'tcx> {
+    pub fn get_adjusted_place_or_default_to(&self, place: Place<'tcx>) -> Place<'tcx> {
         *self.0.get(&place).unwrap_or(&place)
     }
 
@@ -242,13 +242,14 @@ impl<'tcx> CVoidCasts<'tcx> {
         }
     }
 
-    /// See [`CVoidCastsUniDirectional::get_adjusted_place`].
-    pub fn get_adjusted_place(
+    /// See [`CVoidCastsUniDirectional::get_adjusted_place_or_default_to`].
+    pub fn get_adjusted_place_or_default_to(
         &self,
         direction: CVoidCastDirection,
         place: Place<'tcx>,
     ) -> Place<'tcx> {
-        self.direction(direction).get_adjusted_place(place)
+        self.direction(direction)
+            .get_adjusted_place_or_default_to(place)
     }
 
     /// See [`CVoidCastsUniDirectional::insert`].
