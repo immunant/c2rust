@@ -224,6 +224,47 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
     /// Panics if `lty` contains a reference to a type parameter that is past the end of `substs`
     /// (usually this means the caller is providing the wrong list of type arguments as `substs`).
     ///
+    /// This produces a [`LabeledTy`] with the right structure and also substitutes the
+    /// underlying [`Ty`]s
+    pub fn subst_full(
+        &self,
+        lty1: LabeledTy<'tcx, L>,
+        lty2: LabeledTy<'tcx, L>,
+        substs: &[LabeledTy<'tcx, L>],
+    ) -> LabeledTy<'tcx, L> {
+        if let TyKind::Param(ref ty) = lty1.ty.kind() {
+            if let Some(p) = substs.get(ty.index as usize) {
+                return p;
+            }
+        }
+
+        self.mk(
+            lty2.ty,
+            self.subst_slice_full(lty1.args, lty2.args, substs),
+            lty2.label,
+        )
+    }
+
+    /// Substitute arguments in multiple labeled types.
+    pub fn subst_slice_full(
+        &self,
+        ltys1: &[LabeledTy<'tcx, L>],
+        ltys2: &[LabeledTy<'tcx, L>],
+        substs: &[LabeledTy<'tcx, L>],
+    ) -> &'tcx [LabeledTy<'tcx, L>] {
+        self.mk_slice(
+            &ltys1
+                .iter()
+                .zip(ltys2.iter())
+                .map(|(lty1, lty2)| self.subst_full(lty1, lty2, substs))
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    /// Substitute in arguments for any type parameter references (`Param`) in a labeled type.
+    /// Panics if `lty` contains a reference to a type parameter that is past the end of `substs`
+    /// (usually this means the caller is providing the wrong list of type arguments as `substs`).
+    ///
     /// TODO: This produces a `LabeledTy` with the right structure, but doesn't actually do
     /// substitution on the underlying `Ty`s!  This means if you substitute `u32` for `T`, you can
     /// end up with a `LabeledTy` whose `ty` is `S<T>`, but whose args are `[u32]`.  By some
