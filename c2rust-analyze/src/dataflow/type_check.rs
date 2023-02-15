@@ -111,7 +111,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         match *rv {
             Rvalue::Use(ref op) => self.visit_operand(op),
             Rvalue::Repeat(ref op, _) => {
-                assert!(matches!(lty.kind(), TyKind::Array(..)));
+                assert!(lty.ty.is_array());
                 assert_matches!(lty.args, [elem_lty] => {
                     // Pseudo-assign from the operand to the element type of the array.
                     let op_lty = self.acx.type_of(op);
