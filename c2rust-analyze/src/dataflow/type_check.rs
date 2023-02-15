@@ -1,6 +1,7 @@
 use super::DataflowConstraints;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
 use crate::util::{self, describe_rvalue, Callee, RvalueDesc};
+use assert_matches::assert_matches;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
     AggregateKind, BinOp, Body, Location, Mutability, Operand, Place, PlaceRef, ProjectionElem,
@@ -111,11 +112,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Rvalue::Use(ref op) => self.visit_operand(op),
             Rvalue::Repeat(ref op, _) => {
                 assert!(matches!(lty.kind(), TyKind::Array(..)));
-                assert_eq!(lty.args.len(), 1);
-                let elem_lty = lty.args[0];
-                // Pseudo-assign from the operand to the element type of the array.
-                let op_lty = self.acx.type_of(op);
-                self.do_assign(elem_lty, op_lty);
+                assert_matches!(lty.args, [elem_lty] => {
+                    // Pseudo-assign from the operand to the element type of the array.
+                    let op_lty = self.acx.type_of(op);
+                    self.do_assign(elem_lty, op_lty);
+                });
             }
             Rvalue::Ref(..) => {
                 unreachable!("Rvalue::Ref should be handled by describe_rvalue instead")
