@@ -8,18 +8,23 @@ use std::{
 use c2rust_build_paths::find_llvm_config;
 
 #[derive(Default)]
-pub struct Analyze;
+pub struct Analyze {
+    path: PathBuf,
+}
 
 impl Analyze {
-    pub fn new() -> Self {
-        Self
+    pub fn resolve() -> Self {
+        let current_exe = env::current_exe().unwrap();
+        let bin_deps_dir = current_exe.parent().unwrap();
+        let bin_dir = bin_deps_dir.parent().unwrap();
+        let path = bin_dir.join(env!("CARGO_PKG_NAME"));
+        Self { path }
     }
 
     fn run_(&self, rs_path: &Path) -> PathBuf {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
         let lib_dir = Path::new(env!("C2RUST_TARGET_LIB_DIR"));
 
-        let manifest_path = dir.join("Cargo.toml");
         let rs_path = dir.join(rs_path); // allow relative paths, or override with an absolute path
         let output_path = {
             let mut file_name = rs_path.file_name().unwrap().to_owned();
@@ -29,12 +34,8 @@ impl Analyze {
         let output_stdout = File::create(&output_path).unwrap();
         let output_stderr = File::try_clone(&output_stdout).unwrap();
 
-        let mut cmd = Command::new("cargo");
-        cmd.arg("run")
-            .arg("--manifest-path")
-            .arg(&manifest_path)
-            .arg("--")
-            .arg(&rs_path)
+        let mut cmd = Command::new(&self.path);
+        cmd.arg(&rs_path)
             .arg("-L")
             .arg(lib_dir)
             .arg("--crate-type")

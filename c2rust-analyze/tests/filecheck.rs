@@ -6,7 +6,7 @@ use common::{Analyze, FileCheck};
 
 #[test]
 fn filecheck() {
-    let analyze = Analyze::new();
+    let analyze = Analyze::resolve();
     let file_check = FileCheck::resolve();
 
     for entry in fs::read_dir("tests/filecheck").unwrap() {
