@@ -1,4 +1,3 @@
-#[cfg(any())]
 pub fn cast_only(s: *const u8) {
     s as *const core::ffi::c_char;
 }

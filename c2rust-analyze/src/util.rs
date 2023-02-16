@@ -4,7 +4,8 @@ use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
     Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
 };
-use rustc_middle::ty::{AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy};
+use rustc_middle::ty::{self, AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy};
+use rustc_type_ir::IntTy;
 use std::fmt::Debug;
 
 #[derive(Debug)]
@@ -304,4 +305,45 @@ pub fn lty_project<'tcx, L: Debug>(
         ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
         ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
     }
+}
+
+/// Determine if two types are safe to transmute to each other.
+///
+/// Safe transmutability is difficult to check abstractly,
+/// so here it is limited to integer types of the same size
+/// (but potentially different signedness).
+///
+/// Thus, [`true`] means it is definitely transmutable,
+/// while [`false`] means it may not be transmutable.
+pub fn are_transmutable<'tcx>(a: Ty<'tcx>, b: Ty<'tcx>) -> bool {
+    let transmutable_ints = {
+        use IntTy::*;
+        use UintTy::*;
+        match (a.kind(), b.kind()) {
+            (ty::Uint(u), ty::Int(i)) | (ty::Int(i), ty::Uint(u)) => {
+                matches!((u, i), |(Usize, Isize)| (U8, I8)
+                    | (U16, I16)
+                    | (U32, I32)
+                    | (U64, I64))
+            }
+            _ => false,
+        }
+    };
+
+    // only check for transmutable ints so far
+    a == b || transmutable_ints
+}
+
+/// Determine if two types (e.x. in a cast) are pointers,
+/// and if they are, if the pointee types are compatible,
+/// i.e. they are safely transmutable to each other.
+///
+/// This returns [`Some`]`(is_transmutable)` if they're both pointers,
+/// and [`None`] if its some other types.
+///
+/// See [`are_transmutable`] for the definition of safe transmutability.
+pub fn are_transmutable_ptrs<'tcx>(a: Ty<'tcx>, b: Ty<'tcx>) -> Option<bool> {
+    let a = a.builtin_deref(true)?.ty;
+    let b = b.builtin_deref(true)?.ty;
+    Some(are_transmutable(a, b))
 }

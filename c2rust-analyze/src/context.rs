@@ -3,7 +3,7 @@ use crate::pointer_id::{
     GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
     PointerTableMut,
 };
-use crate::util::{self, describe_rvalue, RvalueDesc};
+use crate::util::{self, are_transmutable_ptrs, describe_rvalue, RvalueDesc};
 use crate::AssignPointerIds;
 use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
@@ -349,23 +349,22 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             Rvalue::Cast(_, ref op, ty) => {
                 let op_lty = self.type_of(op);
 
-                // We support this category of pointer casts as a special case.
-                let op_is_ptr = matches!(op_lty.ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
-                let op_pointee = op_is_ptr.then(|| op_lty.args[0]);
-                let ty_pointee = match *ty.kind() {
-                    TyKind::Ref(_, ty, _) => Some(ty),
-                    TyKind::RawPtr(tm) => Some(tm.ty),
-                    _ => None,
-                };
-                if op_pointee.is_some() && op_pointee.map(|lty| lty.ty) == ty_pointee {
-                    // The source and target types are both pointers, and they have identical
-                    // pointee types.  We label the target type with the same `PointerId`s as the
-                    // source type in all positions.  This works because the two types have the
-                    // same structure.
-                    return self.lcx().mk(ty, op_lty.args, op_lty.label);
+                // We only support pointer casts when:
+                // * both types are pointers
+                // * they have compatible (safely transmutable) pointee types
+                // Safe transmutability is difficult to check abstractly,
+                // so we limit it to integer types of the same size
+                // (but potentially different signedness).
+                // In particular, this allows casts from `*u8` to `*core::ffi::c_char`.
+                let from_ty = op_lty.ty;
+                let to_ty = ty;
+                match are_transmutable_ptrs(from_ty, to_ty) {
+                    // Label the to type with the same [`PointerId`]s as the from type in all positions.
+                    // This works because the two types have the same structure.
+                    Some(true) => self.lcx().mk(ty, op_lty.args, op_lty.label),
+                    Some(false) => todo!("unsupported ptr-to-ptr cast between pointee types not yet supported as safely transmutable: `{from_ty:?} as {to_ty:?}`"),
+                    None => label_no_pointers(self, ty),
                 }
-
-                label_no_pointers(self, ty)
             }
             Rvalue::Len(..)
             | Rvalue::BinaryOp(..)

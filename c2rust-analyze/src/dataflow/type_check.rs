@@ -1,6 +1,6 @@
 use super::DataflowConstraints;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
-use crate::util::{self, describe_rvalue, Callee, RvalueDesc};
+use crate::util::{self, are_transmutable, describe_rvalue, Callee, RvalueDesc};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
     AggregateKind, BinOp, Body, Location, Mutability, Operand, Place, PlaceRef, ProjectionElem,
@@ -207,10 +207,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     /// that position.  For example, given `lty1 = *mut /*l1*/ *const /*l2*/ u8` and `lty2 = *mut
     /// /*l3*/ *const /*l4*/ u8`, this function will unify `l1` with `l3` and `l2` with `l4`.
     fn do_unify(&mut self, lty1: LTy<'tcx>, lty2: LTy<'tcx>) {
-        assert_eq!(
-            self.acx.tcx().erase_regions(lty1.ty),
-            self.acx.tcx().erase_regions(lty2.ty)
-        );
+        let ty1 = lty1.ty;
+        let ty2 = lty2.ty;
+        assert!(are_transmutable(
+            self.acx.tcx().erase_regions(ty1),
+            self.acx.tcx().erase_regions(ty2),
+        ), "types not transmutable (compatible), so PointerId unification cannot be done: {ty1:?} !~ {ty2:?}");
         for (sub_lty1, sub_lty2) in lty1.iter().zip(lty2.iter()) {
             eprintln!("equate {:?} = {:?}", sub_lty1, sub_lty2);
             if sub_lty1.label != PointerId::NONE || sub_lty2.label != PointerId::NONE {
