@@ -307,18 +307,22 @@ pub fn lty_project<'tcx, L: Debug>(
     }
 }
 
-/// Determine if two types are safe to transmute to each other.
+/// Determine if `from_ty` can be safely transmuted to `to_ty`.
 ///
 /// Safe transmutability is difficult to check abstractly,
-/// so here it is limited to integer types of the same size
-/// (but potentially different signedness).
+/// so here it is limited to
+/// * integer types of the same size (but potentially different signedness)
+///     * e.x. `*u8 as *i8`
+/// * decaying arrays and slices to their element type
+///     * e.x. `*[u8; 0] as *u8`
+///     * e.x. `*[u8] as *u8`
 ///
 /// Extra (but equal) levels of pointer/reference indirection are allowed,
 /// i.e. `u8 ~ i8` implies `**u8 ~ **i8`.
 ///
 /// Thus, [`true`] means it is definitely transmutable,
 /// while [`false`] means it may not be transmutable.
-///
+/// 
 /// Formally, safe transmutability defines
 /// an equivalence relation on types, named `~` here.
 /// `A ~ B` iff `*(a as *const B)` and `*(b as *const A)` are safe,
@@ -328,11 +332,11 @@ pub fn lty_project<'tcx, L: Debug>(
 /// * `A = B => A ~ B`
 /// * `A ~ B => *A ~ *B`
 /// * `uN ~ iN`, where `N` is an integer width
-pub fn are_transmutable<'tcx>(a: Ty<'tcx>, b: Ty<'tcx>) -> bool {
+pub fn is_transmutable_to<'tcx>(from_ty: Ty<'tcx>, to_ty: Ty<'tcx>) -> bool {
     let transmutable_ints = || {
         use IntTy::*;
         use UintTy::*;
-        match (a.kind(), b.kind()) {
+        match (from_ty.kind(), to_ty.kind()) {
             (ty::Uint(u), ty::Int(i)) | (ty::Int(i), ty::Uint(u)) => {
                 matches!((u, i), |(Usize, Isize)| (U8, I8)
                     | (U16, I16)
@@ -343,20 +347,24 @@ pub fn are_transmutable<'tcx>(a: Ty<'tcx>, b: Ty<'tcx>) -> bool {
         }
     };
 
-    // only check for transmutable ints so far
-    a == b || are_transmutable_ptrs(a, b).unwrap_or(false) || transmutable_ints()
+    let one_way_transmutable = || match from_ty.kind() {
+        &ty::Array(from_ty, _) | &ty::Slice(from_ty) => is_transmutable_to(from_ty, to_ty),
+        _ => false,
+    };
+
+    from_ty == to_ty || is_transmutable_ptr_cast(from_ty, to_ty).unwrap_or(false) || transmutable_ints() || one_way_transmutable()
 }
 
-/// Determine if two types (e.x. in a cast) are pointers,
-/// and if they are, if the pointee types are compatible,
-/// i.e. they are safely transmutable to each other.
+/// Determine if the `from_ty as to_ty` is a ptr-to-ptr cast.
+/// and if it is, if the pointee types are compatible,
+/// i.e. they are safely transmutable.
 ///
 /// This returns [`Some`]`(is_transmutable)` if they're both pointers,
 /// and [`None`] if its some other types.
 ///
-/// See [`are_transmutable`] for the definition of safe transmutability.
-pub fn are_transmutable_ptrs<'tcx>(a: Ty<'tcx>, b: Ty<'tcx>) -> Option<bool> {
-    let a = a.builtin_deref(true)?.ty;
-    let b = b.builtin_deref(true)?.ty;
-    Some(are_transmutable(a, b))
+/// See [`is_transmutable_to`] for the definition of safe transmutability.
+pub fn is_transmutable_ptr_cast<'tcx>(from_ty: Ty<'tcx>, to_ty: Ty<'tcx>) -> Option<bool> {
+    let from_ty = from_ty.builtin_deref(true)?.ty;
+    let to_ty = to_ty.builtin_deref(true)?.ty;
+    Some(is_transmutable_to(from_ty, to_ty))
 }

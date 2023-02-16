@@ -3,7 +3,7 @@ use crate::pointer_id::{
     GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
     PointerTableMut,
 };
-use crate::util::{self, are_transmutable_ptrs, describe_rvalue, RvalueDesc};
+use crate::util::{self, describe_rvalue, is_transmutable_ptr_cast, RvalueDesc};
 use crate::AssignPointerIds;
 use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
@@ -358,7 +358,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                 // In particular, this allows casts from `*u8` to `*core::ffi::c_char`.
                 let from_ty = op_lty.ty;
                 let to_ty = ty;
-                match are_transmutable_ptrs(from_ty, to_ty) {
+                match is_transmutable_ptr_cast(from_ty, to_ty) {
                     // Label the to type with the same [`PointerId`]s as the from type in all positions.
                     // This works because the two types have the same structure.
                     Some(true) => self.lcx().mk(ty, op_lty.args, op_lty.label),
