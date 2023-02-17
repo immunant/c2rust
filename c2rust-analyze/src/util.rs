@@ -318,6 +318,16 @@ pub fn lty_project<'tcx, L: Debug>(
 ///
 /// Thus, [`true`] means it is definitely transmutable,
 /// while [`false`] means it may not be transmutable.
+///
+/// Formally, safe transmutability defines
+/// an equivalence relation on types, named `~` here.
+/// `A ~ B` iff `*(a as *const B)` and `*(b as *const A)` are safe,
+/// where `a: *const A` and `b: *const B`.
+///
+/// And the current incomplete implementation is defined as:
+/// * `A = B => A ~ B`
+/// * `A ~ B => *A ~ *B`
+/// * `uN ~ iN`, where `N` is an integer width
 pub fn are_transmutable<'tcx>(a: Ty<'tcx>, b: Ty<'tcx>) -> bool {
     let transmutable_ints = || {
         use IntTy::*;
