@@ -313,10 +313,13 @@ pub fn lty_project<'tcx, L: Debug>(
 /// so here it is limited to integer types of the same size
 /// (but potentially different signedness).
 ///
+/// Extra (but equal) levels of pointer/reference indirection are allowed,
+/// i.e. `u8 ~ i8` implies `**u8 ~ **i8`.
+///
 /// Thus, [`true`] means it is definitely transmutable,
 /// while [`false`] means it may not be transmutable.
 pub fn are_transmutable<'tcx>(a: Ty<'tcx>, b: Ty<'tcx>) -> bool {
-    let transmutable_ints = {
+    let transmutable_ints = || {
         use IntTy::*;
         use UintTy::*;
         match (a.kind(), b.kind()) {
@@ -331,7 +334,7 @@ pub fn are_transmutable<'tcx>(a: Ty<'tcx>, b: Ty<'tcx>) -> bool {
     };
 
     // only check for transmutable ints so far
-    a == b || transmutable_ints
+    a == b || are_transmutable_ptrs(a, b).unwrap_or(false) || transmutable_ints()
 }
 
 /// Determine if two types (e.x. in a cast) are pointers,
