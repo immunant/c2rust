@@ -307,36 +307,33 @@ pub fn lty_project<'tcx, L: Debug>(
     }
 }
 
-/// Determine if `from_ty` can be safely transmuted to `to_ty`.
+/// Determine if `from` can be safely transmuted to `to`,
+/// which is defined as `*(from as *const To)` being a safe operation,
+/// where `from: *const From` and assuming `*from` already was safe.
 ///
-/// Safe transmutability is difficult to check abstractly,
-/// so here it is limited to
-/// * integer types of the same size (but potentially different signedness)
-///     * e.x. `*u8 as *i8`
-/// * decaying arrays and slices to their element type
-///     * e.x. `*[u8; 0] as *u8`
-///     * e.x. `*[u8] as *u8`
+/// Note that this is one-way, and is slightly different from [`core::mem::transmute`],
+/// and more similar to [`core::mem::transmute_copy`].
 ///
-/// Extra (but equal) levels of pointer/reference indirection are allowed,
-/// i.e. `u8 ~ i8` implies `**u8 ~ **i8`.
+/// This forms a non-symmetric (one-way) equivalence relation, named `~` below.
+/// Formally, `A ~ B` iff `*a` and `*(a as *const B)` are safe, where `a: *const A`.
+///
+/// However, safe transmutability is difficult to check completely,
+/// so this function only checks a subset of it,
+/// with these formal rules for all types `A`, `B`:
+///
+/// * `A = B => A ~ B`
+/// * `A ~ B => *A ~ *B`
+/// * `uN ~ iN`, `iN ~ uN`, where `N` is an integer width
+/// * `[A] ~ A`
+/// * `[A; N] ~ A`, where `const N: usize`
 ///
 /// Thus, [`true`] means it is definitely transmutable,
 /// while [`false`] means it may not be transmutable.
-/// 
-/// Formally, safe transmutability defines
-/// an equivalence relation on types, named `~` here.
-/// `A ~ B` iff `*(a as *const B)` and `*(b as *const A)` are safe,
-/// where `a: *const A` and `b: *const B`.
-///
-/// And the current incomplete implementation is defined as:
-/// * `A = B => A ~ B`
-/// * `A ~ B => *A ~ *B`
-/// * `uN ~ iN`, where `N` is an integer width
-pub fn is_transmutable_to<'tcx>(from_ty: Ty<'tcx>, to_ty: Ty<'tcx>) -> bool {
+pub fn is_transmutable_to<'tcx>(from: Ty<'tcx>, to: Ty<'tcx>) -> bool {
     let transmutable_ints = || {
         use IntTy::*;
         use UintTy::*;
-        match (from_ty.kind(), to_ty.kind()) {
+        match (from.kind(), to.kind()) {
             (ty::Uint(u), ty::Int(i)) | (ty::Int(i), ty::Uint(u)) => {
                 matches!((u, i), |(Usize, Isize)| (U8, I8)
                     | (U16, I16)
@@ -347,24 +344,26 @@ pub fn is_transmutable_to<'tcx>(from_ty: Ty<'tcx>, to_ty: Ty<'tcx>) -> bool {
         }
     };
 
-    let one_way_transmutable = || match from_ty.kind() {
-        &ty::Array(from_ty, _) | &ty::Slice(from_ty) => is_transmutable_to(from_ty, to_ty),
+    let one_way_transmutable = || match from.kind() {
+        &ty::Array(from, _) | &ty::Slice(from) => is_transmutable_to(from, to),
         _ => false,
     };
 
-    from_ty == to_ty || is_transmutable_ptr_cast(from_ty, to_ty).unwrap_or(false) || transmutable_ints() || one_way_transmutable()
+    from == to
+        || is_transmutable_ptr_cast(from, to).unwrap_or(false)
+        || transmutable_ints()
+        || one_way_transmutable()
 }
 
-/// Determine if the `from_ty as to_ty` is a ptr-to-ptr cast.
-/// and if it is, if the pointee types are compatible,
-/// i.e. they are safely transmutable.
+/// Determine if `from as to` is a ptr-to-ptr cast.
+/// and if it is, if the pointee types are [safely transmutable](is_transmutable_to).
 ///
 /// This returns [`Some`]`(is_transmutable)` if they're both pointers,
 /// and [`None`] if its some other types.
 ///
 /// See [`is_transmutable_to`] for the definition of safe transmutability.
-pub fn is_transmutable_ptr_cast<'tcx>(from_ty: Ty<'tcx>, to_ty: Ty<'tcx>) -> Option<bool> {
-    let from_ty = from_ty.builtin_deref(true)?.ty;
-    let to_ty = to_ty.builtin_deref(true)?.ty;
-    Some(is_transmutable_to(from_ty, to_ty))
+pub fn is_transmutable_ptr_cast<'tcx>(from: Ty<'tcx>, to: Ty<'tcx>) -> Option<bool> {
+    let from = from.builtin_deref(true)?.ty;
+    let to = to.builtin_deref(true)?.ty;
+    Some(is_transmutable_to(from, to))
 }
