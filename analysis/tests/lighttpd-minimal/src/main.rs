@@ -1104,7 +1104,7 @@ unsafe extern "C" fn connection_handle_fdevent(
 
 unsafe extern "C" fn connection_reset(mut con: *mut connection) {
     let r: *mut request_st = &mut (*con).request;
-    // request_reset(r);
+    request_reset(r);
     (*r).bytes_read_ckpt = 0 as libc::c_int as off_t;
     (*r).bytes_written_ckpt = 0 as libc::c_int as off_t;
     (*con).is_readable = 1 as libc::c_int as libc::c_schar;
@@ -1152,20 +1152,16 @@ pub unsafe extern "C" fn connection_accepted(
     (*r).state = CON_STATE_REQUEST_START;
     // (*con).connection_start = log_monotonic_secs;
     (*con).dst_addr = *cnt_addr;
-    // sock_addr_cache_inet_ntop_copy_buffer(
-    //     &mut (*con).dst_addr_buf,
-    //     &mut (*con).dst_addr,
-    // );
+    sock_addr_cache_inet_ntop_copy_buffer(&mut (*con).dst_addr_buf, &mut (*con).dst_addr);
     (*con).srv_socket = srv_socket;
     (*con).is_ssl_sock = (*srv_socket).is_ssl as libc::c_char;
     (*con).proto_default_port = 80 as libc::c_int as uint16_t;
-    // config_cond_cache_reset(r);
+    config_cond_cache_reset(r);
     (*r).conditional_is_valid = ((1 as libc::c_int) << COMP_SERVER_SOCKET as libc::c_int
         | (1 as libc::c_int) << COMP_HTTP_REMOTE_IP as libc::c_int)
         as uint32_t;
-    if HANDLER_GO_ON as libc::c_int as libc::c_uint != 0
-    // ^^^ TODO: remove
-    // != plugins_call_handle_connection_accept(con) as libc::c_uint
+    if HANDLER_GO_ON as libc::c_int as libc::c_uint
+        != plugins_call_handle_connection_accept(con) as libc::c_uint
     {
         connection_reset(con);
         connection_close(con);
@@ -1197,7 +1193,7 @@ unsafe extern "C" fn connection_init(
     (*con).plugin_slots = (*srv).plugin_slots;
     (*con).config_data_base = (*srv).config_data_base;
     let r: *mut request_st = &mut (*con).request;
-    // request_init_data(r, con, srv);
+    request_init_data(r, con, srv);
     (*con).write_queue = &mut (*r).write_queue;
     (*con).read_queue = &mut (*r).read_queue;
     // (*con).plugin_ctx = calloc(
@@ -1290,12 +1286,12 @@ unsafe extern "C" fn connection_close(mut con: *mut connection) {
     if (*con).fd < 0 as libc::c_int {
         (*con).fd = -(*con).fd;
     }
-    // plugins_call_handle_connection_close(con);
+    plugins_call_handle_connection_close(con);
     let srv: *mut server = (*con).srv;
     let r: *mut request_st = &mut (*con).request;
-    // request_reset_ex(r);
+    request_reset_ex(r);
     (*r).state = CON_STATE_CONNECT;
-    // chunkqueue_reset((*con).read_queue);
+    chunkqueue_reset((*con).read_queue);
     (*con).request_count = 0 as libc::c_int as uint32_t;
     (*con).is_ssl_sock = 0 as libc::c_int as libc::c_char;
     (*con).revents_err = 0 as libc::c_int as uint16_t;
