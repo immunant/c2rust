@@ -72,24 +72,6 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
 
 #[derive(Debug)]
 pub enum Callee<'tcx> {
-    /// `<*mut T>::offset` or `<*const T>::offset`.
-    PtrOffset {
-        pointee_ty: Ty<'tcx>,
-        mutbl: Mutability,
-    },
-
-    /// `<[T]>::as_ptr` and `<[T]>::as_mut_ptr` methods.  Also covers the array and str versions.
-    SliceAsPtr {
-        /// The pointee type.  This is either `TyKind::Slice`, `TyKind::Array`, or `TyKind::Str`.
-        pointee_ty: Ty<'tcx>,
-
-        /// The slice element type.  For `str`, this is `u8`.
-        elem_ty: Ty<'tcx>,
-
-        /// Mutability of the output pointer.
-        mutbl: Mutability,
-    },
-
     /// A [`Trivial`] library function is one that has no effect on pointer permissions in its caller.
     ///
     /// Thus, a [`Trivial`] function call requires no special handling.
@@ -108,6 +90,24 @@ pub enum Callee<'tcx> {
     ///
     /// [`Trivial`]: Self::Trivial
     Trivial,
+
+    /// `<*mut T>::offset` or `<*const T>::offset`.
+    PtrOffset {
+        pointee_ty: Ty<'tcx>,
+        mutbl: Mutability,
+    },
+
+    /// `<[T]>::as_ptr` and `<[T]>::as_mut_ptr` methods.  Also covers the array and str versions.
+    SliceAsPtr {
+        /// The pointee type.  This is either `TyKind::Slice`, `TyKind::Array`, or `TyKind::Str`.
+        pointee_ty: Ty<'tcx>,
+
+        /// The slice element type.  For `str`, this is `u8`.
+        elem_ty: Ty<'tcx>,
+
+        /// Mutability of the output pointer.
+        mutbl: Mutability,
+    },
 
     /// libc::malloc
     Malloc,
@@ -131,19 +131,19 @@ pub enum Callee<'tcx> {
     },
 }
 
-pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> {
+pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
     let (did, substs) = match *ty.kind() {
         TyKind::FnDef(did, substs) => (did, substs),
-        _ => return None,
+        _ => return Callee::Trivial,
     };
 
     if let Some(callee) = builtin_callee(tcx, ty, did) {
-        return Some(callee);
+        return callee;
     }
-    Some(Callee::Other {
+    Callee::Other {
         def_id: did,
         substs,
-    })
+    }
 }
 
 fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, did: DefId) -> Option<Callee<'tcx>> {

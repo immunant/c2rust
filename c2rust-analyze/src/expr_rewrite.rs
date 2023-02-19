@@ -172,19 +172,17 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 let func_ty = func.ty(self.mir, tcx);
                 let pl_ty = self.acx.type_of(destination);
 
-                if let Some(callee) = util::ty_callee(tcx, func_ty) {
-                    // Special cases for particular functions.
-                    match callee {
-                        Callee::PtrOffset { .. } => {
-                            self.visit_ptr_offset(&args[0], pl_ty);
-                            return;
-                        }
-                        Callee::SliceAsPtr { .. } => {
-                            self.visit_slice_as_ptr(&args[0], pl_ty);
-                            return;
-                        }
-                        _ => {}
+                // Special cases for particular functions.
+                match util::ty_callee(tcx, func_ty) {
+                    Callee::PtrOffset { .. } => {
+                        self.visit_ptr_offset(&args[0], pl_ty);
+                        return;
                     }
+                    Callee::SliceAsPtr { .. } => {
+                        self.visit_slice_as_ptr(&args[0], pl_ty);
+                        return;
+                    }
+                    _ => {}
                 }
 
                 // General case: cast `args` to match the signature of `func`.

@@ -369,27 +369,27 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let callee = util::ty_callee(*self.ltcx, func_ty);
                 eprintln!("callee = {callee:?}");
                 match callee {
-                    Some(Callee::PtrOffset { .. }) => {
+                    Callee::Trivial => {}
+                    Callee::PtrOffset { .. } => {
                         // We handle this like a pointer assignment.
                         let pl_lty = self.visit_place(destination);
                         assert!(args.len() == 2);
                         let rv_lty = self.visit_operand(&args[0]);
                         self.do_assign(pl_lty, rv_lty);
                     }
-                    Some(Callee::SliceAsPtr { .. }) => {
+                    Callee::SliceAsPtr { .. } => {
                         // TODO: handle this like a cast
                     }
-                    Some(Callee::Trivial) => {}
-                    Some(Callee::Other { .. }) => {
+                    Callee::Other { .. } => {
                         // TODO
                     }
-                    Some(Callee::Malloc) => {
+                    Callee::Malloc => {
                         // TODO
                     }
-                    Some(Callee::Calloc) => {
+                    Callee::Calloc => {
                         // TODO
                     }
-                    Some(Callee::Realloc) => {
+                    Callee::Realloc => {
                         // We handle this like a pointer assignment.
                         let pl_lty = self.visit_place(destination);
                         let rv_lty = assert_matches!(&args[..], [p, _] => {
@@ -398,18 +398,17 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                         self.do_assign(pl_lty, rv_lty);
                     }
-                    Some(Callee::Free) => {
+                    Callee::Free => {
                         let _pl_lty = self.visit_place(destination);
                         let _rv_lty = assert_matches!(&args[..], [p] => {
                             self.visit_operand(p)
                         });
                     }
-                    Some(Callee::IsNull) => {
+                    Callee::IsNull => {
                         let _rv_lty = assert_matches!(&args[..], [p] => {
                             self.visit_operand(p)
                         });
                     }
-                    None => {}
                 }
             }
             // TODO(spernsteiner): handle other `TerminatorKind`s

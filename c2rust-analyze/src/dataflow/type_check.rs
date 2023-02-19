@@ -278,7 +278,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let callee = util::ty_callee(tcx, func_ty);
                 eprintln!("callee = {callee:?}");
                 match callee {
-                    Some(Callee::PtrOffset { .. }) => {
+                    Callee::Trivial => {}
+
+                    Callee::PtrOffset { .. } => {
                         // We handle this like a pointer assignment.
                         self.visit_place(destination, Mutability::Mut);
                         let pl_lty = self.acx.type_of(destination);
@@ -290,7 +292,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         self.constraints.add_all_perms(rv_lty.label, perms);
                     }
 
-                    Some(Callee::SliceAsPtr { elem_ty, .. }) => {
+                    Callee::SliceAsPtr { elem_ty, .. } => {
                         // We handle this like an assignment, but with some adjustments due to the
                         // difference in input and output types.
                         self.visit_place(destination, Mutability::Mut);
@@ -314,16 +316,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
                     }
 
-                    Some(Callee::Trivial) => {}
-
-                    Some(Callee::Malloc) => {
+                    Callee::Malloc => {
                         self.visit_place(destination, Mutability::Mut);
                     }
 
-                    Some(Callee::Calloc) => {
+                    Callee::Calloc => {
                         self.visit_place(destination, Mutability::Mut);
                     }
-                    Some(Callee::Realloc) => {
+                    Callee::Realloc => {
                         self.visit_place(destination, Mutability::Mut);
                         let pl_lty = self.acx.type_of(destination);
                         assert!(args.len() == 2);
@@ -337,7 +337,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         // unify inner-most pointer types
                         self.do_equivalence_nested(pl_lty, rv_lty);
                     }
-                    Some(Callee::Free) => {
+                    Callee::Free => {
                         self.visit_place(destination, Mutability::Mut);
                         assert!(args.len() == 1);
                         self.visit_operand(&args[0]);
@@ -347,16 +347,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         self.constraints.add_all_perms(rv_lty.label, perms);
                     }
 
-                    Some(Callee::IsNull) => {
+                    Callee::IsNull => {
                         assert!(args.len() == 1);
                         self.visit_operand(&args[0]);
                     }
 
-                    Some(Callee::Other { def_id, substs }) => {
+                    Callee::Other { def_id, substs } => {
                         self.visit_call_other(def_id, substs, args, destination);
                     }
-
-                    None => {}
                 }
             }
             // TODO(spernsteiner): handle other `TerminatorKind`s
