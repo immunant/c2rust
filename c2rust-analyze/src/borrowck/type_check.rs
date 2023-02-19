@@ -357,8 +357,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 ..
             } => {
                 let func_ty = func.ty(self.local_decls, *self.ltcx);
-                eprintln!("callee = {:?}", util::ty_callee(*self.ltcx, func_ty));
-                match util::ty_callee(*self.ltcx, func_ty) {
+                let callee = util::ty_callee(*self.ltcx, func_ty);
+                eprintln!("callee = {callee:?}");
+                match callee {
                     Some(Callee::PtrOffset { .. }) => {
                         // We handle this like a pointer assignment.
                         let pl_lty = self.visit_place(destination);
