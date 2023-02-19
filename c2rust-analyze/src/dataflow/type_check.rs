@@ -1,6 +1,6 @@
 use super::DataflowConstraints;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
-use crate::util::{self, describe_rvalue, Callee, RvalueDesc};
+use crate::util::{describe_rvalue, ty_callee, Callee, RvalueDesc};
 use assert_matches::assert_matches;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
@@ -275,7 +275,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 ..
             } => {
                 let func_ty = func.ty(self.mir, tcx);
-                let callee = util::ty_callee(tcx, func_ty);
+                let callee = ty_callee(tcx, func_ty);
                 eprintln!("callee = {callee:?}");
                 match callee {
                     Callee::Trivial => {}
