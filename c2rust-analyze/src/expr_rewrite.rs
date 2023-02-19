@@ -1,7 +1,7 @@
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet, PointerId};
 use crate::pointer_id::PointerTable;
 use crate::type_desc::{self, Ownership, Quantity};
-use crate::util::{self, Callee};
+use crate::util::{ty_callee, Callee};
 use rustc_middle::mir::{
     BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
     TerminatorKind,
@@ -173,7 +173,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 let pl_ty = self.acx.type_of(destination);
 
                 // Special cases for particular functions.
-                match util::ty_callee(tcx, func_ty) {
+                match ty_callee(tcx, func_ty) {
                     Callee::PtrOffset { .. } => {
                         self.visit_ptr_offset(&args[0], pl_ty);
                         return;

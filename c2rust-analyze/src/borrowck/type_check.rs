@@ -1,7 +1,7 @@
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubPoint};
 use crate::borrowck::{LTy, LTyCtxt, Label, OriginParam};
 use crate::context::PermissionSet;
-use crate::util::{self, Callee};
+use crate::util::{self, ty_callee, Callee};
 use crate::AdtMetadataTable;
 use assert_matches::assert_matches;
 use indexmap::IndexMap;
@@ -357,7 +357,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 ..
             } => {
                 let func_ty = func.ty(self.local_decls, *self.ltcx);
-                let callee = util::ty_callee(*self.ltcx, func_ty);
+                let callee = ty_callee(*self.ltcx, func_ty);
                 eprintln!("callee = {callee:?}");
                 match callee {
                     Callee::Trivial => {}
