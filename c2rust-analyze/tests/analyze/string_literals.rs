@@ -1,9 +1,9 @@
 #[cfg(any())]
-fn str() {
+pub fn str() {
     "";
 }
 
 #[cfg(any())]
-fn bstr() {
+pub fn bstr() {
     b"";
 }
