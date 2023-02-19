@@ -94,9 +94,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, lty: LTy<'tcx>) {
-        eprintln!("visit_rvalue({:?}), desc = {:?}", rv, describe_rvalue(rv));
+        let rv_desc = describe_rvalue(rv);
+        eprintln!("visit_rvalue({rv:?}), desc = {rv_desc:?}");
 
-        if let Some(desc) = describe_rvalue(rv) {
+        if let Some(desc) = rv_desc {
             match desc {
                 RvalueDesc::Project { base, proj: _ } => {
                     // TODO: mutability should probably depend on mutability of the output ref/ptr
