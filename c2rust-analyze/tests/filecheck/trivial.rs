@@ -73,7 +73,7 @@ pub fn main() {
         // TODO(kkysen) Test self-referential/recursive types through references (see #834).
         // Since transpiled types shouldn't have references, only pointers,
         // this shouldn't be an issue for a while until we get to partially-refactored code.
-        // f!(RecursiveWithRef); // COM: CHECK: fn(RecursiveWithRef) {main::f} is trivial: false
+        // f!(RecursiveWithRef);
 
         f!(Never); // CHECK: fn(Never) {main::f} is trivial: true
     }
