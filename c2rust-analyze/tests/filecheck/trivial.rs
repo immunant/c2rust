@@ -2,7 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicPtr};
 
-fn f4<A, B, C, D>(_a: A, _b: B, _c: C, _d: D) {}
+pub fn f4<A, B, C, D>(_a: A, _b: B, _c: C, _d: D) {}
 
 /// Check a type for triviality.
 ///
@@ -26,21 +26,19 @@ macro_rules! f {
     }};
 }
 
-#[allow(dead_code)]
-struct Trivial<'a> {
-    a: u32,
-    b: &'a str,
-    c: Result<&'a Path, &'static str>,
+pub struct Trivial<'a> {
+    pub a: u32,
+    pub b: &'a str,
+    pub c: Result<&'a Path, &'static str>,
 }
 
-#[allow(dead_code)]
-struct NonTrivial {
-    a: *mut i32,
+pub struct NonTrivial {
+    pub a: *mut i32,
 }
 
 enum Never {}
 
-fn main() {
+pub fn main() {
     {
         // trivial
 
