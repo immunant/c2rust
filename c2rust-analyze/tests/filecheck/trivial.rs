@@ -36,6 +36,14 @@ pub struct NonTrivial {
     pub a: *mut i32,
 }
 
+pub struct RecursiveWithPtr {
+    pub a: *const RecursiveWithPtr,
+}
+
+pub struct RecursiveWithRef {
+    pub a: &'static RecursiveWithRef,
+}
+
 enum Never {}
 
 pub fn main() {
@@ -62,6 +70,11 @@ pub fn main() {
 
         f!(Trivial); // CHECK: for<'r> fn(Trivial<'r>) {main::f} is trivial: true
 
+        // TODO(kkysen) Test self-referential/recursive types through references (see #834).
+        // Since transpiled types shouldn't have references, only pointers,
+        // this shouldn't be an issue for a while until we get to partially-refactored code.
+        // f!(RecursiveWithRef); // COM: CHECK: fn(RecursiveWithRef) {main::f} is trivial: false
+
         f!(Never); // CHECK: fn(Never) {main::f} is trivial: true
     }
 
@@ -81,7 +94,7 @@ pub fn main() {
         f!(*mut i32); // CHECK: fn(*mut i32) {main::f} is trivial: false
 
         f!(NonTrivial); // CHECK: fn(NonTrivial) {main::f} is trivial: false
-    }
 
-    // TODO(kkysen) test self-referential types
+        f!(RecursiveWithPtr); // CHECK: fn(RecursiveWithPtr) {main::f} is trivial: false
+    }
 }
