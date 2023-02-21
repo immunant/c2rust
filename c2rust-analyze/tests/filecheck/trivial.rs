@@ -4,8 +4,17 @@ use std::sync::atomic::{AtomicBool, AtomicPtr};
 
 fn f4<A, B, C, D>(_a: A, _b: B, _c: C, _d: D) {}
 
-// TODO(kkysen) generic calls are not monomorphized in time
-// and thus cannot yet be evaluated for triviality (or default to false)
+/// Check a type for triviality.
+///
+/// There are a lot of restrictions here.
+/// Generics are not supported.
+/// And more importantly, aggregate initialization is not supported (#736),
+/// so we can't create most types, including even simple ones like `None` and `()`.
+/// And we need to make a function call to test triviality,
+/// so we define a local function with the type already as an argument,
+/// and then call itself recursively to create the function call.
+/// The function is never actually called, so infinite recursion doesn't happen,
+/// though `rustc` still complains, so we put it in a dead branch.
 macro_rules! f {
     ($t:ty) => {{
         #[allow(unused)]
