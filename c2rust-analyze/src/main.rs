@@ -51,6 +51,7 @@ mod equiv;
 mod expr_rewrite;
 mod labeled_ty;
 mod pointer_id;
+mod trivial;
 mod type_desc;
 mod util;
 

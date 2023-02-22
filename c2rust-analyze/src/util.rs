@@ -1,4 +1,5 @@
 use crate::labeled_ty::LabeledTy;
+use crate::trivial::IsTrivial;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
@@ -136,7 +137,7 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> 
         _ => return None,
     };
 
-    if let Some(callee) = builtin_callee(tcx, did, substs) {
+    if let Some(callee) = builtin_callee(tcx, ty, did) {
         return Some(callee);
     }
     Some(Callee::Other {
@@ -145,11 +146,13 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> 
     })
 }
 
-fn builtin_callee<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    did: DefId,
-    _substs: SubstsRef<'tcx>,
-) -> Option<Callee<'tcx>> {
+fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, did: DefId) -> Option<Callee<'tcx>> {
+    let is_trivial = ty.fn_sig(tcx).is_trivial(tcx);
+    eprintln!("{ty:?} is trivial: {is_trivial}");
+    if is_trivial {
+        return Some(Callee::Trivial);
+    }
+
     let name = tcx.item_name(did);
 
     match name.as_str() {
@@ -196,36 +199,6 @@ fn builtin_callee<'tcx>(
                 elem_ty,
                 mutbl,
             })
-        }
-
-        "abort" | "exit" => {
-            // `std::process::abort` and `std::process::exit`
-            let path = tcx.def_path(did);
-            if tcx.crate_name(path.krate).as_str() != "std" {
-                return None;
-            }
-            if path.data.len() != 2 {
-                return None;
-            }
-            if path.data[0].to_string() != "process" {
-                return None;
-            }
-            Some(Callee::Trivial)
-        }
-
-        "size_of" => {
-            // `core::mem::size_of`
-            let path = tcx.def_path(did);
-            if tcx.crate_name(path.krate).as_str() != "core" {
-                return None;
-            }
-            if path.data.len() != 2 {
-                return None;
-            }
-            if path.data[0].to_string() != "mem" {
-                return None;
-            }
-            Some(Callee::Trivial)
         }
 
         "malloc" | "c2rust_test_typed_malloc" => {
