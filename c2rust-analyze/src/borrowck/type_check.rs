@@ -1,7 +1,8 @@
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubPoint};
 use crate::borrowck::{LTy, LTyCtxt, Label, OriginParam};
+use crate::c_void_casts::CVoidCasts;
 use crate::context::PermissionSet;
-use crate::util::{self, CVoidCasts, Callee};
+use crate::util::{self, Callee};
 use crate::AdtMetadataTable;
 use assert_matches::assert_matches;
 use indexmap::IndexMap;
@@ -330,19 +331,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>) {
+        if self.c_void_casts.should_skip_stmt(stmt) {
+            return;
+        }
+
         // TODO(spernsteiner): other `StatementKind`s will be handled in the future
         #[allow(clippy::single_match)]
         match stmt.kind {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
-
-                if self.c_void_casts.contains(&pl, rv) {
-                    // skip this cast, because the local that is getting casted
-                    // originates from a call to an allocation that is handled
-                    // in a way that effectively elides the cast
-                    return;
-                }
-
                 let pl_lty = self.visit_place(pl);
                 let rv_lty = self.visit_rvalue(rv, pl_lty);
                 self.do_assign(pl_lty, rv_lty);

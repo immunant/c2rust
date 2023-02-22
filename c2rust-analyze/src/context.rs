@@ -1,9 +1,10 @@
+use crate::c_void_casts::CVoidCasts;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::{
     GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
     PointerTableMut,
 };
-use crate::util::{self, describe_rvalue, CVoidCasts, RvalueDesc};
+use crate::util::{self, describe_rvalue, RvalueDesc};
 use crate::AssignPointerIds;
 use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
@@ -181,11 +182,12 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         gacx: &'a mut GlobalAnalysisCtxt<'tcx>,
         mir: &'a Body<'tcx>,
     ) -> AnalysisCtxt<'a, 'tcx> {
+        let tcx = gacx.tcx;
         AnalysisCtxt {
             gacx,
             local_decls: &mir.local_decls,
             local_tys: IndexVec::new(),
-            c_void_casts: CVoidCasts::default(),
+            c_void_casts: CVoidCasts::new(mir, tcx),
             addr_of_local: IndexVec::new(),
             rvalue_tys: HashMap::new(),
             next_ptr_id: NextLocalPointerId::new(),

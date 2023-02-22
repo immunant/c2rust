@@ -1,43 +1,16 @@
-use crate::labeled_ty::LabeledTy;
-use rustc_hir::def::DefKind;
-use rustc_hir::def_id::DefId;
-use rustc_middle::mir::{
-    Field, Local, Mutability, Operand, Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
-};
-use rustc_middle::ty::{AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy};
-use std::collections::HashMap;
 use std::fmt::Debug;
 
-/// A mapping for substituting [`Place`]s adhering to the
-/// following pattern
-///
-/// ```mir
-/// _1 = malloc(...);
-/// _2 = _1 as *mut T;
-/// ```
-///
-/// where `_1` is [`*c_void`](core::ffi::c_void).
-///
-/// In this case, `_1` would be mapped to `_2`, which is indicative
-/// of the amended statement:
-///
-/// ```mir
-/// _2 = malloc(...);
-/// ```
-#[derive(Default)]
-pub struct CVoidCasts<'tcx>(pub HashMap<Place<'tcx>, Place<'tcx>>);
+use rustc_hir::def::DefKind;
+use rustc_hir::def_id::DefId;
+use rustc_middle::{
+    mir::{
+        Field, Local, Mutability, Operand, Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
+        Statement, StatementKind,
+    },
+    ty::{AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy},
+};
 
-impl<'tcx> CVoidCasts<'tcx> {
-    /// Checks if the casted-to or casted-from value is a [`*c_void`](core::ffi::c_void).
-    pub fn contains(&self, lhs: &Place<'tcx>, rv: &Rvalue<'tcx>) -> bool {
-        matches!(rv, Rvalue::Cast(_, Operand::Copy(p) | Operand::Move(p), _) if self.0.contains_key(p))
-            || self.0.contains_key(lhs)
-    }
-
-    pub fn get_or_default_to(&self, p: &Place<'tcx>) -> Place<'tcx> {
-        *self.0.get(p).unwrap_or(p)
-    }
-}
+use crate::labeled_ty::LabeledTy;
 
 #[derive(Debug)]
 pub enum RvalueDesc<'tcx> {
@@ -260,28 +233,28 @@ fn builtin_callee<'tcx>(
             Some(Callee::Trivial)
         }
 
-        "malloc" | "c2rust_test_typed_malloc" => {
+        "malloc" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Malloc);
             }
             None
         }
 
-        "calloc" | "c2rust_test_typed_calloc" => {
+        "calloc" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Calloc);
             }
             None
         }
 
-        "realloc" | "c2rust_test_typed_realloc" => {
+        "realloc" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Realloc);
             }
             None
         }
 
-        "free" | "c2rust_test_typed_free" => {
+        "free" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Free);
             }
@@ -336,4 +309,21 @@ pub fn lty_project<'tcx, L: Debug>(
         ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
         ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
     }
+}
+
+pub fn get_cast_place<'tcx>(rv: &Rvalue<'tcx>) -> Option<Place<'tcx>> {
+    match rv {
+        Rvalue::Cast(_, op, _) => op.place(),
+        _ => None,
+    }
+}
+
+pub fn get_assign_sides<'tcx, 'a>(
+    stmt: &'a Statement<'tcx>,
+) -> Option<(Place<'tcx>, &'a Rvalue<'tcx>)> {
+    let (pl, ref rv) = match &stmt.kind {
+        StatementKind::Assign(it) => Some(&**it),
+        _ => None,
+    }?;
+    Some((*pl, rv))
 }
