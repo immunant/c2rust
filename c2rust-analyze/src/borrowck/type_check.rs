@@ -340,10 +340,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>) {
-        if self.c_void_casts.should_skip_stmt(stmt) {
-            return;
-        }
-
         // TODO(spernsteiner): other `StatementKind`s will be handled in the future
         #[allow(clippy::single_match)]
         match stmt.kind {
@@ -452,17 +448,21 @@ pub fn visit_body<'tcx>(
         c_void_casts,
     };
 
-    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+    for (block, bb_data) in mir.basic_blocks().iter_enumerated() {
         for (idx, stmt) in bb_data.statements.iter().enumerate() {
-            tc.current_location = Location {
-                block: bb,
+            let loc = Location {
+                block,
                 statement_index: idx,
             };
-            tc.visit_statement(stmt);
+            tc.current_location = loc;
+
+            if !c_void_casts.should_skip_stmt(&loc) {
+                tc.visit_statement(stmt);
+            }
         }
 
         tc.current_location = Location {
-            block: bb,
+            block,
             statement_index: bb_data.statements.len(),
         };
         tc.visit_terminator(bb_data.terminator());
