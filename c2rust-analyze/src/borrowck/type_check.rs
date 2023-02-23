@@ -26,7 +26,6 @@ struct TypeChecker<'tcx, 'a> {
     local_decls: &'a IndexVec<Local, LocalDecl<'tcx>>,
     current_location: Location,
     adt_metadata: &'a AdtMetadataTable<'tcx>,
-    c_void_casts: &'a CVoidCasts<'tcx>,
 }
 
 impl<'tcx> TypeChecker<'tcx, '_> {
@@ -433,7 +432,6 @@ pub fn visit_body<'tcx>(
         local_decls: &mir.local_decls,
         current_location: Location::START,
         adt_metadata,
-        c_void_casts,
     };
 
     for (block, bb_data) in mir.basic_blocks().iter_enumerated() {
