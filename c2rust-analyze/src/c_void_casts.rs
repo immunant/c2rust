@@ -2,7 +2,10 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 
 use rustc_middle::{
-    mir::{BasicBlock, Body, LocalDecls, Location, Place, Statement, Terminator, TerminatorKind, StatementKind},
+    mir::{
+        BasicBlock, Body, LocalDecls, Location, Place, Statement, StatementKind, Terminator,
+        TerminatorKind,
+    },
     ty::{TyCtxt, TyKind},
 };
 
@@ -355,8 +358,9 @@ impl<'tcx> CVoidCasts<'tcx> {
                     To => args[0].place().unwrap(),
                 };
                 let c_void_ptr = CVoidPtr::checked(c_void_ptr, &body.local_decls, tcx);
-                let get_cast =
-                    move |(idx, stmt): (usize, &Statement<'tcx>) | (idx, c_void_ptr.get_cast_from_stmt(direction, stmt));
+                let get_cast = move |(idx, stmt): (usize, &Statement<'tcx>)| {
+                    (idx, c_void_ptr.get_cast_from_stmt(direction, stmt))
+                };
                 let cast = match direction {
                     From => find_first_cast_succ_block(get_cast),
                     To => find_last_cast_curr_block(get_cast),
