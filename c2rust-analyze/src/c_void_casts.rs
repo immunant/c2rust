@@ -180,7 +180,11 @@ impl<'tcx> CVoidCastsUniDirectional<'tcx> {
         loc: &Location,
         place: Place<'tcx>,
     ) -> Place<'tcx> {
-        *self.0.get(loc).map(|(_void, subst)| subst).unwrap_or(&place)
+        *self
+            .0
+            .get(loc)
+            .map(|(_void, subst)| subst)
+            .unwrap_or(&place)
     }
 
     pub fn insert(&mut self, loc: Location, cast: CVoidCast<'tcx>) {
