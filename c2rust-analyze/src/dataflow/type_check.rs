@@ -224,7 +224,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         eprintln!("visit_statement({:?})", stmt);
 
-        if self.acx.c_void_casts.should_skip_stmt(stmt) {
+        if self.acx.c_void_casts.should_skip_stmt(&loc) {
             return;
         }
 
@@ -245,7 +245,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    pub fn visit_terminator(&mut self, term: &Terminator<'tcx>) {
+    pub fn visit_terminator(&mut self, term: &Terminator<'tcx>, loc: Location) {
         eprintln!("visit_terminator({:?})", term.kind);
         let tcx = self.acx.tcx();
         // TODO(spernsteiner): other `TerminatorKind`s will be handled in the future
@@ -301,6 +301,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                     Some(Callee::Malloc | Callee::Calloc) => {
                         let out_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                            &loc,
                             CVoidCastDirection::From,
                             destination,
                         );
@@ -308,14 +309,16 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                     Some(Callee::Realloc) => {
                         let out_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                            &loc,
                             CVoidCastDirection::From,
                             destination,
                         );
                         let in_ptr = args[0].place().unwrap();
-                        let in_ptr = self
-                            .acx
-                            .c_void_casts
-                            .get_adjusted_place_or_default_to(CVoidCastDirection::To, in_ptr);
+                        let in_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                            &loc,
+                            CVoidCastDirection::To,
+                            in_ptr,
+                        );
                         self.visit_place(out_ptr, Mutability::Mut);
                         let pl_lty = self.acx.type_of(out_ptr);
                         assert!(args.len() == 2);
@@ -331,10 +334,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                     Some(Callee::Free) => {
                         let in_ptr = args[0].place().unwrap();
-                        let in_ptr = self
-                            .acx
-                            .c_void_casts
-                            .get_adjusted_place_or_default_to(CVoidCastDirection::To, in_ptr);
+                        let in_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                            &loc,
+                            CVoidCastDirection::To,
+                            in_ptr,
+                        );
                         self.visit_place(destination, Mutability::Mut);
                         assert!(args.len() == 1);
 
@@ -411,7 +415,13 @@ pub fn visit<'tcx>(
                 },
             );
         }
-        tc.visit_terminator(bb_data.terminator());
+        tc.visit_terminator(
+            bb_data.terminator(),
+            Location {
+                statement_index: bb_data.statements.len(),
+                block: bb,
+            },
+        );
     }
 
     (tc.constraints, tc.equiv_constraints)
