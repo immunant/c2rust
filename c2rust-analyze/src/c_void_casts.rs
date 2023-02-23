@@ -3,8 +3,8 @@ use std::collections::HashMap;
 
 use rustc_middle::{
     mir::{
-        BasicBlock, BasicBlockData, Body, LocalDecls, Location, Place, Rvalue, Statement,
-        StatementKind, Terminator, TerminatorKind,
+        BasicBlock, Body, LocalDecls, Location, Place, Rvalue, Statement, StatementKind,
+        Terminator, TerminatorKind,
     },
     ty::{TyCtxt, TyKind},
 };
@@ -329,18 +329,12 @@ impl<'tcx> CVoidCasts<'tcx> {
 
     fn find_first_cast_succ_block<F: FnMut(&Statement<'tcx>) -> Option<CVoidCast<'tcx>>>(
         mut get_cast: F,
-        target: Option<BasicBlock>,
-        body: &Body<'tcx>,
+        statements: &[Statement<'tcx>],
     ) -> Option<(usize, CVoidCast<'tcx>)> {
         // For [`CVoidCastDirection::From`], we only count
         // a cast from `*c_void` to an arbitrary type in the subsequent block,
         // searching forward.
-        let successor_block_id = target.unwrap();
-        for (sidx, stmt) in body.basic_blocks()[successor_block_id]
-            .statements
-            .iter()
-            .enumerate()
-        {
+        for (sidx, stmt) in statements.iter().enumerate() {
             if let StatementKind::StorageDead(_) = stmt.kind {
                 continue;
             }
@@ -356,13 +350,13 @@ impl<'tcx> CVoidCasts<'tcx> {
 
     fn find_last_cast_curr_block<F: FnMut(&Statement<'tcx>) -> Option<CVoidCast<'tcx>>>(
         mut get_cast: F,
-        bb_data: &BasicBlockData<'tcx>,
+        statements: &[Statement<'tcx>],
         place: &Place<'tcx>,
     ) -> Option<(usize, CVoidCast<'tcx>)> {
         // For [`CVoidCastDirection::From`], we only count
         // a cast to `*c_void` from an arbitrary type in the same block,
         // searching backwards.
-        for (sidx, stmt) in bb_data.statements.iter().enumerate().rev() {
+        for (sidx, stmt) in statements.iter().enumerate().rev() {
             let cast = get_cast(stmt);
             if let Some(cast) = cast {
                 return Some((sidx, cast));
@@ -420,8 +414,15 @@ impl<'tcx> CVoidCasts<'tcx> {
                 let get_cast =
                     |stmt: &Statement<'tcx>| c_void_ptr.get_cast_from_stmt(direction, stmt);
                 let cast = match direction {
-                    From => Self::find_first_cast_succ_block(get_cast, target, body),
-                    To => Self::find_last_cast_curr_block(get_cast, bb_data, &c_void_ptr_place),
+                    From => Self::find_first_cast_succ_block(
+                        get_cast,
+                        &body.basic_blocks()[target.unwrap()].statements,
+                    ),
+                    To => Self::find_last_cast_curr_block(
+                        get_cast,
+                        &bb_data.statements,
+                        &c_void_ptr_place,
+                    ),
                 };
                 if let Some((statement_index, cast)) = cast {
                     let loc = Location {
