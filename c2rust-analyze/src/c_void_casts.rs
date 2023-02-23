@@ -362,16 +362,15 @@ impl<'tcx> CVoidCasts<'tcx> {
         // For [`CVoidCastDirection::From`], we only count
         // a cast to `*c_void` from an arbitrary type in the same block,
         // searching backwards.
-        let mut casts = vec![];
-        for (sidx, stmt) in bb_data.statements.iter().enumerate() {
+        for (sidx, stmt) in bb_data.statements.iter().enumerate().rev() {
             let cast = get_cast(stmt);
             if let Some(cast) = cast {
-                casts.push((sidx, cast))
+                return Some((sidx, cast));
             } else if Self::is_place_local_modified(place, stmt) {
                 return None;
             }
         }
-        casts.last().cloned()
+        None
     }
 
     /// Insert all applicable [`*c_void`] casts
