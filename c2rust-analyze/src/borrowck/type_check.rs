@@ -370,6 +370,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 eprintln!("callee = {callee:?}");
                 match callee {
                     Callee::Trivial => {}
+                    Callee::UnknownDef { .. } => {
+                        // TODO
+                    }
+                    Callee::Normal { .. } => {
+                        // TODO
+                    }
                     Callee::PtrOffset { .. } => {
                         // We handle this like a pointer assignment.
                         let pl_lty = self.visit_place(destination);
@@ -379,9 +385,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                     Callee::SliceAsPtr { .. } => {
                         // TODO: handle this like a cast
-                    }
-                    Callee::Other { .. } => {
-                        // TODO
                     }
                     Callee::Malloc => {
                         // TODO

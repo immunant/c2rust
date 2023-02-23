@@ -279,6 +279,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 eprintln!("callee = {callee:?}");
                 match callee {
                     Callee::Trivial => {}
+                    Callee::UnknownDef { .. } => {
+                        todo!("visit Callee::{callee:?}");
+                    }
+
+                    Callee::Normal { def_id, substs } => {
+                        self.visit_normal_call(def_id, substs, args, destination);
+                    }
 
                     Callee::PtrOffset { .. } => {
                         // We handle this like a pointer assignment.
@@ -351,10 +358,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         assert!(args.len() == 1);
                         self.visit_operand(&args[0]);
                     }
-
-                    Callee::Other { def_id, substs } => {
-                        self.visit_call_other(def_id, substs, args, destination);
-                    }
                 }
             }
             // TODO(spernsteiner): handle other `TerminatorKind`s
@@ -362,17 +365,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    fn visit_call_other(
+    fn visit_normal_call(
         &mut self,
         def_id: DefId,
         substs: SubstsRef<'tcx>,
         args: &[Operand<'tcx>],
         dest: Place<'tcx>,
     ) {
-        let sig = match self.acx.gacx.fn_sigs.get(&def_id) {
-            Some(&x) => x,
-            None => todo!("call to unknown function {def_id:?}"),
-        };
+        let sig = self.acx.gacx.fn_sigs.get(&def_id)
+            .unwrap_or_else(|| panic!("Callee::Normal LFnSig not found (unknown calls should've been Callee::UnknownDef): {def_id:?}"));
         if substs.non_erasable_generics().next().is_some() {
             todo!("call to generic function {def_id:?} {substs:?}");
         }
