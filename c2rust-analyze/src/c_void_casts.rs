@@ -3,8 +3,8 @@ use std::collections::HashMap;
 
 use rustc_middle::{
     mir::{
-        BasicBlock, Body, LocalDecls, Location, Place, Statement, StatementKind, Terminator,
-        TerminatorKind,
+        BasicBlock, BasicBlockData, Body, LocalDecls, Location, Place, Rvalue, Statement,
+        StatementKind, Terminator, TerminatorKind,
     },
     ty::{TyCtxt, TyKind},
 };
@@ -291,6 +291,93 @@ impl<'tcx> CVoidCasts<'tcx> {
         self.to.contains(loc) || self.from.contains(loc)
     }
 
+    fn is_place_local_modified(p: &Place, stmt: &Statement) -> bool {
+        if !p.projection.is_empty() {
+            return false;
+        }
+
+        let local = p.local;
+
+        if let StatementKind::Assign(asgn) = stmt.kind.clone() {
+            let (lhs, rv) = *asgn;
+            if lhs.local == local {
+                return true;
+            }
+
+            use Rvalue::*;
+            let rv_place = match rv {
+                Use(op) => op.place(),
+                Repeat(op, _) => op.place(),
+                Ref(_, _, p) => Some(p),
+                // ThreadLocalRef
+                AddressOf(_, p) => Some(p),
+                Len(p) => Some(p),
+                Cast(_, op, _) => op.place(),
+                // BinaryOp
+                // CheckedBinaryOp
+                // NullaryOp
+                UnaryOp(_, op) => op.place(),
+                Discriminant(p) => Some(p),
+                // Aggregate
+                ShallowInitBox(op, _) => op.place(),
+                _ => None,
+            };
+
+            if let Some(rv_local) = rv_place.map(|p| p.local) {
+                return local == rv_local;
+            }
+        }
+
+        false
+    }
+
+    fn find_first_cast_succ_block<F: FnMut(&Statement<'tcx>) -> Option<CVoidCast<'tcx>>>(
+        mut get_cast: F,
+        target: Option<BasicBlock>,
+        body: &Body<'tcx>,
+    ) -> Option<(usize, CVoidCast<'tcx>)> {
+        // For [`CVoidCastDirection::From`], we only count
+        // a cast from `*c_void` to an arbitrary type in the subsequent block,
+        // searching forward.
+        let successor_block_id = target.unwrap();
+        for (sidx, stmt) in body.basic_blocks()[successor_block_id]
+            .statements
+            .iter()
+            .enumerate()
+        {
+            if let StatementKind::StorageDead(_) = stmt.kind {
+                continue;
+            }
+            if let Some(cast) = get_cast(stmt) {
+                return Some((sidx, cast));
+            } else {
+                break;
+            }
+        }
+
+        None
+    }
+
+    fn find_last_cast_curr_block<F: FnMut(&Statement<'tcx>) -> Option<CVoidCast<'tcx>>>(
+        mut get_cast: F,
+        bb_data: &BasicBlockData<'tcx>,
+        place: &Place<'tcx>,
+    ) -> Option<(usize, CVoidCast<'tcx>)> {
+        // For [`CVoidCastDirection::From`], we only count
+        // a cast to `*c_void` from an arbitrary type in the same block,
+        // searching backwards.
+        let mut casts = vec![];
+        for (sidx, stmt) in bb_data.statements.iter().enumerate() {
+            let cast = get_cast(stmt);
+            if let Some(cast) = cast {
+                casts.push((sidx, cast))
+            } else if Self::is_place_local_modified(place, stmt) {
+                return None;
+            }
+        }
+        casts.last().cloned()
+    }
+
     /// Insert all applicable [`*c_void`] casts
     /// from a function [`Body`] into this [`CVoidCasts`].
     ///
@@ -325,50 +412,21 @@ impl<'tcx> CVoidCasts<'tcx> {
             };
             let func_ty = func.ty(&body.local_decls, tcx);
 
-            // For [`CVoidCastDirection::From`], we only count
-            // a cast from `*c_void` to an arbitrary type in the subsequent block,
-            // searching forward.
-            let find_first_cast_succ_block = |get_cast| {
-                let successor_block_id = target.unwrap();
-                body.basic_blocks()[successor_block_id]
-                    .statements
-                    .iter()
-                    .enumerate()
-                    .find(|(_, s)| !matches!(s.kind, StatementKind::StorageDead(_)))
-                    .map(get_cast)
-                    .and_then(|(idx, cast)| Some((idx, cast?)))
-            };
-
-            // For [`CVoidCastDirection::From`], we only count
-            // a cast to `*c_void` from an arbitrary type in the same block,
-            // searching backwards.
-            let find_last_cast_curr_block = |get_cast| {
-                bb_data
-                    .statements
-                    .iter()
-                    .enumerate()
-                    .map(get_cast)
-                    .rev()
-                    .filter_map(|(idx, cast)| Some((idx, cast?)))
-                    .next()
-            };
-
             for direction in CVoidCastDirection::from_callee(ty_callee(tcx, func_ty))
                 .iter()
                 .copied()
             {
                 use CVoidCastDirection::*;
-                let c_void_ptr = match direction {
+                let c_void_ptr_place = match direction {
                     From => destination,
                     To => args[0].place().unwrap(),
                 };
-                let c_void_ptr = CVoidPtr::checked(c_void_ptr, &body.local_decls, tcx);
-                let get_cast = move |(idx, stmt): (usize, &Statement<'tcx>)| {
-                    (idx, c_void_ptr.get_cast_from_stmt(direction, stmt))
-                };
+                let c_void_ptr = CVoidPtr::checked(c_void_ptr_place, &body.local_decls, tcx);
+                let get_cast =
+                    |stmt: &Statement<'tcx>| c_void_ptr.get_cast_from_stmt(direction, stmt);
                 let cast = match direction {
-                    From => find_first_cast_succ_block(get_cast),
-                    To => find_last_cast_curr_block(get_cast),
+                    From => Self::find_first_cast_succ_block(get_cast, target, body),
+                    To => Self::find_last_cast_curr_block(get_cast, bb_data, &c_void_ptr_place),
                 };
                 if let Some((statement_index, cast)) = cast {
                     let loc = Location {
