@@ -299,6 +299,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
             Rvalue::UnaryOp(_, ref op) => self.visit_operand(op),
 
+            Rvalue::Repeat(ref op, _) => {
+                if op.ty(self.local_decls, self.tcx).is_any_ptr() {
+                    todo!("Repeat types over pointers not yet implemented");
+                }
+                let ty = rv.ty(self.local_decls, *self.ltcx);
+                // TODO: create fresh origins for all pointers in `ty`, and generate subset
+                // relations between the regions of the array and the regions of its elements
+                self.ltcx.label(ty, &mut |_ty| Label::default())
+            }
             ref rv => panic!("unsupported rvalue {:?}", rv),
         }
     }

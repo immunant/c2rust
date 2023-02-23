@@ -1369,6 +1369,22 @@ pub unsafe extern "C" fn lighttpd_test() {
     free(fdes /* TODO: handle cast as *mut libc::c_void */);
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn buffer_append_int(mut b: *mut buffer, mut val: intmax_t) {
+    let mut buf: [libc::c_char; 22] = [0; 22];
+    // let str: *const libc::c_char = itostr(buf.as_mut_ptr(), val);
+    // buffer_append_string_len(
+    //     b,
+    //     str,
+    //     buf
+    //         .as_mut_ptr()
+    //         .offset(
+    //             ::std::mem::size_of::<[libc::c_char; 22]>() as libc::c_ulong as isize,
+    //         )
+    //         .offset_from(str) as libc::c_long as size_t,
+    // );
+}
+
 fn main() {
     unsafe {
         lighttpd_test();

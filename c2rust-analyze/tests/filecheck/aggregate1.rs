@@ -14,3 +14,8 @@ pub unsafe fn aggregate1_array1(p: *mut i32) {
     let arr = [p];
     *arr[0] = 1;
 }
+
+pub unsafe fn repeat() {
+    let x = 22;
+    let _buf: [u32; 22] = [x; 22];
+}
