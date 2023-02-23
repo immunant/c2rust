@@ -115,6 +115,18 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 assert_matches!(lty.args, [elem_lty] => {
                     // Pseudo-assign from the operand to the element type of the array.
                     let op_lty = self.acx.type_of(op);
+                    /*
+                        TODO: This is the right thing to do here, though currently
+                        it's a no-op because type_of_rvalue (whose result is passed
+                        into this function as lty) constructs its result using
+                        type_of(op), so elem_lty and op_lty will always be identical.
+                        Eventually we'll want to change this so the Rvalue::Repeat gets
+                        its own LTy with its own PointerIds, similar to the handling of
+                        array aggregates. This would let us detect the need for a
+                        cast on the operand of the repeat (we can't cast [&[u32]; 3]
+                        to [&u32; 3], but we could cast the operand from &[u32] to
+                        &u32 before doing the repeat, e.g. let x = [&my_slice[0]; 3];).
+                    */
                     self.do_assign(elem_lty, op_lty);
                 });
             }
