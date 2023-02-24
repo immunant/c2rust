@@ -342,7 +342,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             CVoidCastDirection::From,
                             destination,
                         );
-                        let in_ptr = args[0].place().unwrap();
+                        let in_ptr = args[0]
+                            .place()
+                            .expect("Casts to/from null pointer are not yet supported");
                         let in_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
                             loc,
                             CVoidCastDirection::To,
@@ -362,7 +364,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         self.do_equivalence_nested(pl_lty, rv_lty);
                     }
                     Callee::Free => {
-                        let in_ptr = args[0].place().unwrap();
+                        let in_ptr = args[0]
+                            .place()
+                            .expect("Casts to/from null pointer are not yet supported");
                         let in_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
                             loc,
                             CVoidCastDirection::To,

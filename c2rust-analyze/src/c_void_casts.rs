@@ -433,7 +433,9 @@ impl<'tcx> CVoidCasts<'tcx> {
                 use CVoidCastDirection::*;
                 let c_void_ptr = match direction {
                     From => destination,
-                    To => args[0].place().unwrap(),
+                    To => args[0]
+                        .place()
+                        .expect("Casts to/from null pointer are not yet supported"),
                 };
                 let c_void_ptr = CVoidPtr::checked(c_void_ptr, &body.local_decls, tcx);
                 let cast = match direction {
