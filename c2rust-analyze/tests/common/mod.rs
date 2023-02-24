@@ -63,6 +63,18 @@ impl Analyze {
                 "c2rust-analyze failed with status {status}:\n> {cmd:?} > {output_path:?} 2>&1\n"
             );
             let output = fs::read_to_string(&output_path).unwrap();
+            let max_len = 80 * 300; // don't print a ton
+            let output = if output.len() > max_len {
+                let len_truncated = output.len() - max_len;
+                let (truncated, rest) = output.split_at(len_truncated);
+                let num_lines_truncated = truncated.split('\n').count();
+                let truncated_msg = format!(
+                    "truncated the first {len_truncated} bytes ({num_lines_truncated} lines)"
+                );
+                format!("[{truncated_msg}] ...\n{rest}\n[note: {truncated_msg}]")
+            } else {
+                output
+            };
             panic!("\n{message}\n{output}\n{message}");
         }
         output_path
