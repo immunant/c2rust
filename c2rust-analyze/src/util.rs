@@ -160,17 +160,16 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
     match *ty.kind() {
         ty::FnDef(did, substs) => {
             if is_trivial() {
-                return Callee::Trivial;
-            }
-            if let Some(callee) = builtin_callee(tcx, did) {
-                return callee;
-            }
-            if tcx.def_kind(tcx.parent(did)) == DefKind::ForeignMod {
-                return Callee::UnknownDef { ty };
-            }
-            Callee::Normal {
-                def_id: did,
-                substs,
+                Callee::Trivial
+            } else if let Some(callee) = builtin_callee(tcx, did) {
+                callee
+            } else if tcx.def_kind(tcx.parent(did)) == DefKind::ForeignMod {
+                Callee::UnknownDef { ty }
+            } else {
+                Callee::Normal {
+                    def_id: did,
+                    substs,
+                }
             }
         }
         ty::FnPtr(..) => {
