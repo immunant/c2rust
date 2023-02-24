@@ -3,8 +3,8 @@ use std::collections::HashMap;
 
 use rustc_middle::{
     mir::{
-        BasicBlock, Body, LocalDecls, Location, Place, Rvalue, Statement, StatementKind,
-        Terminator, TerminatorKind,
+        Body, LocalDecls, Location, Place, Rvalue, Statement, StatementKind, Terminator,
+        TerminatorKind,
     },
     ty::{TyCtxt, TyKind},
 };
@@ -405,7 +405,7 @@ impl<'tcx> CVoidCasts<'tcx> {
     ///
     /// [`*c_void`]: core::ffi::c_void
     fn insert_all_from_body(&mut self, body: &Body<'tcx>, tcx: TyCtxt<'tcx>) {
-        for (block, bb_data) in body.basic_blocks().iter().enumerate() {
+        for (block, bb_data) in body.basic_blocks().iter_enumerated() {
             let term: &Terminator = match &bb_data.terminator {
                 Some(term) => term,
                 None => continue,
@@ -451,17 +451,13 @@ impl<'tcx> CVoidCasts<'tcx> {
                         Location {
                             statement_index,
                             block: match direction {
-                                To => BasicBlock::from_usize(block),
+                                To => block,
                                 From => target.unwrap(),
                             },
                         },
                         cast.clone(),
                     );
-                    self.insert_call(
-                        direction,
-                        terminator_location(BasicBlock::from_usize(block), bb_data),
-                        cast,
-                    );
+                    self.insert_call(direction, terminator_location(block, bb_data), cast);
                 }
             }
         }
