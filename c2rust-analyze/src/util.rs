@@ -110,13 +110,13 @@ pub enum Callee<'tcx> {
     /// and we definitely can't rewrite them at all.
     UnknownDef { ty: Ty<'tcx> },
 
-    /// A "normal" function that:
-    /// * is statically-known
+    /// A function that:
     /// * is in the current, local crate
+    /// * is statically-known
+    /// * has an accessible definition
     /// * is non-trivial
     /// * is non-builtin
-    /// * has an accessible definition
-    Normal {
+    LocalDef {
         def_id: DefId,
         substs: SubstsRef<'tcx>,
     },
@@ -171,7 +171,7 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
             } else if !did.is_local() || tcx.def_kind(tcx.parent(did)) == DefKind::ForeignMod {
                 Callee::UnknownDef { ty }
             } else {
-                Callee::Normal {
+                Callee::LocalDef {
                     def_id: did,
                     substs,
                 }

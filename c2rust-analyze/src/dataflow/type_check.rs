@@ -283,8 +283,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         todo!("visit Callee::{callee:?}");
                     }
 
-                    Callee::Normal { def_id, substs } => {
-                        self.visit_normal_call(def_id, substs, args, destination);
+                    Callee::LocalDef { def_id, substs } => {
+                        self.visit_local_call(def_id, substs, args, destination);
                     }
 
                     Callee::PtrOffset { .. } => {
@@ -365,7 +365,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    fn visit_normal_call(
+    /// Visit a local call, where local means
+    /// local to the current crate with a static, known definition.
+    ///
+    /// See [`Callee::LocalDef`].
+    fn visit_local_call(
         &mut self,
         def_id: DefId,
         substs: SubstsRef<'tcx>,
@@ -373,7 +377,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         dest: Place<'tcx>,
     ) {
         let sig = self.acx.gacx.fn_sigs.get(&def_id)
-            .unwrap_or_else(|| panic!("Callee::Normal LFnSig not found (unknown calls should've been Callee::UnknownDef): {def_id:?}"));
+            .unwrap_or_else(|| panic!("Callee::LocalDef LFnSig not found (unknown calls should've been Callee::UnknownDef): {def_id:?}"));
         if substs.non_erasable_generics().next().is_some() {
             todo!("call to generic function {def_id:?} {substs:?}");
         }

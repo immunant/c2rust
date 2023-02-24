@@ -373,7 +373,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     Callee::UnknownDef { .. } => {
                         // TODO
                     }
-                    Callee::Normal { .. } => {
+                    Callee::LocalDef { .. } => {
                         // TODO
                     }
                     Callee::PtrOffset { .. } => {
