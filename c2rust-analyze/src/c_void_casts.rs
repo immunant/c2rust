@@ -374,6 +374,9 @@ impl<'tcx> CVoidCasts<'tcx> {
         statements: &[Statement<'tcx>],
         c_void_ptr: CVoidPtr<'tcx>,
     ) -> Option<(usize, CVoidCast<'tcx>)> {
+        // Get the last cast in the current block, and ensure that the destination
+        // of that cast remains unmodified between the cast and the call in which
+        // the destination place is used.
         for (sidx, stmt) in statements.iter().enumerate().rev() {
             let cast = c_void_ptr.get_cast_from_stmt(CVoidCastDirection::To, stmt);
             if let Some(cast) = cast {
