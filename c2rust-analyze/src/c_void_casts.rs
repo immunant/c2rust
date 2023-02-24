@@ -302,7 +302,15 @@ impl<'tcx> CVoidCasts<'tcx> {
         self.to.casts.contains_key(&loc) || self.from.casts.contains_key(&loc)
     }
 
-    fn is_place_local_modified(p: &Place, stmt: &Statement) -> bool {
+    /// Checking whether a statement could modify a particular Place is
+    /// nontrivial (particularly if the Place involves Deref projections),
+    /// but currently rustc always uses a temporary for the LHS of the
+    /// cast in the desired free(ptr as *mut c_void) pattern, so I think we
+    /// can conservatively treat the Place as unmodified only if (1) it's
+    /// just a Local, with no projections, and (2) that local isn't
+    /// mentioned in the LHS or RHS of any statements between the cast and
+    /// the call.
+    fn is_place_modified_by_statement(p: &Place, stmt: &Statement) -> bool {
         if !p.projection.is_empty() {
             return false;
         }
@@ -370,7 +378,7 @@ impl<'tcx> CVoidCasts<'tcx> {
             let cast = c_void_ptr.get_cast_from_stmt(CVoidCastDirection::To, stmt);
             if let Some(cast) = cast {
                 return Some((sidx, cast));
-            } else if Self::is_place_local_modified(&c_void_ptr.place, stmt) {
+            } else if Self::is_place_modified_by_statement(&c_void_ptr.place, stmt) {
                 return None;
             }
         }
