@@ -159,13 +159,12 @@ pub struct CVoidCast<'tcx> {
 /// like [`CVoidCasts`], but in a single direction, meaning it represents either
 /// [`CVoidCastDirection::From`] or [`CVoidCastDirection::To`].
 #[derive(Default, Clone, Debug)]
-pub struct CVoidCastsUniDirectional<'tcx>(HashMap<Location, CVoidCast<'tcx>>);
+pub struct CVoidCastsUniDirectional<'tcx> {
+    calls: HashMap<Location, CVoidCast<'tcx>>,
+    casts: HashMap<Location, CVoidCast<'tcx>>,
+}
 
 impl<'tcx> CVoidCastsUniDirectional<'tcx> {
-    pub fn contains(&self, loc: &Location) -> bool {
-        self.0.contains_key(loc)
-    }
-
     /// Get the adjusted [`Place`], skipping over [`*c_void`](core::ffi::c_void) intermediaries.
     ///
     /// That is, if `place` is a [`CVoidPtr`] in this map of [`CVoidCast`]s,
@@ -177,7 +176,7 @@ impl<'tcx> CVoidCastsUniDirectional<'tcx> {
         place: Place<'tcx>,
     ) -> Place<'tcx> {
         *self
-            .0
+            .calls
             .get(loc)
             .map(|cast| {
                 assert!(cast.c_void_ptr.place == place);
@@ -186,9 +185,14 @@ impl<'tcx> CVoidCastsUniDirectional<'tcx> {
             .unwrap_or(&place)
     }
 
-    pub fn insert(&mut self, loc: Location, cast: CVoidCast<'tcx>) {
-        assert!(!self.contains(&loc));
-        self.0.insert(loc, cast);
+    pub fn insert_call(&mut self, loc: Location, cast: CVoidCast<'tcx>) {
+        assert!(!self.calls.contains_key(&loc));
+        self.calls.insert(loc, cast);
+    }
+
+    pub fn insert_cast(&mut self, loc: Location, cast: CVoidCast<'tcx>) {
+        assert!(!self.casts.contains_key(&loc));
+        self.casts.insert(loc, cast);
     }
 }
 
@@ -266,8 +270,13 @@ impl<'tcx> CVoidCasts<'tcx> {
     }
 
     /// See [`CVoidCastsUniDirectional::insert`].
-    fn insert(&mut self, loc: Location, direction: CVoidCastDirection, cast: CVoidCast<'tcx>) {
-        self.direction_mut(direction).insert(loc, cast)
+    fn insert_cast(&mut self, loc: Location, direction: CVoidCastDirection, cast: CVoidCast<'tcx>) {
+        self.direction_mut(direction).insert_cast(loc, cast)
+    }
+
+    /// See [`CVoidCastsUniDirectional::insert`].
+    fn insert_call(&mut self, loc: Location, direction: CVoidCastDirection, cast: CVoidCast<'tcx>) {
+        self.direction_mut(direction).insert_call(loc, cast)
     }
 
     /// Determine if this [`Statement`] should be skipped
@@ -288,7 +297,7 @@ impl<'tcx> CVoidCasts<'tcx> {
     /// [`From`]: CVoidCastDirection::From
     /// [`To`]: CVoidCastDirection::To
     pub fn should_skip_stmt(&self, loc: &Location) -> bool {
-        self.to.contains(loc) || self.from.contains(loc)
+        self.to.casts.contains_key(loc) || self.from.casts.contains_key(loc)
     }
 
     fn is_place_local_modified(p: &Place, stmt: &Statement) -> bool {
@@ -429,13 +438,13 @@ impl<'tcx> CVoidCasts<'tcx> {
                             From => target.unwrap(),
                         },
                     };
-                    self.insert(loc, direction, cast.clone());
+                    self.insert_cast(loc, direction, cast.clone());
 
                     let loc = Location {
                         statement_index: bb_data.statements.len(),
                         block: BasicBlock::from_usize(block),
                     };
-                    self.insert(loc, direction, cast);
+                    self.insert_call(loc, direction, cast);
                 }
             }
         }
