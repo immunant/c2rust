@@ -102,6 +102,9 @@ impl<'tcx> CVoidPtr<'tcx> {
     /// For the [`From`] direction, the [`*c_void`] is on the rhs.\
     /// For the [`To`] direction, the [`*c_void`] is on the lhs.
     ///
+    /// Only returns [Option::Some] if the void* side of the
+    /// cast matches `self`.
+    ///
     /// [`*c_void`]: core::ffi::c_void
     /// [`From`]: CVoidCastDirection::From
     /// [`To`]: CVoidCastDirection::To
