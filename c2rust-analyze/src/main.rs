@@ -45,6 +45,7 @@ use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
 mod borrowck;
+mod canonical_path;
 mod context;
 mod dataflow;
 mod equiv;
