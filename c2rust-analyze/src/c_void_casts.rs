@@ -346,18 +346,16 @@ impl<'tcx> CVoidCasts<'tcx> {
         statements: &[Statement<'tcx>],
         c_void_ptr: CVoidPtr<'tcx>,
     ) -> Option<(usize, CVoidCast<'tcx>)> {
-        for (sidx, stmt) in statements.iter().enumerate() {
-            if let StatementKind::StorageDead(_) = stmt.kind {
-                continue;
-            }
-            if let Some(cast) = c_void_ptr.get_cast_from_stmt(CVoidCastDirection::From, stmt) {
-                return Some((sidx, cast));
-            } else {
-                break;
-            }
-        }
-
-        None
+        statements
+            .iter()
+            .enumerate()
+            .skip_while(|(_, stmt)| matches!(stmt.kind, StatementKind::StorageDead(_)))
+            .find_map(|(i, stmt)| {
+                Some((
+                    i,
+                    c_void_ptr.get_cast_from_stmt(CVoidCastDirection::From, stmt)?,
+                ))
+            })
     }
 
     /// Search for the last cast to a void pointer in a sequence of
