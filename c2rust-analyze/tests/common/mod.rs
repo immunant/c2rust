@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     env,
     fs::{self, File},
     path::{Path, PathBuf},
@@ -26,6 +27,20 @@ impl Analyze {
         let lib_dir = Path::new(env!("C2RUST_TARGET_LIB_DIR"));
 
         let rs_path = dir.join(rs_path); // allow relative paths, or override with an absolute path
+
+        let directives = fs::read_to_string(&rs_path)
+            .unwrap()
+            .split('\n')
+            .flat_map(|line| {
+                line.trim()
+                    .strip_prefix("//!")
+                    .unwrap_or_default()
+                    .split(',')
+                    .map(|directive| directive.trim())
+            })
+            .map(String::from)
+            .collect::<HashSet<_>>();
+
         let output_path = {
             let mut file_name = rs_path.file_name().unwrap().to_owned();
             file_name.push(".analysis.txt");
@@ -43,7 +58,7 @@ impl Analyze {
             .stdout(output_stdout)
             .stderr(output_stderr);
         let status = cmd.status().unwrap();
-        if !status.success() {
+        if !status.success() && !directives.contains("allow_crash") {
             let message = format!(
                 "c2rust-analyze failed with status {status}:\n> {cmd:?} > {output_path:?} 2>&1\n"
             );
