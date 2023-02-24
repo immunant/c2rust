@@ -416,11 +416,11 @@ impl<'tcx> CVoidCasts<'tcx> {
                 .copied()
             {
                 use CVoidCastDirection::*;
-                let c_void_ptr_place = match direction {
+                let c_void_ptr = match direction {
                     From => destination,
                     To => args[0].place().unwrap(),
                 };
-                let c_void_ptr = CVoidPtr::checked(c_void_ptr_place, &body.local_decls, tcx);
+                let c_void_ptr = CVoidPtr::checked(c_void_ptr, &body.local_decls, tcx);
                 let cast = match direction {
                     // For [`CVoidCastDirection::From`], we only count
                     // a cast from `*c_void` to an arbitrary type in the subsequent block,
