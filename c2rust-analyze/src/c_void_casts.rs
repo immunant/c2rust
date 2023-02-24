@@ -318,18 +318,17 @@ impl<'tcx> CVoidCasts<'tcx> {
                 Use(op) => op.place(),
                 Repeat(op, _) => op.place(),
                 Ref(_, _, p) => Some(p),
-                // ThreadLocalRef
+                ThreadLocalRef(..) => None,
                 AddressOf(_, p) => Some(p),
                 Len(p) => Some(p),
                 Cast(_, op, _) => op.place(),
-                // BinaryOp
-                // CheckedBinaryOp
-                // NullaryOp
+                BinaryOp(..) => None,
+                CheckedBinaryOp(..) => None,
+                NullaryOp(..) => None,
                 UnaryOp(_, op) => op.place(),
                 Discriminant(p) => Some(p),
-                // Aggregate
+                Aggregate(..) => None,
                 ShallowInitBox(op, _) => op.place(),
-                _ => None,
             };
 
             if let Some(rv_local) = rv_place.map(|p| p.local) {
