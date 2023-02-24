@@ -331,9 +331,9 @@ impl<'tcx> CVoidCasts<'tcx> {
         false
     }
 
-    fn find_first_cast_succ_block<F: FnMut(&Statement<'tcx>) -> Option<CVoidCast<'tcx>>>(
-        mut get_cast: F,
+    fn find_first_cast_succ_block(
         statements: &[Statement<'tcx>],
+        c_void_ptr: CVoidPtr<'tcx>,
     ) -> Option<(usize, CVoidCast<'tcx>)> {
         // For [`CVoidCastDirection::From`], we only count
         // a cast from `*c_void` to an arbitrary type in the subsequent block,
@@ -342,7 +342,7 @@ impl<'tcx> CVoidCasts<'tcx> {
             if let StatementKind::StorageDead(_) = stmt.kind {
                 continue;
             }
-            if let Some(cast) = get_cast(stmt) {
+            if let Some(cast) = c_void_ptr.get_cast_from_stmt(CVoidCastDirection::From, stmt) {
                 return Some((sidx, cast));
             } else {
                 break;
@@ -352,19 +352,18 @@ impl<'tcx> CVoidCasts<'tcx> {
         None
     }
 
-    fn find_last_cast_curr_block<F: FnMut(&Statement<'tcx>) -> Option<CVoidCast<'tcx>>>(
-        mut get_cast: F,
+    fn find_last_cast_curr_block(
         statements: &[Statement<'tcx>],
-        place: &Place<'tcx>,
+        c_void_ptr: CVoidPtr<'tcx>,
     ) -> Option<(usize, CVoidCast<'tcx>)> {
         // For [`CVoidCastDirection::From`], we only count
         // a cast to `*c_void` from an arbitrary type in the same block,
         // searching backwards.
         for (sidx, stmt) in statements.iter().enumerate().rev() {
-            let cast = get_cast(stmt);
+            let cast = c_void_ptr.get_cast_from_stmt(CVoidCastDirection::To, stmt);
             if let Some(cast) = cast {
                 return Some((sidx, cast));
-            } else if Self::is_place_local_modified(place, stmt) {
+            } else if Self::is_place_local_modified(&c_void_ptr.place, stmt) {
                 return None;
             }
         }
@@ -415,18 +414,12 @@ impl<'tcx> CVoidCasts<'tcx> {
                     To => args[0].place().unwrap(),
                 };
                 let c_void_ptr = CVoidPtr::checked(c_void_ptr_place, &body.local_decls, tcx);
-                let get_cast =
-                    |stmt: &Statement<'tcx>| c_void_ptr.get_cast_from_stmt(direction, stmt);
                 let cast = match direction {
                     From => Self::find_first_cast_succ_block(
-                        get_cast,
                         &body.basic_blocks()[target.unwrap()].statements,
+                        c_void_ptr,
                     ),
-                    To => Self::find_last_cast_curr_block(
-                        get_cast,
-                        &bb_data.statements,
-                        &c_void_ptr_place,
-                    ),
+                    To => Self::find_last_cast_curr_block(&bb_data.statements, c_void_ptr),
                 };
                 if let Some((statement_index, cast)) = cast {
                     let loc = Location {
