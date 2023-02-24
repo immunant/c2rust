@@ -224,7 +224,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         eprintln!("visit_statement({:?})", stmt);
 
-        if self.acx.c_void_casts.should_skip_stmt(&loc) {
+        if self.acx.c_void_casts.should_skip_stmt(loc) {
             return;
         }
 
@@ -301,7 +301,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                     Some(Callee::Malloc | Callee::Calloc) => {
                         let out_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                            &loc,
+                            loc,
                             CVoidCastDirection::From,
                             destination,
                         );
@@ -309,13 +309,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                     Some(Callee::Realloc) => {
                         let out_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                            &loc,
+                            loc,
                             CVoidCastDirection::From,
                             destination,
                         );
                         let in_ptr = args[0].place().unwrap();
                         let in_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                            &loc,
+                            loc,
                             CVoidCastDirection::To,
                             in_ptr,
                         );
@@ -335,7 +335,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     Some(Callee::Free) => {
                         let in_ptr = args[0].place().unwrap();
                         let in_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                            &loc,
+                            loc,
                             CVoidCastDirection::To,
                             in_ptr,
                         );

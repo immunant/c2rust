@@ -176,12 +176,12 @@ impl<'tcx> CVoidCastsUniDirectional<'tcx> {
     /// Otherwise, the same `place` is returned, as no adjustments are necessary.
     pub fn get_adjusted_place_or_default_to(
         &self,
-        loc: &Location,
+        loc: Location,
         place: Place<'tcx>,
     ) -> Place<'tcx> {
         *self
             .calls
-            .get(loc)
+            .get(&loc)
             .map(|cast| {
                 assert!(cast.c_void_ptr.place == place);
                 &cast.other_ptr
@@ -265,7 +265,7 @@ impl<'tcx> CVoidCasts<'tcx> {
     /// See [`CVoidCastsUniDirectional::get_adjusted_place_or_default_to`].
     pub fn get_adjusted_place_or_default_to(
         &self,
-        loc: &Location,
+        loc: Location,
         direction: CVoidCastDirection,
         place: Place<'tcx>,
     ) -> Place<'tcx> {
@@ -300,8 +300,8 @@ impl<'tcx> CVoidCasts<'tcx> {
     /// [`Cast`]: rustc_middle::mir::Rvalue::Cast
     /// [`From`]: CVoidCastDirection::From
     /// [`To`]: CVoidCastDirection::To
-    pub fn should_skip_stmt(&self, loc: &Location) -> bool {
-        self.to.casts.contains_key(loc) || self.from.casts.contains_key(loc)
+    pub fn should_skip_stmt(&self, loc: Location) -> bool {
+        self.to.casts.contains_key(&loc) || self.from.casts.contains_key(&loc)
     }
 
     fn is_place_local_modified(p: &Place, stmt: &Statement) -> bool {
