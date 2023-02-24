@@ -180,7 +180,7 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
                 Callee::UnknownDef { ty }
             }
         }
-        _ => Callee::Trivial,
+        _ => Callee::UnknownDef { ty },
     }
 }
 
