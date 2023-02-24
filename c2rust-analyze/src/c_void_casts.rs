@@ -183,7 +183,10 @@ impl<'tcx> CVoidCastsUniDirectional<'tcx> {
         *self
             .0
             .get(loc)
-            .map(|(_void, subst)| subst)
+            .map(|(void, subst)| {
+                assert!(void.place == place);
+                subst
+            })
             .unwrap_or(&place)
     }
 
