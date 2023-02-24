@@ -179,7 +179,7 @@ impl<'tcx> CVoidCastsUniDirectional<'tcx> {
             .calls
             .get(&loc)
             .map(|cast| {
-                assert!(cast.c_void_ptr.place == place);
+                assert_eq!(cast.c_void_ptr.place, place);
                 &cast.other_ptr
             })
             .unwrap_or(&place)
