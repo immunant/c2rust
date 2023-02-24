@@ -307,8 +307,8 @@ impl<'tcx> CVoidCasts<'tcx> {
 
         let local = p.local;
 
-        if let StatementKind::Assign(asgn) = stmt.kind.clone() {
-            let (lhs, rv) = *asgn;
+        if let StatementKind::Assign(assign) = stmt.kind.clone() {
+            let (lhs, rv) = *assign;
             if lhs.local == local {
                 return true;
             }
