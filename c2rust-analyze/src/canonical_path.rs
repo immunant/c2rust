@@ -210,6 +210,14 @@ impl<'tcx> CanonicalPathPrinter<'tcx> {
     }
 }
 
+/// Resolve the canonical path of a [`Ty`] (which can include functions).
+///
+/// Generics and impls are not printed,
+/// so a generic function gets a single canonical path.
+///
+/// `crate` is used as the crate name for the current crate.
+///
+/// `extern` items show up with a prefixed `{{extern}}`.
 pub fn canonical_path<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> String {
     with_no_trimmed_paths! { CanonicalPathPrinter::new(tcx).print_type(ty).unwrap().path }
 }
