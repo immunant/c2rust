@@ -437,20 +437,25 @@ impl<'tcx> CVoidCasts<'tcx> {
                     To => Self::find_last_cast(&bb_data.statements, c_void_ptr),
                 };
                 if let Some((statement_index, cast)) = cast {
-                    let loc = Location {
-                        statement_index,
-                        block: match direction {
-                            To => BasicBlock::from_usize(block),
-                            From => target.unwrap(),
+                    self.insert_cast(
+                        Location {
+                            statement_index,
+                            block: match direction {
+                                To => BasicBlock::from_usize(block),
+                                From => target.unwrap(),
+                            },
                         },
-                    };
-                    self.insert_cast(loc, direction, cast.clone());
-
-                    let loc = Location {
-                        statement_index: bb_data.statements.len(),
-                        block: BasicBlock::from_usize(block),
-                    };
-                    self.insert_call(loc, direction, cast);
+                        direction,
+                        cast.clone(),
+                    );
+                    self.insert_call(
+                        Location {
+                            statement_index: bb_data.statements.len(),
+                            block: BasicBlock::from_usize(block),
+                        },
+                        direction,
+                        cast,
+                    );
                 }
             }
         }
