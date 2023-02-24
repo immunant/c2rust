@@ -184,6 +184,7 @@ impl<'tcx> CVoidCastsUniDirectional<'tcx> {
     }
 
     pub fn insert(&mut self, loc: Location, cast: CVoidCast<'tcx>) {
+        assert!(!self.contains(&loc));
         self.0.insert(loc, (cast.c_void_ptr, cast.other_ptr));
     }
 }
