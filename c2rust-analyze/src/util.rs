@@ -1,3 +1,4 @@
+use crate::canonical_path::canonical_path;
 use crate::labeled_ty::LabeledTy;
 use crate::trivial::IsTrivial;
 use rustc_hir::def::DefKind;
@@ -5,7 +6,7 @@ use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
     Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
 };
-use rustc_middle::ty::{self, AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy};
+use rustc_middle::ty::{self, AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind};
 use std::fmt::Debug;
 
 #[derive(Debug)]
@@ -165,15 +166,86 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
     match *ty.kind() {
         ty::FnDef(did, substs) => {
             if is_trivial() {
-                Callee::Trivial
-            } else if let Some(callee) = builtin_callee(tcx, did) {
-                callee
-            } else if !did.is_local() || tcx.def_kind(tcx.parent(did)) == DefKind::ForeignMod {
-                Callee::UnknownDef { ty }
-            } else {
-                Callee::LocalDef {
-                    def_id: did,
-                    substs,
+                return Callee::Trivial;
+            }
+
+            let name = canonical_path(tcx, ty);
+            let parent_did = tcx.parent(did);
+            let parent_impl_ty = || -> Ty<'tcx> { tcx.type_of(parent_did) };
+            let inner_ty = |ty: Ty<'tcx>| -> Ty<'tcx> {
+                match *ty.kind() {
+                    ty::Array(ty, _) => ty,
+                    ty::Slice(ty) => ty,
+                    ty::RawPtr(tm) => tm.ty,
+                    ty::Ref(_, ty, _) => ty,
+                    _ => {
+                        panic!("inner_ty called on {ty:?}, which is doesn't have a single inner Ty")
+                    }
+                }
+            };
+
+            match name.as_str() {
+                "core::ptr::const_ptr::offset" => Callee::PtrOffset {
+                    pointee_ty: inner_ty(parent_impl_ty()),
+                    mutbl: Mutability::Not,
+                },
+                "core::ptr::mut_ptr::offset" => Callee::PtrOffset {
+                    pointee_ty: inner_ty(parent_impl_ty()),
+                    mutbl: Mutability::Mut,
+                },
+
+                "core::slice::as_ptr" => {
+                    let pointee_ty = parent_impl_ty();
+                    Callee::SliceAsPtr {
+                        pointee_ty,
+                        elem_ty: inner_ty(pointee_ty),
+                        mutbl: Mutability::Not,
+                    }
+                }
+                "core::slice::as_mut_ptr" => {
+                    let pointee_ty = parent_impl_ty();
+                    Callee::SliceAsPtr {
+                        pointee_ty,
+                        elem_ty: inner_ty(pointee_ty),
+                        mutbl: Mutability::Mut,
+                    }
+                }
+                "core::str::as_ptr" => Callee::SliceAsPtr {
+                    pointee_ty: parent_impl_ty(),
+                    elem_ty: tcx.types.u8,
+                    mutbl: Mutability::Not,
+                },
+                "core::str::as_mut_ptr" => Callee::SliceAsPtr {
+                    pointee_ty: parent_impl_ty(),
+                    elem_ty: tcx.types.u8,
+                    mutbl: Mutability::Mut,
+                },
+
+                "core::ptr::const_ptr::is_null" | "core::ptr::mut_ptr::is_null" => Callee::IsNull,
+
+                "crate::{{extern}}::malloc" | "crate::{{extern}}::c2rust_test_typed_malloc" => {
+                    Callee::Malloc
+                }
+                "crate::{{extern}}::calloc" | "crate::{{extern}}::c2rust_test_typed_calloc" => {
+                    Callee::Calloc
+                }
+                "crate::{{extern}}::realloc" | "crate::{{extern}}::c2rust_test_typed_realloc" => {
+                    Callee::Realloc
+                }
+                "crate::{{extern}}::free" | "crate::{{extern}}::c2rust_test_typed_free" => {
+                    Callee::Free
+                }
+
+                _ => {
+                    eprintln!("non-builtin: {name}");
+                    if !did.is_local() || tcx.def_kind(parent_did) == DefKind::ForeignMod {
+                        Callee::UnknownDef { ty }
+                    } else {
+                        Callee::LocalDef {
+                            def_id: did,
+                            substs,
+                        }
+                    }
                 }
             }
         }
@@ -188,106 +260,65 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
     }
 }
 
-fn builtin_callee(tcx: TyCtxt, did: DefId) -> Option<Callee> {
-    let name = tcx.item_name(did);
+// fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, did: DefId) -> Option<Callee> {
+//     let name = canonical_path(tcx, ty);
 
-    match name.as_str() {
-        "offset" => {
-            // The `offset` inherent method of `*const T` and `*mut T`.
-            let parent_did = tcx.parent(did);
-            if tcx.def_kind(parent_did) != DefKind::Impl {
-                return None;
-            }
-            if tcx.impl_trait_ref(parent_did).is_some() {
-                return None;
-            }
-            let parent_impl_ty = tcx.type_of(parent_did);
-            let (pointee_ty, mutbl) = match parent_impl_ty.kind() {
-                TyKind::RawPtr(tm) => (tm.ty, tm.mutbl),
-                _ => return None,
-            };
-            Some(Callee::PtrOffset { pointee_ty, mutbl })
-        }
+//     let parent_impl_ty = || -> Ty<'tcx> { tcx.type_of(tcx.parent(did)) };
+//     let pointee_ty = || -> Ty<'tcx> {
+//         let pointer_ty = parent_impl_ty();
+//         match *pointer_ty.kind() {
+//             ty::Array(ty, _) => ty,
+//             ty::Slice(ty) => ty,
+//             ty::RawPtr(tm) => tm.ty,
+//             ty::Ref(_, ty, _) => ty,
+//             _ => panic!("pointee_ty called on {pointer_ty:?}, which is not pointer-like"),
+//         }
+//     };
 
-        name @ "as_ptr" | name @ "as_mut_ptr" => {
-            // The `as_ptr` and `as_mut_ptr` inherent methods of `[T]`, `[T; n]`, and `str`.
-            let parent_did = tcx.parent(did);
-            if tcx.def_kind(parent_did) != DefKind::Impl {
-                return None;
-            }
-            if tcx.impl_trait_ref(parent_did).is_some() {
-                return None;
-            }
-            let parent_impl_ty = tcx.type_of(parent_did);
-            let elem_ty = match *parent_impl_ty.kind() {
-                TyKind::Array(ty, _) => ty,
-                TyKind::Slice(ty) => ty,
-                TyKind::Str => tcx.mk_mach_uint(UintTy::U8),
-                _ => return None,
-            };
-            let mutbl = match name {
-                "as_ptr" => Mutability::Not,
-                "as_mut_ptr" => Mutability::Mut,
-                _ => unreachable!(),
-            };
-            Some(Callee::SliceAsPtr {
-                pointee_ty: parent_impl_ty,
-                elem_ty,
-                mutbl,
-            })
-        }
+//     match name.as_str() {
+//         "core::ptr::ptr::offset" => Some(Callee::PtrOffset {
+//             pointee_ty: pointee_ty(),
+//             mutbl: Mutability::Not,
+//         }),
+//         "core::ptr::mut_ptr::offset" => Some(Callee::PtrOffset {
+//             pointee_ty: pointee_ty(),
+//             mutbl: Mutability::Mut,
+//         }),
 
-        "malloc" | "c2rust_test_typed_malloc" => {
-            if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
-                return Some(Callee::Malloc);
-            }
-            None
-        }
+//         "core::slice::as_ptr" => Some(Callee::SliceAsPtr {
+//             pointee_ty: parent_impl_ty(),
+//             elem_ty: pointee_ty(),
+//             mutbl: Mutability::Not,
+//         }),
+//         "core::slice::as_mut_ptr" => Some(Callee::SliceAsPtr {
+//             pointee_ty: parent_impl_ty(),
+//             elem_ty: pointee_ty(),
+//             mutbl: Mutability::Mut,
+//         }),
+//         "core::str::as_ptr" => Some(Callee::SliceAsPtr {
+//             pointee_ty: parent_impl_ty(),
+//             elem_ty: tcx.types.u8,
+//             mutbl: Mutability::Not,
+//         }),
+//         "core::str::as_mut_ptr" => Some(Callee::SliceAsPtr {
+//             pointee_ty: parent_impl_ty(),
+//             elem_ty: tcx.types.u8,
+//             mutbl: Mutability::Mut,
+//         }),
 
-        "calloc" | "c2rust_test_typed_calloc" => {
-            if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
-                return Some(Callee::Calloc);
-            }
-            None
-        }
+//         "core::ptr::ptr::is_null" | "core::ptr::mut_ptr::is_null" => Some(Callee::IsNull),
 
-        "realloc" | "c2rust_test_typed_realloc" => {
-            if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
-                return Some(Callee::Realloc);
-            }
-            None
-        }
+//         "{{extern}}::malloc" | "{{extern}}::c2rust_test_typed_malloc" => Some(Callee::Malloc),
+//         "{{extern}}::calloc" | "{{extern}}::c2rust_test_typed_calloc" => Some(Callee::Calloc),
+//         "{{extern}}::realloc" | "{{extern}}::c2rust_test_typed_realloc" => Some(Callee::Realloc),
+//         "{{extern}}::free" | "{{extern}}::c2rust_test_typed_free" => Some(Callee::Free),
 
-        "free" | "c2rust_test_typed_free" => {
-            if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
-                return Some(Callee::Free);
-            }
-            None
-        }
-
-        "is_null" => {
-            // The `offset` inherent method of `*const T` and `*mut T`.
-            let parent_did = tcx.parent(did);
-            if tcx.def_kind(parent_did) != DefKind::Impl {
-                return None;
-            }
-            if tcx.impl_trait_ref(parent_did).is_some() {
-                return None;
-            }
-            let parent_impl_ty = tcx.type_of(parent_did);
-            let (_pointee_ty, _mutbl) = match parent_impl_ty.kind() {
-                TyKind::RawPtr(tm) => (tm.ty, tm.mutbl),
-                _ => return None,
-            };
-            Some(Callee::IsNull)
-        }
-
-        _ => {
-            eprintln!("name: {name:?}");
-            None
-        }
-    }
-}
+//         _ => {
+//             eprintln!("name: {name:?}");
+//             None
+//         }
+//     }
+// }
 
 pub fn lty_project<'tcx, L: Debug>(
     lty: LabeledTy<'tcx, L>,
