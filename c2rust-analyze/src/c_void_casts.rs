@@ -138,7 +138,7 @@ impl<'tcx> Borrow<Place<'tcx>> for CVoidPtr<'tcx> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 /// A cast to/from a [`*c_void`](core::ffi::c_void) to/from a properly typed pointer.
 pub struct CVoidCast<'tcx> {
     /// The [`*c_void`](core::ffi::c_void) side of the cast.
@@ -163,7 +163,7 @@ pub struct CVoidCast<'tcx> {
 /// like [`CVoidCasts`], but in a single direction, meaning it represents either
 /// [`CVoidCastDirection::From`] or [`CVoidCastDirection::To`].
 #[derive(Default, Clone, Debug)]
-pub struct CVoidCastsUniDirectional<'tcx>(HashMap<Location, (CVoidPtr<'tcx>, Place<'tcx>)>);
+pub struct CVoidCastsUniDirectional<'tcx>(HashMap<Location, CVoidCast<'tcx>>);
 
 impl<'tcx> CVoidCastsUniDirectional<'tcx> {
     pub fn contains(&self, loc: &Location) -> bool {
@@ -183,16 +183,16 @@ impl<'tcx> CVoidCastsUniDirectional<'tcx> {
         *self
             .0
             .get(loc)
-            .map(|(void, subst)| {
-                assert!(void.place == place);
-                subst
+            .map(|cast| {
+                assert!(cast.c_void_ptr.place == place);
+                &cast.other_ptr
             })
             .unwrap_or(&place)
     }
 
     pub fn insert(&mut self, loc: Location, cast: CVoidCast<'tcx>) {
         assert!(!self.contains(&loc));
-        self.0.insert(loc, (cast.c_void_ptr, cast.other_ptr));
+        self.0.insert(loc, cast);
     }
 }
 
