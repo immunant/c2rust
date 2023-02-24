@@ -4,8 +4,8 @@ use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_middle::{
     mir::{
-        Field, Local, Mutability, Operand, Place, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
-        Statement, StatementKind,
+        BasicBlock, BasicBlockData, Field, Local, Location, Mutability, Operand, Place, PlaceElem,
+        PlaceRef, ProjectionElem, Rvalue, Statement, StatementKind,
     },
     ty::{AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy},
 };
@@ -315,6 +315,13 @@ pub fn get_cast_place<'tcx>(rv: &Rvalue<'tcx>) -> Option<Place<'tcx>> {
     match rv {
         Rvalue::Cast(_, op, _) => op.place(),
         _ => None,
+    }
+}
+
+pub fn terminator_location(block: BasicBlock, block_data: &BasicBlockData) -> Location {
+    Location {
+        block,
+        statement_index: block_data.statements.len(),
     }
 }
 

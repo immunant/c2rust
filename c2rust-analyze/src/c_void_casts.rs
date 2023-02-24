@@ -11,7 +11,7 @@ use rustc_middle::{
 
 use assert_matches::assert_matches;
 
-use crate::util::{get_assign_sides, get_cast_place, ty_callee, Callee};
+use crate::util::{get_assign_sides, get_cast_place, terminator_location, ty_callee, Callee};
 
 /// The direction of a [`*c_void`](core::ffi::c_void) cast.
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -462,10 +462,7 @@ impl<'tcx> CVoidCasts<'tcx> {
                         cast.clone(),
                     );
                     self.insert_call(
-                        Location {
-                            statement_index: bb_data.statements.len(),
-                            block: BasicBlock::from_usize(block),
-                        },
+                        terminator_location(BasicBlock::from_usize(block), bb_data),
                         direction,
                         cast,
                     );
