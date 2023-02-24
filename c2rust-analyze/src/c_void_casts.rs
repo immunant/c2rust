@@ -189,11 +189,13 @@ impl<'tcx> CVoidCastsUniDirectional<'tcx> {
             .unwrap_or(&place)
     }
 
+    /// Tracks the [Location] of the use of a casted pointer in a [TerminatorKind::Call]
     pub fn insert_call(&mut self, loc: Location, cast: CVoidCast<'tcx>) {
         assert!(!self.calls.contains_key(&loc));
         self.calls.insert(loc, cast);
     }
 
+    /// Tracks the [Location] of void pointer [Rvalue::Cast]
     pub fn insert_cast(&mut self, loc: Location, cast: CVoidCast<'tcx>) {
         assert!(!self.casts.contains_key(&loc));
         self.casts.insert(loc, cast);
