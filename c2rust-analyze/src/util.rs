@@ -104,13 +104,18 @@ pub enum Callee<'tcx> {
     /// for which there could be multiple definitions.
     /// While possible definitions could be statically determined as an optimization,
     /// this provides a safe fallback.
+    ///
+    /// Or it could a function in another non-local crate, such as `std`,
+    /// as definitions of functions from other crates are not available,
+    /// and we definitely can't rewrite them at all.
     UnknownDef { ty: Ty<'tcx> },
 
     /// A "normal" function that:
     /// * is statically-known
+    /// * is in the current, local crate
     /// * is non-trivial
     /// * is non-builtin
-    /// * has a definition
+    /// * has an accessible definition
     Normal {
         def_id: DefId,
         substs: SubstsRef<'tcx>,
@@ -163,7 +168,7 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
                 Callee::Trivial
             } else if let Some(callee) = builtin_callee(tcx, did) {
                 callee
-            } else if tcx.def_kind(tcx.parent(did)) == DefKind::ForeignMod {
+            } else if !did.is_local() || tcx.def_kind(tcx.parent(did)) == DefKind::ForeignMod {
                 Callee::UnknownDef { ty }
             } else {
                 Callee::Normal {
