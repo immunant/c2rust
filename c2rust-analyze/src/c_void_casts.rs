@@ -307,8 +307,8 @@ impl<'tcx> CVoidCasts<'tcx> {
 
         let local = p.local;
 
-        if let StatementKind::Assign(assign) = stmt.kind.clone() {
-            let (lhs, rv) = *assign;
+        if let StatementKind::Assign(assign) = &stmt.kind {
+            let (lhs, rv) = &**assign;
             if lhs.local == local {
                 return true;
             }
@@ -317,18 +317,19 @@ impl<'tcx> CVoidCasts<'tcx> {
             let rv_place = match rv {
                 Use(op) => op.place(),
                 Repeat(op, _) => op.place(),
-                Ref(_, _, p) => Some(p),
+                Ref(_, _, p) => Some(*p),
                 ThreadLocalRef(..) => None,
-                AddressOf(_, p) => Some(p),
-                Len(p) => Some(p),
+                AddressOf(_, p) => Some(*p),
+                Len(p) => Some(*p),
                 Cast(_, op, _) => op.place(),
                 BinaryOp(..) => None,
                 CheckedBinaryOp(..) => None,
                 NullaryOp(..) => None,
                 UnaryOp(_, op) => op.place(),
-                Discriminant(p) => Some(p),
+                Discriminant(p) => Some(*p),
                 Aggregate(..) => None,
                 ShallowInitBox(op, _) => op.place(),
+                CopyForDeref(..) => None,
             };
 
             if let Some(rv_local) = rv_place.map(|p| p.local) {
