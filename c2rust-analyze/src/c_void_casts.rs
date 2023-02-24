@@ -276,12 +276,12 @@ impl<'tcx> CVoidCasts<'tcx> {
     }
 
     /// See [`CVoidCastsUniDirectional::insert_cast`].
-    fn insert_cast(&mut self, loc: Location, direction: CVoidCastDirection, cast: CVoidCast<'tcx>) {
+    fn insert_cast(&mut self, direction: CVoidCastDirection, loc: Location, cast: CVoidCast<'tcx>) {
         self.direction_mut(direction).insert_cast(loc, cast)
     }
 
     /// See [`CVoidCastsUniDirectional::insert_call`].
-    fn insert_call(&mut self, loc: Location, direction: CVoidCastDirection, cast: CVoidCast<'tcx>) {
+    fn insert_call(&mut self, direction: CVoidCastDirection, loc: Location, cast: CVoidCast<'tcx>) {
         self.direction_mut(direction).insert_call(loc, cast)
     }
 
@@ -451,6 +451,7 @@ impl<'tcx> CVoidCasts<'tcx> {
                 };
                 if let Some((statement_index, cast)) = cast {
                     self.insert_cast(
+                        direction,
                         Location {
                             statement_index,
                             block: match direction {
@@ -458,12 +459,11 @@ impl<'tcx> CVoidCasts<'tcx> {
                                 From => target.unwrap(),
                             },
                         },
-                        direction,
                         cast.clone(),
                     );
                     self.insert_call(
-                        terminator_location(BasicBlock::from_usize(block), bb_data),
                         direction,
+                        terminator_location(BasicBlock::from_usize(block), bb_data),
                         cast,
                     );
                 }
