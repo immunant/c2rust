@@ -1,7 +1,10 @@
 use std::fmt::{self, Write};
 
 use rustc_data_structures::intern::Interned;
-use rustc_hir::{def_id::CrateNum, definitions::DisambiguatedDefPathData};
+use rustc_hir::{
+    def_id::{CrateNum, DefId},
+    definitions::DisambiguatedDefPathData,
+};
 use rustc_middle::{
     bug,
     ty::{
@@ -14,6 +17,7 @@ use rustc_middle::{
 struct CanonicalPathPrinter<'tcx> {
     tcx: TyCtxt<'tcx>,
     path: String,
+    def_id: Option<DefId>,
 }
 
 impl<'tcx> Printer<'tcx> for CanonicalPathPrinter<'tcx> {
@@ -27,6 +31,17 @@ impl<'tcx> Printer<'tcx> for CanonicalPathPrinter<'tcx> {
 
     fn tcx(&self) -> TyCtxt<'tcx> {
         self.tcx
+    }
+
+    /// First save the [`DefId`] here in [`Self::def_id`],
+    /// so we can access it later.
+    fn print_def_path(
+        mut self,
+        def_id: DefId,
+        substs: &'tcx [GenericArg<'tcx>],
+    ) -> Result<Self::Path, Self::Error> {
+        self.def_id = Some(def_id);
+        self.default_print_def_path(def_id, substs)
     }
 
     fn print_region(self, _region: ty::Region<'_>) -> Result<Self::Region, Self::Error> {
@@ -92,8 +107,18 @@ impl<'tcx> Printer<'tcx> for CanonicalPathPrinter<'tcx> {
         Ok(self)
     }
 
+    /// To have stable canonical paths for crate-local items,
+    /// we use `crate` instead of the current crate name.
+    /// To detect if we're in the current crate,
+    /// we need the [`DefId`] that's being printed,
+    /// so we save that in [`Self::def_id`] in [`Self::print_def_path`],
+    /// which we access here.
     fn path_crate(mut self, cnum: CrateNum) -> Result<Self::Path, Self::Error> {
-        self.path.push_str(self.tcx.crate_name(cnum).as_str());
+        if self.def_id.unwrap().is_local() {
+            self.path.push_str("crate");
+        } else {
+            self.path.push_str(self.tcx.crate_name(cnum).as_str());
+        }
         Ok(self)
     }
 
@@ -180,6 +205,7 @@ impl<'tcx> CanonicalPathPrinter<'tcx> {
         Self {
             tcx,
             path: String::with_capacity(16),
+            def_id: None,
         }
     }
 }
