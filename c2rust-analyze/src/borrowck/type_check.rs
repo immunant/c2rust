@@ -454,7 +454,7 @@ pub fn visit_body<'tcx>(
             };
             tc.current_location = loc;
 
-            if !c_void_casts.should_skip_stmt(&loc) {
+            if !c_void_casts.should_skip_stmt(loc) {
                 tc.visit_statement(stmt);
             }
         }
