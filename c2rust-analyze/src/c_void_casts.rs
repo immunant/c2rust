@@ -350,8 +350,12 @@ impl<'tcx> CVoidCasts<'tcx> {
         false
     }
 
-    /// Search for the first cast from a void pointer
-    /// in a sequence of [Statement]s
+    /// Search for the first [Rvalue::Cast] from a void pointer
+    /// in a sequence of [Statement]s. We expect that the
+    /// cast is the first non-[StatementKind::StorageDead]
+    /// statement in the block, a special case for
+    /// [Terminator]s whose destination is casted from a
+    /// void pointer to some other pointer type.
     fn find_first_cast(
         statements: &[Statement<'tcx>],
         c_void_ptr: CVoidPtr<'tcx>,
