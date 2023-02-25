@@ -22,6 +22,7 @@ use crate::context::{
 use crate::dataflow::DataflowConstraints;
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use crate::labeled_ty::LabeledTyCtxt;
+use crate::log::init_logger;
 use crate::util::Callee;
 use assert_matches::assert_matches;
 use indexmap::IndexSet;
@@ -50,6 +51,7 @@ mod dataflow;
 mod equiv;
 mod expr_rewrite;
 mod labeled_ty;
+mod log;
 mod pointer_id;
 mod trivial;
 mod type_desc;
@@ -823,6 +825,7 @@ impl rustc_driver::Callbacks for AnalysisCallbacks {
 }
 
 fn main() -> rustc_interface::interface::Result<()> {
+    init_logger();
     let args = env::args().collect::<Vec<_>>();
     rustc_driver::RunCompiler::new(&args, &mut AnalysisCallbacks).run()
 }
