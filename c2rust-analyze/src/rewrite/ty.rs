@@ -87,23 +87,23 @@ fn deconstruct_hir_ty<'a, 'tcx>(
         // Types with no arguments
         (&TyKind::Bool, _) => do_prim(hir::PrimTy::Bool, hir_ty),
         (&TyKind::Char, _) => do_prim(hir::PrimTy::Char, hir_ty),
-        (&TyKind::Int(ity), _) => do_prim(hir::PrimTy::Int(convert_int_ty(ity)), hir_ty),
-        (&TyKind::Uint(uty), _) => do_prim(hir::PrimTy::Uint(convert_uint_ty(uty)), hir_ty),
-        (&TyKind::Float(fty), _) => do_prim(hir::PrimTy::Float(convert_float_ty(fty)), hir_ty),
+        (&TyKind::Int(ity), _) => do_prim(hir::PrimTy::Int(ity.convert()), hir_ty),
+        (&TyKind::Uint(uty), _) => do_prim(hir::PrimTy::Uint(uty.convert()), hir_ty),
+        (&TyKind::Float(fty), _) => do_prim(hir::PrimTy::Float(fty.convert()), hir_ty),
         (&TyKind::Str, _) => do_prim(hir::PrimTy::Str, hir_ty),
 
         // Types with arguments
         (&TyKind::Array(_, _), &hir::TyKind::Array(arg_ty, _)) => Some(vec![arg_ty]),
         (&TyKind::Slice(_), &hir::TyKind::Slice(arg_ty)) => Some(vec![arg_ty]),
         (&TyKind::RawPtr(tm), &hir::TyKind::Ptr(ref hir_mt)) => {
-            if hir_mt.mutbl == convert_mutability(tm.mutbl) {
+            if hir_mt.mutbl == tm.mutbl.convert() {
                 Some(vec![hir_mt.ty])
             } else {
                 None
             }
         }
         (&TyKind::Ref(_, _, mutbl), &hir::TyKind::Rptr(_, ref hir_mt)) => {
-            if hir_mt.mutbl == convert_mutability(mutbl) {
+            if hir_mt.mutbl == mutbl.convert() {
                 Some(vec![hir_mt.ty])
             } else {
                 None
@@ -121,39 +121,52 @@ fn deconstruct_hir_ty<'a, 'tcx>(
     }
 }
 
-fn convert_int_ty(x: ty::IntTy) -> ast::IntTy {
-    match x {
-        ty::IntTy::Isize => ast::IntTy::Isize,
-        ty::IntTy::I8 => ast::IntTy::I8,
-        ty::IntTy::I16 => ast::IntTy::I16,
-        ty::IntTy::I32 => ast::IntTy::I32,
-        ty::IntTy::I64 => ast::IntTy::I64,
-        ty::IntTy::I128 => ast::IntTy::I128,
+/// Orphan-rule-compatible replacement for `From`/`Into`.
+trait Convert<T> {
+    fn convert(self) -> T;
+}
+
+impl Convert<ast::IntTy> for ty::IntTy {
+    fn convert(self) -> ast::IntTy {
+        match self {
+            ty::IntTy::Isize => ast::IntTy::Isize,
+            ty::IntTy::I8 => ast::IntTy::I8,
+            ty::IntTy::I16 => ast::IntTy::I16,
+            ty::IntTy::I32 => ast::IntTy::I32,
+            ty::IntTy::I64 => ast::IntTy::I64,
+            ty::IntTy::I128 => ast::IntTy::I128,
+        }
     }
 }
 
-fn convert_uint_ty(x: ty::UintTy) -> ast::UintTy {
-    match x {
-        ty::UintTy::Usize => ast::UintTy::Usize,
-        ty::UintTy::U8 => ast::UintTy::U8,
-        ty::UintTy::U16 => ast::UintTy::U16,
-        ty::UintTy::U32 => ast::UintTy::U32,
-        ty::UintTy::U64 => ast::UintTy::U64,
-        ty::UintTy::U128 => ast::UintTy::U128,
+impl Convert<ast::UintTy> for ty::UintTy {
+    fn convert(self) -> ast::UintTy {
+        match self {
+            ty::UintTy::Usize => ast::UintTy::Usize,
+            ty::UintTy::U8 => ast::UintTy::U8,
+            ty::UintTy::U16 => ast::UintTy::U16,
+            ty::UintTy::U32 => ast::UintTy::U32,
+            ty::UintTy::U64 => ast::UintTy::U64,
+            ty::UintTy::U128 => ast::UintTy::U128,
+        }
     }
 }
 
-fn convert_float_ty(x: ty::FloatTy) -> ast::FloatTy {
-    match x {
-        ty::FloatTy::F32 => ast::FloatTy::F32,
-        ty::FloatTy::F64 => ast::FloatTy::F64,
+impl Convert<ast::FloatTy> for ty::FloatTy {
+    fn convert(self) -> ast::FloatTy {
+        match self {
+            ty::FloatTy::F32 => ast::FloatTy::F32,
+            ty::FloatTy::F64 => ast::FloatTy::F64,
+        }
     }
 }
 
-fn convert_mutability(x: mir::Mutability) -> hir::Mutability {
-    match x {
-        mir::Mutability::Mut => hir::Mutability::Mut,
-        mir::Mutability::Not => hir::Mutability::Not,
+impl Convert<hir::Mutability> for mir::Mutability {
+    fn convert(self) -> hir::Mutability {
+        match self {
+            mir::Mutability::Mut => hir::Mutability::Mut,
+            mir::Mutability::Not => hir::Mutability::Not,
+        }
     }
 }
 
