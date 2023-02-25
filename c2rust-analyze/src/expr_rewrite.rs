@@ -1,7 +1,7 @@
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet, PointerId};
 use crate::pointer_id::PointerTable;
 use crate::type_desc::{self, Ownership, Quantity};
-use crate::util::{self, Callee};
+use crate::util::{ty_callee, Callee};
 use rustc_middle::mir::{
     BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
     TerminatorKind,
@@ -172,19 +172,17 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 let func_ty = func.ty(self.mir, tcx);
                 let pl_ty = self.acx.type_of(destination);
 
-                if let Some(callee) = util::ty_callee(tcx, func_ty) {
-                    // Special cases for particular functions.
-                    match callee {
-                        Callee::PtrOffset { .. } => {
-                            self.visit_ptr_offset(&args[0], pl_ty);
-                            return;
-                        }
-                        Callee::SliceAsPtr { .. } => {
-                            self.visit_slice_as_ptr(&args[0], pl_ty);
-                            return;
-                        }
-                        _ => {}
+                // Special cases for particular functions.
+                match ty_callee(tcx, func_ty) {
+                    Callee::PtrOffset { .. } => {
+                        self.visit_ptr_offset(&args[0], pl_ty);
+                        return;
                     }
+                    Callee::SliceAsPtr { .. } => {
+                        self.visit_slice_as_ptr(&args[0], pl_ty);
+                        return;
+                    }
+                    _ => {}
                 }
 
                 // General case: cast `args` to match the signature of `func`.

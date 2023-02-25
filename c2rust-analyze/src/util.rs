@@ -5,7 +5,7 @@ use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
     Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
 };
-use rustc_middle::ty::{AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy};
+use rustc_middle::ty::{self, AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy};
 use std::fmt::Debug;
 
 #[derive(Debug)]
@@ -72,24 +72,6 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
 
 #[derive(Debug)]
 pub enum Callee<'tcx> {
-    /// `<*mut T>::offset` or `<*const T>::offset`.
-    PtrOffset {
-        pointee_ty: Ty<'tcx>,
-        mutbl: Mutability,
-    },
-
-    /// `<[T]>::as_ptr` and `<[T]>::as_mut_ptr` methods.  Also covers the array and str versions.
-    SliceAsPtr {
-        /// The pointee type.  This is either `TyKind::Slice`, `TyKind::Array`, or `TyKind::Str`.
-        pointee_ty: Ty<'tcx>,
-
-        /// The slice element type.  For `str`, this is `u8`.
-        elem_ty: Ty<'tcx>,
-
-        /// Mutability of the output pointer.
-        mutbl: Mutability,
-    },
-
     /// A [`Trivial`] library function is one that has no effect on pointer permissions in its caller.
     ///
     /// Thus, a [`Trivial`] function call requires no special handling.
@@ -109,6 +91,54 @@ pub enum Callee<'tcx> {
     /// [`Trivial`]: Self::Trivial
     Trivial,
 
+    /// A function whose definition is not known.
+    ///
+    /// This could be for multiple reasons.
+    ///
+    /// A function could be `extern`, so there is no source for it.
+    /// Sometimes the actual definition could be linked with a `use` (the ideal solution),
+    /// but sometimes it's completely external and thus completely unknown,
+    /// as it may be dynamically linked.
+    ///
+    /// It could also be a function pointer,
+    /// for which there could be multiple definitions.
+    /// While possible definitions could be statically determined as an optimization,
+    /// this provides a safe fallback.
+    ///
+    /// Or it could a function in another non-local crate, such as `std`,
+    /// as definitions of functions from other crates are not available,
+    /// and we definitely can't rewrite them at all.
+    UnknownDef { ty: Ty<'tcx> },
+
+    /// A function that:
+    /// * is in the current, local crate
+    /// * is statically-known
+    /// * has an accessible definition
+    /// * is non-trivial
+    /// * is non-builtin
+    LocalDef {
+        def_id: DefId,
+        substs: SubstsRef<'tcx>,
+    },
+
+    /// `<*mut T>::offset` or `<*const T>::offset`.
+    PtrOffset {
+        pointee_ty: Ty<'tcx>,
+        mutbl: Mutability,
+    },
+
+    /// `<[T]>::as_ptr` and `<[T]>::as_mut_ptr` methods.  Also covers the array and str versions.
+    SliceAsPtr {
+        /// The pointee type.  This is either `TyKind::Slice`, `TyKind::Array`, or `TyKind::Str`.
+        pointee_ty: Ty<'tcx>,
+
+        /// The slice element type.  For `str`, this is `u8`.
+        elem_ty: Ty<'tcx>,
+
+        /// Mutability of the output pointer.
+        mutbl: Mutability,
+    },
+
     /// libc::malloc
     Malloc,
 
@@ -123,36 +153,42 @@ pub enum Callee<'tcx> {
 
     /// core::ptr::is_null
     IsNull,
-
-    /// Some other statically-known function, including functions defined in the current crate.
-    Other {
-        def_id: DefId,
-        substs: SubstsRef<'tcx>,
-    },
 }
 
-pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> {
-    let (did, substs) = match *ty.kind() {
-        TyKind::FnDef(did, substs) => (did, substs),
-        _ => return None,
+pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
+    let is_trivial = || {
+        let is_trivial = ty.fn_sig(tcx).is_trivial(tcx);
+        eprintln!("{ty:?} is trivial: {is_trivial}");
+        is_trivial
     };
 
-    if let Some(callee) = builtin_callee(tcx, ty, did) {
-        return Some(callee);
+    match *ty.kind() {
+        ty::FnDef(did, substs) => {
+            if is_trivial() {
+                Callee::Trivial
+            } else if let Some(callee) = builtin_callee(tcx, did) {
+                callee
+            } else if !did.is_local() || tcx.def_kind(tcx.parent(did)) == DefKind::ForeignMod {
+                Callee::UnknownDef { ty }
+            } else {
+                Callee::LocalDef {
+                    def_id: did,
+                    substs,
+                }
+            }
+        }
+        ty::FnPtr(..) => {
+            if is_trivial() {
+                Callee::Trivial
+            } else {
+                Callee::UnknownDef { ty }
+            }
+        }
+        _ => Callee::UnknownDef { ty },
     }
-    Some(Callee::Other {
-        def_id: did,
-        substs,
-    })
 }
 
-fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, did: DefId) -> Option<Callee<'tcx>> {
-    let is_trivial = ty.fn_sig(tcx).is_trivial(tcx);
-    eprintln!("{ty:?} is trivial: {is_trivial}");
-    if is_trivial {
-        return Some(Callee::Trivial);
-    }
-
+fn builtin_callee(tcx: TyCtxt, did: DefId) -> Option<Callee> {
     let name = tcx.item_name(did);
 
     match name.as_str() {

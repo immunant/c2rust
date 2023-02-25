@@ -1,6 +1,6 @@
 use super::DataflowConstraints;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
-use crate::util::{self, describe_rvalue, Callee, RvalueDesc};
+use crate::util::{describe_rvalue, ty_callee, Callee, RvalueDesc};
 use assert_matches::assert_matches;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
@@ -275,10 +275,19 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 ..
             } => {
                 let func_ty = func.ty(self.mir, tcx);
-                let callee = util::ty_callee(tcx, func_ty);
+                let callee = ty_callee(tcx, func_ty);
                 eprintln!("callee = {callee:?}");
                 match callee {
-                    Some(Callee::PtrOffset { .. }) => {
+                    Callee::Trivial => {}
+                    Callee::UnknownDef { .. } => {
+                        todo!("visit Callee::{callee:?}");
+                    }
+
+                    Callee::LocalDef { def_id, substs } => {
+                        self.visit_local_call(def_id, substs, args, destination);
+                    }
+
+                    Callee::PtrOffset { .. } => {
                         // We handle this like a pointer assignment.
                         self.visit_place(destination, Mutability::Mut);
                         let pl_lty = self.acx.type_of(destination);
@@ -290,7 +299,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         self.constraints.add_all_perms(rv_lty.label, perms);
                     }
 
-                    Some(Callee::SliceAsPtr { elem_ty, .. }) => {
+                    Callee::SliceAsPtr { elem_ty, .. } => {
                         // We handle this like an assignment, but with some adjustments due to the
                         // difference in input and output types.
                         self.visit_place(destination, Mutability::Mut);
@@ -314,16 +323,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
                     }
 
-                    Some(Callee::Trivial) => {}
-
-                    Some(Callee::Malloc) => {
+                    Callee::Malloc => {
                         self.visit_place(destination, Mutability::Mut);
                     }
 
-                    Some(Callee::Calloc) => {
+                    Callee::Calloc => {
                         self.visit_place(destination, Mutability::Mut);
                     }
-                    Some(Callee::Realloc) => {
+                    Callee::Realloc => {
                         self.visit_place(destination, Mutability::Mut);
                         let pl_lty = self.acx.type_of(destination);
                         assert!(args.len() == 2);
@@ -337,7 +344,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         // unify inner-most pointer types
                         self.do_equivalence_nested(pl_lty, rv_lty);
                     }
-                    Some(Callee::Free) => {
+                    Callee::Free => {
                         self.visit_place(destination, Mutability::Mut);
                         assert!(args.len() == 1);
                         self.visit_operand(&args[0]);
@@ -347,16 +354,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         self.constraints.add_all_perms(rv_lty.label, perms);
                     }
 
-                    Some(Callee::IsNull) => {
+                    Callee::IsNull => {
                         assert!(args.len() == 1);
                         self.visit_operand(&args[0]);
                     }
-
-                    Some(Callee::Other { def_id, substs }) => {
-                        self.visit_call_other(def_id, substs, args, destination);
-                    }
-
-                    None => {}
                 }
             }
             // TODO(spernsteiner): handle other `TerminatorKind`s
@@ -364,17 +365,19 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    fn visit_call_other(
+    /// Visit a local call, where local means
+    /// local to the current crate with a static, known definition.
+    ///
+    /// See [`Callee::LocalDef`].
+    fn visit_local_call(
         &mut self,
         def_id: DefId,
         substs: SubstsRef<'tcx>,
         args: &[Operand<'tcx>],
         dest: Place<'tcx>,
     ) {
-        let sig = match self.acx.gacx.fn_sigs.get(&def_id) {
-            Some(&x) => x,
-            None => todo!("call to unknown function {def_id:?}"),
-        };
+        let sig = self.acx.gacx.fn_sigs.get(&def_id)
+            .unwrap_or_else(|| panic!("Callee::LocalDef LFnSig not found (unknown calls should've been Callee::UnknownDef): {def_id:?}"));
         if substs.non_erasable_generics().next().is_some() {
             todo!("call to generic function {def_id:?} {substs:?}");
         }
