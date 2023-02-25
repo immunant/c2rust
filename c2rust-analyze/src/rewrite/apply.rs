@@ -73,7 +73,7 @@ impl<S: SpanLike> RewriteTree<S> {
         rws.sort_by_key(|&(ref s, _)| (s.lo(), Reverse(s.hi() - s.lo())));
 
         // The stack contains a `RewriteTree` node for the most recently processed item from `rws`
-        // along with all of its ancestors (nodes whose spans strictly contain its span).
+        // along with all of its ancestors (nodes whose spans strictly contain the item's span).
         // `stack[0]` is the outermost ancestor, and `stack.last()` is the most recently pushed
         // node.  Nodes are "committed" once they are known to have no more children; when
         // committed, the node is moved into the `children` list of its parent or (if it has no
@@ -414,13 +414,14 @@ mod test {
         i: usize,
         children: Vec<RewriteTree<FakeSpan>>,
     ) -> RewriteTree<FakeSpan> {
-        let span = (start, end);
-        let rw = mk_rewrite(i);
+        let (span, rw) = mk(start, end, i);
         RewriteTree { span, rw, children }
     }
 
+    /// Test `RewriteTree::build` with ranges that require nesting.
     #[test]
     fn rewrite_tree_nesting() {
+        // `1..2` and `3..4` should be made into child nodes of `0..5`.
         let (rts, errs) = RewriteTree::build(vec![mk(1, 2, 0), mk(3, 4, 1), mk(0, 5, 2)]);
         assert_eq!(errs, vec![]);
         assert_eq!(

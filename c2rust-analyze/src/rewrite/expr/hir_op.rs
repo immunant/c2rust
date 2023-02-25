@@ -230,15 +230,14 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
             self.locations_visited.insert(loc);
             let rws = self.rewrites.get(&loc).map_or(&[] as &[_], |v| v);
             for rw in rws {
-                match rw.kind {
+                hir_rw = match rw.kind {
                     mir_op::RewriteKind::OffsetSlice { mutbl } => {
-                        assert!(matches!(hir_rw, Rewrite::Identity));
-                        //assert_eq!(num_args, 2);
                         // `p.offset(i)` -> `&p[i as usize ..]`
+                        assert!(matches!(hir_rw, Rewrite::Identity));
                         let arr = self.get_subexpr(ex, 0);
                         let idx = Rewrite::CastUsize(Box::new(self.get_subexpr(ex, 1)));
                         let elem = Rewrite::SliceTail(Box::new(arr), Box::new(idx));
-                        hir_rw = Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl));
+                        Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
                     }
 
                     mir_op::RewriteKind::SliceFirst { mutbl } => {
@@ -246,21 +245,21 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                         let arr = hir_rw;
                         let idx = Rewrite::LitZero;
                         let elem = Rewrite::Index(Box::new(arr), Box::new(idx));
-                        hir_rw = Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl));
+                        Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
                     }
 
                     mir_op::RewriteKind::MutToImm => {
                         // `p` -> `&*p`
                         let place = Rewrite::Deref(Box::new(hir_rw));
-                        hir_rw = Rewrite::Ref(Box::new(place), hir::Mutability::Not);
+                        Rewrite::Ref(Box::new(place), hir::Mutability::Not)
                     }
 
                     mir_op::RewriteKind::RemoveAsPtr => {
+                        // `slice.as_ptr()` -> `slice`
                         assert!(matches!(hir_rw, Rewrite::Identity));
-                        //assert_eq!(num_args, 1);
-                        hir_rw = self.get_subexpr(ex, 0);
+                        self.get_subexpr(ex, 0)
                     }
-                }
+                };
             }
         }
 

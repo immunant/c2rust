@@ -233,7 +233,7 @@ fn mk_rewritten_ty<'tcx>(lcx: LabeledTyCtxt<'tcx, RewriteLabel>, rw_lty: RwLTy<'
             Ownership::Cell => tcx.mk_imm_ref(tcx.mk_region(ReErased), ty),
             Ownership::Mut => tcx.mk_mut_ref(tcx.mk_region(ReErased), ty),
             Ownership::Rc => todo!(),
-            Ownership::Box => todo!(),
+            Ownership::Box => tcx.mk_box(ty),
         };
 
         ty
