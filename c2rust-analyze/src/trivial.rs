@@ -1,4 +1,7 @@
-use rustc_middle::ty::{self, Binder, EarlyBinder, FnSig, GenSig, Subst, Ty, TyCtxt};
+use rustc_hir::Unsafety;
+use rustc_middle::ty::{
+    self, Binder, EarlyBinder, FnSig, GenSig, GenericArgKind, Subst, Ty, TyCtxt,
+};
 
 pub trait IsTrivial<'tcx> {
     /// Something [`is_trivial`] if it has no effect on pointer permissions,
@@ -48,23 +51,52 @@ impl<'tcx> IsTrivial<'tcx> for FnSig<'tcx> {
     /// [`is_trivial`]: IsTrivial::is_trivial
     /// [`Trivial`]: crate::util::Callee::Trivial
     fn is_trivial(&self, tcx: TyCtxt<'tcx>) -> bool {
-        are_all_trivial(tcx, self.inputs_and_output)
+        match self.unsafety {
+            Unsafety::Unsafe => are_all_trivial(tcx, self.inputs_and_output.iter().map(UnsafeTy)),
+            Unsafety::Normal => are_all_trivial(tcx, self.inputs_and_output.iter().map(SafeTy)),
+        }
     }
 }
 
-impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
-    /// A [`Ty`] [`is_trivial`] if
-    /// it is not a (raw) pointer and contains no (raw) pointers.
+/// A [`Ty`] from a [safe](Unsafety::Normal) function.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct SafeTy<'tcx>(Ty<'tcx>);
+
+impl<'tcx> IsTrivial<'tcx> for SafeTy<'tcx> {
+    /// A [`SafeTy`] [`is_trivial`] if
+    /// itself and its [`GenericArg`]s are not themselves (directly) a (raw) pointer.
+    ///
+    /// [`is_trivial`]: IsTrivial::is_trivial
+    /// [`GenericArg`]: ty::GenericArg
+    fn is_trivial(&self, _tcx: TyCtxt<'tcx>) -> bool {
+        // Note that [`Ty::walk`] already handles caching [`Ty`]s.
+        self.0
+            .walk()
+            .filter_map(|generic| match generic.unpack() {
+                GenericArgKind::Type(ty) => Some(ty),
+                _ => None,
+            })
+            .all(|ty| !ty.is_unsafe_ptr())
+    }
+}
+
+/// A [`Ty`] from an [`unsafe`](Unsafety::Unsafe) function.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct UnsafeTy<'tcx>(Ty<'tcx>);
+
+impl<'tcx> IsTrivial<'tcx> for UnsafeTy<'tcx> {
+    /// An [`UnsafeTy`] [`is_trivial`] if
+    /// it is not a (raw) pointer and contains (recursively) no (raw) pointers.
     ///
     /// [`is_trivial`]: IsTrivial::is_trivial
     fn is_trivial(&self, tcx: TyCtxt<'tcx>) -> bool {
         let not_sure_yet = |is_trivial: bool| {
-            let kind = self.kind();
+            let kind = self.0.kind();
             eprintln!("assuming non-trivial for now as a safe backup (guessed {is_trivial:?}): ty.kind() = {kind:?}, ty = {self:?}");
             false
         };
 
-        match *self.kind() {
+        match *self.0.kind() {
             ty::RawPtr(..) => false, // raw pointers are never trivial, can break out early
 
             ty::Bool | ty::Char | ty::Str | ty::Int(..) | ty::Uint(..) | ty::Float(..) => true, // primitive types are trivial
@@ -74,13 +106,17 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
             ty::Foreign(..) => false, // no introspection into a foreign, extern type, but as it's extern, it likely contains raw pointers
 
             // delegate to the inner type
-            ty::Ref(_, ty, _) | ty::Slice(ty) | ty::Array(ty, _) => ty.is_trivial(tcx),
+            ty::Ref(_, ty, _) | ty::Slice(ty) | ty::Array(ty, _) => UnsafeTy(ty).is_trivial(tcx),
 
             // delegate to all inner types
-            ty::Tuple(tys) => are_all_trivial(tcx, tys),
-            ty::Adt(adt_def, substs) => {
-                are_all_trivial(tcx, adt_def.all_fields().map(|field| field.ty(tcx, substs)))
-            }
+            ty::Tuple(tys) => are_all_trivial(tcx, tys.iter().map(UnsafeTy)),
+            ty::Adt(adt_def, substs) => are_all_trivial(
+                tcx,
+                adt_def
+                    .all_fields()
+                    .map(|field| field.ty(tcx, substs))
+                    .map(UnsafeTy),
+            ),
 
             // don't know, as `dyn Trait` could be anything
             ty::Dynamic(trait_ty, _reg) => {
@@ -103,7 +139,7 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
             // so just check the enclosed type (upvars) for triviality,
             // but for now, assume they're non-trivial as a safe backup
             ty::Closure(_, substs) => {
-                not_sure_yet(substs.as_closure().tupled_upvars_ty().is_trivial(tcx))
+                not_sure_yet(UnsafeTy(substs.as_closure().tupled_upvars_ty()).is_trivial(tcx))
             }
 
             // similar to closures, check all possible types created by the generator
@@ -122,15 +158,14 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
                         yield_ty,
                         return_ty,
                         generator.witness(),
-                    ],
+                    ]
+                    .map(UnsafeTy),
                 )
             }),
 
             // try to get the actual type and delegate to it
             ty::Opaque(did, substs) => not_sure_yet(
-                EarlyBinder(tcx.type_of(did))
-                    .subst(tcx, substs)
-                    .is_trivial(tcx),
+                UnsafeTy(EarlyBinder(tcx.type_of(did)).subst(tcx, substs)).is_trivial(tcx),
             ),
 
             // not sure how to handle yet, and may never come up anyways
