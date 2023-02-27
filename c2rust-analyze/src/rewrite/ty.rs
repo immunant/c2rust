@@ -183,22 +183,22 @@ fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
         .iter()
         .find(|child| child.ident.as_str() == "cell")
         .expect("failed to find module `core::cell`");
-    let cell_mod = match cell_mod_child.res {
+    let cell_mod_did = match cell_mod_child.res {
         Res::Def(DefKind::Mod, did) => did,
         ref r => panic!("unexpected resolution {:?} for `core::cell`", r),
     };
 
     let cell_struct_child = tcx
-        .module_children(cell_mod)
+        .module_children(cell_mod_did)
         .iter()
         .find(|child| child.ident.as_str() == "Cell")
         .expect("failed to find struct `core::cell::Cell`");
-    let cell_struct = match cell_struct_child.res {
+    let cell_struct_did = match cell_struct_child.res {
         Res::Def(DefKind::Struct, did) => did,
         ref r => panic!("unexpected resolution {:?} for `core::cell::Cell`", r),
     };
 
-    let cell_adt = tcx.adt_def(cell_struct);
+    let cell_adt = tcx.adt_def(cell_struct_did);
     let substs = tcx.mk_substs([GenericArg::from(ty)].into_iter());
     tcx.mk_adt(cell_adt, substs)
 }
@@ -358,6 +358,8 @@ pub fn gen_ty_rewrites<'tcx>(
     // TODO: wrap locals in `Cell` if `addr_of_local` indicates that it's needed
 
     // TODO: update cast RHS types
+
+    // TODO: update struct field types
 
     v.hir_rewrites
 }

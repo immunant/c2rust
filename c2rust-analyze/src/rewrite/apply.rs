@@ -27,6 +27,9 @@ struct RewriteTree<S = Span> {
     children: Vec<RewriteTree<S>>,
 }
 
+/// This trait defines the subset of the [`Span`] API that we use in this module.  It's implemented
+/// for `Span` and also for `FakeSpan`, which is a simple span type we use in tests to avoid
+/// dealing with interner/`SourceMap` machinery.
 trait SpanLike: Copy + Eq {
     fn lo(self) -> BytePos;
     fn hi(self) -> BytePos;
@@ -74,6 +77,8 @@ impl<S: SpanLike> RewriteTree<S> {
         ) {
             if let Some(parent) = stack.last_mut() {
                 debug_assert!(parent.span.contains(rt.span));
+                // Children must be committed in order and must be non-overlapping, so `rt.span`
+                // should come after `ch.span`.
                 debug_assert!(parent
                     .children
                     .last()
@@ -150,6 +155,8 @@ impl<S: SpanLike> RewriteTree<S> {
             });
         }
 
+        // There are no more children, so we can commit all remaining items on the stack.  Each
+        // item `stack[i+1]` is the last child of its parent `stack[i]`.
         while let Some(rt) = stack.pop() {
             commit(&mut stack, &mut out, rt);
         }
