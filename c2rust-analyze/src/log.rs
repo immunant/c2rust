@@ -47,8 +47,7 @@ pub fn init_logger() {
                 writeln!(f, "{record}")?;
             }
             if panic_logger.matches(record.0) {
-                eprintln!("{record}");
-                panic!("see panicking log message directly above");
+                panic!("\n{record}\n");
             }
             Ok(())
         })
