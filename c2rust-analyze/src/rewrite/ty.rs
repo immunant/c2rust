@@ -12,7 +12,7 @@ use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, LocalDecl};
 use rustc_middle::ty::print::{FmtPrinter, Print};
 use rustc_middle::ty::subst::GenericArg;
-use rustc_middle::ty::{self, ReErased, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{self, ReErased, TyCtxt};
 use rustc_span::Span;
 
 /// A label for use with `LabeledTy` to indicate what rewrites to apply at each position in a type.
@@ -60,7 +60,7 @@ fn relabel_rewrites<'tcx>(
 /// If they have the same shape, the result is a list of `hir::Ty`s of arguments, where "argument"
 /// is defined the same way as for the `args` field of `LabeledTy`.
 fn deconstruct_hir_ty<'a, 'tcx>(
-    ty: Ty<'tcx>,
+    ty: ty::Ty<'tcx>,
     hir_ty: &'a hir::Ty<'tcx>,
 ) -> Option<Vec<&'a hir::Ty<'tcx>>> {
     /// Match a specific primitive type against a `hir::Ty`.  Returns `Some([])` on success (since
@@ -85,31 +85,31 @@ fn deconstruct_hir_ty<'a, 'tcx>(
 
     match (ty.kind(), &hir_ty.kind) {
         // Types with no arguments
-        (&TyKind::Bool, _) => do_prim(hir::PrimTy::Bool, hir_ty),
-        (&TyKind::Char, _) => do_prim(hir::PrimTy::Char, hir_ty),
-        (&TyKind::Int(ity), _) => do_prim(hir::PrimTy::Int(ity.convert()), hir_ty),
-        (&TyKind::Uint(uty), _) => do_prim(hir::PrimTy::Uint(uty.convert()), hir_ty),
-        (&TyKind::Float(fty), _) => do_prim(hir::PrimTy::Float(fty.convert()), hir_ty),
-        (&TyKind::Str, _) => do_prim(hir::PrimTy::Str, hir_ty),
+        (&ty::TyKind::Bool, _) => do_prim(hir::PrimTy::Bool, hir_ty),
+        (&ty::TyKind::Char, _) => do_prim(hir::PrimTy::Char, hir_ty),
+        (&ty::TyKind::Int(ity), _) => do_prim(hir::PrimTy::Int(ity.convert()), hir_ty),
+        (&ty::TyKind::Uint(uty), _) => do_prim(hir::PrimTy::Uint(uty.convert()), hir_ty),
+        (&ty::TyKind::Float(fty), _) => do_prim(hir::PrimTy::Float(fty.convert()), hir_ty),
+        (&ty::TyKind::Str, _) => do_prim(hir::PrimTy::Str, hir_ty),
 
         // Types with arguments
-        (&TyKind::Array(_, _), &hir::TyKind::Array(arg_ty, _)) => Some(vec![arg_ty]),
-        (&TyKind::Slice(_), &hir::TyKind::Slice(arg_ty)) => Some(vec![arg_ty]),
-        (&TyKind::RawPtr(tm), &hir::TyKind::Ptr(ref hir_mt)) => {
+        (&ty::TyKind::Array(_, _), &hir::TyKind::Array(arg_ty, _)) => Some(vec![arg_ty]),
+        (&ty::TyKind::Slice(_), &hir::TyKind::Slice(arg_ty)) => Some(vec![arg_ty]),
+        (&ty::TyKind::RawPtr(tm), &hir::TyKind::Ptr(ref hir_mt)) => {
             if hir_mt.mutbl == tm.mutbl.convert() {
                 Some(vec![hir_mt.ty])
             } else {
                 None
             }
         }
-        (&TyKind::Ref(_, _, mutbl), &hir::TyKind::Rptr(_, ref hir_mt)) => {
+        (&ty::TyKind::Ref(_, _, mutbl), &hir::TyKind::Rptr(_, ref hir_mt)) => {
             if hir_mt.mutbl == mutbl.convert() {
                 Some(vec![hir_mt.ty])
             } else {
                 None
             }
         }
-        (&TyKind::Tuple(tys), &hir::TyKind::Tup(hir_tys)) => {
+        (&ty::TyKind::Tuple(tys), &hir::TyKind::Tup(hir_tys)) => {
             if tys.len() == hir_tys.len() {
                 Some(hir_tys.iter().collect())
             } else {
@@ -170,7 +170,7 @@ impl Convert<hir::Mutability> for mir::Mutability {
     }
 }
 
-fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Ty<'tcx> {
+fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
     let core_crate = tcx
         .crates(())
         .iter()
@@ -204,7 +204,10 @@ fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Ty<'tcx> {
 }
 
 /// Produce a `Ty` reflecting the rewrites indicated by the labels in `rw_lty`.
-fn mk_rewritten_ty<'tcx>(lcx: LabeledTyCtxt<'tcx, RewriteLabel>, rw_lty: RwLTy<'tcx>) -> Ty<'tcx> {
+fn mk_rewritten_ty<'tcx>(
+    lcx: LabeledTyCtxt<'tcx, RewriteLabel>,
+    rw_lty: RwLTy<'tcx>,
+) -> ty::Ty<'tcx> {
     let tcx = *lcx;
     lcx.rewrite_unlabeled(rw_lty, &mut |ty, args, label| {
         let (own, qty) = match label.ty_desc {
