@@ -49,21 +49,6 @@ impl SpanLike for Span {
     }
 }
 
-impl SpanLike for (u32, u32) {
-    fn lo(self) -> BytePos {
-        BytePos(self.0)
-    }
-    fn hi(self) -> BytePos {
-        BytePos(self.1)
-    }
-    fn contains(self, other: Self) -> bool {
-        self.0 <= other.0 && other.1 <= self.1
-    }
-    fn overlaps(self, other: Self) -> bool {
-        self.0 < other.1 && other.0 < self.1
-    }
-}
-
 impl<S: SpanLike> RewriteTree<S> {
     pub fn build(
         mut rws: Vec<(S, Rewrite<S>)>,
@@ -396,25 +381,48 @@ pub fn apply_rewrites(
 mod test {
     use super::*;
 
-    type FakeSpan = (u32, u32);
+    #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+    struct FakeSpan {
+        lo: u32,
+        hi: u32,
+    }
 
-    fn mk(start: u32, end: u32, i: usize) -> (FakeSpan, Rewrite<FakeSpan>) {
-        let span = (start, end);
+    impl SpanLike for FakeSpan {
+        fn lo(self) -> BytePos {
+            BytePos(self.lo)
+        }
+        fn hi(self) -> BytePos {
+            BytePos(self.hi)
+        }
+        fn contains(self, other: Self) -> bool {
+            self.lo <= other.lo && other.hi <= self.hi
+        }
+        fn overlaps(self, other: Self) -> bool {
+            self.lo < other.hi && other.lo < self.hi
+        }
+    }
+
+    fn mk_span(lo: u32, hi: u32) -> FakeSpan {
+        FakeSpan { lo, hi }
+    }
+
+    fn mk(lo: u32, hi: u32, i: usize) -> (FakeSpan, Rewrite<FakeSpan>) {
+        let span = FakeSpan { lo, hi };
         let rw = mk_rewrite(i);
         (span, rw)
     }
 
     fn mk_rewrite(i: usize) -> Rewrite<FakeSpan> {
-        Rewrite::Sub(i, (0, 0))
+        Rewrite::Sub(i, mk_span(0, 0))
     }
 
     fn mk_rt(
-        start: u32,
-        end: u32,
+        lo: u32,
+        hi: u32,
         i: usize,
         children: Vec<RewriteTree<FakeSpan>>,
     ) -> RewriteTree<FakeSpan> {
-        let (span, rw) = mk(start, end, i);
+        let (span, rw) = mk(lo, hi, i);
         RewriteTree { span, rw, children }
     }
 
@@ -470,9 +478,9 @@ mod test {
         assert_eq!(
             errs,
             vec![
-                ((0, 5), mk_rewrite(5), RewriteError::Conflict),
-                ((1, 2), mk_rewrite(3), RewriteError::Conflict),
-                ((3, 4), mk_rewrite(4), RewriteError::Conflict),
+                (mk_span(0, 5), mk_rewrite(5), RewriteError::Conflict),
+                (mk_span(1, 2), mk_rewrite(3), RewriteError::Conflict),
+                (mk_span(3, 4), mk_rewrite(4), RewriteError::Conflict),
             ]
         );
         assert_eq!(
@@ -492,7 +500,11 @@ mod test {
             RewriteTree::build(vec![mk(1, 3, 0), mk(3, 4, 1), mk(0, 5, 2), mk(2, 4, 3)]);
         assert_eq!(
             errs,
-            vec![((2, 4), mk_rewrite(3), RewriteError::PartialOverlap((1, 3))),]
+            vec![(
+                mk_span(2, 4),
+                mk_rewrite(3),
+                RewriteError::PartialOverlap(mk_span(1, 3))
+            ),]
         );
         assert_eq!(
             rts,
