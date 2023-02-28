@@ -320,37 +320,42 @@ impl<'tcx> CVoidCasts<'tcx> {
 
         let local = p.local;
 
-        if let StatementKind::Assign(assign) = &stmt.kind {
-            let (lhs, rv) = &**assign;
-            if lhs.local == local {
-                return true;
-            }
+        match &stmt.kind {
+            StatementKind::Assign(assign) => {
+                let (lhs, rv) = &**assign;
+                if lhs.local == local {
+                    return true;
+                }
 
-            use Rvalue::*;
-            let rv_place = match rv {
-                Use(op) => op.place(),
-                Repeat(op, _) => op.place(),
-                Ref(_, _, p) => Some(*p),
-                ThreadLocalRef(..) => None,
-                AddressOf(_, p) => Some(*p),
-                Len(p) => Some(*p),
-                Cast(_, op, _) => op.place(),
-                BinaryOp(..) => None,
-                CheckedBinaryOp(..) => None,
-                NullaryOp(..) => None,
-                UnaryOp(_, op) => op.place(),
-                Discriminant(p) => Some(*p),
-                Aggregate(..) => None,
-                ShallowInitBox(op, _) => op.place(),
-                CopyForDeref(..) => None,
-            };
+                use Rvalue::*;
+                let rv_place = match rv {
+                    Use(op) => op.place(),
+                    Repeat(op, _) => op.place(),
+                    Ref(_, _, p) => Some(*p),
+                    ThreadLocalRef(..) => None,
+                    AddressOf(_, p) => Some(*p),
+                    Len(p) => Some(*p),
+                    Cast(_, op, _) => op.place(),
+                    BinaryOp(..) => None,
+                    CheckedBinaryOp(..) => None,
+                    NullaryOp(..) => None,
+                    UnaryOp(_, op) => op.place(),
+                    Discriminant(p) => Some(*p),
+                    Aggregate(..) => None,
+                    ShallowInitBox(op, _) => op.place(),
+                    CopyForDeref(..) => None,
+                };
 
-            if let Some(rv_local) = rv_place.map(|p| p.local) {
-                return local == rv_local;
+                if let Some(rv_local) = rv_place.map(|p| p.local) {
+                    local == rv_local
+                } else {
+                    false
+                }
             }
+            StatementKind::StorageDead(dead_local) => dead_local == &p.local,
+            StatementKind::StorageLive(live_local) => live_local == &p.local,
+            _ => true,
         }
-
-        false
     }
 
     /// Search for the first [Rvalue::Cast] from a void pointer
