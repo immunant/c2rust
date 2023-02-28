@@ -315,6 +315,7 @@ impl<'tcx> CVoidCasts<'tcx> {
                 let rv_place = match rv {
                     Use(op) => op.place(),
                     Ref(_, _, p) => Some(*p),
+                    AddressOf(_, p) => Some(*p),
                     Cast(_, op, _) => op.place(),
                     Discriminant(p) => Some(*p),
                     ShallowInitBox(op, _) => op.place(),
