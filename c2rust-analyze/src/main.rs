@@ -46,6 +46,7 @@ use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
 mod borrowck;
+mod c_void_casts;
 mod context;
 mod dataflow;
 mod equiv;
@@ -454,11 +455,11 @@ fn run(tcx: TyCtxt) {
 
         for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
             for (i, stmt) in bb_data.statements.iter().enumerate() {
-                let rv = match stmt.kind {
-                    StatementKind::Assign(ref x) => &x.1,
+                let (_, rv) = match &stmt.kind {
+                    StatementKind::Assign(x) => *x.clone(),
                     _ => continue,
                 };
-                let lty = match *rv {
+                let lty = match rv {
                     Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
                         AggregateKind::Array(elem_ty) => {
                             let elem_lty = acx.assign_pointer_ids(elem_ty);
@@ -468,7 +469,6 @@ fn run(tcx: TyCtxt) {
                         }
                         _ => continue,
                     },
-                    // TODO: Rvalue::Cast (certain cases)
                     _ => continue,
                 };
                 let loc = Location {

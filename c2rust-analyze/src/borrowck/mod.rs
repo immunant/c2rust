@@ -311,6 +311,7 @@ fn run_polonius<'tcx>(
         &field_permissions,
         mir,
         adt_metadata,
+        &acx.c_void_casts,
     );
 
     // Populate `loan_invalidated_at`

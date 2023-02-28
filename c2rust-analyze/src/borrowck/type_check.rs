@@ -1,5 +1,6 @@
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubPoint};
 use crate::borrowck::{LTy, LTyCtxt, Label, OriginParam};
+use crate::c_void_casts::CVoidCasts;
 use crate::context::PermissionSet;
 use crate::util::{self, ty_callee, Callee};
 use crate::AdtMetadataTable;
@@ -281,7 +282,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 */
                 Label::default()
             }),
-
             Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
                 AggregateKind::Array(..) => {
                     let ty = rv.ty(self.local_decls, *self.ltcx);
@@ -431,6 +431,7 @@ pub fn visit_body<'tcx>(
     field_permissions: &HashMap<DefId, PermissionSet>,
     mir: &Body<'tcx>,
     adt_metadata: &AdtMetadataTable<'tcx>,
+    c_void_casts: &CVoidCasts<'tcx>,
 ) {
     let mut tc = TypeChecker {
         tcx,
@@ -445,17 +446,21 @@ pub fn visit_body<'tcx>(
         adt_metadata,
     };
 
-    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+    for (block, bb_data) in mir.basic_blocks().iter_enumerated() {
         for (idx, stmt) in bb_data.statements.iter().enumerate() {
-            tc.current_location = Location {
-                block: bb,
+            let loc = Location {
+                block,
                 statement_index: idx,
             };
-            tc.visit_statement(stmt);
+            tc.current_location = loc;
+
+            if !c_void_casts.should_skip_stmt(loc) {
+                tc.visit_statement(stmt);
+            }
         }
 
         tc.current_location = Location {
-            block: bb,
+            block,
             statement_index: bb_data.statements.len(),
         };
         tc.visit_terminator(bb_data.terminator());

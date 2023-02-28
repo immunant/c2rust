@@ -3,7 +3,8 @@ use crate::trivial::IsTrivial;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
-    Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
+    BasicBlock, BasicBlockData, Field, Local, Location, Mutability, Operand, Place, PlaceElem,
+    PlaceRef, ProjectionElem, Rvalue, Statement, StatementKind,
 };
 use rustc_middle::ty::{self, AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy};
 use std::fmt::Debug;
@@ -237,28 +238,58 @@ fn builtin_callee(tcx: TyCtxt, did: DefId) -> Option<Callee> {
             })
         }
 
-        "malloc" | "c2rust_test_typed_malloc" => {
+        "abort" | "exit" => {
+            // `std::process::abort` and `std::process::exit`
+            let path = tcx.def_path(did);
+            if tcx.crate_name(path.krate).as_str() != "std" {
+                return None;
+            }
+            if path.data.len() != 2 {
+                return None;
+            }
+            if path.data[0].to_string() != "process" {
+                return None;
+            }
+            Some(Callee::Trivial)
+        }
+
+        "size_of" => {
+            // `core::mem::size_of`
+            let path = tcx.def_path(did);
+            if tcx.crate_name(path.krate).as_str() != "core" {
+                return None;
+            }
+            if path.data.len() != 2 {
+                return None;
+            }
+            if path.data[0].to_string() != "mem" {
+                return None;
+            }
+            Some(Callee::Trivial)
+        }
+
+        "malloc" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Malloc);
             }
             None
         }
 
-        "calloc" | "c2rust_test_typed_calloc" => {
+        "calloc" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Calloc);
             }
             None
         }
 
-        "realloc" | "c2rust_test_typed_realloc" => {
+        "realloc" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Realloc);
             }
             None
         }
 
-        "free" | "c2rust_test_typed_free" => {
+        "free" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Free);
             }
@@ -313,4 +344,28 @@ pub fn lty_project<'tcx, L: Debug>(
         ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
         ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
     }
+}
+
+pub fn get_cast_place<'tcx>(rv: &Rvalue<'tcx>) -> Option<Place<'tcx>> {
+    match rv {
+        Rvalue::Cast(_, op, _) => op.place(),
+        _ => None,
+    }
+}
+
+pub fn terminator_location(block: BasicBlock, block_data: &BasicBlockData) -> Location {
+    Location {
+        block,
+        statement_index: block_data.statements.len(),
+    }
+}
+
+pub fn get_assign_sides<'tcx, 'a>(
+    stmt: &'a Statement<'tcx>,
+) -> Option<(Place<'tcx>, &'a Rvalue<'tcx>)> {
+    let (pl, ref rv) = match &stmt.kind {
+        StatementKind::Assign(it) => Some(&**it),
+        _ => None,
+    }?;
+    Some((*pl, rv))
 }

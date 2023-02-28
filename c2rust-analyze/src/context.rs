@@ -1,3 +1,4 @@
+use crate::c_void_casts::CVoidCasts;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::{
     GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
@@ -84,12 +85,12 @@ pub struct AnalysisCtxt<'a, 'tcx> {
 
     pub local_decls: &'a LocalDecls<'tcx>,
     pub local_tys: IndexVec<Local, LTy<'tcx>>,
+    pub c_void_casts: CVoidCasts<'tcx>,
     pub addr_of_local: IndexVec<Local, PointerId>,
     /// Types for certain [`Rvalue`]s.  Some `Rvalue`s introduce fresh [`PointerId`]s; to keep
     /// those `PointerId`s consistent, the `Rvalue`'s type must be stored rather than recomputed on
     /// the fly.
     pub rvalue_tys: HashMap<Location, LTy<'tcx>>,
-
     next_ptr_id: NextLocalPointerId,
 }
 
@@ -181,10 +182,12 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         gacx: &'a mut GlobalAnalysisCtxt<'tcx>,
         mir: &'a Body<'tcx>,
     ) -> AnalysisCtxt<'a, 'tcx> {
+        let tcx = gacx.tcx;
         AnalysisCtxt {
             gacx,
             local_decls: &mir.local_decls,
             local_tys: IndexVec::new(),
+            c_void_casts: CVoidCasts::new(mir, tcx),
             addr_of_local: IndexVec::new(),
             rvalue_tys: HashMap::new(),
             next_ptr_id: NextLocalPointerId::new(),
@@ -206,6 +209,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             gacx,
             local_decls: &mir.local_decls,
             local_tys,
+            c_void_casts: CVoidCasts::default(),
             addr_of_local,
             rvalue_tys,
             next_ptr_id,
