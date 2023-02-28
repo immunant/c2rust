@@ -319,7 +319,15 @@ impl<'tcx> CVoidCasts<'tcx> {
                     Cast(_, op, _) => op.place(),
                     Discriminant(p) => Some(*p),
                     ShallowInitBox(op, _) => op.place(),
-                    _ => return false,
+                    Repeat(..) => return false,
+                    ThreadLocalRef(..) => return false,
+                    Len(..) => return false,
+                    BinaryOp(..) => return false,
+                    CheckedBinaryOp(..) => return false,
+                    UnaryOp(..) => return false,
+                    NullaryOp(..) => return false,
+                    Aggregate(..) => return false,
+                    CopyForDeref(..) => return false,
                 };
 
                 if let Some(rv_local) = rv_place.map(|p| p.local) {
