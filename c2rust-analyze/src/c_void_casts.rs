@@ -168,10 +168,8 @@ pub struct CVoidCastsUniDirectional<'tcx> {
 }
 
 impl<'tcx> CVoidCastsUniDirectional<'tcx> {
-    /// Get the adjusted [`Place`], skipping over [`*c_void`](core::ffi::c_void) intermediaries.
+    /// Get the adjusted [`Place`] from a cast at a particulat [`Location`].
     ///
-    /// That is, if `place` is a [`CVoidPtr`] in this map of [`CVoidCast`]s,
-    /// then the [`Place`] of its other, property-typed pointer is returned.
     /// Otherwise, the same `place` is returned, as no adjustments are necessary.
     pub fn get_adjusted_place_or_default_to(
         &self,
@@ -284,23 +282,8 @@ impl<'tcx> CVoidCasts<'tcx> {
         self.direction_mut(direction).insert_call(loc, cast)
     }
 
-    /// Determine if this [`Statement`] should be skipped
-    /// because it contains a [`CVoidCast`] that is in this [`CVoidCasts`],
-    /// as it will be handled in a way that effectively elides the cast.
-    ///
-    /// That is, if this [`Statement`] is an [`Assign`],
-    /// then it will be skipped if:
-    ///
-    /// * the lhs [`Place`] of the [`Assign`] is a [`CVoidPtr`] in the [`To`] direction,
-    ///     as in the [`To`] direction, the [`CVoidPtr`] is on the lhs.
-    ///
-    /// * the rhs [`Place`] of the [`Cast`] of the [`Assign`] is a [`CVoidPtr`] in the [`From`] direction,
-    ///     as in the [`From`] direction, the [`CVoidPtr`] is on the rhs.
-    ///
-    /// [`Assign`]: rustc_middle::mir::StatementKind::Assign
-    /// [`Cast`]: rustc_middle::mir::Rvalue::Cast
-    /// [`From`]: CVoidCastDirection::From
-    /// [`To`]: CVoidCastDirection::To
+    /// Determine if the [`Statement`] at a [`Location`] should be skipped
+    /// because it contains a [`CVoidCast`].
     pub fn should_skip_stmt(&self, loc: Location) -> bool {
         self.to.casts.contains(&loc) || self.from.casts.contains(&loc)
     }
@@ -373,13 +356,14 @@ impl<'tcx> CVoidCasts<'tcx> {
 
     /// Search for the last cast to a void pointer in a sequence of
     /// [Statement]s.
+    ///
+    /// Gets the last cast in the current block, and ensures that the destination
+    /// of that cast remains unmodified between the cast and the call in which
+    /// the destination place is used.
     fn find_last_cast(
         statements: &[Statement<'tcx>],
         c_void_ptr: CVoidPtr<'tcx>,
     ) -> Option<(usize, CVoidCast<'tcx>)> {
-        // Get the last cast in the current block, and ensure that the destination
-        // of that cast remains unmodified between the cast and the call in which
-        // the destination place is used.
         for (sidx, stmt) in statements.iter().enumerate().rev() {
             let cast = c_void_ptr.get_cast_from_stmt(CVoidCastDirection::To, stmt);
             if let Some(cast) = cast {
