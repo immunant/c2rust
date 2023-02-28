@@ -157,13 +157,14 @@ pub struct CVoidCast<'tcx> {
     other_ptr: Place<'tcx>,
 }
 
-/// A mapping from [`*c_void`](core::ffi::c_void)s ([`CVoidPtr`]s)
-/// to their properly typed pointers,
-/// like [`CVoidCasts`], but in a single direction, meaning it represents either
-/// [`CVoidCastDirection::From`] or [`CVoidCastDirection::To`].
+/// An account of [`CVoidCast`]s.
 #[derive(Default, Clone, Debug)]
 pub struct CVoidCastsUniDirectional<'tcx> {
+    /// Mapping from location of a call that either
+    /// produces or consumes a [`CVoidPtr`] to its
+    /// succeeding or preceding [`CVoidCast`]
     calls: HashMap<Location, CVoidCast<'tcx>>,
+    /// Set of locations where [`CVoidCast`]s occur.
     casts: HashSet<Location>,
 }
 
