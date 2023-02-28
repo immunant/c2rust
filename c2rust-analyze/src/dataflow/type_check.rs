@@ -280,7 +280,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 match callee {
                     Callee::Trivial => {}
                     Callee::UnknownDef { .. } => {
-                        todo!("visit Callee::{callee:?}");
+                        log::error!("TODO: visit Callee::{callee:?}");
                     }
 
                     Callee::LocalDef { def_id, substs } => {
