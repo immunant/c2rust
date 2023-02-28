@@ -1,5 +1,5 @@
 use std::borrow::Borrow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rustc_middle::{
     mir::{
@@ -164,7 +164,7 @@ pub struct CVoidCast<'tcx> {
 #[derive(Default, Clone, Debug)]
 pub struct CVoidCastsUniDirectional<'tcx> {
     calls: HashMap<Location, CVoidCast<'tcx>>,
-    casts: HashMap<Location, CVoidCast<'tcx>>,
+    casts: HashSet<Location>,
 }
 
 impl<'tcx> CVoidCastsUniDirectional<'tcx> {
@@ -195,9 +195,9 @@ impl<'tcx> CVoidCastsUniDirectional<'tcx> {
     }
 
     /// Tracks the [Location] of void pointer [Rvalue::Cast]
-    pub fn insert_cast(&mut self, loc: Location, cast: CVoidCast<'tcx>) {
-        assert!(!self.casts.contains_key(&loc));
-        self.casts.insert(loc, cast);
+    pub fn insert_cast(&mut self, loc: Location) {
+        assert!(!self.casts.contains(&loc));
+        self.casts.insert(loc);
     }
 }
 
@@ -275,8 +275,8 @@ impl<'tcx> CVoidCasts<'tcx> {
     }
 
     /// See [`CVoidCastsUniDirectional::insert_cast`].
-    fn insert_cast(&mut self, direction: CVoidCastDirection, loc: Location, cast: CVoidCast<'tcx>) {
-        self.direction_mut(direction).insert_cast(loc, cast)
+    fn insert_cast(&mut self, direction: CVoidCastDirection, loc: Location) {
+        self.direction_mut(direction).insert_cast(loc)
     }
 
     /// See [`CVoidCastsUniDirectional::insert_call`].
@@ -302,7 +302,7 @@ impl<'tcx> CVoidCasts<'tcx> {
     /// [`From`]: CVoidCastDirection::From
     /// [`To`]: CVoidCastDirection::To
     pub fn should_skip_stmt(&self, loc: Location) -> bool {
-        self.to.casts.contains_key(&loc) || self.from.casts.contains_key(&loc)
+        self.to.casts.contains(&loc) || self.from.casts.contains(&loc)
     }
 
     /// Checking whether a statement could modify a particular Place is
@@ -460,7 +460,6 @@ impl<'tcx> CVoidCasts<'tcx> {
                                 From => target.unwrap(),
                             },
                         },
-                        cast.clone(),
                     );
                     self.insert_call(direction, terminator_location(block, bb_data), cast);
                 }
