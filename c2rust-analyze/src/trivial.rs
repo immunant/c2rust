@@ -228,14 +228,17 @@ impl<'tcx> TyWithSafety<'tcx> {
                 )
             }),
 
+            ty::GeneratorWitness(tys) => {
+                self.not_sure_yet(are_all_trivial(tcx, tys.skip_binder().iter().map(inner_ty)))
+            }
+
             // try to get the actual type and delegate to it
             ty::Opaque(did, substs) => self.not_sure_yet(
                 inner_ty(EarlyBinder(tcx.type_of(did)).subst(tcx, substs)).is_trivial(tcx),
             ),
 
             // not sure how to handle yet, and may never come up anyways
-            ty::GeneratorWitness(..)
-            | ty::Projection(..)
+            ty::Projection(..)
             | ty::Error(_)
             | ty::Infer(_)
             | ty::Placeholder(..)
