@@ -78,37 +78,11 @@ pub enum Callee<'tcx> {
     ///
     /// Thus, a [`Trivial`] function call requires no special handling.
     ///
-    /// A function is [`Trivial`] if all of its argument and return types are themselves [`Trivial`].
-    ///
-    /// A [`Ty`]'s [`Trivial`]ity depends on if it was contained in an [`unsafe`] or [safe] function.
-    ///
-    /// ### [`unsafe`] functions
-    ///
-    /// For an [`unsafe`] function, a [`Ty`] is [`Trivial`]
-    /// if it is not and does not (recursively) contain a (raw) pointer.
-    /// That is, no pointer passed through this [`Ty`] must be accessible.
-    /// Having no accessible raw pointers means that we can exclude it from any pointer analysis.
-    ///
-    /// We ignore the possibility that a function may perform
-    /// int-to-ptr casts (a la [`std::ptr::from_exposed_addr`]) internally,
-    /// as handling such casts is very difficult and out of scope for now.
-    ///
-    /// References are allowed, because the existence of that reference in the first place
-    /// carries much stronger semantics, so in the case that the reference is casted to a raw pointer,
-    /// we can simply use the pointer permissions guaranteed by that reference.
-    ///
-    /// ### [safe] functions
-    ///
-    /// For a [safe] function, a [`Ty`] is [`Trivial`]
-    /// if it is not and none of its [`GenericArg`]s are themselves (directly) a (raw) pointer.
-    /// That is, the type signature must not visibly contain a raw pointer.
-    /// Internal pointers are allowed,
-    /// as the function being [safe] guarantees that any raw pointers are safely used within the function.
+    /// A function is [`Trivial`] if all of its argument and return types
+    /// are themselves [`Trivial`] (see [`TyWithSafety::is_trivial`]).
     ///
     /// [`Trivial`]: Self::Trivial
-    /// [`unsafe`]: rustc_hir::Unsafety::Unsafe
-    /// [safe]: rustc_hir::Unsafety::Normal
-    /// [`GenericArg`]: ty::GenericArg
+    /// [`TyWithSafety::is_trivial`]: crate::trivial::TyWithSafety::is_trivial
     Trivial,
 
     /// A function whose definition is not known.

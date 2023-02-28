@@ -85,13 +85,11 @@ pub fn main() {
 
         safe_fn!(Trivial); // CHECK: for<'r> fn(Trivial<'r>) {main::f} is trivial: true
 
-        // Types with internal pointers are trivial in safe functions.
+        // Types with internal pointers are trivial in safe functions with external types.
         safe_fn!(Vec<&str>); // for<'r> fn(std::vec::Vec<&'r str>) {main::f} is trivial: true
         safe_fn!(Box<()>); // CHECK: fn(std::boxed::Box<()>) {main::f} is trivial: true
         safe_fn!(PathBuf); // CHECK: fn(std::path::PathBuf) {main::f} is trivial: true
         safe_fn!(AtomicPtr<()>); // CHECK: fn(std::sync::atomic::AtomicPtr<()>) {main::f} is trivial: true
-        safe_fn!(NonTrivial); // CHECK: fn(NonTrivial) {main::f} is trivial: true
-        safe_fn!(RecursiveWithPtr); // CHECK: fn(RecursiveWithPtr) {main::f} is trivial: true
         safe_fn!(NonNull<u8>); // CHECK: fn(std::ptr::NonNull<u8>) {main::f} is trivial: true
 
         // TODO(kkysen) Test self-referential/recursive types through references (see #834).
@@ -116,9 +114,13 @@ pub fn main() {
         unsafe_fn!(*mut i32); // CHECK: fn(*mut i32) {main::f} is trivial: false
 
         unsafe_fn!(NonTrivial); // CHECK: fn(NonTrivial) {main::f} is trivial: false
-
         unsafe_fn!(RecursiveWithPtr); // CHECK: fn(RecursiveWithPtr) {main::f} is trivial: false
+        
+        // Types with internal pointers are non-trivial in safe functions when the types are local.
+        safe_fn!(NonTrivial); // CHECK: fn(NonTrivial) {main::f} is trivial: false
+        safe_fn!(RecursiveWithPtr); // CHECK: fn(RecursiveWithPtr) {main::f} is trivial: false
 
+        // Types with directly visible pointers are non-trivial in safe functions even when the types are external.
         safe_fn!(*const u8); // CHECK: fn(*const u8) {main::f} is trivial: false
         safe_fn!(*mut i32); // CHECK: fn(*mut i32) {main::f} is trivial: false
 
