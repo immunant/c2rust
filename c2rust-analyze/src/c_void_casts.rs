@@ -308,11 +308,11 @@ impl<'tcx> CVoidCasts<'tcx> {
     /// Checking whether a statement could modify a particular Place is
     /// nontrivial (particularly if the Place involves Deref projections),
     /// but currently rustc always uses a temporary for the LHS of the
-    /// cast in the desired free(ptr as *mut c_void) pattern, so I think we
+    /// cast in the desired free(ptr as *mut c_void) pattern, so we
     /// can conservatively treat the Place as unmodified only if (1) it's
     /// just a Local, with no projections, and (2) that local isn't
-    /// mentioned in the LHS or RHS of any statements between the cast and
-    /// the call.
+    /// mentioned in the LHS or isn't mentioned in certain [`Rvalue`]
+    /// kind of any statements between the cast and the call.
     fn is_place_modified_by_statement(p: &Place, stmt: &Statement) -> bool {
         if !p.projection.is_empty() {
             return false;
@@ -330,20 +330,11 @@ impl<'tcx> CVoidCasts<'tcx> {
                 use Rvalue::*;
                 let rv_place = match rv {
                     Use(op) => op.place(),
-                    Repeat(op, _) => op.place(),
                     Ref(_, _, p) => Some(*p),
-                    ThreadLocalRef(..) => None,
-                    AddressOf(_, p) => Some(*p),
-                    Len(p) => Some(*p),
                     Cast(_, op, _) => op.place(),
-                    BinaryOp(..) => None,
-                    CheckedBinaryOp(..) => None,
-                    NullaryOp(..) => None,
-                    UnaryOp(_, op) => op.place(),
                     Discriminant(p) => Some(*p),
-                    Aggregate(..) => None,
                     ShallowInitBox(op, _) => op.place(),
-                    CopyForDeref(..) => None,
+                    _ => return false,
                 };
 
                 if let Some(rv_local) = rv_place.map(|p| p.local) {
