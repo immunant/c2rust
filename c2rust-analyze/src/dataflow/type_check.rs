@@ -8,7 +8,7 @@ use rustc_middle::mir::{
     AggregateKind, BinOp, Body, Location, Mutability, Operand, Place, PlaceRef, ProjectionElem,
     Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
-use rustc_middle::ty::{SubstsRef, TyKind};
+use rustc_middle::ty::{SubstsRef, Ty, TyKind};
 
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
 /// constraints as a side effect.
@@ -279,115 +279,126 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 target: _,
                 ..
             } => {
-                let func_ty = func.ty(self.mir, tcx);
-                let callee = ty_callee(tcx, func_ty);
-                eprintln!("callee = {callee:?}");
-                match callee {
-                    Callee::Trivial => {}
-                    Callee::UnknownDef { .. } => {
-                        log::error!("TODO: visit Callee::{callee:?}");
-                    }
-
-                    Callee::LocalDef { def_id, substs } => {
-                        self.visit_local_call(def_id, substs, args, destination);
-                    }
-
-                    Callee::PtrOffset { .. } => {
-                        // We handle this like a pointer assignment.
-                        self.visit_place(destination, Mutability::Mut);
-                        let pl_lty = self.acx.type_of(destination);
-                        assert!(args.len() == 2);
-                        self.visit_operand(&args[0]);
-                        let rv_lty = self.acx.type_of(&args[0]);
-                        self.do_assign(pl_lty, rv_lty);
-                        let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
-                        self.constraints.add_all_perms(rv_lty.label, perms);
-                    }
-
-                    Callee::SliceAsPtr { elem_ty, .. } => {
-                        // We handle this like an assignment, but with some adjustments due to the
-                        // difference in input and output types.
-                        self.visit_place(destination, Mutability::Mut);
-                        let pl_lty = self.acx.type_of(destination);
-                        assert!(args.len() == 1);
-                        self.visit_operand(&args[0]);
-                        let rv_lty = self.acx.type_of(&args[0]);
-
-                        // Map `rv_lty = &[i32]` to `rv_elem_lty = i32`
-                        let rv_pointee_lty = rv_lty.args[0];
-                        let rv_elem_lty = match *rv_pointee_lty.kind() {
-                            TyKind::Array(..) | TyKind::Slice(..) => rv_pointee_lty.args[0],
-                            TyKind::Str => self.acx.lcx().label(elem_ty, &mut |_| PointerId::NONE),
-                            _ => unreachable!(),
-                        };
-
-                        // Map `pl_lty = *mut i32` to `pl_elem_lty = i32`
-                        let pl_elem_lty = pl_lty.args[0];
-
-                        self.do_unify(pl_elem_lty, rv_elem_lty);
-                        self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
-                    }
-
-                    Callee::Malloc | Callee::Calloc => {
-                        let out_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                            loc,
-                            CVoidCastDirection::From,
-                            destination,
-                        );
-                        self.visit_place(out_ptr, Mutability::Mut);
-                    }
-                    Callee::Realloc => {
-                        let out_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                            loc,
-                            CVoidCastDirection::From,
-                            destination,
-                        );
-                        let in_ptr = args[0]
-                            .place()
-                            .expect("Casts to/from null pointer are not yet supported");
-                        let in_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                            loc,
-                            CVoidCastDirection::To,
-                            in_ptr,
-                        );
-                        self.visit_place(out_ptr, Mutability::Mut);
-                        let pl_lty = self.acx.type_of(out_ptr);
-                        assert!(args.len() == 2);
-                        self.visit_place(in_ptr, Mutability::Not);
-                        let rv_lty = self.acx.type_of(in_ptr);
-
-                        // input needs FREE permission
-                        let perms = PermissionSet::FREE;
-                        self.constraints.add_all_perms(rv_lty.label, perms);
-
-                        // unify inner-most pointer types
-                        self.do_equivalence_nested(pl_lty, rv_lty);
-                    }
-                    Callee::Free => {
-                        let in_ptr = args[0]
-                            .place()
-                            .expect("Casts to/from null pointer are not yet supported");
-                        let in_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                            loc,
-                            CVoidCastDirection::To,
-                            in_ptr,
-                        );
-                        self.visit_place(destination, Mutability::Mut);
-                        assert!(args.len() == 1);
-
-                        let rv_lty = self.acx.type_of(in_ptr);
-                        let perms = PermissionSet::FREE;
-                        self.constraints.add_all_perms(rv_lty.label, perms);
-                    }
-
-                    Callee::IsNull => {
-                        assert!(args.len() == 1);
-                        self.visit_operand(&args[0]);
-                    }
-                }
+                let func = func.ty(self.mir, tcx);
+                self.visit_call(loc, func, args, destination);
             }
             // TODO(spernsteiner): handle other `TerminatorKind`s
             _ => (),
+        }
+    }
+
+    pub fn visit_call(
+        &mut self,
+        loc: Location,
+        func: Ty<'tcx>,
+        args: &[Operand<'tcx>],
+        destination: Place<'tcx>,
+    ) {
+        let tcx = self.acx.tcx();
+        let callee = ty_callee(tcx, func);
+        eprintln!("callee = {callee:?}");
+        match callee {
+            Callee::Trivial => {}
+            Callee::UnknownDef { .. } => {
+                log::error!("TODO: visit Callee::{callee:?}");
+            }
+
+            Callee::LocalDef { def_id, substs } => {
+                self.visit_local_call(def_id, substs, args, destination);
+            }
+
+            Callee::PtrOffset { .. } => {
+                // We handle this like a pointer assignment.
+                self.visit_place(destination, Mutability::Mut);
+                let pl_lty = self.acx.type_of(destination);
+                assert!(args.len() == 2);
+                self.visit_operand(&args[0]);
+                let rv_lty = self.acx.type_of(&args[0]);
+                self.do_assign(pl_lty, rv_lty);
+                let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
+                self.constraints.add_all_perms(rv_lty.label, perms);
+            }
+
+            Callee::SliceAsPtr { elem_ty, .. } => {
+                // We handle this like an assignment, but with some adjustments due to the
+                // difference in input and output types.
+                self.visit_place(destination, Mutability::Mut);
+                let pl_lty = self.acx.type_of(destination);
+                assert!(args.len() == 1);
+                self.visit_operand(&args[0]);
+                let rv_lty = self.acx.type_of(&args[0]);
+
+                // Map `rv_lty = &[i32]` to `rv_elem_lty = i32`
+                let rv_pointee_lty = rv_lty.args[0];
+                let rv_elem_lty = match *rv_pointee_lty.kind() {
+                    TyKind::Array(..) | TyKind::Slice(..) => rv_pointee_lty.args[0],
+                    TyKind::Str => self.acx.lcx().label(elem_ty, &mut |_| PointerId::NONE),
+                    _ => unreachable!(),
+                };
+
+                // Map `pl_lty = *mut i32` to `pl_elem_lty = i32`
+                let pl_elem_lty = pl_lty.args[0];
+
+                self.do_unify(pl_elem_lty, rv_elem_lty);
+                self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
+            }
+
+            Callee::Malloc | Callee::Calloc => {
+                let out_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                    loc,
+                    CVoidCastDirection::From,
+                    destination,
+                );
+                self.visit_place(out_ptr, Mutability::Mut);
+            }
+            Callee::Realloc => {
+                let out_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                    loc,
+                    CVoidCastDirection::From,
+                    destination,
+                );
+                let in_ptr = args[0]
+                    .place()
+                    .expect("Casts to/from null pointer are not yet supported");
+                let in_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                    loc,
+                    CVoidCastDirection::To,
+                    in_ptr,
+                );
+                self.visit_place(out_ptr, Mutability::Mut);
+                let pl_lty = self.acx.type_of(out_ptr);
+                assert!(args.len() == 2);
+                self.visit_place(in_ptr, Mutability::Not);
+                let rv_lty = self.acx.type_of(in_ptr);
+
+                // input needs FREE permission
+                let perms = PermissionSet::FREE;
+                self.constraints.add_all_perms(rv_lty.label, perms);
+
+                // unify inner-most pointer types
+                self.do_equivalence_nested(pl_lty, rv_lty);
+            }
+            Callee::Free => {
+                let in_ptr = args[0]
+                    .place()
+                    .expect("Casts to/from null pointer are not yet supported");
+                let in_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                    loc,
+                    CVoidCastDirection::To,
+                    in_ptr,
+                );
+                self.visit_place(destination, Mutability::Mut);
+                assert!(args.len() == 1);
+
+                let rv_lty = self.acx.type_of(in_ptr);
+                let perms = PermissionSet::FREE;
+                self.constraints.add_all_perms(rv_lty.label, perms);
+            }
+
+            Callee::IsNull => {
+                assert!(args.len() == 1);
+                self.visit_operand(&args[0]);
+            }
         }
     }
 
