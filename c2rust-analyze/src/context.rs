@@ -19,6 +19,13 @@ use std::collections::HashMap;
 use std::ops::Index;
 
 bitflags! {
+    /// Permissions are created such that we allow dropping permissions in any assignment.
+    /// This means removing a permission from a pointer's [`PermissionSet`]
+    /// must allow the pointer to take on more values, not restrict it to fewer values.
+    ///
+    /// That's why, for example [`UNIQUE`] is named as such,
+    /// as opposed to something like `ALIASED` (a pointer capability),
+    /// as removing [`UNIQUE`] (`&mut`) allows more values to be taken on (`&`).
     #[derive(Default)]
     pub struct PermissionSet: u16 {
         /// The value(s) accessible through this pointer can be read.
