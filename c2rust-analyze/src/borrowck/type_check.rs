@@ -37,7 +37,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         )
     }
 
-    pub fn visit_place(&mut self, pl: Place<'tcx>) -> LTy<'tcx> {
+    pub fn visit_place(&self, pl: Place<'tcx>) -> LTy<'tcx> {
         let mut lty: LTy = self.local_ltys[pl.local.index()];
 
         let mut adt_func = |base_lty: LTy<'tcx>, base_adt_def: AdtDef, field: Field| {
@@ -160,7 +160,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         lty
     }
 
-    pub fn visit_operand(&mut self, op: &Operand<'tcx>) -> LTy<'tcx> {
+    pub fn visit_operand(&self, op: &Operand<'tcx>) -> LTy<'tcx> {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => self.visit_place(pl),
             Operand::Constant(ref c) => {
@@ -282,12 +282,101 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 */
                 Label::default()
             }),
-            Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
+            Rvalue::Aggregate(ref kind, ref ops) => match **kind {
                 AggregateKind::Array(..) => {
                     let ty = rv.ty(self.local_decls, *self.ltcx);
                     // TODO: create fresh origins for all pointers in `ty`, and generate subset
                     // relations between the regions of the array and the regions of its elements
                     self.ltcx.label(ty, &mut |_ty| Label::default())
+                }
+                AggregateKind::Adt(adt_did, ..) => {
+                    /*
+                        Generic types are not yet supported because of situations such as the
+                        following:
+
+                        ```rust
+                        struct S<T> {
+                            s: T
+                        };
+
+                        fn foo() {
+                            let s = S<&'1 u32> { s: &'1 0 }
+                        }
+                        ```
+
+                        Here the `FieldMetadata` for `S:s` has an empty `origin_args` slice
+                        because these are gathered before the lifetime parameters are resolved
+                        by traversing the struct definition. Additionally, the label for the
+                        `Operand` corresponding to `s` has an `Origin('1)` (because it is
+                        a reference). Because the `OriginArgs` are missing for the field, the
+                        labeled types for the field operand and for the field declaration do not
+                        have the same shape, and so `do_assign` cannot create subset relations.
+
+                        Additionally, the regions referenced within the operand types are
+                        erased, and so it also would not be possible to know which ADT
+                        OriginParams those correspond to because there would need to be a
+                        non-erased region to compare with.
+                    */
+                    assert_eq!(expect_ty.args.len(), 0, "Generic types not yet supported.");
+
+                    // Replace the `Origin`s in the `expect_ty` (LHS) with the Origins of the fields provided
+                    // in the RHS, specified in the labeled type of each `op` in `Aggregate(_, ops)`. This
+                    // is done by matching the `OriginArg`s of each field with the corresponding `OriginParam`
+                    // in the ADT definition and then making the aforementioned substitution
+                    let mut param_to_origin_map = HashMap::new();
+                    let adt_def = self.tcx.adt_def(adt_did);
+                    let base_metadata = &self.adt_metadata.table[&adt_did];
+                    for (op, field) in ops.iter().zip(adt_def.all_fields()) {
+                        let field_metadata = &base_metadata.field_info[&field.did];
+                        let op_label = self.visit_operand(op);
+                        eprintln!("field op: {op_label:?}");
+                        for (adt_origin_param, _) in expect_ty.label.origin_params {
+                            // check the Origins of fields that are references or pointers
+                            if let (Some(o), &[field_origin_arg, ..]) =
+                                (op_label.label.origin, field_metadata.origin_args.label)
+                            {
+                                if *adt_origin_param
+                                    == OriginParam::try_from(&field_origin_arg).unwrap()
+                                {
+                                    param_to_origin_map.insert(*adt_origin_param, o);
+                                }
+                            }
+
+                            // check the Origin parameters of fields that may have type arguments
+                            for (field_origin_arg, (op, o)) in field_metadata
+                                .origin_args
+                                .label
+                                .iter()
+                                .zip(op_label.label.origin_params)
+                            {
+                                let field_origin_param =
+                                    OriginParam::try_from(field_origin_arg).unwrap();
+                                if *op == field_origin_param {
+                                    param_to_origin_map.insert(*adt_origin_param, *o);
+                                }
+                            }
+                        }
+                    }
+
+                    let relabeled = self.ltcx.relabel(expect_ty, &mut |lty| {
+                        let new_origin_params = lty.label.origin_params.iter().map(
+                            |(adt_origin_param, _adt_origin)| {
+                                (*adt_origin_param, param_to_origin_map[adt_origin_param])
+                            },
+                        );
+
+                        let new_origin_params: &[_] =
+                            self.ltcx.arena().alloc_from_iter(new_origin_params);
+
+                        Label {
+                            origin: None, // this is an Aggregate type, only references or pointers can have an `Origin`
+                            origin_params: new_origin_params,
+                            perm: expect_ty.label.perm,
+                        }
+                    });
+
+                    eprintln!("Aggregate literal label: {relabeled:?}");
+                    relabeled
                 }
                 _ => panic!("unsupported rvalue AggregateKind {:?}", kind),
             },

@@ -709,6 +709,7 @@ fn describe_local(tcx: TyCtxt, decl: &LocalDecl) -> String {
             }
         }
     }
+    eprintln!("{decl:?}");
     describe_span(tcx, span)
 }
 

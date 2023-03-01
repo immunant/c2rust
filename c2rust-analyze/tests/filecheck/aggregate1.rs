@@ -1,3 +1,21 @@
+struct S<'t> {
+    y: u32,
+    px: *const u32,
+    rx: &'t u32,
+}
+
+pub fn aggregate() {
+    // CHECK-DAG: field op{{.*}}Some(Origin([[P_U32_ORIGIN:[0-9]+]])){{.*}}*const u32
+    // CHECK-DAG: field op{{.*}}Some(Origin([[R_U32_ORIGIN:[0-9]+]])){{.*}}&u32
+    // CHECK-DAG: Aggregate literal label: Label{{.*}}origin_params: [('t, Origin([[R_U32_ORIGIN]])), ('h0, Origin([[P_U32_ORIGIN]]))]{{.*}}#S[]
+    let x = 0;
+    let i = S {
+        y: x,
+        px: std::ptr::addr_of!(x),
+        rx: &x,
+    };
+}
+
 // CHECK-LABEL: final labeling for "aggregate1_array"
 // CHECK-DAG: ([[@LINE+1]]: p): &std::cell::Cell<i32>
 pub unsafe fn aggregate1_array(p: *mut i32) {
@@ -17,20 +35,4 @@ pub unsafe fn aggregate1_array1(p: *mut i32) {
 pub unsafe fn repeat() {
     let x = 22;
     let _buf: [u32; 22] = [x; 22];
-}
-
-struct S<T> {
-    y: u32,
-    x: T,
-    px: *const T,
-}
-
-pub fn aggregate() {
-    let x = 0;
-    let p: u16 = 0;
-    let i = S {
-        y: x,
-        x: p,
-        px: std::ptr::addr_of!(p),
-    };
 }
