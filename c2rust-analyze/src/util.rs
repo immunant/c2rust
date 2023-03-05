@@ -1,5 +1,4 @@
 use crate::labeled_ty::LabeledTy;
-use crate::trivial::IsTrivial;
 use rustc_const_eval::interpret::Scalar;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
@@ -74,16 +73,15 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
 
 #[derive(Debug)]
 pub enum Callee<'tcx> {
-    /// A [`Trivial`] library function is one that has no effect on pointer permissions in its caller.
-    ///
-    /// Thus, a [`Trivial`] function call requires no special handling.
-    ///
-    /// A function is [`Trivial`] if all of its argument and return types
-    /// are themselves [`Trivial`] (see [`TyWithSafety::is_trivial`]).
-    ///
-    /// [`Trivial`]: Self::Trivial
-    /// [`TyWithSafety::is_trivial`]: crate::trivial::TyWithSafety::is_trivial
-    Trivial,
+    /// A function that:
+    /// * is in the current, local crate
+    /// * is statically-known
+    /// * has an accessible definition
+    /// * is non-builtin
+    LocalDef {
+        def_id: DefId,
+        substs: SubstsRef<'tcx>,
+    },
 
     /// A function whose definition is not known.
     ///
@@ -103,17 +101,6 @@ pub enum Callee<'tcx> {
     /// as definitions of functions from other crates are not available,
     /// and we definitely can't rewrite them at all.
     UnknownDef { ty: Ty<'tcx> },
-
-    /// A function that:
-    /// * is in the current, local crate
-    /// * is statically-known
-    /// * has an accessible definition
-    /// * is non-trivial
-    /// * is non-builtin
-    LocalDef {
-        def_id: DefId,
-        substs: SubstsRef<'tcx>,
-    },
 
     /// `<*mut T>::offset` or `<*const T>::offset`.
     PtrOffset {
@@ -150,30 +137,15 @@ pub enum Callee<'tcx> {
 }
 
 pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
-    let is_trivial = || {
-        let is_trivial = ty.fn_sig(tcx).is_trivial(tcx);
-        eprintln!("{ty:?} is trivial: {is_trivial}");
-        is_trivial
-    };
-
     match *ty.kind() {
         ty::FnDef(did, substs) => {
-            if is_trivial() {
-                Callee::Trivial
-            } else if let Some(callee) = builtin_callee(tcx, did) {
+            if let Some(callee) = builtin_callee(tcx, did) {
                 callee
-            } else if !did.is_local() || tcx.def_kind(tcx.parent(did)) == DefKind::ForeignMod {
-                Callee::UnknownDef { ty }
-            } else {
+            } else if did.is_local() && tcx.def_kind(tcx.parent(did)) != DefKind::ForeignMod {
                 Callee::LocalDef {
                     def_id: did,
                     substs,
                 }
-            }
-        }
-        ty::FnPtr(..) => {
-            if is_trivial() {
-                Callee::Trivial
             } else {
                 Callee::UnknownDef { ty }
             }

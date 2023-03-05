@@ -52,6 +52,14 @@ bitflags! {
     }
 }
 
+impl PermissionSet {
+    /// Return the [`PermissionSet`] for a pessimistic black box in which anything can happen.
+    #[allow(dead_code)] // TODO will be used
+    pub fn pessimistic() -> Self {
+        Self::READ | Self::WRITE | Self::OFFSET_ADD | Self::OFFSET_SUB | Self::FREE
+    }
+}
+
 bitflags! {
     /// Additional flags describing a given pointer type.  These are mainly derived from
     /// `PermissionSet`, but don't follow the normal subtyping rules and propagation algorithm.

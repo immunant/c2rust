@@ -454,11 +454,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let callee = ty_callee(*self.ltcx, func_ty);
                 eprintln!("callee = {callee:?}");
                 match callee {
-                    Callee::Trivial => {}
-                    Callee::UnknownDef { .. } => {
+                    Callee::LocalDef { .. } => {
                         // TODO
                     }
-                    Callee::LocalDef { .. } => {
+                    Callee::UnknownDef { .. } => {
                         // TODO
                     }
                     Callee::PtrOffset { .. } => {

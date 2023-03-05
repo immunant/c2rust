@@ -1,6 +1,7 @@
 use super::DataflowConstraints;
 use crate::c_void_casts::CVoidCastDirection;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
+use crate::ptr_effects::PtrEffects;
 use crate::util::{describe_rvalue, ty_callee, Callee, RvalueDesc};
 use assert_matches::assert_matches;
 use rustc_hir::def_id::DefId;
@@ -310,13 +311,19 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         let callee = ty_callee(tcx, func);
         eprintln!("callee = {callee:?}");
         match callee {
-            Callee::Trivial => {}
-            Callee::UnknownDef { .. } => {
-                log::error!("TODO: visit Callee::{callee:?}");
-            }
-
             Callee::LocalDef { def_id, substs } => {
                 self.visit_local_call(def_id, substs, args, destination);
+            }
+
+            Callee::UnknownDef { ty } => {
+                let ptr_effects = PtrEffects::of_call(tcx, ty);
+                log::info!("{ty:?} has PtrEffects::{ptr_effects:?}");
+                match ptr_effects {
+                    PtrEffects::None => {}
+                    _ => {
+                        log::error!("TODO: visit Callee::{callee:?} w/ PtrEffects::{ptr_effects:?}")
+                    }
+                }
             }
 
             Callee::PtrOffset { .. } => {

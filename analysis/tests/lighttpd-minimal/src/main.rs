@@ -1302,17 +1302,17 @@ unsafe extern "C" fn connection_close(mut con: *mut connection) {
     fdevent_fdnode_event_del((*srv).ev, (*con).fdn);
     fdevent_unregister((*srv).ev, (*con).fd);
     // (*con).fdn = 0 as *mut fdnode;
-    if 0 as libc::c_int == close((*con).fd) {
-        (*srv).cur_fds -= 1;
-    } else {
-        //     log_perror(
-        //         (*r).conf.errh,
-        //         b"src/connections.c\0" as *const u8 as *const libc::c_char,
-        //         101 as libc::c_int as libc::c_uint,
-        //         b"(warning) close: %d\0" as *const u8 as *const libc::c_char,
-        //         (*con).fd,
-        //     );
-    }
+    // if 0 as libc::c_int == close((*con).fd) {
+    (*srv).cur_fds -= 1;
+    // } else {
+    //     log_perror(
+    //         (*r).conf.errh,
+    //         b"src/connections.c\0" as *const u8 as *const libc::c_char,
+    //         101 as libc::c_int as libc::c_uint,
+    //         b"(warning) close: %d\0" as *const u8 as *const libc::c_char,
+    //         (*con).fd,
+    //     );
+    // }
     if (*r).conf.log_state_handling != 0 {
         // log_error(
         //     (*r).conf.errh,
