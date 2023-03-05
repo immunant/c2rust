@@ -238,36 +238,6 @@ fn builtin_callee(tcx: TyCtxt, did: DefId) -> Option<Callee> {
             })
         }
 
-        "abort" | "exit" => {
-            // `std::process::abort` and `std::process::exit`
-            let path = tcx.def_path(did);
-            if tcx.crate_name(path.krate).as_str() != "std" {
-                return None;
-            }
-            if path.data.len() != 2 {
-                return None;
-            }
-            if path.data[0].to_string() != "process" {
-                return None;
-            }
-            Some(Callee::Trivial)
-        }
-
-        "size_of" => {
-            // `core::mem::size_of`
-            let path = tcx.def_path(did);
-            if tcx.crate_name(path.krate).as_str() != "core" {
-                return None;
-            }
-            if path.data.len() != 2 {
-                return None;
-            }
-            if path.data[0].to_string() != "mem" {
-                return None;
-            }
-            Some(Callee::Trivial)
-        }
-
         "malloc" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Malloc);
