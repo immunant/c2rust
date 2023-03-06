@@ -585,6 +585,8 @@ class TranslateASTVisitor final
             Expr::EvalResult eval_result;
 #endif // CLANG_VERSION_MAJOR
             bool hasValue = E->EvaluateAsInt(eval_result, *Context);
+            if (!hasValue)
+              return false;
 #if CLANG_VERSION_MAJOR < 8
             constant = eval_result;
 #else
