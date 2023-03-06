@@ -667,9 +667,8 @@ impl<'c> Translation<'c> {
         let mem = mk().path_expr(vec!["libc", name]);
         let args = self.convert_exprs(ctx.used(), args)?;
         args.and_then(|args| {
-            let [dst, c, len]: [_; 3] = args
-                .try_into()
-                .map_err(|_| "`convert_libc_fns` must have exactly 3 arguments: [dst, c, len]")?;
+            if args.len() == 3 {
+            let [dst, c, len]: [_; 3] = args.try_into().map_err(|_|"`convert_libc_fns` was unable to convert 3 argument function")?;
             let size_t = mk().path_ty(vec!["libc", "size_t"]);
             let len1 = mk().cast_expr(len, size_t);
             let mem_expr = mk().call_expr(mem, vec![dst, c, len1]);
@@ -682,6 +681,20 @@ impl<'c> Translation<'c> {
                     self.panic_or_err(&format!("__builtin_{} not used", name)),
                 ))
             }
+        } else if args.len() == 2 {
+            let [dst, c]: [_; 2] = args.try_into().map_err(|_|"`convert_libc_fns` was unable to convert 2 argument function")?;
+            let mem_expr = mk().call_expr(mem, vec![dst, c]);
+            if ctx.is_used() {
+                Ok(WithStmts::new_val(mem_expr))
+            } else {
+                Ok(WithStmts::new(
+                    vec![mk().semi_stmt(mem_expr)],
+                    self.panic_or_err(&format!("__builtin_{} not used", name)),
+                ))
+            }
+        } else {
+           Err("`convert_libc_fns` must have exactly 2 or 3 arguments: [dst, c] or [dst, c, len]".into())
+        }
         })
     }
 }
