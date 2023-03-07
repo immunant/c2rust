@@ -709,12 +709,15 @@ fn describe_local(tcx: TyCtxt, decl: &LocalDecl) -> String {
             }
         }
     }
-    eprintln!("{decl:?}");
     describe_span(tcx, span)
 }
 
 fn describe_span(tcx: TyCtxt, span: Span) -> String {
-    let s = tcx.sess.source_map().span_to_snippet(span).unwrap();
+    let s = tcx
+        .sess
+        .source_map()
+        .span_to_snippet(span.source_callsite())
+        .unwrap();
     let s = {
         let mut s2 = String::new();
         for word in s.split_ascii_whitespace() {
