@@ -1,18 +1,21 @@
-struct S<'t> {
+struct S<'a> {
     y: u32,
     px: *const u32,
-    rx: &'t u32,
+    rx: &'a u32,
+    qx: &'a u32,
 }
 
 pub fn aggregate() {
     // CHECK-DAG: field op{{.*}}Some(Origin([[P_U32_ORIGIN:[0-9]+]])){{.*}}*const u32
     // CHECK-DAG: field op{{.*}}Some(Origin([[R_U32_ORIGIN:[0-9]+]])){{.*}}&u32
-    // CHECK-DAG: Aggregate literal label: Label{{.*}}origin_params: [('t, Origin([[R_U32_ORIGIN]])), ('h0, Origin([[P_U32_ORIGIN]]))]{{.*}}#S[]
+    // CHECK-DAG: Aggregate literal label: Label{{.*}}origin_params: [('a, Origin([[R_U32_ORIGIN]])), ('h0, Origin([[P_U32_ORIGIN]]))]{{.*}}#S[]
     let x = 0;
+    let ref_x = &x;
     let i = S {
         y: x,
         px: std::ptr::addr_of!(x),
-        rx: &x,
+        rx: ref_x,
+        qx: ref_x
     };
 }
 

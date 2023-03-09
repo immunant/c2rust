@@ -37,18 +37,20 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         )
     }
 
-    pub fn visit_place(&self, pl: Place<'tcx>) -> LTy<'tcx> {
-        let mut lty: LTy = self.local_ltys[pl.local.index()];
+    pub fn projection_lty(
+        &self,
+        base_lty: LTy<'tcx>,
+        base_adt_def: AdtDef,
+        field: Field,
+    ) -> LTy<'tcx> {
+        let base_origin_param_map: IndexMap<OriginParam, Origin> =
+            IndexMap::from_iter(base_lty.label.origin_params.to_vec());
+        let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field.index()];
+        let perm = self.field_permissions[&field_def.did];
+        let base_metadata = &self.adt_metadata.table[&base_adt_def.did()];
+        let field_metadata = &base_metadata.field_info[&field_def.did];
 
-        let mut adt_func = |base_lty: LTy<'tcx>, base_adt_def: AdtDef, field: Field| {
-            let base_origin_param_map: IndexMap<OriginParam, Origin> =
-                IndexMap::from_iter(base_lty.label.origin_params.to_vec());
-            let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field.index()];
-            let perm = self.field_permissions[&field_def.did];
-            let base_metadata = &self.adt_metadata.table[&base_adt_def.did()];
-            let field_metadata = &base_metadata.field_info[&field_def.did];
-
-            self.ltcx.relabel(
+        self.ltcx.relabel(
                 field_metadata.origin_args,
                 &mut |flty| match flty.kind() {
                     TyKind::Ref(..) | TyKind::RawPtr(..) => {
@@ -151,10 +153,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                 },
             )
-        };
+    }
 
+    pub fn visit_place(&self, pl: Place<'tcx>) -> LTy<'tcx> {
+        let mut lty: LTy = self.local_ltys[pl.local.index()];
         for proj in pl.projection {
-            lty = util::lty_project(lty, &proj, &mut adt_func);
+            lty = util::lty_project(lty, &proj, &mut |lty, adt, f| {
+                self.projection_lty(lty, adt, f)
+            });
         }
         eprintln!("final label for {pl:?}: {:?}", lty);
         lty
@@ -327,14 +333,17 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     let adt_def = self.tcx.adt_def(adt_did);
                     let base_metadata = &self.adt_metadata.table[&adt_did];
 
-                    for (op, field) in ops.iter().zip(adt_def.all_fields()) {
+                    for (fid, (op, field)) in ops.iter().zip(adt_def.all_fields()).enumerate() {
+                        let field_lty = self.projection_lty(expect_ty, adt_def, Field::from(fid));
+                        let op_lty = self.visit_operand(op);
+                        self.do_assign(field_lty, op_lty);
+
                         let field_metadata = &base_metadata.field_info[&field.did];
-                        let op_label = self.visit_operand(op);
-                        eprintln!("field op: {op_label:?}");
+                        eprintln!("field op: {op_lty:?}");
                         for (adt_origin_param, _) in expect_ty.label.origin_params {
                             // check the Origins of fields that are references or pointers
                             if let (Some(o), &[field_origin_arg, ..]) =
-                                (op_label.label.origin, field_metadata.origin_args.label)
+                                (op_lty.label.origin, field_metadata.origin_args.label)
                             {
                                 if *adt_origin_param
                                     == OriginParam::try_from(&field_origin_arg).unwrap()
@@ -348,7 +357,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                                 .origin_args
                                 .label
                                 .iter()
-                                .zip(op_label.label.origin_params)
+                                .zip(op_lty.label.origin_params)
                             {
                                 let field_origin_param =
                                     OriginParam::try_from(field_origin_arg).unwrap();
