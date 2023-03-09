@@ -326,6 +326,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     let mut param_to_origin_map = HashMap::new();
                     let adt_def = self.tcx.adt_def(adt_did);
                     let base_metadata = &self.adt_metadata.table[&adt_did];
+
                     for (op, field) in ops.iter().zip(adt_def.all_fields()) {
                         let field_metadata = &base_metadata.field_info[&field.did];
                         let op_label = self.visit_operand(op);

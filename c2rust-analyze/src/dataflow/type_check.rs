@@ -173,7 +173,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             self.do_assign(elem_lty, op_lty);
                         }
                     }
-                    AggregateKind::Adt(adt_did, ..) => {
+                    AggregateKind::Adt(adt_did, _, substs, ..) => {
                         let base_adt_def = self.acx.tcx().adt_def(adt_did);
                         let fields = &base_adt_def.non_enum_variant().fields;
                         for (field, op) in fields.iter().zip(ops.iter()) {
@@ -181,9 +181,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             let unresolved_field_lty = self.acx.gacx.field_tys[&field.did];
                             // resolve the generic type arguments in `field_lty` by referencing the `Ty` of `op`
                             let resolved_field_lty =
-                                self.acx
-                                    .lcx()
-                                    .subst_full(unresolved_field_lty, op_lty, lty.args);
+                                self.acx.lcx().subst(unresolved_field_lty, substs);
                             // Pseudo-assign from each operand to the element type of the field.
                             self.do_assign(resolved_field_lty, op_lty);
                         }

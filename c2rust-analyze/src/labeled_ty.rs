@@ -4,7 +4,7 @@
 //! arena as the underlying `Ty`s.
 use rustc_arena::DroplessArena;
 use rustc_middle::ty::subst::{GenericArg, GenericArgKind};
-use rustc_middle::ty::{Ty, TyCtxt, TyKind, TypeAndMut};
+use rustc_middle::ty::{EarlyBinder, Subst, SubstsRef, Ty, TyCtxt, TyKind, TypeAndMut};
 use std::convert::TryInto;
 use std::fmt;
 use std::marker::PhantomData;
@@ -226,69 +226,26 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
     ///
     /// This produces a [`LabeledTy`] with the right structure and also substitutes the
     /// underlying [`Ty`]s
-    pub fn subst_full(
-        &self,
-        lty1: LabeledTy<'tcx, L>,
-        lty2: LabeledTy<'tcx, L>,
-        substs: &[LabeledTy<'tcx, L>],
-    ) -> LabeledTy<'tcx, L> {
-        if let TyKind::Param(ref ty) = lty1.ty.kind() {
-            if let Some(p) = substs.get(ty.index as usize) {
-                return p;
-            }
-        }
+    pub fn subst(&self, lty: LabeledTy<'tcx, L>, substs: SubstsRef<'tcx>) -> LabeledTy<'tcx, L> {
+        let substituted_ty = EarlyBinder(lty.ty).subst(self.tcx, substs);
 
-        self.mk(
-            lty2.ty,
-            self.subst_slice_full(lty1.args, lty2.args, substs),
-            lty2.label,
-        )
-    }
-
-    /// Substitute arguments in multiple labeled types.
-    pub fn subst_slice_full(
-        &self,
-        ltys1: &[LabeledTy<'tcx, L>],
-        ltys2: &[LabeledTy<'tcx, L>],
-        substs: &[LabeledTy<'tcx, L>],
-    ) -> &'tcx [LabeledTy<'tcx, L>] {
-        self.mk_slice(
-            &ltys1
-                .iter()
-                .zip(ltys2.iter())
-                .map(|(lty1, lty2)| self.subst_full(lty1, lty2, substs))
-                .collect::<Vec<_>>(),
-        )
-    }
-
-    /// Substitute in arguments for any type parameter references (`Param`) in a labeled type.
-    /// Panics if `lty` contains a reference to a type parameter that is past the end of `substs`
-    /// (usually this means the caller is providing the wrong list of type arguments as `substs`).
-    ///
-    /// TODO: This produces a `LabeledTy` with the right structure, but doesn't actually do
-    /// substitution on the underlying `Ty`s!  This means if you substitute `u32` for `T`, you can
-    /// end up with a `LabeledTy` whose `ty` is `S<T>`, but whose args are `[u32]`.  By some
-    /// miracle, this hasn't broken anything yet, but we may need to fix it eventually.
-    #[allow(dead_code)]
-    pub fn subst(
-        &self,
-        lty: LabeledTy<'tcx, L>,
-        substs: &[LabeledTy<'tcx, L>],
-    ) -> LabeledTy<'tcx, L> {
         if let TyKind::Param(ref ty) = lty.ty.kind() {
-            if let Some(p) = substs.get(ty.index as usize) {
-                return p;
+            if substs.get(ty.index as usize).is_some() {
+                return self.mk(substituted_ty, &[], lty.label);
             }
         }
 
-        self.mk(lty.ty, self.subst_slice(lty.args, substs), lty.label)
+        let substituted_args = self.subst_slice(lty.args, substs);
+        debug_assert_eq!(substituted_args.len(), lty.args.len());
+
+        self.mk(substituted_ty, substituted_args, lty.label)
     }
 
     /// Substitute arguments in multiple labeled types.
     pub fn subst_slice(
         &self,
         ltys: &[LabeledTy<'tcx, L>],
-        substs: &[LabeledTy<'tcx, L>],
+        substs: SubstsRef<'tcx>,
     ) -> &'tcx [LabeledTy<'tcx, L>] {
         self.mk_slice(
             &ltys
