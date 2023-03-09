@@ -358,6 +358,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         }
                     }
 
+                    // Because we don't support generics this is just a way to edit the top-level
+                    // label of the `expect_ty` ADT
                     let relabeled = self.ltcx.relabel(expect_ty, &mut |lty| {
                         let new_origin_params = lty.label.origin_params.iter().map(
                             |(adt_origin_param, _adt_origin)| {
