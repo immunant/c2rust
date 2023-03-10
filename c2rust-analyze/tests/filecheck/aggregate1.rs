@@ -6,8 +6,8 @@ struct S<'a> {
 }
 
 pub fn aggregate() {
-    // CHECK-DAG: pseudo-assigning fields Label { origin: Some(Origin({{.*}})){{.*}}&u32{{.*}}= Label { origin: Some(Origin([[R_U32_ORIGIN:[0-9]+]])){{.*}}}#&'a u32
-    // CHECK-DAG: pseudo-assigning fields Label { origin: Some(Origin({{.*}})){{.*}}&u32{{.*}}= Label { origin: Some(Origin([[R_U32_ORIGIN:[0-9]+]])){{.*}}}#&'a u32
+    // CHECK-DAG: pseudo-assigning fields Label { origin: Some(Origin([[R_U32_ORIGIN:[0-9]+]])){{.*}}}#&'a u32{{.*}}= Label { origin: Some(Origin({{.*}})){{.*}}&u32
+    // CHECK-DAG: pseudo-assigning fields Label { origin: Some(Origin([[R_U32_ORIGIN:[0-9]+]])){{.*}}}#&'a u32{{.*}}= Label { origin: Some(Origin({{.*}})){{.*}}&u32
     // CHECK-DAG: Aggregate literal label: Label{{.*}}origin_params: [('a, Origin([[R_U32_ORIGIN]])), ('h0, Origin({{.*}})]{{.*}}#S[]
     let x = 0;
     let ref_x = &x;

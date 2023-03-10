@@ -329,7 +329,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     for (fid, op) in ops.iter().enumerate() {
                         let field_lty = self.projection_lty(expect_ty, adt_def, Field::from(fid));
                         let op_lty = self.visit_operand(op);
-                        eprintln!("pseudo-assigning fields {op_lty:?} = {field_lty:?}");
+                        eprintln!("pseudo-assigning fields {field_lty:?} = {op_lty:?}");
                         self.do_assign(field_lty, op_lty);
                     }
 
