@@ -4,7 +4,7 @@
 //! arena as the underlying `Ty`s.
 use rustc_arena::DroplessArena;
 use rustc_middle::ty::subst::{GenericArg, GenericArgKind};
-use rustc_middle::ty::{EarlyBinder, Subst, SubstsRef, Ty, TyCtxt, TyKind, TypeAndMut};
+use rustc_middle::ty::{EarlyBinder, Subst, Ty, TyCtxt, TyKind, TypeAndMut};
 use std::convert::TryInto;
 use std::fmt;
 use std::marker::PhantomData;
@@ -226,26 +226,38 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
     ///
     /// This produces a [`LabeledTy`] with the right structure and also substitutes the
     /// underlying [`Ty`]s
-    pub fn subst(&self, lty: LabeledTy<'tcx, L>, substs: SubstsRef<'tcx>) -> LabeledTy<'tcx, L> {
-        let substituted_ty = EarlyBinder(lty.ty).subst(self.tcx, substs);
-
+    pub fn subst(
+        &self,
+        lty: LabeledTy<'tcx, L>,
+        substs: &[LabeledTy<'tcx, L>],
+    ) -> LabeledTy<'tcx, L> {
         if let TyKind::Param(ref ty) = lty.ty.kind() {
-            if substs.get(ty.index as usize).is_some() {
-                return self.mk(substituted_ty, &[], lty.label);
+            if let Some(p) = substs.get(ty.index as usize) {
+                let subs: Vec<_> = substs
+                    .iter()
+                    .filter_map(|lty| {
+                        if let TyKind::Param(..) = lty.ty.kind() {
+                            return Some(GenericArg::from(lty.ty));
+                        }
+
+                        None
+                    })
+                    .collect();
+                let substituted_ty =
+                    EarlyBinder(lty.ty).subst(self.tcx, self.tcx.mk_substs_trait(lty.ty, &subs));
+                assert_eq!(p.ty, substituted_ty);
+
+                return p;
             }
         }
-
-        let substituted_args = self.subst_slice(lty.args, substs);
-        debug_assert_eq!(substituted_args.len(), lty.args.len());
-
-        self.mk(substituted_ty, substituted_args, lty.label)
+        self.mk(lty.ty, self.subst_slice(lty.args, substs), lty.label)
     }
 
     /// Substitute arguments in multiple labeled types.
     pub fn subst_slice(
         &self,
         ltys: &[LabeledTy<'tcx, L>],
-        substs: SubstsRef<'tcx>,
+        substs: &[LabeledTy<'tcx, L>],
     ) -> &'tcx [LabeledTy<'tcx, L>] {
         self.mk_slice(
             &ltys
