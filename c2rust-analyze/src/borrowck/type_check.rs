@@ -325,70 +325,16 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     */
                     assert_eq!(expect_ty.args.len(), 0, "Generic types not yet supported.");
 
-                    // Replace the `Origin`s in the `expect_ty` (LHS) with the Origins of the fields provided
-                    // in the RHS, specified in the labeled type of each `op` in `Aggregate(_, ops)`. This
-                    // is done by matching the `OriginArg`s of each field with the corresponding `OriginParam`
-                    // in the ADT definition and then making the aforementioned substitution
-                    let mut param_to_origin_map = HashMap::new();
                     let adt_def = self.tcx.adt_def(adt_did);
-                    let base_metadata = &self.adt_metadata.table[&adt_did];
-
-                    for (fid, (op, field)) in ops.iter().zip(adt_def.all_fields()).enumerate() {
+                    for (fid, op) in ops.iter().enumerate() {
                         let field_lty = self.projection_lty(expect_ty, adt_def, Field::from(fid));
                         let op_lty = self.visit_operand(op);
+                        eprintln!("pseudo-assigning fields {op_lty:?} = {field_lty:?}");
                         self.do_assign(field_lty, op_lty);
-
-                        let field_metadata = &base_metadata.field_info[&field.did];
-                        eprintln!("field op: {op_lty:?}");
-                        for (adt_origin_param, _) in expect_ty.label.origin_params {
-                            // check the Origins of fields that are references or pointers
-                            if let (Some(o), &[field_origin_arg, ..]) =
-                                (op_lty.label.origin, field_metadata.origin_args.label)
-                            {
-                                if *adt_origin_param
-                                    == OriginParam::try_from(&field_origin_arg).unwrap()
-                                {
-                                    param_to_origin_map.insert(*adt_origin_param, o);
-                                }
-                            }
-
-                            // check the Origin parameters of fields that may have type arguments
-                            for (field_origin_arg, (op, o)) in field_metadata
-                                .origin_args
-                                .label
-                                .iter()
-                                .zip(op_lty.label.origin_params)
-                            {
-                                let field_origin_param =
-                                    OriginParam::try_from(field_origin_arg).unwrap();
-                                if *op == field_origin_param {
-                                    param_to_origin_map.insert(*adt_origin_param, *o);
-                                }
-                            }
-                        }
                     }
 
-                    // Because we don't support generics this is just a way to edit the top-level
-                    // label of the `expect_ty` ADT
-                    let relabeled = self.ltcx.relabel(expect_ty, &mut |lty| {
-                        let new_origin_params = lty.label.origin_params.iter().map(
-                            |(adt_origin_param, _adt_origin)| {
-                                (*adt_origin_param, param_to_origin_map[adt_origin_param])
-                            },
-                        );
-
-                        let new_origin_params: &[_] =
-                            self.ltcx.arena().alloc_from_iter(new_origin_params);
-
-                        Label {
-                            origin: None, // this is an Aggregate type, only references or pointers can have an `Origin`
-                            origin_params: new_origin_params,
-                            perm: expect_ty.label.perm,
-                        }
-                    });
-
-                    eprintln!("Aggregate literal label: {relabeled:?}");
-                    relabeled
+                    eprintln!("Aggregate literal label: {expect_ty:?}");
+                    expect_ty
                 }
                 _ => panic!("unsupported rvalue AggregateKind {:?}", kind),
             },

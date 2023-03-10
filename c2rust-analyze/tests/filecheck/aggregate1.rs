@@ -6,16 +6,16 @@ struct S<'a> {
 }
 
 pub fn aggregate() {
-    // CHECK-DAG: field op{{.*}}Some(Origin([[P_U32_ORIGIN:[0-9]+]])){{.*}}*const u32
-    // CHECK-DAG: field op{{.*}}Some(Origin([[R_U32_ORIGIN:[0-9]+]])){{.*}}&u32
-    // CHECK-DAG: Aggregate literal label: Label{{.*}}origin_params: [('a, Origin([[R_U32_ORIGIN]])), ('h0, Origin([[P_U32_ORIGIN]]))]{{.*}}#S[]
+    // CHECK-DAG: pseudo-assigning fields Label { origin: Some(Origin({{.*}})){{.*}}&u32{{.*}}= Label { origin: Some(Origin([[R_U32_ORIGIN:[0-9]+]])){{.*}}}#&'a u32
+    // CHECK-DAG: pseudo-assigning fields Label { origin: Some(Origin({{.*}})){{.*}}&u32{{.*}}= Label { origin: Some(Origin([[R_U32_ORIGIN:[0-9]+]])){{.*}}}#&'a u32
+    // CHECK-DAG: Aggregate literal label: Label{{.*}}origin_params: [('a, Origin([[R_U32_ORIGIN]])), ('h0, Origin({{.*}})]{{.*}}#S[]
     let x = 0;
     let ref_x = &x;
     let i = S {
         y: x,
         px: std::ptr::addr_of!(x),
         rx: ref_x,
-        qx: ref_x
+        qx: ref_x,
     };
 }
 
