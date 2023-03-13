@@ -37,12 +37,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         )
     }
 
-    pub fn field_lty(
-        &self,
-        base_lty: LTy<'tcx>,
-        base_adt_def: AdtDef,
-        field: Field,
-    ) -> LTy<'tcx> {
+    pub fn field_lty(&self, base_lty: LTy<'tcx>, base_adt_def: AdtDef, field: Field) -> LTy<'tcx> {
         let base_origin_param_map: IndexMap<OriginParam, Origin> =
             IndexMap::from_iter(base_lty.label.origin_params.to_vec());
         let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field.index()];
@@ -158,9 +153,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     pub fn visit_place(&self, pl: Place<'tcx>) -> LTy<'tcx> {
         let mut lty: LTy = self.local_ltys[pl.local.index()];
         for proj in pl.projection {
-            lty = util::lty_project(lty, &proj, &mut |lty, adt, f| {
-                self.field_lty(lty, adt, f)
-            });
+            lty = util::lty_project(lty, &proj, &mut |lty, adt, f| self.field_lty(lty, adt, f));
         }
         eprintln!("final label for {pl:?}: {:?}", lty);
         lty
