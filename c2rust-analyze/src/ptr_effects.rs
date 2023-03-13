@@ -80,20 +80,31 @@ impl PtrEffects {
     ///    Otherwise, we return [`Self::All`],
     ///    as other functions and globals can be accessed through FFI.
     ///
-    /// 3. If any argument and return types are directly raw pointers,
+    /// 3. Otherwise, the [`FnSig`] is [safe], meaning that it cannot be `extern`.
+    ///    If it were a [safe] crate-local function,
+    ///    then it would've been handled as a [`Callee::LocalDef`],
+    ///    so it must be a [safe] function from another crate.
+    ///    If the type is crate-local, then the non-crate-local function won't be able to access any of its fields,
+    ///    and thus can be [`Self::Shallow`] instead of [`Self::Deep`].
+    ///    If the the type is non-crate-local, then we will catch the local pointers
+    ///    flowing into those non-crate-local types during prior function calls and initializations.
+    ///
+    /// 4. Thus, if any argument and return types are directly raw pointers,
     ///    then we return [`Self::Shallow`].
     ///    We don't need to check this recursively at all,
     ///    because another function call (or aggregate initialization)
     ///    would've handled the raw pointer directly.
     ///
-    /// 4. Otherwise, we return [`Self::None`], as the function is trivial
+    /// 5. Otherwise, we return [`Self::None`], as the function is trivial
     ///    and has no effects on pointer permissions.
     ///
     /// [`unsafe`]: Unsafety::Unsafe
+    /// [safe]: Unsafety::Normal
     /// [`DefKind::ForeignMod`]: rustc_hir::def::DefKind::ForeignMod
     /// [`FnPtr`]: ty::FnPtr
     /// [`FnDef`]: ty::FnDef
     /// [`Abi`]: rustc_target::spec::abi::Abi
+    /// [`Callee::LocalDef`]: crate::util::Callee::LocalDef
     pub fn of_fn_sig(fn_sig: FnSig) -> Self {
         let is_unsafe = fn_sig.unsafety == Unsafety::Unsafe;
         let has_direct_raw_ptr = || fn_sig.inputs_and_output.iter().any(|ty| ty.is_unsafe_ptr());
