@@ -1,16 +1,16 @@
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubPoint};
-use crate::borrowck::{LTy, LTyCtxt, Label, OriginParam};
+use crate::borrowck::{construct_adt_origins, LTy, LTyCtxt, Label, OriginParam};
 use crate::c_void_casts::CVoidCasts;
 use crate::context::PermissionSet;
 use crate::util::{self, ty_callee, Callee};
-use crate::AdtMetadataTable;
+use crate::{construct_adt_metadata, AdtMetadataTable};
 use assert_matches::assert_matches;
 use indexmap::IndexMap;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    AggregateKind, BinOp, Body, BorrowKind, Field, Local, LocalDecl, Location, Operand, Place,
-    Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
+    AggregateKind, BinOp, Body, BorrowKind, CastKind, Field, Local, LocalDecl, Location, Operand,
+    Place, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::{AdtDef, FieldDef, TyCtxt, TyKind};
 use std::collections::HashMap;
@@ -271,7 +271,46 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     Label::default()
                 })
             }
-
+            Rvalue::Cast(CastKind::PointerFromExposedAddress, ref op, _ty) => {
+                // We support only one case here, which is the case of null pointers
+                // constructed via casts such as `0 as *const T`
+                if let Some(true) = op.constant().cloned().map(util::is_null_const) {
+                    let adt_metadata = &construct_adt_metadata(self.tcx);
+                    self.ltcx.relabel(expect_ty, &mut |lty| {
+                        let perm = lty.label.perm;
+                        match lty.ty.kind() {
+                            TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
+                                let origin = Some(self.maps.origin());
+                                Label {
+                                    origin,
+                                    origin_params: &[],
+                                    perm,
+                                }
+                            }
+                            TyKind::Adt(..) => {
+                                let origin_params = construct_adt_origins(
+                                    &self.ltcx,
+                                    adt_metadata,
+                                    &lty.ty,
+                                    self.maps,
+                                );
+                                Label {
+                                    origin: None,
+                                    origin_params,
+                                    perm,
+                                }
+                            }
+                            _ => Label {
+                                origin: None,
+                                origin_params: &[],
+                                perm,
+                            },
+                        }
+                    })
+                } else {
+                    panic!("Creating non-null pointers from exposed addresses not supported");
+                }
+            }
             Rvalue::Cast(_, _, ty) => self.ltcx.label(ty, &mut |_ty| {
                 // TODO: handle Unsize casts at minimum
                 /*
