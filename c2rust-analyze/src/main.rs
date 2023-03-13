@@ -467,12 +467,9 @@ fn run(tcx: TyCtxt) {
                             let args = acx.lcx().mk_slice(&[elem_lty]);
                             acx.lcx().mk(array_ty, args, PointerId::NONE)
                         }
-                        AggregateKind::Adt(_, _, substs, ..) => {
-                            let args = acx.lcx().mk_slice(acx.lcx().arena().alloc_from_iter(
-                                substs.types().map(|sub_ty| acx.assign_pointer_ids(sub_ty)),
-                            ));
+                        AggregateKind::Adt(..) => {
                             let adt_ty = rv.ty(&acx, acx.tcx());
-                            acx.lcx().mk(adt_ty, args, PointerId::NONE)
+                            acx.assign_pointer_ids(adt_ty)
                         }
                         _ => continue,
                     },
