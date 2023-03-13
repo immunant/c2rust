@@ -37,7 +37,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         )
     }
 
-    pub fn projection_lty(
+    pub fn field_lty(
         &self,
         base_lty: LTy<'tcx>,
         base_adt_def: AdtDef,
@@ -159,7 +159,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         let mut lty: LTy = self.local_ltys[pl.local.index()];
         for proj in pl.projection {
             lty = util::lty_project(lty, &proj, &mut |lty, adt, f| {
-                self.projection_lty(lty, adt, f)
+                self.field_lty(lty, adt, f)
             });
         }
         eprintln!("final label for {pl:?}: {:?}", lty);
@@ -327,7 +327,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                     let adt_def = self.tcx.adt_def(adt_did);
                     for (fid, op) in ops.iter().enumerate() {
-                        let field_lty = self.projection_lty(expect_ty, adt_def, Field::from(fid));
+                        let field_lty = self.field_lty(expect_ty, adt_def, Field::from(fid));
                         let op_lty = self.visit_operand(op);
                         eprintln!("pseudo-assigning fields {field_lty:?} = {op_lty:?}");
                         self.do_assign(field_lty, op_lty);

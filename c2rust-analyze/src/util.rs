@@ -323,7 +323,7 @@ fn builtin_callee(tcx: TyCtxt, did: DefId) -> Option<Callee> {
 pub fn lty_project<'tcx, L: Debug>(
     lty: LabeledTy<'tcx, L>,
     proj: &PlaceElem<'tcx>,
-    mut projection_lty: impl FnMut(LabeledTy<'tcx, L>, AdtDef<'tcx>, Field) -> LabeledTy<'tcx, L>,
+    mut field_lty: impl FnMut(LabeledTy<'tcx, L>, AdtDef<'tcx>, Field) -> LabeledTy<'tcx, L>,
 ) -> LabeledTy<'tcx, L> {
     match *proj {
         ProjectionElem::Deref => {
@@ -333,7 +333,7 @@ pub fn lty_project<'tcx, L: Debug>(
         }
         ProjectionElem::Field(f, _) => match lty.kind() {
             TyKind::Tuple(_) => lty.args[f.index()],
-            TyKind::Adt(def, _) => projection_lty(lty, *def, f),
+            TyKind::Adt(def, _) => field_lty(lty, *def, f),
             _ => panic!("Field projection is unsupported on type {:?}", lty),
         },
         ProjectionElem::Index(..) | ProjectionElem::ConstantIndex { .. } => {
