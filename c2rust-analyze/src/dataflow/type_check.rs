@@ -178,12 +178,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         let fields = &base_adt_def.non_enum_variant().fields;
                         for (field, op) in fields.iter().zip(ops.iter()) {
                             let op_lty = self.acx.type_of(op);
-                            let unresolved_field_lty = self.acx.gacx.field_tys[&field.did];
-                            // resolve the generic type arguments in `field_lty` by referencing the `Ty` of `op`
-                            let resolved_field_lty =
-                                self.acx.lcx().subst(unresolved_field_lty, lty.args);
+                            let field_lty = self.acx.gacx.field_tys[&field.did];
                             // Pseudo-assign from each operand to the element type of the field.
-                            self.do_assign(resolved_field_lty, op_lty);
+                            self.do_assign(field_lty, op_lty);
                         }
                     }
                     ref kind => todo!("Rvalue::Aggregate({:?})", kind),

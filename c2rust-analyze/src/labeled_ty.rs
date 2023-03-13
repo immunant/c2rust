@@ -4,7 +4,7 @@
 //! arena as the underlying `Ty`s.
 use rustc_arena::DroplessArena;
 use rustc_middle::ty::subst::{GenericArg, GenericArgKind};
-use rustc_middle::ty::{EarlyBinder, Subst, Ty, TyCtxt, TyKind, TypeAndMut};
+use rustc_middle::ty::{Ty, TyCtxt, TyKind, TypeAndMut};
 use std::convert::TryInto;
 use std::fmt;
 use std::marker::PhantomData;
@@ -224,8 +224,11 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
     /// Panics if `lty` contains a reference to a type parameter that is past the end of `substs`
     /// (usually this means the caller is providing the wrong list of type arguments as `substs`).
     ///
-    /// This produces a [`LabeledTy`] with the right structure and also substitutes the
-    /// underlying [`Ty`]s
+    /// TODO: This produces a `LabeledTy` with the right structure, but doesn't actually do
+    /// substitution on the underlying `Ty`s!  This means if you substitute `u32` for `T`, you can
+    /// end up with a `LabeledTy` whose `ty` is `S<T>`, but whose args are `[u32]`.  By some
+    /// miracle, this hasn't broken anything yet, but we may need to fix it eventually.
+    #[allow(dead_code)]
     pub fn subst(
         &self,
         lty: LabeledTy<'tcx, L>,
@@ -233,23 +236,10 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
     ) -> LabeledTy<'tcx, L> {
         if let TyKind::Param(ref ty) = lty.ty.kind() {
             if let Some(p) = substs.get(ty.index as usize) {
-                let subs: Vec<_> = substs
-                    .iter()
-                    .filter_map(|lty| {
-                        if let TyKind::Param(..) = lty.ty.kind() {
-                            return Some(GenericArg::from(lty.ty));
-                        }
-
-                        None
-                    })
-                    .collect();
-                let substituted_ty =
-                    EarlyBinder(lty.ty).subst(self.tcx, self.tcx.mk_substs_trait(lty.ty, &subs));
-                assert_eq!(p.ty, substituted_ty);
-
                 return p;
             }
         }
+
         self.mk(lty.ty, self.subst_slice(lty.args, substs), lty.label)
     }
 
