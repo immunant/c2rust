@@ -1,3 +1,28 @@
+//! The overall implementation strategy for rewriting is:
+//!
+//! 1. Using the pointer permissions and flags inferred by the analysis, annotate MIR statements
+//!    with the desired rewrites. These MIR-level rewrites are abstract changes to MIR statements,
+//!    such as adding a cast to a particular assignment statement. This is defined in the
+//!    `rewrite::expr::mir_op` module.
+//!
+//! 2. For each HIR expression, look at the MIR statements generated from this HIR expression and
+//!    lift any MIR rewrites into HIR rewrites. HIR rewrites are expressed as concrete operations
+//!    on source code, such as replacing an expression with one of its subexpressions (both
+//!    identified by their `Span`s) or wrapping an expression in a ref or deref operation. The
+//!    HIR-level rewrite type is `rewrite::Rewrite`; the `rewrite::expr::hir_op` module implements
+//!    the lifting.
+//!
+//! 3. Apply the rewrites to the source code of the input program. This reads the source of each
+//!    file and emits a new string consisting of the file source with certain `Span`s rewritten as
+//!    specified by the HIR rewrites. The code for this is in `rewrite::apply`.
+//!
+//! This covers rewriting of expressions; rewriting of types is similar but mostly skips step 1,
+//! since an abstract description of the changes to be made can be obtained by inspecting the
+//! pointer permissions and flags directly. This code is in `rewrite::ty`. All type and expr
+//! rewrites are collected and applied in one pass in step 3 (as rewriting in two passes would
+//! require us to update the `Span`s mentioned in the later rewrites to account for the changes in
+//! the source code produced by the earlier ones).
+
 use rustc_hir::Mutability;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;

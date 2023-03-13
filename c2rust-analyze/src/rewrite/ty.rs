@@ -1,3 +1,9 @@
+//! Rewriting of types comes with one extra bit of complexity: sometimes we need to rewrite a
+//! pointer type that's behind a type alias, such as `type MyPtr = *mut u8;`. To do this, we unfold
+//! the alias, replacing `x: MyPtr` with `x: *mut u8`, and applying further rewrites from there. As
+//! with the materialization of adjustments in expr rewriting, we try to apply this transformation
+//! selectively, since we don't want to unfold all type aliases in the program.
+
 use crate::context::{AnalysisCtxt, Assignment, LTy};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::rewrite::Rewrite;

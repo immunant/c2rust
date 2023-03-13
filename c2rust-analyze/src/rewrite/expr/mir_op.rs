@@ -1,3 +1,12 @@
+//! Rewriting of expressions comes with one extra bit of complexity: sometimes the code we're
+//! modifying has had autoderef and/or autoref `Adjustment`s applied to it. To avoid unexpectedly
+//! changing which adjustments get applied, we "materialize" the `Adjustment`s, making them
+//! explicit in the source code. For example, `vec.len()`, which implicitly applies deref and ref
+//! adjustments to `vec`, would be converted to `(&*vec).len()`, where the deref and ref operations
+//! are explicit, and might be further rewritten from there. However, we don't want to materialize
+//! all adjustments, as this would make even non-rewritten code extremely verbose, so we try to
+//! materialize adjustments only on code that's subject to some rewrite.
+
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet, PointerId};
 use crate::pointer_id::PointerTable;
 use crate::type_desc::{self, Ownership, Quantity};
