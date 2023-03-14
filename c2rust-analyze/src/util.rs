@@ -1,10 +1,11 @@
 use crate::labeled_ty::LabeledTy;
 use crate::trivial::IsTrivial;
+use rustc_const_eval::interpret::Scalar;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Field, Local, Location, Mutability, Operand, Place, PlaceElem,
-    PlaceRef, ProjectionElem, Rvalue, Statement, StatementKind,
+    BasicBlock, BasicBlockData, Constant, Field, Local, Location, Mutability, Operand, Place,
+    PlaceElem, PlaceRef, ProjectionElem, Rvalue, Statement, StatementKind,
 };
 use rustc_middle::ty::{self, AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy};
 use std::fmt::Debug;
@@ -338,4 +339,13 @@ pub fn get_assign_sides<'tcx, 'a>(
         _ => None,
     }?;
     Some((*pl, rv))
+}
+
+/// Check if a [`Constant`] is an integer constant that can be casted to a null pointer.
+#[allow(dead_code)] // Will be used soon in #864.
+pub fn is_null_const(constant: Constant) -> bool {
+    match constant.literal.try_to_scalar() {
+        Some(Scalar::Int(i)) => i.is_null(),
+        _ => false,
+    }
 }
