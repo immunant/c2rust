@@ -132,24 +132,26 @@ impl PtrEffects {
     ///
     /// 2. We then defer to [`Self::of_fn_sig`].
     pub fn of_call<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Self {
-        let substs = match *ty.kind() {
-            ty::FnDef(_, substs) => &**substs,
-            _ => &[][..],
-        };
+        // We don't care about lifetimes, so `.skip_binder()` is fine.
+        let fn_sig = ty.fn_sig(tcx).skip_binder();
+
         let has_local_ty = || {
-            substs
-                .iter()
-                .filter_map(|generic| match generic.unpack() {
-                    GenericArgKind::Type(ty) => Some(ty),
-                    _ => None,
-                })
-                .any(is_ty_local)
+            let substs = match *ty.kind() {
+                ty::FnDef(_, substs) => &**substs,
+                _ => &[][..],
+            };
+            let generic_tys = substs.iter().filter_map(|generic| match generic.unpack() {
+                GenericArgKind::Type(ty) => Some(ty),
+                _ => None,
+            });
+            // Include the non-generic types, too, since they could still be local types for [`ty::FnPtr`]s.
+            let non_generic_tys = fn_sig.inputs_and_output.iter();
+            generic_tys.chain(non_generic_tys).any(is_ty_local)
         };
+
         if !assume_no_impls_using_raw_ptrs() && has_local_ty() {
             Self::All
         } else {
-            // We don't care about lifetimes, so `.skip_binder()` is fine.
-            let fn_sig = ty.fn_sig(tcx).skip_binder();
             Self::of_fn_sig(fn_sig)
         }
     }
