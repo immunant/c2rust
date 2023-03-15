@@ -276,6 +276,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // constructed via casts such as `0 as *const T`
                 if let Some(true) = op.constant().cloned().map(util::is_null_const) {
                     let adt_metadata = &construct_adt_metadata(self.tcx);
+
+                    // Here we relabel `expect_ty` to utilize the permissions it carries
+                    // but substitute the rest of its `Label`s' parts with fresh origins
+                    // Othwerise, this is conceptually similar to labeling the cast target
+                    // `ty`. We would simply do that, but do not have the information necessary
+                    // to set its permissions.
                     self.ltcx.relabel(expect_ty, &mut |lty| {
                         let perm = lty.label.perm;
                         match lty.ty.kind() {
