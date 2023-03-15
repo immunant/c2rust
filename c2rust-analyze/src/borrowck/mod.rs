@@ -339,21 +339,14 @@ fn construct_adt_origins<'tcx>(
 
     // create a concrete origin for each actual or hypothetical
     // lifetime parameter in this ADT
-    let origins: Vec<_> = adt_metadata
+    let default = Default::default();
+    let origins = adt_metadata
         .table
         .get(&adt_def.did())
-        .map(|adt| {
-            adt.lifetime_params
-                .iter()
-                .map(|o| {
-                    let pairing = (*o, amaps.origin());
-                    eprintln!("pairing lifetime parameter with origin: {pairing:?}");
-                    pairing
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
+        .map_or(&default, |adt| &adt.lifetime_params)
+        .iter()
+        .map(|origin| (*origin, amaps.origin()))
+        .inspect(|pairing| eprintln!("pairing lifetime parameter with origin: {pairing:?}"));
     ltcx.arena().alloc_from_iter(origins)
 }
 
