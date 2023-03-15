@@ -37,18 +37,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         )
     }
 
-    pub fn visit_place(&mut self, pl: Place<'tcx>) -> LTy<'tcx> {
-        let mut lty: LTy = self.local_ltys[pl.local.index()];
+    pub fn field_lty(&self, base_lty: LTy<'tcx>, base_adt_def: AdtDef, field: Field) -> LTy<'tcx> {
+        let base_origin_param_map: IndexMap<OriginParam, Origin> =
+            IndexMap::from_iter(base_lty.label.origin_params.to_vec());
+        let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field.index()];
+        let perm = self.field_permissions[&field_def.did];
+        let base_metadata = &self.adt_metadata.table[&base_adt_def.did()];
+        let field_metadata = &base_metadata.field_info[&field_def.did];
 
-        let mut adt_func = |base_lty: LTy<'tcx>, base_adt_def: AdtDef, field: Field| {
-            let base_origin_param_map: IndexMap<OriginParam, Origin> =
-                IndexMap::from_iter(base_lty.label.origin_params.to_vec());
-            let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field.index()];
-            let perm = self.field_permissions[&field_def.did];
-            let base_metadata = &self.adt_metadata.table[&base_adt_def.did()];
-            let field_metadata = &base_metadata.field_info[&field_def.did];
-
-            self.ltcx.relabel(
+        self.ltcx.relabel(
                 field_metadata.origin_args,
                 &mut |flty| match flty.kind() {
                     TyKind::Ref(..) | TyKind::RawPtr(..) => {
@@ -151,16 +148,18 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                 },
             )
-        };
+    }
 
+    pub fn visit_place(&self, pl: Place<'tcx>) -> LTy<'tcx> {
+        let mut lty: LTy = self.local_ltys[pl.local.index()];
         for proj in pl.projection {
-            lty = util::lty_project(lty, &proj, &mut adt_func);
+            lty = util::lty_project(lty, &proj, &mut |lty, adt, f| self.field_lty(lty, adt, f));
         }
         eprintln!("final label for {pl:?}: {:?}", lty);
         lty
     }
 
-    pub fn visit_operand(&mut self, op: &Operand<'tcx>) -> LTy<'tcx> {
+    pub fn visit_operand(&self, op: &Operand<'tcx>) -> LTy<'tcx> {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => self.visit_place(pl),
             Operand::Constant(ref c) => {
@@ -282,12 +281,53 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 */
                 Label::default()
             }),
-            Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
+            Rvalue::Aggregate(ref kind, ref ops) => match **kind {
                 AggregateKind::Array(..) => {
                     let ty = rv.ty(self.local_decls, *self.ltcx);
                     // TODO: create fresh origins for all pointers in `ty`, and generate subset
                     // relations between the regions of the array and the regions of its elements
                     self.ltcx.label(ty, &mut |_ty| Label::default())
+                }
+                AggregateKind::Adt(adt_did, ..) => {
+                    /*
+                        Generic types are not yet supported because of situations such as the
+                        following:
+
+                        ```rust
+                        struct S<T> {
+                            s: T
+                        };
+
+                        fn foo() {
+                            let s = S<&'1 u32> { s: &'1 0 }
+                        }
+                        ```
+
+                        Here the `FieldMetadata` for `S:s` has an empty `origin_args` slice
+                        because these are gathered before the lifetime parameters are resolved
+                        by traversing the struct definition. Additionally, the label for the
+                        `Operand` corresponding to `s` has an `Origin('1)` (because it is
+                        a reference). Because the `OriginArgs` are missing for the field, the
+                        labeled types for the field operand and for the field declaration do not
+                        have the same shape, and so `do_assign` cannot create subset relations.
+
+                        Additionally, the regions referenced within the operand types are
+                        erased, and so it also would not be possible to know which ADT
+                        OriginParams those correspond to because there would need to be a
+                        non-erased region to compare with.
+                    */
+                    assert_eq!(expect_ty.args.len(), 0, "Generic types not yet supported.");
+
+                    let adt_def = self.tcx.adt_def(adt_did);
+                    for (fid, op) in ops.iter().enumerate() {
+                        let field_lty = self.field_lty(expect_ty, adt_def, Field::from(fid));
+                        let op_lty = self.visit_operand(op);
+                        eprintln!("pseudo-assigning fields {field_lty:?} = {op_lty:?}");
+                        self.do_assign(field_lty, op_lty);
+                    }
+
+                    eprintln!("Aggregate literal label: {expect_ty:?}");
+                    expect_ty
                 }
                 _ => panic!("unsupported rvalue AggregateKind {:?}", kind),
             },

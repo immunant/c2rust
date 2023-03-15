@@ -173,6 +173,19 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             self.do_assign(elem_lty, op_lty);
                         }
                     }
+                    AggregateKind::Adt(adt_did, ..) => {
+                        let base_adt_def = self.acx.tcx().adt_def(adt_did);
+                        let fields = &base_adt_def.non_enum_variant().fields;
+                        for (field, op) in fields.iter().zip(ops.iter()) {
+                            let op_lty = self.acx.type_of(op);
+                            let unresolved_field_lty = self.acx.gacx.field_tys[&field.did];
+                            // resolve the generic type arguments in `field_lty` by referencing the `Ty` of `op`
+                            let resolved_field_lty =
+                                self.acx.lcx().subst(unresolved_field_lty, lty.args);
+                            // Pseudo-assign from each operand to the element type of the field.
+                            self.do_assign(resolved_field_lty, op_lty);
+                        }
+                    }
                     ref kind => todo!("Rvalue::Aggregate({:?})", kind),
                 }
             }
@@ -207,7 +220,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         // If the top-level types are pointers, add a dataflow edge indicating that `rv` flows into
         // `pl`.
         self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
-
         self.do_equivalence_nested(pl_lty, rv_lty);
     }
 

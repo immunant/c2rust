@@ -1,3 +1,23 @@
+struct S<'a> {
+    y: u32,
+    px: *const u32,
+    rx: &'a u32,
+    qx: &'a u32,
+}
+
+pub fn aggregate() {
+    // CHECK-DAG: pseudo-assigning fields Label { origin: Some(Origin([[R_U32_ORIGIN:[0-9]+]])){{.*}}}#&'a u32{{.*}}= Label { origin: Some(Origin({{.*}})){{.*}}&u32
+    // CHECK-DAG: pseudo-assigning fields Label { origin: Some(Origin([[R_U32_ORIGIN:[0-9]+]])){{.*}}}#&'a u32{{.*}}= Label { origin: Some(Origin({{.*}})){{.*}}&u32
+    // CHECK-DAG: Aggregate literal label: Label{{.*}}origin_params: [('a, Origin([[R_U32_ORIGIN]])), ('h0, Origin({{.*}})]{{.*}}#S[]
+    let x = 0;
+    let ref_x = &x;
+    let i = S {
+        y: x,
+        px: std::ptr::addr_of!(x),
+        rx: ref_x,
+        qx: ref_x,
+    };
+}
 
 // CHECK-LABEL: final labeling for "aggregate1_array"
 // CHECK-DAG: ([[@LINE+1]]: p): &std::cell::Cell<i32>
