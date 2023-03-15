@@ -328,6 +328,28 @@ fn run_polonius<'tcx>(
     (facts, maps, output)
 }
 
+fn construct_adt_origins<'tcx>(
+    ltcx: &LTyCtxt<'tcx>,
+    adt_metadata: &AdtMetadataTable,
+    ty: &Ty,
+    amaps: &mut AtomMaps,
+) -> &'tcx [(OriginParam, Origin)] {
+    eprintln!("ty: {ty:?}");
+    let adt_def = ty.ty_adt_def().unwrap();
+
+    // create a concrete origin for each actual or hypothetical
+    // lifetime parameter in this ADT
+    let default = Default::default();
+    let origins = adt_metadata
+        .table
+        .get(&adt_def.did())
+        .map_or(&default, |adt| &adt.lifetime_params)
+        .iter()
+        .map(|origin| (*origin, amaps.origin()))
+        .inspect(|pairing| eprintln!("pairing lifetime parameter with origin: {pairing:?}"));
+    ltcx.arena().alloc_from_iter(origins)
+}
+
 fn assign_origins<'tcx>(
     ltcx: LTyCtxt<'tcx>,
     hypothesis: &PointerTableMut<PermissionSet>,
@@ -343,28 +365,6 @@ fn assign_origins<'tcx>(
             hypothesis[lty.label]
         };
 
-        let construct_adt_origins = |ty: &Ty, amaps: &mut AtomMaps| -> &[_] {
-            let adt_def = ty.ty_adt_def().unwrap();
-
-            // create a concrete origin for each actual or hypothetical
-            // lifetime parameter in this ADT
-            let origins: Vec<_> = adt_metadata
-                .table
-                .get(&adt_def.did())
-                .map(|adt| {
-                    adt.lifetime_params
-                        .iter()
-                        .map(|o| {
-                            let pairing = (*o, amaps.origin());
-                            eprintln!("pairing lifetime parameter with origin: {pairing:?}");
-                            pairing
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            ltcx.arena().alloc_from_iter(origins)
-        };
         match lty.ty.kind() {
             TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
                 let origin = Some(maps.origin());
@@ -375,7 +375,7 @@ fn assign_origins<'tcx>(
                 }
             }
             TyKind::Adt(..) => {
-                let origin_params = construct_adt_origins(&lty.ty, maps);
+                let origin_params = construct_adt_origins(&ltcx, adt_metadata, &lty.ty, maps);
                 Label {
                     origin: None,
                     origin_params,

@@ -1122,7 +1122,7 @@ pub unsafe extern "C" fn connection_accepted(
     fdn: *mut fdnode,         // TODO: remove when casts from c_void are handled
     mut con: *mut connection, // TODO: remove when casts from c_void are handled
 ) -> *mut connection {
-    // let mut con: *mut connection = 0 as *mut connection;
+    let mut con: *mut connection = 0 as *mut connection;
     (*srv).cur_fds += 1;
     (*srv).con_opened += 1;
     con = connections_get_new_connection(srv, con);
@@ -1305,13 +1305,13 @@ unsafe extern "C" fn connection_close(mut con: *mut connection) {
     if 0 as libc::c_int == close((*con).fd) {
         (*srv).cur_fds -= 1;
     } else {
-    //     log_perror(
-    //         (*r).conf.errh,
-    //         b"src/connections.c\0" as *const u8 as *const libc::c_char,
-    //         101 as libc::c_int as libc::c_uint,
-    //         b"(warning) close: %d\0" as *const u8 as *const libc::c_char,
-    //         (*con).fd,
-    //     );
+        //     log_perror(
+        //         (*r).conf.errh,
+        //         b"src/connections.c\0" as *const u8 as *const libc::c_char,
+        //         101 as libc::c_int as libc::c_uint,
+        //         b"(warning) close: %d\0" as *const u8 as *const libc::c_char,
+        //         (*con).fd,
+        //     );
     }
     if (*r).conf.log_state_handling != 0 {
         // log_error(
