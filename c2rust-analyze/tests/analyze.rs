@@ -1,20 +1,34 @@
-use common::Analyze;
-
 pub mod common;
 
-#[test]
-fn string_literals() {
-    Analyze::resolve().run("tests/analyze/string_literals.rs");
+use std::path::PathBuf;
+
+use common::Analyze;
+
+fn test(file_name: &str) {
+    let analyze = Analyze::resolve();
+    let path = ["tests", "analyze", file_name].iter().collect::<PathBuf>();
+    analyze.run(&path);
 }
 
-#[test]
-fn string_casts() {
-    Analyze::resolve().run("tests/analyze/string_casts.rs");
+macro_rules! define_test {
+    ($name:ident) => {
+        #[test]
+        fn $name() {
+            test(concat!(stringify!($name), ".rs"));
+        }
+    };
 }
 
-#[test]
-fn macros() {
-    Analyze::resolve().run("tests/analyze/macros.rs");
+macro_rules! define_tests {
+    ($($name:ident,)*) => {
+        $(define_test! { $name })*
+    }
+}
+
+define_tests! {
+    string_literals,
+    string_casts,
+    macros,
 }
 
 #[test]
