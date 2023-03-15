@@ -92,7 +92,7 @@ impl Analyze {
         Self { path }
     }
 
-    fn run_(&self, rs_path: &Path) -> PathBuf {
+    fn run_with_(&self, rs_path: &Path, mut modify_cmd: impl FnMut(&mut Command)) -> PathBuf {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
         let lib_dir = Path::new(env!("C2RUST_TARGET_LIB_DIR"));
 
@@ -117,6 +117,7 @@ impl Analyze {
             .stdout(output_stdout)
             .stderr(output_stderr);
         cmd.envs(args.env.iter().map(|EnvVar { var, value }| (var, value)));
+        modify_cmd(&mut cmd);
         let status = cmd.status().unwrap();
         if !status.success() && !args.allow_crash {
             let message = format!(
@@ -128,8 +129,16 @@ impl Analyze {
         output_path
     }
 
+    pub fn run_with(
+        &self,
+        rs_path: impl AsRef<Path>,
+        modify_cmd: impl FnMut(&mut Command),
+    ) -> PathBuf {
+        self.run_with_(rs_path.as_ref(), modify_cmd)
+    }
+
     pub fn run(&self, rs_path: impl AsRef<Path>) -> PathBuf {
-        self.run_(rs_path.as_ref())
+        self.run_with(rs_path, |_| {})
     }
 }
 
