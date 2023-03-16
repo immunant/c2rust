@@ -25,7 +25,7 @@ use rustc_middle::ty::{
 };
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::HashMap;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::ops::Index;
 
 bitflags! {
@@ -276,6 +276,9 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     pub fn_callers: HashMap<DefId, Vec<DefId>>,
 
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
+    /// `DefId`s of functions where analysis failed, and a `String` explaining the reason for each
+    /// failure.
+    pub fns_failed: HashMap<DefId, String>,
 
     pub field_ltys: HashMap<DefId, LTy<'tcx>>,
 
@@ -527,6 +530,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             ptr_info: GlobalPointerTable::empty(),
             fn_callers: HashMap::new(),
             fn_sigs: HashMap::new(),
+            fns_failed: HashMap::new(),
             field_ltys: HashMap::new(),
             static_tys: HashMap::new(),
             addr_of_static: HashMap::new(),
@@ -572,6 +576,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             ref mut ptr_info,
             fn_callers: _,
             ref mut fn_sigs,
+            fns_failed: _,
             ref mut field_ltys,
             ref mut static_tys,
             ref mut addr_of_static,
@@ -623,6 +628,24 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     pub fn assign_pointer_to_fields(&mut self, did: DefId) {
         for field in self.tcx.adt_def(did).all_fields() {
             self.assign_pointer_to_field(field);
+        }
+    }
+
+    pub fn fn_failed(&mut self, did: DefId) -> bool {
+        self.fns_failed.contains_key(&did)
+    }
+
+    pub fn mark_fn_failed(&mut self, did: DefId, reason: impl Display) {
+        if self.fns_failed.contains_key(&did) {
+            return;
+        }
+
+        self.fns_failed.insert(did, reason.to_string());
+
+        // This is the first time marking `did` as failed, so also mark all of its callers.
+        let callers = self.fn_callers.get(&did).cloned().unwrap_or(Vec::new());
+        for caller in callers {
+            self.mark_fn_failed(caller, format_args!("analysis failed on callee {:?}", did));
         }
     }
 }
