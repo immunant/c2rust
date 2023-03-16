@@ -300,11 +300,24 @@ fn run(tcx: TyCtxt) {
 
     // Follow a postorder traversal, so that callers are visited after their callees.  This means
     // callee signatures will usually be up to date when we visit the call site.
-    let all_fn_ldids = fn_body_owners_postorder(tcx);
+    let (all_fn_ldids, fn_callers) = fn_body_owners_postorder(tcx);
     eprintln!("callgraph traversal order:");
     for &ldid in &all_fn_ldids {
         eprintln!("  {:?}", ldid);
     }
+
+    gacx.fn_callers = fn_callers
+        .into_iter()
+        .map(|(ldid, caller_ldids)| {
+            (
+                ldid.to_def_id(),
+                caller_ldids
+                    .into_iter()
+                    .map(|caller_ldid| caller_ldid.to_def_id())
+                    .collect(),
+            )
+        })
+        .collect();
 
     // Assign global `PointerId`s for all pointers that appear in function signatures.
     for &ldid in &all_fn_ldids {
@@ -741,10 +754,14 @@ fn all_static_items(tcx: TyCtxt) -> Vec<DefId> {
 }
 
 /// Return all `LocalDefId`s for all `fn`s that are `body_owners`, ordered according to a postorder
-/// traversal of the graph of references between bodies.
-fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
+/// traversal of the graph of references between bodies.  Also returns the callgraph itself, in the
+/// form of a map from callee `LocalDefId` to a set of caller `LocalDefId`s.
+fn fn_body_owners_postorder(
+    tcx: TyCtxt,
+) -> (Vec<LocalDefId>, HashMap<LocalDefId, HashSet<LocalDefId>>) {
     let mut seen = HashSet::new();
     let mut order = Vec::new();
+    let mut callers = HashMap::<_, HashSet<_>>::new();
     enum Visit {
         Pre(LocalDefId),
         Post(LocalDefId),
@@ -773,6 +790,7 @@ fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
                         stack.push(Visit::Post(ldid));
                         for_each_callee(tcx, ldid, |callee_ldid| {
                             stack.push(Visit::Pre(callee_ldid));
+                            callers.entry(callee_ldid).or_default().insert(ldid);
                         });
                     }
                 }
@@ -783,7 +801,7 @@ fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
         }
     }
 
-    order
+    (order, callers)
 }
 
 fn for_each_callee(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(LocalDefId)) {
