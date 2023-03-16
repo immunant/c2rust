@@ -154,6 +154,9 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     pub tcx: TyCtxt<'tcx>,
     pub lcx: LTyCtxt<'tcx>,
 
+    /// Map from a function to all of its callers.
+    pub fn_callers: HashMap<DefId, Vec<DefId>>,
+
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
 
     pub field_ltys: HashMap<DefId, LTy<'tcx>>,
@@ -223,6 +226,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         GlobalAnalysisCtxt {
             tcx,
             lcx: LabeledTyCtxt::new(tcx),
+            fn_callers: HashMap::new(),
             fn_sigs: HashMap::new(),
             field_ltys: HashMap::new(),
             static_tys: HashMap::new(),
@@ -262,6 +266,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         let GlobalAnalysisCtxt {
             tcx: _,
             lcx,
+            fn_callers: _,
             ref mut fn_sigs,
             ref mut field_ltys,
             ref mut static_tys,
