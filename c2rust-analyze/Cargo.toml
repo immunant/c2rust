@@ -26,6 +26,8 @@ print_bytes = "1.1"
 
 [dev-dependencies]
 c2rust-build-paths = { path = "../c2rust-build-paths" , version = "0.17.0" }
+clap = { version = "4.1.9", features = ["derive"] }
+shlex = "1.1.0"
 
 [package.metadata.rust-analyzer]
 rustc_private = true

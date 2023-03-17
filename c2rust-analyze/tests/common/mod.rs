@@ -1,5 +1,4 @@
 use std::{
-    collections::HashSet,
     env,
     fs::{self, File},
     path::{Path, PathBuf},
@@ -7,10 +6,51 @@ use std::{
 };
 
 use c2rust_build_paths::find_llvm_config;
+use clap::Parser;
 
 #[derive(Default)]
 pub struct Analyze {
     path: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+#[command(author, version, about, long_about = None)]
+struct AnalyzeArgs {
+    #[arg(long)]
+    allow_crash: bool,
+}
+
+impl AnalyzeArgs {
+    /// Parse args from a Rust file.
+    ///
+    /// The args are posix shell arguments (see [`shlex`]) on lines starting with `//! `.
+    /// Since all args are optional, all args start with `--`,
+    /// so only lines starting with `--` are considered,
+    /// and other lines can contain normal comments.
+    pub fn parse_from_file(rs_path: &Path) -> Self {
+        let file_contents = fs::read_to_string(rs_path).unwrap();
+        let args = file_contents
+            .split('\n')
+            .filter_map(|line| line.trim().strip_prefix("//! "))
+            .filter(|args| args.starts_with("--"))
+            .flat_map(|args| {
+                shlex::split(args).unwrap_or_else(|| {
+                    panic!("failed to split directive line as a posix shell line")
+                })
+            });
+        // clap expects an argv0
+        let args = ["c2rust-analyze-test".into()].into_iter().chain(args);
+        match Self::try_parse_from(args) {
+            Ok(args) => args,
+            Err(e) => {
+                let _ = e.print();
+                // Since we're in a test, we need to panic, not exit (the whole process vs. this test thread)
+                // and clap may exit without an error (e.x. `--help`),
+                // but then the output won't be shown for the test.
+                panic!("clap error parsing c2rust-analyze-test args");
+            }
+        }
+    }
 }
 
 impl Analyze {
@@ -28,18 +68,7 @@ impl Analyze {
 
         let rs_path = dir.join(rs_path); // allow relative paths, or override with an absolute path
 
-        let directives = fs::read_to_string(&rs_path)
-            .unwrap()
-            .split('\n')
-            .flat_map(|line| {
-                line.trim()
-                    .strip_prefix("//!")
-                    .unwrap_or_default()
-                    .split(',')
-                    .map(|directive| directive.trim())
-            })
-            .map(String::from)
-            .collect::<HashSet<_>>();
+        let args = AnalyzeArgs::parse_from_file(&rs_path);
 
         let output_path = {
             let mut file_name = rs_path.file_name().unwrap().to_owned();
@@ -58,7 +87,7 @@ impl Analyze {
             .stdout(output_stdout)
             .stderr(output_stderr);
         let status = cmd.status().unwrap();
-        if !status.success() && !directives.contains("allow_crash") {
+        if !status.success() && !args.allow_crash {
             let message = format!(
                 "c2rust-analyze failed with status {status}:\n> {cmd:?} > {output_path:?} 2>&1\n"
             );
