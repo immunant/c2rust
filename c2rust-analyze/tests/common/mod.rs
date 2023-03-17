@@ -1,5 +1,6 @@
 use std::{
     env,
+    fmt::{self, Display, Formatter},
     fs::{self, File},
     path::{Path, PathBuf},
     process::Command,
@@ -13,6 +14,29 @@ pub struct Analyze {
     path: PathBuf,
 }
 
+#[derive(Debug, Clone)]
+struct EnvVar {
+    pub var: String,
+    pub value: String,
+}
+
+impl Display for EnvVar {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let Self { var, value } = self;
+        write!(f, "{var}={value}")
+    }
+}
+
+impl From<String> for EnvVar {
+    fn from(env_var: String) -> Self {
+        let (var, value) = env_var.split_once('=').unwrap_or((&env_var, ""));
+        Self {
+            var: var.to_owned(),
+            value: value.to_owned(),
+        }
+    }
+}
+
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 struct AnalyzeArgs {
@@ -20,6 +44,10 @@ struct AnalyzeArgs {
     /// All output is still captured as normal.
     #[arg(long)]
     allow_crash: bool,
+
+    /// Environment variables for `c2rust-analyze`.
+    #[clap(long, value_parser)]
+    env: Vec<EnvVar>,
 }
 
 impl AnalyzeArgs {
@@ -88,6 +116,7 @@ impl Analyze {
             .arg("rlib")
             .stdout(output_stdout)
             .stderr(output_stderr);
+        cmd.envs(args.env.iter().map(|EnvVar { var, value }| (var, value)));
         let status = cmd.status().unwrap();
         if !status.success() && !args.allow_crash {
             let message = format!(
