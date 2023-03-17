@@ -26,6 +26,10 @@ bitflags! {
     /// as opposed to something like `ALIASED` (a pointer capability),
     /// as removing [`UNIQUE`] (`&mut`) allows more values to be taken on (`&`).
     ///
+    /// Currently, we assume that all pointers are valid
+    /// (see [the `std::ptr` safety docs](https://doc.rust-lang.org/std/ptr/index.html#safety)).
+    /// We do not yet (here) consider null, unaligned, or cast-from-integer pointers.
+    ///
     /// [`UNIQUE`]: Self::UNIQUE
     #[derive(Default)]
     pub struct PermissionSet: u16 {
