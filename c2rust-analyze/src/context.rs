@@ -66,10 +66,6 @@ bitflags! {
         /// [`NON_NULL`] is set (or not) when the pointer is created,
         /// and it flows forward along dataflow edges.
         ///
-        /// The permission is [`NON_NULL`] rather than `NULL` because we allow dropping permissions in any assignment.
-        /// This means removing a permission from a pointer's [`PermissionSet`]
-        /// must allow the pointer to take on more values, not restrict it to fewer values.
-        ///
         /// The following should be set to [`NON_NULL`]:
         /// * the results of [`Rvalue::Ref`] and [`Rvalue::AddressOf`]
         /// * a dereferent (i.e. [`READ`]` | `[`WRITE`]), as otherwise this would be UB
