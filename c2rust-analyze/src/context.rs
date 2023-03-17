@@ -29,23 +29,29 @@ bitflags! {
     pub struct PermissionSet: u16 {
         /// The value(s) accessible through this pointer can be read.
         const READ = 0x0001;
+
         /// The value(s) accessible through this pointer can be written.
         const WRITE = 0x0002;
+
         /// This pointer is unique: using an alias not derived from this
         /// pointer invalidates this pointer, after which it is not valid to use.
         const UNIQUE = 0x0004;
+
         /// This pointer is linear-typed.  Copying a `LINEAR` pointer to another `LINEAR` location
         /// moves the pointer and invalidates the source of the copy.  (However, a
         /// copy-and-downcast to a non-`LINEAR` location is a borrow, which does not invalidate the
         /// source pointer.)
         const LINEAR = 0x0008;
+
         /// This pointer can be offset in the positive direction.
         ///
         /// Offsetting the pointer in an unknown direction requires both `OFFSET_ADD` and
         /// `OFFSET_SUB`.  Offsetting by zero requires neither `OFFSET_ADD` nor `OFFSET_SUB`.
         const OFFSET_ADD = 0x0010;
+
         /// This pointer can be offset in the negative direction.
         const OFFSET_SUB = 0x0020;
+
         /// This pointer can be freed.
         const FREE = 0x0040;
     }
