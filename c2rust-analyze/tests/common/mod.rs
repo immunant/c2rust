@@ -16,6 +16,8 @@ pub struct Analyze {
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 struct AnalyzeArgs {
+    /// Allow `c2rust-analyze` to crash during analysis (it can either run successfully or crash).
+    /// All output is still captured as normal.
     #[arg(long)]
     allow_crash: bool,
 }
