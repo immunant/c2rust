@@ -85,13 +85,8 @@ bitflags! {
         /// * [`core::ptr::from_exposed_addr`]
         /// * int-to-ptr casts though `as` or [`core::mem::transmute`]
         ///
-        /// will not be [`NON_NULL`] but also will not be either [`READ`]` | `[`WRITE`],
-        /// which allows us to distinguish them.
-        ///
-        /// If a pointer is neither [`READ`] nor [`WRITE`], then it is invalid,
-        /// and thus will remain a pointer after rewriting.
-        ///
-        /// The rest below is for valid pointers ([`READ`]` | `[`WRITE`]):
+        /// will not be [`NON_NULL`], but for now,
+        /// we do not consider and do not allow such non-null invalid pointers at all.
         ///
         /// [`NON_NULL`] pointers will become references, e.x. `&T`.\
         /// Non-[`NON_NULL`] pointers will become [`Option<&T>`].
