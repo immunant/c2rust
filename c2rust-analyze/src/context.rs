@@ -25,6 +25,8 @@ bitflags! {
     /// That's why, for example [`UNIQUE`] is named as such,
     /// as opposed to something like `ALIASED` (a pointer capability),
     /// as removing [`UNIQUE`] (`&mut`) allows more values to be taken on (`&`).
+    ///
+    /// [`UNIQUE`]: Self::UNIQUE
     #[derive(Default)]
     pub struct PermissionSet: u16 {
         /// The value(s) accessible through this pointer can be read.
