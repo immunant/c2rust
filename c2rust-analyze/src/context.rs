@@ -68,8 +68,7 @@ bitflags! {
         ///
         /// The following should be set to [`NON_NULL`]:
         /// * the results of [`Rvalue::Ref`] and [`Rvalue::AddressOf`]
-        /// * a dereferent (i.e. [`READ`]` | `[`WRITE`]), as otherwise this would be UB
-        /// * the argument or result of a known function like [`_.offset`] where it is UB to pass it an invalid (null) pointer
+        /// * the result of a known function like [`_.offset`] that never returns null pointers
         ///
         /// The following should not be set to [`NON_NULL`]:
         /// * [`core::ptr::null`]
