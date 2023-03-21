@@ -74,7 +74,8 @@ pub enum Rewrite<S = Span> {
 }
 
 impl Rewrite {
-    /// Pretty-print this `Rewrite` into the provided [`fmt::Formatter`].
+    /// Pretty-print this `Rewrite` into the provided [`fmt::Formatter`].  This output format is
+    /// designed solely for debugging, but generally tries to match valid Rust syntax.
     ///
     /// `prec` is the precedence of the surrounding context.  Each operatior is assigned a
     /// precedence number, where a higher precedence number means the operator binds more tightly.
@@ -113,6 +114,8 @@ impl Rewrite {
         // Currently, we don't have any type builders that require parenthesization.
 
         match *self {
+            // We use placeholders `$e` and `$0`, `$1`, ... for these, since the expression to be
+            // rewritten is not available here.
             Rewrite::Identity => write!(f, "$e"),
             Rewrite::Sub(i, _) => write!(f, "${}", i),
 

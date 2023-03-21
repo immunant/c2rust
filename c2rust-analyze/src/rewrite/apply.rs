@@ -453,6 +453,7 @@ mod test {
         );
     }
 
+    /// Test `RewriteTree::build` with multiple identical rewrites on the same spans.
     #[test]
     fn rewrite_tree_identical() {
         let (rts, errs) = RewriteTree::build(vec![
@@ -475,22 +476,25 @@ mod test {
         );
     }
 
+    /// Test `RewriteTree::build` with multiple conflicting rewrites on the same spans.
     #[test]
     fn rewrite_tree_nonidentical() {
         let (rts, errs) = RewriteTree::build(vec![
+            // Trying to rewrite the span 1..2 to both Sub(0) and Sub(1) should produce a conflict
+            // error.
             mk(1, 2, 0),
-            mk(3, 4, 1),
-            mk(0, 5, 2),
-            mk(1, 2, 3),
-            mk(3, 4, 4),
+            mk(1, 2, 1),
+            mk(3, 4, 2),
+            mk(3, 4, 3),
+            mk(0, 5, 4),
             mk(0, 5, 5),
         ]);
         assert_eq!(
             errs,
             vec![
                 (mk_span(0, 5), mk_rewrite(5), RewriteError::Conflict),
-                (mk_span(1, 2), mk_rewrite(3), RewriteError::Conflict),
-                (mk_span(3, 4), mk_rewrite(4), RewriteError::Conflict),
+                (mk_span(1, 2), mk_rewrite(1), RewriteError::Conflict),
+                (mk_span(3, 4), mk_rewrite(3), RewriteError::Conflict),
             ]
         );
         assert_eq!(
@@ -498,12 +502,13 @@ mod test {
             vec![mk_rt(
                 0,
                 5,
-                2,
-                vec![mk_rt(1, 2, 0, vec![]), mk_rt(3, 4, 1, vec![]),]
+                4,
+                vec![mk_rt(1, 2, 0, vec![]), mk_rt(3, 4, 2, vec![]),]
             ),]
         );
     }
 
+    /// Test `RewriteTree::build` with partially overlapping spans.
     #[test]
     fn rewrite_tree_overlap() {
         let (rts, errs) =
