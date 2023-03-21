@@ -74,6 +74,21 @@ pub enum Rewrite<S = Span> {
 }
 
 impl Rewrite {
+    /// Pretty-print this `Rewrite` into the provided [`fmt::Formatter`].
+    ///
+    /// `prec` is the precedence of the surrounding context.  Each operatior is assigned a
+    /// precedence number, where a higher precedence number means the operator binds more tightly.
+    /// For example, `a + b * c` parses as `a + (b * c)`, not `(a + b) * c`, because `*` binds more
+    /// tightly than `+`; this means `*` will have a higher precedence number than `+`.  Nesting a
+    /// lower-precedence operator inside a higher one requires parentheses, but nesting higher
+    /// precedence inside lower does not.  For example, when emitting `y + z` in the context `x *
+    /// _`, we must parenthesize because `+` has lower precedence than `*`, so the result is `x *
+    /// (y + z)`.  But when emitting `y * z` in the context `x + _`, we don't need to parenthesize,
+    /// and the result is `x + y * z`.
+    ///
+    /// The `Display` impl for `Rewrite` calls `pretty` with a `prec` of 0, meaning any operator
+    /// can be used without parenthesization.  Recursive calls within `pretty` will use a different
+    /// `prec` as appropriate for the context.
     fn pretty(&self, f: &mut fmt::Formatter, prec: usize) -> fmt::Result {
         fn parenthesize_if(
             cond: bool,

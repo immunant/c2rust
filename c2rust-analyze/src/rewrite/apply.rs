@@ -212,6 +212,9 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
         }
     }
 
+    /// Emit the text of `rw`, using callbacks to paste in the expression being rewritten or its
+    /// subexpressions if needed.  `prec` is the operator precedence of the surrounding context,
+    /// which is used to determine parenthesization; see [`Rewrite::pretty`] for details.
     fn emit_rewrite(
         &mut self,
         rw: &Rewrite,
