@@ -567,27 +567,30 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 let parent = tcx.hir().get_parent_item(hir_id);
                 let body = tcx.hir().body_owned_by(parent);
                 let tables = tcx.body_tables(body);
-                let did = tables.type_dependent_def_id(hir_id).unwrap();
-                let callee_key_tree = self.def_id_to_key_tree(did, ex.span);
+                if let Some(did) = tables.type_dependent_def_id(hir_id) {
+                    let callee_key_tree = self.def_id_to_key_tree(did, ex.span);
 
-                // Hacky fix for the way rustc gives us method types:
-                // we don't get the parametric `Self` as the type of
-                // the `self` argument, instead we get the actual type,
-                // and we can't unify with that since it can break stuff
-                if let Some(ch) = callee_key_tree.get().children() {
-                    ch[0].set(LitTyKeyNode::Empty);
-                }
-
-                self.visit_path_segment(ex.span, segment);
-                if let Some(&[ref input_key_trees @ .., output_key_tree]) = callee_key_tree.get().children() {
-                    for (arg_expr, arg_key_tree) in args.iter().zip(input_key_trees.iter()) {
-                        self.visit_expr_unify(arg_expr, arg_key_tree);
+                    // Hacky fix for the way rustc gives us method types:
+                    // we don't get the parametric `Self` as the type of
+                    // the `self` argument, instead we get the actual type,
+                    // and we can't unify with that since it can break stuff
+                    if let Some(ch) = callee_key_tree.get().children() {
+                        ch[0].set(LitTyKeyNode::Empty);
                     }
-                    self.unify_key_trees(kt, output_key_tree);
+
+                    self.visit_path_segment(ex.span, segment);
+                    if let Some(&[ref input_key_trees @ .., output_key_tree]) = callee_key_tree.get().children() {
+                        for (arg_expr, arg_key_tree) in args.iter().zip(input_key_trees.iter()) {
+                            self.visit_expr_unify(arg_expr, arg_key_tree);
+                        }
+                        self.unify_key_trees(kt, output_key_tree);
+                    } else {
+                        for arg in args {
+                            self.visit_expr(arg);
+                        }
+                    }
                 } else {
-                    for arg in args {
-                        self.visit_expr(arg);
-                    }
+                    warn!("no type dependent def id for MethodCall: {:?}", ex);
                 }
             }
 
