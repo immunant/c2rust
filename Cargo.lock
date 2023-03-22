@@ -187,7 +187,6 @@ name = "c2rust"
 version = "0.15.1"
 dependencies = [
  "c2rust-refactor 0.15.0",
- "c2rust-transpile 0.15.1",
  "chrono 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
