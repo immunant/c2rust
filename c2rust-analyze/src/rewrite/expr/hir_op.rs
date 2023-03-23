@@ -6,7 +6,7 @@ use rustc_hir::def::{Namespace, Res};
 use rustc_hir::intravisit;
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, Location};
-use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, PointerCast};
+use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, PointerCast};
 use rustc_middle::ty::print::{FmtPrinter, Print};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::Span;
@@ -281,27 +281,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                 hir_rw,
             );
             for adj in adjusts {
-                match adj.kind {
-                    Adjust::NeverToAny => {
-                        // Should work fine with no explicit cast.
-                    }
-                    Adjust::Deref(_) => {
-                        hir_rw = Rewrite::Deref(Box::new(hir_rw));
-                    }
-                    Adjust::Borrow(AutoBorrow::Ref(_, mutbl)) => {
-                        hir_rw = Rewrite::Ref(Box::new(hir_rw), mutbl.into());
-                    }
-                    Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => {
-                        hir_rw = Rewrite::AddrOf(Box::new(hir_rw), mutbl.into());
-                    }
-                    Adjust::Pointer(PointerCast::Unsize) => {
-                        let ty = adj.target;
-                        let printer = FmtPrinter::new(self.tcx, Namespace::TypeNS);
-                        let s = ty.print(printer).unwrap().into_buffer();
-                        hir_rw = Rewrite::Cast(Box::new(hir_rw), s);
-                    }
-                    Adjust::Pointer(cast) => todo!("Adjust::Pointer({:?})", cast),
-                }
+                hir_rw = materialize_adjustment(self.tcx, adj, hir_rw);
             }
         }
 
@@ -321,6 +301,31 @@ fn mutbl_from_bool(m: bool) -> hir::Mutability {
         hir::Mutability::Mut
     } else {
         hir::Mutability::Not
+    }
+}
+
+fn materialize_adjustment<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    adj: &Adjustment<'tcx>,
+    hir_rw: Rewrite,
+) -> Rewrite {
+    match adj.kind {
+        Adjust::NeverToAny => {
+            // Should work fine with no explicit cast.
+            hir_rw
+        }
+        Adjust::Deref(_) => Rewrite::Deref(Box::new(hir_rw)),
+        Adjust::Borrow(AutoBorrow::Ref(_, mutbl)) => Rewrite::Ref(Box::new(hir_rw), mutbl.into()),
+        Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => {
+            Rewrite::AddrOf(Box::new(hir_rw), mutbl.into())
+        }
+        Adjust::Pointer(PointerCast::Unsize) => {
+            let ty = adj.target;
+            let printer = FmtPrinter::new(tcx, Namespace::TypeNS);
+            let s = ty.print(printer).unwrap().into_buffer();
+            Rewrite::Cast(Box::new(hir_rw), s)
+        }
+        Adjust::Pointer(cast) => todo!("Adjust::Pointer({:?})", cast),
     }
 }
 
