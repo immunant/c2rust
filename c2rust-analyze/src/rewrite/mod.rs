@@ -55,8 +55,8 @@ pub enum Rewrite<S = Span> {
     Index(Box<Rewrite>, Box<Rewrite>),
     /// `arr[idx..]`
     SliceTail(Box<Rewrite>, Box<Rewrite>),
-    /// `e as usize`
-    CastUsize(Box<Rewrite>),
+    /// `e as T`
+    Cast(Box<Rewrite>, String),
     /// The integer literal `0`.
     LitZero,
 
@@ -109,7 +109,7 @@ impl Rewrite {
         // Expr precedence:
         // - Index, SliceTail: 3
         // - Ref, Deref: 2
-        // - CastUsize: 1
+        // - Cast: 1
         //
         // Currently, we don't have any type builders that require parenthesization.
 
@@ -153,9 +153,9 @@ impl Rewrite {
                 idx.pretty(f, 999)?;
                 write!(f, " ..]")
             }),
-            Rewrite::CastUsize(ref rw) => parenthesize_if(prec > 1, f, |f| {
+            Rewrite::Cast(ref rw, ref ty) => parenthesize_if(prec > 1, f, |f| {
                 rw.pretty(f, 1)?;
-                write!(f, " as usize")
+                write!(f, " as {}", ty)
             }),
             Rewrite::LitZero => write!(f, "0"),
 
@@ -235,7 +235,7 @@ mod test {
     }
 
     fn cast_usize(rw: Box<Rewrite>) -> Box<Rewrite> {
-        Box::new(Rewrite::CastUsize(rw))
+        Box::new(Rewrite::Cast(rw, "usize".to_owned()))
     }
 
     /// Test precedence handling in `Rewrite::pretty`
@@ -249,12 +249,12 @@ mod test {
             "(&$e)[&$e]",
         );
 
-        // Ref vs CastUsize
+        // Ref vs Cast
         assert_eq!(cast_usize(ref_(identity())).to_string(), "&$e as usize",);
 
         assert_eq!(ref_(cast_usize(identity())).to_string(), "&($e as usize)",);
 
-        // CastUsize vs Index
+        // Cast vs Index
         assert_eq!(
             cast_usize(index(identity(), identity())).to_string(),
             "$e[$e] as usize",

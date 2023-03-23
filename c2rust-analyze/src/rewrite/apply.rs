@@ -264,9 +264,10 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
                 slf.emit_rewrite(idx, 999, emit_expr, emit_subexpr);
                 slf.emit_str(" ..]");
             }),
-            Rewrite::CastUsize(ref rw) => self.emit_parenthesized(prec > 1, |slf| {
+            Rewrite::Cast(ref rw, ref ty) => self.emit_parenthesized(prec > 1, |slf| {
                 slf.emit_rewrite(rw, 1, emit_expr, emit_subexpr);
-                slf.emit_str(" as usize");
+                slf.emit_str(" as ");
+                slf.emit_str(ty);
             }),
             Rewrite::LitZero => {
                 self.emit_str("0");

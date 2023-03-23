@@ -235,7 +235,8 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                         // `p.offset(i)` -> `&p[i as usize ..]`
                         assert!(matches!(hir_rw, Rewrite::Identity));
                         let arr = self.get_subexpr(ex, 0);
-                        let idx = Rewrite::CastUsize(Box::new(self.get_subexpr(ex, 1)));
+                        let idx =
+                            Rewrite::Cast(Box::new(self.get_subexpr(ex, 1)), "usize".to_owned());
                         let elem = Rewrite::SliceTail(Box::new(arr), Box::new(idx));
                         Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
                     }
