@@ -4108,9 +4108,7 @@ impl<'c> Translation<'c> {
 
                             return Ok(WithStmts::new(stmts, val));
                         }
-                        _ => {
-                            stmts.push(stmt)
-                        }
+                        _ => stmts.push(stmt),
                     }
                 }
 

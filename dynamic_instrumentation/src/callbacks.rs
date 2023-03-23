@@ -14,8 +14,8 @@ use rustc_span::def_id::LocalDefId;
 use rustc_span::symbol::Ident;
 use rustc_span::DUMMY_SP;
 
-use thin_vec::ThinVec;
 use crate::instrument::Instrumenter;
+use thin_vec::ThinVec;
 
 pub static INSTRUMENTER: Lazy<Instrumenter> = Lazy::new(Instrumenter::new);
 
