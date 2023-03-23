@@ -3,6 +3,7 @@ use rustc_ast::ast::{Item, ItemKind, Visibility, VisibilityKind};
 use rustc_ast::node_id::NodeId;
 use rustc_ast::ptr::P;
 use rustc_const_eval::transform::validate::Validator;
+use rustc_data_structures::thin_vec::ThinVec;
 use rustc_driver::Compilation;
 use rustc_interface::interface::Compiler;
 use rustc_interface::Queries;
@@ -34,7 +35,7 @@ impl rustc_driver::Callbacks for MirTransformCallbacks {
         let parse = queries.parse().unwrap();
         let mut parse = parse.peek_mut();
         parse.items.push(P(Item {
-            attrs: Vec::new(),
+            attrs: ThinVec::new(),
             id: NodeId::from_u32(0),
             span: DUMMY_SP,
             vis: Visibility {
