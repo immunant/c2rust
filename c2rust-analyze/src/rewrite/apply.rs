@@ -60,12 +60,11 @@ impl<S: SpanLike> RewriteTree<S> {
         // before all its children.
         rws.sort_by_key(|&(ref s, _)| (s.lo(), Reverse(s.hi() - s.lo())));
 
-        // The stack contains a `RewriteTree` node for the most recently processed item from `rws`
-        // along with all of its ancestors (nodes whose spans strictly contain the item's span).
-        // `stack[0]` is the outermost ancestor, and `stack.last()` is the most recently pushed
-        // node.  Nodes are "committed" once they are known to have no more children; when
-        // committed, the node is moved into the `children` list of its parent or (if it has no
-        // parent) into the output list `out`.
+        // `stack` contains partially-built `RewriteTree`s, which might have more children that we
+        // haven't seen yet.  Once we know that a node has no more children, we "commit" that node,
+        // removing it from `stack` and adding it to the `children` list of its parent, or to `out`
+        // if it has no parent.  The parent of each node `stack[i+1]` is the previous node
+        // `stack[i]`; the node `stack[0]` has no parent.
         let mut stack = Vec::<RewriteTree<S>>::new();
         let mut out = Vec::new();
         let mut errs = Vec::new();
@@ -95,7 +94,7 @@ impl<S: SpanLike> RewriteTree<S> {
 
             // Handle items with identical spans.
             //
-            // If `rws` contains two items with the same span, they should be adjacent in the
+            // If `rws` contains two or more items with the same span, they will be adjacent in the
             // sorted list.  If the first item of such a run was pushed onto the stack, we will
             // catch it here when processing the second item.  Since this case avoids pushing or
             // committing any items, all remaining items in the run will land here too.
@@ -108,10 +107,15 @@ impl<S: SpanLike> RewriteTree<S> {
                 continue;
             }
 
-            // Commit all rewrites that come strictly before `span`.  This leaves only nodes that
-            // at least partially overlap the current item.  These should normally be ancestors of
-            // the current item on the stack, but it's also possible that the current item
-            // erroneously partially overlaps a previous item.
+            // Commit all rewrites that come strictly before `span`.  We know each node before
+            // `span` has no more children; if it did have more children, those children would also
+            // be before `span` (as the child span must be contained within the parent span), so we
+            // would have seen them already in the sort order of `rws`.
+            //
+            // This leaves the stack populated with only nodes that at least partially overlap the
+            // current item.  These should normally be just the ancestors of the current item, but
+            // it's also possible that the current item erroneously partially overlaps a previous
+            // item.
             while stack.last().map_or(false, |rt| rt.span.hi() <= lo) {
                 let rt = stack.pop().unwrap();
                 commit(&mut stack, &mut out, rt);
@@ -156,7 +160,7 @@ impl<S: SpanLike> RewriteTree<S> {
         }
 
         // There are no more children, so we can commit all remaining items on the stack.  Each
-        // item `stack[i+1]` is the last child of its parent `stack[i]`.
+        // item `stack[i+1]` is the last child (so far) of its parent `stack[i]`.
         while let Some(rt) = stack.pop() {
             commit(&mut stack, &mut out, rt);
         }
@@ -172,6 +176,13 @@ fn partition_nodes<'a>(
     rts: &'a [RewriteTree],
     span: Span,
 ) -> (&'a [RewriteTree], &'a [RewriteTree], &'a [RewriteTree]) {
+    // Check that `rts[i]` ends before `rts[i+1]` begins, which implies that the nodes in `rts` are
+    // sorted and non-overlapping.
+    debug_assert!(rts
+        .iter()
+        .zip(rts.iter().skip(1))
+        .all(|(a, b)| a.span.hi() <= b.span.lo()));
+
     let lo = span.lo();
     let hi = span.hi();
 
