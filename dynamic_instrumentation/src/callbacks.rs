@@ -3,7 +3,6 @@ use rustc_ast::ast::{Item, ItemKind, Visibility, VisibilityKind};
 use rustc_ast::node_id::NodeId;
 use rustc_ast::ptr::P;
 use rustc_const_eval::transform::validate::Validator;
-use rustc_data_structures::thin_vec::ThinVec;
 use rustc_driver::Compilation;
 use rustc_interface::interface::Compiler;
 use rustc_interface::Queries;
@@ -15,6 +14,7 @@ use rustc_span::def_id::LocalDefId;
 use rustc_span::symbol::Ident;
 use rustc_span::DUMMY_SP;
 
+use thin_vec::ThinVec;
 use crate::instrument::Instrumenter;
 
 pub static INSTRUMENTER: Lazy<Instrumenter> = Lazy::new(Instrumenter::new);

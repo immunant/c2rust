@@ -454,7 +454,7 @@ fn run(tcx: TyCtxt) {
             assert_eq!(local, l);
         }
 
-        for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+        for (bb, bb_data) in mir.basic_blocks.iter_enumerated() {
             for (i, stmt) in bb_data.statements.iter().enumerate() {
                 let (_, rv) = match &stmt.kind {
                     StatementKind::Assign(x) => *x.clone(),

@@ -10,6 +10,7 @@ extern crate rustc_mir_build;
 extern crate rustc_mir_transform;
 extern crate rustc_session;
 extern crate rustc_span;
+extern crate thin_vec;
 
 mod arg;
 mod callbacks;

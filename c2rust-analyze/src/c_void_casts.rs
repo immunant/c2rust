@@ -402,7 +402,7 @@ impl<'tcx> CVoidCasts<'tcx> {
     ///
     /// [`*c_void`]: core::ffi::c_void
     fn insert_all_from_body(&mut self, body: &Body<'tcx>, tcx: TyCtxt<'tcx>) {
-        for (block, bb_data) in body.basic_blocks().iter_enumerated() {
+        for (block, bb_data) in body.basic_blocks.iter_enumerated() {
             let term: &Terminator = match &bb_data.terminator {
                 Some(term) => term,
                 None => continue,
@@ -436,7 +436,7 @@ impl<'tcx> CVoidCasts<'tcx> {
                     // a cast from `*c_void` to an arbitrary type in the subsequent block,
                     // searching forward.
                     From => Self::find_first_cast(
-                        &body.basic_blocks()[target.unwrap()].statements,
+                        &body.basic_blocks[target.unwrap()].statements,
                         c_void_ptr,
                     ),
                     // For [`CVoidCastDirection::To`], we only count
