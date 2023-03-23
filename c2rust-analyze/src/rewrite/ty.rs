@@ -221,6 +221,7 @@ fn mk_rewritten_ty<'tcx>(
             None => return ty,
         };
 
+        // The `ty` should be a pointer; the sole argument is the pointee type.
         assert_eq!(args.len(), 1);
         let mut ty = args[0];
 
