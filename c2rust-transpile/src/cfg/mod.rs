@@ -2072,7 +2072,6 @@ impl CfgBuilder {
             || !IncCleanup::new(in_tail, brk_lbl.clone()).remove_tail_expr(&mut stmts);
 
         if has_fallthrough && need_block && use_brk_lbl {
-            translator.use_feature("label_break_value");
             let block_body = mk().block(stmts);
             let block: Box<Expr> = mk().labelled_block_expr(block_body, brk_lbl.pretty_print());
             stmts = vec![mk().expr_stmt(block)]

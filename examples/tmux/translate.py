@@ -56,7 +56,6 @@ FILES_NEEDING_TRAILING_UNDERSCORE = [
 ]
 # TODO(kkysen) shouldn't need `extern crate`
 MAIN_MODS = """\
-#![feature(label_break_value)]
 #![allow(unused_imports)]
 extern crate libc;
 

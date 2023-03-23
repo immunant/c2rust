@@ -35,7 +35,6 @@ RUST_SRC_DIR = os.path.join(RUST_ROOT_DIR, "src")
 MAIN_RS = os.path.join(RUST_SRC_DIR, "main.rs")
 # TODO(kkysen) shouldn't need `extern crate`
 MAIN_MODS = """\
-#![feature(label_break_value)]
 extern crate libc;
 pub mod i386_asm;
 pub mod libtcc;
