@@ -2,11 +2,12 @@ use crate::rewrite::expr::mir_op::{self, MirRewrite};
 use crate::rewrite::span_index::SpanIndex;
 use crate::rewrite::Rewrite;
 use rustc_hir as hir;
-use rustc_hir::def::Res;
+use rustc_hir::def::{Namespace, Res};
 use rustc_hir::intravisit;
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, Location};
 use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, PointerCast};
+use rustc_middle::ty::print::{FmtPrinter, Print};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
@@ -294,8 +295,10 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                         hir_rw = Rewrite::AddrOf(Box::new(hir_rw), mutbl.into());
                     }
                     Adjust::Pointer(PointerCast::Unsize) => {
-                        // TODO: figure out what kind of unsize this is and insert an explicit cast
-                        // (e.g. `&x` -> `&x as &[_]`).  In many cases this should work without a cast.
+                        let ty = adj.target;
+                        let printer = FmtPrinter::new(self.tcx, Namespace::TypeNS);
+                        let s = ty.print(printer).unwrap().into_buffer();
+                        hir_rw = Rewrite::Cast(Box::new(hir_rw), s);
                     }
                     Adjust::Pointer(cast) => todo!("Adjust::Pointer({:?})", cast),
                 }
