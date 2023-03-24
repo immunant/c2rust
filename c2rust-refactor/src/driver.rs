@@ -512,9 +512,9 @@ fn make_parser<'a>(sess: &'a Session, src: &str) -> Parser<'a> {
     )
 }
 
-pub fn emit_and_panic(mut db: DiagnosticBuilder, what: &str) -> ! {
+pub fn emit_and_panic(mut db: DiagnosticBuilder, what: &str, src: &str) -> ! {
     db.emit();
-    panic!("error parsing {}", what);
+    panic!("error parsing {}: {}", what, src);
 }
 
 // Helper functions for parsing source code in an existing `Session`.
@@ -526,7 +526,7 @@ pub fn parse_expr(sess: &Session, src: &str) -> P<Expr> {
             remove_paren(&mut expr);
             expr
         }
-        Err(db) => emit_and_panic(db, "expr"),
+        Err(db) => emit_and_panic(db, "expr", src),
     }
 }
 
@@ -538,7 +538,7 @@ pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
             remove_paren(&mut pat);
             pat
         }
-        Err(db) => emit_and_panic(db, "pat"),
+        Err(db) => emit_and_panic(db, "pat", src),
     }
 }
 
@@ -550,7 +550,7 @@ pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
             remove_paren(&mut ty);
             ty
         }
-        Err(db) => emit_and_panic(db, "ty"),
+        Err(db) => emit_and_panic(db, "ty", src),
     }
 }
 
@@ -569,7 +569,7 @@ pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
                 s.lone()
             })
             .collect(),
-        Err(db) => emit_and_panic(db, "stmts"),
+        Err(db) => emit_and_panic(db, "stmts", src),
     }
 }
 
@@ -584,7 +584,7 @@ pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
                 items.push(item.lone());
             }
             Ok(None) => break,
-            Err(db) => emit_and_panic(db, "items"),
+            Err(db) => emit_and_panic(db, "items", src),
         }
     }
     items
@@ -600,7 +600,7 @@ pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
             ItemKind::Impl(_, _, _, _, _, _, items) => items,
             _ => panic!("expected to find an impl item"),
         },
-        Err(db) => emit_and_panic(db, "impl items"),
+        Err(db) => emit_and_panic(db, "impl items", src),
     }
 }
 
@@ -614,7 +614,7 @@ pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
             ItemKind::ForeignMod(fm) => fm.items,
             _ => panic!("expected to find a foreignmod item"),
         },
-        Err(db) => emit_and_panic(db, "foreign items"),
+        Err(db) => emit_and_panic(db, "foreign items", src),
     }
 }
 
@@ -634,7 +634,7 @@ pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
             block.rules = rules;
             block
         }
-        Err(db) => emit_and_panic(db, "block"),
+        Err(db) => emit_and_panic(db, "block", src),
     }
 }
 
@@ -666,7 +666,7 @@ pub fn parse_arg(sess: &Session, src: &str) -> Param {
             remove_paren(&mut arg);
             arg
         }
-        Err(db) => emit_and_panic(db, "arg"),
+        Err(db) => emit_and_panic(db, "arg", src),
     }
 }
 
@@ -678,7 +678,7 @@ where
     let mut p = make_parser(sess, src);
     match f(&mut p) {
         Ok(x) => x,
-        Err(db) => emit_and_panic(db, "src"),
+        Err(db) => emit_and_panic(db, "src", src),
     }
 }
 
@@ -690,7 +690,7 @@ where
     let mut p = rustc_parse::new_parser_from_tts(&sess.parse_sess, tts);
     match f(&mut p) {
         Ok(x) => x,
-        Err(db) => emit_and_panic(db, "tts"),
+        Err(db) => emit_and_panic(db, "tts", "<tts>"),
     }
 }
 

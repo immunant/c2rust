@@ -128,7 +128,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
                 remove_paren(&mut expr);
                 expr
             }
-            Err(db) => emit_and_panic(db, "expr"),
+            Err(db) => emit_and_panic(db, "expr", src),
         }
     }
 
@@ -140,7 +140,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
                 remove_paren(&mut pat);
                 pat
             }
-            Err(db) => emit_and_panic(db, "pat"),
+            Err(db) => emit_and_panic(db, "pat", src),
         }
     }
 
@@ -152,7 +152,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
                 remove_paren(&mut ty);
                 ty
             }
-            Err(db) => emit_and_panic(db, "ty"),
+            Err(db) => emit_and_panic(db, "ty", src),
         }
     }
 
@@ -169,7 +169,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
                 }
                 stmts
             }
-            Err(db) => emit_and_panic(db, "stmts"),
+            Err(db) => emit_and_panic(db, "stmts", src),
         }
     }
 
@@ -183,7 +183,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
                     items.push(item);
                 }
                 Ok(None) => break,
-                Err(db) => emit_and_panic(db, "items"),
+                Err(db) => emit_and_panic(db, "items", src),
             }
         }
         self.types.merge(bt);
