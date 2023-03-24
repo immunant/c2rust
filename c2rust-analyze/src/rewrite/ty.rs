@@ -50,6 +50,8 @@ fn relabel_rewrites<'tcx>(
             // for some pointers where no actual improvement was possible.
             Some(type_desc::perms_to_desc(perms, flags))
         };
+        // `args` were already rewritten, so we can compute `descendant_has_rewrite` just by
+        // visiting the direct children.
         let descendant_has_rewrite = args.iter().any(|child| {
             let has_rewrite = child.label.ty_desc.is_some();
             has_rewrite || child.label.descendant_has_rewrite
