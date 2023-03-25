@@ -51,10 +51,10 @@ mod c_void_casts;
 mod context;
 mod dataflow;
 mod equiv;
-mod expr_rewrite;
 mod labeled_ty;
 mod log;
 mod pointer_id;
+mod rewrite;
 mod trivial;
 mod type_desc;
 mod util;
@@ -589,6 +589,7 @@ fn run(tcx: TyCtxt) {
     // Print results for each function in `all_fn_ldids`, going in declaration order.  Concretely,
     // we iterate over `body_owners()`, which is a superset of `all_fn_ldids`, and filter based on
     // membership in `func_info`, which contains an entry for each ID in `all_fn_ldids`.
+    let mut all_rewrites = Vec::new();
     for ldid in tcx.hir().body_owners() {
         // Skip any body owners that aren't present in `func_info`, and also get the info itself.
         let info = match func_info.get_mut(&ldid) {
@@ -653,26 +654,28 @@ fn run(tcx: TyCtxt) {
         }
 
         eprintln!("\ntype assignment for {:?}:", name);
-        for (local, decl) in mir.local_decls.iter_enumerated() {
-            // TODO: apply `Cell` if `addr_of_local` indicates it's needed
-            let ty = type_desc::convert_type(&acx, acx.local_tys[local], &asn);
-            eprintln!("{:?} ({}): {:?}", local, describe_local(tcx, decl), ty,);
-        }
+        rewrite::dump_rewritten_local_tys(&acx, &asn, &mir, describe_local);
 
         eprintln!();
-        let rewrites = expr_rewrite::gen_expr_rewrites(&acx, &asn, &mir);
-        for rw in &rewrites {
-            eprintln!(
-                "at {:?} ({}, {:?}):",
-                rw.loc.stmt,
-                describe_span(tcx, rw.loc.span),
-                rw.loc.sub,
-            );
-            for kind in &rw.kinds {
-                eprintln!("  {:?}", kind);
-            }
+        let hir_body_id = tcx.hir().body_owned_by(ldid);
+        let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
+        let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
+        // Print rewrites
+        eprintln!(
+            "\ngenerated {} expr rewrites + {} ty rewrites for {:?}:",
+            expr_rewrites.len(),
+            ty_rewrites.len(),
+            name
+        );
+        for &(span, ref rw) in expr_rewrites.iter().chain(ty_rewrites.iter()) {
+            eprintln!("  {}: {}", describe_span(tcx, span), rw);
         }
+        all_rewrites.extend(expr_rewrites);
+        all_rewrites.extend(ty_rewrites);
     }
+
+    // Apply rewrite to all functions at once.
+    rewrite::apply_rewrites(tcx, all_rewrites);
 }
 
 trait AssignPointerIds<'tcx> {

@@ -1,3 +1,12 @@
+//! Rewriting of expressions comes with one extra bit of complexity: sometimes the code we're
+//! modifying has had autoderef and/or autoref `Adjustment`s applied to it. To avoid unexpectedly
+//! changing which adjustments get applied, we "materialize" the `Adjustment`s, making them
+//! explicit in the source code. For example, `vec.len()`, which implicitly applies deref and ref
+//! adjustments to `vec`, would be converted to `(&*vec).len()`, where the deref and ref operations
+//! are explicit, and might be further rewritten from there. However, we don't want to materialize
+//! all adjustments, as this would make even non-rewritten code extremely verbose, so we try to
+//! materialize adjustments only on code that's subject to some rewrite.
+
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet, PointerId};
 use crate::pointer_id::PointerTable;
 use crate::type_desc::{self, Ownership, Quantity};
@@ -6,14 +15,7 @@ use rustc_middle::mir::{
     BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
     TerminatorKind,
 };
-use rustc_span::{Span, DUMMY_SP};
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct ExprLoc {
-    pub stmt: Location,
-    pub span: Span,
-    pub sub: Vec<SubLoc>,
-}
+use std::collections::HashMap;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum SubLoc {
@@ -44,25 +46,26 @@ pub enum RewriteKind {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct ExprRewrite {
-    pub loc: ExprLoc,
-    pub kinds: Vec<RewriteKind>,
+pub struct MirRewrite {
+    pub kind: RewriteKind,
+    pub sub_loc: Vec<SubLoc>,
 }
 
 struct ExprRewriteVisitor<'a, 'tcx> {
     acx: &'a AnalysisCtxt<'a, 'tcx>,
     perms: PointerTable<'a, PermissionSet>,
     flags: PointerTable<'a, FlagSet>,
-    rewrites: &'a mut Vec<ExprRewrite>,
+    rewrites: &'a mut HashMap<Location, Vec<MirRewrite>>,
     mir: &'a Body<'tcx>,
-    loc: ExprLoc,
+    loc: Location,
+    sub_loc: Vec<SubLoc>,
 }
 
 impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     pub fn new(
         acx: &'a AnalysisCtxt<'a, 'tcx>,
         asn: &'a Assignment,
-        rewrites: &'a mut Vec<ExprRewrite>,
+        rewrites: &'a mut HashMap<Location, Vec<MirRewrite>>,
         mir: &'a Body<'tcx>,
     ) -> ExprRewriteVisitor<'a, 'tcx> {
         let perms = asn.perms();
@@ -73,21 +76,18 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             flags,
             rewrites,
             mir,
-            loc: ExprLoc {
-                stmt: Location {
-                    block: BasicBlock::from_usize(0),
-                    statement_index: 0,
-                },
-                span: DUMMY_SP,
-                sub: Vec::new(),
+            loc: Location {
+                block: BasicBlock::from_usize(0),
+                statement_index: 0,
             },
+            sub_loc: Vec::new(),
         }
     }
 
     fn enter<F: FnOnce(&mut Self) -> R, R>(&mut self, sub: SubLoc, f: F) -> R {
-        self.loc.sub.push(sub);
+        self.sub_loc.push(sub);
         let r = f(self);
-        self.loc.sub.pop();
+        self.sub_loc.pop();
         r
     }
 
@@ -119,11 +119,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     }
 
     fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
-        self.loc = ExprLoc {
-            stmt: loc,
-            span: stmt.source_info.span,
-            sub: Vec::new(),
-        };
+        self.loc = loc;
+        debug_assert!(self.sub_loc.is_empty());
 
         match stmt.kind {
             StatementKind::Assign(ref x) => {
@@ -147,11 +144,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
     fn visit_terminator(&mut self, term: &Terminator<'tcx>, loc: Location) {
         let tcx = self.acx.tcx();
-        self.loc = ExprLoc {
-            stmt: loc,
-            span: term.source_info.span,
-            sub: Vec::new(),
-        };
+        self.loc = loc;
+        debug_assert!(self.sub_loc.is_empty());
 
         match term.kind {
             TerminatorKind::Goto { .. } => {}
@@ -307,7 +301,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         let arg_expect_qty = match result_qty {
             Quantity::Single => Quantity::Slice,
             Quantity::Slice => Quantity::Slice,
-            Quantity::OffsetPtr => todo!("OffsetPtr"),
+            Quantity::OffsetPtr => Quantity::OffsetPtr,
         };
 
         self.enter_call_arg(0, |v| {
@@ -342,17 +336,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     }
 
     fn emit(&mut self, rw: RewriteKind) {
-        if let Some(er) = self.rewrites.last_mut() {
-            if er.loc == self.loc {
-                er.kinds.push(rw);
-                return;
-            }
-        }
-
-        self.rewrites.push(ExprRewrite {
-            loc: self.loc.clone(),
-            kinds: vec![rw],
-        });
+        self.rewrites
+            .entry(self.loc)
+            .or_insert_with(Vec::new)
+            .push(MirRewrite {
+                kind: rw,
+                sub_loc: self.sub_loc.clone(),
+            });
     }
 
     fn emit_ptr_cast(&mut self, ptr: PointerId, expect_ptr: PointerId) {
@@ -387,16 +377,12 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     }
 }
 
-pub fn gen_expr_rewrites<'tcx>(
+pub fn gen_mir_rewrites<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,
     mir: &Body<'tcx>,
-) -> Vec<ExprRewrite> {
-    // - walk over statements/terminators
-    // - Assign: find RHS operands that need casting to match LHS
-    // - Call: special case for `ptr.offset(i)`
-
-    let mut out = Vec::new();
+) -> HashMap<Location, Vec<MirRewrite>> {
+    let mut out = HashMap::new();
 
     let mut v = ExprRewriteVisitor::new(acx, asn, &mut out, mir);
 
