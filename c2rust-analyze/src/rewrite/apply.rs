@@ -70,7 +70,7 @@ impl<S: SpanLike> RewriteTree<S> {
         let mut errs = Vec::new();
 
         fn commit<S: SpanLike>(
-            stack: &mut Vec<RewriteTree<S>>,
+            stack: &mut [RewriteTree<S>],
             out: &mut Vec<RewriteTree<S>>,
             rt: RewriteTree<S>,
         ) {
@@ -172,10 +172,10 @@ impl<S: SpanLike> RewriteTree<S> {
 /// Split `rts` into the portion before `span`, the portion overlapping `span`, and the portion
 /// after `span`.  Nodes within `rts` should not overlap each other, and the list must be sorted by
 /// span; otherwise, the result are unspecified.
-fn partition_nodes<'a>(
-    rts: &'a [RewriteTree],
+fn partition_nodes(
+    rts: &[RewriteTree],
     span: Span,
-) -> (&'a [RewriteTree], &'a [RewriteTree], &'a [RewriteTree]) {
+) -> (&[RewriteTree], &[RewriteTree], &[RewriteTree]) {
     // Check that `rts[i]` ends before `rts[i+1]` begins, which implies that the nodes in `rts` are
     // sorted and non-overlapping.
     debug_assert!(rts
@@ -372,7 +372,7 @@ pub fn apply_rewrites(
 
     let mut new_src = HashMap::new();
     let mut rts = &rts as &[RewriteTree<Span>];
-    while rts.len() > 0 {
+    while !rts.is_empty() {
         let file = source_map.lookup_source_file(rts[0].span.lo());
         let idx = rts
             .iter()

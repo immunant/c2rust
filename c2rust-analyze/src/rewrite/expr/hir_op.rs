@@ -76,7 +76,7 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
             let matched = self
                 .mir
                 .stmt_at(loc)
-                .either(|s| filter_stmt(s), |t| filter_term(t));
+                .either(&mut filter_stmt, &mut filter_term);
             if !matched {
                 continue;
             }
@@ -316,9 +316,7 @@ fn materialize_adjustment<'tcx>(
         }
         Adjust::Deref(_) => Rewrite::Deref(Box::new(hir_rw)),
         Adjust::Borrow(AutoBorrow::Ref(_, mutbl)) => Rewrite::Ref(Box::new(hir_rw), mutbl.into()),
-        Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => {
-            Rewrite::AddrOf(Box::new(hir_rw), mutbl.into())
-        }
+        Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => Rewrite::AddrOf(Box::new(hir_rw), mutbl),
         Adjust::Pointer(PointerCast::Unsize) => {
             let ty = adj.target;
             let printer = FmtPrinter::new(tcx, Namespace::TypeNS);
@@ -380,7 +378,7 @@ pub fn gen_hir_rewrites<'tcx>(
             continue;
         }
         let rws = &rewrites[&loc];
-        if rws.len() == 0 {
+        if rws.is_empty() {
             continue;
         }
 
