@@ -1,6 +1,7 @@
 use crate::borrowck::{AdtMetadata, FieldMetadata, OriginArg, OriginParam};
 use crate::c_void_casts::CVoidCasts;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
+use crate::panic_detail::PanicDetail;
 use crate::pointer_id::{
     GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
     PointerTableMut,
@@ -278,7 +279,7 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
     /// `DefId`s of functions where analysis failed, and a `String` explaining the reason for each
     /// failure.
-    pub fns_failed: HashMap<DefId, String>,
+    pub fns_failed: HashMap<DefId, PanicDetail>,
 
     pub field_ltys: HashMap<DefId, LTy<'tcx>>,
 
@@ -635,17 +636,20 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         self.fns_failed.contains_key(&did)
     }
 
-    pub fn mark_fn_failed(&mut self, did: DefId, reason: impl Display) {
+    pub fn mark_fn_failed(&mut self, did: DefId, detail: PanicDetail) {
         if self.fns_failed.contains_key(&did) {
             return;
         }
 
-        self.fns_failed.insert(did, reason.to_string());
+        self.fns_failed.insert(did, detail);
 
         // This is the first time marking `did` as failed, so also mark all of its callers.
         let callers = self.fn_callers.get(&did).cloned().unwrap_or(Vec::new());
         for caller in callers {
-            self.mark_fn_failed(caller, format_args!("analysis failed on callee {:?}", did));
+            self.mark_fn_failed(
+                caller,
+                PanicDetail::new(format!("analysis failed on callee {:?}", did)),
+            );
         }
     }
 }

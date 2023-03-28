@@ -49,6 +49,7 @@ mod dataflow;
 mod equiv;
 mod labeled_ty;
 mod log;
+mod panic_detail;
 mod pointer_id;
 mod rewrite;
 mod trivial;
@@ -411,7 +412,7 @@ fn run(tcx: TyCtxt) {
         let (dataflow, equiv_constraints) = match r {
             Ok(x) => x,
             Err(e) => {
-                gacx.mark_fn_failed(ldid.to_def_id(), panic_to_string(e));
+                gacx.mark_fn_failed(ldid.to_def_id(), panic_detail::catch(&e));
                 continue;
             }
         };
@@ -534,7 +535,7 @@ fn run(tcx: TyCtxt) {
             match r {
                 Ok(()) => {}
                 Err(e) => {
-                    gacx.mark_fn_failed(ldid.to_def_id(), panic_to_string(e));
+                    gacx.mark_fn_failed(ldid.to_def_id(), panic_detail::catch(&e));
                     continue;
                 }
             }
@@ -615,7 +616,7 @@ fn run(tcx: TyCtxt) {
         match r {
             Ok(()) => {}
             Err(e) => {
-                gacx.mark_fn_failed(ldid.to_def_id(), panic_to_string(e));
+                gacx.mark_fn_failed(ldid.to_def_id(), panic_detail::catch(&e));
                 continue;
             }
         }
@@ -666,11 +667,32 @@ fn run(tcx: TyCtxt) {
     rewrite::apply_rewrites(tcx, all_rewrites);
 
     // Report errors that were caught previously
+    eprintln!("\nerror details:");
     for ldid in tcx.hir().body_owners() {
-        if let Some(reason) = gacx.fns_failed.get(&ldid.to_def_id()) {
-            eprintln!("analysis of {:?} failed: {:?}", ldid, reason);
+        if let Some(detail) = gacx.fns_failed.get(&ldid.to_def_id()) {
+            if !detail.has_backtrace() {
+                continue;
+            }
+            eprintln!("\nerror in {:?}:\n{}", ldid, detail.to_string_full());
         }
     }
+
+    eprintln!("\nerror summary:");
+    for ldid in tcx.hir().body_owners() {
+        if let Some(detail) = gacx.fns_failed.get(&ldid.to_def_id()) {
+            eprintln!(
+                "analysis of {:?} failed: {}",
+                ldid,
+                detail.to_string_short()
+            );
+        }
+    }
+
+    eprintln!(
+        "\nsaw errors in {} / {} functions",
+        gacx.fns_failed.len(),
+        all_fn_ldids.len()
+    );
 }
 
 trait AssignPointerIds<'tcx> {
@@ -897,20 +919,6 @@ fn for_each_callee(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(LocalDefId)) {
     CalleeVisitor { tcx, mir, f }.visit_body(mir);
 }
 
-fn panic_to_string(e: Box<dyn Any + Send + 'static>) -> String {
-    let e = match e.downcast::<&'static str>() {
-        Ok(s) => return s.to_string(),
-        Err(e) => e,
-    };
-
-    let e = match e.downcast::<String>() {
-        Ok(s) => return *s,
-        Err(e) => e,
-    };
-
-    format!("unknown error: {:?}", e.type_id())
-}
-
 struct AnalysisCallbacks;
 
 impl rustc_driver::Callbacks for AnalysisCallbacks {
@@ -928,6 +936,7 @@ impl rustc_driver::Callbacks for AnalysisCallbacks {
 
 fn main() -> rustc_interface::interface::Result<()> {
     init_logger();
+    panic::set_hook(Box::new(panic_detail::panic_hook));
     let args = env::args().collect::<Vec<_>>();
     rustc_driver::RunCompiler::new(&args, &mut AnalysisCallbacks).run()
 }
