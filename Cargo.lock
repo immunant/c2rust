@@ -154,6 +154,7 @@ name = "c2rust-analyze"
 version = "0.17.0"
 dependencies = [
  "assert_matches",
+ "backtrace",
  "bitflags",
  "c2rust-build-paths",
  "clap 4.1.9",
