@@ -714,6 +714,11 @@ fn run(tcx: TyCtxt) {
             Some(x) => x,
             None => continue,
         };
+
+        if gacx.fn_failed(ldid.to_def_id()) {
+            continue;
+        }
+
         let ldid_const = WithOptConstParam::unknown(ldid);
         let name = tcx.item_name(ldid.to_def_id());
         let mir = tcx.mir_built(ldid_const);
@@ -745,21 +750,31 @@ fn run(tcx: TyCtxt) {
         rewrite::dump_rewritten_local_tys(&acx, &asn, &mir, describe_local);
 
         eprintln!();
-        let hir_body_id = tcx.hir().body_owned_by(ldid);
-        let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
-        let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
-        // Print rewrites
-        eprintln!(
-            "\ngenerated {} expr rewrites + {} ty rewrites for {:?}:",
-            expr_rewrites.len(),
-            ty_rewrites.len(),
-            name
-        );
-        for &(span, ref rw) in expr_rewrites.iter().chain(ty_rewrites.iter()) {
-            eprintln!("  {}: {}", describe_span(tcx, span), rw);
+
+        let r = panic::catch_unwind(AssertUnwindSafe(|| {
+            let hir_body_id = tcx.hir().body_owned_by(ldid);
+            let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
+            let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
+            // Print rewrites
+            eprintln!(
+                "\ngenerated {} expr rewrites + {} ty rewrites for {:?}:",
+                expr_rewrites.len(),
+                ty_rewrites.len(),
+                name
+            );
+            for &(span, ref rw) in expr_rewrites.iter().chain(ty_rewrites.iter()) {
+                eprintln!("  {}: {}", describe_span(tcx, span), rw);
+            }
+            all_rewrites.extend(expr_rewrites);
+            all_rewrites.extend(ty_rewrites);
+        }));
+        match r {
+            Ok(()) => {}
+            Err(e) => {
+                gacx.mark_fn_failed(ldid.to_def_id(), panic_to_string(e));
+                continue;
+            }
         }
-        all_rewrites.extend(expr_rewrites);
-        all_rewrites.extend(ty_rewrites);
     }
 
     // Print results for `static` items.
