@@ -3,7 +3,7 @@ use log::warn;
 use std::any::Any;
 use std::cell::Cell;
 use std::fmt::Write as _;
-use std::panic::{Location, PanicInfo};
+use std::panic::PanicInfo;
 
 #[derive(Clone, Debug)]
 pub struct PanicDetail {

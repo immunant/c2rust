@@ -26,7 +26,7 @@ use rustc_middle::ty::{
 };
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::HashMap;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::ops::Index;
 
 bitflags! {

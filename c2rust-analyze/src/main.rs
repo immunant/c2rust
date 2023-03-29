@@ -35,7 +35,6 @@ use rustc_middle::mir::{
 };
 use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
-use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::{Debug, Display};
