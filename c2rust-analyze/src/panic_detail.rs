@@ -28,7 +28,11 @@ impl PanicDetail {
     }
 
     pub fn to_string_short(&self) -> String {
-        let loc_str = self.relevant_loc.as_ref().map_or("[unknown]", |s| &*s);
+        let loc_str = self
+            .relevant_loc
+            .as_ref()
+            .or(self.loc.as_ref())
+            .map_or("[unknown]", |s| &*s);
         format!("{}: {}", loc_str, self.msg.trim())
     }
 
