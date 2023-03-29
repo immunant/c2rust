@@ -18,7 +18,6 @@ use rustc_middle::mir::{
 };
 use rustc_middle::ty::{AdtDef, FieldDef, Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
-use std::fmt::Display;
 use std::ops::Index;
 
 bitflags! {

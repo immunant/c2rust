@@ -41,7 +41,6 @@ use rustc_middle::ty::tls;
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
-use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::{Debug, Display};
