@@ -277,8 +277,8 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     pub fn_callers: HashMap<DefId, Vec<DefId>>,
 
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
-    /// `DefId`s of functions where analysis failed, and a `String` explaining the reason for each
-    /// failure.
+    /// `DefId`s of functions where analysis failed, and a [`PanicDetail`] explaining the reason
+    /// for each failure.
     pub fns_failed: HashMap<DefId, PanicDetail>,
 
     pub field_ltys: HashMap<DefId, LTy<'tcx>>,

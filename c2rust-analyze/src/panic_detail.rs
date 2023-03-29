@@ -5,6 +5,7 @@ use std::cell::Cell;
 use std::fmt::Write as _;
 use std::panic::PanicInfo;
 
+/// Detailed information about a panic.
 #[derive(Clone, Debug)]
 pub struct PanicDetail {
     msg: String,
@@ -14,6 +15,8 @@ pub struct PanicDetail {
 }
 
 impl PanicDetail {
+    /// Create a new `PanicDetail` containing only a message, with no location or backtrace
+    /// information.
     pub fn new(msg: String) -> PanicDetail {
         PanicDetail {
             msg,
@@ -23,10 +26,12 @@ impl PanicDetail {
         }
     }
 
+    /// Returns `true` if this `PanicDetail` contains a backtrace.
     pub fn has_backtrace(&self) -> bool {
         self.backtrace.is_some()
     }
 
+    /// Return a short (usually one-line) description of this panic.
     pub fn to_string_short(&self) -> String {
         let loc_str = self
             .relevant_loc
@@ -36,6 +41,7 @@ impl PanicDetail {
         format!("{}: {}", loc_str, self.msg.trim())
     }
 
+    /// Return a full description of this panic, including a complete backtrace if available.
     pub fn to_string_full(&self) -> String {
         let mut s = String::new();
         let loc_str = self.loc.as_ref().map_or("[unknown]", |s| &*s);
@@ -51,6 +57,8 @@ thread_local! {
     static CURRENT_PANIC_DETAIL: Cell<Option<PanicDetail>> = Cell::new(None);
 }
 
+/// Panic hook for use with [`std::panic::set_hook`].  This builds a `PanicDetail` for each panic
+/// and stores it for later retrieval by [`take_current`].
 pub fn panic_hook(info: &PanicInfo) {
     let bt = Backtrace::new();
     let detail = PanicDetail {
@@ -65,10 +73,15 @@ pub fn panic_hook(info: &PanicInfo) {
     }
 }
 
+/// Get the [`PanicDetail`] of the most recent panic.  This clears the internal storage, so if this
+/// is called twice in a row without an intervening panic, the second call always returns `None`.
 pub fn take_current() -> Option<PanicDetail> {
     CURRENT_PANIC_DETAIL.with(|cell| cell.take())
 }
 
+/// Get the [`PanicDetail`] of the most recent panic; if it's not available, build a placeholder
+/// `PanicDetail` from the panic payload `e`.  This is useful in conjunction with
+/// [`std::panic::catch_unwind`].
 pub fn catch(e: &(dyn Any + Send + 'static)) -> PanicDetail {
     take_current().unwrap_or_else(|| {
         let msg = panic_to_string(e);
@@ -77,6 +90,9 @@ pub fn catch(e: &(dyn Any + Send + 'static)) -> PanicDetail {
     })
 }
 
+/// Crude heuristic to guess the first interesting location in a [`Backtrace`], skipping over
+/// helper functions, wrappers, and panic machinery.  The resulting location is used in the summary
+/// message produced by [`PanicDetail::to_string_short`].
 fn guess_relevant_loc(bt: &Backtrace) -> Option<String> {
     for frame in bt.frames() {
         for symbol in frame.symbols() {
