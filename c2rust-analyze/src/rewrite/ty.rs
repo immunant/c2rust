@@ -8,6 +8,7 @@ use crate::context::{AnalysisCtxt, Assignment, LTy};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
+use hir::StmtKind;
 use rustc_ast::ast;
 use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Namespace, Res};
@@ -253,10 +254,10 @@ fn mk_rewritten_ty<'tcx>(
 }
 
 struct HirTyVisitor<'a, 'tcx> {
+    asn: &'a Assignment<'a>,
     acx: &'a AnalysisCtxt<'a, 'tcx>,
     rw_lcx: LabeledTyCtxt<'tcx, RewriteLabel>,
-    //mir: &'a Body<'tcx>,
-    //span_index: SpanIndex<Location>,
+    mir: &'a Body<'tcx>,
     hir_rewrites: Vec<(Span, Rewrite)>,
 }
 
@@ -325,19 +326,38 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
     fn nested_visit_map(&mut self) -> Self::Map {
         self.acx.tcx().hir()
     }
+
+    fn visit_stmt(&mut self, s: &'tcx hir::Stmt<'tcx>) {
+        match s.kind {
+            // A local with a user type annotation
+            StmtKind::Local(hir_local) if hir_local.ty.is_some() => {
+                let rw_lcx = LabeledTyCtxt::new(self.acx.tcx());
+                for (mir_local, mir_local_decl) in self.mir.local_decls.iter_enumerated() {
+                    if mir_local_decl.source_info.span == hir_local.pat.span {
+                        let lty = self.acx.local_tys[mir_local];
+                        let rw_lty = relabel_rewrites(self.asn, rw_lcx, lty);
+                        let hir_ty = hir_local.ty.unwrap();
+                        self.handle_ty(rw_lty, hir_ty);
+                    }
+                }
+            }
+            _ => (),
+        }
+    }
 }
 
 pub fn gen_ty_rewrites<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,
-    _mir: &Body<'tcx>,
+    mir: &Body<'tcx>,
     ldid: LocalDefId,
 ) -> Vec<(Span, Rewrite)> {
     let rw_lcx = LabeledTyCtxt::new(acx.tcx());
-
     let mut v = HirTyVisitor {
+        asn,
         acx,
         rw_lcx,
+        mir,
         hir_rewrites: Vec::new(),
     };
 
@@ -363,7 +383,10 @@ pub fn gen_ty_rewrites<'tcx>(
         v.handle_ty(rw_lty, hir_ty);
     }
 
-    // TODO: update let bindings
+    let hir_body_id = acx.tcx().hir().body_owned_by(ldid);
+    let body = acx.tcx().hir().body(hir_body_id);
+    intravisit::Visitor::visit_body(&mut v, body);
+
     // TODO: wrap locals in `Cell` if `addr_of_local` indicates that it's needed
 
     // TODO: update cast RHS types

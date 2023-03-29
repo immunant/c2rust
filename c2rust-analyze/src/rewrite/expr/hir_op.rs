@@ -1,6 +1,6 @@
 use crate::rewrite::expr::mir_op::{self, MirRewrite};
 use crate::rewrite::span_index::SpanIndex;
-use crate::rewrite::Rewrite;
+use crate::rewrite::{build_span_index, Rewrite, SoleLocationError};
 use rustc_hir as hir;
 use rustc_hir::def::{Namespace, Res};
 use rustc_hir::intravisit;
@@ -11,12 +11,6 @@ use rustc_middle::ty::print::{FmtPrinter, Print};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum SoleLocationError {
-    NoMatch,
-    MultiMatch(Location, Location),
-}
 
 struct HirRewriteVisitor<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
@@ -334,24 +328,7 @@ pub fn gen_hir_rewrites<'tcx>(
     rewrites: &HashMap<Location, Vec<MirRewrite>>,
 ) -> Vec<(Span, Rewrite)> {
     // Build `span_index`, which maps `Span`s to MIR `Locations`.
-    let mut span_index_items = Vec::new();
-    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
-        for (i, stmt) in bb_data.statements.iter().enumerate() {
-            let loc = Location {
-                block: bb,
-                statement_index: i,
-            };
-            span_index_items.push((stmt.source_info.span, loc));
-        }
-
-        let loc = Location {
-            block: bb,
-            statement_index: bb_data.statements.len(),
-        };
-        span_index_items.push((bb_data.terminator().source_info.span, loc));
-    }
-
-    let span_index = SpanIndex::new(span_index_items);
+    let span_index = build_span_index(mir);
 
     // Run the visitor.
     let typeck_results = tcx.typeck_body(hir_body_id);
