@@ -1,3 +1,4 @@
+use crate::panic_detail;
 use crate::rewrite::expr::mir_op::{self, MirRewrite};
 use crate::rewrite::span_index::SpanIndex;
 use crate::rewrite::{build_span_index, Rewrite, SoleLocationError};
@@ -255,6 +256,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
     }
 
     fn visit_expr(&mut self, ex: &'tcx hir::Expr<'tcx>) {
+        let _g = panic_detail::set_current_span(ex.span);
         let mut hir_rw = Rewrite::Identity;
 
         // This span will be used to apply the actual rewrite.

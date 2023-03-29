@@ -8,6 +8,7 @@
 //! materialize adjustments only on code that's subject to some rewrite.
 
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet};
+use crate::panic_detail;
 use crate::pointer_id::PointerTable;
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{ty_callee, Callee};
@@ -136,6 +137,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     }
 
     fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
+        let _g = panic_detail::set_current_span(stmt.source_info.span);
         self.loc = loc;
         debug_assert!(self.sub_loc.is_empty());
 
@@ -227,6 +229,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
     fn visit_terminator(&mut self, term: &Terminator<'tcx>, loc: Location) {
         let tcx = self.acx.tcx();
+        let _g = panic_detail::set_current_span(term.source_info.span);
         self.loc = loc;
         debug_assert!(self.sub_loc.is_empty());
 
