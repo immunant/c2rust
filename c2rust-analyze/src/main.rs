@@ -427,6 +427,8 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                 continue;
             }
 
+            let _g = panic_detail::set_current_span(stmt.source_info.span);
+
             let lty = match rv {
                 Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
                     AggregateKind::Array(elem_ty) => {

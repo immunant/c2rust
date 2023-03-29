@@ -1,6 +1,7 @@
 use super::DataflowConstraints;
 use crate::c_void_casts::CVoidCastDirection;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
+use crate::panic_detail;
 use crate::util::{describe_rvalue, is_null_const, ty_callee, Callee, RvalueDesc};
 use assert_matches::assert_matches;
 use rustc_hir::def_id::DefId;
@@ -317,10 +318,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         eprintln!("visit_statement({:?})", stmt);
-
         if self.acx.c_void_casts.should_skip_stmt(loc) {
             return;
         }
+
+        let _g = panic_detail::set_current_span(stmt.source_info.span);
 
         // TODO(spernsteiner): other `StatementKind`s will be handled in the future
         #[allow(clippy::single_match)]
@@ -342,6 +344,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     pub fn visit_terminator(&mut self, term: &Terminator<'tcx>, loc: Location) {
         eprintln!("visit_terminator({:?})", term.kind);
         let tcx = self.acx.tcx();
+        let _g = panic_detail::set_current_span(term.source_info.span);
         // TODO(spernsteiner): other `TerminatorKind`s will be handled in the future
         #[allow(clippy::single_match)]
         match term.kind {

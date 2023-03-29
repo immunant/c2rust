@@ -1,5 +1,6 @@
 use backtrace::Backtrace;
 use log::warn;
+use rustc_span::{Span, DUMMY_SP};
 use std::any::Any;
 use std::cell::Cell;
 use std::fmt::Write as _;
@@ -12,6 +13,7 @@ pub struct PanicDetail {
     loc: Option<String>,
     relevant_loc: Option<String>,
     backtrace: Option<Backtrace>,
+    sp: Span,
 }
 
 impl PanicDetail {
@@ -23,6 +25,7 @@ impl PanicDetail {
             loc: None,
             relevant_loc: None,
             backtrace: None,
+            sp: DUMMY_SP,
         }
     }
 
@@ -46,6 +49,12 @@ impl PanicDetail {
         let mut s = String::new();
         let loc_str = self.loc.as_ref().map_or("[unknown]", |s| &*s);
         writeln!(s, "panic at {}: {}", loc_str, self.msg).unwrap();
+        if let Some(ref relevant_loc) = self.relevant_loc {
+            writeln!(s, "related location: {}", relevant_loc).unwrap();
+        }
+        if !self.sp.is_dummy() {
+            writeln!(s, "source location: {:?}", self.sp).unwrap();
+        }
         if let Some(ref bt) = self.backtrace {
             writeln!(s, "{:?}", bt).unwrap();
         }
@@ -66,6 +75,7 @@ pub fn panic_hook(info: &PanicInfo) {
         loc: info.location().map(|l| l.to_string()),
         relevant_loc: guess_relevant_loc(&bt),
         backtrace: Some(bt),
+        sp: CURRENT_SPAN.with(|cell| cell.get()),
     };
     let old = CURRENT_PANIC_DETAIL.with(|cell| cell.replace(Some(detail)));
     if let Some(old) = old {
@@ -104,6 +114,7 @@ fn guess_relevant_loc(bt: &Backtrace) -> Option<String> {
                 || name.starts_with("c2rust_analyze::borrowck")
                 || name.starts_with("c2rust_analyze::rewrite")
                 || name.contains("type_of_rvalue")
+                || name.contains("TypeOf")
                 || name.contains("lty_project")
             {
                 let filename_str = match symbol.filename() {
@@ -135,4 +146,25 @@ fn panic_to_string(e: &(dyn Any + Send + 'static)) -> String {
     }
 
     format!("unknown error: {:?}", e.type_id())
+}
+
+thread_local! {
+    static CURRENT_SPAN: Cell<Span> = Cell::new(DUMMY_SP);
+}
+
+pub struct CurrentSpanGuard {
+    old: Span,
+}
+
+impl Drop for CurrentSpanGuard {
+    fn drop(&mut self) {
+        CURRENT_SPAN.with(|cell| cell.set(self.old));
+    }
+}
+
+/// Set the current span.  Returns a guard that will reset the current span to its previous value
+/// on drop.
+pub fn set_current_span(sp: Span) -> CurrentSpanGuard {
+    let old = CURRENT_SPAN.with(|cell| cell.replace(sp));
+    CurrentSpanGuard { old }
 }
