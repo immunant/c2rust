@@ -127,21 +127,34 @@ fn cleanup_if(stmt: Stmt) -> Stmt {
     if let Stmt::Expr(Expr::If(ExprIf {
         cond,
         then_branch,
-        else_branch: Some((_token, else_)),
+        else_branch: Some((token, else_)),
         ..
     })) = &stmt
     {
         match &**else_ {
             Expr::Block(ExprBlock {
                 block, label: None, ..
-            }) if block.stmts.is_empty() => {
-                return Stmt::Expr(Expr::If(ExprIf {
-                    cond: cond.clone(),
-                    then_branch: then_branch.clone(),
-                    else_branch: Default::default(),
-                    attrs: Default::default(),
-                    if_token: Default::default(),
-                }));
+            }) => {
+                if block.stmts.is_empty() {
+                    return Stmt::Expr(Expr::If(ExprIf {
+                        cond: cond.clone(),
+                        then_branch: then_branch.clone(),
+                        else_branch: Default::default(),
+                        attrs: Default::default(),
+                        if_token: Default::default(),
+                    }));
+                } else if block.stmts.len() == 1 {
+                    // flatten nested if expression to else if chain
+                    if let Stmt::Expr(Expr::If(nested_if_expr)) = &block.stmts[0] {
+                        return Stmt::Expr(Expr::If(ExprIf {
+                            cond: cond.clone(),
+                            then_branch: then_branch.clone(),
+                            else_branch: Some((*token, Box::new(Expr::If(nested_if_expr.clone())))),
+                            attrs: Default::default(),
+                            if_token: Default::default(),
+                        }));
+                    }
+                }
             }
             _ => {}
         }
