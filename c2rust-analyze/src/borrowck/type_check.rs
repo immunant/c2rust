@@ -3,7 +3,7 @@ use crate::borrowck::{construct_adt_origins, LTy, LTyCtxt, Label, OriginParam};
 use crate::c_void_casts::CVoidCasts;
 use crate::context::PermissionSet;
 use crate::util::{self, ty_callee, Callee};
-use crate::{construct_adt_metadata, AdtMetadataTable};
+use crate::AdtMetadataTable;
 use assert_matches::assert_matches;
 use indexmap::IndexMap;
 use rustc_hir::def_id::DefId;
@@ -274,7 +274,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // We support only one case here, which is the case of null pointers
                 // constructed via casts such as `0 as *const T`
                 if let Some(true) = op.constant().cloned().map(util::is_null_const) {
-                    let adt_metadata = &construct_adt_metadata(self.tcx);
+                    let adt_metadata = self.adt_metadata;
 
                     // Here we relabel `expect_ty` to utilize the permissions it carries
                     // but substitute the rest of its `Label`s' parts with fresh origins
