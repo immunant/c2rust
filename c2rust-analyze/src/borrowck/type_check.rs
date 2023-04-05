@@ -188,9 +188,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, expect_ty: LTy<'tcx>) -> LTy<'tcx> {
         match *rv {
-            Rvalue::Use(Operand::Copy(pl))
-                if matches!(expect_ty.ty.kind(), TyKind::RawPtr(_)) =>
-            {
+            Rvalue::Use(Operand::Copy(pl)) if matches!(expect_ty.ty.kind(), TyKind::RawPtr(_)) => {
                 // Copy of a raw pointer.  We treat this as a reborrow.
                 let perm = expect_ty.label.perm;
                 let borrow_kind = if perm.contains(PermissionSet::UNIQUE) {
