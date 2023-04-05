@@ -6,10 +6,10 @@ pub unsafe fn let_decl() {
     x = std::ptr::addr_of_mut!(z);
 }
 
-// CHECK-DAG: pub unsafe fn let_decl_cell()
-pub unsafe fn let_decl_cell() {
+// CHECK-DAG: pub unsafe fn let_decl_mut()
+pub unsafe fn let_decl_mut() {
     let mut z = 2;
-    // CHECK-DAG: let x: &core::cell::Cell<(i32)>;
+    // CHECK-DAG: let x: &mut (i32);
     let x: *mut i32;
     x = std::ptr::addr_of_mut!(z);
     *x = *x;
