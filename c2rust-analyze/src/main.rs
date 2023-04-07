@@ -34,8 +34,8 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, CastKind, LocalDecl, LocalInfo, LocalKind, Location, Operand,
-    Rvalue, StatementKind,
+    AggregateKind, BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand, Rvalue,
+    StatementKind,
 };
 use rustc_middle::ty::tls;
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
@@ -394,15 +394,6 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                     }
                     _ => continue,
                 },
-                Rvalue::Cast(CastKind::PointerFromExposedAddress, ref op, ty) => {
-                    // We support only one case here, which is the case of null pointers
-                    // constructed via casts such as `0 as *const T`
-                    if let Some(true) = op.constant().cloned().map(util::is_null_const) {
-                        acx.assign_pointer_ids(ty)
-                    } else {
-                        panic!("Creating non-null pointers from exposed addresses not supported");
-                    }
-                }
                 Rvalue::Cast(_, _, ty) => acx.assign_pointer_ids(ty),
                 _ => continue,
             };

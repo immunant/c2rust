@@ -244,9 +244,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         }
                     }
                     AggregateKind::Tuple => {
-                        assert!(matches!(lty.kind(), TyKind::Tuple(..)));
+                        assert!(matches!(rvalue_lty.kind(), TyKind::Tuple(..)));
                         // Pseudo-assign from each operand to the element type of the tuple.
-                        for (op, elem_lty) in ops.iter().zip(lty.args.iter()) {
+                        for (op, elem_lty) in ops.iter().zip(rvalue_lty.args.iter()) {
                             let op_lty = self.acx.type_of(op);
                             self.do_assign(elem_lty, op_lty);
                         }
