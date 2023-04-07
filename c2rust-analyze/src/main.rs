@@ -17,8 +17,8 @@ extern crate rustc_type_ir;
 
 use crate::borrowck::{AdtMetadata, FieldMetadata, OriginArg, OriginParam};
 use crate::context::{
-    AnalysisCtxt, AnalysisCtxtData, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy,
-    LTyCtxt, LocalAssignment, PermissionSet, PointerId,
+    label_no_pointers, AnalysisCtxt, AnalysisCtxtData, FlagSet, GlobalAnalysisCtxt,
+    GlobalAssignment, LFnSig, LTy, LTyCtxt, LocalAssignment, PermissionSet, PointerId,
 };
 use crate::dataflow::DataflowConstraints;
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
@@ -37,6 +37,7 @@ use rustc_middle::mir::{
     AggregateKind, BindingForm, Body, CastKind, LocalDecl, LocalInfo, LocalKind, Location, Operand,
     Rvalue, StatementKind,
 };
+use rustc_middle::ty::adjustment::PointerCast;
 use rustc_middle::ty::tls;
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
@@ -361,6 +362,113 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
     }
 }
 
+fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
+    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+        for (i, stmt) in bb_data.statements.iter().enumerate() {
+            let (_, rv) = match &stmt.kind {
+                StatementKind::Assign(x) => *x.clone(),
+                _ => continue,
+            };
+
+            if acx.c_void_casts.should_skip_stmt(Location {
+                statement_index: i,
+                block: bb,
+            }) {
+                continue;
+            }
+
+            let lty = match rv {
+                Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
+                    AggregateKind::Array(elem_ty) => {
+                        let elem_lty = acx.assign_pointer_ids(elem_ty);
+                        let array_ty = rv.ty(acx, acx.tcx());
+                        let args = acx.lcx().mk_slice(&[elem_lty]);
+                        acx.lcx().mk(array_ty, args, PointerId::NONE)
+                    }
+                    AggregateKind::Adt(..) => {
+                        let adt_ty = rv.ty(acx, acx.tcx());
+                        acx.assign_pointer_ids(adt_ty)
+                    }
+                    AggregateKind::Tuple => {
+                        let tuple_ty = rv.ty(acx, acx.tcx());
+                        acx.assign_pointer_ids(tuple_ty)
+                    }
+                    _ => continue,
+                },
+                Rvalue::Cast(CastKind::PointerFromExposedAddress, ref op, ty) => {
+                    // We support only one case here, which is the case of null pointers
+                    // constructed via casts such as `0 as *const T`
+                    if let Some(true) = op.constant().cloned().map(util::is_null_const) {
+                        acx.assign_pointer_ids(ty)
+                    } else {
+                        panic!("Creating non-null pointers from exposed addresses not supported");
+                    }
+                }
+                Rvalue::Cast(CastKind::Pointer(PointerCast::Unsize), ref op, ty) => {
+                    let pointee_ty = match *ty.kind() {
+                        TyKind::Ref(_, ty, _) => ty,
+                        TyKind::RawPtr(tm) => tm.ty,
+                        _ => unreachable!("unsize cast has non-pointer output {:?}?", ty),
+                    };
+
+                    let op_lty = acx.type_of(op);
+                    assert!(matches!(
+                        op_lty.kind(),
+                        TyKind::Ref(..) | TyKind::RawPtr(..)
+                    ));
+                    assert_eq!(op_lty.args.len(), 1);
+                    let op_pointee_lty = op_lty.args[0];
+
+                    match *pointee_ty.kind() {
+                        TyKind::Slice(elem_ty) => {
+                            assert!(matches!(op_pointee_lty.kind(), TyKind::Array(..)));
+                            assert_eq!(op_pointee_lty.args.len(), 1);
+                            let elem_lty = op_pointee_lty.args[0];
+                            assert_eq!(elem_lty.ty, elem_ty);
+                            assert_eq!(op_pointee_lty.label, PointerId::NONE);
+
+                            let pointee_lty =
+                                acx.lcx()
+                                    .mk(pointee_ty, op_pointee_lty.args, op_pointee_lty.label);
+                            let args = acx.lcx().mk_slice(&[pointee_lty]);
+                            acx.lcx().mk(ty, args, op_lty.label)
+                        }
+                        _ => label_no_pointers(acx, ty),
+                    }
+                }
+                Rvalue::Cast(_, ref op, ty) => {
+                    let op_lty = acx.type_of(op);
+
+                    // We support this category of pointer casts as a special case.
+                    let op_is_ptr =
+                        matches!(op_lty.ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
+                    let op_pointee = op_is_ptr.then(|| op_lty.args[0]);
+                    let ty_pointee = match *ty.kind() {
+                        TyKind::Ref(_, ty, _) => Some(ty),
+                        TyKind::RawPtr(tm) => Some(tm.ty),
+                        _ => None,
+                    };
+                    if op_pointee.is_some() && op_pointee.map(|lty| lty.ty) == ty_pointee {
+                        // The source and target types are both pointers, and they have identical
+                        // pointee types.  We label the target type with the same `PointerId`s as the
+                        // source type in all positions.  This works because the two types have the
+                        // same structure.
+                        acx.lcx().mk(ty, op_lty.args, op_lty.label)
+                    } else {
+                        label_no_pointers(acx, ty)
+                    }
+                }
+                _ => continue,
+            };
+            let loc = Location {
+                block: bb,
+                statement_index: i,
+            };
+            acx.rvalue_tys.insert(loc, lty);
+        }
+    }
+}
+
 fn run(tcx: TyCtxt) {
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
@@ -454,50 +562,7 @@ fn run(tcx: TyCtxt) {
             assert_eq!(local, l);
         }
 
-        for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
-            for (i, stmt) in bb_data.statements.iter().enumerate() {
-                let (_, rv) = match &stmt.kind {
-                    StatementKind::Assign(x) => *x.clone(),
-                    _ => continue,
-                };
-                let lty = match rv {
-                    Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
-                        AggregateKind::Array(elem_ty) => {
-                            let elem_lty = acx.assign_pointer_ids(elem_ty);
-                            let array_ty = rv.ty(&acx, acx.tcx());
-                            let args = acx.lcx().mk_slice(&[elem_lty]);
-                            acx.lcx().mk(array_ty, args, PointerId::NONE)
-                        }
-                        AggregateKind::Adt(..) => {
-                            let adt_ty = rv.ty(&acx, acx.tcx());
-                            acx.assign_pointer_ids(adt_ty)
-                        }
-                        AggregateKind::Tuple => {
-                            let tuple_ty = rv.ty(&acx, acx.tcx());
-                            acx.assign_pointer_ids(tuple_ty)
-                        }
-                        _ => continue,
-                    },
-                    Rvalue::Cast(CastKind::PointerFromExposedAddress, ref op, ty) => {
-                        // We support only one case here, which is the case of null pointers
-                        // constructed via casts such as `0 as *const T`
-                        if let Some(true) = op.constant().cloned().map(util::is_null_const) {
-                            acx.assign_pointer_ids(ty)
-                        } else {
-                            panic!(
-                                "Creating non-null pointers from exposed addresses not supported"
-                            );
-                        }
-                    }
-                    _ => continue,
-                };
-                let loc = Location {
-                    block: bb,
-                    statement_index: i,
-                };
-                acx.rvalue_tys.insert(loc, lty);
-            }
-        }
+        label_rvalue_tys(&mut acx, &mir);
 
         // Compute local equivalence classes and dataflow constraints.
         let (dataflow, equiv_constraints) = dataflow::generate_constraints(&acx, &mir);
