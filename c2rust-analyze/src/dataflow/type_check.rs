@@ -186,9 +186,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let op_lty = self.acx.type_of(op);
 
                 // The source and target types are both pointers, and they have identical
-                // pointee types.  We label the target type with the same `PointerId`s as the
-                // source type in all positions.  This works because the two types have the
-                // same structure.
+                // pointee types.
                 // TODO: remove or move check to `is_castable_to`
                 assert!(op_lty.args[0].ty == rvalue_lty.args[0].ty);
 
