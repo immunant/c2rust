@@ -95,7 +95,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, lty: LTy<'tcx>) {
+    pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, rvalue_lty: LTy<'tcx>) {
         let rv_desc = describe_rvalue(rv);
         eprintln!("visit_rvalue({rv:?}), desc = {rv_desc:?}");
 
@@ -113,8 +113,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         match *rv {
             Rvalue::Use(ref op) => self.visit_operand(op),
             Rvalue::Repeat(ref op, _) => {
-                assert!(lty.ty.is_array());
-                assert_matches!(lty.args, [elem_lty] => {
+                assert!(rvalue_lty.ty.is_array());
+                assert_matches!(rvalue_lty.args, [elem_lty] => {
                     // Pseudo-assign from the operand to the element type of the array.
                     let op_lty = self.acx.type_of(op);
                     /*
@@ -164,9 +164,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 }
                 match **kind {
                     AggregateKind::Array(..) => {
-                        assert!(matches!(lty.kind(), TyKind::Array(..)));
-                        assert_eq!(lty.args.len(), 1);
-                        let elem_lty = lty.args[0];
+                        assert!(matches!(rvalue_lty.kind(), TyKind::Array(..)));
+                        assert_eq!(rvalue_lty.args.len(), 1);
+                        let elem_lty = rvalue_lty.args[0];
                         // Pseudo-assign from each operand to the element type of the array.
                         for op in ops {
                             let op_lty = self.acx.type_of(op);
@@ -181,7 +181,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             let unresolved_field_lty = self.acx.gacx.field_tys[&field.did];
                             // resolve the generic type arguments in `field_lty` by referencing the `Ty` of `op`
                             let resolved_field_lty =
-                                self.acx.lcx().subst(unresolved_field_lty, lty.args);
+                                self.acx.lcx().subst(unresolved_field_lty, rvalue_lty.args);
                             // Pseudo-assign from each operand to the element type of the field.
                             self.do_assign(resolved_field_lty, op_lty);
                         }
