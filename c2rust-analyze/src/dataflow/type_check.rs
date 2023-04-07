@@ -195,9 +195,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             }
             Rvalue::Cast(_cast_kind, ref op, _) => {
                 // A cast such as `T as U`
-                let t_lty = self.acx.type_of(op);
-                let u_lty = rvalue_lty;
-                assert!(is_castable_to(t_lty, u_lty));
+                let casted_from = self.acx.type_of(op);
+                let casted_to = rvalue_lty;
+                assert!(is_castable_to(casted_from, casted_to));
                 self.visit_operand(op)
             }
             Rvalue::BinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
