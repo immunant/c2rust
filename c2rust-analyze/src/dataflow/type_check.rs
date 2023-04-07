@@ -41,6 +41,11 @@ struct TypeChecker<'tcx, 'a> {
     equiv_constraints: Vec<(PointerId, PointerId)>,
 }
 
+fn is_castable_to(_t: LTy, _u: LTy) -> bool {
+    // TODO: implement
+    true
+}
+
 impl<'tcx> TypeChecker<'tcx, '_> {
     fn add_edge(&mut self, src: PointerId, dest: PointerId) {
         // Copying `src` to `dest` can discard permissions, but can't add new ones.
@@ -142,7 +147,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Rvalue::Len(pl) => {
                 self.visit_place(pl, Mutability::Not);
             }
-            Rvalue::Cast(_, ref op, _) => self.visit_operand(op),
+            Rvalue::Cast(_cast_kind, ref op, _) => {
+                // A cast such as T as U
+                let t_lty = self.acx.type_of(op);
+                let u_lty = rvalue_lty;
+                assert!(is_castable_to(t_lty, u_lty));
+                self.visit_operand(op)
+            }
             Rvalue::BinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
             Rvalue::BinaryOp(_, ref ops) => {
                 self.visit_operand(&ops.0);
