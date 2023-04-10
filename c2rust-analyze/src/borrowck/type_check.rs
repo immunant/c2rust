@@ -333,6 +333,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     // relations between the regions of the array and the regions of its elements
                     self.ltcx.label(ty, &mut |_ty| Label::default())
                 }
+                AggregateKind::Tuple => {
+                    for (op_idx, op) in ops.iter().enumerate() {
+                        let op_lty = self.visit_operand(op);
+                        self.do_assign(expect_ty.args[op_idx], op_lty);
+                    }
+                    expect_ty
+                }
                 AggregateKind::Adt(adt_did, ..) => {
                     /*
                         Generic types are not yet supported because of situations such as the

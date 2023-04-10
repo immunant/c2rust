@@ -19,6 +19,21 @@ pub fn aggregate() {
     };
 }
 
+// CHECK-LABEL: final labeling for "tuple"
+pub unsafe fn tuple() {
+    let mut x = 2;
+    let y = 1;
+
+    // CHECK-DAG: ([[@LINE+1]]: px): &mut i32
+    let px = std::ptr::addr_of_mut!(x);
+    // CHECK-DAG: ([[@LINE+1]]: py): &i32
+    let py = std::ptr::addr_of!(y);
+
+    // CHECK-DAG: ([[@LINE+1]]: mut tup): (&mut i32, &i32)
+    let mut tup = (px, py);
+    *tup.0 = 3;
+}
+
 // CHECK-LABEL: final labeling for "aggregate1_array"
 // CHECK-DAG: ([[@LINE+1]]: p): &std::cell::Cell<i32>
 pub unsafe fn aggregate1_array(p: *mut i32) {

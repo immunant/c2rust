@@ -472,6 +472,10 @@ fn run(tcx: TyCtxt) {
                             let adt_ty = rv.ty(&acx, acx.tcx());
                             acx.assign_pointer_ids(adt_ty)
                         }
+                        AggregateKind::Tuple => {
+                            let tuple_ty = rv.ty(&acx, acx.tcx());
+                            acx.assign_pointer_ids(tuple_ty)
+                        }
                         _ => continue,
                     },
                     Rvalue::Cast(CastKind::PointerFromExposedAddress, ref op, ty) => {

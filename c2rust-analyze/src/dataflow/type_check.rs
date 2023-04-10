@@ -186,6 +186,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             self.do_assign(resolved_field_lty, op_lty);
                         }
                     }
+                    AggregateKind::Tuple => {
+                        assert!(matches!(lty.kind(), TyKind::Tuple(..)));
+                        // Pseudo-assign from each operand to the element type of the tuple.
+                        for (op, elem_lty) in ops.iter().zip(lty.args.iter()) {
+                            let op_lty = self.acx.type_of(op);
+                            self.do_assign(elem_lty, op_lty);
+                        }
+                    }
                     ref kind => todo!("Rvalue::Aggregate({:?})", kind),
                 }
             }
