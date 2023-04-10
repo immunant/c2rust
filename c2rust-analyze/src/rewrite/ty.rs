@@ -8,7 +8,6 @@ use crate::context::{AnalysisCtxt, Assignment, LTy};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
-use hir::StmtKind;
 use rustc_ast::ast;
 use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Namespace, Res};
@@ -330,7 +329,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
     fn visit_stmt(&mut self, s: &'tcx hir::Stmt<'tcx>) {
         match s.kind {
             // A local with a user type annotation
-            StmtKind::Local(hir_local) if hir_local.ty.is_some() => {
+            hir::StmtKind::Local(hir_local) if hir_local.ty.is_some() => {
                 let rw_lcx = LabeledTyCtxt::new(self.acx.tcx());
                 for (mir_local, mir_local_decl) in self.mir.local_decls.iter_enumerated() {
                     if mir_local_decl.source_info.span == hir_local.pat.span {
