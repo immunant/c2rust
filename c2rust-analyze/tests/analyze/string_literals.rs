@@ -9,7 +9,6 @@ pub fn outline_desugared_bstr() -> &'static [u8; 0] {
     DESUGARED_BSTR
 }
 
-#[cfg(any())]
 pub fn inline_bstr() -> &'static [u8; 0] {
     b""
 }
@@ -21,7 +20,6 @@ pub fn outline_bstr() -> &'static [u8; 0] {
     BSTR
 }
 
-#[cfg(any())]
 pub fn inline_str() -> &'static str {
     ""
 }

@@ -34,8 +34,8 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, CastKind, LocalDecl, LocalInfo, LocalKind, Location, Operand,
-    Rvalue, StatementKind,
+    AggregateKind, BindingForm, Body, CastKind, ConstantKind, LocalDecl, LocalInfo, LocalKind,
+    Location, Operand, Rvalue, StatementKind,
 };
 use rustc_middle::ty::tls;
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
@@ -454,6 +454,7 @@ fn run(tcx: TyCtxt) {
             assert_eq!(local, l);
         }
 
+        let mut const_tys = HashMap::new();
         for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
             for (i, stmt) in bb_data.statements.iter().enumerate() {
                 let (_, rv) = match &stmt.kind {
@@ -489,6 +490,20 @@ fn run(tcx: TyCtxt) {
                             );
                         }
                     }
+                    Rvalue::Use(Operand::Constant(c)) => {
+                        // Constants can include, for example, `""` and `b""` string literals.
+                        if let ConstantKind::Val(_, ty) = c.literal {
+                            // The [`Constant`] is an inline value and thus local to this function,
+                            // as opposed to a global, named `const`s, for example.
+                            // This might miss local, named `const`s,
+                            const_tys
+                                .entry(c.literal)
+                                .or_insert_with(|| acx.assign_pointer_ids(ty));
+                        } else {
+                            // TODO: Handle global, named `const`s.
+                        }
+                        continue;
+                    }
                     _ => continue,
                 };
                 let loc = Location {
@@ -498,6 +513,8 @@ fn run(tcx: TyCtxt) {
                 acx.rvalue_tys.insert(loc, lty);
             }
         }
+        assert!(acx.const_tys.is_empty());
+        acx.const_tys = const_tys;
 
         // Compute local equivalence classes and dataflow constraints.
         let (dataflow, equiv_constraints) = dataflow::generate_constraints(&acx, &mir);
