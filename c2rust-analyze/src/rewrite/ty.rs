@@ -330,11 +330,10 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
         match s.kind {
             // A local with a user type annotation
             hir::StmtKind::Local(hir_local) if hir_local.ty.is_some() => {
-                let rw_lcx = LabeledTyCtxt::new(self.acx.tcx());
                 for (mir_local, mir_local_decl) in self.mir.local_decls.iter_enumerated() {
                     if mir_local_decl.source_info.span == hir_local.pat.span {
                         let lty = self.acx.local_tys[mir_local];
-                        let rw_lty = relabel_rewrites(self.asn, rw_lcx, lty);
+                        let rw_lty = relabel_rewrites(self.asn, self.rw_lcx, lty);
                         let hir_ty = hir_local.ty.unwrap();
                         self.handle_ty(rw_lty, hir_ty);
                     }
