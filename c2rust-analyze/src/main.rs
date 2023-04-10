@@ -365,7 +365,7 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb_data.statements.iter().enumerate() {
             let (_, rv) = match &stmt.kind {
-                StatementKind::Assign(x) => *x.clone(),
+                StatementKind::Assign(x) => &**x,
                 _ => continue,
             };
 
@@ -394,7 +394,7 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                     }
                     _ => continue,
                 },
-                Rvalue::Cast(_, _, ty) => acx.assign_pointer_ids(ty),
+                Rvalue::Cast(_, _, ty) => acx.assign_pointer_ids(*ty),
                 _ => continue,
             };
             let loc = Location {
