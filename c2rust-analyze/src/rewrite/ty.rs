@@ -4,6 +4,8 @@
 //! with the materialization of adjustments in expr rewriting, we try to apply this transformation
 //! selectively, since we don't want to unfold all type aliases in the program.
 
+use std::collections::HashMap;
+
 use crate::context::{AnalysisCtxt, Assignment, LTy};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::rewrite::Rewrite;
@@ -258,6 +260,7 @@ struct HirTyVisitor<'a, 'tcx> {
     rw_lcx: LabeledTyCtxt<'tcx, RewriteLabel>,
     mir: &'a Body<'tcx>,
     hir_rewrites: Vec<(Span, Rewrite)>,
+    hir_span_to_mir_local: HashMap<Span, rustc_middle::mir::Local>,
 }
 
 impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
@@ -330,13 +333,13 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
         match s.kind {
             // A local with a user type annotation
             hir::StmtKind::Local(hir_local) if hir_local.ty.is_some() => {
-                for (mir_local, mir_local_decl) in self.mir.local_decls.iter_enumerated() {
-                    if mir_local_decl.source_info.span == hir_local.pat.span {
-                        let lty = self.acx.local_tys[mir_local];
-                        let rw_lty = relabel_rewrites(self.asn, self.rw_lcx, lty);
-                        let hir_ty = hir_local.ty.unwrap();
-                        self.handle_ty(rw_lty, hir_ty);
-                    }
+                if let Some(mir_local) = self.hir_span_to_mir_local.get(&hir_local.pat.span) {
+                    let mir_local_decl = &self.mir.local_decls[*mir_local];
+                    assert_eq!(mir_local_decl.source_info.span, hir_local.pat.span);
+                    let lty = self.acx.local_tys[*mir_local];
+                    let rw_lty = relabel_rewrites(self.asn, self.rw_lcx, lty);
+                    let hir_ty = hir_local.ty.unwrap();
+                    self.handle_ty(rw_lty, hir_ty);
                 }
             }
             _ => (),
@@ -350,6 +353,11 @@ pub fn gen_ty_rewrites<'tcx>(
     mir: &Body<'tcx>,
     ldid: LocalDefId,
 ) -> Vec<(Span, Rewrite)> {
+    let mut span_to_mir_local = HashMap::new();
+    for (local, local_decl) in mir.local_decls.iter_enumerated() {
+        span_to_mir_local.insert(local_decl.source_info.span, local);
+    }
+
     let rw_lcx = LabeledTyCtxt::new(acx.tcx());
     let mut v = HirTyVisitor {
         asn,
@@ -357,10 +365,10 @@ pub fn gen_ty_rewrites<'tcx>(
         rw_lcx,
         mir,
         hir_rewrites: Vec::new(),
+        hir_span_to_mir_local: span_to_mir_local,
     };
 
     // Update function signature
-
     let hir_id = acx.tcx().hir().local_def_id_to_hir_id(ldid);
     let hir_sig = acx
         .tcx()
