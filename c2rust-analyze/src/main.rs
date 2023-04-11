@@ -26,6 +26,7 @@ use crate::labeled_ty::LabeledTyCtxt;
 use crate::log::init_logger;
 use crate::util::Callee;
 use assert_matches::assert_matches;
+use context::label_no_pointers;
 use indexmap::IndexSet;
 use labeled_ty::LabeledTy;
 use rustc_ast::Mutability;
@@ -34,9 +35,10 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand, Rvalue,
-    StatementKind,
+    AggregateKind, BindingForm, Body, CastKind, LocalDecl, LocalInfo, LocalKind, Location, Operand,
+    Rvalue, StatementKind,
 };
+use rustc_middle::ty::adjustment::PointerCast;
 use rustc_middle::ty::tls;
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
@@ -394,7 +396,69 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                     }
                     _ => continue,
                 },
-                Rvalue::Cast(_, _, ty) => acx.assign_pointer_ids(*ty),
+                Rvalue::Cast(CastKind::Pointer(PointerCast::Unsize), ref op, ty) => {
+                    let pointee_ty = match *ty.kind() {
+                        TyKind::Ref(_, ty, _) => ty,
+                        TyKind::RawPtr(tm) => tm.ty,
+                        _ => unreachable!("unsize cast has non-pointer output {:?}?", ty),
+                    };
+
+                    let op_lty = acx.type_of(op);
+                    assert!(matches!(
+                        op_lty.kind(),
+                        TyKind::Ref(..) | TyKind::RawPtr(..)
+                    ));
+                    assert_eq!(op_lty.args.len(), 1);
+                    let op_pointee_lty = op_lty.args[0];
+
+                    match *pointee_ty.kind() {
+                        TyKind::Slice(elem_ty) => {
+                            assert!(matches!(op_pointee_lty.kind(), TyKind::Array(..)));
+                            assert_eq!(op_pointee_lty.args.len(), 1);
+                            let elem_lty = op_pointee_lty.args[0];
+                            assert_eq!(elem_lty.ty, elem_ty);
+                            assert_eq!(op_pointee_lty.label, PointerId::NONE);
+
+                            let pointee_lty =
+                                acx.lcx()
+                                    .mk(pointee_ty, op_pointee_lty.args, op_pointee_lty.label);
+                            let args = acx.lcx().mk_slice(&[pointee_lty]);
+                            acx.lcx().mk(*ty, args, op_lty.label)
+                        }
+                        _ => label_no_pointers(acx, *ty),
+                    }
+                }
+                Rvalue::Cast(CastKind::PointerFromExposedAddress, ref op, ty) => {
+                    // We support only one case here, which is the case of null pointers
+                    // constructed via casts such as `0 as *const T`
+                    if let Some(true) = op.constant().cloned().map(util::is_null_const) {
+                        acx.assign_pointer_ids(*ty)
+                    } else {
+                        panic!("Creating non-null pointers from exposed addresses not supported");
+                    }
+                }
+                Rvalue::Cast(_, ref op, ty) => {
+                    let op_lty = acx.type_of(op);
+
+                    // We support this category of pointer casts as a special case.
+                    let op_is_ptr =
+                        matches!(op_lty.ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
+                    let op_pointee = op_is_ptr.then(|| op_lty.args[0]);
+                    let ty_pointee = match *ty.kind() {
+                        TyKind::Ref(_, ty, _) => Some(ty),
+                        TyKind::RawPtr(tm) => Some(tm.ty),
+                        _ => None,
+                    };
+                    if op_pointee.is_some() && op_pointee.map(|lty| lty.ty) == ty_pointee {
+                        // The source and target types are both pointers, and they have identical
+                        // pointee types.  We label the target type with the same `PointerId`s as the
+                        // source type in all positions.  This works because the two types have the
+                        // same structure.
+                        acx.lcx().mk(*ty, op_lty.args, op_lty.label)
+                    } else {
+                        label_no_pointers(acx, *ty)
+                    }
+                }
                 _ => continue,
             };
             let loc = Location {
