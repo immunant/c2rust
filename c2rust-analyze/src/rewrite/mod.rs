@@ -24,6 +24,8 @@
 //! the source code produced by the earlier ones).
 
 use rustc_hir::Mutability;
+use rustc_middle::mir::Body;
+use rustc_middle::mir::Location;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 use std::fmt;
@@ -34,6 +36,7 @@ mod span_index;
 mod ty;
 
 pub use self::expr::gen_expr_rewrites;
+use self::span_index::SpanIndex;
 pub use self::ty::dump_rewritten_local_tys;
 pub use self::ty::gen_ty_rewrites;
 
@@ -196,6 +199,33 @@ impl fmt::Display for Rewrite {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.pretty(f, 0)
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SoleLocationError {
+    NoMatch,
+    MultiMatch(Location, Location),
+}
+
+fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {
+    let mut span_index_items = Vec::new();
+    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+        for (i, stmt) in bb_data.statements.iter().enumerate() {
+            let loc = Location {
+                block: bb,
+                statement_index: i,
+            };
+            span_index_items.push((stmt.source_info.span, loc));
+        }
+
+        let loc = Location {
+            block: bb,
+            statement_index: bb_data.statements.len(),
+        };
+        span_index_items.push((bb_data.terminator().source_info.span, loc));
+    }
+
+    SpanIndex::new(span_index_items)
 }
 
 pub fn apply_rewrites(tcx: TyCtxt, rewrites: Vec<(Span, Rewrite)>) {
