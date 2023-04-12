@@ -178,6 +178,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     let elem_lty = op_pointee_lty.args[0];
                     assert_eq!(elem_lty.ty, elem_ty);
                     assert_eq!(op_pointee_lty.label, PointerId::NONE);
+                    self.do_assign_pointer_ids(rvalue_lty.label, op_lty.label);
                 }
 
                 self.visit_operand(op)
