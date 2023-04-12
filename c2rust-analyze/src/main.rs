@@ -369,10 +369,12 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                 _ => continue,
             };
 
-            if acx.c_void_casts.should_skip_stmt(Location {
+            let loc = Location {
                 statement_index: i,
                 block: bb,
-            }) {
+            };
+
+            if acx.c_void_casts.should_skip_stmt(loc) {
                 continue;
             }
 
@@ -397,10 +399,7 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                 Rvalue::Cast(_, _, ty) => acx.assign_pointer_ids(*ty),
                 _ => continue,
             };
-            let loc = Location {
-                block: bb,
-                statement_index: i,
-            };
+
             acx.rvalue_tys.insert(loc, lty);
         }
     }
