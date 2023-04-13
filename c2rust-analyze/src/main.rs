@@ -454,7 +454,7 @@ fn run(tcx: TyCtxt) {
             assert_eq!(local, l);
         }
 
-        let mut const_tys = HashMap::new();
+        let mut const_ref_tys = HashMap::new();
         for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
             for (i, stmt) in bb_data.statements.iter().enumerate() {
                 let (_, rv) = match &stmt.kind {
@@ -492,11 +492,11 @@ fn run(tcx: TyCtxt) {
                     }
                     Rvalue::Use(Operand::Constant(c)) => {
                         // Constants can include, for example, `""` and `b""` string literals.
-                        if let ConstantKind::Val(_, ty) = c.literal {
+                        if let ConstantKind::Val(_, ty) = c.literal && ty.is_ref() {
                             // The [`Constant`] is an inline value and thus local to this function,
                             // as opposed to a global, named `const`s, for example.
                             // This might miss local, named `const`s,
-                            const_tys
+                            const_ref_tys
                                 .entry(c.literal)
                                 .or_insert_with(|| acx.assign_pointer_ids(ty));
                         } else {
@@ -513,8 +513,8 @@ fn run(tcx: TyCtxt) {
                 acx.rvalue_tys.insert(loc, lty);
             }
         }
-        assert!(acx.const_tys.is_empty());
-        acx.const_tys = const_tys;
+        assert!(acx.const_ref_tys.is_empty());
+        acx.const_ref_tys = const_ref_tys;
 
         // Compute local equivalence classes and dataflow constraints.
         let (dataflow, equiv_constraints) = dataflow::generate_constraints(&acx, &mir);
