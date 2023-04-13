@@ -5,10 +5,10 @@ use crate::util::{describe_rvalue, ty_callee, Callee, RvalueDesc};
 use assert_matches::assert_matches;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
-    AggregateKind, BinOp, Body, Location, Mutability, Operand, Place, PlaceRef, ProjectionElem,
-    Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
+    AggregateKind, BinOp, Body, ConstantKind, Location, Mutability, Operand, Place, PlaceRef,
+    ProjectionElem, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
-use rustc_middle::ty::{SubstsRef, Ty, TyKind};
+use rustc_middle::ty::{self, SubstsRef, Ty, TyKind};
 
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
 /// constraints as a side effect.
@@ -454,6 +454,21 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 }
 
+fn const_perms(constant: ConstantKind) -> PermissionSet {
+    let ref_ty = constant.ty();
+    let ty = match ref_ty.kind() {
+        ty::Ref(_, ty, _) => ty,
+        _ => panic!("expected only `Ref`s for constants: {ref_ty:?}"),
+    };
+    if ty.is_array() || ty.is_str() {
+        PermissionSet::READ | PermissionSet::OFFSET_ADD
+    } else if ty.is_primitive_ty() {
+        PermissionSet::READ
+    } else {
+        panic!("expected an array, str, or primitive type: {ty:?}");
+    }
+}
+
 pub fn visit<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     mir: &Body<'tcx>,
@@ -464,6 +479,11 @@ pub fn visit<'tcx>(
         constraints: DataflowConstraints::default(),
         equiv_constraints: Vec::new(),
     };
+
+    for (&constant, const_lty) in &acx.const_ref_tys {
+        tc.constraints
+            .add_all_perms(const_lty.label, const_perms(constant));
+    }
 
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb_data.statements.iter().enumerate() {
@@ -482,6 +502,12 @@ pub fn visit<'tcx>(
                 block: bb,
             },
         );
+    }
+
+    for (&constant, const_lty) in &acx.const_ref_tys {
+        let _ptr_id = const_lty.label;
+        let _expected_perms = const_perms(constant);
+        // TODO: check that perms match the expected ones
     }
 
     (tc.constraints, tc.equiv_constraints)
