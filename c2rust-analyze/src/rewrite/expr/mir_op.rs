@@ -225,7 +225,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 // TODO
             }
             Rvalue::AddressOf(mutbl, _pl) => {
-                let (ownership, quantity) = type_desc::perms_to_desc(
+                let (ownership, _quantity) = type_desc::perms_to_desc(
                     self.perms[expect_ty.label],
                     self.flags[expect_ty.label],
                 );

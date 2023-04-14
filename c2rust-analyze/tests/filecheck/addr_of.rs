@@ -13,6 +13,18 @@ unsafe fn mut_ref() {
     *x = *x;
 }
 
+struct Foo {
+    a: i32,
+    b: i32,
+}
+
+// CHECK-LABEL: fn shared_ref_with_struct() {
+fn shared_ref_with_struct() {
+    let x = Foo { a: 1, b: 2 };
+    // CHECK-DAG: let y = &(x);
+    let y = std::ptr::addr_of!(x);
+}
+
 // TODO: check rewrite to Cell type and operations
 unsafe fn cell() {
     let mut x = 1;

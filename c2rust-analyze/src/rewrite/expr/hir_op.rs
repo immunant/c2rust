@@ -160,9 +160,16 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
                 opt_assign_loc
             }
             hir::ExprKind::AddrOf(..) => {
+                if ex.span == ex.span.source_callsite() {
+                    // FIXME: this is a hacky proxy for checking if &raw comes from
+                    // std::ptr::addr_of(_mut)! or is compiler-generated. If the
+                    // spans are equal, it was most likely compiler-generated and so we
+                    // skip this particular type of expression for rewriting
+                    return None
+                }
                 let assign_loc = self
                     .find_sole_location_matching(
-                        ex.span.source_callsite(),
+                        ex.span,
                         |stmt| matches!(stmt.kind, mir::StatementKind::Assign(..)),
                         |_term| false,
                     )
