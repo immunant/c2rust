@@ -237,6 +237,11 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
 
     fn visit_expr(&mut self, ex: &'tcx hir::Expr<'tcx>) {
         let mut hir_rw = Rewrite::Identity;
+
+        // This span will be used to apply the actual rewrite.
+        // To prevent attempts to rewrite macros in their definition
+        // location (e.g. `std::ptr::addr_of`) we instead specify that
+        // the rewrite should occur at the callsite
         let callsite_span = ex.span.source_callsite();
 
         if let Some(loc) = self.find_primary_location(ex) {
