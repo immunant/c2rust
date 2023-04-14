@@ -165,7 +165,7 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
                     // std::ptr::addr_of(_mut)! or is compiler-generated. If the
                     // spans are equal, it was most likely compiler-generated and so we
                     // skip this particular type of expression for rewriting
-                    return None
+                    return None;
                 }
                 let assign_loc = self
                     .find_sole_location_matching(
