@@ -215,14 +215,14 @@ fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {
                 block: bb,
                 statement_index: i,
             };
-            span_index_items.push((stmt.source_info.span, loc));
+            span_index_items.push((stmt.source_info.span.source_callsite(), loc));
         }
 
         let loc = Location {
             block: bb,
             statement_index: bb_data.statements.len(),
         };
-        span_index_items.push((bb_data.terminator().source_info.span, loc));
+        span_index_items.push((bb_data.terminator().source_info.span.source_callsite(), loc));
     }
 
     SpanIndex::new(span_index_items)
