@@ -171,6 +171,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     op_pointee_lty
                 });
 
+                assert_matches!(pointee_ty.kind(), TyKind::Slice(..));
                 if let TyKind::Slice(elem_ty) = *pointee_ty.kind() {
                     assert!(matches!(op_pointee_lty.kind(), TyKind::Array(..)));
                     let elem_lty = assert_matches!(op_pointee_lty.args, [elem_lty] => {
