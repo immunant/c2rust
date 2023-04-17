@@ -14,7 +14,7 @@ use rustc_middle::mir::{
     Place, PlaceElem, PlaceRef, Rvalue,
 };
 use rustc_middle::ty::adjustment::PointerCast;
-use rustc_middle::ty::{AdtDef, FieldDef, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{self, AdtDef, FieldDef, Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
 
@@ -49,6 +49,23 @@ bitflags! {
         const OFFSET_SUB = 0x0020;
         /// This pointer can be freed.
         const FREE = 0x0040;
+    }
+}
+
+impl PermissionSet {
+    pub fn for_const(constant: ConstantKind) -> PermissionSet {
+        let ref_ty = constant.ty();
+        let ty = match ref_ty.kind() {
+            ty::Ref(_, ty, _) => ty,
+            _ => panic!("expected only `Ref`s for constants: {ref_ty:?}"),
+        };
+        if ty.is_array() || ty.is_str() {
+            PermissionSet::READ | PermissionSet::OFFSET_ADD
+        } else if ty.is_primitive_ty() {
+            PermissionSet::READ
+        } else {
+            panic!("expected an array, str, or primitive type: {ty:?}");
+        }
     }
 }
 
