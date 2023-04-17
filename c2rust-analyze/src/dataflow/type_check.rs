@@ -489,11 +489,5 @@ pub fn visit<'tcx>(
         );
     }
 
-    for (&constant, const_lty) in &acx.const_ref_tys {
-        let _ptr_id = const_lty.label;
-        let _expected_perms = PermissionSet::for_const(constant);
-        // TODO: check that perms match the expected ones
-    }
-
     (tc.constraints, tc.equiv_constraints)
 }

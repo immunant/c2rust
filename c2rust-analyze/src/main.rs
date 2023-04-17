@@ -625,6 +625,13 @@ fn run(tcx: TyCtxt) {
         let mut asn = gasn.and(&mut info.lasn);
         info.dataflow.propagate_cell(&mut asn);
 
+        for (&constant, const_lty) in &acx.const_ref_tys {
+            let ptr_id = const_lty.label;
+            let expected_perms = PermissionSet::for_const(constant);
+            let actual_perms = asn.perms()[ptr_id];
+            assert_eq!(expected_perms, actual_perms);
+        }
+
         // Print labeling and rewrites for the current function.
 
         eprintln!("\nfinal labeling for {:?}:", name);
