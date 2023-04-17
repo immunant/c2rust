@@ -165,17 +165,17 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 };
 
                 let op_lty = self.acx.type_of(op);
-                assert!(matches!(
-                    op_lty.kind(),
-                    TyKind::Ref(..) | TyKind::RawPtr(..)
-                ));
-                assert_eq!(op_lty.args.len(), 1);
-                let op_pointee_lty = op_lty.args[0];
+                assert_matches!(op_lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
+
+                let op_pointee_lty = assert_matches!(op_lty.args, [op_pointee_lty] => {
+                    op_pointee_lty
+                });
 
                 if let TyKind::Slice(elem_ty) = *pointee_ty.kind() {
                     assert!(matches!(op_pointee_lty.kind(), TyKind::Array(..)));
-                    assert_eq!(op_pointee_lty.args.len(), 1);
-                    let elem_lty = op_pointee_lty.args[0];
+                    let elem_lty = assert_matches!(op_pointee_lty.args, [elem_lty] => {
+                        elem_lty
+                    });
                     assert_eq!(elem_lty.ty, elem_ty);
                     assert_eq!(op_pointee_lty.label, PointerId::NONE);
                     self.do_assign_pointer_ids(rvalue_lty.label, op_lty.label);
@@ -223,8 +223,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 match **kind {
                     AggregateKind::Array(..) => {
                         assert!(matches!(rvalue_lty.kind(), TyKind::Array(..)));
-                        assert_eq!(rvalue_lty.args.len(), 1);
-                        let elem_lty = rvalue_lty.args[0];
+                        let elem_lty = assert_matches!(rvalue_lty.args, [elem_lty] => {
+                            elem_lty
+                        });
                         // Pseudo-assign from each operand to the element type of the array.
                         for op in ops {
                             let op_lty = self.acx.type_of(op);
