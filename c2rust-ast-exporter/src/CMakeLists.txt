@@ -26,7 +26,7 @@ ExternalProject_Add(tinycbor_build
             PATCH_COMMAND patch --forward -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/tinycbor_fix_build.patch || true
             CONFIGURE_COMMAND make .config && cat ${CMAKE_CURRENT_SOURCE_DIR}/tinycbor.config >> .config
             BUILD_COMMAND make --quiet prefix=<INSTALL_DIR> CFLAGS=-fPIC
-            INSTALL_COMMAND make --quiet prefix=<INSTALL_DIR> install            
+            INSTALL_COMMAND make --quiet prefix=<INSTALL_DIR> install
             BUILD_IN_SOURCE 1
             BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/lib/libtinycbor.a
 )
@@ -98,7 +98,7 @@ target_link_libraries(c2rust-ast-exporter PRIVATE
   )
 
 set_target_properties(clangAstExporter PROPERTIES
-  CXX_STANDARD 14
+  CXX_STANDARD 17 # will decay to 14 if compiler doesn't support c++17
   CXX_EXTENSIONS OFF
   )
 target_link_libraries(clangAstExporter PRIVATE
