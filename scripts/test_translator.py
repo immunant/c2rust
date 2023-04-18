@@ -233,6 +233,10 @@ class TestDirectory:
         # set self.target to a known-working target tuple for it
         self.target = None
 
+        # include the compiler resource directory in compile_commands.json
+        _, stdout, _ = clang["-print-resource-dir"].run(retcode=None)
+        self.clang_resource_dir = " \"-I{}/include\",".format(stdout.strip())
+
         # parse target arch from directory name if it includes a dot
         split_by_dots = self.name.split('.')
         if len(split_by_dots) > 1:
@@ -319,12 +323,12 @@ class TestDirectory:
         compile_commands = """ \
         [
           {{
-            "arguments": [ "cc", "-D_FORTIFY_SOURCE=0", "-c", {2}"{0}" ],
+            "arguments": [ "cc", "-D_FORTIFY_SOURCE=0",{3} "-c", {2}"{0}" ],
             "directory": "{1}",
             "file": "{0}"
           }}
         ]
-        """.format(cfile, directory, target_args)
+        """.format(cfile, directory, target_args, self.clang_resource_dir)
 
         cc_db = os.path.join(directory, "compile_commands.json")
 
