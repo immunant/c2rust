@@ -9,9 +9,10 @@ use crate::AssignPointerIds;
 use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
+use rustc_middle::mir::interpret::{self, AllocId, ConstValue, GlobalAlloc};
 use rustc_middle::mir::{
-    Body, Field, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem, PlaceRef,
-    Rvalue,
+    Body, Constant, ConstantKind, Field, HasLocalDecls, Local, LocalDecls, Location, Operand,
+    Place, PlaceElem, PlaceRef, Rvalue,
 };
 use rustc_middle::ty::{AdtDef, FieldDef, Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
@@ -156,6 +157,8 @@ pub struct GlobalAnalysisCtxt<'tcx> {
 
     pub field_tys: HashMap<DefId, LTy<'tcx>>,
 
+    pub static_tys: HashMap<DefId, LTy<'tcx>>,
+
     next_ptr_id: NextGlobalPointerId,
 }
 
@@ -220,6 +223,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             lcx: LabeledTyCtxt::new(tcx),
             fn_sigs: HashMap::new(),
             field_tys: HashMap::new(),
+            static_tys: HashMap::new(),
             next_ptr_id: NextGlobalPointerId::new(),
         }
     }
@@ -257,6 +261,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             lcx,
             ref mut fn_sigs,
             ref mut field_tys,
+            ref mut static_tys,
             ref mut next_ptr_id,
         } = *self;
 
@@ -274,7 +279,16 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             *labeled_field = remap_lty_pointers(lcx, map, labeled_field);
         }
 
+        for labeled_static in static_tys.values_mut() {
+            *labeled_static = remap_lty_pointers(lcx, map, labeled_static);
+        }
+
         *next_ptr_id = counter;
+    }
+
+    pub fn assign_pointer_to_static(&mut self, did: DefId) {
+        let lty = self.assign_pointer_ids(self.tcx.static_ptr_ty(did));
+        self.static_tys.insert(did, lty);
     }
 
     pub fn assign_pointer_to_field(&mut self, field: &FieldDef) {
@@ -556,11 +570,51 @@ impl<'tcx> TypeOf<'tcx> for PlaceRef<'tcx> {
     }
 }
 
+fn const_alloc_id(c: &Constant) -> Option<AllocId> {
+    if let ConstantKind::Val(ConstValue::Scalar(interpret::Scalar::Ptr(ptr, _)), _ty) = c.literal {
+        return Some(ptr.provenance);
+    }
+    None
+}
+
+fn find_static_for_alloc(tcx: &TyCtxt, id: AllocId) -> Option<DefId> {
+    match tcx.try_get_global_alloc(id) {
+        None => {} //hmm, ok
+        Some(GlobalAlloc::Static(did)) => {
+            if !tcx.is_foreign_item(did) {
+                // local static referenced
+                return Some(did);
+            }
+        }
+        Some(_) => {}
+    }
+    None
+}
+
 impl<'tcx> TypeOf<'tcx> for Operand<'tcx> {
     fn type_of(&self, acx: &AnalysisCtxt<'_, 'tcx>) -> LTy<'tcx> {
         match *self {
             Operand::Move(pl) | Operand::Copy(pl) => acx.type_of(pl),
-            Operand::Constant(ref c) => label_no_pointers(acx, c.ty()),
+            Operand::Constant(ref c) => {
+                // Constants of pointer type should only be pointers into static allocations.
+                // Find the defid of the static and look up the pointer ID in gacx.static_tys
+                if c.ty().is_any_ptr() {
+                    if let Some(alloc_id) = const_alloc_id(c) {
+                        if let Some(did) = find_static_for_alloc(&acx.gacx.tcx, alloc_id) {
+                            match acx.gacx.static_tys.get(&did) {
+                                Some(lty) => lty,
+                                None => panic!("did {:?} not found", did),
+                            }
+                        } else {
+                            panic!("no static found for alloc id {:?}", alloc_id)
+                        }
+                    } else {
+                        panic!("constant was of ptr type but not a Scalar pointing into a static allocation: {:?}", c)
+                    }
+                } else {
+                    label_no_pointers(acx, c.ty())
+                }
+            }
         }
     }
 }
