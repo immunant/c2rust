@@ -478,6 +478,25 @@ fn run(tcx: TyCtxt) {
         gacx.fn_sigs.insert(ldid.to_def_id(), lsig);
     }
 
+    // Collect all `static` items.
+    let all_static_ldids = all_static_items(tcx);
+    eprintln!("statics:");
+    for &ldid in &all_static_ldids {
+        eprintln!("  {:?}", ldid);
+    }
+
+    // Assign global `PointerId`s for types of `static` items.
+    assert!(gacx.static_tys.is_empty());
+    gacx.static_tys = HashMap::with_capacity(all_static_ldids.len());
+    for &ldid in &all_static_ldids {
+        let did = ldid.to_def_id();
+        if !matches!(tcx.def_kind(did), DefKind::Static(..)) {
+            continue;
+        }
+
+        gacx.assign_pointer_to_static(did);
+    }
+
     // Label the field types of each struct.
     for ldid in tcx.hir_crate_items(()).definitions() {
         let did = ldid.to_def_id();
@@ -703,6 +722,28 @@ fn run(tcx: TyCtxt) {
         all_rewrites.extend(ty_rewrites);
     }
 
+    // Print results for `static` items.
+    eprintln!("\nfinal labeling for static items:");
+    for (did, lty) in gacx.static_tys.iter() {
+        let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
+        let name = tcx.item_name(*did);
+        let addr_of1 = gasn.perms[lty.label];
+        let ty1 = lcx1.relabel(lty, &mut |lty| {
+            if lty.label == PointerId::NONE {
+                PermissionSet::empty()
+            } else {
+                gasn.perms[lty.label]
+            }
+        });
+        eprintln!(
+            "{:?}: addr_of = {:?}, type = {:?}",
+            name,
+            //describe_local(tcx, decl),
+            addr_of1,
+            ty1,
+        );
+    }
+
     // Apply rewrite to all functions at once.
     rewrite::apply_rewrites(tcx, all_rewrites);
 }
@@ -779,6 +820,25 @@ fn describe_span(tcx: TyCtxt, span: Span) -> String {
     format!("{}: {}{}{}", line, src1, src2, src3)
 }
 
+/// Return `LocalDefId`s for all `static`s.
+fn all_static_items(tcx: TyCtxt) -> Vec<LocalDefId> {
+    let mut order = Vec::new();
+
+    for root_ldid in tcx.hir().body_owners() {
+        match tcx.def_kind(root_ldid) {
+            DefKind::Fn | DefKind::AssocFn | DefKind::AnonConst | DefKind::Const => continue,
+            DefKind::Static(_) => {}
+            dk => panic!(
+                "unexpected def_kind {:?} for body_owner {:?}",
+                dk, root_ldid
+            ),
+        }
+        order.push(root_ldid)
+    }
+
+    order
+}
+
 /// Return all `LocalDefId`s for all `fn`s that are `body_owners`, ordered according to a postorder
 /// traversal of the graph of references between bodies.
 fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
@@ -797,7 +857,7 @@ fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
 
         match tcx.def_kind(root_ldid) {
             DefKind::Fn | DefKind::AssocFn => {}
-            DefKind::AnonConst | DefKind::Const => continue,
+            DefKind::AnonConst | DefKind::Const | DefKind::Static(_) => continue,
             dk => panic!(
                 "unexpected def_kind {:?} for body_owner {:?}",
                 dk, root_ldid
