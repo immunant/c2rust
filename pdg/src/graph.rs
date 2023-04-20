@@ -3,12 +3,12 @@ use c2rust_analysis_rt::mir_loc::{FuncId, MirPlace};
 use rustc_index::newtype_index;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BasicBlock, Field, Local};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::Display;
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Formatter},
 };
-use serde::{Serialize, Deserialize, Serializer, Deserializer};
 
 use crate::info::NodeInfo;
 use crate::util::pad_columns;
