@@ -18,6 +18,9 @@ extern crate rustc_span;
 extern crate rustc_target;
 
 use c2rust_analysis_rt::{events::Event, metadata::Metadata};
+use c2rust_pdg::builder::{construct_pdg, read_event_log, read_metadata};
+use c2rust_pdg::graph::Graphs;
+use c2rust_pdg::info::add_info;
 use clap::{Parser, ValueEnum};
 use color_eyre::eyre;
 use std::{
@@ -25,9 +28,6 @@ use std::{
     path::{Path, PathBuf},
     sync::Once,
 };
-use c2rust_pdg::builder::{construct_pdg, read_event_log, read_metadata};
-use c2rust_pdg::graph::Graphs;
-use c2rust_pdg::info::add_info;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ValueEnum)]
 pub enum ToPrint {

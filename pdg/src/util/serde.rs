@@ -1,7 +1,6 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use rustc_middle::mir::{Field, Local, BasicBlock};
-
+use rustc_middle::mir::{BasicBlock, Field, Local};
 
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "Field")]
@@ -10,14 +9,15 @@ pub struct FieldDef {
     raw: u32,
 }
 
-fn field_as_u32(f: &Field) -> u32 { f.as_u32() }
+fn field_as_u32(f: &Field) -> u32 {
+    f.as_u32()
+}
 
 impl From<FieldDef> for Field {
     fn from(def: FieldDef) -> Field {
         Field::from_u32(def.raw)
     }
 }
-
 
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "Local")]
@@ -26,14 +26,15 @@ pub struct LocalDef {
     raw: u32,
 }
 
-fn local_as_u32(f: &Local) -> u32 { f.as_u32() }
+fn local_as_u32(f: &Local) -> u32 {
+    f.as_u32()
+}
 
 impl From<LocalDef> for Local {
     fn from(def: LocalDef) -> Local {
         Local::from_u32(def.raw)
     }
 }
-
 
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "BasicBlock")]
@@ -42,7 +43,9 @@ pub struct BasicBlockDef {
     raw: u32,
 }
 
-fn basic_block_as_u32(f: &BasicBlock) -> u32 { f.as_u32() }
+fn basic_block_as_u32(f: &BasicBlock) -> u32 {
+    f.as_u32()
+}
 
 impl From<BasicBlockDef> for BasicBlock {
     fn from(def: BasicBlockDef) -> BasicBlock {
@@ -50,18 +53,25 @@ impl From<BasicBlockDef> for BasicBlock {
     }
 }
 
-
 pub mod index_vec {
-    use serde::{Serialize, Deserialize, Serializer, Deserializer};
     use rustc_index::vec::{Idx, IndexVec};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     pub fn serialize<S, I, T>(iv: &IndexVec<I, T>, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer, I: Idx, T: Serialize {
+    where
+        S: Serializer,
+        I: Idx,
+        T: Serialize,
+    {
         iv.iter().as_slice().serialize(serializer)
     }
 
     pub fn deserialize<'de, D, I, T>(deserializer: D) -> Result<IndexVec<I, T>, D::Error>
-    where D: Deserializer<'de>, I: Idx, T: Deserialize<'de> {
+    where
+        D: Deserializer<'de>,
+        I: Idx,
+        T: Deserialize<'de>,
+    {
         let raw = Vec::<T>::deserialize(deserializer)?;
         Ok(IndexVec::from_raw(raw))
     }
