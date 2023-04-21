@@ -10,10 +10,9 @@ use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    Body, CastKind, Field, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem,
-    PlaceRef, Rvalue,
+    Body, Field, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem, PlaceRef,
+    Rvalue,
 };
-use rustc_middle::ty::adjustment::PointerCast;
 use rustc_middle::ty::{AdtDef, FieldDef, Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
@@ -325,59 +324,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                 unreachable!("should be handled by describe_rvalue case above")
             }
             Rvalue::ThreadLocalRef(..) => todo!("type_of ThreadLocalRef"),
-            Rvalue::Cast(CastKind::Pointer(PointerCast::Unsize), ref op, ty) => {
-                let pointee_ty = match *ty.kind() {
-                    TyKind::Ref(_, ty, _) => ty,
-                    TyKind::RawPtr(tm) => tm.ty,
-                    _ => unreachable!("unsize cast has non-pointer output {:?}?", ty),
-                };
-
-                let op_lty = self.type_of(op);
-                assert!(matches!(
-                    op_lty.kind(),
-                    TyKind::Ref(..) | TyKind::RawPtr(..)
-                ));
-                assert_eq!(op_lty.args.len(), 1);
-                let op_pointee_lty = op_lty.args[0];
-
-                match *pointee_ty.kind() {
-                    TyKind::Slice(elem_ty) => {
-                        assert!(matches!(op_pointee_lty.kind(), TyKind::Array(..)));
-                        assert_eq!(op_pointee_lty.args.len(), 1);
-                        let elem_lty = op_pointee_lty.args[0];
-                        assert_eq!(elem_lty.ty, elem_ty);
-                        assert_eq!(op_pointee_lty.label, PointerId::NONE);
-
-                        let pointee_lty =
-                            self.lcx()
-                                .mk(pointee_ty, op_pointee_lty.args, op_pointee_lty.label);
-                        let args = self.lcx().mk_slice(&[pointee_lty]);
-                        self.lcx().mk(ty, args, op_lty.label)
-                    }
-                    _ => label_no_pointers(self, ty),
-                }
-            }
-            Rvalue::Cast(_, ref op, ty) => {
-                let op_lty = self.type_of(op);
-
-                // We support this category of pointer casts as a special case.
-                let op_is_ptr = matches!(op_lty.ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
-                let op_pointee = op_is_ptr.then(|| op_lty.args[0]);
-                let ty_pointee = match *ty.kind() {
-                    TyKind::Ref(_, ty, _) => Some(ty),
-                    TyKind::RawPtr(tm) => Some(tm.ty),
-                    _ => None,
-                };
-                if op_pointee.is_some() && op_pointee.map(|lty| lty.ty) == ty_pointee {
-                    // The source and target types are both pointers, and they have identical
-                    // pointee types.  We label the target type with the same `PointerId`s as the
-                    // source type in all positions.  This works because the two types have the
-                    // same structure.
-                    return self.lcx().mk(ty, op_lty.args, op_lty.label);
-                }
-
-                label_no_pointers(self, ty)
-            }
+            Rvalue::Cast(..) => panic!("Cast should be present in rvalue_tys"),
             Rvalue::Len(..)
             | Rvalue::BinaryOp(..)
             | Rvalue::CheckedBinaryOp(..)
@@ -509,7 +456,7 @@ impl<'tcx> TypeOf<'tcx> for Operand<'tcx> {
 
 /// Label a type that contains no pointer types by applying `PointerId::NONE` everywhere.  Panics
 /// if the type does contain pointers.
-fn label_no_pointers<'tcx>(acx: &AnalysisCtxt<'_, 'tcx>, ty: Ty<'tcx>) -> LTy<'tcx> {
+pub fn label_no_pointers<'tcx>(acx: &AnalysisCtxt<'_, 'tcx>, ty: Ty<'tcx>) -> LTy<'tcx> {
     acx.lcx().label(ty, &mut |inner_ty| {
         assert!(
             !matches!(inner_ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)),

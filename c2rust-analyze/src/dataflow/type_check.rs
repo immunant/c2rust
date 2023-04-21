@@ -1,13 +1,14 @@
 use super::DataflowConstraints;
 use crate::c_void_casts::CVoidCastDirection;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
-use crate::util::{describe_rvalue, ty_callee, Callee, RvalueDesc};
+use crate::util::{self, describe_rvalue, ty_callee, Callee, RvalueDesc};
 use assert_matches::assert_matches;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
-    AggregateKind, BinOp, Body, Location, Mutability, Operand, Place, PlaceRef, ProjectionElem,
-    Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
+    AggregateKind, BinOp, Body, CastKind, Location, Mutability, Operand, Place, PlaceRef,
+    ProjectionElem, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
+use rustc_middle::ty::adjustment::PointerCast;
 use rustc_middle::ty::{SubstsRef, Ty, TyKind};
 
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
@@ -39,6 +40,11 @@ struct TypeChecker<'tcx, 'a> {
     /// structure defined in `crate::equiv`, so adding a constraint here has the effect of unifying
     /// the equivalence classes of the two `PointerId`s.
     equiv_constraints: Vec<(PointerId, PointerId)>,
+}
+
+fn is_castable_to<'tcx>(_t: LTy<'tcx>, _u: LTy<'tcx>) -> bool {
+    // TODO: implement
+    true
 }
 
 impl<'tcx> TypeChecker<'tcx, '_> {
@@ -95,7 +101,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, lty: LTy<'tcx>) {
+    pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, rvalue_lty: LTy<'tcx>) {
         let rv_desc = describe_rvalue(rv);
         eprintln!("visit_rvalue({rv:?}), desc = {rv_desc:?}");
 
@@ -113,8 +119,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         match *rv {
             Rvalue::Use(ref op) => self.visit_operand(op),
             Rvalue::Repeat(ref op, _) => {
-                assert!(lty.ty.is_array());
-                assert_matches!(lty.args, [elem_lty] => {
+                assert!(rvalue_lty.ty.is_array());
+                assert_matches!(rvalue_lty.args, [elem_lty] => {
                     // Pseudo-assign from the operand to the element type of the array.
                     let op_lty = self.acx.type_of(op);
                     /*
@@ -142,7 +148,60 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Rvalue::Len(pl) => {
                 self.visit_place(pl, Mutability::Not);
             }
-            Rvalue::Cast(_, ref op, _) => self.visit_operand(op),
+            Rvalue::Cast(CastKind::PointerFromExposedAddress, ref op, _) => {
+                // We support only one case here, which is the case of null pointers
+                // constructed via casts such as `0 as *const T`
+                if let Some(true) = op.constant().cloned().map(util::is_null_const) {
+                    self.visit_operand(op)
+                } else {
+                    panic!("Creating non-null pointers from exposed addresses not supported");
+                }
+            }
+            Rvalue::Cast(CastKind::Pointer(PointerCast::Unsize), ref op, ty) => {
+                let pointee_ty = match *ty.kind() {
+                    TyKind::Ref(_, ty, _) => ty,
+                    TyKind::RawPtr(tm) => tm.ty,
+                    _ => unreachable!("unsize cast has non-pointer output {:?}?", ty),
+                };
+
+                let op_lty = self.acx.type_of(op);
+                assert_matches!(op_lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
+
+                let op_pointee_lty = assert_matches!(op_lty.args, [op_pointee_lty] => {
+                    op_pointee_lty
+                });
+
+                assert_matches!(pointee_ty.kind(), TyKind::Slice(..));
+                if let TyKind::Slice(elem_ty) = *pointee_ty.kind() {
+                    assert!(matches!(op_pointee_lty.kind(), TyKind::Array(..)));
+                    let elem_lty = assert_matches!(op_pointee_lty.args, [elem_lty] => {
+                        elem_lty
+                    });
+                    assert_eq!(elem_lty.ty, elem_ty);
+                    assert_eq!(op_pointee_lty.label, PointerId::NONE);
+                    self.do_assign_pointer_ids(rvalue_lty.label, op_lty.label);
+                }
+
+                self.visit_operand(op)
+            }
+            Rvalue::Cast(CastKind::Pointer(..), ref op, _) => {
+                let op_lty = self.acx.type_of(op);
+
+                // The source and target types are both pointers, and they have identical
+                // pointee types.
+                // TODO: remove or move check to `is_castable_to`
+                assert!(op_lty.args[0].ty == rvalue_lty.args[0].ty);
+
+                assert!(is_castable_to(op_lty, rvalue_lty));
+                self.visit_operand(op)
+            }
+            Rvalue::Cast(_cast_kind, ref op, _) => {
+                // A cast such as `T as U`
+                let casted_from = self.acx.type_of(op);
+                let casted_to = rvalue_lty;
+                assert!(is_castable_to(casted_from, casted_to));
+                self.visit_operand(op)
+            }
             Rvalue::BinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
             Rvalue::BinaryOp(_, ref ops) => {
                 self.visit_operand(&ops.0);
@@ -164,9 +223,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 }
                 match **kind {
                     AggregateKind::Array(..) => {
-                        assert!(matches!(lty.kind(), TyKind::Array(..)));
-                        assert_eq!(lty.args.len(), 1);
-                        let elem_lty = lty.args[0];
+                        assert!(matches!(rvalue_lty.kind(), TyKind::Array(..)));
+                        let elem_lty = assert_matches!(rvalue_lty.args, [elem_lty] => {
+                            elem_lty
+                        });
                         // Pseudo-assign from each operand to the element type of the array.
                         for op in ops {
                             let op_lty = self.acx.type_of(op);
@@ -181,15 +241,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             let unresolved_field_lty = self.acx.gacx.field_tys[&field.did];
                             // resolve the generic type arguments in `field_lty` by referencing the `Ty` of `op`
                             let resolved_field_lty =
-                                self.acx.lcx().subst(unresolved_field_lty, lty.args);
+                                self.acx.lcx().subst(unresolved_field_lty, rvalue_lty.args);
                             // Pseudo-assign from each operand to the element type of the field.
                             self.do_assign(resolved_field_lty, op_lty);
                         }
                     }
                     AggregateKind::Tuple => {
-                        assert!(matches!(lty.kind(), TyKind::Tuple(..)));
+                        assert!(matches!(rvalue_lty.kind(), TyKind::Tuple(..)));
                         // Pseudo-assign from each operand to the element type of the tuple.
-                        for (op, elem_lty) in ops.iter().zip(lty.args.iter()) {
+                        for (op, elem_lty) in ops.iter().zip(rvalue_lty.args.iter()) {
                             let op_lty = self.acx.type_of(op);
                             self.do_assign(elem_lty, op_lty);
                         }
