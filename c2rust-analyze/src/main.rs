@@ -628,7 +628,11 @@ fn run(tcx: TyCtxt) {
         for (&constant, const_lty) in &acx.const_ref_tys {
             let ptr_id = const_lty.label;
             let expected_perms = PermissionSet::for_const(constant);
-            let actual_perms = asn.perms()[ptr_id];
+            let mut actual_perms = asn.perms()[ptr_id];
+            // Ignore `UNIQUE` as it gets automatically added to all permissions
+            // and then removed later if it can't apply.
+            // We don't care about `UNIQUE` for const refs, so just unset it here.
+            actual_perms.set(PermissionSet::UNIQUE, false);
             assert_eq!(expected_perms, actual_perms);
         }
 
