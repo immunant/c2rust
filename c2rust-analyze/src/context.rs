@@ -116,9 +116,15 @@ pub struct AnalysisCtxt<'a, 'tcx> {
     pub rvalue_tys: HashMap<Location, LTy<'tcx>>,
 
     /// [`Location`]s of const ref [`rvalue_tys`](Self::rvalue_tys).
-    pub const_ref_locs: Vec<Location>,
+    const_ref_locs: Vec<Location>,
 
     next_ptr_id: NextLocalPointerId,
+}
+
+impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
+    pub fn const_ref_tys(&'a self) -> impl Iterator<Item = LTy<'tcx>> + 'a {
+        self.const_ref_locs.iter().map(|loc| self.rvalue_tys[loc])
+    }
 }
 
 pub struct AnalysisCtxtData<'tcx> {

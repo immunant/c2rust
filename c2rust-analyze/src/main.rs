@@ -620,8 +620,7 @@ fn run(tcx: TyCtxt) {
         let mut asn = gasn.and(&mut info.lasn);
         info.dataflow.propagate_cell(&mut asn);
 
-        for loc in &acx.const_ref_locs {
-            let const_ref_lty = acx.rvalue_tys[loc];
+        for const_ref_lty in acx.const_ref_tys() {
             let ptr_id = const_ref_lty.label;
             let expected_perms = PermissionSet::for_const_ref_ty(const_ref_lty.ty);
             let mut actual_perms = asn.perms()[ptr_id];
