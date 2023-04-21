@@ -22,6 +22,7 @@ SCRIPT_DIR="${CWD}/$(dirname "${SCRIPT_PATH}")"
 # 5. Using the `metadata.bc` metadata and the `log.bc` event log,
 #    run `c2rust-pdg` to generate the pdg.
 #    The output is saved to `pdg.log` (relative to the test crate directory).
+#    A machine-readable PDG is saved to `pdg.bc` in the same directory.
 main() {
     local test_dir="${1}"
     local args=("${@:2}")
@@ -36,6 +37,7 @@ main() {
     local profile_args=(--profile "${profile}")
 
     local metadata="${test_dir}/metadata.bc"
+    local pdg="${test_dir}/pdg.bc"
     local event_log="${test_dir}/log.bc"
     local runtime="analysis/runtime"
 
@@ -72,6 +74,7 @@ main() {
             --print graphs \
             --print write-permissions \
             --print counts \
+            --output "${pdg}" \
         > "${test_dir}/pdg.log"
     )
 }
