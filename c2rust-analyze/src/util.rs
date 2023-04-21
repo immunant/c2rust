@@ -348,3 +348,6 @@ pub fn is_null_const(constant: Constant) -> bool {
         _ => false,
     }
 }
+
+pub trait PhantomLifetime<'a> {}
+impl<'a, T: ?Sized> PhantomLifetime<'a> for T {}

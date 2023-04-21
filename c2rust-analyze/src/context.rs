@@ -4,7 +4,7 @@ use crate::pointer_id::{
     GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
     PointerTableMut,
 };
-use crate::util::{self, describe_rvalue, RvalueDesc};
+use crate::util::{self, describe_rvalue, PhantomLifetime, RvalueDesc};
 use crate::AssignPointerIds;
 use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
@@ -124,6 +124,13 @@ pub struct AnalysisCtxt<'a, 'tcx> {
 impl<'a, 'tcx> AnalysisCtxt<'_, 'tcx> {
     pub fn const_ref_tys(&'a self) -> impl Iterator<Item = LTy<'tcx>> + 'a {
         self.const_ref_locs.iter().map(|loc| self.rvalue_tys[loc])
+    }
+
+    pub fn const_ref_perms(
+        &'a self,
+    ) -> impl Iterator<Item = (PointerId, PermissionSet)> + PhantomLifetime<'tcx> + 'a {
+        self.const_ref_tys()
+            .map(|lty| (lty.label, PermissionSet::for_const_ref_ty(lty.ty)))
     }
 
     pub fn check_const_ref_perms(&self, asn: &Assignment) {
