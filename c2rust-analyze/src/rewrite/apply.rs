@@ -314,6 +314,14 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
                 }
                 self.emit_str(">");
             }
+
+            Rewrite::StaticMut(mutbl, span) => {
+                match mutbl {
+                    Mutability::Not => self.emit_str("static "),
+                    Mutability::Mut => self.emit_str("static mut "),
+                }
+                emit_subexpr(self, span);
+            }
         }
     }
 
