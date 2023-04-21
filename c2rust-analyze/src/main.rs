@@ -403,6 +403,7 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                         // The [`Constant`] is an inline value and thus local to this function,
                         // as opposed to a global, named `const`s, for example.
                         // This might miss local, named `const`s,
+                        acx.const_ref_locs.push(loc);
                         acx.assign_pointer_ids(ty)
                     } else {
                         // TODO: Handle global, named `const`s.

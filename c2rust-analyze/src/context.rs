@@ -115,7 +115,7 @@ pub struct AnalysisCtxt<'a, 'tcx> {
     pub rvalue_tys: HashMap<Location, LTy<'tcx>>,
 
     /// [`Location`]s of const ref [`rvalue_tys`](Self::rvalue_tys).
-    const_ref_locs: Vec<Location>,
+    pub const_ref_locs: Vec<Location>,
 
     next_ptr_id: NextLocalPointerId,
 }
