@@ -342,7 +342,6 @@ pub fn get_assign_sides<'tcx, 'a>(
 }
 
 /// Check if a [`Constant`] is an integer constant that can be casted to a null pointer.
-#[allow(dead_code)] // Will be used soon in #864.
 pub fn is_null_const(constant: Constant) -> bool {
     match constant.literal.try_to_scalar() {
         Some(Scalar::Int(i)) => i.is_null(),
