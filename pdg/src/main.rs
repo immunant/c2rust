@@ -156,6 +156,10 @@ pub struct Args {
     /// What to print.
     #[clap(long, value_parser, default_value = "graphs")]
     print: Vec<ToPrint>,
+
+    /// Where to save a serialized copy of the PDG.
+    #[clap(long, value_parser)]
+    output: Option<PathBuf>,
 }
 
 static INIT: Once = Once::new();
@@ -183,8 +187,10 @@ fn main() -> eyre::Result<()> {
     let repr = pdg.repr(&args.print);
     println!("{repr}");
 
-    let f = std::fs::File::create("pdg.bc")?;
-    bincode::serialize_into(f, &pdg.graphs)?;
+    if let Some(output_path) = args.output {
+        let f = std::fs::File::create(output_path)?;
+        bincode::serialize_into(f, &pdg.graphs)?;
+    }
 
     Ok(())
 }
