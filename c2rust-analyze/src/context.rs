@@ -10,8 +10,8 @@ use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    Body, CastKind, ConstantKind, Field, HasLocalDecls, Local, LocalDecls, Location, Operand,
-    Place, PlaceElem, PlaceRef, Rvalue,
+    Body, CastKind, Field, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem,
+    PlaceRef, Rvalue,
 };
 use rustc_middle::ty::adjustment::PointerCast;
 use rustc_middle::ty::{self, AdtDef, FieldDef, Ty, TyCtxt, TyKind};
@@ -66,10 +66,6 @@ impl PermissionSet {
             panic!("expected an array, str, or primitive type: {ty:?}");
         }
     }
-
-    pub fn for_const_ref(constant: ConstantKind) -> Self {
-        Self::for_const_ref_ty(constant.ty())
-    }
 }
 
 bitflags! {
@@ -118,7 +114,10 @@ pub struct AnalysisCtxt<'a, 'tcx> {
     /// those `PointerId`s consistent, the `Rvalue`'s type must be stored rather than recomputed on
     /// the fly.
     pub rvalue_tys: HashMap<Location, LTy<'tcx>>,
-    pub const_ref_tys: HashMap<ConstantKind<'tcx>, LTy<'tcx>>,
+
+    /// [`Location`]s of const ref [`rvalue_tys`](Self::rvalue_tys).
+    pub const_ref_locs: Vec<Location>,
+
     next_ptr_id: NextLocalPointerId,
 }
 
@@ -126,7 +125,7 @@ pub struct AnalysisCtxtData<'tcx> {
     local_tys: IndexVec<Local, LTy<'tcx>>,
     addr_of_local: IndexVec<Local, PointerId>,
     rvalue_tys: HashMap<Location, LTy<'tcx>>,
-    const_ref_tys: HashMap<ConstantKind<'tcx>, LTy<'tcx>>,
+    const_ref_locs: Vec<Location>,
     next_ptr_id: NextLocalPointerId,
 }
 
@@ -219,7 +218,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             c_void_casts: CVoidCasts::new(mir, tcx),
             addr_of_local: IndexVec::new(),
             rvalue_tys: HashMap::new(),
-            const_ref_tys: HashMap::new(),
+            const_ref_locs: Default::default(),
             next_ptr_id: NextLocalPointerId::new(),
         }
     }
@@ -233,7 +232,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             local_tys,
             addr_of_local,
             rvalue_tys,
-            const_ref_tys,
+            const_ref_locs,
             next_ptr_id,
         } = data;
         AnalysisCtxt {
@@ -243,7 +242,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             c_void_casts: CVoidCasts::default(),
             addr_of_local,
             rvalue_tys,
-            const_ref_tys,
+            const_ref_locs,
             next_ptr_id,
         }
     }
@@ -253,7 +252,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             local_tys: self.local_tys,
             addr_of_local: self.addr_of_local,
             rvalue_tys: self.rvalue_tys,
-            const_ref_tys: self.const_ref_tys,
+            const_ref_locs: self.const_ref_locs,
             next_ptr_id: self.next_ptr_id,
         }
     }
@@ -442,13 +441,13 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
         map: PointerTable<PointerId>,
         counter: NextLocalPointerId,
     ) {
-        let AnalysisCtxtData {
-            ref mut local_tys,
-            ref mut addr_of_local,
-            ref mut rvalue_tys,
-            ref mut const_ref_tys,
-            ref mut next_ptr_id,
-        } = *self;
+        let Self {
+            local_tys,
+            addr_of_local,
+            rvalue_tys,
+            const_ref_locs: _,
+            next_ptr_id,
+        } = self;
 
         for lty in local_tys {
             *lty = remap_lty_pointers(lcx, &map, lty);
@@ -461,10 +460,6 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
         }
 
         for lty in rvalue_tys.values_mut() {
-            *lty = remap_lty_pointers(lcx, &map, lty);
-        }
-
-        for lty in const_ref_tys.values_mut() {
             *lty = remap_lty_pointers(lcx, &map, lty);
         }
 
@@ -533,13 +528,7 @@ impl<'tcx> TypeOf<'tcx> for Operand<'tcx> {
     fn type_of(&self, acx: &AnalysisCtxt<'_, 'tcx>) -> LTy<'tcx> {
         match *self {
             Operand::Move(pl) | Operand::Copy(pl) => acx.type_of(pl),
-            Operand::Constant(ref c) => {
-                let c = &**c;
-                match acx.const_ref_tys.get(&c.literal) {
-                    Some(lty) => lty,
-                    None => label_no_pointers(acx, c.ty()),
-                }
-            }
+            Operand::Constant(ref c) => label_no_pointers(acx, c.ty()),
         }
     }
 }

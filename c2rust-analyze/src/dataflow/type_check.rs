@@ -465,9 +465,12 @@ pub fn visit<'tcx>(
         equiv_constraints: Vec::new(),
     };
 
-    for (&constant, const_lty) in &acx.const_ref_tys {
-        tc.constraints
-            .add_all_perms(const_lty.label, PermissionSet::for_const_ref(constant));
+    for loc in &acx.const_ref_locs {
+        let const_ref_lty = acx.rvalue_tys[loc];
+        tc.constraints.add_all_perms(
+            const_ref_lty.label,
+            PermissionSet::for_const_ref_ty(const_ref_lty.ty),
+        );
     }
 
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
