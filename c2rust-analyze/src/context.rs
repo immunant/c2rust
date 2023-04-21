@@ -53,7 +53,7 @@ bitflags! {
 }
 
 impl PermissionSet {
-    pub fn for_const(constant: ConstantKind) -> Self {
+    pub fn for_const_ref(constant: ConstantKind) -> Self {
         let ref_ty = constant.ty();
         let ty = match ref_ty.kind() {
             ty::Ref(_, ty, _) => ty,

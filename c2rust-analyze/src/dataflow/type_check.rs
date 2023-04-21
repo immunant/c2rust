@@ -467,7 +467,7 @@ pub fn visit<'tcx>(
 
     for (&constant, const_lty) in &acx.const_ref_tys {
         tc.constraints
-            .add_all_perms(const_lty.label, PermissionSet::for_const(constant));
+            .add_all_perms(const_lty.label, PermissionSet::for_const_ref(constant));
     }
 
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {

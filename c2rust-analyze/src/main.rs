@@ -627,7 +627,7 @@ fn run(tcx: TyCtxt) {
 
         for (&constant, const_lty) in &acx.const_ref_tys {
             let ptr_id = const_lty.label;
-            let expected_perms = PermissionSet::for_const(constant);
+            let expected_perms = PermissionSet::for_const_ref(constant);
             let mut actual_perms = asn.perms()[ptr_id];
             // Ignore `UNIQUE` as it gets automatically added to all permissions
             // and then removed later if it can't apply.
