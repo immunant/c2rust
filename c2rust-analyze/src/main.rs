@@ -34,8 +34,8 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, CastKind, ConstantKind, LocalDecl, LocalInfo, LocalKind,
-    Location, Operand, Rvalue, StatementKind,
+    AggregateKind, BindingForm, Body, ConstantKind, LocalDecl, LocalInfo, LocalKind, Location,
+    Operand, Rvalue, StatementKind,
 };
 use rustc_middle::ty::tls;
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
@@ -361,6 +361,62 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
     }
 }
 
+fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
+    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+        for (i, stmt) in bb_data.statements.iter().enumerate() {
+            let (_, rv) = match &stmt.kind {
+                StatementKind::Assign(x) => &**x,
+                _ => continue,
+            };
+
+            let loc = Location {
+                statement_index: i,
+                block: bb,
+            };
+
+            if acx.c_void_casts.should_skip_stmt(loc) {
+                continue;
+            }
+
+            let lty = match rv {
+                Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
+                    AggregateKind::Array(elem_ty) => {
+                        let elem_lty = acx.assign_pointer_ids(elem_ty);
+                        let array_ty = rv.ty(acx, acx.tcx());
+                        let args = acx.lcx().mk_slice(&[elem_lty]);
+                        acx.lcx().mk(array_ty, args, PointerId::NONE)
+                    }
+                    AggregateKind::Adt(..) => {
+                        let adt_ty = rv.ty(acx, acx.tcx());
+                        acx.assign_pointer_ids(adt_ty)
+                    }
+                    AggregateKind::Tuple => {
+                        let tuple_ty = rv.ty(acx, acx.tcx());
+                        acx.assign_pointer_ids(tuple_ty)
+                    }
+                    _ => continue,
+                },
+                Rvalue::Cast(_, _, ty) => acx.assign_pointer_ids(*ty),
+                Rvalue::Use(Operand::Constant(c)) => {
+                    // Constants can include, for example, `""` and `b""` string literals.
+                    if let ConstantKind::Val(_, ty) = c.literal && ty.is_ref() {
+                        // The [`Constant`] is an inline value and thus local to this function,
+                        // as opposed to a global, named `const`s, for example.
+                        // This might miss local, named `const`s,
+                        acx.assign_pointer_ids(ty)
+                    } else {
+                        // TODO: Handle global, named `const`s.
+                        continue;
+                    }
+                }
+                _ => continue,
+            };
+
+            acx.rvalue_tys.insert(loc, lty);
+        }
+    }
+}
+
 fn run(tcx: TyCtxt) {
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
@@ -454,62 +510,7 @@ fn run(tcx: TyCtxt) {
             assert_eq!(local, l);
         }
 
-        for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
-            for (i, stmt) in bb_data.statements.iter().enumerate() {
-                let (_, rv) = match &stmt.kind {
-                    StatementKind::Assign(x) => *x.clone(),
-                    _ => continue,
-                };
-                let lty = match rv {
-                    Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
-                        AggregateKind::Array(elem_ty) => {
-                            let elem_lty = acx.assign_pointer_ids(elem_ty);
-                            let array_ty = rv.ty(&acx, acx.tcx());
-                            let args = acx.lcx().mk_slice(&[elem_lty]);
-                            acx.lcx().mk(array_ty, args, PointerId::NONE)
-                        }
-                        AggregateKind::Adt(..) => {
-                            let adt_ty = rv.ty(&acx, acx.tcx());
-                            acx.assign_pointer_ids(adt_ty)
-                        }
-                        AggregateKind::Tuple => {
-                            let tuple_ty = rv.ty(&acx, acx.tcx());
-                            acx.assign_pointer_ids(tuple_ty)
-                        }
-                        _ => continue,
-                    },
-                    Rvalue::Cast(CastKind::PointerFromExposedAddress, ref op, ty) => {
-                        // We support only one case here, which is the case of null pointers
-                        // constructed via casts such as `0 as *const T`
-                        if let Some(true) = op.constant().cloned().map(util::is_null_const) {
-                            acx.assign_pointer_ids(ty)
-                        } else {
-                            panic!(
-                                "Creating non-null pointers from exposed addresses not supported"
-                            );
-                        }
-                    }
-                    Rvalue::Use(Operand::Constant(c)) => {
-                        // Constants can include, for example, `""` and `b""` string literals.
-                        if let ConstantKind::Val(_, ty) = c.literal && ty.is_ref() {
-                            // The [`Constant`] is an inline value and thus local to this function,
-                            // as opposed to a global, named `const`s, for example.
-                            // This might miss local, named `const`s,
-                            acx.assign_pointer_ids(ty)
-                        } else {
-                            // TODO: Handle global, named `const`s.
-                            continue;
-                        }
-                    }
-                    _ => continue,
-                };
-                let loc = Location {
-                    block: bb,
-                    statement_index: i,
-                };
-                acx.rvalue_tys.insert(loc, lty);
-            }
-        }
+        label_rvalue_tys(&mut acx, &mir);
 
         // Compute local equivalence classes and dataflow constraints.
         let (dataflow, equiv_constraints) = dataflow::generate_constraints(&acx, &mir);
