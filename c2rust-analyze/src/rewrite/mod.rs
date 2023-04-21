@@ -33,10 +33,12 @@ use std::fmt;
 mod apply;
 mod expr;
 mod span_index;
+mod statics;
 mod ty;
 
 pub use self::expr::gen_expr_rewrites;
 use self::span_index::SpanIndex;
+pub use self::statics::gen_static_rewrites;
 pub use self::ty::dump_rewritten_local_tys;
 pub use self::ty::gen_ty_rewrites;
 
@@ -74,6 +76,10 @@ pub enum Rewrite<S = Span> {
     TySlice(Box<Rewrite>),
     /// `Foo<T1, T2>`
     TyCtor(String, Vec<Rewrite>),
+
+    // `static` builders
+    /// `static` mutability (`static` <-> `static mut`)
+    StaticMut(Mutability, S),
 }
 
 impl Rewrite {
@@ -190,6 +196,14 @@ impl Rewrite {
                     rw.pretty(f, 0)?;
                 }
                 write!(f, ">")
+            }
+
+            Rewrite::StaticMut(mutbl, _) => {
+                match mutbl {
+                    Mutability::Not => write!(f, "static (-mut) ")?,
+                    Mutability::Mut => write!(f, "static (+mut) ")?,
+                }
+                write!(f, "$s")
             }
         }
     }

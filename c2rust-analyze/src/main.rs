@@ -744,6 +744,13 @@ fn run(tcx: TyCtxt) {
         );
     }
 
+    let static_rewrites = rewrite::gen_static_rewrites(&gacx, &gasn);
+    eprintln!("generated {} static rewrites:", static_rewrites.len());
+    for &(span, ref rw) in &static_rewrites {
+        eprintln!("    {}: {}", describe_span(gacx.tcx, span), rw);
+    }
+    all_rewrites.extend(static_rewrites);
+
     // Apply rewrite to all functions at once.
     rewrite::apply_rewrites(tcx, all_rewrites);
 }
