@@ -53,11 +53,10 @@ bitflags! {
 }
 
 impl PermissionSet {
-    pub fn for_const_ref(constant: ConstantKind) -> Self {
-        let ref_ty = constant.ty();
-        let ty = match ref_ty.kind() {
+    pub fn for_const_ref_ty(ty: Ty) -> Self {
+        let ty = match ty.kind() {
             ty::Ref(_, ty, _) => ty,
-            _ => panic!("expected only `Ref`s for constants: {ref_ty:?}"),
+            _ => panic!("expected only `Ref`s for constants: {ty:?}"),
         };
         if ty.is_array() || ty.is_str() {
             Self::READ | Self::OFFSET_ADD
@@ -66,6 +65,10 @@ impl PermissionSet {
         } else {
             panic!("expected an array, str, or primitive type: {ty:?}");
         }
+    }
+
+    pub fn for_const_ref(constant: ConstantKind) -> Self {
+        Self::for_const_ref_ty(constant.ty())
     }
 }
 
