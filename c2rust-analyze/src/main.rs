@@ -604,7 +604,8 @@ fn run(tcx: TyCtxt) {
         func_def_path_hash_to_ldid.insert(def_path_hash, ldid);
     }
 
-    if let Ok(f) = std::fs::File::open("pdg.bc") {
+    if let Some(pdg_file_path) = std::env::var_os("PDG_FILE") {
+        let f = std::fs::File::open(pdg_file_path).unwrap();
         let graphs: Graphs = bincode::deserialize_from(f).unwrap();
 
         for g in &graphs.graphs {
