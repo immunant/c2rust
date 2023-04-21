@@ -620,16 +620,7 @@ fn run(tcx: TyCtxt) {
         let mut asn = gasn.and(&mut info.lasn);
         info.dataflow.propagate_cell(&mut asn);
 
-        for const_ref_lty in acx.const_ref_tys() {
-            let ptr_id = const_ref_lty.label;
-            let expected_perms = PermissionSet::for_const_ref_ty(const_ref_lty.ty);
-            let mut actual_perms = asn.perms()[ptr_id];
-            // Ignore `UNIQUE` as it gets automatically added to all permissions
-            // and then removed later if it can't apply.
-            // We don't care about `UNIQUE` for const refs, so just unset it here.
-            actual_perms.set(PermissionSet::UNIQUE, false);
-            assert_eq!(expected_perms, actual_perms);
-        }
+        acx.check_const_ref_perms(&asn);
 
         // Print labeling and rewrites for the current function.
 
