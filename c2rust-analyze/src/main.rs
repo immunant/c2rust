@@ -398,16 +398,23 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                 },
                 Rvalue::Cast(_, _, ty) => acx.assign_pointer_ids(*ty),
                 Rvalue::Use(Operand::Constant(c)) => {
-                    // Constants can include, for example, `""` and `b""` string literals.
-                    if let ConstantKind::Val(_, ty) = c.literal && ty.is_ref() {
-                        // The [`Constant`] is an inline value and thus local to this function,
-                        // as opposed to a global, named `const`s, for example.
-                        // This might miss local, named `const`s,
-                        acx.const_ref_locs.push(loc);
-                        acx.assign_pointer_ids(ty)
-                    } else {
-                        // TODO: Handle global, named `const`s.
+                    let c = &**c;
+                    if !c.ty().is_ref() {
                         continue;
+                    }
+                    // Constants can include, for example, `""` and `b""` string literals.
+                    match c.literal {
+                        ConstantKind::Val(_, ty) => {
+                            // The [`Constant`] is an inline value and thus local to this function,
+                            // as opposed to a global, named `const`s, for example.
+                            // This might miss local, named `const`s.
+                            acx.const_ref_locs.push(loc);
+                            acx.assign_pointer_ids(ty)
+                        }
+                        ConstantKind::Ty(_) => {
+                            // TODO: Handle global, named `const`s.
+                            continue;
+                        }
                     }
                 }
                 _ => continue,
