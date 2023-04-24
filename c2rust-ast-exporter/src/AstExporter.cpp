@@ -811,7 +811,11 @@ class TranslateASTVisitor final
         size_t size;
         do {
             size = files.size();
-            for (auto const &file : files) {
+            /* Cannot use iterator over files here, as getExporterFileId
+             * potentially modifies files. This also prevents use of
+             * for (auto const &file : files) here. */
+            for (size_t idx = 0; idx < size; idx++) {
+                auto const &file = files[idx];
                 getExporterFileId(manager.getFileID(file.second), false);
             }
         } while (size != files.size());
