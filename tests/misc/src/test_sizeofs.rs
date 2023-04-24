@@ -1,4 +1,4 @@
-//! feature_core_intrinsics,
+//! feature_core_intrinsics, feature_label_break_value
 
 use crate::sizeofs::rust_sizeofs;
 use libc::c_int;
