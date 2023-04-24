@@ -34,8 +34,8 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand, Rvalue,
-    StatementKind,
+    AggregateKind, BindingForm, Body, ConstantKind, LocalDecl, LocalInfo, LocalKind, Location,
+    Operand, Rvalue, StatementKind,
 };
 use rustc_middle::ty::tls;
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
@@ -397,6 +397,28 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                     _ => continue,
                 },
                 Rvalue::Cast(_, _, ty) => acx.assign_pointer_ids(*ty),
+                Rvalue::Use(Operand::Constant(c)) => {
+                    let c = &**c;
+                    if !c.ty().is_ref() {
+                        continue;
+                    }
+                    // Constants can include, for example, `""` and `b""` string literals.
+                    match c.literal {
+                        ConstantKind::Val(_, ty) => {
+                            // The [`Constant`] is an inline value and thus local to this function,
+                            // as opposed to a global, named `const`s, for example.
+                            // This might miss local, named `const`s.
+                            acx.const_ref_locs.push(loc);
+                            acx.assign_pointer_ids(ty)
+                        }
+                        ConstantKind::Ty(ty) => {
+                            ::log::error!(
+                                "TODO: handle global, named `const` refs: {c:?}, ty = {ty:?}"
+                            );
+                            continue;
+                        }
+                    }
+                }
                 _ => continue,
             };
 
@@ -608,6 +630,8 @@ fn run(tcx: TyCtxt) {
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
         let mut asn = gasn.and(&mut info.lasn);
         info.dataflow.propagate_cell(&mut asn);
+
+        acx.check_const_ref_perms(&asn);
 
         // Print labeling and rewrites for the current function.
 

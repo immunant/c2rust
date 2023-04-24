@@ -4,7 +4,7 @@ use crate::pointer_id::{
     GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
     PointerTableMut,
 };
-use crate::util::{self, describe_rvalue, RvalueDesc};
+use crate::util::{self, describe_rvalue, PhantomLifetime, RvalueDesc};
 use crate::AssignPointerIds;
 use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
@@ -13,7 +13,7 @@ use rustc_middle::mir::{
     Body, Field, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem, PlaceRef,
     Rvalue,
 };
-use rustc_middle::ty::{AdtDef, FieldDef, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{self, AdtDef, FieldDef, Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
 
@@ -48,6 +48,22 @@ bitflags! {
         const OFFSET_SUB = 0x0020;
         /// This pointer can be freed.
         const FREE = 0x0040;
+    }
+}
+
+impl PermissionSet {
+    pub fn for_const_ref_ty(ty: Ty) -> Self {
+        let ty = match ty.kind() {
+            ty::Ref(_, ty, _) => ty,
+            _ => panic!("expected only `Ref`s for constants: {ty:?}"),
+        };
+        if ty.is_array() || ty.is_str() {
+            Self::READ | Self::OFFSET_ADD
+        } else if ty.is_primitive_ty() {
+            Self::READ
+        } else {
+            panic!("expected an array, str, or primitive type: {ty:?}");
+        }
     }
 }
 
@@ -97,13 +113,44 @@ pub struct AnalysisCtxt<'a, 'tcx> {
     /// those `PointerId`s consistent, the `Rvalue`'s type must be stored rather than recomputed on
     /// the fly.
     pub rvalue_tys: HashMap<Location, LTy<'tcx>>,
+
+    /// [`Location`]s of const ref [`rvalue_tys`](Self::rvalue_tys).
+    pub const_ref_locs: Vec<Location>,
+
     next_ptr_id: NextLocalPointerId,
+}
+
+impl<'a, 'tcx> AnalysisCtxt<'_, 'tcx> {
+    pub fn const_ref_tys(&'a self) -> impl Iterator<Item = LTy<'tcx>> + 'a {
+        self.const_ref_locs.iter().map(|loc| self.rvalue_tys[loc])
+    }
+
+    pub fn const_ref_perms(
+        &'a self,
+    ) -> impl Iterator<Item = (PointerId, PermissionSet)> + PhantomLifetime<'tcx> + 'a {
+        self.const_ref_tys()
+            .map(|lty| (lty.label, PermissionSet::for_const_ref_ty(lty.ty)))
+    }
+
+    pub fn check_const_ref_perms(&self, asn: &Assignment) {
+        for const_ref_lty in self.const_ref_tys() {
+            let ptr_id = const_ref_lty.label;
+            let expected_perms = PermissionSet::for_const_ref_ty(const_ref_lty.ty);
+            let mut actual_perms = asn.perms()[ptr_id];
+            // Ignore `UNIQUE` as it gets automatically added to all permissions
+            // and then removed later if it can't apply.
+            // We don't care about `UNIQUE` for const refs, so just unset it here.
+            actual_perms.set(PermissionSet::UNIQUE, false);
+            assert_eq!(expected_perms, actual_perms);
+        }
+    }
 }
 
 pub struct AnalysisCtxtData<'tcx> {
     local_tys: IndexVec<Local, LTy<'tcx>>,
     addr_of_local: IndexVec<Local, PointerId>,
     rvalue_tys: HashMap<Location, LTy<'tcx>>,
+    const_ref_locs: Vec<Location>,
     next_ptr_id: NextLocalPointerId,
 }
 
@@ -196,6 +243,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             c_void_casts: CVoidCasts::new(mir, tcx),
             addr_of_local: IndexVec::new(),
             rvalue_tys: HashMap::new(),
+            const_ref_locs: Default::default(),
             next_ptr_id: NextLocalPointerId::new(),
         }
     }
@@ -209,6 +257,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             local_tys,
             addr_of_local,
             rvalue_tys,
+            const_ref_locs,
             next_ptr_id,
         } = data;
         AnalysisCtxt {
@@ -218,6 +267,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             c_void_casts: CVoidCasts::default(),
             addr_of_local,
             rvalue_tys,
+            const_ref_locs,
             next_ptr_id,
         }
     }
@@ -227,6 +277,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             local_tys: self.local_tys,
             addr_of_local: self.addr_of_local,
             rvalue_tys: self.rvalue_tys,
+            const_ref_locs: self.const_ref_locs,
             next_ptr_id: self.next_ptr_id,
         }
     }
@@ -363,12 +414,13 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
         map: PointerTable<PointerId>,
         counter: NextLocalPointerId,
     ) {
-        let AnalysisCtxtData {
-            ref mut local_tys,
-            ref mut addr_of_local,
-            ref mut rvalue_tys,
-            ref mut next_ptr_id,
-        } = *self;
+        let Self {
+            local_tys,
+            addr_of_local,
+            rvalue_tys,
+            const_ref_locs: _,
+            next_ptr_id,
+        } = self;
 
         for lty in local_tys {
             *lty = remap_lty_pointers(lcx, &map, lty);
