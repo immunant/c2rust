@@ -675,10 +675,10 @@ fn run(tcx: TyCtxt) {
                     perms.insert(PermissionSet::WRITE);
                 }
                 if node_info.flows_to.pos_offset.is_some() {
-                    perms.insert(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+                    perms.insert(PermissionSet::OFFSET_ADD);
                 }
                 if node_info.flows_to.neg_offset.is_some() {
-                    perms.insert(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+                    perms.insert(PermissionSet::OFFSET_SUB);
                 }
                 if !node_info.unique {
                     perms.remove(PermissionSet::UNIQUE);
