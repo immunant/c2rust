@@ -411,8 +411,10 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                             acx.const_ref_locs.push(loc);
                             acx.assign_pointer_ids(ty)
                         }
-                        ConstantKind::Ty(_) => {
-                            // TODO: Handle global, named `const`s.
+                        ConstantKind::Ty(ty) => {
+                            ::log::error!(
+                                "TODO: handle global, named `const` refs: {c:?}, ty = {ty:?}"
+                            );
                             continue;
                         }
                     }
