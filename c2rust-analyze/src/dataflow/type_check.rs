@@ -42,7 +42,7 @@ struct TypeChecker<'tcx, 'a> {
     equiv_constraints: Vec<(PointerId, PointerId)>,
 }
 
-fn is_castable_to<'tcx>(_t: LTy<'tcx>, _u: LTy<'tcx>) -> bool {
+fn is_castable_to<'tcx>(_from_lty: LTy<'tcx>, _to_lty: LTy<'tcx>) -> bool {
     // TODO: implement
     true
 }
@@ -105,10 +105,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         &mut self,
         cast_kind: CastKind,
         op: &Operand<'tcx>,
-        ty: Ty<'tcx>,
-        rvalue_lty: LTy<'tcx>,
+        to_ty: Ty<'tcx>,
+        to_lty: LTy<'tcx>,
     ) {
-        let op_lty = self.acx.type_of(op);
+        let from_lty = self.acx.type_of(op);
 
         match cast_kind {
             CastKind::PointerFromExposedAddress => {
@@ -119,34 +119,30 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 }
             }
             CastKind::Pointer(PointerCast::Unsize) => {
-                let pointee_ty = ty
+                let pointee_to_ty = to_ty
                     .builtin_deref(true)
-                    .unwrap_or_else(|| panic!("unsize cast has non-pointer output {:?}?", ty))
+                    .unwrap_or_else(|| panic!("unsize cast has non-pointer output {:?}?", to_ty))
                     .ty;
 
-                assert_matches!(op_lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
-                let op_pointee_lty = assert_matches!(op_lty.args, [lty] => lty);
+                assert_matches!(from_lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
+                let pointee_from_lty = assert_matches!(from_lty.args, [lty] => lty);
 
-                let elem_ty = assert_matches!(pointee_ty.kind(), &TyKind::Slice(ty) => ty);
-                assert!(matches!(op_pointee_lty.kind(), TyKind::Array(..)));
-                let elem_lty = assert_matches!(op_pointee_lty.args, [lty] => lty);
-                assert_eq!(elem_lty.ty, elem_ty);
-                assert_eq!(op_pointee_lty.label, PointerId::NONE);
-                self.do_assign_pointer_ids(rvalue_lty.label, op_lty.label);
+                let elem_to_ty = assert_matches!(pointee_to_ty.kind(), &TyKind::Slice(ty) => ty);
+                assert!(matches!(pointee_from_lty.kind(), TyKind::Array(..)));
+                let elem_from_lty = assert_matches!(pointee_from_lty.args, [lty] => lty);
+                assert_eq!(elem_from_lty.ty, elem_to_ty);
+                assert_eq!(pointee_from_lty.label, PointerId::NONE);
+                self.do_assign_pointer_ids(to_lty.label, from_lty.label);
             }
             CastKind::Pointer(..) => {
-                // The source and target types are both pointers, and they have identical
-                // pointee types.
+                // The source and target types are both pointers, and they have identical pointee types.
                 // TODO: remove or move check to `is_castable_to`
-                assert!(op_lty.args[0].ty == rvalue_lty.args[0].ty);
-
-                assert!(is_castable_to(op_lty, rvalue_lty));
+                assert!(from_lty.args[0].ty == to_lty.args[0].ty);
+                assert!(is_castable_to(from_lty, to_lty));
             }
             _ => {
                 // A cast such as `T as U`
-                let casted_from = op_lty;
-                let casted_to = rvalue_lty;
-                assert!(is_castable_to(casted_from, casted_to));
+                assert!(is_castable_to(from_lty, to_lty));
             }
         }
 
