@@ -108,6 +108,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         ty: Ty<'tcx>,
         rvalue_lty: LTy<'tcx>,
     ) {
+        let op_lty = self.acx.type_of(op);
+
         match cast_kind {
             CastKind::PointerFromExposedAddress => {
                 // We support only one case here, which is the case of null pointers
@@ -123,7 +125,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     _ => unreachable!("unsize cast has non-pointer output {:?}?", ty),
                 };
 
-                let op_lty = self.acx.type_of(op);
                 assert_matches!(op_lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
 
                 let op_pointee_lty = assert_matches!(op_lty.args, [op_pointee_lty] => {
@@ -142,8 +143,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 }
             }
             CastKind::Pointer(..) => {
-                let op_lty = self.acx.type_of(op);
-
                 // The source and target types are both pointers, and they have identical
                 // pointee types.
                 // TODO: remove or move check to `is_castable_to`
@@ -153,7 +152,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             }
             _ => {
                 // A cast such as `T as U`
-                let casted_from = self.acx.type_of(op);
+                let casted_from = op_lty;
                 let casted_to = rvalue_lty;
                 assert!(is_castable_to(casted_from, casted_to));
             }
