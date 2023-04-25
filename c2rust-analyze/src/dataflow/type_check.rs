@@ -112,7 +112,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             CastKind::PointerFromExposedAddress => {
                 // We support only one case here, which is the case of null pointers
                 // constructed via casts such as `0 as *const T`
-                if !op.constant().cloned().map(is_null_const).unwrap_or(false) {
+                if !op.constant().copied().map(is_null_const).unwrap_or(false) {
                     panic!("Creating non-null pointers from exposed addresses not supported");
                 }
             }
