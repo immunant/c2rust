@@ -389,8 +389,8 @@ fn materialize_adjustments<'tcx>(
     let adj_kinds: Vec<&_> = adjustments.iter().map(|a| &a.kind).collect();
     match (hir_rw, &adj_kinds[..]) {
         (Rewrite::Identity, []) => Rewrite::Identity,
-        (hir_rw @ Rewrite::Identity, _) => {
-            let mut hir_rw = hir_rw;
+        (Rewrite::Identity, _) => {
+            let mut hir_rw = Rewrite::Identity;
             for adj in adjustments {
                 hir_rw = apply_identity_adjustment(tcx, adj, hir_rw);
             }
