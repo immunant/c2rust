@@ -125,17 +125,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     .ty;
 
                 assert_matches!(op_lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
-
-                let op_pointee_lty = assert_matches!(op_lty.args, [op_pointee_lty] => {
-                    op_pointee_lty
-                });
+                let op_pointee_lty = assert_matches!(op_lty.args, [lty] => lty);
 
                 assert_matches!(pointee_ty.kind(), TyKind::Slice(..));
                 if let TyKind::Slice(elem_ty) = *pointee_ty.kind() {
                     assert!(matches!(op_pointee_lty.kind(), TyKind::Array(..)));
-                    let elem_lty = assert_matches!(op_pointee_lty.args, [elem_lty] => {
-                        elem_lty
-                    });
+                    let elem_lty = assert_matches!(op_pointee_lty.args, [lty] => lty);
                     assert_eq!(elem_lty.ty, elem_ty);
                     assert_eq!(op_pointee_lty.label, PointerId::NONE);
                     self.do_assign_pointer_ids(rvalue_lty.label, op_lty.label);
