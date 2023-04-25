@@ -101,6 +101,71 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
+    fn visit_cast(
+        &mut self,
+        cast_kind: CastKind,
+        op: &Operand<'tcx>,
+        ty: Ty<'tcx>,
+        rvalue_lty: LTy<'tcx>,
+    ) {
+        match cast_kind {
+            CastKind::PointerFromExposedAddress => {
+                // We support only one case here, which is the case of null pointers
+                // constructed via casts such as `0 as *const T`
+                if let Some(true) = op.constant().cloned().map(util::is_null_const) {
+                    self.visit_operand(op)
+                } else {
+                    panic!("Creating non-null pointers from exposed addresses not supported");
+                }
+            }
+            CastKind::Pointer(PointerCast::Unsize) => {
+                let pointee_ty = match *ty.kind() {
+                    TyKind::Ref(_, ty, _) => ty,
+                    TyKind::RawPtr(tm) => tm.ty,
+                    _ => unreachable!("unsize cast has non-pointer output {:?}?", ty),
+                };
+
+                let op_lty = self.acx.type_of(op);
+                assert_matches!(op_lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
+
+                let op_pointee_lty = assert_matches!(op_lty.args, [op_pointee_lty] => {
+                    op_pointee_lty
+                });
+
+                assert_matches!(pointee_ty.kind(), TyKind::Slice(..));
+                if let TyKind::Slice(elem_ty) = *pointee_ty.kind() {
+                    assert!(matches!(op_pointee_lty.kind(), TyKind::Array(..)));
+                    let elem_lty = assert_matches!(op_pointee_lty.args, [elem_lty] => {
+                        elem_lty
+                    });
+                    assert_eq!(elem_lty.ty, elem_ty);
+                    assert_eq!(op_pointee_lty.label, PointerId::NONE);
+                    self.do_assign_pointer_ids(rvalue_lty.label, op_lty.label);
+                }
+
+                self.visit_operand(op)
+            }
+            CastKind::Pointer(..) => {
+                let op_lty = self.acx.type_of(op);
+
+                // The source and target types are both pointers, and they have identical
+                // pointee types.
+                // TODO: remove or move check to `is_castable_to`
+                assert!(op_lty.args[0].ty == rvalue_lty.args[0].ty);
+
+                assert!(is_castable_to(op_lty, rvalue_lty));
+                self.visit_operand(op)
+            }
+            _ => {
+                // A cast such as `T as U`
+                let casted_from = self.acx.type_of(op);
+                let casted_to = rvalue_lty;
+                assert!(is_castable_to(casted_from, casted_to));
+                self.visit_operand(op)
+            }
+        }
+    }
+
     pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, rvalue_lty: LTy<'tcx>) {
         let rv_desc = describe_rvalue(rv);
         eprintln!("visit_rvalue({rv:?}), desc = {rv_desc:?}");
@@ -148,59 +213,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Rvalue::Len(pl) => {
                 self.visit_place(pl, Mutability::Not);
             }
-            Rvalue::Cast(CastKind::PointerFromExposedAddress, ref op, _) => {
-                // We support only one case here, which is the case of null pointers
-                // constructed via casts such as `0 as *const T`
-                if let Some(true) = op.constant().cloned().map(util::is_null_const) {
-                    self.visit_operand(op)
-                } else {
-                    panic!("Creating non-null pointers from exposed addresses not supported");
-                }
-            }
-            Rvalue::Cast(CastKind::Pointer(PointerCast::Unsize), ref op, ty) => {
-                let pointee_ty = match *ty.kind() {
-                    TyKind::Ref(_, ty, _) => ty,
-                    TyKind::RawPtr(tm) => tm.ty,
-                    _ => unreachable!("unsize cast has non-pointer output {:?}?", ty),
-                };
-
-                let op_lty = self.acx.type_of(op);
-                assert_matches!(op_lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
-
-                let op_pointee_lty = assert_matches!(op_lty.args, [op_pointee_lty] => {
-                    op_pointee_lty
-                });
-
-                assert_matches!(pointee_ty.kind(), TyKind::Slice(..));
-                if let TyKind::Slice(elem_ty) = *pointee_ty.kind() {
-                    assert!(matches!(op_pointee_lty.kind(), TyKind::Array(..)));
-                    let elem_lty = assert_matches!(op_pointee_lty.args, [elem_lty] => {
-                        elem_lty
-                    });
-                    assert_eq!(elem_lty.ty, elem_ty);
-                    assert_eq!(op_pointee_lty.label, PointerId::NONE);
-                    self.do_assign_pointer_ids(rvalue_lty.label, op_lty.label);
-                }
-
-                self.visit_operand(op)
-            }
-            Rvalue::Cast(CastKind::Pointer(..), ref op, _) => {
-                let op_lty = self.acx.type_of(op);
-
-                // The source and target types are both pointers, and they have identical
-                // pointee types.
-                // TODO: remove or move check to `is_castable_to`
-                assert!(op_lty.args[0].ty == rvalue_lty.args[0].ty);
-
-                assert!(is_castable_to(op_lty, rvalue_lty));
-                self.visit_operand(op)
-            }
-            Rvalue::Cast(_cast_kind, ref op, _) => {
-                // A cast such as `T as U`
-                let casted_from = self.acx.type_of(op);
-                let casted_to = rvalue_lty;
-                assert!(is_castable_to(casted_from, casted_to));
-                self.visit_operand(op)
+            Rvalue::Cast(cast_kind, ref op, ty) => {
+                self.visit_cast(cast_kind, op, ty, rvalue_lty);
             }
             Rvalue::BinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
             Rvalue::BinaryOp(_, ref ops) => {
