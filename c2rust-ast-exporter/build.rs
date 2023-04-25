@@ -205,7 +205,7 @@ fn build_native(llvm_info: &LLVMInfo) {
     }
 
     // Link against the C++ std library.
-    if cfg!(target_os = "macos") {
+    if cfg!(target_os = "macos") || cfg!(target_os = "freebsd") {
         println!("cargo:rustc-link-lib=c++");
     } else {
         println!("cargo:rustc-link-lib=stdc++");
