@@ -113,7 +113,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // We support only one case here, which is the case of null pointers
                 // constructed via casts such as `0 as *const T`
                 if let Some(true) = op.constant().cloned().map(util::is_null_const) {
-                    self.visit_operand(op)
                 } else {
                     panic!("Creating non-null pointers from exposed addresses not supported");
                 }
@@ -142,8 +141,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     assert_eq!(op_pointee_lty.label, PointerId::NONE);
                     self.do_assign_pointer_ids(rvalue_lty.label, op_lty.label);
                 }
-
-                self.visit_operand(op)
             }
             CastKind::Pointer(..) => {
                 let op_lty = self.acx.type_of(op);
@@ -154,16 +151,16 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 assert!(op_lty.args[0].ty == rvalue_lty.args[0].ty);
 
                 assert!(is_castable_to(op_lty, rvalue_lty));
-                self.visit_operand(op)
             }
             _ => {
                 // A cast such as `T as U`
                 let casted_from = self.acx.type_of(op);
                 let casted_to = rvalue_lty;
                 assert!(is_castable_to(casted_from, casted_to));
-                self.visit_operand(op)
             }
         }
+
+        self.visit_operand(op)
     }
 
     pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, rvalue_lty: LTy<'tcx>) {
