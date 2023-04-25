@@ -142,7 +142,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     let perms = self.perms[local_addr];
                     let flags = self.flags[local_addr];
                     if let (Ownership::Cell, _) = type_desc::perms_to_desc(perms, flags) {
-                        // this is an assignment like `let x = 2` but `x` has CELL permissions
+                        // this is an assignment like `x = 2` but `x` has CELL permissions
                         self.enter_assign_rvalue(|v| v.emit(RewriteKind::CellSet))
                     }
                 }
