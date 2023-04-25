@@ -1,5 +1,5 @@
 unsafe fn cell() {
-    // CHECK-DAG: let mut x = std::cell::Cell::new(1);
+    // CHECK-DAG: let mut x = std::cell::Cell::new((1));
     let mut x = 1;
     // CHECK-DAG: let mut y = &(x);
     let mut y = std::ptr::addr_of_mut!(x);

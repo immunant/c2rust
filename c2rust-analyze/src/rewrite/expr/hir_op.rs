@@ -312,7 +312,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
 
                 mir_op::RewriteKind::CellNew => {
                     // `x` to `Cell::new(x)`
-                    Rewrite::CellNew
+                    Rewrite::CellNew(Box::new(Rewrite::Identity))
                 }
 
                 mir_op::RewriteKind::CellGet => {

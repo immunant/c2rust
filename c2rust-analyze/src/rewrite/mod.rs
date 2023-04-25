@@ -63,7 +63,7 @@ pub enum Rewrite<S = Span> {
     /// The integer literal `0`.
     LitZero,
     /// Cell::new
-    CellNew,
+    CellNew(Box<Rewrite>),
     /// Cell::get
     CellGet(Box<Rewrite>),
     /// cell.set(x)
@@ -172,9 +172,9 @@ impl Rewrite {
                 write!(f, "{}", s)
             }
 
-            Rewrite::CellNew => {
+            Rewrite::CellNew(ref rw) => {
                 f.write_str("std::cell::Cell::new(")?;
-                write!(f, "$e")?;
+                rw.pretty(f, 0)?;
                 f.write_str(")")
             }
             Rewrite::CellGet(ref rw) => {

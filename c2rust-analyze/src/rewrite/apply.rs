@@ -287,10 +287,10 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
             Rewrite::PrintTy(ref s) => {
                 self.emit_str(s);
             }
-            Rewrite::CellNew => {
+            Rewrite::CellNew(ref rw) => {
                 self.emit_str("std::cell::Cell::new");
                 self.emit_parenthesized(true, |slf| {
-                    emit_expr(slf);
+                    slf.emit_rewrite(rw, 0, emit_expr, emit_subexpr)
                 })
             }
             Rewrite::CellSet(ref cell, ref x) => {
