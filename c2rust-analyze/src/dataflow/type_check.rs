@@ -119,11 +119,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 }
             }
             CastKind::Pointer(PointerCast::Unsize) => {
-                let pointee_ty = match *ty.kind() {
-                    TyKind::Ref(_, ty, _) => ty,
-                    TyKind::RawPtr(tm) => tm.ty,
-                    _ => unreachable!("unsize cast has non-pointer output {:?}?", ty),
-                };
+                let pointee_ty = ty
+                    .builtin_deref(true)
+                    .unwrap_or_else(|| panic!("unsize cast has non-pointer output {:?}?", ty))
+                    .ty;
 
                 assert_matches!(op_lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
 
