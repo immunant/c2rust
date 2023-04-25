@@ -196,7 +196,7 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
                     .unwrap_or_else(|err| panic_location_error(err, "Assignment statement"));
                 locations.push(assign_loc)
             }
-            _ => {}
+            _ => eprintln!("warning: find_primary_location: unsupported expr {:?}", ex)
         }
 
         locations
