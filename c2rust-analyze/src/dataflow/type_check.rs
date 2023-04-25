@@ -1,7 +1,7 @@
 use super::DataflowConstraints;
 use crate::c_void_casts::CVoidCastDirection;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
-use crate::util::{self, describe_rvalue, ty_callee, Callee, RvalueDesc};
+use crate::util::{describe_rvalue, is_null_const, ty_callee, Callee, RvalueDesc};
 use assert_matches::assert_matches;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
@@ -112,8 +112,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             CastKind::PointerFromExposedAddress => {
                 // We support only one case here, which is the case of null pointers
                 // constructed via casts such as `0 as *const T`
-                if let Some(true) = op.constant().cloned().map(util::is_null_const) {
-                } else {
+                if !op.constant().cloned().map(is_null_const).unwrap_or(false) {
                     panic!("Creating non-null pointers from exposed addresses not supported");
                 }
             }
