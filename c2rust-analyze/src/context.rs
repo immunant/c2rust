@@ -84,7 +84,7 @@ bitflags! {
         /// * [`core::ptr::from_exposed_addr`]
         /// * int-to-ptr casts though `as` or [`core::mem::transmute`]
         ///
-        /// will not be [`NON_NULL`], but for now,
+        /// will be [`NON_NULL`], but for now,
         /// we do not consider and do not allow such non-null invalid pointers at all.
         ///
         /// [`NON_NULL`] pointers will become references, e.x. `&T`.\
