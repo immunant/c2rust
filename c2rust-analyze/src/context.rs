@@ -26,9 +26,9 @@ bitflags! {
     /// as opposed to something like `ALIASED` (a pointer capability),
     /// as removing [`UNIQUE`] (`&mut`) allows more values to be taken on (`&`).
     ///
-    /// Currently, we assume that all pointers are valid
+    /// Currently, we assume that all pointers are valid or null
     /// (see [the `std::ptr` safety docs](https://doc.rust-lang.org/std/ptr/index.html#safety)).
-    /// We do not yet (here) consider null, unaligned, or cast-from-integer pointers.
+    /// We do not yet (here) consider unaligned or cast-from-integer pointers.
     ///
     /// [`UNIQUE`]: Self::UNIQUE
     #[derive(Default)]
@@ -60,6 +60,60 @@ bitflags! {
 
         /// This pointer can be freed.
         const FREE = 0x0040;
+
+        /// This pointer is non-null.
+        ///
+        /// [`NON_NULL`] is set (or not) when the pointer is created,
+        /// and it flows forward along dataflow edges.
+        ///
+        /// The following should be set to [`NON_NULL`]:
+        /// * the results of [`Rvalue::Ref`] and [`Rvalue::AddressOf`]
+        /// * the result of a known function like [`_.offset`] that never returns null pointers
+        ///
+        /// The following should not be set to [`NON_NULL`]:
+        /// * [`core::ptr::null`]
+        /// * [`core::ptr::null_mut`]
+        /// * [`core::ptr::from_exposed_addr`] with the constant `0`
+        /// * `0 as * {const,mut} _`, a cast from the constant `0` to a pointer type
+        /// * anything else
+        ///
+        /// Non-zero but invalid pointers, such as those produced by:
+        /// * [`core::ptr::invalid`]
+        /// * [`core::ptr::invalid_mut`]
+        /// * [`NonNull::dangling`]
+        /// * [`core::ptr::from_exposed_addr`]
+        /// * int-to-ptr casts though `as` or [`core::mem::transmute`]
+        ///
+        /// will be [`NON_NULL`], but for now,
+        /// we do not consider and do not allow such non-null invalid pointers at all.
+        ///
+        /// [`NON_NULL`] pointers will become references, e.x. `&T`.\
+        /// Non-[`NON_NULL`] pointers will become [`Option<&T>`].
+        ///
+        /// Casts/transitions from [`NON_NULL`] to non-[`NON_NULL`] will become [`Some(_)`].\
+        /// Casts/transitions from non-[`NON_NULL`] to [`NON_NULL`] will become [`_.unwrap()`].
+        ///
+        /// [`_.is_null()`] on a [`NON_NULL`] pointer will become [`false`].\
+        /// [`_.is_null()`] on a non-[`NON_NULL`] pointer will become [`_.is_some()`].
+        ///
+        /// Constant null pointers, like those produced by:
+        /// * [`core::ptr::null`]
+        /// * [`core::ptr::null_mut`]
+        /// * [`core::ptr::from_exposed_addr`] with the constant `0`
+        /// * `0 as * {const,mut} _`, a cast from the constant `0` to a pointer type
+        ///
+        /// will become [`None`].
+        ///
+        /// [`NON_NULL`]: Self::NON_NULL
+        /// [`READ`]: Self::READ
+        /// [`WRITE`]: Self::WRITE
+        /// [`_.offset`]: core::ptr::offset
+        /// [`NonNull::dangling`]: core::ptr::NonNull::dangling
+        /// [`Some(_)`]: Some
+        /// [`_.unwrap()`]: Option::unwrap
+        /// [`_.is_null()`]: core::ptr::is_null
+        /// [`_.is_some()`]: Option::is_some
+        const NON_NULL = 0x0080;
     }
 }
 
