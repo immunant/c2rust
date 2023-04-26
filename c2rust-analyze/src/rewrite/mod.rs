@@ -62,12 +62,10 @@ pub enum Rewrite<S = Span> {
     Cast(Box<Rewrite>, String),
     /// The integer literal `0`.
     LitZero,
-    /// Cell::new
-    CellNew(Box<Rewrite>),
-    /// Cell::get
-    CellGet(Box<Rewrite>),
-    /// cell.set(x)
-    CellSet(Box<Rewrite>, Box<Rewrite>),
+    // Function calls
+    Call(String, Vec<Rewrite>),
+    // Method calls
+    MethodCall(String, Box<Rewrite>, Vec<Rewrite>),
 
     // Type builders
     /// Emit a complete pretty-printed type, discarding the original annotation.
@@ -171,20 +169,28 @@ impl Rewrite {
             Rewrite::PrintTy(ref s) => {
                 write!(f, "{}", s)
             }
-
-            Rewrite::CellNew(ref rw) => {
-                f.write_str("std::cell::Cell::new(")?;
-                rw.pretty(f, 0)?;
+            Rewrite::Call(ref func, ref arg_rws) => {
+                f.write_str(func)?;
+                f.write_str("(")?;
+                for (index, rw) in arg_rws.iter().enumerate() {
+                    rw.pretty(f, 0)?;
+                    if index < arg_rws.len() - 1 {
+                        f.write_str(",")?;
+                    }
+                }
                 f.write_str(")")
             }
-            Rewrite::CellGet(ref rw) => {
-                rw.pretty(f, 0)?;
-                f.write_str(".get()")
-            }
-            Rewrite::CellSet(ref lhs, ref rhs) => {
-                lhs.pretty(f, 0)?;
-                f.write_str(".set(")?;
-                rhs.pretty(f, 0)?;
+            Rewrite::MethodCall(ref method, ref receiver_rw, ref arg_rws) => {
+                receiver_rw.pretty(f, 0)?;
+                f.write_str(".")?;
+                f.write_str(method)?;
+                f.write_str("(")?;
+                for (index, rw) in arg_rws.iter().enumerate() {
+                    rw.pretty(f, 0)?;
+                    if index < arg_rws.len() - 1 {
+                        f.write_str(",")?;
+                    }
+                }
                 f.write_str(")")
             }
             Rewrite::TyPtr(ref rw, mutbl) => {

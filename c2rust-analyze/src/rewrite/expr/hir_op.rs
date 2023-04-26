@@ -309,23 +309,26 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                     // &raw _ to &_ or &raw mut _ to &mut _
                     Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(mutbl))
                 }
-
                 mir_op::RewriteKind::CellNew => {
                     // `x` to `Cell::new(x)`
-                    Rewrite::CellNew(Box::new(Rewrite::Identity))
+                    Rewrite::Call("std::cell::Cell::new".to_string(), vec![Rewrite::Identity])
                 }
 
                 mir_op::RewriteKind::CellGet => {
                     // `*x` to `Cell::get(x)`
-                    Rewrite::CellGet(Box::new(self.get_subexpr(ex, 0)))
+                    Rewrite::MethodCall(
+                        "get".to_string(),
+                        Box::new(self.get_subexpr(ex, 0)),
+                        vec![],
+                    )
                 }
 
                 mir_op::RewriteKind::CellSet => {
-                    // `x` to `Cell::set(x)`
-                    let derefed_lhs = assert_matches!(ex.kind, ExprKind::Assign(lhs, ..) => lhs);
-                    let lhs = self.get_subexpr(derefed_lhs, 0);
+                    // `*x` to `Cell::set(x)`
+                    let deref_lhs = assert_matches!(ex.kind, ExprKind::Assign(lhs, ..) => lhs);
+                    let lhs = self.get_subexpr(deref_lhs, 0);
                     let rhs = self.get_subexpr(ex, 1);
-                    Rewrite::CellSet(Box::new(lhs), Box::new(rhs))
+                    Rewrite::MethodCall("set".to_string(), Box::new(lhs), vec![rhs])
                 }
             };
         }
