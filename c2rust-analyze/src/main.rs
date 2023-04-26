@@ -749,23 +749,10 @@ fn run(tcx: TyCtxt) {
     // Print results for `static` items.
     eprintln!("\nfinal labeling for static items:");
     for (did, lty) in gacx.static_tys.iter() {
-        let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
         let name = tcx.item_name(*did);
-        let addr_of1 = gasn.perms[lty.label];
-        let ty1 = lcx1.relabel(lty, &mut |lty| {
-            if lty.label == PointerId::NONE {
-                PermissionSet::empty()
-            } else {
-                gasn.perms[lty.label]
-            }
-        });
-        eprintln!(
-            "{:?}: addr_of = {:?}, type = {:?}",
-            name,
-            //describe_local(tcx, decl),
-            addr_of1,
-            ty1,
-        );
+        let ty_perms = gasn.perms[lty.label];
+        let ty_flags = gasn.flags[lty.label];
+        eprintln!("{name:?}: perms = {ty_perms:?}, flags = {ty_flags:?}");
     }
 
     let static_rewrites = rewrite::gen_static_rewrites(&gacx, &gasn);
