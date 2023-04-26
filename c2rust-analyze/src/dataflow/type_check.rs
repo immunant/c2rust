@@ -101,13 +101,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    fn visit_cast(
-        &mut self,
-        cast_kind: CastKind,
-        op: &Operand<'tcx>,
-        to_ty: Ty<'tcx>,
-        to_lty: LTy<'tcx>,
-    ) {
+    fn visit_cast(&mut self, cast_kind: CastKind, op: &Operand<'tcx>, to_lty: LTy<'tcx>) {
+        let to_ty = to_lty.ty;
         let from_lty = self.acx.type_of(op);
 
         match cast_kind {
@@ -197,7 +192,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.visit_place(pl, Mutability::Not);
             }
             Rvalue::Cast(cast_kind, ref op, ty) => {
-                self.visit_cast(cast_kind, op, ty, rvalue_lty);
+                assert_eq!(ty, rvalue_lty.ty);
+                self.visit_cast(cast_kind, op, rvalue_lty);
             }
             Rvalue::BinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
             Rvalue::BinaryOp(_, ref ops) => {
