@@ -402,19 +402,31 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                     if !c.ty().is_ref() {
                         continue;
                     }
-                    // Constants can include, for example, `""` and `b""` string literals.
+                    // Handle const refs.
+                    //
+                    // By const ref, we mean the ref itself is constant,
+                    // so this can be a reference to an inline value ([`ConstantKind::Val`]), such as:
+                    // * `1`
+                    // * `[]`
+                    // * `()`
+                    // * `""`
+                    // * `b""`
+                    //
+                    // or a reference to a named item ([`ConstantKind::Ty`])
+                    // that is accessible at compile time, such as:
+                    // * `const`s
+                    // * `static`s
+                    // * `fn`s
+                    //
+                    // Note that these named items are often global,
+                    // but could also be local to a function or smaller scope.
                     match c.literal {
                         ConstantKind::Val(_, ty) => {
-                            // The [`Constant`] is an inline value and thus local to this function,
-                            // as opposed to a global, named `const`s, for example.
-                            // This might miss local, named `const`s.
                             acx.const_ref_locs.push(loc);
                             acx.assign_pointer_ids(ty)
                         }
                         ConstantKind::Ty(ty) => {
-                            ::log::error!(
-                                "TODO: handle global, named `const` refs: {c:?}, ty = {ty:?}"
-                            );
+                            ::log::error!("TODO: handle named const refs: {c:?}, ty = {ty:?}");
                             continue;
                         }
                     }
