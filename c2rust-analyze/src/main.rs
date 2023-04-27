@@ -34,8 +34,8 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, ConstantKind, LocalDecl, LocalInfo, LocalKind, Location,
-    Operand, Rvalue, StatementKind,
+    AggregateKind, BindingForm, Body, Constant, ConstantKind, LocalDecl, LocalInfo, LocalKind,
+    Location, Operand, Rvalue, StatementKind,
 };
 use rustc_middle::ty::tls;
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
@@ -361,6 +361,50 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
     }
 }
 
+fn label_const_refs<'tcx>(
+    acx: &mut AnalysisCtxt<'_, 'tcx>,
+    c: &Constant<'tcx>,
+    loc: Location,
+) -> Option<LTy<'tcx>> {
+    if !c.ty().is_ref() {
+        return None;
+    }
+    // Handle const refs.
+    //
+    // By const ref, we mean the ref itself is constant,
+    // so this can be a reference to an inline value ([`ConstantKind::Val`]), such as:
+    // * `1`
+    // * `[]`
+    // * `()`
+    // * `""`
+    // * `b""`
+    //
+    // or a reference to a named item ([`ConstantKind::Ty`])
+    // that is accessible at compile time, such as:
+    // * `const`s
+    // * `static`s
+    // * `fn`s
+    //
+    // Note that these named items are often global,
+    // but could also be local to a function or smaller scope.
+    match c.literal {
+        ConstantKind::Val(_, ty) => {
+            // As these are only inline values, they do not need
+            // dataflow constraints to their pointee (unlike their named counterparts),
+            // because the values cannot be accessed elsewhere,
+            // and their permissions are predetermined (see [`PermissionSet::for_const_ref_ty`]).
+            acx.const_ref_locs.push(loc);
+            Some(acx.assign_pointer_ids(ty))
+        }
+        ConstantKind::Ty(ty) => {
+            // TODO When these are handled, they will need to have
+            // the correct dataflow constraints to their pointee.
+            ::log::error!("TODO: handle named const refs: {c:?}, ty = {ty:?}");
+            None
+        }
+    }
+}
+
 fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb_data.statements.iter().enumerate() {
@@ -397,46 +441,10 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                     _ => continue,
                 },
                 Rvalue::Cast(_, _, ty) => acx.assign_pointer_ids(*ty),
-                Rvalue::Use(Operand::Constant(c)) => {
-                    let c = &**c;
-                    if !c.ty().is_ref() {
-                        continue;
-                    }
-                    // Handle const refs.
-                    //
-                    // By const ref, we mean the ref itself is constant,
-                    // so this can be a reference to an inline value ([`ConstantKind::Val`]), such as:
-                    // * `1`
-                    // * `[]`
-                    // * `()`
-                    // * `""`
-                    // * `b""`
-                    //
-                    // or a reference to a named item ([`ConstantKind::Ty`])
-                    // that is accessible at compile time, such as:
-                    // * `const`s
-                    // * `static`s
-                    // * `fn`s
-                    //
-                    // Note that these named items are often global,
-                    // but could also be local to a function or smaller scope.
-                    match c.literal {
-                        ConstantKind::Val(_, ty) => {
-                            // As these are only inline values, they do not need
-                            // dataflow constraints to their pointee (unlike their named counterparts),
-                            // because the values cannot be accessed elsewhere,
-                            // and their permissions are predetermined (see [`PermissionSet::for_const_ref_ty`]).
-                            acx.const_ref_locs.push(loc);
-                            acx.assign_pointer_ids(ty)
-                        }
-                        ConstantKind::Ty(ty) => {
-                            // TODO When these are handled, they will need to have
-                            // the correct dataflow constraints to their pointee.
-                            ::log::error!("TODO: handle named const refs: {c:?}, ty = {ty:?}");
-                            continue;
-                        }
-                    }
-                }
+                Rvalue::Use(Operand::Constant(c)) => match label_const_refs(acx, c, loc) {
+                    Some(lty) => lty,
+                    None => continue,
+                },
                 _ => continue,
             };
 
