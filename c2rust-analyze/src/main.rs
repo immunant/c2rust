@@ -422,10 +422,16 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                     // but could also be local to a function or smaller scope.
                     match c.literal {
                         ConstantKind::Val(_, ty) => {
+                            // As these are only inline values, they do not need
+                            // dataflow constraints to their pointee (unlike their named counterparts),
+                            // because the values cannot be accessed elsewhere,
+                            // and their permissions are predetermined (see [`PermissionSet::for_const_ref_ty`]).
                             acx.const_ref_locs.push(loc);
                             acx.assign_pointer_ids(ty)
                         }
                         ConstantKind::Ty(ty) => {
+                            // TODO When these are handled, they will need to have
+                            // the correct dataflow constraints to their pointee.
                             ::log::error!("TODO: handle named const refs: {c:?}, ty = {ty:?}");
                             continue;
                         }
