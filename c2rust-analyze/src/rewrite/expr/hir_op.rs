@@ -268,21 +268,24 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
             self.locations_visited.insert(*loc);
         }
 
-        let all_rws: Vec<&_> = locs
+        let all_rws_unflattened: Vec<_> = locs
             .iter()
             .filter_map(|loc| self.rewrites.get(loc))
-            .flatten()
+            .map(|rws| rws.iter().map(|rw| &rw.kind).collect::<Vec<_>>())
             .collect();
+        let all_rws_unflattened = all_rws_unflattened
+            .iter()
+            .map(|v| v.as_slice())
+            .collect::<Vec<_>>();
 
-        for rw in all_rws {
-            hir_rw = match rw.kind {
+        let rewrite_from_mir_rws = |rw: &mir_op::RewriteKind, hir_rw: Rewrite| -> Rewrite {
+            match rw {
                 mir_op::RewriteKind::OffsetSlice { mutbl } => {
                     // `p.offset(i)` -> `&p[i as usize ..]`
-                    assert!(matches!(hir_rw, Rewrite::Identity));
                     let arr = self.get_subexpr(ex, 0);
                     let idx = Rewrite::Cast(Box::new(self.get_subexpr(ex, 1)), "usize".to_owned());
                     let elem = Rewrite::SliceTail(Box::new(arr), Box::new(idx));
-                    Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
+                    Rewrite::Ref(Box::new(elem), mutbl_from_bool(*mutbl))
                 }
 
                 mir_op::RewriteKind::SliceFirst { mutbl } => {
@@ -290,7 +293,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                     let arr = hir_rw;
                     let idx = Rewrite::LitZero;
                     let elem = Rewrite::Index(Box::new(arr), Box::new(idx));
-                    Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
+                    Rewrite::Ref(Box::new(elem), mutbl_from_bool(*mutbl))
                 }
 
                 mir_op::RewriteKind::MutToImm => {
@@ -307,8 +310,9 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
 
                 mir_op::RewriteKind::RawToRef { mutbl } => {
                     // &raw _ to &_ or &raw mut _ to &mut _
-                    Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(mutbl))
+                    Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(*mutbl))
                 }
+
                 mir_op::RewriteKind::CellNew => {
                     // `x` to `Cell::new(x)`
                     Rewrite::Call("std::cell::Cell::new".to_string(), vec![Rewrite::Identity])
@@ -330,6 +334,40 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                     let rhs = self.get_subexpr(ex, 1);
                     Rewrite::MethodCall("set".to_string(), Box::new(lhs), vec![rhs])
                 }
+            }
+        };
+
+        let is_addr_of_expansion = || {
+            let rvalues: Vec<_> = locs
+                .into_iter()
+                .map(|loc| {
+                    self.mir
+                        .stmt_at(loc)
+                        .left()
+                        .and_then(|s| s.kind.as_assign().cloned().map(|(_, rv)| rv))
+                })
+                .collect();
+            use mir::Rvalue;
+            matches!(
+                rvalues[..],
+                [Some(Rvalue::Ref(..)), Some(Rvalue::AddressOf(..))]
+            )
+        };
+
+        use mir_op::RewriteKind::*;
+        if !all_rws_unflattened.is_empty() {
+            hir_rw = match &all_rws_unflattened[..] {
+                [[rw @ RawToRef { .. }]] if callsite_span != ex.span && is_addr_of_expansion() => {
+                    rewrite_from_mir_rws(rw, hir_rw)
+                }
+                [rws @ [OffsetSlice { .. }, SliceFirst { .. }]] => rws
+                    .iter()
+                    .fold(hir_rw, |acc, rw| rewrite_from_mir_rws(rw, acc)),
+                [[rw]] => rewrite_from_mir_rws(rw, hir_rw),
+                _ => panic!(
+                    "unsupported MIR rewrites {:?} for HIR expr: {:?}",
+                    all_rws_unflattened, ex
+                ),
             };
         }
 
