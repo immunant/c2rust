@@ -13,7 +13,7 @@ use rustc_middle::mir::{
     Body, Field, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem, PlaceRef,
     Rvalue,
 };
-use rustc_middle::ty::{self, AdtDef, FieldDef, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{AdtDef, FieldDef, Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
 
@@ -118,19 +118,10 @@ bitflags! {
 }
 
 impl PermissionSet {
-    pub fn for_const_ref_ty(ty: Ty) -> Self {
-        let ty = match ty.kind() {
-            ty::Ref(_, ty, _) => ty,
-            _ => panic!("expected only `Ref`s for constants: {ty:?}"),
-        };
-        if ty.is_array() || ty.is_str() {
-            Self::READ | Self::OFFSET_ADD
-        } else if ty.is_primitive_ty() {
-            Self::READ
-        } else {
-            panic!("expected an array, str, or primitive type: {ty:?}");
-        }
-    }
+    /// The permissions for a (byte-)string literal.
+    //
+    // `.union` is used here since it's a `const fn`, unlike `BitOr::bitor`.
+    pub const STRING_LITERAL: Self = Self::READ.union(Self::OFFSET_ADD);
 }
 
 bitflags! {
@@ -180,29 +171,31 @@ pub struct AnalysisCtxt<'a, 'tcx> {
     /// the fly.
     pub rvalue_tys: HashMap<Location, LTy<'tcx>>,
 
-    /// [`Location`]s of const ref [`rvalue_tys`](Self::rvalue_tys).
-    pub const_ref_locs: Vec<Location>,
+    /// [`Location`]s of (byte-)string literal [`rvalue_tys`](Self::rvalue_tys).
+    pub string_literal_locs: Vec<Location>,
 
     next_ptr_id: NextLocalPointerId,
 }
 
 impl<'a, 'tcx> AnalysisCtxt<'_, 'tcx> {
-    pub fn const_ref_tys(&'a self) -> impl Iterator<Item = LTy<'tcx>> + 'a {
-        self.const_ref_locs.iter().map(|loc| self.rvalue_tys[loc])
+    pub fn string_literal_tys(&'a self) -> impl Iterator<Item = LTy<'tcx>> + 'a {
+        self.string_literal_locs
+            .iter()
+            .map(|loc| self.rvalue_tys[loc])
     }
 
-    pub fn const_ref_perms(
+    pub fn string_literal_perms(
         &'a self,
     ) -> impl Iterator<Item = (PointerId, PermissionSet)> + PhantomLifetime<'tcx> + 'a {
-        self.const_ref_tys()
-            .map(|lty| (lty.label, PermissionSet::for_const_ref_ty(lty.ty)))
+        self.string_literal_tys()
+            .map(|lty| (lty.label, PermissionSet::STRING_LITERAL))
     }
 
-    pub fn check_const_ref_perms(&self, asn: &Assignment) {
-        for const_ref_lty in self.const_ref_tys() {
-            let ptr_id = const_ref_lty.label;
-            let expected_perms = PermissionSet::for_const_ref_ty(const_ref_lty.ty);
-            let mut actual_perms = asn.perms()[ptr_id];
+    pub fn check_string_literal_perms(&self, asn: &Assignment) {
+        for lty in self.string_literal_tys() {
+            let ptr = lty.label;
+            let expected_perms = PermissionSet::STRING_LITERAL;
+            let mut actual_perms = asn.perms()[ptr];
             // Ignore `UNIQUE` as it gets automatically added to all permissions
             // and then removed later if it can't apply.
             // We don't care about `UNIQUE` for const refs, so just unset it here.
@@ -216,7 +209,7 @@ pub struct AnalysisCtxtData<'tcx> {
     local_tys: IndexVec<Local, LTy<'tcx>>,
     addr_of_local: IndexVec<Local, PointerId>,
     rvalue_tys: HashMap<Location, LTy<'tcx>>,
-    const_ref_locs: Vec<Location>,
+    string_literal_locs: Vec<Location>,
     next_ptr_id: NextLocalPointerId,
 }
 
@@ -309,7 +302,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             c_void_casts: CVoidCasts::new(mir, tcx),
             addr_of_local: IndexVec::new(),
             rvalue_tys: HashMap::new(),
-            const_ref_locs: Default::default(),
+            string_literal_locs: Default::default(),
             next_ptr_id: NextLocalPointerId::new(),
         }
     }
@@ -323,7 +316,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             local_tys,
             addr_of_local,
             rvalue_tys,
-            const_ref_locs,
+            string_literal_locs,
             next_ptr_id,
         } = data;
         AnalysisCtxt {
@@ -333,7 +326,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             c_void_casts: CVoidCasts::default(),
             addr_of_local,
             rvalue_tys,
-            const_ref_locs,
+            string_literal_locs,
             next_ptr_id,
         }
     }
@@ -343,7 +336,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             local_tys: self.local_tys,
             addr_of_local: self.addr_of_local,
             rvalue_tys: self.rvalue_tys,
-            const_ref_locs: self.const_ref_locs,
+            string_literal_locs: self.string_literal_locs,
             next_ptr_id: self.next_ptr_id,
         }
     }
@@ -484,7 +477,7 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
             local_tys,
             addr_of_local,
             rvalue_tys,
-            const_ref_locs: _,
+            string_literal_locs: _,
             next_ptr_id,
         } = self;
 

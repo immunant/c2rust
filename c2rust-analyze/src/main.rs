@@ -34,8 +34,8 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, Constant, ConstantKind, LocalDecl, LocalInfo, LocalKind,
-    Location, Operand, Rvalue, StatementKind,
+    AggregateKind, BindingForm, Body, Constant, LocalDecl, LocalInfo, LocalKind, Location, Operand,
+    Rvalue, StatementKind,
 };
 use rustc_middle::ty::tls;
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
@@ -361,50 +361,51 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
     }
 }
 
-/// Label const refs.
+/// Determine if a [`Constant`] is a (byte-)string literal.
 ///
-/// By const ref, we mean the ref itself is constant.
+/// The current implementation is super hacky and just uses [`Constant`]'s [`Display`] `impl`,
+/// but I'll soon replace it with a more robust (but complex) version
+/// using pretty much the same way the [`Display`] `impl` does it.
 ///
-/// This can be a reference to an inline value ([`ConstantKind::Val`]), such as:
-/// * `1`
-/// * `[]`
-/// * `()`
-/// * `""`
-/// * `b""`
+/// [`Display`]: std::fmt::Display
+fn is_string_literal(c: &Constant) -> bool {
+    let s = c.to_string();
+    s.ends_with('"') && {
+        let s = match s.strip_prefix("const ") {
+            Some(s) => s,
+            None => return false,
+        };
+        s.starts_with('"') || s.starts_with("b\"")
+    }
+}
+
+/// Label string literals, including byte string literals.
 ///
-/// As these are only inline values, they do not need
-/// [`DataflowConstraints`] to their pointee (unlike their named counterparts),
+/// String literals are const refs (refs that are constant).
+/// We only handle string literals here,
+/// as handling all const refs requires disambiguating which const refs
+/// are purely inline and don't reference any other named items
+/// vs. named const refs, and inline aggregate const refs that include named const refs.
+///
+/// String literals we know are purely inline,
+/// so they do not need [`DataflowConstraints`] to their pointee (unlike their named counterparts),
 /// because the values cannot be accessed elsewhere,
-/// and their permissions are predetermined (see [`PermissionSet::for_const_ref_ty`]).
-///
-/// Or it can be a reference to a named item ([`ConstantKind::Ty`])
-/// that is accessible at compile time, such as:
-/// * `const`s
-/// * `static`s
-/// * `fn`s
-///
-/// Note that these named items are often global,
-/// but could also be local to a function or smaller scope.
-///
-/// When these are handled (they are not yet currently), they will need to have
-/// the correct [`DataflowConstraints`] to their pointee.
-fn label_const_refs<'tcx>(
+/// and their permissions are predetermined (see [`PermissionSet::STRING_LITERAL`]).
+fn label_string_literals<'tcx>(
     acx: &mut AnalysisCtxt<'_, 'tcx>,
     c: &Constant<'tcx>,
     loc: Location,
 ) -> Option<LTy<'tcx>> {
-    if !c.ty().is_ref() {
+    let ty = c.ty();
+    if !ty.is_ref() {
         return None;
     }
-    match c.literal {
-        ConstantKind::Val(_, ty) => {
-            acx.const_ref_locs.push(loc);
-            Some(acx.assign_pointer_ids(ty))
-        }
-        ConstantKind::Ty(ty) => {
-            ::log::error!("TODO: handle named const refs: {c:?}, ty = {ty:?}");
-            None
-        }
+    if is_string_literal(c) {
+        acx.string_literal_locs.push(loc);
+        Some(acx.assign_pointer_ids(ty))
+    } else {
+        ::log::error!("TODO: handle non-string literal const refs: {c:?}, ty = {ty:?}");
+        None
     }
 }
 
@@ -444,7 +445,7 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                     _ => continue,
                 },
                 Rvalue::Cast(_, _, ty) => acx.assign_pointer_ids(*ty),
-                Rvalue::Use(Operand::Constant(c)) => match label_const_refs(acx, c, loc) {
+                Rvalue::Use(Operand::Constant(c)) => match label_string_literals(acx, c, loc) {
                     Some(lty) => lty,
                     None => continue,
                 },
@@ -660,7 +661,7 @@ fn run(tcx: TyCtxt) {
         let mut asn = gasn.and(&mut info.lasn);
         info.dataflow.propagate_cell(&mut asn);
 
-        acx.check_const_ref_perms(&asn);
+        acx.check_string_literal_perms(&asn);
 
         // Print labeling and rewrites for the current function.
 

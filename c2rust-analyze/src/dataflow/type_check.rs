@@ -518,7 +518,7 @@ pub fn visit<'tcx>(
         equiv_constraints: Vec::new(),
     };
 
-    for (ptr, perms) in acx.const_ref_perms() {
+    for (ptr, perms) in acx.string_literal_perms() {
         tc.constraints.add_all_perms(ptr, perms);
     }
 
