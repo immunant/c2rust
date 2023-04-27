@@ -361,6 +361,33 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
     }
 }
 
+/// Label const refs.
+///
+/// By const ref, we mean the ref itself is constant.
+///
+/// This can be a reference to an inline value ([`ConstantKind::Val`]), such as:
+/// * `1`
+/// * `[]`
+/// * `()`
+/// * `""`
+/// * `b""`
+///
+/// As these are only inline values, they do not need
+/// [`DataflowConstraints`] to their pointee (unlike their named counterparts),
+/// because the values cannot be accessed elsewhere,
+/// and their permissions are predetermined (see [`PermissionSet::for_const_ref_ty`]).
+///
+/// Or it can be a reference to a named item ([`ConstantKind::Ty`])
+/// that is accessible at compile time, such as:
+/// * `const`s
+/// * `static`s
+/// * `fn`s
+///
+/// Note that these named items are often global,
+/// but could also be local to a function or smaller scope.
+///
+/// When these are handled (they are not yet currently), they will need to have
+/// the correct [`DataflowConstraints`] to their pointee.
 fn label_const_refs<'tcx>(
     acx: &mut AnalysisCtxt<'_, 'tcx>,
     c: &Constant<'tcx>,
@@ -369,36 +396,12 @@ fn label_const_refs<'tcx>(
     if !c.ty().is_ref() {
         return None;
     }
-    // Handle const refs.
-    //
-    // By const ref, we mean the ref itself is constant,
-    // so this can be a reference to an inline value ([`ConstantKind::Val`]), such as:
-    // * `1`
-    // * `[]`
-    // * `()`
-    // * `""`
-    // * `b""`
-    //
-    // or a reference to a named item ([`ConstantKind::Ty`])
-    // that is accessible at compile time, such as:
-    // * `const`s
-    // * `static`s
-    // * `fn`s
-    //
-    // Note that these named items are often global,
-    // but could also be local to a function or smaller scope.
     match c.literal {
         ConstantKind::Val(_, ty) => {
-            // As these are only inline values, they do not need
-            // dataflow constraints to their pointee (unlike their named counterparts),
-            // because the values cannot be accessed elsewhere,
-            // and their permissions are predetermined (see [`PermissionSet::for_const_ref_ty`]).
             acx.const_ref_locs.push(loc);
             Some(acx.assign_pointer_ids(ty))
         }
         ConstantKind::Ty(ty) => {
-            // TODO When these are handled, they will need to have
-            // the correct dataflow constraints to their pointee.
             ::log::error!("TODO: handle named const refs: {c:?}, ty = {ty:?}");
             None
         }
