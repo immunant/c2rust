@@ -270,9 +270,14 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
 
         let all_rws_unflattened: Vec<_> = locs
             .iter()
-            .filter_map(|loc| self.rewrites.get(loc))
-            .map(|rws| rws.iter().map(|rw| &rw.kind).collect::<Vec<_>>())
+            .map(|loc| {
+                self.rewrites
+                    .get(loc)
+                    .map(|rws| rws.iter().map(|rw| &rw.kind).collect::<Vec<_>>())
+                    .unwrap_or_else(Vec::new)
+            })
             .collect();
+
         let all_rws_unflattened = all_rws_unflattened
             .iter()
             .map(|v| v.as_slice())
@@ -348,19 +353,22 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                 })
                 .collect();
             use mir::Rvalue;
-            matches!(
-                rvalues[..],
-                [Some(Rvalue::Ref(..)), Some(Rvalue::AddressOf(..))]
-            )
+            callsite_span != ex.span
+                && matches!(
+                    rvalues[..],
+                    [Some(Rvalue::Ref(..)), Some(Rvalue::AddressOf(..))]
+                )
         };
 
         use mir_op::RewriteKind::*;
         if !all_rws_unflattened.is_empty() {
             hir_rw = match &all_rws_unflattened[..] {
-                [[rw @ RawToRef { .. }]] if callsite_span != ex.span && is_addr_of_expansion() => {
+                [[], [rw @ RawToRef { .. }]]
+                    if is_addr_of_expansion() || callsite_span == ex.span =>
+                {
                     rewrite_from_mir_rws(rw, hir_rw)
                 }
-                [rws @ ([OffsetSlice { .. }, SliceFirst { .. }] | [_])] => rws
+                [rws] => rws
                     .iter()
                     .fold(hir_rw, |acc, rw| rewrite_from_mir_rws(rw, acc)),
                 _ => panic!(
