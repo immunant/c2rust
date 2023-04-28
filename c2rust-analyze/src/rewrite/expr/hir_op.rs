@@ -371,6 +371,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                 [rws] => rws
                     .iter()
                     .fold(hir_rw, |acc, rw| rewrite_from_mir_rws(rw, acc)),
+                rwss if rwss.iter().all(|rws| rws.is_empty()) => hir_rw,
                 _ => panic!(
                     "unsupported MIR rewrites {:?} for HIR expr: {:?}",
                     all_rws_unflattened, ex
