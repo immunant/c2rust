@@ -2,7 +2,12 @@ pub mod common;
 
 use std::path::PathBuf;
 
-use common::Analyze;
+use crate::common::{check_for_missing_tests_for, Analyze};
+
+#[test]
+fn check_for_missing_tests() {
+    check_for_missing_tests_for(file!());
+}
 
 fn test(file_name: &str) {
     let analyze = Analyze::resolve();

@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     env,
     fmt::{self, Display, Formatter},
     fs::{self, File},
@@ -179,4 +180,55 @@ impl FileCheck {
     pub fn run(&self, path: impl AsRef<Path>, input: impl AsRef<Path>) {
         self.run_(path.as_ref(), input.as_ref())
     }
+}
+
+fn list_all_tests<C: FromIterator<String>>() -> C {
+    let current_exe = env::current_exe().unwrap();
+    let output = Command::new(&current_exe)
+        .args(["--list"])
+        .output()
+        .unwrap();
+    let stdout = std::str::from_utf8(&output.stdout).unwrap();
+    stdout
+        .lines()
+        .filter_map(|s| s.strip_suffix(": test"))
+        .map(|s| s.to_owned())
+        .collect()
+}
+
+fn get_absolute_main_test_path(main_test_path: &Path) -> PathBuf {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir
+        .join("tests")
+        .join(main_test_path.file_name().unwrap())
+}
+
+fn test_dir_for(main_test_path: &Path) -> PathBuf {
+    main_test_path
+        .parent()
+        .unwrap()
+        .join(main_test_path.file_stem().unwrap())
+}
+
+fn list_all_test_filestems_in(dir: &Path) -> impl Iterator<Item = String> {
+    dir.read_dir()
+        .unwrap()
+        .map(|dirent| dirent.unwrap())
+        .map(|dirent| dirent.file_name().into_string().unwrap())
+        .filter_map(|file_name| file_name.strip_suffix(".rs").map(|s| s.to_owned()))
+}
+
+pub fn check_for_missing_tests_for(main_test_path: impl AsRef<Path>) {
+    let main_test_path = main_test_path.as_ref();
+    let abs_test_dir = test_dir_for(&get_absolute_main_test_path(main_test_path));
+    let rel_test_dir = test_dir_for(main_test_path);
+    let test_names = list_all_tests::<HashSet<_>>();
+    let missing_tests = list_all_test_filestems_in(&abs_test_dir)
+        .filter(|test_name| !test_names.contains(test_name))
+        .collect::<Vec<_>>();
+    for test_name in &missing_tests {
+        let test_path = rel_test_dir.join(format!("{test_name}.rs"));
+        eprintln!("missing a `#[test] fn {test_name}` for {test_path:?}");
+    }
+    assert!(missing_tests.is_empty(), "see missing tests above");
 }
