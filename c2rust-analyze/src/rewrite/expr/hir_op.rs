@@ -360,10 +360,9 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                 [[rw @ RawToRef { .. }]] if callsite_span != ex.span && is_addr_of_expansion() => {
                     rewrite_from_mir_rws(rw, hir_rw)
                 }
-                [rws @ [OffsetSlice { .. }, SliceFirst { .. }]] => rws
+                [rws] => rws
                     .iter()
                     .fold(hir_rw, |acc, rw| rewrite_from_mir_rws(rw, acc)),
-                [[rw]] => rewrite_from_mir_rws(rw, hir_rw),
                 _ => panic!(
                     "unsupported MIR rewrites {:?} for HIR expr: {:?}",
                     all_rws_unflattened, ex
