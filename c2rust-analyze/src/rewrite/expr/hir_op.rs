@@ -159,6 +159,23 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
                     .unwrap_or_else(|err| panic_sole_location_error(err, "Assign statement"));
                 opt_assign_loc
             }
+            hir::ExprKind::AddrOf(..) => {
+                if ex.span == ex.span.source_callsite() {
+                    // FIXME: this is a hacky proxy for checking if &raw comes from
+                    // std::ptr::addr_of(_mut)! or is compiler-generated. If the
+                    // spans are equal, it was most likely compiler-generated and so we
+                    // skip this particular type of expression for rewriting
+                    return None;
+                }
+                let assign_loc = self
+                    .find_sole_location_matching(
+                        ex.span,
+                        |stmt| matches!(stmt.kind, mir::StatementKind::Assign(..)),
+                        |_term| false,
+                    )
+                    .unwrap_or_else(|err| panic_sole_location_error(err, "Assign statement"));
+                Some(assign_loc)
+            }
             _ => {
                 eprintln!("warning: find_primary_location: unsupported expr {:?}", ex);
                 None
@@ -221,6 +238,12 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
     fn visit_expr(&mut self, ex: &'tcx hir::Expr<'tcx>) {
         let mut hir_rw = Rewrite::Identity;
 
+        // This span will be used to apply the actual rewrite.
+        // To prevent attempts to rewrite macros in their definition
+        // location (e.g. `std::ptr::addr_of`) we instead specify that
+        // the rewrite should occur at the callsite
+        let callsite_span = ex.span.source_callsite();
+
         if let Some(loc) = self.find_primary_location(ex) {
             self.locations_visited.insert(loc);
             let rws = self.rewrites.get(&loc).map_or(&[] as &[_], |v| v);
@@ -255,6 +278,11 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                         assert!(matches!(hir_rw, Rewrite::Identity));
                         self.get_subexpr(ex, 0)
                     }
+
+                    mir_op::RewriteKind::RawToRef { mutbl } => {
+                        // &raw _ to &_ or &raw mut _ to &mut _
+                        Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(mutbl))
+                    }
                 };
             }
         }
@@ -283,9 +311,9 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
         if !matches!(hir_rw, Rewrite::Identity) {
             eprintln!(
                 "rewrite {:?} at {:?} (materialize? {})",
-                hir_rw, ex.span, self.materialize_adjustments
+                hir_rw, callsite_span, self.materialize_adjustments
             );
-            self.hir_rewrites.push((ex.span, hir_rw));
+            self.hir_rewrites.push((callsite_span, hir_rw));
         }
     }
 }

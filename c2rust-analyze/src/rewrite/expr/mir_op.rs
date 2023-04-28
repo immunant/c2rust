@@ -11,6 +11,7 @@ use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet, Poin
 use crate::pointer_id::PointerTable;
 use crate::type_desc::{self, Ownership, Quantity};
 use crate::util::{ty_callee, Callee};
+use rustc_ast::Mutability;
 use rustc_middle::mir::{
     BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
     TerminatorKind,
@@ -43,6 +44,8 @@ pub enum RewriteKind {
     MutToImm,
     /// Remove a call to `as_ptr` or `as_mut_ptr`.
     RemoveAsPtr,
+    /// Replace &raw with & or &raw mut with &mut
+    RawToRef { mutbl: bool },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -221,8 +224,17 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             Rvalue::ThreadLocalRef(_def_id) => {
                 // TODO
             }
-            Rvalue::AddressOf(_mutbl, _pl) => {
-                // TODO
+            Rvalue::AddressOf(mutbl, _pl) => {
+                let (ownership, _quantity) = type_desc::perms_to_desc(
+                    self.perms[expect_ty.label],
+                    self.flags[expect_ty.label],
+                );
+                self.enter_rvalue_operand(0, |v| match ownership {
+                    Ownership::Imm | Ownership::Mut => v.emit(RewriteKind::RawToRef {
+                        mutbl: mutbl == Mutability::Mut,
+                    }),
+                    _ => (),
+                });
             }
             Rvalue::Len(_pl) => {
                 // TODO
