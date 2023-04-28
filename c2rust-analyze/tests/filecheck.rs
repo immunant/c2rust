@@ -35,6 +35,7 @@ macro_rules! define_tests {
 }
 
 define_tests! {
+    addr_of,
     aggregate1,
     alias1,
     alias2,
@@ -43,12 +44,18 @@ define_tests! {
     as_ptr,
     call1,
     cast,
+    cell,
     clone1,
     extern_fn1,
     fields,
+    field_temp,
     insertion_sort,
+    insertion_sort_driver,
+    insertion_sort_rewrites,
     offset1,
     offset2,
     ptrptr1,
+    statics,
     trivial,
+    type_annotation_rewrite,
 }
