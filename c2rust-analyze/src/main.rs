@@ -34,8 +34,8 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, ConstantKind, LocalDecl, LocalInfo, LocalKind, Location,
-    Operand, Rvalue, StatementKind,
+    AggregateKind, BindingForm, Body, Constant, LocalDecl, LocalInfo, LocalKind, Location, Operand,
+    Rvalue, StatementKind,
 };
 use rustc_middle::ty::tls;
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
@@ -361,6 +361,53 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
     }
 }
 
+/// Determine if a [`Constant`] is a (byte-)string literal.
+///
+/// The current implementation is super hacky and just uses [`Constant`]'s [`Display`] `impl`,
+/// but I'll soon replace it with a more robust (but complex) version
+/// using pretty much the same way the [`Display`] `impl` does it.
+///
+/// [`Display`]: std::fmt::Display
+fn is_string_literal(c: &Constant) -> bool {
+    let s = c.to_string();
+    s.ends_with('"') && {
+        let s = match s.strip_prefix("const ") {
+            Some(s) => s,
+            None => return false,
+        };
+        s.starts_with('"') || s.starts_with("b\"")
+    }
+}
+
+/// Label string literals, including byte string literals.
+///
+/// String literals are const refs (refs that are constant).
+/// We only handle string literals here,
+/// as handling all const refs requires disambiguating which const refs
+/// are purely inline and don't reference any other named items
+/// vs. named const refs, and inline aggregate const refs that include named const refs.
+///
+/// String literals we know are purely inline,
+/// so they do not need [`DataflowConstraints`] to their pointee (unlike their named counterparts),
+/// because the values cannot be accessed elsewhere,
+/// and their permissions are predetermined (see [`PermissionSet::STRING_LITERAL`]).
+fn label_string_literals<'tcx>(
+    acx: &mut AnalysisCtxt<'_, 'tcx>,
+    c: &Constant<'tcx>,
+    loc: Location,
+) -> Option<LTy<'tcx>> {
+    let ty = c.ty();
+    if !ty.is_ref() {
+        return None;
+    }
+    if is_string_literal(c) {
+        acx.string_literal_locs.push(loc);
+        Some(acx.assign_pointer_ids(ty))
+    } else {
+        None
+    }
+}
+
 fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb_data.statements.iter().enumerate() {
@@ -397,28 +444,10 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                     _ => continue,
                 },
                 Rvalue::Cast(_, _, ty) => acx.assign_pointer_ids(*ty),
-                Rvalue::Use(Operand::Constant(c)) => {
-                    let c = &**c;
-                    if !c.ty().is_ref() {
-                        continue;
-                    }
-                    // Constants can include, for example, `""` and `b""` string literals.
-                    match c.literal {
-                        ConstantKind::Val(_, ty) => {
-                            // The [`Constant`] is an inline value and thus local to this function,
-                            // as opposed to a global, named `const`s, for example.
-                            // This might miss local, named `const`s.
-                            acx.const_ref_locs.push(loc);
-                            acx.assign_pointer_ids(ty)
-                        }
-                        ConstantKind::Ty(ty) => {
-                            ::log::error!(
-                                "TODO: handle global, named `const` refs: {c:?}, ty = {ty:?}"
-                            );
-                            continue;
-                        }
-                    }
-                }
+                Rvalue::Use(Operand::Constant(c)) => match label_string_literals(acx, c, loc) {
+                    Some(lty) => lty,
+                    None => continue,
+                },
                 _ => continue,
             };
 
@@ -631,7 +660,7 @@ fn run(tcx: TyCtxt) {
         let mut asn = gasn.and(&mut info.lasn);
         info.dataflow.propagate_cell(&mut asn);
 
-        acx.check_const_ref_perms(&asn);
+        acx.check_string_literal_perms(&asn);
 
         // Print labeling and rewrites for the current function.
 

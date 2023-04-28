@@ -30,3 +30,15 @@ const STR: &'static str = "";
 pub fn outline_str() -> &'static str {
     STR
 }
+
+#[cfg(any())]
+pub fn named_inline_str() -> &'static str {
+    const S: &str = "";
+    S
+}
+
+#[cfg(any())]
+pub fn named_inline_fn_ref() -> fn() -> () {
+    fn f() {}
+    f
+}
