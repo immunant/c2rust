@@ -62,6 +62,12 @@ pub enum Rewrite<S = Span> {
     Cast(Box<Rewrite>, String),
     /// The integer literal `0`.
     LitZero,
+    /// Cell::new
+    CellNew,
+    /// Cell::get
+    CellGet(Box<Rewrite>),
+    /// cell.set(x)
+    CellSet(Box<Rewrite>, Box<Rewrite>),
 
     // Type builders
     /// Emit a complete pretty-printed type, discarding the original annotation.
@@ -164,6 +170,22 @@ impl Rewrite {
 
             Rewrite::PrintTy(ref s) => {
                 write!(f, "{}", s)
+            }
+
+            Rewrite::CellNew => {
+                f.write_str("std::cell::Cell::new(")?;
+                write!(f, "$e")?;
+                f.write_str(")")
+            }
+            Rewrite::CellGet(ref rw) => {
+                rw.pretty(f, 0)?;
+                f.write_str(".get()")
+            }
+            Rewrite::CellSet(ref lhs, ref rhs) => {
+                lhs.pretty(f, 0)?;
+                f.write_str(".set(")?;
+                rhs.pretty(f, 0)?;
+                f.write_str(")")
             }
             Rewrite::TyPtr(ref rw, mutbl) => {
                 match mutbl {

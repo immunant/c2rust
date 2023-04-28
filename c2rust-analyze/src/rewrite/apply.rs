@@ -287,6 +287,21 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
             Rewrite::PrintTy(ref s) => {
                 self.emit_str(s);
             }
+            Rewrite::CellNew => {
+                self.emit_str("std::cell::Cell::new");
+                self.emit_parenthesized(true, |slf| {
+                    emit_expr(slf);
+                })
+            }
+            Rewrite::CellSet(ref cell, ref x) => {
+                self.emit_rewrite(cell, 0, emit_expr, emit_subexpr);
+                self.emit_str(".set");
+                self.emit_parenthesized(true, |slf| slf.emit_rewrite(x, 1, emit_expr, emit_subexpr))
+            }
+            Rewrite::CellGet(ref rw) => {
+                self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                self.emit_str(".get()");
+            }
             Rewrite::TyPtr(ref rw, mutbl) => {
                 match mutbl {
                     Mutability::Not => self.emit_str("*const "),

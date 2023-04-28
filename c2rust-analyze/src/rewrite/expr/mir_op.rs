@@ -46,6 +46,13 @@ pub enum RewriteKind {
     RemoveAsPtr,
     /// Replace &raw with & or &raw mut with &mut
     RawToRef { mutbl: bool },
+    /// Replace `y` in `let x = y` with `Cell::new(y)`, i.e. `let x = Cell::new(y)`
+    /// TODO: ensure `y` implements `Copy`
+    CellNew,
+    /// Replace `*y` with `Cell::get(y)` where `y` is a pointer
+    CellGet,
+    /// Replace `*y = x` with `Cell::set(x)` where `y` is a pointer
+    CellSet,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -128,8 +135,52 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         match stmt.kind {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
-                let pl_ty = self.acx.type_of(pl);
-                self.enter_assign_rvalue(|v| v.visit_rvalue(rv, pl_ty));
+                let pl_lty = self.acx.type_of(pl);
+
+                if pl.is_indirect() && self.acx.local_tys[pl.local].ty.is_any_ptr() {
+                    let local_addr = self.acx.local_tys[pl.local].label;
+                    let perms = self.perms[local_addr];
+                    let flags = self.flags[local_addr];
+                    if let (Ownership::Cell, _) = type_desc::perms_to_desc(perms, flags) {
+                        // this is an assignment like `let x = 2` but `x` has CELL permissions
+                        self.enter_assign_rvalue(|v| v.emit(RewriteKind::CellSet))
+                    }
+                }
+
+                #[allow(clippy::single_match)]
+                match rv {
+                    Rvalue::Use(rv_op) => {
+                        let local_addr = self.acx.addr_of_local[pl.local];
+                        let perms = self.perms[local_addr];
+                        let flags = self.flags[local_addr];
+                        if let (Ownership::Cell, _) = type_desc::perms_to_desc(perms, flags) {
+                            // this is an assignment like `let x = 2` but `x` has CELL permissions
+                            self.enter_assign_rvalue(|v| {
+                                v.enter_rvalue_operand(0, |v| v.emit(RewriteKind::CellNew))
+                            })
+                        }
+
+                        if let Some(rv_place) = rv_op.place() {
+                            if rv_place.is_indirect()
+                                && self.acx.local_tys[rv_place.local].ty.is_any_ptr()
+                            {
+                                let local_addr = self.acx.local_tys[rv_place.local].label;
+                                let perms = self.perms[local_addr];
+                                let flags = self.flags[local_addr];
+                                if let (Ownership::Cell, _) = type_desc::perms_to_desc(perms, flags)
+                                {
+                                    // this is an assignment like `let x = *y` but `y` has CELL permissions
+                                    self.enter_assign_rvalue(|v| {
+                                        v.enter_rvalue_operand(0, |v| v.emit(RewriteKind::CellGet))
+                                    })
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                };
+
+                self.enter_assign_rvalue(|v| v.visit_rvalue(rv, pl_lty));
                 // TODO: visit place
             }
             StatementKind::FakeRead(..) => {}
@@ -230,6 +281,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     self.flags[expect_ty.label],
                 );
                 self.enter_rvalue_operand(0, |v| match ownership {
+                    Ownership::Cell => v.emit(RewriteKind::RawToRef { mutbl: false }),
                     Ownership::Imm | Ownership::Mut => v.emit(RewriteKind::RawToRef {
                         mutbl: mutbl == Mutability::Mut,
                     }),

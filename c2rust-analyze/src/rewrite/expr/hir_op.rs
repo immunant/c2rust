@@ -283,6 +283,25 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                         // &raw _ to &_ or &raw mut _ to &mut _
                         Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(mutbl))
                     }
+
+                    mir_op::RewriteKind::CellNew => {
+                        // `x` to `Cell::new(x)`
+                        Rewrite::CellNew
+                    }
+
+                    mir_op::RewriteKind::CellGet => {
+                        // `*x` to `Cell::get(x)`
+                        Rewrite::CellGet(Box::new(self.get_subexpr(ex, 0)))
+                    }
+
+                    mir_op::RewriteKind::CellSet => {
+                        // `x` to `Cell::set(x)`
+                        let derefed_lhs =
+                            assert_matches!(ex.kind, ExprKind::Assign(lhs, ..) => lhs);
+                        let lhs = self.get_subexpr(derefed_lhs, 0);
+                        let rhs = self.get_subexpr(ex, 1);
+                        Rewrite::CellSet(Box::new(lhs), Box::new(rhs))
+                    }
                 };
             }
         }
@@ -296,15 +315,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
         // Materialize adjustments if requested by an ancestor.
         if self.materialize_adjustments {
             let adjusts = self.typeck_results.expr_adjustments(ex);
-            assert!(
-                adjusts.is_empty() || !applied_mir_rewrite,
-                "combining adjustments ({:?}) with rewrite ({:?}) is NYI",
-                adjusts,
-                hir_rw,
-            );
-            for adj in adjusts {
-                hir_rw = materialize_adjustment(self.tcx, adj, hir_rw);
-            }
+            hir_rw = materialize_adjustments(self.tcx, adjusts, hir_rw);
         }
 
         // Emit the rewrite, if it's nontrivial.
@@ -326,26 +337,44 @@ fn mutbl_from_bool(m: bool) -> hir::Mutability {
     }
 }
 
-fn materialize_adjustment<'tcx>(
+fn apply_identity_adjustment<'tcx>(
     tcx: TyCtxt<'tcx>,
-    adj: &Adjustment<'tcx>,
-    hir_rw: Rewrite,
+    adjustment: &Adjustment<'tcx>,
+    rw: Rewrite,
 ) -> Rewrite {
-    match adj.kind {
-        Adjust::NeverToAny => {
-            // Should work fine with no explicit cast.
-            hir_rw
-        }
-        Adjust::Deref(_) => Rewrite::Deref(Box::new(hir_rw)),
-        Adjust::Borrow(AutoBorrow::Ref(_, mutbl)) => Rewrite::Ref(Box::new(hir_rw), mutbl.into()),
-        Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => Rewrite::AddrOf(Box::new(hir_rw), mutbl),
+    match adjustment.kind {
+        Adjust::NeverToAny => rw,
+        Adjust::Deref(_) => Rewrite::Deref(Box::new(rw)),
+        Adjust::Borrow(AutoBorrow::Ref(_, mutbl)) => Rewrite::Ref(Box::new(rw), mutbl.into()),
+        Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => Rewrite::AddrOf(Box::new(rw), mutbl),
         Adjust::Pointer(PointerCast::Unsize) => {
-            let ty = adj.target;
+            let ty = adjustment.target;
             let printer = FmtPrinter::new(tcx, Namespace::TypeNS);
             let s = ty.print(printer).unwrap().into_buffer();
-            Rewrite::Cast(Box::new(hir_rw), s)
+            Rewrite::Cast(Box::new(rw), s)
         }
         Adjust::Pointer(cast) => todo!("Adjust::Pointer({:?})", cast),
+    }
+}
+
+fn materialize_adjustments<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    adjustments: &[Adjustment<'tcx>],
+    hir_rw: Rewrite,
+) -> Rewrite {
+    let adj_kinds: Vec<&_> = adjustments.iter().map(|a| &a.kind).collect();
+    match (hir_rw, &adj_kinds[..]) {
+        (Rewrite::Identity, []) => Rewrite::Identity,
+        (hir_rw @ Rewrite::Identity, _) => {
+            let mut hir_rw = hir_rw;
+            for adj in adjustments {
+                hir_rw = apply_identity_adjustment(tcx, adj, hir_rw);
+            }
+            hir_rw
+        }
+        (rw @ Rewrite::Ref(..), &[Adjust::Deref(..), Adjust::Borrow(..)]) => rw,
+        (rw, &[]) => rw,
+        (rw, adjs) => panic!("rewrite {rw:?} and materializations {adjs:?} NYI"),
     }
 }
 
