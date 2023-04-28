@@ -404,7 +404,6 @@ fn label_string_literals<'tcx>(
         acx.string_literal_locs.push(loc);
         Some(acx.assign_pointer_ids(ty))
     } else {
-        ::log::error!("TODO: handle non-string literal const refs: {c:?}, ty = {ty:?}");
         None
     }
 }
