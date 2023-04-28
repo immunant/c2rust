@@ -1,6 +1,8 @@
 use crate::rewrite::expr::mir_op::{self, MirRewrite};
 use crate::rewrite::span_index::SpanIndex;
 use crate::rewrite::{build_span_index, Rewrite, SoleLocationError};
+use assert_matches::assert_matches;
+use hir::{ExprKind, UnOp};
 use rustc_hir as hir;
 use rustc_hir::def::{Namespace, Res};
 use rustc_hir::intravisit;
@@ -53,16 +55,15 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
         r
     }
 
-    /// Find the sole `Location` where the provided filters match and the statement or terminator
-    /// has a span exactly equal to `target_span`.  Returns `Err` if there is no such location or
-    /// if there are multiple matching locations.
-    fn find_sole_location_matching(
+    /// Find all `Location`s where the provided filters match and the statement or terminator
+    /// has a span exactly equal to `target_span`.
+    fn find_all_locations_matching(
         &mut self,
         target_span: Span,
         mut filter_stmt: impl FnMut(&mir::Statement<'tcx>) -> bool,
         mut filter_term: impl FnMut(&mir::Terminator<'tcx>) -> bool,
-    ) -> Result<Location, SoleLocationError> {
-        let mut found_loc = None;
+    ) -> Vec<Location> {
+        let mut found_locs = Vec::new();
         for (span, &loc) in self.span_index.lookup(target_span) {
             if span != target_span {
                 continue;
@@ -75,15 +76,27 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
                 continue;
             }
 
-            if let Some(found_loc) = found_loc {
-                return Err(SoleLocationError::MultiMatch(found_loc, loc));
-            }
-            found_loc = Some(loc);
+            found_locs.push(loc);
         }
 
-        match found_loc {
-            Some(x) => Ok(x),
-            None => Err(SoleLocationError::NoMatch),
+        found_locs
+    }
+
+    /// Find the sole `Location` where the provided filters match and the statement or terminator
+    /// has a span exactly equal to `target_span`. Returns `Err` if there is no such location or
+    /// if there are multiple matching locations.
+    fn find_sole_location_matching(
+        &mut self,
+        target_span: Span,
+        filter_stmt: impl FnMut(&mir::Statement<'tcx>) -> bool,
+        filter_term: impl FnMut(&mir::Terminator<'tcx>) -> bool,
+    ) -> Result<Location, SoleLocationError> {
+        let found_locs = self.find_all_locations_matching(target_span, filter_stmt, filter_term);
+
+        match found_locs.len() {
+            0 => Err(SoleLocationError::NoMatch),
+            1 => Ok(found_locs[0]),
+            _ => Err(SoleLocationError::MultiMatch(found_locs)),
         }
     }
 
@@ -100,21 +113,36 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
         }
     }
 
-    fn find_primary_location(&mut self, ex: &'tcx hir::Expr<'tcx>) -> Option<Location> {
-        let panic_sole_location_error = |err, desc| -> ! {
+    fn find_locations(&mut self, ex: &'tcx hir::Expr<'tcx>) -> Vec<Location> {
+        let panic_location_error = |err, desc| -> ! {
             match err {
                 SoleLocationError::NoMatch => panic!("couldn't find {} for {:?}", desc, ex),
-                SoleLocationError::MultiMatch(loc1, loc2) => panic!(
-                    "expected to find only one {}, but got multiple:\n\
-                        expr = {:?}\n\
-                        first match = {:?}\n\
-                        second match = {:?}",
-                    desc,
-                    ex,
-                    self.mir.stmt_at(loc1),
-                    self.mir.stmt_at(loc2),
-                ),
+                SoleLocationError::MultiMatch(locations) => {
+                    let all_matches = locations
+                        .iter()
+                        .map(|loc| self.mir.stmt_at(*loc))
+                        .collect::<Vec<_>>();
+
+                    panic!(
+                        "expected to find only one {}, but got multiple:\n\
+                         expr = {:?}\n\
+                         matches = {:?}",
+                        desc, ex, all_matches,
+                    )
+                }
             }
+        };
+
+        let mut locations = Vec::new();
+
+        let mut push_assign_loc = |span: Span| match self.find_optional_location_matching(
+            span,
+            |stmt| matches!(stmt.kind, mir::StatementKind::Assign(..)),
+            |_term| false,
+        ) {
+            Ok(Some(assign_loc)) => locations.push(assign_loc),
+            Ok(None) => {}
+            Err(err) => panic_location_error(err, "Assign statement"),
         };
 
         match ex.kind {
@@ -127,60 +155,51 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
                         |_stmt| false,
                         |term| matches!(term.kind, mir::TerminatorKind::Call { .. }),
                     )
-                    .unwrap_or_else(|err| panic_sole_location_error(err, "Call terminator"));
-                Some(call_loc)
+                    .unwrap_or_else(|err| panic_location_error(err, "Call terminator"));
+                locations.push(call_loc)
             }
             hir::ExprKind::Path(hir::QPath::Resolved(_, p)) if matches!(p.res, Res::Local(..)) => {
                 // Currently we only handle cases where the local is copied into a temporary.  If
                 // the local is used as-is in some other expression, this case will return `None`.
-                let opt_assign_loc = self
-                    .find_optional_location_matching(
-                        ex.span,
-                        |stmt| matches!(stmt.kind, mir::StatementKind::Assign(..)),
-                        |_term| false,
-                    )
-                    .unwrap_or_else(|err| panic_sole_location_error(err, "Assign statement"));
-                opt_assign_loc
+                push_assign_loc(ex.span)
             }
-            hir::ExprKind::Field(..) => {
-                // Currently we only handle the case where the value retrieved from the field is
-                // stored into a temporary.  If it's stored into a local or some other place (e.g.
-                // `let y = x.f;`, or `y = x.f;` alone), then this case will return `None`.
+            hir::ExprKind::Unary(UnOp::Deref, ..)
+            | hir::ExprKind::Lit(..)
+            | hir::ExprKind::Field(..) => {
+                // For `hir::ExprKind::Field` we currently we only handle the case where the value
+                // retrieved from the field is stored into a temporary.  If it's stored into a
+                // local or some other place (e.g. `let y = x.f;`, or `y = x.f;` alone), then
+                // this case will return `None`.
                 //
                 // Also, for chained field accesses, this only matches the outermost ones.  Code
                 // like `x.0.0` translates into a single MIR statement with the span of the overall
                 // expression.
-                let opt_assign_loc = self
-                    .find_optional_location_matching(
+                push_assign_loc(ex.span)
+            }
+            hir::ExprKind::AddrOf(..) => {
+                locations.extend(
+                    self.find_all_locations_matching(
                         ex.span,
                         |stmt| matches!(stmt.kind, mir::StatementKind::Assign(..)),
                         |_term| false,
                     )
-                    .unwrap_or_else(|err| panic_sole_location_error(err, "Assign statement"));
-                opt_assign_loc
+                    .iter(),
+                );
             }
-            hir::ExprKind::AddrOf(..) => {
-                if ex.span == ex.span.source_callsite() {
-                    // FIXME: this is a hacky proxy for checking if &raw comes from
-                    // std::ptr::addr_of(_mut)! or is compiler-generated. If the
-                    // spans are equal, it was most likely compiler-generated and so we
-                    // skip this particular type of expression for rewriting
-                    return None;
-                }
+            hir::ExprKind::Assign(..) => {
                 let assign_loc = self
                     .find_sole_location_matching(
                         ex.span,
                         |stmt| matches!(stmt.kind, mir::StatementKind::Assign(..)),
                         |_term| false,
                     )
-                    .unwrap_or_else(|err| panic_sole_location_error(err, "Assign statement"));
-                Some(assign_loc)
+                    .unwrap_or_else(|err| panic_location_error(err, "Assignment statement"));
+                locations.push(assign_loc)
             }
-            _ => {
-                eprintln!("warning: find_primary_location: unsupported expr {:?}", ex);
-                None
-            }
+            _ => {}
         }
+
+        locations
     }
 
     /// Get subexpression `idx` of `ex`.  Panics if the index is out of range for `ex`.  The
@@ -244,66 +263,71 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
         // the rewrite should occur at the callsite
         let callsite_span = ex.span.source_callsite();
 
-        if let Some(loc) = self.find_primary_location(ex) {
-            self.locations_visited.insert(loc);
-            let rws = self.rewrites.get(&loc).map_or(&[] as &[_], |v| v);
-            for rw in rws {
-                hir_rw = match rw.kind {
-                    mir_op::RewriteKind::OffsetSlice { mutbl } => {
-                        // `p.offset(i)` -> `&p[i as usize ..]`
-                        assert!(matches!(hir_rw, Rewrite::Identity));
-                        let arr = self.get_subexpr(ex, 0);
-                        let idx =
-                            Rewrite::Cast(Box::new(self.get_subexpr(ex, 1)), "usize".to_owned());
-                        let elem = Rewrite::SliceTail(Box::new(arr), Box::new(idx));
-                        Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
-                    }
+        let locs = self.find_locations(ex);
+        for loc in &locs {
+            self.locations_visited.insert(*loc);
+        }
 
-                    mir_op::RewriteKind::SliceFirst { mutbl } => {
-                        // `p` -> `&p[0]`
-                        let arr = hir_rw;
-                        let idx = Rewrite::LitZero;
-                        let elem = Rewrite::Index(Box::new(arr), Box::new(idx));
-                        Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
-                    }
+        let all_rws: Vec<&_> = locs
+            .iter()
+            .filter_map(|loc| self.rewrites.get(loc))
+            .flatten()
+            .collect();
 
-                    mir_op::RewriteKind::MutToImm => {
-                        // `p` -> `&*p`
-                        let place = Rewrite::Deref(Box::new(hir_rw));
-                        Rewrite::Ref(Box::new(place), hir::Mutability::Not)
-                    }
+        for rw in all_rws {
+            hir_rw = match rw.kind {
+                mir_op::RewriteKind::OffsetSlice { mutbl } => {
+                    // `p.offset(i)` -> `&p[i as usize ..]`
+                    assert!(matches!(hir_rw, Rewrite::Identity));
+                    let arr = self.get_subexpr(ex, 0);
+                    let idx = Rewrite::Cast(Box::new(self.get_subexpr(ex, 1)), "usize".to_owned());
+                    let elem = Rewrite::SliceTail(Box::new(arr), Box::new(idx));
+                    Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
+                }
 
-                    mir_op::RewriteKind::RemoveAsPtr => {
-                        // `slice.as_ptr()` -> `slice`
-                        assert!(matches!(hir_rw, Rewrite::Identity));
-                        self.get_subexpr(ex, 0)
-                    }
+                mir_op::RewriteKind::SliceFirst { mutbl } => {
+                    // `p` -> `&p[0]`
+                    let arr = hir_rw;
+                    let idx = Rewrite::LitZero;
+                    let elem = Rewrite::Index(Box::new(arr), Box::new(idx));
+                    Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
+                }
 
-                    mir_op::RewriteKind::RawToRef { mutbl } => {
-                        // &raw _ to &_ or &raw mut _ to &mut _
-                        Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(mutbl))
-                    }
+                mir_op::RewriteKind::MutToImm => {
+                    // `p` -> `&*p`
+                    let place = Rewrite::Deref(Box::new(hir_rw));
+                    Rewrite::Ref(Box::new(place), hir::Mutability::Not)
+                }
 
-                    mir_op::RewriteKind::CellNew => {
-                        // `x` to `Cell::new(x)`
-                        Rewrite::CellNew
-                    }
+                mir_op::RewriteKind::RemoveAsPtr => {
+                    // `slice.as_ptr()` -> `slice`
+                    assert!(matches!(hir_rw, Rewrite::Identity));
+                    self.get_subexpr(ex, 0)
+                }
 
-                    mir_op::RewriteKind::CellGet => {
-                        // `*x` to `Cell::get(x)`
-                        Rewrite::CellGet(Box::new(self.get_subexpr(ex, 0)))
-                    }
+                mir_op::RewriteKind::RawToRef { mutbl } => {
+                    // &raw _ to &_ or &raw mut _ to &mut _
+                    Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(mutbl))
+                }
 
-                    mir_op::RewriteKind::CellSet => {
-                        // `x` to `Cell::set(x)`
-                        let derefed_lhs =
-                            assert_matches!(ex.kind, ExprKind::Assign(lhs, ..) => lhs);
-                        let lhs = self.get_subexpr(derefed_lhs, 0);
-                        let rhs = self.get_subexpr(ex, 1);
-                        Rewrite::CellSet(Box::new(lhs), Box::new(rhs))
-                    }
-                };
-            }
+                mir_op::RewriteKind::CellNew => {
+                    // `x` to `Cell::new(x)`
+                    Rewrite::CellNew
+                }
+
+                mir_op::RewriteKind::CellGet => {
+                    // `*x` to `Cell::get(x)`
+                    Rewrite::CellGet(Box::new(self.get_subexpr(ex, 0)))
+                }
+
+                mir_op::RewriteKind::CellSet => {
+                    // `x` to `Cell::set(x)`
+                    let derefed_lhs = assert_matches!(ex.kind, ExprKind::Assign(lhs, ..) => lhs);
+                    let lhs = self.get_subexpr(derefed_lhs, 0);
+                    let rhs = self.get_subexpr(ex, 1);
+                    Rewrite::CellSet(Box::new(lhs), Box::new(rhs))
+                }
+            };
         }
 
         // Emit rewrites on subexpressions first.

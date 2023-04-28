@@ -223,10 +223,10 @@ impl fmt::Display for Rewrite {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum SoleLocationError {
     NoMatch,
-    MultiMatch(Location, Location),
+    MultiMatch(Vec<Location>),
 }
 
 fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {
