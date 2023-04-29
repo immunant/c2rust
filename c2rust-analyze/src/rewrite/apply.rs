@@ -287,6 +287,30 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
             Rewrite::PrintTy(ref s) => {
                 self.emit_str(s);
             }
+            Rewrite::Call(ref func, ref arg_rws) => {
+                self.emit_str(func);
+                self.emit_parenthesized(true, |slf| {
+                    for (index, rw) in arg_rws.iter().enumerate() {
+                        slf.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                        if index < arg_rws.len() - 1 {
+                            slf.emit_str(",");
+                        }
+                    }
+                });
+            }
+            Rewrite::MethodCall(ref method, ref receiver_rw, ref arg_rws) => {
+                self.emit_rewrite(receiver_rw, 0, emit_expr, emit_subexpr);
+                self.emit_str(".");
+                self.emit_str(method);
+                self.emit_parenthesized(true, |slf| {
+                    for (index, rw) in arg_rws.iter().enumerate() {
+                        slf.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                        if index < arg_rws.len() - 1 {
+                            slf.emit_str(",");
+                        }
+                    }
+                })
+            }
             Rewrite::TyPtr(ref rw, mutbl) => {
                 match mutbl {
                     Mutability::Not => self.emit_str("*const "),

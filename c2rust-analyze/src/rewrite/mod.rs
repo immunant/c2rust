@@ -64,6 +64,10 @@ pub enum Rewrite<S = Span> {
     Cast(Box<Rewrite>, String),
     /// The integer literal `0`.
     LitZero,
+    // Function calls
+    Call(String, Vec<Rewrite>),
+    // Method calls
+    MethodCall(String, Box<Rewrite>, Vec<Rewrite>),
 
     // Type builders
     /// Emit a complete pretty-printed type, discarding the original annotation.
@@ -171,6 +175,30 @@ impl Rewrite {
             Rewrite::PrintTy(ref s) => {
                 write!(f, "{}", s)
             }
+            Rewrite::Call(ref func, ref arg_rws) => {
+                f.write_str(func)?;
+                f.write_str("(")?;
+                for (index, rw) in arg_rws.iter().enumerate() {
+                    rw.pretty(f, 0)?;
+                    if index < arg_rws.len() - 1 {
+                        f.write_str(",")?;
+                    }
+                }
+                f.write_str(")")
+            }
+            Rewrite::MethodCall(ref method, ref receiver_rw, ref arg_rws) => {
+                receiver_rw.pretty(f, 0)?;
+                f.write_str(".")?;
+                f.write_str(method)?;
+                f.write_str("(")?;
+                for (index, rw) in arg_rws.iter().enumerate() {
+                    rw.pretty(f, 0)?;
+                    if index < arg_rws.len() - 1 {
+                        f.write_str(",")?;
+                    }
+                }
+                f.write_str(")")
+            }
             Rewrite::TyPtr(ref rw, mutbl) => {
                 match mutbl {
                     Mutability::Not => write!(f, "*const ")?,
@@ -215,10 +243,10 @@ impl fmt::Display for Rewrite {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum SoleLocationError {
     NoMatch,
-    MultiMatch(Location, Location),
+    MultiMatch(Vec<Location>),
 }
 
 fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {

@@ -21,15 +21,6 @@ struct Foo {
 // CHECK-LABEL: fn shared_ref_with_struct() {
 fn shared_ref_with_struct() {
     let x = Foo { a: 1, b: 2 };
-    // CHECK-DAG: let y = &(x);
-    let y = std::ptr::addr_of!(x);
-}
-
-// TODO: check rewrite to Cell type and operations
-unsafe fn cell() {
-    let mut x = 1;
-    let mut y = std::ptr::addr_of_mut!(x);
-    let mut z = std::ptr::addr_of_mut!(x);
-    *z = 1;
-    *y = 1;
+    // CHECK-DAG: let y = &(x.a);
+    let y = std::ptr::addr_of!(x.a);
 }
