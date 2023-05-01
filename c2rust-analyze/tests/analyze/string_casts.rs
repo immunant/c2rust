@@ -18,7 +18,6 @@ pub fn cast_array_to_ptr(s: &[u8; 0]) {
     s as *const u8;
 }
 
-#[cfg(any())]
 pub fn cast_from_literal() {
     b"" as *const u8 as *const core::ffi::c_char;
 }
