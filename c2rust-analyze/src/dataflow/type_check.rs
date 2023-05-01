@@ -2,8 +2,7 @@ use super::DataflowConstraints;
 use crate::c_void_casts::CVoidCastDirection;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
 use crate::util::{
-    describe_rvalue, is_null_const, is_transmutable_ptr_cast, is_transmutable_to, ty_callee,
-    Callee, RvalueDesc,
+    describe_rvalue, is_null_const, is_transmutable_ptr_cast, ty_callee, Callee, RvalueDesc,
 };
 use assert_matches::assert_matches;
 use rustc_hir::def_id::DefId;
@@ -276,7 +275,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     /// Unify corresponding [`PointerId`]s in `pl_lty` and `rv_lty`.
     ///
-    /// The two inputs must have compatible ([safely transmutable](is_transmutable_to)) underlying types.
+    /// The two inputs must have identical underlying types.
     /// For any position where the underlying type has a pointer,
     /// this function unifies the [`PointerId`]s that `pl_lty` and `rv_lty` have at that position.
     /// For example, given
@@ -292,16 +291,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     fn do_unify(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
         let rv_ty = self.acx.tcx().erase_regions(rv_lty.ty);
         let pl_ty = self.acx.tcx().erase_regions(pl_lty.ty);
-        assert!(
-            is_transmutable_to(rv_ty, pl_ty),
-            "types not transmutable (compatible), so PointerId unification cannot be done: *{rv_ty:?} as *{pl_ty:?}",
-        );
-        for (sub_lty1, sub_lty2) in pl_lty.iter().zip(rv_lty.iter()) {
-            eprintln!("equate {:?} = {:?}", sub_lty1, sub_lty2);
-            if sub_lty1.label != PointerId::NONE || sub_lty2.label != PointerId::NONE {
-                assert!(sub_lty1.label != PointerId::NONE);
-                assert!(sub_lty2.label != PointerId::NONE);
-                self.add_equiv(sub_lty1.label, sub_lty2.label);
+        assert_eq!(rv_ty, pl_ty);
+        for (sub_pl_lty, sub_rv_lty) in pl_lty.iter().zip(rv_lty.iter()) {
+            eprintln!("equate {:?} = {:?}", sub_pl_lty, sub_rv_lty);
+            if sub_pl_lty.label != PointerId::NONE || sub_rv_lty.label != PointerId::NONE {
+                assert!(sub_pl_lty.label != PointerId::NONE);
+                assert!(sub_rv_lty.label != PointerId::NONE);
+                self.add_equiv(sub_pl_lty.label, sub_rv_lty.label);
             }
         }
     }
