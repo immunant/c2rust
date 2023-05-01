@@ -18,19 +18,19 @@ use std::mem;
 pub type size_t = libc::c_ulong;
 
 extern "C" {
-    fn c2rust_test_typed_malloc(_: libc::c_ulong) -> *mut i32;
-    fn c2rust_test_typed_realloc(_: *mut i32, _: libc::c_ulong) -> *mut i32;
-    fn c2rust_test_typed_free(__ptr: *mut i32);
-    fn c2rust_test_typed_calloc(_: libc::c_ulong, _: libc::c_ulong) -> *mut i32;
+    fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
+    fn realloc(_: *mut libc::c_void, _: libc::c_ulong) -> *mut libc::c_void;
+    fn free(_: *mut libc::c_void);
+    fn calloc(_: libc::c_ulong, _: libc::c_ulong) -> *mut libc::c_void;
 }
 
 // CHECK-LABEL: final labeling for "calloc1"
 unsafe extern "C" fn calloc1() -> *mut i32 {
     // CHECK-DAG: ([[@LINE+1]]: i): addr_of = UNIQUE
-    let i = c2rust_test_typed_calloc(
+    let i = calloc(
         1 as libc::c_int as libc::c_ulong,
         ::std::mem::size_of::<i32>() as libc::c_ulong,
-    );
+    ) as *mut i32;
     if i.is_null() {}
 
     return i;
@@ -39,15 +39,15 @@ unsafe extern "C" fn calloc1() -> *mut i32 {
 // CHECK-LABEL: final labeling for "malloc1"
 pub unsafe extern "C" fn malloc1(mut cnt: libc::c_int) -> *mut i32 {
     // CHECK-DAG: ([[@LINE+1]]: i): addr_of = UNIQUE, type = READ
-    let i = c2rust_test_typed_malloc(::std::mem::size_of::<i32>() as libc::c_ulong);
+    let i = malloc(::std::mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
     let x = *i;
     return i;
 }
 
 // CHECK-LABEL: final labeling for "free1"
 unsafe extern "C" fn free1(mut i: *mut i32) {
-    // CHECK-DAG: ([[@LINE+1]]: i): {{.*}}type = UNIQUE | FREE#
-    c2rust_test_typed_free(i);
+    // CHECK-DAG: ([[@LINE+1]]: i{{.*}}): {{.*}}type = UNIQUE | FREE#
+    free(i as *mut libc::c_void);
 }
 
 // CHECK-LABEL: final labeling for "realloc1"
@@ -59,8 +59,11 @@ unsafe extern "C" fn realloc1(mut i: *mut i32, len: libc::c_ulong) {
     loop {
         if x == capacity {
             capacity *= 2;
-            // CHECK-DAG: ([[@LINE+1]]: i): addr_of = UNIQUE, type = FREE
-            i = c2rust_test_typed_realloc(i, ::std::mem::size_of::<i32>() as libc::c_ulong);
+            // CHECK-DAG: ([[@LINE+2]]: i{{.*}}): addr_of = UNIQUE, type = FREE
+            i = realloc(
+                i as *mut libc::c_void,
+                4 as libc::c_ulong,
+            ) as *mut i32;
         }
         *elem = 1;
         elem = elem.offset(1isize);
@@ -68,5 +71,27 @@ unsafe extern "C" fn realloc1(mut i: *mut i32, len: libc::c_ulong) {
             break;
         }
         x += 1;
+    }
+}
+
+// CHECK-LABEL: final labeling for "alloc_and_free1"
+pub unsafe extern "C" fn alloc_and_free1(mut cnt: libc::c_int) {
+    // CHECK-DAG: ([[@LINE+1]]: i): addr_of = UNIQUE, type = UNIQUE | FREE#
+    let i = malloc(::std::mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
+    // CHECK-DAG: ([[@LINE+1]]: i{{.*}}): {{.*}}type = UNIQUE | FREE#
+    free(i as *mut libc::c_void);
+}
+
+
+// CHECK-LABEL: final labeling for "alloc_and_free2"
+pub unsafe extern "C" fn alloc_and_free2(mut cnt: libc::c_int) {
+    // CHECK-DAG: ([[@LINE+1]]: i): addr_of = UNIQUE, type = READ | WRITE | UNIQUE | FREE#
+    let i = malloc(::std::mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
+    if !i.is_null() {
+        // CHECK-DAG: ([[@LINE+1]]: mut b): addr_of = UNIQUE, type = READ | WRITE | UNIQUE#
+        let mut b = i;
+        *b = 2;
+        // CHECK-DAG: ([[@LINE+1]]: i): {{.*}}type = UNIQUE | FREE#
+        free(i as *mut libc::c_void);
     }
 }

@@ -1122,7 +1122,7 @@ pub unsafe extern "C" fn connection_accepted(
     fdn: *mut fdnode,         // TODO: remove when casts from c_void are handled
     mut con: *mut connection, // TODO: remove when casts from c_void are handled
 ) -> *mut connection {
-    // let mut con: *mut connection = 0 as *mut connection;
+    let mut con: *mut connection = 0 as *mut connection;
     (*srv).cur_fds += 1;
     (*srv).con_opened += 1;
     con = connections_get_new_connection(srv, con);
@@ -1220,7 +1220,7 @@ unsafe extern "C" fn connections_get_new_connection(
     mut con: *mut connection,
 ) -> *mut connection {
     // let mut con: *mut connection = 0 as *mut connection;
-    // (*srv).lim_conns = ((*srv).lim_conns).wrapping_sub(1);
+    (*srv).lim_conns = ((*srv).lim_conns).wrapping_sub(1);
     if !((*srv).conns_pool).is_null() {
         con = (*srv).conns_pool;
         (*srv).conns_pool = (*con).next;
@@ -1283,7 +1283,7 @@ unsafe extern "C" fn connection_del(mut srv: *mut server, mut con: *mut connecti
     (*con).prev = con; // 0 as *mut connection;
     (*con).next = (*srv).conns_pool;
     (*srv).conns_pool = con;
-    // (*srv).lim_conns = ((*srv).lim_conns).wrapping_add(1);
+    (*srv).lim_conns = ((*srv).lim_conns).wrapping_add(1);
 }
 
 unsafe extern "C" fn connection_close(mut con: *mut connection) {
@@ -1302,17 +1302,17 @@ unsafe extern "C" fn connection_close(mut con: *mut connection) {
     fdevent_fdnode_event_del((*srv).ev, (*con).fdn);
     fdevent_unregister((*srv).ev, (*con).fd);
     // (*con).fdn = 0 as *mut fdnode;
-    // if 0 as libc::c_int == close((*con).fd) {
-    //     (*srv).cur_fds -= 1;
-    // } else {
-    //     log_perror(
-    //         (*r).conf.errh,
-    //         b"src/connections.c\0" as *const u8 as *const libc::c_char,
-    //         101 as libc::c_int as libc::c_uint,
-    //         b"(warning) close: %d\0" as *const u8 as *const libc::c_char,
-    //         (*con).fd,
-    //     );
-    // }
+    if 0 as libc::c_int == close((*con).fd) {
+        (*srv).cur_fds -= 1;
+    } else {
+        //     log_perror(
+        //         (*r).conf.errh,
+        //         b"src/connections.c\0" as *const u8 as *const libc::c_char,
+        //         101 as libc::c_int as libc::c_uint,
+        //         b"(warning) close: %d\0" as *const u8 as *const libc::c_char,
+        //         (*con).fd,
+        //     );
+    }
     if (*r).conf.log_state_handling != 0 {
         // log_error(
         //     (*r).conf.errh,
@@ -1367,6 +1367,22 @@ pub unsafe extern "C" fn lighttpd_test() {
     ); // TODO: handle cast as *mut fdevents;
     free(fdarr /* TODO: handle cast as *mut libc::c_void */);
     free(fdes /* TODO: handle cast as *mut libc::c_void */);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn buffer_append_int(mut b: *mut buffer, mut val: intmax_t) {
+    let mut buf: [libc::c_char; 22] = [0; 22];
+    // let str: *const libc::c_char = itostr(buf.as_mut_ptr(), val);
+    // buffer_append_string_len(
+    //     b,
+    //     str,
+    //     buf
+    //         .as_mut_ptr()
+    //         .offset(
+    //             ::std::mem::size_of::<[libc::c_char; 22]>() as libc::c_ulong as isize,
+    //         )
+    //         .offset_from(str) as libc::c_long as size_t,
+    // );
 }
 
 fn main() {

@@ -13,6 +13,11 @@ fn string_casts() {
 }
 
 #[test]
+fn macros() {
+    Analyze::resolve().run("tests/analyze/macros.rs");
+}
+
+#[test]
 fn lighttpd_minimal() {
     Analyze::resolve().run("../analysis/tests/lighttpd-minimal/src/main.rs");
 }

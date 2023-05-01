@@ -2,6 +2,7 @@
 extern crate either;
 extern crate rustc_arena;
 extern crate rustc_ast;
+extern crate rustc_const_eval;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_hir;
@@ -22,6 +23,7 @@ use crate::context::{
 use crate::dataflow::DataflowConstraints;
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use crate::labeled_ty::LabeledTyCtxt;
+use crate::log::init_logger;
 use crate::util::Callee;
 use assert_matches::assert_matches;
 use indexmap::IndexSet;
@@ -32,8 +34,8 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, LocalDecl, LocalInfo, LocalKind, Location, Operand, Rvalue,
-    StatementKind,
+    AggregateKind, BindingForm, Body, Constant, LocalDecl, LocalInfo, LocalKind, Location, Operand,
+    Rvalue, StatementKind,
 };
 use rustc_middle::ty::tls;
 use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
@@ -45,12 +47,15 @@ use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
 mod borrowck;
+mod c_void_casts;
 mod context;
 mod dataflow;
 mod equiv;
-mod expr_rewrite;
 mod labeled_ty;
+mod log;
 mod pointer_id;
+mod rewrite;
+mod trivial;
 mod type_desc;
 mod util;
 
@@ -356,6 +361,101 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
     }
 }
 
+/// Determine if a [`Constant`] is a (byte-)string literal.
+///
+/// The current implementation is super hacky and just uses [`Constant`]'s [`Display`] `impl`,
+/// but I'll soon replace it with a more robust (but complex) version
+/// using pretty much the same way the [`Display`] `impl` does it.
+///
+/// [`Display`]: std::fmt::Display
+fn is_string_literal(c: &Constant) -> bool {
+    let s = c.to_string();
+    s.ends_with('"') && {
+        let s = match s.strip_prefix("const ") {
+            Some(s) => s,
+            None => return false,
+        };
+        s.starts_with('"') || s.starts_with("b\"")
+    }
+}
+
+/// Label string literals, including byte string literals.
+///
+/// String literals are const refs (refs that are constant).
+/// We only handle string literals here,
+/// as handling all const refs requires disambiguating which const refs
+/// are purely inline and don't reference any other named items
+/// vs. named const refs, and inline aggregate const refs that include named const refs.
+///
+/// String literals we know are purely inline,
+/// so they do not need [`DataflowConstraints`] to their pointee (unlike their named counterparts),
+/// because the values cannot be accessed elsewhere,
+/// and their permissions are predetermined (see [`PermissionSet::STRING_LITERAL`]).
+fn label_string_literals<'tcx>(
+    acx: &mut AnalysisCtxt<'_, 'tcx>,
+    c: &Constant<'tcx>,
+    loc: Location,
+) -> Option<LTy<'tcx>> {
+    let ty = c.ty();
+    if !ty.is_ref() {
+        return None;
+    }
+    if is_string_literal(c) {
+        acx.string_literal_locs.push(loc);
+        Some(acx.assign_pointer_ids(ty))
+    } else {
+        None
+    }
+}
+
+fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
+    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+        for (i, stmt) in bb_data.statements.iter().enumerate() {
+            let (_, rv) = match &stmt.kind {
+                StatementKind::Assign(x) => &**x,
+                _ => continue,
+            };
+
+            let loc = Location {
+                statement_index: i,
+                block: bb,
+            };
+
+            if acx.c_void_casts.should_skip_stmt(loc) {
+                continue;
+            }
+
+            let lty = match rv {
+                Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
+                    AggregateKind::Array(elem_ty) => {
+                        let elem_lty = acx.assign_pointer_ids(elem_ty);
+                        let array_ty = rv.ty(acx, acx.tcx());
+                        let args = acx.lcx().mk_slice(&[elem_lty]);
+                        acx.lcx().mk(array_ty, args, PointerId::NONE)
+                    }
+                    AggregateKind::Adt(..) => {
+                        let adt_ty = rv.ty(acx, acx.tcx());
+                        acx.assign_pointer_ids(adt_ty)
+                    }
+                    AggregateKind::Tuple => {
+                        let tuple_ty = rv.ty(acx, acx.tcx());
+                        acx.assign_pointer_ids(tuple_ty)
+                    }
+                    _ => continue,
+                },
+                Rvalue::Cast(_, _, ty) => acx.assign_pointer_ids(*ty),
+                Rvalue::Use(Operand::Constant(c)) => match label_string_literals(acx, c, loc) {
+                    Some(lty) => lty,
+                    None => continue,
+                },
+                _ => continue,
+            };
+
+            acx.rvalue_tys.insert(loc, lty);
+        }
+    }
+}
+
 fn run(tcx: TyCtxt) {
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
@@ -407,6 +507,20 @@ fn run(tcx: TyCtxt) {
         gacx.fn_sigs.insert(ldid.to_def_id(), lsig);
     }
 
+    // Collect all `static` items.
+    let all_static_dids = all_static_items(tcx);
+    eprintln!("statics:");
+    for &did in &all_static_dids {
+        eprintln!("  {:?}", did);
+    }
+
+    // Assign global `PointerId`s for types of `static` items.
+    assert!(gacx.static_tys.is_empty());
+    gacx.static_tys = HashMap::with_capacity(all_static_dids.len());
+    for &did in &all_static_dids {
+        gacx.assign_pointer_to_static(did);
+    }
+
     // Label the field types of each struct.
     for ldid in tcx.hir_crate_items(()).definitions() {
         let did = ldid.to_def_id();
@@ -449,32 +563,7 @@ fn run(tcx: TyCtxt) {
             assert_eq!(local, l);
         }
 
-        for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
-            for (i, stmt) in bb_data.statements.iter().enumerate() {
-                let rv = match stmt.kind {
-                    StatementKind::Assign(ref x) => &x.1,
-                    _ => continue,
-                };
-                let lty = match *rv {
-                    Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
-                        AggregateKind::Array(elem_ty) => {
-                            let elem_lty = acx.assign_pointer_ids(elem_ty);
-                            let array_ty = rv.ty(&acx, acx.tcx());
-                            let args = acx.lcx().mk_slice(&[elem_lty]);
-                            acx.lcx().mk(array_ty, args, PointerId::NONE)
-                        }
-                        _ => continue,
-                    },
-                    // TODO: Rvalue::Cast (certain cases)
-                    _ => continue,
-                };
-                let loc = Location {
-                    block: bb,
-                    statement_index: i,
-                };
-                acx.rvalue_tys.insert(loc, lty);
-            }
-        }
+        label_rvalue_tys(&mut acx, &mir);
 
         // Compute local equivalence classes and dataflow constraints.
         let (dataflow, equiv_constraints) = dataflow::generate_constraints(&acx, &mir);
@@ -570,6 +659,7 @@ fn run(tcx: TyCtxt) {
     // Print results for each function in `all_fn_ldids`, going in declaration order.  Concretely,
     // we iterate over `body_owners()`, which is a superset of `all_fn_ldids`, and filter based on
     // membership in `func_info`, which contains an entry for each ID in `all_fn_ldids`.
+    let mut all_rewrites = Vec::new();
     for ldid in tcx.hir().body_owners() {
         // Skip any body owners that aren't present in `func_info`, and also get the info itself.
         let info = match func_info.get_mut(&ldid) {
@@ -583,6 +673,8 @@ fn run(tcx: TyCtxt) {
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
         let mut asn = gasn.and(&mut info.lasn);
         info.dataflow.propagate_cell(&mut asn);
+
+        acx.check_string_literal_perms(&asn);
 
         // Print labeling and rewrites for the current function.
 
@@ -634,26 +726,44 @@ fn run(tcx: TyCtxt) {
         }
 
         eprintln!("\ntype assignment for {:?}:", name);
-        for (local, decl) in mir.local_decls.iter_enumerated() {
-            // TODO: apply `Cell` if `addr_of_local` indicates it's needed
-            let ty = type_desc::convert_type(&acx, acx.local_tys[local], &asn);
-            eprintln!("{:?} ({}): {:?}", local, describe_local(tcx, decl), ty,);
-        }
+        rewrite::dump_rewritten_local_tys(&acx, &asn, &mir, describe_local);
 
         eprintln!();
-        let rewrites = expr_rewrite::gen_expr_rewrites(&acx, &asn, &mir);
-        for rw in &rewrites {
-            eprintln!(
-                "at {:?} ({}, {:?}):",
-                rw.loc.stmt,
-                describe_span(tcx, rw.loc.span),
-                rw.loc.sub,
-            );
-            for kind in &rw.kinds {
-                eprintln!("  {:?}", kind);
-            }
+        let hir_body_id = tcx.hir().body_owned_by(ldid);
+        let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
+        let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
+        // Print rewrites
+        eprintln!(
+            "\ngenerated {} expr rewrites + {} ty rewrites for {:?}:",
+            expr_rewrites.len(),
+            ty_rewrites.len(),
+            name
+        );
+        for &(span, ref rw) in expr_rewrites.iter().chain(ty_rewrites.iter()) {
+            eprintln!("  {}: {}", describe_span(tcx, span), rw);
         }
+        all_rewrites.extend(expr_rewrites);
+        all_rewrites.extend(ty_rewrites);
     }
+
+    // Print results for `static` items.
+    eprintln!("\nfinal labeling for static items:");
+    for (did, lty) in gacx.static_tys.iter() {
+        let name = tcx.item_name(*did);
+        let ty_perms = gasn.perms[lty.label];
+        let ty_flags = gasn.flags[lty.label];
+        eprintln!("{name:?}: perms = {ty_perms:?}, flags = {ty_flags:?}");
+    }
+
+    let static_rewrites = rewrite::gen_static_rewrites(&gacx, &gasn);
+    eprintln!("generated {} static rewrites:", static_rewrites.len());
+    for &(span, ref rw) in &static_rewrites {
+        eprintln!("    {}: {}", describe_span(gacx.tcx, span), rw);
+    }
+    all_rewrites.extend(static_rewrites);
+
+    // Apply rewrite to all functions at once.
+    rewrite::apply_rewrites(tcx, all_rewrites);
 }
 
 trait AssignPointerIds<'tcx> {
@@ -703,7 +813,11 @@ fn describe_local(tcx: TyCtxt, decl: &LocalDecl) -> String {
 }
 
 fn describe_span(tcx: TyCtxt, span: Span) -> String {
-    let s = tcx.sess.source_map().span_to_snippet(span).unwrap();
+    let s = tcx
+        .sess
+        .source_map()
+        .span_to_snippet(span.source_callsite())
+        .unwrap();
     let s = {
         let mut s2 = String::new();
         for word in s.split_ascii_whitespace() {
@@ -724,6 +838,25 @@ fn describe_span(tcx: TyCtxt, span: Span) -> String {
     format!("{}: {}{}{}", line, src1, src2, src3)
 }
 
+/// Return `LocalDefId`s for all `static`s.
+fn all_static_items(tcx: TyCtxt) -> Vec<DefId> {
+    let mut order = Vec::new();
+
+    for root_ldid in tcx.hir().body_owners() {
+        match tcx.def_kind(root_ldid) {
+            DefKind::Fn | DefKind::AssocFn | DefKind::AnonConst | DefKind::Const => continue,
+            DefKind::Static(_) => {}
+            dk => panic!(
+                "unexpected def_kind {:?} for body_owner {:?}",
+                dk, root_ldid
+            ),
+        }
+        order.push(root_ldid.to_def_id())
+    }
+
+    order
+}
+
 /// Return all `LocalDefId`s for all `fn`s that are `body_owners`, ordered according to a postorder
 /// traversal of the graph of references between bodies.
 fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
@@ -742,7 +875,7 @@ fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
 
         match tcx.def_kind(root_ldid) {
             DefKind::Fn | DefKind::AssocFn => {}
-            DefKind::AnonConst | DefKind::Const => continue,
+            DefKind::AnonConst | DefKind::Const | DefKind::Static(_) => continue,
             dk => panic!(
                 "unexpected def_kind {:?} for body_owner {:?}",
                 dk, root_ldid
@@ -786,7 +919,7 @@ fn for_each_callee(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(LocalDefId)) {
         fn visit_operand(&mut self, operand: &Operand<'tcx>, _location: Location) {
             let ty = operand.ty(self.mir, self.tcx);
             let def_id = match util::ty_callee(self.tcx, ty) {
-                Some(Callee::Other { def_id, .. }) => def_id,
+                Callee::LocalDef { def_id, .. } => def_id,
                 _ => return,
             };
             let ldid = match def_id.as_local() {
@@ -822,6 +955,7 @@ impl rustc_driver::Callbacks for AnalysisCallbacks {
 }
 
 fn main() -> rustc_interface::interface::Result<()> {
+    init_logger();
     let args = env::args().collect::<Vec<_>>();
     rustc_driver::RunCompiler::new(&args, &mut AnalysisCallbacks).run()
 }

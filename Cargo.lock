@@ -129,7 +129,7 @@ dependencies = [
  "anyhow",
  "c2rust-build-paths",
  "c2rust-transpile",
- "clap",
+ "clap 3.2.23",
  "env_logger",
  "git-testament",
  "is_executable",
@@ -156,10 +156,14 @@ dependencies = [
  "assert_matches",
  "bitflags",
  "c2rust-build-paths",
+ "clap 4.1.9",
+ "env_logger",
  "indexmap",
+ "log",
  "polonius-engine",
  "print_bytes",
  "rustc-hash",
+ "shlex",
 ]
 
 [[package]]
@@ -231,7 +235,7 @@ dependencies = [
  "bincode",
  "c2rust-analysis-rt",
  "c2rust-build-paths",
- "clap",
+ "clap 3.2.23",
  "env_logger",
  "fs-err",
  "fs2",
@@ -250,7 +254,7 @@ dependencies = [
  "bincode",
  "c2rust-analysis-rt",
  "c2rust-build-paths",
- "clap",
+ "clap 3.2.23",
  "color-eyre",
  "env_logger",
  "fs-err",
@@ -335,14 +339,29 @@ checksum = "71655c45cb9845d3270c9d6df84ebe72b4dad3c2ba3f7023ad47c144e4e473a5"
 dependencies = [
  "atty",
  "bitflags",
- "clap_derive",
- "clap_lex",
+ "clap_derive 3.2.18",
+ "clap_lex 0.2.4",
  "indexmap",
  "once_cell",
  "strsim",
  "termcolor",
  "textwrap",
  "yaml-rust",
+]
+
+[[package]]
+name = "clap"
+version = "4.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a9d6ada83c1edcce028902ea27dd929069c70df4c7600b131b4d9a1ad2879cc"
+dependencies = [
+ "bitflags",
+ "clap_derive 4.1.9",
+ "clap_lex 0.3.3",
+ "is-terminal",
+ "once_cell",
+ "strsim",
+ "termcolor",
 ]
 
 [[package]]
@@ -359,10 +378,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_derive"
+version = "4.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fddf67631444a3a3e3e5ac51c36a5e01335302de677bd78759eaa90ab1f46644"
+dependencies = [
+ "heck",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "clap_lex"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2850f2f5a82cbf437dd5af4d49848fbdfc27c157c3d010345776f952765261c5"
+dependencies = [
+ "os_str_bytes",
+]
+
+[[package]]
+name = "clap_lex"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "033f6b7a4acb1f358c742aaca805c939ee73b4c6209ae4318ec7aca81c42e646"
 dependencies = [
  "os_str_bytes",
 ]

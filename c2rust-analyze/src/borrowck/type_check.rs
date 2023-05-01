@@ -1,15 +1,16 @@
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubPoint};
-use crate::borrowck::{LTy, LTyCtxt, Label, OriginParam};
+use crate::borrowck::{construct_adt_origins, LTy, LTyCtxt, Label, OriginParam};
+use crate::c_void_casts::CVoidCasts;
 use crate::context::PermissionSet;
-use crate::util::{self, Callee};
+use crate::util::{self, ty_callee, Callee};
 use crate::AdtMetadataTable;
 use assert_matches::assert_matches;
 use indexmap::IndexMap;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    AggregateKind, BinOp, Body, BorrowKind, Field, Local, LocalDecl, Location, Operand, Place,
-    Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
+    AggregateKind, BinOp, Body, BorrowKind, CastKind, Field, Local, LocalDecl, Location, Operand,
+    Place, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::{AdtDef, FieldDef, TyCtxt, TyKind};
 use std::collections::HashMap;
@@ -36,18 +37,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         )
     }
 
-    pub fn visit_place(&mut self, pl: Place<'tcx>) -> LTy<'tcx> {
-        let mut lty: LTy = self.local_ltys[pl.local.index()];
+    pub fn field_lty(&self, base_lty: LTy<'tcx>, base_adt_def: AdtDef, field: Field) -> LTy<'tcx> {
+        let base_origin_param_map: IndexMap<OriginParam, Origin> =
+            IndexMap::from_iter(base_lty.label.origin_params.to_vec());
+        let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field.index()];
+        let perm = self.field_permissions[&field_def.did];
+        let base_metadata = &self.adt_metadata.table[&base_adt_def.did()];
+        let field_metadata = &base_metadata.field_info[&field_def.did];
 
-        let mut adt_func = |base_lty: LTy<'tcx>, base_adt_def: AdtDef, field: Field| {
-            let base_origin_param_map: IndexMap<OriginParam, Origin> =
-                IndexMap::from_iter(base_lty.label.origin_params.to_vec());
-            let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field.index()];
-            let perm = self.field_permissions[&field_def.did];
-            let base_metadata = &self.adt_metadata.table[&base_adt_def.did()];
-            let field_metadata = &base_metadata.field_info[&field_def.did];
-
-            self.ltcx.relabel(
+        self.ltcx.relabel(
                 field_metadata.origin_args,
                 &mut |flty| match flty.kind() {
                     TyKind::Ref(..) | TyKind::RawPtr(..) => {
@@ -150,16 +148,18 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                 },
             )
-        };
+    }
 
+    pub fn visit_place(&self, pl: Place<'tcx>) -> LTy<'tcx> {
+        let mut lty: LTy = self.local_ltys[pl.local.index()];
         for proj in pl.projection {
-            lty = util::lty_project(lty, &proj, &mut adt_func);
+            lty = util::lty_project(lty, &proj, &mut |lty, adt, f| self.field_lty(lty, adt, f));
         }
         eprintln!("final label for {pl:?}: {:?}", lty);
         lty
     }
 
-    pub fn visit_operand(&mut self, op: &Operand<'tcx>) -> LTy<'tcx> {
+    pub fn visit_operand(&self, op: &Operand<'tcx>) -> LTy<'tcx> {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => self.visit_place(pl),
             Operand::Constant(ref c) => {
@@ -188,9 +188,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, expect_ty: LTy<'tcx>) -> LTy<'tcx> {
         match *rv {
-            Rvalue::Use(Operand::Move(pl)) | Rvalue::Use(Operand::Copy(pl))
-                if matches!(expect_ty.ty.kind(), TyKind::RawPtr(_)) =>
-            {
+            Rvalue::Use(Operand::Copy(pl)) if matches!(expect_ty.ty.kind(), TyKind::RawPtr(_)) => {
                 // Copy of a raw pointer.  We treat this as a reborrow.
                 let perm = expect_ty.label.perm;
                 let borrow_kind = if perm.contains(PermissionSet::UNIQUE) {
@@ -270,7 +268,52 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     Label::default()
                 })
             }
+            Rvalue::Cast(CastKind::PointerFromExposedAddress, ref op, _ty) => {
+                // We support only one case here, which is the case of null pointers
+                // constructed via casts such as `0 as *const T`
+                if let Some(true) = op.constant().cloned().map(util::is_null_const) {
+                    let adt_metadata = self.adt_metadata;
 
+                    // Here we relabel `expect_ty` to utilize the permissions it carries
+                    // but substitute the rest of its `Label`s' parts with fresh origins
+                    // Othwerise, this is conceptually similar to labeling the cast target
+                    // `ty`. We would simply do that, but do not have the information necessary
+                    // to set its permissions.
+                    self.ltcx.relabel(expect_ty, &mut |lty| {
+                        let perm = lty.label.perm;
+                        match lty.ty.kind() {
+                            TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
+                                let origin = Some(self.maps.origin());
+                                Label {
+                                    origin,
+                                    origin_params: &[],
+                                    perm,
+                                }
+                            }
+                            TyKind::Adt(..) => {
+                                let origin_params = construct_adt_origins(
+                                    &self.ltcx,
+                                    adt_metadata,
+                                    &lty.ty,
+                                    self.maps,
+                                );
+                                Label {
+                                    origin: None,
+                                    origin_params,
+                                    perm,
+                                }
+                            }
+                            _ => Label {
+                                origin: None,
+                                origin_params: &[],
+                                perm,
+                            },
+                        }
+                    })
+                } else {
+                    panic!("Creating non-null pointers from exposed addresses not supported");
+                }
+            }
             Rvalue::Cast(_, _, ty) => self.ltcx.label(ty, &mut |_ty| {
                 // TODO: handle Unsize casts at minimum
                 /*
@@ -281,13 +324,60 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 */
                 Label::default()
             }),
-
-            Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
+            Rvalue::Aggregate(ref kind, ref ops) => match **kind {
                 AggregateKind::Array(..) => {
                     let ty = rv.ty(self.local_decls, *self.ltcx);
                     // TODO: create fresh origins for all pointers in `ty`, and generate subset
                     // relations between the regions of the array and the regions of its elements
                     self.ltcx.label(ty, &mut |_ty| Label::default())
+                }
+                AggregateKind::Tuple => {
+                    for (op_idx, op) in ops.iter().enumerate() {
+                        let op_lty = self.visit_operand(op);
+                        self.do_assign(expect_ty.args[op_idx], op_lty);
+                    }
+                    expect_ty
+                }
+                AggregateKind::Adt(adt_did, ..) => {
+                    /*
+                        Generic types are not yet supported because of situations such as the
+                        following:
+
+                        ```rust
+                        struct S<T> {
+                            s: T
+                        };
+
+                        fn foo() {
+                            let s = S<&'1 u32> { s: &'1 0 }
+                        }
+                        ```
+
+                        Here the `FieldMetadata` for `S:s` has an empty `origin_args` slice
+                        because these are gathered before the lifetime parameters are resolved
+                        by traversing the struct definition. Additionally, the label for the
+                        `Operand` corresponding to `s` has an `Origin('1)` (because it is
+                        a reference). Because the `OriginArgs` are missing for the field, the
+                        labeled types for the field operand and for the field declaration do not
+                        have the same shape, and so `do_assign` cannot create subset relations.
+
+                        Additionally, the regions referenced within the operand types are
+                        erased, and so it also would not be possible to know which ADT
+                        OriginParams those correspond to because there would need to be a
+                        non-erased region to compare with.
+                    */
+                    assert_eq!(expect_ty.args.len(), 0, "Generic types not yet supported.");
+
+                    let adt_def = self.tcx.adt_def(adt_did);
+                    for (fid, op) in ops.iter().enumerate() {
+                        let field_lty = self.field_lty(expect_ty, adt_def, Field::from(fid));
+                        let op_lty = self.visit_operand(op);
+                        eprintln!("pseudo-assigning fields {field_lty:?} = {op_lty:?}");
+                        self.do_assign(field_lty, op_lty);
+                    }
+
+                    eprintln!("Aggregate literal label: {expect_ty:?}");
+                    expect_ty
                 }
                 _ => panic!("unsupported rvalue AggregateKind {:?}", kind),
             },
@@ -299,6 +389,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
             Rvalue::UnaryOp(_, ref op) => self.visit_operand(op),
 
+            Rvalue::Repeat(ref op, _) => {
+                if op.ty(self.local_decls, self.tcx).is_any_ptr() {
+                    todo!("Repeat types over pointers not yet implemented");
+                }
+                let ty = rv.ty(self.local_decls, *self.ltcx);
+                // TODO: create fresh origins for all pointers in `ty`, and generate subset
+                // relations between the regions of the array and the regions of its elements
+                self.ltcx.label(ty, &mut |_ty| Label::default())
+            }
             ref rv => panic!("unsupported rvalue {:?}", rv),
         }
     }
@@ -357,29 +456,33 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 ..
             } => {
                 let func_ty = func.ty(self.local_decls, *self.ltcx);
-                eprintln!("callee = {:?}", util::ty_callee(*self.ltcx, func_ty));
-                match util::ty_callee(*self.ltcx, func_ty) {
-                    Some(Callee::PtrOffset { .. }) => {
+                let callee = ty_callee(*self.ltcx, func_ty);
+                eprintln!("callee = {callee:?}");
+                match callee {
+                    Callee::Trivial => {}
+                    Callee::UnknownDef { .. } => {
+                        // TODO
+                    }
+                    Callee::LocalDef { .. } => {
+                        // TODO
+                    }
+                    Callee::PtrOffset { .. } => {
                         // We handle this like a pointer assignment.
                         let pl_lty = self.visit_place(destination);
                         assert!(args.len() == 2);
                         let rv_lty = self.visit_operand(&args[0]);
                         self.do_assign(pl_lty, rv_lty);
                     }
-                    Some(Callee::SliceAsPtr { .. }) => {
+                    Callee::SliceAsPtr { .. } => {
                         // TODO: handle this like a cast
                     }
-                    Some(Callee::Trivial) => {}
-                    Some(Callee::Other { .. }) => {
+                    Callee::Malloc => {
                         // TODO
                     }
-                    Some(Callee::Malloc) => {
+                    Callee::Calloc => {
                         // TODO
                     }
-                    Some(Callee::Calloc) => {
-                        // TODO
-                    }
-                    Some(Callee::Realloc) => {
+                    Callee::Realloc => {
                         // We handle this like a pointer assignment.
                         let pl_lty = self.visit_place(destination);
                         let rv_lty = assert_matches!(&args[..], [p, _] => {
@@ -388,18 +491,17 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                         self.do_assign(pl_lty, rv_lty);
                     }
-                    Some(Callee::Free) => {
+                    Callee::Free => {
                         let _pl_lty = self.visit_place(destination);
                         let _rv_lty = assert_matches!(&args[..], [p] => {
                             self.visit_operand(p)
                         });
                     }
-                    Some(Callee::IsNull) => {
+                    Callee::IsNull => {
                         let _rv_lty = assert_matches!(&args[..], [p] => {
                             self.visit_operand(p)
                         });
                     }
-                    None => {}
                 }
             }
             // TODO(spernsteiner): handle other `TerminatorKind`s
@@ -419,6 +521,7 @@ pub fn visit_body<'tcx>(
     field_permissions: &HashMap<DefId, PermissionSet>,
     mir: &Body<'tcx>,
     adt_metadata: &AdtMetadataTable<'tcx>,
+    c_void_casts: &CVoidCasts<'tcx>,
 ) {
     let mut tc = TypeChecker {
         tcx,
@@ -433,17 +536,21 @@ pub fn visit_body<'tcx>(
         adt_metadata,
     };
 
-    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+    for (block, bb_data) in mir.basic_blocks().iter_enumerated() {
         for (idx, stmt) in bb_data.statements.iter().enumerate() {
-            tc.current_location = Location {
-                block: bb,
+            let loc = Location {
+                block,
                 statement_index: idx,
             };
-            tc.visit_statement(stmt);
+            tc.current_location = loc;
+
+            if !c_void_casts.should_skip_stmt(loc) {
+                tc.visit_statement(stmt);
+            }
         }
 
         tc.current_location = Location {
-            block: bb,
+            block,
             statement_index: bb_data.statements.len(),
         };
         tc.visit_terminator(bb_data.terminator());

@@ -1,12 +1,17 @@
 use super::DataflowConstraints;
+use crate::c_void_casts::CVoidCastDirection;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
-use crate::util::{self, describe_rvalue, is_transmutable_to, Callee, RvalueDesc};
+use crate::util::{
+    describe_rvalue, is_null_const, is_transmutable_ptr_cast, is_transmutable_to, ty_callee,
+    Callee, RvalueDesc,
+};
+use assert_matches::assert_matches;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
-    AggregateKind, BinOp, Body, Location, Mutability, Operand, Place, PlaceRef, ProjectionElem,
-    Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
+    AggregateKind, BinOp, Body, CastKind, Location, Mutability, Operand, Place, PlaceRef,
+    ProjectionElem, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
-use rustc_middle::ty::{SubstsRef, TyKind};
+use rustc_middle::ty::{SubstsRef, Ty, TyKind};
 
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
 /// constraints as a side effect.
@@ -93,7 +98,33 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, lty: LTy<'tcx>) {
+    fn visit_cast(&mut self, cast_kind: CastKind, op: &Operand<'tcx>, to_lty: LTy<'tcx>) {
+        let to_ty = to_lty.ty;
+        let from_lty = self.acx.type_of(op);
+        let from_ty = from_lty.ty;
+
+        match cast_kind {
+            CastKind::PointerFromExposedAddress => {
+                // We support only one case here, which is the case of null pointers
+                // constructed via casts such as `0 as *const T`
+                if !op.constant().copied().map(is_null_const).unwrap_or(false) {
+                    panic!("Creating non-null pointers from exposed addresses not supported");
+                }
+            }
+            _ => {
+                // TODO add dataflow constraints
+                match is_transmutable_ptr_cast(from_ty, to_ty) {
+                    Some(true) => {},
+                    Some(false) => ::log::error!("TODO: unsupported ptr-to-ptr cast between pointee types not yet supported as safely transmutable: `{from_ty:?} as {to_ty:?}`"),
+                    None => {}, // not a ptr cast; let rustc typeck this
+                };
+            }
+        }
+
+        self.visit_operand(op)
+    }
+
+    pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, rvalue_lty: LTy<'tcx>) {
         let rv_desc = describe_rvalue(rv);
         eprintln!("visit_rvalue({rv:?}), desc = {rv_desc:?}");
 
@@ -110,7 +141,26 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
         match *rv {
             Rvalue::Use(ref op) => self.visit_operand(op),
-            Rvalue::Repeat(..) => todo!("visit_rvalue Repeat"),
+            Rvalue::Repeat(ref op, _) => {
+                assert!(rvalue_lty.ty.is_array());
+                assert_matches!(rvalue_lty.args, [elem_lty] => {
+                    // Pseudo-assign from the operand to the element type of the array.
+                    let op_lty = self.acx.type_of(op);
+                    /*
+                        TODO: This is the right thing to do here, though currently
+                        it's a no-op because type_of_rvalue (whose result is passed
+                        into this function as lty) constructs its result using
+                        type_of(op), so elem_lty and op_lty will always be identical.
+                        Eventually we'll want to change this so the Rvalue::Repeat gets
+                        its own LTy with its own PointerIds, similar to the handling of
+                        array aggregates. This would let us detect the need for a
+                        cast on the operand of the repeat (we can't cast [&[u32]; 3]
+                        to [&u32; 3], but we could cast the operand from &[u32] to
+                        &u32 before doing the repeat, e.g. let x = [&my_slice[0]; 3];).
+                    */
+                    self.do_assign(elem_lty, op_lty);
+                });
+            }
             Rvalue::Ref(..) => {
                 unreachable!("Rvalue::Ref should be handled by describe_rvalue instead")
             }
@@ -121,7 +171,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Rvalue::Len(pl) => {
                 self.visit_place(pl, Mutability::Not);
             }
-            Rvalue::Cast(_, ref op, _) => self.visit_operand(op),
+            Rvalue::Cast(cast_kind, ref op, ty) => {
+                assert_eq!(ty, rvalue_lty.ty);
+                self.visit_cast(cast_kind, op, rvalue_lty);
+            }
             Rvalue::BinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
             Rvalue::BinaryOp(_, ref ops) => {
                 self.visit_operand(&ops.0);
@@ -143,11 +196,33 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 }
                 match **kind {
                     AggregateKind::Array(..) => {
-                        assert!(matches!(lty.kind(), TyKind::Array(..)));
-                        assert_eq!(lty.args.len(), 1);
-                        let elem_lty = lty.args[0];
+                        assert!(matches!(rvalue_lty.kind(), TyKind::Array(..)));
+                        let elem_lty = assert_matches!(rvalue_lty.args, [elem_lty] => {
+                            elem_lty
+                        });
                         // Pseudo-assign from each operand to the element type of the array.
                         for op in ops {
+                            let op_lty = self.acx.type_of(op);
+                            self.do_assign(elem_lty, op_lty);
+                        }
+                    }
+                    AggregateKind::Adt(adt_did, ..) => {
+                        let base_adt_def = self.acx.tcx().adt_def(adt_did);
+                        let fields = &base_adt_def.non_enum_variant().fields;
+                        for (field, op) in fields.iter().zip(ops.iter()) {
+                            let op_lty = self.acx.type_of(op);
+                            let unresolved_field_lty = self.acx.gacx.field_tys[&field.did];
+                            // resolve the generic type arguments in `field_lty` by referencing the `Ty` of `op`
+                            let resolved_field_lty =
+                                self.acx.lcx().subst(unresolved_field_lty, rvalue_lty.args);
+                            // Pseudo-assign from each operand to the element type of the field.
+                            self.do_assign(resolved_field_lty, op_lty);
+                        }
+                    }
+                    AggregateKind::Tuple => {
+                        assert!(matches!(rvalue_lty.kind(), TyKind::Tuple(..)));
+                        // Pseudo-assign from each operand to the element type of the tuple.
+                        for (op, elem_lty) in ops.iter().zip(rvalue_lty.args.iter()) {
                             let op_lty = self.acx.type_of(op);
                             self.do_assign(elem_lty, op_lty);
                         }
@@ -186,7 +261,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         // If the top-level types are pointers, add a dataflow edge indicating that `rv` flows into
         // `pl`.
         self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
-
         self.do_equivalence_nested(pl_lty, rv_lty);
     }
 
@@ -234,6 +308,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         eprintln!("visit_statement({:?})", stmt);
+
+        if self.acx.c_void_casts.should_skip_stmt(loc) {
+            return;
+        }
+
         // TODO(spernsteiner): other `StatementKind`s will be handled in the future
         #[allow(clippy::single_match)]
         match stmt.kind {
@@ -244,7 +323,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                 let rv_lty = self.acx.type_of_rvalue(rv, loc);
                 self.visit_rvalue(rv, rv_lty);
-
                 self.do_assign(pl_lty, rv_lty);
             }
             // TODO(spernsteiner): handle other `StatementKind`s
@@ -252,7 +330,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    pub fn visit_terminator(&mut self, term: &Terminator<'tcx>) {
+    pub fn visit_terminator(&mut self, term: &Terminator<'tcx>, loc: Location) {
         eprintln!("visit_terminator({:?})", term.kind);
         let tcx = self.acx.tcx();
         // TODO(spernsteiner): other `TerminatorKind`s will be handled in the future
@@ -265,106 +343,142 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 target: _,
                 ..
             } => {
-                let func_ty = func.ty(self.mir, tcx);
-                eprintln!("callee = {:?}", util::ty_callee(tcx, func_ty));
-                match util::ty_callee(tcx, func_ty) {
-                    Some(Callee::PtrOffset { .. }) => {
-                        // We handle this like a pointer assignment.
-                        self.visit_place(destination, Mutability::Mut);
-                        let pl_lty = self.acx.type_of(destination);
-                        assert!(args.len() == 2);
-                        self.visit_operand(&args[0]);
-                        let rv_lty = self.acx.type_of(&args[0]);
-                        self.do_assign(pl_lty, rv_lty);
-                        let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
-                        self.constraints.add_all_perms(rv_lty.label, perms);
-                    }
-
-                    Some(Callee::SliceAsPtr { elem_ty, .. }) => {
-                        // We handle this like an assignment, but with some adjustments due to the
-                        // difference in input and output types.
-                        self.visit_place(destination, Mutability::Mut);
-                        let pl_lty = self.acx.type_of(destination);
-                        assert!(args.len() == 1);
-                        self.visit_operand(&args[0]);
-                        let rv_lty = self.acx.type_of(&args[0]);
-
-                        // Map `rv_lty = &[i32]` to `rv_elem_lty = i32`
-                        let rv_pointee_lty = rv_lty.args[0];
-                        let rv_elem_lty = match *rv_pointee_lty.kind() {
-                            TyKind::Array(..) | TyKind::Slice(..) => rv_pointee_lty.args[0],
-                            TyKind::Str => self.acx.lcx().label(elem_ty, &mut |_| PointerId::NONE),
-                            _ => unreachable!(),
-                        };
-
-                        // Map `pl_lty = *mut i32` to `pl_elem_lty = i32`
-                        let pl_elem_lty = pl_lty.args[0];
-
-                        self.do_unify(pl_elem_lty, rv_elem_lty);
-                        self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
-                    }
-
-                    Some(Callee::Trivial) => {}
-
-                    Some(Callee::Malloc) => {
-                        self.visit_place(destination, Mutability::Mut);
-                    }
-
-                    Some(Callee::Calloc) => {
-                        self.visit_place(destination, Mutability::Mut);
-                    }
-                    Some(Callee::Realloc) => {
-                        self.visit_place(destination, Mutability::Mut);
-                        let pl_lty = self.acx.type_of(destination);
-                        assert!(args.len() == 2);
-                        self.visit_operand(&args[0]);
-                        let rv_lty = self.acx.type_of(&args[0]);
-
-                        // input needs FREE permission
-                        let perms = PermissionSet::FREE;
-                        self.constraints.add_all_perms(rv_lty.label, perms);
-
-                        // unify inner-most pointer types
-                        self.do_equivalence_nested(pl_lty, rv_lty);
-                    }
-                    Some(Callee::Free) => {
-                        self.visit_place(destination, Mutability::Mut);
-                        assert!(args.len() == 1);
-                        self.visit_operand(&args[0]);
-
-                        let rv_lty = self.acx.type_of(&args[0]);
-                        let perms = PermissionSet::FREE;
-                        self.constraints.add_all_perms(rv_lty.label, perms);
-                    }
-
-                    Some(Callee::IsNull) => {
-                        assert!(args.len() == 1);
-                        self.visit_operand(&args[0]);
-                    }
-
-                    Some(Callee::Other { def_id, substs }) => {
-                        self.visit_call_other(def_id, substs, args, destination);
-                    }
-
-                    None => {}
-                }
+                let func = func.ty(self.mir, tcx);
+                self.visit_call(loc, func, args, destination);
             }
             // TODO(spernsteiner): handle other `TerminatorKind`s
             _ => (),
         }
     }
 
-    fn visit_call_other(
+    pub fn visit_call(
+        &mut self,
+        loc: Location,
+        func: Ty<'tcx>,
+        args: &[Operand<'tcx>],
+        destination: Place<'tcx>,
+    ) {
+        let tcx = self.acx.tcx();
+        let callee = ty_callee(tcx, func);
+        eprintln!("callee = {callee:?}");
+        match callee {
+            Callee::Trivial => {}
+            Callee::UnknownDef { .. } => {
+                log::error!("TODO: visit Callee::{callee:?}");
+            }
+
+            Callee::LocalDef { def_id, substs } => {
+                self.visit_local_call(def_id, substs, args, destination);
+            }
+
+            Callee::PtrOffset { .. } => {
+                // We handle this like a pointer assignment.
+                self.visit_place(destination, Mutability::Mut);
+                let pl_lty = self.acx.type_of(destination);
+                assert!(args.len() == 2);
+                self.visit_operand(&args[0]);
+                let rv_lty = self.acx.type_of(&args[0]);
+                self.do_assign(pl_lty, rv_lty);
+                let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
+                self.constraints.add_all_perms(rv_lty.label, perms);
+            }
+
+            Callee::SliceAsPtr { elem_ty, .. } => {
+                // We handle this like an assignment, but with some adjustments due to the
+                // difference in input and output types.
+                self.visit_place(destination, Mutability::Mut);
+                let pl_lty = self.acx.type_of(destination);
+                assert!(args.len() == 1);
+                self.visit_operand(&args[0]);
+                let rv_lty = self.acx.type_of(&args[0]);
+
+                // Map `rv_lty = &[i32]` to `rv_elem_lty = i32`
+                let rv_pointee_lty = rv_lty.args[0];
+                let rv_elem_lty = match *rv_pointee_lty.kind() {
+                    TyKind::Array(..) | TyKind::Slice(..) => rv_pointee_lty.args[0],
+                    TyKind::Str => self.acx.lcx().label(elem_ty, &mut |_| PointerId::NONE),
+                    _ => unreachable!(),
+                };
+
+                // Map `pl_lty = *mut i32` to `pl_elem_lty = i32`
+                let pl_elem_lty = pl_lty.args[0];
+
+                self.do_unify(pl_elem_lty, rv_elem_lty);
+                self.do_assign_pointer_ids(pl_lty.label, rv_lty.label);
+            }
+
+            Callee::Malloc | Callee::Calloc => {
+                let out_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                    loc,
+                    CVoidCastDirection::From,
+                    destination,
+                );
+                self.visit_place(out_ptr, Mutability::Mut);
+            }
+            Callee::Realloc => {
+                let out_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                    loc,
+                    CVoidCastDirection::From,
+                    destination,
+                );
+                let in_ptr = args[0]
+                    .place()
+                    .expect("Casts to/from null pointer are not yet supported");
+                let in_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                    loc,
+                    CVoidCastDirection::To,
+                    in_ptr,
+                );
+                self.visit_place(out_ptr, Mutability::Mut);
+                let pl_lty = self.acx.type_of(out_ptr);
+                assert!(args.len() == 2);
+                self.visit_place(in_ptr, Mutability::Not);
+                let rv_lty = self.acx.type_of(in_ptr);
+
+                // input needs FREE permission
+                let perms = PermissionSet::FREE;
+                self.constraints.add_all_perms(rv_lty.label, perms);
+
+                // unify inner-most pointer types
+                self.do_equivalence_nested(pl_lty, rv_lty);
+            }
+            Callee::Free => {
+                let in_ptr = args[0]
+                    .place()
+                    .expect("Casts to/from null pointer are not yet supported");
+                let in_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                    loc,
+                    CVoidCastDirection::To,
+                    in_ptr,
+                );
+                self.visit_place(destination, Mutability::Mut);
+                assert!(args.len() == 1);
+
+                let rv_lty = self.acx.type_of(in_ptr);
+                let perms = PermissionSet::FREE;
+                self.constraints.add_all_perms(rv_lty.label, perms);
+            }
+
+            Callee::IsNull => {
+                assert!(args.len() == 1);
+                self.visit_operand(&args[0]);
+            }
+        }
+    }
+
+    /// Visit a local call, where local means
+    /// local to the current crate with a static, known definition.
+    ///
+    /// See [`Callee::LocalDef`].
+    fn visit_local_call(
         &mut self,
         def_id: DefId,
         substs: SubstsRef<'tcx>,
         args: &[Operand<'tcx>],
         dest: Place<'tcx>,
     ) {
-        let sig = match self.acx.gacx.fn_sigs.get(&def_id) {
-            Some(&x) => x,
-            None => todo!("call to unknown function {def_id:?}"),
-        };
+        let sig = self.acx.gacx.fn_sigs.get(&def_id)
+            .unwrap_or_else(|| panic!("Callee::LocalDef LFnSig not found (unknown calls should've been Callee::UnknownDef): {def_id:?}"));
         if substs.non_erasable_generics().next().is_some() {
             todo!("call to generic function {def_id:?} {substs:?}");
         }
@@ -395,6 +509,10 @@ pub fn visit<'tcx>(
         equiv_constraints: Vec::new(),
     };
 
+    for (ptr, perms) in acx.string_literal_perms() {
+        tc.constraints.add_all_perms(ptr, perms);
+    }
+
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb_data.statements.iter().enumerate() {
             tc.visit_statement(
@@ -405,7 +523,13 @@ pub fn visit<'tcx>(
                 },
             );
         }
-        tc.visit_terminator(bb_data.terminator());
+        tc.visit_terminator(
+            bb_data.terminator(),
+            Location {
+                statement_index: bb_data.statements.len(),
+                block: bb,
+            },
+        );
     }
 
     (tc.constraints, tc.equiv_constraints)

@@ -1,47 +1,128 @@
+use crate::c_void_casts::CVoidCasts;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::{
     GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
     PointerTableMut,
 };
-use crate::util::{self, describe_rvalue, is_transmutable_ptr_cast, RvalueDesc};
+use crate::util::{self, describe_rvalue, PhantomLifetime, RvalueDesc};
 use crate::AssignPointerIds;
 use bitflags::bitflags;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
+use rustc_middle::mir::interpret::{self, AllocId, ConstValue, GlobalAlloc};
 use rustc_middle::mir::{
-    Body, CastKind, Field, HasLocalDecls, Local, LocalDecls, Location, Operand, Place, PlaceElem,
-    PlaceRef, Rvalue,
+    Body, Constant, ConstantKind, Field, HasLocalDecls, Local, LocalDecls, Location, Operand,
+    Place, PlaceElem, PlaceRef, Rvalue,
 };
-use rustc_middle::ty::adjustment::PointerCast;
 use rustc_middle::ty::{AdtDef, FieldDef, Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
 
 bitflags! {
+    /// Permissions are created such that we allow dropping permissions in any assignment.
+    /// This means removing a permission from a pointer's [`PermissionSet`]
+    /// must allow the pointer to take on more values, not restrict it to fewer values.
+    ///
+    /// That's why, for example [`UNIQUE`] is named as such,
+    /// as opposed to something like `ALIASED` (a pointer capability),
+    /// as removing [`UNIQUE`] (`&mut`) allows more values to be taken on (`&`).
+    ///
+    /// Currently, we assume that all pointers are valid or null
+    /// (see [the `std::ptr` safety docs](https://doc.rust-lang.org/std/ptr/index.html#safety)).
+    /// We do not yet (here) consider unaligned or cast-from-integer pointers.
+    ///
+    /// [`UNIQUE`]: Self::UNIQUE
     #[derive(Default)]
     pub struct PermissionSet: u16 {
         /// The value(s) accessible through this pointer can be read.
         const READ = 0x0001;
+
         /// The value(s) accessible through this pointer can be written.
         const WRITE = 0x0002;
+
         /// This pointer is unique: using an alias not derived from this
         /// pointer invalidates this pointer, after which it is not valid to use.
         const UNIQUE = 0x0004;
+
         /// This pointer is linear-typed.  Copying a `LINEAR` pointer to another `LINEAR` location
         /// moves the pointer and invalidates the source of the copy.  (However, a
         /// copy-and-downcast to a non-`LINEAR` location is a borrow, which does not invalidate the
         /// source pointer.)
         const LINEAR = 0x0008;
+
         /// This pointer can be offset in the positive direction.
         ///
         /// Offsetting the pointer in an unknown direction requires both `OFFSET_ADD` and
         /// `OFFSET_SUB`.  Offsetting by zero requires neither `OFFSET_ADD` nor `OFFSET_SUB`.
         const OFFSET_ADD = 0x0010;
+
         /// This pointer can be offset in the negative direction.
         const OFFSET_SUB = 0x0020;
+
         /// This pointer can be freed.
         const FREE = 0x0040;
+
+        /// This pointer is non-null.
+        ///
+        /// [`NON_NULL`] is set (or not) when the pointer is created,
+        /// and it flows forward along dataflow edges.
+        ///
+        /// The following should be set to [`NON_NULL`]:
+        /// * the results of [`Rvalue::Ref`] and [`Rvalue::AddressOf`]
+        /// * the result of a known function like [`_.offset`] that never returns null pointers
+        ///
+        /// The following should not be set to [`NON_NULL`]:
+        /// * [`core::ptr::null`]
+        /// * [`core::ptr::null_mut`]
+        /// * [`core::ptr::from_exposed_addr`] with the constant `0`
+        /// * `0 as * {const,mut} _`, a cast from the constant `0` to a pointer type
+        /// * anything else
+        ///
+        /// Non-zero but invalid pointers, such as those produced by:
+        /// * [`core::ptr::invalid`]
+        /// * [`core::ptr::invalid_mut`]
+        /// * [`NonNull::dangling`]
+        /// * [`core::ptr::from_exposed_addr`]
+        /// * int-to-ptr casts though `as` or [`core::mem::transmute`]
+        ///
+        /// will be [`NON_NULL`], but for now,
+        /// we do not consider and do not allow such non-null invalid pointers at all.
+        ///
+        /// [`NON_NULL`] pointers will become references, e.x. `&T`.\
+        /// Non-[`NON_NULL`] pointers will become [`Option<&T>`].
+        ///
+        /// Casts/transitions from [`NON_NULL`] to non-[`NON_NULL`] will become [`Some(_)`].\
+        /// Casts/transitions from non-[`NON_NULL`] to [`NON_NULL`] will become [`_.unwrap()`].
+        ///
+        /// [`_.is_null()`] on a [`NON_NULL`] pointer will become [`false`].\
+        /// [`_.is_null()`] on a non-[`NON_NULL`] pointer will become [`_.is_some()`].
+        ///
+        /// Constant null pointers, like those produced by:
+        /// * [`core::ptr::null`]
+        /// * [`core::ptr::null_mut`]
+        /// * [`core::ptr::from_exposed_addr`] with the constant `0`
+        /// * `0 as * {const,mut} _`, a cast from the constant `0` to a pointer type
+        ///
+        /// will become [`None`].
+        ///
+        /// [`NON_NULL`]: Self::NON_NULL
+        /// [`READ`]: Self::READ
+        /// [`WRITE`]: Self::WRITE
+        /// [`_.offset`]: core::ptr::offset
+        /// [`NonNull::dangling`]: core::ptr::NonNull::dangling
+        /// [`Some(_)`]: Some
+        /// [`_.unwrap()`]: Option::unwrap
+        /// [`_.is_null()`]: core::ptr::is_null
+        /// [`_.is_some()`]: Option::is_some
+        const NON_NULL = 0x0080;
     }
+}
+
+impl PermissionSet {
+    /// The permissions for a (byte-)string literal.
+    //
+    // `.union` is used here since it's a `const fn`, unlike `BitOr::bitor`.
+    pub const STRING_LITERAL: Self = Self::READ.union(Self::OFFSET_ADD);
 }
 
 bitflags! {
@@ -76,6 +157,8 @@ pub struct GlobalAnalysisCtxt<'tcx> {
 
     pub field_tys: HashMap<DefId, LTy<'tcx>>,
 
+    pub static_tys: HashMap<DefId, LTy<'tcx>>,
+
     next_ptr_id: NextGlobalPointerId,
 }
 
@@ -84,19 +167,52 @@ pub struct AnalysisCtxt<'a, 'tcx> {
 
     pub local_decls: &'a LocalDecls<'tcx>,
     pub local_tys: IndexVec<Local, LTy<'tcx>>,
+    pub c_void_casts: CVoidCasts<'tcx>,
     pub addr_of_local: IndexVec<Local, PointerId>,
     /// Types for certain [`Rvalue`]s.  Some `Rvalue`s introduce fresh [`PointerId`]s; to keep
     /// those `PointerId`s consistent, the `Rvalue`'s type must be stored rather than recomputed on
     /// the fly.
     pub rvalue_tys: HashMap<Location, LTy<'tcx>>,
 
+    /// [`Location`]s of (byte-)string literal [`rvalue_tys`](Self::rvalue_tys).
+    pub string_literal_locs: Vec<Location>,
+
     next_ptr_id: NextLocalPointerId,
+}
+
+impl<'a, 'tcx> AnalysisCtxt<'_, 'tcx> {
+    pub fn string_literal_tys(&'a self) -> impl Iterator<Item = LTy<'tcx>> + 'a {
+        self.string_literal_locs
+            .iter()
+            .map(|loc| self.rvalue_tys[loc])
+    }
+
+    pub fn string_literal_perms(
+        &'a self,
+    ) -> impl Iterator<Item = (PointerId, PermissionSet)> + PhantomLifetime<'tcx> + 'a {
+        self.string_literal_tys()
+            .map(|lty| (lty.label, PermissionSet::STRING_LITERAL))
+    }
+
+    pub fn check_string_literal_perms(&self, asn: &Assignment) {
+        for lty in self.string_literal_tys() {
+            let ptr = lty.label;
+            let expected_perms = PermissionSet::STRING_LITERAL;
+            let mut actual_perms = asn.perms()[ptr];
+            // Ignore `UNIQUE` as it gets automatically added to all permissions
+            // and then removed later if it can't apply.
+            // We don't care about `UNIQUE` for const refs, so just unset it here.
+            actual_perms.set(PermissionSet::UNIQUE, false);
+            assert_eq!(expected_perms, actual_perms);
+        }
+    }
 }
 
 pub struct AnalysisCtxtData<'tcx> {
     local_tys: IndexVec<Local, LTy<'tcx>>,
     addr_of_local: IndexVec<Local, PointerId>,
     rvalue_tys: HashMap<Location, LTy<'tcx>>,
+    string_literal_locs: Vec<Location>,
     next_ptr_id: NextLocalPointerId,
 }
 
@@ -107,6 +223,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             lcx: LabeledTyCtxt::new(tcx),
             fn_sigs: HashMap::new(),
             field_tys: HashMap::new(),
+            static_tys: HashMap::new(),
             next_ptr_id: NextGlobalPointerId::new(),
         }
     }
@@ -144,6 +261,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             lcx,
             ref mut fn_sigs,
             ref mut field_tys,
+            ref mut static_tys,
             ref mut next_ptr_id,
         } = *self;
 
@@ -161,7 +279,16 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             *labeled_field = remap_lty_pointers(lcx, map, labeled_field);
         }
 
+        for labeled_static in static_tys.values_mut() {
+            *labeled_static = remap_lty_pointers(lcx, map, labeled_static);
+        }
+
         *next_ptr_id = counter;
+    }
+
+    pub fn assign_pointer_to_static(&mut self, did: DefId) {
+        let lty = self.assign_pointer_ids(self.tcx.static_ptr_ty(did));
+        self.static_tys.insert(did, lty);
     }
 
     pub fn assign_pointer_to_field(&mut self, field: &FieldDef) {
@@ -181,12 +308,15 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         gacx: &'a mut GlobalAnalysisCtxt<'tcx>,
         mir: &'a Body<'tcx>,
     ) -> AnalysisCtxt<'a, 'tcx> {
+        let tcx = gacx.tcx;
         AnalysisCtxt {
             gacx,
             local_decls: &mir.local_decls,
             local_tys: IndexVec::new(),
+            c_void_casts: CVoidCasts::new(mir, tcx),
             addr_of_local: IndexVec::new(),
             rvalue_tys: HashMap::new(),
+            string_literal_locs: Default::default(),
             next_ptr_id: NextLocalPointerId::new(),
         }
     }
@@ -200,14 +330,17 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             local_tys,
             addr_of_local,
             rvalue_tys,
+            string_literal_locs,
             next_ptr_id,
         } = data;
         AnalysisCtxt {
             gacx,
             local_decls: &mir.local_decls,
             local_tys,
+            c_void_casts: CVoidCasts::default(),
             addr_of_local,
             rvalue_tys,
+            string_literal_locs,
             next_ptr_id,
         }
     }
@@ -217,6 +350,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             local_tys: self.local_tys,
             addr_of_local: self.addr_of_local,
             rvalue_tys: self.rvalue_tys,
+            string_literal_locs: self.string_literal_locs,
             next_ptr_id: self.next_ptr_id,
         }
     }
@@ -314,58 +448,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                 unreachable!("should be handled by describe_rvalue case above")
             }
             Rvalue::ThreadLocalRef(..) => todo!("type_of ThreadLocalRef"),
-            Rvalue::Cast(CastKind::Pointer(PointerCast::Unsize), ref op, ty) => {
-                let pointee_ty = match *ty.kind() {
-                    TyKind::Ref(_, ty, _) => ty,
-                    TyKind::RawPtr(tm) => tm.ty,
-                    _ => unreachable!("unsize cast has non-pointer output {:?}?", ty),
-                };
-
-                let op_lty = self.type_of(op);
-                assert!(matches!(
-                    op_lty.kind(),
-                    TyKind::Ref(..) | TyKind::RawPtr(..)
-                ));
-                assert_eq!(op_lty.args.len(), 1);
-                let op_pointee_lty = op_lty.args[0];
-
-                match *pointee_ty.kind() {
-                    TyKind::Slice(elem_ty) => {
-                        assert!(matches!(op_pointee_lty.kind(), TyKind::Array(..)));
-                        assert_eq!(op_pointee_lty.args.len(), 1);
-                        let elem_lty = op_pointee_lty.args[0];
-                        assert_eq!(elem_lty.ty, elem_ty);
-                        assert_eq!(op_pointee_lty.label, PointerId::NONE);
-
-                        let pointee_lty =
-                            self.lcx()
-                                .mk(pointee_ty, op_pointee_lty.args, op_pointee_lty.label);
-                        let args = self.lcx().mk_slice(&[pointee_lty]);
-                        self.lcx().mk(ty, args, op_lty.label)
-                    }
-                    _ => label_no_pointers(self, ty),
-                }
-            }
-            Rvalue::Cast(_, ref op, ty) => {
-                let op_lty = self.type_of(op);
-
-                // We only support pointer casts when:
-                // * both types are pointers
-                // * they have compatible (safely transmutable) pointee types
-                // Safe transmutability is difficult to check abstractly,
-                // so we limit it to integer types of the same size
-                // (but potentially different signedness).
-                // In particular, this allows casts from `*u8` to `*core::ffi::c_char`.
-                let from_ty = op_lty.ty;
-                let to_ty = ty;
-                match is_transmutable_ptr_cast(from_ty, to_ty) {
-                    // Label the to type with the same [`PointerId`]s as the from type in all positions.
-                    // This works because the two types have the same structure.
-                    Some(true) => self.lcx().mk(ty, op_lty.args, op_lty.label),
-                    Some(false) => todo!("unsupported ptr-to-ptr cast between pointee types not yet supported as safely transmutable: `{from_ty:?} as {to_ty:?}`"),
-                    None => label_no_pointers(self, ty),
-                }
-            }
+            Rvalue::Cast(..) => panic!("Cast should be present in rvalue_tys"),
             Rvalue::Len(..)
             | Rvalue::BinaryOp(..)
             | Rvalue::CheckedBinaryOp(..)
@@ -381,7 +464,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     }
 
     pub fn project(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
-        let adt_func = |_lty: LTy, adt_def: AdtDef, field: Field| {
+        let projection_lty = |_lty: LTy, adt_def: AdtDef, field: Field| {
             let field_def = &adt_def.non_enum_variant().fields[field.index()];
             let field_def_name = field_def.name;
             eprintln!("projecting into {adt_def:?}.{field_def_name:}");
@@ -390,7 +473,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             });
             res
         };
-        util::lty_project(lty, proj, adt_func)
+        util::lty_project(lty, proj, projection_lty)
     }
 }
 
@@ -404,12 +487,13 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
         map: PointerTable<PointerId>,
         counter: NextLocalPointerId,
     ) {
-        let AnalysisCtxtData {
-            ref mut local_tys,
-            ref mut addr_of_local,
-            ref mut rvalue_tys,
-            ref mut next_ptr_id,
-        } = *self;
+        let Self {
+            local_tys,
+            addr_of_local,
+            rvalue_tys,
+            string_literal_locs: _,
+            next_ptr_id,
+        } = self;
 
         for lty in local_tys {
             *lty = remap_lty_pointers(lcx, &map, lty);
@@ -486,18 +570,58 @@ impl<'tcx> TypeOf<'tcx> for PlaceRef<'tcx> {
     }
 }
 
+fn const_alloc_id(c: &Constant) -> Option<AllocId> {
+    if let ConstantKind::Val(ConstValue::Scalar(interpret::Scalar::Ptr(ptr, _)), _ty) = c.literal {
+        return Some(ptr.provenance);
+    }
+    None
+}
+
+fn find_static_for_alloc(tcx: &TyCtxt, id: AllocId) -> Option<DefId> {
+    match tcx.try_get_global_alloc(id) {
+        None => {} //hmm, ok
+        Some(GlobalAlloc::Static(did)) => {
+            if !tcx.is_foreign_item(did) {
+                // local static referenced
+                return Some(did);
+            }
+        }
+        Some(_) => {}
+    }
+    None
+}
+
 impl<'tcx> TypeOf<'tcx> for Operand<'tcx> {
     fn type_of(&self, acx: &AnalysisCtxt<'_, 'tcx>) -> LTy<'tcx> {
         match *self {
             Operand::Move(pl) | Operand::Copy(pl) => acx.type_of(pl),
-            Operand::Constant(ref c) => label_no_pointers(acx, c.ty()),
+            Operand::Constant(ref c) => {
+                // Constants of pointer type should only be pointers into static allocations.
+                // Find the defid of the static and look up the pointer ID in gacx.static_tys
+                if c.ty().is_any_ptr() {
+                    if let Some(alloc_id) = const_alloc_id(c) {
+                        if let Some(did) = find_static_for_alloc(&acx.gacx.tcx, alloc_id) {
+                            match acx.gacx.static_tys.get(&did) {
+                                Some(lty) => lty,
+                                None => panic!("did {:?} not found", did),
+                            }
+                        } else {
+                            panic!("no static found for alloc id {:?}", alloc_id)
+                        }
+                    } else {
+                        panic!("constant was of ptr type but not a Scalar pointing into a static allocation: {:?}", c)
+                    }
+                } else {
+                    label_no_pointers(acx, c.ty())
+                }
+            }
         }
     }
 }
 
 /// Label a type that contains no pointer types by applying `PointerId::NONE` everywhere.  Panics
 /// if the type does contain pointers.
-fn label_no_pointers<'tcx>(acx: &AnalysisCtxt<'_, 'tcx>, ty: Ty<'tcx>) -> LTy<'tcx> {
+pub fn label_no_pointers<'tcx>(acx: &AnalysisCtxt<'_, 'tcx>, ty: Ty<'tcx>) -> LTy<'tcx> {
     acx.lcx().label(ty, &mut |inner_ty| {
         assert!(
             !matches!(inner_ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)),

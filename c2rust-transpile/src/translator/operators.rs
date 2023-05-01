@@ -816,7 +816,7 @@ impl<'c> Translation<'c> {
         let ty = self.convert_type(ctype)?;
         let resolved_ctype = self.ast_context.resolve_type(ctype);
 
-        match name {
+        let mut unary = match name {
             c_ast::UnOp::AddressOf => {
                 let arg_kind = &self.ast_context[arg].kind;
 
@@ -944,6 +944,14 @@ impl<'c> Translation<'c> {
             c_ast::UnOp::Real | c_ast::UnOp::Imag | c_ast::UnOp::Coawait => {
                 panic!("Unsupported extension operator")
             }
+        }?;
+
+        // Unused unary operators (`-foo()`) may have side effects, so we need
+        // to add them to stmts.
+        if ctx.is_unused() {
+            let v = unary.clone().into_value();
+            unary.stmts_mut().push(Stmt::Semi(*v, Default::default()));
         }
+        Ok(unary)
     }
 }
