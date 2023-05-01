@@ -10,6 +10,7 @@ use rustc_middle::mir::{
     AggregateKind, BinOp, Body, CastKind, Location, Mutability, Operand, Place, PlaceRef,
     ProjectionElem, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
+use rustc_middle::ty::adjustment::PointerCast;
 use rustc_middle::ty::{SubstsRef, Ty, TyKind};
 
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
@@ -111,11 +112,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 }
             }
             _ => {
-                // TODO add dataflow constraints
                 match is_transmutable_ptr_cast(from_ty, to_ty) {
-                    Some(true) => {},
+                    Some(true) => {
+                        if cast_kind == CastKind::Pointer(PointerCast::Unsize) {
+                            self.do_assign_pointer_ids(to_lty.label, from_lty.label)
+                        }
+                        // TODO add other dataflow constraints
+                    },
                     Some(false) => ::log::error!("TODO: unsupported ptr-to-ptr cast between pointee types not yet supported as safely transmutable: `{from_ty:?} as {to_ty:?}`"),
-                    None => {}, // not a ptr cast; let rustc typeck this
+                    None => {}, // not a ptr cast (no dataflow constraints needed); let rustc typeck this
                 };
             }
         }
