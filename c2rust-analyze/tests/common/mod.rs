@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     env,
     fmt::{self, Display, Formatter},
     fs::{self, File},
@@ -92,7 +93,7 @@ impl Analyze {
         Self { path }
     }
 
-    fn run_(&self, rs_path: &Path) -> PathBuf {
+    fn run_with_(&self, rs_path: &Path, mut modify_cmd: impl FnMut(&mut Command)) -> PathBuf {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
         let lib_dir = Path::new(env!("C2RUST_TARGET_LIB_DIR"));
 
@@ -117,6 +118,7 @@ impl Analyze {
             .stdout(output_stdout)
             .stderr(output_stderr);
         cmd.envs(args.env.iter().map(|EnvVar { var, value }| (var, value)));
+        modify_cmd(&mut cmd);
         let status = cmd.status().unwrap();
         if !status.success() && !args.allow_crash {
             let message = format!(
@@ -128,8 +130,16 @@ impl Analyze {
         output_path
     }
 
+    pub fn run_with(
+        &self,
+        rs_path: impl AsRef<Path>,
+        modify_cmd: impl FnMut(&mut Command),
+    ) -> PathBuf {
+        self.run_with_(rs_path.as_ref(), modify_cmd)
+    }
+
     pub fn run(&self, rs_path: impl AsRef<Path>) -> PathBuf {
-        self.run_(rs_path.as_ref())
+        self.run_with(rs_path, |_| {})
     }
 }
 
@@ -170,4 +180,55 @@ impl FileCheck {
     pub fn run(&self, path: impl AsRef<Path>, input: impl AsRef<Path>) {
         self.run_(path.as_ref(), input.as_ref())
     }
+}
+
+fn list_all_tests<C: FromIterator<String>>() -> C {
+    let current_exe = env::current_exe().unwrap();
+    let output = Command::new(&current_exe)
+        .args(["--list"])
+        .output()
+        .unwrap();
+    let stdout = std::str::from_utf8(&output.stdout).unwrap();
+    stdout
+        .lines()
+        .filter_map(|s| s.strip_suffix(": test"))
+        .map(|s| s.to_owned())
+        .collect()
+}
+
+fn get_absolute_main_test_path(main_test_path: &Path) -> PathBuf {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir
+        .join("tests")
+        .join(main_test_path.file_name().unwrap())
+}
+
+fn test_dir_for(main_test_path: &Path) -> PathBuf {
+    main_test_path
+        .parent()
+        .unwrap()
+        .join(main_test_path.file_stem().unwrap())
+}
+
+fn list_all_test_filestems_in(dir: &Path) -> impl Iterator<Item = String> {
+    dir.read_dir()
+        .unwrap()
+        .map(|dirent| dirent.unwrap())
+        .map(|dirent| dirent.file_name().into_string().unwrap())
+        .filter_map(|file_name| file_name.strip_suffix(".rs").map(|s| s.to_owned()))
+}
+
+pub fn check_for_missing_tests_for(main_test_path: impl AsRef<Path>) {
+    let main_test_path = main_test_path.as_ref();
+    let abs_test_dir = test_dir_for(&get_absolute_main_test_path(main_test_path));
+    let rel_test_dir = test_dir_for(main_test_path);
+    let test_names = list_all_tests::<HashSet<_>>();
+    let missing_tests = list_all_test_filestems_in(&abs_test_dir)
+        .filter(|test_name| !test_names.contains(test_name))
+        .collect::<Vec<_>>();
+    for test_name in &missing_tests {
+        let test_path = rel_test_dir.join(format!("{test_name}.rs"));
+        eprintln!("missing a `#[test] fn {test_name}` for {test_path:?}");
+    }
+    assert!(missing_tests.is_empty(), "see missing tests above");
 }

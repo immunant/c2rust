@@ -1,30 +1,61 @@
 pub mod common;
 
-use std::fs;
+use std::path::PathBuf;
 
-use common::{Analyze, FileCheck};
+use crate::common::{check_for_missing_tests_for, Analyze, FileCheck};
 
 #[test]
-fn filecheck() {
+fn check_for_missing_tests() {
+    check_for_missing_tests_for(file!());
+}
+
+fn test(file_name: &str) {
     let analyze = Analyze::resolve();
     let file_check = FileCheck::resolve();
+    let path = ["tests", "filecheck", file_name]
+        .iter()
+        .collect::<PathBuf>();
+    let output_path = analyze.run(&path);
+    file_check.run(&path, &output_path);
+}
 
-    for entry in fs::read_dir("tests/filecheck").unwrap() {
-        let entry = entry.unwrap();
-
-        if !entry.file_type().unwrap().is_file() {
-            continue;
+macro_rules! define_test {
+    ($name:ident) => {
+        #[test]
+        fn $name() {
+            test(concat!(stringify!($name), ".rs"));
         }
+    };
+}
 
-        let name = entry.file_name();
-        let name = name.to_str().unwrap();
-        if name.starts_with('.') || !name.ends_with(".rs") {
-            continue;
-        }
-
-        eprintln!("{:?}", entry.path());
-
-        let output_path = analyze.run(entry.path());
-        file_check.run(entry.path(), &output_path);
+macro_rules! define_tests {
+    ($($name:ident,)*) => {
+        $(define_test! { $name })*
     }
+}
+
+define_tests! {
+    addr_of,
+    aggregate1,
+    alias1,
+    alias2,
+    alias3,
+    alloc,
+    as_ptr,
+    call1,
+    cast,
+    cell,
+    clone1,
+    extern_fn1,
+    fields,
+    field_temp,
+    insertion_sort,
+    insertion_sort_driver,
+    insertion_sort_rewrites,
+    offset1,
+    offset2,
+    ptrptr1,
+    statics,
+    trivial,
+    type_annotation_rewrite,
 }
