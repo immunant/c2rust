@@ -11,8 +11,9 @@ pub fn cast_slice_ptr_to_ptr(s: *const [u8]) {
 }
 
 /// For the below disabled (`#[cfg(any())]`ed) tests, they currently crash in the rewriter
-/// due to it not being able to handle implicitly inserted `std::ptr::addr_of!`s yet.
-/// Thus, they also have `*_explicit` versions where the `addr_of!` is made explicit.
+/// due to it not being able to handle implicitly inserted `&raw` MIR statements yet.
+/// Thus, they also have `*_explicit` versions where
+/// a `std::ptr::addr_of!` is used to make the `&raw` explicit.
 ///
 /// Also note that `addr_of!` (with a `use std::ptr::addr_of`)
 /// and `::core::ptr::addr_of!` don't work either,
