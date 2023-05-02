@@ -20,6 +20,19 @@ pub fn cast_array_to_ptr(s: &[u8; 0]) {
     s as *const u8;
 }
 
+/// An explicit version of `cast_array_to_ptr` above
+/// where we use an explicit `std::ptr::addr_of!`
+/// instead of having one inserted.
+/// The rewriter can only currently handle explicit ones.
+///
+/// Also note that `addr_of!` (with a `use std::ptr::addr_of`)
+/// and `::core::ptr::addr_of!` don't work either,
+/// though `std::ptr::addr_of`, `::std::ptr::addr_of!`,
+/// and `core::ptr::addr_of!` do work.
+pub fn cast_array_to_ptr_explicit(s: &[u8; 0]) {
+    std::ptr::addr_of!(*s) as *const u8;
+}
+
 #[cfg(any())]
 pub fn cast_from_literal() {
     b"" as *const u8 as *const core::ffi::c_char;
