@@ -62,43 +62,79 @@ impl PanicDetail {
     }
 }
 
+enum PanicState {
+    /// The current thread is not in a `panic_detail::catch_unwind` call.
+    OutsideCatchUnwind,
+    /// The current thread is inside a `panic_detail::catch_unwind` call, but no panic has occurred
+    /// yet.
+    InsideCatchUnwind,
+    /// The current thread panicked while inside `panic_detail::catch_unwind`, producing a
+    /// `PanicDetail`, and is in the process of unwinding.
+    Unwinding(PanicDetail),
+}
+
 thread_local! {
-    static CURRENT_PANIC_DETAIL: Cell<Option<PanicDetail>> = Cell::new(None);
+    static CURRENT_PANIC_DETAIL: Cell<PanicState> =
+        Cell::new(PanicState::OutsideCatchUnwind);
 }
 
 /// Panic hook for use with [`std::panic::set_hook`].  This builds a `PanicDetail` for each panic
 /// and stores it for later retrieval by [`take_current`].
-pub fn panic_hook(info: &PanicInfo) {
-    let bt = Backtrace::new();
-    let detail = PanicDetail {
-        msg: panic_to_string(info.payload()),
-        loc: info.location().map(|l| l.to_string()),
-        relevant_loc: guess_relevant_loc(&bt),
-        backtrace: Some(bt),
-        span: CURRENT_SPAN.with(|cell| cell.get()),
-    };
-    let old = CURRENT_PANIC_DETAIL.with(|cell| cell.replace(Some(detail)));
-    if let Some(old) = old {
-        warn!("discarding old panic detail: {:?}", old);
-    }
-}
+pub fn panic_hook(default_hook: &dyn Fn(&PanicInfo), info: &PanicInfo) {
+    CURRENT_PANIC_DETAIL.with(|cell| {
+        // Take the old value, replacing it with something arbitrary.
+        let old = cell.replace(PanicState::OutsideCatchUnwind);
+        match old {
+            PanicState::OutsideCatchUnwind => {
+                // No special behavior is needed.  Call the default panic hook instead.
+                default_hook(info);
+                return;
+            }
+            PanicState::InsideCatchUnwind => {}
+            PanicState::Unwinding(pd) => {
+                warn!("discarding old panic detail: {:?}", pd);
+            }
+        }
 
-/// Get the [`PanicDetail`] of the most recent panic.  This clears the internal storage, so if this
-/// is called twice in a row without an intervening panic, the second call always returns `None`.
-fn take_current() -> Option<PanicDetail> {
-    CURRENT_PANIC_DETAIL.with(|cell| cell.take())
+        // We are inside `panic_detail::catch_unwind`.  Build a `PanicDetail` for this panic and
+        // save it.
+        let bt = Backtrace::new();
+        let detail = PanicDetail {
+            msg: panic_to_string(info.payload()),
+            loc: info.location().map(|l| l.to_string()),
+            relevant_loc: guess_relevant_loc(&bt),
+            backtrace: Some(bt),
+            span: CURRENT_SPAN.with(|cell| cell.get()),
+        };
+        cell.set(PanicState::Unwinding(detail));
+    });
 }
 
 /// Like `std::panic::catch_unwind`, but returns a `PanicDetail` instead of `Box<dyn Any>` on
 /// panic.
 pub fn catch_unwind<F: FnOnce() -> R + UnwindSafe, R>(f: F) -> Result<R, PanicDetail> {
-    panic::catch_unwind(f).map_err(|e| {
-        take_current().unwrap_or_else(|| {
-            let msg = panic_to_string(&e);
-            warn!("missing panic detail; caught message {:?}", msg);
-            PanicDetail::new(msg)
-        })
-    })
+    let old = CURRENT_PANIC_DETAIL.with(|cell| cell.replace(PanicState::InsideCatchUnwind));
+    let r = panic::catch_unwind(f);
+    let new = CURRENT_PANIC_DETAIL.with(|cell| cell.replace(old));
+
+    match r {
+        Ok(x) => {
+            debug_assert!(matches!(new, PanicState::InsideCatchUnwind));
+            Ok(x)
+        }
+        Err(e) => {
+            debug_assert!(!matches!(new, PanicState::OutsideCatchUnwind));
+            let pd = match new {
+                PanicState::Unwinding(pd) => pd,
+                _ => {
+                    let msg = panic_to_string(&e);
+                    warn!("missing panic detail; caught message {:?}", msg);
+                    PanicDetail::new(msg)
+                }
+            };
+            Err(pd)
+        }
+    }
 }
 
 /// Crude heuristic to guess the first interesting location in a [`Backtrace`], skipping over

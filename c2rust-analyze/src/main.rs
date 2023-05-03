@@ -937,7 +937,10 @@ impl rustc_driver::Callbacks for AnalysisCallbacks {
 
 fn main() -> rustc_interface::interface::Result<()> {
     init_logger();
-    panic::set_hook(Box::new(panic_detail::panic_hook));
+    let default_panic_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        panic_detail::panic_hook(&default_panic_hook, info)
+    }));
     let args = env::args().collect::<Vec<_>>();
     rustc_driver::RunCompiler::new(&args, &mut AnalysisCallbacks).run()
 }
