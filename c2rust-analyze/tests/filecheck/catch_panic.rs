@@ -15,15 +15,29 @@ unsafe fn bad(p: NonNull<u8>) {
     *p.as_ptr() = 1;
 }
 
-// Analysis of `bad2` should also fail because it has a callee on which analysis failed.
-// CHECK-NOT: final labeling for "bad2"
-unsafe fn bad2(p: NonNull<u8>) {
+// Analysis of `call_bad` should also fail because it has a callee on which analysis failed.
+// CHECK-NOT: final labeling for "call_bad"
+unsafe fn call_bad(p: NonNull<u8>) {
     bad(p);
+}
+
+// Analysis of this function fails, but it also calls `good`.  Failures should not propagate from
+// caller to callee (only callee to caller), so analysis of `good` should still succeed.
+// CHECK-NOT: final labeling for "bad_call_good"
+unsafe fn bad_call_good(p: NonNull<u8>) {
+    *p.as_ptr() = 1;
+    good(p.as_ptr());
 }
 
 // CHECK: analysis of DefId({{.*}}::bad) failed:
 // CHECK-SAME: UnknownDef
 // CHECK-SAME: NonNull::<u8>::as_ptr
 
-// CHECK: analysis of DefId({{.*}}::bad2) failed:
+// CHECK: analysis of DefId({{.*}}::call_bad) failed:
 // CHECK-SAME: analysis failed on callee DefId({{.*}}::bad)
+
+// CHECK: analysis of DefId({{.*}}::bad_call_good) failed:
+// CHECK-SAME: UnknownDef
+// CHECK-SAME: NonNull::<u8>::as_ptr
+
+// CHECK: saw errors in 3 / 4 functions
