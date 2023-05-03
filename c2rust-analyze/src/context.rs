@@ -137,6 +137,12 @@ bitflags! {
         /// way, and it can't be freely discarded (or its inverse freely added) as is the case for
         /// everything in `PermissionSet`.
         const CELL = 0x0001;
+
+        /// This pointer's type is fixed; rewrites must not change it.  This is used for all safe
+        /// references (which we assume already have the correct types), for raw pointers that
+        /// cross an FFI boundary, and for arguments and return values of functions we can't
+        /// rewrite.
+        const FIXED = 0x0002;
     }
 }
 
@@ -436,6 +442,10 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         self.gacx.ptr_info.and(&self.ptr_info)
     }
 
+    pub fn local_ptr_info(&self) -> &LocalPointerTable<PointerInfo> {
+        &self.ptr_info
+    }
+
     pub fn type_of<T: TypeOf<'tcx>>(&self, x: T) -> LTy<'tcx> {
         x.type_of(self)
     }
@@ -578,6 +588,10 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
         for lty in rvalue_tys.values_mut() {
             *lty = remap_lty_pointers(lcx, &map, lty);
         }
+    }
+
+    pub fn local_ptr_info(&self) -> &LocalPointerTable<PointerInfo> {
+        &self.ptr_info
     }
 
     pub fn num_pointers(&self) -> usize {

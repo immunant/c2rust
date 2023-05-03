@@ -641,9 +641,22 @@ fn run(tcx: TyCtxt) {
 
     let mut gasn =
         GlobalAssignment::new(gacx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
+    for (ptr, info) in gacx.ptr_info().iter() {
+        if info.contains(PointerInfo::REF) {
+            gasn.flags[ptr].insert(FlagSet::FIXED);
+        }
+    }
+
     for info in func_info.values_mut() {
         let num_pointers = info.acx_data.num_pointers();
-        let lasn = LocalAssignment::new(num_pointers, PermissionSet::UNIQUE, FlagSet::empty());
+        let mut lasn = LocalAssignment::new(num_pointers, PermissionSet::UNIQUE, FlagSet::empty());
+
+        for (ptr, info) in info.acx_data.local_ptr_info().iter() {
+            if info.contains(PointerInfo::REF) {
+                lasn.flags[ptr].insert(FlagSet::FIXED);
+            }
+        }
+
         info.lasn.set(lasn);
     }
 
