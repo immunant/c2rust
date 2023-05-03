@@ -5,11 +5,14 @@
 //! selectively, since we don't want to unfold all type aliases in the program.
 
 use std::collections::HashMap;
+use std::ops::Index;
 
-use crate::context::{AnalysisCtxt, Assignment, LTy};
+use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
+use crate::pointer_id::PointerId;
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
+use hir::{ItemKind, VariantData};
 use rustc_ast::ast;
 use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Namespace, Res};
@@ -23,6 +26,8 @@ use rustc_middle::ty::subst::GenericArg;
 use rustc_middle::ty::{self, ReErased, TyCtxt};
 use rustc_span::Span;
 
+use super::LifetimeType;
+
 /// A label for use with `LabeledTy` to indicate what rewrites to apply at each position in a type.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 struct RewriteLabel {
@@ -34,19 +39,22 @@ struct RewriteLabel {
 
 type RwLTy<'tcx> = LabeledTy<'tcx, RewriteLabel>;
 
-/// Given an `LTy`, which is labeled with `PointerId`s, determine which rewrites to apply based on
-/// the permissions and flags inferred for each `PointerId`.
-fn relabel_rewrites<'tcx>(
-    asn: &Assignment,
+fn relabel_rewrites<'tcx, P, F>(
+    perms: &P,
+    flags: &F,
     lcx: LabeledTyCtxt<'tcx, RewriteLabel>,
     lty: LTy<'tcx>,
-) -> RwLTy<'tcx> {
+) -> RwLTy<'tcx>
+where
+    P: Index<PointerId, Output = PermissionSet>,
+    F: Index<PointerId, Output = FlagSet>,
+{
     lcx.relabel_with_args(lty, &mut |lty, args| {
         let ty_desc = if lty.label.is_none() {
             None
         } else {
-            let perms = asn.perms()[lty.label];
-            let flags = asn.flags()[lty.label];
+            let perms = perms[lty.label];
+            let flags = flags[lty.label];
             // TODO: if the `Ownership` and `Quantity` exactly match `lty.ty`, then `ty_desc` can
             // be `None` (no rewriting required).  This might let us avoid inlining a type alias
             // for some pointers where no actual improvement was possible.
@@ -264,7 +272,12 @@ struct HirTyVisitor<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
-    fn handle_ty(&mut self, rw_lty: RwLTy<'tcx>, hir_ty: &hir::Ty<'tcx>) {
+    fn handle_ty(
+        &mut self,
+        rw_lty: RwLTy<'tcx>,
+        hir_ty: &hir::Ty<'tcx>,
+        lifetime_type: LifetimeType,
+    ) {
         if rw_lty.label.ty_desc.is_none() && !rw_lty.label.descendant_has_rewrite {
             // No rewrites here or in any descendant of this HIR node.
             return;
@@ -304,9 +317,9 @@ impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
             rw = match own {
                 Ownership::Raw => Rewrite::TyPtr(Box::new(rw), Mutability::Not),
                 Ownership::RawMut => Rewrite::TyPtr(Box::new(rw), Mutability::Mut),
-                Ownership::Imm => Rewrite::TyRef(Box::new(rw), Mutability::Not),
-                Ownership::Cell => Rewrite::TyRef(Box::new(rw), Mutability::Not),
-                Ownership::Mut => Rewrite::TyRef(Box::new(rw), Mutability::Mut),
+                Ownership::Imm => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
+                Ownership::Cell => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
+                Ownership::Mut => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Mut),
                 Ownership::Rc => todo!(),
                 Ownership::Box => todo!(),
             };
@@ -316,7 +329,8 @@ impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
 
         if rw_lty.label.descendant_has_rewrite {
             for (&arg_rw_lty, arg_hir_ty) in rw_lty.args.iter().zip(hir_args.into_iter()) {
-                self.handle_ty(arg_rw_lty, arg_hir_ty);
+                // FIXME: get the actual lifetime from ADT/Field Metadata
+                self.handle_ty(arg_rw_lty, arg_hir_ty, LifetimeType::Elided);
             }
         }
     }
@@ -329,6 +343,34 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
         self.acx.tcx().hir()
     }
 
+    fn visit_item(&mut self, item: &'tcx hir::Item<'tcx>) {
+        let field_ltys = &self.acx.gacx.field_ltys;
+        #[allow(clippy::single_match)]
+        match &item.kind {
+            ItemKind::Struct(VariantData::Struct(field_defs, _), _generics) => {
+                for field_def in field_defs.iter() {
+                    let fdid = self
+                        .acx
+                        .gacx
+                        .tcx
+                        .hir()
+                        .local_def_id(field_def.hir_id)
+                        .to_def_id();
+                    let f_lty = field_ltys[&fdid];
+                    let rw_lty =
+                        relabel_rewrites(&self.asn.perms(), &self.asn.flags(), self.rw_lcx, f_lty);
+                    // FIXME: get the actual lifetime from ADT/Field Metadata
+                    self.handle_ty(
+                        rw_lty,
+                        field_def.ty,
+                        LifetimeType::Explicit("'static".into()),
+                    );
+                }
+            }
+            _ => (),
+        }
+    }
+
     fn visit_stmt(&mut self, s: &'tcx hir::Stmt<'tcx>) {
         match s.kind {
             // A local with a user type annotation
@@ -337,9 +379,10 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
                     let mir_local_decl = &self.mir.local_decls[*mir_local];
                     assert_eq!(mir_local_decl.source_info.span, hir_local.pat.span);
                     let lty = self.acx.local_tys[*mir_local];
-                    let rw_lty = relabel_rewrites(self.asn, self.rw_lcx, lty);
+                    let rw_lty =
+                        relabel_rewrites(&self.asn.perms(), &self.asn.flags(), self.rw_lcx, lty);
                     let hir_ty = hir_local.ty.unwrap();
-                    self.handle_ty(rw_lty, hir_ty);
+                    self.handle_ty(rw_lty, hir_ty, LifetimeType::Elided);
                 }
             }
             _ => (),
@@ -380,24 +423,25 @@ pub fn gen_ty_rewrites<'tcx>(
 
     assert_eq!(lty_sig.inputs.len(), hir_sig.decl.inputs.len());
     for (&lty, hir_ty) in lty_sig.inputs.iter().zip(hir_sig.decl.inputs.iter()) {
-        let rw_lty = relabel_rewrites(asn, rw_lcx, lty);
-        v.handle_ty(rw_lty, hir_ty);
+        let rw_lty = relabel_rewrites(&asn.perms(), &asn.flags(), rw_lcx, lty);
+        v.handle_ty(rw_lty, hir_ty, LifetimeType::Elided);
     }
 
     if let hir::FnRetTy::Return(hir_ty) = hir_sig.decl.output {
-        let rw_lty = relabel_rewrites(asn, rw_lcx, lty_sig.output);
-        v.handle_ty(rw_lty, hir_ty);
+        let rw_lty = relabel_rewrites(&asn.perms(), &asn.flags(), rw_lcx, lty_sig.output);
+        v.handle_ty(rw_lty, hir_ty, LifetimeType::Elided);
     }
 
     let hir_body_id = acx.tcx().hir().body_owned_by(ldid);
     let body = acx.tcx().hir().body(hir_body_id);
     intravisit::Visitor::visit_body(&mut v, body);
 
-    // TODO: wrap locals in `Cell` if `addr_of_local` indicates that it's needed
+    for item in acx.gacx.tcx.hir().items() {
+        let item = acx.gacx.tcx.hir().item(item);
+        intravisit::Visitor::visit_item(&mut v, item);
+    }
 
     // TODO: update cast RHS types
-
-    // TODO: update struct field types
 
     v.hir_rewrites
 }
@@ -414,7 +458,7 @@ pub fn dump_rewritten_local_tys<'tcx>(
     let rw_lcx = LabeledTyCtxt::new(acx.tcx());
     for (local, decl) in mir.local_decls.iter_enumerated() {
         // TODO: apply `Cell` if `addr_of_local` indicates it's needed
-        let rw_lty = relabel_rewrites(asn, rw_lcx, acx.local_tys[local]);
+        let rw_lty = relabel_rewrites(&asn.perms(), &asn.flags(), rw_lcx, acx.local_tys[local]);
         let ty = mk_rewritten_ty(rw_lcx, rw_lty);
         eprintln!(
             "{:?} ({}): {:?}",

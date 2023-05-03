@@ -71,3 +71,11 @@ unsafe fn _field_access<'d>(ra: &'d mut A<'d>, ppd: *mut *mut Data<'d>) {
     *(*(**ppd).pa).pra = ra;
     (*(**ppd).pa).pra = (*(**ppd).pa).pra;
 }
+
+// CHECK-DAG: pub struct Data<'d> {
+// CHECK-DAG: pub pi: &'static mut (i32),
+// CHECK-DAG: pub pa: &'static mut (A<'d>),
+
+// CHECK-DAG: pub struct A<'a> {
+// CHECK-DAG: pub rd: &'static (Data<'a>),
+// CHECK-DAG: pub pra: &'static core::cell::Cell<(&(A<'a>))>,

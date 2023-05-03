@@ -678,7 +678,7 @@ impl LocalAssignment {
 }
 
 pub struct Assignment<'a> {
-    global: &'a mut GlobalAssignment,
+    pub global: &'a mut GlobalAssignment,
     local: &'a mut LocalAssignment,
 }
 

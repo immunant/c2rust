@@ -5,6 +5,8 @@ use rustc_span::{BytePos, SourceFile, Span, SyntaxContext};
 use std::cmp::Reverse;
 use std::collections::HashMap;
 
+use super::LifetimeType;
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum RewriteError<S = Span> {
     /// The provided rewrite overlaps, but is not contained in, another rewrite.  `.0` is the span
@@ -318,11 +320,18 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
                 }
                 self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
             }
-            Rewrite::TyRef(ref rw, mutbl) => {
-                match mutbl {
-                    Mutability::Not => self.emit_str("&"),
-                    Mutability::Mut => self.emit_str("&mut "),
+            Rewrite::TyRef(ref lifetime, ref rw, mutbl) => {
+                self.emit_str("&");
+                if let LifetimeType::Explicit(lt) = lifetime {
+                    self.emit_str(lt);
+                    self.emit_str(" ");
                 }
+
+                if let Mutability::Mut = mutbl {
+                    self.emit_str("mut");
+                    self.emit_str(" ");
+                }
+                
                 self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
             }
             Rewrite::TySlice(ref rw) => {

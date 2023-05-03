@@ -755,6 +755,17 @@ fn run(tcx: TyCtxt) {
         eprintln!("{name:?}: perms = {ty_perms:?}, flags = {ty_flags:?}");
     }
 
+    eprintln!("\nfinal labeling for fields:");
+    for (did, field_lty) in gacx.field_ltys.iter() {
+        let name = tcx.item_name(*did);
+        let pid = field_lty.label;
+        if pid != PointerId::NONE {
+            let ty_perms = gasn.perms[pid];
+            let ty_flags = gasn.flags[pid];
+            eprintln!("{name:}: ({pid}) perms = {ty_perms:?}, flags = {ty_flags:?}");
+        }
+    }
+
     let static_rewrites = rewrite::gen_static_rewrites(&gacx, &gasn);
     eprintln!("generated {} static rewrites:", static_rewrites.len());
     for &(span, ref rw) in &static_rewrites {
