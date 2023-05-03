@@ -5,7 +5,7 @@ use rustc_span::{BytePos, SourceFile, Span, SyntaxContext};
 use std::cmp::Reverse;
 use std::collections::HashMap;
 
-use super::LifetimeType;
+use super::LifetimeName;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum RewriteError<S = Span> {
@@ -322,7 +322,7 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
             }
             Rewrite::TyRef(ref lifetime, ref rw, mutbl) => {
                 self.emit_str("&");
-                if let LifetimeType::Explicit(lt) = lifetime {
+                if let LifetimeName::Explicit(lt) = lifetime {
                     self.emit_str(lt);
                     self.emit_str(" ");
                 }

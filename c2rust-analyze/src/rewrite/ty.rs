@@ -26,7 +26,7 @@ use rustc_middle::ty::subst::GenericArg;
 use rustc_middle::ty::{self, ReErased, TyCtxt};
 use rustc_span::Span;
 
-use super::LifetimeType;
+use super::LifetimeName;
 
 /// A label for use with `LabeledTy` to indicate what rewrites to apply at each position in a type.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -276,7 +276,7 @@ impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
         &mut self,
         rw_lty: RwLTy<'tcx>,
         hir_ty: &hir::Ty<'tcx>,
-        lifetime_type: LifetimeType,
+        lifetime_type: LifetimeName,
     ) {
         if rw_lty.label.ty_desc.is_none() && !rw_lty.label.descendant_has_rewrite {
             // No rewrites here or in any descendant of this HIR node.
@@ -330,7 +330,7 @@ impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
         if rw_lty.label.descendant_has_rewrite {
             for (&arg_rw_lty, arg_hir_ty) in rw_lty.args.iter().zip(hir_args.into_iter()) {
                 // FIXME: get the actual lifetime from ADT/Field Metadata
-                self.handle_ty(arg_rw_lty, arg_hir_ty, LifetimeType::Elided);
+                self.handle_ty(arg_rw_lty, arg_hir_ty, LifetimeName::Elided);
             }
         }
     }
@@ -363,7 +363,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
                     self.handle_ty(
                         rw_lty,
                         field_def.ty,
-                        LifetimeType::Explicit("'static".into()),
+                        LifetimeName::Explicit("'static".into()),
                     );
                 }
             }
@@ -382,7 +382,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
                     let rw_lty =
                         relabel_rewrites(&self.asn.perms(), &self.asn.flags(), self.rw_lcx, lty);
                     let hir_ty = hir_local.ty.unwrap();
-                    self.handle_ty(rw_lty, hir_ty, LifetimeType::Elided);
+                    self.handle_ty(rw_lty, hir_ty, LifetimeName::Elided);
                 }
             }
             _ => (),
@@ -424,12 +424,12 @@ pub fn gen_ty_rewrites<'tcx>(
     assert_eq!(lty_sig.inputs.len(), hir_sig.decl.inputs.len());
     for (&lty, hir_ty) in lty_sig.inputs.iter().zip(hir_sig.decl.inputs.iter()) {
         let rw_lty = relabel_rewrites(&asn.perms(), &asn.flags(), rw_lcx, lty);
-        v.handle_ty(rw_lty, hir_ty, LifetimeType::Elided);
+        v.handle_ty(rw_lty, hir_ty, LifetimeName::Elided);
     }
 
     if let hir::FnRetTy::Return(hir_ty) = hir_sig.decl.output {
         let rw_lty = relabel_rewrites(&asn.perms(), &asn.flags(), rw_lcx, lty_sig.output);
-        v.handle_ty(rw_lty, hir_ty, LifetimeType::Elided);
+        v.handle_ty(rw_lty, hir_ty, LifetimeName::Elided);
     }
 
     let hir_body_id = acx.tcx().hir().body_owned_by(ldid);
