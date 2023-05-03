@@ -382,7 +382,7 @@ fn run(tcx: TyCtxt) {
 
         let mut acx = gacx.function_context(&mir);
 
-        let r = panic::catch_unwind(AssertUnwindSafe(|| {
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
             // Assign PointerIds to local types
             assert!(acx.local_tys.is_empty());
             acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
@@ -412,8 +412,8 @@ fn run(tcx: TyCtxt) {
 
         let (dataflow, equiv_constraints) = match r {
             Ok(x) => x,
-            Err(e) => {
-                gacx.mark_fn_failed(ldid.to_def_id(), panic_detail::catch(&e));
+            Err(pd) => {
+                gacx.mark_fn_failed(ldid.to_def_id(), pd);
                 continue;
             }
         };
@@ -519,7 +519,7 @@ fn run(tcx: TyCtxt) {
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
             let mut asn = gasn.and(&mut info.lasn);
 
-            let r = panic::catch_unwind(AssertUnwindSafe(|| {
+            let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
                 // `dataflow.propagate` and `borrowck_mir` both run until the assignment converges
                 // on a fixpoint, so there's no need to do multiple iterations here.
                 info.dataflow.propagate(&mut asn.perms_mut());
@@ -535,8 +535,8 @@ fn run(tcx: TyCtxt) {
             }));
             match r {
                 Ok(()) => {}
-                Err(e) => {
-                    gacx.mark_fn_failed(ldid.to_def_id(), panic_detail::catch(&e));
+                Err(pd) => {
+                    gacx.mark_fn_failed(ldid.to_def_id(), pd);
                     continue;
                 }
             }
@@ -597,7 +597,7 @@ fn run(tcx: TyCtxt) {
 
         eprintln!();
 
-        let r = panic::catch_unwind(AssertUnwindSafe(|| {
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
             let hir_body_id = tcx.hir().body_owned_by(ldid);
             let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
             let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
@@ -616,8 +616,8 @@ fn run(tcx: TyCtxt) {
         }));
         match r {
             Ok(()) => {}
-            Err(e) => {
-                gacx.mark_fn_failed(ldid.to_def_id(), panic_detail::catch(&e));
+            Err(pd) => {
+                gacx.mark_fn_failed(ldid.to_def_id(), pd);
                 continue;
             }
         }
