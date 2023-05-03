@@ -93,7 +93,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 }
                 prev_deref_ptr = Some(lty.label);
             }
-            lty = self.acx.project(lty, proj);
+            lty = self.acx.projection_lty(lty, proj);
         }
 
         if let Some(ptr) = prev_deref_ptr.take() {
@@ -231,7 +231,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         let fields = &base_adt_def.non_enum_variant().fields;
                         for (field, op) in fields.iter().zip(ops.iter()) {
                             let op_lty = self.acx.type_of(op);
-                            let unresolved_field_lty = self.acx.gacx.field_tys[&field.did];
+                            let unresolved_field_lty = self.acx.gacx.field_ltys[&field.did];
                             // resolve the generic type arguments in `field_lty` by referencing the `Ty` of `op`
                             let resolved_field_lty =
                                 self.acx.lcx().subst(unresolved_field_lty, rvalue_lty.args);

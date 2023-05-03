@@ -629,7 +629,7 @@ fn run(tcx: TyCtxt) {
             let mir = tcx.mir_built(ldid_const);
             let mir = mir.borrow();
 
-            let field_tys = gacx.field_tys.clone();
+            let field_ltys = gacx.field_ltys.clone();
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
             let mut asn = gasn.and(&mut info.lasn);
 
@@ -644,7 +644,7 @@ fn run(tcx: TyCtxt) {
                 name.as_str(),
                 &mir,
                 &adt_metadata,
-                field_tys,
+                field_ltys,
             );
 
             info.acx_data.set(acx.into_data());
