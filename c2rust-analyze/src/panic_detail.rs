@@ -4,7 +4,7 @@ use rustc_span::{Span, DUMMY_SP};
 use std::any::Any;
 use std::cell::Cell;
 use std::fmt::Write as _;
-use std::panic::PanicInfo;
+use std::panic::{self, PanicInfo, UnwindSafe};
 
 /// Detailed information about a panic.
 #[derive(Clone, Debug)]
@@ -85,18 +85,19 @@ pub fn panic_hook(info: &PanicInfo) {
 
 /// Get the [`PanicDetail`] of the most recent panic.  This clears the internal storage, so if this
 /// is called twice in a row without an intervening panic, the second call always returns `None`.
-pub fn take_current() -> Option<PanicDetail> {
+fn take_current() -> Option<PanicDetail> {
     CURRENT_PANIC_DETAIL.with(|cell| cell.take())
 }
 
-/// Get the [`PanicDetail`] of the most recent panic; if it's not available, build a placeholder
-/// `PanicDetail` from the panic payload `e`.  This is useful in conjunction with
-/// [`std::panic::catch_unwind`].
-pub fn catch(e: &(dyn Any + Send + 'static)) -> PanicDetail {
-    take_current().unwrap_or_else(|| {
-        let msg = panic_to_string(e);
-        warn!("missing panic detail; caught message {:?}", msg);
-        PanicDetail::new(msg)
+/// Like `std::panic::catch_unwind`, but returns a `PanicDetail` instead of `Box<dyn Any>` on
+/// panic.
+pub fn catch_unwind<F: FnOnce() -> R + UnwindSafe, R>(f: F) -> Result<R, PanicDetail> {
+    panic::catch_unwind(f).map_err(|e| {
+        take_current().unwrap_or_else(|| {
+            let msg = panic_to_string(&e);
+            warn!("missing panic detail; caught message {:?}", msg);
+            PanicDetail::new(msg)
+        })
     })
 }
 
