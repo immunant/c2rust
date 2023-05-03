@@ -18,7 +18,7 @@ extern crate rustc_type_ir;
 use crate::borrowck::{AdtMetadata, FieldMetadata, OriginArg, OriginParam};
 use crate::context::{
     AnalysisCtxt, AnalysisCtxtData, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy,
-    LTyCtxt, LocalAssignment, PermissionSet, PointerId,
+    LTyCtxt, LocalAssignment, PermissionSet, PointerId, PointerInfo,
 };
 use crate::dataflow::DataflowConstraints;
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
@@ -558,7 +558,7 @@ fn run(tcx: TyCtxt) {
             let l = acx.local_tys.push(lty);
             assert_eq!(local, l);
 
-            let ptr = acx.new_pointer();
+            let ptr = acx.new_pointer(PointerInfo::empty());
             let l = acx.addr_of_local.push(ptr);
             assert_eq!(local, l);
         }
@@ -591,7 +591,7 @@ fn run(tcx: TyCtxt) {
         let (local_counter, local_equiv_map) = info.local_equiv.renumber(&global_equiv_map);
         eprintln!("local_equiv_map = {local_equiv_map:?}");
         info.acx_data.remap_pointers(
-            gacx.lcx,
+            &mut gacx,
             global_equiv_map.and(&local_equiv_map),
             local_counter,
         );
@@ -756,11 +756,12 @@ fn run(tcx: TyCtxt) {
 trait AssignPointerIds<'tcx> {
     fn lcx(&self) -> LTyCtxt<'tcx>;
 
-    fn new_pointer(&mut self) -> PointerId;
+    fn new_pointer(&mut self, info: PointerInfo) -> PointerId;
 
     fn assign_pointer_ids(&mut self, ty: Ty<'tcx>) -> LTy<'tcx> {
         self.lcx().label(ty, &mut |ty| match ty.kind() {
-            TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => self.new_pointer(),
+            TyKind::Ref(_, _, _) => self.new_pointer(PointerInfo::REF),
+            TyKind::RawPtr(_) => self.new_pointer(PointerInfo::empty()),
             _ => PointerId::NONE,
         })
     }
@@ -771,8 +772,8 @@ impl<'tcx> AssignPointerIds<'tcx> for GlobalAnalysisCtxt<'tcx> {
         self.lcx
     }
 
-    fn new_pointer(&mut self) -> PointerId {
-        self.new_pointer()
+    fn new_pointer(&mut self, info: PointerInfo) -> PointerId {
+        self.new_pointer(info)
     }
 }
 
@@ -781,8 +782,8 @@ impl<'tcx> AssignPointerIds<'tcx> for AnalysisCtxt<'_, 'tcx> {
         self.lcx()
     }
 
-    fn new_pointer(&mut self) -> PointerId {
-        self.new_pointer()
+    fn new_pointer(&mut self, info: PointerInfo) -> PointerId {
+        self.new_pointer(info)
     }
 }
 
