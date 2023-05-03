@@ -138,6 +138,12 @@ impl<T> PointerTableInner<T> {
     pub fn into_raw(self) -> Vec<T> {
         self.0
     }
+
+    pub fn push(&mut self, x: T) -> u32 {
+        let i = self.0.len();
+        self.0.push(x);
+        u32::try_from(i).unwrap()
+    }
 }
 
 impl<T> Index<u32> for PointerTableInner<T> {
@@ -183,6 +189,11 @@ impl<T> LocalPointerTable<T> {
         T: Clone,
     {
         self.0 .0.fill(x);
+    }
+
+    pub fn push(&mut self, x: T) -> PointerId {
+        let raw = self.0.push(x);
+        PointerId::local(raw)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
@@ -240,6 +251,11 @@ impl<T> GlobalPointerTable<T> {
 
     pub fn len(&self) -> usize {
         self.0 .0.len()
+    }
+
+    pub fn push(&mut self, x: T) -> PointerId {
+        let raw = self.0.push(x);
+        PointerId::global(raw)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
