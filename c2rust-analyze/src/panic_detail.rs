@@ -135,14 +135,12 @@ fn guess_relevant_loc(bt: &Backtrace) -> Option<String> {
 }
 
 fn panic_to_string(e: &(dyn Any + Send + 'static)) -> String {
-    match e.downcast_ref::<&'static str>() {
-        Some(s) => return s.to_string(),
-        None => {}
+    if let Some(s) = e.downcast_ref::<&'static str>() {
+        return s.to_string();
     }
 
-    match e.downcast_ref::<String>() {
-        Some(s) => return (*s).clone(),
-        None => {}
+    if let Some(s) = e.downcast_ref::<String>() {
+        return (*s).clone();
     }
 
     format!("unknown error: {:?}", e.type_id())
