@@ -13,7 +13,7 @@ pub struct PanicDetail {
     loc: Option<String>,
     relevant_loc: Option<String>,
     backtrace: Option<Backtrace>,
-    sp: Span,
+    span: Span,
 }
 
 impl PanicDetail {
@@ -25,7 +25,7 @@ impl PanicDetail {
             loc: None,
             relevant_loc: None,
             backtrace: None,
-            sp: DUMMY_SP,
+            span: DUMMY_SP,
         }
     }
 
@@ -52,8 +52,8 @@ impl PanicDetail {
         if let Some(ref relevant_loc) = self.relevant_loc {
             writeln!(s, "related location: {}", relevant_loc).unwrap();
         }
-        if !self.sp.is_dummy() {
-            writeln!(s, "source location: {:?}", self.sp).unwrap();
+        if !self.span.is_dummy() {
+            writeln!(s, "source location: {:?}", self.span).unwrap();
         }
         if let Some(ref bt) = self.backtrace {
             writeln!(s, "{:?}", bt).unwrap();
@@ -75,7 +75,7 @@ pub fn panic_hook(info: &PanicInfo) {
         loc: info.location().map(|l| l.to_string()),
         relevant_loc: guess_relevant_loc(&bt),
         backtrace: Some(bt),
-        sp: CURRENT_SPAN.with(|cell| cell.get()),
+        span: CURRENT_SPAN.with(|cell| cell.get()),
     };
     let old = CURRENT_PANIC_DETAIL.with(|cell| cell.replace(Some(detail)));
     if let Some(old) = old {
@@ -162,7 +162,7 @@ impl Drop for CurrentSpanGuard {
 
 /// Set the current span.  Returns a guard that will reset the current span to its previous value
 /// on drop.
-pub fn set_current_span(sp: Span) -> CurrentSpanGuard {
-    let old = CURRENT_SPAN.with(|cell| cell.replace(sp));
+pub fn set_current_span(span: Span) -> CurrentSpanGuard {
+    let old = CURRENT_SPAN.with(|cell| cell.replace(span));
     CurrentSpanGuard { old }
 }
