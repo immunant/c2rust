@@ -331,7 +331,7 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
                     self.emit_str("mut");
                     self.emit_str(" ");
                 }
-                
+
                 self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
             }
             Rewrite::TySlice(ref rw) => {
