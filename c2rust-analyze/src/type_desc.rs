@@ -1,4 +1,5 @@
 use crate::context::{FlagSet, PermissionSet};
+use rustc_middle::ty::{Ty, TyKind};
 
 #[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -19,7 +20,6 @@ pub enum Ownership {
     Box,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Quantity {
     /// E.g. `&T`
@@ -30,7 +30,14 @@ pub enum Quantity {
     OffsetPtr,
 }
 
-pub fn perms_to_desc(perms: PermissionSet, flags: FlagSet) -> (Ownership, Quantity) {
+#[derive(Clone, Copy, Debug)]
+pub struct TypeDesc<'tcx> {
+    pub own: Ownership,
+    pub qty: Quantity,
+    pub pointee_ty: Ty<'tcx>,
+}
+
+fn perms_to_own_and_qty(perms: PermissionSet, flags: FlagSet) -> (Ownership, Quantity) {
     let own = if perms.contains(PermissionSet::UNIQUE | PermissionSet::WRITE) {
         Ownership::Mut
     } else if flags.contains(FlagSet::CELL) {
@@ -41,7 +48,6 @@ pub fn perms_to_desc(perms: PermissionSet, flags: FlagSet) -> (Ownership, Quanti
         Ownership::Imm
     };
 
-    #[allow(clippy::if_same_then_else)]
     let qty = if perms.contains(PermissionSet::OFFSET_SUB) {
         Quantity::OffsetPtr
     } else if perms.contains(PermissionSet::OFFSET_ADD) {
@@ -51,4 +57,40 @@ pub fn perms_to_desc(perms: PermissionSet, flags: FlagSet) -> (Ownership, Quanti
     };
 
     (own, qty)
+}
+
+pub fn perms_to_desc<'tcx>(
+    ptr_ty: Ty<'tcx>,
+    perms: PermissionSet,
+    flags: FlagSet,
+) -> TypeDesc<'tcx> {
+    let (own, qty) = perms_to_own_and_qty(perms, flags);
+
+    let pointee_ty = match *ptr_ty.kind() {
+        TyKind::Ref(_, ty, _) => ty,
+        TyKind::RawPtr(mt) => mt.ty,
+        TyKind::Adt(adt_def, substs) if adt_def.is_box() => substs.type_at(0),
+        // TODO: other ADTs, e.g. `Rc`
+        _ => panic!("expected a pointer type, but got {:?}", ptr_ty),
+    };
+
+    TypeDesc {
+        own,
+        qty,
+        pointee_ty,
+    }
+}
+
+pub fn local_perms_to_desc<'tcx>(
+    local_ty: Ty<'tcx>,
+    perms: PermissionSet,
+    flags: FlagSet,
+) -> TypeDesc<'tcx> {
+    let (own, qty) = perms_to_own_and_qty(perms, flags);
+    let pointee_ty = local_ty;
+    TypeDesc {
+        own,
+        qty,
+        pointee_ty,
+    }
 }
