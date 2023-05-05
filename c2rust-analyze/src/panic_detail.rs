@@ -79,7 +79,7 @@ thread_local! {
 }
 
 /// Panic hook for use with [`std::panic::set_hook`].  This builds a `PanicDetail` for each panic
-/// and stores it for later retrieval by [`take_current`].
+/// and stores it for later retrieval by [`catch_unwind`].
 fn panic_hook(default_hook: &dyn Fn(&PanicInfo), info: &PanicInfo) {
     CURRENT_PANIC_DETAIL.with(|cell| {
         // Take the old value, replacing it with something arbitrary.
