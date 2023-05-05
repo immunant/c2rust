@@ -31,9 +31,10 @@ macro_rules! define_tests {
 }
 
 define_tests! {
+    macros,
+    ptr_addr_of,
     string_literals,
     string_casts,
-    macros,
 }
 
 #[test]
