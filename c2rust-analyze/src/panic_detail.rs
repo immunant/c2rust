@@ -40,14 +40,14 @@ impl PanicDetail {
             .relevant_loc
             .as_ref()
             .or(self.loc.as_ref())
-            .map_or("[unknown]", |s| &*s);
+            .map_or("[unknown]", |s| s);
         format!("{}: {}", loc_str, self.msg.trim())
     }
 
     /// Return a full description of this panic, including a complete backtrace if available.
     pub fn to_string_full(&self) -> String {
         let mut s = String::new();
-        let loc_str = self.loc.as_ref().map_or("[unknown]", |s| &*s);
+        let loc_str = self.loc.as_ref().map_or("[unknown]", |s| s);
         writeln!(s, "panic at {}: {}", loc_str, self.msg).unwrap();
         if let Some(ref relevant_loc) = self.relevant_loc {
             writeln!(s, "related location: {}", relevant_loc).unwrap();
