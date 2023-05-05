@@ -383,10 +383,10 @@ pub fn is_transmutable_to<'tcx>(from: Ty<'tcx>, to: Ty<'tcx>) -> bool {
         use UintTy::*;
         match (from.kind(), to.kind()) {
             (ty::Uint(u), ty::Int(i)) | (ty::Int(i), ty::Uint(u)) => {
-                matches!((u, i), |(Usize, Isize)| (U8, I8)
-                    | (U16, I16)
-                    | (U32, I32)
-                    | (U64, I64))
+                matches!(
+                    (u, i),
+                    (Usize, Isize) | (U8, I8) | (U16, I16) | (U32, I32) | (U64, I64)
+                )
             }
             _ => false,
         }
