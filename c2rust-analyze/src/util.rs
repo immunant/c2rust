@@ -360,7 +360,7 @@ impl<'a, T: ?Sized> PhantomLifetime<'a> for T {}
 /// Note that this is one-way, and is slightly different from [`core::mem::transmute`],
 /// and more similar to [`core::mem::transmute_copy`].
 ///
-/// This forms a non-symmetric (one-way) equivalence relation, named `~` below.
+/// This forms a reflexive, transitive, and non-symmetric (one-way) relation, named `~` below.
 /// Formally, `A ~ B` iff `*a` and `*(a as *const B)` are safe, where `a: *const A`.
 ///
 /// However, safe transmutability is difficult to check completely,
