@@ -308,7 +308,7 @@ pub fn apply_rewrites(tcx: TyCtxt, rewrites: Vec<(Span, Rewrite)>) {
             }
         };
         let new_path = old_path.with_extension("new.rs");
-        fs::write(new_path, src).unwrap();
+        //fs::write(new_path, src).unwrap();
     }
 }
 
