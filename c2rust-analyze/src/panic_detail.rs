@@ -92,7 +92,7 @@ pub fn panic_hook(default_hook: &dyn Fn(&PanicInfo), info: &PanicInfo) {
             }
             PanicState::InsideCatchUnwind => {}
             PanicState::Unwinding(pd) => {
-                warn!("discarding old panic detail: {:?}", pd);
+                unreachable!("started unwinding while already unwinding (from {pd:?})");
             }
         }
 
