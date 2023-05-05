@@ -80,7 +80,7 @@ thread_local! {
 
 /// Panic hook for use with [`std::panic::set_hook`].  This builds a `PanicDetail` for each panic
 /// and stores it for later retrieval by [`take_current`].
-pub fn panic_hook(default_hook: &dyn Fn(&PanicInfo), info: &PanicInfo) {
+fn panic_hook(default_hook: &dyn Fn(&PanicInfo), info: &PanicInfo) {
     CURRENT_PANIC_DETAIL.with(|cell| {
         // Take the old value, replacing it with something arbitrary.
         let old = cell.replace(PanicState::OutsideCatchUnwind);
@@ -108,6 +108,11 @@ pub fn panic_hook(default_hook: &dyn Fn(&PanicInfo), info: &PanicInfo) {
         };
         cell.set(PanicState::Unwinding(detail));
     });
+}
+
+pub fn set_hook() {
+    let default_panic_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |info| panic_hook(&default_panic_hook, info)));
 }
 
 /// Like `std::panic::catch_unwind`, but returns a `PanicDetail` instead of `Box<dyn Any>` on

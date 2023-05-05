@@ -45,7 +45,7 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::{Debug, Display};
 use std::ops::{Deref, DerefMut, Index};
-use std::panic::{self, AssertUnwindSafe};
+use std::panic::AssertUnwindSafe;
 
 mod borrowck;
 mod c_void_casts;
@@ -1078,10 +1078,7 @@ impl rustc_driver::Callbacks for AnalysisCallbacks {
 
 fn main() -> rustc_interface::interface::Result<()> {
     init_logger();
-    let default_panic_hook = panic::take_hook();
-    panic::set_hook(Box::new(move |info| {
-        panic_detail::panic_hook(&default_panic_hook, info)
-    }));
+    panic_detail::set_hook();
     let args = env::args().collect::<Vec<_>>();
     rustc_driver::RunCompiler::new(&args, &mut AnalysisCallbacks).run()
 }
