@@ -7,12 +7,15 @@
 use std::collections::HashMap;
 use std::ops::Index;
 
+use crate::borrowck::{OriginArg, OriginParam};
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::PointerId;
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
-use hir::{ItemKind, VariantData};
+use crate::AdtMetadataTable;
+use hir::{GenericParamKind, ItemKind, Path, PathSegment, VariantData};
+use indexmap::IndexSet;
 use rustc_ast::ast;
 use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Namespace, Res};

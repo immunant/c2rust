@@ -15,20 +15,15 @@ extern crate rustc_span;
 extern crate rustc_target;
 extern crate rustc_type_ir;
 
-use crate::borrowck::{AdtMetadata, FieldMetadata, OriginArg, OriginParam};
 use crate::context::{
     AnalysisCtxt, AnalysisCtxtData, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy,
     LTyCtxt, LocalAssignment, PermissionSet, PointerId, PointerInfo,
 };
 use crate::dataflow::DataflowConstraints;
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
-use crate::labeled_ty::LabeledTyCtxt;
 use crate::log::init_logger;
 use crate::util::Callee;
-use assert_matches::assert_matches;
-use indexmap::IndexSet;
-use labeled_ty::LabeledTy;
-use rustc_ast::Mutability;
+use context::AdtMetadataTable;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
@@ -110,254 +105,6 @@ impl<T> Deref for MaybeUnset<T> {
 impl<T> DerefMut for MaybeUnset<T> {
     fn deref_mut(&mut self) -> &mut T {
         self.get_mut()
-    }
-}
-
-fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
-    let struct_dids: Vec<_> = tcx
-        .hir_crate_items(())
-        .definitions()
-        .filter_map(|ldid: LocalDefId| {
-            use DefKind::*;
-            let did = ldid.to_def_id();
-            if matches!(tcx.def_kind(did), Struct | Enum | Union) {
-                return Some(did);
-            }
-
-            None
-        })
-        .collect();
-
-    let mut adt_metadata_table = AdtMetadataTable {
-        table: HashMap::new(),
-        struct_dids,
-    };
-
-    // Gather known lifetime parameters for each struct
-    for struct_did in &adt_metadata_table.struct_dids {
-        let struct_ty = tcx.type_of(struct_did);
-        if let TyKind::Adt(adt_def, substs) = struct_ty.kind() {
-            adt_metadata_table
-                .table
-                .insert(adt_def.did(), AdtMetadata::default());
-            eprintln!("gathering known lifetimes for {adt_def:?}");
-            for sub in substs.iter() {
-                if let GenericArgKind::Lifetime(r) = sub.unpack() {
-                    eprintln!("\tfound lifetime {r:?} in {adt_def:?}");
-                    assert_matches!(r.kind(), ReEarlyBound(eb) => {
-                        let _ = adt_metadata_table
-                        .table
-                        .entry(adt_def.did())
-                        .and_modify(|metadata| {
-                            metadata.lifetime_params.insert(OriginParam::Actual(eb));
-                        });
-                    });
-                }
-            }
-        } else {
-            panic!("{struct_ty:?} is not a struct");
-        }
-    }
-
-    let ltcx = LabeledTyCtxt::<'tcx, &[OriginArg<'tcx>]>::new(tcx);
-    let mut loop_count = 0;
-    loop {
-        /*
-            This loop iterates over all structs and gathers metadata for each.
-            If there were no recursive or mutually-recursive data structures,
-            this loop would only need one iteration to complete. To support
-            recursive and mutually-recursive structs, the loop iterates until
-            the metadata gathered for each struct reaches a fixed point.
-        */
-        loop_count += 1;
-        assert!(loop_count < 1000);
-
-        eprintln!("---- running fixed point struct field analysis iteration #{loop_count:?} ----");
-        let old_adt_metadata = adt_metadata_table.table.clone();
-        let mut next_hypo_origin_id = 0;
-
-        // for each struct, gather lifetime information (actual and hypothetical)
-        for struct_did in &adt_metadata_table.struct_dids {
-            let adt_def = tcx.adt_def(struct_did);
-            eprintln!("gathering lifetimes and lifetime parameters for {adt_def:?}");
-            for field in adt_def.all_fields() {
-                let field_ty: Ty = tcx.type_of(field.did);
-                eprintln!("\t{adt_def:?}.{:}", field.name);
-                let field_origin_args = ltcx.label(field_ty, &mut |ty| {
-                    let mut field_origin_args = IndexSet::new();
-                    match ty.kind() {
-                        TyKind::RawPtr(ty) => {
-                            eprintln!(
-                                "\t\tfound pointer that requires hypothetical lifetime: *{:}",
-                                if let Mutability::Mut = ty.mutbl {
-                                    "mut"
-                                } else {
-                                    "const"
-                                }
-                            );
-                            adt_metadata_table
-                                .table
-                                .entry(*struct_did)
-                                .and_modify(|adt| {
-                                    let origin_arg = OriginArg::Hypothetical(next_hypo_origin_id);
-                                    let origin_param =
-                                        OriginParam::Hypothetical(next_hypo_origin_id);
-                                    eprintln!(
-                                        "\t\t\tinserting origin {origin_param:?} into {adt_def:?}"
-                                    );
-
-                                    adt.lifetime_params.insert(origin_param);
-                                    next_hypo_origin_id += 1;
-                                    field_origin_args.insert(origin_arg);
-                                });
-                        }
-                        TyKind::Ref(reg, _ty, _mutability) => {
-                            eprintln!("\t\tfound reference field lifetime: {reg:}");
-                            assert_matches!(reg.kind(), ReEarlyBound(..) | ReStatic);
-                            let origin_arg = OriginArg::Actual(*reg);
-                            adt_metadata_table
-                                .table
-                                .entry(*struct_did)
-                                .and_modify(|adt| {
-                                    if let ReEarlyBound(eb) = reg.kind() {
-                                        eprintln!("\t\t\tinserting origin {eb:?} into {adt_def:?}");
-                                        adt.lifetime_params.insert(OriginParam::Actual(eb));
-                                    }
-
-                                    field_origin_args.insert(origin_arg);
-                                });
-                        }
-                        TyKind::Adt(adt_field, substs) => {
-                            eprintln!("\t\tfound ADT field base type: {adt_field:?}");
-                            for sub in substs.iter() {
-                                if let GenericArgKind::Lifetime(r) = sub.unpack() {
-                                    eprintln!("\tfound field lifetime {r:?} in {adt_def:?}.{adt_field:?}");
-                                    eprintln!("\t\t\tinserting {adt_field:?} lifetime param {r:?} into {adt_def:?}.{:} lifetime parameters", field.name);
-                                    assert_matches!(r.kind(), ReEarlyBound(..) | ReStatic);
-                                    field_origin_args.insert(OriginArg::Actual(r));
-                                }
-                            }
-                            if let Some(adt_field_metadata) =
-                                adt_metadata_table.table.get(&adt_field.did()).cloned()
-                            {
-                                // add a metadata entry for the struct field matching the metadata entry
-                                // for the struct definition of said field
-                                adt_metadata_table
-                                    .table
-                                    .insert(field.did, adt_field_metadata.clone());
-
-                                for adt_field_lifetime_param in adt_field_metadata.lifetime_params.iter() {
-                                    adt_metadata_table.table.entry(*struct_did).and_modify(|adt| {
-                                        if let OriginParam::Hypothetical(h) = adt_field_lifetime_param {
-                                            eprintln!("\t\t\tbubbling {adt_field:?} origin {adt_field_lifetime_param:?} up into {adt_def:?} origins");
-                                            field_origin_args.insert(OriginArg::Hypothetical(*h));
-                                            adt.lifetime_params.insert(*adt_field_lifetime_param);
-                                        }
-                                    });
-                                }
-                            }
-                        }
-                        _ => (),
-                    }
-
-                    if field_origin_args.is_empty() {
-                        return &[];
-                    }
-                    let field_origin_args: Vec<_> = field_origin_args.into_iter().collect();
-                    ltcx.arena().alloc_slice(&field_origin_args[..])
-                });
-
-                adt_metadata_table
-                    .table
-                    .entry(*struct_did)
-                    .and_modify(|adt| {
-                        adt.field_info.insert(
-                            field.did,
-                            FieldMetadata {
-                                origin_args: field_origin_args,
-                            },
-                        );
-                    });
-            }
-
-            eprintln!();
-        }
-
-        if adt_metadata_table.table == old_adt_metadata {
-            eprintln!("reached a fixed point in struct lifetime reconciliation\n");
-            break;
-        }
-    }
-
-    adt_metadata_table
-}
-
-pub struct AdtMetadataTable<'tcx> {
-    pub table: HashMap<DefId, AdtMetadata<'tcx>>,
-    pub struct_dids: Vec<DefId>,
-}
-
-impl<'tcx> Debug for AdtMetadataTable<'tcx> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fn fmt_string(lty: LabeledTy<'_, &[OriginArg]>) -> String {
-            let args: Vec<String> = lty.args.iter().map(|t| fmt_string(t)).collect();
-            use rustc_type_ir::TyKind::*;
-            match lty.kind() {
-                Ref(..) | RawPtr(..) => {
-                    format!("&{:?} {:}", lty.label[0], args[0])
-                }
-                Adt(adt, _) => {
-                    let mut s = format!("{adt:?}");
-                    let params = lty
-                        .label
-                        .iter()
-                        .map(|p| format!("{:?}", p))
-                        .into_iter()
-                        .chain(args.into_iter())
-                        .collect::<Vec<_>>()
-                        .join(",");
-
-                    if !params.is_empty() {
-                        s.push('<');
-                        s.push_str(&params);
-                        s.push('>');
-                    }
-                    s
-                }
-                Tuple(_) => {
-                    format!("({:})", args.join(","))
-                }
-                _ => format!("{:?}", lty.ty),
-            }
-        }
-
-        tls::with_opt(|tcx| {
-            let tcx = tcx.unwrap();
-            for k in &self.struct_dids {
-                let adt = &self.table[k];
-                write!(f, "struct {:}", tcx.item_name(*k))?;
-                write!(f, "<")?;
-                let lifetime_params_str = adt
-                    .lifetime_params
-                    .iter()
-                    .map(|p| format!("{:?}", p))
-                    .collect::<Vec<_>>()
-                    .join(",");
-                write!(f, "{lifetime_params_str:}")?;
-                writeln!(f, "> {{")?;
-                for (fdid, fmeta) in &adt.field_info {
-                    write!(f, "\t{:}: ", tcx.item_name(*fdid))?;
-                    let field_string_lty = fmt_string(fmeta.origin_args);
-
-                    write!(f, "{field_string_lty:}")?;
-
-                    writeln!(f)?;
-                }
-
-                writeln!(f, "}}\n")?;
-            }
-            writeln!(f)
-        })
     }
 }
 
@@ -710,9 +457,8 @@ fn run(tcx: TyCtxt) {
         info.lasn.set(lasn);
     }
 
-    let adt_metadata = construct_adt_metadata(tcx);
     eprintln!("=== ADT Metadata ===");
-    eprintln!("{adt_metadata:?}");
+    eprintln!("{:?}", gacx.adt_metadata);
 
     let mut loop_count = 0;
     loop {
@@ -743,7 +489,6 @@ fn run(tcx: TyCtxt) {
                 &mut asn.perms_mut(),
                 name.as_str(),
                 &mir,
-                &adt_metadata,
                 field_ltys,
             );
 
