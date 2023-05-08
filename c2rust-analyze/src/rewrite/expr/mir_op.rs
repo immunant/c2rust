@@ -339,7 +339,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn visit_place(&mut self, pl: Place<'tcx>, expect_ty: LTy<'tcx>) {
         let ptr_lty = self.acx.type_of(pl);
         if !ptr_lty.label.is_none() {
-            self.emit_ptr_cast(ptr_lty, expect_ty);
+            self.emit_cast_lty_lty(ptr_lty, expect_ty);
         }
         // TODO: walk over `pl` to handle all derefs (casts, `*x` -> `(*x).get()`)
     }
@@ -349,7 +349,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             Operand::Copy(pl) | Operand::Move(pl) => {
                 let ptr_lty = self.acx.type_of(pl);
                 if !ptr_lty.label.is_none() {
-                    self.emit_cast(ptr_lty, expect_desc);
+                    self.emit_cast_lty_desc(ptr_lty, expect_desc);
                 }
 
                 // TODO: walk over `pl` to handle all derefs (casts, `*x` -> `(*x).get()`)
@@ -422,46 +422,52 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             });
     }
 
-    fn emit_ptr_cast(&mut self, ptr_lty: LTy<'tcx>, expect_lty: LTy<'tcx>) {
-        assert!(expect_lty.label != PointerId::NONE);
-
-        let desc2 = type_desc::perms_to_desc(
-            expect_lty.ty,
-            self.perms[expect_lty.label],
-            self.flags[expect_lty.label],
+    fn emit_cast_desc_desc(&mut self, from: TypeDesc<'tcx>, to: TypeDesc<'tcx>) {
+        assert_eq!(
+            self.acx.tcx().erase_regions(from.pointee_ty),
+            self.acx.tcx().erase_regions(to.pointee_ty),
         );
 
-        self.emit_cast(ptr_lty, desc2);
-    }
-
-    fn emit_cast(&mut self, ptr_lty: LTy<'tcx>, expect_desc: TypeDesc<'tcx>) {
-        assert!(ptr_lty.label != PointerId::NONE);
-
-        let ptr_desc = type_desc::perms_to_desc(
-            ptr_lty.ty,
-            self.perms[ptr_lty.label],
-            self.flags[ptr_lty.label],
-        );
-        let own1 = ptr_desc.own;
-        let qty1 = ptr_desc.qty;
-        let own2 = expect_desc.own;
-        let qty2 = expect_desc.qty;
-
-        if (own1, qty1) == (own2, qty2) {
+        if from == to {
             return;
         }
 
-        if qty1 == qty2 && (own1, own2) == (Ownership::Mut, Ownership::Imm) {
+        if from.qty == to.qty && (from.own, to.own) == (Ownership::Mut, Ownership::Imm) {
             self.emit(RewriteKind::MutToImm);
             return;
         }
 
-        eprintln!(
-            "unsupported cast kind: {:?} {:?} -> {:?}",
-            self.perms[ptr_lty.label],
-            (own1, qty1),
-            (own2, qty2)
+        // TODO: handle Slice -> Single here instead of special-casing in `offset`
+
+        eprintln!("unsupported cast kind: {:?} -> {:?}", from, to);
+    }
+
+    fn emit_cast_lty_desc(&mut self, from_lty: LTy<'tcx>, to: TypeDesc<'tcx>) {
+        let from = type_desc::perms_to_desc(
+            from_lty.ty,
+            self.perms[from_lty.label],
+            self.flags[from_lty.label],
         );
+        self.emit_cast_desc_desc(from, to);
+    }
+
+    fn emit_cast_desc_lty(&mut self, from: TypeDesc<'tcx>, to_lty: LTy<'tcx>) {
+        let to = type_desc::perms_to_desc(
+            to_lty.ty,
+            self.perms[to_lty.label],
+            self.flags[to_lty.label],
+        );
+        self.emit_cast_desc_desc(from, to);
+    }
+
+    fn emit_cast_lty_lty(&mut self, from_lty: LTy<'tcx>, to_lty: LTy<'tcx>) {
+        let lty_to_desc = |slf: &mut Self, lty: LTy<'tcx>| {
+            type_desc::perms_to_desc(lty.ty, slf.perms[lty.label], slf.flags[lty.label])
+        };
+
+        let from = lty_to_desc(self, from_lty);
+        let to = lty_to_desc(self, to_lty);
+        self.emit_cast_desc_desc(from, to);
     }
 }
 
