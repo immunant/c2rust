@@ -28,6 +28,9 @@ pub enum SubLoc {
     CallArg(usize),
     /// The Nth operand of an rvalue.  `Rvalue -> Operand`
     RvalueOperand(usize),
+    /// The Nth place of an rvalue.  Used for cases like `Rvalue::Ref` that directly refer to a
+    /// `Place`.  `Rvalue -> Place`
+    RvaluePlace(usize),
     /// The place referenced by an operand.  `Operand::Move/Operand::Copy -> Place`
     OperandPlace,
     /// The pointer used in the Nth innermost deref within a place.  `Place -> Place`
@@ -101,8 +104,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         r
     }
 
-    #[allow(dead_code)]
-    fn _enter_dest<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+    fn enter_dest<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
         self.enter(SubLoc::Dest, f)
     }
 
@@ -116,6 +118,10 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
     fn enter_rvalue_operand<F: FnOnce(&mut Self) -> R, R>(&mut self, i: usize, f: F) -> R {
         self.enter(SubLoc::RvalueOperand(i), f)
+    }
+
+    fn enter_rvalue_place<F: FnOnce(&mut Self) -> R, R>(&mut self, i: usize, f: F) -> R {
+        self.enter(SubLoc::RvaluePlace(i), f)
     }
 
     #[allow(dead_code)]
@@ -195,7 +201,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     _ => {}
                 };
 
-                self.enter_assign_rvalue(|v| v.visit_rvalue(rv, pl_lty));
+                self.enter_assign_rvalue(|v| v.visit_rvalue(rv, Some(pl_lty)));
                 // TODO: visit place
             }
             StatementKind::FakeRead(..) => {}
@@ -275,95 +281,109 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         }
     }
 
-    fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, expect_ty: LTy<'tcx>) {
-        // TODO: most of these cases need to recurse into operands/places to find derefs
+    /// Visit an `Rvalue`.  If `expect_ty` is `Some`, also emit whatever casts are necessary to
+    /// make the `Rvalue` produce a value of type `expect_ty`.
+    fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, expect_ty: Option<LTy<'tcx>>) {
         match *rv {
             Rvalue::Use(ref op) => {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, expect_ty));
             }
-            Rvalue::Repeat(ref _op, _) => {
-                // TODO
+            Rvalue::Repeat(ref op, _) => {
+                self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
             }
-            Rvalue::Ref(_rg, _kind, _pl) => {
-                // TODO
+            Rvalue::Ref(_rg, _kind, pl) => {
+                self.enter_rvalue_place(0, |v| v.visit_place(pl));
             }
             Rvalue::ThreadLocalRef(_def_id) => {
                 // TODO
             }
-            Rvalue::AddressOf(mutbl, _pl) => {
-                let desc = type_desc::perms_to_desc(
-                    expect_ty.ty,
-                    self.perms[expect_ty.label],
-                    self.flags[expect_ty.label],
-                );
-                self.enter_rvalue_operand(0, |v| match desc.own {
-                    Ownership::Cell => v.emit(RewriteKind::RawToRef { mutbl: false }),
-                    Ownership::Imm | Ownership::Mut => v.emit(RewriteKind::RawToRef {
-                        mutbl: mutbl == Mutability::Mut,
-                    }),
-                    _ => (),
-                });
+            Rvalue::AddressOf(mutbl, pl) => {
+                self.enter_rvalue_place(0, |v| v.visit_place(pl));
+                if let Some(expect_ty) = expect_ty {
+                    let desc = type_desc::perms_to_desc(
+                        expect_ty.ty,
+                        self.perms[expect_ty.label],
+                        self.flags[expect_ty.label],
+                    );
+                    self.enter_rvalue_operand(0, |v| match desc.own {
+                        Ownership::Cell => v.emit(RewriteKind::RawToRef { mutbl: false }),
+                        Ownership::Imm | Ownership::Mut => v.emit(RewriteKind::RawToRef {
+                            mutbl: mutbl == Mutability::Mut,
+                        }),
+                        _ => (),
+                    });
+                }
             }
-            Rvalue::Len(_pl) => {
-                // TODO
+            Rvalue::Len(pl) => {
+                self.enter_rvalue_place(0, |v| v.visit_place(pl));
             }
-            Rvalue::Cast(_kind, ref _op, _ty) => {
-                // TODO
+            Rvalue::Cast(_kind, ref op, _ty) => {
+                self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
             }
-            Rvalue::BinaryOp(_bop, ref _ops) => {
-                // TODO
+            Rvalue::BinaryOp(_bop, ref ops) => {
+                self.enter_rvalue_operand(0, |v| v.visit_operand(&ops.0, None));
+                self.enter_rvalue_operand(1, |v| v.visit_operand(&ops.1, None));
             }
-            Rvalue::CheckedBinaryOp(_bop, ref _ops) => {
-                // TODO
+            Rvalue::CheckedBinaryOp(_bop, ref ops) => {
+                self.enter_rvalue_operand(0, |v| v.visit_operand(&ops.0, None));
+                self.enter_rvalue_operand(1, |v| v.visit_operand(&ops.1, None));
             }
             Rvalue::NullaryOp(..) => {}
-            Rvalue::UnaryOp(_uop, ref _op) => {
-                // TODO
+            Rvalue::UnaryOp(_uop, ref op) => {
+                self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
             }
-            Rvalue::Discriminant(_pl) => {
-                // TODO
+            Rvalue::Discriminant(pl) => {
+                self.enter_rvalue_place(0, |v| v.visit_place(pl));
             }
-            Rvalue::Aggregate(ref _kind, ref _ops) => {
-                // TODO
+            Rvalue::Aggregate(ref _kind, ref ops) => {
+                for (i, op) in ops.iter().enumerate() {
+                    self.enter_rvalue_operand(i, |v| v.visit_operand(op, None));
+                }
             }
-            Rvalue::ShallowInitBox(ref _op, _ty) => {
-                // TODO
+            Rvalue::ShallowInitBox(ref op, _ty) => {
+                self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
             }
             Rvalue::CopyForDeref(pl) => {
-                self.enter_rvalue_operand(0, |v| v.visit_place(pl, expect_ty));
+                self.enter_rvalue_place(0, |v| v.visit_place(pl));
             }
         }
     }
 
-    fn visit_operand(&mut self, op: &Operand<'tcx>, expect_ty: LTy<'tcx>) {
+    /// Visit an `Operand`.  If `expect_ty` is `Some`, also emit whatever casts are necessary to
+    /// make the `Operand` produce a value of type `expect_ty`.
+    fn visit_operand(&mut self, op: &Operand<'tcx>, expect_ty: Option<LTy<'tcx>>) {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
-                self.visit_place(pl, expect_ty);
+                self.visit_place(pl);
+
+                if let Some(expect_ty) = expect_ty {
+                    let ptr_lty = self.acx.type_of(pl);
+                    if !ptr_lty.label.is_none() {
+                        self.emit_cast_lty_lty(ptr_lty, expect_ty);
+                    }
+                }
             }
             Operand::Constant(..) => {}
         }
     }
 
-    fn visit_place(&mut self, pl: Place<'tcx>, expect_ty: LTy<'tcx>) {
-        let ptr_lty = self.acx.type_of(pl);
-        if !ptr_lty.label.is_none() {
-            self.emit_cast_lty_lty(ptr_lty, expect_ty);
-        }
-        // TODO: walk over `pl` to handle all derefs (casts, `*x` -> `(*x).get()`)
-    }
-
+    /// Like [`visit_operand`], but takes an expected `TypeDesc` instead of an expected `LTy`.
     fn visit_operand_desc(&mut self, op: &Operand<'tcx>, expect_desc: TypeDesc<'tcx>) {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
+                self.visit_place(pl);
+
                 let ptr_lty = self.acx.type_of(pl);
                 if !ptr_lty.label.is_none() {
                     self.emit_cast_lty_desc(ptr_lty, expect_desc);
                 }
-
-                // TODO: walk over `pl` to handle all derefs (casts, `*x` -> `(*x).get()`)
             }
             Operand::Constant(..) => {}
         }
+    }
+
+    fn visit_place(&mut self, pl: Place<'tcx>) {
+        // TODO: walk over `pl` to handle all derefs (casts, `*x` -> `(*x).get()`)
     }
 
     fn visit_ptr_offset(&mut self, op: &Operand<'tcx>, result_ty: LTy<'tcx>) {
@@ -469,6 +489,10 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     }
 
     fn emit_cast_lty_lty(&mut self, from_lty: LTy<'tcx>, to_lty: LTy<'tcx>) {
+        if from_lty.label.is_none() && to_lty.label.is_none() {
+            return;
+        }
+
         let lty_to_desc = |slf: &mut Self, lty: LTy<'tcx>| {
             type_desc::perms_to_desc(lty.ty, slf.perms[lty.label], slf.flags[lty.label])
         };
