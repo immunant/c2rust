@@ -16,6 +16,7 @@ use rustc_middle::mir::{
     BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
     TerminatorKind,
 };
+use rustc_middle::ty::TyKind;
 use std::collections::HashMap;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -201,8 +202,10 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     _ => {}
                 };
 
-                self.enter_assign_rvalue(|v| v.visit_rvalue(rv, Some(pl_lty)));
-                // TODO: visit place
+                let rv_lty = self.acx.type_of_rvalue(rv, loc);
+                self.enter_assign_rvalue(|v| v.visit_rvalue(rv, Some(rv_lty)));
+                self.emit_cast_lty_lty(rv_lty, pl_lty);
+                self.enter_dest(|v| v.visit_place(pl));
             }
             StatementKind::FakeRead(..) => {}
             StatementKind::SetDiscriminant { .. } => todo!("statement {:?}", stmt),
@@ -490,6 +493,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
     fn emit_cast_lty_lty(&mut self, from_lty: LTy<'tcx>, to_lty: LTy<'tcx>) {
         if from_lty.label.is_none() && to_lty.label.is_none() {
+            return;
+        }
+
+        let from_raw = matches!(from_lty.ty.kind(), TyKind::RawPtr(..));
+        let to_raw = matches!(to_lty.ty.kind(), TyKind::RawPtr(..));
+        if !from_raw && !to_raw {
+            // TODO: hack to work around issues with already-safe code
             return;
         }
 
