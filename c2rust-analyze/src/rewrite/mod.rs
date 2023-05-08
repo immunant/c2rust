@@ -43,6 +43,12 @@ pub use self::ty::dump_rewritten_local_tys;
 pub use self::ty::gen_ty_rewrites;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
+pub enum LifetimeName {
+    Explicit(String),
+    Elided,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Rewrite<S = Span> {
     /// Take the original expression unchanged.
     Identity,
@@ -75,7 +81,7 @@ pub enum Rewrite<S = Span> {
     /// `*const T`, `*mut T`
     TyPtr(Box<Rewrite>, Mutability),
     /// `&T`, `&mut T`
-    TyRef(Box<Rewrite>, Mutability),
+    TyRef(LifetimeName, Box<Rewrite>, Mutability),
     /// `[T]`
     TySlice(Box<Rewrite>),
     /// `Foo<T1, T2>`
@@ -206,11 +212,15 @@ impl Rewrite {
                 }
                 rw.pretty(f, 0)
             }
-            Rewrite::TyRef(ref rw, mutbl) => {
-                match mutbl {
-                    Mutability::Not => write!(f, "&")?,
-                    Mutability::Mut => write!(f, "&mut ")?,
+            Rewrite::TyRef(ref lifetime, ref rw, mutbl) => {
+                write!(f, "&")?;
+                if let LifetimeName::Explicit(lt) = lifetime {
+                    write!(f, "{lt:} ")?;
                 }
+                if let Mutability::Mut = mutbl {
+                    write!(f, "mut ")?;
+                }
+
                 rw.pretty(f, 0)
             }
             Rewrite::TySlice(ref rw) => {

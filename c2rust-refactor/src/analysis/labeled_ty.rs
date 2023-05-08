@@ -80,11 +80,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
         args: &'lty [LabeledTy<'lty, 'tcx, L>],
         label: L,
     ) -> LabeledTy<'lty, 'tcx, L> {
-        self.arena.alloc(LabeledTyS {
-            ty,
-            args,
-            label,
-        })
+        self.arena.alloc(LabeledTyS { ty, args, label })
     }
 
     /// Label a `Ty` using a callback.  The callback runs at every type constructor to produce a
@@ -140,7 +136,10 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
                 self.mk(ty, self.mk_slice(&args), label)
             }
             Tuple(ref elems) => {
-                let args = elems.types().map(|ty| self.label(ty, f)).collect::<Vec<_>>();
+                let args = elems
+                    .types()
+                    .map(|ty| self.label(ty, f))
+                    .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
 

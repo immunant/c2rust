@@ -368,8 +368,8 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                 self.tcx.mk_fn_def(def_id, substs)
             }
             FnPtr(ref _sig) => {
-                // TODO: replace all the types under the binder
-                todo!()
+                // FIXME: replace all the types under the binder
+                lty.ty
             }
             Tuple(_) => self.tcx.mk_tup(args.iter().cloned()),
 

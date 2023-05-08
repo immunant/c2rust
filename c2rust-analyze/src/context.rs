@@ -155,7 +155,7 @@ pub struct GlobalAnalysisCtxt<'tcx> {
 
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
 
-    pub field_tys: HashMap<DefId, LTy<'tcx>>,
+    pub field_ltys: HashMap<DefId, LTy<'tcx>>,
 
     pub static_tys: HashMap<DefId, LTy<'tcx>>,
 
@@ -222,7 +222,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             tcx,
             lcx: LabeledTyCtxt::new(tcx),
             fn_sigs: HashMap::new(),
-            field_tys: HashMap::new(),
+            field_ltys: HashMap::new(),
             static_tys: HashMap::new(),
             next_ptr_id: NextGlobalPointerId::new(),
         }
@@ -260,7 +260,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             tcx: _,
             lcx,
             ref mut fn_sigs,
-            ref mut field_tys,
+            ref mut field_ltys,
             ref mut static_tys,
             ref mut next_ptr_id,
         } = *self;
@@ -275,7 +275,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             sig.output = remap_lty_pointers(lcx, map, sig.output);
         }
 
-        for labeled_field in field_tys.values_mut() {
+        for labeled_field in field_ltys.values_mut() {
             *labeled_field = remap_lty_pointers(lcx, map, labeled_field);
         }
 
@@ -293,7 +293,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
 
     pub fn assign_pointer_to_field(&mut self, field: &FieldDef) {
         let lty = self.assign_pointer_ids(self.tcx.type_of(field.did));
-        self.field_tys.insert(field.did, lty);
+        self.field_ltys.insert(field.did, lty);
     }
 
     pub fn assign_pointer_to_fields(&mut self, did: DefId) {
@@ -400,7 +400,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                             rv, desc, base_lty
                         );
                         (
-                            self.project(base_lty, &PlaceElem::Deref),
+                            self.projection_lty(base_lty, &PlaceElem::Deref),
                             proj,
                             base_lty.label,
                         )
@@ -412,7 +412,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
 
                 let mut pointee_lty = pointee_lty;
                 for p in proj {
-                    pointee_lty = self.project(pointee_lty, p);
+                    pointee_lty = self.projection_lty(pointee_lty, p);
                 }
 
                 let ty = rv.ty(self, self.tcx());
@@ -463,15 +463,15 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         }
     }
 
-    pub fn project(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
+    pub fn projection_lty(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
         let projection_lty = |_lty: LTy, adt_def: AdtDef, field: Field| {
             let field_def = &adt_def.non_enum_variant().fields[field.index()];
             let field_def_name = field_def.name;
             eprintln!("projecting into {adt_def:?}.{field_def_name:}");
-            let res = *self.gacx.field_tys.get(&field_def.did).unwrap_or_else(|| {
+            let field_lty: LTy = self.gacx.field_ltys.get(&field_def.did).unwrap_or_else(|| {
                 panic!("Could not find {adt_def:?}.{field_def_name:?} in field type map")
             });
-            res
+            field_lty
         };
         util::lty_project(lty, proj, projection_lty)
     }
@@ -564,7 +564,7 @@ impl<'tcx> TypeOf<'tcx> for PlaceRef<'tcx> {
     fn type_of(&self, acx: &AnalysisCtxt<'_, 'tcx>) -> LTy<'tcx> {
         let mut ty = acx.type_of(self.local);
         for proj in self.projection {
-            ty = acx.project(ty, proj);
+            ty = acx.projection_lty(ty, proj);
         }
         ty
     }
@@ -677,7 +677,7 @@ impl LocalAssignment {
 }
 
 pub struct Assignment<'a> {
-    global: &'a mut GlobalAssignment,
+    pub global: &'a mut GlobalAssignment,
     local: &'a mut LocalAssignment,
 }
 
