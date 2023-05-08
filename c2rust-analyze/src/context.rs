@@ -468,10 +468,9 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             let field_def = &adt_def.non_enum_variant().fields[field.index()];
             let field_def_name = field_def.name;
             eprintln!("projecting into {adt_def:?}.{field_def_name:}");
-            let field_lty: &crate::labeled_ty::LabeledTyS<PointerId> =
-                self.gacx.field_ltys.get(&field_def.did).unwrap_or_else(|| {
-                    panic!("Could not find {adt_def:?}.{field_def_name:?} in field type map")
-                });
+            let field_lty: LTy = self.gacx.field_ltys.get(&field_def.did).unwrap_or_else(|| {
+                panic!("Could not find {adt_def:?}.{field_def_name:?} in field type map")
+            });
             field_lty
         };
         util::lty_project(lty, proj, projection_lty)
