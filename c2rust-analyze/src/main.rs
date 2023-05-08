@@ -21,6 +21,7 @@ use crate::context::{
 };
 use crate::dataflow::DataflowConstraints;
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
+use crate::labeled_ty::LabeledTyCtxt;
 use crate::log::init_logger;
 use crate::util::Callee;
 use context::AdtMetadataTable;
@@ -32,10 +33,8 @@ use rustc_middle::mir::{
     AggregateKind, BindingForm, Body, Constant, LocalDecl, LocalInfo, LocalKind, Location, Operand,
     Rvalue, StatementKind,
 };
-use rustc_middle::ty::tls;
-use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
+use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
-use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::{Debug, Display};
