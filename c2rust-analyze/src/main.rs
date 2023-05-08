@@ -43,8 +43,8 @@ use rustc_span::Span;
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::fmt::Debug;
-use std::ops::{Deref, DerefMut};
+use std::fmt::{Debug, Display};
+use std::ops::{Deref, DerefMut, Index};
 
 mod borrowck;
 mod c_void_casts;
@@ -682,46 +682,14 @@ fn run(tcx: TyCtxt) {
         let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
         let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
         for (local, decl) in mir.local_decls.iter_enumerated() {
-            let addr_of1 = asn.perms()[acx.addr_of_local[local]];
-            let ty1 = lcx1.relabel(acx.local_tys[local], &mut |lty| {
-                if lty.label == PointerId::NONE {
-                    PermissionSet::empty()
-                } else {
-                    asn.perms()[lty.label]
-                }
-            });
-            eprintln!(
-                "{:?} ({}): addr_of = {:?}, type = {:?}",
-                local,
-                describe_local(tcx, decl),
-                addr_of1,
-                ty1,
-            );
-
-            let addr_of2 = asn.flags()[acx.addr_of_local[local]];
-            let ty2 = lcx2.relabel(acx.local_tys[local], &mut |lty| {
-                if lty.label == PointerId::NONE {
-                    FlagSet::empty()
-                } else {
-                    asn.flags()[lty.label]
-                }
-            });
-            eprintln!(
-                "{:?} ({}): addr_of flags = {:?}, type flags = {:?}",
-                local,
-                describe_local(tcx, decl),
-                addr_of2,
-                ty2,
-            );
-
-            let addr_of3 = acx.addr_of_local[local];
-            let ty3 = acx.local_tys[local];
-            eprintln!(
-                "{:?} ({}): addr_of = {:?}, type = {:?}",
-                local,
-                describe_local(tcx, decl),
-                addr_of3,
-                ty3,
+            print_labeling_for_var(
+                lcx1,
+                lcx2,
+                format_args!("{:?} ({})", local, describe_local(tcx, decl)),
+                acx.addr_of_local[local],
+                acx.local_tys[local],
+                &asn.perms(),
+                &asn.flags(),
             );
         }
 
@@ -748,11 +716,19 @@ fn run(tcx: TyCtxt) {
 
     // Print results for `static` items.
     eprintln!("\nfinal labeling for static items:");
+    let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
+    let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
     for (did, lty) in gacx.static_tys.iter() {
         let name = tcx.item_name(*did);
-        let ty_perms = gasn.perms[lty.label];
-        let ty_flags = gasn.flags[lty.label];
-        eprintln!("{name:?}: perms = {ty_perms:?}, flags = {ty_flags:?}");
+        print_labeling_for_var(
+            lcx1,
+            lcx2,
+            format_args!("{name:?}"),
+            gacx.addr_of_static[&did],
+            lty,
+            &gasn.perms,
+            &gasn.flags,
+        );
     }
 
     eprintln!("\nfinal labeling for fields:");
@@ -847,6 +823,43 @@ fn describe_span(tcx: TyCtxt, span: Span) -> String {
     };
     let line = tcx.sess.source_map().lookup_char_pos(span.lo()).line;
     format!("{}: {}{}{}", line, src1, src2, src3)
+}
+
+fn print_labeling_for_var<'tcx>(
+    lcx1: LabeledTyCtxt<'tcx, PermissionSet>,
+    lcx2: LabeledTyCtxt<'tcx, FlagSet>,
+    desc: impl Display,
+    addr_of_ptr: PointerId,
+    lty: LTy<'tcx>,
+    perms: &impl Index<PointerId, Output = PermissionSet>,
+    flags: &impl Index<PointerId, Output = FlagSet>,
+) {
+    let addr_of1 = perms[addr_of_ptr];
+    let ty1 = lcx1.relabel(lty, &mut |lty| {
+        if lty.label == PointerId::NONE {
+            PermissionSet::empty()
+        } else {
+            perms[lty.label]
+        }
+    });
+    eprintln!("{}: addr_of = {:?}, type = {:?}", desc, addr_of1, ty1);
+
+    let addr_of2 = flags[addr_of_ptr];
+    let ty2 = lcx2.relabel(lty, &mut |lty| {
+        if lty.label == PointerId::NONE {
+            FlagSet::empty()
+        } else {
+            flags[lty.label]
+        }
+    });
+    eprintln!(
+        "{}: addr_of flags = {:?}, type flags = {:?}",
+        desc, addr_of2, ty2
+    );
+
+    let addr_of3 = addr_of_ptr;
+    let ty3 = lty;
+    eprintln!("{}: addr_of = {:?}, type = {:?}", desc, addr_of3, ty3);
 }
 
 /// Return `LocalDefId`s for all `static`s.

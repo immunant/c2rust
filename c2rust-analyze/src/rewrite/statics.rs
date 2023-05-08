@@ -1,4 +1,4 @@
-use crate::context::{PermissionSet, PointerId};
+use crate::context::PermissionSet;
 use crate::rewrite::Rewrite;
 use crate::{GlobalAnalysisCtxt, GlobalAssignment};
 use rustc_hir::{ItemKind, Mutability, Node};
@@ -11,7 +11,7 @@ pub fn gen_static_rewrites<'tcx>(
     gasn: &GlobalAssignment,
 ) -> Vec<(Span, Rewrite)> {
     let mut hir_rewrites = Vec::new();
-    for (did, lty) in gacx.static_tys.iter() {
+    for (did, &ptr) in gacx.addr_of_static.iter() {
         // The map of statics and their ty + permissions tracks statics by did; map this to an Item
         // node to look at the static's spans and declared mutability.
         let item = if let Some(Node::Item(item)) = gacx.tcx.hir().get_if_local(*did) {
@@ -20,11 +20,7 @@ pub fn gen_static_rewrites<'tcx>(
             panic!("def id {:?} not found", did);
         };
         if let ItemKind::Static(_ty, mutbl, _body_id) = item.kind {
-            let perms = if lty.label == PointerId::NONE {
-                PermissionSet::empty()
-            } else {
-                gasn.perms[lty.label]
-            };
+            let perms = gasn.perms[ptr];
             let written_to = perms.contains(PermissionSet::WRITE);
             let is_mutable = mutbl == Mutability::Mut;
             if written_to != is_mutable {
