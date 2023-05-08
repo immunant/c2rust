@@ -30,7 +30,7 @@ pub enum Quantity {
     OffsetPtr,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct TypeDesc<'tcx> {
     pub own: Ownership,
     pub qty: Quantity,
