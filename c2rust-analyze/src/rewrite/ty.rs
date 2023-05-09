@@ -201,22 +201,19 @@ fn deconstruct_hir_ty<'a, 'tcx>(
         }
 
         (&ty::TyKind::Adt(adt_def, substs), &hir::TyKind::Path(..)) => {
-            match hir_generic_ty_args(hir_ty) {
-                Some(type_args) => {
-                    if type_args.len() < substs.types().count() {
-                        // this situation occurs when there are hidden type arguments
-                        // such as the allocator `std::alloc::Global` type argument in `Vec`
-                        eprintln!("warning: extra MIR type argument for {adt_def:?}:");
-                        for mir_arg in substs.types().into_iter().skip(type_args.len()) {
-                            eprintln!("\t{:?}", mir_arg)
-                        }
-                    } else if type_args.len() != substs.types().count() {
-                        panic!("mismatched number of type arguments for {adt_def:?} and {hir_ty:?}")
+            hir_generic_ty_args(hir_ty).map(|type_args| {
+                if type_args.len() < substs.types().count() {
+                    // this situation occurs when there are hidden type arguments
+                    // such as the allocator `std::alloc::Global` type argument in `Vec`
+                    eprintln!("warning: extra MIR type argument for {adt_def:?}:");
+                    for mir_arg in substs.types().into_iter().skip(type_args.len()) {
+                        eprintln!("\t{:?}", mir_arg)
                     }
-                    Some(type_args)
+                } else if type_args.len() != substs.types().count() {
+                    panic!("mismatched number of type arguments for {adt_def:?} and {hir_ty:?}")
                 }
-                _ => None,
-            }
+                type_args
+            })
         }
         (tk, hir_tk) => {
             eprintln!("deconstruct_hir_ty: {tk:?} -- {hir_tk:?} not supported");
