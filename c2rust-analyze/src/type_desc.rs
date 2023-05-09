@@ -28,6 +28,10 @@ pub enum Quantity {
     Slice,
     /// E.g. `OffsetPtr<T>`
     OffsetPtr,
+
+    /// E.g. `&[T; 10]`.  This is used only for existing `FIXED` pointers; `perms_to_desc` on a raw
+    /// pointer never produces `Array`.
+    Array,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]

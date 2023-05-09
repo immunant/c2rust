@@ -329,6 +329,7 @@ fn mk_rewritten_ty<'tcx>(
             Quantity::Slice => tcx.mk_slice(ty),
             // TODO: This should generate `OffsetPtr<T>` rather than `&[T]`, but `OffsetPtr` is NYI
             Quantity::OffsetPtr => tcx.mk_slice(ty),
+            Quantity::Array => panic!("can't mk_rewritten_ty with Quantity::Array"),
         };
 
         ty = match own {
@@ -413,6 +414,7 @@ impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
                 // TODO: This should generate `OffsetPtr<T>` rather than `&[T]`, but `OffsetPtr` is
                 // NYI
                 Quantity::OffsetPtr => Rewrite::TySlice(Box::new(rw)),
+                Quantity::Array => panic!("can't rewrite to Quantity::Array"),
             };
 
             let lifetime_type = match rw_lty.label.lifetime {
