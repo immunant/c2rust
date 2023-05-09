@@ -37,7 +37,7 @@ struct RewriteLabel<'a> {
     ty_desc: Option<(Ownership, Quantity)>,
     /// If set, a child or other descendant of this type requires rewriting.
     descendant_has_rewrite: bool,
-    // A lifetime rewrite for a pointer or reference
+    /// A lifetime rewrite for a pointer or reference.
     lifetime: &'a [OriginArg<'a>],
 }
 
