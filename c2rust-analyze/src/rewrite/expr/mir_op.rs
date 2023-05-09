@@ -395,6 +395,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 Quantity::Single => Quantity::Slice,
                 Quantity::Slice => Quantity::Slice,
                 Quantity::OffsetPtr => Quantity::OffsetPtr,
+                Quantity::Array => unreachable!("perms_to_desc should not return Quantity::Array"),
             },
             pointee_ty: result_desc.pointee_ty,
         };
