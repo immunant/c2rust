@@ -13,6 +13,7 @@ use clap::Parser;
 #[derive(Default)]
 pub struct Analyze {
     path: PathBuf,
+    dont_catch_panic: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -90,7 +91,17 @@ impl Analyze {
         let bin_deps_dir = current_exe.parent().unwrap();
         let bin_dir = bin_deps_dir.parent().unwrap();
         let path = bin_dir.join(env!("CARGO_PKG_NAME"));
-        Self { path }
+        Self {
+            path,
+            dont_catch_panic: false,
+        }
+    }
+
+    pub fn dont_catch_panic(self) -> Self {
+        Self {
+            dont_catch_panic: true,
+            ..self
+        }
     }
 
     fn run_with_(&self, rs_path: &Path, mut modify_cmd: impl FnMut(&mut Command)) -> PathBuf {
@@ -110,6 +121,9 @@ impl Analyze {
         let output_stderr = File::try_clone(&output_stdout).unwrap();
 
         let mut cmd = Command::new(&self.path);
+        if self.dont_catch_panic {
+            cmd.env("C2RUST_TEST_ANALYZE_DONT_CATCH_PANIC", "1");
+        }
         cmd.arg(&rs_path)
             .arg("-L")
             .arg(lib_dir)

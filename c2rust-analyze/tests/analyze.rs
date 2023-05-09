@@ -12,7 +12,7 @@ fn check_for_missing_tests() {
 fn test(file_name: &str) {
     let analyze = Analyze::resolve();
     let path = ["tests", "analyze", file_name].iter().collect::<PathBuf>();
-    analyze.run(&path);
+    analyze.dont_catch_panic().run(&path);
 }
 
 macro_rules! define_test {

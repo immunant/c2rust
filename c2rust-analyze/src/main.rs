@@ -1078,7 +1078,13 @@ impl rustc_driver::Callbacks for AnalysisCallbacks {
 
 fn main() -> rustc_interface::interface::Result<()> {
     init_logger();
-    panic_detail::set_hook();
+
+    let dont_catch = env::var_os("C2RUST_TEST_ANALYZE_DONT_CATCH_PANIC").is_some();
+    if !dont_catch {
+        panic_detail::set_hook();
+    }
+
     let args = env::args().collect::<Vec<_>>();
+
     rustc_driver::RunCompiler::new(&args, &mut AnalysisCallbacks).run()
 }
