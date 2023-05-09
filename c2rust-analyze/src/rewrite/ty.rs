@@ -375,7 +375,7 @@ fn adt_ty_rw<S>(
 
 impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
     fn handle_ty(&mut self, rw_lty: RwLTy<'tcx>, hir_ty: &hir::Ty<'tcx>) {
-        if !matches!(rw_lty.ty.kind(), TyKind::Adt(..))
+        if !rw_lty.ty.is_adt()
             && rw_lty.label.ty_desc.is_none()
             && !rw_lty.label.descendant_has_rewrite
         {
