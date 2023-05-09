@@ -17,7 +17,7 @@ use rustc_middle::mir::{
     BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
     TerminatorKind,
 };
-use rustc_middle::ty::TyKind;
+use rustc_middle::ty::{Ty, TyKind};
 use std::collections::HashMap;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -240,8 +240,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         self.visit_ptr_offset(&args[0], pl_ty);
                         return;
                     }
-                    Callee::SliceAsPtr { .. } => {
-                        self.visit_slice_as_ptr(&args[0], pl_ty);
+                    Callee::SliceAsPtr { elem_ty, .. } => {
+                        self.visit_slice_as_ptr(elem_ty, &args[0], pl_ty);
                         return;
                     }
                     _ => {}
@@ -411,27 +411,31 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         }
     }
 
-    fn visit_slice_as_ptr(&mut self, op: &Operand<'tcx>, result_lty: LTy<'tcx>) {
+    fn visit_slice_as_ptr(&mut self, elem_ty: Ty<'tcx>, op: &Operand<'tcx>, result_lty: LTy<'tcx>) {
         let op_lty = self.acx.type_of(op);
         let op_ptr = op_lty.label;
         let result_ptr = result_lty.label;
 
-        let op_desc = type_desc::perms_to_desc(op_lty.ty, self.perms[op_ptr], self.flags[op_ptr]);
-        let op_own = op_desc.own;
-        let op_qty = op_desc.qty;
-        let result_desc = type_desc::perms_to_desc(
+        let op_desc = type_desc::perms_to_desc_with_pointee(
+            self.acx.tcx(),
+            elem_ty,
+            op_lty.ty,
+            self.perms[op_ptr],
+            self.flags[op_ptr],
+        );
+
+        let result_desc = type_desc::perms_to_desc_with_pointee(
+            self.acx.tcx(),
+            elem_ty,
             result_lty.ty,
             self.perms[result_ptr],
             self.flags[result_ptr],
         );
-        let result_own = result_desc.own;
-        let result_qty = result_desc.qty;
 
-        if op_own == result_own && op_qty == result_qty {
-            // Input and output types will be the same after rewriting, so the `as_ptr` call is not
-            // needed.
-            self.emit(RewriteKind::RemoveAsPtr);
-        }
+        // Generate a cast of our own, replacing the `as_ptr` call.
+        // TODO: leave the `as_ptr` in place if we can't produce a working cast
+        self.emit(RewriteKind::RemoveAsPtr);
+        self.emit_cast_desc_desc(op_desc, result_desc);
     }
 
     fn emit(&mut self, rw: RewriteKind) {
