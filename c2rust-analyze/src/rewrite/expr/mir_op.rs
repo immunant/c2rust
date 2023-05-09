@@ -482,7 +482,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     }
 
     fn emit_cast_lty_desc(&mut self, from_lty: LTy<'tcx>, to: TypeDesc<'tcx>) {
-        let from = type_desc::perms_to_desc(
+        let from = type_desc::perms_to_desc_with_pointee(
+            self.acx.tcx(),
+            to.pointee_ty,
             from_lty.ty,
             self.perms[from_lty.label],
             self.flags[from_lty.label],
@@ -491,7 +493,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     }
 
     fn emit_cast_desc_lty(&mut self, from: TypeDesc<'tcx>, to_lty: LTy<'tcx>) {
-        let to = type_desc::perms_to_desc(
+        let to = type_desc::perms_to_desc_with_pointee(
+            self.acx.tcx(),
+            from.pointee_ty,
             to_lty.ty,
             self.perms[to_lty.label],
             self.flags[to_lty.label],
@@ -501,6 +505,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
     fn emit_cast_lty_lty(&mut self, from_lty: LTy<'tcx>, to_lty: LTy<'tcx>) {
         if from_lty.label.is_none() && to_lty.label.is_none() {
+            // Input and output are both non-pointers.
             return;
         }
 
@@ -511,13 +516,34 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             return;
         }
 
+        let from_fixed = self.flags[from_lty.label].contains(FlagSet::FIXED);
+        let to_fixed = self.flags[to_lty.label].contains(FlagSet::FIXED);
+
         let lty_to_desc = |slf: &mut Self, lty: LTy<'tcx>| {
             type_desc::perms_to_desc(lty.ty, slf.perms[lty.label], slf.flags[lty.label])
         };
 
-        let from = lty_to_desc(self, from_lty);
-        let to = lty_to_desc(self, to_lty);
-        self.emit_cast_desc_desc(from, to);
+        match (from_fixed, to_fixed) {
+            (false, false) => {
+                let from = lty_to_desc(self, from_lty);
+                let to = lty_to_desc(self, to_lty);
+                self.emit_cast_desc_desc(from, to);
+            }
+
+            (false, true) => {
+                let from = lty_to_desc(self, from_lty);
+                self.emit_cast_desc_lty(from, to_lty);
+            }
+
+            (true, false) => {
+                let to = lty_to_desc(self, to_lty);
+                self.emit_cast_lty_desc(from_lty, to);
+            }
+
+            (true, true) => {
+                // No-op.  Both sides are `FIXED`, so we assume the existing code is already valid.
+            }
+        }
     }
 }
 
