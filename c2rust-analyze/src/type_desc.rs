@@ -69,6 +69,12 @@ pub fn perms_to_desc<'tcx>(
     perms: PermissionSet,
     flags: FlagSet,
 ) -> TypeDesc<'tcx> {
+    // The FIXED case should be handled by calling `perm_to_desc_with_pointee` instead.
+    assert!(
+        !flags.contains(FlagSet::FIXED),
+        "building TypeDesc for FIXED pointer requires a related pointee type"
+    );
+
     let (own, qty) = perms_to_own_and_qty(perms, flags);
 
     let pointee_ty = match *ptr_ty.kind() {
