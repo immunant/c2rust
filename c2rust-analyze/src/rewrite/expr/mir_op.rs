@@ -194,10 +194,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             {
                                 let local_lty = self.acx.local_tys[rv_place.local];
                                 let local_ptr = local_lty.label;
-                                let perms = self.perms[local_ptr];
                                 let flags = self.flags[local_ptr];
-                                let desc = type_desc::perms_to_desc(local_lty.ty, perms, flags);
-                                if desc.own == Ownership::Cell {
+                                if flags.contains(FlagSet::CELL) {
                                     // this is an assignment like `let x = *y` but `y` has CELL permissions
                                     self.enter_assign_rvalue(|v| {
                                         v.enter_rvalue_operand(0, |v| v.emit(RewriteKind::CellGet))
