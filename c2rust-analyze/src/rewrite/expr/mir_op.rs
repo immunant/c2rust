@@ -454,14 +454,27 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             return;
         }
 
+        let orig_from = from;
+        let mut from = orig_from;
+
+        if (from.qty, to.qty) == (Quantity::OffsetPtr, Quantity::Slice) {
+            // TODO: emit rewrite
+            from.qty = to.qty;
+        }
+
         if from.qty == to.qty && (from.own, to.own) == (Ownership::Mut, Ownership::Imm) {
             self.emit(RewriteKind::MutToImm);
-            return;
+            from.own = to.own;
         }
 
         // TODO: handle Slice -> Single here instead of special-casing in `offset`
 
-        eprintln!("unsupported cast kind: {:?} -> {:?}", from, to);
+        if from != to {
+            eprintln!(
+                "unsupported cast kind: {:?} -> {:?} (original input: {:?})",
+                from, to, orig_from
+            );
+        }
     }
 
     fn emit_cast_lty_desc(&mut self, from_lty: LTy<'tcx>, to: TypeDesc<'tcx>) {
