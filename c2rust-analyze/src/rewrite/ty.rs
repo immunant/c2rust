@@ -85,11 +85,15 @@ fn create_rewrite_label<'tcx>(
     } else {
         let perms = perms[pointer_lty.label];
         let flags = flags[pointer_lty.label];
-        // TODO: if the `Ownership` and `Quantity` exactly match `lty.ty`, then `ty_desc` can
-        // be `None` (no rewriting required).  This might let us avoid inlining a type alias
-        // for some pointers where no actual improvement was possible.
-        let desc = type_desc::perms_to_desc(pointer_lty.ty, perms, flags);
-        Some((desc.own, desc.qty))
+        if flags.contains(FlagSet::FIXED) {
+            None
+        } else {
+            // TODO: if the `Ownership` and `Quantity` exactly match `lty.ty`, then `ty_desc`
+            // can be `None` (no rewriting required).  This might let us avoid inlining a type
+            // alias for some pointers where no actual improvement was possible.
+            let desc = type_desc::perms_to_desc(pointer_lty.ty, perms, flags);
+            Some((desc.own, desc.qty))
+        }
     };
 
     RewriteLabel {
