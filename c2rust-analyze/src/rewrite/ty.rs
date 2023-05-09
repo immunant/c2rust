@@ -503,7 +503,10 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
                             new_lifetimes.push(Rewrite::PrintTy(format!("{:?}", ul)))
                         }
 
-                        [updated_lifetimes, new_lifetimes, other_params].into_iter().flatten().collect()
+                        [updated_lifetimes, new_lifetimes, other_params]
+                            .into_iter()
+                            .flatten()
+                            .collect()
                     };
 
                     // only the generic parameters need to be rewritten, not the
