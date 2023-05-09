@@ -15,7 +15,6 @@ use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
 use crate::AdtMetadataTable;
 use hir::{GenericParamKind, ItemKind, Path, PathSegment, VariantData};
-use indexmap::IndexSet;
 use rustc_ast::ast;
 use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Namespace, Res};
@@ -39,7 +38,7 @@ struct RewriteLabel<'a> {
     /// If set, a child or other descendant of this type requires rewriting.
     descendant_has_rewrite: bool,
     // A lifetime rewrite for a pointer or reference
-    lifetime: Option<&'a OriginArg<'a>>,
+    lifetime: &'a [OriginArg<'a>],
 }
 
 type RwLTy<'tcx> = LabeledTy<'tcx, RewriteLabel<'tcx>>;
@@ -78,7 +77,7 @@ fn create_rewrite_label<'tcx>(
     args: &[RwLTy<'tcx>],
     perms: &impl Index<PointerId, Output = PermissionSet>,
     flags: &impl Index<PointerId, Output = FlagSet>,
-    lifetime: Option<&'tcx OriginArg<'tcx>>,
+    lifetime: &'tcx [OriginArg<'tcx>],
     adt_metadata: &AdtMetadataTable,
 ) -> RewriteLabel<'tcx> {
     let ty_desc = if pointer_lty.label.is_none() {
@@ -112,7 +111,8 @@ where
     F: Index<PointerId, Output = FlagSet>,
 {
     lcx.relabel_with_args(lty, &mut |pointer_lty, args| {
-        create_rewrite_label(pointer_lty, args, perms, flags, None, adt_metadata)
+        // FIXME: get function lifetime parameters and pass them to this
+        create_rewrite_label(pointer_lty, args, perms, flags, &[], adt_metadata)
     })
 }
 
@@ -365,7 +365,7 @@ struct HirTyVisitor<'a, 'tcx> {
 
 fn adt_ty_rw<S>(
     adt_def: &AdtDef,
-    lifetime_params: &IndexSet<OriginParam>,
+    lifetime_params: &[OriginArg],
     substs: &&List<GenericArg>,
 ) -> Rewrite<S> {
     let lifetime_names = lifetime_params
@@ -425,8 +425,9 @@ impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
             };
 
             let lifetime_type = match rw_lty.label.lifetime {
-                Some(lifetime) => LifetimeName::Explicit(format!("{lifetime:?}")),
-                _ => LifetimeName::Elided,
+                [lifetime] => LifetimeName::Explicit(format!("{lifetime:?}")),
+                [] => LifetimeName::Elided,
+                _ => panic!("Pointer or reference type cannot have multiple lifetime parameters")
             };
             rw = match own {
                 Ownership::Raw => Rewrite::TyPtr(Box::new(rw), Mutability::Not),
@@ -442,12 +443,12 @@ impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
         }
 
         if let TyKind::Adt(adt_def, substs) = rw_lty.ty.kind() {
-            if let Some(adt_metadata) = &self.acx.gacx.adt_metadata.table.get(&adt_def.did()) {
+            if !rw_lty.label.lifetime.is_empty() {
                 self.hir_rewrites.push((
                     hir_ty.span,
-                    adt_ty_rw(adt_def, &adt_metadata.lifetime_params, substs),
-                ));
-            }
+                    adt_ty_rw(adt_def, rw_lty.label.lifetime, substs),
+                ))
+            };
         }
 
         if rw_lty.label.descendant_has_rewrite {
@@ -540,20 +541,12 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
                         field_metadata.origin_args,
                         &mut |pointer_lty, lifetime_lty, args| {
                             {
-                                let lifetime_rw = match lifetime_lty.label {
-                                    [lt] => Some(lt),
-                                    [] => None,
-                                    _ => {
-                                        // Not a pointer or reference type
-                                        None
-                                    }
-                                };
                                 create_rewrite_label(
                                     pointer_lty,
                                     args,
                                     &self.asn.perms(),
                                     &self.asn.flags(),
-                                    lifetime_rw,
+                                    lifetime_lty.label,
                                     &self.acx.gacx.adt_metadata,
                                 )
                             }
