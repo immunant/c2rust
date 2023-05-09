@@ -157,12 +157,17 @@ pub struct LFnSig<'tcx> {
 }
 
 bitflags! {
-    /// Additional flags describing a given pointer type.  These are mainly derived from
-    /// `PermissionSet`, but don't follow the normal subtyping rules and propagation algorithm.
+    /// Basic information about a pointer, computed with minimal analysis before running `dataflow`
+    /// or `borrowck`.
     #[derive(Default)]
     pub struct PointerInfo: u16 {
         /// This `PointerId` was generated for a `TyKind::Ref`.
         const REF = 0x0001;
+
+        /// This `PointerId` was recognized as belonging to a temporary reference.  Given a MIR
+        /// statement like `_1 = &mut _2`, where `_1` is a temporary and is (statically) used only
+        /// once, we apply this flag to the outermost `PointerId` of `_1`.
+        const RECOGNIZED_TEMPORARY_REF = 0x0002;
     }
 }
 
@@ -411,6 +416,10 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
 
     pub fn ptr_info(&self) -> PointerTable<PointerInfo> {
         self.gacx.ptr_info.and(&self.ptr_info)
+    }
+
+    pub fn ptr_info_mut(&mut self) -> PointerTableMut<PointerInfo> {
+        self.gacx.ptr_info.and_mut(&mut self.ptr_info)
     }
 
     pub fn local_ptr_info(&self) -> &LocalPointerTable<PointerInfo> {
