@@ -460,6 +460,77 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
     }
 }
 
+fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
+    let mut write_count = HashMap::with_capacity(mir.local_decls.len());
+    let mut rhs_is_ref = HashSet::new();
+
+    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+        for (i, stmt) in bb_data.statements.iter().enumerate() {
+            let (pl, rv) = match &stmt.kind {
+                StatementKind::Assign(x) => &**x,
+                _ => continue,
+            };
+
+            eprintln!(
+                "update_pointer_info: visit assignment: {:?}[{}]: {:?}",
+                bb, i, stmt
+            );
+
+            // Note we ignore `c_void_casts` here.  It shouldn't affect any of the patterns we're
+            // looking for.
+
+            if !pl.is_indirect() {
+                // This is a write directly to `pl.local`.
+                *write_count.entry(pl.local).or_insert(0) += 1;
+                eprintln!("  record write to LHS {:?}", pl);
+            }
+
+            let ref_pl = match *rv {
+                Rvalue::Ref(_rg, _kind, pl) => Some(pl),
+                Rvalue::AddressOf(_mutbl, pl) => Some(pl),
+                _ => None,
+            };
+            if let Some(ref_pl) = ref_pl {
+                // For simplicity, we consider taking the address of a local to be a write.  We
+                // expect this not to happen for the sorts of temporary refs we're looking for.
+                if !ref_pl.is_indirect() {
+                    eprintln!("  record write to ref target {:?}", ref_pl);
+                    *write_count.entry(ref_pl.local).or_insert(0) += 1;
+                }
+
+                rhs_is_ref.insert(pl.local);
+            }
+        }
+    }
+
+    for local in mir.local_decls.indices() {
+        if mir.local_kind(local) != LocalKind::Temp {
+            eprintln!(
+                "local {:?}: kind is {:?}, not Temp",
+                local,
+                mir.local_kind(local)
+            );
+            continue;
+        }
+        if write_count.get(&local).copied().unwrap_or(0) != 1 {
+            eprintln!(
+                "local {:?}: write count is {:?}, not 1",
+                local,
+                write_count.get(&local)
+            );
+            continue;
+        }
+        if !rhs_is_ref.contains(&local) {
+            eprintln!("local {:?}: rhs is not Rvalue::Ref", local);
+            continue;
+        }
+        let ptr = acx
+            .ptr_of(local)
+            .unwrap_or_else(|| panic!("{local:?} was initialized to Ref but has no PointerId?"));
+        acx.ptr_info_mut()[ptr].insert(PointerInfo::RECOGNIZED_TEMPORARY_REF);
+    }
+}
+
 fn run(tcx: TyCtxt) {
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
@@ -587,6 +658,7 @@ fn run(tcx: TyCtxt) {
             }
 
             label_rvalue_tys(&mut acx, &mir);
+            update_pointer_info(&mut acx, &mir);
 
             dataflow::generate_constraints(&acx, &mir)
         }));
@@ -652,7 +724,9 @@ fn run(tcx: TyCtxt) {
         let mut lasn = LocalAssignment::new(num_pointers, PermissionSet::UNIQUE, FlagSet::empty());
 
         for (ptr, info) in info.acx_data.local_ptr_info().iter() {
-            if info.contains(PointerInfo::REF) {
+            if info.contains(PointerInfo::REF)
+                && !info.contains(PointerInfo::RECOGNIZED_TEMPORARY_REF)
+            {
                 lasn.flags[ptr].insert(FlagSet::FIXED);
             }
         }
