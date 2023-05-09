@@ -117,31 +117,25 @@ where
 }
 
 fn hir_generic_ty_args<'tcx>(ty: &hir::Ty<'tcx>) -> Option<Vec<&'tcx hir::Ty<'tcx>>> {
-    if let hir::TyKind::Path(hir::QPath::Resolved(
-        _,
-        Path {
-            segments: [.., PathSegment {
-                args: Some(args), ..
-            }],
-            ..
-        },
-    )) = &ty.kind
-    {
-        Some(
-            args.args
-                .iter()
-                .filter_map(|k| {
-                    if let hir::GenericArg::Type(ty) = k {
-                        Some(ty)
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-        )
-    } else {
-        None
-    }
+    let args = match ty.kind {
+        hir::TyKind::Path(hir::QPath::Resolved(
+            _,
+            Path {
+                segments: [.., PathSegment { args, .. }],
+                ..
+            },
+        )) => args,
+        _ => &None,
+    };
+    args.map(|args| {
+        args.args
+            .iter()
+            .filter_map(|arg| match arg {
+                hir::GenericArg::Type(ty) => Some(ty),
+                _ => None,
+            })
+            .collect()
+    })
 }
 
 /// Extract arguments from `hir_ty` if it corresponds to the tcx type `ty`.  If the two types
