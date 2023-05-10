@@ -266,9 +266,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     }
 
     pub fn new_pointer(&mut self, info: PointerInfo) -> PointerId {
-        let i = self.ptr_info.len();
-        self.ptr_info.push(info);
-        PointerId::global(u32::try_from(i).unwrap())
+        self.ptr_info.push(info)
     }
 
     pub fn num_pointers(&self) -> usize {
