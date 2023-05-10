@@ -456,6 +456,9 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
     }
 }
 
+/// Set flags in `acx.ptr_info` based on analysis of the `mir`.  This is used for `PointerInfo`
+/// flags that represent non-local properties or other properties that can't be set easily when the
+/// `PointerId` is first allocated.
 fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
     let mut write_count = HashMap::with_capacity(mir.local_decls.len());
     let mut rhs_is_ref = HashSet::new();
