@@ -373,7 +373,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         }
     }
 
-    /// Like [`visit_operand`], but takes an expected `TypeDesc` instead of an expected `LTy`.
+    /// Like [`Self::visit_operand`], but takes an expected `TypeDesc` instead of an expected `LTy`.
     fn visit_operand_desc(&mut self, op: &Operand<'tcx>, expect_desc: TypeDesc<'tcx>) {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
