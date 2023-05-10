@@ -59,6 +59,8 @@ fn perms_to_own_and_qty(perms: PermissionSet, flags: FlagSet) -> (Ownership, Qua
     (own, qty)
 }
 
+/// Obtain the `TypeDesc` for a pointer.  `ptr_ty` should be the `Ty` of the pointer, and `perms`
+/// and `flags` should be taken from its outermost `PointerId`.
 pub fn perms_to_desc<'tcx>(
     ptr_ty: Ty<'tcx>,
     perms: PermissionSet,
@@ -81,6 +83,8 @@ pub fn perms_to_desc<'tcx>(
     }
 }
 
+/// Obtain the `TypeDesc` for a pointer to a local.  `local_ty` should be the `Ty` of the local
+/// itself, and `perms` and `flags` should be taken from its `addr_of_local` `PointerId`.
 pub fn local_perms_to_desc<'tcx>(
     local_ty: Ty<'tcx>,
     perms: PermissionSet,
