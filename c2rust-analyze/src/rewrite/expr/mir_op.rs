@@ -397,12 +397,10 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         let result_ptr = result_ty.label;
         let result_desc =
             type_desc::perms_to_desc(result_ty.ty, self.perms[result_ptr], self.flags[result_ptr]);
-        let result_own = result_desc.own;
-        let result_qty = result_desc.qty;
 
         let arg_expect_desc = TypeDesc {
-            own: result_own,
-            qty: match result_qty {
+            own: result_desc.own,
+            qty: match result_desc.qty {
                 Quantity::Single => Quantity::Slice,
                 Quantity::Slice => Quantity::Slice,
                 Quantity::OffsetPtr => Quantity::OffsetPtr,
@@ -413,12 +411,12 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         self.enter_call_arg(0, |v| v.visit_operand_desc(op, arg_expect_desc));
 
         // Emit `OffsetSlice` for the offset itself.
-        let mutbl = matches!(result_own, Ownership::Mut);
+        let mutbl = matches!(result_desc.own, Ownership::Mut);
 
         self.emit(RewriteKind::OffsetSlice { mutbl });
 
         // If the result is `Single`, also insert an upcast.
-        if result_qty == Quantity::Single {
+        if result_desc.qty == Quantity::Single {
             self.emit(RewriteKind::SliceFirst { mutbl });
         }
     }
@@ -429,17 +427,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         let result_ptr = result_lty.label;
 
         let op_desc = type_desc::perms_to_desc(op_lty.ty, self.perms[op_ptr], self.flags[op_ptr]);
-        let op_own = op_desc.own;
-        let op_qty = op_desc.qty;
         let result_desc = type_desc::perms_to_desc(
             result_lty.ty,
             self.perms[result_ptr],
             self.flags[result_ptr],
         );
-        let result_own = result_desc.own;
-        let result_qty = result_desc.qty;
 
-        if op_own == result_own && op_qty == result_qty {
+        if op_desc.own == result_desc.own && op_desc.qty == result_desc.qty {
             // Input and output types will be the same after rewriting, so the `as_ptr` call is not
             // needed.
             self.emit(RewriteKind::RemoveAsPtr);
