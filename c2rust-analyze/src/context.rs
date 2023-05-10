@@ -423,7 +423,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         self.ptr_info.len()
     }
 
-    pub fn ptr_info(&self) -> PointerTable<PointerInfo> {
+    pub fn _ptr_info(&self) -> PointerTable<PointerInfo> {
         self.gacx.ptr_info.and(&self.ptr_info)
     }
 
@@ -431,7 +431,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         self.gacx.ptr_info.and_mut(&mut self.ptr_info)
     }
 
-    pub fn local_ptr_info(&self) -> &LocalPointerTable<PointerInfo> {
+    pub fn _local_ptr_info(&self) -> &LocalPointerTable<PointerInfo> {
         &self.ptr_info
     }
 
