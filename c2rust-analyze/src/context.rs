@@ -159,15 +159,24 @@ pub struct LFnSig<'tcx> {
 bitflags! {
     /// Basic information about a pointer, computed with minimal analysis before running `dataflow`
     /// or `borrowck`.
+    ///
+    /// When `PointerId`s are merged into a single `PointerId` per equivalence class, the
+    /// `PointerInfo` of each resulting `PointerId` is the union of the `PointerInfo`s of all the
+    /// members of the class.  Thus, flags describing properties of the declaration that produced a
+    /// given `PointerId` should be formulated as "at least one declaration has property X", as a
+    /// single `PointerId` may correspond to several declarations.
     #[derive(Default)]
     pub struct PointerInfo: u16 {
         /// This `PointerId` was generated for a `TyKind::Ref`.
         const REF = 0x0001;
 
-        /// This `PointerId` was recognized as belonging to a temporary reference.  Given a MIR
-        /// statement like `_1 = &mut _2`, where `_1` is a temporary and is (statically) used only
-        /// once, we apply this flag to the outermost `PointerId` of `_1`.
-        const RECOGNIZED_TEMPORARY_REF = 0x0002;
+        /// At least one declaration that produced this `PointerId` used an explicit type
+        /// annotation.
+        const ANNOTATED = 0x0002;
+
+        /// This `PointerId` has at least one local declaration that is not a temporary reference
+        /// arising from an `&x` or `&mut x` expression in the source.
+        const NOT_TEMPORARY_REF = 0x0004;
     }
 }
 
@@ -324,14 +333,16 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
 
     pub fn assign_pointer_to_static(&mut self, did: DefId) {
         trace!("assign_pointer_to_static({:?})", did);
-        let lty = self.assign_pointer_ids(self.tcx.type_of(did));
+        // Statics always have full type annotations.
+        let lty = self.assign_pointer_ids_with_info(self.tcx.type_of(did), PointerInfo::ANNOTATED);
         let ptr = self.new_pointer(PointerInfo::empty());
         self.static_tys.insert(did, lty);
         self.addr_of_static.insert(did, ptr);
     }
 
     pub fn assign_pointer_to_field(&mut self, field: &FieldDef) {
-        let lty = self.assign_pointer_ids(self.tcx.type_of(field.did));
+        let lty =
+            self.assign_pointer_ids_with_info(self.tcx.type_of(field.did), PointerInfo::ANNOTATED);
         self.field_ltys.insert(field.did, lty);
     }
 
