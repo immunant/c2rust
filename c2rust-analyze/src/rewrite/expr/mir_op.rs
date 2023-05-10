@@ -7,7 +7,7 @@
 //! all adjustments, as this would make even non-rewritten code extremely verbose, so we try to
 //! materialize adjustments only on code that's subject to some rewrite.
 
-use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet, PointerId};
+use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet};
 use crate::pointer_id::PointerTable;
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{ty_callee, Callee};
@@ -388,7 +388,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         }
     }
 
-    fn visit_place(&mut self, pl: Place<'tcx>) {
+    fn visit_place(&mut self, _pl: Place<'tcx>) {
         // TODO: walk over `pl` to handle all derefs (casts, `*x` -> `(*x).get()`)
     }
 
@@ -479,6 +479,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         self.emit_cast_desc_desc(from, to);
     }
 
+    #[allow(dead_code)]
     fn emit_cast_desc_lty(&mut self, from: TypeDesc<'tcx>, to_lty: LTy<'tcx>) {
         let to = type_desc::perms_to_desc(
             to_lty.ty,
