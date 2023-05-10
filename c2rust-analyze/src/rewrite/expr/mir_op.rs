@@ -155,8 +155,11 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
                 let pl_lty = self.acx.type_of(pl);
 
+                // FIXME: Needs changes to handle CELL pointers in struct fields.  Suppose `pl` is
+                // something like `*(_1.0)`, where the `.0` field is CELL.  This should be
+                // converted to a `Cell::get` call, but we would fail to enter this case because
+                // `_1` fails the `is_any_ptr()` check.
                 if pl.is_indirect() && self.acx.local_tys[pl.local].ty.is_any_ptr() {
-                    // FIXME: should use pl_lty instead
                     let local_lty = self.acx.local_tys[pl.local];
                     let perms = self.perms[local_lty.label];
                     let flags = self.flags[local_lty.label];
