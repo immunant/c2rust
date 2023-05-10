@@ -161,8 +161,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 // `_1` fails the `is_any_ptr()` check.
                 if pl.is_indirect() && self.acx.local_tys[pl.local].ty.is_any_ptr() {
                     let local_lty = self.acx.local_tys[pl.local];
-                    let perms = self.perms[local_lty.label];
-                    let flags = self.flags[local_lty.label];
+                    let local_ptr = local_lty.label;
+                    let perms = self.perms[local_ptr];
+                    let flags = self.flags[local_ptr];
                     let desc = type_desc::perms_to_desc(local_lty.ty, perms, flags);
                     if desc.own == Ownership::Cell {
                         // this is an assignment like `*x = 2` but `x` has CELL permissions
@@ -190,8 +191,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 && self.acx.local_tys[rv_place.local].ty.is_any_ptr()
                             {
                                 let local_lty = self.acx.local_tys[rv_place.local];
-                                let perms = self.perms[local_lty.label];
-                                let flags = self.flags[local_lty.label];
+                                let local_ptr = local_lty.label;
+                                let perms = self.perms[local_ptr];
+                                let flags = self.flags[local_ptr];
                                 let desc = type_desc::perms_to_desc(local_lty.ty, perms, flags);
                                 if desc.own == Ownership::Cell {
                                     // this is an assignment like `let x = *y` but `y` has CELL permissions
