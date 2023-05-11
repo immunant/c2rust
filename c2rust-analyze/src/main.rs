@@ -809,8 +809,11 @@ fn run(tcx: TyCtxt) {
     eprintln!("\nfinal labeling for static items:");
     let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
     let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
-    for (did, lty) in gacx.static_tys.iter() {
-        let name = tcx.item_name(*did);
+    let mut static_dids = gacx.static_tys.keys().cloned().collect::<Vec<_>>();
+    static_dids.sort();
+    for did in static_dids {
+        let lty = gacx.static_tys[&did];
+        let name = tcx.item_name(did);
         print_labeling_for_var(
             lcx1,
             lcx2,
@@ -823,8 +826,11 @@ fn run(tcx: TyCtxt) {
     }
 
     eprintln!("\nfinal labeling for fields:");
-    for (did, field_lty) in gacx.field_ltys.iter() {
-        let name = tcx.item_name(*did);
+    let mut field_dids = gacx.field_ltys.keys().cloned().collect::<Vec<_>>();
+    field_dids.sort();
+    for did in field_dids {
+        let field_lty = gacx.field_ltys[&did];
+        let name = tcx.item_name(did);
         let pid = field_lty.label;
         if pid != PointerId::NONE {
             let ty_perms = gasn.perms[pid];
