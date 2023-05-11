@@ -462,6 +462,15 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
 /// flags that represent non-local properties or other properties that can't be set easily when the
 /// `PointerId` is first allocated.
 fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
+    // For determining whether a local should have `NOT_TEMPORARY_REF`, we look for the code
+    // pattern that rustc generates when lowering `&x` and `&mut x` expressions.  This normally
+    // consists of a `LocalKind::Temp` local that's initialized with `_1 = &mut ...;` or a similar
+    // statement and that isn't modified or overwritten anywhere else.  Thus, we keep track of
+    // which locals appear on the LHS of such statements and also the number of places in which a
+    // local is (possibly) written.
+    //
+    // Note this currently detects only one of the temporaries in `&mut &mut x`, so we may need to
+    // make these checks more precise at some point.
     let mut write_count = HashMap::with_capacity(mir.local_decls.len());
     let mut rhs_is_ref = HashSet::new();
 
