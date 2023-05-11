@@ -213,6 +213,7 @@ impl<'a, 'tcx> AnalysisCtxt<'_, 'tcx> {
 pub struct AnalysisCtxtData<'tcx> {
     local_tys: IndexVec<Local, LTy<'tcx>>,
     addr_of_local: IndexVec<Local, PointerId>,
+    c_void_casts: CVoidCasts<'tcx>,
     rvalue_tys: HashMap<Location, LTy<'tcx>>,
     string_literal_locs: Vec<Location>,
     next_ptr_id: NextLocalPointerId,
@@ -326,8 +327,8 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             gacx,
             local_decls: &mir.local_decls,
             local_tys: IndexVec::new(),
-            c_void_casts: CVoidCasts::new(mir, tcx),
             addr_of_local: IndexVec::new(),
+            c_void_casts: CVoidCasts::new(mir, tcx),
             rvalue_tys: HashMap::new(),
             string_literal_locs: Default::default(),
             next_ptr_id: NextLocalPointerId::new(),
@@ -342,6 +343,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         let AnalysisCtxtData {
             local_tys,
             addr_of_local,
+            c_void_casts,
             rvalue_tys,
             string_literal_locs,
             next_ptr_id,
@@ -350,8 +352,8 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             gacx,
             local_decls: &mir.local_decls,
             local_tys,
-            c_void_casts: CVoidCasts::default(),
             addr_of_local,
+            c_void_casts,
             rvalue_tys,
             string_literal_locs,
             next_ptr_id,
@@ -362,6 +364,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         AnalysisCtxtData {
             local_tys: self.local_tys,
             addr_of_local: self.addr_of_local,
+            c_void_casts: self.c_void_casts,
             rvalue_tys: self.rvalue_tys,
             string_literal_locs: self.string_literal_locs,
             next_ptr_id: self.next_ptr_id,
@@ -503,6 +506,7 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
         let Self {
             local_tys,
             addr_of_local,
+            c_void_casts: _,
             rvalue_tys,
             string_literal_locs: _,
             next_ptr_id,
