@@ -484,7 +484,8 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&path
 pub fn translate_failure(tcfg: &TranspilerConfig, msg: &str) {
     error!("{}", msg);
     if tcfg.fail_on_error {
-        panic!("Translation failed, see error above");
+        error!("Translation failed, exiting");
+        std::process::exit(1);
     }
 }
 
