@@ -86,6 +86,9 @@ class CFile:
             "--overwrite-existing",
         ]
 
+        # return nonzero if translation fails
+        args.append("--fail-on-error")
+
         if self.disable_incremental_relooper:
             args.append("--no-incremental-relooper")
         if self.disallow_current_block:
