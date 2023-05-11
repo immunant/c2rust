@@ -80,17 +80,17 @@ fn create_rewrite_label<'tcx>(
     lifetime: &'tcx [OriginArg<'tcx>],
     adt_metadata: &AdtMetadataTable,
 ) -> RewriteLabel<'tcx> {
-    let ty_desc = Some(pointer_lty.label)
-        .filter(|ptr| !ptr.is_none())
-        .map(|ptr| {
-            let perms = perms[ptr];
-            let flags = flags[ptr];
-            // TODO: if the `Ownership` and `Quantity` exactly match `lty.ty`, then `ty_desc` can
-            // be `None` (no rewriting required).  This might let us avoid inlining a type alias
-            // for some pointers where no actual improvement was possible.
-            let desc = type_desc::perms_to_desc(pointer_lty.ty, perms, flags);
-            (desc.own, desc.qty)
-        });
+    let ty_desc = if pointer_lty.label.is_none() {
+        None
+    } else {
+        let perms = perms[pointer_lty.label];
+        let flags = flags[pointer_lty.label];
+        // TODO: if the `Ownership` and `Quantity` exactly match `lty.ty`, then `ty_desc` can
+        // be `None` (no rewriting required).  This might let us avoid inlining a type alias
+        // for some pointers where no actual improvement was possible.
+        let desc = type_desc::perms_to_desc(pointer_lty.ty, perms, flags);
+        Some((desc.own, desc.qty))
+    };
 
     RewriteLabel {
         ty_desc,
