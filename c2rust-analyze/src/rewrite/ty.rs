@@ -357,7 +357,7 @@ struct HirTyVisitor<'a, 'tcx> {
 fn adt_ty_rw<S>(
     adt_def: &AdtDef,
     lifetime_params: &[OriginArg],
-    substs: &&List<GenericArg>,
+    substs: &List<GenericArg>,
 ) -> Rewrite<S> {
     let lifetime_names = lifetime_params
         .iter()
