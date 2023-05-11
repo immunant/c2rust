@@ -24,8 +24,8 @@ use rustc_hir::Mutability;
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, LocalDecl};
 use rustc_middle::ty::print::{FmtPrinter, Print};
+use rustc_middle::ty::TyKind;
 use rustc_middle::ty::{self, AdtDef, GenericArg, GenericArgKind, List, ReErased, TyCtxt};
-use rustc_middle::ty::{subst, TyKind};
 use rustc_span::Span;
 
 use super::LifetimeName;
@@ -300,7 +300,7 @@ fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
     };
 
     let cell_adt = tcx.adt_def(cell_struct_did);
-    let substs = tcx.mk_substs([subst::GenericArg::from(ty)].into_iter());
+    let substs = tcx.mk_substs([GenericArg::from(ty)].into_iter());
     tcx.mk_adt(cell_adt, substs)
 }
 
