@@ -1,6 +1,6 @@
 use crate::context::{FlagSet, PermissionSet};
 use rustc_middle::mir::Mutability;
-use rustc_middle::ty::{AdtDef, Ty, TyCtxt, TyKind, TypeAndMut};
+use rustc_middle::ty::{AdtDef, Ty, TyCtxt, TyKind};
 
 #[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -250,28 +250,20 @@ pub fn unpack_pointer_type<'tcx>(
     (own, qty)
 }
 
-/// If `ty` is `Cell<T>`, returns `Some(T)`.  Otherwise, returns `None`.
-fn unpack_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Ty<'tcx>> {
-    match *ty.kind() {
-        TyKind::Adt(adt_def, substs) if is_cell(tcx, adt_def) => Some(substs.type_at(0)),
-        _ => None,
-    }
-}
-
 /// Returns `true` if `adt_def` is the type `std::cell::Cell`.
-fn is_cell<'tcx>(tcx: TyCtxt<'tcx>, adt_def: AdtDef<'tcx>) -> bool {
+fn is_cell<'tcx>(_tcx: TyCtxt<'tcx>, _adt_def: AdtDef<'tcx>) -> bool {
     // TODO
     false
 }
 
 /// Returns `true` if `adt_def` is the type `std::rc::Rc`.
-fn is_rc<'tcx>(tcx: TyCtxt<'tcx>, adt_def: AdtDef<'tcx>) -> bool {
+fn is_rc<'tcx>(_tcx: TyCtxt<'tcx>, _adt_def: AdtDef<'tcx>) -> bool {
     // TODO
     false
 }
 
 /// Returns `true` if `adt_def` is the type `OffsetPtr` from the C2Rust support library.
-fn is_offset_ptr<'tcx>(tcx: TyCtxt<'tcx>, adt_def: AdtDef<'tcx>) -> bool {
+fn is_offset_ptr<'tcx>(_tcx: TyCtxt<'tcx>, _adt_def: AdtDef<'tcx>) -> bool {
     // TODO
     false
 }
