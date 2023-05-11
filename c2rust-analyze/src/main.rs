@@ -18,7 +18,7 @@ extern crate rustc_type_ir;
 use crate::borrowck::{AdtMetadata, FieldMetadata, OriginArg, OriginParam};
 use crate::context::{
     AnalysisCtxt, AnalysisCtxtData, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy,
-    LTyCtxt, LocalAssignment, PermissionSet, PointerId,
+    LTyCtxt, LocalAssignment, PermissionSet, PointerId, PointerInfo,
 };
 use crate::dataflow::DataflowConstraints;
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
@@ -443,7 +443,9 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                     }
                     _ => continue,
                 },
-                Rvalue::Cast(_, _, ty) => acx.assign_pointer_ids(*ty),
+                Rvalue::Cast(_, _, ty) => {
+                    acx.assign_pointer_ids_with_info(*ty, PointerInfo::ANNOTATED)
+                }
                 Rvalue::Use(Operand::Constant(c)) => match label_string_literals(acx, c, loc) {
                     Some(lty) => lty,
                     None => continue,
@@ -452,6 +454,74 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
             };
 
             acx.rvalue_tys.insert(loc, lty);
+        }
+    }
+}
+
+/// Set flags in `acx.ptr_info` based on analysis of the `mir`.  This is used for `PointerInfo`
+/// flags that represent non-local properties or other properties that can't be set easily when the
+/// `PointerId` is first allocated.
+fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
+    // For determining whether a local should have `NOT_TEMPORARY_REF`, we look for the code
+    // pattern that rustc generates when lowering `&x` and `&mut x` expressions.  This normally
+    // consists of a `LocalKind::Temp` local that's initialized with `_1 = &mut ...;` or a similar
+    // statement and that isn't modified or overwritten anywhere else.  Thus, we keep track of
+    // which locals appear on the LHS of such statements and also the number of places in which a
+    // local is (possibly) written.
+    //
+    // Note this currently detects only one of the temporaries in `&mut &mut x`, so we may need to
+    // make these checks more precise at some point.
+    let mut write_count = HashMap::with_capacity(mir.local_decls.len());
+    let mut rhs_is_ref = HashSet::new();
+
+    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+        for (i, stmt) in bb_data.statements.iter().enumerate() {
+            let (pl, rv) = match &stmt.kind {
+                StatementKind::Assign(x) => &**x,
+                _ => continue,
+            };
+
+            eprintln!(
+                "update_pointer_info: visit assignment: {:?}[{}]: {:?}",
+                bb, i, stmt
+            );
+
+            // Note we ignore `c_void_casts` here.  It shouldn't affect any of the patterns we're
+            // looking for.
+
+            if !pl.is_indirect() {
+                // This is a write directly to `pl.local`.
+                *write_count.entry(pl.local).or_insert(0) += 1;
+                eprintln!("  record write to LHS {:?}", pl);
+            }
+
+            let ref_pl = match *rv {
+                Rvalue::Ref(_rg, _kind, pl) => Some(pl),
+                Rvalue::AddressOf(_mutbl, pl) => Some(pl),
+                _ => None,
+            };
+            if let Some(ref_pl) = ref_pl {
+                // For simplicity, we consider taking the address of a local to be a write.  We
+                // expect this not to happen for the sorts of temporary refs we're looking for.
+                if !ref_pl.is_indirect() {
+                    eprintln!("  record write to ref target {:?}", ref_pl);
+                    *write_count.entry(ref_pl.local).or_insert(0) += 1;
+                }
+
+                rhs_is_ref.insert(pl.local);
+            }
+        }
+    }
+
+    for local in mir.local_decls.indices() {
+        let is_temp_ref = mir.local_kind(local) == LocalKind::Temp
+            && write_count.get(&local).copied().unwrap_or(0) == 1
+            && rhs_is_ref.contains(&local);
+
+        if let Some(ptr) = acx.ptr_of(local) {
+            if !is_temp_ref {
+                acx.ptr_info_mut()[ptr].insert(PointerInfo::NOT_TEMPORARY_REF);
+            }
         }
     }
 }
@@ -495,13 +565,14 @@ fn run(tcx: TyCtxt) {
         let sig = tcx.fn_sig(ldid.to_def_id());
         let sig = tcx.erase_late_bound_regions(sig);
 
+        // All function signatures are fully annotated.
         let inputs = sig
             .inputs()
             .iter()
-            .map(|&ty| gacx.assign_pointer_ids(ty))
+            .map(|&ty| gacx.assign_pointer_ids_with_info(ty, PointerInfo::ANNOTATED))
             .collect::<Vec<_>>();
         let inputs = gacx.lcx.mk_slice(&inputs);
-        let output = gacx.assign_pointer_ids(sig.output());
+        let output = gacx.assign_pointer_ids_with_info(sig.output(), PointerInfo::ANNOTATED);
 
         let lsig = LFnSig { inputs, output };
         gacx.fn_sigs.insert(ldid.to_def_id(), lsig);
@@ -547,6 +618,7 @@ fn run(tcx: TyCtxt) {
         assert!(acx.local_tys.is_empty());
         acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
         for (local, decl) in mir.local_decls.iter_enumerated() {
+            // TODO: set PointerInfo::ANNOTATED for the parts of the type with user annotations
             let lty = match mir.local_kind(local) {
                 LocalKind::Var | LocalKind::Temp => acx.assign_pointer_ids(decl.ty),
                 LocalKind::Arg => {
@@ -558,12 +630,13 @@ fn run(tcx: TyCtxt) {
             let l = acx.local_tys.push(lty);
             assert_eq!(local, l);
 
-            let ptr = acx.new_pointer();
+            let ptr = acx.new_pointer(PointerInfo::empty());
             let l = acx.addr_of_local.push(ptr);
             assert_eq!(local, l);
         }
 
         label_rvalue_tys(&mut acx, &mir);
+        update_pointer_info(&mut acx, &mir);
 
         // Compute local equivalence classes and dataflow constraints.
         let (dataflow, equiv_constraints) = dataflow::generate_constraints(&acx, &mir);
@@ -591,7 +664,7 @@ fn run(tcx: TyCtxt) {
         let (local_counter, local_equiv_map) = info.local_equiv.renumber(&global_equiv_map);
         eprintln!("local_equiv_map = {local_equiv_map:?}");
         info.acx_data.remap_pointers(
-            gacx.lcx,
+            &mut gacx,
             global_equiv_map.and(&local_equiv_map),
             local_counter,
         );
@@ -602,11 +675,38 @@ fn run(tcx: TyCtxt) {
 
     // Compute permission and flag assignments.
 
+    fn should_make_fixed(info: PointerInfo) -> bool {
+        // We group ref types into three categories:
+        //
+        // 1. Explicitly annotated as a reference by the user (`REF` and `ANNOTATED`)
+        // 2. Inferred as ref by the compiler, excluding temporaries (`REF` and
+        //    `NOT_TEMPORARY_REF`, but not `ANNOTATED`)
+        // 3. Temporary refs (`REF` but not `ANNOTATED` or `NOT_TEMPORARY_REF`)
+        //
+        // Currently, we apply the `FIXED` flag to categories 1 and 2.
+        info.contains(PointerInfo::REF)
+            && (info.contains(PointerInfo::ANNOTATED)
+                || info.contains(PointerInfo::NOT_TEMPORARY_REF))
+    }
+
     let mut gasn =
         GlobalAssignment::new(gacx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
+    for (ptr, &info) in gacx.ptr_info().iter() {
+        if should_make_fixed(info) {
+            gasn.flags[ptr].insert(FlagSet::FIXED);
+        }
+    }
+
     for info in func_info.values_mut() {
         let num_pointers = info.acx_data.num_pointers();
-        let lasn = LocalAssignment::new(num_pointers, PermissionSet::UNIQUE, FlagSet::empty());
+        let mut lasn = LocalAssignment::new(num_pointers, PermissionSet::UNIQUE, FlagSet::empty());
+
+        for (ptr, &info) in info.acx_data.local_ptr_info().iter() {
+            if should_make_fixed(info) {
+                lasn.flags[ptr].insert(FlagSet::FIXED);
+            }
+        }
+
         info.lasn.set(lasn);
     }
 
@@ -718,8 +818,11 @@ fn run(tcx: TyCtxt) {
     eprintln!("\nfinal labeling for static items:");
     let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
     let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
-    for (did, lty) in gacx.static_tys.iter() {
-        let name = tcx.item_name(*did);
+    let mut static_dids = gacx.static_tys.keys().cloned().collect::<Vec<_>>();
+    static_dids.sort();
+    for did in static_dids {
+        let lty = gacx.static_tys[&did];
+        let name = tcx.item_name(did);
         print_labeling_for_var(
             lcx1,
             lcx2,
@@ -732,8 +835,11 @@ fn run(tcx: TyCtxt) {
     }
 
     eprintln!("\nfinal labeling for fields:");
-    for (did, field_lty) in gacx.field_ltys.iter() {
-        let name = tcx.item_name(*did);
+    let mut field_dids = gacx.field_ltys.keys().cloned().collect::<Vec<_>>();
+    field_dids.sort();
+    for did in field_dids {
+        let field_lty = gacx.field_ltys[&did];
+        let name = tcx.item_name(did);
         let pid = field_lty.label;
         if pid != PointerId::NONE {
             let ty_perms = gasn.perms[pid];
@@ -756,11 +862,20 @@ fn run(tcx: TyCtxt) {
 trait AssignPointerIds<'tcx> {
     fn lcx(&self) -> LTyCtxt<'tcx>;
 
-    fn new_pointer(&mut self) -> PointerId;
+    fn new_pointer(&mut self, info: PointerInfo) -> PointerId;
 
     fn assign_pointer_ids(&mut self, ty: Ty<'tcx>) -> LTy<'tcx> {
+        self.assign_pointer_ids_with_info(ty, PointerInfo::empty())
+    }
+
+    fn assign_pointer_ids_with_info(
+        &mut self,
+        ty: Ty<'tcx>,
+        base_ptr_info: PointerInfo,
+    ) -> LTy<'tcx> {
         self.lcx().label(ty, &mut |ty| match ty.kind() {
-            TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => self.new_pointer(),
+            TyKind::Ref(_, _, _) => self.new_pointer(base_ptr_info | PointerInfo::REF),
+            TyKind::RawPtr(_) => self.new_pointer(base_ptr_info),
             _ => PointerId::NONE,
         })
     }
@@ -771,8 +886,8 @@ impl<'tcx> AssignPointerIds<'tcx> for GlobalAnalysisCtxt<'tcx> {
         self.lcx
     }
 
-    fn new_pointer(&mut self) -> PointerId {
-        self.new_pointer()
+    fn new_pointer(&mut self, info: PointerInfo) -> PointerId {
+        self.new_pointer(info)
     }
 }
 
@@ -781,8 +896,8 @@ impl<'tcx> AssignPointerIds<'tcx> for AnalysisCtxt<'_, 'tcx> {
         self.lcx()
     }
 
-    fn new_pointer(&mut self) -> PointerId {
-        self.new_pointer()
+    fn new_pointer(&mut self, info: PointerInfo) -> PointerId {
+        self.new_pointer(info)
     }
 }
 
