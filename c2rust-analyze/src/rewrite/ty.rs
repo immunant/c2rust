@@ -7,12 +7,14 @@
 use std::collections::HashMap;
 use std::ops::Index;
 
+use crate::borrowck::{OriginArg, OriginParam};
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::PointerId;
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
-use hir::{ItemKind, VariantData};
+use crate::AdtMetadataTable;
+use hir::{GenericParamKind, ItemKind, Path, PathSegment, VariantData};
 use rustc_ast::ast;
 use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Namespace, Res};
@@ -22,55 +24,117 @@ use rustc_hir::Mutability;
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, LocalDecl};
 use rustc_middle::ty::print::{FmtPrinter, Print};
-use rustc_middle::ty::subst::GenericArg;
-use rustc_middle::ty::{self, ReErased, TyCtxt};
+use rustc_middle::ty::TyKind;
+use rustc_middle::ty::{self, AdtDef, GenericArg, GenericArgKind, List, ReErased, TyCtxt};
 use rustc_span::Span;
 
 use super::LifetimeName;
 
 /// A label for use with `LabeledTy` to indicate what rewrites to apply at each position in a type.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-struct RewriteLabel {
+struct RewriteLabel<'a> {
     /// Rewrite a raw pointer, whose ownership and quantity have been inferred as indicated.
     ty_desc: Option<(Ownership, Quantity)>,
     /// If set, a child or other descendant of this type requires rewriting.
     descendant_has_rewrite: bool,
+    /// A lifetime rewrite for a pointer or reference.
+    lifetime: &'a [OriginArg<'a>],
 }
 
-type RwLTy<'tcx> = LabeledTy<'tcx, RewriteLabel>;
+type RwLTy<'tcx> = LabeledTy<'tcx, RewriteLabel<'tcx>>;
+
+fn has_lifetime_rws(rw_lty: &RwLTy, adt_metadata: &AdtMetadataTable) -> bool {
+    let has_pointer_lifetime = rw_lty
+        .label
+        .lifetime
+        .iter()
+        .any(|lt| matches!(lt, OriginArg::Hypothetical(..)));
+    let has_adt_lifetime = match rw_lty.ty.kind() {
+        TyKind::Adt(adt_def, _) => adt_metadata
+            .table
+            .get(&adt_def.did())
+            .map(|adt| {
+                adt.lifetime_params
+                    .iter()
+                    .any(|lt| matches!(lt, OriginParam::Hypothetical(..)))
+            })
+            .unwrap_or(false),
+        _ => false,
+    };
+    has_adt_lifetime || has_pointer_lifetime
+}
+
+fn descendant_has_rewrite(args: &[RwLTy], adt_metadata: &AdtMetadataTable) -> bool {
+    args.iter().any(|child| {
+        child.label.ty_desc.is_some()
+            || child.label.descendant_has_rewrite
+            || has_lifetime_rws(child, adt_metadata)
+    })
+}
+
+fn create_rewrite_label<'tcx>(
+    pointer_lty: LTy<'tcx>,
+    args: &[RwLTy<'tcx>],
+    perms: &impl Index<PointerId, Output = PermissionSet>,
+    flags: &impl Index<PointerId, Output = FlagSet>,
+    lifetime: &'tcx [OriginArg<'tcx>],
+    adt_metadata: &AdtMetadataTable,
+) -> RewriteLabel<'tcx> {
+    let ty_desc = if pointer_lty.label.is_none() {
+        None
+    } else {
+        let perms = perms[pointer_lty.label];
+        let flags = flags[pointer_lty.label];
+        // TODO: if the `Ownership` and `Quantity` exactly match `lty.ty`, then `ty_desc` can
+        // be `None` (no rewriting required).  This might let us avoid inlining a type alias
+        // for some pointers where no actual improvement was possible.
+        let desc = type_desc::perms_to_desc(pointer_lty.ty, perms, flags);
+        Some((desc.own, desc.qty))
+    };
+
+    RewriteLabel {
+        ty_desc,
+        descendant_has_rewrite: descendant_has_rewrite(args, adt_metadata),
+        lifetime,
+    }
+}
 
 fn relabel_rewrites<'tcx, P, F>(
     perms: &P,
     flags: &F,
-    lcx: LabeledTyCtxt<'tcx, RewriteLabel>,
+    lcx: LabeledTyCtxt<'tcx, RewriteLabel<'tcx>>,
     lty: LTy<'tcx>,
+    adt_metadata: &AdtMetadataTable,
 ) -> RwLTy<'tcx>
 where
     P: Index<PointerId, Output = PermissionSet>,
     F: Index<PointerId, Output = FlagSet>,
 {
-    lcx.relabel_with_args(lty, &mut |lty, args| {
-        let ty_desc = if lty.label.is_none() {
-            None
-        } else {
-            let perms = perms[lty.label];
-            let flags = flags[lty.label];
-            // TODO: if the `Ownership` and `Quantity` exactly match `lty.ty`, then `ty_desc` can
-            // be `None` (no rewriting required).  This might let us avoid inlining a type alias
-            // for some pointers where no actual improvement was possible.
-            let desc = type_desc::perms_to_desc(lty.ty, perms, flags);
-            Some((desc.own, desc.qty))
-        };
-        // `args` were already rewritten, so we can compute `descendant_has_rewrite` just by
-        // visiting the direct children.
-        let descendant_has_rewrite = args.iter().any(|child| {
-            let has_rewrite = child.label.ty_desc.is_some();
-            has_rewrite || child.label.descendant_has_rewrite
-        });
-        RewriteLabel {
-            ty_desc,
-            descendant_has_rewrite,
-        }
+    lcx.relabel_with_args(lty, &mut |pointer_lty, args| {
+        // FIXME: get function lifetime parameters and pass them to this
+        create_rewrite_label(pointer_lty, args, perms, flags, &[], adt_metadata)
+    })
+}
+
+fn hir_generic_ty_args<'tcx>(ty: &hir::Ty<'tcx>) -> Option<Vec<&'tcx hir::Ty<'tcx>>> {
+    let args = match ty.kind {
+        hir::TyKind::Path(hir::QPath::Resolved(
+            _,
+            Path {
+                segments: [.., PathSegment { args, .. }],
+                ..
+            },
+        )) => args,
+        _ => &None,
+    };
+    args.map(|args| {
+        args.args
+            .iter()
+            .filter_map(|arg| match arg {
+                hir::GenericArg::Type(ty) => Some(ty),
+                _ => None,
+            })
+            .collect()
     })
 }
 
@@ -136,7 +200,25 @@ fn deconstruct_hir_ty<'a, 'tcx>(
             }
         }
 
-        _ => None,
+        (&ty::TyKind::Adt(adt_def, substs), &hir::TyKind::Path(..)) => {
+            hir_generic_ty_args(hir_ty).map(|type_args| {
+                if type_args.len() < substs.types().count() {
+                    // this situation occurs when there are hidden type arguments
+                    // such as the allocator `std::alloc::Global` type argument in `Vec`
+                    eprintln!("warning: extra MIR type argument for {adt_def:?}:");
+                    for mir_arg in substs.types().into_iter().skip(type_args.len()) {
+                        eprintln!("\t{:?}", mir_arg)
+                    }
+                } else if type_args.len() != substs.types().count() {
+                    panic!("mismatched number of type arguments for {adt_def:?} and {hir_ty:?}")
+                }
+                type_args
+            })
+        }
+        (tk, hir_tk) => {
+            eprintln!("deconstruct_hir_ty: {tk:?} -- {hir_tk:?} not supported");
+            None
+        }
     }
 }
 
@@ -224,7 +306,7 @@ fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
 
 /// Produce a `Ty` reflecting the rewrites indicated by the labels in `rw_lty`.
 fn mk_rewritten_ty<'tcx>(
-    lcx: LabeledTyCtxt<'tcx, RewriteLabel>,
+    lcx: LabeledTyCtxt<'tcx, RewriteLabel<'tcx>>,
     rw_lty: RwLTy<'tcx>,
 ) -> ty::Ty<'tcx> {
     let tcx = *lcx;
@@ -266,20 +348,37 @@ fn mk_rewritten_ty<'tcx>(
 struct HirTyVisitor<'a, 'tcx> {
     asn: &'a Assignment<'a>,
     acx: &'a AnalysisCtxt<'a, 'tcx>,
-    rw_lcx: LabeledTyCtxt<'tcx, RewriteLabel>,
+    rw_lcx: LabeledTyCtxt<'tcx, RewriteLabel<'tcx>>,
     mir: &'a Body<'tcx>,
     hir_rewrites: Vec<(Span, Rewrite)>,
     hir_span_to_mir_local: HashMap<Span, rustc_middle::mir::Local>,
 }
 
+fn adt_ty_rw<S>(
+    adt_def: &AdtDef,
+    lifetime_params: &[OriginArg],
+    substs: &List<GenericArg>,
+) -> Rewrite<S> {
+    let lifetime_names = lifetime_params
+        .iter()
+        .map(|p| Rewrite::PrintTy(format!("{p:?}")));
+    let other_param_names = substs.iter().filter_map(|p| match p.unpack() {
+        GenericArgKind::Lifetime(..) => None,
+        _ => Some(Rewrite::PrintTy(format!("{p:?}"))),
+    });
+
+    Rewrite::TyCtor(
+        format!("{adt_def:?}"),
+        lifetime_names.chain(other_param_names).collect(),
+    )
+}
+
 impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
-    fn handle_ty(
-        &mut self,
-        rw_lty: RwLTy<'tcx>,
-        hir_ty: &hir::Ty<'tcx>,
-        lifetime_type: LifetimeName,
-    ) {
-        if rw_lty.label.ty_desc.is_none() && !rw_lty.label.descendant_has_rewrite {
+    fn handle_ty(&mut self, rw_lty: RwLTy<'tcx>, hir_ty: &hir::Ty<'tcx>) {
+        if !rw_lty.ty.is_adt()
+            && rw_lty.label.ty_desc.is_none()
+            && !rw_lty.label.descendant_has_rewrite
+        {
             // No rewrites here or in any descendant of this HIR node.
             return;
         }
@@ -301,6 +400,7 @@ impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
 
         if let Some((own, qty)) = rw_lty.label.ty_desc {
             assert_eq!(hir_args.len(), 1);
+
             let mut rw = Rewrite::Sub(0, hir_args[0].span);
 
             if own == Ownership::Cell {
@@ -315,6 +415,11 @@ impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
                 Quantity::OffsetPtr => Rewrite::TySlice(Box::new(rw)),
             };
 
+            let lifetime_type = match rw_lty.label.lifetime {
+                [lifetime] => LifetimeName::Explicit(format!("{lifetime:?}")),
+                [] => LifetimeName::Elided,
+                _ => panic!("Pointer or reference type cannot have multiple lifetime parameters"),
+            };
             rw = match own {
                 Ownership::Raw => Rewrite::TyPtr(Box::new(rw), Mutability::Not),
                 Ownership::RawMut => Rewrite::TyPtr(Box::new(rw), Mutability::Mut),
@@ -328,10 +433,19 @@ impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
             self.hir_rewrites.push((hir_ty.span, rw));
         }
 
+        if let TyKind::Adt(adt_def, substs) = rw_lty.ty.kind() {
+            if !rw_lty.label.lifetime.is_empty() {
+                self.hir_rewrites.push((
+                    hir_ty.span,
+                    adt_ty_rw(adt_def, rw_lty.label.lifetime, substs),
+                ))
+            };
+        }
+
         if rw_lty.label.descendant_has_rewrite {
             for (&arg_rw_lty, arg_hir_ty) in rw_lty.args.iter().zip(hir_args.into_iter()) {
                 // FIXME: get the actual lifetime from ADT/Field Metadata
-                self.handle_ty(arg_rw_lty, arg_hir_ty, LifetimeName::Elided);
+                self.handle_ty(arg_rw_lty, arg_hir_ty);
             }
         }
     }
@@ -345,10 +459,62 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
     }
 
     fn visit_item(&mut self, item: &'tcx hir::Item<'tcx>) {
+        let did = item.def_id.to_def_id();
         let field_ltys = &self.acx.gacx.field_ltys;
+
         #[allow(clippy::single_match)]
         match &item.kind {
-            ItemKind::Struct(VariantData::Struct(field_defs, _), _generics) => {
+            ItemKind::Struct(VariantData::Struct(field_defs, _), generics) => {
+                let adt_metadata = &self.acx.gacx.adt_metadata.table[&did];
+                let updated_lifetime_params = &adt_metadata.lifetime_params;
+
+                let original_lifetime_param_count = generics
+                    .params
+                    .iter()
+                    .filter(|p| matches!(p.kind, GenericParamKind::Lifetime { .. }))
+                    .count();
+
+                if updated_lifetime_params.len() != original_lifetime_param_count {
+                    let new_substs: Vec<_> = {
+                        let mut new_lifetime_params_iter = updated_lifetime_params.iter();
+
+                        let mut updated_lifetimes = vec![];
+                        let mut new_lifetimes = vec![];
+                        let mut other_params = vec![];
+
+                        for gp in generics.params {
+                            match gp.kind {
+                                GenericParamKind::Lifetime { .. } => {
+                                    let updated_lifetime_param = new_lifetime_params_iter
+                                        .next()
+                                        .expect("Not enough updated_lifetime_params");
+                                    updated_lifetimes.push(Rewrite::PrintTy(format!(
+                                        "{:?}",
+                                        updated_lifetime_param
+                                    )))
+                                }
+                                _ => {
+                                    other_params.push(Rewrite::PrintTy(gp.name.ident().to_string()))
+                                }
+                            }
+                        }
+
+                        for ul in new_lifetime_params_iter {
+                            new_lifetimes.push(Rewrite::PrintTy(format!("{:?}", ul)))
+                        }
+
+                        [updated_lifetimes, new_lifetimes, other_params]
+                            .into_iter()
+                            .flatten()
+                            .collect()
+                    };
+
+                    // only the generic parameters need to be rewritten, not the
+                    // struct name itself
+                    self.hir_rewrites
+                        .push((generics.span, Rewrite::TyGenericParams(new_substs)));
+                }
+
                 for field_def in field_defs.iter() {
                     let fdid = self
                         .acx
@@ -357,15 +523,27 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
                         .hir()
                         .local_def_id(field_def.hir_id)
                         .to_def_id();
+                    let field_metadata = &adt_metadata.field_info[&fdid];
                     let f_lty = field_ltys[&fdid];
-                    let rw_lty =
-                        relabel_rewrites(&self.asn.perms(), &self.asn.flags(), self.rw_lcx, f_lty);
-                    // FIXME: get the actual lifetime from ADT/Field Metadata
-                    self.handle_ty(
-                        rw_lty,
-                        field_def.ty,
-                        LifetimeName::Explicit("'static".into()),
+                    let lcx = LabeledTyCtxt::<'tcx, RewriteLabel>::new(self.acx.tcx());
+                    let rw_lty = lcx.zip_labels_with(
+                        f_lty,
+                        field_metadata.origin_args,
+                        &mut |pointer_lty, lifetime_lty, args| {
+                            {
+                                create_rewrite_label(
+                                    pointer_lty,
+                                    args,
+                                    &self.asn.perms(),
+                                    &self.asn.flags(),
+                                    lifetime_lty.label,
+                                    &self.acx.gacx.adt_metadata,
+                                )
+                            }
+                        },
                     );
+
+                    self.handle_ty(rw_lty, field_def.ty);
                 }
             }
             _ => (),
@@ -380,10 +558,15 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
                     let mir_local_decl = &self.mir.local_decls[*mir_local];
                     assert_eq!(mir_local_decl.source_info.span, hir_local.pat.span);
                     let lty = self.acx.local_tys[*mir_local];
-                    let rw_lty =
-                        relabel_rewrites(&self.asn.perms(), &self.asn.flags(), self.rw_lcx, lty);
+                    let rw_lty = relabel_rewrites(
+                        &self.asn.perms(),
+                        &self.asn.flags(),
+                        self.rw_lcx,
+                        lty,
+                        &self.acx.gacx.adt_metadata,
+                    );
                     let hir_ty = hir_local.ty.unwrap();
-                    self.handle_ty(rw_lty, hir_ty, LifetimeName::Elided);
+                    self.handle_ty(rw_lty, hir_ty);
                 }
             }
             _ => (),
@@ -421,16 +604,27 @@ pub fn gen_ty_rewrites<'tcx>(
         .unwrap_or_else(|| panic!("expected def {:?} to be a function", ldid));
 
     let lty_sig = acx.gacx.fn_sigs.get(&ldid.to_def_id()).unwrap();
-
     assert_eq!(lty_sig.inputs.len(), hir_sig.decl.inputs.len());
     for (&lty, hir_ty) in lty_sig.inputs.iter().zip(hir_sig.decl.inputs.iter()) {
-        let rw_lty = relabel_rewrites(&asn.perms(), &asn.flags(), rw_lcx, lty);
-        v.handle_ty(rw_lty, hir_ty, LifetimeName::Elided);
+        let rw_lty = relabel_rewrites(
+            &asn.perms(),
+            &asn.flags(),
+            rw_lcx,
+            lty,
+            &acx.gacx.adt_metadata,
+        );
+        v.handle_ty(rw_lty, hir_ty);
     }
 
     if let hir::FnRetTy::Return(hir_ty) = hir_sig.decl.output {
-        let rw_lty = relabel_rewrites(&asn.perms(), &asn.flags(), rw_lcx, lty_sig.output);
-        v.handle_ty(rw_lty, hir_ty, LifetimeName::Elided);
+        let rw_lty = relabel_rewrites(
+            &asn.perms(),
+            &asn.flags(),
+            rw_lcx,
+            lty_sig.output,
+            &acx.gacx.adt_metadata,
+        );
+        v.handle_ty(rw_lty, hir_ty);
     }
 
     let hir_body_id = acx.tcx().hir().body_owned_by(ldid);
@@ -459,7 +653,13 @@ pub fn dump_rewritten_local_tys<'tcx>(
     let rw_lcx = LabeledTyCtxt::new(acx.tcx());
     for (local, decl) in mir.local_decls.iter_enumerated() {
         // TODO: apply `Cell` if `addr_of_local` indicates it's needed
-        let rw_lty = relabel_rewrites(&asn.perms(), &asn.flags(), rw_lcx, acx.local_tys[local]);
+        let rw_lty = relabel_rewrites(
+            &asn.perms(),
+            &asn.flags(),
+            rw_lcx,
+            acx.local_tys[local],
+            &acx.gacx.adt_metadata,
+        );
         let ty = mk_rewritten_ty(rw_lcx, rw_lty);
         eprintln!(
             "{:?} ({}): {:?}",

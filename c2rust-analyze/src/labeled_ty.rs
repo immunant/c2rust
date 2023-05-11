@@ -290,6 +290,38 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
         self.mk(lty.ty, args, func(lty, args))
     }
 
+    pub fn zip_args_with<L1, L2, F>(
+        &self,
+        ltys1: &[LabeledTy<'tcx, L1>],
+        ltys2: &[LabeledTy<'tcx, L2>],
+        func: &mut F,
+    ) -> &'tcx [LabeledTy<'tcx, L>]
+    where
+        F: FnMut(LabeledTy<'tcx, L1>, LabeledTy<'tcx, L2>, &'tcx [LabeledTy<'tcx, L>]) -> L,
+    {
+        let ltys = ltys1
+            .iter()
+            .zip(ltys2.iter())
+            .map(|(lty1, lty2)| self.zip_labels_with(lty1, lty2, func))
+            .collect::<Vec<_>>();
+        self.mk_slice(&ltys)
+    }
+
+    pub fn zip_labels_with<L1, L2, F>(
+        &self,
+        lty1: LabeledTy<'tcx, L1>,
+        lty2: LabeledTy<'tcx, L2>,
+        func: &mut F,
+    ) -> LabeledTy<'tcx, L>
+    where
+        F: FnMut(LabeledTy<'tcx, L1>, LabeledTy<'tcx, L2>, &'tcx [LabeledTy<'tcx, L>]) -> L,
+    {
+        assert_eq!(lty1.ty, lty2.ty);
+        assert_eq!(lty1.args.len(), lty2.args.len());
+        let args = self.zip_args_with(lty1.args, lty2.args, func);
+        self.mk(lty1.ty, args, func(lty1, lty2, args))
+    }
+
     /// Replace the labels on several labeled types.
     pub fn relabel_slice_with_args<L2, F>(
         &self,

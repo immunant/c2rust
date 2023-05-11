@@ -86,6 +86,10 @@ pub enum Rewrite<S = Span> {
     TySlice(Box<Rewrite>),
     /// `Foo<T1, T2>`
     TyCtor(String, Vec<Rewrite>),
+    /// `<'a, 'b, ...>`
+    /// needed for cases when the span of the ADT name
+    /// is different from ADT generic params
+    TyGenericParams(Vec<Rewrite>),
 
     // `static` builders
     /// `static` mutability (`static` <-> `static mut`)
@@ -181,6 +185,16 @@ impl Rewrite {
             Rewrite::PrintTy(ref s) => {
                 write!(f, "{}", s)
             }
+            Rewrite::TyGenericParams(ref rws) => {
+                f.write_str("<")?;
+                for (index, rw) in rws.iter().enumerate() {
+                    rw.pretty(f, 0)?;
+                    if index < rws.len() - 1 {
+                        f.write_str(",")?;
+                    }
+                }
+                f.write_str(">")
+            }
             Rewrite::Call(ref func, ref arg_rws) => {
                 f.write_str(func)?;
                 f.write_str("(")?;
@@ -230,8 +244,11 @@ impl Rewrite {
             }
             Rewrite::TyCtor(ref name, ref rws) => {
                 write!(f, "{}<", name)?;
-                for rw in rws {
+                for (idx, rw) in rws.iter().enumerate() {
                     rw.pretty(f, 0)?;
+                    if idx < rws.len() - 1 {
+                        write!(f, ",")?;
+                    }
                 }
                 write!(f, ">")
             }

@@ -72,10 +72,12 @@ unsafe fn _field_access<'d>(ra: &'d mut A<'d>, ppd: *mut *mut Data<'d>) {
     (*(**ppd).pa).pra = (*(**ppd).pa).pra;
 }
 
-// CHECK-DAG: pub struct Data<'d> {
-// CHECK-DAG: pub pi: &'static mut (i32),
-// CHECK-DAG: pub pa: &'static mut (A<'d>),
+// CHECK-DAG: pub struct Data<'d,'h0,'h1,'h2> {
+// CHECK-DAG: pub pi: &'h0 mut (i32),
+// CHECK-DAG: pub pa: &'h1 mut (A<'d,'h0,'h1,'h2>),
+// CHECK-DAG: pub a: A<'d,'h0,'h1,'h2>,
 
-// CHECK-DAG: pub struct A<'a> {
-// CHECK-DAG: pub rd: &'static (Data<'a>),
-// CHECK-DAG: pub pra: &'static core::cell::Cell<(&(A<'a>))>,
+// CHECK-DAG: pub struct A<'a,'h0,'h1,'h2> {
+// CHECK-DAG: pub rd: &'a (Data<'a,'h0,'h1,'h2>),
+// CHECK-DAG: pub pra: &'h2 core::cell::Cell<(&'a (A<'a,'h0,'h1,'h2>))>,
+// CHECK-DAG: bar: &'h3 (Vec<(VecTup<'a,'h3,'h4,'h0,'h1,'h2>, &'h4 (A<'a,'h0,'h1,'h2>))>),

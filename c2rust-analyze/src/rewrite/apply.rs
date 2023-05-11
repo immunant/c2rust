@@ -289,6 +289,16 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
             Rewrite::PrintTy(ref s) => {
                 self.emit_str(s);
             }
+            Rewrite::TyGenericParams(ref rws) => {
+                self.emit_str("<");
+                for (index, rw) in rws.iter().enumerate() {
+                    self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                    if index < rws.len() - 1 {
+                        self.emit_str(",");
+                    }
+                }
+                self.emit_str(">");
+            }
             Rewrite::Call(ref func, ref arg_rws) => {
                 self.emit_str(func);
                 self.emit_parenthesized(true, |slf| {
@@ -342,8 +352,11 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
             Rewrite::TyCtor(ref name, ref rws) => {
                 self.emit_str(name);
                 self.emit_str("<");
-                for rw in rws {
+                for (index, rw) in rws.iter().enumerate() {
                     self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                    if index < rws.len() - 1 {
+                        self.emit_str(",");
+                    }
                 }
                 self.emit_str(">");
             }
