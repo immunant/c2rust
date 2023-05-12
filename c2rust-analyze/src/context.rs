@@ -647,15 +647,6 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         }
 
         self.fns_failed.insert(did, detail);
-
-        // This is the first time marking `did` as failed, so also mark all of its callers.
-        let callers = self.fn_callers.get(&did).cloned().unwrap_or(Vec::new());
-        for caller in callers {
-            self.mark_fn_failed(
-                caller,
-                PanicDetail::new(format!("analysis failed on callee {:?}", did)),
-            );
-        }
     }
 
     pub fn iter_fns_failed<'a>(&'a self) -> impl Iterator<Item = DefId> + 'a {
