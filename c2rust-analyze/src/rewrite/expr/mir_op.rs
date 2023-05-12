@@ -485,7 +485,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             return;
         }
 
-        if (from.qty, to.qty) == (Quantity::OffsetPtr, Quantity::Slice) {
+        if (from.qty, to.qty) == (Quantity::OffsetPtr, Quantity::Slice)
+            || (from.qty, to.qty) == (Quantity::Slice, Quantity::OffsetPtr)
+        {
             // TODO: emit rewrite
             from.qty = to.qty;
         }
