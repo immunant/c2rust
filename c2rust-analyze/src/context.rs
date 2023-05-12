@@ -657,6 +657,10 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             );
         }
     }
+
+    pub fn iter_fns_failed<'a>(&'a self) -> impl Iterator<Item = DefId> + 'a {
+        self.fns_failed.keys().copied()
+    }
 }
 
 impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {

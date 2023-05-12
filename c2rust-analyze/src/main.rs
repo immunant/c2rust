@@ -800,6 +800,23 @@ fn run(tcx: TyCtxt) {
     }
     eprintln!("reached fixpoint in {} iterations", loop_count);
 
+    // Before generating rewrites, add the FIXED flag to the signatures of all functions that
+    // failed analysis.
+    for did in gacx.iter_fns_failed() {
+        let lsig = match gacx.fn_sigs.get(&did) {
+            Some(x) => x,
+            None => continue,
+        };
+        for sig_lty in lsig.inputs.iter().copied().chain(iter::once(lsig.output)) {
+            for lty in sig_lty.iter() {
+                let ptr = lty.label;
+                if !ptr.is_none() {
+                    gasn.flags[ptr].insert(FlagSet::FIXED);
+                }
+            }
+        }
+    }
+
     // Buffer debug output for each function.  Grouping together all the different types of info
     // for a single function makes FileCheck tests easier to write.
     let mut func_reports = HashMap::<LocalDefId, String>::new();
