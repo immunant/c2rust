@@ -495,6 +495,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             let mutbl = match from.own {
                 Ownership::Imm => Some(false),
                 Ownership::Mut => Some(true),
+                // Note that `Cell` + `Slice` is `&[Cell<T>]`, not `&Cell<[T]>`.
+                Ownership::Cell => Some(false),
                 _ => None,
             };
             if let Some(mutbl) = mutbl {
