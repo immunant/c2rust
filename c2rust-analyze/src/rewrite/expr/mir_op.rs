@@ -471,12 +471,17 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             self.acx.tcx().erase_regions(to.pointee_ty),
         );
 
+        let orig_from = from;
+        let mut from = orig_from;
+
+        // Ignore differences in lifetimes.
+        if from.pointee_ty != to.pointee_ty {
+            from.pointee_ty = to.pointee_ty;
+        }
+
         if from == to {
             return;
         }
-
-        let orig_from = from;
-        let mut from = orig_from;
 
         if (from.qty, to.qty) == (Quantity::OffsetPtr, Quantity::Slice) {
             // TODO: emit rewrite
