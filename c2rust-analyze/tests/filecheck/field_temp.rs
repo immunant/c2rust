@@ -9,7 +9,7 @@ pub struct MyList {
 pub unsafe fn list_get(l: *const MyList, i: usize) -> i32 {
     // The temporary `(*l).data` requires a MIR `MutToImm` rewrite.
     // CHECK: ([[@LINE+2]]: (*l).data): &[i32]
-    // CHECK: rewrite Ref(Deref(Identity), Not) at {{.*}}:[[@LINE+1]]:6: [[@LINE+1]]:15
+    // CHECK: [[@LINE+1]]: (*l).data: &*$e
     *(*l).data.offset(i as isize)
 }
 
