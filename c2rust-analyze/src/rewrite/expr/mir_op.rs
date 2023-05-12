@@ -424,10 +424,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
         self.emit(RewriteKind::OffsetSlice { mutbl });
 
-        // If the result is `Single`, also insert an upcast.
-        if result_desc.qty == Quantity::Single {
-            self.emit(RewriteKind::SliceFirst { mutbl });
-        }
+        // The `OffsetSlice` operation returns something of the same type as its input.  Afterward,
+        // we must cast the result to the `result_ty`/`result_desc`.
+        self.emit_cast_desc_desc(arg_expect_desc, result_desc);
     }
 
     fn visit_slice_as_ptr(&mut self, elem_ty: Ty<'tcx>, op: &Operand<'tcx>, result_lty: LTy<'tcx>) {
@@ -491,12 +490,26 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             from.qty = to.qty;
         }
 
+        if matches!(
+            from.qty,
+            Quantity::Array | Quantity::OffsetPtr | Quantity::Slice
+        ) && to.qty == Quantity::Single
+        {
+            let mutbl = match from.own {
+                Ownership::Imm => Some(false),
+                Ownership::Mut => Some(true),
+                _ => None,
+            };
+            if let Some(mutbl) = mutbl {
+                self.emit(RewriteKind::SliceFirst { mutbl });
+                from.qty = Quantity::Single;
+            }
+        }
+
         if from.qty == to.qty && (from.own, to.own) == (Ownership::Mut, Ownership::Imm) {
             self.emit(RewriteKind::MutToImm);
             from.own = to.own;
         }
-
-        // TODO: handle Slice -> Single here instead of special-casing in `offset`
 
         if from != to {
             eprintln!(
