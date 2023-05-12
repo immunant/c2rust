@@ -550,7 +550,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         from.own = self.cast_ownership(from, to, false);
 
         if from != to {
-            eprintln!(
+            panic!(
                 "unsupported cast kind: {:?} -> {:?} (original input: {:?})",
                 from, to, orig_from
             );
