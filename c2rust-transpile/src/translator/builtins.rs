@@ -5,6 +5,17 @@ use crate::format_translation_err;
 
 use super::*;
 
+/// The argument type for a libc builtin function
+#[derive(Copy, Clone, PartialEq)]
+enum LibcFnArgType {
+    /// char* or void*
+    Mem,
+    /// size_t
+    Size,
+    /// int or char
+    Int,
+}
+
 impl<'c> Translation<'c> {
     /// Convert a call to a builtin function to a Rust expression
     pub fn convert_builtin(
@@ -175,15 +186,42 @@ impl<'c> Translation<'c> {
             // void __builtin_prefetch (const void *addr, ...);
             "__builtin_prefetch" => self.convert_expr(ctx.unused(), args[0]),
 
-            "__builtin_memcpy" | "__builtin_memchr" | "__builtin_memcmp" | "__builtin_memmove"
-            | "__builtin_memset" | "__builtin_strcat" | "__builtin_strncat"
-            | "__builtin_strchr" | "__builtin_strcmp" | "__builtin_strncmp"
-            | "__builtin_strcpy" | "__builtin_strncpy" | "__builtin_strcspn"
-            | "__builtin_strdup" | "__builtin_strndup" | "__builtin_strlen"
-            | "__builtin_strnlen" | "__builtin_strpbrk" | "__builtin_strrchr"
-            | "__builtin_strspn" | "__builtin_strstr" => {
-                self.convert_libc_fns(builtin_name, ctx, args)
+            "__builtin_memcpy" | "__builtin_memcmp" | "__builtin_memmove" | "__builtin_strncmp"
+            | "__builtin_strncpy" | "__builtin_strncat" => self.convert_libc_fns(
+                builtin_name,
+                ctx,
+                args,
+                &[LibcFnArgType::Mem, LibcFnArgType::Mem, LibcFnArgType::Size],
+            ),
+            "__builtin_memchr" | "__builtin_memset" => self.convert_libc_fns(
+                builtin_name,
+                ctx,
+                args,
+                &[LibcFnArgType::Mem, LibcFnArgType::Int, LibcFnArgType::Size],
+            ),
+            "__builtin_strchr" | "__builtin_strrchr" => self.convert_libc_fns(
+                builtin_name,
+                ctx,
+                args,
+                &[LibcFnArgType::Mem, LibcFnArgType::Int],
+            ),
+            "__builtin_strndup" | "__builtin_strnlen" => self.convert_libc_fns(
+                builtin_name,
+                ctx,
+                args,
+                &[LibcFnArgType::Mem, LibcFnArgType::Size],
+            ),
+            "__builtin_strdup" | "__builtin_strlen" => {
+                self.convert_libc_fns(builtin_name, ctx, args, &[LibcFnArgType::Mem])
             }
+            "__builtin_strcmp" | "__builtin_strcat" | "__builtin_strcpy" | "__builtin_strcspn"
+            | "__builtin_strpbrk" | "__builtin_strspn" | "__builtin_strstr" => self
+                .convert_libc_fns(
+                    builtin_name,
+                    ctx,
+                    args,
+                    &[LibcFnArgType::Mem, LibcFnArgType::Mem],
+                ),
 
             "__builtin_add_overflow"
             | "__builtin_sadd_overflow"
@@ -656,22 +694,41 @@ impl<'c> Translation<'c> {
         })
     }
 
-    /// Converts a __builtin_{mem|str}* use by calling the equivalent libc fn.
+    /// Converts a `__builtin_{mem|str}*` use by calling the equivalent libc fn.
     fn convert_libc_fns(
         &self,
         builtin_name: &str,
         ctx: ExprContext,
         args: &[CExprId],
+        arg_types: &[LibcFnArgType],
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let name = &builtin_name[10..];
         let mem = mk().path_expr(vec!["libc", name]);
         let args = self.convert_exprs(ctx.used(), args)?;
         args.and_then(|args| {
-            if args.len() == 3 {
-            let [dst, c, len]: [_; 3] = args.try_into().map_err(|_|"`convert_libc_fns` was unable to convert 3 argument function")?;
-            let size_t = mk().path_ty(vec!["libc", "size_t"]);
-            let len1 = mk().cast_expr(len, size_t);
-            let mem_expr = mk().call_expr(mem, vec![dst, c, len1]);
+            if args.len() != arg_types.len() {
+                // This should not generally happen, as the C frontend checks these first
+                Err(err_msg(format!(
+                    "wrong number of arguments for {}: expected {}, found {}",
+                    builtin_name,
+                    arg_types.len(),
+                    args.len()
+                ))
+                .context(TranslationErrorKind::Generic))?
+            }
+            let size_t = || mk().path_ty(vec!["libc", "size_t"]);
+            let args_casted = args
+                .into_iter()
+                .zip(arg_types)
+                .map(|(arg, &ty)| {
+                    if ty == LibcFnArgType::Size {
+                        mk().cast_expr(arg, size_t())
+                    } else {
+                        arg
+                    }
+                })
+                .collect::<Vec<_>>();
+            let mem_expr = mk().call_expr(mem, args_casted);
 
             if ctx.is_used() {
                 Ok(WithStmts::new_val(mem_expr))
@@ -681,20 +738,6 @@ impl<'c> Translation<'c> {
                     self.panic_or_err(&format!("__builtin_{} not used", name)),
                 ))
             }
-        } else if args.len() == 2 {
-            let [dst, c]: [_; 2] = args.try_into().map_err(|_|"`convert_libc_fns` was unable to convert 2 argument function")?;
-            let mem_expr = mk().call_expr(mem, vec![dst, c]);
-            if ctx.is_used() {
-                Ok(WithStmts::new_val(mem_expr))
-            } else {
-                Ok(WithStmts::new(
-                    vec![mk().semi_stmt(mem_expr)],
-                    self.panic_or_err(&format!("__builtin_{} not used", name)),
-                ))
-            }
-        } else {
-           Err("`convert_libc_fns` must have exactly 2 or 3 arguments: [dst, c] or [dst, c, len]".into())
-        }
         })
     }
 }
