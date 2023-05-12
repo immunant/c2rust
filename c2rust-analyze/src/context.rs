@@ -273,9 +273,6 @@ pub struct GlobalAnalysisCtxt<'tcx> {
 
     ptr_info: GlobalPointerTable<PointerInfo>,
 
-    /// Map from a function to all of its callers.
-    pub fn_callers: HashMap<DefId, Vec<DefId>>,
-
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
 
     /// `DefId`s of functions where analysis failed, and a [`PanicDetail`] explaining the reason
@@ -532,7 +529,6 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             tcx,
             lcx: LabeledTyCtxt::new(tcx),
             ptr_info: GlobalPointerTable::empty(),
-            fn_callers: HashMap::new(),
             fn_sigs: HashMap::new(),
             fns_failed: HashMap::new(),
             field_ltys: HashMap::new(),
@@ -579,7 +575,6 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             tcx: _,
             lcx,
             ref mut ptr_info,
-            fn_callers: _,
             ref mut fn_sigs,
             fns_failed: _,
             ref mut field_ltys,
