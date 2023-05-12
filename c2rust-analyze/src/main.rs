@@ -38,7 +38,7 @@ use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug, Display, Write as _};
 use std::iter;
 use std::ops::{Deref, DerefMut, Index};
 use std::panic::AssertUnwindSafe;
@@ -576,10 +576,70 @@ fn run(tcx: TyCtxt) {
     }
     eprintln!("reached fixpoint in {} iterations", loop_count);
 
-    // Print results for each function in `all_fn_ldids`, going in declaration order.  Concretely,
-    // we iterate over `body_owners()`, which is a superset of `all_fn_ldids`, and filter based on
-    // membership in `func_info`, which contains an entry for each ID in `all_fn_ldids`.
+    // Buffer debug output for each function.  Grouping together all the different types of info
+    // for a single function makes FileCheck tests easier to write.
+    let mut func_reports = HashMap::<LocalDefId, String>::new();
+
+    // Generate rewrites for all functions.
     let mut all_rewrites = Vec::new();
+    for &ldid in &all_fn_ldids {
+        if gacx.fn_failed(ldid.to_def_id()) {
+            continue;
+        }
+
+        let info = func_info.get_mut(&ldid).unwrap();
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let name = tcx.item_name(ldid.to_def_id());
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+        let mut asn = gasn.and(&mut info.lasn);
+
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+            // Add the CELL permission to pointers that need it.
+            info.dataflow.propagate_cell(&mut asn);
+
+            acx.check_string_literal_perms(&asn);
+
+            if util::has_test_attr(tcx, ldid, TestAttr::SkipRewrite) {
+                return;
+            }
+
+            let hir_body_id = tcx.hir().body_owned_by(ldid);
+            let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
+            let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
+            // Print rewrites
+            let report = func_reports.entry(ldid).or_default();
+            writeln!(
+                report,
+                "generated {} expr rewrites + {} ty rewrites for {:?}:",
+                expr_rewrites.len(),
+                ty_rewrites.len(),
+                name
+            )
+            .unwrap();
+            for &(span, ref rw) in expr_rewrites.iter().chain(ty_rewrites.iter()) {
+                writeln!(report, "  {}: {}", describe_span(tcx, span), rw).unwrap();
+            }
+            writeln!(report).unwrap();
+            all_rewrites.extend(expr_rewrites);
+            all_rewrites.extend(ty_rewrites);
+        }));
+        match r {
+            Ok(()) => {}
+            Err(pd) => {
+                gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                continue;
+            }
+        }
+
+        info.acx_data.set(acx.into_data());
+    }
+
+    // Print analysis results for each function in `all_fn_ldids`, going in declaration order.
+    // Concretely, we iterate over `body_owners()`, which is a superset of `all_fn_ldids`, and
+    // filter based on membership in `func_info`, which contains an entry for each ID in
+    // `all_fn_ldids`.
     for ldid in tcx.hir().body_owners() {
         // Skip any body owners that aren't present in `func_info`, and also get the info itself.
         let info = match func_info.get_mut(&ldid) {
@@ -596,10 +656,7 @@ fn run(tcx: TyCtxt) {
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-        let mut asn = gasn.and(&mut info.lasn);
-        info.dataflow.propagate_cell(&mut asn);
-
-        acx.check_string_literal_perms(&asn);
+        let asn = gasn.and(&mut info.lasn);
 
         // Print labeling and rewrites for the current function.
 
@@ -622,34 +679,8 @@ fn run(tcx: TyCtxt) {
         rewrite::dump_rewritten_local_tys(&acx, &asn, &mir, describe_local);
 
         eprintln!();
-
-        if util::has_test_attr(tcx, ldid, TestAttr::SkipRewrite) {
-            continue;
-        }
-
-        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
-            let hir_body_id = tcx.hir().body_owned_by(ldid);
-            let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
-            let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
-            // Print rewrites
-            eprintln!(
-                "\ngenerated {} expr rewrites + {} ty rewrites for {:?}:",
-                expr_rewrites.len(),
-                ty_rewrites.len(),
-                name
-            );
-            for &(span, ref rw) in expr_rewrites.iter().chain(ty_rewrites.iter()) {
-                eprintln!("  {}: {}", describe_span(tcx, span), rw);
-            }
-            all_rewrites.extend(expr_rewrites);
-            all_rewrites.extend(ty_rewrites);
-        }));
-        match r {
-            Ok(()) => {}
-            Err(pd) => {
-                gacx.mark_fn_failed(ldid.to_def_id(), pd);
-                continue;
-            }
+        if let Some(report) = func_reports.remove(&ldid) {
+            eprintln!("{}", report);
         }
     }
 
