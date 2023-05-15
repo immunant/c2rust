@@ -266,25 +266,28 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         self.visit_slice_as_ptr(elem_ty, &args[0], pl_ty);
                         return;
                     }
-                    _ => {}
-                }
 
-                // General case: cast `args` to match the signature of `func`.
-                let poly_sig = func_ty.fn_sig(tcx);
-                let sig = tcx.erase_late_bound_regions(poly_sig);
-
-                for (i, _op) in args.iter().enumerate() {
-                    if i >= sig.inputs().len() {
-                        // This is a call to a variadic function, and we've gone past the end of
-                        // the declared arguments.
-                        // TODO: insert a cast to turn `op` back into its original declared type
-                        // (i.e. upcast the chosen reference type back to a raw pointer)
-                        continue;
+                    Callee::LocalDef { def_id, substs: _ } => {
+                        // TODO: handle substs (if nonempty)
+                        if let Some(lsig) = self.acx.gacx.fn_sigs.get(&def_id) {
+                            self.enter_rvalue(|v| {
+                                for (i, op) in args.iter().enumerate() {
+                                    if let Some(&lty) = lsig.inputs.get(i) {
+                                        v.enter_call_arg(i, |v| v.visit_operand(op, Some(lty)));
+                                    } else {
+                                        // This is a call to a variadic function, and we've gone
+                                        // past the end of the declared arguments.
+                                        // TODO: insert a cast to turn `op` back into its original
+                                        // declared type (i.e. upcast the chosen reference type
+                                        // back to a raw pointer)
+                                        continue;
+                                    }
+                                }
+                            });
+                        }
                     }
 
-                    // TODO: get the `LTy` to use for the callee's argument
-                    // let expect_ty = ...;
-                    // self.enter_call_arg(i, |v| v.visit_operand(op, expect_ty));
+                    _ => {}
                 }
             }
             TerminatorKind::Assert { .. } => {}
