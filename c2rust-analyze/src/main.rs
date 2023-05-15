@@ -25,6 +25,7 @@ use crate::labeled_ty::LabeledTyCtxt;
 use crate::log::init_logger;
 use crate::util::Callee;
 use context::AdtMetadataTable;
+use rustc_ast::ast::AttrKind;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
@@ -34,10 +35,12 @@ use rustc_middle::mir::{
     Rvalue, StatementKind,
 };
 use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
+use rustc_span::symbol::Symbol;
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::{Debug, Display};
+use std::iter;
 use std::ops::{Deref, DerefMut, Index};
 use std::panic::AssertUnwindSafe;
 
@@ -493,6 +496,19 @@ fn run(tcx: TyCtxt) {
         info.lasn.set(lasn);
     }
 
+    // For testing, putting #[c2rust_analyze_test::fixed_signature] on a function makes all
+    // pointers in its signature FIXED.
+    for &ldid in &all_fn_ldids {
+        if !has_test_attr(tcx, ldid, "fixed_signature") {
+            continue;
+        }
+        let lsig = match gacx.fn_sigs.get(&ldid.to_def_id()) {
+            Some(x) => x,
+            None => continue,
+        };
+        make_sig_fixed(&mut gasn, lsig);
+    }
+
     eprintln!("=== ADT Metadata ===");
     eprintln!("{:?}", gacx.adt_metadata);
 
@@ -738,6 +754,21 @@ impl<'tcx> AssignPointerIds<'tcx> for AnalysisCtxt<'_, 'tcx> {
     }
 }
 
+fn make_ty_fixed(gasn: &mut GlobalAssignment, lty: LTy) {
+    for lty in lty.iter() {
+        let ptr = lty.label;
+        if !ptr.is_none() {
+            gasn.flags[ptr].insert(FlagSet::FIXED);
+        }
+    }
+}
+
+fn make_sig_fixed(gasn: &mut GlobalAssignment, lsig: &LFnSig) {
+    for lty in lsig.inputs.iter().copied().chain(iter::once(lsig.output)) {
+        make_ty_fixed(gasn, lty);
+    }
+}
+
 fn describe_local(tcx: TyCtxt, decl: &LocalDecl) -> String {
     let mut span = decl.source_info.span;
     if let Some(ref info) = decl.local_info {
@@ -918,6 +949,26 @@ fn for_each_callee(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(LocalDefId)) {
     }
 
     CalleeVisitor { tcx, mir, f }.visit_body(mir);
+}
+
+fn has_test_attr(tcx: TyCtxt, ldid: LocalDefId, name: &str) -> bool {
+    let tool_sym = Symbol::intern("c2rust_analyze_test");
+    let name_sym = Symbol::intern(name);
+
+    for attr in tcx.get_attrs_unchecked(ldid.to_def_id()) {
+        let path = match attr.kind {
+            AttrKind::Normal(ref item, _) => &item.path,
+            AttrKind::DocComment(..) => continue,
+        };
+        let (a, b) = match &path.segments[..] {
+            &[ref a, ref b] => (a, b),
+            _ => continue,
+        };
+        if a.ident.name == tool_sym && b.ident.name == name_sym {
+            return true;
+        }
+    }
+    false
 }
 
 struct AnalysisCallbacks;
