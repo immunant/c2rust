@@ -357,6 +357,14 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                     let rhs = self.get_subexpr(ex, 1);
                     Rewrite::MethodCall("set".to_string(), Box::new(lhs), vec![rhs])
                 }
+
+                mir_op::RewriteKind::CellFromMut => {
+                    // `x` to `Cell::from_mut(x)`
+                    Rewrite::Call(
+                        "std::cell::Cell::from_mut".to_string(),
+                        vec![Rewrite::Identity],
+                    )
+                }
             }
         };
 
