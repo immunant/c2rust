@@ -58,6 +58,8 @@ pub enum RewriteKind {
     CellGet,
     /// Replace `*y = x` with `Cell::set(x)` where `y` is a pointer
     CellSet,
+    /// Wrap `&mut T` in `Cell::from_mut` to get `&Cell<T>`.
+    CellFromMut,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -512,6 +514,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
         if from.qty == to.qty && (from.own, to.own) == (Ownership::Mut, Ownership::Imm) {
             self.emit(RewriteKind::MutToImm);
+            from.own = to.own;
+        }
+
+        if (from.qty, to.qty) == (Quantity::Single, Quantity::Single)
+            && (from.own, to.own) == (Ownership::Mut, Ownership::Cell)
+        {
+            self.emit(RewriteKind::CellFromMut);
             from.own = to.own;
         }
 
