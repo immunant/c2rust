@@ -25,12 +25,12 @@ is_executable = "1.0"
 log = "0.4"
 regex = "1.3"
 shlex = "1.1"
-c2rust-transpile = { version = "0.17.0", path = "../c2rust-transpile" }
+c2rust-transpile = { version = "0.18.0", path = "../c2rust-transpile" }
 # Required to avoid too-new version (dep of git-testament) which our rustc cannot compile
 time-macros = "=0.2.6"
 
 [build-dependencies]
-c2rust-build-paths = { path = "../c2rust-build-paths" , version = "0.17.0" }
+c2rust-build-paths = { path = "../c2rust-build-paths", version = "0.18.0" }
 
 [features]
 # Force static linking of LLVM
