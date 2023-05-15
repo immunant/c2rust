@@ -23,7 +23,7 @@ fs-err = "2"
 clap = { version = "3.2", features = ["derive"] }
 # Used for parsing `rust-toolchain.toml`.
 # We don't need to edit at all, but `cargo` uses `toml-edit`, so we want to match it.
-toml_edit = "0.18"
+toml_edit = "0.19"
 fs2 = "0.4"
 env_logger = "0.10"
 tempfile = "3.3"
