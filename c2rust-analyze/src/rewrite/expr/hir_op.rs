@@ -197,6 +197,22 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
                     .unwrap_or_else(|err| panic_location_error(err, "Assignment statement"));
                 locations.push(assign_loc)
             }
+            hir::ExprKind::Cast(..) => {
+                let r = self.find_sole_location_matching(
+                    ex.span,
+                    |stmt| {
+                        let rv = match stmt.kind {
+                            mir::StatementKind::Assign(ref x) => &x.1,
+                            _ => return false,
+                        };
+                        matches!(rv, mir::Rvalue::Cast(..))
+                    },
+                    |_term| false,
+                );
+                if let Ok(assign_loc) = r {
+                    locations.push(assign_loc);
+                }
+            }
             _ => eprintln!("warning: find_primary_location: unsupported expr {:?}", ex),
         }
 
