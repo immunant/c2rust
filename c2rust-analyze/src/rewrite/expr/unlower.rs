@@ -210,7 +210,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 self.record(loc, &[SubLoc::Rvalue], rv);
             }
 
-            hir::ExprKind::Call(func, args) => {
+            hir::ExprKind::Call(_, args) | hir::ExprKind::MethodCall(_, args, _) => {
                 let (loc, _mir_pl, _mir_func, mir_args) = match self.get_last_call(&locs) {
                     Some((l, pl, f, a)) if self.is_var(pl) => (l, pl, f, a),
                     _ => {
