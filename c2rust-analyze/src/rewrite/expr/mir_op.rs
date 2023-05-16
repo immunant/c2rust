@@ -20,12 +20,12 @@ use rustc_middle::mir::{
 use rustc_middle::ty::{Ty, TyKind};
 use std::collections::HashMap;
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum SubLoc {
     /// The LHS of an assignment or call.  `StatementKind::Assign/TerminatorKind::Call -> Place`
     Dest,
-    /// The RHS of an assignment.  `StatementKind::Assign -> Rvalue`
-    AssignRvalue,
+    /// The RHS of an assignment or call.  `StatementKind::Assign/TerminatorKind::Call -> Rvalue`
+    Rvalue,
     /// The Nth argument of a call.  `TerminatorKind::Call -> Operand`
     CallArg(usize),
     /// The Nth operand of an rvalue.  `Rvalue -> Operand`
@@ -112,8 +112,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         self.enter(SubLoc::Dest, f)
     }
 
-    fn enter_assign_rvalue<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
-        self.enter(SubLoc::AssignRvalue, f)
+    fn enter_rvalue<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+        self.enter(SubLoc::Rvalue, f)
     }
 
     fn enter_call_arg<F: FnOnce(&mut Self) -> R, R>(&mut self, i: usize, f: F) -> R {
@@ -172,7 +172,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         let desc = type_desc::perms_to_desc(local_lty.ty, perms, flags);
                         if desc.own == Ownership::Cell {
                             // this is an assignment like `*x = 2` but `x` has CELL permissions
-                            self.enter_assign_rvalue(|v| v.emit(RewriteKind::CellSet))
+                            self.enter_rvalue(|v| v.emit(RewriteKind::CellSet))
                         }
                     }
                 }
@@ -187,7 +187,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         let desc = type_desc::local_perms_to_desc(local_ty, perms, flags);
                         if desc.own == Ownership::Cell {
                             // this is an assignment like `let x = 2` but `x` has CELL permissions
-                            self.enter_assign_rvalue(|v| {
+                            self.enter_rvalue(|v| {
                                 v.enter_rvalue_operand(0, |v| v.emit(RewriteKind::CellNew))
                             })
                         }
@@ -202,7 +202,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 if !flags.contains(FlagSet::FIXED) && flags.contains(FlagSet::CELL)
                                 {
                                     // this is an assignment like `let x = *y` but `y` has CELL permissions
-                                    self.enter_assign_rvalue(|v| {
+                                    self.enter_rvalue(|v| {
                                         v.enter_rvalue_operand(0, |v| v.emit(RewriteKind::CellGet))
                                     })
                                 }
@@ -213,9 +213,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 };
 
                 let rv_lty = self.acx.type_of_rvalue(rv, loc);
-                self.enter_assign_rvalue(|v| v.visit_rvalue(rv, Some(rv_lty)));
+                self.enter_rvalue(|v| v.visit_rvalue(rv, Some(rv_lty)));
                 // The cast from `rv_lty` to `pl_lty` should be applied to the RHS.
-                self.enter_assign_rvalue(|v| v.emit_cast_lty_lty(rv_lty, pl_lty));
+                self.enter_rvalue(|v| v.emit_cast_lty_lty(rv_lty, pl_lty));
                 self.enter_dest(|v| v.visit_place(pl));
             }
             StatementKind::FakeRead(..) => {}
