@@ -224,7 +224,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
                 let rv_lty = self.acx.type_of_rvalue(rv, loc);
                 self.enter_assign_rvalue(|v| v.visit_rvalue(rv, Some(rv_lty)));
-                self.emit_cast_lty_lty(rv_lty, pl_lty);
+                // The cast from `rv_lty` to `pl_lty` should be applied to the RHS.
+                self.enter_assign_rvalue(|v| v.emit_cast_lty_lty(rv_lty, pl_lty));
                 self.enter_dest(|v| v.visit_place(pl));
             }
             StatementKind::FakeRead(..) => {}
@@ -329,13 +330,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         self.perms[expect_ty.label],
                         self.flags[expect_ty.label],
                     );
-                    self.enter_rvalue_operand(0, |v| match desc.own {
-                        Ownership::Cell => v.emit(RewriteKind::RawToRef { mutbl: false }),
-                        Ownership::Imm | Ownership::Mut => v.emit(RewriteKind::RawToRef {
+                    match desc.own {
+                        Ownership::Cell => self.emit(RewriteKind::RawToRef { mutbl: false }),
+                        Ownership::Imm | Ownership::Mut => self.emit(RewriteKind::RawToRef {
                             mutbl: mutbl == Mutability::Mut,
                         }),
                         _ => (),
-                    });
+                    }
                 }
             }
             Rvalue::Len(pl) => {
