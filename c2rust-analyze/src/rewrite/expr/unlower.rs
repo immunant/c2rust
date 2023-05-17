@@ -1,3 +1,5 @@
+//! Builds the *unlowering map*, which maps each piece of the MIR to the HIR `Expr` that was
+//! lowered to produce it.
 use crate::panic_detail;
 use crate::rewrite::expr::mir_op::{self, MirRewrite, SubLoc};
 use crate::rewrite::span_index::SpanIndex;
@@ -22,14 +24,14 @@ use std::collections::btree_map::{BTreeMap, Entry};
 use std::mem;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-struct MirOrigin {
-    hir_id: HirId,
-    span: Span,
-    desc: MirOriginDesc,
+pub struct MirOrigin {
+    pub hir_id: HirId,
+    pub span: Span,
+    pub desc: MirOriginDesc,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-enum MirOriginDesc {
+pub enum MirOriginDesc {
     /// This MIR represents the whole HIR expression.
     Expr,
     /// This MIR came from an adjustment on the HIR, specifically `expr_adjustments(hir_expr)[i]`.
@@ -279,12 +281,16 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for UnlowerVisitor<'a, 'tcx> {
     }
 }
 
-pub fn unlower<'tcx>(tcx: TyCtxt<'tcx>, mir: &Body<'tcx>, hir_body_id: hir::BodyId) {
+pub fn unlower<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    mir: &Body<'tcx>,
+    hir_body_id: hir::BodyId,
+) -> BTreeMap<(Location, Vec<SubLoc>), MirOrigin> {
     // If this MIR body came from a `#[derive]`, ignore it.
     let def_id = mir.source.def_id();
     if let Some(parent_def_id) = tcx.opt_parent(def_id) {
         if tcx.has_attr(parent_def_id, sym::automatically_derived) {
-            return;
+            return BTreeMap::new();
         }
     }
 
@@ -341,4 +347,6 @@ pub fn unlower<'tcx>(tcx: TyCtxt<'tcx>, mir: &Body<'tcx>, hir_body_id: hir::Body
             }
         }
     }
+
+    v.mir_map
 }

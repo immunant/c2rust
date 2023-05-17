@@ -6,6 +6,8 @@ use rustc_span::Span;
 
 mod hir_op;
 mod mir_op;
+
+mod distribute;
 mod unlower;
 
 pub fn gen_expr_rewrites<'tcx>(
@@ -14,8 +16,11 @@ pub fn gen_expr_rewrites<'tcx>(
     mir: &Body<'tcx>,
     hir_body_id: BodyId,
 ) -> Vec<(Span, Rewrite)> {
-    let unlower_map = unlower::unlower(acx.tcx(), mir, hir_body_id);
     let mir_rewrites = mir_op::gen_mir_rewrites(acx, asn, mir);
     let hir_rewrites = hir_op::gen_hir_rewrites(acx.tcx(), mir, hir_body_id, &mir_rewrites);
+
+    let unlower_map = unlower::unlower(acx.tcx(), mir, hir_body_id);
+    let hir_rewrites2 = distribute::distribute(acx.tcx(), unlower_map, mir_rewrites);
+
     hir_rewrites
 }
