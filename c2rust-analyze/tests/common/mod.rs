@@ -203,11 +203,20 @@ fn get_absolute_main_test_path(main_test_path: &Path) -> PathBuf {
         .join(main_test_path.file_name().unwrap())
 }
 
-fn test_dir_for(main_test_path: &Path) -> PathBuf {
-    main_test_path
-        .parent()
-        .unwrap()
-        .join(main_test_path.file_stem().unwrap())
+pub fn test_dir_for(main_test_path: impl AsRef<Path>, absolute: bool) -> PathBuf {
+    fn inner(main_test_path: &Path) -> PathBuf {
+        main_test_path
+            .parent()
+            .unwrap()
+            .join(main_test_path.file_stem().unwrap())
+    }
+
+    let main_test_path = main_test_path.as_ref();
+    if absolute {
+        inner(&get_absolute_main_test_path(main_test_path))
+    } else {
+        inner(main_test_path)
+    }
 }
 
 fn list_all_test_filestems_in(dir: &Path) -> impl Iterator<Item = String> {
@@ -220,8 +229,8 @@ fn list_all_test_filestems_in(dir: &Path) -> impl Iterator<Item = String> {
 
 pub fn check_for_missing_tests_for(main_test_path: impl AsRef<Path>) {
     let main_test_path = main_test_path.as_ref();
-    let abs_test_dir = test_dir_for(&get_absolute_main_test_path(main_test_path));
-    let rel_test_dir = test_dir_for(main_test_path);
+    let abs_test_dir = test_dir_for(main_test_path, true);
+    let rel_test_dir = test_dir_for(main_test_path, false);
     let test_names = list_all_tests::<HashSet<_>>();
     let missing_tests = list_all_test_filestems_in(&abs_test_dir)
         .filter(|test_name| !test_names.contains(test_name))
