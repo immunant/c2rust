@@ -53,3 +53,10 @@ pub fn init_logger() {
         })
         .init();
 }
+
+#[test]
+fn rust_log_doesnt_affect_panicking() {
+    std::env::set_var("RUST_LOG", "c2rust_analyze::log=trace");
+    init_logger();
+    ::log::trace!("test");
+}
