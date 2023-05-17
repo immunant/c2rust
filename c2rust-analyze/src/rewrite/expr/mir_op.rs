@@ -182,7 +182,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         let desc = type_desc::perms_to_desc(local_lty.ty, perms, flags);
                         if desc.own == Ownership::Cell {
                             // this is an assignment like `*x = 2` but `x` has CELL permissions
-                            self.enter_rvalue(|v| v.emit(RewriteKind::CellSet))
+                            self.emit(RewriteKind::CellSet);
                         }
                     }
                 }
