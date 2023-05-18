@@ -1,6 +1,22 @@
 //! Distributes MIR rewrites to HIR nodes.  This takes a list of MIR rewrites (from `mir_op`) and a
 //! map from MIR location to `HirId` (from `unlower`) and produces a map from `HirId` to a list of
 //! MIR rewrites.
+//!
+//! Using the example from `unlower`:
+//!
+//! ```text
+//! bb0[5]: Terminator { source_info: ..., kind: _4 = f(move _5) -> [return: bb1, unwind: bb2] }
+//!   []: StoreIntoLocal, `f(y)`
+//!   [Rvalue]: Expr, `f(y)`
+//!   [Rvalue, CallArg(0)]: Expr, `y`
+//! ```
+//!
+//! A MIR rewrite on `bb0[5]` `[Rvalue, CallArg(0)]` would be attached to the MIR
+//! `Expr` `y`, and a rewrite on `bb0[5]` `[Rvalue`] would be attached to `f(y)`.
+//! A MIR rewrite on `bb0[5]` `[]` (i.e. on the call terminator itself) would
+//! result in an error, since there is no good place in the HIR to attach such a
+//! rewrite.
+
 use crate::rewrite::expr::mir_op::{self, MirRewrite, SubLoc};
 use crate::rewrite::expr::unlower::{MirOrigin, MirOriginDesc};
 use log::*;
