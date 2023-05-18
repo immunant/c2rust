@@ -938,7 +938,7 @@ impl rustc_driver::Callbacks for AnalysisCallbacks {
 fn main() -> rustc_interface::interface::Result<()> {
     init_logger();
 
-    let dont_catch = env::var_os("C2RUST_TEST_ANALYZE_DONT_CATCH_PANIC").is_some();
+    let dont_catch = env::var_os("C2RUST_ANALYZE_TEST_DONT_CATCH_PANIC").is_some();
     if !dont_catch {
         panic_detail::set_hook();
     }

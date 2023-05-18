@@ -122,7 +122,7 @@ impl Analyze {
 
         let mut cmd = Command::new(&self.path);
         if self.dont_catch_panic {
-            cmd.env("C2RUST_TEST_ANALYZE_DONT_CATCH_PANIC", "1");
+            cmd.env("C2RUST_ANALYZE_TEST_DONT_CATCH_PANIC", "1");
         }
         cmd.arg(&rs_path)
             .arg("-L")
