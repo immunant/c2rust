@@ -1,3 +1,5 @@
+//! --catch-panics
+
 // This test deliberately exercises unsupported code to check that c2rust-analyze can recover from
 // panics during the analysis.
 

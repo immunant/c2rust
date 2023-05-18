@@ -10,7 +10,7 @@ fn check_for_missing_tests() {
 fn test(file_name: &str) {
     let analyze = Analyze::resolve();
     let path = test_dir_for(file!(), true).join(file_name);
-    analyze.dont_catch_panic().run(&path);
+    analyze.run(&path);
 }
 
 macro_rules! define_test {

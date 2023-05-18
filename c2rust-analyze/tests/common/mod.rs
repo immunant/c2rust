@@ -13,7 +13,6 @@ use clap::Parser;
 #[derive(Default)]
 pub struct Analyze {
     path: PathBuf,
-    dont_catch_panic: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +49,13 @@ struct AnalyzeArgs {
     /// Environment variables for `c2rust-analyze`.
     #[clap(long, value_parser)]
     env: Vec<EnvVar>,
+
+    /// Enable catching panics during analysis and rewriting.  This behavior is enabled by default
+    /// when running the tool manually, but for testing we disable it to detect errors more easily.
+    /// Tests that are meant to exercise the panic-catching behavior can explicitly enable it with
+    /// this flag.
+    #[arg(long)]
+    catch_panics: bool,
 }
 
 impl AnalyzeArgs {
@@ -91,17 +97,7 @@ impl Analyze {
         let bin_deps_dir = current_exe.parent().unwrap();
         let bin_dir = bin_deps_dir.parent().unwrap();
         let path = bin_dir.join(env!("CARGO_PKG_NAME"));
-        Self {
-            path,
-            dont_catch_panic: false,
-        }
-    }
-
-    pub fn dont_catch_panic(self) -> Self {
-        Self {
-            dont_catch_panic: true,
-            ..self
-        }
+        Self { path }
     }
 
     fn run_with_(&self, rs_path: &Path, mut modify_cmd: impl FnMut(&mut Command)) -> PathBuf {
@@ -121,7 +117,7 @@ impl Analyze {
         let output_stderr = File::try_clone(&output_stdout).unwrap();
 
         let mut cmd = Command::new(&self.path);
-        if self.dont_catch_panic {
+        if !args.catch_panics {
             cmd.env("C2RUST_ANALYZE_TEST_DONT_CATCH_PANIC", "1");
         }
         cmd.arg(&rs_path)
