@@ -119,12 +119,6 @@ impl apply::Sink for FormatterSink<'_, '_> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-enum SoleLocationError {
-    NoMatch,
-    MultiMatch(Vec<Location>),
-}
-
 fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {
     let mut span_index_items = Vec::new();
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {

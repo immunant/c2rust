@@ -1,26 +1,19 @@
 //! Convert the MIR rewrites attached to each HIR node into `Span`-based `rewrite::Rewrite`s.
 use crate::panic_detail;
-use crate::rewrite::expr::mir_op::{self, MirRewrite, SubLoc};
-use crate::rewrite::span_index::SpanIndex;
-use crate::rewrite::{build_span_index, Rewrite, SoleLocationError};
+use crate::rewrite::expr::mir_op;
+use crate::rewrite::Rewrite;
 use assert_matches::assert_matches;
-use hir::{ExprKind, UnOp};
 use log::*;
 use rustc_hir as hir;
-use rustc_hir::def::{Namespace, Res};
-use rustc_hir::def_id::CRATE_DEF_ID;
-use rustc_hir::hir_id::ItemLocalId;
+use rustc_hir::def::Namespace;
 use rustc_hir::intravisit;
-use rustc_hir::HirId;
+use rustc_hir::{ExprKind, HirId};
 use rustc_middle::hir::nested_filter;
-use rustc_middle::mir::{self, Body, Location};
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, PointerCast};
 use rustc_middle::ty::print::{FmtPrinter, Print};
-use rustc_middle::ty::{DefIdTree, TyCtxt, TypeckResults};
-use rustc_span::symbol::sym;
+use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::Span;
 use std::collections::HashMap;
-use std::mem;
 
 struct ConvertVisitor<'tcx> {
     tcx: TyCtxt<'tcx>,

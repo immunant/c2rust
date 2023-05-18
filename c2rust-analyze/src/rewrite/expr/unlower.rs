@@ -1,27 +1,19 @@
 //! Builds the *unlowering map*, which maps each piece of the MIR to the HIR `Expr` that was
 //! lowered to produce it.
 use crate::panic_detail;
-use crate::rewrite::expr::mir_op::{self, MirRewrite, SubLoc};
+use crate::rewrite::build_span_index;
+use crate::rewrite::expr::mir_op::SubLoc;
 use crate::rewrite::span_index::SpanIndex;
-use crate::rewrite::{build_span_index, Rewrite, SoleLocationError};
-use assert_matches::assert_matches;
-use hir::{ExprKind, UnOp};
 use log::*;
 use rustc_hir as hir;
-use rustc_hir::def::{Namespace, Res};
-use rustc_hir::def_id::CRATE_DEF_ID;
-use rustc_hir::hir_id::ItemLocalId;
 use rustc_hir::intravisit;
 use rustc_hir::HirId;
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, Location};
-use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, PointerCast};
-use rustc_middle::ty::print::{FmtPrinter, Print};
-use rustc_middle::ty::{DefIdTree, TyCtxt, TypeckResults};
+use rustc_middle::ty::{DefIdTree, TyCtxt};
 use rustc_span::symbol::sym;
 use rustc_span::Span;
 use std::collections::btree_map::{BTreeMap, Entry};
-use std::mem;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct MirOrigin {
@@ -34,15 +26,12 @@ pub struct MirOrigin {
 pub enum MirOriginDesc {
     /// This MIR represents the whole HIR expression.
     Expr,
-    /// This MIR came from an adjustment on the HIR, specifically `expr_adjustments(hir_expr)[i]`.
-    Adjustment(usize),
     /// This MIR stores the result of the HIR expression into a MIR local of some kind.
     StoreIntoLocal,
 }
 
 struct UnlowerVisitor<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
-    typeck_results: &'tcx TypeckResults<'tcx>,
     mir: &'a Body<'tcx>,
     span_index: SpanIndex<Location>,
     /// Maps MIR (sub)locations to the HIR node that produced each one, if known.
@@ -153,16 +142,6 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         false
     }
 
-    fn is_return_place_or_temp(&self, pl: mir::Place<'tcx>) -> bool {
-        if pl.projection.len() > 0 {
-            return false;
-        }
-        match self.mir.local_kind(pl.local) {
-            mir::LocalKind::ReturnPointer | mir::LocalKind::Temp => true,
-            _ => false,
-        }
-    }
-
     fn is_var(&self, pl: mir::Place<'tcx>) -> bool {
         pl.projection.len() == 0
     }
@@ -180,13 +159,10 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             return;
         }
 
-        let orig_locs = &locs[..];
-        let mut locs = orig_locs;
-
         let warn = |slf: &Self, desc| {
             warn!("{}", desc);
             info!("locs:");
-            for &loc in locs {
+            for &loc in &locs {
                 slf.mir.stmt_at(loc).either(
                     |stmt| info!("  {:?}: {:?}", locs, stmt),
                     |term| info!("  {:?}: {:?}", locs, term),
@@ -252,19 +228,21 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
     fn visit_expr_rvalue(
         &mut self,
         ex: &'tcx hir::Expr<'tcx>,
-        rv: &'a mir::Rvalue<'tcx>,
-        extra_locs: &[Location],
+        _rv: &'a mir::Rvalue<'tcx>,
+        _extra_locs: &[Location],
     ) {
         let _g = panic_detail::set_current_span(ex.span);
+        // TODO: handle adjustments, overloaded operators, etc
     }
 
     fn visit_expr_operand(
         &mut self,
         ex: &'tcx hir::Expr<'tcx>,
-        rv: &'a mir::Operand<'tcx>,
-        extra_locs: &[Location],
+        _rv: &'a mir::Operand<'tcx>,
+        _extra_locs: &[Location],
     ) {
         let _g = panic_detail::set_current_span(ex.span);
+        // TODO: handle adjustments, overloaded operators, etc
     }
 }
 
@@ -298,12 +276,10 @@ pub fn unlower<'tcx>(
     let span_index = build_span_index(mir);
 
     // Run the visitor.
-    let typeck_results = tcx.typeck_body(hir_body_id);
     let hir = tcx.hir().body(hir_body_id);
 
     let mut v = UnlowerVisitor {
         tcx,
-        typeck_results,
         mir,
         span_index,
         mir_map: BTreeMap::new(),
