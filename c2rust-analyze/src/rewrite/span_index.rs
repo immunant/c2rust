@@ -19,7 +19,7 @@ impl<T> SpanIndex<T> {
 
     /// Iterate over items whose spans are entirely contained within `span`.  The order of the
     /// returned items is unspecified.
-    pub fn lookup(&self, span: Span) -> RangeIter<T> {
+    pub fn _lookup(&self, span: Span) -> RangeIter<T> {
         let data = span.data();
         let start = self.v.partition_point(|(span, _)| span.lo() < data.lo);
         RangeIter {

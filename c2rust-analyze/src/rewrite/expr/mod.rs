@@ -1,6 +1,5 @@
 use crate::context::{AnalysisCtxt, Assignment};
 use crate::rewrite::Rewrite;
-use log::*;
 use rustc_hir::BodyId;
 use rustc_middle::mir::Body;
 use rustc_span::Span;
