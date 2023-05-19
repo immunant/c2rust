@@ -152,40 +152,19 @@ pub fn unpack_pointer_type<'tcx>(
     let mut steps = Vec::new();
     let mut cur_ty = ty;
     while cur_ty != pointee_ty {
-        match *cur_ty.kind() {
-            TyKind::Ref(_, inner_ty, mutbl) => {
-                steps.push(Step::Ref(mutbl));
-                cur_ty = inner_ty;
-            }
-            TyKind::RawPtr(tm) => {
-                steps.push(Step::RawPtr(tm.mutbl));
-                cur_ty = tm.ty;
-            }
-            TyKind::Adt(adt_def, substs) if adt_def.is_box() => {
-                steps.push(Step::Box);
-                cur_ty = substs.type_at(0);
-            }
-            TyKind::Adt(adt_def, substs) if is_rc(tcx, adt_def) => {
-                steps.push(Step::Rc);
-                cur_ty = substs.type_at(0);
-            }
+        let (step, new_ty) = match *cur_ty.kind() {
+            TyKind::Ref(_, inner_ty, mutbl) => (Step::Ref(mutbl), inner_ty),
+            TyKind::RawPtr(tm) => (Step::RawPtr(tm.mutbl), tm.ty),
+            TyKind::Adt(adt_def, substs) if adt_def.is_box() => (Step::Box, substs.type_at(0)),
+            TyKind::Adt(adt_def, substs) if is_rc(tcx, adt_def) => (Step::Rc, substs.type_at(0)),
             TyKind::Adt(adt_def, substs) if is_cell(tcx, adt_def) => {
-                steps.push(Step::Cell);
-                cur_ty = substs.type_at(0);
+                (Step::Cell, substs.type_at(0))
             }
             TyKind::Adt(adt_def, substs) if is_offset_ptr(tcx, adt_def) => {
-                steps.push(Step::OffsetPtr);
-                cur_ty = substs.type_at(0);
+                (Step::OffsetPtr, substs.type_at(0))
             }
-
-            TyKind::Slice(inner_ty) => {
-                steps.push(Step::Slice);
-                cur_ty = inner_ty;
-            }
-            TyKind::Array(inner_ty, _) => {
-                steps.push(Step::Array);
-                cur_ty = inner_ty;
-            }
+            TyKind::Slice(inner_ty) => (Step::Slice, inner_ty),
+            TyKind::Array(inner_ty, _) => (Step::Array, inner_ty),
 
             _ => panic!(
                 "failed to deconstruct {:?} as a pointer to {:?}: unexpected {:?}",
@@ -193,7 +172,9 @@ pub fn unpack_pointer_type<'tcx>(
                 pointee_ty,
                 cur_ty.kind()
             ),
-        }
+        };
+        steps.push(step);
+        cur_ty = new_ty;
     }
 
     // Parse the sequence `steps` to extract the ownership and quantity.
