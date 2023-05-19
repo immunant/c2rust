@@ -196,49 +196,51 @@ pub fn unpack_pointer_type<'tcx>(
         }
     }
 
+    // Parse the sequence `steps` to extract the ownership and quantity.
     let mut i = 0;
-    let next = |i: &mut usize| -> Option<&Step> {
-        let s = steps.get(*i);
-        *i += 1;
-        s
-    };
-
-    let own = match next(&mut i) {
-        Some(&Step::Ref(Mutability::Not)) => {
-            if let Some(&Step::Cell) = steps.get(i) {
-                i += 1;
-                Ownership::Cell
-            } else {
-                Ownership::Imm
-            }
-        }
-        Some(&Step::Ref(Mutability::Mut)) => Ownership::Mut,
-        Some(&Step::RawPtr(Mutability::Not)) => Ownership::Raw,
-        Some(&Step::RawPtr(Mutability::Mut)) => Ownership::RawMut,
-        Some(&Step::Box) => Ownership::Box,
-        Some(&Step::Rc) => Ownership::Rc,
-        _ => {
-            // Un-consume this step.
-            i -= 1;
-            panic!(
-                "failed to deconstruct {:?} as a pointer to {:?}: \
-                    steps {:?} don't start with a pointer",
-                ty,
-                pointee_ty,
-                &steps[i - 1..]
-            );
+    let mut eat = |s: Step| -> bool {
+        if steps.get(i) == Some(&s) {
+            i += 1;
+            true
+        } else {
+            false
         }
     };
 
-    let qty = match next(&mut i) {
-        Some(&Step::Slice) => Quantity::Slice,
-        Some(&Step::OffsetPtr) => Quantity::OffsetPtr,
-        Some(&Step::Array) => Quantity::Array,
-        _ => {
-            // Un-consume this step.
-            i -= 1;
-            Quantity::Single
+    let own = if eat(Step::Ref(Mutability::Not)) {
+        if eat(Step::Cell) {
+            Ownership::Cell
+        } else {
+            Ownership::Imm
         }
+    } else if eat(Step::Ref(Mutability::Mut)) {
+        Ownership::Mut
+    } else if eat(Step::RawPtr(Mutability::Not)) {
+        Ownership::Raw
+    } else if eat(Step::RawPtr(Mutability::Mut)) {
+        Ownership::RawMut
+    } else if eat(Step::Box) {
+        Ownership::Box
+    } else if eat(Step::Rc) {
+        Ownership::Rc
+    } else {
+        panic!(
+            "failed to deconstruct {:?} as a pointer to {:?}: \
+                steps {:?} don't start with a pointer",
+            ty,
+            pointee_ty,
+            &steps[i..]
+        );
+    };
+
+    let qty = if eat(Step::Slice) {
+        Quantity::Slice
+    } else if eat(Step::OffsetPtr) {
+        Quantity::OffsetPtr
+    } else if eat(Step::Array) {
+        Quantity::Array
+    } else {
+        Quantity::Single
     };
 
     assert!(
