@@ -207,12 +207,9 @@ pub fn unpack_pointer_type<'tcx>(
         }
     };
 
-    let own = if eat(Step::Ref(Mutability::Not)) {
-        if eat(Step::Cell) {
-            Ownership::Cell
-        } else {
-            Ownership::Imm
-        }
+    // This logic is roughly the inverse of that in `rewrite::ty::mk_rewritten_ty`.
+    let mut own = if eat(Step::Ref(Mutability::Not)) {
+        Ownership::Imm
     } else if eat(Step::Ref(Mutability::Mut)) {
         Ownership::Mut
     } else if eat(Step::RawPtr(Mutability::Not)) {
@@ -242,6 +239,11 @@ pub fn unpack_pointer_type<'tcx>(
     } else {
         Quantity::Single
     };
+
+    // Note that e.g. Slice + Cell means `&[Cell<T>]`, not `&Cell<[T]>`.
+    if own == Ownership::Imm && eat(Step::Cell) {
+        own = Ownership::Cell;
+    }
 
     assert!(
         i == steps.len(),
