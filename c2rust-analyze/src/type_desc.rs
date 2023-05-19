@@ -129,7 +129,9 @@ pub fn perms_to_desc_with_pointee<'tcx>(
     }
 }
 
-/// Unpack an existing `Ty` into its ownership, quantity, and pointee type.
+/// Unpack an existing `Ty` into its ownership and quantity.  The pointee type must already be
+/// known.  Panics if there are no `Ownership` and `Quantity` that combine with `pointee_ty` to
+/// produce `ty`.
 pub fn unpack_pointer_type<'tcx>(
     tcx: TyCtxt<'tcx>,
     ty: Ty<'tcx>,
