@@ -293,6 +293,10 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                         continue;
                                     }
                                 }
+
+                                if !pl_ty.label.is_none() {
+                                    v.emit_cast_lty_lty(lsig.output, pl_ty);
+                                }
                             });
                         }
                     }
