@@ -21,18 +21,6 @@ pub fn cast_slice_ptr_to_ptr(s: *const [u8]) {
 /// and `core::ptr::addr_of!` do work.
 
 #[cfg(any())]
-pub fn cast_array_to_slice_ptr(s: &[u8; 0]) {
-    s as *const [u8];
-}
-
-/// Unlike the other `*_explicit` tests, this one
-/// still doesn't work even with an explicit `std::ptr::addr_of!`.
-#[cfg(any())]
-pub fn cast_array_to_slice_ptr_explicit(s: &[u8; 0]) {
-    std::ptr::addr_of!(*s) as *const [u8];
-}
-
-#[cfg(any())]
 pub fn cast_array_to_ptr(s: &[u8; 0]) {
     s as *const u8;
 }
