@@ -39,6 +39,7 @@ define_tests! {
     alloc,
     as_ptr,
     call1,
+    call_cast,
     cast,
     catch_panic,
     cell,
