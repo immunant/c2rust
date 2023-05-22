@@ -23,6 +23,7 @@ use crate::dataflow::DataflowConstraints;
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use crate::labeled_ty::LabeledTyCtxt;
 use crate::log::init_logger;
+use crate::panic_detail::PanicDetail;
 use crate::util::Callee;
 use context::AdtMetadataTable;
 use rustc_ast::ast::AttrKind;
@@ -509,6 +510,17 @@ fn run(tcx: TyCtxt) {
         make_sig_fixed(&mut gasn, lsig);
     }
 
+    // For testing, putting #[c2rust_analyze_test::fail_analysis] on a function marks it as failed.
+    for &ldid in &all_fn_ldids {
+        if !has_test_attr(tcx, ldid, "fail_analysis") {
+            continue;
+        }
+        gacx.mark_fn_failed(
+            ldid.to_def_id(),
+            PanicDetail::new("explicit fail_analysis for testing".to_owned()),
+        );
+    }
+
     eprintln!("=== ADT Metadata ===");
     eprintln!("{:?}", gacx.adt_metadata);
 
@@ -578,6 +590,10 @@ fn run(tcx: TyCtxt) {
         };
 
         if gacx.fn_failed(ldid.to_def_id()) {
+            continue;
+        }
+
+        if has_test_attr(tcx, ldid, "skip_rewrite") {
             continue;
         }
 
