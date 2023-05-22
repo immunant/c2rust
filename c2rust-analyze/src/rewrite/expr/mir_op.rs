@@ -546,6 +546,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     from.qty = Quantity::Slice;
                 }
                 // `Slice` and `OffsetPtr` convert to `Single` the same way.
+                // TODO: may be better to use `slice.as_ptr()` to avoid panic on 0-length inputs
                 (_, Quantity::Single) => {
                     let rw = match opt_mutbl {
                         Some(mutbl) => RewriteKind::SliceFirst { mutbl },
