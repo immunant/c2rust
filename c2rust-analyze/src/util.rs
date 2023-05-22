@@ -369,11 +369,9 @@ impl<'a, T: ?Sized> PhantomLifetime<'a> for T {}
 ///
 /// * `A = B => A ~ B`
 /// * `A ~ B => *A ~ *B`
-/// * `A ~ B => [A] ~ B`
-/// * `A ~ B => [A; N] ~ B`, where `const N: usize`
-/// * `A ~ B => [A] ~ [B; N]`, where `const N: usize`
-/// * `A ~ B => [A; N] ~ [B]`, where `const N: usize`
 /// * `uN ~ iN`, `iN ~ uN`, where `N` is an integer width
+/// * `[A] ~ A`
+/// * `[A; N] ~ A`, where `const N: usize`
 ///
 /// Thus, [`true`] means it is definitely transmutable,
 /// while [`false`] means it may not be transmutable.
@@ -392,19 +390,15 @@ pub fn is_transmutable_to<'tcx>(from: Ty<'tcx>, to: Ty<'tcx>) -> bool {
         }
     };
 
-    let unsizing_transmutable = || {
-        let from = from.builtin_index()?;
-        let transmutable = is_transmutable_to(from, to) || {
-            let to = to.builtin_index()?;
-            is_transmutable_to(from, to)
-        };
-        Some(transmutable)
+    let one_way_transmutable = || match from.kind() {
+        &ty::Array(from, _) | &ty::Slice(from) => is_transmutable_to(from, to),
+        _ => false,
     };
 
     from == to
         || is_transmutable_ptr_cast(from, to).unwrap_or(false)
         || transmutable_ints()
-        || unsizing_transmutable().unwrap_or(false)
+        || one_way_transmutable()
 }
 
 /// Determine if `from as to` is a ptr-to-ptr cast.
