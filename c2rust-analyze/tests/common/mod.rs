@@ -49,6 +49,13 @@ struct AnalyzeArgs {
     /// Environment variables for `c2rust-analyze`.
     #[clap(long, value_parser)]
     env: Vec<EnvVar>,
+
+    /// Enable catching panics during analysis and rewriting.  This behavior is enabled by default
+    /// when running the tool manually, but for testing we disable it to detect errors more easily.
+    /// Tests that are meant to exercise the panic-catching behavior can explicitly enable it with
+    /// this flag.
+    #[arg(long)]
+    catch_panics: bool,
 }
 
 impl AnalyzeArgs {
@@ -110,6 +117,9 @@ impl Analyze {
         let output_stderr = File::try_clone(&output_stdout).unwrap();
 
         let mut cmd = Command::new(&self.path);
+        if !args.catch_panics {
+            cmd.env("C2RUST_ANALYZE_TEST_DONT_CATCH_PANIC", "1");
+        }
         cmd.arg(&rs_path)
             .arg("-L")
             .arg(lib_dir)

@@ -39,6 +39,7 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::{Debug, Display};
 use std::ops::{Deref, DerefMut, Index};
+use std::panic::AssertUnwindSafe;
 
 mod borrowck;
 mod c_void_casts;
@@ -47,6 +48,7 @@ mod dataflow;
 mod equiv;
 mod labeled_ty;
 mod log;
+mod panic_detail;
 mod pointer_id;
 mod rewrite;
 mod trivial;
@@ -170,6 +172,8 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
             if acx.c_void_casts.should_skip_stmt(loc) {
                 continue;
             }
+
+            let _g = panic_detail::set_current_span(stmt.source_info.span);
 
             let lty = match rv {
                 Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
@@ -300,11 +304,24 @@ fn run(tcx: TyCtxt) {
 
     // Follow a postorder traversal, so that callers are visited after their callees.  This means
     // callee signatures will usually be up to date when we visit the call site.
-    let all_fn_ldids = fn_body_owners_postorder(tcx);
+    let (all_fn_ldids, fn_callers) = fn_body_owners_postorder(tcx);
     eprintln!("callgraph traversal order:");
     for &ldid in &all_fn_ldids {
         eprintln!("  {:?}", ldid);
     }
+
+    gacx.fn_callers = fn_callers
+        .into_iter()
+        .map(|(ldid, caller_ldids)| {
+            (
+                ldid.to_def_id(),
+                caller_ldids
+                    .into_iter()
+                    .map(|caller_ldid| caller_ldid.to_def_id())
+                    .collect(),
+            )
+        })
+        .collect();
 
     // Assign global `PointerId`s for all pointers that appear in function signatures.
     for &ldid in &all_fn_ldids {
@@ -353,6 +370,11 @@ fn run(tcx: TyCtxt) {
     // computed during this the process is kept around for use in later passes.
     let mut global_equiv = GlobalEquivSet::new(gacx.num_pointers());
     for &ldid in &all_fn_ldids {
+        // The function might already be marked as failed if one of its callees previously failed.
+        if gacx.fn_failed(ldid.to_def_id()) {
+            continue;
+        }
+
         let ldid_const = WithOptConstParam::unknown(ldid);
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
@@ -360,32 +382,43 @@ fn run(tcx: TyCtxt) {
 
         let mut acx = gacx.function_context(&mir);
 
-        // Assign PointerIds to local types
-        assert!(acx.local_tys.is_empty());
-        acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
-        for (local, decl) in mir.local_decls.iter_enumerated() {
-            // TODO: set PointerInfo::ANNOTATED for the parts of the type with user annotations
-            let lty = match mir.local_kind(local) {
-                LocalKind::Var | LocalKind::Temp => acx.assign_pointer_ids(decl.ty),
-                LocalKind::Arg => {
-                    debug_assert!(local.as_usize() >= 1 && local.as_usize() <= mir.arg_count);
-                    lsig.inputs[local.as_usize() - 1]
-                }
-                LocalKind::ReturnPointer => lsig.output,
-            };
-            let l = acx.local_tys.push(lty);
-            assert_eq!(local, l);
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+            // Assign PointerIds to local types
+            assert!(acx.local_tys.is_empty());
+            acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
+            for (local, decl) in mir.local_decls.iter_enumerated() {
+                // TODO: set PointerInfo::ANNOTATED for the parts of the type with user annotations
+                let lty = match mir.local_kind(local) {
+                    LocalKind::Var | LocalKind::Temp => acx.assign_pointer_ids(decl.ty),
+                    LocalKind::Arg => {
+                        debug_assert!(local.as_usize() >= 1 && local.as_usize() <= mir.arg_count);
+                        lsig.inputs[local.as_usize() - 1]
+                    }
+                    LocalKind::ReturnPointer => lsig.output,
+                };
+                let l = acx.local_tys.push(lty);
+                assert_eq!(local, l);
 
-            let ptr = acx.new_pointer(PointerInfo::empty());
-            let l = acx.addr_of_local.push(ptr);
-            assert_eq!(local, l);
-        }
+                let ptr = acx.new_pointer(PointerInfo::empty());
+                let l = acx.addr_of_local.push(ptr);
+                assert_eq!(local, l);
+            }
 
-        label_rvalue_tys(&mut acx, &mir);
-        update_pointer_info(&mut acx, &mir);
+            label_rvalue_tys(&mut acx, &mir);
+            update_pointer_info(&mut acx, &mir);
+
+            dataflow::generate_constraints(&acx, &mir)
+        }));
+
+        let (dataflow, equiv_constraints) = match r {
+            Ok(x) => x,
+            Err(pd) => {
+                gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                continue;
+            }
+        };
 
         // Compute local equivalence classes and dataflow constraints.
-        let (dataflow, equiv_constraints) = dataflow::generate_constraints(&acx, &mir);
         let mut local_equiv = LocalEquivSet::new(acx.num_pointers());
         let mut equiv = global_equiv.and_mut(&mut local_equiv);
         for (a, b) in equiv_constraints {
@@ -406,6 +439,10 @@ fn run(tcx: TyCtxt) {
     gacx.remap_pointers(&global_equiv_map, global_counter);
 
     for &ldid in &all_fn_ldids {
+        if gacx.fn_failed(ldid.to_def_id()) {
+            continue;
+        }
+
         let info = func_info.get_mut(&ldid).unwrap();
         let (local_counter, local_equiv_map) = info.local_equiv.renumber(&global_equiv_map);
         eprintln!("local_equiv_map = {local_equiv_map:?}");
@@ -468,6 +505,10 @@ fn run(tcx: TyCtxt) {
         loop_count += 1;
         let old_gasn = gasn.clone();
         for &ldid in &all_fn_ldids {
+            if gacx.fn_failed(ldid.to_def_id()) {
+                continue;
+            }
+
             let info = func_info.get_mut(&ldid).unwrap();
             let ldid_const = WithOptConstParam::unknown(ldid);
             let name = tcx.item_name(ldid.to_def_id());
@@ -478,18 +519,27 @@ fn run(tcx: TyCtxt) {
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
             let mut asn = gasn.and(&mut info.lasn);
 
-            // `dataflow.propagate` and `borrowck_mir` both run until the assignment converges on a
-            // fixpoint, so there's no need to do multiple iterations here.
-            info.dataflow.propagate(&mut asn.perms_mut());
+            let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+                // `dataflow.propagate` and `borrowck_mir` both run until the assignment converges
+                // on a fixpoint, so there's no need to do multiple iterations here.
+                info.dataflow.propagate(&mut asn.perms_mut());
 
-            borrowck::borrowck_mir(
-                &acx,
-                &info.dataflow,
-                &mut asn.perms_mut(),
-                name.as_str(),
-                &mir,
-                field_ltys,
-            );
+                borrowck::borrowck_mir(
+                    &acx,
+                    &info.dataflow,
+                    &mut asn.perms_mut(),
+                    name.as_str(),
+                    &mir,
+                    field_ltys,
+                );
+            }));
+            match r {
+                Ok(()) => {}
+                Err(pd) => {
+                    gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                    continue;
+                }
+            }
 
             info.acx_data.set(acx.into_data());
         }
@@ -510,6 +560,11 @@ fn run(tcx: TyCtxt) {
             Some(x) => x,
             None => continue,
         };
+
+        if gacx.fn_failed(ldid.to_def_id()) {
+            continue;
+        }
+
         let ldid_const = WithOptConstParam::unknown(ldid);
         let name = tcx.item_name(ldid.to_def_id());
         let mir = tcx.mir_built(ldid_const);
@@ -541,21 +596,31 @@ fn run(tcx: TyCtxt) {
         rewrite::dump_rewritten_local_tys(&acx, &asn, &mir, describe_local);
 
         eprintln!();
-        let hir_body_id = tcx.hir().body_owned_by(ldid);
-        let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
-        let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
-        // Print rewrites
-        eprintln!(
-            "\ngenerated {} expr rewrites + {} ty rewrites for {:?}:",
-            expr_rewrites.len(),
-            ty_rewrites.len(),
-            name
-        );
-        for &(span, ref rw) in expr_rewrites.iter().chain(ty_rewrites.iter()) {
-            eprintln!("  {}: {}", describe_span(tcx, span), rw);
+
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+            let hir_body_id = tcx.hir().body_owned_by(ldid);
+            let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
+            let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
+            // Print rewrites
+            eprintln!(
+                "\ngenerated {} expr rewrites + {} ty rewrites for {:?}:",
+                expr_rewrites.len(),
+                ty_rewrites.len(),
+                name
+            );
+            for &(span, ref rw) in expr_rewrites.iter().chain(ty_rewrites.iter()) {
+                eprintln!("  {}: {}", describe_span(tcx, span), rw);
+            }
+            all_rewrites.extend(expr_rewrites);
+            all_rewrites.extend(ty_rewrites);
+        }));
+        match r {
+            Ok(()) => {}
+            Err(pd) => {
+                gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                continue;
+            }
         }
-        all_rewrites.extend(expr_rewrites);
-        all_rewrites.extend(ty_rewrites);
     }
 
     // Print results for `static` items.
@@ -601,6 +666,34 @@ fn run(tcx: TyCtxt) {
 
     // Apply rewrite to all functions at once.
     rewrite::apply_rewrites(tcx, all_rewrites);
+
+    // Report errors that were caught previously
+    eprintln!("\nerror details:");
+    for ldid in tcx.hir().body_owners() {
+        if let Some(detail) = gacx.fns_failed.get(&ldid.to_def_id()) {
+            if !detail.has_backtrace() {
+                continue;
+            }
+            eprintln!("\nerror in {:?}:\n{}", ldid, detail.to_string_full());
+        }
+    }
+
+    eprintln!("\nerror summary:");
+    for ldid in tcx.hir().body_owners() {
+        if let Some(detail) = gacx.fns_failed.get(&ldid.to_def_id()) {
+            eprintln!(
+                "analysis of {:?} failed: {}",
+                ldid,
+                detail.to_string_short()
+            );
+        }
+    }
+
+    eprintln!(
+        "\nsaw errors in {} / {} functions",
+        gacx.fns_failed.len(),
+        all_fn_ldids.len()
+    );
 }
 
 trait AssignPointerIds<'tcx> {
@@ -741,10 +834,14 @@ fn all_static_items(tcx: TyCtxt) -> Vec<DefId> {
 }
 
 /// Return all `LocalDefId`s for all `fn`s that are `body_owners`, ordered according to a postorder
-/// traversal of the graph of references between bodies.
-fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
+/// traversal of the graph of references between bodies.  Also returns the callgraph itself, in the
+/// form of a map from callee `LocalDefId` to a set of caller `LocalDefId`s.
+fn fn_body_owners_postorder(
+    tcx: TyCtxt,
+) -> (Vec<LocalDefId>, HashMap<LocalDefId, HashSet<LocalDefId>>) {
     let mut seen = HashSet::new();
     let mut order = Vec::new();
+    let mut callers = HashMap::<_, HashSet<_>>::new();
     enum Visit {
         Pre(LocalDefId),
         Post(LocalDefId),
@@ -773,6 +870,7 @@ fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
                         stack.push(Visit::Post(ldid));
                         for_each_callee(tcx, ldid, |callee_ldid| {
                             stack.push(Visit::Pre(callee_ldid));
+                            callers.entry(callee_ldid).or_default().insert(ldid);
                         });
                     }
                 }
@@ -783,7 +881,7 @@ fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
         }
     }
 
-    order
+    (order, callers)
 }
 
 fn for_each_callee(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(LocalDefId)) {
@@ -839,6 +937,13 @@ impl rustc_driver::Callbacks for AnalysisCallbacks {
 
 fn main() -> rustc_interface::interface::Result<()> {
     init_logger();
+
+    let dont_catch = env::var_os("C2RUST_ANALYZE_TEST_DONT_CATCH_PANIC").is_some();
+    if !dont_catch {
+        panic_detail::set_hook();
+    }
+
     let args = env::args().collect::<Vec<_>>();
+
     rustc_driver::RunCompiler::new(&args, &mut AnalysisCallbacks).run()
 }

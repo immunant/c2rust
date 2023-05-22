@@ -40,6 +40,7 @@ define_tests! {
     as_ptr,
     call1,
     cast,
+    catch_panic,
     cell,
     clone1,
     extern_fn1,

@@ -2,6 +2,7 @@ use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubP
 use crate::borrowck::{construct_adt_origins, LTy, LTyCtxt, Label, OriginParam};
 use crate::c_void_casts::CVoidCasts;
 use crate::context::PermissionSet;
+use crate::panic_detail;
 use crate::util::{self, ty_callee, Callee};
 use crate::AdtMetadataTable;
 use assert_matches::assert_matches;
@@ -429,6 +430,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>) {
+        let _g = panic_detail::set_current_span(stmt.source_info.span);
         // TODO(spernsteiner): other `StatementKind`s will be handled in the future
         #[allow(clippy::single_match)]
         match stmt.kind {
@@ -445,6 +447,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_terminator(&mut self, term: &Terminator<'tcx>) {
         eprintln!("borrowck: visit_terminator({:?})", term.kind);
+        let _g = panic_detail::set_current_span(term.source_info.span);
         // TODO(spernsteiner): other `TerminatorKind`s will be handled in the future
         #[allow(clippy::single_match)]
         match term.kind {
