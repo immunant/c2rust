@@ -58,6 +58,8 @@ pub enum RewriteKind {
     /// Cast `*const` to `*mut` or vice versa.  If `to_mutbl` is true, we are casting to `*mut`;
     /// otherwise, we're casting to `*const`.
     CastRawToRaw { to_mutbl: bool },
+    /// Cast `*const` to `&` or `*mut` to `&mut`.
+    UnsafeCastRawToRef { mutbl: bool },
 
     /// Replace `y` in `let x = y` with `Cell::new(y)`, i.e. `let x = Cell::new(y)`
     /// TODO: ensure `y` implements `Copy`
@@ -632,16 +634,26 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 _ => None,
             },
             Ownership::RawMut => match to.own {
-                Ownership::Raw if !early => {
+                // For `RawMut` to `Imm`, we go through `Raw` instead of through `Mut` because
+                // `&mut` adds more implicit constraints under the Rust memory model.
+                Ownership::Raw | Ownership::Imm if !early => {
                     self.emit(RewriteKind::CastRawToRaw { to_mutbl: false });
                     Some(Ownership::Raw)
+                }
+                Ownership::Mut if !early => {
+                    self.emit(RewriteKind::UnsafeCastRawToRef { mutbl: true });
+                    Some(Ownership::Mut)
                 }
                 _ => None,
             },
             Ownership::Raw => match to.own {
-                Ownership::RawMut if !early => {
+                Ownership::RawMut | Ownership::Mut if !early => {
                     self.emit(RewriteKind::CastRawToRaw { to_mutbl: true });
                     Some(Ownership::RawMut)
+                }
+                Ownership::Imm if !early => {
+                    self.emit(RewriteKind::UnsafeCastRawToRef { mutbl: false });
+                    Some(Ownership::Imm)
                 }
                 _ => None,
             },

@@ -344,6 +344,10 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                     let ty = if *to_mutbl { "*mut _" } else { "*const _" };
                     Rewrite::Cast(Box::new(hir_rw), ty.to_owned())
                 }
+                mir_op::RewriteKind::UnsafeCastRawToRef { mutbl } => {
+                    let rw_pl = Rewrite::Deref(Box::new(hir_rw));
+                    Rewrite::Ref(Box::new(rw_pl), mutbl_from_bool(*mutbl))
+                }
 
                 mir_op::RewriteKind::CellNew => {
                     // `x` to `Cell::new(x)`
