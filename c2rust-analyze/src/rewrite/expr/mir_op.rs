@@ -51,6 +51,13 @@ pub enum RewriteKind {
     RemoveAsPtr,
     /// Replace &raw with & or &raw mut with &mut
     RawToRef { mutbl: bool },
+
+    /// Cast `&` to `*const` or `&mut` to `*mut`.
+    CastRefToRaw { mutbl: bool },
+    /// Cast `*const` to `*mut` or vice versa.  If `to_mutbl` is true, we are casting to `*mut`;
+    /// otherwise, we're casting to `*const`.
+    CastRawToRaw { to_mutbl: bool },
+
     /// Replace `y` in `let x = y` with `Cell::new(y)`, i.e. `let x = Cell::new(y)`
     /// TODO: ensure `y` implements `Copy`
     CellNew,
