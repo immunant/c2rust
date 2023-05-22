@@ -54,7 +54,7 @@ pub fn distribute(
                 }
             };
 
-            if origin.desc != MirOriginDesc::Expr {
+            if origin.desc != MirOriginDesc::Expr && origin.desc != MirOriginDesc::LoadFromTemp {
                 error!(
                     "can't distribute rewrites onto {:?} origin {:?}\n\
                         key = {:?}\n\
