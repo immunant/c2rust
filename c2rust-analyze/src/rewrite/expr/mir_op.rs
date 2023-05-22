@@ -495,6 +495,19 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             return;
         }
 
+        if from.own == Ownership::Imm && matches!(to.own, Ownership::Raw | Ownership::RawMut) {
+            self.emit(RewriteKind::CastRefToRaw { mutbl: false });
+            from.own = Ownership::Raw;
+        }
+        if from.own == Ownership::Mut && to.own == Ownership::RawMut {
+            self.emit(RewriteKind::CastRefToRaw { mutbl: true });
+            from.own = Ownership::RawMut;
+        }
+        if from.own == Ownership::Raw && to.own == Ownership::RawMut {
+            self.emit(RewriteKind::CastRawToRaw { to_mutbl: true });
+            from.own = Ownership::RawMut;
+        }
+
         if (from.qty, to.qty) == (Quantity::OffsetPtr, Quantity::Slice)
             || (from.qty, to.qty) == (Quantity::Slice, Quantity::OffsetPtr)
         {
