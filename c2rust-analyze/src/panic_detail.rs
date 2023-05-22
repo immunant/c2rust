@@ -1,5 +1,4 @@
 use backtrace::Backtrace;
-use log::warn;
 use rustc_span::{Span, DUMMY_SP};
 use std::any::Any;
 use std::cell::Cell;
@@ -117,6 +116,9 @@ pub fn set_hook() {
 
 /// Like `std::panic::catch_unwind`, but returns a `PanicDetail` instead of `Box<dyn Any>` on
 /// panic.
+///
+/// This will only catch the panic if the `panic_detail` hook has been set by calling this module's
+/// [`set_hook`] function.
 pub fn catch_unwind<F: FnOnce() -> R + UnwindSafe, R>(f: F) -> Result<R, PanicDetail> {
     let old = CURRENT_PANIC_DETAIL.with(|cell| cell.replace(PanicState::InsideCatchUnwind));
     let r = panic::catch_unwind(f);
@@ -132,9 +134,9 @@ pub fn catch_unwind<F: FnOnce() -> R + UnwindSafe, R>(f: F) -> Result<R, PanicDe
             let pd = match new {
                 PanicState::Unwinding(pd) => pd,
                 _ => {
-                    let msg = panic_to_string(&e);
-                    warn!("missing panic detail; caught message {:?}", msg);
-                    PanicDetail::new(msg)
+                    // Our `panic_hook` always sets `PanicDetail::Unwinding`, so `set_hook` must
+                    // not have been called.  Propagate the panic normally instead of catching it.
+                    panic::resume_unwind(e);
                 }
             };
             Err(pd)
