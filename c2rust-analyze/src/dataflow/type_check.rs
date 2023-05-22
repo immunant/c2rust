@@ -111,12 +111,35 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     panic!("Creating non-null pointers from exposed addresses not supported");
                 }
             }
-            _ => {
+            CastKind::PointerExposeAddress => {
+                // Allow, as [`CastKind::PointerFromExposedAddress`] is the dangerous one,
+                // and we'll catch (not allow) that above.
+                // This becomes no longer a pointer, so we don't need to add any dataflow constraints
+                // (until we try to handle [`CastKind::PointerFromExposedAddress`], if we do).
+            }
+            CastKind::Pointer(ptr_cast) => {
+                // All of these [`PointerCast`]s are type checked by rustc already.
+                // They don't involve arbitrary raw ptr to raw ptr casts
+                // ([PointerCast::MutToConstPointer`] doesn't allow changing types),
+                // which we need to check for safe transmutability,
+                // and which are (currently) covered in [`CastKind::Misc`].
+                // That's why there's a `match` here that does nothing;
+                // it ensures if [`PointerCast`] is changed in a future `rustc` version,
+                // this won't compile until we've checked that this reasoning is still accurate.
+                match ptr_cast {
+                    PointerCast::ReifyFnPointer => {}
+                    PointerCast::UnsafeFnPointer => {}
+                    PointerCast::ClosureFnPointer(_) => {}
+                    PointerCast::MutToConstPointer => {}
+                    PointerCast::ArrayToPointer => {}
+                    PointerCast::Unsize => {}
+                }
+                self.do_assign_pointer_ids(to_lty.label, from_lty.label)
+                // TODO add other dataflow constraints
+            }
+            CastKind::Misc => {
                 match is_transmutable_ptr_cast(from_ty, to_ty) {
                     Some(true) => {
-                        if cast_kind == CastKind::Pointer(PointerCast::Unsize) {
-                            self.do_assign_pointer_ids(to_lty.label, from_lty.label)
-                        }
                         // TODO add other dataflow constraints
                     },
                     Some(false) => ::log::error!("TODO: unsupported ptr-to-ptr cast between pointee types not yet supported as safely transmutable: `{from_ty:?} as {to_ty:?}`"),
