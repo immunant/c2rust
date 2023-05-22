@@ -16,6 +16,7 @@ pub unsafe fn call1(x: *mut i32) {
     let y = read(q);
 }
 
+// CHECK-LABEL: final labeling for "call2"
 pub unsafe fn call2(x: *mut i32) {
     // CHECK-DAG: ([[@LINE+1]]: p): &mut i32
     let p = x;
