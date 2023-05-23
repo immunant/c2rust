@@ -357,6 +357,15 @@ impl<'c> Translation<'c> {
                 })
             }
 
+            // Memory fences:
+            "_mm_sfence" | "_mm_lfence" | "_mm_mfence" => {
+                // These are imported by "import_simd_function"
+                let fence_func = mk().path_expr(vec![builtin_name]);
+                let call_expr = mk().call_expr(fence_func, vec![]);
+
+                Ok(WithStmts::new_val(call_expr))
+            }
+
             // SIMD builtins:
             "__builtin_ia32_aeskeygenassist128" => {
                 self.convert_simd_builtin(ctx, "_mm_aeskeygenassist_si128", args)
