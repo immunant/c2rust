@@ -99,6 +99,8 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
 
     /// Special `record` variant for MIR [`Operand`]s.  This sets the [`MirOriginDesc`] to
     /// `LoadFromLocal` if `op` is a MIR temporary and otherwise sets it to `Expr`.
+    ///
+    /// [`Operand`]: mir::Operand
     fn record_operand(
         &mut self,
         loc: Location,
