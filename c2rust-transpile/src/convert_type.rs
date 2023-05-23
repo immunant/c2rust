@@ -397,6 +397,35 @@ impl TypeConverter {
 
             CTypeKind::TypeOf(ty) => self.convert(ctxt, ty),
 
+            CTypeKind::Vector(element, count) => {
+                fn type_size(ctxt: &TypedAstContext, kind: &CTypeKind) -> (usize, &'static str) {
+                    match kind {
+                        CTypeKind::Typedef(decl) => match &ctxt.index(*decl).kind {
+                            CDeclKind::Typedef { typ, .. } => {
+                                type_size(ctxt, &ctxt.index(typ.ctype).kind)
+                            }
+                            _ => panic!("no typedef decl found for typedef vector elem type"),
+                        },
+                        CTypeKind::Double => (8, "d"),
+                        CTypeKind::Float => (4, ""),
+                        CTypeKind::Long | CTypeKind::ULong => (8, "i"),
+                        CTypeKind::Int | CTypeKind::UInt => (4, "i"),
+                        CTypeKind::BFloat16 | CTypeKind::Short | CTypeKind::UShort => (2, "bh"),
+                        CTypeKind::Char | CTypeKind::UChar | CTypeKind::SChar => (1, "i"),
+                        _ => panic!("vector of unhandled elem type {:?}", kind),
+                    }
+                }
+
+                let elem_kind = &ctxt.index(element.ctype).kind;
+                let (elem_size, kind_char) = type_size(ctxt, elem_kind);
+                let byte_size = count * elem_size;
+                let name = format!("__m{}{}", byte_size * 8, kind_char);
+
+                //self.import_simd_typedef(new_name)?;
+
+                Ok(mk().path_ty(mk().abs_path(vec!["core", "arch", "x86_64", &name])))
+            }
+
             ref t => Err(format_err!("Unsupported type {:?}", t).into()),
         }
     }
