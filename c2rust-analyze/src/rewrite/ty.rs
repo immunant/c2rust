@@ -85,11 +85,15 @@ fn create_rewrite_label<'tcx>(
     } else {
         let perms = perms[pointer_lty.label];
         let flags = flags[pointer_lty.label];
-        // TODO: if the `Ownership` and `Quantity` exactly match `lty.ty`, then `ty_desc` can
-        // be `None` (no rewriting required).  This might let us avoid inlining a type alias
-        // for some pointers where no actual improvement was possible.
-        let desc = type_desc::perms_to_desc(pointer_lty.ty, perms, flags);
-        Some((desc.own, desc.qty))
+        if flags.contains(FlagSet::FIXED) {
+            None
+        } else {
+            // TODO: if the `Ownership` and `Quantity` exactly match `lty.ty`, then `ty_desc`
+            // can be `None` (no rewriting required).  This might let us avoid inlining a type
+            // alias for some pointers where no actual improvement was possible.
+            let desc = type_desc::perms_to_desc(pointer_lty.ty, perms, flags);
+            Some((desc.own, desc.qty))
+        }
     };
 
     RewriteLabel {
@@ -329,6 +333,7 @@ fn mk_rewritten_ty<'tcx>(
             Quantity::Slice => tcx.mk_slice(ty),
             // TODO: This should generate `OffsetPtr<T>` rather than `&[T]`, but `OffsetPtr` is NYI
             Quantity::OffsetPtr => tcx.mk_slice(ty),
+            Quantity::Array => panic!("can't mk_rewritten_ty with Quantity::Array"),
         };
 
         ty = match own {
@@ -413,6 +418,7 @@ impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
                 // TODO: This should generate `OffsetPtr<T>` rather than `&[T]`, but `OffsetPtr` is
                 // NYI
                 Quantity::OffsetPtr => Rewrite::TySlice(Box::new(rw)),
+                Quantity::Array => panic!("can't rewrite to Quantity::Array"),
             };
 
             let lifetime_type = match rw_lty.label.lifetime {

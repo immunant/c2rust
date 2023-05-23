@@ -17,7 +17,7 @@ use rustc_middle::mir::{
     BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
     TerminatorKind,
 };
-use rustc_middle::ty::TyKind;
+use rustc_middle::ty::{Ty, TyKind};
 use std::collections::HashMap;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -166,10 +166,12 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     let local_ptr = local_lty.label;
                     let perms = self.perms[local_ptr];
                     let flags = self.flags[local_ptr];
-                    let desc = type_desc::perms_to_desc(local_lty.ty, perms, flags);
-                    if desc.own == Ownership::Cell {
-                        // this is an assignment like `*x = 2` but `x` has CELL permissions
-                        self.enter_assign_rvalue(|v| v.emit(RewriteKind::CellSet))
+                    if !flags.contains(FlagSet::FIXED) {
+                        let desc = type_desc::perms_to_desc(local_lty.ty, perms, flags);
+                        if desc.own == Ownership::Cell {
+                            // this is an assignment like `*x = 2` but `x` has CELL permissions
+                            self.enter_assign_rvalue(|v| v.emit(RewriteKind::CellSet))
+                        }
                     }
                 }
 
@@ -194,10 +196,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             {
                                 let local_lty = self.acx.local_tys[rv_place.local];
                                 let local_ptr = local_lty.label;
-                                let perms = self.perms[local_ptr];
                                 let flags = self.flags[local_ptr];
-                                let desc = type_desc::perms_to_desc(local_lty.ty, perms, flags);
-                                if desc.own == Ownership::Cell {
+                                if !flags.contains(FlagSet::FIXED) && flags.contains(FlagSet::CELL)
+                                {
                                     // this is an assignment like `let x = *y` but `y` has CELL permissions
                                     self.enter_assign_rvalue(|v| {
                                         v.enter_rvalue_operand(0, |v| v.emit(RewriteKind::CellGet))
@@ -258,8 +259,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         self.visit_ptr_offset(&args[0], pl_ty);
                         return;
                     }
-                    Callee::SliceAsPtr { .. } => {
-                        self.visit_slice_as_ptr(&args[0], pl_ty);
+                    Callee::SliceAsPtr { elem_ty, .. } => {
+                        self.visit_slice_as_ptr(elem_ty, &args[0], pl_ty);
                         return;
                     }
                     _ => {}
@@ -409,6 +410,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 Quantity::Single => Quantity::Slice,
                 Quantity::Slice => Quantity::Slice,
                 Quantity::OffsetPtr => Quantity::OffsetPtr,
+                Quantity::Array => unreachable!("perms_to_desc should not return Quantity::Array"),
             },
             pointee_ty: result_desc.pointee_ty,
         };
@@ -426,23 +428,31 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         }
     }
 
-    fn visit_slice_as_ptr(&mut self, op: &Operand<'tcx>, result_lty: LTy<'tcx>) {
+    fn visit_slice_as_ptr(&mut self, elem_ty: Ty<'tcx>, op: &Operand<'tcx>, result_lty: LTy<'tcx>) {
         let op_lty = self.acx.type_of(op);
         let op_ptr = op_lty.label;
         let result_ptr = result_lty.label;
 
-        let op_desc = type_desc::perms_to_desc(op_lty.ty, self.perms[op_ptr], self.flags[op_ptr]);
-        let result_desc = type_desc::perms_to_desc(
+        let op_desc = type_desc::perms_to_desc_with_pointee(
+            self.acx.tcx(),
+            elem_ty,
+            op_lty.ty,
+            self.perms[op_ptr],
+            self.flags[op_ptr],
+        );
+
+        let result_desc = type_desc::perms_to_desc_with_pointee(
+            self.acx.tcx(),
+            elem_ty,
             result_lty.ty,
             self.perms[result_ptr],
             self.flags[result_ptr],
         );
 
-        if op_desc.own == result_desc.own && op_desc.qty == result_desc.qty {
-            // Input and output types will be the same after rewriting, so the `as_ptr` call is not
-            // needed.
-            self.emit(RewriteKind::RemoveAsPtr);
-        }
+        // Generate a cast of our own, replacing the `as_ptr` call.
+        // TODO: leave the `as_ptr` in place if we can't produce a working cast
+        self.emit(RewriteKind::RemoveAsPtr);
+        self.emit_cast_desc_desc(op_desc, result_desc);
     }
 
     fn emit(&mut self, rw: RewriteKind) {
@@ -465,18 +475,33 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             return;
         }
 
+        let orig_from = from;
+        let mut from = orig_from;
+
+        if (from.qty, to.qty) == (Quantity::OffsetPtr, Quantity::Slice) {
+            // TODO: emit rewrite
+            from.qty = to.qty;
+        }
+
         if from.qty == to.qty && (from.own, to.own) == (Ownership::Mut, Ownership::Imm) {
             self.emit(RewriteKind::MutToImm);
-            return;
+            from.own = to.own;
         }
 
         // TODO: handle Slice -> Single here instead of special-casing in `offset`
 
-        eprintln!("unsupported cast kind: {:?} -> {:?}", from, to);
+        if from != to {
+            eprintln!(
+                "unsupported cast kind: {:?} -> {:?} (original input: {:?})",
+                from, to, orig_from
+            );
+        }
     }
 
     fn emit_cast_lty_desc(&mut self, from_lty: LTy<'tcx>, to: TypeDesc<'tcx>) {
-        let from = type_desc::perms_to_desc(
+        let from = type_desc::perms_to_desc_with_pointee(
+            self.acx.tcx(),
+            to.pointee_ty,
             from_lty.ty,
             self.perms[from_lty.label],
             self.flags[from_lty.label],
@@ -486,7 +511,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
     #[allow(dead_code)]
     fn emit_cast_desc_lty(&mut self, from: TypeDesc<'tcx>, to_lty: LTy<'tcx>) {
-        let to = type_desc::perms_to_desc(
+        let to = type_desc::perms_to_desc_with_pointee(
+            self.acx.tcx(),
+            from.pointee_ty,
             to_lty.ty,
             self.perms[to_lty.label],
             self.flags[to_lty.label],
@@ -496,6 +523,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
     fn emit_cast_lty_lty(&mut self, from_lty: LTy<'tcx>, to_lty: LTy<'tcx>) {
         if from_lty.label.is_none() && to_lty.label.is_none() {
+            // Input and output are both non-pointers.
             return;
         }
 
@@ -506,13 +534,34 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             return;
         }
 
+        let from_fixed = self.flags[from_lty.label].contains(FlagSet::FIXED);
+        let to_fixed = self.flags[to_lty.label].contains(FlagSet::FIXED);
+
         let lty_to_desc = |slf: &mut Self, lty: LTy<'tcx>| {
             type_desc::perms_to_desc(lty.ty, slf.perms[lty.label], slf.flags[lty.label])
         };
 
-        let from = lty_to_desc(self, from_lty);
-        let to = lty_to_desc(self, to_lty);
-        self.emit_cast_desc_desc(from, to);
+        match (from_fixed, to_fixed) {
+            (false, false) => {
+                let from = lty_to_desc(self, from_lty);
+                let to = lty_to_desc(self, to_lty);
+                self.emit_cast_desc_desc(from, to);
+            }
+
+            (false, true) => {
+                let from = lty_to_desc(self, from_lty);
+                self.emit_cast_desc_lty(from, to_lty);
+            }
+
+            (true, false) => {
+                let to = lty_to_desc(self, to_lty);
+                self.emit_cast_lty_desc(from_lty, to);
+            }
+
+            (true, true) => {
+                // No-op.  Both sides are `FIXED`, so we assume the existing code is already valid.
+            }
+        }
     }
 }
 
