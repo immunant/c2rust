@@ -13,6 +13,7 @@ use rustc_middle::mir::{
 };
 use rustc_middle::ty::adjustment::PointerCast;
 use rustc_middle::ty::{SubstsRef, Ty, TyKind};
+use std::iter;
 
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
 /// constraints as a side effect.
@@ -135,8 +136,30 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     PointerCast::ArrayToPointer => {}
                     PointerCast::Unsize => {}
                 }
-                self.do_assign_pointer_ids(to_lty.label, from_lty.label)
-                // TODO add other dataflow constraints
+
+                // We would normally do `self.do_assign`,
+                // but we can't do a normal `self.do_equivalence_nested` (inside `self.do_assign`),
+                // so we do the `self.do_assign_pointer_ids` from `self.do_assign`,
+                // and then do the body of `self.do_equivalence_nested`,
+                // but after the extra outer layers are stripped.
+
+                self.do_assign_pointer_ids(to_lty.label, from_lty.label);
+
+                // Each of these ptr casts needs at least the outer layer stripped (e.x. `&`, `*mut`, `fn`),
+                // but then after that, these ptr casts below
+                // needs more layers stripped to reach the types that are equivalent.
+                let strip_from = |lty: LTy<'tcx>| match ptr_cast {
+                    PointerCast::ArrayToPointer => lty.args[0],
+                    PointerCast::Unsize => lty.args[0],
+                    _ => lty,
+                };
+                let strip_to = |lty: LTy<'tcx>| match ptr_cast {
+                    PointerCast::Unsize => lty.args[0],
+                    _ => lty,
+                };
+                for (&from_lty, &to_lty) in iter::zip(from_lty.args, to_lty.args) {
+                    self.do_unify(strip_from(from_lty), strip_to(to_lty));
+                }
             }
             CastKind::Misc => {
                 match is_transmutable_ptr_cast(from_ty, to_ty) {

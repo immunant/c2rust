@@ -33,3 +33,57 @@ pub fn cast_from_literal() {
 pub fn cast_from_literal_explicit() {
     std::ptr::addr_of!(*b"\0") as *const u8 as *const core::ffi::c_char;
 }
+
+/// [`PointerCast::ReifyFnPointer`]
+/// Can't figure out how to create a [`PointerCast::ReifyFnPointer`].
+#[cfg(any())]
+pub fn cast_fn_item_to_fn_ptr(f: impl Fn(u8) -> i8) {
+    f as fn(u8) -> i8;
+}
+
+/// [`PointerCast::UnsafeFnPointer`]
+/// 
+/// ```shell
+/// thread 'rustc' panicked at 'not yet implemented', c2rust-analyze/src/labeled_ty.rs:372:17
+/// ```
+#[cfg(any())]
+pub fn cast_fn_ptr_to_unsafe_fn_ptr(f: fn(u8) -> i8) {
+    f as unsafe fn(u8) -> i8;
+}
+
+/// [`PointerCast::ClosureFnPointer`]
+/// Unhandled very early on.
+#[cfg(any())]
+pub fn cast_closure_to_fn_ptr() {
+    (|b: u8| b as i8) as fn(u8) -> i8;
+}
+
+/// [`PointerCast::MutToConstPointer`]
+/// 
+/// ```shell
+/// thread 'rustc' panicked at 'not yet implemented', c2rust-analyze/src/labeled_ty.rs:372:17
+/// ```
+#[cfg(any())]
+pub fn cast_mut_to_const_ptr(p: *mut i32) {
+    p as *const i32;
+}
+
+/// Meant to be [`PointerCast::ArrayToPointer`], but is [`CastKind::Misc`].
+pub fn cast_array_ptr_to_ptr(p: *const [i32; 1]) {
+    p as *const i32;
+}
+
+/// [`PointerCast::Unsize`]
+///
+/// ```shell
+/// thread 'rustc' panicked at 'expected to find only one Assign statement, but got multiple', c2rust-analyze/src/rewrite/expr/hir_op.rs:126:21
+/// ```
+#[cfg(any())]
+pub fn cast_unsize_direct(a: &[i32; 1]) {
+    a as &[i32];
+}
+
+/// [`PointerCast::Unsize`]
+pub fn cast_unsize_indirect(a: &[i32; 1]) {
+    let _ = a.as_ptr();
+}
