@@ -209,6 +209,7 @@ fn partition_nodes(
 
 pub trait Sink {
     type Error;
+    const PARENTHESIZE_EXPRS: bool;
     fn emit_str(&mut self, s: &str) -> Result<(), Self::Error>;
     fn emit_expr(&mut self) -> Result<(), Self::Error>;
     fn emit_sub(&mut self, idx: usize, span: Span) -> Result<(), Self::Error>;
@@ -262,8 +263,12 @@ impl<S: Sink> Emitter<'_, S> {
     /// as appropriate for the context.
     fn emit(&mut self, rw: &Rewrite, prec: usize) -> Result<(), S::Error> {
         match *rw {
-            Rewrite::Identity => self.emit_parenthesized(true, |slf| slf.emit_expr()),
-            Rewrite::Sub(idx, span) => self.emit_parenthesized(true, |slf| slf.emit_sub(idx, span)),
+            Rewrite::Identity => {
+                self.emit_parenthesized(S::PARENTHESIZE_EXPRS, |slf| slf.emit_expr())
+            }
+            Rewrite::Sub(idx, span) => {
+                self.emit_parenthesized(S::PARENTHESIZE_EXPRS, |slf| slf.emit_sub(idx, span))
+            }
 
             Rewrite::Ref(ref rw, mutbl) => self.emit_parenthesized(prec > 2, |slf| {
                 match mutbl {
@@ -457,6 +462,7 @@ impl<'a, F: FnMut(&str)> RewriteTreeSink<'a, F> {
 
 impl<'a, F: FnMut(&str)> Sink for RewriteTreeSink<'a, F> {
     type Error = Infallible;
+    const PARENTHESIZE_EXPRS: bool = true;
 
     fn emit_str(&mut self, s: &str) -> Result<(), Self::Error> {
         (self.emit)(s);
