@@ -864,6 +864,9 @@ fn run(tcx: TyCtxt) {
         info.acx_data.set(acx.into_data());
     }
 
+    let (shim_rewrites, _) = rewrite::gen_shim_call_rewrites(&gacx, &gasn);
+    all_rewrites.extend(shim_rewrites);
+
     // Print analysis results for each function in `all_fn_ldids`, going in declaration order.
     // Concretely, we iterate over `body_owners()`, which is a superset of `all_fn_ldids`, and
     // filter based on membership in `func_info`, which contains an entry for each ID in
