@@ -11,14 +11,14 @@ use crate::c_ast::CastKind::{BitCast, IntegralCast};
 
 /// As of rustc 1.29, rust is known to be missing some SIMD functions.
 /// See <https://github.com/rust-lang-nursery/stdsimd/issues/579>
-static MISSING_SIMD_FUNCTIONS: [&str; 36] = [
+static MISSING_SIMD_FUNCTIONS: [&str; 35] = [
     "_mm_and_si64",
     "_mm_andnot_si64",
     "_mm_cmpeq_pi16",
     "_mm_cmpeq_pi32",
     "_mm_cmpeq_pi8",
     "_mm_cvtm64_si64",
-    "_mm_cvtph_ps",
+    // "_mm_cvtph_ps",
     "_mm_cvtsi32_si64",
     "_mm_cvtsi64_m64",
     "_mm_cvtsi64_si32",
@@ -249,9 +249,9 @@ impl<'c> Translation<'c> {
             (Float, 8) => ("_mm256_setzero_ps", 32),
             (Double, 2) => ("_mm_setzero_pd", 16),
             (Double, 4) => ("_mm256_setzero_pd", 32),
-            (Char, 16) | (Int, 4) | (LongLong, 2) => ("_mm_setzero_si128", 16),
-            (Char, 32) | (Int, 8) | (LongLong, 4) => ("_mm256_setzero_si256", 32),
-            (Char, 8) | (Int, 2) | (LongLong, 1) => {
+            (Char, 16) | (Short, 8) | (Int, 4) | (LongLong, 2) => ("_mm_setzero_si128", 16),
+            (Char, 32) | (Short, 16) | (Int, 8) | (LongLong, 4) => ("_mm256_setzero_si256", 32),
+            (Char, 8) | (Short, 4) | (Int, 2) | (LongLong, 1) => {
                 // __m64 is still unstable as of rust 1.29
                 self.use_feature("stdsimd");
 

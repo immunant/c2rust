@@ -3598,18 +3598,33 @@ impl<'c> Translation<'c> {
                 let lhs_node_type = lhs_node
                     .get_type()
                     .ok_or_else(|| format_err!("lhs node bad type"))?;
-                if self
-                    .ast_context
-                    .resolve_type(lhs_node_type)
-                    .kind
-                    .is_vector()
-                {
-                    return Err(TranslationError::new(
-                        self.ast_context.display_loc(src_loc),
-                        err_msg("Attempting to index a vector type")
-                            .context(TranslationErrorKind::OldLLVMSimd),
-                    ));
-                }
+                // if self
+                //     .ast_context
+                //     .resolve_type(lhs_node_type)
+                //     .kind
+                //     .is_vector()
+                // {
+                //     println!("Trying to index vectory type:");
+                //     println!("LHS node: {:?}", lhs_node);
+                //     println!("LHS node type: {:?}", lhs_node_type);
+                //     println!("LHS node kind: {:?}", lhs_node_kind);
+                //     println!("LHS is indexable: {:?}", lhs_is_indexable);
+                //     println!("LHS: {:?}", lhs);
+                //     println!("RHS: {:?}", rhs);
+                //     let rhs = self.convert_expr(ctx.used(), *rhs)?;
+                //     println!("RHS converted: {:?}", rhs);
+                //     println!("RHS node: {:?}", rhs_node);
+                //     if let CTypeKind::Vector(vkind, size) = lhs_node_kind {
+                //         let vector_kind = self.ast_context.resolve_type(vkind.ctype);
+                //         println!("Vector kind: {:?} of size {}", vector_kind.kind, size);
+                //     }
+
+                //     return Err(TranslationError::new(
+                //         self.ast_context.display_loc(src_loc),
+                //         err_msg("Attempting to index a vector type")
+                //             .context(TranslationErrorKind::OldLLVMSimd),
+                //     ));
+                // }
 
                 let rhs = self.convert_expr(ctx.used(), *rhs)?;
                 rhs.and_then(|rhs| {
@@ -3680,6 +3695,39 @@ impl<'c> Translation<'c> {
                                 mk().index_expr(lhs, cast_int(rhs, "usize", false))
                             }
                         }))
+                    } else if lhs_node_kind.is_vector() {
+                        // LHS is a vector type, we just need to do a transmute to an array and
+                        // take the type
+                        match lhs_node_kind {
+                            CTypeKind::Vector(vkind, size) => {
+                                // let vector_kind = self.ast_context.resolve_type(vkind.ctype);
+                                let vector_kind_size =
+                                    self.compute_size_of_type(ctx, vkind.ctype)?;
+
+                                let vector_ty = self.convert_type(vkind.ctype)?;
+
+                                // Array size is vector_kind_size * size
+                                let array_ty = mk().array_ty(
+                                    vector_ty,
+                                    // No need for this, we know it's packed ty x size already, we are
+                                    // just subscripting 1 ty
+                                    // mk().binary_expr(
+                                    //     BinOp::Mul(Default::default()),
+                                    vector_kind_size.to_expr(),
+                                    //     mk().lit_expr(mk().int_lit(*size as u128, "usize")),
+                                    // ),
+                                );
+
+                                let lhs = self.convert_expr(ctx.used(), *lhs)?;
+                                Ok(lhs.map(|lhs| {
+                                    mk().unsafe_().index_expr(
+                                        transmute_expr(mk().infer_ty(), array_ty, lhs),
+                                        cast_int(rhs, "usize", false),
+                                    )
+                                }))
+                            }
+                            _ => unreachable!(),
+                        }
                     } else {
                         // LHS must be ref decayed for the offset method call's self param
                         let lhs = self.convert_expr(ctx.used().decay_ref(), *lhs)?;
