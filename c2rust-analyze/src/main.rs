@@ -877,8 +877,10 @@ fn run(tcx: TyCtxt) {
         info.acx_data.set(acx.into_data());
     }
 
-    let (shim_rewrites, _) = rewrite::gen_shim_call_rewrites(&gacx, &gasn);
+    let (shim_rewrites, shim_fn_def_ids) = rewrite::gen_shim_call_rewrites(&gacx, &gasn);
     all_rewrites.extend(shim_rewrites);
+    let shim_def_rewrites = rewrite::gen_shim_definition_rewrites(&gacx, &gasn, shim_fn_def_ids);
+    all_rewrites.extend(shim_def_rewrites);
 
     // Print analysis results for each function in `all_fn_ldids`, going in declaration order.
     // Concretely, we iterate over `body_owners()`, which is a superset of `all_fn_ldids`, and

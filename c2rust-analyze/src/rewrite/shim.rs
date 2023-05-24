@@ -3,7 +3,7 @@ use crate::rewrite::Rewrite;
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::DefId;
 use rustc_hir::intravisit;
-use rustc_hir::{Expr, ExprKind};
+use rustc_hir::{Expr, ExprKind, FnRetTy};
 use rustc_middle::hir::nested_filter;
 use rustc_middle::ty::{DefIdTree, TypeckResults};
 use rustc_span::Span;
@@ -143,4 +143,44 @@ pub fn gen_shim_call_rewrites<'tcx>(
     }
 
     (rewrites, mentioned_fns)
+}
+
+pub fn gen_shim_definition_rewrites<'tcx>(
+    gacx: &GlobalAnalysisCtxt<'tcx>,
+    _gasn: &GlobalAssignment,
+    fn_def_ids: HashSet<DefId>,
+) -> Vec<(Span, Rewrite)> {
+    let tcx = gacx.tcx;
+
+    let mut rewrites = Vec::with_capacity(fn_def_ids.len());
+    for def_id in fn_def_ids {
+        let owner_node = tcx.hir().expect_owner(def_id.as_local().unwrap());
+        let insert_span = owner_node.span().shrink_to_hi();
+
+        let fn_decl = owner_node.fn_decl().unwrap();
+        let arg_tys = fn_decl
+            .inputs
+            .iter()
+            .map(|ty| Rewrite::Extract(ty.span))
+            .collect::<Vec<_>>();
+        let return_ty = match fn_decl.output {
+            FnRetTy::DefaultReturn(..) => None,
+            FnRetTy::Return(ty) => Some(Box::new(Rewrite::Extract(ty.span))),
+        };
+
+        let body = Box::new(Rewrite::Call(
+            owner_node.ident().unwrap().as_str().to_owned(),
+            (0..arg_tys.len()).map(|i| Rewrite::FnArg(i)).collect(),
+        ));
+
+        let rw = Rewrite::DefineFn {
+            name: format!("{}_shim", owner_node.ident().unwrap().as_str()),
+            arg_tys,
+            return_ty,
+            body,
+        };
+        rewrites.push((insert_span, rw));
+    }
+
+    rewrites
 }
