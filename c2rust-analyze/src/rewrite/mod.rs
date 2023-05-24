@@ -96,177 +96,26 @@ pub enum Rewrite<S = Span> {
     StaticMut(Mutability, S),
 }
 
-impl Rewrite {
-    /// Pretty-print this `Rewrite` into the provided [`fmt::Formatter`].  This output format is
-    /// designed solely for debugging, but generally tries to match valid Rust syntax.
-    ///
-    /// `prec` is the precedence of the surrounding context.  Each operatior is assigned a
-    /// precedence number, where a higher precedence number means the operator binds more tightly.
-    /// For example, `a + b * c` parses as `a + (b * c)`, not `(a + b) * c`, because `*` binds more
-    /// tightly than `+`; this means `*` will have a higher precedence number than `+`.  Nesting a
-    /// lower-precedence operator inside a higher one requires parentheses, but nesting higher
-    /// precedence inside lower does not.  For example, when emitting `y + z` in the context `x *
-    /// _`, we must parenthesize because `+` has lower precedence than `*`, so the result is `x *
-    /// (y + z)`.  But when emitting `y * z` in the context `x + _`, we don't need to parenthesize,
-    /// and the result is `x + y * z`.
-    ///
-    /// The `Display` impl for `Rewrite` calls `pretty` with a `prec` of 0, meaning any operator
-    /// can be used without parenthesization.  Recursive calls within `pretty` will use a different
-    /// `prec` as appropriate for the context.
-    fn pretty(&self, f: &mut fmt::Formatter, prec: usize) -> fmt::Result {
-        fn parenthesize_if(
-            cond: bool,
-            f: &mut fmt::Formatter,
-            inner: impl FnOnce(&mut fmt::Formatter) -> fmt::Result,
-        ) -> fmt::Result {
-            if cond {
-                f.write_str("(")?;
-            }
-            inner(f)?;
-            if cond {
-                f.write_str(")")?;
-            }
-            Ok(())
-        }
-
-        // Expr precedence:
-        // - Index, SliceTail: 3
-        // - Ref, Deref: 2
-        // - Cast: 1
-        //
-        // Currently, we don't have any type builders that require parenthesization.
-
-        match *self {
-            // We use placeholders `$e` and `$0`, `$1`, ... for these, since the expression to be
-            // rewritten is not available here.
-            Rewrite::Identity => write!(f, "$e"),
-            Rewrite::Sub(i, _) => write!(f, "${}", i),
-
-            Rewrite::Ref(ref rw, mutbl) => parenthesize_if(prec > 2, f, |f| {
-                match mutbl {
-                    Mutability::Not => write!(f, "&")?,
-                    Mutability::Mut => write!(f, "&mut ")?,
-                }
-                rw.pretty(f, 2)
-            }),
-            Rewrite::AddrOf(ref rw, mutbl) => {
-                match mutbl {
-                    Mutability::Not => write!(f, "core::ptr::addr_of!")?,
-                    Mutability::Mut => write!(f, "core::ptr::addr_of_mut!")?,
-                }
-                f.write_str("(")?;
-                rw.pretty(f, 0)?;
-                f.write_str(")")
-            }
-            Rewrite::Deref(ref rw) => parenthesize_if(prec > 2, f, |f| {
-                write!(f, "*")?;
-                rw.pretty(f, 2)
-            }),
-            Rewrite::Index(ref arr, ref idx) => parenthesize_if(prec > 3, f, |f| {
-                arr.pretty(f, 3)?;
-                write!(f, "[")?;
-                idx.pretty(f, 0)?;
-                write!(f, "]")
-            }),
-            Rewrite::SliceTail(ref arr, ref idx) => parenthesize_if(prec > 3, f, |f| {
-                arr.pretty(f, 3)?;
-                write!(f, "[")?;
-                // Rather than figure out the right precedence for `..`, just force
-                // parenthesization in this position.
-                idx.pretty(f, 999)?;
-                write!(f, " ..]")
-            }),
-            Rewrite::Cast(ref rw, ref ty) => parenthesize_if(prec > 1, f, |f| {
-                rw.pretty(f, 1)?;
-                write!(f, " as {}", ty)
-            }),
-            Rewrite::LitZero => write!(f, "0"),
-
-            Rewrite::PrintTy(ref s) => {
-                write!(f, "{}", s)
-            }
-            Rewrite::TyGenericParams(ref rws) => {
-                f.write_str("<")?;
-                for (index, rw) in rws.iter().enumerate() {
-                    rw.pretty(f, 0)?;
-                    if index < rws.len() - 1 {
-                        f.write_str(",")?;
-                    }
-                }
-                f.write_str(">")
-            }
-            Rewrite::Call(ref func, ref arg_rws) => {
-                f.write_str(func)?;
-                f.write_str("(")?;
-                for (index, rw) in arg_rws.iter().enumerate() {
-                    rw.pretty(f, 0)?;
-                    if index < arg_rws.len() - 1 {
-                        f.write_str(",")?;
-                    }
-                }
-                f.write_str(")")
-            }
-            Rewrite::MethodCall(ref method, ref receiver_rw, ref arg_rws) => {
-                receiver_rw.pretty(f, 0)?;
-                f.write_str(".")?;
-                f.write_str(method)?;
-                f.write_str("(")?;
-                for (index, rw) in arg_rws.iter().enumerate() {
-                    rw.pretty(f, 0)?;
-                    if index < arg_rws.len() - 1 {
-                        f.write_str(",")?;
-                    }
-                }
-                f.write_str(")")
-            }
-            Rewrite::TyPtr(ref rw, mutbl) => {
-                match mutbl {
-                    Mutability::Not => write!(f, "*const ")?,
-                    Mutability::Mut => write!(f, "*mut ")?,
-                }
-                rw.pretty(f, 0)
-            }
-            Rewrite::TyRef(ref lifetime, ref rw, mutbl) => {
-                write!(f, "&")?;
-                if let LifetimeName::Explicit(lt) = lifetime {
-                    write!(f, "{lt:} ")?;
-                }
-                if let Mutability::Mut = mutbl {
-                    write!(f, "mut ")?;
-                }
-
-                rw.pretty(f, 0)
-            }
-            Rewrite::TySlice(ref rw) => {
-                write!(f, "[")?;
-                rw.pretty(f, 0)?;
-                write!(f, "]")
-            }
-            Rewrite::TyCtor(ref name, ref rws) => {
-                write!(f, "{}<", name)?;
-                for (idx, rw) in rws.iter().enumerate() {
-                    rw.pretty(f, 0)?;
-                    if idx < rws.len() - 1 {
-                        write!(f, ",")?;
-                    }
-                }
-                write!(f, ">")
-            }
-
-            Rewrite::StaticMut(mutbl, _) => {
-                match mutbl {
-                    Mutability::Not => write!(f, "static (-mut) ")?,
-                    Mutability::Mut => write!(f, "static (+mut) ")?,
-                }
-                write!(f, "$s")
-            }
-        }
+impl fmt::Display for Rewrite {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        apply::emit_rewrite(&mut FormatterSink(f), self)
     }
 }
 
-impl fmt::Display for Rewrite {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.pretty(f, 0)
+struct FormatterSink<'a, 'b>(&'a mut fmt::Formatter<'b>);
+
+impl apply::Sink for FormatterSink<'_, '_> {
+    type Error = fmt::Error;
+    const PARENTHESIZE_EXPRS: bool = false;
+
+    fn emit_str(&mut self, s: &str) -> fmt::Result {
+        self.0.write_str(s)
+    }
+    fn emit_expr(&mut self) -> fmt::Result {
+        self.0.write_str("$e")
+    }
+    fn emit_sub(&mut self, idx: usize, _span: Span) -> fmt::Result {
+        self.0.write_fmt(format_args!("${}", idx))
     }
 }
 
