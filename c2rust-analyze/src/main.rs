@@ -700,14 +700,15 @@ fn run(tcx: TyCtxt) {
         make_sig_fixed(&mut gasn, lsig);
     }
 
-    // For testing, putting #[c2rust_analyze_test::fail_analysis] on a function marks it as failed.
+    // For testing, putting #[c2rust_analyze_test::fail_before_analysis] on a function marks it as
+    // failed at this point.
     for &ldid in &all_fn_ldids {
-        if !util::has_test_attr(tcx, ldid, TestAttr::FailAnalysis) {
+        if !util::has_test_attr(tcx, ldid, TestAttr::FailBeforeAnalysis) {
             continue;
         }
         gacx.mark_fn_failed(
             ldid.to_def_id(),
-            PanicDetail::new("explicit fail_analysis for testing".to_owned()),
+            PanicDetail::new("explicit fail_before_analysis for testing".to_owned()),
         );
     }
 
@@ -786,6 +787,18 @@ fn run(tcx: TyCtxt) {
         }
     }
     eprintln!("reached fixpoint in {} iterations", loop_count);
+
+    // For testing, putting #[c2rust_analyze_test::fail_before_rewriting] on a function marks it as
+    // failed at this point.
+    for &ldid in &all_fn_ldids {
+        if !util::has_test_attr(tcx, ldid, TestAttr::FailBeforeRewriting) {
+            continue;
+        }
+        gacx.mark_fn_failed(
+            ldid.to_def_id(),
+            PanicDetail::new("explicit fail_before_rewriting for testing".to_owned()),
+        );
+    }
 
     // Before generating rewrites, add the FIXED flag to the signatures of all functions that
     // failed analysis.

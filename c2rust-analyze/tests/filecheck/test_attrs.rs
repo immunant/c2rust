@@ -17,8 +17,14 @@ fn g(x: *mut i32) -> *mut i32 {
     x
 }
 
-// CHECK: analysis of DefId({{.*}} ~ test_attrs[{{.*}}]::h) failed: [unknown]: explicit fail_analysis for testing
-#[c2rust_analyze_test::fail_analysis]
+// CHECK: analysis of DefId({{.*}} ~ test_attrs[{{.*}}]::h) failed: [unknown]: explicit fail_before_analysis for testing
+#[c2rust_analyze_test::fail_before_analysis]
 fn h(x: *mut i32) -> *mut i32 {
+    x
+}
+
+// CHECK: analysis of DefId({{.*}} ~ test_attrs[{{.*}}]::i) failed: [unknown]: explicit fail_before_rewriting for testing
+#[c2rust_analyze_test::fail_before_rewriting]
+fn i(x: *mut i32) -> *mut i32 {
     x
 }
