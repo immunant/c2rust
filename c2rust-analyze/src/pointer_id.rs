@@ -336,6 +336,14 @@ impl<'a, T> PointerTable<'a, T> {
     }
 }
 
+impl<'a, T> Clone for PointerTable<'a, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a, T> Copy for PointerTable<'a, T> {}
+
 impl<'a, T> Index<PointerId> for PointerTable<'a, T> {
     type Output = T;
     fn index(&self, id: PointerId) -> &T {
