@@ -9,6 +9,7 @@ use std::mem::swap;
 pub struct MultiImport {
     attrs: Option<Builder>,
     leaves: IndexSet<String>,
+    renames: IndexMap<String, String>,
 }
 
 impl MultiImport {
@@ -16,6 +17,7 @@ impl MultiImport {
         MultiImport {
             attrs: None,
             leaves: IndexSet::new(),
+            renames: IndexMap::new(),
         }
     }
 
@@ -31,6 +33,28 @@ impl MultiImport {
         S: Into<Cow<'a, str>>,
     {
         self.insert(leaf);
+        self.attrs = Some(attrs);
+    }
+
+    pub fn insert_with_rename<'a, S>(&mut self, leaf: S, rename: S)
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        let leaf: Cow<'a, str> = leaf.into();
+        self.leaves.insert(leaf.clone().into_owned());
+        self.renames
+            .insert(leaf.into_owned(), rename.into().into_owned());
+    }
+
+    pub fn insert_with_attr_rename<'a, S>(&mut self, leaf: S, attrs: Builder, rename: S)
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        self.insert_with_rename(leaf, rename);
+        self.attrs = Some(attrs);
+    }
+
+    pub fn insert_attrs(&mut self, attrs: Builder) {
         self.attrs = Some(attrs);
     }
 }
@@ -55,9 +79,15 @@ impl PathedMultiImports {
             if leaves.len() == 1 {
                 path.push(leaves.pop().unwrap());
 
-                attrs.use_simple_item(path, None as Option<Ident>)
+                let rename = path.last().and_then(|l| imports.renames.get(l).cloned());
+
+                attrs.use_simple_item(path, rename)
             } else {
-                attrs.use_multiple_item(path, leaves.into_iter())
+                attrs.use_multiple_item_rename(
+                    path,
+                    leaves.clone().into_iter(),
+                    leaves.iter().map(|l| imports.renames.get(l).cloned()),
+                )
             }
         }
 
@@ -93,6 +123,22 @@ impl ItemStore {
 
     pub fn add_use_with_attr(&mut self, path: Vec<String>, ident: &str, attrs: Builder) {
         self.uses.get_mut(path).insert_with_attr(ident, attrs)
+    }
+
+    pub fn add_use_with_rename(&mut self, path: Vec<String>, ident: &str, rename: &str) {
+        self.uses.get_mut(path).insert_with_rename(ident, rename)
+    }
+
+    pub fn add_use_with_attr_rename(
+        &mut self,
+        path: Vec<String>,
+        ident: &str,
+        attrs: Builder,
+        rename: &str,
+    ) {
+        self.uses
+            .get_mut(path)
+            .insert_with_attr_rename(ident, attrs, rename)
     }
 
     pub fn drain(&mut self) -> (Vec<Box<Item>>, Vec<ForeignItem>, PathedMultiImports) {

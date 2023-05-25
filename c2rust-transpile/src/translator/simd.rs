@@ -11,20 +11,18 @@ use crate::c_ast::CastKind::{BitCast, IntegralCast};
 
 /// As of rustc 1.29, rust is known to be missing some SIMD functions.
 /// See <https://github.com/rust-lang-nursery/stdsimd/issues/579>
-static MISSING_SIMD_FUNCTIONS: [&str; 35] = [
+static MISSING_SIMD_FUNCTIONS: &[&str] = &[
     "_mm_and_si64",
     "_mm_andnot_si64",
     "_mm_cmpeq_pi16",
     "_mm_cmpeq_pi32",
     "_mm_cmpeq_pi8",
     "_mm_cvtm64_si64",
-    // "_mm_cvtph_ps",
     "_mm_cvtsi32_si64",
     "_mm_cvtsi64_m64",
     "_mm_cvtsi64_si32",
     "_mm_empty",
     "_mm_free",
-    "_mm_loadu_si64",
     "_mm_madd_pi16",
     "_mm_malloc",
     "_mm_mulhi_pi16",
@@ -51,20 +49,54 @@ static MISSING_SIMD_FUNCTIONS: [&str; 35] = [
 ];
 
 static SIMD_X86_64_ONLY: &[&str] = &[
+    "_mm_crc32_u64",
+    "_mm_cvti64_sd",
+    "_mm_cvti64_ss",
+    "_mm_cvt_roundi64_sd",
+    "_mm_cvt_roundi64_ss",
+    "_mm_cvt_roundsd_i64",
+    "_mm_cvt_roundsd_si64",
+    "_mm_cvt_roundsd_u64",
+    "_mm_cvt_roundsi64_sd",
+    "_mm_cvt_roundsi64_ss",
+    "_mm_cvt_roundss_i64",
+    "_mm_cvt_roundss_si64",
+    "_mm_cvt_roundss_u64",
+    "_mm_cvt_roundu64_sd",
+    "_mm_cvt_roundu64_ss",
+    "_mm_cvtsd_i64",
     "_mm_cvtsd_si64",
+    "_mm_cvtsd_si64x",
+    "_mm_cvtsd_u64",
     "_mm_cvtsi128_si64",
     "_mm_cvtsi128_si64x",
     "_mm_cvtsi64_sd",
     "_mm_cvtsi64_si128",
     "_mm_cvtsi64_ss",
+    "_mm_cvtsi64x_sd",
+    "_mm_cvtsi64x_si128",
+    "_mm_cvtss_i64",
     "_mm_cvtss_si64",
+    "_mm_cvtss_u64",
+    "_mm_cvtt_roundsd_i64",
+    "_mm_cvtt_roundsd_si64",
+    "_mm_cvtt_roundsd_u64",
+    "_mm_cvtt_roundss_i64",
+    "_mm_cvtt_roundss_si64",
+    "_mm_cvtt_roundss_u64",
+    "_mm_cvttsd_i64",
     "_mm_cvttsd_si64",
     "_mm_cvttsd_si64x",
+    "_mm_cvttsd_u64",
+    "_mm_cvttss_i64",
     "_mm_cvttss_si64",
-    "_mm_stream_si64",
+    "_mm_cvttss_u64",
+    "_mm_cvtu64_sd",
+    "_mm_cvtu64_ss",
     "_mm_extract_epi64",
     "_mm_insert_epi64",
-    "_mm_crc32_u64",
+    "_mm_stream_si64",
+    "_mm_tzcnt_64",
 ];
 
 fn add_arch_use(store: &mut ItemStore, arch_name: &str, item_name: &str) {
@@ -81,6 +113,24 @@ fn add_arch_use(store: &mut ItemStore, arch_name: &str, item_name: &str) {
             ),
         )
         .pub_(),
+    );
+}
+
+fn add_arch_use_rename(store: &mut ItemStore, arch_name: &str, item_name: &str, rename: &str) {
+    store.add_use_with_attr_rename(
+        vec!["core".into(), "arch".into(), arch_name.into()],
+        item_name,
+        mk().meta_item_attr(
+            AttrStyle::Outer,
+            mk().meta_list(
+                "cfg",
+                vec![NestedMeta::Meta(
+                    mk().meta_namevalue("target_arch", arch_name),
+                )],
+            ),
+        )
+        .pub_(),
+        rename,
     );
 }
 
@@ -103,6 +153,15 @@ impl<'c> Translation<'c> {
                 self.with_cur_file_item_store(|item_store| {
                     add_arch_use(item_store, "x86", name);
                     add_arch_use(item_store, "x86_64", name);
+                });
+
+                true
+            }
+            "__m128_u" | "__m128i_u" | "__m128d_u" | "__m256_u" | "__m256i_u" | "__m256d_u" => {
+                // FOr these, we need to `use core::arch::x86::x as __m128i_u` and so on
+                self.with_cur_file_item_store(|item_store| {
+                    add_arch_use_rename(item_store, "x86", name, &name.replace("_u", ""));
+                    add_arch_use_rename(item_store, "x86_64", name, &name.replace("_u", ""));
                 });
 
                 true

@@ -1766,6 +1766,53 @@ impl Builder {
         }))
     }
 
+    pub fn use_multiple_item_rename<Pa, I, It, RIt>(
+        self,
+        path: Pa,
+        inner: It,
+        rename: RIt,
+    ) -> Box<Item>
+    where
+        Pa: Make<Path>,
+        I: Make<Ident>,
+        It: Iterator<Item = I>,
+        RIt: Iterator<Item = Option<I>>,
+    {
+        let path = path.make(&self);
+        let inner_trees = inner
+            .zip(rename)
+            .map(|(i, r)| {
+                if let Some(rename) = r {
+                    UseTree::Rename(UseRename {
+                        ident: i.make(&self),
+                        as_token: Token![as](self.span),
+                        rename: rename.make(&self),
+                    })
+                } else {
+                    UseTree::Name(UseName {
+                        ident: i.make(&self),
+                    })
+                }
+            })
+            .collect();
+        let leading_colon = path.leading_colon;
+        let tree = use_tree_with_prefix(
+            path,
+            UseTree::Group(UseGroup {
+                brace_token: token::Brace(self.span),
+                items: inner_trees,
+            }),
+        );
+        Box::new(Item::Use(ItemUse {
+            attrs: self.attrs,
+            vis: self.vis,
+            use_token: Token![use](self.span),
+            leading_colon,
+            semi_token: Token![;](self.span),
+            tree,
+        }))
+    }
+
     pub fn use_glob_item<Pa>(self, path: Pa) -> Box<Item>
     where
         Pa: Make<Path>,
