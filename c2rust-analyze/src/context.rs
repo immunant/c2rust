@@ -1,21 +1,32 @@
+use crate::borrowck::{AdtMetadata, FieldMetadata, OriginArg, OriginParam};
 use crate::c_void_casts::CVoidCasts;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
+use crate::panic_detail::PanicDetail;
 use crate::pointer_id::{
     GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
     PointerTableMut,
 };
 use crate::util::{self, describe_rvalue, PhantomLifetime, RvalueDesc};
 use crate::AssignPointerIds;
+use assert_matches::assert_matches;
 use bitflags::bitflags;
-use rustc_hir::def_id::DefId;
+use indexmap::IndexSet;
+use log::*;
+use rustc_ast::Mutability;
+use rustc_hir::def::DefKind;
+use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::interpret::{self, AllocId, ConstValue, GlobalAlloc};
 use rustc_middle::mir::{
     Body, Constant, ConstantKind, Field, HasLocalDecls, Local, LocalDecls, Location, Operand,
     Place, PlaceElem, PlaceRef, Rvalue,
 };
-use rustc_middle::ty::{AdtDef, FieldDef, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{
+    tls, AdtDef, FieldDef, GenericArgKind, GenericParamDefKind, Ty, TyCtxt, TyKind,
+};
+use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::ops::Index;
 
 bitflags! {
@@ -135,6 +146,12 @@ bitflags! {
         /// way, and it can't be freely discarded (or its inverse freely added) as is the case for
         /// everything in `PermissionSet`.
         const CELL = 0x0001;
+
+        /// This pointer's type is fixed; rewrites must not change it.  This is used for all safe
+        /// references (which we assume already have the correct types), for raw pointers that
+        /// cross an FFI boundary, and for arguments and return values of functions we can't
+        /// rewrite.
+        const FIXED = 0x0002;
     }
 }
 
@@ -149,26 +166,138 @@ pub struct LFnSig<'tcx> {
     pub output: LTy<'tcx>,
 }
 
+bitflags! {
+    /// Basic information about a pointer, computed with minimal analysis before running `dataflow`
+    /// or `borrowck`.
+    ///
+    /// When `PointerId`s are merged into a single `PointerId` per equivalence class, the
+    /// `PointerInfo` of each resulting `PointerId` is the union of the `PointerInfo`s of all the
+    /// members of the class.  Thus, flags describing properties of the declaration that produced a
+    /// given `PointerId` should be formulated as "at least one declaration has property X", as a
+    /// single `PointerId` may correspond to several declarations.
+    #[derive(Default)]
+    pub struct PointerInfo: u16 {
+        /// This `PointerId` was generated for a `TyKind::Ref`.
+        const REF = 0x0001;
+
+        /// At least one declaration that produced this `PointerId` used an explicit type
+        /// annotation.
+        const ANNOTATED = 0x0002;
+
+        /// This `PointerId` has at least one local declaration that is not a temporary reference
+        /// arising from an `&x` or `&mut x` expression in the source.
+        const NOT_TEMPORARY_REF = 0x0004;
+    }
+}
+
+pub struct AdtMetadataTable<'tcx> {
+    pub table: HashMap<DefId, AdtMetadata<'tcx>>,
+    pub struct_dids: Vec<DefId>,
+}
+
+impl<'tcx> Debug for AdtMetadataTable<'tcx> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt_string(lty: LabeledTy<'_, &[OriginArg]>) -> String {
+            let args: Vec<String> = lty.args.iter().map(|t| fmt_string(t)).collect();
+            use rustc_type_ir::TyKind::*;
+            match lty.kind() {
+                Ref(..) | RawPtr(..) => {
+                    format!("&{:?} {:}", lty.label[0], args[0])
+                }
+                Adt(adt, _) => {
+                    let mut s = format!("{adt:?}");
+                    let params = lty
+                        .label
+                        .iter()
+                        .map(|p| format!("{:?}", p))
+                        .into_iter()
+                        .chain(args.into_iter())
+                        .collect::<Vec<_>>()
+                        .join(",");
+
+                    if !params.is_empty() {
+                        s.push('<');
+                        s.push_str(&params);
+                        s.push('>');
+                    }
+                    s
+                }
+                Tuple(_) => {
+                    format!("({:})", args.join(","))
+                }
+                _ => format!("{:?}", lty.ty),
+            }
+        }
+
+        tls::with_opt(|tcx| {
+            let tcx = tcx.unwrap();
+            for k in &self.struct_dids {
+                let adt = &self.table[k];
+                let other_param_names = tcx.generics_of(k).params.iter().filter_map(|p| {
+                    if !matches!(p.kind, GenericParamDefKind::Lifetime) {
+                        Some(p.name.to_ident_string())
+                    } else {
+                        None
+                    }
+                });
+                write!(f, "struct {:}", tcx.item_name(*k))?;
+                write!(f, "<")?;
+                let lifetime_params_str = adt
+                    .lifetime_params
+                    .iter()
+                    .map(|p| format!("{:?}", p))
+                    .chain(other_param_names)
+                    .collect::<Vec<_>>()
+                    .join(",");
+                write!(f, "{lifetime_params_str:}")?;
+                writeln!(f, "> {{")?;
+                for (fdid, fmeta) in &adt.field_info {
+                    write!(f, "\t{:}: ", tcx.item_name(*fdid))?;
+                    let field_string_lty = fmt_string(fmeta.origin_args);
+
+                    write!(f, "{field_string_lty:}")?;
+
+                    writeln!(f)?;
+                }
+
+                writeln!(f, "}}\n")?;
+            }
+            writeln!(f)
+        })
+    }
+}
+
 pub struct GlobalAnalysisCtxt<'tcx> {
     pub tcx: TyCtxt<'tcx>,
     pub lcx: LTyCtxt<'tcx>,
 
-    pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
+    ptr_info: GlobalPointerTable<PointerInfo>,
 
-    pub field_tys: HashMap<DefId, LTy<'tcx>>,
+    /// Map from a function to all of its callers.
+    pub fn_callers: HashMap<DefId, Vec<DefId>>,
+
+    pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
+    /// `DefId`s of functions where analysis failed, and a [`PanicDetail`] explaining the reason
+    /// for each failure.
+    pub fns_failed: HashMap<DefId, PanicDetail>,
+
+    pub field_ltys: HashMap<DefId, LTy<'tcx>>,
 
     pub static_tys: HashMap<DefId, LTy<'tcx>>,
+    pub addr_of_static: HashMap<DefId, PointerId>,
 
-    next_ptr_id: NextGlobalPointerId,
+    pub adt_metadata: AdtMetadataTable<'tcx>,
 }
 
 pub struct AnalysisCtxt<'a, 'tcx> {
     pub gacx: &'a mut GlobalAnalysisCtxt<'tcx>,
 
+    ptr_info: LocalPointerTable<PointerInfo>,
+
     pub local_decls: &'a LocalDecls<'tcx>,
     pub local_tys: IndexVec<Local, LTy<'tcx>>,
-    pub c_void_casts: CVoidCasts<'tcx>,
     pub addr_of_local: IndexVec<Local, PointerId>,
+    pub c_void_casts: CVoidCasts<'tcx>,
     /// Types for certain [`Rvalue`]s.  Some `Rvalue`s introduce fresh [`PointerId`]s; to keep
     /// those `PointerId`s consistent, the `Rvalue`'s type must be stored rather than recomputed on
     /// the fly.
@@ -176,8 +305,6 @@ pub struct AnalysisCtxt<'a, 'tcx> {
 
     /// [`Location`]s of (byte-)string literal [`rvalue_tys`](Self::rvalue_tys).
     pub string_literal_locs: Vec<Location>,
-
-    next_ptr_id: NextLocalPointerId,
 }
 
 impl<'a, 'tcx> AnalysisCtxt<'_, 'tcx> {
@@ -209,11 +336,191 @@ impl<'a, 'tcx> AnalysisCtxt<'_, 'tcx> {
 }
 
 pub struct AnalysisCtxtData<'tcx> {
+    ptr_info: LocalPointerTable<PointerInfo>,
     local_tys: IndexVec<Local, LTy<'tcx>>,
     addr_of_local: IndexVec<Local, PointerId>,
+    c_void_casts: CVoidCasts<'tcx>,
     rvalue_tys: HashMap<Location, LTy<'tcx>>,
     string_literal_locs: Vec<Location>,
-    next_ptr_id: NextLocalPointerId,
+}
+
+fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
+    let struct_dids: Vec<_> = tcx
+        .hir_crate_items(())
+        .definitions()
+        .filter_map(|ldid: LocalDefId| {
+            use DefKind::*;
+            let did = ldid.to_def_id();
+            if matches!(tcx.def_kind(did), Struct | Enum | Union) {
+                return Some(did);
+            }
+
+            None
+        })
+        .collect();
+
+    let mut adt_metadata_table = AdtMetadataTable {
+        table: HashMap::new(),
+        struct_dids,
+    };
+
+    // Gather known lifetime parameters for each struct
+    for struct_did in &adt_metadata_table.struct_dids {
+        let struct_ty = tcx.type_of(struct_did);
+        if let TyKind::Adt(adt_def, substs) = struct_ty.kind() {
+            adt_metadata_table
+                .table
+                .insert(adt_def.did(), AdtMetadata::default());
+            eprintln!("gathering known lifetimes for {adt_def:?}");
+            for sub in substs.iter() {
+                if let GenericArgKind::Lifetime(r) = sub.unpack() {
+                    eprintln!("\tfound lifetime {r:?} in {adt_def:?}");
+                    assert_matches!(r.kind(), ReEarlyBound(eb) => {
+                        let _ = adt_metadata_table
+                        .table
+                        .entry(adt_def.did())
+                        .and_modify(|metadata| {
+                            metadata.lifetime_params.insert(OriginParam::Actual(eb));
+                        });
+                    });
+                }
+            }
+        } else {
+            panic!("{struct_ty:?} is not a struct");
+        }
+    }
+
+    let ltcx = LabeledTyCtxt::<'tcx, &[OriginArg<'tcx>]>::new(tcx);
+    let mut loop_count = 0;
+    loop {
+        /*
+            This loop iterates over all structs and gathers metadata for each.
+            If there were no recursive or mutually-recursive data structures,
+            this loop would only need one iteration to complete. To support
+            recursive and mutually-recursive structs, the loop iterates until
+            the metadata gathered for each struct reaches a fixed point.
+        */
+        loop_count += 1;
+        assert!(loop_count < 1000);
+
+        eprintln!("---- running fixed point struct field analysis iteration #{loop_count:?} ----");
+        let old_adt_metadata = adt_metadata_table.table.clone();
+        let mut next_hypo_origin_id = 0;
+
+        // for each struct, gather lifetime information (actual and hypothetical)
+        for struct_did in &adt_metadata_table.struct_dids {
+            let adt_def = tcx.adt_def(struct_did);
+            eprintln!("gathering lifetimes and lifetime parameters for {adt_def:?}");
+            for field in adt_def.all_fields() {
+                let field_ty: Ty = tcx.type_of(field.did);
+                eprintln!("\t{adt_def:?}.{:}", field.name);
+                let field_origin_args = ltcx.label(field_ty, &mut |ty| {
+                    let mut field_origin_args = IndexSet::new();
+                    match ty.kind() {
+                        TyKind::RawPtr(ty) => {
+                            eprintln!(
+                                "\t\tfound pointer that requires hypothetical lifetime: *{:}",
+                                if let Mutability::Mut = ty.mutbl {
+                                    "mut"
+                                } else {
+                                    "const"
+                                }
+                            );
+                            adt_metadata_table
+                                .table
+                                .entry(*struct_did)
+                                .and_modify(|adt| {
+                                    let origin_arg = OriginArg::Hypothetical(next_hypo_origin_id);
+                                    let origin_param =
+                                        OriginParam::Hypothetical(next_hypo_origin_id);
+                                    eprintln!(
+                                        "\t\t\tinserting origin {origin_param:?} into {adt_def:?}"
+                                    );
+
+                                    adt.lifetime_params.insert(origin_param);
+                                    next_hypo_origin_id += 1;
+                                    field_origin_args.insert(origin_arg);
+                                });
+                        }
+                        TyKind::Ref(reg, _ty, _mutability) => {
+                            eprintln!("\t\tfound reference field lifetime: {reg:}");
+                            assert_matches!(reg.kind(), ReEarlyBound(..) | ReStatic);
+                            let origin_arg = OriginArg::Actual(*reg);
+                            adt_metadata_table
+                                .table
+                                .entry(*struct_did)
+                                .and_modify(|adt| {
+                                    if let ReEarlyBound(eb) = reg.kind() {
+                                        eprintln!("\t\t\tinserting origin {eb:?} into {adt_def:?}");
+                                        adt.lifetime_params.insert(OriginParam::Actual(eb));
+                                    }
+
+                                    field_origin_args.insert(origin_arg);
+                                });
+                        }
+                        TyKind::Adt(adt_field, substs) => {
+                            eprintln!("\t\tfound ADT field base type: {adt_field:?}");
+                            for sub in substs.iter() {
+                                if let GenericArgKind::Lifetime(r) = sub.unpack() {
+                                    eprintln!("\tfound field lifetime {r:?} in {adt_def:?}.{adt_field:?}");
+                                    eprintln!("\t\t\tinserting {adt_field:?} lifetime param {r:?} into {adt_def:?}.{:} lifetime parameters", field.name);
+                                    assert_matches!(r.kind(), ReEarlyBound(..) | ReStatic);
+                                    field_origin_args.insert(OriginArg::Actual(r));
+                                }
+                            }
+                            if let Some(adt_field_metadata) =
+                                adt_metadata_table.table.get(&adt_field.did()).cloned()
+                            {
+                                // add a metadata entry for the struct field matching the metadata entry
+                                // for the struct definition of said field
+                                adt_metadata_table
+                                    .table
+                                    .insert(field.did, adt_field_metadata.clone());
+
+                                for adt_field_lifetime_param in adt_field_metadata.lifetime_params.iter() {
+                                    adt_metadata_table.table.entry(*struct_did).and_modify(|adt| {
+                                        if let OriginParam::Hypothetical(h) = adt_field_lifetime_param {
+                                            eprintln!("\t\t\tbubbling {adt_field:?} origin {adt_field_lifetime_param:?} up into {adt_def:?} origins");
+                                            field_origin_args.insert(OriginArg::Hypothetical(*h));
+                                            adt.lifetime_params.insert(*adt_field_lifetime_param);
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                        _ => (),
+                    }
+
+                    if field_origin_args.is_empty() {
+                        return &[];
+                    }
+                    let field_origin_args: Vec<_> = field_origin_args.into_iter().collect();
+                    ltcx.arena().alloc_slice(&field_origin_args[..])
+                });
+
+                adt_metadata_table
+                    .table
+                    .entry(*struct_did)
+                    .and_modify(|adt| {
+                        adt.field_info.insert(
+                            field.did,
+                            FieldMetadata {
+                                origin_args: field_origin_args,
+                            },
+                        );
+                    });
+            }
+
+            eprintln!();
+        }
+
+        if adt_metadata_table.table == old_adt_metadata {
+            eprintln!("reached a fixed point in struct lifetime reconciliation\n");
+            break;
+        }
+    }
+
+    adt_metadata_table
 }
 
 impl<'tcx> GlobalAnalysisCtxt<'tcx> {
@@ -221,10 +528,14 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         GlobalAnalysisCtxt {
             tcx,
             lcx: LabeledTyCtxt::new(tcx),
+            ptr_info: GlobalPointerTable::empty(),
+            fn_callers: HashMap::new(),
             fn_sigs: HashMap::new(),
-            field_tys: HashMap::new(),
+            fns_failed: HashMap::new(),
+            field_ltys: HashMap::new(),
             static_tys: HashMap::new(),
-            next_ptr_id: NextGlobalPointerId::new(),
+            addr_of_static: HashMap::new(),
+            adt_metadata: construct_adt_metadata(tcx),
         }
     }
 
@@ -240,12 +551,16 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         AnalysisCtxt::from_data(self, mir, data)
     }
 
-    pub fn new_pointer(&mut self) -> PointerId {
-        self.next_ptr_id.next()
+    pub fn new_pointer(&mut self, info: PointerInfo) -> PointerId {
+        self.ptr_info.push(info)
     }
 
     pub fn num_pointers(&self) -> usize {
-        self.next_ptr_id.num_pointers()
+        self.ptr_info.len()
+    }
+
+    pub fn ptr_info(&self) -> &GlobalPointerTable<PointerInfo> {
+        &self.ptr_info
     }
 
     /// Update all [`PointerId`]s in `self`, replacing each `p` with `map[p]`.  Also sets the "next
@@ -259,11 +574,17 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         let GlobalAnalysisCtxt {
             tcx: _,
             lcx,
+            ref mut ptr_info,
+            fn_callers: _,
             ref mut fn_sigs,
-            ref mut field_tys,
+            fns_failed: _,
+            ref mut field_ltys,
             ref mut static_tys,
-            ref mut next_ptr_id,
+            ref mut addr_of_static,
+            adt_metadata: _,
         } = *self;
+
+        *ptr_info = remap_global_ptr_info(ptr_info, map, counter.num_pointers());
 
         for sig in fn_sigs.values_mut() {
             sig.inputs = lcx.mk_slice(
@@ -275,7 +596,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             sig.output = remap_lty_pointers(lcx, map, sig.output);
         }
 
-        for labeled_field in field_tys.values_mut() {
+        for labeled_field in field_ltys.values_mut() {
             *labeled_field = remap_lty_pointers(lcx, map, labeled_field);
         }
 
@@ -283,22 +604,52 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             *labeled_static = remap_lty_pointers(lcx, map, labeled_static);
         }
 
-        *next_ptr_id = counter;
+        for ptr in addr_of_static.values_mut() {
+            if !ptr.is_none() {
+                *ptr = map[*ptr];
+            }
+        }
     }
 
     pub fn assign_pointer_to_static(&mut self, did: DefId) {
-        let lty = self.assign_pointer_ids(self.tcx.static_ptr_ty(did));
+        trace!("assign_pointer_to_static({:?})", did);
+        // Statics always have full type annotations.
+        let lty = self.assign_pointer_ids_with_info(self.tcx.type_of(did), PointerInfo::ANNOTATED);
+        let ptr = self.new_pointer(PointerInfo::empty());
         self.static_tys.insert(did, lty);
+        self.addr_of_static.insert(did, ptr);
     }
 
     pub fn assign_pointer_to_field(&mut self, field: &FieldDef) {
-        let lty = self.assign_pointer_ids(self.tcx.type_of(field.did));
-        self.field_tys.insert(field.did, lty);
+        let lty =
+            self.assign_pointer_ids_with_info(self.tcx.type_of(field.did), PointerInfo::ANNOTATED);
+        self.field_ltys.insert(field.did, lty);
     }
 
     pub fn assign_pointer_to_fields(&mut self, did: DefId) {
         for field in self.tcx.adt_def(did).all_fields() {
             self.assign_pointer_to_field(field);
+        }
+    }
+
+    pub fn fn_failed(&mut self, did: DefId) -> bool {
+        self.fns_failed.contains_key(&did)
+    }
+
+    pub fn mark_fn_failed(&mut self, did: DefId, detail: PanicDetail) {
+        if self.fns_failed.contains_key(&did) {
+            return;
+        }
+
+        self.fns_failed.insert(did, detail);
+
+        // This is the first time marking `did` as failed, so also mark all of its callers.
+        let callers = self.fn_callers.get(&did).cloned().unwrap_or(Vec::new());
+        for caller in callers {
+            self.mark_fn_failed(
+                caller,
+                PanicDetail::new(format!("analysis failed on callee {:?}", did)),
+            );
         }
     }
 }
@@ -311,13 +662,13 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         let tcx = gacx.tcx;
         AnalysisCtxt {
             gacx,
+            ptr_info: LocalPointerTable::empty(),
             local_decls: &mir.local_decls,
             local_tys: IndexVec::new(),
-            c_void_casts: CVoidCasts::new(mir, tcx),
             addr_of_local: IndexVec::new(),
+            c_void_casts: CVoidCasts::new(mir, tcx),
             rvalue_tys: HashMap::new(),
             string_literal_locs: Default::default(),
-            next_ptr_id: NextLocalPointerId::new(),
         }
     }
 
@@ -327,31 +678,33 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         data: AnalysisCtxtData<'tcx>,
     ) -> AnalysisCtxt<'a, 'tcx> {
         let AnalysisCtxtData {
+            ptr_info,
             local_tys,
             addr_of_local,
+            c_void_casts,
             rvalue_tys,
             string_literal_locs,
-            next_ptr_id,
         } = data;
         AnalysisCtxt {
             gacx,
+            ptr_info,
             local_decls: &mir.local_decls,
             local_tys,
-            c_void_casts: CVoidCasts::default(),
             addr_of_local,
+            c_void_casts,
             rvalue_tys,
             string_literal_locs,
-            next_ptr_id,
         }
     }
 
     pub fn into_data(self) -> AnalysisCtxtData<'tcx> {
         AnalysisCtxtData {
+            ptr_info: self.ptr_info,
             local_tys: self.local_tys,
             addr_of_local: self.addr_of_local,
+            c_void_casts: self.c_void_casts,
             rvalue_tys: self.rvalue_tys,
             string_literal_locs: self.string_literal_locs,
-            next_ptr_id: self.next_ptr_id,
         }
     }
 
@@ -363,12 +716,24 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         self.gacx.lcx
     }
 
-    pub fn new_pointer(&mut self) -> PointerId {
-        self.next_ptr_id.next()
+    pub fn new_pointer(&mut self, info: PointerInfo) -> PointerId {
+        self.ptr_info.push(info)
     }
 
     pub fn num_pointers(&self) -> usize {
-        self.next_ptr_id.num_pointers()
+        self.ptr_info.len()
+    }
+
+    pub fn _ptr_info(&self) -> PointerTable<PointerInfo> {
+        self.gacx.ptr_info.and(&self.ptr_info)
+    }
+
+    pub fn ptr_info_mut(&mut self) -> PointerTableMut<PointerInfo> {
+        self.gacx.ptr_info.and_mut(&mut self.ptr_info)
+    }
+
+    pub fn _local_ptr_info(&self) -> &LocalPointerTable<PointerInfo> {
+        &self.ptr_info
     }
 
     pub fn type_of<T: TypeOf<'tcx>>(&self, x: T) -> LTy<'tcx> {
@@ -400,7 +765,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                             rv, desc, base_lty
                         );
                         (
-                            self.project(base_lty, &PlaceElem::Deref),
+                            self.projection_lty(base_lty, &PlaceElem::Deref),
                             proj,
                             base_lty.label,
                         )
@@ -412,7 +777,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
 
                 let mut pointee_lty = pointee_lty;
                 for p in proj {
-                    pointee_lty = self.project(pointee_lty, p);
+                    pointee_lty = self.projection_lty(pointee_lty, p);
                 }
 
                 let ty = rv.ty(self, self.tcx());
@@ -463,15 +828,15 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         }
     }
 
-    pub fn project(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
+    pub fn projection_lty(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
         let projection_lty = |_lty: LTy, adt_def: AdtDef, field: Field| {
             let field_def = &adt_def.non_enum_variant().fields[field.index()];
             let field_def_name = field_def.name;
             eprintln!("projecting into {adt_def:?}.{field_def_name:}");
-            let res = *self.gacx.field_tys.get(&field_def.did).unwrap_or_else(|| {
+            let field_lty: LTy = self.gacx.field_ltys.get(&field_def.did).unwrap_or_else(|| {
                 panic!("Could not find {adt_def:?}.{field_def_name:?} in field type map")
             });
-            res
+            field_lty
         };
         util::lty_project(lty, proj, projection_lty)
     }
@@ -483,17 +848,23 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
     /// [`LocalEquivSet::renumber`][crate::equiv::LocalEquivSet::renumber].
     pub fn remap_pointers(
         &mut self,
-        lcx: LTyCtxt<'tcx>,
+        gacx: &mut GlobalAnalysisCtxt<'tcx>,
         map: PointerTable<PointerId>,
         counter: NextLocalPointerId,
     ) {
+        let lcx = gacx.lcx;
+
         let Self {
+            ptr_info,
             local_tys,
             addr_of_local,
+            c_void_casts: _,
             rvalue_tys,
             string_literal_locs: _,
-            next_ptr_id,
         } = self;
+
+        *ptr_info =
+            remap_local_ptr_info(ptr_info, &mut gacx.ptr_info, &map, counter.num_pointers());
 
         for lty in local_tys {
             *lty = remap_lty_pointers(lcx, &map, lty);
@@ -508,12 +879,14 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
         for lty in rvalue_tys.values_mut() {
             *lty = remap_lty_pointers(lcx, &map, lty);
         }
+    }
 
-        *next_ptr_id = counter;
+    pub fn local_ptr_info(&self) -> &LocalPointerTable<PointerInfo> {
+        &self.ptr_info
     }
 
     pub fn num_pointers(&self) -> usize {
-        self.next_ptr_id.num_pointers()
+        self.ptr_info.len()
     }
 }
 
@@ -530,6 +903,43 @@ where
             map[inner_lty.label]
         }
     })
+}
+
+/// Renumber the keys of `ptr_info`, producing a new table.  For a new `PointerId` `q`, the
+/// `PointerInfo` in the output is computed by merging the values of `ptr_info[p]` for all `p`
+/// where `map[p] == q`.
+fn remap_global_ptr_info(
+    ptr_info: &GlobalPointerTable<PointerInfo>,
+    map: &GlobalPointerTable<PointerId>,
+    num_pointers: usize,
+) -> GlobalPointerTable<PointerInfo> {
+    let mut new_info = GlobalPointerTable::<PointerInfo>::new(num_pointers);
+    for (old, &new) in map.iter() {
+        new_info[new] |= ptr_info[old];
+    }
+    new_info
+}
+
+/// Renumber the keys of `old_local_ptr_info`, producing a new local table.  `new_global_ptr_info`
+/// must already be remapped with `remap_global_ptr_info`.
+fn remap_local_ptr_info(
+    old_local_ptr_info: &LocalPointerTable<PointerInfo>,
+    new_global_ptr_info: &mut GlobalPointerTable<PointerInfo>,
+    map: &PointerTable<PointerId>,
+    num_pointers: usize,
+) -> LocalPointerTable<PointerInfo> {
+    let mut new_local_ptr_info = LocalPointerTable::<PointerInfo>::new(num_pointers);
+    let mut new_ptr_info = new_global_ptr_info.and_mut(&mut new_local_ptr_info);
+    for (old, &new) in map.iter() {
+        if old.is_global() {
+            // If `old` is global then `new` is also global, and this remapping was handled already
+            // by `remap_global_ptr_info`.
+            continue;
+        }
+
+        new_ptr_info[new] |= old_local_ptr_info[old];
+    }
+    new_local_ptr_info
 }
 
 impl<'tcx> HasLocalDecls<'tcx> for AnalysisCtxt<'_, 'tcx> {
@@ -564,7 +974,7 @@ impl<'tcx> TypeOf<'tcx> for PlaceRef<'tcx> {
     fn type_of(&self, acx: &AnalysisCtxt<'_, 'tcx>) -> LTy<'tcx> {
         let mut ty = acx.type_of(self.local);
         for proj in self.projection {
-            ty = acx.project(ty, proj);
+            ty = acx.projection_lty(ty, proj);
         }
         ty
     }
@@ -601,10 +1011,24 @@ impl<'tcx> TypeOf<'tcx> for Operand<'tcx> {
                 if c.ty().is_any_ptr() {
                     if let Some(alloc_id) = const_alloc_id(c) {
                         if let Some(did) = find_static_for_alloc(&acx.gacx.tcx, alloc_id) {
-                            match acx.gacx.static_tys.get(&did) {
-                                Some(lty) => lty,
-                                None => panic!("did {:?} not found", did),
-                            }
+                            let lty = acx
+                                .gacx
+                                .static_tys
+                                .get(&did)
+                                .cloned()
+                                .unwrap_or_else(|| panic!("did {:?} not found", did));
+                            let ptr = acx
+                                .gacx
+                                .addr_of_static
+                                .get(&did)
+                                .cloned()
+                                .unwrap_or_else(|| panic!("did {:?} not found", did));
+                            let args = acx.lcx().mk_slice(&[lty]);
+                            assert!(matches!(
+                                *c.ty().kind(),
+                                TyKind::Ref(..) | TyKind::RawPtr(..)
+                            ));
+                            acx.lcx().mk(c.ty(), args, ptr)
                         } else {
                             panic!("no static found for alloc id {:?}", alloc_id)
                         }
@@ -677,7 +1101,7 @@ impl LocalAssignment {
 }
 
 pub struct Assignment<'a> {
-    global: &'a mut GlobalAssignment,
+    pub global: &'a mut GlobalAssignment,
     local: &'a mut LocalAssignment,
 }
 

@@ -5,6 +5,8 @@ use rustc_span::{BytePos, SourceFile, Span, SyntaxContext};
 use std::cmp::Reverse;
 use std::collections::HashMap;
 
+use super::LifetimeName;
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum RewriteError<S = Span> {
     /// The provided rewrite overlaps, but is not contained in, another rewrite.  `.0` is the span
@@ -287,6 +289,16 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
             Rewrite::PrintTy(ref s) => {
                 self.emit_str(s);
             }
+            Rewrite::TyGenericParams(ref rws) => {
+                self.emit_str("<");
+                for (index, rw) in rws.iter().enumerate() {
+                    self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                    if index < rws.len() - 1 {
+                        self.emit_str(",");
+                    }
+                }
+                self.emit_str(">");
+            }
             Rewrite::Call(ref func, ref arg_rws) => {
                 self.emit_str(func);
                 self.emit_parenthesized(true, |slf| {
@@ -318,11 +330,18 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
                 }
                 self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
             }
-            Rewrite::TyRef(ref rw, mutbl) => {
-                match mutbl {
-                    Mutability::Not => self.emit_str("&"),
-                    Mutability::Mut => self.emit_str("&mut "),
+            Rewrite::TyRef(ref lifetime, ref rw, mutbl) => {
+                self.emit_str("&");
+                if let LifetimeName::Explicit(lt) = lifetime {
+                    self.emit_str(lt);
+                    self.emit_str(" ");
                 }
+
+                if let Mutability::Mut = mutbl {
+                    self.emit_str("mut");
+                    self.emit_str(" ");
+                }
+
                 self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
             }
             Rewrite::TySlice(ref rw) => {
@@ -333,8 +352,11 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
             Rewrite::TyCtor(ref name, ref rws) => {
                 self.emit_str(name);
                 self.emit_str("<");
-                for rw in rws {
+                for (index, rw) in rws.iter().enumerate() {
                     self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                    if index < rws.len() - 1 {
+                        self.emit_str(",");
+                    }
                 }
                 self.emit_str(">");
             }

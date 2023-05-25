@@ -49,6 +49,13 @@ struct AnalyzeArgs {
     /// Environment variables for `c2rust-analyze`.
     #[clap(long, value_parser)]
     env: Vec<EnvVar>,
+
+    /// Enable catching panics during analysis and rewriting.  This behavior is enabled by default
+    /// when running the tool manually, but for testing we disable it to detect errors more easily.
+    /// Tests that are meant to exercise the panic-catching behavior can explicitly enable it with
+    /// this flag.
+    #[arg(long)]
+    catch_panics: bool,
 }
 
 impl AnalyzeArgs {
@@ -110,6 +117,9 @@ impl Analyze {
         let output_stderr = File::try_clone(&output_stdout).unwrap();
 
         let mut cmd = Command::new(&self.path);
+        if !args.catch_panics {
+            cmd.env("C2RUST_ANALYZE_TEST_DONT_CATCH_PANIC", "1");
+        }
         cmd.arg(&rs_path)
             .arg("-L")
             .arg(lib_dir)
@@ -203,11 +213,20 @@ fn get_absolute_main_test_path(main_test_path: &Path) -> PathBuf {
         .join(main_test_path.file_name().unwrap())
 }
 
-fn test_dir_for(main_test_path: &Path) -> PathBuf {
-    main_test_path
-        .parent()
-        .unwrap()
-        .join(main_test_path.file_stem().unwrap())
+pub fn test_dir_for(main_test_path: impl AsRef<Path>, absolute: bool) -> PathBuf {
+    fn inner(main_test_path: &Path) -> PathBuf {
+        main_test_path
+            .parent()
+            .unwrap()
+            .join(main_test_path.file_stem().unwrap())
+    }
+
+    let main_test_path = main_test_path.as_ref();
+    if absolute {
+        inner(&get_absolute_main_test_path(main_test_path))
+    } else {
+        inner(main_test_path)
+    }
 }
 
 fn list_all_test_filestems_in(dir: &Path) -> impl Iterator<Item = String> {
@@ -220,8 +239,8 @@ fn list_all_test_filestems_in(dir: &Path) -> impl Iterator<Item = String> {
 
 pub fn check_for_missing_tests_for(main_test_path: impl AsRef<Path>) {
     let main_test_path = main_test_path.as_ref();
-    let abs_test_dir = test_dir_for(&get_absolute_main_test_path(main_test_path));
-    let rel_test_dir = test_dir_for(main_test_path);
+    let abs_test_dir = test_dir_for(main_test_path, true);
+    let rel_test_dir = test_dir_for(main_test_path, false);
     let test_names = list_all_tests::<HashSet<_>>();
     let missing_tests = list_all_test_filestems_in(&abs_test_dir)
         .filter(|test_name| !test_names.contains(test_name))

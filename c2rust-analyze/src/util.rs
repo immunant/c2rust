@@ -7,7 +7,9 @@ use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Constant, Field, Local, Location, Mutability, Operand, Place,
     PlaceElem, PlaceRef, ProjectionElem, Rvalue, Statement, StatementKind,
 };
-use rustc_middle::ty::{self, AdtDef, DefIdTree, SubstsRef, Ty, TyCtxt, TyKind, UintTy};
+use rustc_middle::ty::{
+    self, AdtDef, DefIdTree, EarlyBinder, Subst, SubstsRef, Ty, TyCtxt, TyKind, UintTy,
+};
 use rustc_type_ir::IntTy;
 use std::fmt::Debug;
 
@@ -169,7 +171,7 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
         ty::FnDef(did, substs) => {
             if is_trivial() {
                 Callee::Trivial
-            } else if let Some(callee) = builtin_callee(tcx, did) {
+            } else if let Some(callee) = builtin_callee(tcx, did, substs) {
                 callee
             } else if !did.is_local() || tcx.def_kind(tcx.parent(did)) == DefKind::ForeignMod {
                 Callee::UnknownDef { ty }
@@ -191,7 +193,7 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
     }
 }
 
-fn builtin_callee(tcx: TyCtxt, did: DefId) -> Option<Callee> {
+fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, did: DefId, substs: SubstsRef<'tcx>) -> Option<Callee> {
     let name = tcx.item_name(did);
 
     match name.as_str() {
@@ -204,7 +206,7 @@ fn builtin_callee(tcx: TyCtxt, did: DefId) -> Option<Callee> {
             if tcx.impl_trait_ref(parent_did).is_some() {
                 return None;
             }
-            let parent_impl_ty = tcx.type_of(parent_did);
+            let parent_impl_ty = EarlyBinder(tcx.type_of(parent_did)).subst(tcx, substs);
             let (pointee_ty, mutbl) = match parent_impl_ty.kind() {
                 TyKind::RawPtr(tm) => (tm.ty, tm.mutbl),
                 _ => return None,
@@ -221,7 +223,7 @@ fn builtin_callee(tcx: TyCtxt, did: DefId) -> Option<Callee> {
             if tcx.impl_trait_ref(parent_did).is_some() {
                 return None;
             }
-            let parent_impl_ty = tcx.type_of(parent_did);
+            let parent_impl_ty = EarlyBinder(tcx.type_of(parent_did)).subst(tcx, substs);
             let elem_ty = match *parent_impl_ty.kind() {
                 TyKind::Array(ty, _) => ty,
                 TyKind::Slice(ty) => ty,
@@ -277,7 +279,7 @@ fn builtin_callee(tcx: TyCtxt, did: DefId) -> Option<Callee> {
             if tcx.impl_trait_ref(parent_did).is_some() {
                 return None;
             }
-            let parent_impl_ty = tcx.type_of(parent_did);
+            let parent_impl_ty = EarlyBinder(tcx.type_of(parent_did)).subst(tcx, substs);
             let (_pointee_ty, _mutbl) = match parent_impl_ty.kind() {
                 TyKind::RawPtr(tm) => (tm.ty, tm.mutbl),
                 _ => return None,

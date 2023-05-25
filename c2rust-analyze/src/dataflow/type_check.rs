@@ -1,6 +1,7 @@
 use super::DataflowConstraints;
 use crate::c_void_casts::CVoidCastDirection;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
+use crate::panic_detail;
 use crate::util::{
     describe_rvalue, is_null_const, is_transmutable_ptr_cast, ty_callee, Callee, RvalueDesc,
 };
@@ -90,7 +91,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 }
                 prev_deref_ptr = Some(lty.label);
             }
-            lty = self.acx.project(lty, proj);
+            lty = self.acx.projection_lty(lty, proj);
         }
 
         if let Some(ptr) = prev_deref_ptr.take() {
@@ -238,7 +239,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         let fields = &base_adt_def.non_enum_variant().fields;
                         for (field, op) in fields.iter().zip(ops.iter()) {
                             let op_lty = self.acx.type_of(op);
-                            let unresolved_field_lty = self.acx.gacx.field_tys[&field.did];
+                            let unresolved_field_lty = self.acx.gacx.field_ltys[&field.did];
                             // resolve the generic type arguments in `field_lty` by referencing the `Ty` of `op`
                             let resolved_field_lty =
                                 self.acx.lcx().subst(unresolved_field_lty, rvalue_lty.args);
@@ -332,10 +333,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         eprintln!("visit_statement({:?})", stmt);
-
         if self.acx.c_void_casts.should_skip_stmt(loc) {
             return;
         }
+
+        let _g = panic_detail::set_current_span(stmt.source_info.span);
 
         // TODO(spernsteiner): other `StatementKind`s will be handled in the future
         #[allow(clippy::single_match)]
@@ -357,6 +359,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     pub fn visit_terminator(&mut self, term: &Terminator<'tcx>, loc: Location) {
         eprintln!("visit_terminator({:?})", term.kind);
         let tcx = self.acx.tcx();
+        let _g = panic_detail::set_current_span(term.source_info.span);
         // TODO(spernsteiner): other `TerminatorKind`s will be handled in the future
         #[allow(clippy::single_match)]
         match term.kind {

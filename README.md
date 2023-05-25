@@ -49,7 +49,7 @@ Python 3.6 or later, CMake 3.4.3 or later, and openssl (1.0) are also required. 
 - **Ubuntu 18.04, Debian 10, and later:**
 
     ```sh
-    apt install build-essential llvm clang libclang-dev cmake libssl-dev pkg-config python3
+    apt install build-essential llvm clang libclang-dev cmake libssl-dev pkg-config python3 git
     ```
 
 Depending on the LLVM distribution, the `llvm-dev` package may also be required.

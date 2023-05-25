@@ -138,6 +138,12 @@ impl<T> PointerTableInner<T> {
     pub fn into_raw(self) -> Vec<T> {
         self.0
     }
+
+    pub fn push(&mut self, x: T) -> u32 {
+        let i = self.0.len();
+        self.0.push(x);
+        u32::try_from(i).unwrap()
+    }
 }
 
 impl<T> Index<u32> for PointerTableInner<T> {
@@ -183,6 +189,11 @@ impl<T> LocalPointerTable<T> {
         T: Clone,
     {
         self.0 .0.fill(x);
+    }
+
+    pub fn push(&mut self, x: T) -> PointerId {
+        let raw = self.0.push(x);
+        PointerId::local(raw)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
@@ -240,6 +251,11 @@ impl<T> GlobalPointerTable<T> {
 
     pub fn len(&self) -> usize {
         self.0 .0.len()
+    }
+
+    pub fn push(&mut self, x: T) -> PointerId {
+        let raw = self.0.push(x);
+        PointerId::global(raw)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
@@ -323,6 +339,7 @@ impl<'a, T> PointerTable<'a, T> {
 impl<'a, T> Index<PointerId> for PointerTable<'a, T> {
     type Output = T;
     fn index(&self, id: PointerId) -> &T {
+        debug_assert!(!id.is_none());
         if id.is_global() {
             &self.global[id]
         } else {
@@ -372,6 +389,7 @@ impl<'a, T> PointerTableMut<'a, T> {
 impl<'a, T> Index<PointerId> for PointerTableMut<'a, T> {
     type Output = T;
     fn index(&self, id: PointerId) -> &T {
+        debug_assert!(!id.is_none());
         if id.is_global() {
             &self.global[id]
         } else {
@@ -382,6 +400,7 @@ impl<'a, T> Index<PointerId> for PointerTableMut<'a, T> {
 
 impl<'a, T> IndexMut<PointerId> for PointerTableMut<'a, T> {
     fn index_mut(&mut self, id: PointerId) -> &mut T {
+        debug_assert!(!id.is_none());
         if id.is_global() {
             &mut self.global[id]
         } else {
@@ -438,6 +457,7 @@ impl<T> OwnedPointerTable<T> {
 impl<T> Index<PointerId> for OwnedPointerTable<T> {
     type Output = T;
     fn index(&self, id: PointerId) -> &T {
+        debug_assert!(!id.is_none());
         if id.is_global() {
             &self.global[id]
         } else {
@@ -448,6 +468,7 @@ impl<T> Index<PointerId> for OwnedPointerTable<T> {
 
 impl<T> IndexMut<PointerId> for OwnedPointerTable<T> {
     fn index_mut(&mut self, id: PointerId) -> &mut T {
+        debug_assert!(!id.is_none());
         if id.is_global() {
             &mut self.global[id]
         } else {

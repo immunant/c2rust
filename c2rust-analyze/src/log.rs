@@ -33,8 +33,8 @@ pub fn init_logger() {
     let log_env = Env::default().default_filter_or(LevelFilter::Debug.as_str());
     let panic_env = Env::default().filter_or("RUST_LOG_PANIC", LevelFilter::Error.as_str());
 
-    let log_logger = env_logger::builder().parse_env(log_env).build();
-    let panic_logger = env_logger::builder().parse_env(panic_env).build();
+    let log_logger = env_logger::Builder::from_env(log_env).build();
+    let panic_logger = env_logger::Builder::from_env(panic_env).build();
 
     // Create the actual [`Logger`] to log everything ([`LevelFilter::max()]`),
     // and then we can do the specific matching for `log_logger` and `panic_logger` inside the formatter,
@@ -52,4 +52,11 @@ pub fn init_logger() {
             Ok(())
         })
         .init();
+}
+
+#[test]
+fn rust_log_doesnt_affect_panicking() {
+    std::env::set_var("RUST_LOG", "c2rust_analyze::log=trace");
+    init_logger();
+    ::log::trace!("test");
 }

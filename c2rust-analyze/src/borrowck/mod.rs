@@ -119,14 +119,12 @@ pub fn borrowck_mir<'tcx>(
     hypothesis: &mut PointerTableMut<PermissionSet>,
     name: &str,
     mir: &Body<'tcx>,
-    adt_metadata: &AdtMetadataTable<'tcx>,
-    field_tys: HashMap<DefId, crate::LTy<'tcx>>,
+    field_ltys: HashMap<DefId, crate::LTy<'tcx>>,
 ) {
     let mut i = 0;
     loop {
         eprintln!("run polonius");
-        let (facts, maps, output) =
-            run_polonius(acx, hypothesis, name, mir, adt_metadata, &field_tys);
+        let (facts, maps, output) = run_polonius(acx, hypothesis, name, mir, &field_ltys);
         eprintln!(
             "polonius: iteration {}: {} errors, {} move_errors",
             i,
@@ -200,8 +198,7 @@ fn run_polonius<'tcx>(
     hypothesis: &PointerTableMut<PermissionSet>,
     name: &str,
     mir: &Body<'tcx>,
-    adt_metadata: &AdtMetadataTable<'tcx>,
-    field_tys: &HashMap<DefId, crate::LTy<'tcx>>,
+    field_ltys: &HashMap<DefId, crate::LTy<'tcx>>,
 ) -> (AllFacts, AtomMaps<'tcx>, Output) {
     let tcx = acx.tcx();
     let mut facts = AllFacts::default();
@@ -274,7 +271,7 @@ fn run_polonius<'tcx>(
             hypothesis,
             &mut facts,
             &mut maps,
-            adt_metadata,
+            &acx.gacx.adt_metadata,
             acx.local_tys[local],
         );
         let var = maps.variable(local);
@@ -287,7 +284,7 @@ fn run_polonius<'tcx>(
     }
 
     // Gather field permissions
-    let field_permissions = field_tys
+    let field_permissions = field_ltys
         .iter()
         .map(|(did, lty)| {
             let perm = if lty.label.is_none() {
@@ -310,7 +307,7 @@ fn run_polonius<'tcx>(
         &local_ltys,
         &field_permissions,
         mir,
-        adt_metadata,
+        &acx.gacx.adt_metadata,
         &acx.c_void_casts,
     );
 

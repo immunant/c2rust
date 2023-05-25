@@ -1,15 +1,15 @@
 #![allow(dead_code)]
 
 // CHECK: final labeling for static items:
-// CHECK-DAG: "UNUSED": perms = UNIQUE, flags = (empty)
+// CHECK-DAG: "UNUSED": addr_of = UNIQUE
 static UNUSED: usize = 2;
-// CHECK-DAG: "UNUSED_MUT": perms = UNIQUE, flags = (empty)
+// CHECK-DAG: "UNUSED_MUT": addr_of = UNIQUE
 static mut UNUSED_MUT: usize = 6;
-// CHECK-DAG: "READ": perms = READ | UNIQUE, flags = (empty)
+// CHECK-DAG: "READ": addr_of = READ | UNIQUE
 static READ: usize = 9;
-// CHECK-DAG: "READ_MUT": perms = READ | UNIQUE, flags = (empty)
+// CHECK-DAG: "READ_MUT": addr_of = READ | UNIQUE
 static mut READ_MUT: usize = 21;
-// CHECK-DAG: "WRITTEN_MUT": perms = READ | WRITE | UNIQUE, flags = (empty)
+// CHECK-DAG: "WRITTEN_MUT": addr_of = READ | WRITE | UNIQUE
 static mut WRITTEN_MUT: usize = 3;
 
 // CHECK: generated 2 static rewrites:

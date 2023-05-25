@@ -19,13 +19,14 @@ assert_matches = "1.5.0"
 indexmap = "1.9.2"
 env_logger = "0.10.0"
 log = "0.4.17"
+backtrace = "0.3.67"
 
 [build-dependencies]
-c2rust-build-paths = { path = "../c2rust-build-paths" , version = "0.17.0" }
+c2rust-build-paths = { path = "../c2rust-build-paths", version = "0.18.0" }
 print_bytes = "1.1"
 
 [dev-dependencies]
-c2rust-build-paths = { path = "../c2rust-build-paths" , version = "0.17.0" }
+c2rust-build-paths = { path = "../c2rust-build-paths", version = "0.18.0" }
 clap = { version = "4.1.9", features = ["derive"] }
 shlex = "1.1.0"
 

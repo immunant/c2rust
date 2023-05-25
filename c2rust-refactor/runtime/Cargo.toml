@@ -1,6 +1,6 @@
 [package]
 name = "c2rust_runtime"
-version = "0.17.0"
+version = "0.18.0"
 authors = ["Stuart Pernsteiner <spernsteiner@galois.com>"]
 edition = "2021"
 

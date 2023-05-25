@@ -15,20 +15,16 @@ extern crate rustc_span;
 extern crate rustc_target;
 extern crate rustc_type_ir;
 
-use crate::borrowck::{AdtMetadata, FieldMetadata, OriginArg, OriginParam};
 use crate::context::{
     AnalysisCtxt, AnalysisCtxtData, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy,
-    LTyCtxt, LocalAssignment, PermissionSet, PointerId,
+    LTyCtxt, LocalAssignment, PermissionSet, PointerId, PointerInfo,
 };
 use crate::dataflow::DataflowConstraints;
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use crate::labeled_ty::LabeledTyCtxt;
 use crate::log::init_logger;
 use crate::util::Callee;
-use assert_matches::assert_matches;
-use indexmap::IndexSet;
-use labeled_ty::LabeledTy;
-use rustc_ast::Mutability;
+use context::AdtMetadataTable;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
@@ -37,14 +33,13 @@ use rustc_middle::mir::{
     AggregateKind, BindingForm, Body, Constant, LocalDecl, LocalInfo, LocalKind, Location, Operand,
     Rvalue, StatementKind,
 };
-use rustc_middle::ty::tls;
-use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
+use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
-use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::fmt::Debug;
-use std::ops::{Deref, DerefMut};
+use std::fmt::{Debug, Display};
+use std::ops::{Deref, DerefMut, Index};
+use std::panic::AssertUnwindSafe;
 
 mod borrowck;
 mod c_void_casts;
@@ -53,6 +48,7 @@ mod dataflow;
 mod equiv;
 mod labeled_ty;
 mod log;
+mod panic_detail;
 mod pointer_id;
 mod rewrite;
 mod trivial;
@@ -110,254 +106,6 @@ impl<T> Deref for MaybeUnset<T> {
 impl<T> DerefMut for MaybeUnset<T> {
     fn deref_mut(&mut self) -> &mut T {
         self.get_mut()
-    }
-}
-
-fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
-    let struct_dids: Vec<_> = tcx
-        .hir_crate_items(())
-        .definitions()
-        .filter_map(|ldid: LocalDefId| {
-            use DefKind::*;
-            let did = ldid.to_def_id();
-            if matches!(tcx.def_kind(did), Struct | Enum | Union) {
-                return Some(did);
-            }
-
-            None
-        })
-        .collect();
-
-    let mut adt_metadata_table = AdtMetadataTable {
-        table: HashMap::new(),
-        struct_dids,
-    };
-
-    // Gather known lifetime parameters for each struct
-    for struct_did in &adt_metadata_table.struct_dids {
-        let struct_ty = tcx.type_of(struct_did);
-        if let TyKind::Adt(adt_def, substs) = struct_ty.kind() {
-            adt_metadata_table
-                .table
-                .insert(adt_def.did(), AdtMetadata::default());
-            eprintln!("gathering known lifetimes for {adt_def:?}");
-            for sub in substs.iter() {
-                if let GenericArgKind::Lifetime(r) = sub.unpack() {
-                    eprintln!("\tfound lifetime {r:?} in {adt_def:?}");
-                    assert_matches!(r.kind(), ReEarlyBound(eb) => {
-                        let _ = adt_metadata_table
-                        .table
-                        .entry(adt_def.did())
-                        .and_modify(|metadata| {
-                            metadata.lifetime_params.insert(OriginParam::Actual(eb));
-                        });
-                    });
-                }
-            }
-        } else {
-            panic!("{struct_ty:?} is not a struct");
-        }
-    }
-
-    let ltcx = LabeledTyCtxt::<'tcx, &[OriginArg<'tcx>]>::new(tcx);
-    let mut loop_count = 0;
-    loop {
-        /*
-            This loop iterates over all structs and gathers metadata for each.
-            If there were no recursive or mutually-recursive data structures,
-            this loop would only need one iteration to complete. To support
-            recursive and mutually-recursive structs, the loop iterates until
-            the metadata gathered for each struct reaches a fixed point.
-        */
-        loop_count += 1;
-        assert!(loop_count < 1000);
-
-        eprintln!("---- running fixed point struct field analysis iteration #{loop_count:?} ----");
-        let old_adt_metadata = adt_metadata_table.table.clone();
-        let mut next_hypo_origin_id = 0;
-
-        // for each struct, gather lifetime information (actual and hypothetical)
-        for struct_did in &adt_metadata_table.struct_dids {
-            let adt_def = tcx.adt_def(struct_did);
-            eprintln!("gathering lifetimes and lifetime parameters for {adt_def:?}");
-            for field in adt_def.all_fields() {
-                let field_ty: Ty = tcx.type_of(field.did);
-                eprintln!("\t{adt_def:?}.{:}", field.name);
-                let field_origin_args = ltcx.label(field_ty, &mut |ty| {
-                    let mut field_origin_args = IndexSet::new();
-                    match ty.kind() {
-                        TyKind::RawPtr(ty) => {
-                            eprintln!(
-                                "\t\tfound pointer that requires hypothetical lifetime: *{:}",
-                                if let Mutability::Mut = ty.mutbl {
-                                    "mut"
-                                } else {
-                                    "const"
-                                }
-                            );
-                            adt_metadata_table
-                                .table
-                                .entry(*struct_did)
-                                .and_modify(|adt| {
-                                    let origin_arg = OriginArg::Hypothetical(next_hypo_origin_id);
-                                    let origin_param =
-                                        OriginParam::Hypothetical(next_hypo_origin_id);
-                                    eprintln!(
-                                        "\t\t\tinserting origin {origin_param:?} into {adt_def:?}"
-                                    );
-
-                                    adt.lifetime_params.insert(origin_param);
-                                    next_hypo_origin_id += 1;
-                                    field_origin_args.insert(origin_arg);
-                                });
-                        }
-                        TyKind::Ref(reg, _ty, _mutability) => {
-                            eprintln!("\t\tfound reference field lifetime: {reg:}");
-                            assert_matches!(reg.kind(), ReEarlyBound(..) | ReStatic);
-                            let origin_arg = OriginArg::Actual(*reg);
-                            adt_metadata_table
-                                .table
-                                .entry(*struct_did)
-                                .and_modify(|adt| {
-                                    if let ReEarlyBound(eb) = reg.kind() {
-                                        eprintln!("\t\t\tinserting origin {eb:?} into {adt_def:?}");
-                                        adt.lifetime_params.insert(OriginParam::Actual(eb));
-                                    }
-
-                                    field_origin_args.insert(origin_arg);
-                                });
-                        }
-                        TyKind::Adt(adt_field, substs) => {
-                            eprintln!("\t\tfound ADT field base type: {adt_field:?}");
-                            for sub in substs.iter() {
-                                if let GenericArgKind::Lifetime(r) = sub.unpack() {
-                                    eprintln!("\tfound field lifetime {r:?} in {adt_def:?}.{adt_field:?}");
-                                    eprintln!("\t\t\tinserting {adt_field:?} lifetime param {r:?} into {adt_def:?}.{:} lifetime parameters", field.name);
-                                    assert_matches!(r.kind(), ReEarlyBound(..) | ReStatic);
-                                    field_origin_args.insert(OriginArg::Actual(r));
-                                }
-                            }
-                            if let Some(adt_field_metadata) =
-                                adt_metadata_table.table.get(&adt_field.did()).cloned()
-                            {
-                                // add a metadata entry for the struct field matching the metadata entry
-                                // for the struct definition of said field
-                                adt_metadata_table
-                                    .table
-                                    .insert(field.did, adt_field_metadata.clone());
-
-                                for adt_field_lifetime_param in adt_field_metadata.lifetime_params.iter() {
-                                    adt_metadata_table.table.entry(*struct_did).and_modify(|adt| {
-                                        if let OriginParam::Hypothetical(h) = adt_field_lifetime_param {
-                                            eprintln!("\t\t\tbubbling {adt_field:?} origin {adt_field_lifetime_param:?} up into {adt_def:?} origins");
-                                            field_origin_args.insert(OriginArg::Hypothetical(*h));
-                                            adt.lifetime_params.insert(*adt_field_lifetime_param);
-                                        }
-                                    });
-                                }
-                            }
-                        }
-                        _ => (),
-                    }
-
-                    if field_origin_args.is_empty() {
-                        return &[];
-                    }
-                    let field_origin_args: Vec<_> = field_origin_args.into_iter().collect();
-                    ltcx.arena().alloc_slice(&field_origin_args[..])
-                });
-
-                adt_metadata_table
-                    .table
-                    .entry(*struct_did)
-                    .and_modify(|adt| {
-                        adt.field_info.insert(
-                            field.did,
-                            FieldMetadata {
-                                origin_args: field_origin_args,
-                            },
-                        );
-                    });
-            }
-
-            eprintln!();
-        }
-
-        if adt_metadata_table.table == old_adt_metadata {
-            eprintln!("reached a fixed point in struct lifetime reconciliation\n");
-            break;
-        }
-    }
-
-    adt_metadata_table
-}
-
-pub struct AdtMetadataTable<'tcx> {
-    pub table: HashMap<DefId, AdtMetadata<'tcx>>,
-    pub struct_dids: Vec<DefId>,
-}
-
-impl<'tcx> Debug for AdtMetadataTable<'tcx> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fn fmt_string(lty: LabeledTy<'_, &[OriginArg]>) -> String {
-            let args: Vec<String> = lty.args.iter().map(|t| fmt_string(t)).collect();
-            use rustc_type_ir::TyKind::*;
-            match lty.kind() {
-                Ref(..) | RawPtr(..) => {
-                    format!("&{:?} {:}", lty.label[0], args[0])
-                }
-                Adt(adt, _) => {
-                    let mut s = format!("{adt:?}");
-                    let params = lty
-                        .label
-                        .iter()
-                        .map(|p| format!("{:?}", p))
-                        .into_iter()
-                        .chain(args.into_iter())
-                        .collect::<Vec<_>>()
-                        .join(",");
-
-                    if !params.is_empty() {
-                        s.push('<');
-                        s.push_str(&params);
-                        s.push('>');
-                    }
-                    s
-                }
-                Tuple(_) => {
-                    format!("({:})", args.join(","))
-                }
-                _ => format!("{:?}", lty.ty),
-            }
-        }
-
-        tls::with_opt(|tcx| {
-            let tcx = tcx.unwrap();
-            for k in &self.struct_dids {
-                let adt = &self.table[k];
-                write!(f, "struct {:}", tcx.item_name(*k))?;
-                write!(f, "<")?;
-                let lifetime_params_str = adt
-                    .lifetime_params
-                    .iter()
-                    .map(|p| format!("{:?}", p))
-                    .collect::<Vec<_>>()
-                    .join(",");
-                write!(f, "{lifetime_params_str:}")?;
-                writeln!(f, "> {{")?;
-                for (fdid, fmeta) in &adt.field_info {
-                    write!(f, "\t{:}: ", tcx.item_name(*fdid))?;
-                    let field_string_lty = fmt_string(fmeta.origin_args);
-
-                    write!(f, "{field_string_lty:}")?;
-
-                    writeln!(f)?;
-                }
-
-                writeln!(f, "}}\n")?;
-            }
-            writeln!(f)
-        })
     }
 }
 
@@ -425,6 +173,8 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                 continue;
             }
 
+            let _g = panic_detail::set_current_span(stmt.source_info.span);
+
             let lty = match rv {
                 Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
                     AggregateKind::Array(elem_ty) => {
@@ -443,7 +193,9 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                     }
                     _ => continue,
                 },
-                Rvalue::Cast(_, _, ty) => acx.assign_pointer_ids(*ty),
+                Rvalue::Cast(_, _, ty) => {
+                    acx.assign_pointer_ids_with_info(*ty, PointerInfo::ANNOTATED)
+                }
                 Rvalue::Use(Operand::Constant(c)) => match label_string_literals(acx, c, loc) {
                     Some(lty) => lty,
                     None => continue,
@@ -452,6 +204,74 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
             };
 
             acx.rvalue_tys.insert(loc, lty);
+        }
+    }
+}
+
+/// Set flags in `acx.ptr_info` based on analysis of the `mir`.  This is used for `PointerInfo`
+/// flags that represent non-local properties or other properties that can't be set easily when the
+/// `PointerId` is first allocated.
+fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
+    // For determining whether a local should have `NOT_TEMPORARY_REF`, we look for the code
+    // pattern that rustc generates when lowering `&x` and `&mut x` expressions.  This normally
+    // consists of a `LocalKind::Temp` local that's initialized with `_1 = &mut ...;` or a similar
+    // statement and that isn't modified or overwritten anywhere else.  Thus, we keep track of
+    // which locals appear on the LHS of such statements and also the number of places in which a
+    // local is (possibly) written.
+    //
+    // Note this currently detects only one of the temporaries in `&mut &mut x`, so we may need to
+    // make these checks more precise at some point.
+    let mut write_count = HashMap::with_capacity(mir.local_decls.len());
+    let mut rhs_is_ref = HashSet::new();
+
+    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+        for (i, stmt) in bb_data.statements.iter().enumerate() {
+            let (pl, rv) = match &stmt.kind {
+                StatementKind::Assign(x) => &**x,
+                _ => continue,
+            };
+
+            eprintln!(
+                "update_pointer_info: visit assignment: {:?}[{}]: {:?}",
+                bb, i, stmt
+            );
+
+            // Note we ignore `c_void_casts` here.  It shouldn't affect any of the patterns we're
+            // looking for.
+
+            if !pl.is_indirect() {
+                // This is a write directly to `pl.local`.
+                *write_count.entry(pl.local).or_insert(0) += 1;
+                eprintln!("  record write to LHS {:?}", pl);
+            }
+
+            let ref_pl = match *rv {
+                Rvalue::Ref(_rg, _kind, pl) => Some(pl),
+                Rvalue::AddressOf(_mutbl, pl) => Some(pl),
+                _ => None,
+            };
+            if let Some(ref_pl) = ref_pl {
+                // For simplicity, we consider taking the address of a local to be a write.  We
+                // expect this not to happen for the sorts of temporary refs we're looking for.
+                if !ref_pl.is_indirect() {
+                    eprintln!("  record write to ref target {:?}", ref_pl);
+                    *write_count.entry(ref_pl.local).or_insert(0) += 1;
+                }
+
+                rhs_is_ref.insert(pl.local);
+            }
+        }
+    }
+
+    for local in mir.local_decls.indices() {
+        let is_temp_ref = mir.local_kind(local) == LocalKind::Temp
+            && write_count.get(&local).copied().unwrap_or(0) == 1
+            && rhs_is_ref.contains(&local);
+
+        if let Some(ptr) = acx.ptr_of(local) {
+            if !is_temp_ref {
+                acx.ptr_info_mut()[ptr].insert(PointerInfo::NOT_TEMPORARY_REF);
+            }
         }
     }
 }
@@ -484,24 +304,38 @@ fn run(tcx: TyCtxt) {
 
     // Follow a postorder traversal, so that callers are visited after their callees.  This means
     // callee signatures will usually be up to date when we visit the call site.
-    let all_fn_ldids = fn_body_owners_postorder(tcx);
+    let (all_fn_ldids, fn_callers) = fn_body_owners_postorder(tcx);
     eprintln!("callgraph traversal order:");
     for &ldid in &all_fn_ldids {
         eprintln!("  {:?}", ldid);
     }
+
+    gacx.fn_callers = fn_callers
+        .into_iter()
+        .map(|(ldid, caller_ldids)| {
+            (
+                ldid.to_def_id(),
+                caller_ldids
+                    .into_iter()
+                    .map(|caller_ldid| caller_ldid.to_def_id())
+                    .collect(),
+            )
+        })
+        .collect();
 
     // Assign global `PointerId`s for all pointers that appear in function signatures.
     for &ldid in &all_fn_ldids {
         let sig = tcx.fn_sig(ldid.to_def_id());
         let sig = tcx.erase_late_bound_regions(sig);
 
+        // All function signatures are fully annotated.
         let inputs = sig
             .inputs()
             .iter()
-            .map(|&ty| gacx.assign_pointer_ids(ty))
+            .map(|&ty| gacx.assign_pointer_ids_with_info(ty, PointerInfo::ANNOTATED))
             .collect::<Vec<_>>();
         let inputs = gacx.lcx.mk_slice(&inputs);
-        let output = gacx.assign_pointer_ids(sig.output());
+        let output = gacx.assign_pointer_ids_with_info(sig.output(), PointerInfo::ANNOTATED);
 
         let lsig = LFnSig { inputs, output };
         gacx.fn_sigs.insert(ldid.to_def_id(), lsig);
@@ -536,6 +370,11 @@ fn run(tcx: TyCtxt) {
     // computed during this the process is kept around for use in later passes.
     let mut global_equiv = GlobalEquivSet::new(gacx.num_pointers());
     for &ldid in &all_fn_ldids {
+        // The function might already be marked as failed if one of its callees previously failed.
+        if gacx.fn_failed(ldid.to_def_id()) {
+            continue;
+        }
+
         let ldid_const = WithOptConstParam::unknown(ldid);
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
@@ -543,30 +382,43 @@ fn run(tcx: TyCtxt) {
 
         let mut acx = gacx.function_context(&mir);
 
-        // Assign PointerIds to local types
-        assert!(acx.local_tys.is_empty());
-        acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
-        for (local, decl) in mir.local_decls.iter_enumerated() {
-            let lty = match mir.local_kind(local) {
-                LocalKind::Var | LocalKind::Temp => acx.assign_pointer_ids(decl.ty),
-                LocalKind::Arg => {
-                    debug_assert!(local.as_usize() >= 1 && local.as_usize() <= mir.arg_count);
-                    lsig.inputs[local.as_usize() - 1]
-                }
-                LocalKind::ReturnPointer => lsig.output,
-            };
-            let l = acx.local_tys.push(lty);
-            assert_eq!(local, l);
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+            // Assign PointerIds to local types
+            assert!(acx.local_tys.is_empty());
+            acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
+            for (local, decl) in mir.local_decls.iter_enumerated() {
+                // TODO: set PointerInfo::ANNOTATED for the parts of the type with user annotations
+                let lty = match mir.local_kind(local) {
+                    LocalKind::Var | LocalKind::Temp => acx.assign_pointer_ids(decl.ty),
+                    LocalKind::Arg => {
+                        debug_assert!(local.as_usize() >= 1 && local.as_usize() <= mir.arg_count);
+                        lsig.inputs[local.as_usize() - 1]
+                    }
+                    LocalKind::ReturnPointer => lsig.output,
+                };
+                let l = acx.local_tys.push(lty);
+                assert_eq!(local, l);
 
-            let ptr = acx.new_pointer();
-            let l = acx.addr_of_local.push(ptr);
-            assert_eq!(local, l);
-        }
+                let ptr = acx.new_pointer(PointerInfo::empty());
+                let l = acx.addr_of_local.push(ptr);
+                assert_eq!(local, l);
+            }
 
-        label_rvalue_tys(&mut acx, &mir);
+            label_rvalue_tys(&mut acx, &mir);
+            update_pointer_info(&mut acx, &mir);
+
+            dataflow::generate_constraints(&acx, &mir)
+        }));
+
+        let (dataflow, equiv_constraints) = match r {
+            Ok(x) => x,
+            Err(pd) => {
+                gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                continue;
+            }
+        };
 
         // Compute local equivalence classes and dataflow constraints.
-        let (dataflow, equiv_constraints) = dataflow::generate_constraints(&acx, &mir);
         let mut local_equiv = LocalEquivSet::new(acx.num_pointers());
         let mut equiv = global_equiv.and_mut(&mut local_equiv);
         for (a, b) in equiv_constraints {
@@ -587,11 +439,15 @@ fn run(tcx: TyCtxt) {
     gacx.remap_pointers(&global_equiv_map, global_counter);
 
     for &ldid in &all_fn_ldids {
+        if gacx.fn_failed(ldid.to_def_id()) {
+            continue;
+        }
+
         let info = func_info.get_mut(&ldid).unwrap();
         let (local_counter, local_equiv_map) = info.local_equiv.renumber(&global_equiv_map);
         eprintln!("local_equiv_map = {local_equiv_map:?}");
         info.acx_data.remap_pointers(
-            gacx.lcx,
+            &mut gacx,
             global_equiv_map.and(&local_equiv_map),
             local_counter,
         );
@@ -602,17 +458,43 @@ fn run(tcx: TyCtxt) {
 
     // Compute permission and flag assignments.
 
+    fn should_make_fixed(info: PointerInfo) -> bool {
+        // We group ref types into three categories:
+        //
+        // 1. Explicitly annotated as a reference by the user (`REF` and `ANNOTATED`)
+        // 2. Inferred as ref by the compiler, excluding temporaries (`REF` and
+        //    `NOT_TEMPORARY_REF`, but not `ANNOTATED`)
+        // 3. Temporary refs (`REF` but not `ANNOTATED` or `NOT_TEMPORARY_REF`)
+        //
+        // Currently, we apply the `FIXED` flag to categories 1 and 2.
+        info.contains(PointerInfo::REF)
+            && (info.contains(PointerInfo::ANNOTATED)
+                || info.contains(PointerInfo::NOT_TEMPORARY_REF))
+    }
+
     let mut gasn =
         GlobalAssignment::new(gacx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
+    for (ptr, &info) in gacx.ptr_info().iter() {
+        if should_make_fixed(info) {
+            gasn.flags[ptr].insert(FlagSet::FIXED);
+        }
+    }
+
     for info in func_info.values_mut() {
         let num_pointers = info.acx_data.num_pointers();
-        let lasn = LocalAssignment::new(num_pointers, PermissionSet::UNIQUE, FlagSet::empty());
+        let mut lasn = LocalAssignment::new(num_pointers, PermissionSet::UNIQUE, FlagSet::empty());
+
+        for (ptr, &info) in info.acx_data.local_ptr_info().iter() {
+            if should_make_fixed(info) {
+                lasn.flags[ptr].insert(FlagSet::FIXED);
+            }
+        }
+
         info.lasn.set(lasn);
     }
 
-    let adt_metadata = construct_adt_metadata(tcx);
     eprintln!("=== ADT Metadata ===");
-    eprintln!("{adt_metadata:?}");
+    eprintln!("{:?}", gacx.adt_metadata);
 
     let mut loop_count = 0;
     loop {
@@ -623,29 +505,41 @@ fn run(tcx: TyCtxt) {
         loop_count += 1;
         let old_gasn = gasn.clone();
         for &ldid in &all_fn_ldids {
+            if gacx.fn_failed(ldid.to_def_id()) {
+                continue;
+            }
+
             let info = func_info.get_mut(&ldid).unwrap();
             let ldid_const = WithOptConstParam::unknown(ldid);
             let name = tcx.item_name(ldid.to_def_id());
             let mir = tcx.mir_built(ldid_const);
             let mir = mir.borrow();
 
-            let field_tys = gacx.field_tys.clone();
+            let field_ltys = gacx.field_ltys.clone();
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
             let mut asn = gasn.and(&mut info.lasn);
 
-            // `dataflow.propagate` and `borrowck_mir` both run until the assignment converges on a
-            // fixpoint, so there's no need to do multiple iterations here.
-            info.dataflow.propagate(&mut asn.perms_mut());
+            let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+                // `dataflow.propagate` and `borrowck_mir` both run until the assignment converges
+                // on a fixpoint, so there's no need to do multiple iterations here.
+                info.dataflow.propagate(&mut asn.perms_mut());
 
-            borrowck::borrowck_mir(
-                &acx,
-                &info.dataflow,
-                &mut asn.perms_mut(),
-                name.as_str(),
-                &mir,
-                &adt_metadata,
-                field_tys,
-            );
+                borrowck::borrowck_mir(
+                    &acx,
+                    &info.dataflow,
+                    &mut asn.perms_mut(),
+                    name.as_str(),
+                    &mir,
+                    field_ltys,
+                );
+            }));
+            match r {
+                Ok(()) => {}
+                Err(pd) => {
+                    gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                    continue;
+                }
+            }
 
             info.acx_data.set(acx.into_data());
         }
@@ -666,6 +560,11 @@ fn run(tcx: TyCtxt) {
             Some(x) => x,
             None => continue,
         };
+
+        if gacx.fn_failed(ldid.to_def_id()) {
+            continue;
+        }
+
         let ldid_const = WithOptConstParam::unknown(ldid);
         let name = tcx.item_name(ldid.to_def_id());
         let mir = tcx.mir_built(ldid_const);
@@ -682,46 +581,14 @@ fn run(tcx: TyCtxt) {
         let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
         let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
         for (local, decl) in mir.local_decls.iter_enumerated() {
-            let addr_of1 = asn.perms()[acx.addr_of_local[local]];
-            let ty1 = lcx1.relabel(acx.local_tys[local], &mut |lty| {
-                if lty.label == PointerId::NONE {
-                    PermissionSet::empty()
-                } else {
-                    asn.perms()[lty.label]
-                }
-            });
-            eprintln!(
-                "{:?} ({}): addr_of = {:?}, type = {:?}",
-                local,
-                describe_local(tcx, decl),
-                addr_of1,
-                ty1,
-            );
-
-            let addr_of2 = asn.flags()[acx.addr_of_local[local]];
-            let ty2 = lcx2.relabel(acx.local_tys[local], &mut |lty| {
-                if lty.label == PointerId::NONE {
-                    FlagSet::empty()
-                } else {
-                    asn.flags()[lty.label]
-                }
-            });
-            eprintln!(
-                "{:?} ({}): addr_of flags = {:?}, type flags = {:?}",
-                local,
-                describe_local(tcx, decl),
-                addr_of2,
-                ty2,
-            );
-
-            let addr_of3 = acx.addr_of_local[local];
-            let ty3 = acx.local_tys[local];
-            eprintln!(
-                "{:?} ({}): addr_of = {:?}, type = {:?}",
-                local,
-                describe_local(tcx, decl),
-                addr_of3,
-                ty3,
+            print_labeling_for_var(
+                lcx1,
+                lcx2,
+                format_args!("{:?} ({})", local, describe_local(tcx, decl)),
+                acx.addr_of_local[local],
+                acx.local_tys[local],
+                &asn.perms(),
+                &asn.flags(),
             );
         }
 
@@ -729,30 +596,65 @@ fn run(tcx: TyCtxt) {
         rewrite::dump_rewritten_local_tys(&acx, &asn, &mir, describe_local);
 
         eprintln!();
-        let hir_body_id = tcx.hir().body_owned_by(ldid);
-        let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
-        let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
-        // Print rewrites
-        eprintln!(
-            "\ngenerated {} expr rewrites + {} ty rewrites for {:?}:",
-            expr_rewrites.len(),
-            ty_rewrites.len(),
-            name
-        );
-        for &(span, ref rw) in expr_rewrites.iter().chain(ty_rewrites.iter()) {
-            eprintln!("  {}: {}", describe_span(tcx, span), rw);
+
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+            let hir_body_id = tcx.hir().body_owned_by(ldid);
+            let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
+            let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
+            // Print rewrites
+            eprintln!(
+                "\ngenerated {} expr rewrites + {} ty rewrites for {:?}:",
+                expr_rewrites.len(),
+                ty_rewrites.len(),
+                name
+            );
+            for &(span, ref rw) in expr_rewrites.iter().chain(ty_rewrites.iter()) {
+                eprintln!("  {}: {}", describe_span(tcx, span), rw);
+            }
+            all_rewrites.extend(expr_rewrites);
+            all_rewrites.extend(ty_rewrites);
+        }));
+        match r {
+            Ok(()) => {}
+            Err(pd) => {
+                gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                continue;
+            }
         }
-        all_rewrites.extend(expr_rewrites);
-        all_rewrites.extend(ty_rewrites);
     }
 
     // Print results for `static` items.
     eprintln!("\nfinal labeling for static items:");
-    for (did, lty) in gacx.static_tys.iter() {
-        let name = tcx.item_name(*did);
-        let ty_perms = gasn.perms[lty.label];
-        let ty_flags = gasn.flags[lty.label];
-        eprintln!("{name:?}: perms = {ty_perms:?}, flags = {ty_flags:?}");
+    let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
+    let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
+    let mut static_dids = gacx.static_tys.keys().cloned().collect::<Vec<_>>();
+    static_dids.sort();
+    for did in static_dids {
+        let lty = gacx.static_tys[&did];
+        let name = tcx.item_name(did);
+        print_labeling_for_var(
+            lcx1,
+            lcx2,
+            format_args!("{name:?}"),
+            gacx.addr_of_static[&did],
+            lty,
+            &gasn.perms,
+            &gasn.flags,
+        );
+    }
+
+    eprintln!("\nfinal labeling for fields:");
+    let mut field_dids = gacx.field_ltys.keys().cloned().collect::<Vec<_>>();
+    field_dids.sort();
+    for did in field_dids {
+        let field_lty = gacx.field_ltys[&did];
+        let name = tcx.item_name(did);
+        let pid = field_lty.label;
+        if pid != PointerId::NONE {
+            let ty_perms = gasn.perms[pid];
+            let ty_flags = gasn.flags[pid];
+            eprintln!("{name:}: ({pid}) perms = {ty_perms:?}, flags = {ty_flags:?}");
+        }
     }
 
     let static_rewrites = rewrite::gen_static_rewrites(&gacx, &gasn);
@@ -764,16 +666,53 @@ fn run(tcx: TyCtxt) {
 
     // Apply rewrite to all functions at once.
     rewrite::apply_rewrites(tcx, all_rewrites);
+
+    // Report errors that were caught previously
+    eprintln!("\nerror details:");
+    for ldid in tcx.hir().body_owners() {
+        if let Some(detail) = gacx.fns_failed.get(&ldid.to_def_id()) {
+            if !detail.has_backtrace() {
+                continue;
+            }
+            eprintln!("\nerror in {:?}:\n{}", ldid, detail.to_string_full());
+        }
+    }
+
+    eprintln!("\nerror summary:");
+    for ldid in tcx.hir().body_owners() {
+        if let Some(detail) = gacx.fns_failed.get(&ldid.to_def_id()) {
+            eprintln!(
+                "analysis of {:?} failed: {}",
+                ldid,
+                detail.to_string_short()
+            );
+        }
+    }
+
+    eprintln!(
+        "\nsaw errors in {} / {} functions",
+        gacx.fns_failed.len(),
+        all_fn_ldids.len()
+    );
 }
 
 trait AssignPointerIds<'tcx> {
     fn lcx(&self) -> LTyCtxt<'tcx>;
 
-    fn new_pointer(&mut self) -> PointerId;
+    fn new_pointer(&mut self, info: PointerInfo) -> PointerId;
 
     fn assign_pointer_ids(&mut self, ty: Ty<'tcx>) -> LTy<'tcx> {
+        self.assign_pointer_ids_with_info(ty, PointerInfo::empty())
+    }
+
+    fn assign_pointer_ids_with_info(
+        &mut self,
+        ty: Ty<'tcx>,
+        base_ptr_info: PointerInfo,
+    ) -> LTy<'tcx> {
         self.lcx().label(ty, &mut |ty| match ty.kind() {
-            TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => self.new_pointer(),
+            TyKind::Ref(_, _, _) => self.new_pointer(base_ptr_info | PointerInfo::REF),
+            TyKind::RawPtr(_) => self.new_pointer(base_ptr_info),
             _ => PointerId::NONE,
         })
     }
@@ -784,8 +723,8 @@ impl<'tcx> AssignPointerIds<'tcx> for GlobalAnalysisCtxt<'tcx> {
         self.lcx
     }
 
-    fn new_pointer(&mut self) -> PointerId {
-        self.new_pointer()
+    fn new_pointer(&mut self, info: PointerInfo) -> PointerId {
+        self.new_pointer(info)
     }
 }
 
@@ -794,8 +733,8 @@ impl<'tcx> AssignPointerIds<'tcx> for AnalysisCtxt<'_, 'tcx> {
         self.lcx()
     }
 
-    fn new_pointer(&mut self) -> PointerId {
-        self.new_pointer()
+    fn new_pointer(&mut self, info: PointerInfo) -> PointerId {
+        self.new_pointer(info)
     }
 }
 
@@ -838,6 +777,43 @@ fn describe_span(tcx: TyCtxt, span: Span) -> String {
     format!("{}: {}{}{}", line, src1, src2, src3)
 }
 
+fn print_labeling_for_var<'tcx>(
+    lcx1: LabeledTyCtxt<'tcx, PermissionSet>,
+    lcx2: LabeledTyCtxt<'tcx, FlagSet>,
+    desc: impl Display,
+    addr_of_ptr: PointerId,
+    lty: LTy<'tcx>,
+    perms: &impl Index<PointerId, Output = PermissionSet>,
+    flags: &impl Index<PointerId, Output = FlagSet>,
+) {
+    let addr_of1 = perms[addr_of_ptr];
+    let ty1 = lcx1.relabel(lty, &mut |lty| {
+        if lty.label == PointerId::NONE {
+            PermissionSet::empty()
+        } else {
+            perms[lty.label]
+        }
+    });
+    eprintln!("{}: addr_of = {:?}, type = {:?}", desc, addr_of1, ty1);
+
+    let addr_of2 = flags[addr_of_ptr];
+    let ty2 = lcx2.relabel(lty, &mut |lty| {
+        if lty.label == PointerId::NONE {
+            FlagSet::empty()
+        } else {
+            flags[lty.label]
+        }
+    });
+    eprintln!(
+        "{}: addr_of flags = {:?}, type flags = {:?}",
+        desc, addr_of2, ty2
+    );
+
+    let addr_of3 = addr_of_ptr;
+    let ty3 = lty;
+    eprintln!("{}: addr_of = {:?}, type = {:?}", desc, addr_of3, ty3);
+}
+
 /// Return `LocalDefId`s for all `static`s.
 fn all_static_items(tcx: TyCtxt) -> Vec<DefId> {
     let mut order = Vec::new();
@@ -858,10 +834,14 @@ fn all_static_items(tcx: TyCtxt) -> Vec<DefId> {
 }
 
 /// Return all `LocalDefId`s for all `fn`s that are `body_owners`, ordered according to a postorder
-/// traversal of the graph of references between bodies.
-fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
+/// traversal of the graph of references between bodies.  Also returns the callgraph itself, in the
+/// form of a map from callee `LocalDefId` to a set of caller `LocalDefId`s.
+fn fn_body_owners_postorder(
+    tcx: TyCtxt,
+) -> (Vec<LocalDefId>, HashMap<LocalDefId, HashSet<LocalDefId>>) {
     let mut seen = HashSet::new();
     let mut order = Vec::new();
+    let mut callers = HashMap::<_, HashSet<_>>::new();
     enum Visit {
         Pre(LocalDefId),
         Post(LocalDefId),
@@ -890,6 +870,7 @@ fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
                         stack.push(Visit::Post(ldid));
                         for_each_callee(tcx, ldid, |callee_ldid| {
                             stack.push(Visit::Pre(callee_ldid));
+                            callers.entry(callee_ldid).or_default().insert(ldid);
                         });
                     }
                 }
@@ -900,7 +881,7 @@ fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
         }
     }
 
-    order
+    (order, callers)
 }
 
 fn for_each_callee(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(LocalDefId)) {
@@ -956,6 +937,13 @@ impl rustc_driver::Callbacks for AnalysisCallbacks {
 
 fn main() -> rustc_interface::interface::Result<()> {
     init_logger();
+
+    let dont_catch = env::var_os("C2RUST_ANALYZE_TEST_DONT_CATCH_PANIC").is_some();
+    if !dont_catch {
+        panic_detail::set_hook();
+    }
+
     let args = env::args().collect::<Vec<_>>();
+
     rustc_driver::RunCompiler::new(&args, &mut AnalysisCallbacks).run()
 }

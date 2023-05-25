@@ -1,8 +1,6 @@
 pub mod common;
 
-use std::path::PathBuf;
-
-use crate::common::{check_for_missing_tests_for, Analyze};
+use crate::common::{check_for_missing_tests_for, test_dir_for, Analyze};
 
 #[test]
 fn check_for_missing_tests() {
@@ -11,7 +9,7 @@ fn check_for_missing_tests() {
 
 fn test(file_name: &str) {
     let analyze = Analyze::resolve();
-    let path = ["tests", "analyze", file_name].iter().collect::<PathBuf>();
+    let path = test_dir_for(file!(), true).join(file_name);
     analyze.run(&path);
 }
 
@@ -31,9 +29,10 @@ macro_rules! define_tests {
 }
 
 define_tests! {
+    macros,
+    ptr_addr_of,
     string_literals,
     string_casts,
-    macros,
 }
 
 #[test]
