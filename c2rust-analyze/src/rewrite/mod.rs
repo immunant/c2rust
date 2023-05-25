@@ -50,9 +50,10 @@ pub enum LifetimeName {
     Elided,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub enum Rewrite<S = Span> {
     /// Take the original expression unchanged.
+    #[default]
     Identity,
     /// Extract the subexpression at the given index.
     Sub(usize, S),

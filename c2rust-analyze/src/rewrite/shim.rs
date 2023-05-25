@@ -1,14 +1,18 @@
 use crate::context::{FlagSet, GlobalAnalysisCtxt, GlobalAssignment};
+use crate::rewrite::expr::{self, CastBuilder};
 use crate::rewrite::Rewrite;
+use crate::type_desc::{self, TypeDesc};
+use crate::LTy;
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::DefId;
 use rustc_hir::intravisit;
 use rustc_hir::{Expr, ExprKind, FnRetTy};
 use rustc_middle::hir::nested_filter;
-use rustc_middle::ty::{DefIdTree, TypeckResults};
+use rustc_middle::ty::{DefIdTree, TyCtxt, TypeckResults};
 use rustc_span::Span;
 use std::collections::HashSet;
 use std::iter;
+use std::mem;
 
 struct ShimCallVisitor<'a, 'tcx> {
     gacx: &'a GlobalAnalysisCtxt<'tcx>,
@@ -145,9 +149,32 @@ pub fn gen_shim_call_rewrites<'tcx>(
     (rewrites, mentioned_fns)
 }
 
+/// Convert an `LTy` to a pair of `TypeDesc`s, one computed normally and one with `FIXED` added.
+/// Returns `None` if the input `LTy` already has `FIXED` set.
+fn lty_to_desc_pair<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    gasn: &GlobalAssignment,
+    lty: LTy<'tcx>,
+) -> Option<(TypeDesc<'tcx>, TypeDesc<'tcx>)> {
+    let ptr = lty.label;
+    if ptr.is_none() || gasn.flags[ptr].contains(FlagSet::FIXED) {
+        return None;
+    }
+
+    let desc = type_desc::perms_to_desc(lty.ty, gasn.perms[ptr], gasn.flags[ptr]);
+    let fixed_desc = type_desc::perms_to_desc_with_pointee(
+        tcx,
+        desc.pointee_ty,
+        lty.ty,
+        gasn.perms[ptr],
+        gasn.flags[ptr] | FlagSet::FIXED,
+    );
+    Some((desc, fixed_desc))
+}
+
 pub fn gen_shim_definition_rewrites<'tcx>(
     gacx: &GlobalAnalysisCtxt<'tcx>,
-    _gasn: &GlobalAssignment,
+    gasn: &GlobalAssignment,
     fn_def_ids: HashSet<DefId>,
 ) -> Vec<(Span, Rewrite)> {
     let tcx = gacx.tcx;
@@ -168,16 +195,48 @@ pub fn gen_shim_definition_rewrites<'tcx>(
             FnRetTy::Return(ty) => Some(Box::new(Rewrite::Extract(ty.span))),
         };
 
-        let body = Box::new(Rewrite::Call(
-            owner_node.ident().unwrap().as_str().to_owned(),
-            (0..arg_tys.len()).map(|i| Rewrite::FnArg(i)).collect(),
-        ));
+        // `def_id` should always refer to a rewritten function, and all rewritten functions have
+        // valid `fn_sigs` entries.
+        let lsig = gacx
+            .fn_sigs
+            .get(&def_id)
+            .unwrap_or_else(|| panic!("missing lsig for {:?}", def_id));
+
+        let mut arg_exprs = Vec::with_capacity(arg_tys.len());
+        for (i, arg_lty) in lsig.inputs.iter().enumerate() {
+            let mut hir_rw = Rewrite::FnArg(i);
+
+            let (arg_desc, fixed_desc) = match lty_to_desc_pair(tcx, gasn, arg_lty) {
+                Some(x) => x,
+                None => {
+                    // `arg_lty` is a FIXED pointer, which doesn't need a cast; the shim argument
+                    // type is the same as the argument type of the wrapped function.
+                    arg_exprs.push(hir_rw);
+                    continue;
+                }
+            };
+
+            let mut cast_builder = CastBuilder::new(tcx, &gasn.perms, &gasn.flags, |rk| {
+                hir_rw = expr::convert_cast_rewrite(&rk, mem::take(&mut hir_rw));
+            });
+            cast_builder.build_cast_desc_desc(fixed_desc, arg_desc);
+            arg_exprs.push(hir_rw);
+        }
+
+        let mut body_rw = Rewrite::Call(owner_node.ident().unwrap().as_str().to_owned(), arg_exprs);
+
+        if let Some((return_desc, fixed_desc)) = lty_to_desc_pair(tcx, gasn, lsig.output) {
+            let mut cast_builder = CastBuilder::new(tcx, &gasn.perms, &gasn.flags, |rk| {
+                body_rw = expr::convert_cast_rewrite(&rk, mem::take(&mut body_rw));
+            });
+            cast_builder.build_cast_desc_desc(return_desc, fixed_desc);
+        }
 
         let rw = Rewrite::DefineFn {
             name: format!("{}_shim", owner_node.ident().unwrap().as_str()),
             arg_tys,
             return_ty,
-            body,
+            body: Box::new(body_rw),
         };
         rewrites.push((insert_span, rw));
     }

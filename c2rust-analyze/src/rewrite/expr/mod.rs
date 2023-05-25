@@ -9,6 +9,10 @@ mod distribute;
 mod mir_op;
 mod unlower;
 
+// Helpers used by the shim builder.
+pub use self::convert::convert_cast_rewrite;
+pub use self::mir_op::CastBuilder;
+
 pub fn gen_expr_rewrites<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,

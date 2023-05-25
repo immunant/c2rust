@@ -25,4 +25,4 @@ unsafe fn h(x: *mut i32) -> *mut i32 {
     x
 }
 // CHECK: fn h_shim(arg0: *mut i32) -> *mut i32
-// CHECK: h(arg0)
+// CHECK: core::ptr::addr_of!(*h(&mut *arg0)).cast_mut()
