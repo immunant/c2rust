@@ -879,8 +879,20 @@ fn run(tcx: TyCtxt) {
 
     let (shim_rewrites, shim_fn_def_ids) = rewrite::gen_shim_call_rewrites(&gacx, &gasn);
     all_rewrites.extend(shim_rewrites);
-    let shim_def_rewrites = rewrite::gen_shim_definition_rewrites(&gacx, &gasn, shim_fn_def_ids);
-    all_rewrites.extend(shim_def_rewrites);
+
+    // Generate shims for functions that need them.
+    for def_id in shim_fn_def_ids {
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+            all_rewrites.push(rewrite::gen_shim_definition_rewrite(&gacx, &gasn, def_id));
+        }));
+        match r {
+            Ok(()) => {}
+            Err(pd) => {
+                gacx.mark_fn_failed(def_id, pd);
+                continue;
+            }
+        }
+    }
 
     // Print analysis results for each function in `all_fn_ldids`, going in declaration order.
     // Concretely, we iterate over `body_owners()`, which is a superset of `all_fn_ldids`, and
