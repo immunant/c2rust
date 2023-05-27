@@ -9,7 +9,7 @@ use std::mem::swap;
 pub struct MultiImport {
     attrs: Option<Builder>,
     leaves: IndexSet<String>,
-    renames: IndexMap<String, String>,
+    renames: IndexMap<String, IndexSet<String>>,
 }
 
 impl MultiImport {
@@ -40,9 +40,17 @@ impl MultiImport {
     where
         S: Into<Cow<'a, str>>,
     {
-        let leaf: Cow<'a, str> = leaf.into();
-        self.renames
-            .insert(leaf.into_owned(), rename.into().into_owned());
+        let leaf: String = leaf.into().into_owned();
+        let rename: String = rename.into().into_owned();
+        if let Some(renames) = self.renames.get_mut(&leaf) {
+            renames.insert(rename);
+        } else {
+            let mut set = IndexSet::new();
+            set.insert(rename);
+            self.renames.insert(leaf.clone(), set);
+        };
+
+        self.insert(leaf);
     }
 
     pub fn insert_with_attr_rename<'a, S>(&mut self, leaf: S, attrs: Builder, rename: S)
@@ -76,16 +84,24 @@ impl PathedMultiImports {
             let attrs = imports.attrs.unwrap_or_else(mk);
 
             if leaves.len() == 1 {
-                path.push(leaves.pop().unwrap());
+                let leaf = leaves.pop().unwrap();
+                path.push(leaf.clone());
 
-                let rename = path.last().and_then(|l| imports.renames.get(l).cloned());
+                let renames = imports
+                    .renames
+                    .get(&leaf)
+                    .map(|r| Some((leaf.clone(), r.clone().into_iter())))
+                    .unwrap_or(None);
 
-                attrs.use_simple_item(path, rename)
+                attrs.use_simple_item_rename(path, renames)
             } else {
                 attrs.use_multiple_item_rename(
                     path,
                     leaves.into_iter(),
-                    imports.renames.into_iter(),
+                    imports
+                        .renames
+                        .iter()
+                        .map(|(leaf, renames)| (leaf.clone(), renames.clone().into_iter())),
                 )
             }
         }

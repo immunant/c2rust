@@ -232,37 +232,28 @@ impl<'c> Translation<'c> {
         let elem_ty = name.split_at(prefix.len() + width.to_string().len()).1;
         // Prefixes: q (8), h (16), s (32), d (64)
         // Signedness: i (signed), u (unsigned), f (float)
-        let rust_elem_ty = match elem_ty {
-            "qi" => "i8",  // ex: v8qi => vector 8 signed 8-bit ints
-            "hi" => "i16", // ex: v4hi => vector 4 signed 16-bit ints
-            "si" => "i32", // ex: v2si => vector 2 signed (standard? What does the "s" stand for?) 32-bit ints
-            "di" => "i64", // ex: v1di => vector 1 signed 64-bit ints
-            "qu" => "u8",  // ex: v8qu => vector 8 unsigned 8-bit ints
-            "hu" => "u16", // ex: v4hu => vector 4 unsigned 16-bit ints
-            "su" => "u32", // ex: v2su => vector 2 unsigned (standard? What does the "s" stand for?) 32-bit ints
-            "du" => "u64", // ex: v1du => vector 1 unsigned 64-bit ints
-            "sf" => "f32", // ex: v4sf => vector 4 signed 32-bit floats
-            "df" => "f64", // ex: v2df => vector 2 signed 64-bit floats
+        let elem_width = match elem_ty {
+            "qi" | "qu" => 8,
+            "hi" | "hu" => 16,
+            "si" | "su" | "sf" => 32,
+            "di" | "du" | "df" => 64,
             _ => return Err(format_err!("Unknown SIMD type: {}", name).into()),
         };
 
+        // Suffix is either 'd' (for 64-bit fp), 'i' (for integral types) or '' (for 32-bit fp)
+        let suffix = match elem_ty {
+            "df" => "d",
+            "sf" => "",
+            _ => "i",
+        };
+
+        let conversion_ty_name = format!("__m{}{}", width * elem_width, suffix,);
+
         self.with_cur_file_item_store(|item_store| {
-            // Generate type like:
-            // #[repr(simd)]
-            // #[derive(Copy, Clone, Debug)]
-            // pub struct __v8hi(pub i16, pub i16, pub i16, pub i16, pub i16, pub i16, pub i16, pub i16);
-            self.use_feature("repr_simd");
-
-            let struct_fields = (0..width)
-                .map(|_| mk().pub_().ident_ty(rust_elem_ty))
-                .map(|ty| mk().struct_field_anon(ty))
-                .collect();
-            let struct_decl =
-                mk().pub_()
-                    .call_attr("repr", vec!["simd"])
-                    .struct_item(name, struct_fields, true);
-
-            item_store.add_item(struct_decl);
+            add_arch_use_rename(item_store, "x86", &conversion_ty_name, name);
+            add_arch_use_rename(item_store, "x86_64", &conversion_ty_name, name);
+            add_arch_use(item_store, "x86", &conversion_ty_name);
+            add_arch_use(item_store, "x86_64", &conversion_ty_name);
         });
 
         Ok(true)

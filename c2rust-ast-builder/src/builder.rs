@@ -1,6 +1,9 @@
 //! Helpers for building AST nodes.  Normally used by calling `mk().some_node(args...)`.
 
-use std::str;
+use std::{
+    iter::{once, repeat},
+    str,
+};
 
 use proc_macro2::{Span, TokenStream, TokenTree};
 use std::default::Default;
@@ -1694,13 +1697,14 @@ impl Builder {
     }
 
     // `use <path>;` item
-    pub fn use_simple_item<Pa, I>(self, path: Pa, rename: Option<I>) -> Box<Item>
+    pub fn use_simple_item_rename<Pa, I, Ip, RIt>(self, path: Pa, rename: Option<Ip>) -> Box<Item>
     where
         Pa: Make<Path>,
         I: Make<Ident>,
+        Ip: Into<(I, RIt)>,
+        RIt: Iterator<Item = I>,
     {
         let path = path.make(&self);
-        let rename = rename.map(|n| n.make(&self));
 
         fn split_path(mut p: Path) -> (Path, Option<Ident>) {
             if let Some(punct) = p.segments.pop() {
@@ -1712,19 +1716,74 @@ impl Builder {
         let leading_colon = path.leading_colon;
         let (prefix, ident) = split_path(path);
         let ident = ident.expect("use_simple_item called with path `::`");
+
+        let inner_trees = if let Some(rename) = rename {
+            let (rename_ident, renames) = rename.into();
+            let rename_ident = rename_ident.make(&self);
+
+            once(UseTree::Name(UseName { ident }))
+                .chain(repeat(rename_ident).zip(renames).map(|(ident, rename)| {
+                    UseTree::Rename(UseRename {
+                        ident,
+                        as_token: Token![as](self.span),
+                        rename: rename.make(&self),
+                    })
+                }))
+                .collect()
+        } else {
+            once(UseTree::Name(UseName { ident })).collect()
+        };
+
+        let tree = use_tree_with_prefix(
+            prefix,
+            UseTree::Group(UseGroup {
+                brace_token: token::Brace(self.span),
+                items: inner_trees,
+            }),
+        );
+
+        Box::new(Item::Use(ItemUse {
+            attrs: self.attrs,
+            vis: self.vis,
+            use_token: Token![use](self.span),
+            leading_colon,
+            semi_token: Token![;](self.span),
+            tree,
+        }))
+    }
+
+    // `use <path>;` item
+    pub fn use_simple_item<Pa, I>(self, path: Pa, rename: Option<I>) -> Box<Item>
+    where
+        Pa: Make<Path>,
+        I: Make<Ident>,
+    {
+        let path = path.make(&self);
+
+        fn split_path(mut p: Path) -> (Path, Option<Ident>) {
+            if let Some(punct) = p.segments.pop() {
+                (p, Some(punct.into_value().ident))
+            } else {
+                (p, None)
+            }
+        }
+        let leading_colon = path.leading_colon;
+        let (prefix, ident) = split_path(path);
+        let ident = ident.expect("use_simple_item called with path `::`");
+
         let tree = if let Some(rename) = rename {
-            println!("use_smple_item: ident: {:?}, rename: {:?}", ident, rename);
             use_tree_with_prefix(
                 prefix,
                 UseTree::Rename(UseRename {
                     ident,
                     as_token: Token![as](self.span),
-                    rename,
+                    rename: rename.make(&self),
                 }),
             )
         } else {
             use_tree_with_prefix(prefix, UseTree::Name(UseName { ident }))
         };
+
         Box::new(Item::Use(ItemUse {
             attrs: self.attrs,
             vis: self.vis,
@@ -1776,7 +1835,7 @@ impl Builder {
     where
         Pa: Make<Path>,
         I: Make<Ident>,
-        Ip: Into<(I, I)>,
+        Ip: Into<(I, It)>,
         It: Iterator<Item = I>,
         RIt: Iterator<Item = Ip>,
     {
@@ -1787,14 +1846,15 @@ impl Builder {
                     ident: i.make(&self),
                 })
             })
-            .chain(rename.map(|ip| {
-                let (ident, rename) = ip.into();
+            .chain(rename.flat_map(|ip| {
+                let (ident, renames) = ip.into();
                 let ident = ident.make(&self);
-                let rename = rename.make(&self);
-                UseTree::Rename(UseRename {
-                    ident,
-                    as_token: Token![as](self.span),
-                    rename,
+                repeat(ident).zip(renames).map(|(ident, rename)| {
+                    UseTree::Rename(UseRename {
+                        ident: ident.make(&self),
+                        as_token: Token![as](self.span),
+                        rename: rename.make(&self),
+                    })
                 })
             }))
             .collect();
