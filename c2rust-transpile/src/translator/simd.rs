@@ -158,10 +158,17 @@ impl<'c> Translation<'c> {
                 true
             }
             "__m128_u" | "__m128i_u" | "__m128d_u" | "__m256_u" | "__m256i_u" | "__m256d_u" => {
-                // FOr these, we need to `use core::arch::x86::x as __m128i_u` and so on
+                // Rust doesn't have unaligned SIMD types, but it's not incorrect to use an unaligned
+                // type instead, it's just slightly less efficient. We'll just use the aligned type
+                // and rename it to the unaligned type.
                 self.with_cur_file_item_store(|item_store| {
-                    add_arch_use_rename(item_store, "x86", name, &name.replace("_u", ""));
-                    add_arch_use_rename(item_store, "x86_64", name, &name.replace("_u", ""));
+                    add_arch_use_rename(item_store, "x86", &name.replace("_u", ""), name);
+                    add_arch_use_rename(item_store, "x86_64", &name.replace("_u", ""), name);
+                });
+
+                self.with_cur_file_item_store(|item_store| {
+                    add_arch_use(item_store, "x86", &name.replace("_u", ""));
+                    add_arch_use(item_store, "x86_64", &name.replace("_u", ""));
                 });
 
                 true

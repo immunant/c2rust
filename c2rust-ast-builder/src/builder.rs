@@ -1713,6 +1713,7 @@ impl Builder {
         let (prefix, ident) = split_path(path);
         let ident = ident.expect("use_simple_item called with path `::`");
         let tree = if let Some(rename) = rename {
+            println!("use_smple_item: ident: {:?}, rename: {:?}", ident, rename);
             use_tree_with_prefix(
                 prefix,
                 UseTree::Rename(UseRename {
@@ -1766,7 +1767,7 @@ impl Builder {
         }))
     }
 
-    pub fn use_multiple_item_rename<Pa, I, It, RIt>(
+    pub fn use_multiple_item_rename<Pa, I, Ip, It, RIt>(
         self,
         path: Pa,
         inner: It,
@@ -1775,25 +1776,27 @@ impl Builder {
     where
         Pa: Make<Path>,
         I: Make<Ident>,
+        Ip: Into<(I, I)>,
         It: Iterator<Item = I>,
-        RIt: Iterator<Item = Option<I>>,
+        RIt: Iterator<Item = Ip>,
     {
         let path = path.make(&self);
         let inner_trees = inner
-            .zip(rename)
-            .map(|(i, r)| {
-                if let Some(rename) = r {
-                    UseTree::Rename(UseRename {
-                        ident: i.make(&self),
-                        as_token: Token![as](self.span),
-                        rename: rename.make(&self),
-                    })
-                } else {
-                    UseTree::Name(UseName {
-                        ident: i.make(&self),
-                    })
-                }
+            .map(|i| {
+                UseTree::Name(UseName {
+                    ident: i.make(&self),
+                })
             })
+            .chain(rename.map(|ip| {
+                let (ident, rename) = ip.into();
+                let ident = ident.make(&self);
+                let rename = rename.make(&self);
+                UseTree::Rename(UseRename {
+                    ident,
+                    as_token: Token![as](self.span),
+                    rename,
+                })
+            }))
             .collect();
         let leading_colon = path.leading_colon;
         let tree = use_tree_with_prefix(

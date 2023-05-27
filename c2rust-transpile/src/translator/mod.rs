@@ -797,6 +797,7 @@ pub fn translate(
                 if tcfg.reorganize_definitions {
                     t.use_feature("register_tool");
                 }
+                println!("Making submodule for {:?}", file_id);
                 let mut submodule = make_submodule(
                     &t.ast_context,
                     mod_item_store,

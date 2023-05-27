@@ -44,8 +44,6 @@ impl<'c> Translation<'c> {
             }
         };
 
-        println!("translating builtin_name: {}", builtin_name);
-
         match builtin_name {
             "__builtin_huge_valf" => Ok(WithStmts::new_val(
                 mk().abs_path_expr(vec!["core", "f32", "INFINITY"]),

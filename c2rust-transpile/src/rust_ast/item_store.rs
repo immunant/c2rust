@@ -41,7 +41,6 @@ impl MultiImport {
         S: Into<Cow<'a, str>>,
     {
         let leaf: Cow<'a, str> = leaf.into();
-        self.leaves.insert(leaf.clone().into_owned());
         self.renames
             .insert(leaf.into_owned(), rename.into().into_owned());
     }
@@ -85,8 +84,8 @@ impl PathedMultiImports {
             } else {
                 attrs.use_multiple_item_rename(
                     path,
-                    leaves.clone().into_iter(),
-                    leaves.iter().map(|l| imports.renames.get(l).cloned()),
+                    leaves.into_iter(),
+                    imports.renames.into_iter(),
                 )
             }
         }
