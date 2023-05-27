@@ -1966,6 +1966,16 @@ impl Builder {
         }
     }
 
+    pub fn struct_field_anon(self, ty: Box<Type>) -> Field {
+        Field {
+            ident: None,
+            vis: self.vis,
+            attrs: self.attrs,
+            ty: *ty,
+            colon_token: None,
+        }
+    }
+
     pub fn enum_field(self, ty: Box<Type>) -> Field {
         Field {
             ident: None,

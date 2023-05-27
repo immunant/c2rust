@@ -208,9 +208,64 @@ impl<'c> Translation<'c> {
             | "__v8su"
             | "__v16hu"
             | "__mm_loadh_pi_v2f32"
-            | "__mm_loadl_pi_v2f32" => true,
+            | "__mm_loadl_pi_v2f32" => self.generate_simd_type(name)?,
             _ => false,
         })
+    }
+
+    /// Given the name of a SIMD typedef that is valid but not a built in core Rust type, attempt
+    /// to generate a Rust type for it.
+    /// https://internals.rust-lang.org/t/getting-explicit-simd-on-stable-rust/4380?page=6
+    pub fn generate_simd_type(&self, name: &str) -> TranslationResult<bool> {
+        let prefix = name
+            .chars()
+            .take_while(|c| !c.is_numeric())
+            .collect::<String>();
+        let width = name
+            .split_at(prefix.len())
+            .1
+            .chars()
+            .take_while(|c| c.is_numeric())
+            .collect::<String>()
+            .parse::<usize>()
+            .unwrap();
+        let elem_ty = name.split_at(prefix.len() + width.to_string().len()).1;
+        // Prefixes: q (8), h (16), s (32), d (64)
+        // Signedness: i (signed), u (unsigned), f (float)
+        let rust_elem_ty = match elem_ty {
+            "qi" => "i8",  // ex: v8qi => vector 8 signed 8-bit ints
+            "hi" => "i16", // ex: v4hi => vector 4 signed 16-bit ints
+            "si" => "i32", // ex: v2si => vector 2 signed (standard? What does the "s" stand for?) 32-bit ints
+            "di" => "i64", // ex: v1di => vector 1 signed 64-bit ints
+            "qu" => "u8",  // ex: v8qu => vector 8 unsigned 8-bit ints
+            "hu" => "u16", // ex: v4hu => vector 4 unsigned 16-bit ints
+            "su" => "u32", // ex: v2su => vector 2 unsigned (standard? What does the "s" stand for?) 32-bit ints
+            "du" => "u64", // ex: v1du => vector 1 unsigned 64-bit ints
+            "sf" => "f32", // ex: v4sf => vector 4 signed 32-bit floats
+            "df" => "f64", // ex: v2df => vector 2 signed 64-bit floats
+            _ => return Err(format_err!("Unknown SIMD type: {}", name).into()),
+        };
+
+        self.with_cur_file_item_store(|item_store| {
+            // Generate type like:
+            // #[repr(simd)]
+            // #[derive(Copy, Clone, Debug)]
+            // pub struct __v8hi(pub i16, pub i16, pub i16, pub i16, pub i16, pub i16, pub i16, pub i16);
+            self.use_feature("repr_simd");
+
+            let struct_fields = (0..width)
+                .map(|_| mk().pub_().ident_ty(rust_elem_ty))
+                .map(|ty| mk().struct_field_anon(ty))
+                .collect();
+            let struct_decl =
+                mk().pub_()
+                    .call_attr("repr", vec!["simd"])
+                    .struct_item(name, struct_fields, true);
+
+            item_store.add_item(struct_decl);
+        });
+
+        Ok(true)
     }
 
     /// Determine if a particular function name is an SIMD primitive. If so an appropriate
