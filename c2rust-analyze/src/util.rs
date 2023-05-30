@@ -5,13 +5,13 @@ use rustc_const_eval::interpret::Scalar;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Constant, Field, Local, Location, Mutability, Operand, Place,
+    BasicBlock, BasicBlockData, Body, Constant, Field, Local, Location, Mutability, Operand, Place,
     PlaceElem, PlaceRef, ProjectionElem, Rvalue, Statement, StatementKind,
 };
 use rustc_middle::ty::{
     self, AdtDef, DefIdTree, EarlyBinder, Subst, SubstsRef, Ty, TyCtxt, TyKind, UintTy,
 };
-use rustc_span::symbol::Symbol;
+use rustc_span::symbol::{sym, Symbol};
 use rustc_type_ir::IntTy;
 use std::fmt::Debug;
 
@@ -480,4 +480,12 @@ pub fn has_test_attr(tcx: TyCtxt, ldid: LocalDefId, attr: TestAttr) -> bool {
         }
     }
     false
+}
+
+/// Check if a [`Body`] is from an `impl` marked `#[automatically_derived]`,
+/// which indicates it came from a `#[derive(...)]`.
+pub fn is_automatically_derived<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>) -> bool {
+    tcx.opt_parent(body.source.def_id())
+        .map(|parent_def_id| tcx.has_attr(parent_def_id, sym::automatically_derived))
+        .unwrap_or(false)
 }

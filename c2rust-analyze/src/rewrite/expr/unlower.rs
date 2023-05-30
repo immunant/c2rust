@@ -2,14 +2,14 @@ use crate::panic_detail;
 use crate::rewrite::build_span_index;
 use crate::rewrite::expr::mir_op::SubLoc;
 use crate::rewrite::span_index::SpanIndex;
+use crate::util;
 use log::*;
 use rustc_hir as hir;
 use rustc_hir::intravisit;
 use rustc_hir::HirId;
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, Location};
-use rustc_middle::ty::{DefIdTree, TyCtxt};
-use rustc_span::symbol::sym;
+use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 use std::collections::btree_map::{BTreeMap, Entry};
 
@@ -321,11 +321,8 @@ pub fn unlower<'tcx>(
     hir_body_id: hir::BodyId,
 ) -> BTreeMap<(Location, Vec<SubLoc>), MirOrigin> {
     // If this MIR body came from a `#[derive]`, ignore it.
-    let def_id = mir.source.def_id();
-    if let Some(parent_def_id) = tcx.opt_parent(def_id) {
-        if tcx.has_attr(parent_def_id, sym::automatically_derived) {
-            return BTreeMap::new();
-        }
+    if util::is_automatically_derived(tcx, mir) {
+        return BTreeMap::new();
     }
 
     // Build `span_index`, which maps `Span`s to MIR `Locations`.
