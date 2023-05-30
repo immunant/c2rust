@@ -339,7 +339,16 @@ pub fn unlower<'tcx>(
     };
     intravisit::Visitor::visit_body(&mut visitor, hir);
 
-    // Print results.
+    debug_print_unlower_map(tcx, mir, &visitor.mir_map);
+
+    visitor.mir_map
+}
+
+fn debug_print_unlower_map<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    mir: &Body<'tcx>,
+    unlower_map: &BTreeMap<(Location, Vec<SubLoc>), MirOrigin>,
+) {
     eprintln!("unlowering for {:?}:", mir.source);
     for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
         eprintln!("  block {bb_id:?}:");
@@ -350,7 +359,7 @@ pub fn unlower<'tcx>(
             };
 
             eprintln!("    {loc:?}: {stmt:?}");
-            for (k, v) in visitor.mir_map.range(&(loc, vec![])..) {
+            for (k, v) in unlower_map.range(&(loc, vec![])..) {
                 if k.0 != loc {
                     break;
                 }
@@ -368,7 +377,7 @@ pub fn unlower<'tcx>(
             };
 
             eprintln!("    {loc:?}: {term:?}");
-            for (k, v) in visitor.mir_map.range(&(loc, vec![])..) {
+            for (k, v) in unlower_map.range(&(loc, vec![])..) {
                 if k.0 != loc {
                     break;
                 }
@@ -378,6 +387,4 @@ pub fn unlower<'tcx>(
             }
         }
     }
-
-    visitor.mir_map
 }
