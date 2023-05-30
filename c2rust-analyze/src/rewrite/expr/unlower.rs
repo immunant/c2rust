@@ -287,12 +287,14 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for UnlowerVisitor<'a, 'tcx> {
 ///   bb0[4]: Terminator { source_info: ..., kind: return }
 /// ```
 ///
-/// The statement `_2 = _1` is associated with the expression `a`; the statement
-/// as a whole is storing the result of evaluating `a` into a MIR local, and the
-/// statement's rvalue `_1` represents the expression `a` itself.  Similarly, `_0 =
-/// Add(move _2, const 1)` stores the result of `a + 1` into a local.  If needed,
-/// we could extend the `unlower` pass to also record that `move _2` (a.k.a. `bb0[2]`
-/// `[Rvalue, RvalueOperand(0)]`) is lowered from the `Expr` `a`.
+/// Each statement is shown here with its MIR `Location`, such as `bb0[0]`; within each statement,
+/// annotations are associated with particular `SubLoc` paths, such as `[]` or `[Rvalue]`.  The
+/// statement `_2 = _1` is associated with the expression `a`; the statement as a whole (`bb0[1]`
+/// `[]`) is storing the result of evaluating `a` into a MIR local, and the statement's rvalue
+/// (`bb0[1]` `[Rvalue]`) `_1` represents the expression `a` itself.  Similarly, `_0 = Add(move _2,
+/// const 1)` stores the result of `a + 1` into a local.  If needed, we could extend the `unlower`
+/// pass to also record that `move _2` (a.k.a. `bb0[2]` `[Rvalue, RvalueOperand(0)]`) is lowered
+/// from the `Expr` `a`.
 ///
 /// On `g`, the unlowering map includes the following (among other entries):
 ///
