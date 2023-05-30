@@ -311,6 +311,10 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for UnlowerVisitor<'a, 'tcx> {
 /// The call terminator `_4 = f(move _5)` computes `f(y)` and stores the result
 /// into a local; its rvalue is `f(y)` itself, and the first argument of the rvalue
 /// is `y`.
+///
+/// This function returns a `BTreeMap`, which supports iterating in sorted order.  This allows
+/// looking up entries by a prefix of their key (for example, finding all entries on a given
+/// `Location` regardless of their `SubLoc`s) using the `BTreeMap::range` method.
 pub fn unlower<'tcx>(
     tcx: TyCtxt<'tcx>,
     mir: &Body<'tcx>,
