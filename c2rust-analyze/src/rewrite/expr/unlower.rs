@@ -33,7 +33,7 @@ struct UnlowerVisitor<'a, 'tcx> {
     mir: &'a Body<'tcx>,
     span_index: SpanIndex<Location>,
     /// Maps MIR (sub)locations to the HIR node that produced each one, if known.
-    mir_map: BTreeMap<(Location, Vec<SubLoc>), MirOrigin>,
+    unlower_map: BTreeMap<(Location, Vec<SubLoc>), MirOrigin>,
 }
 
 impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
@@ -59,7 +59,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             span: ex.span,
             desc,
         };
-        match self.mir_map.entry((loc, sub_loc.to_owned())) {
+        match self.unlower_map.entry((loc, sub_loc.to_owned())) {
             Entry::Vacant(e) => {
                 e.insert(origin);
             }
@@ -335,13 +335,13 @@ pub fn unlower<'tcx>(
         tcx,
         mir,
         span_index,
-        mir_map: BTreeMap::new(),
+        unlower_map: BTreeMap::new(),
     };
     intravisit::Visitor::visit_body(&mut visitor, hir);
 
-    debug_print_unlower_map(tcx, mir, &visitor.mir_map);
+    debug_print_unlower_map(tcx, mir, &visitor.unlower_map);
 
-    visitor.mir_map
+    visitor.unlower_map
 }
 
 fn debug_print_unlower_map<'tcx>(
