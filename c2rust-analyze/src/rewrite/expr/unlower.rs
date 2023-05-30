@@ -188,7 +188,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
 
             hir::ExprKind::Call(_, args) | hir::ExprKind::MethodCall(_, args, _) => {
                 let (loc, _mir_pl, _mir_func, mir_args) = match self.get_last_call(&locs) {
-                    Some((l, pl, f, a)) if self.is_var(pl) => (l, pl, f, a),
+                    Some(x @ (_, pl, _, _)) if self.is_var(pl) => x,
                     _ => {
                         warn(self, "expected final Call to store into var");
                         return;
@@ -210,7 +210,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 // For all other `ExprKind`s, we expect the last `loc` to be an assignment storing
                 // the final result into a temporary.
                 let (loc, _mir_pl, mir_rv) = match self.get_last_assign(&locs) {
-                    Some((l, pl, r)) if self.is_var(pl) => (l, pl, r),
+                    Some(x @ (_, pl, _)) if self.is_var(pl) => x,
                     _ => {
                         warn(self, "expected final Assign to store into var");
                         return;
