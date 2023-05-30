@@ -1,4 +1,3 @@
-//! Convert the MIR rewrites attached to each HIR node into `Span`-based `rewrite::Rewrite`s.
 use crate::panic_detail;
 use crate::rewrite::expr::mir_op;
 use crate::rewrite::Rewrite;
@@ -317,6 +316,7 @@ fn materialize_adjustments<'tcx>(
     }
 }
 
+/// Convert the MIR rewrites attached to each HIR node into `Span`-based `rewrite::Rewrite`s.
 pub fn convert_rewrites<'tcx>(
     tcx: TyCtxt<'tcx>,
     hir_body_id: hir::BodyId,
