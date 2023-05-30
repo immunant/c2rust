@@ -157,11 +157,11 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             return;
         }
 
-        let warn = |slf: &Self, desc| {
+        let warn = |desc| {
             warn!("{}", desc);
             info!("locs:");
             for &loc in &locs {
-                slf.mir.stmt_at(loc).either(
+                self.mir.stmt_at(loc).either(
                     |stmt| info!("  {:?}: {:?}", locs, stmt),
                     |term| info!("  {:?}: {:?}", locs, term),
                 );
@@ -177,7 +177,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 let (loc, _mir_pl, _mir_rv) = match self.get_sole_assign(&locs) {
                     Some(x) => x,
                     None => {
-                        warn(self, "expected exactly one StatementKind::Assign");
+                        warn("expected exactly one StatementKind::Assign");
                         return;
                     }
                 };
@@ -190,7 +190,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 let (loc, _mir_pl, _mir_func, mir_args) = match self.get_last_call(&locs) {
                     Some(x @ (_, pl, _, _)) if self.is_var(pl) => x,
                     _ => {
-                        warn(self, "expected final Call to store into var");
+                        warn("expected final Call to store into var");
                         return;
                     }
                 };
@@ -212,7 +212,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 let (loc, _mir_pl, mir_rv) = match self.get_last_assign(&locs) {
                     Some(x @ (_, pl, _)) if self.is_var(pl) => x,
                     _ => {
-                        warn(self, "expected final Assign to store into var");
+                        warn("expected final Assign to store into var");
                         return;
                     }
                 };
