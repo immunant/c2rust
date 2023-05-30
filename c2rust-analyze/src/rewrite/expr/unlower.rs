@@ -341,20 +341,21 @@ pub fn unlower<'tcx>(
     // Print results.
     eprintln!("unlowering for {:?}:", mir.source);
     for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
-        eprintln!("  block {:?}:", bb_id);
+        eprintln!("  block {bb_id:?}:");
         for (i, stmt) in bb.statements.iter().enumerate() {
             let loc = Location {
                 block: bb_id,
                 statement_index: i,
             };
 
-            eprintln!("    {:?}: {:?}", loc, stmt);
+            eprintln!("    {loc:?}: {stmt:?}");
             for (k, v) in visitor.mir_map.range(&(loc, vec![])..) {
                 if k.0 != loc {
                     break;
                 }
+                let sublocs = &k.1;
                 let ex = tcx.hir().expect_expr(v.hir_id);
-                eprintln!("      {:?}: {:?}, {:?}", k.1, v.desc, ex.span);
+                eprintln!("      {sublocs:?}: {:?}, {:?}", v.desc, ex.span);
             }
         }
 
@@ -365,13 +366,14 @@ pub fn unlower<'tcx>(
                 statement_index: bb.statements.len(),
             };
 
-            eprintln!("    {:?}: {:?}", loc, term);
+            eprintln!("    {loc:?}: {term:?}");
             for (k, v) in visitor.mir_map.range(&(loc, vec![])..) {
                 if k.0 != loc {
                     break;
                 }
+                let sublocs = &k.1;
                 let ex = tcx.hir().expect_expr(v.hir_id);
-                eprintln!("      {:?}: {:?}, {:?}", k.1, v.desc, ex.span);
+                eprintln!("      {sublocs:?}: {:?}, {:?}", v.desc, ex.span);
             }
         }
     }
