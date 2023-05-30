@@ -140,10 +140,6 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         false
     }
 
-    fn is_var(&self, pl: mir::Place<'tcx>) -> bool {
-        pl.projection.len() == 0
-    }
-
     fn visit_expr_inner(&mut self, ex: &'tcx hir::Expr<'tcx>) {
         let _g = panic_detail::set_current_span(ex.span);
 
@@ -188,7 +184,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
 
             hir::ExprKind::Call(_, args) | hir::ExprKind::MethodCall(_, args, _) => {
                 let (loc, _mir_pl, _mir_func, mir_args) = match self.get_last_call(&locs) {
-                    Some(x @ (_, pl, _, _)) if self.is_var(pl) => x,
+                    Some(x @ (_, pl, _, _)) if is_var(pl) => x,
                     _ => {
                         warn("expected final Call to store into var");
                         return;
@@ -210,7 +206,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 // For all other `ExprKind`s, we expect the last `loc` to be an assignment storing
                 // the final result into a temporary.
                 let (loc, _mir_pl, mir_rv) = match self.get_last_assign(&locs) {
-                    Some(x @ (_, pl, _)) if self.is_var(pl) => x,
+                    Some(x @ (_, pl, _)) if is_var(pl) => x,
                     _ => {
                         warn("expected final Assign to store into var");
                         return;
@@ -255,6 +251,10 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for UnlowerVisitor<'a, 'tcx> {
         self.visit_expr_inner(ex);
         intravisit::walk_expr(self, ex);
     }
+}
+
+fn is_var(pl: mir::Place) -> bool {
+    pl.projection.len() == 0
 }
 
 /// Builds the *unlowering map*, which maps each piece of the MIR to the HIR `Expr` that was
