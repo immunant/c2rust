@@ -147,7 +147,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
     fn visit_expr_inner(&mut self, ex: &'tcx hir::Expr<'tcx>) {
         let _g = panic_detail::set_current_span(ex.span);
 
-        let mut locs = Vec::with_capacity(1);
+        let mut locs = Vec::new();
         for &loc in self.span_index.lookup_exact(ex.span) {
             if !self.should_ignore_statement(loc) {
                 locs.push(loc);
