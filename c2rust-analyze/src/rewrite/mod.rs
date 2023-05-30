@@ -9,8 +9,8 @@
 //!    lift any MIR rewrites into HIR rewrites. HIR rewrites are expressed as concrete operations
 //!    on source code, such as replacing an expression with one of its subexpressions (both
 //!    identified by their `Span`s) or wrapping an expression in a ref or deref operation. The
-//!    HIR-level rewrite type is `rewrite::Rewrite`; the `rewrite::expr::hir_op` module implements
-//!    the lifting.
+//!    HIR-level rewrite type is `rewrite::Rewrite`; the `rewrite::expr::distribute` and
+//!    `rewrite::expr::convert` modules implement the lifting.
 //!
 //! 3. Apply the rewrites to the source code of the input program. This reads the source of each
 //!    file and emits a new string consisting of the file source with certain `Span`s rewritten as
