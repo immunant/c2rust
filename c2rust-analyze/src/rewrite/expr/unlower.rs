@@ -3,7 +3,7 @@
 //!
 //! For example:
 //!
-//! ```Rust
+//! ```rust
 //! fn f(a: i32) -> i32 {
 //!     a + 1
 //! }
@@ -117,8 +117,8 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 e.insert(origin);
             }
             Entry::Occupied(e) => {
-                if *e.get() != origin {
-                    let old_origin = e.get().clone();
+                let old_origin = *e.get();
+                if old_origin != origin {
                     error!(
                         "conflicting origins for {:?} {:?} ({:?})\n\
                             origin 1 = {:?}\n\
@@ -150,7 +150,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         &self,
         locs: &[Location],
     ) -> Option<(Location, mir::Place<'tcx>, &'a mir::Rvalue<'tcx>)> {
-        let &loc = locs.last()?;
+        let loc = *locs.last()?;
         let stmt = self.mir.stmt_at(loc).left()?;
         match stmt.kind {
             mir::StatementKind::Assign(ref x) => Some((loc, x.0, &x.1)),
@@ -167,7 +167,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         &'a mir::Operand<'tcx>,
         &'a [mir::Operand<'tcx>],
     )> {
-        let &loc = locs.last()?;
+        let loc = *locs.last()?;
         let term = self.mir.stmt_at(loc).right()?;
         match term.kind {
             mir::TerminatorKind::Call {
@@ -206,7 +206,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 locs.push(loc);
             }
         }
-        if locs.len() == 0 {
+        if locs.is_empty() {
             return;
         }
 
@@ -326,9 +326,9 @@ pub fn unlower<'tcx>(
     // Build `span_index`, which maps `Span`s to MIR `Locations`.
     let span_index = build_span_index(mir);
 
-    // Run the visitor.
     let hir = tcx.hir().body(hir_body_id);
 
+    // Run the visitor.
     let mut v = UnlowerVisitor {
         tcx,
         mir,
