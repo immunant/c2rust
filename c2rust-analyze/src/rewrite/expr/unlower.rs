@@ -1,56 +1,3 @@
-//! Builds the *unlowering map*, which maps each piece of the MIR to the HIR `Expr` that was
-//! lowered to produce it.
-//!
-//! For example:
-//!
-//! ```rust
-//! fn f(a: i32) -> i32 {
-//!     a + 1
-//! }
-//!
-//! fn g(x: i32, y: i32) -> i32 {
-//!     x + f(y)
-//! }
-//! ```
-//!
-//! For `f`, the unlowering map annotates the MIR as follows:
-//!
-//! ```text
-//! block bb0:
-//!   bb0[0]: StorageLive(_2)
-//!   bb0[1]: _2 = _1
-//!     []: StoreIntoLocal, `a`
-//!     [Rvalue]: Expr, `a`
-//!   bb0[2]: _0 = Add(move _2, const 1_i32)
-//!     []: StoreIntoLocal, `a + 1`
-//!     [Rvalue]: Expr, `a + 1`
-//!   bb0[3]: StorageDead(_2)
-//!   bb0[4]: Terminator { source_info: ..., kind: return }
-//! ```
-//!
-//! The statement `_2 = _1` is associated with the expression `a`; the statement
-//! as a whole is storing the result of evaluating `a` into a MIR local, and the
-//! statement's rvalue `_1` represents the expression `a` itself.  Similarly, `_0 =
-//! Add(move _2, const 1)` stores the result of `a + 1` into a local.  If needed,
-//! we could extend the `unlower` pass to also record that `move _2` (a.k.a. `bb0[2]`
-//! `[Rvalue, RvalueOperand(0)]`) is lowered from the `Expr` `a`.
-//!
-//! On `g`, the unlowering map includes the following (among other entries):
-//!
-//! ```text
-//! bb0[5]: Terminator { source_info: ..., kind: _4 = f(move _5) -> [return: bb1, unwind: bb2] }
-//!   []: StoreIntoLocal, `f(y)`
-//!   [Rvalue]: Expr, `f(y)`
-//!   [Rvalue, CallArg(0)]: Expr, `y`
-//! bb1[1]: _0 = Add(move _3, move _4)
-//!   []: StoreIntoLocal, `x + f(y)`
-//!   [Rvalue]: Expr, `x + f(y)`
-//! ```
-//!
-//! The call terminator `_4 = f(move _5)` computes `f(y)` and stores the result
-//! into a local; its rvalue is `f(y)` itself, and the first argument of the rvalue
-//! is `y`.
-
 use crate::panic_detail;
 use crate::rewrite::build_span_index;
 use crate::rewrite::expr::mir_op::SubLoc;
@@ -310,6 +257,58 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for UnlowerVisitor<'a, 'tcx> {
     }
 }
 
+/// Builds the *unlowering map*, which maps each piece of the MIR to the HIR `Expr` that was
+/// lowered to produce it.
+///
+/// For example:
+///
+/// ```rust
+/// fn f(a: i32) -> i32 {
+///     a + 1
+/// }
+///
+/// fn g(x: i32, y: i32) -> i32 {
+///     x + f(y)
+/// }
+/// ```
+///
+/// For `f`, the unlowering map annotates the MIR as follows:
+///
+/// ```text
+/// block bb0:
+///   bb0[0]: StorageLive(_2)
+///   bb0[1]: _2 = _1
+///     []: StoreIntoLocal, `a`
+///     [Rvalue]: Expr, `a`
+///   bb0[2]: _0 = Add(move _2, const 1_i32)
+///     []: StoreIntoLocal, `a + 1`
+///     [Rvalue]: Expr, `a + 1`
+///   bb0[3]: StorageDead(_2)
+///   bb0[4]: Terminator { source_info: ..., kind: return }
+/// ```
+///
+/// The statement `_2 = _1` is associated with the expression `a`; the statement
+/// as a whole is storing the result of evaluating `a` into a MIR local, and the
+/// statement's rvalue `_1` represents the expression `a` itself.  Similarly, `_0 =
+/// Add(move _2, const 1)` stores the result of `a + 1` into a local.  If needed,
+/// we could extend the `unlower` pass to also record that `move _2` (a.k.a. `bb0[2]`
+/// `[Rvalue, RvalueOperand(0)]`) is lowered from the `Expr` `a`.
+///
+/// On `g`, the unlowering map includes the following (among other entries):
+///
+/// ```text
+/// bb0[5]: Terminator { source_info: ..., kind: _4 = f(move _5) -> [return: bb1, unwind: bb2] }
+///   []: StoreIntoLocal, `f(y)`
+///   [Rvalue]: Expr, `f(y)`
+///   [Rvalue, CallArg(0)]: Expr, `y`
+/// bb1[1]: _0 = Add(move _3, move _4)
+///   []: StoreIntoLocal, `x + f(y)`
+///   [Rvalue]: Expr, `x + f(y)`
+/// ```
+///
+/// The call terminator `_4 = f(move _5)` computes `f(y)` and stores the result
+/// into a local; its rvalue is `f(y)` itself, and the first argument of the rvalue
+/// is `y`.
 pub fn unlower<'tcx>(
     tcx: TyCtxt<'tcx>,
     mir: &Body<'tcx>,
