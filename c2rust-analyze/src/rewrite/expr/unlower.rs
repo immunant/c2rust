@@ -330,13 +330,13 @@ pub fn unlower<'tcx>(
     let hir = tcx.hir().body(hir_body_id);
 
     // Run the visitor.
-    let mut v = UnlowerVisitor {
+    let mut visitor = UnlowerVisitor {
         tcx,
         mir,
         span_index,
         mir_map: BTreeMap::new(),
     };
-    intravisit::Visitor::visit_body(&mut v, hir);
+    intravisit::Visitor::visit_body(&mut visitor, hir);
 
     // Print results.
     eprintln!("unlowering for {:?}:", mir.source);
@@ -349,7 +349,7 @@ pub fn unlower<'tcx>(
             };
 
             eprintln!("    {:?}: {:?}", loc, stmt);
-            for (k, v) in v.mir_map.range(&(loc, vec![])..) {
+            for (k, v) in visitor.mir_map.range(&(loc, vec![])..) {
                 if k.0 != loc {
                     break;
                 }
@@ -366,7 +366,7 @@ pub fn unlower<'tcx>(
             };
 
             eprintln!("    {:?}: {:?}", loc, term);
-            for (k, v) in v.mir_map.range(&(loc, vec![])..) {
+            for (k, v) in visitor.mir_map.range(&(loc, vec![])..) {
                 if k.0 != loc {
                     break;
                 }
@@ -376,5 +376,5 @@ pub fn unlower<'tcx>(
         }
     }
 
-    v.mir_map
+    visitor.mir_map
 }
