@@ -53,12 +53,12 @@ pub enum RewriteKind {
     /// Replace &raw with & or &raw mut with &mut
     RawToRef { mutbl: bool },
 
-    /// Cast `&` to `*const` or `&mut` to `*mut`.
+    /// Cast `&T` to `*const T` or `&mut T` to `*mut T`.
     CastRefToRaw { mutbl: bool },
-    /// Cast `*const` to `*mut` or vice versa.  If `to_mutbl` is true, we are casting to `*mut`;
-    /// otherwise, we're casting to `*const`.
+    /// Cast `*const T` to `*mut T` or vice versa.  If `to_mutbl` is true, we are casting to
+    /// `*mut T`; otherwise, we're casting to `*const T`.
     CastRawToRaw { to_mutbl: bool },
-    /// Cast `*const` to `&` or `*mut` to `&mut`.
+    /// Cast `*const T` to `& T` or `*mut T` to `&mut T`.
     UnsafeCastRawToRef { mutbl: bool },
 
     /// Replace `y` in `let x = y` with `Cell::new(y)`, i.e. `let x = Cell::new(y)`
