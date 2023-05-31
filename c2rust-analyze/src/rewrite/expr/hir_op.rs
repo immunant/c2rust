@@ -341,8 +341,8 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                     Rewrite::AddrOf(Box::new(rw_pl), mutbl_from_bool(*mutbl))
                 }
                 mir_op::RewriteKind::CastRawToRaw { to_mutbl } => {
-                    let ty = if *to_mutbl { "*mut _" } else { "*const _" };
-                    Rewrite::Cast(Box::new(hir_rw), ty.to_owned())
+                    let method = if *to_mutbl { "cast_mut" } else { "cast_const" };
+                    Rewrite::MethodCall(method.to_string(), Box::new(hir_rw), vec![])
                 }
                 mir_op::RewriteKind::UnsafeCastRawToRef { mutbl } => {
                     let rw_pl = Rewrite::Deref(Box::new(hir_rw));
