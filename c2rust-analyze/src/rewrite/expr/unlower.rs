@@ -5,7 +5,7 @@ use crate::rewrite::span_index::SpanIndex;
 use crate::util;
 use log::*;
 use rustc_hir as hir;
-use rustc_hir::intravisit;
+use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::HirId;
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, Location};
@@ -250,7 +250,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx> intravisit::Visitor<'tcx> for UnlowerVisitor<'a, 'tcx> {
+impl<'a, 'tcx> Visitor<'tcx> for UnlowerVisitor<'a, 'tcx> {
     type NestedFilter = nested_filter::OnlyBodies;
 
     fn nested_visit_map(&mut self) -> Self::Map {
@@ -347,7 +347,7 @@ pub fn unlower<'tcx>(
         span_index,
         unlower_map: BTreeMap::new(),
     };
-    intravisit::Visitor::visit_body(&mut visitor, hir);
+    visitor.visit_body(hir);
 
     debug_print_unlower_map(tcx, mir, &visitor.unlower_map);
 
