@@ -5,7 +5,7 @@ use assert_matches::assert_matches;
 use log::*;
 use rustc_hir as hir;
 use rustc_hir::def::Namespace;
-use rustc_hir::intravisit;
+use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::{ExprKind, HirId};
 use rustc_middle::hir::nested_filter;
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, PointerCast};
@@ -97,7 +97,7 @@ impl<'tcx> ConvertVisitor<'tcx> {
     }
 }
 
-impl<'tcx> intravisit::Visitor<'tcx> for ConvertVisitor<'tcx> {
+impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
     type NestedFilter = nested_filter::OnlyBodies;
 
     fn nested_visit_map(&mut self) -> Self::Map {
@@ -294,7 +294,7 @@ pub fn convert_rewrites(
         rewrites: Vec::new(),
         materialize_adjustments: false,
     };
-    intravisit::Visitor::visit_body(&mut v, hir);
+    v.visit_body(hir);
 
     if !v.mir_rewrites.is_empty() {
         info!("leftover rewrites:");
