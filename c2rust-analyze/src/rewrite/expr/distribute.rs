@@ -16,9 +16,16 @@ struct RewriteInfo {
 
 /// This enum defines a sort order for [`RewriteInfo`], from innermost (applied earlier) to
 /// outermost (applied later).
+///
+/// The order of variants follows the order of operations we typically see in generated MIR code.
+/// For a given HIR `Expr`, the MIR will usually evaluate the expression ([`Priority::Eval`]),
+/// store the result into a temporary ([`Priority::_StoreResult`]; currently unused), and later
+/// load the result back from the temporary ([`Priority::LoadResult`]) when computing the parent
+/// `Expr`.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum Priority {
     Eval,
+    _StoreResult,
     LoadResult,
 }
 
