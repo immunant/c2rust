@@ -24,9 +24,8 @@ use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use crate::labeled_ty::LabeledTyCtxt;
 use crate::log::init_logger;
 use crate::panic_detail::PanicDetail;
-use crate::util::Callee;
+use crate::util::{Callee, TestAttr};
 use context::AdtMetadataTable;
-use rustc_ast::ast::AttrKind;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
@@ -36,7 +35,6 @@ use rustc_middle::mir::{
     Rvalue, StatementKind,
 };
 use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
-use rustc_span::symbol::Symbol;
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -500,7 +498,7 @@ fn run(tcx: TyCtxt) {
     // For testing, putting #[c2rust_analyze_test::fixed_signature] on a function makes all
     // pointers in its signature FIXED.
     for &ldid in &all_fn_ldids {
-        if !has_test_attr(tcx, ldid, "fixed_signature") {
+        if !util::has_test_attr(tcx, ldid, TestAttr::FixedSignature) {
             continue;
         }
         let lsig = match gacx.fn_sigs.get(&ldid.to_def_id()) {
@@ -512,7 +510,7 @@ fn run(tcx: TyCtxt) {
 
     // For testing, putting #[c2rust_analyze_test::fail_analysis] on a function marks it as failed.
     for &ldid in &all_fn_ldids {
-        if !has_test_attr(tcx, ldid, "fail_analysis") {
+        if !util::has_test_attr(tcx, ldid, TestAttr::FailAnalysis) {
             continue;
         }
         gacx.mark_fn_failed(
@@ -593,7 +591,7 @@ fn run(tcx: TyCtxt) {
             continue;
         }
 
-        if has_test_attr(tcx, ldid, "skip_rewrite") {
+        if util::has_test_attr(tcx, ldid, TestAttr::SkipRewrite) {
             continue;
         }
 
@@ -965,26 +963,6 @@ fn for_each_callee(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(LocalDefId)) {
     }
 
     CalleeVisitor { tcx, mir, f }.visit_body(mir);
-}
-
-fn has_test_attr(tcx: TyCtxt, ldid: LocalDefId, name: &str) -> bool {
-    let tool_sym = Symbol::intern("c2rust_analyze_test");
-    let name_sym = Symbol::intern(name);
-
-    for attr in tcx.get_attrs_unchecked(ldid.to_def_id()) {
-        let path = match attr.kind {
-            AttrKind::Normal(ref item, _) => &item.path,
-            AttrKind::DocComment(..) => continue,
-        };
-        let (a, b) = match &path.segments[..] {
-            &[ref a, ref b] => (a, b),
-            _ => continue,
-        };
-        if a.ident.name == tool_sym && b.ident.name == name_sym {
-            return true;
-        }
-    }
-    false
 }
 
 struct AnalysisCallbacks;
