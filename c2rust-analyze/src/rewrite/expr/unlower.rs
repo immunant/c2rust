@@ -13,6 +13,12 @@ use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 use std::collections::btree_map::{BTreeMap, Entry};
 
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub struct PreciseLoc {
+    pub loc: Location,
+    pub sub: Vec<SubLoc>,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct MirOrigin {
     pub hir_id: HirId,
@@ -33,7 +39,7 @@ struct UnlowerVisitor<'a, 'tcx> {
     mir: &'a Body<'tcx>,
     span_index: SpanIndex<Location>,
     /// Maps MIR (sub)locations to the HIR node that produced each one, if known.
-    unlower_map: BTreeMap<(Location, Vec<SubLoc>), MirOrigin>,
+    unlower_map: BTreeMap<PreciseLoc, MirOrigin>,
 }
 
 impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
@@ -59,7 +65,11 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             span: ex.span,
             desc,
         };
-        match self.unlower_map.entry((loc, sub_loc.to_owned())) {
+        let key = PreciseLoc {
+            loc,
+            sub: sub_loc.to_owned(),
+        };
+        match self.unlower_map.entry(key) {
             Entry::Vacant(e) => {
                 e.insert(origin);
             }
@@ -319,7 +329,7 @@ pub fn unlower<'tcx>(
     tcx: TyCtxt<'tcx>,
     mir: &Body<'tcx>,
     hir_body_id: hir::BodyId,
-) -> BTreeMap<(Location, Vec<SubLoc>), MirOrigin> {
+) -> BTreeMap<PreciseLoc, MirOrigin> {
     // If this MIR body came from a `#[derive]`, ignore it.
     if util::is_automatically_derived(tcx, mir) {
         return BTreeMap::new();
@@ -347,7 +357,7 @@ pub fn unlower<'tcx>(
 fn debug_print_unlower_map<'tcx>(
     tcx: TyCtxt<'tcx>,
     mir: &Body<'tcx>,
-    unlower_map: &BTreeMap<(Location, Vec<SubLoc>), MirOrigin>,
+    unlower_map: &BTreeMap<PreciseLoc, MirOrigin>,
 ) {
     eprintln!("unlowering for {:?}:", mir.source);
     for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
@@ -359,11 +369,11 @@ fn debug_print_unlower_map<'tcx>(
             };
 
             eprintln!("    {loc:?}: {stmt:?}");
-            for (k, v) in unlower_map.range(&(loc, vec![])..) {
-                if k.0 != loc {
+            for (k, v) in unlower_map.range(&PreciseLoc { loc, sub: vec![] }..) {
+                if k.loc != loc {
                     break;
                 }
-                let sublocs = &k.1;
+                let sublocs = &k.sub;
                 let ex = tcx.hir().expect_expr(v.hir_id);
                 eprintln!("      {sublocs:?}: {:?}, {:?}", v.desc, ex.span);
             }
@@ -377,11 +387,11 @@ fn debug_print_unlower_map<'tcx>(
             };
 
             eprintln!("    {loc:?}: {term:?}");
-            for (k, v) in unlower_map.range(&(loc, vec![])..) {
-                if k.0 != loc {
+            for (k, v) in unlower_map.range(&PreciseLoc { loc, sub: vec![] }..) {
+                if k.loc != loc {
                     break;
                 }
-                let sublocs = &k.1;
+                let sublocs = &k.sub;
                 let ex = tcx.hir().expect_expr(v.hir_id);
                 eprintln!("      {sublocs:?}: {:?}, {:?}", v.desc, ex.span);
             }

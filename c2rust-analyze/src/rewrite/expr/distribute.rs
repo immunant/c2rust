@@ -1,5 +1,5 @@
 use crate::rewrite::expr::mir_op::{self, MirRewrite, SubLoc};
-use crate::rewrite::expr::unlower::{MirOrigin, MirOriginDesc};
+use crate::rewrite::expr::unlower::{MirOrigin, MirOriginDesc, PreciseLoc};
 use log::*;
 use rustc_hir::HirId;
 use rustc_middle::mir::Location;
@@ -8,8 +8,7 @@ use std::collections::{BTreeMap, HashMap};
 
 struct RewriteInfo {
     rw: mir_op::RewriteKind,
-    loc: Location,
-    sub_loc: Vec<SubLoc>,
+    loc: PreciseLoc,
     desc: MirOriginDesc,
 }
 
@@ -33,23 +32,26 @@ struct RewriteInfo {
 /// rewrite.
 pub fn distribute(
     tcx: TyCtxt,
-    unlower_map: BTreeMap<(Location, Vec<SubLoc>), MirOrigin>,
+    unlower_map: BTreeMap<PreciseLoc, MirOrigin>,
     mir_rewrites: HashMap<Location, Vec<MirRewrite>>,
 ) -> HashMap<HirId, Vec<mir_op::RewriteKind>> {
     let mut info_map = HashMap::<HirId, Vec<RewriteInfo>>::new();
 
     for (loc, mir_rws) in mir_rewrites {
         for mir_rw in mir_rws {
-            let mut key = (loc, mir_rw.sub_loc);
+            let mut key = PreciseLoc {
+                loc,
+                sub: mir_rw.sub_loc,
+            };
 
             let mut origin = unlower_map.get(&key);
-            if origin.is_none() && matches!(key.1.last(), Some(&SubLoc::RvalueOperand(0))) {
+            if origin.is_none() && matches!(key.sub.last(), Some(&SubLoc::RvalueOperand(0))) {
                 // Hack: try without the `RvalueOperand(0)` at the end.
                 // TODO: remove SubLoc::RvalueOperand from mir_op
-                key.1.pop();
+                key.sub.pop();
                 origin = unlower_map.get(&key);
                 if origin.is_none() {
-                    key.1.push(SubLoc::RvalueOperand(0));
+                    key.sub.push(SubLoc::RvalueOperand(0));
                 }
             }
             let mut origin = match origin {
@@ -60,16 +62,16 @@ pub fn distribute(
                 }
             };
 
-            if origin.desc == MirOriginDesc::StoreIntoLocal && key.1.is_empty() {
+            if origin.desc == MirOriginDesc::StoreIntoLocal && key.sub.is_empty() {
                 // Hack: try with an extra `Rvalue` in the key.
                 // TODO: add SubLoc::Rvalue in mir_op ptr::offset handling
-                key.1.push(SubLoc::Rvalue);
+                key.sub.push(SubLoc::Rvalue);
                 match unlower_map.get(&key) {
                     Some(o) if o.desc == MirOriginDesc::Expr => {
                         origin = o;
                     }
                     _ => {
-                        key.1.pop();
+                        key.sub.pop();
                     }
                 }
             }
@@ -88,8 +90,7 @@ pub fn distribute(
                 .or_default()
                 .push(RewriteInfo {
                     rw: mir_rw.kind,
-                    loc,
-                    sub_loc: key.1,
+                    loc: key,
                     desc: origin.desc,
                 });
         }
@@ -101,13 +102,17 @@ pub fn distribute(
     // need to add rules to resolve it in a particular way, such as prioritizing one `SubLoc` or
     // `MirOriginDesc` over another.
     for (&hir_id, infos) in &info_map {
-        let all_same_loc = infos.iter().skip(1).all(|i| {
-            i.loc == infos[0].loc && i.sub_loc == infos[0].sub_loc && i.desc == infos[0].desc
-        });
+        let all_same_loc = infos
+            .iter()
+            .skip(1)
+            .all(|i| i.loc == infos[0].loc && i.desc == infos[0].desc);
         if !all_same_loc {
             info!("rewrite info:");
             for i in infos {
-                info!("  {:?}, {:?}, {:?}: {:?}", i.loc, i.sub_loc, i.desc, i.rw);
+                info!(
+                    "  {:?}, {:?}, {:?}: {:?}",
+                    i.loc.loc, i.loc.sub, i.desc, i.rw
+                );
             }
             let ex = tcx.hir().expect_expr(hir_id);
             error!(

@@ -21,7 +21,7 @@ use rustc_middle::mir::{
 use rustc_middle::ty::{Ty, TyKind};
 use std::collections::HashMap;
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum SubLoc {
     /// The LHS of an assignment or call.  `StatementKind::Assign/TerminatorKind::Call -> Place`
     Dest,
