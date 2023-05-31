@@ -197,9 +197,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         let desc = type_desc::local_perms_to_desc(local_ty, perms, flags);
                         if desc.own == Ownership::Cell {
                             // this is an assignment like `let x = 2` but `x` has CELL permissions
-                            self.enter_rvalue(|v| {
-                                v.enter_rvalue_operand(0, |v| v.emit(RewriteKind::CellNew))
-                            })
+                            self.enter_rvalue(|v| v.emit(RewriteKind::CellNew))
                         }
 
                         if let Some(rv_place) = rv_op.place() {
@@ -212,9 +210,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 if !flags.contains(FlagSet::FIXED) && flags.contains(FlagSet::CELL)
                                 {
                                     // this is an assignment like `let x = *y` but `y` has CELL permissions
-                                    self.enter_rvalue(|v| {
-                                        v.enter_rvalue_operand(0, |v| v.emit(RewriteKind::CellGet))
-                                    })
+                                    self.enter_rvalue(|v| v.emit(RewriteKind::CellGet))
                                 }
                             }
                         }
@@ -428,16 +424,17 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             pointee_ty: result_desc.pointee_ty,
         };
 
-        self.enter_call_arg(0, |v| v.visit_operand_desc(op, arg_expect_desc));
+        self.enter_rvalue(|v| {
+            v.enter_call_arg(0, |v| v.visit_operand_desc(op, arg_expect_desc));
 
-        // Emit `OffsetSlice` for the offset itself.
-        let mutbl = matches!(result_desc.own, Ownership::Mut);
+            // Emit `OffsetSlice` for the offset itself.
+            let mutbl = matches!(result_desc.own, Ownership::Mut);
+            v.emit(RewriteKind::OffsetSlice { mutbl });
 
-        self.emit(RewriteKind::OffsetSlice { mutbl });
-
-        // The `OffsetSlice` operation returns something of the same type as its input.  Afterward,
-        // we must cast the result to the `result_ty`/`result_desc`.
-        self.emit_cast_desc_desc(arg_expect_desc, result_desc);
+            // The `OffsetSlice` operation returns something of the same type as its input.
+            // Afterward, we must cast the result to the `result_ty`/`result_desc`.
+            v.emit_cast_desc_desc(arg_expect_desc, result_desc);
+        });
     }
 
     fn visit_slice_as_ptr(&mut self, elem_ty: Ty<'tcx>, op: &Operand<'tcx>, result_lty: LTy<'tcx>) {
@@ -461,10 +458,12 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             self.flags[result_ptr],
         );
 
-        // Generate a cast of our own, replacing the `as_ptr` call.
-        // TODO: leave the `as_ptr` in place if we can't produce a working cast
-        self.emit(RewriteKind::RemoveAsPtr);
-        self.emit_cast_desc_desc(op_desc, result_desc);
+        self.enter_rvalue(|v| {
+            // Generate a cast of our own, replacing the `as_ptr` call.
+            // TODO: leave the `as_ptr` in place if we can't produce a working cast
+            v.emit(RewriteKind::RemoveAsPtr);
+            v.emit_cast_desc_desc(op_desc, result_desc);
+        });
     }
 
     fn emit(&mut self, rw: RewriteKind) {

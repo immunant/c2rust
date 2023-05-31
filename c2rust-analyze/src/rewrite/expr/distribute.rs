@@ -1,4 +1,4 @@
-use crate::rewrite::expr::mir_op::{self, MirRewrite, SubLoc};
+use crate::rewrite::expr::mir_op::{self, MirRewrite};
 use crate::rewrite::expr::unlower::{MirOrigin, MirOriginDesc, PreciseLoc};
 use log::*;
 use rustc_hir::HirId;
@@ -39,42 +39,18 @@ pub fn distribute(
 
     for (loc, mir_rws) in mir_rewrites {
         for mir_rw in mir_rws {
-            let mut key = PreciseLoc {
+            let key = PreciseLoc {
                 loc,
                 sub: mir_rw.sub_loc,
             };
 
-            let mut origin = unlower_map.get(&key);
-            if origin.is_none() && matches!(key.sub.last(), Some(&SubLoc::RvalueOperand(0))) {
-                // Hack: try without the `RvalueOperand(0)` at the end.
-                // TODO: remove SubLoc::RvalueOperand from mir_op
-                key.sub.pop();
-                origin = unlower_map.get(&key);
-                if origin.is_none() {
-                    key.sub.push(SubLoc::RvalueOperand(0));
-                }
-            }
-            let mut origin = match origin {
+            let origin = match unlower_map.get(&key) {
                 Some(x) => x,
                 None => {
                     error!("unlower_map has no origin for {:?}", key);
                     continue;
                 }
             };
-
-            if origin.desc == MirOriginDesc::StoreIntoLocal && key.sub.is_empty() {
-                // Hack: try with an extra `Rvalue` in the key.
-                // TODO: add SubLoc::Rvalue in mir_op ptr::offset handling
-                key.sub.push(SubLoc::Rvalue);
-                match unlower_map.get(&key) {
-                    Some(o) if o.desc == MirOriginDesc::Expr => {
-                        origin = o;
-                    }
-                    _ => {
-                        key.sub.pop();
-                    }
-                }
-            }
 
             if origin.desc != MirOriginDesc::Expr {
                 error!(
