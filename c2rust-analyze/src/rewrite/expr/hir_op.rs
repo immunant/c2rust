@@ -337,6 +337,8 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                 }
 
                 mir_op::RewriteKind::CastRefToRaw { mutbl } => {
+                    // `addr_of!(*p)` is cleaner than `p as *const _`; we don't know the pointee
+                    // type here, so we can't emit `p as *const T`.
                     let rw_pl = Rewrite::Deref(Box::new(hir_rw));
                     Rewrite::AddrOf(Box::new(rw_pl), mutbl_from_bool(*mutbl))
                 }
