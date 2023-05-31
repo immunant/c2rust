@@ -317,8 +317,8 @@ fn materialize_adjustments<'tcx>(
 }
 
 /// Convert the MIR rewrites attached to each HIR node into `Span`-based `rewrite::Rewrite`s.
-pub fn convert_rewrites<'tcx>(
-    tcx: TyCtxt<'tcx>,
+pub fn convert_rewrites(
+    tcx: TyCtxt,
     hir_body_id: hir::BodyId,
     mir_rewrites: HashMap<HirId, Vec<mir_op::RewriteKind>>,
 ) -> Vec<(Span, Rewrite)> {
@@ -335,7 +335,7 @@ pub fn convert_rewrites<'tcx>(
     };
     intravisit::Visitor::visit_body(&mut v, hir);
 
-    if v.mir_rewrites.len() > 0 {
+    if !v.mir_rewrites.is_empty() {
         info!("leftover rewrites:");
         let count = v.mir_rewrites.len();
         for (hir_id, rws) in v.mir_rewrites {

@@ -36,7 +36,7 @@ impl<T> SpanIndex<T> {
         ExactIter {
             inner: self.v[start..].iter(),
             lo: data.lo,
-            span: span,
+            span,
         }
     }
 }
