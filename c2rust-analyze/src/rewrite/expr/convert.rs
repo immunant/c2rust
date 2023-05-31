@@ -205,45 +205,6 @@ impl<'tcx> intravisit::Visitor<'tcx> for ConvertVisitor<'tcx> {
             hir_rw = rewrite_from_mir_rws(&mir_rw, hir_rw);
         }
 
-        /*
-        let is_addr_of_expansion = || {
-            let rvalues: Vec<_> = locs
-                .into_iter()
-                .map(|loc| {
-                    self.mir
-                        .stmt_at(loc)
-                        .left()
-                        .and_then(|s| s.kind.as_assign().cloned().map(|(_, rv)| rv))
-                })
-                .collect();
-            use mir::Rvalue;
-            callsite_span != ex.span
-                && matches!(
-                    rvalues[..],
-                    [Some(Rvalue::Ref(..)), Some(Rvalue::AddressOf(..))]
-                )
-        };
-
-        use mir_op::RewriteKind::*;
-        if !all_rws_unflattened.is_empty() {
-            hir_rw = match &all_rws_unflattened[..] {
-                [[], [rw @ RawToRef { .. }]]
-                    if is_addr_of_expansion() || callsite_span == ex.span =>
-                {
-                    rewrite_from_mir_rws(rw, hir_rw)
-                }
-                [rws] => rws
-                    .iter()
-                    .fold(hir_rw, |acc, rw| rewrite_from_mir_rws(rw, acc)),
-                rwss if rwss.iter().all(|rws| rws.is_empty()) => hir_rw,
-                _ => panic!(
-                    "unsupported MIR rewrites {:?} for HIR expr: {:?}",
-                    all_rws_unflattened, ex
-                ),
-            };
-        }
-        */
-
         // Emit rewrites on subexpressions first.
         let applied_mir_rewrite = !matches!(hir_rw, Rewrite::Identity);
         self.with_materialize_adjustments(applied_mir_rewrite, |this| {
