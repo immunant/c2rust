@@ -31,8 +31,8 @@ struct RewriteInfo {
 /// A MIR rewrite on `bb0[5]` `[]` (i.e. on the call terminator itself) would
 /// result in an error, since there is no good place in the HIR to attach such a
 /// rewrite.
-pub fn distribute<'tcx>(
-    tcx: TyCtxt<'tcx>,
+pub fn distribute(
+    tcx: TyCtxt,
     unlower_map: BTreeMap<(Location, Vec<SubLoc>), MirOrigin>,
     mir_rewrites: HashMap<Location, Vec<MirRewrite>>,
 ) -> HashMap<HirId, Vec<mir_op::RewriteKind>> {
@@ -60,7 +60,7 @@ pub fn distribute<'tcx>(
                 }
             };
 
-            if origin.desc == MirOriginDesc::StoreIntoLocal && key.1.len() == 0 {
+            if origin.desc == MirOriginDesc::StoreIntoLocal && key.1.is_empty() {
                 // Hack: try with an extra `Rvalue` in the key.
                 // TODO: add SubLoc::Rvalue in mir_op ptr::offset handling
                 key.1.push(SubLoc::Rvalue);
