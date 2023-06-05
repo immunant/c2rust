@@ -591,10 +591,6 @@ fn run(tcx: TyCtxt) {
             continue;
         }
 
-        if util::has_test_attr(tcx, ldid, TestAttr::SkipRewrite) {
-            continue;
-        }
-
         let ldid_const = WithOptConstParam::unknown(ldid);
         let name = tcx.item_name(ldid.to_def_id());
         let mir = tcx.mir_built(ldid_const);
@@ -626,6 +622,10 @@ fn run(tcx: TyCtxt) {
         rewrite::dump_rewritten_local_tys(&acx, &asn, &mir, describe_local);
 
         eprintln!();
+
+        if util::has_test_attr(tcx, ldid, TestAttr::SkipRewrite) {
+            continue;
+        }
 
         let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
             let hir_body_id = tcx.hir().body_owned_by(ldid);
