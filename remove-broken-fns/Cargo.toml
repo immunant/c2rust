@@ -1,0 +1,17 @@
+[package]
+name = "c2rust-remove-broken-fns"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "Program that compiles a rust crate and comments out any functions that produce compilation errors"
+homepage.workspace = true
+repository.workspace = true
+license = "MIT OR Apache-2.0"
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+anyhow = "1.0"
+syn = { version = "1.0", default-features = false, features = ["parsing", "printing", "extra-traits", "full"] }
+proc-macro2 = { version = "1.0", features = ["span-locations"] }
+json = "0.12.4"
