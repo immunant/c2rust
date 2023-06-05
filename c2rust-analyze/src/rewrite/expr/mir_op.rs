@@ -312,7 +312,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             Rvalue::AddressOf(mutbl, pl) => {
                 self.enter_rvalue_place(0, |v| v.visit_place(pl));
                 if let Some(expect_ty) = expect_ty {
-                    let desc = type_desc::perms_to_desc(
+                    let desc = type_desc::perms_to_desc_with_pointee(
+                        self.acx.tcx(),
+                        self.acx.type_of(pl).ty,
                         expect_ty.ty,
                         self.perms[expect_ty.label],
                         self.flags[expect_ty.label],
