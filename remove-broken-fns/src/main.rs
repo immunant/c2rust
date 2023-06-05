@@ -1,6 +1,7 @@
 use anyhow::Result;
 use core::ops::Range;
 use json;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use syn::spanned::Spanned;
@@ -83,29 +84,46 @@ fn error_locations(rustc_stderr_json: &str) -> Result<Vec<(String, usize)>> {
     Ok(error_locs)
 }
 
+#[derive(Debug)]
+struct FnsToRemove {
+    filename: String,
+    fn_items: Vec<(String, Range<usize>)>,
+}
+
 /// Join across error locations and fn item bounds
-fn fns_to_remove(
-    error_locs: &[(String, usize)],
-) -> Result<std::collections::HashSet<(String, Range<usize>)>> {
-    let mut fns_to_remove = std::collections::HashSet::<_>::new();
-    let mut fn_bounds_for_file = std::collections::HashMap::<String, _>::new();
+fn fns_to_remove(error_locs: &[(String, usize)]) -> Result<Vec<FnsToRemove>> {
+    let mut fns_to_remove = HashMap::new();
+    let mut fn_bounds_for_file = HashMap::new();
 
     for (filename, byte_start) in error_locs {
         let bounds = fn_bounds_for_file
             .entry(filename.clone())
-            .or_insert(move || {
+            .or_insert_with(move || {
                 let contents = std::fs::read_to_string(&filename).unwrap();
                 let syntax_tree = syn::parse_file(&contents).unwrap();
                 parse_fn_bounds(&syntax_tree, &contents)
-            })();
+            });
         for func in bounds {
             let (ref _fn_name, ref fn_bounds) = func;
             if fn_bounds.contains(&byte_start) {
-                fns_to_remove.insert(func);
+                fns_to_remove
+                    .entry(filename)
+                    .and_modify(|fns: &mut Vec<_>| fns.push(func.clone()))
+                    .or_insert_with(move || vec![func.clone()]);
             }
         }
     }
-    Ok(fns_to_remove)
+
+    Ok(fns_to_remove
+        .into_iter()
+        .map(|(k, mut v)| FnsToRemove {
+            filename: k.clone(),
+            fn_items: {
+                v.sort_by_key(|(_name, range)| range.start);
+                v
+            },
+        })
+        .collect())
 }
 
 fn main() -> Result<()> {
@@ -129,7 +147,22 @@ fn main() -> Result<()> {
     let error_locs = error_locations(&stderr)?;
     let fns_to_remove = fns_to_remove(&error_locs)?;
 
-    println!("fn to remove: {:?}", fns_to_remove);
+    println!("fns to remove:");
+    for file_fns in fns_to_remove {
+        println!("    {}:", file_fns.filename);
+        for fn_item in &file_fns.fn_items {
+            println!("        {} (bytes {:?})", fn_item.0, fn_item.1);
+        }
+
+        println!("    new {}:", file_fns.filename);
+        let contents = std::fs::read_to_string(&file_fns.filename)?;
+        let mut offset = 0;
+        for fn_item in &file_fns.fn_items {
+            print!("{}", &contents[offset..fn_item.1.start]);
+            offset = fn_item.1.end;
+        }
+        print!("{}", &contents[offset..]);
+    }
 
     Ok(())
 }
