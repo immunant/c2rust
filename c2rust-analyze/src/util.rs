@@ -359,7 +359,7 @@ impl<'a, T: ?Sized> PhantomLifetime<'a> for T {}
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum TestAttr {
     /// `#[c2rust_analyze_test::fixed_signature]`: Mark all pointers in the function signature as
-    /// `FIXED`.
+    /// [`FIXED`](crate::context::FlagSet::FIXED).
     FixedSignature,
     /// `#[c2rust_analyze_test::fail_analysis]`: Force an analysis failure for the function.
     FailAnalysis,
