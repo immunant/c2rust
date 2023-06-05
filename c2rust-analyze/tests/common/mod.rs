@@ -123,8 +123,7 @@ impl Analyze {
         cmd.arg(&rs_path)
             .arg("-L")
             .arg(lib_dir)
-            .arg("--crate-type")
-            .arg("rlib")
+            .args(["--crate-type", "rlib", "--edition", "2021"])
             .stdout(output_stdout)
             .stderr(output_stderr);
         cmd.envs(args.env.iter().map(|EnvVar { var, value }| (var, value)));
