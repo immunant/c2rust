@@ -54,6 +54,7 @@ define_tests! {
     offset2,
     ptrptr1,
     statics,
+    test_attrs,
     trivial,
     type_annotation_rewrite,
 }
