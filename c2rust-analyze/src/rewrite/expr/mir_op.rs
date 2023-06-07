@@ -477,19 +477,17 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     }
 
     fn emit_cast_desc_desc(&mut self, from: TypeDesc<'tcx>, to: TypeDesc<'tcx>) {
+        let orig_from = from;
+        let mut from = orig_from;
+
+        // The `from` and `to` pointee types should only differ in their lifetimes.
         assert_eq!(
             self.acx.tcx().erase_regions(from.pointee_ty),
             self.acx.tcx().erase_regions(to.pointee_ty),
         );
-
-        let orig_from = from;
-        let mut from = orig_from;
-
-        // Ignore differences in lifetimes.  Note we asserted above that the types are equal after
-        // erasing lifetimes, so the only difference possible here is in the lifetimes.
-        if from.pointee_ty != to.pointee_ty {
-            from.pointee_ty = to.pointee_ty;
-        }
+        // There might still be differences in lifetimes, which we don't care about here.
+        // Overwriting `from.pointee_ty` allows the final `from == to` check to succeed below.
+        from.pointee_ty = to.pointee_ty;
 
         if from == to {
             return;
