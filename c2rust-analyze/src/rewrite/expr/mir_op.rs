@@ -528,25 +528,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     from.qty = Quantity::Slice;
                 }
                 // Bidirectional conversions between `Slice` and `OffsetPtr`.
-                (Quantity::Slice, Quantity::OffsetPtr) => {
-                    let _rw = match opt_mutbl {
-                        // Currently a no-op, since `Slice` and `OffsetPtr` are identical.
-                        Some(_mutbl) => (),
-                        None => break,
-                    };
-                    // self.emit(rw);
-                    from.qty = Quantity::OffsetPtr;
-                }
-                (Quantity::OffsetPtr, Quantity::Slice) => {
-                    let _rw = match opt_mutbl {
-                        // Currently a no-op, since `Slice` and `OffsetPtr` are identical.
-                        Some(_mutbl) => (),
-                        None => break,
-                    };
-                    // self.emit(rw);
-                    from.qty = Quantity::Slice;
+                (Quantity::Slice, Quantity::OffsetPtr) | (Quantity::OffsetPtr, Quantity::Slice) => {
+                    // Currently a no-op, since `Slice` and `OffsetPtr` are identical.
+                    from.qty = to.qty;
                 }
                 // `Slice` and `OffsetPtr` convert to `Single` the same way.
+                // TODO: when converting to `Ownership::Raw`/`RawMut`, use `slice.as_ptr()` to
+                // avoid panic on 0-length inputs
                 (_, Quantity::Single) => {
                     let rw = match opt_mutbl {
                         Some(mutbl) => RewriteKind::SliceFirst { mutbl },
