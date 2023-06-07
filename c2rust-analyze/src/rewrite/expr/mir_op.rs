@@ -269,11 +269,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 match ty_callee(tcx, func_ty) {
                     Callee::PtrOffset { .. } => {
                         self.visit_ptr_offset(&args[0], pl_ty);
-                        return;
                     }
                     Callee::SliceAsPtr { elem_ty, .. } => {
                         self.visit_slice_as_ptr(elem_ty, &args[0], pl_ty);
-                        return;
                     }
                     _ => {}
                 }
@@ -499,14 +497,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
         // Early `Ownership` casts.  We do certain casts here in hopes of reaching an `Ownership`
         // on which we can safely adjust `Quantity`.
-        while from.own != to.own {
-            match self.cast_ownership_one_step(from, to, true) {
-                Some(new_own) => {
-                    from.own = new_own;
-                }
-                None => break,
-            }
-        }
+        from.own = self.cast_ownership(from, to, true);
 
         // Safe casts that change `Quantity`.
         while from.qty != to.qty {
@@ -524,7 +515,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 (Quantity::Array, _) => {
                     // `Array` goes only to `Slice` directly.  All other `Array` conversions go
                     // through `Slice` first.
-                    error!("NYI: cast Array to {:?}", to.qty);
+                    error!("TODO: cast Array to {:?}", to.qty);
                     from.qty = Quantity::Slice;
                 }
                 // Bidirectional conversions between `Slice` and `OffsetPtr`.
@@ -556,14 +547,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         }
 
         // Late `Ownership` casts.
-        while from.own != to.own {
-            match self.cast_ownership_one_step(from, to, false) {
-                Some(new_own) => {
-                    from.own = new_own;
-                }
-                None => break,
-            }
-        }
+        from.own = self.cast_ownership(from, to, false);
 
         if from != to {
             eprintln!(
@@ -571,6 +555,19 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 from, to, orig_from
             );
         }
+    }
+
+    fn cast_ownership(&mut self, from: TypeDesc, to: TypeDesc, early: bool) -> Ownership {
+        let mut from = from;
+        while from.own != to.own {
+            match self.cast_ownership_one_step(from, to, early) {
+                Some(new_own) => {
+                    from.own = new_own;
+                }
+                None => break,
+            }
+        }
+        from.own
     }
 
     fn cast_ownership_one_step(
@@ -582,18 +579,18 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         match from.own {
             Ownership::Box => match to.own {
                 Ownership::Raw | Ownership::Imm => {
-                    error!("NYI: cast Box to Imm");
+                    error!("TODO: cast Box to Imm");
                     Some(Ownership::Imm)
                 }
                 Ownership::RawMut | Ownership::Mut => {
-                    error!("NYI: cast Box to Mut");
+                    error!("TODO: cast Box to Mut");
                     Some(Ownership::Mut)
                 }
                 _ => None,
             },
             Ownership::Rc => match to.own {
                 Ownership::Imm | Ownership::Raw | Ownership::RawMut => {
-                    error!("NYI: cast Rc to Imm");
+                    error!("TODO: cast Rc to Imm");
                     Some(Ownership::Imm)
                 }
                 _ => None,
