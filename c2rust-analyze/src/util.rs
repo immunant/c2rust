@@ -374,7 +374,7 @@ impl<'a, T: ?Sized> PhantomLifetime<'a> for T {}
 /// * `A ~ B => *A ~ *B`
 /// * `uN ~ iN`, `iN ~ uN`, where `N` is an integer width
 /// * `A ~ B => [A] ~ B`
-/// * `A ~ B => [A; N] ~ B`, where `const N: usize`
+/// * `A ~ B, N > 0 => [A; N] ~ B`, where `const N: usize`
 ///
 /// Thus, [`true`] means it is definitely transmutable,
 /// while [`false`] means it may not be transmutable.
@@ -393,8 +393,18 @@ pub fn is_transmutable_to<'tcx>(from: Ty<'tcx>, to: Ty<'tcx>) -> bool {
         }
     };
 
-    let one_way_transmutable = || match from.kind() {
-        &ty::Array(from, _) | &ty::Slice(from) => is_transmutable_to(from, to),
+    let one_way_transmutable = || match *from.kind() {
+        ty::Array(from, n) => {
+            is_transmutable_to(from, to) && {
+                let is_zero = n
+                    .kind()
+                    .try_to_scalar_int()
+                    .map(|i| i.is_null())
+                    .unwrap_or(false);
+                !is_zero
+            }
+        }
+        ty::Slice(from) => is_transmutable_to(from, to),
         _ => false,
     };
 
