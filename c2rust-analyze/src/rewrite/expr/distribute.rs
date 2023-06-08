@@ -16,7 +16,7 @@ struct RewriteInfo {
 /// map from MIR location to `HirId` (from `unlower`) and produces a map from `HirId` to a list of
 /// MIR rewrites.
 ///
-/// Using the example from `unlower`:
+/// Using the `x + f(y)` example from `unlower`:
 ///
 /// ```text
 /// bb0[5]: Terminator { source_info: ..., kind: _4 = f(move _5) -> [return: bb1, unwind: bb2] }
@@ -28,8 +28,9 @@ struct RewriteInfo {
 /// A MIR rewrite on `bb0[5]` `[Rvalue, CallArg(0)]` would be attached to the HIR
 /// `Expr` `y`, and a rewrite on `bb0[5]` `[Rvalue]` would be attached to `f(y)`.
 /// A MIR rewrite on `bb0[5]` `[]` (i.e. on the call terminator itself) would
-/// result in an error, since there is no good place in the HIR to attach such a
-/// rewrite.
+/// result in an error: this MIR assignment is a store to a temporary that was introduced during
+/// HIR-to-MIR lowering, so there is no corresponding HIR assignment where such a rewrite could be
+/// attached.
 pub fn distribute(
     tcx: TyCtxt,
     unlower_map: BTreeMap<PreciseLoc, MirOrigin>,
