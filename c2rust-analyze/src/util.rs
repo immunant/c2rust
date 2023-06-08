@@ -373,8 +373,8 @@ impl<'a, T: ?Sized> PhantomLifetime<'a> for T {}
 /// * `A = B => A ~ B`
 /// * `A ~ B => *A ~ *B`
 /// * `uN ~ iN`, `iN ~ uN`, where `N` is an integer width
-/// * `[A] ~ A`
-/// * `[A; N] ~ A`, where `const N: usize`
+/// * `A ~ B => [A] ~ B`
+/// * `A ~ B => [A; N] ~ B`, where `const N: usize`
 ///
 /// Thus, [`true`] means it is definitely transmutable,
 /// while [`false`] means it may not be transmutable.
