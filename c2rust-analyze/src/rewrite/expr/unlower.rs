@@ -204,7 +204,13 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 self.record(loc, &[SubLoc::Rvalue], ex);
                 for (i, (arg, mir_arg)) in args.iter().zip(mir_args).enumerate() {
                     self.record(loc, &[SubLoc::Rvalue, SubLoc::CallArg(i)], arg);
-                    // TODO: distribute extra `locs` among the various args
+                    // TODO: Distribute extra `locs` among the various args.  For example, if
+                    // `locs` is `[a, b, loc]`, we may need to pass `[a]` as the `extra_locs` for
+                    // the first arg and `[b]` for the second, or `[a, b]` for the first and `[]`
+                    // for the second, or some other combination.  These extra locations are
+                    // usually coercions or other adjustments related to a particular argument.
+                    // However, figuring out which `Location`s are associated with which argument
+                    // may be nontrivial.
                     self.visit_expr_operand(arg, mir_arg, &[]);
                 }
                 if locs.len() > 1 {
