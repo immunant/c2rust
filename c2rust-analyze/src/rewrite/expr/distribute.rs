@@ -1,5 +1,6 @@
 use crate::rewrite::expr::mir_op::{self, MirRewrite};
 use crate::rewrite::expr::unlower::{MirOrigin, MirOriginDesc, PreciseLoc};
+use itertools::Itertools;
 use log::*;
 use rustc_hir::HirId;
 use rustc_middle::mir::Location;
@@ -79,10 +80,7 @@ pub fn distribute(
     // need to add rules to resolve it in a particular way, such as prioritizing one `SubLoc` or
     // `MirOriginDesc` over another.
     for (&hir_id, infos) in &info_map {
-        let all_same_loc = infos
-            .iter()
-            .skip(1)
-            .all(|i| i.loc == infos[0].loc && i.desc == infos[0].desc);
+        let all_same_loc = infos.iter().map(|i| (&i.loc, i.desc)).all_equal();
         if !all_same_loc {
             info!("rewrite info:");
             for i in infos {
