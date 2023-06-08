@@ -363,7 +363,8 @@ impl<'a, T: ?Sized> PhantomLifetime<'a> for T {}
 /// and more similar to [`core::mem::transmute_copy`].
 ///
 /// This forms a reflexive, transitive, and non-symmetric (one-way) relation, named `~` below.
-/// Formally, `A ~ B` iff `*a` and `*(a as *const B)` are safe, where `a: *const A`.
+/// Formally, `A ~ B` iff whenever `*a` is well-defined (i.e., not UB),
+/// `*(a as *const B)` is also well-defined, where `a: *const A`.
 ///
 /// However, safe transmutability is difficult to check completely,
 /// so this function only checks a subset of it,
