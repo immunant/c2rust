@@ -6,10 +6,6 @@ pub fn deep_cast_ptr_to_ptr(x: *const *const u8) {
     x as *const *const i8;
 }
 
-pub fn cast_slice_ptr_to_ptr(s: *const [u8]) {
-    s as *const u8;
-}
-
 /// For the below disabled (`#[cfg(any())]`ed) tests, they currently crash in the rewriter
 /// due to it not being able to handle implicitly inserted `&raw` MIR statements yet.
 /// Thus, they also have `*_explicit` versions where

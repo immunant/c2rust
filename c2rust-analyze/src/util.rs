@@ -373,8 +373,10 @@ impl<'a, T: ?Sized> PhantomLifetime<'a> for T {}
 /// * `A = B => A ~ B`
 /// * `A ~ B => *A ~ *B`
 /// * `uN ~ iN`, `iN ~ uN`, where `N` is an integer width
-/// * `A ~ B => [A] ~ B`
 /// * `A ~ B, N > 0 => [A; N] ~ B`, where `const N: usize`
+///
+/// Note: `A ~ B => [A] ~ B` is not a rule because it would be unsound for zero-length slices,
+/// which we cannot check unlike for arrays, which we need for translated string literals.
 ///
 /// Thus, [`true`] means it is definitely transmutable,
 /// while [`false`] means it may not be transmutable.
@@ -404,7 +406,6 @@ pub fn is_transmutable_to<'tcx>(from: Ty<'tcx>, to: Ty<'tcx>) -> bool {
                 !is_zero
             }
         }
-        ty::Slice(from) => is_transmutable_to(from, to),
         _ => false,
     };
 
