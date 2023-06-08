@@ -211,6 +211,7 @@ dependencies = [
  "clap 4.2.7",
  "env_logger",
  "indexmap",
+ "itertools",
  "log",
  "polonius-engine",
  "print_bytes",
