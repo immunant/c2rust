@@ -197,6 +197,22 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
                     .unwrap_or_else(|err| panic_location_error(err, "Assignment statement"));
                 locations.push(assign_loc)
             }
+            hir::ExprKind::Cast(..) => {
+                let r = self.find_sole_location_matching(
+                    ex.span,
+                    |stmt| {
+                        let rv = match stmt.kind {
+                            mir::StatementKind::Assign(ref x) => &x.1,
+                            _ => return false,
+                        };
+                        matches!(rv, mir::Rvalue::Cast(..))
+                    },
+                    |_term| false,
+                );
+                if let Ok(assign_loc) = r {
+                    locations.push(assign_loc);
+                }
+            }
             _ => eprintln!("warning: find_primary_location: unsupported expr {:?}", ex),
         }
 
@@ -320,6 +336,21 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                     Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(*mutbl))
                 }
 
+                mir_op::RewriteKind::CastRefToRaw { mutbl } => {
+                    // `addr_of!(*p)` is cleaner than `p as *const _`; we don't know the pointee
+                    // type here, so we can't emit `p as *const T`.
+                    let rw_pl = Rewrite::Deref(Box::new(hir_rw));
+                    Rewrite::AddrOf(Box::new(rw_pl), mutbl_from_bool(*mutbl))
+                }
+                mir_op::RewriteKind::CastRawToRaw { to_mutbl } => {
+                    let method = if *to_mutbl { "cast_mut" } else { "cast_const" };
+                    Rewrite::MethodCall(method.to_string(), Box::new(hir_rw), vec![])
+                }
+                mir_op::RewriteKind::UnsafeCastRawToRef { mutbl } => {
+                    let rw_pl = Rewrite::Deref(Box::new(hir_rw));
+                    Rewrite::Ref(Box::new(rw_pl), mutbl_from_bool(*mutbl))
+                }
+
                 mir_op::RewriteKind::CellNew => {
                     // `x` to `Cell::new(x)`
                     Rewrite::Call("std::cell::Cell::new".to_string(), vec![Rewrite::Identity])
@@ -340,6 +371,14 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                     let lhs = self.get_subexpr(deref_lhs, 0);
                     let rhs = self.get_subexpr(ex, 1);
                     Rewrite::MethodCall("set".to_string(), Box::new(lhs), vec![rhs])
+                }
+
+                mir_op::RewriteKind::CellFromMut => {
+                    // `x` to `Cell::from_mut(x)`
+                    Rewrite::Call(
+                        "std::cell::Cell::from_mut".to_string(),
+                        vec![Rewrite::Identity],
+                    )
                 }
             }
         };
