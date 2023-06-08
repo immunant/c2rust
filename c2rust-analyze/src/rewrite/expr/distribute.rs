@@ -25,7 +25,7 @@ struct RewriteInfo {
 ///   [Rvalue, CallArg(0)]: Expr, `y`
 /// ```
 ///
-/// A MIR rewrite on `bb0[5]` `[Rvalue, CallArg(0)]` would be attached to the MIR
+/// A MIR rewrite on `bb0[5]` `[Rvalue, CallArg(0)]` would be attached to the HIR
 /// `Expr` `y`, and a rewrite on `bb0[5]` `[Rvalue]` would be attached to `f(y)`.
 /// A MIR rewrite on `bb0[5]` `[]` (i.e. on the call terminator itself) would
 /// result in an error, since there is no good place in the HIR to attach such a
