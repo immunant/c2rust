@@ -302,31 +302,32 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    /// Unify corresponding [`PointerId`]s in `pl_lty` and `rv_lty`.
+    /// Unify corresponding [`PointerId`]s in `lty1` and `lty2`.
     ///
     /// The two inputs must have identical underlying types.
     /// For any position where the underlying type has a pointer,
-    /// this function unifies the [`PointerId`]s that `pl_lty` and `rv_lty` have at that position.
+    /// this function unifies the [`PointerId`]s that `lty1` and `lty2` have at that position.
     /// For example, given
     ///
     /// ```
     /// # fn(
-    /// pl_lty: *mut /*l1*/ *const /*l2*/ u8,
-    /// rv_lty: *mut /*l3*/ *const /*l4*/ u8,
+    /// lty1: *mut /*l1*/ *const /*l2*/ u8,
+    /// lty2: *mut /*l3*/ *const /*l4*/ u8,
     /// # ) {}
     /// ```
     ///
     /// this function will unify `l1` with `l3` and `l2` with `l4`.
-    fn do_unify(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
-        let rv_ty = self.acx.tcx().erase_regions(rv_lty.ty);
-        let pl_ty = self.acx.tcx().erase_regions(pl_lty.ty);
-        assert_eq!(rv_ty, pl_ty);
-        for (sub_pl_lty, sub_rv_lty) in pl_lty.iter().zip(rv_lty.iter()) {
-            eprintln!("equate {:?} = {:?}", sub_pl_lty, sub_rv_lty);
-            if sub_pl_lty.label != PointerId::NONE || sub_rv_lty.label != PointerId::NONE {
-                assert!(sub_pl_lty.label != PointerId::NONE);
-                assert!(sub_rv_lty.label != PointerId::NONE);
-                self.add_equiv(sub_pl_lty.label, sub_rv_lty.label);
+    fn do_unify(&mut self, lty1: LTy<'tcx>, lty2: LTy<'tcx>) {
+        assert_eq!(
+            self.acx.tcx().erase_regions(lty1.ty),
+            self.acx.tcx().erase_regions(lty2.ty)
+        );
+        for (sub_lty1, sub_lty2) in lty1.iter().zip(lty2.iter()) {
+            eprintln!("equate {:?} = {:?}", sub_lty1, sub_lty2);
+            if sub_lty1.label != PointerId::NONE || sub_lty2.label != PointerId::NONE {
+                assert!(sub_lty1.label != PointerId::NONE);
+                assert!(sub_lty2.label != PointerId::NONE);
+                self.add_equiv(sub_lty1.label, sub_lty2.label);
             }
         }
     }
