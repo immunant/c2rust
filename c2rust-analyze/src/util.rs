@@ -12,6 +12,7 @@ use rustc_middle::ty::{
     self, AdtDef, DefIdTree, EarlyBinder, Subst, SubstsRef, Ty, TyCtxt, TyKind, UintTy,
 };
 use rustc_span::symbol::Symbol;
+use rustc_type_ir::IntTy;
 use std::fmt::Debug;
 
 #[derive(Debug)]
@@ -355,6 +356,90 @@ pub fn is_null_const(constant: Constant) -> bool {
 
 pub trait PhantomLifetime<'a> {}
 impl<'a, T: ?Sized> PhantomLifetime<'a> for T {}
+
+/// Determine if `from` can be safely transmuted to `to`,
+/// which is defined as `*(from as *const To)` being a safe operation,
+/// where `from: *const From` and assuming `*from` already was safe.
+///
+/// Note that this is one-way, and is slightly different from [`core::mem::transmute`],
+/// and more similar to [`core::mem::transmute_copy`].
+///
+/// This forms a reflexive, transitive, and non-symmetric (one-way) relation, named `~` below.
+/// Formally, `A ~ B` iff whenever `*a` is well-defined (i.e., not UB),
+/// `*(a as *const B)` is also well-defined, where `a: *const A`.
+///
+/// However, safe transmutability is difficult to check completely,
+/// so this function only checks a subset of it,
+/// with these formal rules for all types `A`, `B`:
+///
+/// 1. `A = B => A ~ B`
+/// 2. `A ~ B => *A ~ *B`
+/// 3. `uN ~ iN`, `iN ~ uN`, where `N` is an integer width
+/// 4. `A ~ B, N > 0 => [A; N] ~ B`, where `const N: usize`
+///
+/// Note: 5. `A ~ B => [A] ~ B` is not a rule because it would be unsound for zero-length slices,
+/// which we cannot check unlike for arrays, which we need for translated string literals.
+///
+/// Thus, [`true`] means it is definitely transmutable,
+/// while [`false`] means it may not be transmutable.
+///
+/// Also note that for `A ~ B`, we need at least
+/// * `size_of::<A>() >= size_of::<B>()`
+/// * `align_of::<A>() >= align_of::<B>()`
+///
+/// For rules 1 and 3, this obviously holds.
+/// For rule 2, this holds as long as
+/// `A ~ B` implies that (`*B` is a fat ptr implies `*A` is a fat ptr).
+///
+/// For rule 1, this holds trivially.  
+/// For rule 2, this holds because `**A` and `**B` are always thin ptrs.  
+/// For rule 3, this holds trivially.  
+/// For rule 4, this holds because  if `*A` is a fat ptr,
+/// `A` is unsized, and thus `[A; N]` is ill-formed to begin with.  
+/// For (almost) rule 5, this holds because `*[A]` is always a fat ptr.
+pub fn is_transmutable_to<'tcx>(from: Ty<'tcx>, to: Ty<'tcx>) -> bool {
+    let transmutable_ints = || {
+        use IntTy::*;
+        use UintTy::*;
+        match (from.kind(), to.kind()) {
+            (ty::Uint(u), ty::Int(i)) | (ty::Int(i), ty::Uint(u)) => {
+                matches!(
+                    (u, i),
+                    (Usize, Isize) | (U8, I8) | (U16, I16) | (U32, I32) | (U64, I64)
+                )
+            }
+            _ => false,
+        }
+    };
+
+    let one_way_transmutable = || match *from.kind() {
+        ty::Array(from, n) => {
+            is_transmutable_to(from, to) && {
+                let is_zero = n.kind().try_to_scalar_int().unwrap().is_null();
+                !is_zero
+            }
+        }
+        _ => false,
+    };
+
+    from == to
+        || is_transmutable_ptr_cast(from, to).unwrap_or(false)
+        || transmutable_ints()
+        || one_way_transmutable()
+}
+
+/// Determine if `from as to` is a ptr-to-ptr cast.
+/// and if it is, if the pointee types are [safely transmutable](is_transmutable_to).
+///
+/// This returns [`Some`]`(is_transmutable)` if they're both pointers,
+/// and [`None`] if its some other types.
+///
+/// See [`is_transmutable_to`] for the definition of safe transmutability.
+pub fn is_transmutable_ptr_cast<'tcx>(from: Ty<'tcx>, to: Ty<'tcx>) -> Option<bool> {
+    let from = from.builtin_deref(true)?.ty;
+    let to = to.builtin_deref(true)?.ty;
+    Some(is_transmutable_to(from, to))
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum TestAttr {

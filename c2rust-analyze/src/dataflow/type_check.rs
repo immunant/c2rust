@@ -2,7 +2,9 @@ use super::DataflowConstraints;
 use crate::c_void_casts::CVoidCastDirection;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
 use crate::panic_detail;
-use crate::util::{describe_rvalue, is_null_const, ty_callee, Callee, RvalueDesc};
+use crate::util::{
+    describe_rvalue, is_null_const, is_transmutable_ptr_cast, ty_callee, Callee, RvalueDesc,
+};
 use assert_matches::assert_matches;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
@@ -41,11 +43,6 @@ struct TypeChecker<'tcx, 'a> {
     /// structure defined in `crate::equiv`, so adding a constraint here has the effect of unifying
     /// the equivalence classes of the two `PointerId`s.
     equiv_constraints: Vec<(PointerId, PointerId)>,
-}
-
-fn is_castable_to<'tcx>(_from_lty: LTy<'tcx>, _to_lty: LTy<'tcx>) -> bool {
-    // TODO: implement
-    true
 }
 
 impl<'tcx> TypeChecker<'tcx, '_> {
@@ -105,6 +102,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     fn visit_cast(&mut self, cast_kind: CastKind, op: &Operand<'tcx>, to_lty: LTy<'tcx>) {
         let to_ty = to_lty.ty;
         let from_lty = self.acx.type_of(op);
+        let from_ty = from_lty.ty;
 
         match cast_kind {
             CastKind::PointerFromExposedAddress => {
@@ -114,31 +112,40 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     panic!("Creating non-null pointers from exposed addresses not supported");
                 }
             }
-            CastKind::Pointer(PointerCast::Unsize) => {
-                let pointee_to_ty = to_ty
-                    .builtin_deref(true)
-                    .unwrap_or_else(|| panic!("unsize cast has non-pointer output {:?}?", to_ty))
-                    .ty;
-
-                assert_matches!(from_lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..));
-                let pointee_from_lty = assert_matches!(from_lty.args, [lty] => lty);
-
-                let elem_to_ty = assert_matches!(pointee_to_ty.kind(), &TyKind::Slice(ty) => ty);
-                assert!(matches!(pointee_from_lty.kind(), TyKind::Array(..)));
-                let elem_from_lty = assert_matches!(pointee_from_lty.args, [lty] => lty);
-                assert_eq!(elem_from_lty.ty, elem_to_ty);
-                assert_eq!(pointee_from_lty.label, PointerId::NONE);
-                self.do_assign_pointer_ids(to_lty.label, from_lty.label);
+            CastKind::PointerExposeAddress => {
+                // Allow, as [`CastKind::PointerFromExposedAddress`] is the dangerous one,
+                // and we'll catch (not allow) that above.
+                // This becomes no longer a pointer, so we don't need to add any dataflow constraints
+                // (until we try to handle [`CastKind::PointerFromExposedAddress`], if we do).
             }
-            CastKind::Pointer(..) => {
-                // The source and target types are both pointers, and they have identical pointee types.
-                // TODO: remove or move check to `is_castable_to`
-                assert!(from_lty.args[0].ty == to_lty.args[0].ty);
-                assert!(is_castable_to(from_lty, to_lty));
+            CastKind::Pointer(ptr_cast) => {
+                // All of these [`PointerCast`]s are type checked by rustc already.
+                // They don't involve arbitrary raw ptr to raw ptr casts
+                // ([PointerCast::MutToConstPointer`] doesn't allow changing types),
+                // which we need to check for safe transmutability,
+                // and which are (currently) covered in [`CastKind::Misc`].
+                // That's why there's a `match` here that does nothing;
+                // it ensures if [`PointerCast`] is changed in a future `rustc` version,
+                // this won't compile until we've checked that this reasoning is still accurate.
+                match ptr_cast {
+                    PointerCast::ReifyFnPointer => {}
+                    PointerCast::UnsafeFnPointer => {}
+                    PointerCast::ClosureFnPointer(_) => {}
+                    PointerCast::MutToConstPointer => {}
+                    PointerCast::ArrayToPointer => {}
+                    PointerCast::Unsize => {}
+                }
+                self.do_assign_pointer_ids(to_lty.label, from_lty.label)
+                // TODO add other dataflow constraints
             }
-            _ => {
-                // A cast such as `T as U`
-                assert!(is_castable_to(from_lty, to_lty));
+            CastKind::Misc => {
+                match is_transmutable_ptr_cast(from_ty, to_ty) {
+                    Some(true) => {
+                        // TODO add other dataflow constraints
+                    },
+                    Some(false) => ::log::error!("TODO: unsupported ptr-to-ptr cast between pointee types not yet supported as safely transmutable: `{from_ty:?} as {to_ty:?}`"),
+                    None => {}, // not a ptr cast (no dataflow constraints needed); let rustc typeck this
+                };
             }
         }
 
@@ -295,12 +302,21 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    /// Unify corresponding `PointerId`s in `lty1` and `lty2`.
+    /// Unify corresponding [`PointerId`]s in `lty1` and `lty2`.
     ///
-    /// The two inputs must have identical underlying types.  For any position where the underlying
-    /// type has a pointer, this function unifies the `PointerId`s that `lty1` and `lty2` have at
-    /// that position.  For example, given `lty1 = *mut /*l1*/ *const /*l2*/ u8` and `lty2 = *mut
-    /// /*l3*/ *const /*l4*/ u8`, this function will unify `l1` with `l3` and `l2` with `l4`.
+    /// The two inputs must have identical underlying types.
+    /// For any position where the underlying type has a pointer,
+    /// this function unifies the [`PointerId`]s that `lty1` and `lty2` have at that position.
+    /// For example, given
+    ///
+    /// ```
+    /// # fn(
+    /// lty1: *mut /*l1*/ *const /*l2*/ u8,
+    /// lty2: *mut /*l3*/ *const /*l4*/ u8,
+    /// # ) {}
+    /// ```
+    ///
+    /// this function will unify `l1` with `l3` and `l2` with `l4`.
     fn do_unify(&mut self, lty1: LTy<'tcx>, lty2: LTy<'tcx>) {
         assert_eq!(
             self.acx.tcx().erase_regions(lty1.ty),
