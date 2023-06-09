@@ -398,11 +398,7 @@ pub fn is_transmutable_to<'tcx>(from: Ty<'tcx>, to: Ty<'tcx>) -> bool {
     let one_way_transmutable = || match *from.kind() {
         ty::Array(from, n) => {
             is_transmutable_to(from, to) && {
-                let is_zero = n
-                    .kind()
-                    .try_to_scalar_int()
-                    .map(|i| i.is_null())
-                    .unwrap_or(false);
+                let is_zero = n.kind().try_to_scalar_int().unwrap().is_null();
                 !is_zero
             }
         }
