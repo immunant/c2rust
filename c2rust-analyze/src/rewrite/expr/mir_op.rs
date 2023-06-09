@@ -12,6 +12,7 @@ use crate::panic_detail;
 use crate::pointer_id::PointerTable;
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{ty_callee, Callee};
+use log::*;
 use rustc_ast::Mutability;
 use rustc_middle::mir::{
     BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
@@ -51,6 +52,15 @@ pub enum RewriteKind {
     RemoveAsPtr,
     /// Replace &raw with & or &raw mut with &mut
     RawToRef { mutbl: bool },
+
+    /// Cast `&T` to `*const T` or `&mut T` to `*mut T`.
+    CastRefToRaw { mutbl: bool },
+    /// Cast `*const T` to `*mut T` or vice versa.  If `to_mutbl` is true, we are casting to
+    /// `*mut T`; otherwise, we're casting to `*const T`.
+    CastRawToRaw { to_mutbl: bool },
+    /// Cast `*const T` to `& T` or `*mut T` to `&mut T`.
+    UnsafeCastRawToRef { mutbl: bool },
+
     /// Replace `y` in `let x = y` with `Cell::new(y)`, i.e. `let x = Cell::new(y)`
     /// TODO: ensure `y` implements `Copy`
     CellNew,
@@ -58,6 +68,8 @@ pub enum RewriteKind {
     CellGet,
     /// Replace `*y = x` with `Cell::set(x)` where `y` is a pointer
     CellSet,
+    /// Wrap `&mut T` in `Cell::from_mut` to get `&Cell<T>`.
+    CellFromMut,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -257,11 +269,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 match ty_callee(tcx, func_ty) {
                     Callee::PtrOffset { .. } => {
                         self.visit_ptr_offset(&args[0], pl_ty);
-                        return;
                     }
                     Callee::SliceAsPtr { elem_ty, .. } => {
                         self.visit_slice_as_ptr(elem_ty, &args[0], pl_ty);
-                        return;
                     }
                     _ => {}
                 }
@@ -424,10 +434,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
         self.emit(RewriteKind::OffsetSlice { mutbl });
 
-        // If the result is `Single`, also insert an upcast.
-        if result_desc.qty == Quantity::Single {
-            self.emit(RewriteKind::SliceFirst { mutbl });
-        }
+        // The `OffsetSlice` operation returns something of the same type as its input.  Afterward,
+        // we must cast the result to the `result_ty`/`result_desc`.
+        self.emit_cast_desc_desc(arg_expect_desc, result_desc);
     }
 
     fn visit_slice_as_ptr(&mut self, elem_ty: Ty<'tcx>, op: &Operand<'tcx>, result_lty: LTy<'tcx>) {
@@ -468,35 +477,169 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     }
 
     fn emit_cast_desc_desc(&mut self, from: TypeDesc<'tcx>, to: TypeDesc<'tcx>) {
+        let orig_from = from;
+        let mut from = orig_from;
+
+        // The `from` and `to` pointee types should only differ in their lifetimes.
         assert_eq!(
             self.acx.tcx().erase_regions(from.pointee_ty),
             self.acx.tcx().erase_regions(to.pointee_ty),
         );
+        // There might still be differences in lifetimes, which we don't care about here.
+        // Overwriting `from.pointee_ty` allows the final `from == to` check to succeed below.
+        from.pointee_ty = to.pointee_ty;
 
         if from == to {
             return;
         }
 
-        let orig_from = from;
-        let mut from = orig_from;
+        // Early `Ownership` casts.  We do certain casts here in hopes of reaching an `Ownership`
+        // on which we can safely adjust `Quantity`.
+        from.own = self.cast_ownership(from, to, true);
 
-        if (from.qty, to.qty) == (Quantity::OffsetPtr, Quantity::Slice) {
-            // TODO: emit rewrite
-            from.qty = to.qty;
+        // Safe casts that change `Quantity`.
+        while from.qty != to.qty {
+            // Mutability of `from`.  `None` here means that safe `Quantity` conversions aren't
+            // possible given `from`'s `Ownership`.  For example, we can't convert `Box<[T]>` to
+            // `Box<T>`.
+            let opt_mutbl = match from.own {
+                // Note that `Cell` + `Slice` is `&[Cell<T>]`, not `&Cell<[T]>`, so it can be
+                // handled like any other `&[_]`.
+                Ownership::Imm | Ownership::Cell => Some(false),
+                Ownership::Mut => Some(true),
+                _ => None,
+            };
+            match (from.qty, to.qty) {
+                (Quantity::Array, _) => {
+                    // `Array` goes only to `Slice` directly.  All other `Array` conversions go
+                    // through `Slice` first.
+                    error!("TODO: cast Array to {:?}", to.qty);
+                    from.qty = Quantity::Slice;
+                }
+                // Bidirectional conversions between `Slice` and `OffsetPtr`.
+                (Quantity::Slice, Quantity::OffsetPtr) | (Quantity::OffsetPtr, Quantity::Slice) => {
+                    // Currently a no-op, since `Slice` and `OffsetPtr` are identical.
+                    from.qty = to.qty;
+                }
+                // `Slice` and `OffsetPtr` convert to `Single` the same way.
+                // TODO: when converting to `Ownership::Raw`/`RawMut`, use `slice.as_ptr()` to
+                // avoid panic on 0-length inputs
+                (_, Quantity::Single) => {
+                    let rw = match opt_mutbl {
+                        Some(mutbl) => RewriteKind::SliceFirst { mutbl },
+                        None => break,
+                    };
+                    self.emit(rw);
+                    from.qty = Quantity::Single;
+                }
+
+                // Unsupported cases
+                (Quantity::Single, _) => break,
+                (_, Quantity::Array) => break,
+
+                // Remaining cases are impossible, since `from.qty != to.qty`.
+                (Quantity::Slice, Quantity::Slice) | (Quantity::OffsetPtr, Quantity::OffsetPtr) => {
+                    unreachable!()
+                }
+            }
         }
 
-        if from.qty == to.qty && (from.own, to.own) == (Ownership::Mut, Ownership::Imm) {
-            self.emit(RewriteKind::MutToImm);
-            from.own = to.own;
-        }
-
-        // TODO: handle Slice -> Single here instead of special-casing in `offset`
+        // Late `Ownership` casts.
+        from.own = self.cast_ownership(from, to, false);
 
         if from != to {
-            eprintln!(
+            panic!(
                 "unsupported cast kind: {:?} -> {:?} (original input: {:?})",
                 from, to, orig_from
             );
+        }
+    }
+
+    fn cast_ownership(&mut self, from: TypeDesc, to: TypeDesc, early: bool) -> Ownership {
+        let mut from = from;
+        while from.own != to.own {
+            match self.cast_ownership_one_step(from, to, early) {
+                Some(new_own) => {
+                    from.own = new_own;
+                }
+                None => break,
+            }
+        }
+        from.own
+    }
+
+    fn cast_ownership_one_step(
+        &mut self,
+        from: TypeDesc,
+        to: TypeDesc,
+        early: bool,
+    ) -> Option<Ownership> {
+        match from.own {
+            Ownership::Box => match to.own {
+                Ownership::Raw | Ownership::Imm => {
+                    error!("TODO: cast Box to Imm");
+                    Some(Ownership::Imm)
+                }
+                Ownership::RawMut | Ownership::Mut => {
+                    error!("TODO: cast Box to Mut");
+                    Some(Ownership::Mut)
+                }
+                _ => None,
+            },
+            Ownership::Rc => match to.own {
+                Ownership::Imm | Ownership::Raw | Ownership::RawMut => {
+                    error!("TODO: cast Rc to Imm");
+                    Some(Ownership::Imm)
+                }
+                _ => None,
+            },
+            Ownership::Mut => match to.own {
+                Ownership::Imm | Ownership::Raw => {
+                    self.emit(RewriteKind::MutToImm);
+                    Some(Ownership::Imm)
+                }
+                Ownership::Cell => {
+                    self.emit(RewriteKind::CellFromMut);
+                    Some(Ownership::Cell)
+                }
+                Ownership::RawMut if !early => {
+                    self.emit(RewriteKind::CastRefToRaw { mutbl: true });
+                    Some(Ownership::RawMut)
+                }
+                _ => None,
+            },
+            Ownership::Cell => None,
+            Ownership::Imm => match to.own {
+                Ownership::Raw | Ownership::RawMut if !early => {
+                    self.emit(RewriteKind::CastRefToRaw { mutbl: false });
+                    Some(Ownership::Raw)
+                }
+                _ => None,
+            },
+            Ownership::RawMut => match to.own {
+                // For `RawMut` to `Imm`, we go through `Raw` instead of through `Mut` because
+                // `&mut` adds more implicit constraints under the Rust memory model.
+                Ownership::Raw | Ownership::Imm if !early => {
+                    self.emit(RewriteKind::CastRawToRaw { to_mutbl: false });
+                    Some(Ownership::Raw)
+                }
+                Ownership::Mut if !early => {
+                    self.emit(RewriteKind::UnsafeCastRawToRef { mutbl: true });
+                    Some(Ownership::Mut)
+                }
+                _ => None,
+            },
+            Ownership::Raw => match to.own {
+                Ownership::RawMut | Ownership::Mut if !early => {
+                    self.emit(RewriteKind::CastRawToRaw { to_mutbl: true });
+                    Some(Ownership::RawMut)
+                }
+                Ownership::Imm if !early => {
+                    self.emit(RewriteKind::UnsafeCastRawToRef { mutbl: false });
+                    Some(Ownership::Imm)
+                }
+                _ => None,
+            },
         }
     }
 

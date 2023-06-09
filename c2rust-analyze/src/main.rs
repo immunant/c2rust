@@ -23,7 +23,8 @@ use crate::dataflow::DataflowConstraints;
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use crate::labeled_ty::LabeledTyCtxt;
 use crate::log::init_logger;
-use crate::util::Callee;
+use crate::panic_detail::PanicDetail;
+use crate::util::{Callee, TestAttr};
 use context::AdtMetadataTable;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
@@ -38,6 +39,7 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::{Debug, Display};
+use std::iter;
 use std::ops::{Deref, DerefMut, Index};
 use std::panic::AssertUnwindSafe;
 
@@ -493,6 +495,30 @@ fn run(tcx: TyCtxt) {
         info.lasn.set(lasn);
     }
 
+    // For testing, putting #[c2rust_analyze_test::fixed_signature] on a function makes all
+    // pointers in its signature FIXED.
+    for &ldid in &all_fn_ldids {
+        if !util::has_test_attr(tcx, ldid, TestAttr::FixedSignature) {
+            continue;
+        }
+        let lsig = match gacx.fn_sigs.get(&ldid.to_def_id()) {
+            Some(x) => x,
+            None => continue,
+        };
+        make_sig_fixed(&mut gasn, lsig);
+    }
+
+    // For testing, putting #[c2rust_analyze_test::fail_analysis] on a function marks it as failed.
+    for &ldid in &all_fn_ldids {
+        if !util::has_test_attr(tcx, ldid, TestAttr::FailAnalysis) {
+            continue;
+        }
+        gacx.mark_fn_failed(
+            ldid.to_def_id(),
+            PanicDetail::new("explicit fail_analysis for testing".to_owned()),
+        );
+    }
+
     eprintln!("=== ADT Metadata ===");
     eprintln!("{:?}", gacx.adt_metadata);
 
@@ -596,6 +622,10 @@ fn run(tcx: TyCtxt) {
         rewrite::dump_rewritten_local_tys(&acx, &asn, &mir, describe_local);
 
         eprintln!();
+
+        if util::has_test_attr(tcx, ldid, TestAttr::SkipRewrite) {
+            continue;
+        }
 
         let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
             let hir_body_id = tcx.hir().body_owned_by(ldid);
@@ -735,6 +765,21 @@ impl<'tcx> AssignPointerIds<'tcx> for AnalysisCtxt<'_, 'tcx> {
 
     fn new_pointer(&mut self, info: PointerInfo) -> PointerId {
         self.new_pointer(info)
+    }
+}
+
+fn make_ty_fixed(gasn: &mut GlobalAssignment, lty: LTy) {
+    for lty in lty.iter() {
+        let ptr = lty.label;
+        if !ptr.is_none() {
+            gasn.flags[ptr].insert(FlagSet::FIXED);
+        }
+    }
+}
+
+fn make_sig_fixed(gasn: &mut GlobalAssignment, lsig: &LFnSig) {
+    for lty in lsig.inputs.iter().copied().chain(iter::once(lsig.output)) {
+        make_ty_fixed(gasn, lty);
     }
 }
 

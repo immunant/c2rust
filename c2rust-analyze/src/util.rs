@@ -1,8 +1,9 @@
 use crate::labeled_ty::LabeledTy;
 use crate::trivial::IsTrivial;
+use rustc_ast::ast::AttrKind;
 use rustc_const_eval::interpret::Scalar;
 use rustc_hir::def::DefKind;
-use rustc_hir::def_id::DefId;
+use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Constant, Field, Local, Location, Mutability, Operand, Place,
     PlaceElem, PlaceRef, ProjectionElem, Rvalue, Statement, StatementKind,
@@ -10,6 +11,7 @@ use rustc_middle::mir::{
 use rustc_middle::ty::{
     self, AdtDef, DefIdTree, EarlyBinder, Subst, SubstsRef, Ty, TyCtxt, TyKind, UintTy,
 };
+use rustc_span::symbol::Symbol;
 use rustc_type_ir::IntTy;
 use std::fmt::Debug;
 
@@ -437,4 +439,45 @@ pub fn is_transmutable_ptr_cast<'tcx>(from: Ty<'tcx>, to: Ty<'tcx>) -> Option<bo
     let from = from.builtin_deref(true)?.ty;
     let to = to.builtin_deref(true)?.ty;
     Some(is_transmutable_to(from, to))
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum TestAttr {
+    /// `#[c2rust_analyze_test::fixed_signature]`: Mark all pointers in the function signature as
+    /// [`FIXED`](crate::context::FlagSet::FIXED).
+    FixedSignature,
+    /// `#[c2rust_analyze_test::fail_analysis]`: Force an analysis failure for the function.
+    FailAnalysis,
+    /// `#[c2rust_analyze_test::skip_rewrite]`: Skip generating rewrites for the function.
+    SkipRewrite,
+}
+
+impl TestAttr {
+    pub fn name(self) -> &'static str {
+        match self {
+            TestAttr::FixedSignature => "fixed_signature",
+            TestAttr::FailAnalysis => "fail_analysis",
+            TestAttr::SkipRewrite => "skip_rewrite",
+        }
+    }
+}
+
+pub fn has_test_attr(tcx: TyCtxt, ldid: LocalDefId, attr: TestAttr) -> bool {
+    let tool_sym = Symbol::intern("c2rust_analyze_test");
+    let name_sym = Symbol::intern(attr.name());
+
+    for attr in tcx.get_attrs_unchecked(ldid.to_def_id()) {
+        let path = match attr.kind {
+            AttrKind::Normal(ref item, _) => &item.path,
+            AttrKind::DocComment(..) => continue,
+        };
+        let (a, b) = match &path.segments[..] {
+            &[ref a, ref b] => (a, b),
+            _ => continue,
+        };
+        if a.ident.name == tool_sym && b.ident.name == name_sym {
+            return true;
+        }
+    }
+    false
 }
