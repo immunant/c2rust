@@ -13,8 +13,8 @@ static mut READ_MUT: usize = 21;
 static mut WRITTEN_MUT: usize = 3;
 
 // CHECK: generated 2 static rewrites:
-// CHECK-DAG: static mut UNUS ...  = 6;: static (-mut) $s
-// CHECK-DAG: static mut READ ... = 21;: static (-mut) $s
+// CHECK-DAG: static mut UNUS ...  = 6;: static $0
+// CHECK-DAG: static mut READ ... = 21;: static $0
 
 fn main() {
     let x = READ;

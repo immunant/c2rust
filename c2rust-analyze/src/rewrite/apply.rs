@@ -4,6 +4,8 @@ use rustc_span::source_map::{FileName, SourceMap};
 use rustc_span::{BytePos, SourceFile, Span, SyntaxContext};
 use std::cmp::Reverse;
 use std::collections::HashMap;
+use std::convert::Infallible;
+use std::mem;
 
 use super::LifetimeName;
 
@@ -205,173 +207,221 @@ fn partition_nodes(
     (before, overlap, after)
 }
 
-struct Emitter<'a, F> {
-    file: &'a SourceFile,
-    emit: &'a mut F,
+pub trait Sink {
+    type Error;
+    const PARENTHESIZE_EXPRS: bool;
+    fn emit_str(&mut self, s: &str) -> Result<(), Self::Error>;
+    fn emit_expr(&mut self) -> Result<(), Self::Error>;
+    fn emit_sub(&mut self, idx: usize, span: Span) -> Result<(), Self::Error>;
 }
 
-impl<'a, F: FnMut(&str)> Emitter<'a, F> {
-    fn emit_str(&mut self, s: &str) {
-        (self.emit)(s);
+struct Emitter<'a, S> {
+    sink: &'a mut S,
+}
+
+impl<S: Sink> Emitter<'_, S> {
+    fn emit_str(&mut self, s: &str) -> Result<(), S::Error> {
+        self.sink.emit_str(s)
+    }
+    fn emit_expr(&mut self) -> Result<(), S::Error> {
+        self.sink.emit_expr()
+    }
+    fn emit_sub(&mut self, idx: usize, span: Span) -> Result<(), S::Error> {
+        self.sink.emit_sub(idx, span)
     }
 
-    fn emit_parenthesized(&mut self, cond: bool, f: impl FnOnce(&mut Self)) {
-        if cond {
-            self.emit_str("(");
-        }
-        f(self);
-        if cond {
-            self.emit_str(")");
-        }
-    }
-
-    /// Emit the text of `rw`, using callbacks to paste in the expression being rewritten or its
-    /// subexpressions if needed.  `prec` is the operator precedence of the surrounding context,
-    /// which is used to determine parenthesization; see [`Rewrite::pretty`] for details.
-    fn emit_rewrite(
+    fn emit_parenthesized(
         &mut self,
-        rw: &Rewrite,
-        prec: usize,
-        emit_expr: &mut impl FnMut(&mut Self),
-        emit_subexpr: &mut impl FnMut(&mut Self, Span),
-    ) {
+        cond: bool,
+        f: impl FnOnce(&mut Self) -> Result<(), S::Error>,
+    ) -> Result<(), S::Error> {
+        if cond {
+            self.emit_str("(")?;
+        }
+        f(self)?;
+        if cond {
+            self.emit_str(")")?;
+        }
+        Ok(())
+    }
+
+    /// Emit the text of `rw` into `self.sink`, using `Sink` methods to paste in the expression
+    /// being rewritten or its subexpressions if needed.
+    ///
+    /// `prec` is the precedence of the surrounding context.  Each operatior is assigned a
+    /// precedence number, where a higher precedence number means the operator binds more tightly.
+    /// For example, `a + b * c` parses as `a + (b * c)`, not `(a + b) * c`, because `*` binds more
+    /// tightly than `+`; this means `*` will have a higher precedence number than `+`.  Nesting a
+    /// lower-precedence operator inside a higher one requires parentheses, but nesting higher
+    /// precedence inside lower does not.  For example, when emitting `y + z` in the context `x *
+    /// _`, we must parenthesize because `+` has lower precedence than `*`, so the result is `x *
+    /// (y + z)`.  But when emitting `y * z` in the context `x + _`, we don't need to parenthesize,
+    /// and the result is `x + y * z`.
+    ///
+    /// Top-level calls to `emit` should normally use a `prec` of 0, meaning any operator can be
+    /// used without parenthesization.  Recursive calls within `pretty` will use a different `prec`
+    /// as appropriate for the context.
+    fn emit(&mut self, rw: &Rewrite, prec: usize) -> Result<(), S::Error> {
         match *rw {
-            Rewrite::Identity => self.emit_parenthesized(true, |slf| {
-                emit_expr(slf);
-            }),
-            Rewrite::Sub(_, span) => self.emit_parenthesized(true, |slf| {
-                emit_subexpr(slf, span);
-            }),
+            Rewrite::Identity => {
+                self.emit_parenthesized(S::PARENTHESIZE_EXPRS, |slf| slf.emit_expr())
+            }
+            Rewrite::Sub(idx, span) => {
+                self.emit_parenthesized(S::PARENTHESIZE_EXPRS, |slf| slf.emit_sub(idx, span))
+            }
 
             Rewrite::Ref(ref rw, mutbl) => self.emit_parenthesized(prec > 2, |slf| {
                 match mutbl {
-                    Mutability::Not => slf.emit_str("&"),
-                    Mutability::Mut => slf.emit_str("&mut "),
+                    Mutability::Not => slf.emit_str("&")?,
+                    Mutability::Mut => slf.emit_str("&mut ")?,
                 }
-                slf.emit_rewrite(rw, 2, emit_expr, emit_subexpr);
+                slf.emit(rw, 2)
             }),
             Rewrite::AddrOf(ref rw, mutbl) => {
                 match mutbl {
-                    Mutability::Not => self.emit_str("core::ptr::addr_of!"),
-                    Mutability::Mut => self.emit_str("core::ptr::addr_of_mut!"),
+                    Mutability::Not => self.emit_str("core::ptr::addr_of!")?,
+                    Mutability::Mut => self.emit_str("core::ptr::addr_of_mut!")?,
                 }
-                self.emit_parenthesized(true, |slf| {
-                    slf.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
-                });
+                self.emit_parenthesized(true, |slf| slf.emit(rw, 0))
             }
             Rewrite::Deref(ref rw) => self.emit_parenthesized(prec > 2, |slf| {
-                slf.emit_str("*");
-                slf.emit_rewrite(rw, 2, emit_expr, emit_subexpr);
+                slf.emit_str("*")?;
+                slf.emit(rw, 2)
             }),
             Rewrite::Index(ref arr, ref idx) => self.emit_parenthesized(prec > 3, |slf| {
-                slf.emit_rewrite(arr, 3, emit_expr, emit_subexpr);
-                slf.emit_str("[");
-                slf.emit_rewrite(idx, 0, emit_expr, emit_subexpr);
-                slf.emit_str("]");
+                slf.emit(arr, 3)?;
+                slf.emit_str("[")?;
+                slf.emit(idx, 0)?;
+                slf.emit_str("]")
             }),
             Rewrite::SliceTail(ref arr, ref idx) => self.emit_parenthesized(prec > 3, |slf| {
-                slf.emit_rewrite(arr, 3, emit_expr, emit_subexpr);
-                slf.emit_str("[");
+                slf.emit(arr, 3)?;
+                slf.emit_str("[")?;
                 // Rather than figure out the right precedence for `..`, just force
                 // parenthesization in this position.
-                slf.emit_rewrite(idx, 999, emit_expr, emit_subexpr);
-                slf.emit_str(" ..]");
+                slf.emit(idx, 999)?;
+                slf.emit_str(" ..]")
             }),
             Rewrite::Cast(ref rw, ref ty) => self.emit_parenthesized(prec > 1, |slf| {
-                slf.emit_rewrite(rw, 1, emit_expr, emit_subexpr);
-                slf.emit_str(" as ");
-                slf.emit_str(ty);
+                slf.emit(rw, 1)?;
+                slf.emit_str(" as ")?;
+                slf.emit_str(ty)
             }),
-            Rewrite::LitZero => {
-                self.emit_str("0");
-            }
+            Rewrite::LitZero => self.emit_str("0"),
 
-            Rewrite::PrintTy(ref s) => {
-                self.emit_str(s);
-            }
+            Rewrite::PrintTy(ref s) => self.emit_str(s),
             Rewrite::TyGenericParams(ref rws) => {
-                self.emit_str("<");
+                self.emit_str("<")?;
                 for (index, rw) in rws.iter().enumerate() {
-                    self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                    self.emit(rw, 0)?;
                     if index < rws.len() - 1 {
-                        self.emit_str(",");
+                        self.emit_str(",")?;
                     }
                 }
-                self.emit_str(">");
+                self.emit_str(">")
             }
             Rewrite::Call(ref func, ref arg_rws) => {
-                self.emit_str(func);
+                self.emit_str(func)?;
                 self.emit_parenthesized(true, |slf| {
                     for (index, rw) in arg_rws.iter().enumerate() {
-                        slf.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                        slf.emit(rw, 0)?;
                         if index < arg_rws.len() - 1 {
-                            slf.emit_str(",");
+                            slf.emit_str(",")?;
                         }
                     }
-                });
+                    Ok(())
+                })
             }
             Rewrite::MethodCall(ref method, ref receiver_rw, ref arg_rws) => {
-                self.emit_rewrite(receiver_rw, 0, emit_expr, emit_subexpr);
-                self.emit_str(".");
-                self.emit_str(method);
+                self.emit(receiver_rw, 0)?;
+                self.emit_str(".")?;
+                self.emit_str(method)?;
                 self.emit_parenthesized(true, |slf| {
                     for (index, rw) in arg_rws.iter().enumerate() {
-                        slf.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                        slf.emit(rw, 0)?;
                         if index < arg_rws.len() - 1 {
-                            slf.emit_str(",");
+                            slf.emit_str(",")?;
                         }
                     }
+                    Ok(())
                 })
             }
             Rewrite::TyPtr(ref rw, mutbl) => {
                 match mutbl {
-                    Mutability::Not => self.emit_str("*const "),
-                    Mutability::Mut => self.emit_str("*mut "),
+                    Mutability::Not => self.emit_str("*const ")?,
+                    Mutability::Mut => self.emit_str("*mut ")?,
                 }
-                self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                self.emit(rw, 0)
             }
             Rewrite::TyRef(ref lifetime, ref rw, mutbl) => {
-                self.emit_str("&");
+                self.emit_str("&")?;
                 if let LifetimeName::Explicit(lt) = lifetime {
-                    self.emit_str(lt);
-                    self.emit_str(" ");
+                    self.emit_str(lt)?;
+                    self.emit_str(" ")?;
                 }
 
                 if let Mutability::Mut = mutbl {
-                    self.emit_str("mut");
-                    self.emit_str(" ");
+                    self.emit_str("mut")?;
+                    self.emit_str(" ")?;
                 }
 
-                self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                self.emit(rw, 0)
             }
             Rewrite::TySlice(ref rw) => {
-                self.emit_str("[");
-                self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
-                self.emit_str("]");
+                self.emit_str("[")?;
+                self.emit(rw, 0)?;
+                self.emit_str("]")
             }
             Rewrite::TyCtor(ref name, ref rws) => {
-                self.emit_str(name);
-                self.emit_str("<");
+                self.emit_str(name)?;
+                self.emit_str("<")?;
                 for (index, rw) in rws.iter().enumerate() {
-                    self.emit_rewrite(rw, 0, emit_expr, emit_subexpr);
+                    self.emit(rw, 0)?;
                     if index < rws.len() - 1 {
-                        self.emit_str(",");
+                        self.emit_str(",")?;
                     }
                 }
-                self.emit_str(">");
+                self.emit_str(">")
             }
 
             Rewrite::StaticMut(mutbl, span) => {
                 match mutbl {
-                    Mutability::Not => self.emit_str("static "),
-                    Mutability::Mut => self.emit_str("static mut "),
+                    Mutability::Not => self.emit_str("static ")?,
+                    Mutability::Mut => self.emit_str("static mut ")?,
                 }
-                emit_subexpr(self, span);
+                self.emit_sub(0, span)
             }
         }
     }
+}
 
-    fn emit_bytes(&mut self, lo: BytePos, hi: BytePos) {
+pub fn emit_rewrite<S: Sink>(sink: &mut S, rw: &Rewrite) -> Result<(), S::Error> {
+    Emitter { sink }.emit(rw, 0)
+}
+
+struct RewriteTreeSink<'a, F> {
+    file: &'a SourceFile,
+    emit: &'a mut F,
+    rt: Option<&'a RewriteTree>,
+}
+
+impl<'a, F: FnMut(&str)> RewriteTreeSink<'a, F> {
+    fn new(file: &'a SourceFile, emit: &'a mut F) -> RewriteTreeSink<'a, F> {
+        RewriteTreeSink {
+            file,
+            emit,
+            rt: None,
+        }
+    }
+
+    fn with_rt<R>(&mut self, rt: &'a RewriteTree, f: impl FnOnce(&mut Self) -> R) -> R {
+        let old = mem::replace(&mut self.rt, Some(rt));
+        let r = f(self);
+        self.rt = old;
+        r
+    }
+
+    fn emit_bytes(&mut self, lo: BytePos, hi: BytePos) -> Result<(), <Self as Sink>::Error> {
         assert!(
             self.file.start_pos <= lo && hi <= self.file.end_pos,
             "bytes {:?} .. {:?} are out of range for file {:?}",
@@ -384,10 +434,14 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
             .src
             .as_ref()
             .unwrap_or_else(|| panic!("source is not available for file {:?}", self.file.name));
-        self.emit_str(&src[lo.0 as usize..hi.0 as usize]);
+        self.emit_str(&src[lo.0 as usize..hi.0 as usize])
     }
 
-    fn emit_span_with_rewrites(&mut self, span: Span, rts: &[RewriteTree]) {
+    fn emit_span_with_rewrites(
+        &mut self,
+        span: Span,
+        rts: &'a [RewriteTree],
+    ) -> Result<(), <Self as Sink>::Error> {
         let (_, overlap, _) = partition_nodes(rts, span);
 
         let mut pos = span.lo();
@@ -396,17 +450,31 @@ impl<'a, F: FnMut(&str)> Emitter<'a, F> {
             // `Rewrite::Sub` in its parent node.
             debug_assert!(span.contains(rt.span));
 
-            self.emit_bytes(pos, rt.span.lo());
-            self.emit_rewrite(
-                &rt.rw,
-                0,
-                &mut |slf| slf.emit_span_with_rewrites(rt.span, &rt.children),
-                &mut |slf, subexpr_span| slf.emit_span_with_rewrites(subexpr_span, &rt.children),
-            );
+            self.emit_bytes(pos, rt.span.lo())?;
+            self.with_rt(rt, |slf| emit_rewrite(slf, &rt.rw))?;
             pos = rt.span.hi();
         }
 
-        self.emit_bytes(pos, span.hi());
+        self.emit_bytes(pos, span.hi())?;
+        Ok(())
+    }
+}
+
+impl<'a, F: FnMut(&str)> Sink for RewriteTreeSink<'a, F> {
+    type Error = Infallible;
+    const PARENTHESIZE_EXPRS: bool = true;
+
+    fn emit_str(&mut self, s: &str) -> Result<(), Self::Error> {
+        (self.emit)(s);
+        Ok(())
+    }
+    fn emit_expr(&mut self) -> Result<(), Self::Error> {
+        let rt = self.rt.unwrap();
+        self.emit_span_with_rewrites(rt.span, &rt.children)
+    }
+    fn emit_sub(&mut self, _idx: usize, span: Span) -> Result<(), Self::Error> {
+        let rt = self.rt.unwrap();
+        self.emit_span_with_rewrites(span, &rt.children)
     }
 }
 
@@ -437,15 +505,10 @@ pub fn apply_rewrites(
         rts = rest;
 
         let mut buf = String::new();
-        let mut emit = |s: &str| {
-            buf.push_str(s);
-        };
-        let mut emitter = Emitter {
-            file: &file,
-            emit: &mut emit,
-        };
+        let mut emit = |s: &str| buf.push_str(s);
+        let mut sink = RewriteTreeSink::new(&file, &mut emit);
         let file_span = Span::new(file.start_pos, file.end_pos, SyntaxContext::root(), None);
-        emitter.emit_span_with_rewrites(file_span, file_rts);
+        sink.emit_span_with_rewrites(file_span, file_rts).unwrap();
 
         new_src.insert(file.name.clone(), buf);
     }
