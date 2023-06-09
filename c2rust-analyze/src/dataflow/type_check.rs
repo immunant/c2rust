@@ -141,6 +141,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             CastKind::Misc => {
                 match is_transmutable_ptr_cast(from_ty, to_ty) {
                     Some(true) => {
+                        self.do_assign_pointer_ids(to_lty.label, from_lty.label);
                         // TODO add other dataflow constraints
                     },
                     Some(false) => ::log::error!("TODO: unsupported ptr-to-ptr cast between pointee types not yet supported as safely transmutable: `{from_ty:?} as {to_ty:?}`"),
