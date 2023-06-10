@@ -211,8 +211,8 @@ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 ...
 
 ### ... with `meson`
 
-When creating th einitial build directory with `meson`,
-it will automatically generate a `compile_commands.jon`
+When creating the initial build directory with `meson`,
+it will automatically generate a `compile_commands.json`
 file inside of `builddir`.
 
 ```sh
