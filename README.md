@@ -209,7 +209,7 @@ This works on Linux and MacOS.
 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 ...
 ```
 
-### ... with `meson`
+#### ... with `meson`
 
 When creating the initial build directory with `meson`,
 it will automatically generate a `compile_commands.json`
