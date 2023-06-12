@@ -644,7 +644,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         self.fns_failed.insert(did, detail);
     }
 
-    pub fn iter_fns_failed<'a>(&'a self) -> impl Iterator<Item = DefId> + 'a {
+    pub fn iter_fns_failed(&self) -> impl Iterator<Item = DefId> + '_ {
         self.fns_failed.keys().copied()
     }
 }

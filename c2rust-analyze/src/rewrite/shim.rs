@@ -5,7 +5,7 @@ use crate::type_desc::{self, TypeDesc};
 use crate::LTy;
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::DefId;
-use rustc_hir::intravisit;
+use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::{Expr, ExprKind, FnRetTy};
 use rustc_middle::hir::nested_filter;
 use rustc_middle::ty::{DefIdTree, TyCtxt, TypeckResults};
@@ -55,7 +55,7 @@ impl<'a, 'tcx> ShimCallVisitor<'a, 'tcx> {
         let has_non_fixed_ptr = lsig
             .inputs
             .iter()
-            .cloned()
+            .copied()
             .chain(iter::once(lsig.output))
             .flat_map(|lty| lty.iter())
             .any(|lty| {
@@ -74,7 +74,7 @@ impl<'a, 'tcx> ShimCallVisitor<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx> intravisit::Visitor<'tcx> for ShimCallVisitor<'a, 'tcx> {
+impl<'a, 'tcx> Visitor<'tcx> for ShimCallVisitor<'a, 'tcx> {
     type NestedFilter = nested_filter::OnlyBodies;
 
     fn nested_visit_map(&mut self) -> Self::Map {
@@ -140,7 +140,7 @@ pub fn gen_shim_call_rewrites<'tcx>(
             rewrites,
             mentioned_fns,
         };
-        intravisit::Visitor::visit_body(&mut v, hir);
+        v.visit_body(hir);
 
         rewrites = v.rewrites;
         mentioned_fns = v.mentioned_fns;
@@ -195,10 +195,7 @@ pub fn gen_shim_definition_rewrite<'tcx>(
 
     // `def_id` should always refer to a rewritten function, and all rewritten functions have
     // valid `fn_sigs` entries.
-    let lsig = gacx
-        .fn_sigs
-        .get(&def_id)
-        .unwrap_or_else(|| panic!("missing lsig for {:?}", def_id));
+    let lsig = gacx.fn_sigs[&def_id];
 
     let mut arg_exprs = Vec::with_capacity(arg_tys.len());
     for (i, arg_lty) in lsig.inputs.iter().enumerate() {

@@ -803,10 +803,7 @@ fn run(tcx: TyCtxt) {
     // Before generating rewrites, add the FIXED flag to the signatures of all functions that
     // failed analysis.
     for did in gacx.iter_fns_failed() {
-        let lsig = match gacx.fn_sigs.get(&did) {
-            Some(x) => x,
-            None => continue,
-        };
+        let lsig = gacx.fn_sigs[&did];
         for sig_lty in lsig.inputs.iter().copied().chain(iter::once(lsig.output)) {
             for lty in sig_lty.iter() {
                 let ptr = lty.label;
@@ -877,8 +874,8 @@ fn run(tcx: TyCtxt) {
         info.acx_data.set(acx.into_data());
     }
 
-    let (shim_rewrites, shim_fn_def_ids) = rewrite::gen_shim_call_rewrites(&gacx, &gasn);
-    all_rewrites.extend(shim_rewrites);
+    let (shim_call_rewrites, shim_fn_def_ids) = rewrite::gen_shim_call_rewrites(&gacx, &gasn);
+    all_rewrites.extend(shim_call_rewrites);
 
     // Generate shims for functions that need them.
     for def_id in shim_fn_def_ids {
