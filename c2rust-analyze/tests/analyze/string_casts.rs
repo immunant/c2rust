@@ -35,9 +35,10 @@ pub fn cast_from_literal_explicit() {
 }
 
 /// [`PointerCast::ReifyFnPointer`]
-/// Can't figure out how to create a [`PointerCast::ReifyFnPointer`].
-#[cfg(any())]
-pub fn cast_fn_item_to_fn_ptr(f: impl Fn(u8) -> i8) {
+pub fn cast_fn_item_to_fn_ptr() {
+    fn f(x: u8) -> i8 {
+        x as i8
+    }
     f as fn(u8) -> i8;
 }
 
