@@ -21,12 +21,12 @@ use rustc_middle::mir::{
 use rustc_middle::ty::{Ty, TyKind};
 use std::collections::HashMap;
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum SubLoc {
     /// The LHS of an assignment or call.  `StatementKind::Assign/TerminatorKind::Call -> Place`
     Dest,
-    /// The RHS of an assignment.  `StatementKind::Assign -> Rvalue`
-    AssignRvalue,
+    /// The RHS of an assignment or call.  `StatementKind::Assign/TerminatorKind::Call -> Rvalue`
+    Rvalue,
     /// The Nth argument of a call.  `TerminatorKind::Call -> Operand`
     CallArg(usize),
     /// The Nth operand of an rvalue.  `Rvalue -> Operand`
@@ -122,8 +122,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         self.enter(SubLoc::Dest, f)
     }
 
-    fn enter_assign_rvalue<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
-        self.enter(SubLoc::AssignRvalue, f)
+    fn enter_rvalue<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+        self.enter(SubLoc::Rvalue, f)
     }
 
     fn enter_call_arg<F: FnOnce(&mut Self) -> R, R>(&mut self, i: usize, f: F) -> R {
@@ -182,7 +182,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         let desc = type_desc::perms_to_desc(local_lty.ty, perms, flags);
                         if desc.own == Ownership::Cell {
                             // this is an assignment like `*x = 2` but `x` has CELL permissions
-                            self.enter_assign_rvalue(|v| v.emit(RewriteKind::CellSet))
+                            self.emit(RewriteKind::CellSet);
                         }
                     }
                 }
@@ -197,9 +197,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         let desc = type_desc::local_perms_to_desc(local_ty, perms, flags);
                         if desc.own == Ownership::Cell {
                             // this is an assignment like `let x = 2` but `x` has CELL permissions
-                            self.enter_assign_rvalue(|v| {
-                                v.enter_rvalue_operand(0, |v| v.emit(RewriteKind::CellNew))
-                            })
+                            self.enter_rvalue(|v| v.emit(RewriteKind::CellNew))
                         }
 
                         if let Some(rv_place) = rv_op.place() {
@@ -212,9 +210,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 if !flags.contains(FlagSet::FIXED) && flags.contains(FlagSet::CELL)
                                 {
                                     // this is an assignment like `let x = *y` but `y` has CELL permissions
-                                    self.enter_assign_rvalue(|v| {
-                                        v.enter_rvalue_operand(0, |v| v.emit(RewriteKind::CellGet))
-                                    })
+                                    self.enter_rvalue(|v| v.emit(RewriteKind::CellGet))
                                 }
                             }
                         }
@@ -223,8 +219,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 };
 
                 let rv_lty = self.acx.type_of_rvalue(rv, loc);
-                self.enter_assign_rvalue(|v| v.visit_rvalue(rv, Some(rv_lty)));
-                self.emit_cast_lty_lty(rv_lty, pl_lty);
+                self.enter_rvalue(|v| v.visit_rvalue(rv, Some(rv_lty)));
+                // The cast from `rv_lty` to `pl_lty` should be applied to the RHS.
+                self.enter_rvalue(|v| v.emit_cast_lty_lty(rv_lty, pl_lty));
                 self.enter_dest(|v| v.visit_place(pl));
             }
             StatementKind::FakeRead(..) => {}
@@ -329,13 +326,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         self.perms[expect_ty.label],
                         self.flags[expect_ty.label],
                     );
-                    self.enter_rvalue_operand(0, |v| match desc.own {
-                        Ownership::Cell => v.emit(RewriteKind::RawToRef { mutbl: false }),
-                        Ownership::Imm | Ownership::Mut => v.emit(RewriteKind::RawToRef {
+                    match desc.own {
+                        Ownership::Cell => self.emit(RewriteKind::RawToRef { mutbl: false }),
+                        Ownership::Imm | Ownership::Mut => self.emit(RewriteKind::RawToRef {
                             mutbl: mutbl == Mutability::Mut,
                         }),
                         _ => (),
-                    });
+                    }
                 }
             }
             Rvalue::Len(pl) => {
@@ -427,16 +424,17 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             pointee_ty: result_desc.pointee_ty,
         };
 
-        self.enter_call_arg(0, |v| v.visit_operand_desc(op, arg_expect_desc));
+        self.enter_rvalue(|v| {
+            v.enter_call_arg(0, |v| v.visit_operand_desc(op, arg_expect_desc));
 
-        // Emit `OffsetSlice` for the offset itself.
-        let mutbl = matches!(result_desc.own, Ownership::Mut);
+            // Emit `OffsetSlice` for the offset itself.
+            let mutbl = matches!(result_desc.own, Ownership::Mut);
+            v.emit(RewriteKind::OffsetSlice { mutbl });
 
-        self.emit(RewriteKind::OffsetSlice { mutbl });
-
-        // The `OffsetSlice` operation returns something of the same type as its input.  Afterward,
-        // we must cast the result to the `result_ty`/`result_desc`.
-        self.emit_cast_desc_desc(arg_expect_desc, result_desc);
+            // The `OffsetSlice` operation returns something of the same type as its input.
+            // Afterward, we must cast the result to the `result_ty`/`result_desc`.
+            v.emit_cast_desc_desc(arg_expect_desc, result_desc);
+        });
     }
 
     fn visit_slice_as_ptr(&mut self, elem_ty: Ty<'tcx>, op: &Operand<'tcx>, result_lty: LTy<'tcx>) {
@@ -460,10 +458,12 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             self.flags[result_ptr],
         );
 
-        // Generate a cast of our own, replacing the `as_ptr` call.
-        // TODO: leave the `as_ptr` in place if we can't produce a working cast
-        self.emit(RewriteKind::RemoveAsPtr);
-        self.emit_cast_desc_desc(op_desc, result_desc);
+        self.enter_rvalue(|v| {
+            // Generate a cast of our own, replacing the `as_ptr` call.
+            // TODO: leave the `as_ptr` in place if we can't produce a working cast
+            v.emit(RewriteKind::RemoveAsPtr);
+            v.emit_cast_desc_desc(op_desc, result_desc);
+        });
     }
 
     fn emit(&mut self, rw: RewriteKind) {

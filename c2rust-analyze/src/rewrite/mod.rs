@@ -9,8 +9,8 @@
 //!    lift any MIR rewrites into HIR rewrites. HIR rewrites are expressed as concrete operations
 //!    on source code, such as replacing an expression with one of its subexpressions (both
 //!    identified by their `Span`s) or wrapping an expression in a ref or deref operation. The
-//!    HIR-level rewrite type is `rewrite::Rewrite`; the `rewrite::expr::hir_op` module implements
-//!    the lifting.
+//!    HIR-level rewrite type is `rewrite::Rewrite`; the `rewrite::expr::distribute` and
+//!    `rewrite::expr::convert` modules implement the lifting.
 //!
 //! 3. Apply the rewrites to the source code of the input program. This reads the source of each
 //!    file and emits a new string consisting of the file source with certain `Span`s rewritten as
@@ -117,12 +117,6 @@ impl apply::Sink for FormatterSink<'_, '_> {
     fn emit_sub(&mut self, idx: usize, _span: Span) -> fmt::Result {
         self.0.write_fmt(format_args!("${}", idx))
     }
-}
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-enum SoleLocationError {
-    NoMatch,
-    MultiMatch(Vec<Location>),
 }
 
 fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {

@@ -1,28 +1,24 @@
 use crate::panic_detail;
-use crate::rewrite::expr::mir_op::{self, MirRewrite};
-use crate::rewrite::span_index::SpanIndex;
-use crate::rewrite::{build_span_index, Rewrite, SoleLocationError};
+use crate::rewrite::expr::mir_op;
+use crate::rewrite::Rewrite;
 use assert_matches::assert_matches;
-use hir::{ExprKind, UnOp};
+use log::*;
 use rustc_hir as hir;
-use rustc_hir::def::{Namespace, Res};
-use rustc_hir::intravisit;
+use rustc_hir::def::Namespace;
+use rustc_hir::intravisit::{self, Visitor};
+use rustc_hir::{ExprKind, HirId};
 use rustc_middle::hir::nested_filter;
-use rustc_middle::mir::{self, Body, Location};
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, PointerCast};
 use rustc_middle::ty::print::{FmtPrinter, Print};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::Span;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-struct HirRewriteVisitor<'a, 'tcx> {
+struct ConvertVisitor<'tcx> {
     tcx: TyCtxt<'tcx>,
     typeck_results: &'tcx TypeckResults<'tcx>,
-    mir: &'a Body<'tcx>,
-    span_index: SpanIndex<Location>,
-    rewrites: &'a HashMap<Location, Vec<MirRewrite>>,
-    locations_visited: HashSet<Location>,
-    hir_rewrites: Vec<(Span, Rewrite)>,
+    mir_rewrites: HashMap<HirId, Vec<mir_op::RewriteKind>>,
+    rewrites: Vec<(Span, Rewrite)>,
     /// When `true`, any `Expr` where rustc added an implicit adjustment will be rewritten to make
     /// that adjustment explicit.  Any node that emits a non-adjustment rewrite sets this flag when
     /// visiting its children.  This is important to ensure that implicit ref/deref operations are
@@ -45,7 +41,7 @@ struct HirRewriteVisitor<'a, 'tcx> {
     materialize_adjustments: bool,
 }
 
-impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
+impl<'tcx> ConvertVisitor<'tcx> {
     /// If `set`, set `self.materialize_adjustments` to `true` while running the closure.  If `set`
     /// is `false`, `self.materialize_adjustments` is left unchanged (inherited from the parent).
     fn with_materialize_adjustments<R>(&mut self, set: bool, f: impl FnOnce(&mut Self) -> R) -> R {
@@ -54,169 +50,6 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
         let r = f(self);
         self.materialize_adjustments = old;
         r
-    }
-
-    /// Find all `Location`s where the provided filters match and the statement or terminator
-    /// has a span exactly equal to `target_span`.
-    fn find_all_locations_matching(
-        &mut self,
-        target_span: Span,
-        mut filter_stmt: impl FnMut(&mir::Statement<'tcx>) -> bool,
-        mut filter_term: impl FnMut(&mir::Terminator<'tcx>) -> bool,
-    ) -> Vec<Location> {
-        let mut found_locs = Vec::new();
-        for (span, &loc) in self.span_index.lookup(target_span) {
-            if span != target_span {
-                continue;
-            }
-            let matched = self
-                .mir
-                .stmt_at(loc)
-                .either(&mut filter_stmt, &mut filter_term);
-            if !matched {
-                continue;
-            }
-
-            found_locs.push(loc);
-        }
-
-        found_locs
-    }
-
-    /// Find the sole `Location` where the provided filters match and the statement or terminator
-    /// has a span exactly equal to `target_span`. Returns `Err` if there is no such location or
-    /// if there are multiple matching locations.
-    fn find_sole_location_matching(
-        &mut self,
-        target_span: Span,
-        filter_stmt: impl FnMut(&mir::Statement<'tcx>) -> bool,
-        filter_term: impl FnMut(&mir::Terminator<'tcx>) -> bool,
-    ) -> Result<Location, SoleLocationError> {
-        let found_locs = self.find_all_locations_matching(target_span, filter_stmt, filter_term);
-
-        match found_locs.len() {
-            0 => Err(SoleLocationError::NoMatch),
-            1 => Ok(found_locs[0]),
-            _ => Err(SoleLocationError::MultiMatch(found_locs)),
-        }
-    }
-
-    fn find_optional_location_matching(
-        &mut self,
-        target_span: Span,
-        filter_stmt: impl FnMut(&mir::Statement<'tcx>) -> bool,
-        filter_term: impl FnMut(&mir::Terminator<'tcx>) -> bool,
-    ) -> Result<Option<Location>, SoleLocationError> {
-        match self.find_sole_location_matching(target_span, filter_stmt, filter_term) {
-            Ok(x) => Ok(Some(x)),
-            Err(SoleLocationError::NoMatch) => Ok(None),
-            Err(e) => Err(e),
-        }
-    }
-
-    fn find_locations(&mut self, ex: &'tcx hir::Expr<'tcx>) -> Vec<Location> {
-        let panic_location_error = |err, desc| -> ! {
-            match err {
-                SoleLocationError::NoMatch => panic!("couldn't find {} for {:?}", desc, ex),
-                SoleLocationError::MultiMatch(locations) => {
-                    let all_matches = locations
-                        .iter()
-                        .map(|loc| self.mir.stmt_at(*loc))
-                        .collect::<Vec<_>>();
-
-                    panic!(
-                        "expected to find only one {}, but got multiple:\n\
-                         expr = {:?}\n\
-                         matches = {:?}",
-                        desc, ex, all_matches,
-                    )
-                }
-            }
-        };
-
-        let mut locations = Vec::new();
-
-        let mut push_assign_loc = |span: Span| match self.find_optional_location_matching(
-            span,
-            |stmt| matches!(stmt.kind, mir::StatementKind::Assign(..)),
-            |_term| false,
-        ) {
-            Ok(Some(assign_loc)) => locations.push(assign_loc),
-            Ok(None) => {}
-            Err(err) => panic_location_error(err, "Assign statement"),
-        };
-
-        match ex.kind {
-            hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
-                // We expect to find exactly one `TerminatorKind::Call` whose span exactly matches
-                // this `hir::Expr`.
-                let call_loc = self
-                    .find_sole_location_matching(
-                        ex.span,
-                        |_stmt| false,
-                        |term| matches!(term.kind, mir::TerminatorKind::Call { .. }),
-                    )
-                    .unwrap_or_else(|err| panic_location_error(err, "Call terminator"));
-                locations.push(call_loc)
-            }
-            hir::ExprKind::Path(hir::QPath::Resolved(_, p)) if matches!(p.res, Res::Local(..)) => {
-                // Currently we only handle cases where the local is copied into a temporary.  If
-                // the local is used as-is in some other expression, this case will return `None`.
-                push_assign_loc(ex.span)
-            }
-            hir::ExprKind::Unary(UnOp::Deref, ..)
-            | hir::ExprKind::Lit(..)
-            | hir::ExprKind::Field(..) => {
-                // For `hir::ExprKind::Field` we currently we only handle the case where the value
-                // retrieved from the field is stored into a temporary.  If it's stored into a
-                // local or some other place (e.g. `let y = x.f;`, or `y = x.f;` alone), then
-                // this case will return `None`.
-                //
-                // Also, for chained field accesses, this only matches the outermost ones.  Code
-                // like `x.0.0` translates into a single MIR statement with the span of the overall
-                // expression.
-                push_assign_loc(ex.span)
-            }
-            hir::ExprKind::AddrOf(..) => {
-                locations.extend(
-                    self.find_all_locations_matching(
-                        ex.span,
-                        |stmt| matches!(stmt.kind, mir::StatementKind::Assign(..)),
-                        |_term| false,
-                    )
-                    .iter(),
-                );
-            }
-            hir::ExprKind::Assign(..) => {
-                let assign_loc = self
-                    .find_sole_location_matching(
-                        ex.span,
-                        |stmt| matches!(stmt.kind, mir::StatementKind::Assign(..)),
-                        |_term| false,
-                    )
-                    .unwrap_or_else(|err| panic_location_error(err, "Assignment statement"));
-                locations.push(assign_loc)
-            }
-            hir::ExprKind::Cast(..) => {
-                let r = self.find_sole_location_matching(
-                    ex.span,
-                    |stmt| {
-                        let rv = match stmt.kind {
-                            mir::StatementKind::Assign(ref x) => &x.1,
-                            _ => return false,
-                        };
-                        matches!(rv, mir::Rvalue::Cast(..))
-                    },
-                    |_term| false,
-                );
-                if let Ok(assign_loc) = r {
-                    locations.push(assign_loc);
-                }
-            }
-            _ => eprintln!("warning: find_primary_location: unsupported expr {:?}", ex),
-        }
-
-        locations
     }
 
     /// Get subexpression `idx` of `ex`.  Panics if the index is out of range for `ex`.  The
@@ -264,7 +97,7 @@ impl<'a, 'tcx> HirRewriteVisitor<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
+impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
     type NestedFilter = nested_filter::OnlyBodies;
 
     fn nested_visit_map(&mut self) -> Self::Map {
@@ -281,25 +114,10 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
         // the rewrite should occur at the callsite
         let callsite_span = ex.span.source_callsite();
 
-        let locs = self.find_locations(ex);
-        for loc in &locs {
-            self.locations_visited.insert(*loc);
-        }
-
-        let all_rws_unflattened: Vec<_> = locs
-            .iter()
-            .map(|loc| {
-                self.rewrites
-                    .get(loc)
-                    .map(|rws| rws.iter().map(|rw| &rw.kind).collect::<Vec<_>>())
-                    .unwrap_or_else(Vec::new)
-            })
-            .collect();
-
-        let all_rws_unflattened = all_rws_unflattened
-            .iter()
-            .map(|v| v.as_slice())
-            .collect::<Vec<_>>();
+        let mir_rws = self
+            .mir_rewrites
+            .remove(&ex.hir_id)
+            .unwrap_or_else(Vec::new);
 
         let rewrite_from_mir_rws = |rw: &mir_op::RewriteKind, hir_rw: Rewrite| -> Rewrite {
             match rw {
@@ -383,41 +201,8 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
             }
         };
 
-        let is_addr_of_expansion = || {
-            let rvalues: Vec<_> = locs
-                .into_iter()
-                .map(|loc| {
-                    self.mir
-                        .stmt_at(loc)
-                        .left()
-                        .and_then(|s| s.kind.as_assign().cloned().map(|(_, rv)| rv))
-                })
-                .collect();
-            use mir::Rvalue;
-            callsite_span != ex.span
-                && matches!(
-                    rvalues[..],
-                    [Some(Rvalue::Ref(..)), Some(Rvalue::AddressOf(..))]
-                )
-        };
-
-        use mir_op::RewriteKind::*;
-        if !all_rws_unflattened.is_empty() {
-            hir_rw = match &all_rws_unflattened[..] {
-                [[], [rw @ RawToRef { .. }]]
-                    if is_addr_of_expansion() || callsite_span == ex.span =>
-                {
-                    rewrite_from_mir_rws(rw, hir_rw)
-                }
-                [rws] => rws
-                    .iter()
-                    .fold(hir_rw, |acc, rw| rewrite_from_mir_rws(rw, acc)),
-                rwss if rwss.iter().all(|rws| rws.is_empty()) => hir_rw,
-                _ => panic!(
-                    "unsupported MIR rewrites {:?} for HIR expr: {:?}",
-                    all_rws_unflattened, ex
-                ),
-            };
+        for mir_rw in mir_rws {
+            hir_rw = rewrite_from_mir_rws(&mir_rw, hir_rw);
         }
 
         // Emit rewrites on subexpressions first.
@@ -438,7 +223,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirRewriteVisitor<'a, 'tcx> {
                 "rewrite {:?} at {:?} (materialize? {})",
                 hir_rw, callsite_span, self.materialize_adjustments
             );
-            self.hir_rewrites.push((callsite_span, hir_rw));
+            self.rewrites.push((callsite_span, hir_rw));
         }
     }
 }
@@ -492,55 +277,34 @@ fn materialize_adjustments<'tcx>(
     }
 }
 
-pub fn gen_hir_rewrites<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    mir: &Body<'tcx>,
+/// Convert the MIR rewrites attached to each HIR node into `Span`-based `rewrite::Rewrite`s.
+pub fn convert_rewrites(
+    tcx: TyCtxt,
     hir_body_id: hir::BodyId,
-    rewrites: &HashMap<Location, Vec<MirRewrite>>,
+    mir_rewrites: HashMap<HirId, Vec<mir_op::RewriteKind>>,
 ) -> Vec<(Span, Rewrite)> {
-    // Build `span_index`, which maps `Span`s to MIR `Locations`.
-    let span_index = build_span_index(mir);
-
     // Run the visitor.
     let typeck_results = tcx.typeck_body(hir_body_id);
     let hir = tcx.hir().body(hir_body_id);
 
-    let mut v = HirRewriteVisitor {
+    let mut v = ConvertVisitor {
         tcx,
         typeck_results,
-        mir,
-        span_index,
-        rewrites,
-        locations_visited: HashSet::new(),
-        hir_rewrites: Vec::new(),
+        mir_rewrites,
+        rewrites: Vec::new(),
         materialize_adjustments: false,
     };
-    intravisit::Visitor::visit_body(&mut v, hir);
+    v.visit_body(hir);
 
-    // Check that all locations with rewrites were visited at least once.
-    let mut locs = rewrites.keys().cloned().collect::<Vec<_>>();
-    locs.sort();
-    let mut found_unvisited_loc = false;
-    for loc in locs {
-        if v.locations_visited.contains(&loc) {
-            continue;
+    if !v.mir_rewrites.is_empty() {
+        info!("leftover rewrites:");
+        let count = v.mir_rewrites.len();
+        for (hir_id, rws) in v.mir_rewrites {
+            let ex = tcx.hir().expect_expr(hir_id);
+            info!("  {:?}: {:?}, expr = {:?}", ex.span, rws, ex);
         }
-        let rws = &rewrites[&loc];
-        if rws.is_empty() {
-            continue;
-        }
-
-        found_unvisited_loc = true;
-        eprintln!("error: location {:?} has rewrites but wasn't visited", loc);
-        eprintln!("  stmt = {:?}", mir.stmt_at(loc));
-        eprintln!(
-            "  span = {:?}",
-            mir.stmt_at(loc)
-                .either(|s| s.source_info.span, |t| t.source_info.span)
-        );
-        eprintln!("  rewrites = {:?}", rws);
+        error!("found {} leftover rewrites", count);
     }
-    assert!(!found_unvisited_loc);
 
-    v.hir_rewrites
+    v.rewrites
 }
