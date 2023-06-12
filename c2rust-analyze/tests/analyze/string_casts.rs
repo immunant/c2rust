@@ -16,7 +16,6 @@ pub fn deep_cast_ptr_to_ptr(x: *const *const u8) {
 /// though `std::ptr::addr_of`, `::std::ptr::addr_of!`,
 /// and `core::ptr::addr_of!` do work.
 
-#[cfg(any())]
 pub fn cast_array_to_ptr(s: &[u8; 1]) {
     s as *const u8;
 }
@@ -25,7 +24,6 @@ pub fn cast_array_to_ptr_explicit(s: &[u8; 1]) {
     std::ptr::addr_of!(*s) as *const u8;
 }
 
-#[cfg(any())]
 pub fn cast_from_literal() {
     b"\0" as *const u8 as *const core::ffi::c_char;
 }

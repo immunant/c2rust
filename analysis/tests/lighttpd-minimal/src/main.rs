@@ -1187,11 +1187,12 @@ unsafe extern "C" fn connection_init(
     //     ::std::mem::size_of::<connection>() as libc::c_ulong,
     // ) as *mut connection;
     if con.is_null() {
-        // ck_assert_failed(
-        //     b"src/connections.c\0" as *const u8 as *const libc::c_char,
-        //     500 as libc::c_int as libc::c_uint,
-        //     b"((void*)0) != con\0" as *const u8 as *const libc::c_char,
-        // );
+        // ck_assert_failed
+        (
+            b"src/connections.c\0" as *const u8 as *const libc::c_char,
+            //     500 as libc::c_int as libc::c_uint,
+            b"((void*)0) != con\0" as *const u8 as *const libc::c_char,
+        );
     }
     (*con).srv = srv;
     (*con).plugin_slots = (*srv).plugin_slots;
@@ -1206,11 +1207,12 @@ unsafe extern "C" fn connection_init(
     //         .wrapping_mul(::std::mem::size_of::<*mut libc::c_void>() as libc::c_ulong),
     // ) as *mut *mut libc::c_void;
     if ((*con).plugin_ctx).is_null() {
-        // ck_assert_failed(
-        //     b"src/connections.c\0" as *const u8 as *const libc::c_char,
-        //     513 as libc::c_int as libc::c_uint,
-        //     b"((void*)0) != con->plugin_ctx\0" as *const u8 as *const libc::c_char,
-        // );
+        // ck_assert_failed
+        (
+            b"src/connections.c\0" as *const u8 as *const libc::c_char,
+            //     513 as libc::c_int as libc::c_uint,
+            b"((void*)0) != con->plugin_ctx\0" as *const u8 as *const libc::c_char,
+        );
     }
     return con;
 }
@@ -1261,11 +1263,12 @@ unsafe extern "C" fn fdnode_init(fdn: *mut fdnode) -> *mut fdnode {
     //     ::std::mem::size_of::<fdnode>() as libc::c_ulong,
     // ) as *mut fdnode;
     if fdn.is_null() {
-        // ck_assert_failed(
-        //     b"src/fdevent_fdnode.c\0" as *const u8 as *const libc::c_char,
-        //     17 as libc::c_int as libc::c_uint,
-        //     b"((void*)0) != fdn\0" as *const u8 as *const libc::c_char,
-        // );
+        // ck_assert_failed
+        (
+            b"src/fdevent_fdnode.c\0" as *const u8 as *const libc::c_char,
+            //     17 as libc::c_int as libc::c_uint,
+            b"((void*)0) != fdn\0" as *const u8 as *const libc::c_char,
+        );
     }
 
     fdn
@@ -1305,22 +1308,24 @@ unsafe extern "C" fn connection_close(mut con: *mut connection) {
     if 0 as libc::c_int == close((*con).fd) {
         (*srv).cur_fds -= 1;
     } else {
-        //     log_perror(
-        //         (*r).conf.errh,
-        //         b"src/connections.c\0" as *const u8 as *const libc::c_char,
-        //         101 as libc::c_int as libc::c_uint,
-        //         b"(warning) close: %d\0" as *const u8 as *const libc::c_char,
-        //         (*con).fd,
-        //     );
+        //     log_perror
+        (
+            //         (*r).conf.errh,
+            b"src/connections.c\0" as *const u8 as *const libc::c_char,
+            //         101 as libc::c_int as libc::c_uint,
+            b"(warning) close: %d\0" as *const u8 as *const libc::c_char,
+            //         (*con).fd,
+        );
     }
     if (*r).conf.log_state_handling != 0 {
-        // log_error(
-        //     (*r).conf.errh,
-        //     b"src/connections.c\0" as *const u8 as *const libc::c_char,
-        //     105 as libc::c_int as libc::c_uint,
-        //     b"connection closed for fd %d\0" as *const u8 as *const libc::c_char,
-        //     (*con).fd,
-        // );
+        // log_error
+        (
+            //     (*r).conf.errh,
+            b"src/connections.c\0" as *const u8 as *const libc::c_char,
+            //     105 as libc::c_int as libc::c_uint,
+            b"connection closed for fd %d\0" as *const u8 as *const libc::c_char,
+            //     (*con).fd,
+        );
     }
     (*con).fd = -(1 as libc::c_int);
     connection_del(srv, con);
