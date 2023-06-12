@@ -216,7 +216,7 @@ it will automatically generate a `compile_commands.json`
 file inside of `builddir`.
 
 ```sh
-meson setup builddir
+meson setup <build_dir>
 ```
 
 #### ... with `intercept-build`
