@@ -11,6 +11,22 @@ struct RewriteInfo {
     rw: mir_op::RewriteKind,
     loc: PreciseLoc,
     desc: MirOriginDesc,
+    priority: Priority,
+}
+
+/// This enum defines a sort order for [`RewriteInfo`], from innermost (applied earlier) to
+/// outermost (applied later).
+///
+/// The order of variants follows the order of operations we typically see in generated MIR code.
+/// For a given HIR `Expr`, the MIR will usually evaluate the expression ([`Priority::Eval`]),
+/// store the result into a temporary ([`Priority::_StoreResult`]; currently unused), and later
+/// load the result back from the temporary ([`Priority::LoadResult`]) when computing the parent
+/// `Expr`.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+enum Priority {
+    Eval,
+    _StoreResult,
+    LoadResult,
 }
 
 /// Distributes MIR rewrites to HIR nodes.  This takes a list of MIR rewrites (from `mir_op`) and a
@@ -54,14 +70,18 @@ pub fn distribute(
                 }
             };
 
-            if origin.desc != MirOriginDesc::Expr {
-                error!(
-                    "can't distribute rewrites onto {:?} origin {:?}\n\
-                        key = {:?}\n\
-                        mir_rw = {:?}",
-                    origin.desc, origin, key, mir_rw.kind
-                );
-            }
+            let priority = match origin.desc {
+                MirOriginDesc::Expr => Priority::Eval,
+                MirOriginDesc::LoadFromTemp => Priority::LoadResult,
+                _ => {
+                    panic!(
+                        "can't distribute rewrites onto {:?} origin {:?}\n\
+                            key = {:?}\n\
+                            mir_rw = {:?}",
+                        origin.desc, origin, key, mir_rw.kind
+                    );
+                }
+            };
 
             info_map
                 .entry(origin.hir_id)
@@ -70,17 +90,23 @@ pub fn distribute(
                     rw: mir_rw.kind,
                     loc: key,
                     desc: origin.desc,
+                    priority,
                 });
         }
     }
 
-    // If a single `HirId` has rewrites from multiple different pieces of MIR, it's ambiguous how
-    // to order those rewrites.  (`mir_rewrites` only establishes an ordering between rewrites on
-    // the same `Location`.)  For now, we complain if we see this ambiguity; in the future, we may
-    // need to add rules to resolve it in a particular way, such as prioritizing one `SubLoc` or
-    // `MirOriginDesc` over another.
-    for (&hir_id, infos) in &info_map {
-        let all_same_loc = infos.iter().map(|i| (&i.loc, i.desc)).all_equal();
+    // If a single `HirId` has rewrites from multiple different pieces of MIR at the same
+    // `Priority`, it's ambiguous how to order those rewrites.  (`mir_rewrites` only establishes an
+    // ordering between rewrites on the same `Location`.)  For now, we complain if we see this
+    // ambiguity; in the future, we may need to add rules to resolve it in a particular way, such
+    // as prioritizing one `SubLoc` over another.
+    for (&hir_id, infos) in &mut info_map {
+        infos.sort_by_key(|i| i.priority);
+        let all_same_loc = infos
+            .iter()
+            .group_by(|i| i.priority)
+            .into_iter()
+            .all(|(_, group)| group.map(|i| (&i.loc, i.desc)).all_equal());
         if !all_same_loc {
             info!("rewrite info:");
             for i in infos {

@@ -32,6 +32,10 @@ pub enum MirOriginDesc {
     Expr,
     /// This MIR stores the result of the HIR expression into a MIR local of some kind.
     StoreIntoLocal,
+    /// This MIR loads the result of the HIR expression from a MIR temporary where it was
+    /// previously stored.  Loads from user-visible locals, which originate from HIR local variable
+    /// expressions, use the `Expr` variant instead.
+    LoadFromTemp,
 }
 
 struct UnlowerVisitor<'a, 'tcx> {
@@ -91,6 +95,32 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 }
             }
         }
+    }
+
+    /// Special `record` variant for MIR [`Operand`]s.  This sets the [`MirOriginDesc`] to
+    /// `LoadFromLocal` if `op` is a MIR temporary and otherwise sets it to `Expr`.
+    ///
+    /// [`Operand`]: mir::Operand
+    fn record_operand(
+        &mut self,
+        loc: Location,
+        sub_loc: &[SubLoc],
+        ex: &hir::Expr,
+        op: &mir::Operand<'tcx>,
+    ) {
+        let op_is_temp = match *op {
+            mir::Operand::Copy(pl) | mir::Operand::Move(pl) => {
+                is_var(pl) && self.mir.local_kind(pl.local) == mir::LocalKind::Temp
+            }
+            mir::Operand::Constant(..) => false,
+        };
+
+        let desc = if op_is_temp {
+            MirOriginDesc::LoadFromTemp
+        } else {
+            MirOriginDesc::Expr
+        };
+        self.record_desc(loc, sub_loc, ex, desc);
     }
 
     fn get_sole_assign(
@@ -203,7 +233,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 self.record_desc(loc, &[], ex, MirOriginDesc::StoreIntoLocal);
                 self.record(loc, &[SubLoc::Rvalue], ex);
                 for (i, (arg, mir_arg)) in args.iter().zip(mir_args).enumerate() {
-                    self.record(loc, &[SubLoc::Rvalue, SubLoc::CallArg(i)], arg);
+                    self.record_operand(loc, &[SubLoc::Rvalue, SubLoc::CallArg(i)], arg, mir_arg);
                     // TODO: Distribute extra `locs` among the various args.  For example, if
                     // `locs` is `[a, b, loc]`, we may need to pass `[a]` as the `extra_locs` for
                     // the first arg and `[b]` for the second, or `[a, b]` for the first and `[]`
