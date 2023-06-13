@@ -54,3 +54,9 @@ pub unsafe fn repeat() {
     let x = 22;
     let _buf: [u32; 22] = [x; 22];
 }
+
+// CHECK-DAG: #[derive(Clone)]
+#[derive(Clone)]
+struct Foo {
+    x: i32,
+}
