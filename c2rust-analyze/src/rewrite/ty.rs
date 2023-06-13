@@ -120,17 +120,19 @@ where
     })
 }
 
+// Gets the generic type arguments of an HIR type.
 fn hir_generic_ty_args<'tcx>(ty: &hir::Ty<'tcx>) -> Option<Vec<&'tcx hir::Ty<'tcx>>> {
     let args = match ty.kind {
         hir::TyKind::Path(hir::QPath::Resolved(
             _,
             Path {
-                segments: [.., PathSegment { args, .. }],
+                segments: [.., segment @ PathSegment { .. }],
                 ..
             },
-        )) => args,
-        _ => &None,
+        )) => Some(segment.args()),
+        _ => None,
     };
+
     args.map(|args| {
         args.args
             .iter()
