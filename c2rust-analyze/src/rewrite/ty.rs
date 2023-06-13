@@ -120,19 +120,19 @@ where
     })
 }
 
-// Gets the generic type arguments of an HIR type. If the type has no generic
-// arguments, an empty vector is returned
-fn hir_generic_ty_args<'tcx>(ty: &hir::Ty<'tcx>) -> Vec<&'tcx hir::Ty<'tcx>> {
+// Gets the generic type arguments of an HIR type.
+fn hir_generic_ty_args<'tcx>(ty: &hir::Ty<'tcx>) -> Option<Vec<&'tcx hir::Ty<'tcx>>> {
     let args = match ty.kind {
         hir::TyKind::Path(hir::QPath::Resolved(
             _,
             Path {
-                segments: [.., PathSegment { args, .. }],
+                segments: [.., segment @ PathSegment { .. }],
                 ..
             },
-        )) => args,
-        _ => &None,
+        )) => Some(segment.args()),
+        _ => None,
     };
+
     args.map(|args| {
         args.args
             .iter()
@@ -142,7 +142,6 @@ fn hir_generic_ty_args<'tcx>(ty: &hir::Ty<'tcx>) -> Vec<&'tcx hir::Ty<'tcx>> {
             })
             .collect()
     })
-    .unwrap_or_default()
 }
 
 /// Extract arguments from `hir_ty` if it corresponds to the tcx type `ty`.  If the two types
@@ -208,18 +207,19 @@ fn deconstruct_hir_ty<'a, 'tcx>(
         }
 
         (&ty::TyKind::Adt(adt_def, substs), &hir::TyKind::Path(..)) => {
-            let type_args = hir_generic_ty_args(hir_ty);
-            if type_args.len() < substs.types().count() {
-                // this situation occurs when there are hidden type arguments
-                // such as the allocator `std::alloc::Global` type argument in `Vec`
-                eprintln!("warning: extra MIR type argument for {adt_def:?}:");
-                for mir_arg in substs.types().into_iter().skip(type_args.len()) {
-                    eprintln!("\t{:?}", mir_arg)
+            hir_generic_ty_args(hir_ty).map(|type_args| {
+                if type_args.len() < substs.types().count() {
+                    // this situation occurs when there are hidden type arguments
+                    // such as the allocator `std::alloc::Global` type argument in `Vec`
+                    eprintln!("warning: extra MIR type argument for {adt_def:?}:");
+                    for mir_arg in substs.types().into_iter().skip(type_args.len()) {
+                        eprintln!("\t{:?}", mir_arg)
+                    }
+                } else if type_args.len() != substs.types().count() {
+                    panic!("mismatched number of type arguments for {adt_def:?} and {hir_ty:?}")
                 }
-            } else if type_args.len() != substs.types().count() {
-                panic!("mismatched number of type arguments for {adt_def:?} and {hir_ty:?}")
-            }
-            Some(type_args)
+                type_args
+            })
         }
         (tk, hir_tk) => {
             eprintln!("deconstruct_hir_ty: {tk:?} -- {hir_tk:?} not supported");
