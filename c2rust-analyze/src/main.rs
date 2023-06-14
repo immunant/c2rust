@@ -513,7 +513,7 @@ fn run(tcx: TyCtxt) {
                 for field in fields {
                     let field_lty = gacx.field_ltys[&field.did];
                     eprintln!(
-                        "adding FIX permission for {adt_did:?} field {:?}",
+                        "adding FIXED permission for {adt_did:?} field {:?}",
                         field.did
                     );
                     make_ty_fixed(&mut gasn, field_lty);
