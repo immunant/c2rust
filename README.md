@@ -193,7 +193,7 @@ definitions that cannot be translated.
 ### Generating `compile_commands.json` Files
 
 The `compile_commands.json` file can be automatically created
-using either `cmake`, `intercept-build`, or `bear`.
+using either `cmake`, `meson`, `intercept-build`, or `bear`.
 
 It may be a good idea to remove optimizations (`-OX`) from the compilation database,
 as there are optimization builtins which we do not support translating.
@@ -207,6 +207,16 @@ This works on Linux and MacOS.
 
 ```sh
 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 ...
+```
+
+#### ... with `meson`
+
+When creating the initial build directory with `meson`,
+it will automatically generate a `compile_commands.json`
+file inside of `<build_dir>`.
+
+```sh
+meson setup <build_dir>
 ```
 
 #### ... with `intercept-build`
