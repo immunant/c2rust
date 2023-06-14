@@ -487,6 +487,10 @@ fn run(tcx: TyCtxt) {
                     foreign_mentioned_tys.insert(ty);
                 }
             }
+            DefKind::Static(_) => {
+                eprintln!("adding static def {ldid:?}");
+                foreign_mentioned_tys.insert(tcx.type_of(ldid));
+            }
             _ => continue,
         }
     }
