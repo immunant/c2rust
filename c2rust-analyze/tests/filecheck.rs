@@ -48,6 +48,7 @@ define_tests! {
     fields,
     field_temp,
     fixed,
+    foreign,
     insertion_sort,
     insertion_sort_driver,
     insertion_sort_rewrites,

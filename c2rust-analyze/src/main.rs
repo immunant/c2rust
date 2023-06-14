@@ -474,11 +474,47 @@ fn run(tcx: TyCtxt) {
                 || info.contains(PointerInfo::NOT_TEMPORARY_REF))
     }
 
+    // track all types mentioned in extern blocks, we
+    // don't want to rewrite those
+    let mut foreign_mentioned_tys = HashSet::new();
+    for item in tcx.hir_crate_items(()).foreign_items() {
+        let ldid = item.def_id.to_def_id();
+        match tcx.def_kind(ldid) {
+            DefKind::Fn | DefKind::AssocFn => {
+                let sig = tcx.fn_sig(ldid);
+                let sig = tcx.erase_late_bound_regions(sig);
+                for ty in sig.inputs_and_output {
+                    foreign_mentioned_tys.insert(ty);
+                }
+            }
+            _ => continue,
+        }
+    }
+    gacx.foreign_mentioned_tys = foreign_mentioned_tys;
+
     let mut gasn =
         GlobalAssignment::new(gacx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
     for (ptr, &info) in gacx.ptr_info().iter() {
         if should_make_fixed(info) {
             gasn.flags[ptr].insert(FlagSet::FIXED);
+        }
+    }
+
+    // FIX the fields of structs mentioned in extern blocks
+    for adt_did in &gacx.adt_metadata.struct_dids {
+        let ty = &tcx.type_of(adt_did);
+        if gacx.foreign_mentioned_tys.contains(ty) {
+            if let TyKind::Adt(adt_def, _) = tcx.type_of(adt_did).kind() {
+                let fields = &adt_def.non_enum_variant().fields;
+                for field in fields {
+                    let field_lty = gacx.field_ltys[&field.did];
+                    eprintln!(
+                        "adding FIX permission for {adt_did:?} field {:?}",
+                        field.did
+                    );
+                    make_ty_fixed(&mut gasn, field_lty);
+                }
+            }
         }
     }
 

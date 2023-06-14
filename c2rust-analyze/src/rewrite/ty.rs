@@ -473,6 +473,15 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
         #[allow(clippy::single_match)]
         match &item.kind {
             ItemKind::Struct(VariantData::Struct(field_defs, _), generics) => {
+                if self
+                    .acx
+                    .gacx
+                    .foreign_mentioned_tys
+                    .contains(&self.acx.tcx().type_of(did))
+                {
+                    eprintln!("Avoiding rewrite for foreign-mentioned type: {did:?}");
+                    return;
+                }
                 let adt_metadata = &self.acx.gacx.adt_metadata.table[&did];
                 let updated_lifetime_params = &adt_metadata.lifetime_params;
 
@@ -538,16 +547,14 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
                         f_lty,
                         field_metadata.origin_args,
                         &mut |pointer_lty, lifetime_lty, args| {
-                            {
-                                create_rewrite_label(
-                                    pointer_lty,
-                                    args,
-                                    &self.asn.perms(),
-                                    &self.asn.flags(),
-                                    lifetime_lty.label,
-                                    &self.acx.gacx.adt_metadata,
-                                )
-                            }
+                            create_rewrite_label(
+                                pointer_lty,
+                                args,
+                                &self.asn.perms(),
+                                &self.asn.flags(),
+                                lifetime_lty.label,
+                                &self.acx.gacx.adt_metadata,
+                            )
                         },
                     );
 
