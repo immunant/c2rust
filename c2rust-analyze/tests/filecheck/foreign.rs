@@ -1,4 +1,4 @@
-extern "Rust" {
+extern "C" {
     fn foo(bar: Alias) -> Baz;
 }
 
