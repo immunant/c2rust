@@ -34,6 +34,7 @@ extern "C" {
 
 #[derive(Copy, Clone)]
 #[repr(C)]
+// CHECK-LABEL: struct S
 pub struct S {
     // CHECK-DAG: pub x: *const i32
     pub x: *const i32,
