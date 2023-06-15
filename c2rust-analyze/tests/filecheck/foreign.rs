@@ -40,3 +40,24 @@ pub struct S {
     // CHECK-DAG: pub y: *const i32
     pub y: *const i32,
 }
+
+// CHECK-DAG: struct Nit
+#[repr(C)]
+struct Nit {
+    // CHECK-DAG: x: *mut i32
+    x: *mut i32,
+    // CHECK-DAG: y: *mut i32
+    y: *mut i32,
+}
+
+// CHECK-DAG: struct Bin
+#[repr(C)]
+struct Bin {
+    // CHECK-DAG: nit: *mut Nit
+    nit: *mut Nit,
+}
+
+extern "C" {
+    // CHECK-DAG: fn f(bin: *mut Bin)
+    fn f(bin: *mut Bin);
+}

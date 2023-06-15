@@ -473,12 +473,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
         #[allow(clippy::single_match)]
         match &item.kind {
             ItemKind::Struct(VariantData::Struct(field_defs, _), generics) => {
-                if self
-                    .acx
-                    .gacx
-                    .foreign_mentioned_tys
-                    .contains(&self.acx.tcx().type_of(did))
-                {
+                if self.acx.gacx.foreign_mentioned_tys.contains(&did) {
                     eprintln!("Avoiding rewrite for foreign-mentioned type: {did:?}");
                     return;
                 }

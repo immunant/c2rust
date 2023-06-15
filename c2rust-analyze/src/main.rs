@@ -34,7 +34,7 @@ use rustc_middle::mir::{
     AggregateKind, BindingForm, Body, Constant, LocalDecl, LocalInfo, LocalKind, Location, Operand,
     Rvalue, StatementKind,
 };
-use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
+use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -278,6 +278,32 @@ fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>)
     }
 }
 
+// Walks the type `ty` and applies a function `f` to it if it's an ADT
+// `f` gets applied recursively to `ty`'s generic types and fields (if applicable)
+fn walk_args_and_fields<'tcx, F>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, f: &mut F)
+where
+    F: FnMut(DefId),
+{
+    for arg in ty.walk().skip(1) {
+        if let GenericArgKind::Type(ty) = arg.unpack() {
+            walk_args_and_fields(tcx, ty, f);
+        }
+    }
+
+    if let TyKind::Adt(adt_def, _) = ty.kind() {
+        f(adt_def.did());
+        let fields = &adt_def.non_enum_variant().fields;
+        for field in fields {
+            let field_lty = tcx.type_of(field.did);
+            for arg in field_lty.walk() {
+                if let GenericArgKind::Type(ty) = arg.unpack() {
+                    walk_args_and_fields(tcx, ty, f)
+                }
+            }
+        }
+    }
+}
+
 fn run(tcx: TyCtxt) {
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
@@ -478,18 +504,23 @@ fn run(tcx: TyCtxt) {
     // don't want to rewrite those
     let mut foreign_mentioned_tys = HashSet::new();
     for item in tcx.hir_crate_items(()).foreign_items() {
-        let ldid = item.def_id.to_def_id();
-        match tcx.def_kind(ldid) {
+        let did = item.def_id.to_def_id();
+        match tcx.def_kind(did) {
             DefKind::Fn | DefKind::AssocFn => {
-                let sig = tcx.fn_sig(ldid);
+                let sig = tcx.fn_sig(did);
                 let sig = tcx.erase_late_bound_regions(sig);
                 for ty in sig.inputs_and_output {
-                    foreign_mentioned_tys.insert(ty);
+                    walk_args_and_fields(tcx, ty, &mut |did| {
+                        foreign_mentioned_tys.insert(did);
+                    });
                 }
             }
             DefKind::Static(_) => {
-                eprintln!("adding static def {ldid:?}");
-                foreign_mentioned_tys.insert(tcx.type_of(ldid));
+                eprintln!("adding static def {did:?}");
+                let ty = tcx.type_of(did);
+                walk_args_and_fields(tcx, ty, &mut |did| {
+                    foreign_mentioned_tys.insert(did);
+                });
             }
             _ => continue,
         }
@@ -506,8 +537,7 @@ fn run(tcx: TyCtxt) {
 
     // FIX the fields of structs mentioned in extern blocks
     for adt_did in &gacx.adt_metadata.struct_dids {
-        let ty = &tcx.type_of(adt_did);
-        if gacx.foreign_mentioned_tys.contains(ty) {
+        if gacx.foreign_mentioned_tys.contains(adt_did) {
             if let TyKind::Adt(adt_def, _) = tcx.type_of(adt_did).kind() {
                 let fields = &adt_def.non_enum_variant().fields;
                 for field in fields {

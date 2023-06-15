@@ -288,7 +288,7 @@ pub struct GlobalAnalysisCtxt<'tcx> {
 
     pub adt_metadata: AdtMetadataTable<'tcx>,
 
-    pub foreign_mentioned_tys: HashSet<Ty<'tcx>>,
+    pub foreign_mentioned_tys: HashSet<DefId>,
 }
 
 pub struct AnalysisCtxt<'a, 'tcx> {
