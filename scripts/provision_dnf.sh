@@ -7,7 +7,7 @@ SCRIPT_DIR="$(dirname "$0")"
 . /etc/os-release
 
 # TODO: might have to do something similar to support RHEL
-if [ "$NAME" != "Fedora" ]; then
+if [ "$ID" != "fedora" ]; then
     echo >&2 "Run this script on a Fedora host."; exit 1;
 fi
 
