@@ -284,6 +284,8 @@ fn walk_args_and_fields<'tcx, F>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, f: &mut F)
 where
     F: FnMut(DefId) -> bool,
 {
+    // the first type encountered in the walk is `ty`, and the
+    // relevant handling for that is below, so we can skip it here
     for arg in ty.walk().skip(1) {
         if let GenericArgKind::Type(ty) = arg.unpack() {
             walk_args_and_fields(tcx, ty, f);
