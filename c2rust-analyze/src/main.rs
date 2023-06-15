@@ -537,16 +537,15 @@ fn run(tcx: TyCtxt) {
     // FIX the fields of structs mentioned in extern blocks
     for adt_did in &gacx.adt_metadata.struct_dids {
         if gacx.foreign_mentioned_tys.contains(adt_did) {
-            if let TyKind::Adt(adt_def, _) = tcx.type_of(adt_did).kind() {
-                let fields = adt_def.all_fields();
-                for field in fields {
-                    let field_lty = gacx.field_ltys[&field.did];
-                    eprintln!(
-                        "adding FIXED permission for {adt_did:?} field {:?}",
-                        field.did
-                    );
-                    make_ty_fixed(&mut gasn, field_lty);
-                }
+            let adt_def = tcx.adt_def(adt_did);
+            let fields = adt_def.all_fields();
+            for field in fields {
+                let field_lty = gacx.field_ltys[&field.did];
+                eprintln!(
+                    "adding FIXED permission for {adt_did:?} field {:?}",
+                    field.did
+                );
+                make_ty_fixed(&mut gasn, field_lty);
             }
         }
     }
