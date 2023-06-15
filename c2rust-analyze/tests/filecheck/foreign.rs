@@ -9,6 +9,8 @@ type Alias = Bar;
 // CHECK-DAG: x: ({{.*}}) perms = UNIQUE, flags = FIXED
 // CHECK-DAG: y: ({{.*}}) perms = UNIQUE, flags = FIXED
 
+// CHECK-LABEL: BEGIN{{.*}}foreign.rs
+
 // CHECK-LABEL: struct Bar
 #[repr(C)]
 struct Bar {
