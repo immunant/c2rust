@@ -140,11 +140,6 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                     Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(*mutbl))
                 }
 
-                mir_op::RewriteKind::CellNew => {
-                    // `x` to `Cell::new(x)`
-                    Rewrite::Call("std::cell::Cell::new".to_string(), vec![Rewrite::Identity])
-                }
-
                 mir_op::RewriteKind::CellGet => {
                     // `*x` to `Cell::get(x)`
                     Rewrite::MethodCall(
@@ -274,6 +269,11 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
         mir_op::RewriteKind::UnsafeCastRawToRef { mutbl } => {
             let rw_pl = Rewrite::Deref(Box::new(hir_rw));
             Rewrite::Ref(Box::new(rw_pl), mutbl_from_bool(mutbl))
+        }
+
+        mir_op::RewriteKind::CellNew => {
+            // `x` to `Cell::new(x)`
+            Rewrite::Call("std::cell::Cell::new".to_string(), vec![Rewrite::Identity])
         }
 
         mir_op::RewriteKind::CellFromMut => {
