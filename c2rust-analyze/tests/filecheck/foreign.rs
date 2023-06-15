@@ -9,14 +9,14 @@ type Alias = Bar;
 // CHECK-DAG: x: ({{.*}}) perms = UNIQUE, flags = FIXED
 // CHECK-DAG: y: ({{.*}}) perms = UNIQUE, flags = FIXED
 
-// CHECK-DAG: struct Bar
+// CHECK-LABEL: struct Bar
 #[repr(C)]
 struct Bar {
     // CHECK-DAG: br: *mut i32
     br: *mut i32
 }
 
-// CHECK-DAG: struct Baz
+// CHECK-LABEL: struct Baz
 #[repr(C)]
 struct Baz {
     // CHECK-DAG: bz: *mut i32
@@ -41,7 +41,7 @@ pub struct S {
     pub y: *const i32,
 }
 
-// CHECK-DAG: struct Nit
+// CHECK-LABEL: struct Nit
 #[repr(C)]
 struct Nit {
     // CHECK-DAG: x: *mut i32
@@ -50,7 +50,7 @@ struct Nit {
     y: *mut i32,
 }
 
-// CHECK-DAG: struct Bin
+// CHECK-LABEL: struct Bin
 #[repr(C)]
 struct Bin {
     // CHECK-DAG: nit: *mut Nit
