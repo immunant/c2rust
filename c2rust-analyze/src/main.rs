@@ -294,10 +294,9 @@ where
         if !f(adt_def.did()) {
             return;
         }
-        let fields = adt_def.all_fields();
-        for field in fields {
-            let field_lty = tcx.type_of(field.did);
-            for arg in field_lty.walk() {
+        for field in adt_def.all_fields() {
+            let field_ty = tcx.type_of(field.did);
+            for arg in field_ty.walk() {
                 if let GenericArgKind::Type(ty) = arg.unpack() {
                     walk_args_and_fields(tcx, ty, f)
                 }
