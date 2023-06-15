@@ -282,7 +282,7 @@ fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>)
 // `f` gets applied recursively to `ty`'s generic types and fields (if applicable)
 fn walk_args_and_fields<'tcx, F>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, f: &mut F)
 where
-    F: FnMut(DefId),
+    F: FnMut(DefId) -> bool,
 {
     for arg in ty.walk().skip(1) {
         if let GenericArgKind::Type(ty) = arg.unpack() {
@@ -291,8 +291,10 @@ where
     }
 
     if let TyKind::Adt(adt_def, _) = ty.kind() {
-        f(adt_def.did());
-        let fields = &adt_def.non_enum_variant().fields;
+        if !f(adt_def.did()) {
+            return;
+        }
+        let fields = adt_def.all_fields();
         for field in fields {
             let field_lty = tcx.type_of(field.did);
             for arg in field_lty.walk() {
@@ -510,17 +512,13 @@ fn run(tcx: TyCtxt) {
                 let sig = tcx.fn_sig(did);
                 let sig = tcx.erase_late_bound_regions(sig);
                 for ty in sig.inputs_and_output {
-                    walk_args_and_fields(tcx, ty, &mut |did| {
-                        foreign_mentioned_tys.insert(did);
-                    });
+                    walk_args_and_fields(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
                 }
             }
             DefKind::Static(_) => {
                 eprintln!("adding static def {did:?}");
                 let ty = tcx.type_of(did);
-                walk_args_and_fields(tcx, ty, &mut |did| {
-                    foreign_mentioned_tys.insert(did);
-                });
+                walk_args_and_fields(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
             }
             _ => continue,
         }
@@ -539,7 +537,7 @@ fn run(tcx: TyCtxt) {
     for adt_did in &gacx.adt_metadata.struct_dids {
         if gacx.foreign_mentioned_tys.contains(adt_did) {
             if let TyKind::Adt(adt_def, _) = tcx.type_of(adt_did).kind() {
-                let fields = &adt_def.non_enum_variant().fields;
+                let fields = adt_def.all_fields();
                 for field in fields {
                     let field_lty = gacx.field_ltys[&field.did];
                     eprintln!(
