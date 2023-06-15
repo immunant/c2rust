@@ -874,6 +874,8 @@ fn run(tcx: TyCtxt) {
         info.acx_data.set(acx.into_data());
     }
 
+    // This call never panics, which is important because this is the fallback if the more
+    // sophisticated analysis and rewriting above did panic.
     let (shim_call_rewrites, shim_fn_def_ids) = rewrite::gen_shim_call_rewrites(&gacx, &gasn);
     all_rewrites.extend(shim_call_rewrites);
 
