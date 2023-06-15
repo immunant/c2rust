@@ -27,6 +27,7 @@ use rustc_middle::ty::{
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::iter;
 use std::ops::Index;
 
 bitflags! {
@@ -164,6 +165,12 @@ pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, PointerId>;
 pub struct LFnSig<'tcx> {
     pub inputs: &'tcx [LTy<'tcx>],
     pub output: LTy<'tcx>,
+}
+
+impl<'tcx> LFnSig<'tcx> {
+    pub fn inputs_and_output(&self) -> impl Iterator<Item = LTy<'tcx>> + 'tcx {
+        self.inputs.iter().copied().chain(iter::once(self.output))
+    }
 }
 
 bitflags! {

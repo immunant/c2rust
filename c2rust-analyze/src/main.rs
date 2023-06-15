@@ -804,7 +804,7 @@ fn run(tcx: TyCtxt) {
     // failed analysis.
     for did in gacx.iter_fns_failed() {
         let lsig = gacx.fn_sigs[&did];
-        for sig_lty in lsig.inputs.iter().copied().chain(iter::once(lsig.output)) {
+        for sig_lty in lsig.inputs_and_output() {
             for lty in sig_lty.iter() {
                 let ptr = lty.label;
                 if !ptr.is_none() {
