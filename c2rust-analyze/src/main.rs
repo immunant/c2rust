@@ -326,11 +326,7 @@ where
         }
         for field in adt_def.all_fields() {
             let field_ty = tcx.type_of(field.did);
-            for arg in field_ty.walk() {
-                if let GenericArgKind::Type(ty) = arg.unpack() {
-                    walk_args_and_fields(tcx, ty, f)
-                }
-            }
+            walk_args_and_fields(tcx, field_ty, f);
         }
     }
 }
