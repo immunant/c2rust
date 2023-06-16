@@ -25,7 +25,7 @@ use rustc_middle::ty::{
     tls, AdtDef, FieldDef, GenericArgKind, GenericParamDefKind, Ty, TyCtxt, TyKind,
 };
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::ops::Index;
 
@@ -287,6 +287,8 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     pub addr_of_static: HashMap<DefId, PointerId>,
 
     pub adt_metadata: AdtMetadataTable<'tcx>,
+
+    pub foreign_mentioned_tys: HashSet<DefId>,
 }
 
 pub struct AnalysisCtxt<'a, 'tcx> {
@@ -536,6 +538,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             static_tys: HashMap::new(),
             addr_of_static: HashMap::new(),
             adt_metadata: construct_adt_metadata(tcx),
+            foreign_mentioned_tys: HashSet::new(),
         }
     }
 
@@ -582,6 +585,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             ref mut static_tys,
             ref mut addr_of_static,
             adt_metadata: _,
+            foreign_mentioned_tys: _,
         } = *self;
 
         *ptr_info = remap_global_ptr_info(ptr_info, map, counter.num_pointers());

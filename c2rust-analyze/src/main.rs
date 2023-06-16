@@ -34,7 +34,7 @@ use rustc_middle::mir::{
     AggregateKind, BindingForm, Body, Constant, LocalDecl, LocalInfo, LocalKind, Location, Operand,
     Rvalue, StatementKind,
 };
-use rustc_middle::ty::{Ty, TyCtxt, TyKind, WithOptConstParam};
+use rustc_middle::ty::{GenericArgKind, Ty, TyCtxt, TyKind, WithOptConstParam};
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -278,6 +278,49 @@ fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>)
     }
 }
 
+fn foreign_mentioned_tys(tcx: TyCtxt) -> HashSet<DefId> {
+    let mut foreign_mentioned_tys = HashSet::new();
+    for ty in tcx
+        .hir_crate_items(())
+        .foreign_items()
+        .map(|item| item.def_id.to_def_id())
+        .filter_map(|did| match tcx.def_kind(did) {
+            DefKind::Fn | DefKind::AssocFn => Some(tcx.mk_fn_ptr(tcx.fn_sig(did))),
+            DefKind::Static(_) => Some(tcx.type_of(did)),
+            _ => None,
+        })
+    {
+        walk_adts(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
+    }
+    foreign_mentioned_tys
+}
+
+/// Walks the type `ty` and applies a function `f` to it if it's an ADT
+/// `f` gets applied recursively to `ty`'s generic types and fields (if applicable)
+/// If `f` returns false, the fields of the ADT are not recursed into.
+/// Otherwise, the function will naturally terminate given that the generic types
+/// of a type are finite in length.
+/// We only look for ADTs rather than other FFI-crossing types because ADTs
+/// are the only nominal ones, which are the ones that we may rewrite.
+fn walk_adts<'tcx, F>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, f: &mut F)
+where
+    F: FnMut(DefId) -> bool,
+{
+    for arg in ty.walk() {
+        if let GenericArgKind::Type(ty) = arg.unpack() {
+            if let TyKind::Adt(adt_def, _) = ty.kind() {
+                if !f(adt_def.did()) {
+                    continue;
+                }
+                for field in adt_def.all_fields() {
+                    let field_ty = tcx.type_of(field.did);
+                    walk_adts(tcx, field_ty, f);
+                }
+            }
+        }
+    }
+}
+
 fn run(tcx: TyCtxt) {
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
@@ -474,11 +517,31 @@ fn run(tcx: TyCtxt) {
                 || info.contains(PointerInfo::NOT_TEMPORARY_REF))
     }
 
+    // track all types mentioned in extern blocks, we
+    // don't want to rewrite those
+    gacx.foreign_mentioned_tys = foreign_mentioned_tys(tcx);
+
     let mut gasn =
         GlobalAssignment::new(gacx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
     for (ptr, &info) in gacx.ptr_info().iter() {
         if should_make_fixed(info) {
             gasn.flags[ptr].insert(FlagSet::FIXED);
+        }
+    }
+
+    // FIX the fields of structs mentioned in extern blocks
+    for adt_did in &gacx.adt_metadata.struct_dids {
+        if gacx.foreign_mentioned_tys.contains(adt_did) {
+            let adt_def = tcx.adt_def(adt_did);
+            let fields = adt_def.all_fields();
+            for field in fields {
+                let field_lty = gacx.field_ltys[&field.did];
+                eprintln!(
+                    "adding FIXED permission for {adt_did:?} field {:?}",
+                    field.did
+                );
+                make_ty_fixed(&mut gasn, field_lty);
+            }
         }
     }
 

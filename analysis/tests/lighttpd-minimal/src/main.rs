@@ -1195,12 +1195,12 @@ unsafe extern "C" fn connection_init(
         );
     }
     (*con).srv = srv;
-    (*con).plugin_slots = (*srv).plugin_slots;
-    (*con).config_data_base = (*srv).config_data_base;
+    // (*con).plugin_slots = (*srv).plugin_slots;
+    // (*con).config_data_base = (*srv).config_data_base;
     let r: *mut request_st = &mut (*con).request;
     // request_init_data(r, con, srv);
-    (*con).write_queue = &mut (*r).write_queue;
-    (*con).read_queue = &mut (*r).read_queue;
+    // (*con).write_queue = &mut (*r).write_queue;
+    // (*con).read_queue = &mut (*r).read_queue;
     // (*con).plugin_ctx = calloc(
     //     1 as libc::c_int as libc::c_ulong,
     //     (((*srv).plugins.used).wrapping_add(1 as libc::c_int as libc::c_uint) as libc::c_ulong)
@@ -1223,18 +1223,18 @@ unsafe extern "C" fn connections_get_new_connection(
 ) -> *mut connection {
     // let mut con: *mut connection = 0 as *mut connection;
     (*srv).lim_conns = ((*srv).lim_conns).wrapping_sub(1);
-    if !((*srv).conns_pool).is_null() {
-        con = (*srv).conns_pool;
-        (*srv).conns_pool = (*con).next;
-    } else {
+    // if !((*srv).conns_pool).is_null() {
+        // con = (*srv).conns_pool;
+        // (*srv).conns_pool = (*con).next;
+    // } else {
         con = connection_init(srv, con);
         connection_reset(con);
-    }
-    (*con).next = (*srv).conns;
-    if !((*con).next).is_null() {
-        (*(*con).next).prev = con;
-    }
-    (*srv).conns = con;
+    // }
+    // (*con).next = (*srv).conns;
+    // if !((*con).next).is_null() {
+        // (*(*con).next).prev = con;
+    // }
+    // (*srv).conns = con;
     return (*srv).conns;
 }
 
@@ -1246,15 +1246,15 @@ pub unsafe extern "C" fn fdevent_register(
     // mut ctx: *mut libc::c_void,
     fdn: *mut fdnode,
 ) -> *mut fdnode {
-    let ref mut fresh0 = *((*ev).fdarray).offset(fd as isize);
-    *fresh0 = fdnode_init(fdn);
-    let mut fdn: *mut fdnode = *fresh0;
+    // let ref mut fresh0 = *((*ev).fdarray).offset(fd as isize);
+    // *fresh0 = fdnode_init(fdn);
+    // let mut fdn: *mut fdnode = *fresh0;
     // (*fdn).handler = handler;
-    (*fdn).fd = fd;
+    // (*fdn).fd = fd;
     // (*fdn).ctx = ctx;
-    (*fdn).events = 0 as libc::c_int;
-    (*fdn).fde_ndx = -(1 as libc::c_int);
-    return fdn;
+    // (*fdn).events = 0 as libc::c_int;
+    // (*fdn).fde_ndx = -(1 as libc::c_int);
+    return 0 as *mut fdnode;
 }
 
 unsafe extern "C" fn fdnode_init(fdn: *mut fdnode) -> *mut fdnode {
@@ -1275,17 +1275,17 @@ unsafe extern "C" fn fdnode_init(fdn: *mut fdnode) -> *mut fdnode {
 }
 
 unsafe extern "C" fn connection_del(mut srv: *mut server, mut con: *mut connection) {
-    if !((*con).next).is_null() {
-        (*(*con).next).prev = (*con).prev;
-    }
-    if !((*con).prev).is_null() {
-        (*(*con).prev).next = (*con).next;
-    } else {
-        (*srv).conns = (*con).next;
-    }
-    (*con).prev = con; // 0 as *mut connection;
-    (*con).next = (*srv).conns_pool;
-    (*srv).conns_pool = con;
+    // if !((*con).next).is_null() {
+        // (*(*con).next).prev = (*con).prev;
+    // }
+    // if !((*con).prev).is_null() {
+    //     (*(*con).prev).next = (*con).next;
+    // } else {
+    //     (*srv).conns = (*con).next;
+    // }
+    // (*con).prev = con; // 0 as *mut connection;
+    // (*con).next = (*srv).conns_pool;
+    // (*srv).conns_pool = con;
     (*srv).lim_conns = ((*srv).lim_conns).wrapping_add(1);
 }
 
@@ -1302,7 +1302,7 @@ unsafe extern "C" fn connection_close(mut con: *mut connection) {
     (*con).request_count = 0 as libc::c_int as uint32_t;
     (*con).is_ssl_sock = 0 as libc::c_int as libc::c_char;
     (*con).revents_err = 0 as libc::c_int as uint16_t;
-    fdevent_fdnode_event_del((*srv).ev, (*con).fdn);
+    // fdevent_fdnode_event_del((*srv).ev, (*con).fdn);
     fdevent_unregister((*srv).ev, (*con).fd);
     // (*con).fdn = 0 as *mut fdnode;
     if 0 as libc::c_int == close((*con).fd) {
@@ -1348,11 +1348,11 @@ unsafe extern "C" fn fdevent_fdnode_event_unsetter(mut ev: *mut fdevents, mut fd
 
 #[no_mangle]
 pub unsafe extern "C" fn fdevent_unregister(mut ev: *mut fdevents, mut fd: libc::c_int) {
-    let mut fdn: *mut fdnode = *((*ev).fdarray).offset(fd as isize);
-    if fdn as uintptr_t & 0x3 as libc::c_int as libc::c_ulong != 0 {
-        return;
-    }
-    let ref mut fresh1 = *((*ev).fdarray).offset(fd as isize);
+    // let mut fdn: *mut fdnode = *((*ev).fdarray).offset(fd as isize);
+    // if fdn as uintptr_t & 0x3 as libc::c_int as libc::c_ulong != 0 {
+    //     return;
+    // }
+    // let ref mut fresh1 = *((*ev).fdarray).offset(fd as isize);
     // *fresh1 = 0 as *mut fdnode;
     // fdnode_free(fdn);
 }
