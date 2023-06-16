@@ -295,18 +295,27 @@ where
         }
     }
 
-    if let TyKind::Adt(adt_def, _) = ty.kind() {
-        if !f(adt_def.did()) {
-            return;
-        }
-        for field in adt_def.all_fields() {
-            let field_ty = tcx.type_of(field.did);
-            for arg in field_ty.walk() {
-                if let GenericArgKind::Type(ty) = arg.unpack() {
-                    walk_args_and_fields(tcx, ty, f)
+    match ty.kind() {
+        TyKind::Adt(adt_def, _) => {
+            if !f(adt_def.did()) {
+                return;
+            }
+            for field in adt_def.all_fields() {
+                let field_ty = tcx.type_of(field.did);
+                for arg in field_ty.walk() {
+                    if let GenericArgKind::Type(ty) = arg.unpack() {
+                        walk_args_and_fields(tcx, ty, f)
+                    }
                 }
             }
         }
+        TyKind::FnPtr(sig) => {
+            let sig = tcx.erase_late_bound_regions(*sig);
+            for ty in sig.inputs_and_output {
+                walk_args_and_fields(tcx, ty, f)
+            }
+        }
+        _ => (),
     }
 }
 
