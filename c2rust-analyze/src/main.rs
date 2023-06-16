@@ -290,7 +290,7 @@ fn foreign_mentioned_tys(tcx: TyCtxt) -> HashSet<DefId> {
             _ => None,
         })
     {
-        walk_args_and_fields(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
+        walk_adts(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
     }
     foreign_mentioned_tys
 }
@@ -302,7 +302,7 @@ fn foreign_mentioned_tys(tcx: TyCtxt) -> HashSet<DefId> {
 /// of a type are finite in length.
 /// We only look for ADTs rather than other FFI-crossing types because ADTs
 /// are the only nominal ones, which are the ones that we may rewrite.
-fn walk_args_and_fields<'tcx, F>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, f: &mut F)
+fn walk_adts<'tcx, F>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, f: &mut F)
 where
     F: FnMut(DefId) -> bool,
 {
@@ -310,7 +310,7 @@ where
     // relevant handling for that is below, so we can skip it here
     for arg in ty.walk().skip(1) {
         if let GenericArgKind::Type(ty) = arg.unpack() {
-            walk_args_and_fields(tcx, ty, f);
+            walk_adts(tcx, ty, f);
         }
     }
 
@@ -320,7 +320,7 @@ where
         }
         for field in adt_def.all_fields() {
             let field_ty = tcx.type_of(field.did);
-            walk_args_and_fields(tcx, field_ty, f);
+            walk_adts(tcx, field_ty, f);
         }
     }
 }
