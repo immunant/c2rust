@@ -306,21 +306,17 @@ fn walk_adts<'tcx, F>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, f: &mut F)
 where
     F: FnMut(DefId) -> bool,
 {
-    // the first type encountered in the walk is `ty`, and the
-    // relevant handling for that is below, so we can skip it here
-    for arg in ty.walk().skip(1) {
+    for arg in ty.walk() {
         if let GenericArgKind::Type(ty) = arg.unpack() {
-            walk_adts(tcx, ty, f);
-        }
-    }
-
-    if let TyKind::Adt(adt_def, _) = ty.kind() {
-        if !f(adt_def.did()) {
-            return;
-        }
-        for field in adt_def.all_fields() {
-            let field_ty = tcx.type_of(field.did);
-            walk_adts(tcx, field_ty, f);
+            if let TyKind::Adt(adt_def, _) = ty.kind() {
+                if !f(adt_def.did()) {
+                    continue;
+                }
+                for field in adt_def.all_fields() {
+                    let field_ty = tcx.type_of(field.did);
+                    walk_adts(tcx, field_ty, f);
+                }
+            }
         }
     }
 }
