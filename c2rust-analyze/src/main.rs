@@ -297,8 +297,8 @@ fn foreign_mentioned_tys(tcx: TyCtxt) -> HashSet<DefId> {
 
 /// Walks the type `ty` and applies a function `f` to it if it's an ADT
 /// `f` gets applied recursively to `ty`'s generic types and fields (if applicable)
-/// If `f` returns false, recursion terminates cases where the ADT is recursive,
-/// otherwise the function will naturally terminate given that the generic types
+/// If `f` returns false, the fields of the ADT are not recursed into.
+/// Otherwise, the function will naturally terminate given that the generic types
 /// of a type are finite in length.
 /// We only look for ADTs rather than other FFI-crossing types because ADTs
 /// are the only nominal ones, which are the ones that we may rewrite.
