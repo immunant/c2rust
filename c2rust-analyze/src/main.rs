@@ -278,6 +278,29 @@ fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>)
     }
 }
 
+fn foreign_mentioned_tys(tcx: TyCtxt) -> HashSet<DefId> {
+    let mut foreign_mentioned_tys = HashSet::new();
+    for item in tcx.hir_crate_items(()).foreign_items() {
+        let did = item.def_id.to_def_id();
+        match tcx.def_kind(did) {
+            DefKind::Fn | DefKind::AssocFn => {
+                let sig = tcx.fn_sig(did);
+                let sig = tcx.erase_late_bound_regions(sig);
+                for ty in sig.inputs_and_output {
+                    walk_args_and_fields(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
+                }
+            }
+            DefKind::Static(_) => {
+                eprintln!("adding static def {:?}", did);
+                let ty = tcx.type_of(did);
+                walk_args_and_fields(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
+            }
+            _ => continue,
+        }
+    }
+    foreign_mentioned_tys
+}
+
 /// Walks the type `ty` and applies a function `f` to it if it's an ADT
 /// `f` gets applied recursively to `ty`'s generic types and fields (if applicable)
 /// If `f` returns false, recursion terminates.
@@ -517,26 +540,7 @@ fn run(tcx: TyCtxt) {
 
     // track all types mentioned in extern blocks, we
     // don't want to rewrite those
-    let mut foreign_mentioned_tys = HashSet::new();
-    for item in tcx.hir_crate_items(()).foreign_items() {
-        let did = item.def_id.to_def_id();
-        match tcx.def_kind(did) {
-            DefKind::Fn | DefKind::AssocFn => {
-                let sig = tcx.fn_sig(did);
-                let sig = tcx.erase_late_bound_regions(sig);
-                for ty in sig.inputs_and_output {
-                    walk_args_and_fields(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
-                }
-            }
-            DefKind::Static(_) => {
-                eprintln!("adding static def {did:?}");
-                let ty = tcx.type_of(did);
-                walk_args_and_fields(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
-            }
-            _ => continue,
-        }
-    }
-    gacx.foreign_mentioned_tys = foreign_mentioned_tys;
+    gacx.foreign_mentioned_tys = foreign_mentioned_tys(tcx);
 
     let mut gasn =
         GlobalAssignment::new(gacx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
