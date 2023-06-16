@@ -321,6 +321,46 @@ where
     }
 }
 
+fn mark_foreign_fixed<'tcx>(
+    gacx: &mut GlobalAnalysisCtxt<'tcx>,
+    gasn: &mut GlobalAssignment,
+    tcx: TyCtxt<'tcx>,
+) {
+    // FIX the inputs and outputs of function declarations in extern blocks
+    for did in gacx.foreign_mentioned_tys.clone() {
+        if let DefKind::Fn = tcx.def_kind(did) {
+            let sig = tcx.erase_late_bound_regions(tcx.fn_sig(did));
+            let inputs = sig
+                .inputs()
+                .iter()
+                .map(|&ty| gacx.assign_pointer_ids_with_info(ty, PointerInfo::ANNOTATED))
+                .collect::<Vec<_>>();
+            for input in inputs {
+                make_ty_fixed(gasn, input);
+            }
+
+            let output = gacx.assign_pointer_ids_with_info(sig.output(), PointerInfo::ANNOTATED);
+            make_ty_fixed(gasn, output)
+        }
+    }
+
+    // FIX the fields of structs mentioned in extern blocks
+    for adt_did in &gacx.adt_metadata.struct_dids {
+        if gacx.foreign_mentioned_tys.contains(adt_did) {
+            let adt_def = tcx.adt_def(adt_did);
+            let fields = adt_def.all_fields();
+            for field in fields {
+                let field_lty = gacx.field_ltys[&field.did];
+                eprintln!(
+                    "adding FIXED permission for {adt_did:?} field {:?}",
+                    field.did
+                );
+                make_ty_fixed(gasn, field_lty);
+            }
+        }
+    }
+}
+
 fn run(tcx: TyCtxt) {
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
@@ -529,21 +569,7 @@ fn run(tcx: TyCtxt) {
         }
     }
 
-    // FIX the fields of structs mentioned in extern blocks
-    for adt_did in &gacx.adt_metadata.struct_dids {
-        if gacx.foreign_mentioned_tys.contains(adt_did) {
-            let adt_def = tcx.adt_def(adt_did);
-            let fields = adt_def.all_fields();
-            for field in fields {
-                let field_lty = gacx.field_ltys[&field.did];
-                eprintln!(
-                    "adding FIXED permission for {adt_did:?} field {:?}",
-                    field.did
-                );
-                make_ty_fixed(&mut gasn, field_lty);
-            }
-        }
-    }
+    mark_foreign_fixed(&mut gacx, &mut gasn, tcx);
 
     for info in func_info.values_mut() {
         let num_pointers = info.acx_data.num_pointers();
