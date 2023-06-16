@@ -280,23 +280,17 @@ fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>)
 
 fn foreign_mentioned_tys(tcx: TyCtxt) -> HashSet<DefId> {
     let mut foreign_mentioned_tys = HashSet::new();
-    for item in tcx.hir_crate_items(()).foreign_items() {
-        let did = item.def_id.to_def_id();
-        match tcx.def_kind(did) {
-            DefKind::Fn | DefKind::AssocFn => {
-                let sig = tcx.fn_sig(did);
-                let sig = tcx.erase_late_bound_regions(sig);
-                for ty in sig.inputs_and_output {
-                    walk_args_and_fields(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
-                }
-            }
-            DefKind::Static(_) => {
-                eprintln!("adding static def {:?}", did);
-                let ty = tcx.type_of(did);
-                walk_args_and_fields(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
-            }
-            _ => continue,
-        }
+    for ty in tcx
+        .hir_crate_items(())
+        .foreign_items()
+        .map(|item| item.def_id.to_def_id())
+        .filter_map(|did| match tcx.def_kind(did) {
+            DefKind::Fn | DefKind::AssocFn => Some(tcx.mk_fn_ptr(tcx.fn_sig(did))),
+            DefKind::Static(_) => Some(tcx.type_of(did)),
+            _ => None,
+        })
+    {
+        walk_args_and_fields(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
     }
     foreign_mentioned_tys
 }
