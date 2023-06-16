@@ -287,13 +287,13 @@ fn foreign_mentioned_tys(tcx: TyCtxt) -> HashSet<DefId> {
                 let sig = tcx.fn_sig(did);
                 let sig = tcx.erase_late_bound_regions(sig);
                 for ty in sig.inputs_and_output {
-                    walk_args_and_fields(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
+                    walk_ffi_safe_ty(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
                 }
             }
             DefKind::Static(_) => {
                 eprintln!("adding static def {:?}", did);
                 let ty = tcx.type_of(did);
-                walk_args_and_fields(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
+                walk_ffi_safe_ty(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
             }
             _ => continue,
         }
@@ -306,7 +306,7 @@ fn foreign_mentioned_tys(tcx: TyCtxt) -> HashSet<DefId> {
 /// If `f` returns false, recursion terminates.
 /// We only look for ADTs rather than other FFI-crossing types because ADTs
 /// are the only nominal ones, which are the ones that we may rewrite.
-fn walk_args_and_fields<'tcx, F>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, f: &mut F)
+fn walk_ffi_safe_ty<'tcx, F>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, f: &mut F)
 where
     F: FnMut(DefId) -> bool,
 {
@@ -314,7 +314,7 @@ where
     // relevant handling for that is below, so we can skip it here
     for arg in ty.walk().skip(1) {
         if let GenericArgKind::Type(ty) = arg.unpack() {
-            walk_args_and_fields(tcx, ty, f);
+            walk_ffi_safe_ty(tcx, ty, f);
         }
     }
 
@@ -327,7 +327,7 @@ where
                 let field_ty = tcx.type_of(field.did);
                 for arg in field_ty.walk() {
                     if let GenericArgKind::Type(ty) = arg.unpack() {
-                        walk_args_and_fields(tcx, ty, f)
+                        walk_ffi_safe_ty(tcx, ty, f)
                     }
                 }
             }
@@ -335,7 +335,7 @@ where
         TyKind::FnPtr(sig) => {
             let sig = tcx.erase_late_bound_regions(*sig);
             for ty in sig.inputs_and_output {
-                walk_args_and_fields(tcx, ty, f)
+                walk_ffi_safe_ty(tcx, ty, f)
             }
         }
         _ => (),
