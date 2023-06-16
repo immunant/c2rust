@@ -278,8 +278,8 @@ fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>)
     }
 }
 
-// Walks the type `ty` and applies a function `f` to it if it's an ADT
-// `f` gets applied recursively to `ty`'s generic types and fields (if applicable)
+/// Walks the type `ty` and applies a function `f` to it if it's an ADT
+/// `f` gets applied recursively to `ty`'s generic types and fields (if applicable)
 fn walk_args_and_fields<'tcx, F>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, f: &mut F)
 where
     F: FnMut(DefId) -> bool,
