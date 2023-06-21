@@ -321,26 +321,35 @@ where
     }
 }
 
+fn gather_foreign_sigs<'tcx>(gacx: &mut GlobalAnalysisCtxt<'tcx>, tcx: TyCtxt<'tcx>) {
+    for did in tcx
+        .hir_crate_items(())
+        .foreign_items()
+        .map(|item| item.def_id.to_def_id())
+        .filter(|did| matches!(tcx.def_kind(did), DefKind::Fn | DefKind::AssocFn))
+    {
+        let sig = tcx.erase_late_bound_regions(tcx.fn_sig(did));
+        let inputs = sig
+            .inputs()
+            .iter()
+            .map(|&ty| gacx.assign_pointer_ids_with_info(ty, PointerInfo::ANNOTATED))
+            .collect::<Vec<_>>();
+        let inputs = gacx.lcx.mk_slice(&inputs);
+        let output = gacx.assign_pointer_ids_with_info(sig.output(), PointerInfo::ANNOTATED);
+        let lsig = LFnSig { inputs, output };
+        gacx.fn_sigs.insert(did, lsig);
+    }
+}
+
 fn mark_foreign_fixed<'tcx>(
     gacx: &mut GlobalAnalysisCtxt<'tcx>,
     gasn: &mut GlobalAssignment,
     tcx: TyCtxt<'tcx>,
 ) {
     // FIX the inputs and outputs of function declarations in extern blocks
-    for did in gacx.foreign_mentioned_tys.clone() {
-        if let DefKind::Fn = tcx.def_kind(did) {
-            let sig = tcx.erase_late_bound_regions(tcx.fn_sig(did));
-            let inputs = sig
-                .inputs()
-                .iter()
-                .map(|&ty| gacx.assign_pointer_ids_with_info(ty, PointerInfo::ANNOTATED))
-                .collect::<Vec<_>>();
-            for input in inputs {
-                make_ty_fixed(gasn, input);
-            }
-
-            let output = gacx.assign_pointer_ids_with_info(sig.output(), PointerInfo::ANNOTATED);
-            make_ty_fixed(gasn, output)
+    for (did, lsig) in gacx.fn_sigs.iter() {
+        if tcx.is_foreign_item(did) {
+            make_sig_fixed(gasn, lsig);
         }
     }
 
@@ -560,6 +569,7 @@ fn run(tcx: TyCtxt) {
     // track all types mentioned in extern blocks, we
     // don't want to rewrite those
     gacx.foreign_mentioned_tys = foreign_mentioned_tys(tcx);
+    gather_foreign_sigs(&mut gacx, tcx);
 
     let mut gasn =
         GlobalAssignment::new(gacx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
