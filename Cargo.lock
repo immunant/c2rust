@@ -206,8 +206,10 @@ version = "0.18.0"
 dependencies = [
  "assert_matches",
  "backtrace",
+ "bincode",
  "bitflags",
  "c2rust-build-paths",
+ "c2rust-pdg",
  "clap 4.2.7",
  "env_logger",
  "indexmap",
@@ -216,6 +218,7 @@ dependencies = [
  "polonius-engine",
  "print_bytes",
  "rustc-hash",
+ "serde",
  "shlex",
 ]
 

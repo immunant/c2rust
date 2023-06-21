@@ -15,6 +15,9 @@ categories.workspace = true
 polonius-engine = "0.13.0"
 rustc-hash = "1.1.0"
 bitflags = "1.3.2"
+c2rust-pdg = { path = "../pdg"}
+bincode = "1.0"
+serde = "1.0"
 assert_matches = "1.5.0"
 indexmap = "1.9.2"
 env_logger = "0.10.0"
