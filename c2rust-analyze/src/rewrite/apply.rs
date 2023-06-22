@@ -434,7 +434,11 @@ impl<'a, F: FnMut(&str)> RewriteTreeSink<'a, F> {
             .src
             .as_ref()
             .unwrap_or_else(|| panic!("source is not available for file {:?}", self.file.name));
-        self.emit_str(&src[lo.0 as usize..hi.0 as usize])
+        // `lo` and `hi` are relative to the SourceMap within which various files' data is located,
+        // so subtract the file's start to obtain indices within its data.
+        let lo_in_file = lo - self.file.start_pos;
+        let hi_in_file = hi - self.file.start_pos;
+        self.emit_str(&src[lo_in_file.0 as usize..hi_in_file.0 as usize])
     }
 
     fn emit_span_with_rewrites(
