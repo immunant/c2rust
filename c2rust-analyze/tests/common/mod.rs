@@ -91,6 +91,45 @@ impl AnalyzeArgs {
     }
 }
 
+pub enum CrateType {
+    Bin,
+    Lib,
+    Rlib,
+    Dylib,
+    Cdylib,
+    Staticlib,
+    ProcMacro,
+}
+
+impl From<CrateType> for &'static str {
+    fn from(crate_type: CrateType) -> Self {
+        use CrateType::*;
+        match crate_type {
+            Bin => "bin",
+            Lib => "lib",
+            Rlib => "rlib",
+            Dylib => "dylib",
+            Cdylib => "cdylib",
+            Staticlib => "staticlib",
+            ProcMacro => "proc-macro",
+        }
+    }
+}
+
+pub struct CrateOptions {
+    pub edition: u16,
+    pub crate_type: CrateType,
+}
+
+impl Default for CrateOptions {
+    fn default() -> Self {
+        CrateOptions {
+            edition: 2021,
+            crate_type: CrateType::Rlib,
+        }
+    }
+}
+
 impl Analyze {
     pub fn resolve() -> Self {
         let current_exe = env::current_exe().unwrap();
@@ -100,12 +139,18 @@ impl Analyze {
         Self { path }
     }
 
-    fn run_with_(&self, rs_path: &Path, mut modify_cmd: impl FnMut(&mut Command)) -> PathBuf {
+    fn run_with_(
+        &self,
+        rs_path: &Path,
+        mut modify_cmd: impl FnMut(&mut Command),
+        crate_options: Option<CrateOptions>,
+    ) -> PathBuf {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
         let lib_dir = Path::new(env!("C2RUST_TARGET_LIB_DIR"));
 
         let rs_path = dir.join(rs_path); // allow relative paths, or override with an absolute path
 
+        let crate_options = crate_options.unwrap_or_default();
         let args = AnalyzeArgs::parse_from_file(&rs_path);
 
         let output_path = {
@@ -123,7 +168,12 @@ impl Analyze {
         cmd.arg(&rs_path)
             .arg("-L")
             .arg(lib_dir)
-            .args(["--crate-type", "rlib", "--edition", "2021"])
+            .args([
+                "--crate-type",
+                crate_options.crate_type.into(),
+                "--edition",
+                &crate_options.edition.to_string(),
+            ])
             .stdout(output_stdout)
             .stderr(output_stderr);
         cmd.envs(args.env.iter().map(|EnvVar { var, value }| (var, value)));
@@ -143,12 +193,13 @@ impl Analyze {
         &self,
         rs_path: impl AsRef<Path>,
         modify_cmd: impl FnMut(&mut Command),
+        crate_options: Option<CrateOptions>,
     ) -> PathBuf {
-        self.run_with_(rs_path.as_ref(), modify_cmd)
+        self.run_with_(rs_path.as_ref(), modify_cmd, crate_options)
     }
 
     pub fn run(&self, rs_path: impl AsRef<Path>) -> PathBuf {
-        self.run_with(rs_path, |_| {})
+        self.run_with(rs_path, |_| {}, None)
     }
 }
 
