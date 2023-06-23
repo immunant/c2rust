@@ -156,7 +156,6 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                     let rhs = self.get_subexpr(ex, 1);
                     Rewrite::MethodCall("set".to_string(), Box::new(lhs), vec![rhs])
                 }
-
                 _ => convert_cast_rewrite(rw, hir_rw),
             }
         };
@@ -282,6 +281,13 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
                 "std::cell::Cell::from_mut".to_string(),
                 vec![Rewrite::Identity],
             )
+        }
+        mir_op::RewriteKind::AsPtr => {
+            // `x` to `x.as_ptr()`
+            Rewrite::MethodCall("as_ptr".to_string(), Box::new(hir_rw), vec![])
+        }
+        mir_op::RewriteKind::CastRawMutToCellPtr { ref ty } => {
+            Rewrite::Cast(Box::new(hir_rw), format!("*const std::cell::Cell<{}>", ty))
         }
 
         _ => panic!(

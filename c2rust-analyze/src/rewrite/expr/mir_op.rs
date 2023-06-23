@@ -61,6 +61,8 @@ pub enum RewriteKind {
     CastRawToRaw { to_mutbl: bool },
     /// Cast `*const T` to `& T` or `*mut T` to `&mut T`.
     UnsafeCastRawToRef { mutbl: bool },
+    /// Cast *mut T to *const Cell<T>
+    CastRawMutToCellPtr { ty: String },
 
     /// Replace `y` in `let x = y` with `Cell::new(y)`, i.e. `let x = Cell::new(y)`
     /// TODO: ensure `y` implements `Copy`
@@ -71,6 +73,8 @@ pub enum RewriteKind {
     CellSet,
     /// Wrap `&mut T` in `Cell::from_mut` to get `&Cell<T>`.
     CellFromMut,
+    /// `x` to `x.as_ptr()`
+    AsPtr,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -678,7 +682,13 @@ where
                 }
                 _ => None,
             },
-            Ownership::Cell => None,
+            Ownership::Cell => match to.own {
+                Ownership::RawMut if !early => {
+                    (self.emit)(RewriteKind::AsPtr);
+                    Some(Ownership::RawMut)
+                }
+                _ => None,
+            },
             Ownership::Imm => match to.own {
                 Ownership::Raw | Ownership::RawMut if !early => {
                     (self.emit)(RewriteKind::CastRefToRaw { mutbl: false });
@@ -696,6 +706,13 @@ where
                 Ownership::Mut if !early => {
                     (self.emit)(RewriteKind::UnsafeCastRawToRef { mutbl: true });
                     Some(Ownership::Mut)
+                }
+                Ownership::Cell if !early => {
+                    (self.emit)(RewriteKind::CastRawMutToCellPtr {
+                        ty: format!("{:?}", to.pointee_ty),
+                    });
+                    (self.emit)(RewriteKind::MutToImm);
+                    Some(Ownership::Cell)
                 }
                 _ => None,
             },
