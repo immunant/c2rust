@@ -114,10 +114,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
         // the rewrite should occur at the callsite
         let callsite_span = ex.span.source_callsite();
 
-        let mir_rws = self
-            .mir_rewrites
-            .remove(&ex.hir_id)
-            .unwrap_or_else(Vec::new);
+        let mir_rws = self.mir_rewrites.remove(&ex.hir_id).unwrap_or_default();
 
         let rewrite_from_mir_rws = |rw: &mir_op::RewriteKind, hir_rw: Rewrite| -> Rewrite {
             match rw {
