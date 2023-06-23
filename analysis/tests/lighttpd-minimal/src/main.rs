@@ -1182,10 +1182,10 @@ unsafe extern "C" fn connection_init(
     mut srv: *mut server,
     mut con: *mut connection,
 ) -> *mut connection {
-    // let con: *mut connection = calloc(
-    //     1 as libc::c_int as libc::c_ulong,
-    //     ::std::mem::size_of::<connection>() as libc::c_ulong,
-    // ) as *mut connection;
+    let con: *mut connection = calloc(
+        1 as libc::c_int as libc::c_ulong,
+        ::std::mem::size_of::<connection>() as libc::c_ulong,
+    ) as *mut connection;
     if con.is_null() {
         // ck_assert_failed
         (
@@ -1195,17 +1195,17 @@ unsafe extern "C" fn connection_init(
         );
     }
     (*con).srv = srv;
-    // (*con).plugin_slots = (*srv).plugin_slots;
-    // (*con).config_data_base = (*srv).config_data_base;
+    (*con).plugin_slots = (*srv).plugin_slots;
+    (*con).config_data_base = (*srv).config_data_base;
     let r: *mut request_st = &mut (*con).request;
     // request_init_data(r, con, srv);
-    // (*con).write_queue = &mut (*r).write_queue;
-    // (*con).read_queue = &mut (*r).read_queue;
-    // (*con).plugin_ctx = calloc(
-    //     1 as libc::c_int as libc::c_ulong,
-    //     (((*srv).plugins.used).wrapping_add(1 as libc::c_int as libc::c_uint) as libc::c_ulong)
-    //         .wrapping_mul(::std::mem::size_of::<*mut libc::c_void>() as libc::c_ulong),
-    // ) as *mut *mut libc::c_void;
+    (*con).write_queue = &mut (*r).write_queue;
+    (*con).read_queue = &mut (*r).read_queue;
+    (*con).plugin_ctx = calloc(
+        1 as libc::c_int as libc::c_ulong,
+        (((*srv).plugins.used).wrapping_add(1 as libc::c_int as libc::c_uint) as libc::c_ulong)
+            .wrapping_mul(::std::mem::size_of::<*mut libc::c_void>() as libc::c_ulong),
+    ) as *mut *mut libc::c_void;
     if ((*con).plugin_ctx).is_null() {
         // ck_assert_failed
         (
@@ -1221,20 +1221,20 @@ unsafe extern "C" fn connections_get_new_connection(
     mut srv: *mut server,
     mut con: *mut connection,
 ) -> *mut connection {
-    // let mut con: *mut connection = 0 as *mut connection;
+    let mut con: *mut connection = 0 as *mut connection;
     (*srv).lim_conns = ((*srv).lim_conns).wrapping_sub(1);
-    // if !((*srv).conns_pool).is_null() {
-        // con = (*srv).conns_pool;
-        // (*srv).conns_pool = (*con).next;
-    // } else {
+    if !((*srv).conns_pool).is_null() {
+        con = (*srv).conns_pool;
+        (*srv).conns_pool = (*con).next;
+     } else {
         con = connection_init(srv, con);
         connection_reset(con);
-    // }
-    // (*con).next = (*srv).conns;
-    // if !((*con).next).is_null() {
-        // (*(*con).next).prev = con;
-    // }
-    // (*srv).conns = con;
+    }
+    (*con).next = (*srv).conns;
+    if !((*con).next).is_null() {
+        (*(*con).next).prev = con;
+    }
+    (*srv).conns = con;
     return (*srv).conns;
 }
 
@@ -1258,10 +1258,10 @@ pub unsafe extern "C" fn fdevent_register(
 }
 
 unsafe extern "C" fn fdnode_init(fdn: *mut fdnode) -> *mut fdnode {
-    // let fdn: *mut fdnode = calloc(
-    //     1 as libc::c_int as libc::c_ulong,
-    //     ::std::mem::size_of::<fdnode>() as libc::c_ulong,
-    // ) as *mut fdnode;
+    let fdn: *mut fdnode = calloc(
+        1 as libc::c_int as libc::c_ulong,
+        ::std::mem::size_of::<fdnode>() as libc::c_ulong,
+    ) as *mut fdnode;
     if fdn.is_null() {
         // ck_assert_failed
         (
@@ -1275,17 +1275,17 @@ unsafe extern "C" fn fdnode_init(fdn: *mut fdnode) -> *mut fdnode {
 }
 
 unsafe extern "C" fn connection_del(mut srv: *mut server, mut con: *mut connection) {
-    // if !((*con).next).is_null() {
-        // (*(*con).next).prev = (*con).prev;
-    // }
-    // if !((*con).prev).is_null() {
-    //     (*(*con).prev).next = (*con).next;
-    // } else {
-    //     (*srv).conns = (*con).next;
-    // }
-    // (*con).prev = con; // 0 as *mut connection;
-    // (*con).next = (*srv).conns_pool;
-    // (*srv).conns_pool = con;
+    if !((*con).next).is_null() {
+        (*(*con).next).prev = (*con).prev;
+    }
+    if !((*con).prev).is_null() {
+        (*(*con).prev).next = (*con).next;
+    } else {
+        (*srv).conns = (*con).next;
+    }
+    (*con).prev = con; // 0 as *mut connection;
+    (*con).next = (*srv).conns_pool;
+    (*srv).conns_pool = con;
     (*srv).lim_conns = ((*srv).lim_conns).wrapping_add(1);
 }
 
@@ -1302,7 +1302,7 @@ unsafe extern "C" fn connection_close(mut con: *mut connection) {
     (*con).request_count = 0 as libc::c_int as uint32_t;
     (*con).is_ssl_sock = 0 as libc::c_int as libc::c_char;
     (*con).revents_err = 0 as libc::c_int as uint16_t;
-    // fdevent_fdnode_event_del((*srv).ev, (*con).fdn);
+    fdevent_fdnode_event_del((*srv).ev, (*con).fdn);
     fdevent_unregister((*srv).ev, (*con).fd);
     // (*con).fdn = 0 as *mut fdnode;
     if 0 as libc::c_int == close((*con).fd) {
@@ -1358,20 +1358,20 @@ pub unsafe extern "C" fn fdevent_unregister(mut ev: *mut fdevents, mut fd: libc:
 }
 
 unsafe extern "C" fn fdnode_free(fdn: *mut libc::c_void) {
-    free(fdn /* TODO: handle cast as *mut libc::c_void */);
+    free(fdn as *mut libc::c_void);
 }
 
 pub unsafe extern "C" fn lighttpd_test() {
     let fdarr = calloc(
         0 as libc::c_int as libc::c_ulong,
         ::std::mem::size_of::<*mut fdnode>() as libc::c_ulong,
-    ); // TODO: handle cast as *mut *mut fdnode;
+    ) as *mut *mut fdnode;
     let fdes = calloc(
         0 as libc::c_int as libc::c_ulong,
         ::std::mem::size_of::<fdevents>() as libc::c_ulong,
-    ); // TODO: handle cast as *mut fdevents;
-    free(fdarr /* TODO: handle cast as *mut libc::c_void */);
-    free(fdes /* TODO: handle cast as *mut libc::c_void */);
+    ) as *mut fdevents;
+    free(fdarr as *mut libc::c_void);
+    free(fdes as *mut libc::c_void);
 }
 
 #[no_mangle]
