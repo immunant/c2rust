@@ -90,3 +90,28 @@ unsafe fn _field_access<'d>(ra: &'d mut A<'d>, ppd: *mut *mut Data<'d>) {
 
 // CHECK-DAG: struct HypoWrapper<'h6,'h5>
 // CHECK-DAG: hw: &'h6 (Hypo<'h5>)
+
+
+use std::ptr;
+
+// CHECK: #[derive(Copy, Clone)]
+// CHECK-NEXT: struct Simple {
+#[derive(Copy, Clone)]
+struct Simple {
+    x: i32,
+    y: i32,
+}
+
+// CHECK: #[derive(Copy, Clone)]
+// CHECK-NEXT: struct WithPtr<'h7,'h8> {
+#[derive(Copy, Clone)]
+struct WithPtr {
+    p: *mut i32,
+    q: *mut i32,
+}
+
+unsafe fn f() {
+    let mut s = Simple { x: 1, y: 2 };
+    let wp = WithPtr { p: ptr::addr_of_mut!(s.x), q: ptr::addr_of_mut!(s.y) };
+    *(wp.p) = *(wp.q) + 1;
+}
