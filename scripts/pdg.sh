@@ -41,6 +41,7 @@ main() {
     local event_log="${test_dir}/log.bc"
     local runtime="analysis/runtime"
 
+    local crate_name="$(cargo pkgid --manifest-path "${test_dir}/Cargo.toml" | grep -P -o '(?<=#)[^@]+(?=@)' | tr '-' '_')"
     (
         unset RUSTFLAGS # transpiled code has tons of warnings; don't allow `-D warnings`
         export RUST_BACKTRACE=1
@@ -76,6 +77,26 @@ main() {
             --print counts \
             --output "${pdg}" \
         > "${test_dir}/pdg.log"
+    )
+    (
+        export RUST_BACKTRACE=full # print sources w/ color-eyre
+        export RUST_LOG=error
+        export PDG_FILE="${pdg}"
+        local deps_dir="${CARGO_TARGET_DIR:-target}/${profile_dir_name}/deps"
+        local libc_dep="$(ls -1 --sort=time -r ${deps_dir}/liblibc-*.rlib | head -n1)"
+        cargo run \
+            --bin c2rust-analyze \
+            "${profile_args[@]}" \
+            -- \
+            --crate-name "${crate_name}" \
+            --edition 2021 \
+            --crate-type bin \
+            --sysroot "$(rustc --print sysroot)" \
+            "-C" \
+            "metadata=4095517b1921578c" \
+            "-L" "dependency=${deps_dir}" \
+            "--extern" "libc=${libc_dep}" \
+            "${test_dir}/src/main.rs"
     )
 }
 
