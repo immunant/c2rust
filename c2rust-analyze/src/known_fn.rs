@@ -1,6 +1,17 @@
 #[cfg(test)]
 use crate::context::PermissionSet;
 
+#[allow(unused)]
+macro_rules! const_slice {
+    ($ty:ty, []) => {{
+        &[]
+    }};
+    ($ty:ty, $array:expr) => {{
+        const ARRAY: [$ty; $array.len()] = $array;
+        &ARRAY
+    }};
+}
+
 #[cfg(test)]
 macro_rules! perms_annotation {
     ([$($($perm:ident)|*),*]) => {{
