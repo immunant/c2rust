@@ -11,7 +11,6 @@ use rustc_middle::hir::nested_filter;
 use rustc_middle::ty::{DefIdTree, TyCtxt, TypeckResults};
 use rustc_span::Span;
 use std::collections::HashSet;
-use std::iter;
 use std::mem;
 
 struct ShimCallVisitor<'a, 'tcx> {
@@ -53,10 +52,7 @@ impl<'a, 'tcx> ShimCallVisitor<'a, 'tcx> {
             None => return,
         };
         let has_non_fixed_ptr = lsig
-            .inputs
-            .iter()
-            .copied()
-            .chain(iter::once(lsig.output))
+            .inputs_and_output()
             .flat_map(|lty| lty.iter())
             .any(|lty| {
                 let ptr = lty.label;
