@@ -5,6 +5,7 @@ use rustc_span::{BytePos, SourceFile, Span, SyntaxContext};
 use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::convert::Infallible;
+use std::fmt;
 use std::mem;
 
 use super::LifetimeName;
@@ -211,8 +212,11 @@ pub trait Sink {
     type Error;
     const PARENTHESIZE_EXPRS: bool;
     fn emit_str(&mut self, s: &str) -> Result<(), Self::Error>;
+    fn emit_fmt(&mut self, args: fmt::Arguments) -> Result<(), Self::Error>;
     fn emit_expr(&mut self) -> Result<(), Self::Error>;
     fn emit_sub(&mut self, idx: usize, span: Span) -> Result<(), Self::Error>;
+    /// Emit the original text of a source span before any rewrites were applied.
+    fn emit_span(&mut self, span: Span) -> Result<(), Self::Error>;
 }
 
 struct Emitter<'a, S> {
@@ -223,11 +227,17 @@ impl<S: Sink> Emitter<'_, S> {
     fn emit_str(&mut self, s: &str) -> Result<(), S::Error> {
         self.sink.emit_str(s)
     }
+    fn emit_fmt(&mut self, args: fmt::Arguments) -> Result<(), S::Error> {
+        self.sink.emit_fmt(args)
+    }
     fn emit_expr(&mut self) -> Result<(), S::Error> {
         self.sink.emit_expr()
     }
     fn emit_sub(&mut self, idx: usize, span: Span) -> Result<(), S::Error> {
         self.sink.emit_sub(idx, span)
+    }
+    fn emit_span(&mut self, span: Span) -> Result<(), S::Error> {
+        self.sink.emit_span(span)
     }
 
     fn emit_parenthesized(
@@ -269,6 +279,9 @@ impl<S: Sink> Emitter<'_, S> {
             Rewrite::Sub(idx, span) => {
                 self.emit_parenthesized(S::PARENTHESIZE_EXPRS, |slf| slf.emit_sub(idx, span))
             }
+
+            Rewrite::Text(ref s) => self.emit_str(s),
+            Rewrite::Extract(span) => self.emit_span(span),
 
             Rewrite::Ref(ref rw, mutbl) => self.emit_parenthesized(prec > 2, |slf| {
                 match mutbl {
@@ -391,6 +404,36 @@ impl<S: Sink> Emitter<'_, S> {
                 }
                 self.emit_sub(0, span)
             }
+
+            Rewrite::DefineFn {
+                ref name,
+                ref arg_tys,
+                ref return_ty,
+                ref body,
+            } => {
+                self.emit_fmt(format_args!("\nunsafe fn {name}("))?;
+                for (i, arg_ty) in arg_tys.iter().enumerate() {
+                    if i > 0 {
+                        self.emit_str(", ")?;
+                    }
+                    self.emit_fmt(format_args!("arg{i}: "))?;
+                    self.emit(arg_ty, 0)?;
+                }
+                self.emit_str(")")?;
+                if let Some(return_ty) = return_ty.as_ref() {
+                    self.emit_str(" -> ")?;
+                    self.emit(return_ty, 0)?;
+                }
+                self.emit_str(" {\n")?;
+
+                self.emit_str("    ")?;
+                self.emit(body, 0)?;
+                self.emit_str("\n")?;
+
+                self.emit_str("}\n")
+            }
+
+            Rewrite::FnArg(i) => self.emit_fmt(format_args!("arg{i}")),
         }
     }
 }
@@ -472,6 +515,10 @@ impl<'a, F: FnMut(&str)> Sink for RewriteTreeSink<'a, F> {
         (self.emit)(s);
         Ok(())
     }
+    fn emit_fmt(&mut self, args: fmt::Arguments) -> Result<(), Self::Error> {
+        (self.emit)(&format!("{args}"));
+        Ok(())
+    }
     fn emit_expr(&mut self) -> Result<(), Self::Error> {
         let rt = self.rt.unwrap();
         self.emit_span_with_rewrites(rt.span, &rt.children)
@@ -479,6 +526,9 @@ impl<'a, F: FnMut(&str)> Sink for RewriteTreeSink<'a, F> {
     fn emit_sub(&mut self, _idx: usize, span: Span) -> Result<(), Self::Error> {
         let rt = self.rt.unwrap();
         self.emit_span_with_rewrites(span, &rt.children)
+    }
+    fn emit_span(&mut self, span: Span) -> Result<(), Self::Error> {
+        self.emit_bytes(span.lo(), span.hi())
     }
 }
 

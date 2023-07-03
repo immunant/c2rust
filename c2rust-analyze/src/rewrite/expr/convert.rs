@@ -129,20 +129,6 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                     Rewrite::Ref(Box::new(elem), mutbl_from_bool(*mutbl))
                 }
 
-                mir_op::RewriteKind::SliceFirst { mutbl } => {
-                    // `p` -> `&p[0]`
-                    let arr = hir_rw;
-                    let idx = Rewrite::LitZero;
-                    let elem = Rewrite::Index(Box::new(arr), Box::new(idx));
-                    Rewrite::Ref(Box::new(elem), mutbl_from_bool(*mutbl))
-                }
-
-                mir_op::RewriteKind::MutToImm => {
-                    // `p` -> `&*p`
-                    let place = Rewrite::Deref(Box::new(hir_rw));
-                    Rewrite::Ref(Box::new(place), hir::Mutability::Not)
-                }
-
                 mir_op::RewriteKind::RemoveAsPtr => {
                     // `slice.as_ptr()` -> `slice`
                     assert!(matches!(hir_rw, Rewrite::Identity));
@@ -152,26 +138,6 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                 mir_op::RewriteKind::RawToRef { mutbl } => {
                     // &raw _ to &_ or &raw mut _ to &mut _
                     Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(*mutbl))
-                }
-
-                mir_op::RewriteKind::CastRefToRaw { mutbl } => {
-                    // `addr_of!(*p)` is cleaner than `p as *const _`; we don't know the pointee
-                    // type here, so we can't emit `p as *const T`.
-                    let rw_pl = Rewrite::Deref(Box::new(hir_rw));
-                    Rewrite::AddrOf(Box::new(rw_pl), mutbl_from_bool(*mutbl))
-                }
-                mir_op::RewriteKind::CastRawToRaw { to_mutbl } => {
-                    let method = if *to_mutbl { "cast_mut" } else { "cast_const" };
-                    Rewrite::MethodCall(method.to_string(), Box::new(hir_rw), vec![])
-                }
-                mir_op::RewriteKind::UnsafeCastRawToRef { mutbl } => {
-                    let rw_pl = Rewrite::Deref(Box::new(hir_rw));
-                    Rewrite::Ref(Box::new(rw_pl), mutbl_from_bool(*mutbl))
-                }
-
-                mir_op::RewriteKind::CellNew => {
-                    // `x` to `Cell::new(x)`
-                    Rewrite::Call("std::cell::Cell::new".to_string(), vec![Rewrite::Identity])
                 }
 
                 mir_op::RewriteKind::CellGet => {
@@ -191,13 +157,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                     Rewrite::MethodCall("set".to_string(), Box::new(lhs), vec![rhs])
                 }
 
-                mir_op::RewriteKind::CellFromMut => {
-                    // `x` to `Cell::from_mut(x)`
-                    Rewrite::Call(
-                        "std::cell::Cell::from_mut".to_string(),
-                        vec![Rewrite::Identity],
-                    )
-                }
+                _ => convert_cast_rewrite(rw, hir_rw),
             }
         };
 
@@ -274,6 +234,60 @@ fn materialize_adjustments<'tcx>(
         (rw @ Rewrite::Ref(..), &[Adjust::Deref(..), Adjust::Borrow(..)]) => rw,
         (rw, &[]) => rw,
         (rw, adjs) => panic!("rewrite {rw:?} and materializations {adjs:?} NYI"),
+    }
+}
+
+/// Convert a single `RewriteKind` representing a cast into a `Span`-based `Rewrite`.  This panics
+/// on rewrites that modify the original expression; only rewrites that wrap the expression in some
+/// kind of cast or conversion are supported.
+pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewrite {
+    match *kind {
+        mir_op::RewriteKind::SliceFirst { mutbl } => {
+            // `p` -> `&p[0]`
+            let arr = hir_rw;
+            let idx = Rewrite::LitZero;
+            let elem = Rewrite::Index(Box::new(arr), Box::new(idx));
+            Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
+        }
+
+        mir_op::RewriteKind::MutToImm => {
+            // `p` -> `&*p`
+            let place = Rewrite::Deref(Box::new(hir_rw));
+            Rewrite::Ref(Box::new(place), hir::Mutability::Not)
+        }
+
+        mir_op::RewriteKind::CastRefToRaw { mutbl } => {
+            // `addr_of!(*p)` is cleaner than `p as *const _`; we don't know the pointee
+            // type here, so we can't emit `p as *const T`.
+            let rw_pl = Rewrite::Deref(Box::new(hir_rw));
+            Rewrite::AddrOf(Box::new(rw_pl), mutbl_from_bool(mutbl))
+        }
+        mir_op::RewriteKind::CastRawToRaw { to_mutbl } => {
+            let method = if to_mutbl { "cast_mut" } else { "cast_const" };
+            Rewrite::MethodCall(method.to_string(), Box::new(hir_rw), vec![])
+        }
+        mir_op::RewriteKind::UnsafeCastRawToRef { mutbl } => {
+            let rw_pl = Rewrite::Deref(Box::new(hir_rw));
+            Rewrite::Ref(Box::new(rw_pl), mutbl_from_bool(mutbl))
+        }
+
+        mir_op::RewriteKind::CellNew => {
+            // `x` to `Cell::new(x)`
+            Rewrite::Call("std::cell::Cell::new".to_string(), vec![Rewrite::Identity])
+        }
+
+        mir_op::RewriteKind::CellFromMut => {
+            // `x` to `Cell::from_mut(x)`
+            Rewrite::Call(
+                "std::cell::Cell::from_mut".to_string(),
+                vec![Rewrite::Identity],
+            )
+        }
+
+        _ => panic!(
+            "rewrite {:?} is not supported by convert_cast_rewrite",
+            kind
+        ),
     }
 }
 

@@ -27,6 +27,7 @@ use rustc_middle::ty::{
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::iter;
 use std::ops::Index;
 
 bitflags! {
@@ -166,6 +167,12 @@ pub struct LFnSig<'tcx> {
     pub output: LTy<'tcx>,
 }
 
+impl<'tcx> LFnSig<'tcx> {
+    pub fn inputs_and_output(&self) -> impl Iterator<Item = LTy<'tcx>> + 'tcx {
+        self.inputs.iter().copied().chain(iter::once(self.output))
+    }
+}
+
 bitflags! {
     /// Basic information about a pointer, computed with minimal analysis before running `dataflow`
     /// or `borrowck`.
@@ -272,9 +279,6 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     pub lcx: LTyCtxt<'tcx>,
 
     ptr_info: GlobalPointerTable<PointerInfo>,
-
-    /// Map from a function to all of its callers.
-    pub fn_callers: HashMap<DefId, Vec<DefId>>,
 
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
 
@@ -532,7 +536,6 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             tcx,
             lcx: LabeledTyCtxt::new(tcx),
             ptr_info: GlobalPointerTable::empty(),
-            fn_callers: HashMap::new(),
             fn_sigs: HashMap::new(),
             fns_failed: HashMap::new(),
             field_ltys: HashMap::new(),
@@ -579,7 +582,6 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             tcx: _,
             lcx,
             ref mut ptr_info,
-            fn_callers: _,
             ref mut fn_sigs,
             fns_failed: _,
             ref mut field_ltys,
@@ -647,15 +649,10 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         }
 
         self.fns_failed.insert(did, detail);
+    }
 
-        // This is the first time marking `did` as failed, so also mark all of its callers.
-        let callers = self.fn_callers.get(&did).cloned().unwrap_or(Vec::new());
-        for caller in callers {
-            self.mark_fn_failed(
-                caller,
-                PanicDetail::new(format!("analysis failed on callee {:?}", did)),
-            );
-        }
+    pub fn iter_fns_failed(&self) -> impl Iterator<Item = DefId> + '_ {
+        self.fns_failed.keys().copied()
     }
 }
 

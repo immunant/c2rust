@@ -32,11 +32,13 @@ use std::fmt;
 
 mod apply;
 mod expr;
+mod shim;
 mod span_index;
 mod statics;
 mod ty;
 
 pub use self::expr::gen_expr_rewrites;
+pub use self::shim::{gen_shim_call_rewrites, gen_shim_definition_rewrite};
 use self::span_index::SpanIndex;
 pub use self::statics::gen_static_rewrites;
 pub use self::ty::dump_rewritten_local_tys;
@@ -48,12 +50,18 @@ pub enum LifetimeName {
     Elided,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub enum Rewrite<S = Span> {
     /// Take the original expression unchanged.
+    #[default]
     Identity,
     /// Extract the subexpression at the given index.
     Sub(usize, S),
+
+    /// Emit some fixed text.
+    Text(String),
+    /// Extract some text from the input source code before any rewrites were applied.
+    Extract(S),
 
     // Expression builders
     /// `&e`, `&mut e`
@@ -94,6 +102,17 @@ pub enum Rewrite<S = Span> {
     // `static` builders
     /// `static` mutability (`static` <-> `static mut`)
     StaticMut(Mutability, S),
+
+    // `fn` builders
+    /// Define a function.
+    DefineFn {
+        name: String,
+        arg_tys: Vec<Rewrite>,
+        return_ty: Option<Box<Rewrite>>,
+        body: Box<Rewrite>,
+    },
+    /// Emit the name of a function argument.  Only useful inside the body of `DefineFn`.
+    FnArg(usize),
 }
 
 impl fmt::Display for Rewrite {
@@ -111,11 +130,17 @@ impl apply::Sink for FormatterSink<'_, '_> {
     fn emit_str(&mut self, s: &str) -> fmt::Result {
         self.0.write_str(s)
     }
+    fn emit_fmt(&mut self, args: fmt::Arguments) -> fmt::Result {
+        self.0.write_fmt(args)
+    }
     fn emit_expr(&mut self) -> fmt::Result {
         self.0.write_str("$e")
     }
     fn emit_sub(&mut self, idx: usize, _span: Span) -> fmt::Result {
         self.0.write_fmt(format_args!("${}", idx))
+    }
+    fn emit_span(&mut self, span: Span) -> fmt::Result {
+        self.0.write_fmt(format_args!("<span {:?}>", span))
     }
 }
 

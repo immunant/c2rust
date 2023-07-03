@@ -59,4 +59,5 @@ define_tests! {
     test_attrs,
     trivial,
     type_annotation_rewrite,
+    unrewritten_calls,
 }

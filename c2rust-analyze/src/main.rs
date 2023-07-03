@@ -400,24 +400,11 @@ fn run(tcx: TyCtxt) {
 
     // Follow a postorder traversal, so that callers are visited after their callees.  This means
     // callee signatures will usually be up to date when we visit the call site.
-    let (all_fn_ldids, fn_callers) = fn_body_owners_postorder(tcx);
+    let all_fn_ldids = fn_body_owners_postorder(tcx);
     eprintln!("callgraph traversal order:");
     for &ldid in &all_fn_ldids {
         eprintln!("  {:?}", ldid);
     }
-
-    gacx.fn_callers = fn_callers
-        .into_iter()
-        .map(|(ldid, caller_ldids)| {
-            (
-                ldid.to_def_id(),
-                caller_ldids
-                    .into_iter()
-                    .map(|caller_ldid| caller_ldid.to_def_id())
-                    .collect(),
-            )
-        })
-        .collect();
 
     // Assign global `PointerId`s for all pointers that appear in function signatures.
     for &ldid in &all_fn_ldids {
@@ -713,14 +700,15 @@ fn run(tcx: TyCtxt) {
         make_sig_fixed(&mut gasn, lsig);
     }
 
-    // For testing, putting #[c2rust_analyze_test::fail_analysis] on a function marks it as failed.
+    // For testing, putting #[c2rust_analyze_test::fail_before_analysis] on a function marks it as
+    // failed at this point.
     for &ldid in &all_fn_ldids {
-        if !util::has_test_attr(tcx, ldid, TestAttr::FailAnalysis) {
+        if !util::has_test_attr(tcx, ldid, TestAttr::FailBeforeAnalysis) {
             continue;
         }
         gacx.mark_fn_failed(
             ldid.to_def_id(),
-            PanicDetail::new("explicit fail_analysis for testing".to_owned()),
+            PanicDetail::new("explicit fail_before_analysis for testing".to_owned()),
         );
     }
 
@@ -800,6 +788,32 @@ fn run(tcx: TyCtxt) {
     }
     eprintln!("reached fixpoint in {} iterations", loop_count);
 
+    // For testing, putting #[c2rust_analyze_test::fail_before_rewriting] on a function marks it as
+    // failed at this point.
+    for &ldid in &all_fn_ldids {
+        if !util::has_test_attr(tcx, ldid, TestAttr::FailBeforeRewriting) {
+            continue;
+        }
+        gacx.mark_fn_failed(
+            ldid.to_def_id(),
+            PanicDetail::new("explicit fail_before_rewriting for testing".to_owned()),
+        );
+    }
+
+    // Before generating rewrites, add the FIXED flag to the signatures of all functions that
+    // failed analysis.
+    for did in gacx.iter_fns_failed() {
+        let lsig = gacx.fn_sigs[&did];
+        for sig_lty in lsig.inputs_and_output() {
+            for lty in sig_lty.iter() {
+                let ptr = lty.label;
+                if !ptr.is_none() {
+                    gasn.flags[ptr].insert(FlagSet::FIXED);
+                }
+            }
+        }
+    }
+
     // Buffer debug output for each function.  Grouping together all the different types of info
     // for a single function makes FileCheck tests easier to write.
     let mut func_reports = HashMap::<LocalDefId, String>::new();
@@ -858,6 +872,25 @@ fn run(tcx: TyCtxt) {
         }
 
         info.acx_data.set(acx.into_data());
+    }
+
+    // This call never panics, which is important because this is the fallback if the more
+    // sophisticated analysis and rewriting above did panic.
+    let (shim_call_rewrites, shim_fn_def_ids) = rewrite::gen_shim_call_rewrites(&gacx, &gasn);
+    all_rewrites.extend(shim_call_rewrites);
+
+    // Generate shims for functions that need them.
+    for def_id in shim_fn_def_ids {
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+            all_rewrites.push(rewrite::gen_shim_definition_rewrite(&gacx, &gasn, def_id));
+        }));
+        match r {
+            Ok(()) => {}
+            Err(pd) => {
+                gacx.mark_fn_failed(def_id, pd);
+                continue;
+            }
+        }
     }
 
     // Print analysis results for each function in `all_fn_ldids`, going in declaration order.
@@ -1136,12 +1169,9 @@ fn all_static_items(tcx: TyCtxt) -> Vec<DefId> {
 /// Return all `LocalDefId`s for all `fn`s that are `body_owners`, ordered according to a postorder
 /// traversal of the graph of references between bodies.  Also returns the callgraph itself, in the
 /// form of a map from callee `LocalDefId` to a set of caller `LocalDefId`s.
-fn fn_body_owners_postorder(
-    tcx: TyCtxt,
-) -> (Vec<LocalDefId>, HashMap<LocalDefId, HashSet<LocalDefId>>) {
+fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
     let mut seen = HashSet::new();
     let mut order = Vec::new();
-    let mut callers = HashMap::<_, HashSet<_>>::new();
     enum Visit {
         Pre(LocalDefId),
         Post(LocalDefId),
@@ -1170,7 +1200,6 @@ fn fn_body_owners_postorder(
                         stack.push(Visit::Post(ldid));
                         for_each_callee(tcx, ldid, |callee_ldid| {
                             stack.push(Visit::Pre(callee_ldid));
-                            callers.entry(callee_ldid).or_default().insert(ldid);
                         });
                     }
                 }
@@ -1181,7 +1210,7 @@ fn fn_body_owners_postorder(
         }
     }
 
-    (order, callers)
+    order
 }
 
 fn for_each_callee(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(LocalDefId)) {

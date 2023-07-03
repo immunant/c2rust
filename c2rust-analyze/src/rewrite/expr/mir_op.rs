@@ -9,7 +9,7 @@
 
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet};
 use crate::panic_detail;
-use crate::pointer_id::PointerTable;
+use crate::pointer_id::{PointerId, PointerTable};
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{ty_callee, Callee};
 use log::*;
@@ -18,8 +18,9 @@ use rustc_middle::mir::{
     BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
     TerminatorKind,
 };
-use rustc_middle::ty::{Ty, TyKind};
+use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
+use std::ops::Index;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum SubLoc {
@@ -484,13 +485,70 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     }
 
     fn emit_cast_desc_desc(&mut self, from: TypeDesc<'tcx>, to: TypeDesc<'tcx>) {
+        let perms = self.perms;
+        let flags = self.flags;
+        let mut builder = CastBuilder::new(self.acx.tcx(), &perms, &flags, |rk| self.emit(rk));
+        builder.build_cast_desc_desc(from, to);
+    }
+
+    fn emit_cast_lty_desc(&mut self, from_lty: LTy<'tcx>, to: TypeDesc<'tcx>) {
+        let perms = self.perms;
+        let flags = self.flags;
+        let mut builder = CastBuilder::new(self.acx.tcx(), &perms, &flags, |rk| self.emit(rk));
+        builder.build_cast_lty_desc(from_lty, to);
+    }
+
+    #[allow(dead_code)]
+    fn emit_cast_desc_lty(&mut self, from: TypeDesc<'tcx>, to_lty: LTy<'tcx>) {
+        let perms = self.perms;
+        let flags = self.flags;
+        let mut builder = CastBuilder::new(self.acx.tcx(), &perms, &flags, |rk| self.emit(rk));
+        builder.build_cast_desc_lty(from, to_lty);
+    }
+
+    fn emit_cast_lty_lty(&mut self, from_lty: LTy<'tcx>, to_lty: LTy<'tcx>) {
+        let perms = self.perms;
+        let flags = self.flags;
+        let mut builder = CastBuilder::new(self.acx.tcx(), &perms, &flags, |rk| self.emit(rk));
+        builder.build_cast_lty_lty(from_lty, to_lty);
+    }
+}
+
+pub struct CastBuilder<'a, 'tcx, PT1, PT2, F> {
+    tcx: TyCtxt<'tcx>,
+    perms: &'a PT1,
+    flags: &'a PT2,
+    emit: F,
+}
+
+impl<'a, 'tcx, PT1, PT2, F> CastBuilder<'a, 'tcx, PT1, PT2, F>
+where
+    PT1: Index<PointerId, Output = PermissionSet>,
+    PT2: Index<PointerId, Output = FlagSet>,
+    F: FnMut(RewriteKind),
+{
+    pub fn new(
+        tcx: TyCtxt<'tcx>,
+        perms: &'a PT1,
+        flags: &'a PT2,
+        emit: F,
+    ) -> CastBuilder<'a, 'tcx, PT1, PT2, F> {
+        CastBuilder {
+            tcx,
+            perms,
+            flags,
+            emit,
+        }
+    }
+
+    pub fn build_cast_desc_desc(&mut self, from: TypeDesc<'tcx>, to: TypeDesc<'tcx>) {
         let orig_from = from;
         let mut from = orig_from;
 
         // The `from` and `to` pointee types should only differ in their lifetimes.
         assert_eq!(
-            self.acx.tcx().erase_regions(from.pointee_ty),
-            self.acx.tcx().erase_regions(to.pointee_ty),
+            self.tcx.erase_regions(from.pointee_ty),
+            self.tcx.erase_regions(to.pointee_ty),
         );
         // There might still be differences in lifetimes, which we don't care about here.
         // Overwriting `from.pointee_ty` allows the final `from == to` check to succeed below.
@@ -536,7 +594,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         Some(mutbl) => RewriteKind::SliceFirst { mutbl },
                         None => break,
                     };
-                    self.emit(rw);
+                    (self.emit)(rw);
                     from.qty = Quantity::Single;
                 }
 
@@ -562,7 +620,12 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         }
     }
 
-    fn cast_ownership(&mut self, from: TypeDesc, to: TypeDesc, early: bool) -> Ownership {
+    fn cast_ownership(
+        &mut self,
+        from: TypeDesc<'tcx>,
+        to: TypeDesc<'tcx>,
+        early: bool,
+    ) -> Ownership {
         let mut from = from;
         while from.own != to.own {
             match self.cast_ownership_one_step(from, to, early) {
@@ -577,8 +640,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
     fn cast_ownership_one_step(
         &mut self,
-        from: TypeDesc,
-        to: TypeDesc,
+        from: TypeDesc<'tcx>,
+        to: TypeDesc<'tcx>,
         early: bool,
     ) -> Option<Ownership> {
         match from.own {
@@ -602,15 +665,15 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             },
             Ownership::Mut => match to.own {
                 Ownership::Imm | Ownership::Raw => {
-                    self.emit(RewriteKind::MutToImm);
+                    (self.emit)(RewriteKind::MutToImm);
                     Some(Ownership::Imm)
                 }
                 Ownership::Cell => {
-                    self.emit(RewriteKind::CellFromMut);
+                    (self.emit)(RewriteKind::CellFromMut);
                     Some(Ownership::Cell)
                 }
                 Ownership::RawMut if !early => {
-                    self.emit(RewriteKind::CastRefToRaw { mutbl: true });
+                    (self.emit)(RewriteKind::CastRefToRaw { mutbl: true });
                     Some(Ownership::RawMut)
                 }
                 _ => None,
@@ -618,7 +681,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             Ownership::Cell => None,
             Ownership::Imm => match to.own {
                 Ownership::Raw | Ownership::RawMut if !early => {
-                    self.emit(RewriteKind::CastRefToRaw { mutbl: false });
+                    (self.emit)(RewriteKind::CastRefToRaw { mutbl: false });
                     Some(Ownership::Raw)
                 }
                 _ => None,
@@ -627,22 +690,22 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 // For `RawMut` to `Imm`, we go through `Raw` instead of through `Mut` because
                 // `&mut` adds more implicit constraints under the Rust memory model.
                 Ownership::Raw | Ownership::Imm if !early => {
-                    self.emit(RewriteKind::CastRawToRaw { to_mutbl: false });
+                    (self.emit)(RewriteKind::CastRawToRaw { to_mutbl: false });
                     Some(Ownership::Raw)
                 }
                 Ownership::Mut if !early => {
-                    self.emit(RewriteKind::UnsafeCastRawToRef { mutbl: true });
+                    (self.emit)(RewriteKind::UnsafeCastRawToRef { mutbl: true });
                     Some(Ownership::Mut)
                 }
                 _ => None,
             },
             Ownership::Raw => match to.own {
                 Ownership::RawMut | Ownership::Mut if !early => {
-                    self.emit(RewriteKind::CastRawToRaw { to_mutbl: true });
+                    (self.emit)(RewriteKind::CastRawToRaw { to_mutbl: true });
                     Some(Ownership::RawMut)
                 }
                 Ownership::Imm if !early => {
-                    self.emit(RewriteKind::UnsafeCastRawToRef { mutbl: false });
+                    (self.emit)(RewriteKind::UnsafeCastRawToRef { mutbl: false });
                     Some(Ownership::Imm)
                 }
                 _ => None,
@@ -650,30 +713,31 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         }
     }
 
-    fn emit_cast_lty_desc(&mut self, from_lty: LTy<'tcx>, to: TypeDesc<'tcx>) {
+    pub fn build_cast_lty_desc(&mut self, from_lty: LTy<'tcx>, to: TypeDesc<'tcx>) {
         let from = type_desc::perms_to_desc_with_pointee(
-            self.acx.tcx(),
+            self.tcx,
             to.pointee_ty,
             from_lty.ty,
             self.perms[from_lty.label],
             self.flags[from_lty.label],
         );
-        self.emit_cast_desc_desc(from, to);
+        self.build_cast_desc_desc(from, to);
     }
 
-    #[allow(dead_code)]
-    fn emit_cast_desc_lty(&mut self, from: TypeDesc<'tcx>, to_lty: LTy<'tcx>) {
+    pub fn build_cast_desc_lty(&mut self, from: TypeDesc<'tcx>, to_lty: LTy<'tcx>) {
         let to = type_desc::perms_to_desc_with_pointee(
-            self.acx.tcx(),
+            self.tcx,
             from.pointee_ty,
             to_lty.ty,
             self.perms[to_lty.label],
             self.flags[to_lty.label],
         );
-        self.emit_cast_desc_desc(from, to);
+        self.build_cast_desc_desc(from, to);
     }
 
-    fn emit_cast_lty_lty(&mut self, from_lty: LTy<'tcx>, to_lty: LTy<'tcx>) {
+    pub fn build_cast_lty_lty(&mut self, from_lty: LTy<'tcx>, to_lty: LTy<'tcx>) {
+        let Self { perms, flags, .. } = *self;
+
         if from_lty.label.is_none() && to_lty.label.is_none() {
             // Input and output are both non-pointers.
             return;
@@ -686,28 +750,27 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             return;
         }
 
-        let from_fixed = self.flags[from_lty.label].contains(FlagSet::FIXED);
-        let to_fixed = self.flags[to_lty.label].contains(FlagSet::FIXED);
+        let from_fixed = flags[from_lty.label].contains(FlagSet::FIXED);
+        let to_fixed = flags[to_lty.label].contains(FlagSet::FIXED);
 
-        let lty_to_desc = |slf: &mut Self, lty: LTy<'tcx>| {
-            type_desc::perms_to_desc(lty.ty, slf.perms[lty.label], slf.flags[lty.label])
-        };
+        let lty_to_desc =
+            |lty: LTy<'tcx>| type_desc::perms_to_desc(lty.ty, perms[lty.label], flags[lty.label]);
 
         match (from_fixed, to_fixed) {
             (false, false) => {
-                let from = lty_to_desc(self, from_lty);
-                let to = lty_to_desc(self, to_lty);
-                self.emit_cast_desc_desc(from, to);
+                let from = lty_to_desc(from_lty);
+                let to = lty_to_desc(to_lty);
+                self.build_cast_desc_desc(from, to);
             }
 
             (false, true) => {
-                let from = lty_to_desc(self, from_lty);
-                self.emit_cast_desc_lty(from, to_lty);
+                let from = lty_to_desc(from_lty);
+                self.build_cast_desc_lty(from, to_lty);
             }
 
             (true, false) => {
-                let to = lty_to_desc(self, to_lty);
-                self.emit_cast_lty_desc(from_lty, to);
+                let to = lty_to_desc(to_lty);
+                self.build_cast_lty_desc(from_lty, to);
             }
 
             (true, true) => {

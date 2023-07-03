@@ -446,8 +446,12 @@ pub enum TestAttr {
     /// `#[c2rust_analyze_test::fixed_signature]`: Mark all pointers in the function signature as
     /// [`FIXED`](crate::context::FlagSet::FIXED).
     FixedSignature,
-    /// `#[c2rust_analyze_test::fail_analysis]`: Force an analysis failure for the function.
-    FailAnalysis,
+    /// `#[c2rust_analyze_test::fail_before_analysis]`: Mark the function as failed before running
+    /// analysis.
+    FailBeforeAnalysis,
+    /// `#[c2rust_analyze_test::fail_before_rewriting]`: Mark the function as failed after analysis
+    /// but before rewriting.
+    FailBeforeRewriting,
     /// `#[c2rust_analyze_test::skip_rewrite]`: Skip generating rewrites for the function.
     SkipRewrite,
 }
@@ -456,7 +460,8 @@ impl TestAttr {
     pub fn name(self) -> &'static str {
         match self {
             TestAttr::FixedSignature => "fixed_signature",
-            TestAttr::FailAnalysis => "fail_analysis",
+            TestAttr::FailBeforeAnalysis => "fail_before_analysis",
+            TestAttr::FailBeforeRewriting => "fail_before_rewriting",
             TestAttr::SkipRewrite => "skip_rewrite",
         }
     }
