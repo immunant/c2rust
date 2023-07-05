@@ -10,7 +10,7 @@
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet};
 use crate::panic_detail;
 use crate::pointer_id::{PointerId, PointerTable};
-use crate::rustc_middle::ty::print::Print;
+use rustc_middle::ty::print::Print;
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{ty_callee, Callee};
 use log::*;
