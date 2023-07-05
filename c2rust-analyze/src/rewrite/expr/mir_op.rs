@@ -10,7 +10,6 @@
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet};
 use crate::panic_detail;
 use crate::pointer_id::{PointerId, PointerTable};
-use rustc_middle::ty::print::Print;
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{ty_callee, Callee};
 use log::*;
@@ -20,6 +19,7 @@ use rustc_middle::mir::{
     TerminatorKind,
 };
 use rustc_middle::ty::print::FmtPrinter;
+use rustc_middle::ty::print::Print;
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
