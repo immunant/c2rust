@@ -120,13 +120,49 @@ mod tests {
     }
 
     #[test]
-    fn known_fn_ty() {
+    fn known_fn_ty_no_perms() {
         assert_eq!(
-            known_fn_ty!(*const i32: [READ]),
+            known_fn_ty!(()),
             KnownFnTy {
                 name: "",
-                ty: "*const i32",
-                perms: const_slice!(PermissionSet, [PermissionSet::READ]),
+                ty: "()",
+                perms: &[],
+            }
+        );
+    }
+
+    #[test]
+    fn known_fn_ty_with_one_perms() {
+        assert_eq!(
+            known_fn_ty!(*mut c_char: [WRITE | OFFSET_ADD]),
+            KnownFnTy {
+                name: "",
+                ty: "*mut c_char",
+                perms: const_slice!(
+                    PermissionSet,
+                    [PermissionSet::union_all([
+                        PermissionSet::WRITE,
+                        PermissionSet::OFFSET_ADD
+                    ]),]
+                ),
+            }
+        );
+    }
+
+    #[test]
+    fn known_fn_ty_with_two_perms() {
+        assert_eq!(
+            known_fn_ty!(*mut *mut c_char: [WRITE, WRITE | OFFSET_ADD]),
+            KnownFnTy {
+                name: "",
+                ty: "*mut *mut c_char",
+                perms: const_slice!(
+                    PermissionSet,
+                    [
+                        PermissionSet::union_all([PermissionSet::WRITE,]),
+                        PermissionSet::union_all([PermissionSet::WRITE, PermissionSet::OFFSET_ADD])
+                    ]
+                ),
             }
         );
     }
