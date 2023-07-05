@@ -716,7 +716,7 @@ where
                     let printer = FmtPrinter::new(self.tcx, Namespace::TypeNS);
                     let ty = to.pointee_ty.print(printer).unwrap().into_buffer();
                     (self.emit)(RewriteKind::CastRawMutToCellPtr { ty });
-                    (self.emit)(RewriteKind::MutToImm);
+                    (self.emit)(RewriteKind::UnsafeCastRawToRef { mutbl: false });
                     Some(Ownership::Cell)
                 }
                 _ => None,
