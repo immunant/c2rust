@@ -10,6 +10,7 @@
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet};
 use crate::panic_detail;
 use crate::pointer_id::{PointerId, PointerTable};
+use crate::rustc_middle::ty::print::Print;
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{ty_callee, Callee};
 use log::*;
@@ -18,9 +19,13 @@ use rustc_middle::mir::{
     BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
     TerminatorKind,
 };
+use rustc_middle::ty::print::FmtPrinter;
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
+
+extern crate rustc_resolve;
+use rustc_resolve::Namespace;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum SubLoc {
@@ -708,9 +713,9 @@ where
                     Some(Ownership::Mut)
                 }
                 Ownership::Cell if !early => {
-                    (self.emit)(RewriteKind::CastRawMutToCellPtr {
-                        ty: format!("{:?}", to.pointee_ty),
-                    });
+                    let printer = FmtPrinter::new(self.tcx, Namespace::TypeNS);
+                    let ty = to.pointee_ty.print(printer).unwrap().into_buffer();
+                    (self.emit)(RewriteKind::CastRawMutToCellPtr { ty });
                     (self.emit)(RewriteKind::MutToImm);
                     Some(Ownership::Cell)
                 }
