@@ -8,7 +8,7 @@ use rustc_hir as hir;
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::HirId;
 use rustc_middle::hir::nested_filter;
-use rustc_middle::mir::{self, Body, Location};
+use rustc_middle::mir::{self, Body, Location, Place};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 use std::collections::btree_map::{BTreeMap, Entry};
@@ -97,6 +97,14 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         }
     }
 
+    fn get_desc(&mut self, pl: &Place<'tcx>) -> MirOriginDesc {
+        if is_var(*pl) && self.mir.local_kind(pl.local) == mir::LocalKind::Temp {
+            MirOriginDesc::LoadFromTemp
+        } else {
+            MirOriginDesc::Expr
+        }
+    }
+
     /// Special `record` variant for MIR [`Operand`]s.  This sets the [`MirOriginDesc`] to
     /// `LoadFromLocal` if `op` is a MIR temporary and otherwise sets it to `Expr`.
     ///
@@ -109,18 +117,11 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         op: &mir::Operand<'tcx>,
     ) {
         let op_is_temp = match *op {
-            mir::Operand::Copy(pl) | mir::Operand::Move(pl) => {
-                is_var(pl) && self.mir.local_kind(pl.local) == mir::LocalKind::Temp
-            }
-            mir::Operand::Constant(..) => false,
+            mir::Operand::Copy(pl) | mir::Operand::Move(pl) => self.get_desc(&pl),
+            mir::Operand::Constant(..) => MirOriginDesc::Expr,
         };
 
-        let desc = if op_is_temp {
-            MirOriginDesc::LoadFromTemp
-        } else {
-            MirOriginDesc::Expr
-        };
-        self.record_desc(loc, sub_loc, ex, desc);
+        self.record_desc(loc, sub_loc, ex, op_is_temp);
     }
 
     fn get_sole_assign(
@@ -220,13 +221,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 let desc = match mir_rv {
                     mir::Rvalue::Use(op) => op
                         .place()
-                        .map(|pl| {
-                            if is_var(pl) && self.mir.local_kind(pl.local) == mir::LocalKind::Temp {
-                                MirOriginDesc::LoadFromTemp
-                            } else {
-                                MirOriginDesc::Expr
-                            }
-                        })
+                        .map(|pl| self.get_desc(&pl))
                         .unwrap_or(MirOriginDesc::Expr),
                     _ => MirOriginDesc::Expr,
                 };
