@@ -187,6 +187,36 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         origin
     }
 
+    fn relabel_fresh_origins(&mut self, expect_ty: LTy<'tcx>) -> LTy<'tcx> {
+        self.ltcx.relabel(expect_ty, &mut |lty| {
+            let perm = lty.label.perm;
+            match lty.ty.kind() {
+                TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
+                    let origin = Some(self.maps.origin());
+                    Label {
+                        origin,
+                        origin_params: &[],
+                        perm,
+                    }
+                }
+                TyKind::Adt(..) => {
+                    let origin_params =
+                        construct_adt_origins(&self.ltcx, self.adt_metadata, &lty.ty, self.maps);
+                    Label {
+                        origin: None,
+                        origin_params,
+                        perm,
+                    }
+                }
+                _ => Label {
+                    origin: None,
+                    origin_params: &[],
+                    perm,
+                },
+            }
+        })
+    }
+
     pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, expect_ty: LTy<'tcx>) -> LTy<'tcx> {
         match *rv {
             Rvalue::Use(Operand::Copy(pl)) if matches!(expect_ty.ty.kind(), TyKind::RawPtr(_)) => {
@@ -273,49 +303,17 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // We support only one case here, which is the case of null pointers
                 // constructed via casts such as `0 as *const T`
                 if let Some(true) = op.constant().cloned().map(util::is_null_const) {
-                    let adt_metadata = self.adt_metadata;
-
                     // Here we relabel `expect_ty` to utilize the permissions it carries
                     // but substitute the rest of its `Label`s' parts with fresh origins
                     // Othwerise, this is conceptually similar to labeling the cast target
                     // `ty`. We would simply do that, but do not have the information necessary
                     // to set its permissions.
-                    self.ltcx.relabel(expect_ty, &mut |lty| {
-                        let perm = lty.label.perm;
-                        match lty.ty.kind() {
-                            TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
-                                let origin = Some(self.maps.origin());
-                                Label {
-                                    origin,
-                                    origin_params: &[],
-                                    perm,
-                                }
-                            }
-                            TyKind::Adt(..) => {
-                                let origin_params = construct_adt_origins(
-                                    &self.ltcx,
-                                    adt_metadata,
-                                    &lty.ty,
-                                    self.maps,
-                                );
-                                Label {
-                                    origin: None,
-                                    origin_params,
-                                    perm,
-                                }
-                            }
-                            _ => Label {
-                                origin: None,
-                                origin_params: &[],
-                                perm,
-                            },
-                        }
-                    })
+                    self.relabel_fresh_origins(expect_ty)
                 } else {
                     panic!("Creating non-null pointers from exposed addresses not supported");
                 }
             }
-            Rvalue::Cast(_, _, ty) => self.ltcx.label(ty, &mut |_ty| {
+            Rvalue::Cast(..) => {
                 // TODO: handle Unsize casts at minimum
                 /*
                 assert!(
@@ -323,8 +321,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     "pointer Cast NYI"
                 );
                 */
-                Label::default()
-            }),
+                // Here we relabel `expect_ty` to utilize the permissions it carries
+                // but substitute the rest of its `Label`s' parts with fresh origins
+                // Othwerise, this is conceptually similar to labeling the cast target
+                // `ty`. We would simply do that, but do not have the information necessary
+                // to set its permissions.
+                self.relabel_fresh_origins(expect_ty)
+            }
             Rvalue::Aggregate(ref kind, ref ops) => match **kind {
                 AggregateKind::Array(..) => {
                     let ty = rv.ty(self.local_decls, *self.ltcx);
