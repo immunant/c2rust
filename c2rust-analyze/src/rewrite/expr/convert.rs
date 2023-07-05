@@ -228,11 +228,7 @@ fn materialize_adjustments<'tcx>(
             hir_rw
         }
         (rw @ Rewrite::Ref(..), &[Adjust::Deref(..), Adjust::Borrow(..)]) => rw,
-        (ref rw @ Rewrite::MethodCall(ref s, ..), &[Adjust::Deref(..), Adjust::Borrow(..)])
-            if s == "as_ptr" =>
-        {
-            rw.clone()
-        }
+        (rw @ Rewrite::MethodCall(..), &[Adjust::Deref(..), Adjust::Borrow(..)]) => rw,
         (rw, &[]) => rw,
         (rw, adjs) => panic!("rewrite {rw:?} and materializations {adjs:?} NYI"),
     }
