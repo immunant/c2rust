@@ -34,7 +34,7 @@ pub unsafe fn cell_as_mut_as_cell(mut x: *mut i32, mut f: Foo) {
     *z = 1;
     *r = 1;
     *z = 4;
-    // CHECK-DAG: (f.y).as_ptr();
+    // CHECK-DAG: f.y = (x).as_ptr();
     f.y = x;
     // CHECK-DAG: x = &*((f.y) as *const std::cell::Cell<i32>);
     x = f.y;

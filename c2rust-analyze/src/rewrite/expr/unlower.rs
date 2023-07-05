@@ -208,7 +208,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
 
         // Most exprs end with an assignment, storing the result into a temporary.
         match ex.kind {
-            hir::ExprKind::Assign(pl, _rv, _span) => {
+            hir::ExprKind::Assign(pl, rv, _span) => {
                 // For `Assign`, we expect the assignment to be the whole thing.
                 let (loc, _mir_pl, mir_rv) = match self.get_sole_assign(&locs) {
                     Some(x) => x,
@@ -232,7 +232,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 };
                 self.record(loc, &[], ex);
                 self.record(loc, &[SubLoc::Dest], pl);
-                self.record_desc(loc, &[SubLoc::Rvalue], ex, desc);
+                self.record_desc(loc, &[SubLoc::Rvalue], rv, desc);
             }
 
             hir::ExprKind::Call(_, args) | hir::ExprKind::MethodCall(_, args, _) => {
