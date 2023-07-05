@@ -12,7 +12,21 @@ static mut READ_MUT: usize = 21;
 // CHECK-DAG: "WRITTEN_MUT": addr_of = READ | WRITE | UNIQUE
 static mut WRITTEN_MUT: usize = 3;
 
-// CHECK: generated 2 static rewrites:
+static mut oneshot_fdn: fdnode = fdnode { ctx: 0 as *mut u8 };
+
+pub struct fdnode {
+    pub ctx: *mut u8,
+}
+
+unsafe extern "C" fn server_free1() -> bool {
+    oneshot_fdn.ctx.is_null()
+}
+
+unsafe extern "C" fn server_free2() -> () {
+    &oneshot_fdn;
+}
+
+// CHECK: generated {{.*}} static rewrites:
 // CHECK-DAG: static mut UNUS ...  = 6;: static $0
 // CHECK-DAG: static mut READ ... = 21;: static $0
 

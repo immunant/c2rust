@@ -15,6 +15,8 @@ extern crate rustc_span;
 extern crate rustc_target;
 extern crate rustc_type_ir;
 
+use crate::borrowck::assign_origins;
+use crate::borrowck::atoms::AtomMaps;
 use crate::context::{
     AnalysisCtxt, AnalysisCtxtData, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy,
     LTyCtxt, LocalAssignment, PermissionSet, PointerId, PointerInfo,
@@ -24,6 +26,7 @@ use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use crate::labeled_ty::LabeledTyCtxt;
 use crate::log::init_logger;
 use crate::panic_detail::PanicDetail;
+use crate::pointer_id::LocalPointerTable;
 use crate::util::{Callee, TestAttr};
 use context::AdtMetadataTable;
 use rustc_hir::def::DefKind;
@@ -724,6 +727,22 @@ fn run(tcx: TyCtxt) {
         // the outer loop, which runs until the `GlobalAssignment` converges as well.
         loop_count += 1;
         let old_gasn = gasn.clone();
+
+        let ltcx = LabeledTyCtxt::new(tcx);
+        let mut maps = AtomMaps::default();
+
+        for did in &all_static_dids {
+            let static_lty = gacx.static_tys[&did];
+            let static_origin_lty = assign_origins(
+                ltcx,
+                &gasn.perms.and_mut(&mut LocalPointerTable::empty()),
+                &mut maps,
+                &gacx.adt_metadata,
+                static_lty,
+            );
+            gacx.static_origins.insert(*did, static_origin_lty);
+        }
+
         for &ldid in &all_fn_ldids {
             if gacx.fn_failed(ldid.to_def_id()) {
                 continue;
@@ -748,6 +767,7 @@ fn run(tcx: TyCtxt) {
                     &acx,
                     &info.dataflow,
                     &mut asn.perms_mut(),
+                    &mut maps,
                     name.as_str(),
                     &mir,
                     field_ltys,

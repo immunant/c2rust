@@ -1,10 +1,10 @@
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubPoint};
 use crate::borrowck::{construct_adt_origins, LTy, LTyCtxt, Label, OriginParam};
-use crate::c_void_casts::CVoidCasts;
-use crate::context::PermissionSet;
+use crate::context::{const_alloc_id, find_static_for_alloc};
+use crate::context::{AnalysisCtxt, PermissionSet};
 use crate::panic_detail;
+use crate::pointer_id::PointerTableMut;
 use crate::util::{self, ty_callee, Callee};
-use crate::AdtMetadataTable;
 use assert_matches::assert_matches;
 use indexmap::IndexMap;
 use rustc_hir::def_id::DefId;
@@ -18,6 +18,7 @@ use rustc_middle::ty::{AdtDef, FieldDef, TyCtxt, TyKind};
 use std::collections::HashMap;
 
 struct TypeChecker<'tcx, 'a> {
+    acx: &'a AnalysisCtxt<'a, 'tcx>,
     tcx: TyCtxt<'tcx>,
     ltcx: LTyCtxt<'tcx>,
     facts: &'a mut AllFacts,
@@ -25,9 +26,9 @@ struct TypeChecker<'tcx, 'a> {
     loans: &'a mut HashMap<Local, Vec<(Path, Loan, BorrowKind)>>,
     local_ltys: &'a [LTy<'tcx>],
     field_permissions: &'a HashMap<DefId, PermissionSet>,
+    hypothesis: &'a PointerTableMut<'a, PermissionSet>,
     local_decls: &'a IndexVec<Local, LocalDecl<'tcx>>,
     current_location: Location,
-    adt_metadata: &'a AdtMetadataTable<'tcx>,
 }
 
 impl<'tcx> TypeChecker<'tcx, '_> {
@@ -44,7 +45,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             IndexMap::from_iter(base_lty.label.origin_params.to_vec());
         let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field.index()];
         let perm = self.field_permissions[&field_def.did];
-        let base_metadata = &self.adt_metadata.table[&base_adt_def.did()];
+        let base_metadata = &self.acx.gacx.adt_metadata.table[&base_adt_def.did()];
         let field_metadata = &base_metadata.field_info[&field_def.did];
 
         self.ltcx.relabel(
@@ -101,7 +102,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         */
                         let mut field_origin_param_map = vec![];
                         eprintln!("{:?}", fadt_def.did());
-                        let field_adt_metadata = if let Some(field_adt_metadata) = self.adt_metadata.table.get(&fadt_def.did()) {
+                        let field_adt_metadata = if let Some(field_adt_metadata) = self.acx.gacx.adt_metadata.table.get(&fadt_def.did()) {
                             field_adt_metadata
                         } else {
                             return Label {
@@ -165,6 +166,39 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => self.visit_place(pl),
             Operand::Constant(ref c) => {
+                if c.ty().is_any_ptr() {
+                    if let Some(alloc_id) = const_alloc_id(c) {
+                        if let Some(did) = find_static_for_alloc(&self.acx.tcx(), alloc_id) {
+                            let lty = self
+                                .acx
+                                .gacx
+                                .static_origins
+                                .get(&did)
+                                .cloned()
+                                .unwrap_or_else(|| panic!("did {:?} not found", did));
+                            let pointer_id = self.acx.type_of(op).label;
+                            let perm = self.hypothesis[pointer_id];
+                            let args = self.ltcx.mk_slice(&[lty]);
+                            assert!(matches!(
+                                *c.ty().kind(),
+                                TyKind::Ref(..) | TyKind::RawPtr(..)
+                            ));
+
+                            // Polonius does not appear to issue loans for statics
+                            let label = Label {
+                                origin: None,
+                                origin_params: &[],
+                                perm,
+                            };
+                            return self.ltcx.mk(c.ty(), args, label);
+                        } else {
+                            // string literals
+                        }
+                    } else {
+                        // string literals
+                    }
+                }
+
                 let ty = c.ty();
                 self.ltcx.label(ty, &mut |_| Label::default())
             }
@@ -201,8 +235,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                 }
                 TyKind::Adt(..) => {
-                    let origin_params =
-                        construct_adt_origins(&self.ltcx, self.adt_metadata, &lty.ty, self.maps);
+                    let origin_params = construct_adt_origins(
+                        &self.ltcx,
+                        &self.acx.gacx.adt_metadata,
+                        &lty.ty,
+                        self.maps,
+                    );
                     Label {
                         origin: None,
                         origin_params,
@@ -536,6 +574,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
 #[allow(clippy::too_many_arguments)]
 pub fn visit_body<'tcx>(
+    acx: &AnalysisCtxt<'_, 'tcx>,
     tcx: TyCtxt<'tcx>,
     ltcx: LTyCtxt<'tcx>,
     facts: &mut AllFacts,
@@ -543,11 +582,11 @@ pub fn visit_body<'tcx>(
     loans: &mut HashMap<Local, Vec<(Path, Loan, BorrowKind)>>,
     local_ltys: &[LTy<'tcx>],
     field_permissions: &HashMap<DefId, PermissionSet>,
+    hypothesis: &PointerTableMut<PermissionSet>,
     mir: &Body<'tcx>,
-    adt_metadata: &AdtMetadataTable<'tcx>,
-    c_void_casts: &CVoidCasts<'tcx>,
 ) {
     let mut tc = TypeChecker {
+        acx,
         tcx,
         ltcx,
         facts,
@@ -555,9 +594,9 @@ pub fn visit_body<'tcx>(
         loans,
         local_ltys,
         field_permissions,
+        hypothesis,
         local_decls: &mir.local_decls,
         current_location: Location::START,
-        adt_metadata,
     };
 
     for (block, bb_data) in mir.basic_blocks().iter_enumerated() {
@@ -568,7 +607,7 @@ pub fn visit_body<'tcx>(
             };
             tc.current_location = loc;
 
-            if !c_void_casts.should_skip_stmt(loc) {
+            if !acx.c_void_casts.should_skip_stmt(loc) {
                 tc.visit_statement(stmt);
             }
         }

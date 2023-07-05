@@ -300,6 +300,7 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     pub field_ltys: HashMap<DefId, LTy<'tcx>>,
 
     pub static_tys: HashMap<DefId, LTy<'tcx>>,
+    pub static_origins: HashMap<DefId, crate::borrowck::LTy<'tcx>>,
     pub addr_of_static: HashMap<DefId, PointerId>,
 
     pub adt_metadata: AdtMetadataTable<'tcx>,
@@ -550,6 +551,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             fn_sigs: HashMap::new(),
             fns_failed: HashMap::new(),
             field_ltys: HashMap::new(),
+            static_origins: HashMap::new(),
             static_tys: HashMap::new(),
             addr_of_static: HashMap::new(),
             adt_metadata: construct_adt_metadata(tcx),
@@ -596,6 +598,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             ref mut fn_sigs,
             fns_failed: _,
             ref mut field_ltys,
+            static_origins: _,
             ref mut static_tys,
             ref mut addr_of_static,
             adt_metadata: _,
@@ -993,14 +996,14 @@ impl<'tcx> TypeOf<'tcx> for PlaceRef<'tcx> {
     }
 }
 
-fn const_alloc_id(c: &Constant) -> Option<AllocId> {
+pub fn const_alloc_id(c: &Constant) -> Option<AllocId> {
     if let ConstantKind::Val(ConstValue::Scalar(interpret::Scalar::Ptr(ptr, _)), _ty) = c.literal {
         return Some(ptr.provenance);
     }
     None
 }
 
-fn find_static_for_alloc(tcx: &TyCtxt, id: AllocId) -> Option<DefId> {
+pub fn find_static_for_alloc(tcx: &TyCtxt, id: AllocId) -> Option<DefId> {
     match tcx.try_get_global_alloc(id) {
         None => {} //hmm, ok
         Some(GlobalAlloc::Static(did)) => {
