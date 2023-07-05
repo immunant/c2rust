@@ -24,8 +24,7 @@ use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
 
-extern crate rustc_resolve;
-use rustc_resolve::Namespace;
+use rustc_hir::def::Namespace;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum SubLoc {
