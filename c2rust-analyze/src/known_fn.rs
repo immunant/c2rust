@@ -83,6 +83,7 @@ macro_rules! known_fns {
         mod $module:ident {
 
             $(
+                $(#[$attr:meta])?
                 fn $name:ident(
                     $($arg_name:ident: $arg_ty:ty$(: $arg_perms:tt)?,)*
                 ) -> $return_ty:ty$(: $return_perms:tt)?
@@ -92,20 +93,23 @@ macro_rules! known_fns {
     } => {{
         use $module::*;
 
-        const_slice!(KnownFn, [$({
-            unsafe extern "C" fn $name($($arg_name: $arg_ty,)*) -> $return_ty {
-                $(let _ = $arg_name;)*
-                todo!()
-            }
-            // ensure the definitions match
-            [$name, $module::$name];
+        const_slice!(KnownFn, [$(
+            $(#[$attr])?
+            {
+                unsafe extern "C" fn $name($($arg_name: $arg_ty,)*) -> $return_ty {
+                    $(let _ = $arg_name;)*
+                    todo!()
+                }
+                // ensure the definitions match
+                [$name, $module::$name];
 
-            KnownFn {
-                name: stringify!($name),
-                inputs: const_slice!(KnownFnTy, [$(known_fn_ty!($arg_ty$(: $arg_perms)?).named(stringify!($arg_name)),)*]),
-                output: known_fn_ty!($return_ty$(: $return_perms)?),
+                KnownFn {
+                    name: stringify!($name),
+                    inputs: const_slice!(KnownFnTy, [$(known_fn_ty!($arg_ty$(: $arg_perms)?).named(stringify!($arg_name)),)*]),
+                    output: known_fn_ty!($return_ty$(: $return_perms)?),
+                }
             }
-        },)*])
+        ,)*])
     }};
 }
 
@@ -212,20 +216,28 @@ mod tests {
         );
     }
 
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn __errno_location() {
         assert_eq!(
             known_fns! {
                 mod libc {
 
+                    #[cfg(target_os = "linux")]
                     fn __errno_location() -> *mut c_int: [READ | WRITE];
+
+                    #[cfg(target_os = "macos")]
+                    fn __error() -> *mut c_int: [READ | WRITE];
 
                 }
             },
             const_slice!(
                 KnownFn,
                 [KnownFn {
+                    #[cfg(target_os = "linux")]
                     name: "__errno_location",
+                    #[cfg(target_os = "macos")]
+                    name: "__error",
                     inputs: &[],
                     output: KnownFnTy {
                         name: "",
