@@ -683,7 +683,7 @@ where
                 _ => None,
             },
             Ownership::Cell => match to.own {
-                Ownership::RawMut if !early => {
+                Ownership::RawMut | Ownership::Raw if !early => {
                     (self.emit)(RewriteKind::AsPtr);
                     Some(Ownership::RawMut)
                 }
