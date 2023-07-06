@@ -18,9 +18,13 @@ use rustc_middle::mir::{
     BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
     TerminatorKind,
 };
+use rustc_middle::ty::print::FmtPrinter;
+use rustc_middle::ty::print::Print;
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
+
+use rustc_hir::def::Namespace;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum SubLoc {
@@ -61,6 +65,8 @@ pub enum RewriteKind {
     CastRawToRaw { to_mutbl: bool },
     /// Cast `*const T` to `& T` or `*mut T` to `&mut T`.
     UnsafeCastRawToRef { mutbl: bool },
+    /// Cast *mut T to *const Cell<T>
+    CastRawMutToCellPtr { ty: String },
 
     /// Replace `y` in `let x = y` with `Cell::new(y)`, i.e. `let x = Cell::new(y)`
     /// TODO: ensure `y` implements `Copy`
@@ -71,6 +77,8 @@ pub enum RewriteKind {
     CellSet,
     /// Wrap `&mut T` in `Cell::from_mut` to get `&Cell<T>`.
     CellFromMut,
+    /// `x` to `x.as_ptr()`
+    AsPtr,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -678,7 +686,13 @@ where
                 }
                 _ => None,
             },
-            Ownership::Cell => None,
+            Ownership::Cell => match to.own {
+                Ownership::RawMut | Ownership::Raw if !early => {
+                    (self.emit)(RewriteKind::AsPtr);
+                    Some(Ownership::RawMut)
+                }
+                _ => None,
+            },
             Ownership::Imm => match to.own {
                 Ownership::Raw | Ownership::RawMut if !early => {
                     (self.emit)(RewriteKind::CastRefToRaw { mutbl: false });
@@ -696,6 +710,13 @@ where
                 Ownership::Mut if !early => {
                     (self.emit)(RewriteKind::UnsafeCastRawToRef { mutbl: true });
                     Some(Ownership::Mut)
+                }
+                Ownership::Cell if !early => {
+                    let printer = FmtPrinter::new(self.tcx, Namespace::TypeNS);
+                    let ty = to.pointee_ty.print(printer).unwrap().into_buffer();
+                    (self.emit)(RewriteKind::CastRawMutToCellPtr { ty });
+                    (self.emit)(RewriteKind::UnsafeCastRawToRef { mutbl: false });
+                    Some(Ownership::Cell)
                 }
                 _ => None,
             },

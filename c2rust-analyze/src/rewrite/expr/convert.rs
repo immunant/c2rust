@@ -114,10 +114,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
         // the rewrite should occur at the callsite
         let callsite_span = ex.span.source_callsite();
 
-        let mir_rws = self
-            .mir_rewrites
-            .remove(&ex.hir_id)
-            .unwrap_or_else(Vec::new);
+        let mir_rws = self.mir_rewrites.remove(&ex.hir_id).unwrap_or_default();
 
         let rewrite_from_mir_rws = |rw: &mir_op::RewriteKind, hir_rw: Rewrite| -> Rewrite {
             match rw {
@@ -156,7 +153,6 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                     let rhs = self.get_subexpr(ex, 1);
                     Rewrite::MethodCall("set".to_string(), Box::new(lhs), vec![rhs])
                 }
-
                 _ => convert_cast_rewrite(rw, hir_rw),
             }
         };
@@ -232,6 +228,7 @@ fn materialize_adjustments<'tcx>(
             hir_rw
         }
         (rw @ Rewrite::Ref(..), &[Adjust::Deref(..), Adjust::Borrow(..)]) => rw,
+        (rw @ Rewrite::MethodCall(..), &[Adjust::Deref(..), Adjust::Borrow(..)]) => rw,
         (rw, &[]) => rw,
         (rw, adjs) => panic!("rewrite {rw:?} and materializations {adjs:?} NYI"),
     }
@@ -282,6 +279,13 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
                 "std::cell::Cell::from_mut".to_string(),
                 vec![Rewrite::Identity],
             )
+        }
+        mir_op::RewriteKind::AsPtr => {
+            // `x` to `x.as_ptr()`
+            Rewrite::MethodCall("as_ptr".to_string(), Box::new(hir_rw), vec![])
+        }
+        mir_op::RewriteKind::CastRawMutToCellPtr { ref ty } => {
+            Rewrite::Cast(Box::new(hir_rw), format!("*const std::cell::Cell<{}>", ty))
         }
 
         _ => panic!(

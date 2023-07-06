@@ -16,3 +16,26 @@ pub unsafe fn null_ptr() {
     let s = 0 as *mut S;
     (*s).i = 0 as *const i32;
 }
+
+#[repr(C)]
+pub struct Foo {
+    y: *mut i32,
+}
+
+extern "C" {
+    // necessary to fix the type of Foo::y
+    fn bar(f: Foo);
+}
+
+// CHECK-LABEL: pub unsafe fn cell_as_mut_as_cell(mut x: &core::cell::Cell<(i32)>, mut f: Foo) {
+pub unsafe fn cell_as_mut_as_cell(mut x: *mut i32, mut f: Foo) {
+    let z = x;
+    let r = x;
+    *z = 1;
+    *r = 1;
+    *z = 4;
+    // CHECK-DAG: f.y = (x).as_ptr();
+    f.y = x;
+    // CHECK-DAG: x = &*((f.y) as *const std::cell::Cell<i32>);
+    x = f.y;
+}

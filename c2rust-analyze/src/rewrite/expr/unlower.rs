@@ -8,7 +8,7 @@ use rustc_hir as hir;
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::HirId;
 use rustc_middle::hir::nested_filter;
-use rustc_middle::mir::{self, Body, Location};
+use rustc_middle::mir::{self, Body, Location, Operand};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 use std::collections::btree_map::{BTreeMap, Entry};
@@ -97,6 +97,19 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         }
     }
 
+    fn operand_desc(&self, op: &Operand<'tcx>) -> MirOriginDesc {
+        match *op {
+            mir::Operand::Copy(pl) | mir::Operand::Move(pl) => {
+                if is_var(pl) && self.mir.local_kind(pl.local) == mir::LocalKind::Temp {
+                    MirOriginDesc::LoadFromTemp
+                } else {
+                    MirOriginDesc::Expr
+                }
+            }
+            mir::Operand::Constant(..) => MirOriginDesc::Expr,
+        }
+    }
+
     /// Special `record` variant for MIR [`Operand`]s.  This sets the [`MirOriginDesc`] to
     /// `LoadFromLocal` if `op` is a MIR temporary and otherwise sets it to `Expr`.
     ///
@@ -108,19 +121,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         ex: &hir::Expr,
         op: &mir::Operand<'tcx>,
     ) {
-        let op_is_temp = match *op {
-            mir::Operand::Copy(pl) | mir::Operand::Move(pl) => {
-                is_var(pl) && self.mir.local_kind(pl.local) == mir::LocalKind::Temp
-            }
-            mir::Operand::Constant(..) => false,
-        };
-
-        let desc = if op_is_temp {
-            MirOriginDesc::LoadFromTemp
-        } else {
-            MirOriginDesc::Expr
-        };
-        self.record_desc(loc, sub_loc, ex, desc);
+        self.record_desc(loc, sub_loc, ex, self.operand_desc(op));
     }
 
     fn get_sole_assign(
@@ -210,16 +211,20 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         match ex.kind {
             hir::ExprKind::Assign(pl, rv, _span) => {
                 // For `Assign`, we expect the assignment to be the whole thing.
-                let (loc, _mir_pl, _mir_rv) = match self.get_sole_assign(&locs) {
+                let (loc, _mir_pl, mir_rv) = match self.get_sole_assign(&locs) {
                     Some(x) => x,
                     None => {
                         warn("expected exactly one StatementKind::Assign");
                         return;
                     }
                 };
+                let desc = match mir_rv {
+                    mir::Rvalue::Use(op) => self.operand_desc(op),
+                    _ => MirOriginDesc::Expr,
+                };
                 self.record(loc, &[], ex);
                 self.record(loc, &[SubLoc::Dest], pl);
-                self.record(loc, &[SubLoc::Rvalue], rv);
+                self.record_desc(loc, &[SubLoc::Rvalue], rv, desc);
             }
 
             hir::ExprKind::Call(_, args) | hir::ExprKind::MethodCall(_, args, _) => {
