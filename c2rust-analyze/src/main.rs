@@ -800,96 +800,113 @@ fn run(tcx: TyCtxt) {
         );
     }
 
-    // Before generating rewrites, add the FIXED flag to the signatures of all functions that
-    // failed analysis.
-    for did in gacx.iter_fns_failed() {
-        let lsig = gacx.fn_sigs[&did];
-        for sig_lty in lsig.inputs_and_output() {
-            for lty in sig_lty.iter() {
-                let ptr = lty.label;
-                if !ptr.is_none() {
-                    gasn.flags[ptr].insert(FlagSet::FIXED);
-                }
-            }
-        }
-    }
-
     // Buffer debug output for each function.  Grouping together all the different types of info
     // for a single function makes FileCheck tests easier to write.
     let mut func_reports = HashMap::<LocalDefId, String>::new();
 
     // Generate rewrites for all functions.
     let mut all_rewrites = Vec::new();
-    for &ldid in &all_fn_ldids {
-        if gacx.fn_failed(ldid.to_def_id()) {
-            continue;
-        }
 
-        let info = func_info.get_mut(&ldid).unwrap();
-        let ldid_const = WithOptConstParam::unknown(ldid);
-        let name = tcx.item_name(ldid.to_def_id());
-        let mir = tcx.mir_built(ldid_const);
-        let mir = mir.borrow();
-        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-        let mut asn = gasn.and(&mut info.lasn);
+    // It may take multiple tries to reach a state where all rewrites succeed.
+    loop {
+        func_reports.clear();
+        all_rewrites.clear();
+        eprintln!("\n--- start rewriting ---");
 
-        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
-            // Add the CELL permission to pointers that need it.
-            info.dataflow.propagate_cell(&mut asn);
-
-            acx.check_string_literal_perms(&asn);
-
-            if util::has_test_attr(tcx, ldid, TestAttr::SkipRewrite) {
-                return;
-            }
-
-            let hir_body_id = tcx.hir().body_owned_by(ldid);
-            let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
-            let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
-            // Print rewrites
-            let report = func_reports.entry(ldid).or_default();
-            writeln!(
-                report,
-                "generated {} expr rewrites + {} ty rewrites for {:?}:",
-                expr_rewrites.len(),
-                ty_rewrites.len(),
-                name
-            )
-            .unwrap();
-            for &(span, ref rw) in expr_rewrites.iter().chain(ty_rewrites.iter()) {
-                writeln!(report, "  {}: {}", describe_span(tcx, span), rw).unwrap();
-            }
-            writeln!(report).unwrap();
-            all_rewrites.extend(expr_rewrites);
-            all_rewrites.extend(ty_rewrites);
-        }));
-        match r {
-            Ok(()) => {}
-            Err(pd) => {
-                gacx.mark_fn_failed(ldid.to_def_id(), pd);
-                continue;
+        // Before generating rewrites, add the FIXED flag to the signatures of all functions that
+        // failed analysis.
+        //
+        // The set of failed functions is monotonically nondecreasing throughout this loop, so
+        // there's no need to worry about potentially removing `FIXED` from some functions.
+        for did in gacx.iter_fns_failed() {
+            let lsig = gacx.fn_sigs[&did];
+            for sig_lty in lsig.inputs_and_output() {
+                for lty in sig_lty.iter() {
+                    let ptr = lty.label;
+                    if !ptr.is_none() {
+                        gasn.flags[ptr].insert(FlagSet::FIXED);
+                    }
+                }
             }
         }
 
-        info.acx_data.set(acx.into_data());
-    }
-
-    // This call never panics, which is important because this is the fallback if the more
-    // sophisticated analysis and rewriting above did panic.
-    let (shim_call_rewrites, shim_fn_def_ids) = rewrite::gen_shim_call_rewrites(&gacx, &gasn);
-    all_rewrites.extend(shim_call_rewrites);
-
-    // Generate shims for functions that need them.
-    for def_id in shim_fn_def_ids {
-        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
-            all_rewrites.push(rewrite::gen_shim_definition_rewrite(&gacx, &gasn, def_id));
-        }));
-        match r {
-            Ok(()) => {}
-            Err(pd) => {
-                gacx.mark_fn_failed(def_id, pd);
+        for &ldid in &all_fn_ldids {
+            if gacx.fn_failed(ldid.to_def_id()) {
                 continue;
             }
+
+            let info = func_info.get_mut(&ldid).unwrap();
+            let ldid_const = WithOptConstParam::unknown(ldid);
+            let name = tcx.item_name(ldid.to_def_id());
+            let mir = tcx.mir_built(ldid_const);
+            let mir = mir.borrow();
+            let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+            let mut asn = gasn.and(&mut info.lasn);
+
+            let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+                // Add the CELL permission to pointers that need it.
+                info.dataflow.propagate_cell(&mut asn);
+
+                acx.check_string_literal_perms(&asn);
+
+                if util::has_test_attr(tcx, ldid, TestAttr::SkipRewrite) {
+                    return;
+                }
+
+                let hir_body_id = tcx.hir().body_owned_by(ldid);
+                let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
+                let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
+                // Print rewrites
+                let report = func_reports.entry(ldid).or_default();
+                writeln!(
+                    report,
+                    "generated {} expr rewrites + {} ty rewrites for {:?}:",
+                    expr_rewrites.len(),
+                    ty_rewrites.len(),
+                    name
+                )
+                .unwrap();
+                for &(span, ref rw) in expr_rewrites.iter().chain(ty_rewrites.iter()) {
+                    writeln!(report, "  {}: {}", describe_span(tcx, span), rw).unwrap();
+                }
+                writeln!(report).unwrap();
+                all_rewrites.extend(expr_rewrites);
+                all_rewrites.extend(ty_rewrites);
+            }));
+            match r {
+                Ok(()) => {}
+                Err(pd) => {
+                    gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                    continue;
+                }
+            }
+
+            info.acx_data.set(acx.into_data());
+        }
+
+        // This call never panics, which is important because this is the fallback if the more
+        // sophisticated analysis and rewriting above did panic.
+        let (shim_call_rewrites, shim_fn_def_ids) = rewrite::gen_shim_call_rewrites(&gacx, &gasn);
+        all_rewrites.extend(shim_call_rewrites);
+
+        // Generate shims for functions that need them.
+        let mut any_failed = false;
+        for def_id in shim_fn_def_ids {
+            let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+                all_rewrites.push(rewrite::gen_shim_definition_rewrite(&gacx, &gasn, def_id));
+            }));
+            match r {
+                Ok(()) => {}
+                Err(pd) => {
+                    gacx.mark_fn_failed(def_id, pd);
+                    any_failed = true;
+                    continue;
+                }
+            }
+        }
+
+        if !any_failed {
+            break;
         }
     }
 
