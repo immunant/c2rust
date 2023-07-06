@@ -316,13 +316,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             }
             Rvalue::Cast(CastKind::Pointer(PointerCast::MutToConstPointer), ref op, _ty) => {
                 let op_lty = self.visit_operand(op);
-                // TODO: handle Unsize casts at minimum
-                /*
-                assert!(
-                    !matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)),
-                    "pointer Cast NYI"
-                );
-                */
                 // Here we relabel `expect_ty` to utilize the permissions it carries
                 // but substitute the rest of its `Label`s' parts with fresh origins
                 // Othwerise, this is conceptually similar to labeling the cast target
