@@ -190,11 +190,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                                 perm,
                             };
                             return self.ltcx.mk(c.ty(), args, label);
-                        } else {
-                            // string literals
                         }
-                    } else {
-                        // string literals
                     }
                 }
 
