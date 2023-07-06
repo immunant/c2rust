@@ -60,4 +60,5 @@ define_tests! {
     trivial,
     type_annotation_rewrite,
     unrewritten_calls,
+    unrewritten_calls_shim_fail,
 }
