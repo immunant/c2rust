@@ -300,7 +300,6 @@ fn run_polonius<'tcx>(
     // Populate `loan_issued_at` and `loans`.
     type_check::visit_body(
         acx,
-        tcx,
         ltcx,
         &mut facts,
         maps,

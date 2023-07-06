@@ -14,12 +14,11 @@ use rustc_middle::mir::{
     Place, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::adjustment::PointerCast;
-use rustc_middle::ty::{AdtDef, FieldDef, TyCtxt, TyKind};
+use rustc_middle::ty::{AdtDef, FieldDef, TyKind};
 use std::collections::HashMap;
 
 struct TypeChecker<'tcx, 'a> {
     acx: &'a AnalysisCtxt<'a, 'tcx>,
-    tcx: TyCtxt<'tcx>,
     ltcx: LTyCtxt<'tcx>,
     facts: &'a mut AllFacts,
     maps: &'a mut AtomMaps<'tcx>,
@@ -269,7 +268,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     BorrowKind::Shared
                 };
 
-                let pl_deref = self.tcx.mk_place_deref(pl);
+                let pl_deref = self.acx.tcx().mk_place_deref(pl);
                 let origin = self.issue_loan(pl_deref, borrow_kind);
 
                 // Return a type with the new loan on the outermost `ref`.
@@ -419,7 +418,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     */
                     assert_eq!(expect_ty.args.len(), 0, "Generic types not yet supported.");
 
-                    let adt_def = self.tcx.adt_def(adt_did);
+                    let adt_def = self.acx.tcx().adt_def(adt_did);
                     for (fid, op) in ops.iter().enumerate() {
                         let field_lty = self.field_lty(expect_ty, adt_def, Field::from(fid));
                         let op_lty = self.visit_operand(op);
@@ -441,7 +440,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Rvalue::UnaryOp(_, ref op) => self.visit_operand(op),
 
             Rvalue::Repeat(ref op, _) => {
-                if op.ty(self.local_decls, self.tcx).is_any_ptr() {
+                if op.ty(self.local_decls, self.acx.tcx()).is_any_ptr() {
                     todo!("Repeat types over pointers not yet implemented");
                 }
                 let ty = rv.ty(self.local_decls, *self.ltcx);
@@ -460,8 +459,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             // exempt pointer casts such as `PointerCast::MutToConstPointer`
             (TyKind::RawPtr(ty1), TyKind::RawPtr(ty2)) if ty1.ty == ty2.ty => {}
             _ => assert_eq!(
-                self.tcx.erase_regions(pl_lty.ty),
-                self.tcx.erase_regions(rv_lty.ty)
+                self.acx.tcx().erase_regions(pl_lty.ty),
+                self.acx.tcx().erase_regions(rv_lty.ty)
             ),
         }
 
@@ -575,7 +574,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 #[allow(clippy::too_many_arguments)]
 pub fn visit_body<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
-    tcx: TyCtxt<'tcx>,
     ltcx: LTyCtxt<'tcx>,
     facts: &mut AllFacts,
     maps: &mut AtomMaps<'tcx>,
@@ -587,7 +585,6 @@ pub fn visit_body<'tcx>(
 ) {
     let mut tc = TypeChecker {
         acx,
-        tcx,
         ltcx,
         facts,
         maps,
