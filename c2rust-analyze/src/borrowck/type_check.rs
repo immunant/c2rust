@@ -13,6 +13,7 @@ use rustc_middle::mir::{
     AggregateKind, BinOp, Body, BorrowKind, CastKind, Field, Local, LocalDecl, Location, Operand,
     Place, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
+use rustc_middle::ty::adjustment::PointerCast;
 use rustc_middle::ty::{AdtDef, FieldDef, TyCtxt, TyKind};
 use std::collections::HashMap;
 
@@ -187,6 +188,36 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         origin
     }
 
+    fn relabel_fresh_origins(&mut self, expect_ty: LTy<'tcx>) -> LTy<'tcx> {
+        self.ltcx.relabel(expect_ty, &mut |lty| {
+            let perm = lty.label.perm;
+            match lty.ty.kind() {
+                TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
+                    let origin = Some(self.maps.origin());
+                    Label {
+                        origin,
+                        origin_params: &[],
+                        perm,
+                    }
+                }
+                TyKind::Adt(..) => {
+                    let origin_params =
+                        construct_adt_origins(&self.ltcx, self.adt_metadata, &lty.ty, self.maps);
+                    Label {
+                        origin: None,
+                        origin_params,
+                        perm,
+                    }
+                }
+                _ => Label {
+                    origin: None,
+                    origin_params: &[],
+                    perm,
+                },
+            }
+        })
+    }
+
     pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, expect_ty: LTy<'tcx>) -> LTy<'tcx> {
         match *rv {
             Rvalue::Use(Operand::Copy(pl)) if matches!(expect_ty.ty.kind(), TyKind::RawPtr(_)) => {
@@ -273,47 +304,28 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // We support only one case here, which is the case of null pointers
                 // constructed via casts such as `0 as *const T`
                 if let Some(true) = op.constant().cloned().map(util::is_null_const) {
-                    let adt_metadata = self.adt_metadata;
-
                     // Here we relabel `expect_ty` to utilize the permissions it carries
                     // but substitute the rest of its `Label`s' parts with fresh origins
                     // Othwerise, this is conceptually similar to labeling the cast target
                     // `ty`. We would simply do that, but do not have the information necessary
                     // to set its permissions.
-                    self.ltcx.relabel(expect_ty, &mut |lty| {
-                        let perm = lty.label.perm;
-                        match lty.ty.kind() {
-                            TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
-                                let origin = Some(self.maps.origin());
-                                Label {
-                                    origin,
-                                    origin_params: &[],
-                                    perm,
-                                }
-                            }
-                            TyKind::Adt(..) => {
-                                let origin_params = construct_adt_origins(
-                                    &self.ltcx,
-                                    adt_metadata,
-                                    &lty.ty,
-                                    self.maps,
-                                );
-                                Label {
-                                    origin: None,
-                                    origin_params,
-                                    perm,
-                                }
-                            }
-                            _ => Label {
-                                origin: None,
-                                origin_params: &[],
-                                perm,
-                            },
-                        }
-                    })
+                    self.relabel_fresh_origins(expect_ty)
                 } else {
                     panic!("Creating non-null pointers from exposed addresses not supported");
                 }
+            }
+            Rvalue::Cast(CastKind::Pointer(PointerCast::MutToConstPointer), ref op, _ty) => {
+                let op_lty = self.visit_operand(op);
+                // Here we relabel `expect_ty` to utilize the permissions it carries
+                // but substitute the rest of its `Label`s' parts with fresh origins
+                // Othwerise, this is conceptually similar to labeling the cast target
+                // `ty`. We would simply do that, but do not have the information necessary
+                // to set its permissions.
+                let result_lty = self.relabel_fresh_origins(expect_ty);
+
+                // for a statement such as let z: Z = (x: X) as Y, tie together types X and Y
+                self.do_assign(result_lty, op_lty);
+                result_lty
             }
             Rvalue::Cast(_, _, ty) => self.ltcx.label(ty, &mut |_ty| {
                 // TODO: handle Unsize casts at minimum
@@ -405,6 +417,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     fn do_assign(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
         eprintln!("assign {:?} = {:?}", pl_lty, rv_lty);
+
+        match (pl_lty.ty.kind(), rv_lty.ty.kind()) {
+            // exempt pointer casts such as `PointerCast::MutToConstPointer`
+            (TyKind::RawPtr(ty1), TyKind::RawPtr(ty2)) if ty1.ty == ty2.ty => {}
+            _ => assert_eq!(
+                self.tcx.erase_regions(pl_lty.ty),
+                self.tcx.erase_regions(rv_lty.ty)
+            ),
+        }
 
         let mut add_subset_base = |pl: Origin, rv: Origin| {
             let point = self.current_point(SubPoint::Mid);

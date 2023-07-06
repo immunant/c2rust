@@ -39,3 +39,10 @@ pub unsafe fn cell_as_mut_as_cell(mut x: *mut i32, mut f: Foo) {
     // CHECK-DAG: x = &*((f.y) as *const std::cell::Cell<i32>);
     x = f.y;
 }
+pub struct fdnode {
+    pub ctx: *mut u8,
+}
+
+unsafe extern "C" fn server_free(fdn: *mut fdnode) {
+    let _fdn2 = fdn as *const fdnode;
+}
