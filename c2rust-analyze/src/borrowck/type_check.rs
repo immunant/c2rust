@@ -13,6 +13,7 @@ use rustc_middle::mir::{
     AggregateKind, BinOp, Body, BorrowKind, CastKind, Field, Local, LocalDecl, Location, Operand,
     Place, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
+use rustc_middle::ty::adjustment::PointerCast;
 use rustc_middle::ty::{AdtDef, FieldDef, TyCtxt, TyKind};
 use std::collections::HashMap;
 
@@ -313,7 +314,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     panic!("Creating non-null pointers from exposed addresses not supported");
                 }
             }
-            Rvalue::Cast(_, ref op, _ty) => {
+            Rvalue::Cast(CastKind::Pointer(PointerCast::MutToConstPointer), ref op, _ty) => {
                 let op_lty = self.visit_operand(op);
                 // TODO: handle Unsize casts at minimum
                 /*
@@ -333,6 +334,16 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.do_assign(result_lty, op_lty);
                 result_lty
             }
+            Rvalue::Cast(_, _, ty) => self.ltcx.label(ty, &mut |_ty| {
+                // TODO: handle Unsize casts at minimum
+                /*
+                assert!(
+                    !matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)),
+                    "pointer Cast NYI"
+                );
+                */
+                Label::default()
+            }),
             Rvalue::Aggregate(ref kind, ref ops) => match **kind {
                 AggregateKind::Array(..) => {
                     let ty = rv.ty(self.local_decls, *self.ltcx);
@@ -413,6 +424,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     fn do_assign(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
         eprintln!("assign {:?} = {:?}", pl_lty, rv_lty);
+
+        match (pl_lty.ty.kind(), rv_lty.ty.kind()) {
+            // exempt pointer casts such as `PointerCast::MutToConstPointer`
+            (TyKind::RawPtr(ty1), TyKind::RawPtr(ty2)) if ty1.ty == ty2.ty => {}
+            _ => assert_eq!(
+                self.tcx.erase_regions(pl_lty.ty),
+                self.tcx.erase_regions(rv_lty.ty)
+            ),
+        }
 
         let mut add_subset_base = |pl: Origin, rv: Origin| {
             let point = self.current_point(SubPoint::Mid);
