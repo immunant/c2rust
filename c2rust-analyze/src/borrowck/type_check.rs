@@ -313,7 +313,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     panic!("Creating non-null pointers from exposed addresses not supported");
                 }
             }
-            Rvalue::Cast(..) => {
+            Rvalue::Cast(_, ref op, _ty) => {
+                let op_lty = self.visit_operand(op);
                 // TODO: handle Unsize casts at minimum
                 /*
                 assert!(
@@ -326,7 +327,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // Othwerise, this is conceptually similar to labeling the cast target
                 // `ty`. We would simply do that, but do not have the information necessary
                 // to set its permissions.
-                self.relabel_fresh_origins(expect_ty)
+                let result_lty = self.relabel_fresh_origins(expect_ty);
+
+                // for a statement such as let z: Z = (x: X) as Y, tie together types X and Y
+                self.do_assign(result_lty, op_lty);
+                result_lty
             }
             Rvalue::Aggregate(ref kind, ref ops) => match **kind {
                 AggregateKind::Array(..) => {
