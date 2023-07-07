@@ -50,6 +50,7 @@ mod c_void_casts;
 mod context;
 mod dataflow;
 mod equiv;
+mod known_fn;
 mod labeled_ty;
 mod log;
 mod panic_detail;
