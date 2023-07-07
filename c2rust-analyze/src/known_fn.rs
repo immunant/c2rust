@@ -1,8 +1,12 @@
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::iter;
 
+use crate::context::LFnSig;
 use crate::context::PermissionSet;
+use crate::pointer_id::PointerId;
+use crate::util::PhantomLifetime;
 
 macro_rules! const_slice {
     ($ty:ty, []) => {{
@@ -139,9 +143,60 @@ impl Display for KnownFn {
 }
 
 impl KnownFn {
-    #[allow(unused)]
     pub fn inputs_and_output(&self) -> impl Iterator<Item = &KnownFnTy> {
         self.inputs.iter().chain([&self.output])
+    }
+
+    pub fn ptr_perms<'a, 'tcx>(
+        &'a self,
+        fn_sig: &'a LFnSig<'tcx>,
+    ) -> impl Iterator<Item = (PointerId, PermissionSet)> + PhantomLifetime<'tcx> + 'a {
+        [(fn_sig, self)]
+            .into_iter()
+            .filter(|(fn_sig, known_fn)| {
+                // Filter instead of asserting because we want the error to occur at the call site,
+                // where it will be correctly scoped to the calling function
+                // and mark only those functions as having failed.
+                let matching = fn_sig.inputs.len() == known_fn.inputs.len();
+                if !matching {
+                    ::log::warn!(
+                        "declared `extern \"C\" fn {}` does not match known fn in number of args:\
+                     \n\tknown_fn: ({}) {}\
+                     \n\tfn_sig: ({}) {:?}\
+                ",
+                        known_fn.name,
+                        known_fn.inputs.len(),
+                        known_fn,
+                        fn_sig.inputs.len(),
+                        fn_sig.inputs,
+                    );
+                }
+                matching
+            })
+            .flat_map(|(fn_sig, known_fn)| {
+                iter::zip(fn_sig.inputs_and_output(), known_fn.inputs_and_output())
+            })
+            .filter(|(lty, known_ty)| {
+                let lty_num_ptrs = lty.iter().filter(|lty| !lty.label.is_none()).count();
+                let known_ty_num_ptrs = known_ty.perms.len();
+                let matching = lty_num_ptrs == known_ty_num_ptrs;
+                if !matching {
+                    ::log::warn!(
+                        "declared `extern \"C\" fn` type \
+                     \n\tknown_ty: ({known_ty_num_ptrs}) {known_ty}\
+                     \n\tlty: ({lty_num_ptrs}) {lty:?}\
+                "
+                    )
+                }
+                matching
+            })
+            .flat_map(|(lty, known_ty)| {
+                iter::zip(
+                    lty.iter().map(|lty| lty.label).filter(|ptr| !ptr.is_none()),
+                    known_ty.perms,
+                )
+            })
+            .map(|(ptr, &perms)| (ptr, perms))
     }
 }
 

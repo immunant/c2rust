@@ -23,7 +23,7 @@ use rustc_middle::mir::{
     Place, PlaceElem, PlaceRef, Rvalue,
 };
 use rustc_middle::ty::{
-    tls, AdtDef, FieldDef, GenericArgKind, GenericParamDefKind, Ty, TyCtxt, TyKind,
+    tls, AdtDef, DefIdTree, FieldDef, GenericArgKind, GenericParamDefKind, Ty, TyCtxt, TyKind,
 };
 use rustc_span::Symbol;
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
@@ -671,6 +671,21 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
 
     pub fn iter_fns_failed(&self) -> impl Iterator<Item = DefId> + '_ {
         self.fns_failed.keys().copied()
+    }
+
+    pub fn known_fn_ptr_perms<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = (PointerId, PermissionSet)> + PhantomLifetime<'tcx> + 'a {
+        let tcx = &self.tcx;
+        self.fn_sigs
+            .iter()
+            .filter(|(did, _)| tcx.def_kind(tcx.parent(**did)) == DefKind::ForeignMod)
+            .filter_map(|(&did, fn_sig)| {
+                let name = tcx.item_name(did);
+                let known_fn = self.known_fns.get(&name).copied()?;
+                Some((fn_sig, known_fn))
+            })
+            .flat_map(|(fn_sig, known_fn)| known_fn.ptr_perms(fn_sig))
     }
 }
 

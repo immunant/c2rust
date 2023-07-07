@@ -541,6 +541,10 @@ pub fn visit<'tcx>(
         tc.constraints.add_all_perms(ptr, perms);
     }
 
+    for (ptr, perms) in acx.gacx.known_fn_ptr_perms() {
+        tc.constraints.add_all_perms(ptr, perms);
+    }
+
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb_data.statements.iter().enumerate() {
             tc.visit_statement(
