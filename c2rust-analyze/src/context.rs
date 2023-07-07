@@ -135,7 +135,6 @@ impl PermissionSet {
     // `.union` is used here since it's a `const fn`, unlike `BitOr::bitor`.
     pub const STRING_LITERAL: Self = Self::READ.union(Self::OFFSET_ADD);
 
-    #[cfg(test)]
     pub const fn union_all<const N: usize>(a: [Self; N]) -> Self {
         let mut this = Self::empty();
         let mut i = 0;

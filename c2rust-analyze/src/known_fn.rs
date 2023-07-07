@@ -4,7 +4,6 @@ use std::fmt::Formatter;
 
 use crate::context::PermissionSet;
 
-#[cfg(test)]
 macro_rules! const_slice {
     ($ty:ty, []) => {{
         &[]
@@ -15,7 +14,6 @@ macro_rules! const_slice {
     }};
 }
 
-#[cfg(test)]
 macro_rules! perms_annotation {
     ([$($($perm:ident)|*),*]) => {{
         [$(PermissionSet::union_all([$(PermissionSet::$perm,)*]),)*]
@@ -57,7 +55,6 @@ impl Display for KnownFnTy {
 impl KnownFnTy {
     /// Check that we annotated the right number of [`PermissionSet`]s
     /// that corresponds to the number of raw pointers in [`Self::ty`].
-    #[cfg(test)]
     const fn checked(self) -> Self {
         let ty = self.ty.as_bytes();
         let mut num_ptrs = 0;
@@ -72,7 +69,6 @@ impl KnownFnTy {
         self
     }
 
-    #[cfg(test)]
     const fn named(self, name: &'static str) -> Self {
         let Self {
             name: _,
@@ -89,7 +85,6 @@ impl KnownFnTy {
     }
 }
 
-#[cfg(test)]
 macro_rules! known_fn_ty {
     ($ty:ty: $perms:tt) => {{
         KnownFnTy {
@@ -150,7 +145,6 @@ impl KnownFn {
     }
 }
 
-#[cfg(test)]
 macro_rules! known_fns {
     {
         mod $module:ident {
@@ -468,5 +462,67 @@ mod tests {
                 }]
             )
         );
+    }
+}
+
+#[allow(unused)]
+pub const fn all_known_fns() -> &'static [KnownFn] {
+    known_fns! {
+        mod libc {
+
+            #[cfg(target_os = "linux")]
+            fn __errno_location() -> *mut c_int: [READ | WRITE];
+
+            #[cfg(target_os = "macos")]
+            fn __error() -> *mut c_int: [READ | WRITE];
+
+            fn _exit(
+                status: c_int,
+            ) -> !;
+
+            fn abort() -> !;
+
+            fn abs(
+                i: c_int,
+            ) -> c_int;
+
+            fn accept(
+                socket: c_int,
+                address: *mut sockaddr: [WRITE],
+                address_len: *mut socklen_t: [READ | WRITE],
+            ) -> c_int;
+
+            #[cfg(target_os = "linux")]
+            fn accept4(
+                fd: c_int,
+                addr: *mut sockaddr: [WRITE],
+                len: *mut socklen_t: [READ | WRITE],
+                flg: c_int,
+            ) -> c_int;
+
+            fn access(
+                path: *const c_char: [READ | OFFSET_ADD],
+                amode: c_int,
+            ) -> c_int;
+
+            fn read(
+                fd: c_int,
+                buf: *mut c_void: [WRITE | OFFSET_ADD],
+                count: size_t,
+            ) -> ssize_t;
+
+            fn write(
+                fd: c_int,
+                buf: *const c_void: [READ | OFFSET_ADD],
+                count: size_t,
+            ) -> ssize_t;
+
+            fn strtol(
+                s: *const c_char: [READ | OFFSET_ADD],
+                endp: *mut *mut c_char: [WRITE, WRITE | OFFSET_ADD],
+                base: c_int,
+            ) -> c_long;
+
+        }
     }
 }
