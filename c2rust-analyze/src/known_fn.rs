@@ -143,6 +143,13 @@ impl Display for KnownFn {
     }
 }
 
+impl KnownFn {
+    #[allow(unused)]
+    pub fn inputs_and_output(&self) -> impl Iterator<Item = &KnownFnTy> {
+        self.inputs.iter().chain([&self.output])
+    }
+}
+
 #[cfg(test)]
 macro_rules! known_fns {
     {

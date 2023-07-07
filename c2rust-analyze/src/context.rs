@@ -27,7 +27,6 @@ use rustc_middle::ty::{
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use std::iter;
 use std::ops::Index;
 
 bitflags! {
@@ -179,8 +178,8 @@ pub struct LFnSig<'tcx> {
 }
 
 impl<'tcx> LFnSig<'tcx> {
-    pub fn inputs_and_output(&self) -> impl Iterator<Item = LTy<'tcx>> + 'tcx {
-        self.inputs.iter().copied().chain(iter::once(self.output))
+    pub fn inputs_and_output(&self) -> impl Iterator<Item = &LTy<'tcx>> {
+        self.inputs.iter().chain([&self.output])
     }
 }
 
