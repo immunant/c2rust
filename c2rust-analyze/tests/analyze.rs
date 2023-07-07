@@ -29,7 +29,6 @@ macro_rules! define_tests {
 }
 
 define_tests! {
-    known_fn,
     macros,
     ptr_addr_of,
     string_literals,

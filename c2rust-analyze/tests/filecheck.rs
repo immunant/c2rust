@@ -52,6 +52,7 @@ define_tests! {
     insertion_sort,
     insertion_sort_driver,
     insertion_sort_rewrites,
+    known_fn,
     offset1,
     offset2,
     ptrptr1,
