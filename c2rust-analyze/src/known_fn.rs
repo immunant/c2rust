@@ -1,3 +1,7 @@
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
+
 use crate::context::PermissionSet;
 
 #[cfg(test)]
@@ -18,11 +22,36 @@ macro_rules! perms_annotation {
     }};
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq)]
 pub struct KnownFnTy {
     pub name: &'static str,
     pub ty: &'static str,
     pub perms: &'static [PermissionSet],
+    pub source: &'static str,
+}
+
+impl KnownFnTy {
+    fn eq_fields(&self) -> impl Eq + '_ {
+        let Self {
+            name,
+            ty,
+            perms,
+            source: _,
+        } = self;
+        (name, ty, perms)
+    }
+}
+
+impl PartialEq for KnownFnTy {
+    fn eq(&self, other: &Self) -> bool {
+        self.eq_fields() == other.eq_fields()
+    }
+}
+
+impl Display for KnownFnTy {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str(self.source)
+    }
 }
 
 impl KnownFnTy {
@@ -45,8 +74,18 @@ impl KnownFnTy {
 
     #[cfg(test)]
     const fn named(self, name: &'static str) -> Self {
-        let Self { name: _, ty, perms } = self;
-        Self { name, ty, perms }
+        let Self {
+            name: _,
+            ty,
+            perms,
+            source,
+        } = self;
+        Self {
+            name,
+            ty,
+            perms,
+            source,
+        }
     }
 }
 
@@ -57,6 +96,7 @@ macro_rules! known_fn_ty {
             name: "",
             ty: stringify!($ty),
             perms: const_slice!(PermissionSet, perms_annotation!($perms)),
+            source: stringify!($ty: $perms),
         }
         .checked()
     }};
@@ -65,16 +105,42 @@ macro_rules! known_fn_ty {
             name: "",
             ty: stringify!($ty),
             perms: &[],
+            source: stringify!($ty),
         }
         .checked()
     }};
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq)]
 pub struct KnownFn {
     pub name: &'static str,
     pub inputs: &'static [KnownFnTy],
     pub output: KnownFnTy,
+    pub source: &'static str,
+}
+
+impl KnownFn {
+    fn eq_fields(&self) -> impl Eq + '_ {
+        let Self {
+            name,
+            inputs,
+            output,
+            source: _,
+        } = self;
+        (name, inputs, output)
+    }
+}
+
+impl PartialEq for KnownFn {
+    fn eq(&self, other: &Self) -> bool {
+        self.eq_fields() == other.eq_fields()
+    }
+}
+
+impl Display for KnownFn {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str(&self.source.replace('\n', ""))
+    }
 }
 
 #[cfg(test)]
@@ -103,10 +169,17 @@ macro_rules! known_fns {
                 // ensure the definitions match
                 [$name, $module::$name];
 
+                let source = stringify!(
+                    fn $name(
+                        $($arg_name: $arg_ty$(: $arg_perms)?,)*
+                    ) -> $return_ty$(: $return_perms)?
+                );
+
                 KnownFn {
                     name: stringify!($name),
                     inputs: const_slice!(KnownFnTy, [$(known_fn_ty!($arg_ty$(: $arg_perms)?).named(stringify!($arg_name)),)*]),
                     output: known_fn_ty!($return_ty$(: $return_perms)?),
+                    source,
                 }
             }
         ,)*])
@@ -142,6 +215,7 @@ mod tests {
             name: "",
             ty: "*mut *const",
             perms: const_slice!(PermissionSet, [PermissionSet::empty(); 2]),
+            source: "",
         }
         .checked();
     }
@@ -153,6 +227,7 @@ mod tests {
             name: "",
             ty: "*const",
             perms: const_slice!(PermissionSet, [PermissionSet::empty(); 2]),
+            source: "",
         }
         .checked();
     }
@@ -164,6 +239,7 @@ mod tests {
             name: "",
             ty: "*const *const *mut",
             perms: const_slice!(PermissionSet, [PermissionSet::empty(); 2]),
+            source: "",
         }
         .checked();
     }
@@ -176,6 +252,7 @@ mod tests {
                 name: "",
                 ty: "()",
                 perms: &[],
+                source: "",
             }
         );
     }
@@ -194,6 +271,7 @@ mod tests {
                         PermissionSet::OFFSET_ADD
                     ]),]
                 ),
+                source: "",
             }
         );
     }
@@ -212,6 +290,7 @@ mod tests {
                         PermissionSet::union_all([PermissionSet::WRITE, PermissionSet::OFFSET_ADD])
                     ]
                 ),
+                source: "",
             }
         );
     }
@@ -248,8 +327,10 @@ mod tests {
                                 PermissionSet::READ,
                                 PermissionSet::WRITE
                             ])]
-                        )
-                    }
+                        ),
+                        source: "",
+                    },
+                    source: "",
                 }]
             )
         );
@@ -280,6 +361,7 @@ mod tests {
                                 name: "fd",
                                 ty: "c_int",
                                 perms: &[],
+                                source: "",
                             },
                             KnownFnTy {
                                 name: "buf",
@@ -291,11 +373,13 @@ mod tests {
                                         PermissionSet::OFFSET_ADD
                                     ])]
                                 ),
+                                source: "",
                             },
                             KnownFnTy {
                                 name: "count",
                                 ty: "size_t",
                                 perms: &[],
+                                source: "",
                             },
                         ]
                     ),
@@ -303,7 +387,9 @@ mod tests {
                         name: "",
                         ty: "ssize_t",
                         perms: &[],
-                    }
+                        source: "",
+                    },
+                    source: "",
                 }]
             )
         );
@@ -340,6 +426,7 @@ mod tests {
                                         PermissionSet::OFFSET_ADD
                                     ])]
                                 ),
+                                source: "",
                             },
                             KnownFnTy {
                                 name: "endp",
@@ -354,11 +441,13 @@ mod tests {
                                         ])
                                     ]
                                 ),
+                                source: "",
                             },
                             KnownFnTy {
                                 name: "base",
                                 ty: "c_int",
                                 perms: &[],
+                                source: "",
                             },
                         ]
                     ),
@@ -366,7 +455,9 @@ mod tests {
                         name: "",
                         ty: "c_long",
                         perms: &[],
-                    }
+                        source: "",
+                    },
+                    source: "",
                 }]
             )
         );
