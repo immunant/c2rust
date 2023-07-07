@@ -4,6 +4,7 @@ use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
 use crate::panic_detail;
 use crate::util::{
     describe_rvalue, is_null_const, is_transmutable_ptr_cast, ty_callee, Callee, RvalueDesc,
+    UnknownCall,
 };
 use assert_matches::assert_matches;
 use rustc_hir::def_id::DefId;
@@ -391,14 +392,21 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         eprintln!("callee = {callee:?}");
         match callee {
             Callee::Trivial => {}
-            Callee::UnknownDef { .. } => {
-                log::error!("TODO: visit Callee::{callee:?}");
-            }
-
             Callee::LocalDef { def_id, substs } => {
                 self.visit_local_call(def_id, substs, args, destination);
             }
-
+            Callee::UnknownDef(UnknownCall::Direct {
+                ty: _,
+                def_id,
+                substs,
+                is_foreign: true,
+            }) if self.acx.gacx.known_fns.contains_key(&tcx.item_name(def_id)) => {
+                // As this is actually a known `fn`, we can treat it as a normal local call.
+                self.visit_local_call(def_id, substs, args, destination);
+            }
+            Callee::UnknownDef(_) => {
+                log::error!("TODO: visit Callee::{callee:?}");
+            }
             Callee::PtrOffset { .. } => {
                 // We handle this like a pointer assignment.
                 self.visit_place(destination, Mutability::Mut);
