@@ -20,9 +20,9 @@ macro_rules! perms_annotation {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct KnownFnTy {
-    name: &'static str,
-    ty: &'static str,
-    perms: &'static [PermissionSet],
+    pub name: &'static str,
+    pub ty: &'static str,
+    pub perms: &'static [PermissionSet],
 }
 
 impl KnownFnTy {
@@ -72,9 +72,9 @@ macro_rules! known_fn_ty {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct KnownFn {
-    name: &'static str,
-    inputs: &'static [KnownFnTy],
-    output: KnownFnTy,
+    pub name: &'static str,
+    pub inputs: &'static [KnownFnTy],
+    pub output: KnownFnTy,
 }
 
 #[cfg(test)]
