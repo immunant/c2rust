@@ -337,6 +337,7 @@ fn gather_foreign_sigs<'tcx>(gacx: &mut GlobalAnalysisCtxt<'tcx>, tcx: TyCtxt<'t
             .iter()
             .map(|&ty| gacx.assign_pointer_ids_with_info(ty, PointerInfo::ANNOTATED))
             .collect::<Vec<_>>();
+
         let inputs = gacx.lcx.mk_slice(&inputs);
         let output = gacx.assign_pointer_ids_with_info(sig.output(), PointerInfo::ANNOTATED);
         let lsig = LFnSig { inputs, output };
@@ -424,6 +425,8 @@ fn run(tcx: TyCtxt) {
         let lsig = LFnSig { inputs, output };
         gacx.fn_sigs.insert(ldid.to_def_id(), lsig);
     }
+
+    gather_foreign_sigs(&mut gacx, tcx);
 
     // Collect all `static` items.
     let all_static_dids = all_static_items(tcx);
@@ -559,7 +562,6 @@ fn run(tcx: TyCtxt) {
     // track all types mentioned in extern blocks, we
     // don't want to rewrite those
     gacx.foreign_mentioned_tys = foreign_mentioned_tys(tcx);
-    gather_foreign_sigs(&mut gacx, tcx);
 
     let mut gasn =
         GlobalAssignment::new(gacx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
