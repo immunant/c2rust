@@ -673,6 +673,15 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         self.fns_failed.keys().copied()
     }
 
+    /// Determine the [`PermissionSet`]s that should constrain [`PointerId`]s
+    /// contained in the signatures of [`KnownFn`]s.
+    ///
+    /// This is determined by iterating through the [`LFnSig`]s in `self.fn_sigs`,
+    /// filtering out the foreign ones ([`gather_foreign_sigs`] adds them to `fn_sigs`),
+    /// looking up the [`KnownFn`] for that foreign `fn`, if it exists,
+    /// and then `flat_map`ping that to each [`KnownFn::ptr_perms`].
+    ///
+    /// [`gather_foreign_sigs`]: `crate::gather_foreign_sigs`
     pub fn known_fn_ptr_perms<'a>(
         &'a self,
     ) -> impl Iterator<Item = (PointerId, PermissionSet)> + PhantomLifetime<'tcx> + 'a {
