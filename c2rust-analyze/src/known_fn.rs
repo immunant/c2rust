@@ -465,7 +465,6 @@ mod tests {
     }
 }
 
-#[allow(unused)]
 pub const fn all_known_fns() -> &'static [KnownFn] {
     known_fns! {
         mod libc {

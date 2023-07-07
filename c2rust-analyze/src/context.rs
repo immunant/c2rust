@@ -1,5 +1,6 @@
 use crate::borrowck::{AdtMetadata, FieldMetadata, OriginArg, OriginParam};
 use crate::c_void_casts::CVoidCasts;
+use crate::known_fn::{all_known_fns, KnownFn};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::panic_detail::PanicDetail;
 use crate::pointer_id::{
@@ -24,6 +25,7 @@ use rustc_middle::mir::{
 use rustc_middle::ty::{
     tls, AdtDef, FieldDef, GenericArgKind, GenericParamDefKind, Ty, TyCtxt, TyKind,
 };
+use rustc_span::Symbol;
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -291,6 +293,8 @@ pub struct GlobalAnalysisCtxt<'tcx> {
 
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
 
+    pub known_fns: HashMap<Symbol, &'static KnownFn>,
+
     /// `DefId`s of functions where analysis failed, and a [`PanicDetail`] explaining the reason
     /// for each failure.
     pub fns_failed: HashMap<DefId, PanicDetail>,
@@ -546,6 +550,10 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             lcx: LabeledTyCtxt::new(tcx),
             ptr_info: GlobalPointerTable::empty(),
             fn_sigs: HashMap::new(),
+            known_fns: all_known_fns()
+                .iter()
+                .map(|known_fn| (Symbol::intern(known_fn.name), known_fn))
+                .collect(),
             fns_failed: HashMap::new(),
             field_ltys: HashMap::new(),
             static_tys: HashMap::new(),
@@ -592,6 +600,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             lcx,
             ref mut ptr_info,
             ref mut fn_sigs,
+            known_fns: _,
             fns_failed: _,
             ref mut field_ltys,
             ref mut static_tys,
