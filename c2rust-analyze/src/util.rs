@@ -79,7 +79,7 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
 }
 
 #[derive(Debug)]
-pub enum UnknownCall<'tcx> {
+pub enum UnknownDefCallee<'tcx> {
     Direct {
         ty: Ty<'tcx>,
         def_id: DefId,
@@ -133,7 +133,7 @@ pub enum Callee<'tcx> {
     /// Or it could a function in another non-local crate, such as `std`,
     /// as definitions of functions from other crates are not available,
     /// and we definitely can't rewrite them at all.
-    UnknownDef(UnknownCall<'tcx>),
+    UnknownDef(UnknownDefCallee<'tcx>),
 
     /// A function that:
     /// * is in the current, local crate
@@ -196,7 +196,7 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
             } else {
                 let is_foreign = tcx.def_kind(tcx.parent(def_id)) == DefKind::ForeignMod;
                 if !def_id.is_local() || is_foreign {
-                    Callee::UnknownDef(UnknownCall::Direct {
+                    Callee::UnknownDef(UnknownDefCallee::Direct {
                         ty,
                         def_id,
                         substs,
@@ -212,10 +212,10 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
                 Callee::Trivial
             } else {
                 let fn_sig = fn_sig.skip_binder();
-                Callee::UnknownDef(UnknownCall::Indirect { ty, fn_sig })
+                Callee::UnknownDef(UnknownDefCallee::Indirect { ty, fn_sig })
             }
         }
-        _ => Callee::UnknownDef(UnknownCall::Unknown { ty }),
+        _ => Callee::UnknownDef(UnknownDefCallee::Unknown { ty }),
     }
 }
 

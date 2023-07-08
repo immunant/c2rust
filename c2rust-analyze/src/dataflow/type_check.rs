@@ -4,7 +4,7 @@ use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
 use crate::panic_detail;
 use crate::util::{
     describe_rvalue, is_null_const, is_transmutable_ptr_cast, ty_callee, Callee, RvalueDesc,
-    UnknownCall,
+    UnknownDefCallee,
 };
 use assert_matches::assert_matches;
 use rustc_hir::def_id::DefId;
@@ -395,7 +395,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Callee::LocalDef { def_id, substs } => {
                 self.visit_local_call(def_id, substs, args, destination);
             }
-            Callee::UnknownDef(UnknownCall::Direct {
+            Callee::UnknownDef(UnknownDefCallee::Direct {
                 ty: _,
                 def_id,
                 substs,
