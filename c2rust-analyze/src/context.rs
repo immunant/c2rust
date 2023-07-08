@@ -1,6 +1,5 @@
 use crate::borrowck::{AdtMetadata, FieldMetadata, OriginArg, OriginParam};
 use crate::c_void_casts::CVoidCasts;
-use crate::dataflow::Constraint;
 use crate::known_fn::{all_known_fns, KnownFn};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::panic_detail::PanicDetail;
@@ -320,13 +319,6 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     pub adt_metadata: AdtMetadataTable<'tcx>,
 
     pub foreign_mentioned_tys: HashSet<DefId>,
-
-    /// Initial [`dataflow`] [`Constraint`]s on global [`PointerId`]s.
-    /// This is what each function's [`DataflowConstraints`] is initialized to.
-    ///
-    /// [`dataflow`]: crate::dataflow
-    /// [`DataflowConstraints`]: crate::dataflow::DataflowConstraints
-    pub initial_constraints: Vec<Constraint>,
 }
 
 pub struct AnalysisCtxt<'a, 'tcx> {
@@ -580,7 +572,6 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             addr_of_static: HashMap::new(),
             adt_metadata: construct_adt_metadata(tcx),
             foreign_mentioned_tys: HashSet::new(),
-            initial_constraints: Default::default(),
         }
     }
 
@@ -628,7 +619,6 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             ref mut addr_of_static,
             adt_metadata: _,
             foreign_mentioned_tys: _,
-            initial_constraints: _,
         } = *self;
 
         *ptr_info = remap_global_ptr_info(ptr_info, map, counter.num_pointers());
