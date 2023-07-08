@@ -78,21 +78,28 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
     })
 }
 
+/// These are [`Callee`]s whose definition is unknown, which could be because it is
+/// * a foreign `fn` from an `extern` block ([`Self::Direct`] with `is_foreign: true`)
+/// * a normal Rust `fn` from another crate ([`Self::Direct`] with `is_foreign: false`)
+/// * a `fn` ptr ([`Self::Indirect`])
+/// * something unanticipated ([`Self::Unknown`])
+///
+/// See [`Callee::UnknownDef`] for more.
 #[derive(Debug)]
 pub enum UnknownDefCallee<'tcx> {
+    /// A direct (i.e. non-`fn` ptr) call.
     Direct {
         ty: Ty<'tcx>,
         def_id: DefId,
         substs: &'tcx List<GenericArg<'tcx>>,
         is_foreign: bool,
     },
-    Indirect {
-        ty: Ty<'tcx>,
-        fn_sig: FnSig<'tcx>,
-    },
-    Unknown {
-        ty: Ty<'tcx>,
-    },
+
+    /// An indirect (i.e. `fn` ptr) call.
+    Indirect { ty: Ty<'tcx>, fn_sig: FnSig<'tcx> },
+
+    /// Some other unanticipated [`Ty`] that is called.
+    Unknown { ty: Ty<'tcx> },
 }
 
 #[derive(Debug)]
