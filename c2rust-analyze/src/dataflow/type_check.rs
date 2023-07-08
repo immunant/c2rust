@@ -541,15 +541,13 @@ pub fn visit<'tcx>(
     let mut tc = TypeChecker {
         acx,
         mir,
-        constraints: DataflowConstraints::default(),
+        constraints: DataflowConstraints {
+            constraints: acx.gacx.initial_constraints.clone(),
+        },
         equiv_constraints: Vec::new(),
     };
 
     for (ptr, perms) in acx.string_literal_perms() {
-        tc.constraints.add_all_perms(ptr, perms);
-    }
-
-    for (ptr, perms) in acx.gacx.known_fn_ptr_perms() {
         tc.constraints.add_all_perms(ptr, perms);
     }
 

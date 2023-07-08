@@ -7,7 +7,7 @@ use rustc_middle::mir::Body;
 mod type_check;
 
 #[derive(Clone, Debug)]
-enum Constraint {
+pub enum Constraint {
     /// Pointer `.0` must have a subset of the permissions of pointer `.1`.
     Subset(PointerId, PointerId),
     /// Pointer `.0` must have all the permissions in `.1`.

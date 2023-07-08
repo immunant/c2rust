@@ -19,6 +19,7 @@ use crate::context::{
     AnalysisCtxt, AnalysisCtxtData, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy,
     LTyCtxt, LocalAssignment, PermissionSet, PointerId, PointerInfo,
 };
+use crate::dataflow::Constraint;
 use crate::dataflow::DataflowConstraints;
 use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use crate::labeled_ty::LabeledTyCtxt;
@@ -427,6 +428,11 @@ fn run(tcx: TyCtxt) {
     }
 
     gather_foreign_sigs(&mut gacx, tcx);
+
+    gacx.initial_constraints = gacx
+        .known_fn_ptr_perms()
+        .map(|(ptr, perms)| Constraint::AllPerms(ptr, perms))
+        .collect();
 
     // Collect all `static` items.
     let all_static_dids = all_static_items(tcx);
