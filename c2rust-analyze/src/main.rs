@@ -807,6 +807,11 @@ fn run(tcx: TyCtxt) {
         );
     }
 
+    // Check that these perms haven't changed.
+    for (ptr, perms) in gacx.known_fn_ptr_perms() {
+        assert_eq!(perms, gasn.perms[ptr]);
+    }
+
     // Buffer debug output for each function.  Grouping together all the different types of info
     // for a single function makes FileCheck tests easier to write.
     let mut func_reports = HashMap::<LocalDefId, String>::new();
