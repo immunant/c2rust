@@ -4,6 +4,7 @@ use std::fmt::Formatter;
 use std::iter;
 
 use crate::context::LFnSig;
+use crate::context::LTy;
 use crate::context::PermissionSet;
 use crate::pointer_id::PointerId;
 use crate::util::PhantomLifetime;
@@ -87,6 +88,56 @@ impl KnownFnTy {
             source,
         }
     }
+
+    /// Determine the [`PermissionSet`]s that should constrain [`PointerId`]s
+    /// contained in this [`KnownFnTy`].
+    ///
+    /// This is determined by matching the corresponding [`PointerId`]s from the [`LTy`]
+    /// to the [`PermissionSet`]s of the [`KnownFnTy`].
+    /// The [`PermissionSet`]s in a [`KnownFnTy`] correspond
+    /// to the literal `*` pointers in the type left-to-right,
+    /// which means they correspond to the [`PointerId`]s in the [`LTy`] from outside to inside,
+    /// i.e. by iterating using [`LTy::iter`].
+    /// We skip non-ptr [`PointerId`]s in such iteration,
+    /// which should just be the innermost [`LTy`] after all of the pointers have been stripped.
+    ///
+    /// We also first check if the [`LTy`] and [`KnownFnTy`] match in number of pointers,
+    /// as they could potentially differ if the [`LFnSig`] was not a [`libc`] `fn`,
+    /// and print a warning if they don't match.
+    /// Ideally we would check that the types equal,
+    /// but the [`KnownFnTy`]'s type is only recorded as a literal string,
+    /// and I'm not sure how that could be parsed back into a [`Ty`].
+    ///
+    /// [`LTy::iter`]: crate::labeled_ty::LabeledTyS::iter
+    /// [`Ty`]: rustc_middle::ty::Ty
+    pub fn ptr_perms<'a, 'tcx: 'a>(
+        &'a self,
+        lty: LTy<'tcx>,
+    ) -> impl Iterator<Item = (PointerId, PermissionSet)> + PhantomLifetime<'tcx> + 'a {
+        [(lty, self)]
+            .into_iter()
+            .filter(|(lty, known_ty)| {
+                let lty_num_ptrs = lty.iter().filter(|lty| !lty.label.is_none()).count();
+                let known_ty_num_ptrs = known_ty.perms.len();
+                let matching = lty_num_ptrs == known_ty_num_ptrs;
+                if !matching {
+                    ::log::warn!(
+                        "declared `extern \"C\" fn` type \
+                 \n\tknown_ty: ({known_ty_num_ptrs}) {known_ty}\
+                 \n\tlty: ({lty_num_ptrs}) {lty:?}\
+            "
+                    )
+                }
+                matching
+            })
+            .flat_map(|(lty, known_ty)| {
+                iter::zip(
+                    lty.iter().map(|lty| lty.label).filter(|ptr| !ptr.is_none()),
+                    known_ty.perms,
+                )
+            })
+            .map(|(ptr, &perms)| (ptr, perms))
+    }
 }
 
 macro_rules! known_fn_ty {
@@ -161,26 +212,8 @@ impl KnownFn {
     /// Thus, we just skip ones that don't match,
     /// and we print a warning if they don't match as well.
     ///
-    /// Then we iterate over the [`LFnSig`] and [`KnownFn`]'s inputs and output.
-    /// For each type, we match the [`PointerId`]s from the [`LTy`]
-    /// to the corresponding [`PermissionSet`]s from the [`KnownFnTy`].
-    /// The [`PermissionSet`]s in a [`KnownFnTy`] correspond
-    /// to the literal `*` pointers in the type left-to-right,
-    /// which means they correspond to the [`PointerId`]s in the [`LTy`] from outside to inside,
-    /// i.e. by iterating using [`LTy::iter`].
-    /// We skip non-ptr [`PointerId`]s in such iteration,
-    /// which should just be the innermost [`LTy`] after all of the pointers have been stripped.
-    ///
-    /// Once again, we first check if the [`LTy`] and [`KnownFnTy`] match in number of pointers,
-    /// as they could potentially differ if the [`LFnSig`] was not a [`libc`] `fn`,
-    /// and print a warning if they don't match.
-    /// Ideally we would check that the types equal,
-    /// but the [`KnownFnTy`]'s type is only recorded as a literal string,
-    /// and I'm not sure how that could be parsed back into a [`Ty`].
-    ///
-    /// [`LTy`]: crate::context::LTy
-    /// [`LTy::iter`]: crate::labeled_ty::LabeledTyS::iter
-    /// [`Ty`]: rustc_middle::ty::Ty
+    /// Then we iterate over the [`LFnSig`] and [`KnownFn`]'s inputs and output,
+    /// `flat_map`ping them to each [`KnownFnTy::ptr_perms`].
     pub fn ptr_perms<'a, 'tcx>(
         &'a self,
         fn_sig: &'a LFnSig<'tcx>,
@@ -210,27 +243,7 @@ impl KnownFn {
             .flat_map(|(fn_sig, known_fn)| {
                 iter::zip(fn_sig.inputs_and_output(), known_fn.inputs_and_output())
             })
-            .filter(|(lty, known_ty)| {
-                let lty_num_ptrs = lty.iter().filter(|lty| !lty.label.is_none()).count();
-                let known_ty_num_ptrs = known_ty.perms.len();
-                let matching = lty_num_ptrs == known_ty_num_ptrs;
-                if !matching {
-                    ::log::warn!(
-                        "declared `extern \"C\" fn` type \
-                     \n\tknown_ty: ({known_ty_num_ptrs}) {known_ty}\
-                     \n\tlty: ({lty_num_ptrs}) {lty:?}\
-                "
-                    )
-                }
-                matching
-            })
-            .flat_map(|(lty, known_ty)| {
-                iter::zip(
-                    lty.iter().map(|lty| lty.label).filter(|ptr| !ptr.is_none()),
-                    known_ty.perms,
-                )
-            })
-            .map(|(ptr, &perms)| (ptr, perms))
+            .flat_map(|(lty, known_ty)| known_ty.ptr_perms(lty))
     }
 }
 
