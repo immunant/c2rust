@@ -22,10 +22,16 @@ use rustc_middle::mir::{
     Body, Constant, ConstantKind, Field, HasLocalDecls, Local, LocalDecls, Location, Operand,
     Place, PlaceElem, PlaceRef, Rvalue,
 };
-use rustc_middle::ty::{
-    tls, AdtDef, DefIdTree, FieldDef, GenericArgKind, GenericParamDefKind, Ty, TyCtxt, TyKind,
-};
-use rustc_span::Symbol;
+use rustc_middle::ty::tls;
+use rustc_middle::ty::AdtDef;
+use rustc_middle::ty::DefIdTree;
+use rustc_middle::ty::FieldDef;
+use rustc_middle::ty::GenericArgKind;
+use rustc_middle::ty::GenericParamDefKind;
+use rustc_middle::ty::Instance;
+use rustc_middle::ty::Ty;
+use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::TyKind;
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -295,11 +301,11 @@ pub struct GlobalAnalysisCtxt<'tcx> {
 
     /// A map of all [`KnownFn`]s as determined by [`all_known_fns`].
     ///
-    /// The [`Symbol`] is the [`KnownFn`]'s [`name`],
+    /// The key is the [`KnownFn`]'s [`name`],
     /// which is its symbol/link name in the binary.
     ///
     /// [`name`]: KnownFn::name
-    pub known_fns: HashMap<Symbol, &'static KnownFn>,
+    known_fns: HashMap<&'static str, &'static KnownFn>,
 
     /// `DefId`s of functions where analysis failed, and a [`PanicDetail`] explaining the reason
     /// for each failure.
@@ -558,7 +564,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             fn_sigs: HashMap::new(),
             known_fns: all_known_fns()
                 .iter()
-                .map(|known_fn| (Symbol::intern(known_fn.name), known_fn))
+                .map(|known_fn| (known_fn.name, known_fn))
                 .collect(),
             fns_failed: HashMap::new(),
             field_ltys: HashMap::new(),
@@ -679,6 +685,11 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         self.fns_failed.keys().copied()
     }
 
+    pub fn known_fn(&self, def_id: DefId) -> Option<&'static KnownFn> {
+        let symbol = self.tcx.symbol_name(Instance::mono(self.tcx, def_id));
+        self.known_fns.get(symbol.name).copied()
+    }
+
     /// Determine the [`PermissionSet`]s that should constrain [`PointerId`]s
     /// contained in the signatures of [`KnownFn`]s.
     ///
@@ -691,15 +702,12 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     pub fn known_fn_ptr_perms<'a>(
         &'a self,
     ) -> impl Iterator<Item = (PointerId, PermissionSet)> + PhantomLifetime<'tcx> + 'a {
-        let tcx = &self.tcx;
         self.fn_sigs
             .iter()
-            .filter(|(did, _)| tcx.def_kind(tcx.parent(**did)) == DefKind::ForeignMod)
-            .filter_map(|(&did, fn_sig)| {
-                let name = tcx.item_name(did);
-                let known_fn = self.known_fns.get(&name).copied()?;
-                Some((fn_sig, known_fn))
+            .filter(|(def_id, _)| {
+                self.tcx.def_kind(self.tcx.parent(**def_id)) == DefKind::ForeignMod
             })
+            .filter_map(|(&def_id, fn_sig)| Some((fn_sig, self.known_fn(def_id)?)))
             .flat_map(|(fn_sig, known_fn)| known_fn.ptr_perms(fn_sig))
     }
 }

@@ -400,7 +400,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 def_id,
                 substs,
                 is_foreign: true,
-            }) if self.acx.gacx.known_fns.contains_key(&tcx.item_name(def_id)) => {
+            }) if self.acx.gacx.known_fn(def_id).is_some() => {
                 // As this is actually a known `fn`, we can treat it as a normal local call.
                 self.visit_local_call(def_id, substs, args, destination);
             }
