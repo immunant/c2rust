@@ -147,6 +147,40 @@ impl KnownFn {
         self.inputs.iter().chain([&self.output])
     }
 
+    /// Determine the [`PermissionSet`]s that should constrain [`PointerId`]s
+    /// contained in the signatures of this [`KnownFn`].
+    ///
+    /// This is determined by matching the corresponding [`PointerId`]s from the [`LFnSig`]
+    /// to the [`PermissionSet`]s of the [`KnownFn`].
+    ///
+    /// First we check if the [`LFnSig`] and [`KnownFn`] match in number of args/inputs.
+    /// They should, but we double check since it could be a non-[`libc`] `fn` with the same name.
+    /// [`KnownFn`]s are checked against the [`libc`] definition for it,
+    /// but the `c2rust transpile`d version is platform-specific
+    /// based on translating the declaration in the C headers.
+    /// Thus, we just skip ones that don't match,
+    /// and we print a warning if they don't match as well.
+    ///
+    /// Then we iterate over the [`LFnSig`] and [`KnownFn`]'s inputs and output.
+    /// For each type, we match the [`PointerId`]s from the [`LTy`]
+    /// to the corresponding [`PermissionSet`]s from the [`KnownFnTy`].
+    /// The [`PermissionSet`]s in a [`KnownFnTy`] correspond
+    /// to the literal `*` pointers in the type left-to-right,
+    /// which means they correspond to the [`PointerId`]s in the [`LTy`] from outside to inside,
+    /// i.e. by iterating using [`LTy::iter`].
+    /// We skip non-ptr [`PointerId`]s in such iteration,
+    /// which should just be the innermost [`LTy`] after all of the pointers have been stripped.
+    ///
+    /// Once again, we first check if the [`LTy`] and [`KnownFnTy`] match in number of pointers,
+    /// as they could potentially differ if the [`LFnSig`] was not a [`libc`] `fn`,
+    /// and print a warning if they don't match.
+    /// Ideally we would check that the types equal,
+    /// but the [`KnownFnTy`]'s type is only recorded as a literal string,
+    /// and I'm not sure how that could be parsed back into a [`Ty`].
+    ///
+    /// [`LTy`]: crate::context::LTy
+    /// [`LTy::iter`]: crate::labeled_ty::LabeledTyS::iter
+    /// [`Ty`]: rustc_middle::ty::Ty
     pub fn ptr_perms<'a, 'tcx>(
         &'a self,
         fn_sig: &'a LFnSig<'tcx>,
