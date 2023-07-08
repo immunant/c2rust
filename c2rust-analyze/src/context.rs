@@ -179,8 +179,8 @@ pub struct LFnSig<'tcx> {
 }
 
 impl<'tcx> LFnSig<'tcx> {
-    pub fn inputs_and_output(&self) -> impl Iterator<Item = &LTy<'tcx>> {
-        self.inputs.iter().chain([&self.output])
+    pub fn inputs_and_output(&self) -> impl Iterator<Item = LTy<'tcx>> {
+        self.inputs.iter().copied().chain([self.output])
     }
 }
 
