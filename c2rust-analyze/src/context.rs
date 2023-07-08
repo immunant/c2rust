@@ -293,6 +293,12 @@ pub struct GlobalAnalysisCtxt<'tcx> {
 
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
 
+    /// A map of all [`KnownFn`]s as determined by [`all_known_fns`].
+    ///
+    /// The [`Symbol`] is the [`KnownFn`]'s [`name`],
+    /// which is its symbol/link name in the binary.
+    ///
+    /// [`name`]: KnownFn::name
     pub known_fns: HashMap<Symbol, &'static KnownFn>,
 
     /// `DefId`s of functions where analysis failed, and a [`PanicDetail`] explaining the reason
