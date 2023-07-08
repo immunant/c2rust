@@ -573,6 +573,10 @@ fn run(tcx: TyCtxt) {
 
     mark_foreign_fixed(&mut gacx, &mut gasn, tcx);
 
+    for (ptr, perms) in gacx.known_fn_ptr_perms() {
+        gasn.perms[ptr] = perms;
+    }
+
     for info in func_info.values_mut() {
         let num_pointers = info.acx_data.num_pointers();
         let mut lasn = LocalAssignment::new(num_pointers, PermissionSet::UNIQUE, FlagSet::empty());
