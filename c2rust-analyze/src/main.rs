@@ -622,7 +622,7 @@ fn run(tcx: TyCtxt) {
                         continue;
                     }
                 };
-                if dest_pl.projection.len() > 0 {
+                if !dest_pl.projection.is_empty() {
                     info.acx_data.set(acx.into_data());
                     continue;
                 }
