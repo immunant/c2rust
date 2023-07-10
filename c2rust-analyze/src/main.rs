@@ -574,8 +574,10 @@ fn run(tcx: TyCtxt) {
     mark_foreign_fixed(&mut gacx, &mut gasn, tcx);
 
     for (ptr, perms) in gacx.known_fn_ptr_perms() {
-        debug_assert_eq!(gasn.perms[ptr], PermissionSet::empty());
-        gasn.perms[ptr] = perms;
+        let existing_perms = &mut gasn.perms[ptr];
+        existing_perms.remove(PermissionSet::UNIQUE);
+        assert_eq!(*existing_perms, PermissionSet::empty());
+        *existing_perms = perms;
     }
 
     for info in func_info.values_mut() {
