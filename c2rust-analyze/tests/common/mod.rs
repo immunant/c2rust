@@ -170,6 +170,7 @@ impl Analyze {
         let args = AnalyzeArgs::parse_from_file(&rs_path);
 
         let output_path = with_appended_extensions(&rs_path, &["analysis", "txt"]);
+        let output_dir = with_appended_extensions(&rs_path, &["dir"]);
         let output_stdout = File::create(&output_path).unwrap();
         let output_stderr = File::try_clone(&output_stdout).unwrap();
 
@@ -186,11 +187,14 @@ impl Analyze {
                 "--edition",
                 &crate_options.edition.to_string(),
             ])
+            .arg("--out-dir")
+            .arg(&output_dir)
             .stdout(output_stdout)
             .stderr(output_stderr);
         cmd.envs(args.env.iter().map(|EnvVar { var, value }| (var, value)));
         modify_cmd(&mut cmd);
         let status = cmd.status().unwrap();
+        fs::remove_dir_all(&output_dir).unwrap();
         if !status.success() && !args.allow_crash {
             let message = format!(
                 "c2rust-analyze failed with status {status}:\n> {cmd:?} > {output_path:?} 2>&1\n"
