@@ -1,6 +1,7 @@
 use std::{
     collections::HashSet,
     env,
+    ffi::{OsStr, OsString},
     fmt::{self, Display, Formatter},
     fs::{self, File},
     path::{Path, PathBuf},
@@ -130,6 +131,21 @@ impl Default for CrateOptions {
     }
 }
 
+fn with_modified_file_name<F: Fn(&mut OsString)>(path: &Path, f: F) -> PathBuf {
+    let mut file_name = path.file_name().unwrap().to_owned();
+    f(&mut file_name);
+    path.with_file_name(file_name)
+}
+
+fn with_appended_extensions<T: AsRef<OsStr>>(path: &Path, extensions: &[T]) -> PathBuf {
+    with_modified_file_name(path, |file_name| {
+        for extension in extensions {
+            file_name.push(".");
+            file_name.push(extension);
+        }
+    })
+}
+
 impl Analyze {
     pub fn resolve() -> Self {
         let current_exe = env::current_exe().unwrap();
@@ -153,11 +169,7 @@ impl Analyze {
         let crate_options = crate_options.unwrap_or_default();
         let args = AnalyzeArgs::parse_from_file(&rs_path);
 
-        let output_path = {
-            let mut file_name = rs_path.file_name().unwrap().to_owned();
-            file_name.push(".analysis.txt");
-            rs_path.with_file_name(file_name)
-        };
+        let output_path = with_appended_extensions(&rs_path, &["analysis", "txt"]);
         let output_stdout = File::create(&output_path).unwrap();
         let output_stderr = File::try_clone(&output_stdout).unwrap();
 
