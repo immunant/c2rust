@@ -1,6 +1,6 @@
 pub mod common;
 
-use crate::common::{check_for_missing_tests_for, test_dir_for, Analyze, FileCheck};
+use crate::common::{check_for_missing_tests_for, test_dir_for, Analyze, CrateType, FileCheck};
 
 #[test]
 fn check_for_missing_tests() {
@@ -11,7 +11,7 @@ fn test(file_name: &str) {
     let analyze = Analyze::resolve();
     let file_check = FileCheck::resolve();
     let path = test_dir_for(file!(), true).join(file_name);
-    let output_path = analyze.run(&path);
+    let output_path = analyze.run(&path, CrateType::Rlib);
     file_check.run(&path, &output_path);
 }
 

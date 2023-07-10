@@ -117,20 +117,6 @@ impl From<CrateType> for &'static str {
     }
 }
 
-pub struct CrateOptions {
-    pub edition: u16,
-    pub crate_type: CrateType,
-}
-
-impl Default for CrateOptions {
-    fn default() -> Self {
-        CrateOptions {
-            edition: 2021,
-            crate_type: CrateType::Rlib,
-        }
-    }
-}
-
 fn with_modified_file_name<F: Fn(&mut OsString)>(path: &Path, f: F) -> PathBuf {
     let mut file_name = path.file_name().unwrap().to_owned();
     f(&mut file_name);
@@ -158,15 +144,14 @@ impl Analyze {
     fn run_with_(
         &self,
         rs_path: &Path,
+        crate_type: CrateType,
         mut modify_cmd: impl FnMut(&mut Command),
-        crate_options: Option<CrateOptions>,
     ) -> PathBuf {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
         let lib_dir = Path::new(env!("C2RUST_TARGET_LIB_DIR"));
 
         let rs_path = dir.join(rs_path); // allow relative paths, or override with an absolute path
 
-        let crate_options = crate_options.unwrap_or_default();
         let args = AnalyzeArgs::parse_from_file(&rs_path);
 
         let output_path = with_appended_extensions(&rs_path, &["analysis", "txt"]);
@@ -181,12 +166,8 @@ impl Analyze {
         cmd.arg(&rs_path)
             .arg("-L")
             .arg(lib_dir)
-            .args([
-                "--crate-type",
-                crate_options.crate_type.into(),
-                "--edition",
-                &crate_options.edition.to_string(),
-            ])
+            .args(["--crate-type", crate_type.into()])
+            .args(["--edition", "2021"])
             .arg("--out-dir")
             .arg(&output_dir)
             .stdout(output_stdout)
@@ -208,14 +189,14 @@ impl Analyze {
     pub fn run_with(
         &self,
         rs_path: impl AsRef<Path>,
+        crate_type: CrateType,
         modify_cmd: impl FnMut(&mut Command),
-        crate_options: Option<CrateOptions>,
     ) -> PathBuf {
-        self.run_with_(rs_path.as_ref(), modify_cmd, crate_options)
+        self.run_with_(rs_path.as_ref(), crate_type, modify_cmd)
     }
 
-    pub fn run(&self, rs_path: impl AsRef<Path>) -> PathBuf {
-        self.run_with(rs_path, |_| {}, None)
+    pub fn run(&self, rs_path: impl AsRef<Path>, crate_type: CrateType) -> PathBuf {
+        self.run_with(rs_path, crate_type, |_| {})
     }
 }
 
