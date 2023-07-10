@@ -168,6 +168,8 @@ impl Analyze {
             .arg(lib_dir)
             .args(["--crate-type", crate_type.into()])
             .args(["--edition", "2021"])
+            .args(["--emit", "metadata"])
+            .args(["-Z", "no-codegen"])
             .arg("--out-dir")
             .arg(&output_dir)
             .stdout(output_stdout)
