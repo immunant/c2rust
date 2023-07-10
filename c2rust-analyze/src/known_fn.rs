@@ -1,10 +1,14 @@
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::iter;
 
+use crate::context::LFnSig;
+use crate::context::LTy;
 use crate::context::PermissionSet;
+use crate::pointer_id::PointerId;
+use crate::util::PhantomLifetime;
 
-#[cfg(test)]
 macro_rules! const_slice {
     ($ty:ty, []) => {{
         &[]
@@ -15,7 +19,6 @@ macro_rules! const_slice {
     }};
 }
 
-#[cfg(test)]
 macro_rules! perms_annotation {
     ([$($($perm:ident)|*),*]) => {{
         [$(PermissionSet::union_all([$(PermissionSet::$perm,)*]),)*]
@@ -57,7 +60,6 @@ impl Display for KnownFnTy {
 impl KnownFnTy {
     /// Check that we annotated the right number of [`PermissionSet`]s
     /// that corresponds to the number of raw pointers in [`Self::ty`].
-    #[cfg(test)]
     const fn checked(self) -> Self {
         let ty = self.ty.as_bytes();
         let mut num_ptrs = 0;
@@ -72,7 +74,6 @@ impl KnownFnTy {
         self
     }
 
-    #[cfg(test)]
     const fn named(self, name: &'static str) -> Self {
         let Self {
             name: _,
@@ -87,9 +88,58 @@ impl KnownFnTy {
             source,
         }
     }
+
+    /// Determine the [`PermissionSet`]s that should constrain [`PointerId`]s
+    /// contained in this [`KnownFnTy`].
+    ///
+    /// This is determined by matching the corresponding [`PointerId`]s from the [`LTy`]
+    /// to the [`PermissionSet`]s of the [`KnownFnTy`].
+    /// The [`PermissionSet`]s in a [`KnownFnTy`] correspond
+    /// to the literal `*` pointers in the type left-to-right,
+    /// which means they correspond to the [`PointerId`]s in the [`LTy`] from outside to inside,
+    /// i.e. by iterating using [`LTy::iter`].
+    /// We skip non-ptr [`PointerId`]s in such iteration,
+    /// which should just be the innermost [`LTy`] after all of the pointers have been stripped.
+    ///
+    /// We also first check if the [`LTy`] and [`KnownFnTy`] match in number of pointers,
+    /// as they could potentially differ if the [`LFnSig`] was not a [`libc`] `fn`,
+    /// and print a warning if they don't match.
+    /// Ideally we would check that the types equal,
+    /// but the [`KnownFnTy`]'s type is only recorded as a literal string,
+    /// and I'm not sure how that could be parsed back into a [`Ty`].
+    ///
+    /// [`LTy::iter`]: crate::labeled_ty::LabeledTyS::iter
+    /// [`Ty`]: rustc_middle::ty::Ty
+    pub fn ptr_perms<'a, 'tcx: 'a>(
+        &'a self,
+        lty: LTy<'tcx>,
+    ) -> impl Iterator<Item = (PointerId, PermissionSet)> + PhantomLifetime<'tcx> + 'a {
+        [(lty, self)]
+            .into_iter()
+            .filter(|(lty, known_ty)| {
+                let lty_num_ptrs = lty.iter().filter(|lty| !lty.label.is_none()).count();
+                let known_ty_num_ptrs = known_ty.perms.len();
+                let matching = lty_num_ptrs == known_ty_num_ptrs;
+                if !matching {
+                    ::log::warn!(
+                        "declared `extern \"C\" fn` type \
+                 \n\tknown_ty: ({known_ty_num_ptrs}) {known_ty}\
+                 \n\tlty: ({lty_num_ptrs}) {lty:?}\
+            "
+                    )
+                }
+                matching
+            })
+            .flat_map(|(lty, known_ty)| {
+                iter::zip(
+                    lty.iter().map(|lty| lty.label).filter(|ptr| !ptr.is_none()),
+                    known_ty.perms,
+                )
+            })
+            .map(|(ptr, &perms)| (ptr, perms))
+    }
 }
 
-#[cfg(test)]
 macro_rules! known_fn_ty {
     ($ty:ty: $perms:tt) => {{
         KnownFnTy {
@@ -143,7 +193,60 @@ impl Display for KnownFn {
     }
 }
 
-#[cfg(test)]
+impl KnownFn {
+    pub fn inputs_and_output(&self) -> impl Iterator<Item = &KnownFnTy> {
+        self.inputs.iter().chain([&self.output])
+    }
+
+    /// Determine the [`PermissionSet`]s that should constrain [`PointerId`]s
+    /// contained in the signatures of this [`KnownFn`].
+    ///
+    /// This is determined by matching the corresponding [`PointerId`]s from the [`LFnSig`]
+    /// to the [`PermissionSet`]s of the [`KnownFn`].
+    ///
+    /// First we check if the [`LFnSig`] and [`KnownFn`] match in number of args/inputs.
+    /// They should, but we double check since it could be a non-[`libc`] `fn` with the same name.
+    /// [`KnownFn`]s are checked against the [`libc`] definition for it,
+    /// but the `c2rust transpile`d version is platform-specific
+    /// based on translating the declaration in the C headers.
+    /// Thus, we just skip ones that don't match,
+    /// and we print a warning if they don't match as well.
+    ///
+    /// Then we iterate over the [`LFnSig`] and [`KnownFn`]'s inputs and output,
+    /// `flat_map`ping them to each [`KnownFnTy::ptr_perms`].
+    pub fn ptr_perms<'a, 'tcx>(
+        &'a self,
+        fn_sig: &'a LFnSig<'tcx>,
+    ) -> impl Iterator<Item = (PointerId, PermissionSet)> + PhantomLifetime<'tcx> + 'a {
+        [(fn_sig, self)]
+            .into_iter()
+            .filter(|(fn_sig, known_fn)| {
+                // Filter instead of asserting because we want the error to occur at the call site,
+                // where it will be correctly scoped to the calling function
+                // and mark only those functions as having failed.
+                let matching = fn_sig.inputs.len() == known_fn.inputs.len();
+                if !matching {
+                    ::log::warn!(
+                        "declared `extern \"C\" fn {}` does not match known fn in number of args:\
+                     \n\tknown_fn: ({}) {}\
+                     \n\tfn_sig: ({}) {:?}\
+                ",
+                        known_fn.name,
+                        known_fn.inputs.len(),
+                        known_fn,
+                        fn_sig.inputs.len(),
+                        fn_sig.inputs,
+                    );
+                }
+                matching
+            })
+            .flat_map(|(fn_sig, known_fn)| {
+                iter::zip(fn_sig.inputs_and_output(), known_fn.inputs_and_output())
+            })
+            .flat_map(|(lty, known_ty)| known_ty.ptr_perms(lty))
+    }
+}
+
 macro_rules! known_fns {
     {
         mod $module:ident {
@@ -461,5 +564,66 @@ mod tests {
                 }]
             )
         );
+    }
+}
+
+pub const fn all_known_fns() -> &'static [KnownFn] {
+    known_fns! {
+        mod libc {
+
+            #[cfg(target_os = "linux")]
+            fn __errno_location() -> *mut c_int: [READ | WRITE];
+
+            #[cfg(target_os = "macos")]
+            fn __error() -> *mut c_int: [READ | WRITE];
+
+            fn _exit(
+                status: c_int,
+            ) -> !;
+
+            fn abort() -> !;
+
+            fn abs(
+                i: c_int,
+            ) -> c_int;
+
+            fn accept(
+                socket: c_int,
+                address: *mut sockaddr: [WRITE],
+                address_len: *mut socklen_t: [READ | WRITE],
+            ) -> c_int;
+
+            #[cfg(target_os = "linux")]
+            fn accept4(
+                fd: c_int,
+                addr: *mut sockaddr: [WRITE],
+                len: *mut socklen_t: [READ | WRITE],
+                flg: c_int,
+            ) -> c_int;
+
+            fn access(
+                path: *const c_char: [READ | OFFSET_ADD],
+                amode: c_int,
+            ) -> c_int;
+
+            fn read(
+                fd: c_int,
+                buf: *mut c_void: [WRITE | OFFSET_ADD],
+                count: size_t,
+            ) -> ssize_t;
+
+            fn write(
+                fd: c_int,
+                buf: *const c_void: [READ | OFFSET_ADD],
+                count: size_t,
+            ) -> ssize_t;
+
+            fn strtol(
+                s: *const c_char: [READ | OFFSET_ADD],
+                endp: *mut *mut c_char: [WRITE, WRITE | OFFSET_ADD],
+                base: c_int,
+            ) -> c_long;
+
+        }
     }
 }

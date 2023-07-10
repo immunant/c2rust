@@ -1,5 +1,6 @@
 use crate::borrowck::{AdtMetadata, FieldMetadata, OriginArg, OriginParam};
 use crate::c_void_casts::CVoidCasts;
+use crate::known_fn::{all_known_fns, KnownFn};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::panic_detail::PanicDetail;
 use crate::pointer_id::{
@@ -21,13 +22,19 @@ use rustc_middle::mir::{
     Body, Constant, ConstantKind, Field, HasLocalDecls, Local, LocalDecls, Location, Operand,
     Place, PlaceElem, PlaceRef, Rvalue,
 };
-use rustc_middle::ty::{
-    tls, AdtDef, FieldDef, GenericArgKind, GenericParamDefKind, Ty, TyCtxt, TyKind,
-};
+use rustc_middle::ty::tls;
+use rustc_middle::ty::AdtDef;
+use rustc_middle::ty::DefIdTree;
+use rustc_middle::ty::FieldDef;
+use rustc_middle::ty::GenericArgKind;
+use rustc_middle::ty::GenericParamDefKind;
+use rustc_middle::ty::Instance;
+use rustc_middle::ty::Ty;
+use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::TyKind;
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use std::iter;
 use std::ops::Index;
 
 bitflags! {
@@ -136,7 +143,6 @@ impl PermissionSet {
     // `.union` is used here since it's a `const fn`, unlike `BitOr::bitor`.
     pub const STRING_LITERAL: Self = Self::READ.union(Self::OFFSET_ADD);
 
-    #[cfg(test)]
     pub const fn union_all<const N: usize>(a: [Self; N]) -> Self {
         let mut this = Self::empty();
         let mut i = 0;
@@ -179,8 +185,8 @@ pub struct LFnSig<'tcx> {
 }
 
 impl<'tcx> LFnSig<'tcx> {
-    pub fn inputs_and_output(&self) -> impl Iterator<Item = LTy<'tcx>> + 'tcx {
-        self.inputs.iter().copied().chain(iter::once(self.output))
+    pub fn inputs_and_output(&self) -> impl Iterator<Item = LTy<'tcx>> {
+        self.inputs.iter().copied().chain([self.output])
     }
 }
 
@@ -292,6 +298,14 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     ptr_info: GlobalPointerTable<PointerInfo>,
 
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
+
+    /// A map of all [`KnownFn`]s as determined by [`all_known_fns`].
+    ///
+    /// The key is the [`KnownFn`]'s [`name`],
+    /// which is its symbol/link name in the binary.
+    ///
+    /// [`name`]: KnownFn::name
+    known_fns: HashMap<&'static str, &'static KnownFn>,
 
     /// `DefId`s of functions where analysis failed, and a [`PanicDetail`] explaining the reason
     /// for each failure.
@@ -548,6 +562,10 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             lcx: LabeledTyCtxt::new(tcx),
             ptr_info: GlobalPointerTable::empty(),
             fn_sigs: HashMap::new(),
+            known_fns: all_known_fns()
+                .iter()
+                .map(|known_fn| (known_fn.name, known_fn))
+                .collect(),
             fns_failed: HashMap::new(),
             field_ltys: HashMap::new(),
             static_tys: HashMap::new(),
@@ -594,6 +612,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             lcx,
             ref mut ptr_info,
             ref mut fn_sigs,
+            known_fns: _,
             fns_failed: _,
             ref mut field_ltys,
             ref mut static_tys,
@@ -664,6 +683,32 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
 
     pub fn iter_fns_failed(&self) -> impl Iterator<Item = DefId> + '_ {
         self.fns_failed.keys().copied()
+    }
+
+    pub fn known_fn(&self, def_id: DefId) -> Option<&'static KnownFn> {
+        let symbol = self.tcx.symbol_name(Instance::mono(self.tcx, def_id));
+        self.known_fns.get(symbol.name).copied()
+    }
+
+    /// Determine the [`PermissionSet`]s that should constrain [`PointerId`]s
+    /// contained in the signatures of [`KnownFn`]s.
+    ///
+    /// This is determined by iterating through the [`LFnSig`]s in `self.fn_sigs`,
+    /// filtering out the foreign ones ([`gather_foreign_sigs`] adds them to `fn_sigs`),
+    /// looking up the [`KnownFn`] for that foreign `fn`, if it exists,
+    /// and then `flat_map`ping that to each [`KnownFn::ptr_perms`].
+    ///
+    /// [`gather_foreign_sigs`]: `crate::gather_foreign_sigs`
+    pub fn known_fn_ptr_perms<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = (PointerId, PermissionSet)> + PhantomLifetime<'tcx> + 'a {
+        self.fn_sigs
+            .iter()
+            .filter(|(def_id, _)| {
+                self.tcx.def_kind(self.tcx.parent(**def_id)) == DefKind::ForeignMod
+            })
+            .filter_map(|(&def_id, fn_sig)| Some((fn_sig, self.known_fn(def_id)?)))
+            .flat_map(|(fn_sig, known_fn)| known_fn.ptr_perms(fn_sig))
     }
 }
 

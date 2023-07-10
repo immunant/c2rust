@@ -9,7 +9,8 @@ use rustc_middle::mir::{
     PlaceElem, PlaceRef, ProjectionElem, Rvalue, Statement, StatementKind,
 };
 use rustc_middle::ty::{
-    self, AdtDef, DefIdTree, EarlyBinder, Subst, SubstsRef, Ty, TyCtxt, TyKind, UintTy,
+    self, AdtDef, DefIdTree, EarlyBinder, FnSig, GenericArg, List, Subst, SubstsRef, Ty, TyCtxt,
+    TyKind, UintTy,
 };
 use rustc_span::symbol::{sym, Symbol};
 use rustc_type_ir::IntTy;
@@ -77,6 +78,30 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
     })
 }
 
+/// These are [`Callee`]s whose definition is unknown, which could be because it is
+/// * a foreign `fn` from an `extern` block ([`Self::Direct`] with `is_foreign: true`)
+/// * a normal Rust `fn` from another crate ([`Self::Direct`] with `is_foreign: false`)
+/// * a `fn` ptr ([`Self::Indirect`])
+/// * something unanticipated ([`Self::Unknown`])
+///
+/// See [`Callee::UnknownDef`] for more.
+#[derive(Debug)]
+pub enum UnknownDefCallee<'tcx> {
+    /// A direct (i.e. non-`fn` ptr) call.
+    Direct {
+        ty: Ty<'tcx>,
+        def_id: DefId,
+        substs: &'tcx List<GenericArg<'tcx>>,
+        is_foreign: bool,
+    },
+
+    /// An indirect (i.e. `fn` ptr) call.
+    Indirect { ty: Ty<'tcx>, fn_sig: FnSig<'tcx> },
+
+    /// Some other unanticipated [`Ty`] that is called.
+    Unknown { ty: Ty<'tcx> },
+}
+
 #[derive(Debug)]
 pub enum Callee<'tcx> {
     /// A [`Trivial`] library function is one that has no effect on pointer permissions in its caller.
@@ -115,7 +140,7 @@ pub enum Callee<'tcx> {
     /// Or it could a function in another non-local crate, such as `std`,
     /// as definitions of functions from other crates are not available,
     /// and we definitely can't rewrite them at all.
-    UnknownDef { ty: Ty<'tcx> },
+    UnknownDef(UnknownDefCallee<'tcx>),
 
     /// A function that:
     /// * is in the current, local crate
@@ -170,28 +195,34 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
     };
 
     match *ty.kind() {
-        ty::FnDef(did, substs) => {
+        ty::FnDef(def_id, substs) => {
             if is_trivial() {
                 Callee::Trivial
-            } else if let Some(callee) = builtin_callee(tcx, did, substs) {
+            } else if let Some(callee) = builtin_callee(tcx, def_id, substs) {
                 callee
-            } else if !did.is_local() || tcx.def_kind(tcx.parent(did)) == DefKind::ForeignMod {
-                Callee::UnknownDef { ty }
             } else {
-                Callee::LocalDef {
-                    def_id: did,
-                    substs,
+                let is_foreign = tcx.def_kind(tcx.parent(def_id)) == DefKind::ForeignMod;
+                if !def_id.is_local() || is_foreign {
+                    Callee::UnknownDef(UnknownDefCallee::Direct {
+                        ty,
+                        def_id,
+                        substs,
+                        is_foreign,
+                    })
+                } else {
+                    Callee::LocalDef { def_id, substs }
                 }
             }
         }
-        ty::FnPtr(..) => {
+        ty::FnPtr(fn_sig) => {
             if is_trivial() {
                 Callee::Trivial
             } else {
-                Callee::UnknownDef { ty }
+                let fn_sig = fn_sig.skip_binder();
+                Callee::UnknownDef(UnknownDefCallee::Indirect { ty, fn_sig })
             }
         }
-        _ => Callee::UnknownDef { ty },
+        _ => Callee::UnknownDef(UnknownDefCallee::Unknown { ty }),
     }
 }
 
