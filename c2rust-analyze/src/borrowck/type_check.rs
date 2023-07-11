@@ -1,5 +1,5 @@
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubPoint};
-use crate::borrowck::{construct_adt_origins, LTy, LTyCtxt, Label, OriginParam};
+use crate::borrowck::{assign_origins, construct_adt_origins, LTy, LTyCtxt, Label, OriginParam};
 use crate::context::{const_alloc_id, find_static_for_alloc};
 use crate::context::{AnalysisCtxt, PermissionSet};
 use crate::panic_detail;
@@ -161,20 +161,21 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         lty
     }
 
-    pub fn visit_operand(&self, op: &Operand<'tcx>) -> LTy<'tcx> {
+    pub fn visit_operand(&mut self, op: &Operand<'tcx>) -> LTy<'tcx> {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => self.visit_place(pl),
             Operand::Constant(ref c) => {
                 if c.ty().is_any_ptr() {
                     if let Some(alloc_id) = const_alloc_id(c) {
                         if let Some(did) = find_static_for_alloc(&self.acx.tcx(), alloc_id) {
-                            let lty = self
-                                .acx
-                                .gacx
-                                .static_origins
-                                .get(&did)
-                                .cloned()
-                                .unwrap_or_else(|| panic!("did {:?} not found", did));
+                            let lty = assign_origins(
+                                self.ltcx,
+                                self.hypothesis,
+                                self.facts,
+                                self.maps,
+                                &self.acx.gacx.adt_metadata,
+                                &self.acx.gacx.static_tys[&did],
+                            );
                             let pointer_id = self.acx.type_of(op).label;
                             let perm = self.hypothesis[pointer_id];
                             let args = self.ltcx.mk_slice(&[lty]);

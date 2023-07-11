@@ -23,7 +23,7 @@ unsafe extern "C" fn server_free1() -> bool {
 }
 
 unsafe extern "C" fn server_free2() -> () {
-    &oneshot_fdn;
+    let x = &oneshot_fdn;
 }
 
 // CHECK: generated {{.*}} static rewrites:
