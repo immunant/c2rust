@@ -184,7 +184,15 @@ impl Analyze {
                 "c2rust-analyze failed with status {status}:\n> {cmd:?} > {output_path:?} 2>&1\n"
             );
             let output = fs::read_to_string(&output_path).unwrap();
-            panic!("\n{message}\n{output}\n{message}");
+            let max_len = 10000;
+            if output.len() > max_len {
+                let (output_start, output_end) = output.split_at(output.len() / 2);
+                let output_start = &output_start[..max_len / 2];
+                let output_end = &output_end[output_end.len() - max_len / 2..];
+                panic!("\n{message}\n{output_start}\n\n...\n\n{output_end}\n{message}");
+            } else {
+                panic!("\n{message}\n{output}\n{message}");
+            };
         }
         output_path
     }
