@@ -371,7 +371,7 @@ mod tests {
                     PermissionSet,
                     [PermissionSet::union_all([
                         PermissionSet::WRITE,
-                        PermissionSet::OFFSET_ADD
+                        PermissionSet::OFFSET_ADD,
                     ]),]
                 ),
                 source: "",
@@ -406,10 +406,10 @@ mod tests {
                 mod libc {
 
                     #[cfg(target_os = "linux")]
-                    fn __errno_location() -> *mut c_int: [READ | WRITE];
+                    fn __errno_location() -> *mut c_int: [READ | WRITE | NON_NULL];
 
                     #[cfg(target_os = "macos")]
-                    fn __error() -> *mut c_int: [READ | WRITE];
+                    fn __error() -> *mut c_int: [READ | WRITE | NON_NULL];
 
                 }
             },
@@ -428,7 +428,8 @@ mod tests {
                             PermissionSet,
                             [PermissionSet::union_all([
                                 PermissionSet::READ,
-                                PermissionSet::WRITE
+                                PermissionSet::WRITE,
+                                PermissionSet::NON_NULL,
                             ])]
                         ),
                         source: "",
@@ -473,7 +474,7 @@ mod tests {
                                     PermissionSet,
                                     [PermissionSet::union_all([
                                         PermissionSet::WRITE,
-                                        PermissionSet::OFFSET_ADD
+                                        PermissionSet::OFFSET_ADD,
                                     ])]
                                 ),
                                 source: "",
@@ -505,7 +506,7 @@ mod tests {
                 mod libc {
 
                     fn strtol(
-                        s: *const c_char: [READ | OFFSET_ADD],
+                        s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
                         endp: *mut *mut c_char: [WRITE, WRITE | OFFSET_ADD],
                         base: c_int,
                     ) -> c_long;
@@ -526,7 +527,8 @@ mod tests {
                                     PermissionSet,
                                     [PermissionSet::union_all([
                                         PermissionSet::READ,
-                                        PermissionSet::OFFSET_ADD
+                                        PermissionSet::OFFSET_ADD,
+                                        PermissionSet::NON_NULL,
                                     ])]
                                 ),
                                 source: "",
@@ -540,7 +542,7 @@ mod tests {
                                         PermissionSet::union_all([PermissionSet::WRITE,]),
                                         PermissionSet::union_all([
                                             PermissionSet::WRITE,
-                                            PermissionSet::OFFSET_ADD
+                                            PermissionSet::OFFSET_ADD,
                                         ])
                                     ]
                                 ),
@@ -572,10 +574,10 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
         mod libc {
 
             #[cfg(target_os = "linux")]
-            fn __errno_location() -> *mut c_int: [READ | WRITE];
+            fn __errno_location() -> *mut c_int: [READ | WRITE | NON_NULL];
 
             #[cfg(target_os = "macos")]
-            fn __error() -> *mut c_int: [READ | WRITE];
+            fn __error() -> *mut c_int: [READ | WRITE | NON_NULL];
 
             fn _exit(
                 status: c_int,
@@ -602,7 +604,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             ) -> c_int;
 
             fn access(
-                path: *const c_char: [READ | OFFSET_ADD],
+                path: *const c_char: [READ | OFFSET_ADD | NON_NULL],
                 amode: c_int,
             ) -> c_int;
 
@@ -619,7 +621,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             ) -> ssize_t;
 
             fn strtol(
-                s: *const c_char: [READ | OFFSET_ADD],
+                s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
                 endp: *mut *mut c_char: [WRITE, WRITE | OFFSET_ADD],
                 base: c_int,
             ) -> c_long;
