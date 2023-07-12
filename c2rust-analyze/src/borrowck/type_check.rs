@@ -28,6 +28,7 @@ struct TypeChecker<'tcx, 'a> {
     hypothesis: &'a PointerTableMut<'a, PermissionSet>,
     local_decls: &'a IndexVec<Local, LocalDecl<'tcx>>,
     current_location: Location,
+    static_origin: Origin,
 }
 
 impl<'tcx> TypeChecker<'tcx, '_> {
@@ -176,6 +177,28 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                                 &self.acx.gacx.adt_metadata,
                                 &self.acx.gacx.static_tys[&did],
                             );
+
+                            for l in lty.iter() {
+                                let static_origin = self.static_origin;
+                                let mut add_subset_base = |pl: Origin, rv: Origin| {
+                                    let point = self.current_point(SubPoint::Mid);
+                                    self.facts.subset_base.push((rv, pl, point));
+                                };
+                                if let Some(origin) = l.label.origin {
+                                    // constrain this origin to be 'static
+                                    eprintln!("constraining origin {origin:?} to 'static lifetime");
+                                    add_subset_base(static_origin, origin);
+                                    add_subset_base(origin, static_origin)
+                                }
+                                for (op, origin) in l.label.origin_params {
+                                    // constrain this origin to be 'static
+                                    eprintln!("constraining origin {op:?} ({origin:?}) to 'static lifetime");
+                                    add_subset_base(static_origin, *origin);
+                                    add_subset_base(*origin, static_origin);
+                                }
+                            }
+
+                            eprintln!("NEW STATIC LTY: {:?}", c.ty().kind());
                             let pointer_id = self.acx.type_of(op).label;
                             let perm = self.hypothesis[pointer_id];
                             let args = self.ltcx.mk_slice(&[lty]);
@@ -581,6 +604,7 @@ pub fn visit_body<'tcx>(
     field_permissions: &HashMap<DefId, PermissionSet>,
     hypothesis: &PointerTableMut<PermissionSet>,
     mir: &Body<'tcx>,
+    static_origin: Origin,
 ) {
     let mut tc = TypeChecker {
         acx,
@@ -593,6 +617,7 @@ pub fn visit_body<'tcx>(
         hypothesis,
         local_decls: &mir.local_decls,
         current_location: Location::START,
+        static_origin,
     };
 
     for (block, bb_data) in mir.basic_blocks().iter_enumerated() {
