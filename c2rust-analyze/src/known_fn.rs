@@ -247,6 +247,22 @@ impl KnownFn {
     }
 }
 
+/// Since [`PermissionSet`]s are allowed to be dropped in any assignment,
+/// the conservation approach for annotations is to
+/// add everything on arguments and nothing on returns.
+///
+/// For example, for [`NON_NULL`], it is not always clearly documented
+/// if an argument can or cannot be `NULL`,
+/// though it is generally more clearly documented for the return type.
+/// Furthermore, some functions are not supposed to accept `NULL`,
+/// but instead of it being UB if called with `NULL`,
+/// the function/syscall returns a normal error like `EFAULT`.
+///
+/// Thus, due to the way [`PermissionSet`]s can be dropped on assignment,
+/// we annotate any argument with [`NON_NULL`] if `NULL` might cause UB,
+/// and we annotate returns with [`NON_NULL`] only if it is strictly guaranteed to be non-`NULL`.
+///
+/// [`NON_NULL`]: PermissionSet::NON_NULL
 macro_rules! known_fns {
     {
         mod $module:ident {
@@ -672,7 +688,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             fn dup(
                 fd: c_int,
             ) -> c_int;
-            
+
             fn dup2(
                 src: c_int,
                 dst: c_int,
@@ -955,7 +971,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             //     src: *const c_void,
             //     n: size_t,
             // ) -> *mut c_void;
-            
+
             // TODO(kkysen) Note: A `&mut []` for `dest` and `&[]` for `src` would be UB since they can overlap.
             // fn memmove(
             //     dest: *mut c_void,
