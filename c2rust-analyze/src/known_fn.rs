@@ -579,6 +579,8 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             #[cfg(target_os = "macos")]
             fn __error() -> *mut c_int: [READ | WRITE | NON_NULL];
 
+            // fn __ctype_b_loc;
+
             fn _exit(
                 status: c_int,
             ) -> !;
@@ -608,11 +610,701 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 amode: c_int,
             ) -> c_int;
 
+            fn alarm(
+                seconds: c_uint,
+            ) -> c_uint;
+
+            // fn atoi(
+            //     s: *const c_char,
+            // ) -> c_int;
+
+            // fn bind(
+            //     socket: c_int,
+            //     address: *const sockaddr,
+            //     address_len: socklen_t,
+            // ) -> c_int;
+
+            // fn calloc(
+            //     nobj: size_t,
+            //     size: size_t,
+            // ) -> *mut c_void;
+
+            // fn chdir(
+            //     dir: *const c_char,
+            // ) -> c_int;
+
+            // fn chmod(
+            //     path: *const c_char,
+            //     mode: mode_t,
+            // ) -> c_int;
+
+            // fn chroot(
+            //     name: *const c_char,
+            // ) -> c_int;
+
+            // fn clock_gettime(
+            //     clk_id: clockid_t,
+            //     tp: *mut timespec,
+            // ) -> c_int;
+
+            fn close(
+                fd: c_int,
+            ) -> c_int;
+
+            fn closelog() -> ();
+
+            // fn dlclose(
+            //     handle: *mut c_void,
+            // ) -> c_int;
+
+            // fn dlerror() -> *mut c_char;
+
+            // fn dlopen(
+            //     filename: *const c_char,
+            //     flag: c_int,
+            // ) -> *mut c_void;
+
+            // fn dlsym(
+            //     handle: *mut c_void,
+            //     symbol: *const c_char,
+            // ) -> *mut c_void;
+
+            fn dup(
+                fd: c_int,
+            ) -> c_int;
+            
+            fn dup2(
+                src: c_int,
+                dst: c_int,
+            ) -> c_int;
+
+            fn epoll_create1(
+                flags: c_int,
+            ) -> c_int;
+
+            // fn epoll_ctl(
+            //     epfd: c_int,
+            //     op: c_int,
+            //     fd: c_int,
+            //     event: *mut epoll_event,
+            // ) -> c_int;
+
+            // fn epoll_wait(
+            //     epfd: c_int,
+            //     events: *mut epoll_event,
+            //     maxevents: c_int,
+            //     timeout: c_int,
+            // ) -> c_int;
+
+            // fn execv(
+            //     prog: *const c_char,
+            //     argv: *const *const c_char,
+            // ) -> c_int;
+
+            // fn execve(
+            //     prog: *const c_char,
+            //     argv: *const *const c_char,
+            //     envp: *const *const c_char,
+            // ) -> c_int;
+
+            fn exit(
+                status: c_int,
+            ) -> !;
+
+            // fn explicit_bzero(
+            //     s: *mut c_void,
+            //     len: size_t,
+            // ) -> ();
+
+            fn fchdir(
+                dirfd: c_int,
+            ) -> c_int;
+
+            // fn fcntl(
+            //     fd: c_int,
+            //     cmd: c_int,
+            //     ...
+            // ) -> c_int,
+
+            // fn fflush(
+            //     file: *mut FILE,
+            // ) -> c_int;
+
+            fn fork() -> pid_t;
+
+            // fn fprintf(
+            //     stream: *mut FILE,
+            //     format: *const c_char,
+            //     ...
+            // ) -> c_int;
+
+            // fn fputs(
+            //     s: *const c_char,
+            //     stream: *mut FILE,
+            // ) -> c_int;
+
+            // fn free(
+            //     p: *mut c_void,
+            // ) -> ();
+
+            // fn freeaddrinfo(
+            //     res: *mut addrinfo,
+            // ) -> ();
+
+            // fn fstat(
+            //     fildes: c_int,
+            //     buf: *mut stat,
+            // ) -> c_int;
+
+            fn ftruncate(
+                fd: c_int,
+                length: off_t,
+            ) -> c_int;
+
+            // fn gai_strerror(
+            //     errcode: c_int,
+            // ) -> *const c_char;
+
+            // fn getaddrinfo(
+            //     node: *const c_char,
+            //     service: *const c_char,
+            //     hints: *const addrinfo,
+            //     res: *mut *mut addrinfo,
+            // ) -> c_int;
+
+            // fn getcwd(
+            //     buf: *mut c_char,
+            //     size: size_t,
+            // ) -> *mut c_char;
+
+            fn getegid() -> gid_t;
+
+            // fn getentropy(
+            //     buf: *mut c_void,
+            //     buflen: size_t,
+            // ) -> c_int;
+
+            // fn getenv(
+            //     s: *const c_char,
+            // ) -> *mut c_char;
+
+            fn geteuid() -> uid_t;
+
+            fn getgid() -> gid_t;
+
+            // fn getgrgid(
+            //     gid: gid_t,
+            // ) -> *mut group;
+
+            // fn getgrnam(
+            //     name: *const c_char,
+            // ) -> *mut group;
+
+            // fn getloadavg(
+            //     loadavg: *mut c_double,
+            //     nelem: c_int,
+            // ) -> c_int;
+
+            // fn getnameinfo(
+            //     sa: *const sockaddr,
+            //     salen: socklen_t,
+            //     host: *mut c_char,
+            //     hostlen: socklen_t,
+            //     serv: *mut c_char,
+            //     sevlen: socklen_t,
+            //     flags: c_int,
+            // ) -> c_int;
+
+            // fn getopt(
+            //     argc: c_int,
+            //     argv: *const *mut c_char,
+            //     optstr: *const c_char,
+            // ) -> c_int;
+
+            // fn getpeername(
+            //     socket: c_int,
+            //     address: *mut sockaddr,
+            //     address_len: *mut socklen_t,
+            // ) -> c_int;
+
+            fn getpid() -> pid_t;
+
+            fn getppid() -> pid_t;
+
+            // fn getpwnam(
+            //     name: *const c_char,
+            // ) -> *mut passwd;
+
+            // fn getrlimit(
+            //     resource: __rlimit_resource_t,
+            //     rlim: *mut rlimit,
+            // ) -> c_int;
+
+            // fn getsockname(
+            //     socket: c_int,
+            //     address: *mut sockaddr,
+            //     address_len: *mut socklen_t,
+            // ) -> c_int;
+
+            // fn getsockopt(
+            //     sockfd: c_int,
+            //     level: c_int,
+            //     optname: c_int,
+            //     optval: *mut c_void,
+            //     optlen: *mut socklen_t,
+            // ) -> c_int;
+
+            fn getuid() -> uid_t;
+
+            // fn glob(
+            //     pattern: *const c_char,
+            //     flags: c_int,
+            //     errfunc: Option<extern "C" fn(epath: *const c_char, errno: c_int) -> c_int>,
+            //     pglob: *mut glob_t,
+            // ) -> c_int;
+
+            // fn globfree(
+            //     pglob: *mut glob_t,
+            // ) -> ();
+
+            // fn gmtime_r(
+            //     time_p: *const time_t,
+            //     result: *mut tm,
+            // ) -> *mut tm;
+
+            // fn htonl;
+
+            // fn htons;
+
+            // fn inet_ntop;
+
+            // fn inet_pton;
+
+            // fn initgroups(
+            //     user: *const c_char,
+            //     group: gid_t,
+            // ) -> c_int;
+
+            // fn inotify_add_watch(
+            //     fd: c_int,
+            //     path: *const c_char,
+            //     mask: u32,
+            // ) -> c_int;
+
+            fn inotify_init() -> c_int;
+
+            fn inotify_init1(
+                flags: c_int,
+            ) -> c_int;
+
+            fn inotify_rm_watch(
+                fd: c_int,
+                wd: c_int,
+            ) -> c_int;
+
+            // fn ioctl(
+            //     fd: c_int,
+            //     request: c_ulong,
+            //     ...
+            // ) -> c_int;
+
+            fn kill(
+                pid: pid_t,
+                sig: c_int,
+            ) -> c_int;
+
+            fn listen(
+                socket: c_int,
+                backlog: c_int,
+            ) -> c_int;
+
+            // fn localtime_r(
+            //     time_p: *const time_t,
+            //     result: *mut tm,
+            // ) -> *mut tm;
+
+            fn lseek(
+                fd: c_int,
+                offset: off_t,
+                whence: c_int,
+            ) -> off_t;
+
+            // fn lstat(
+            //     path: *const c_char,
+            //     buf: *mut stat,
+            // ) -> c_int;
+
+            // fn malloc(
+            //     size: size_t,
+            // ) -> *mut c_void;
+
+            // fn memchr(
+            //     cx: *const c_void,
+            //     c: c_int,
+            //     n: size_t,
+            // ) -> *mut c_void;
+
+            // fn memcmp(
+            //     cx: *const c_void,
+            //     ct: *const c_void,
+            //     n: size_t,
+            // ) -> c_int;
+
+            // fn memcpy(
+            //     dest: *mut c_void,
+            //     src: *const c_void,
+            //     n: size_t,
+            // ) -> *mut c_void;
+            
+            // TODO(kkysen) Note: A `&mut []` for `dest` and `&[]` for `src` would be UB since they can overlap.
+            // fn memmove(
+            //     dest: *mut c_void,
+            //     src: *const c_void,
+            //     n: size_t,
+            // ) -> *mut c_void;
+
+            // fn mempcpy;
+
+            // fn memset(
+            //     dest: *mut c_void,
+            //     c: c_int,
+            //     n: size_t,
+            // ) -> *mut c_void;
+
+            // fn mkostemp(
+            //     template: *mut c_char,
+            //     flags: c_int,
+            // ) -> c_int;
+
+            // fn mmap(
+            //     addr: *mut c_void,
+            //     len: size_t,
+            //     prot: c_int,
+            //     flags: c_int,
+            //     fd: c_int,
+            //     offset: off_t,
+            // ) -> *mut c_void;
+
+            // fn munmap(
+            //     addr: *mut c_void,
+            //     len: size_t,
+            // ) -> c_int;
+
+            // fn ntohs;
+
+            // fn open(
+            //     path: *const c_char,
+            //     oflag: c_int,
+            //     ...
+            // ) -> c_int;
+
+            // fn openlog(
+            //     ident: *const c_char,
+            //     logopt: c_int,
+            //     facility: c_int,
+            // ) -> ();
+
+            // fn perror(
+            //     s: *const c_char,
+            // ) -> ();
+
+            // fn pipe(
+            //     fds: *mut c_int,
+            // ) -> c_int;
+
+            // fn pipe2(
+            //     fds: *mut c_int,
+            //     flags: c_int,
+            // ) -> c_int;
+
+            // fn poll(
+            //     fds: *mut pollfd,
+            //     nfds: nfds_t,
+            //     timeout: c_int,
+            // ) -> c_int;
+
+            // fn prctl(
+            //     option: c_int,
+            //     ...
+            // ) -> c_int;
+
+            // fn pread(
+            //     fd: c_int,
+            //     buf: *mut c_void,
+            //     count: size_t,
+            //     offset: off_t,
+            // ) -> ssize_t;
+
+            // fn printf(
+            //     format: *const c_char,
+            //     ...
+            // ) -> c_int;
+
+            // fn puts(
+            //     s: *const c_char,
+            // ) -> c_int;
+
+            // fn pwrite(
+            //     fd: c_int,
+            //     buf: *const c_void,
+            //     count: size_t,
+            //     offset: off_t,
+            // ) -> ssize_t;
+
+            // fn pwritev(
+            //     fd: c_int,
+            //     iov: *const iovec,
+            //     iovcnt: c_int,
+            //     offset: off_t,
+            // ) -> ssize_t;
+
+            fn raise(
+                signum: c_int,
+            ) -> c_int;
+
+            fn rand() -> c_int;
+
             fn read(
                 fd: c_int,
                 buf: *mut c_void: [WRITE | OFFSET_ADD],
                 count: size_t,
             ) -> ssize_t;
+
+            // fn realloc(
+            //     p: *mut c_void,
+            //     size: size_t,
+            // ) -> *mut c_void;
+
+            // fn recv(
+            //     socket: c_int,
+            //     buf: *mut c_void,
+            //     len: size_t,
+            //     flags: c_int,
+            // ) -> ssize_t;
+
+            // fn rename(
+            //     oldname: *const c_char,
+            //     newname: *const c_char,
+            // ) -> c_int;
+
+            // fn select(
+            //     nfds: c_int,
+            //     readfds: *mut fd_set,
+            //     writefds: *mut fd_set,
+            //     errorfds: *mut fd_set,
+            //     timeout: *mut timeval,
+            // ) -> c_int;
+
+            // fn sendfile(
+            //     out_fd: c_int,
+            //     in_fd: c_int,
+            //     offset: *mut off_t,
+            //     count: size_t,
+            // ) -> ssize_t;
+
+            // fn setenv(
+            //     name: *const c_char,
+            //     val: *const c_char,
+            //     overwrite: c_int,
+            // ) -> c_int;
+
+            fn setgid(
+                gid: gid_t,
+            ) -> c_int;
+
+            // fn setgroups(
+            //     ngroups: size_t,
+            //     ptr: *const gid_t,
+            // ) -> c_int;
+
+            // fn setlocale(
+            //     category: c_int,
+            //     locale: *const c_char,
+            // ) -> *mut c_char;
+
+            // fn setrlimit(
+            //     resource: __rlimit_resource_t,
+            //     rlim: *const rlimit,
+            // ) -> c_int;
+
+            fn setsid() -> pid_t;
+
+            // fn setsockopt(
+            //     socket: c_int,
+            //     level: c_int,
+            //     name: c_int,
+            //     value: *const c_void,
+            //     option_len: socklen_t,
+            // ) -> c_int;
+
+            fn setuid(
+                uid: uid_t,
+            ) -> c_int;
+
+            fn shutdown(
+                socket: c_int,
+                how: c_int,
+            ) -> c_int;
+
+            // fn sigaction(
+            //     signum: c_int,
+            //     act: *const sigaction,
+            //     oldact: *mut sigaction,
+            // ) -> c_int;
+
+            // fn sigemptyset(
+            //     set: *mut sigset_t,
+            // ) -> c_int;
+
+            fn signal(
+                signum: c_int,
+                handler: sighandler_t,
+            ) -> sighandler_t;
+
+            // fn snprintf(
+            //     s: *mut c_char,
+            //     n: size_t,
+            //     format: *const c_char,
+            //     ...
+            // ) -> c_int;
+
+            fn socket(
+                domain: c_int,
+                ty: c_int,
+                protocol: c_int,
+            ) -> c_int;
+
+            // fn splice(
+            //     fd_in: c_int,
+            //     off_in: *mut loff_t,
+            //     fd_out: c_int,
+            //     off_out: *mut loff_t,
+            //     len: size_t,
+            //     flags: c_uint,
+            // ) -> ssize_t;
+
+            fn srand(
+                seed: c_uint,
+            ) -> ();
+
+            // fn srandom;
+
+            // fn stat(
+            //     path: *const c_char,
+            //     buf: *mut stat,
+            // ) -> c_int;
+
+            // fn strchr(
+            //     cs: *const c_char,
+            //     c: c_int,
+            // ) -> *mut c_char;
+
+            // fn strcmp(
+            //     cs: *const c_char,
+            //     ct: *const c_char,
+            // ) -> c_int;
+
+            // fn strcspn(
+            //     cs: *const c_char,
+            //     ct: *const c_char,
+            // ) -> size_t;
+
+            // fn strdup(
+            //     cs: *const c_char,
+            // ) -> *mut c_char;
+
+            // fn strerror_r(
+            //     errnum: c_int,
+            //     buf: *mut c_char,
+            //     buflen: size_t,
+            // ) -> c_int;
+
+            // fn strftime(
+            //     s: *mut c_char,
+            //     max: size_t,
+            //     format: *const c_char,
+            //     tm: *const tm,
+            // ) -> size_t;
+
+            // fn strlen(
+            //     cs: *const c_char,
+            // ) -> size_t;
+
+            // fn strncasecmp(
+            //     s1: *const c_char,
+            //     s2: *const c_char,
+            //     n: size_t,
+            // ) -> c_int;
+
+            // fn strncmp(
+            //     cs: *const c_char,
+            //     ct: *const c_char,
+            //     n: size_t,
+            // ) -> c_int;
+
+            // fn strrchr(
+            //     cs: *const c_char,
+            //     c: c_int,
+            // ) -> *mut c_char;
+
+            // fn strstr(
+            //     cs: *const c_char,
+            //     ct: *const c_char,
+            // ) -> *mut c_char;
+
+            fn strtol(
+                s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                endp: *mut *mut c_char: [WRITE, WRITE | OFFSET_ADD],
+                base: c_int,
+            ) -> c_long;
+
+            // fn strtoll(
+            //     s: *const c_char,
+            //     endp: *mut *mut c_char,
+            //     base: c_int,
+            // ) -> c_longlong;
+
+            // fn strtoul(
+            //     s: *const c_char,
+            //     endp: *mut *mut c_char,
+            //     base: c_int,
+            // ) -> c_ulong;
+
+            fn sysconf(
+                name: c_int,
+            ) -> c_long;
+
+            // fn syslog(
+            //     priority: c_int,
+            //     message: *const c_char,
+            //     ...
+            // );
+
+            // fn time(
+            //     time: *mut time_t,
+            // ) -> time_t;
+
+            // fn timegm(
+            //     tm: *mut tm,
+            // ) -> time_t;
+
+            // fn tzset;
+
+            // fn unlink(
+            //     c: *const c_char,
+            // ) -> c_int;
+
+            // fn unsetenv(
+            //     name: *const c_char,
+            // ) -> c_int;
+
+            // fn vsnprintf;
+
+            // fn waitpid(
+            //     pid: pid_t,
+            //     status: *mut c_int,
+            //     options: c_int,
+            // ) -> pid_t;
 
             fn write(
                 fd: c_int,
@@ -620,11 +1312,11 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 count: size_t,
             ) -> ssize_t;
 
-            fn strtol(
-                s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
-                endp: *mut *mut c_char: [WRITE, WRITE | OFFSET_ADD],
-                base: c_int,
-            ) -> c_long;
+            // fn writev(
+            //     fd: c_int,
+            //     iov: *const iovec,
+            //     iovcnt: c_int,
+            // ) -> ssize_t;
 
         }
     }
