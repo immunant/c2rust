@@ -1,6 +1,8 @@
+From the repository root:
+
 ```sh
 cargo build
-${CARGO_TARGET_DIR:-../target/debug/c2rust-instrument} --metadata instrument.target/debug/metadata.bc -- build --manifest-path analysis/tests/misc/Cargo.toml
+${CARGO_TARGET_DIR:-target}/debug/c2rust-instrument --metadata analysis/tests/misc/instrument.target/debug/metadata.bc -- build --manifest-path analysis/tests/misc/Cargo.toml
 (cd analysis/tests/misc/instrument.target/debug; INSTRUMENT_BACKEND=debug INSTRUMENT_RUNTIME=bg METADATA_FILE=metadata.bc ./c2rust-analysis-tests-misc)
 ```
 
