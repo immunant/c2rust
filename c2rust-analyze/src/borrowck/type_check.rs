@@ -14,8 +14,10 @@ use rustc_middle::mir::{
     Place, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::adjustment::PointerCast;
-use rustc_middle::ty::{AdtDef, FieldDef, TyKind};
+use rustc_middle::ty::{AdtDef, FieldDef, RegionKind, TyKind};
 use std::collections::HashMap;
+
+use super::OriginArg;
 
 struct TypeChecker<'tcx, 'a> {
     acx: &'a AnalysisCtxt<'a, 'tcx>,
@@ -52,21 +54,25 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 field_metadata.origin_args,
                 &mut |flty| match flty.kind() {
                     TyKind::Ref(..) | TyKind::RawPtr(..) => {
-                        let origin = {
+                        let origin_arg = {
                             assert!(flty.label.len() == 1);
                             Some(flty.label[0])
-                        }
-                        .map(|oa| {
-                            OriginParam::try_from(&oa)
-                                .expect("'static lifetimes not yet supported")
-                        })
-                        .and_then(|o| {
-                            eprintln!(
-                                "finding {o:?} in {base_adt_def:?} {base_origin_param_map:?}"
-                            );
-                            base_origin_param_map.get(&o)
-                        })
-                        .cloned();
+                        };
+
+                        let origin = if matches!(origin_arg, Some(OriginArg::Actual(region)) if matches!(region.kind(), RegionKind::ReStatic)) {
+                            Some(self.static_origin)
+                        } else {
+                            origin_arg.map(|oa| {
+                                OriginParam::try_from(&oa).unwrap()
+                            })
+                            .and_then(|o| {
+                                eprintln!(
+                                    "finding {o:?} in {base_adt_def:?} {base_origin_param_map:?}"
+                                );
+                                base_origin_param_map.get(&o)
+                            })
+                            .cloned()
+                        };
 
                         Label {
                             origin,
@@ -116,25 +122,21 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             .label
                             .iter().zip(field_adt_metadata.lifetime_params.iter())
                         {
-                            let field_lifetime_param =
-                                if let Ok(param) = OriginParam::try_from(field_lifetime_arg) {
-                                    param
-                                } else {
-                                    panic!("'static lifetimes are not yet supported")
-                                };
+                            let field_lifetime_param = OriginParam::try_from(field_lifetime_arg).ok();
 
-                            if let Some((base_lifetime_param, og)) =
+                            field_lifetime_param.and_then(|field_lifetime_param| {
                                 base_origin_param_map.get_key_value(&field_lifetime_param)
-                            {
+                            }).map(|(base_lifetime_param, og)| {
                                 eprintln!(
-                                        "mapping {base_adt_def:?} lifetime parameter {base_lifetime_param:?} to \
-                                        {base_adt_def:?}.{:} struct definition lifetime parameter {field_struct_lifetime_param:?}, \
-                                        corresponding to its lifetime parameter {field_lifetime_param:?} within {base_adt_def:?}",
-                                        field_def.name
-                                    );
-                                field_origin_param_map.push((*field_struct_lifetime_param, *og));
-                            }
+                                    "mapping {base_adt_def:?} lifetime parameter {base_lifetime_param:?} to \
+                                    {base_adt_def:?}.{:} struct definition lifetime parameter {field_struct_lifetime_param:?}, \
+                                    corresponding to its lifetime parameter {field_lifetime_param:?} within {base_adt_def:?}",
+                                    field_def.name
+                                );
+                            field_origin_param_map.push((*field_struct_lifetime_param, *og));
+                            });
                         }
+
                         let origin_params= self.ltcx.arena().alloc_from_iter(field_origin_param_map.into_iter());
                         Label {
                             origin: None,

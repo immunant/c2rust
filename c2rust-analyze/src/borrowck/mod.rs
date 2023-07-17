@@ -10,7 +10,7 @@ use rustc_hir::def_id::DefId;
 use rustc_hir::{GenericParamKind, ItemKind, Node};
 use rustc_middle::mir::{Body, LocalKind, Place, StatementKind, START_BLOCK};
 use rustc_middle::ty::{EarlyBoundRegion, List, Region, Ty, TyKind};
-use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
+use rustc_type_ir::RegionKind::ReEarlyBound;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
@@ -65,8 +65,6 @@ pub enum OriginParam {
     /// A hypothesized region derived from a pointer type,
     /// e.g. `'h0` derived from the pointer in `*mut foo`
     Hypothetical(i64),
-    /// The 'static region
-    Static,
 }
 
 /// An origin arg of a field type resolve in a MIR body
@@ -98,7 +96,6 @@ impl TryFrom<&OriginArg<'_>> for OriginParam {
             OriginArg::Hypothetical(h) => OriginParam::Hypothetical(*h),
             OriginArg::Actual(r) => match r.kind() {
                 ReEarlyBound(eb) => OriginParam::Actual(eb),
-                ReStatic => OriginParam::Static,
                 _ => return Err(()),
             },
         })
@@ -110,7 +107,6 @@ impl std::fmt::Debug for OriginParam {
         match &self {
             OriginParam::Actual(r) => write!(f, "{:}", r.name),
             OriginParam::Hypothetical(h) => write!(f, "'h{h:?}"),
-            OriginParam::Static => write!(f, "'static"),
         }
     }
 }
