@@ -207,9 +207,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                                 TyKind::Ref(..) | TyKind::RawPtr(..)
                             ));
 
-                            // Polonius does not appear to issue loans for statics
+                            // Polonius does not appear to issue loans for statics,
+                            // but assigns an origin
                             let label = Label {
-                                origin: None,
+                                origin: Some(self.maps.origin()),
                                 origin_params: &[],
                                 perm,
                             };
