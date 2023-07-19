@@ -408,6 +408,10 @@ fn run(tcx: TyCtxt) {
         eprintln!("  {:?}", ldid);
     }
 
+    // ----------------------------------
+    // Label all global types
+    // ----------------------------------
+
     // Assign global `PointerId`s for all pointers that appear in function signatures.
     for &ldid in &all_fn_ldids {
         let sig = tcx.fn_sig(ldid.to_def_id());
@@ -451,6 +455,10 @@ fn run(tcx: TyCtxt) {
         }
         gacx.assign_pointer_to_fields(did);
     }
+
+    // ----------------------------------
+    // Compute dataflow constraints
+    // ----------------------------------
 
     // Initial pass to assign local `PointerId`s and gather equivalence constraints, which state
     // that two pointer types must be converted to the same reference type.  Some additional data
@@ -519,6 +527,10 @@ fn run(tcx: TyCtxt) {
         func_info.insert(ldid, info);
     }
 
+    // ----------------------------------
+    // Remap `PointerId`s by equivalence class
+    // ----------------------------------
+
     // Remap pointers based on equivalence classes, so all members of an equivalence class now use
     // the same `PointerId`.
     let (global_counter, global_equiv_map) = global_equiv.renumber();
@@ -542,6 +554,10 @@ fn run(tcx: TyCtxt) {
             .remap_pointers(global_equiv_map.and(&local_equiv_map));
         info.local_equiv.clear();
     }
+
+    // ----------------------------------
+    // Build initial assignment
+    // ----------------------------------
 
     // Compute permission and flag assignments.
 
@@ -593,7 +609,7 @@ fn run(tcx: TyCtxt) {
         info.lasn.set(lasn);
     }
 
-    // Process PDG
+    // Load permission info from PDG
     let mut func_def_path_hash_to_ldid = HashMap::new();
     for &ldid in &all_fn_ldids {
         let def_path_hash: (u64, u64) = tcx.def_path_hash(ldid.to_def_id()).0.as_value();
@@ -710,6 +726,10 @@ fn run(tcx: TyCtxt) {
         make_sig_fixed(&mut gasn, lsig);
     }
 
+    // ----------------------------------
+    // Run dataflow solver and borrowck analysis
+    // ----------------------------------
+
     // For testing, putting #[c2rust_analyze_test::fail_before_analysis] on a function marks it as
     // failed at this point.
     for &ldid in &all_fn_ldids {
@@ -799,6 +819,15 @@ fn run(tcx: TyCtxt) {
     }
     eprintln!("reached fixpoint in {} iterations", loop_count);
 
+    // Check that these perms haven't changed.
+    for (ptr, perms) in gacx.known_fn_ptr_perms() {
+        assert_eq!(perms, gasn.perms[ptr]);
+    }
+
+    // ----------------------------------
+    // Generate rewrites
+    // ----------------------------------
+
     // For testing, putting #[c2rust_analyze_test::fail_before_rewriting] on a function marks it as
     // failed at this point.
     for &ldid in &all_fn_ldids {
@@ -809,11 +838,6 @@ fn run(tcx: TyCtxt) {
             ldid.to_def_id(),
             PanicDetail::new("explicit fail_before_rewriting for testing".to_owned()),
         );
-    }
-
-    // Check that these perms haven't changed.
-    for (ptr, perms) in gacx.known_fn_ptr_perms() {
-        assert_eq!(perms, gasn.perms[ptr]);
     }
 
     // Buffer debug output for each function.  Grouping together all the different types of info
@@ -926,6 +950,29 @@ fn run(tcx: TyCtxt) {
         }
     }
 
+    let static_rewrites = rewrite::gen_static_rewrites(&gacx, &gasn);
+    let mut statics_report = String::new();
+    writeln!(
+        statics_report,
+        "generated {} static rewrites:",
+        static_rewrites.len()
+    )
+    .unwrap();
+    for &(span, ref rw) in &static_rewrites {
+        writeln!(
+            statics_report,
+            "    {}: {}",
+            describe_span(gacx.tcx, span),
+            rw
+        )
+        .unwrap();
+    }
+    all_rewrites.extend(static_rewrites);
+
+    // ----------------------------------
+    // Print reports for tests and debugging
+    // ----------------------------------
+
     // Print analysis results for each function in `all_fn_ldids`, going in declaration order.
     // Concretely, we iterate over `body_owners()`, which is a superset of `all_fn_ldids`, and
     // filter based on membership in `func_info`, which contains an entry for each ID in
@@ -993,6 +1040,7 @@ fn run(tcx: TyCtxt) {
             &gasn.flags,
         );
     }
+    eprintln!("\n{statics_report}");
 
     eprintln!("\nfinal labeling for fields:");
     let mut field_dids = gacx.field_ltys.keys().cloned().collect::<Vec<_>>();
@@ -1008,15 +1056,16 @@ fn run(tcx: TyCtxt) {
         }
     }
 
-    let static_rewrites = rewrite::gen_static_rewrites(&gacx, &gasn);
-    eprintln!("generated {} static rewrites:", static_rewrites.len());
-    for &(span, ref rw) in &static_rewrites {
-        eprintln!("    {}: {}", describe_span(gacx.tcx, span), rw);
-    }
-    all_rewrites.extend(static_rewrites);
+    // ----------------------------------
+    // Apply rewrites
+    // ----------------------------------
 
     // Apply rewrite to all functions at once.
     rewrite::apply_rewrites(tcx, all_rewrites);
+
+    // ----------------------------------
+    // Report caught panics
+    // ----------------------------------
 
     // Report errors that were caught previously
     eprintln!("\nerror details:");
