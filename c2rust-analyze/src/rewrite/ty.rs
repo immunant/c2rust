@@ -380,82 +380,90 @@ fn adt_ty_rw<S>(
     )
 }
 
-impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
-    fn handle_ty(&mut self, rw_lty: RwLTy<'tcx>, hir_ty: &hir::Ty<'tcx>) {
-        if !rw_lty.ty.is_adt()
-            && rw_lty.label.ty_desc.is_none()
-            && !rw_lty.label.descendant_has_rewrite
-        {
-            // No rewrites here or in any descendant of this HIR node.
+/// Generate rewrites on `hir_ty` according to its labeled representation `rw_lty`.
+fn rewrite_ty<'tcx>(
+    rw_lcx: LabeledTyCtxt<'tcx, RewriteLabel<'tcx>>,
+    hir_rewrites: &mut Vec<(Span, Rewrite)>,
+    rw_lty: RwLTy<'tcx>,
+    hir_ty: &hir::Ty<'tcx>,
+) {
+    if !rw_lty.ty.is_adt() && rw_lty.label.ty_desc.is_none() && !rw_lty.label.descendant_has_rewrite
+    {
+        // No rewrites here or in any descendant of this HIR node.
+        return;
+    }
+
+    let hir_args = match deconstruct_hir_ty(rw_lty.ty, hir_ty) {
+        Some(x) => x,
+        None => {
+            // `hir_ty` doesn't have the expected structure (for example, we expected a type
+            // like `*mut T`, but it's actually an alias `MyPtr`), so we can't rewrite inside
+            // it.  Instead, we discard it completely and pretty-print `rw_lty` (with rewrites
+            // applied).
+            let ty = mk_rewritten_ty(rw_lcx, rw_lty);
+            let printer = FmtPrinter::new(*rw_lcx, Namespace::TypeNS);
+            let s = ty.print(printer).unwrap().into_buffer();
+            hir_rewrites.push((hir_ty.span, Rewrite::PrintTy(s)));
             return;
         }
+    };
 
-        let hir_args = match deconstruct_hir_ty(rw_lty.ty, hir_ty) {
-            Some(x) => x,
-            None => {
-                // `hir_ty` doesn't have the expected structure (for example, we expected a type
-                // like `*mut T`, but it's actually an alias `MyPtr`), so we can't rewrite inside
-                // it.  Instead, we discard it completely and pretty-print `rw_lty` (with rewrites
-                // applied).
-                let ty = mk_rewritten_ty(self.rw_lcx, rw_lty);
-                let printer = FmtPrinter::new(*self.rw_lcx, Namespace::TypeNS);
-                let s = ty.print(printer).unwrap().into_buffer();
-                self.hir_rewrites.push((hir_ty.span, Rewrite::PrintTy(s)));
-                return;
-            }
+    if let Some((own, qty)) = rw_lty.label.ty_desc {
+        assert_eq!(hir_args.len(), 1);
+
+        let mut rw = Rewrite::Sub(0, hir_args[0].span);
+
+        if own == Ownership::Cell {
+            rw = Rewrite::TyCtor("core::cell::Cell".into(), vec![rw]);
+        }
+
+        rw = match qty {
+            Quantity::Single => rw,
+            Quantity::Slice => Rewrite::TySlice(Box::new(rw)),
+            // TODO: This should generate `OffsetPtr<T>` rather than `&[T]`, but `OffsetPtr` is
+            // NYI
+            Quantity::OffsetPtr => Rewrite::TySlice(Box::new(rw)),
+            Quantity::Array => panic!("can't rewrite to Quantity::Array"),
         };
 
-        if let Some((own, qty)) = rw_lty.label.ty_desc {
-            assert_eq!(hir_args.len(), 1);
+        let lifetime_type = match rw_lty.label.lifetime {
+            [lifetime] => LifetimeName::Explicit(format!("{lifetime:?}")),
+            [] => LifetimeName::Elided,
+            _ => panic!("Pointer or reference type cannot have multiple lifetime parameters"),
+        };
+        rw = match own {
+            Ownership::Raw => Rewrite::TyPtr(Box::new(rw), Mutability::Not),
+            Ownership::RawMut => Rewrite::TyPtr(Box::new(rw), Mutability::Mut),
+            Ownership::Imm => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
+            Ownership::Cell => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
+            Ownership::Mut => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Mut),
+            Ownership::Rc => todo!(),
+            Ownership::Box => todo!(),
+        };
 
-            let mut rw = Rewrite::Sub(0, hir_args[0].span);
+        hir_rewrites.push((hir_ty.span, rw));
+    }
 
-            if own == Ownership::Cell {
-                rw = Rewrite::TyCtor("core::cell::Cell".into(), vec![rw]);
-            }
+    if let TyKind::Adt(adt_def, substs) = rw_lty.ty.kind() {
+        if !rw_lty.label.lifetime.is_empty() {
+            hir_rewrites.push((
+                hir_ty.span,
+                adt_ty_rw(adt_def, rw_lty.label.lifetime, substs),
+            ))
+        };
+    }
 
-            rw = match qty {
-                Quantity::Single => rw,
-                Quantity::Slice => Rewrite::TySlice(Box::new(rw)),
-                // TODO: This should generate `OffsetPtr<T>` rather than `&[T]`, but `OffsetPtr` is
-                // NYI
-                Quantity::OffsetPtr => Rewrite::TySlice(Box::new(rw)),
-                Quantity::Array => panic!("can't rewrite to Quantity::Array"),
-            };
-
-            let lifetime_type = match rw_lty.label.lifetime {
-                [lifetime] => LifetimeName::Explicit(format!("{lifetime:?}")),
-                [] => LifetimeName::Elided,
-                _ => panic!("Pointer or reference type cannot have multiple lifetime parameters"),
-            };
-            rw = match own {
-                Ownership::Raw => Rewrite::TyPtr(Box::new(rw), Mutability::Not),
-                Ownership::RawMut => Rewrite::TyPtr(Box::new(rw), Mutability::Mut),
-                Ownership::Imm => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
-                Ownership::Cell => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
-                Ownership::Mut => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Mut),
-                Ownership::Rc => todo!(),
-                Ownership::Box => todo!(),
-            };
-
-            self.hir_rewrites.push((hir_ty.span, rw));
+    if rw_lty.label.descendant_has_rewrite {
+        for (&arg_rw_lty, arg_hir_ty) in rw_lty.args.iter().zip(hir_args.into_iter()) {
+            // FIXME: get the actual lifetime from ADT/Field Metadata
+            rewrite_ty(rw_lcx, hir_rewrites, arg_rw_lty, arg_hir_ty);
         }
+    }
+}
 
-        if let TyKind::Adt(adt_def, substs) = rw_lty.ty.kind() {
-            if !rw_lty.label.lifetime.is_empty() {
-                self.hir_rewrites.push((
-                    hir_ty.span,
-                    adt_ty_rw(adt_def, rw_lty.label.lifetime, substs),
-                ))
-            };
-        }
-
-        if rw_lty.label.descendant_has_rewrite {
-            for (&arg_rw_lty, arg_hir_ty) in rw_lty.args.iter().zip(hir_args.into_iter()) {
-                // FIXME: get the actual lifetime from ADT/Field Metadata
-                self.handle_ty(arg_rw_lty, arg_hir_ty);
-            }
-        }
+impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
+    fn handle_ty(&mut self, rw_lty: RwLTy<'tcx>, hir_ty: &hir::Ty<'tcx>) {
+        rewrite_ty(self.rw_lcx, &mut self.hir_rewrites, rw_lty, hir_ty);
     }
 }
 
