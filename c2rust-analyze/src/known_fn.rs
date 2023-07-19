@@ -742,6 +742,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             // fn fcntl(
             //     fd: c_int,
             //     cmd: c_int,
+                   // TODO(kkysen) varargs
             //     ...
             // ) -> c_int,
 
@@ -754,6 +755,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             // fn fprintf(
             //     stream: *mut FILE: [READ | WRITE | NON_NULL],
             //     format: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                   // TODO(kkysen) varargs, printf-style
             //     ...
             // ) -> c_int;
 
@@ -941,6 +943,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             // fn ioctl(
             //     fd: c_int,
             //     request: c_ulong,
+                   // TODO(kkysen) varargs
             //     ...
             // ) -> c_int;
 
@@ -1041,6 +1044,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             // fn open(
             //     path: *const c_char,
             //     oflag: c_int,
+                   // TODO(kkysen) varargs
             //     ...
             // ) -> c_int;
 
@@ -1071,6 +1075,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
 
             // fn prctl(
             //     option: c_int,
+                   // TODO(kkysen) varargs
             //     ...
             // ) -> c_int;
 
@@ -1083,6 +1088,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
 
             // fn printf(
             //     format: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                   // TODO(kkysen) varargs, printf-style
             //     ...
             // ) -> c_int;
 
@@ -1214,6 +1220,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             //     s: *mut c_char: [WRITE | OFFSET_ADD | NON_NULL],
             //     n: size_t,
             //     format: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                   // TODO(kkysen) varargs, printf-style
             //     ...
             // ) -> c_int;
 
@@ -1329,6 +1336,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             // fn syslog(
             //     priority: c_int,
             //     message: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                   // TODO(kkysen) varargs, printf-style
             //     ...
             // );
 
