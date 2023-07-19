@@ -28,7 +28,7 @@ use crate::panic_detail::PanicDetail;
 use crate::util::{Callee, TestAttr};
 use context::AdtMetadataTable;
 use rustc_hir::def::DefKind;
-use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_hir::def_id::{CrateNum, DefId, DefIndex, LocalDefId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
@@ -40,9 +40,12 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::{Debug, Display, Write as _};
+use std::fs::File;
+use std::io::{self, BufRead, BufReader};
 use std::iter;
 use std::ops::{Deref, DerefMut, Index};
 use std::panic::AssertUnwindSafe;
+use std::str::FromStr;
 
 use c2rust_pdg::graph::Graphs;
 
@@ -386,11 +389,61 @@ fn mark_foreign_fixed<'tcx>(
     }
 }
 
+fn parse_def_id(s: &str) -> Result<DefId, &'static str> {
+    // DefId debug output looks like `DefId(0:1 ~ alias1[0dc4]::{use#0})`.  The ` ~ name` part may
+    // be omitted if the name/DefPath info is not available at the point in the compiler where the
+    // `DefId` was printed.
+    let s = s
+        .strip_prefix("DefId(")
+        .ok_or("does not start with `DefId(`")?;
+    let s = s.strip_suffix(")").ok_or("does not end with `)`")?;
+    let s = match s.find(" ~ ") {
+        Some(i) => &s[..i],
+        None => s,
+    };
+    let i = s
+        .find(':')
+        .ok_or("does not contain `:` in `CrateNum:DefIndex` part")?;
+    let krate_str = &s[..i];
+    let index_str = &s[i + 1..];
+    let krate = u32::from_str(krate_str).map_err(|_| "failed to parse CrateNum")?;
+    let index = u32::from_str(index_str).map_err(|_| "failed to parse DefIndex")?;
+    Ok(DefId {
+        krate: CrateNum::from_u32(krate),
+        index: DefIndex::from_u32(index),
+    })
+}
+
+fn read_fixed_defs_list(path: &str) -> io::Result<HashSet<DefId>> {
+    let f = BufReader::new(File::open(path)?);
+    let mut def_ids = HashSet::new();
+    for (i, line) in f.lines().enumerate() {
+        let line = line?;
+        let line = line.trim();
+        if line.len() == 0 || line.starts_with('#') {
+            continue;
+        }
+
+        let def_id = parse_def_id(&line).unwrap_or_else(|e| {
+            panic!("failed to parse {} line {}: {}", path, i + 1, e);
+        });
+        def_ids.insert(def_id);
+    }
+    Ok(def_ids)
+}
+
 fn run(tcx: TyCtxt) {
     eprintln!("all defs:");
     for ldid in tcx.hir_crate_items(()).definitions() {
         eprintln!("{:?}", ldid);
     }
+
+    // Load the list of fixed defs early, so any errors are reported immediately.
+    let fixed_defs = if let Ok(path) = env::var("C2RUST_ANALYZE_FIXED_DEFS_LIST") {
+        read_fixed_defs_list(&path).unwrap()
+    } else {
+        HashSet::new()
+    };
 
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
