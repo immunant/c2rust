@@ -910,12 +910,16 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 result: *mut tm: [READ | WRITE | NON_NULL],
             ) -> *mut tm: [READ | WRITE];
 
+            // TODO(kkysen) Not in `libc` crate.
             // fn htonl;
 
+            // TODO(kkysen) Not in `libc` crate.
             // fn htons;
 
+            // TODO(kkysen) Not in `libc` crate.
             // fn inet_ntop;
 
+            // TODO(kkysen) Not in `libc` crate.
             // fn inet_pton;
 
             fn initgroups(
@@ -1008,6 +1012,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 // it can without error, and thus this can return `NULL`.
             ) -> *mut c_void: [WRITE | OFFSET_ADD];
 
+            // TODO(kkysen) Not in `libc` crate.
             // fn mempcpy;
 
             fn memset(
@@ -1039,6 +1044,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 len: size_t,
             ) -> c_int;
 
+            // TODO(kkysen) Not in `libc` crate.
             // fn ntohs;
 
             // fn open(
@@ -1243,6 +1249,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 seed: c_uint,
             ) -> ();
 
+            // TODO(kkysen) Not in `libc` crate.
             // fn srandom;
 
             fn stat(
@@ -1348,6 +1355,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 tm: *mut tm: [READ | WRITE | NON_NULL],
             ) -> time_t;
 
+            // TODO(kkysen) Not in `libc` crate.
             // fn tzset;
 
             fn unlink(
@@ -1358,6 +1366,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
             ) -> c_int;
 
+            // TODO(kkysen) Not in `libc` crate.
             // fn vsnprintf;
 
             fn waitpid(
