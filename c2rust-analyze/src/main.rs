@@ -950,7 +950,10 @@ fn run(tcx: TyCtxt) {
         }
     }
 
-    let static_rewrites = rewrite::gen_static_rewrites(&gacx, &gasn);
+    let mut static_rewrites = Vec::new();
+    for (&def_id, &ptr) in gacx.addr_of_static.iter() {
+        static_rewrites.extend(rewrite::gen_static_rewrites(tcx, &gasn, def_id, ptr));
+    }
     let mut statics_report = String::new();
     writeln!(
         statics_report,
