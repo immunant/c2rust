@@ -783,17 +783,52 @@ fn run(tcx: TyCtxt) {
         }
     }
 
-    // For testing, putting #[c2rust_analyze_test::fixed_signature] on a function makes all
-    // pointers in its signature FIXED.
-    for &ldid in &all_fn_ldids {
-        if !util::has_test_attr(tcx, ldid, TestAttr::FixedSignature) {
+    // Items in the "fixed defs" list have all pointers in their types set to `FIXED`.  For
+    // testing, putting #[c2rust_analyze_test::fixed_signature] on an item has the same effect.
+    for ldid in tcx.hir_crate_items(()).definitions() {
+        let make_fixed = fixed_defs.contains(&ldid.to_def_id())
+            || util::has_test_attr(tcx, ldid, TestAttr::FixedSignature);
+        if !make_fixed {
             continue;
         }
-        let lsig = match gacx.fn_sigs.get(&ldid.to_def_id()) {
-            Some(x) => x,
-            None => panic!("missing fn_sig for {:?}", ldid),
-        };
-        make_sig_fixed(&mut gasn, lsig);
+        match tcx.def_kind(ldid.to_def_id()) {
+            DefKind::Fn | DefKind::AssocFn => {
+                let lsig = match gacx.fn_sigs.get(&ldid.to_def_id()) {
+                    Some(x) => x,
+                    None => panic!("missing fn_sig for {:?}", ldid),
+                };
+                make_sig_fixed(&mut gasn, lsig);
+            }
+
+            DefKind::Struct | DefKind::Enum | DefKind::Union => {
+                let adt_def = tcx.adt_def(ldid);
+                for field in adt_def.all_fields() {
+                    let lty = match gacx.field_ltys.get(&field.did) {
+                        Some(&x) => x,
+                        None => panic!("missing field_lty for {:?}", ldid),
+                    };
+                    make_ty_fixed(&mut gasn, lty);
+                }
+            }
+
+            DefKind::Static(_) => {
+                let lty = match gacx.static_tys.get(&ldid.to_def_id()) {
+                    Some(&x) => x,
+                    None => panic!("missing static_ty for {:?}", ldid),
+                };
+                make_ty_fixed(&mut gasn, lty);
+
+                let ptr = match gacx.addr_of_static.get(&ldid.to_def_id()) {
+                    Some(&x) => x,
+                    None => panic!("missing addr_of_static for {:?}", ldid),
+                };
+                if !ptr.is_none() {
+                    gasn.flags[ptr].insert(FlagSet::FIXED);
+                }
+            }
+
+            _ => {}
+        }
     }
 
     // ----------------------------------
@@ -962,6 +997,9 @@ fn run(tcx: TyCtxt) {
                 if util::has_test_attr(tcx, ldid, TestAttr::SkipRewrite) {
                     return;
                 }
+                if fixed_defs.contains(&ldid.to_def_id()) {
+                    return;
+                }
 
                 let hir_body_id = tcx.hir().body_owned_by(ldid);
                 let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
@@ -1023,6 +1061,9 @@ fn run(tcx: TyCtxt) {
     // Generate rewrites for statics
     let mut static_rewrites = Vec::new();
     for (&def_id, &ptr) in gacx.addr_of_static.iter() {
+        if fixed_defs.contains(&def_id) {
+            continue;
+        }
         static_rewrites.extend(rewrite::gen_static_rewrites(tcx, &gasn, def_id, ptr));
     }
     let mut statics_report = String::new();
@@ -1048,6 +1089,9 @@ fn run(tcx: TyCtxt) {
     for &def_id in gacx.adt_metadata.table.keys() {
         if gacx.foreign_mentioned_tys.contains(&def_id) {
             eprintln!("Avoiding rewrite for foreign-mentioned type: {def_id:?}");
+            continue;
+        }
+        if fixed_defs.contains(&def_id) {
             continue;
         }
 
