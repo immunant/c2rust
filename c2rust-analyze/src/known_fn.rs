@@ -696,10 +696,12 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 dst: c_int,
             ) -> c_int;
 
+            #[cfg(target_os = "linux")]
             fn epoll_create1(
                 flags: c_int,
             ) -> c_int;
 
+            #[cfg(target_os = "linux")]
             fn epoll_ctl(
                 epfd: c_int,
                 op: c_int,
@@ -708,6 +710,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 event: *mut epoll_event: [READ],
             ) -> c_int;
 
+            #[cfg(target_os = "linux")]
             fn epoll_wait(
                 epfd: c_int,
                 events: *mut epoll_event: [WRITE | OFFSET_ADD | NON_NULL],
@@ -730,6 +733,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 status: c_int,
             ) -> !;
 
+            #[cfg(target_os = "linux")]
             fn explicit_bzero(
                 s: *mut c_void: [WRITE | OFFSET_ADD | NON_NULL],
                 len: size_t,
@@ -806,6 +810,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
 
             fn getegid() -> gid_t;
 
+            #[cfg(target_os = "linux")]
             fn getentropy(
                 buf: *mut c_void: [WRITE | OFFSET_ADD | NON_NULL],
                 buflen: size_t,
@@ -871,8 +876,15 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 // as it may be statically allocated and reused.  It is not meant to be modified.
             ) -> *mut passwd: [READ];
 
+            #[cfg(target_os = "linux")]
             fn getrlimit(
                 resource: __rlimit_resource_t,
+                rlim: *mut rlimit: [WRITE | NON_NULL],
+            ) -> c_int;
+
+            #[cfg(target_os = "macos")]
+            fn getrlimit(
+                resource: c_int,
                 rlim: *mut rlimit: [WRITE | NON_NULL],
             ) -> c_int;
 
@@ -922,23 +934,34 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             // TODO(kkysen) Not in `libc` crate.
             // fn inet_pton;
 
+            #[cfg(target_os = "linux")]
             fn initgroups(
                 user: *const c_char: [READ | OFFSET_ADD | NON_NULL],
                 group: gid_t,
             ) -> c_int;
 
+            #[cfg(target_os = "macos")]
+            fn initgroups(
+                user: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                basegid: c_int,
+            ) -> c_int;
+
+            #[cfg(target_os = "linux")]
             fn inotify_add_watch(
                 fd: c_int,
                 path: *const c_char: [READ | OFFSET_ADD | NON_NULL],
                 mask: u32,
             ) -> c_int;
 
+            #[cfg(target_os = "linux")]
             fn inotify_init() -> c_int;
 
+            #[cfg(target_os = "linux")]
             fn inotify_init1(
                 flags: c_int,
             ) -> c_int;
 
+            #[cfg(target_os = "linux")]
             fn inotify_rm_watch(
                 fd: c_int,
                 wd: c_int,
@@ -1023,6 +1046,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 // it can without error, and thus this can return `NULL`.
             ) -> *mut c_void: [WRITE | OFFSET_ADD];
 
+            #[cfg(target_os = "linux")]
             fn mkostemp(
                 template: *mut c_char: [READ | WRITE | OFFSET_ADD | NON_NULL],
                 flags: c_int,
@@ -1068,6 +1092,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 fds: *mut c_int: [WRITE | OFFSET_ADD | NON_NULL],
             ) -> c_int;
 
+            #[cfg(target_os = "linux")]
             fn pipe2(
                 fds: *mut c_int: [WRITE | OFFSET_ADD | NON_NULL],
                 flags: c_int,
@@ -1153,12 +1178,24 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 timeout: *mut timeval: [READ | WRITE],
             ) -> c_int;
 
+            #[cfg(target_os = "linux")]
             fn sendfile(
                 out_fd: c_int,
                 in_fd: c_int,
                 offset: *mut off_t: [READ | WRITE],
                 count: size_t,
             ) -> ssize_t;
+
+            #[cfg(target_os = "macos")]
+            fn sendfile(
+                fd: c_int,
+                s: c_int,
+                offset: off_t,
+                len: *mut off_t: [READ | WRITE | NON_NULL],
+                // The docs don't indicate that it is modified, but it is not declared `*const`.
+                hdtr: *mut sf_hdtr: [READ],
+                flags: c_int,
+            ) -> c_int;
 
             fn setenv(
                 name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
@@ -1170,8 +1207,15 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 gid: gid_t,
             ) -> c_int;
 
+            #[cfg(target_os = "linux")]
             fn setgroups(
                 ngroups: size_t,
+                ptr: *const gid_t: [READ | OFFSET_ADD | NON_NULL],
+            ) -> c_int;
+
+            #[cfg(target_os = "macos")]
+            fn setgroups(
+                ngroups: c_int,
                 ptr: *const gid_t: [READ | OFFSET_ADD | NON_NULL],
             ) -> c_int;
 
@@ -1182,8 +1226,15 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 // as it may be statically allocated and reused.  It is not meant to be modified.
             ) -> *mut c_char: [READ | OFFSET_ADD];
 
+            #[cfg(target_os = "linux")]
             fn setrlimit(
                 resource: __rlimit_resource_t,
+                rlim: *const rlimit: [READ | NON_NULL],
+            ) -> c_int;
+
+            #[cfg(target_os = "macos")]
+            fn setrlimit(
+                resource: c_int,
                 rlim: *const rlimit: [READ | NON_NULL],
             ) -> c_int;
 
@@ -1236,6 +1287,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 protocol: c_int,
             ) -> c_int;
 
+            #[cfg(target_os = "linux")]
             fn splice(
                 fd_in: c_int,
                 off_in: *mut loff_t: [READ | WRITE],
