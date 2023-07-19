@@ -387,6 +387,11 @@ fn mark_foreign_fixed<'tcx>(
 }
 
 fn run(tcx: TyCtxt) {
+    eprintln!("all defs:");
+    for ldid in tcx.hir_crate_items(()).definitions() {
+        eprintln!("{:?}", ldid);
+    }
+
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
 
