@@ -673,8 +673,9 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 handle: *mut c_void: [READ | WRITE | NON_NULL],
             ) -> c_int;
 
-            // TODO(kkysen) Should be `WRITE`?
-            // fn dlerror() -> *mut c_char: [READ | OFFSET_ADD];
+            // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
+            // as it may be statically allocated and reused.  It is not meant to be modified.
+            fn dlerror() -> *mut c_char: [READ | OFFSET_ADD];
 
             fn dlopen(
                 filename: *const c_char: [READ | OFFSET_ADD],
@@ -808,24 +809,27 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 buflen: size_t,
             ) -> c_int;
 
-            // fn getenv(
-            //     s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
-            //     // TODO(kkysen) Should be `WRITE`?
-            // ) -> *mut c_char: [READ | OFFSET_ADD];
+            fn getenv(
+                s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
+                // as it may be statically allocated and reused.  It is not meant to be modified.
+            ) -> *mut c_char: [READ | OFFSET_ADD];
 
             fn geteuid() -> uid_t;
 
             fn getgid() -> gid_t;
 
-            // fn getgrgid(
-            //     gid: gid_t,
-            //     // TODO(kkysen) Should be `WRITE`?
-            // ) -> *mut group: [READ];
+            fn getgrgid(
+                gid: gid_t,
+                // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
+                // as it may be statically allocated and reused.  It is not meant to be modified.
+            ) -> *mut group: [READ];
 
-            // fn getgrnam(
-            //     name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
-            //     // TODO(kkysen) Should be `WRITE`?
-            // ) -> *mut group: [READ];
+            fn getgrnam(
+                name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
+                // as it may be statically allocated and reused.  It is not meant to be modified.
+            ) -> *mut group: [READ];
 
             fn getloadavg(
                 loadavg: *mut c_double: [WRITE | OFFSET_ADD | NON_NULL],
@@ -859,10 +863,11 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
 
             fn getppid() -> pid_t;
 
-            // fn getpwnam(
-            //     name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
-            //     // TODO(kkysen) Should be `WRITE`?
-            // ) -> *mut passwd: [READ];
+            fn getpwnam(
+                name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
+                // as it may be statically allocated and reused.  It is not meant to be modified.
+            ) -> *mut passwd: [READ];
 
             fn getrlimit(
                 resource: __rlimit_resource_t,
@@ -1158,14 +1163,12 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 ptr: *const gid_t: [READ | OFFSET_ADD | NON_NULL],
             ) -> c_int;
 
-            // fn setlocale(
-            //     category: c_int,
-            //     locale: *const c_char: [READ | OFFSET_ADD],
-            //     // Not `WRITE` even though it's `*mut` since it may be allocated in static storage,
-            //     // and could be a string literal in read-only memory.
-            //     // It is not meant to be modified.
-            //     // TODO(kkysen) Should be `WRITE`?
-            // ) -> *mut c_char: [READ | OFFSET_ADD];
+            fn setlocale(
+                category: c_int,
+                locale: *const c_char: [READ | OFFSET_ADD],
+                // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
+                // as it may be statically allocated and reused.  It is not meant to be modified.
+            ) -> *mut c_char: [READ | OFFSET_ADD];
 
             fn setrlimit(
                 resource: __rlimit_resource_t,
