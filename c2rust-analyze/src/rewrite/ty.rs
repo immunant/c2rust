@@ -17,6 +17,7 @@ use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
 use crate::AdtMetadataTable;
 use hir::{GenericParamKind, ItemKind, Path, PathSegment, VariantData};
+use log::warn;
 use rustc_ast::ast;
 use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Namespace, Res};
@@ -578,82 +579,86 @@ pub fn gen_adt_ty_rewrites(
 
     let field_ltys = &gacx.field_ltys;
 
-    #[allow(clippy::single_match)]
-    match &item.kind {
-        ItemKind::Struct(VariantData::Struct(field_defs, _), generics) => {
-            if gacx.foreign_mentioned_tys.contains(&did) {
-                eprintln!("Avoiding rewrite for foreign-mentioned type: {did:?}");
-                return Vec::new();
-            }
-            let adt_metadata = &gacx.adt_metadata.table[&did];
-            let updated_lifetime_params = &adt_metadata.lifetime_params;
-
-            let original_lifetime_param_count = generics
-                .params
-                .iter()
-                .filter(|p| matches!(p.kind, GenericParamKind::Lifetime { .. }))
-                .count();
-
-            if updated_lifetime_params.len() != original_lifetime_param_count {
-                let new_substs: Vec<_> = {
-                    let mut new_lifetime_params_iter = updated_lifetime_params.iter();
-
-                    let mut updated_lifetimes = vec![];
-                    let mut new_lifetimes = vec![];
-                    let mut other_params = vec![];
-
-                    for gp in generics.params {
-                        match gp.kind {
-                            GenericParamKind::Lifetime { .. } => {
-                                let updated_lifetime_param = new_lifetime_params_iter
-                                    .next()
-                                    .expect("Not enough updated_lifetime_params");
-                                updated_lifetimes
-                                    .push(Rewrite::PrintTy(format!("{:?}", updated_lifetime_param)))
-                            }
-                            _ => other_params.push(Rewrite::PrintTy(gp.name.ident().to_string())),
-                        }
-                    }
-
-                    for ul in new_lifetime_params_iter {
-                        new_lifetimes.push(Rewrite::PrintTy(format!("{:?}", ul)))
-                    }
-
-                    [updated_lifetimes, new_lifetimes, other_params]
-                        .into_iter()
-                        .flatten()
-                        .collect()
-                };
-
-                // only the generic parameters need to be rewritten, not the
-                // struct name itself
-                hir_rewrites.push((generics.span, Rewrite::TyGenericParams(new_substs)));
-            }
-
-            for field_def in field_defs.iter() {
-                let fdid = tcx.hir().local_def_id(field_def.hir_id).to_def_id();
-                let field_metadata = &adt_metadata.field_info[&fdid];
-                let f_lty = field_ltys[&fdid];
-                let lcx = LabeledTyCtxt::<RewriteLabel>::new(tcx);
-                let rw_lty = lcx.zip_labels_with(
-                    f_lty,
-                    field_metadata.origin_args,
-                    &mut |pointer_lty, lifetime_lty, args| {
-                        create_rewrite_label(
-                            pointer_lty,
-                            args,
-                            &gasn.perms,
-                            &gasn.flags,
-                            lifetime_lty.label,
-                            &gacx.adt_metadata,
-                        )
-                    },
-                );
-
-                rewrite_ty(lcx, &mut hir_rewrites, rw_lty, field_def.ty);
-            }
+    let (field_defs, generics) = match item.kind {
+        ItemKind::Struct(VariantData::Struct(ref fd, _), ref g) => (fd, g),
+        ItemKind::Union(VariantData::Struct(ref fd, _), ref g) => (fd, g),
+        ItemKind::Struct(..) | ItemKind::Enum(..) | ItemKind::Union(..) => {
+            warn!("unsupported item kind {:?}", item.kind);
+            return Vec::new();
         }
-        _ => (),
+        _ => panic!("expected struct, enum, or union, but got {:?}", item.kind),
+    };
+
+    if gacx.foreign_mentioned_tys.contains(&did) {
+        eprintln!("Avoiding rewrite for foreign-mentioned type: {did:?}");
+        return Vec::new();
+    }
+    let adt_metadata = &gacx.adt_metadata.table[&did];
+    let updated_lifetime_params = &adt_metadata.lifetime_params;
+
+    let original_lifetime_param_count = generics
+        .params
+        .iter()
+        .filter(|p| matches!(p.kind, GenericParamKind::Lifetime { .. }))
+        .count();
+
+    if updated_lifetime_params.len() != original_lifetime_param_count {
+        let new_substs: Vec<_> = {
+            let mut new_lifetime_params_iter = updated_lifetime_params.iter();
+
+            let mut updated_lifetimes = vec![];
+            let mut new_lifetimes = vec![];
+            let mut other_params = vec![];
+
+            for gp in generics.params {
+                match gp.kind {
+                    GenericParamKind::Lifetime { .. } => {
+                        let updated_lifetime_param = new_lifetime_params_iter
+                            .next()
+                            .expect("Not enough updated_lifetime_params");
+                        updated_lifetimes
+                            .push(Rewrite::PrintTy(format!("{:?}", updated_lifetime_param)))
+                    }
+                    _ => other_params.push(Rewrite::PrintTy(gp.name.ident().to_string())),
+                }
+            }
+
+            for ul in new_lifetime_params_iter {
+                new_lifetimes.push(Rewrite::PrintTy(format!("{:?}", ul)))
+            }
+
+            [updated_lifetimes, new_lifetimes, other_params]
+                .into_iter()
+                .flatten()
+                .collect()
+        };
+
+        // only the generic parameters need to be rewritten, not the
+        // struct name itself
+        hir_rewrites.push((generics.span, Rewrite::TyGenericParams(new_substs)));
+    }
+
+    for field_def in field_defs.iter() {
+        let fdid = tcx.hir().local_def_id(field_def.hir_id).to_def_id();
+        let field_metadata = &adt_metadata.field_info[&fdid];
+        let f_lty = field_ltys[&fdid];
+        let lcx = LabeledTyCtxt::<RewriteLabel>::new(tcx);
+        let rw_lty = lcx.zip_labels_with(
+            f_lty,
+            field_metadata.origin_args,
+            &mut |pointer_lty, lifetime_lty, args| {
+                create_rewrite_label(
+                    pointer_lty,
+                    args,
+                    &gasn.perms,
+                    &gasn.flags,
+                    lifetime_lty.label,
+                    &gacx.adt_metadata,
+                )
+            },
+        );
+
+        rewrite_ty(lcx, &mut hir_rewrites, rw_lty, field_def.ty);
     }
 
     hir_rewrites
