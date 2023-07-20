@@ -950,6 +950,7 @@ fn run(tcx: TyCtxt) {
         }
     }
 
+    // Generate rewrites for statics
     let mut static_rewrites = Vec::new();
     for (&def_id, &ptr) in gacx.addr_of_static.iter() {
         static_rewrites.extend(rewrite::gen_static_rewrites(tcx, &gasn, def_id, ptr));
@@ -971,6 +972,24 @@ fn run(tcx: TyCtxt) {
         .unwrap();
     }
     all_rewrites.extend(static_rewrites);
+
+    // Generate rewrites for ADTs
+    let mut adt_reports = HashMap::<DefId, String>::new();
+    for &def_id in gacx.adt_metadata.table.keys() {
+        let adt_rewrites = rewrite::gen_adt_ty_rewrites(&gacx, &gasn, def_id);
+        let report = adt_reports.entry(def_id).or_default();
+        writeln!(
+            report,
+            "generated {} ADT rewrites for {:?}:",
+            adt_rewrites.len(),
+            def_id
+        )
+        .unwrap();
+        for &(span, ref rw) in &adt_rewrites {
+            writeln!(report, "    {}: {}", describe_span(gacx.tcx, span), rw).unwrap();
+        }
+        all_rewrites.extend(adt_rewrites);
+    }
 
     // ----------------------------------
     // Print reports for tests and debugging
@@ -1045,6 +1064,7 @@ fn run(tcx: TyCtxt) {
     }
     eprintln!("\n{statics_report}");
 
+    // Print results for ADTs and fields
     eprintln!("\nfinal labeling for fields:");
     let mut field_dids = gacx.field_ltys.keys().cloned().collect::<Vec<_>>();
     field_dids.sort();
@@ -1056,6 +1076,14 @@ fn run(tcx: TyCtxt) {
             let ty_perms = gasn.perms[pid];
             let ty_flags = gasn.flags[pid];
             eprintln!("{name:}: ({pid}) perms = {ty_perms:?}, flags = {ty_flags:?}");
+        }
+    }
+
+    let mut adt_dids = gacx.adt_metadata.table.keys().cloned().collect::<Vec<_>>();
+    adt_dids.sort();
+    for did in adt_dids {
+        if let Some(report) = adt_reports.remove(&did) {
+            eprintln!("\n{}", report);
         }
     }
 

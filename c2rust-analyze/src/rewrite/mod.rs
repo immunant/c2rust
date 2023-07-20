@@ -42,7 +42,7 @@ pub use self::shim::{gen_shim_call_rewrites, gen_shim_definition_rewrite};
 use self::span_index::SpanIndex;
 pub use self::statics::gen_static_rewrites;
 pub use self::ty::dump_rewritten_local_tys;
-pub use self::ty::gen_ty_rewrites;
+pub use self::ty::{gen_adt_ty_rewrites, gen_ty_rewrites};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum LifetimeName {
