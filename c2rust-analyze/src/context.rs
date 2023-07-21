@@ -300,7 +300,6 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     pub field_ltys: HashMap<DefId, LTy<'tcx>>,
 
     pub static_tys: HashMap<DefId, LTy<'tcx>>,
-    pub static_origins: HashMap<DefId, crate::borrowck::LTy<'tcx>>,
     pub addr_of_static: HashMap<DefId, PointerId>,
 
     pub adt_metadata: AdtMetadataTable<'tcx>,
@@ -551,7 +550,6 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             fn_sigs: HashMap::new(),
             fns_failed: HashMap::new(),
             field_ltys: HashMap::new(),
-            static_origins: HashMap::new(),
             static_tys: HashMap::new(),
             addr_of_static: HashMap::new(),
             adt_metadata: construct_adt_metadata(tcx),
@@ -598,7 +596,6 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             ref mut fn_sigs,
             fns_failed: _,
             ref mut field_ltys,
-            static_origins: _,
             ref mut static_tys,
             ref mut addr_of_static,
             adt_metadata: _,
