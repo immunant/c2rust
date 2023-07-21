@@ -8,7 +8,10 @@ use crate::AdtMetadataTable;
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{Body, LocalKind, Place, StatementKind, START_BLOCK};
-use rustc_middle::ty::{EarlyBoundRegion, GenericParamDefKind, List, Region, Ty, TyKind};
+use rustc_middle::ty::{
+    EarlyBoundRegion, GenericParamDefKind, List, OutlivesPredicate, PredicateKind, Region, Ty,
+    TyKind,
+};
 use rustc_type_ir::RegionKind::ReEarlyBound;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
@@ -203,13 +206,43 @@ fn run_polonius<'tcx>(
 
     // the 'static region is always 0
     let static_origin = maps.origin();
+    facts.universal_region.push(static_origin);
+    facts.placeholder.push((static_origin, maps.loan()));
 
     // polonius gives an origin to each generic lifetime argument
     let mut func_lifetime_origins = vec![];
 
+    let mut origin_map = HashMap::new();
+
     for generic in tcx.generics_of(mir.source.def_id()).params.iter() {
         if matches!(generic.kind, GenericParamDefKind::Lifetime) {
-            func_lifetime_origins.push(maps.origin())
+            let param_origin = maps.origin();
+
+            facts.universal_region.push(param_origin);
+            facts.placeholder.push((param_origin, maps.loan()));
+            facts
+                .known_placeholder_subset
+                .push((static_origin, param_origin));
+
+            func_lifetime_origins.push(param_origin);
+            origin_map.insert(generic.def_id, param_origin);
+        }
+    }
+
+    for constraint in tcx.predicates_of(mir.source.def_id()).predicates {
+        match &constraint.0.kind().skip_binder() {
+            PredicateKind::RegionOutlives(OutlivesPredicate(a, b)) => match (a.kind(), b.kind()) {
+                (ReEarlyBound(eba), ReEarlyBound(ebb)) => {
+                    match (origin_map.get(&eba.def_id), origin_map.get(&ebb.def_id)) {
+                        (Some(origin_a), Some(origin_b)) => {
+                            facts.known_placeholder_subset.push((*origin_a, *origin_b));
+                        }
+                        _ => (),
+                    }
+                }
+                _ => (),
+            },
+            _ => (),
         }
     }
 
