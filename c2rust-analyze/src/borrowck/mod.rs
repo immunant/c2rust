@@ -7,9 +7,8 @@ use crate::util::{describe_rvalue, RvalueDesc};
 use crate::AdtMetadataTable;
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::def_id::DefId;
-use rustc_hir::{GenericParamKind, ItemKind, Node};
 use rustc_middle::mir::{Body, LocalKind, Place, StatementKind, START_BLOCK};
-use rustc_middle::ty::{EarlyBoundRegion, List, Region, Ty, TyKind};
+use rustc_middle::ty::{EarlyBoundRegion, GenericParamDefKind, List, Region, Ty, TyKind};
 use rustc_type_ir::RegionKind::ReEarlyBound;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
@@ -207,25 +206,12 @@ fn run_polonius<'tcx>(
 
     // polonius gives an origin to each generic lifetime argument
     let mut func_lifetime_origins = vec![];
-    mir.source.def_id().as_local().map(|local_def_id| {
-        let hir_func_item = acx
-            .tcx()
-            .hir()
-            .find(acx.tcx().hir().local_def_id_to_hir_id(local_def_id));
 
-        match hir_func_item {
-            Some(Node::Item(item)) => {
-                if let ItemKind::Fn(_, ref generics, _) = item.kind {
-                    for generic in generics.params.iter() {
-                        if matches!(generic.kind, GenericParamKind::Lifetime { .. }) {
-                            func_lifetime_origins.push(maps.origin())
-                        }
-                    }
-                }
-            }
-            _ => {}
+    for generic in tcx.generics_of(mir.source.def_id()).params.iter() {
+        if matches!(generic.kind, GenericParamDefKind::Lifetime) {
+            func_lifetime_origins.push(maps.origin())
         }
-    });
+    }
 
     //pretty::write_mir_fn(tcx, mir, &mut |_, _| Ok(()), &mut std::io::stdout()).unwrap();
 
