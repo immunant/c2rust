@@ -350,7 +350,7 @@ fn construct_adt_origins<'tcx>(
     ltcx.arena().alloc_from_iter(origins)
 }
 
-pub fn assign_origins<'tcx>(
+fn assign_origins<'tcx>(
     ltcx: LTyCtxt<'tcx>,
     hypothesis: &PointerTableMut<PermissionSet>,
     _facts: &mut AllFacts,
