@@ -31,6 +31,7 @@ macro_rules! define_tests {
 define_tests! {
     macros,
     ptr_addr_of,
+    rust_intrinsic,
     string_literals,
     string_casts,
 }
