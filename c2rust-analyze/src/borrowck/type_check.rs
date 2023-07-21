@@ -209,8 +209,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                                 TyKind::Ref(..) | TyKind::RawPtr(..)
                             ));
 
-                            // Polonius does not appear to issue loans for statics,
-                            // but assigns an origin
+                            // Polonius does not appear to issue loans for the outermost ref/ptr in
+                            // an address-of-static constant, but it does assign an origin
                             let label = Label {
                                 origin: Some(self.maps.origin()),
                                 origin_params: &[],
