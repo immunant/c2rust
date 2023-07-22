@@ -1,10 +1,10 @@
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Path, Point, SubPoint};
-use crate::borrowck::{construct_adt_origins, LTy, LTyCtxt, Label, OriginParam};
-use crate::c_void_casts::CVoidCasts;
-use crate::context::PermissionSet;
+use crate::borrowck::{assign_origins, construct_adt_origins, LTy, LTyCtxt, Label, OriginParam};
+use crate::context::{const_alloc_id, find_static_for_alloc};
+use crate::context::{AnalysisCtxt, PermissionSet};
 use crate::panic_detail;
+use crate::pointer_id::PointerTableMut;
 use crate::util::{self, ty_callee, Callee};
-use crate::AdtMetadataTable;
 use assert_matches::assert_matches;
 use indexmap::IndexMap;
 use rustc_hir::def_id::DefId;
@@ -14,20 +14,23 @@ use rustc_middle::mir::{
     Place, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::adjustment::PointerCast;
-use rustc_middle::ty::{AdtDef, FieldDef, TyCtxt, TyKind};
+use rustc_middle::ty::{AdtDef, FieldDef, RegionKind, TyKind};
 use std::collections::HashMap;
 
+use super::OriginArg;
+
 struct TypeChecker<'tcx, 'a> {
-    tcx: TyCtxt<'tcx>,
+    acx: &'a AnalysisCtxt<'a, 'tcx>,
     ltcx: LTyCtxt<'tcx>,
     facts: &'a mut AllFacts,
     maps: &'a mut AtomMaps<'tcx>,
     loans: &'a mut HashMap<Local, Vec<(Path, Loan, BorrowKind)>>,
     local_ltys: &'a [LTy<'tcx>],
     field_permissions: &'a HashMap<DefId, PermissionSet>,
+    hypothesis: &'a PointerTableMut<'a, PermissionSet>,
     local_decls: &'a IndexVec<Local, LocalDecl<'tcx>>,
     current_location: Location,
-    adt_metadata: &'a AdtMetadataTable<'tcx>,
+    static_origin: Origin,
 }
 
 impl<'tcx> TypeChecker<'tcx, '_> {
@@ -44,28 +47,32 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             IndexMap::from_iter(base_lty.label.origin_params.to_vec());
         let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field.index()];
         let perm = self.field_permissions[&field_def.did];
-        let base_metadata = &self.adt_metadata.table[&base_adt_def.did()];
+        let base_metadata = &self.acx.gacx.adt_metadata.table[&base_adt_def.did()];
         let field_metadata = &base_metadata.field_info[&field_def.did];
 
         self.ltcx.relabel(
                 field_metadata.origin_args,
                 &mut |flty| match flty.kind() {
                     TyKind::Ref(..) | TyKind::RawPtr(..) => {
-                        let origin = {
+                        let origin_arg = {
                             assert!(flty.label.len() == 1);
                             Some(flty.label[0])
-                        }
-                        .map(|oa| {
-                            OriginParam::try_from(&oa)
-                                .expect("'static lifetimes not yet supported")
-                        })
-                        .and_then(|o| {
-                            eprintln!(
-                                "finding {o:?} in {base_adt_def:?} {base_origin_param_map:?}"
-                            );
-                            base_origin_param_map.get(&o)
-                        })
-                        .cloned();
+                        };
+
+                        let origin = if matches!(origin_arg, Some(OriginArg::Actual(region)) if matches!(region.kind(), RegionKind::ReStatic)) {
+                            Some(self.static_origin)
+                        } else {
+                            origin_arg.map(|oa| {
+                                OriginParam::try_from(&oa).unwrap()
+                            })
+                            .and_then(|o| {
+                                eprintln!(
+                                    "finding {o:?} in {base_adt_def:?} {base_origin_param_map:?}"
+                                );
+                                base_origin_param_map.get(&o)
+                            })
+                            .cloned()
+                        };
 
                         Label {
                             origin,
@@ -101,7 +108,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         */
                         let mut field_origin_param_map = vec![];
                         eprintln!("{:?}", fadt_def.did());
-                        let field_adt_metadata = if let Some(field_adt_metadata) = self.adt_metadata.table.get(&fadt_def.did()) {
+                        let field_adt_metadata = if let Some(field_adt_metadata) = self.acx.gacx.adt_metadata.table.get(&fadt_def.did()) {
                             field_adt_metadata
                         } else {
                             return Label {
@@ -115,25 +122,21 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             .label
                             .iter().zip(field_adt_metadata.lifetime_params.iter())
                         {
-                            let field_lifetime_param =
-                                if let Ok(param) = OriginParam::try_from(field_lifetime_arg) {
-                                    param
-                                } else {
-                                    panic!("'static lifetimes are not yet supported")
-                                };
+                            let field_lifetime_param = OriginParam::try_from(field_lifetime_arg).ok();
 
-                            if let Some((base_lifetime_param, og)) =
+                            field_lifetime_param.and_then(|field_lifetime_param| {
                                 base_origin_param_map.get_key_value(&field_lifetime_param)
-                            {
+                            }).map(|(base_lifetime_param, og)| {
                                 eprintln!(
-                                        "mapping {base_adt_def:?} lifetime parameter {base_lifetime_param:?} to \
-                                        {base_adt_def:?}.{:} struct definition lifetime parameter {field_struct_lifetime_param:?}, \
-                                        corresponding to its lifetime parameter {field_lifetime_param:?} within {base_adt_def:?}",
-                                        field_def.name
-                                    );
-                                field_origin_param_map.push((*field_struct_lifetime_param, *og));
-                            }
+                                    "mapping {base_adt_def:?} lifetime parameter {base_lifetime_param:?} to \
+                                    {base_adt_def:?}.{:} struct definition lifetime parameter {field_struct_lifetime_param:?}, \
+                                    corresponding to its lifetime parameter {field_lifetime_param:?} within {base_adt_def:?}",
+                                    field_def.name
+                                );
+                            field_origin_param_map.push((*field_struct_lifetime_param, *og));
+                            });
                         }
+
                         let origin_params= self.ltcx.arena().alloc_from_iter(field_origin_param_map.into_iter());
                         Label {
                             origin: None,
@@ -161,10 +164,63 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         lty
     }
 
-    pub fn visit_operand(&self, op: &Operand<'tcx>) -> LTy<'tcx> {
+    pub fn visit_operand(&mut self, op: &Operand<'tcx>) -> LTy<'tcx> {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => self.visit_place(pl),
             Operand::Constant(ref c) => {
+                if c.ty().is_any_ptr() {
+                    if let Some(alloc_id) = const_alloc_id(c) {
+                        if let Some(did) = find_static_for_alloc(&self.acx.tcx(), alloc_id) {
+                            let lty = assign_origins(
+                                self.ltcx,
+                                self.hypothesis,
+                                self.facts,
+                                self.maps,
+                                &self.acx.gacx.adt_metadata,
+                                &self.acx.gacx.static_tys[&did],
+                            );
+
+                            for l in lty.iter() {
+                                let static_origin = self.static_origin;
+                                let mut add_subset_base = |pl: Origin, rv: Origin| {
+                                    let point = self.current_point(SubPoint::Mid);
+                                    self.facts.subset_base.push((rv, pl, point));
+                                };
+                                if let Some(origin) = l.label.origin {
+                                    // constrain this origin to be 'static
+                                    eprintln!("constraining origin {origin:?} to 'static lifetime");
+                                    add_subset_base(static_origin, origin);
+                                    add_subset_base(origin, static_origin)
+                                }
+                                for (op, origin) in l.label.origin_params {
+                                    // constrain this origin to be 'static
+                                    eprintln!("constraining origin {op:?} ({origin:?}) to 'static lifetime");
+                                    add_subset_base(static_origin, *origin);
+                                    add_subset_base(*origin, static_origin);
+                                }
+                            }
+
+                            eprintln!("NEW STATIC LTY: {:?}", c.ty().kind());
+                            let pointer_id = self.acx.type_of(op).label;
+                            let perm = self.hypothesis[pointer_id];
+                            let args = self.ltcx.mk_slice(&[lty]);
+                            assert!(matches!(
+                                *c.ty().kind(),
+                                TyKind::Ref(..) | TyKind::RawPtr(..)
+                            ));
+
+                            // Polonius does not appear to issue loans for the outermost ref/ptr in
+                            // an address-of-static constant, but it does assign an origin
+                            let label = Label {
+                                origin: Some(self.maps.origin()),
+                                origin_params: &[],
+                                perm,
+                            };
+                            return self.ltcx.mk(c.ty(), args, label);
+                        }
+                    }
+                }
+
                 let ty = c.ty();
                 self.ltcx.label(ty, &mut |_| Label::default())
             }
@@ -201,8 +257,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                 }
                 TyKind::Adt(..) => {
-                    let origin_params =
-                        construct_adt_origins(&self.ltcx, self.adt_metadata, &lty.ty, self.maps);
+                    let origin_params = construct_adt_origins(
+                        &self.ltcx,
+                        &self.acx.gacx.adt_metadata,
+                        &lty.ty,
+                        self.maps,
+                    );
                     Label {
                         origin: None,
                         origin_params,
@@ -219,6 +279,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, expect_ty: LTy<'tcx>) -> LTy<'tcx> {
+        let tcx = self.acx.tcx();
+
         match *rv {
             Rvalue::Use(Operand::Copy(pl)) if matches!(expect_ty.ty.kind(), TyKind::RawPtr(_)) => {
                 // Copy of a raw pointer.  We treat this as a reborrow.
@@ -231,7 +293,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     BorrowKind::Shared
                 };
 
-                let pl_deref = self.tcx.mk_place_deref(pl);
+                let pl_deref = tcx.mk_place_deref(pl);
                 let origin = self.issue_loan(pl_deref, borrow_kind);
 
                 // Return a type with the new loan on the outermost `ref`.
@@ -381,7 +443,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     */
                     assert_eq!(expect_ty.args.len(), 0, "Generic types not yet supported.");
 
-                    let adt_def = self.tcx.adt_def(adt_did);
+                    let adt_def = tcx.adt_def(adt_did);
                     for (fid, op) in ops.iter().enumerate() {
                         let field_lty = self.field_lty(expect_ty, adt_def, Field::from(fid));
                         let op_lty = self.visit_operand(op);
@@ -403,7 +465,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Rvalue::UnaryOp(_, ref op) => self.visit_operand(op),
 
             Rvalue::Repeat(ref op, _) => {
-                if op.ty(self.local_decls, self.tcx).is_any_ptr() {
+                if op.ty(self.local_decls, tcx).is_any_ptr() {
                     todo!("Repeat types over pointers not yet implemented");
                 }
                 let ty = rv.ty(self.local_decls, *self.ltcx);
@@ -422,8 +484,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             // exempt pointer casts such as `PointerCast::MutToConstPointer`
             (TyKind::RawPtr(ty1), TyKind::RawPtr(ty2)) if ty1.ty == ty2.ty => {}
             _ => assert_eq!(
-                self.tcx.erase_regions(pl_lty.ty),
-                self.tcx.erase_regions(rv_lty.ty)
+                self.acx.tcx().erase_regions(pl_lty.ty),
+                self.acx.tcx().erase_regions(rv_lty.ty)
             ),
         }
 
@@ -536,28 +598,29 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
 #[allow(clippy::too_many_arguments)]
 pub fn visit_body<'tcx>(
-    tcx: TyCtxt<'tcx>,
+    acx: &AnalysisCtxt<'_, 'tcx>,
     ltcx: LTyCtxt<'tcx>,
     facts: &mut AllFacts,
     maps: &mut AtomMaps<'tcx>,
     loans: &mut HashMap<Local, Vec<(Path, Loan, BorrowKind)>>,
     local_ltys: &[LTy<'tcx>],
     field_permissions: &HashMap<DefId, PermissionSet>,
+    hypothesis: &PointerTableMut<PermissionSet>,
     mir: &Body<'tcx>,
-    adt_metadata: &AdtMetadataTable<'tcx>,
-    c_void_casts: &CVoidCasts<'tcx>,
+    static_origin: Origin,
 ) {
     let mut tc = TypeChecker {
-        tcx,
+        acx,
         ltcx,
         facts,
         maps,
         loans,
         local_ltys,
         field_permissions,
+        hypothesis,
         local_decls: &mir.local_decls,
         current_location: Location::START,
-        adt_metadata,
+        static_origin,
     };
 
     for (block, bb_data) in mir.basic_blocks().iter_enumerated() {
@@ -568,7 +631,7 @@ pub fn visit_body<'tcx>(
             };
             tc.current_location = loc;
 
-            if !c_void_casts.should_skip_stmt(loc) {
+            if !acx.c_void_casts.should_skip_stmt(loc) {
                 tc.visit_statement(stmt);
             }
         }

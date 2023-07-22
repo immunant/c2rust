@@ -1038,14 +1038,14 @@ impl<'tcx> TypeOf<'tcx> for PlaceRef<'tcx> {
     }
 }
 
-fn const_alloc_id(c: &Constant) -> Option<AllocId> {
+pub fn const_alloc_id(c: &Constant) -> Option<AllocId> {
     if let ConstantKind::Val(ConstValue::Scalar(interpret::Scalar::Ptr(ptr, _)), _ty) = c.literal {
         return Some(ptr.provenance);
     }
     None
 }
 
-fn find_static_for_alloc(tcx: &TyCtxt, id: AllocId) -> Option<DefId> {
+pub fn find_static_for_alloc(tcx: &TyCtxt, id: AllocId) -> Option<DefId> {
     match tcx.try_get_global_alloc(id) {
         None => {} //hmm, ok
         Some(GlobalAlloc::Static(did)) => {

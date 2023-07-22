@@ -733,6 +733,7 @@ fn run(tcx: TyCtxt) {
         // the outer loop, which runs until the `GlobalAssignment` converges as well.
         loop_count += 1;
         let old_gasn = gasn.clone();
+
         for &ldid in &all_fn_ldids {
             if gacx.fn_failed(ldid.to_def_id()) {
                 continue;
