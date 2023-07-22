@@ -231,7 +231,7 @@ fn run_polonius<'tcx>(
 
     for constraint in tcx.predicates_of(mir.source.def_id()).predicates {
         // FIXME: there should be a subset relation generated for function arguments
-        // such as `arg: &'a &'b &'c`, i.e. 'a: 'b, 'b: 'c, and 'a: 'c
+        // such as `arg: &'a &'b &'c`, i.e. 'c: 'b, 'b: 'a, and 'c: 'a
         match &constraint.0.kind().skip_binder() {
             PredicateKind::RegionOutlives(OutlivesPredicate(a, b)) => match (a.kind(), b.kind()) {
                 (ReEarlyBound(eba), ReEarlyBound(ebb)) => {
