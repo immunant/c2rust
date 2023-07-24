@@ -588,10 +588,6 @@ pub fn gen_adt_ty_rewrites(
         _ => panic!("expected struct, enum, or union, but got {:?}", item.kind),
     };
 
-    if gacx.foreign_mentioned_tys.contains(&did) {
-        eprintln!("Avoiding rewrite for foreign-mentioned type: {did:?}");
-        return Vec::new();
-    }
     let adt_metadata = &gacx.adt_metadata.table[&did];
     let updated_lifetime_params = &adt_metadata.lifetime_params;
 

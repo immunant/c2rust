@@ -976,6 +976,11 @@ fn run(tcx: TyCtxt) {
     // Generate rewrites for ADTs
     let mut adt_reports = HashMap::<DefId, String>::new();
     for &def_id in gacx.adt_metadata.table.keys() {
+        if gacx.foreign_mentioned_tys.contains(&def_id) {
+            eprintln!("Avoiding rewrite for foreign-mentioned type: {def_id:?}");
+            continue;
+        }
+
         let adt_rewrites = rewrite::gen_adt_ty_rewrites(&gacx, &gasn, def_id);
         let report = adt_reports.entry(def_id).or_default();
         writeln!(
