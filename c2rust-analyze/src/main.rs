@@ -721,7 +721,7 @@ fn run(tcx: TyCtxt) {
         }
         let lsig = match gacx.fn_sigs.get(&ldid.to_def_id()) {
             Some(x) => x,
-            None => continue,
+            None => panic!("missing fn_sig for {:?}", ldid),
         };
         make_sig_fixed(&mut gasn, lsig);
     }

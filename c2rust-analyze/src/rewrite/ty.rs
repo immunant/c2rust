@@ -573,8 +573,7 @@ pub fn gen_adt_ty_rewrites(
     let item = if let Some(Node::Item(item)) = tcx.hir().get_if_local(did) {
         item
     } else {
-        //panic!("def id {:?} not found", did);
-        return Vec::new();
+        panic!("def id {:?} not found", did);
     };
 
     let field_ltys = &gacx.field_ltys;
