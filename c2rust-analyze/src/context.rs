@@ -503,12 +503,6 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
                             if let Some(adt_field_metadata) =
                                 adt_metadata_table.table.get(&adt_field.did()).cloned()
                             {
-                                // add a metadata entry for the struct field matching the metadata entry
-                                // for the struct definition of said field
-                                adt_metadata_table
-                                    .table
-                                    .insert(field.did, adt_field_metadata.clone());
-
                                 for adt_field_lifetime_param in adt_field_metadata.lifetime_params.iter() {
                                     adt_metadata_table.table.entry(*struct_did).and_modify(|adt| {
                                         if let OriginParam::Hypothetical(h) = adt_field_lifetime_param {
