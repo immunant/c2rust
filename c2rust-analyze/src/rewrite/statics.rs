@@ -1,4 +1,4 @@
-use crate::context::PermissionSet;
+use crate::context::{FlagSet, PermissionSet};
 use crate::pointer_id::PointerId;
 use crate::rewrite::Rewrite;
 use crate::GlobalAssignment;
@@ -15,6 +15,13 @@ pub fn gen_static_rewrites<'tcx>(
     def_id: DefId,
     ptr: PointerId,
 ) -> Option<(Span, Rewrite)> {
+    // If the `addr_of_static` `PointerId` is `FIXED`, then we're forbidden from emitting this
+    // rewrite.
+    let flags = gasn.flags[ptr];
+    if flags.contains(FlagSet::FIXED) {
+        return None;
+    }
+
     // The map of statics and their ty + permissions tracks statics by DefId; map this to an Item
     // node to look at the static's spans and declared mutability.
     let item = if let Some(Node::Item(item)) = tcx.hir().get_if_local(def_id) {
