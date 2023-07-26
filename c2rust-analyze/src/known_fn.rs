@@ -683,7 +683,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             ) -> *mut c_void: [READ | WRITE];
 
             fn dlsym(
-                handle: *mut c_void: [READ | WRITE], // TODO(kkysen) may not be a pointer
+                handle: *mut c_void: [READ | WRITE], // TODO(kkysen) May not be a `VALID` pointer.
                 symbol: *const c_char: [READ | OFFSET_ADD | NON_NULL],
             ) -> *mut c_void: [READ | WRITE | OFFSET_ADD | OFFSET_SUB | FREE]; // Could be anything
 
@@ -1055,14 +1055,14 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             ) -> c_int;
 
             fn mmap(
-                // not yet a valid pointer
+                // Not yet a `VALID` pointer.
                 addr: *mut c_void: [NONE],
                 len: size_t,
                 prot: c_int,
                 flags: c_int,
                 fd: c_int,
                 offset: off_t,
-                // TODO(kkysen) not always a pointer, can be -1
+                // TODO(kkysen) Not always a `VALID` pointer, as it can be `-1`.
             ) -> *mut c_void: [READ | WRITE | OFFSET_ADD | NON_NULL];
 
             fn munmap(
