@@ -1315,7 +1315,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 // `WRITE` because the return type is derived from `cs`'s provenance.
                 cs: *const c_char: [READ | WRITE | OFFSET_ADD | NON_NULL],
                 c: c_int,
-            ) -> *mut c_char: [READ | WRITE | OFFSET_ADD];
+            ) -> *mut c_char: [READ | WRITE | OFFSET_ADD | OFFSET_SUB];
 
             fn strcmp(
                 cs: *const c_char: [READ | OFFSET_ADD | NON_NULL],
@@ -1364,13 +1364,13 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 // `WRITE` because the return type is derived from `cs`'s provenance.
                 cs: *const c_char: [READ | WRITE | OFFSET_ADD | NON_NULL],
                 c: c_int,
-            ) -> *mut c_char: [READ | WRITE | OFFSET_ADD];
+            ) -> *mut c_char: [READ | WRITE | OFFSET_ADD | OFFSET_SUB];
 
             fn strstr(
                 // `WRITE` because it's returned.
                 cs: *const c_char: [READ | WRITE | OFFSET_ADD | NON_NULL],
                 ct: *const c_char: [READ | OFFSET_ADD | NON_NULL],
-            ) -> *mut c_char: [READ | WRITE | OFFSET_ADD];
+            ) -> *mut c_char: [READ | WRITE | OFFSET_ADD | OFFSET_SUB];
 
             fn strtol(
                 s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
