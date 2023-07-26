@@ -1027,7 +1027,9 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             ) -> *mut c_void: [WRITE | OFFSET_ADD];
 
             fn memmove(
-                // TODO(kkysen) Note: A `&mut []` for `dest` and `&[]` for `src` would be UB since they can overlap.
+                // `dest` and `src` can overlap, which seems like it may be UB if they are slices,
+                // but since we can't safely produce those overlapping slices,
+                // we would instead end up with two `&[Cell<T>]`s in possibly overlapping cases.
                 dest: *mut c_void: [WRITE | OFFSET_ADD | NON_NULL],
                 src: *const c_void: [READ | OFFSET_ADD | NON_NULL],
                 n: size_t,
