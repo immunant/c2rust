@@ -357,6 +357,17 @@ fn mark_foreign_fixed<'tcx>(
         }
     }
 
+    // FIX the types of static declarations in extern blocks
+    for (did, lty) in gacx.static_tys.iter() {
+        if tcx.is_foreign_item(did) {
+            make_ty_fixed(gasn, lty);
+
+            // Also fix the `addr_of_static` permissions.
+            let ptr = gacx.addr_of_static[&did];
+            gasn.flags[ptr].insert(FlagSet::FIXED);
+        }
+    }
+
     // FIX the fields of structs mentioned in extern blocks
     for adt_did in &gacx.adt_metadata.struct_dids {
         if gacx.foreign_mentioned_tys.contains(adt_did) {

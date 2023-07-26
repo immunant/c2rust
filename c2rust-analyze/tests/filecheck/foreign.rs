@@ -32,6 +32,7 @@ fn fizz(i: *const i32) {}
 
 extern "C" {
     static mut s: S;
+    static mut STATIC_PTR: *mut S;
 }
 
 #[derive(Copy, Clone)]
