@@ -1280,14 +1280,10 @@ fn print_labeling_for_var<'tcx>(
 fn all_static_items(tcx: TyCtxt) -> Vec<DefId> {
     let mut order = Vec::new();
 
-    for root_ldid in tcx.hir().body_owners() {
+    for root_ldid in tcx.hir_crate_items(()).definitions() {
         match tcx.def_kind(root_ldid) {
-            DefKind::Fn | DefKind::AssocFn | DefKind::AnonConst | DefKind::Const => continue,
             DefKind::Static(_) => {}
-            dk => panic!(
-                "unexpected def_kind {:?} for body_owner {:?}",
-                dk, root_ldid
-            ),
+            _ => continue,
         }
         order.push(root_ldid.to_def_id())
     }
