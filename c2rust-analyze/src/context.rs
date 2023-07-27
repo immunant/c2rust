@@ -29,6 +29,7 @@ use rustc_middle::ty::FieldDef;
 use rustc_middle::ty::GenericArgKind;
 use rustc_middle::ty::GenericParamDefKind;
 use rustc_middle::ty::Instance;
+use rustc_middle::ty::RegionKind;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TyKind;
@@ -325,6 +326,8 @@ pub struct GlobalAnalysisCtxt<'tcx> {
 
     pub adt_metadata: AdtMetadataTable<'tcx>,
 
+    pub fn_origins: FnOriginMap<'tcx>,
+
     pub foreign_mentioned_tys: HashSet<DefId>,
 }
 
@@ -381,6 +384,113 @@ pub struct AnalysisCtxtData<'tcx> {
     c_void_casts: CVoidCasts<'tcx>,
     rvalue_tys: HashMap<Location, LTy<'tcx>>,
     string_literal_locs: Vec<Location>,
+}
+
+pub struct FnOriginMap<'tcx> {
+    pub fn_info: HashMap<
+        DefId,
+        (
+            // fn lifetime params
+            Vec<OriginParam>,
+            // inputs
+            Vec<LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>>,
+            // output
+            LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>,
+        ),
+    >,
+}
+
+fn fn_origin_args_params<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    adt_metadata_table: &AdtMetadataTable,
+) -> FnOriginMap<'tcx> {
+    let fn_dids = fn_body_owners_postorder(tcx);
+
+    let mut fn_info = HashMap::new();
+
+    for fn_did in fn_dids {
+        let fn_ty = tcx.type_of(fn_did);
+
+        // gather existing OriginParams
+        let mut origin_params = vec![];
+        if let TyKind::FnDef(_, substs) = fn_ty.kind() {
+            for sub in substs.iter() {
+                match sub.unpack() {
+                    GenericArgKind::Lifetime(re) => match re.kind() {
+                        RegionKind::ReEarlyBound(eb) => origin_params.push(OriginParam::Actual(eb)),
+                        _ => (),
+                    },
+                    _ => (),
+                }
+            }
+        }
+
+        let mut arg_origin_args = vec![];
+
+        // gather new and existing OriginArgs and push new OriginParams
+        let sig = tcx.erase_late_bound_regions(tcx.fn_sig(fn_did));
+        let ltcx = LabeledTyCtxt::<'tcx, &[OriginArg<'tcx>]>::new(tcx);
+        let mut next_hypo_origin_id = 0;
+        let mut origin_lty = |ty: Ty<'tcx>| {
+            ltcx.label(ty, &mut |ty| {
+                let mut origin_args = vec![];
+                match ty.kind() {
+                    TyKind::RawPtr(_ty) => {
+                        let origin_arg = OriginArg::Hypothetical(next_hypo_origin_id);
+                        next_hypo_origin_id += 1;
+                        origin_args.push(origin_arg);
+
+                        if let Ok(origin_param) = OriginParam::try_from(&origin_arg) {
+                            origin_params.push(origin_param);
+                        }
+                    }
+                    TyKind::Ref(reg, _ty, _mutability) => {
+                        origin_args.push(OriginArg::Actual(*reg));
+                    }
+                    TyKind::Adt(adt_def, substs) => {
+                        for sub in substs.iter() {
+                            if let GenericArgKind::Lifetime(r) = sub.unpack() {
+                                origin_args.push(OriginArg::Actual(r));
+                            }
+                        }
+                        if let Some(adt_metadata) =
+                            adt_metadata_table.table.get(&adt_def.did()).cloned()
+                        {
+                            for adt_param in adt_metadata.lifetime_params.iter() {
+                                if let OriginParam::Hypothetical(_) = adt_param {
+                                    let origin_param =
+                                        OriginParam::Hypothetical(next_hypo_origin_id);
+                                    origin_params.push(origin_param);
+                                    origin_args.push(OriginArg::Hypothetical(next_hypo_origin_id));
+                                    next_hypo_origin_id += 1;
+                                }
+                            }
+                        }
+                    }
+                    _ => (),
+                }
+
+                if origin_args.is_empty() {
+                    return &[];
+                }
+                let origin_args: Vec<_> = origin_args.into_iter().collect();
+                ltcx.arena().alloc_slice(&origin_args[..])
+            })
+        };
+        for ty in sig.inputs().iter() {
+            let arg_lty = origin_lty(*ty);
+            arg_origin_args.push(arg_lty);
+        }
+
+        let output_lty = origin_lty(sig.output());
+
+        fn_info.insert(
+            fn_did.to_def_id(),
+            (origin_params, arg_origin_args, output_lty),
+        );
+    }
+
+    FnOriginMap { fn_info }
 }
 
 fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
@@ -558,6 +668,8 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
 
 impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> GlobalAnalysisCtxt<'tcx> {
+        let adt_metadata = construct_adt_metadata(tcx);
+        let fn_origins = fn_origin_args_params(tcx, &adt_metadata);
         GlobalAnalysisCtxt {
             tcx,
             lcx: LabeledTyCtxt::new(tcx),
@@ -571,7 +683,8 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             field_ltys: HashMap::new(),
             static_tys: HashMap::new(),
             addr_of_static: HashMap::new(),
-            adt_metadata: construct_adt_metadata(tcx),
+            adt_metadata,
+            fn_origins,
             foreign_mentioned_tys: HashSet::new(),
         }
     }
@@ -619,6 +732,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             ref mut static_tys,
             ref mut addr_of_static,
             adt_metadata: _,
+            fn_origins: _,
             foreign_mentioned_tys: _,
         } = *self;
 

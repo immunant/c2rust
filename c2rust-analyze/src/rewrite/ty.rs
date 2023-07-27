@@ -111,7 +111,7 @@ fn relabel_rewrites<'tcx, P, F>(
     flags: &F,
     lcx: LabeledTyCtxt<'tcx, RewriteLabel<'tcx>>,
     lty: LTy<'tcx>,
-    adt_metadata: &AdtMetadataTable,
+    gacx: &GlobalAnalysisCtxt<'tcx>,
 ) -> RwLTy<'tcx>
 where
     P: Index<PointerId, Output = PermissionSet>,
@@ -119,7 +119,7 @@ where
 {
     lcx.relabel_with_args(lty, &mut |pointer_lty, args| {
         // FIXME: get function lifetime parameters and pass them to this
-        create_rewrite_label(pointer_lty, args, perms, flags, &[], adt_metadata)
+        create_rewrite_label(pointer_lty, args, perms, flags, &[], &gacx.adt_metadata)
     })
 }
 
@@ -490,7 +490,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
                         &self.asn.flags(),
                         self.rw_lcx,
                         lty,
-                        &self.acx.gacx.adt_metadata,
+                        &self.acx.gacx,
                     );
                     let hir_ty = hir_local.ty.unwrap();
                     self.handle_ty(rw_lty, hir_ty);
@@ -530,28 +530,60 @@ pub fn gen_ty_rewrites<'tcx>(
         .fn_sig_by_hir_id(hir_id)
         .unwrap_or_else(|| panic!("expected def {:?} to be a function", ldid));
 
+    let (origin_params, input_origin_args, output_origin_args) =
+        &acx.gacx.fn_origins.fn_info[&ldid.to_def_id()];
+    let hir_generics = acx.tcx().hir().get_generics(ldid);
+    if let Some(generics) = hir_generics {
+        let mut generics_rws: Vec<Rewrite> = vec![];
+        for p in origin_params {
+            generics_rws.push(Rewrite::PrintTy(format!("{p:?}")))
+        }
+        if !generics_rws.is_empty() {
+            v.hir_rewrites
+                .push((generics.span, Rewrite::TyGenericParams(generics_rws)))
+        }
+    }
+
     let lty_sig = acx.gacx.fn_sigs.get(&ldid.to_def_id()).unwrap();
     assert_eq!(lty_sig.inputs.len(), hir_sig.decl.inputs.len());
-    for (&lty, hir_ty) in lty_sig.inputs.iter().zip(hir_sig.decl.inputs.iter()) {
-        let rw_lty = relabel_rewrites(
-            &asn.perms(),
-            &asn.flags(),
-            rw_lcx,
-            lty,
-            &acx.gacx.adt_metadata,
-        );
+    for ((&lty, hir_ty), origin_args) in lty_sig
+        .inputs
+        .iter()
+        .zip(hir_sig.decl.inputs.iter())
+        .zip(input_origin_args.iter())
+    {
+        let rw_lty =
+            rw_lcx.zip_labels_with(lty, &origin_args, &mut |pointer_lty, lifetime_lty, args| {
+                create_rewrite_label(
+                    pointer_lty,
+                    args,
+                    &asn.perms(),
+                    &asn.flags(),
+                    lifetime_lty.label,
+                    &acx.gacx.adt_metadata,
+                )
+            });
+
         v.handle_ty(rw_lty, hir_ty);
     }
 
     if let hir::FnRetTy::Return(hir_ty) = hir_sig.decl.output {
-        let rw_lty = relabel_rewrites(
-            &asn.perms(),
-            &asn.flags(),
-            rw_lcx,
+        let output_rw_lty = rw_lcx.zip_labels_with(
             lty_sig.output,
-            &acx.gacx.adt_metadata,
+            &output_origin_args,
+            &mut |pointer_lty, lifetime_lty, args| {
+                create_rewrite_label(
+                    pointer_lty,
+                    args,
+                    &asn.perms(),
+                    &asn.flags(),
+                    lifetime_lty.label,
+                    &acx.gacx.adt_metadata,
+                )
+            },
         );
-        v.handle_ty(rw_lty, hir_ty);
+
+        v.handle_ty(output_rw_lty, hir_ty);
     }
 
     let hir_body_id = acx.tcx().hir().body_owned_by(ldid);
@@ -676,7 +708,7 @@ pub fn dump_rewritten_local_tys<'tcx>(
             &asn.flags(),
             rw_lcx,
             acx.local_tys[local],
-            &acx.gacx.adt_metadata,
+            &acx.gacx,
         );
         let ty = mk_rewritten_ty(rw_lcx, rw_lty);
         eprintln!(
