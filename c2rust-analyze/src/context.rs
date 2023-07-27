@@ -266,17 +266,22 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
                         None
                     }
                 });
+
                 write!(f, "struct {:}", tcx.item_name(*k))?;
-                write!(f, "<")?;
-                let lifetime_params_str = adt
-                    .lifetime_params
-                    .iter()
-                    .map(|p| format!("{:?}", p))
-                    .chain(other_param_names)
-                    .collect::<Vec<_>>()
-                    .join(",");
-                write!(f, "{lifetime_params_str:}")?;
-                writeln!(f, "> {{")?;
+                if !adt.lifetime_params.is_empty() {
+                    write!(f, "<")?;
+                    let lifetime_params_str = adt
+                        .lifetime_params
+                        .iter()
+                        .map(|p| format!("{:?}", p))
+                        .chain(other_param_names)
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    write!(f, "{lifetime_params_str:}")?;
+                    write!(f, ">")?;
+                }
+                writeln!(f, " {{")?;
+
                 for (fdid, fmeta) in &adt.field_info {
                     write!(f, "\t{:}: ", tcx.item_name(*fdid))?;
                     let field_string_lty = fmt_string(fmeta.origin_args);
