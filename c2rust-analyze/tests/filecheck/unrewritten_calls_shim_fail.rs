@@ -3,7 +3,7 @@
 #![register_tool(c2rust_analyze_test)]
 // Like `unrewritten_calls.rs`, but specifically testing the case where shim generation fails.
 
-// CHECK-LABEL: fn slice_good1(x: &mut [(i32)])
+// CHECK-LABEL: fn slice_good1<'h0>(x: &'h0 mut [(i32)])
 unsafe fn slice_good1(x: *mut i32) -> i32 {
     let y = slice_bad(x);
     *y
@@ -29,7 +29,7 @@ unsafe fn slice_use_offset(x: *mut i32) -> *mut i32 {
     x
 }
 
-// CHECK-LABEL: fn slice_good2(x: &mut (i32)) -> &(i32)
+// CHECK-LABEL: fn slice_good2<'h0,'h1>(x: &'h0 mut (i32)) -> &'h1 (i32)
 unsafe fn slice_good2(x: *mut i32) -> *mut i32 {
     *x = 1;
     x

@@ -27,7 +27,7 @@ extern "C" {
     fn bar(f: Foo);
 }
 
-// CHECK-LABEL: pub unsafe fn cell_as_mut_as_cell(mut x: &core::cell::Cell<(i32)>, mut f: Foo) {
+// CHECK-LABEL: pub unsafe fn cell_as_mut_as_cell<'h0,'h1>(mut x: &'h0 core::cell::Cell<(i32)>, mut f: Foo<'h1>) {
 pub unsafe fn cell_as_mut_as_cell(mut x: *mut i32, mut f: Foo) {
     let z = x;
     let r = x;
@@ -43,6 +43,7 @@ pub struct fdnode {
     pub ctx: *mut u8,
 }
 
+// CHECK-LABEL: unsafe extern "C" fn server_free<'h0,'h1>(fdn: &'h0 (fdnode<'h1>)) {
 unsafe extern "C" fn server_free(fdn: *mut fdnode) {
     let _fdn2 = fdn as *const fdnode;
 }

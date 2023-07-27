@@ -5,7 +5,7 @@
 extern crate libc;
 
 // CHECK-LABEL: pub unsafe extern "C" fn insertion_sort
-// CHECK-SAME: p: &mut [(libc::c_int)]
+// CHECK-SAME: p: &'h0 mut [(libc::c_int)]
 #[no_mangle]
 pub unsafe extern "C" fn insertion_sort(n: libc::c_int, p: *mut libc::c_int) {
     let mut i: libc::c_int = 1 as libc::c_int;
@@ -27,8 +27,8 @@ pub unsafe extern "C" fn insertion_sort(n: libc::c_int, p: *mut libc::c_int) {
 }
 
 // CHECK-LABEL: pub unsafe extern "C" fn check_eq
-// CHECK-SAME: p: &[(libc::c_int)]
-// CHECK-NEXT: q: &[(libc::c_int)]
+// CHECK-SAME: p: &'h0 [(libc::c_int)]
+// CHECK-NEXT: q: &'h1 [(libc::c_int)]
 #[no_mangle]
 pub unsafe extern "C" fn check_eq(n: libc::c_int, p: *mut libc::c_int,
                                   q: *mut libc::c_int) {
