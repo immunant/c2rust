@@ -8,7 +8,7 @@ use crate::pointer_id::{
     PointerTableMut,
 };
 use crate::util::{self, describe_rvalue, PhantomLifetime, RvalueDesc};
-use crate::AssignPointerIds;
+use crate::{fn_body_owners_postorder, AssignPointerIds};
 use assert_matches::assert_matches;
 use bitflags::bitflags;
 use indexmap::IndexSet;

@@ -1291,6 +1291,19 @@ fn all_static_items(tcx: TyCtxt) -> Vec<DefId> {
     order
 }
 
+fn is_impl_clone(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
+    let clone_trait_def_id = match tcx.lang_items().clone_trait() {
+        Some(def_id) => def_id,
+        None => return false,
+    };
+    if let Some(impl_def_id) = tcx.impl_of_method(def_id) {
+        if let Some(trait_ref) = tcx.impl_trait_ref(impl_def_id) {
+            return trait_ref.def_id == clone_trait_def_id;
+        }
+    }
+    false
+}
+
 /// Return all `LocalDefId`s for all `fn`s that are `body_owners`, ordered according to a postorder
 /// traversal of the graph of references between bodies.  Also returns the callgraph itself, in the
 /// form of a map from callee `LocalDefId` to a set of caller `LocalDefId`s.
@@ -1309,7 +1322,11 @@ fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
         }
 
         match tcx.def_kind(root_ldid) {
-            DefKind::Fn | DefKind::AssocFn => {}
+            DefKind::Fn | DefKind::AssocFn => {
+                if is_impl_clone(tcx, root_ldid.to_def_id()) {
+                    continue;
+                }
+            }
             DefKind::AnonConst | DefKind::Const | DefKind::Static(_) => continue,
             dk => panic!(
                 "unexpected def_kind {:?} for body_owner {:?}",
