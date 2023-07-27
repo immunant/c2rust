@@ -138,10 +138,7 @@ bitflags! {
 }
 
 impl PermissionSet {
-    /// The permissions for a (byte-)string literal.
-    //
-    // `.union` is used here since it's a `const fn`, unlike `BitOr::bitor`.
-    pub const STRING_LITERAL: Self = Self::READ.union(Self::OFFSET_ADD);
+    pub const NONE: Self = Self::empty();
 
     pub const fn union_all<const N: usize>(a: [Self; N]) -> Self {
         let mut this = Self::empty();
@@ -152,6 +149,11 @@ impl PermissionSet {
         }
         this
     }
+
+    /// The permissions for a (byte-)string literal.
+    //
+    // `.union` is used here since it's a `const fn`, unlike `BitOr::bitor`.
+    pub const STRING_LITERAL: Self = Self::union_all([Self::READ, Self::OFFSET_ADD]);
 }
 
 bitflags! {

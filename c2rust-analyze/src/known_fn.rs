@@ -247,6 +247,22 @@ impl KnownFn {
     }
 }
 
+/// Since [`PermissionSet`]s are allowed to be dropped in any assignment,
+/// the conservation approach for annotations is to
+/// add everything on arguments and nothing on returns.
+///
+/// For example, for [`NON_NULL`], it is not always clearly documented
+/// if an argument can or cannot be `NULL`,
+/// though it is generally more clearly documented for the return type.
+/// Furthermore, some functions are not supposed to accept `NULL`,
+/// but instead of it being UB if called with `NULL`,
+/// the function/syscall returns a normal error like `EFAULT`.
+///
+/// Thus, due to the way [`PermissionSet`]s can be dropped on assignment,
+/// we annotate any argument with [`NON_NULL`] if `NULL` might cause UB,
+/// and we annotate returns with [`NON_NULL`] only if it is strictly guaranteed to be non-`NULL`.
+///
+/// [`NON_NULL`]: PermissionSet::NON_NULL
 macro_rules! known_fns {
     {
         mod $module:ident {
@@ -371,7 +387,7 @@ mod tests {
                     PermissionSet,
                     [PermissionSet::union_all([
                         PermissionSet::WRITE,
-                        PermissionSet::OFFSET_ADD
+                        PermissionSet::OFFSET_ADD,
                     ]),]
                 ),
                 source: "",
@@ -406,10 +422,10 @@ mod tests {
                 mod libc {
 
                     #[cfg(target_os = "linux")]
-                    fn __errno_location() -> *mut c_int: [READ | WRITE];
+                    fn __errno_location() -> *mut c_int: [READ | WRITE | NON_NULL];
 
                     #[cfg(target_os = "macos")]
-                    fn __error() -> *mut c_int: [READ | WRITE];
+                    fn __error() -> *mut c_int: [READ | WRITE | NON_NULL];
 
                 }
             },
@@ -428,7 +444,8 @@ mod tests {
                             PermissionSet,
                             [PermissionSet::union_all([
                                 PermissionSet::READ,
-                                PermissionSet::WRITE
+                                PermissionSet::WRITE,
+                                PermissionSet::NON_NULL,
                             ])]
                         ),
                         source: "",
@@ -473,7 +490,7 @@ mod tests {
                                     PermissionSet,
                                     [PermissionSet::union_all([
                                         PermissionSet::WRITE,
-                                        PermissionSet::OFFSET_ADD
+                                        PermissionSet::OFFSET_ADD,
                                     ])]
                                 ),
                                 source: "",
@@ -505,7 +522,7 @@ mod tests {
                 mod libc {
 
                     fn strtol(
-                        s: *const c_char: [READ | OFFSET_ADD],
+                        s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
                         endp: *mut *mut c_char: [WRITE, WRITE | OFFSET_ADD],
                         base: c_int,
                     ) -> c_long;
@@ -526,7 +543,8 @@ mod tests {
                                     PermissionSet,
                                     [PermissionSet::union_all([
                                         PermissionSet::READ,
-                                        PermissionSet::OFFSET_ADD
+                                        PermissionSet::OFFSET_ADD,
+                                        PermissionSet::NON_NULL,
                                     ])]
                                 ),
                                 source: "",
@@ -540,7 +558,7 @@ mod tests {
                                         PermissionSet::union_all([PermissionSet::WRITE,]),
                                         PermissionSet::union_all([
                                             PermissionSet::WRITE,
-                                            PermissionSet::OFFSET_ADD
+                                            PermissionSet::OFFSET_ADD,
                                         ])
                                     ]
                                 ),
@@ -572,10 +590,12 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
         mod libc {
 
             #[cfg(target_os = "linux")]
-            fn __errno_location() -> *mut c_int: [READ | WRITE];
+            fn __errno_location() -> *mut c_int: [READ | WRITE | NON_NULL];
 
             #[cfg(target_os = "macos")]
-            fn __error() -> *mut c_int: [READ | WRITE];
+            fn __error() -> *mut c_int: [READ | WRITE | NON_NULL];
+
+            // fn __ctype_b_loc;
 
             fn _exit(
                 status: c_int,
@@ -602,9 +622,532 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             ) -> c_int;
 
             fn access(
-                path: *const c_char: [READ | OFFSET_ADD],
+                path: *const c_char: [READ | OFFSET_ADD | NON_NULL],
                 amode: c_int,
             ) -> c_int;
+
+            fn alarm(
+                seconds: c_uint,
+            ) -> c_uint;
+
+            fn atoi(
+                s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+            ) -> c_int;
+
+            fn bind(
+                socket: c_int,
+                address: *const sockaddr: [READ],
+                address_len: socklen_t,
+            ) -> c_int;
+
+            fn calloc(
+                nobj: size_t,
+                size: size_t,
+            ) -> *mut c_void: [READ | WRITE | OFFSET_ADD | FREE];
+
+            fn chdir(
+                dir: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+            ) -> c_int;
+
+            fn chmod(
+                path: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                mode: mode_t,
+            ) -> c_int;
+
+            fn chroot(
+                name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+            ) -> c_int;
+
+            fn clock_gettime(
+                clk_id: clockid_t,
+                tp: *mut timespec: [WRITE],
+            ) -> c_int;
+
+            fn close(
+                fd: c_int,
+            ) -> c_int;
+
+            fn closelog() -> ();
+
+            fn dlclose(
+                handle: *mut c_void: [READ | WRITE | NON_NULL],
+            ) -> c_int;
+
+            // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
+            // as it may be statically allocated and reused.  It is not meant to be modified.
+            fn dlerror() -> *mut c_char: [READ | OFFSET_ADD];
+
+            fn dlopen(
+                filename: *const c_char: [READ | OFFSET_ADD],
+                flag: c_int,
+            ) -> *mut c_void: [READ | WRITE];
+
+            fn dlsym(
+                handle: *mut c_void: [READ | WRITE], // TODO(kkysen) May not be a `VALID` pointer.
+                symbol: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+            ) -> *mut c_void: [READ | WRITE | OFFSET_ADD | OFFSET_SUB | FREE]; // Could be anything
+
+            fn dup(
+                fd: c_int,
+            ) -> c_int;
+
+            fn dup2(
+                src: c_int,
+                dst: c_int,
+            ) -> c_int;
+
+            #[cfg(target_os = "linux")]
+            fn epoll_create1(
+                flags: c_int,
+            ) -> c_int;
+
+            #[cfg(target_os = "linux")]
+            fn epoll_ctl(
+                epfd: c_int,
+                op: c_int,
+                fd: c_int,
+                // Declared as `*mut`, but docs say it's only read.
+                event: *mut epoll_event: [READ],
+            ) -> c_int;
+
+            #[cfg(target_os = "linux")]
+            fn epoll_wait(
+                epfd: c_int,
+                events: *mut epoll_event: [WRITE | OFFSET_ADD | NON_NULL],
+                maxevents: c_int,
+                timeout: c_int,
+            ) -> c_int;
+
+            fn execv(
+                prog: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                argv: *const *const c_char: [READ | OFFSET_ADD | NON_NULL, READ | OFFSET_ADD],
+            ) -> c_int;
+
+            fn execve(
+                prog: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                argv: *const *const c_char: [READ | OFFSET_ADD | NON_NULL, READ | OFFSET_ADD],
+                envp: *const *const c_char: [READ | OFFSET_ADD | NON_NULL, READ | OFFSET_ADD],
+            ) -> c_int;
+
+            fn exit(
+                status: c_int,
+            ) -> !;
+
+            #[cfg(target_os = "linux")]
+            fn explicit_bzero(
+                s: *mut c_void: [WRITE | OFFSET_ADD | NON_NULL],
+                len: size_t,
+            ) -> ();
+
+            fn fchdir(
+                dirfd: c_int,
+            ) -> c_int;
+
+            // fn fcntl(
+            //     fd: c_int,
+            //     cmd: c_int,
+                   // TODO(kkysen) varargs
+            //     ...
+            // ) -> c_int,
+
+            fn fflush(
+                file: *mut FILE: [READ | WRITE | NON_NULL],
+            ) -> c_int;
+
+            fn fork() -> pid_t;
+
+            // fn fprintf(
+            //     stream: *mut FILE: [READ | WRITE | NON_NULL],
+            //     format: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                   // TODO(kkysen) varargs, printf-style
+            //     ...
+            // ) -> c_int;
+
+            fn fputs(
+                s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                stream: *mut FILE: [READ | WRITE | NON_NULL],
+            ) -> c_int;
+
+            fn free(
+                p: *mut c_void: [FREE],
+            ) -> ();
+
+            fn freeaddrinfo(
+                // TODO(kkysen) Should this be `FREE`, as it could be manually `free`d,
+                // but is not meant to be `free`d directly?
+                res: *mut addrinfo: [READ | WRITE],
+            ) -> ();
+
+            fn fstat(
+                fildes: c_int,
+                buf: *mut stat: [WRITE | NON_NULL],
+            ) -> c_int;
+
+            fn ftruncate(
+                fd: c_int,
+                length: off_t,
+            ) -> c_int;
+
+            fn gai_strerror(
+                errcode: c_int,
+            ) -> *const c_char: [READ | OFFSET_ADD | NON_NULL];
+
+            fn getaddrinfo(
+                node: *const c_char: [READ | OFFSET_ADD],
+                service: *const c_char: [READ | OFFSET_ADD],
+                hints: *const addrinfo: [READ],
+                // TODO(kkysen) Should the 2nd ptr be `FREE`, as it could be manually `free`d,
+                // but is not meant to be `free`d directly, but by `freeaddrinfo`?.
+                res: *mut *mut addrinfo: [WRITE | NON_NULL, WRITE | NON_NULL],
+            ) -> c_int;
+
+            fn getcwd(
+                // `READ` because the return type is `READ`.
+                buf: *mut c_char: [READ | WRITE | OFFSET_ADD],
+                size: size_t,
+                // glibc's extension will allocate if `buf` is `NULL`.
+            ) -> *mut c_char: [READ | WRITE | OFFSET_ADD | FREE];
+
+            fn getegid() -> gid_t;
+
+            #[cfg(target_os = "linux")]
+            fn getentropy(
+                buf: *mut c_void: [WRITE | OFFSET_ADD | NON_NULL],
+                buflen: size_t,
+            ) -> c_int;
+
+            fn getenv(
+                s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
+                // as it may be statically allocated and reused.  It is not meant to be modified.
+            ) -> *mut c_char: [READ | OFFSET_ADD];
+
+            fn geteuid() -> uid_t;
+
+            fn getgid() -> gid_t;
+
+            fn getgrgid(
+                gid: gid_t,
+                // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
+                // as it may be statically allocated and reused.  It is not meant to be modified.
+            ) -> *mut group: [READ];
+
+            fn getgrnam(
+                name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
+                // as it may be statically allocated and reused.  It is not meant to be modified.
+            ) -> *mut group: [READ];
+
+            fn getloadavg(
+                loadavg: *mut c_double: [WRITE | OFFSET_ADD | NON_NULL],
+                nelem: c_int,
+            ) -> c_int;
+
+            fn getnameinfo(
+                sa: *const sockaddr: [READ | NON_NULL],
+                salen: socklen_t,
+                host: *mut c_char: [READ | OFFSET_ADD],
+                hostlen: socklen_t,
+                serv: *mut c_char: [READ | OFFSET_ADD],
+                sevlen: socklen_t,
+                flags: c_int,
+            ) -> c_int;
+
+            fn getopt(
+                argc: c_int,
+                // The outer `*const` array is actually mutated unless `$POSIXLY_CORRECT` is set.
+                argv: *const *mut c_char: [READ | WRITE | OFFSET_ADD | NON_NULL, READ | OFFSET_ADD],
+                optstr: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+            ) -> c_int;
+
+            fn getpeername(
+                socket: c_int,
+                address: *mut sockaddr: [WRITE | NON_NULL],
+                address_len: *mut socklen_t: [READ | WRITE | NON_NULL],
+            ) -> c_int;
+
+            fn getpid() -> pid_t;
+
+            fn getppid() -> pid_t;
+
+            fn getpwnam(
+                name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
+                // as it may be statically allocated and reused.  It is not meant to be modified.
+            ) -> *mut passwd: [READ];
+
+            #[cfg(target_os = "linux")]
+            fn getrlimit(
+                resource: __rlimit_resource_t,
+                rlim: *mut rlimit: [WRITE | NON_NULL],
+            ) -> c_int;
+
+            #[cfg(target_os = "macos")]
+            fn getrlimit(
+                resource: c_int,
+                rlim: *mut rlimit: [WRITE | NON_NULL],
+            ) -> c_int;
+
+            fn getsockname(
+                socket: c_int,
+                address: *mut sockaddr: [WRITE | NON_NULL],
+                address_len: *mut socklen_t: [READ | WRITE | NON_NULL],
+            ) -> c_int;
+
+            fn getsockopt(
+                sockfd: c_int,
+                level: c_int,
+                optname: c_int,
+                optval: *mut c_void: [WRITE | NON_NULL],
+                optlen: *mut socklen_t: [READ | WRITE | NON_NULL],
+            ) -> c_int;
+
+            fn getuid() -> uid_t;
+
+            // fn glob(
+            //     pattern: *const c_char,
+            //     flags: c_int,
+                   // TODO(kkysen) Not yet sure how to handle fn ptrs.
+            //     errfunc: Option<extern "C" fn(epath: *const c_char, errno: c_int) -> c_int>,
+            //     pglob: *mut glob_t,
+            // ) -> c_int;
+
+            fn globfree(
+                pglob: *mut glob_t: [READ | WRITE | NON_NULL],
+            ) -> ();
+
+            fn gmtime_r(
+                time_p: *const time_t: [READ | NON_NULL],
+                // `READ` because it's returned.
+                result: *mut tm: [READ | WRITE | NON_NULL],
+            ) -> *mut tm: [READ | WRITE];
+
+            // TODO(kkysen) Not in `libc` crate.
+            // fn htonl;
+
+            // TODO(kkysen) Not in `libc` crate.
+            // fn htons;
+
+            // TODO(kkysen) Not in `libc` crate.
+            // fn inet_ntop;
+
+            // TODO(kkysen) Not in `libc` crate.
+            // fn inet_pton;
+
+            #[cfg(target_os = "linux")]
+            fn initgroups(
+                user: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                group: gid_t,
+            ) -> c_int;
+
+            #[cfg(target_os = "macos")]
+            fn initgroups(
+                user: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                basegid: c_int,
+            ) -> c_int;
+
+            #[cfg(target_os = "linux")]
+            fn inotify_add_watch(
+                fd: c_int,
+                path: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                mask: u32,
+            ) -> c_int;
+
+            #[cfg(target_os = "linux")]
+            fn inotify_init() -> c_int;
+
+            #[cfg(target_os = "linux")]
+            fn inotify_init1(
+                flags: c_int,
+            ) -> c_int;
+
+            #[cfg(target_os = "linux")]
+            fn inotify_rm_watch(
+                fd: c_int,
+                wd: c_int,
+            ) -> c_int;
+
+            // fn ioctl(
+            //     fd: c_int,
+            //     request: c_ulong,
+                   // TODO(kkysen) varargs
+            //     ...
+            // ) -> c_int;
+
+            fn kill(
+                pid: pid_t,
+                sig: c_int,
+            ) -> c_int;
+
+            fn listen(
+                socket: c_int,
+                backlog: c_int,
+            ) -> c_int;
+
+            fn localtime_r(
+                time_p: *const time_t: [READ | NON_NULL],
+                // `READ` because it's returned (if there's no error).
+                result: *mut tm: [READ | WRITE | NON_NULL],
+            ) -> *mut tm: [READ | WRITE];
+
+            fn lseek(
+                fd: c_int,
+                offset: off_t,
+                whence: c_int,
+            ) -> off_t;
+
+            fn lstat(
+                path: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                buf: *mut stat: [WRITE | NON_NULL],
+            ) -> c_int;
+
+            fn malloc(
+                size: size_t,
+            ) -> *mut c_void: [READ | WRITE | OFFSET_ADD | FREE]; // TODO(kkysen) OFFSET_ADD?
+
+            fn memchr(
+                // `WRITE` because the return type is derived from `cx`'s provenance.
+                cx: *const c_void: [READ | WRITE | OFFSET_ADD | NON_NULL],
+                c: c_int,
+                n: size_t,
+            ) -> *mut c_void: [READ | WRITE | OFFSET_ADD | OFFSET_SUB];
+
+            fn memcmp(
+                cx: *const c_void: [READ | OFFSET_ADD | NON_NULL],
+                ct: *const c_void: [READ | OFFSET_ADD | NON_NULL],
+                n: size_t,
+            ) -> c_int;
+
+            fn memcpy(
+                dest: *mut c_void: [WRITE | OFFSET_ADD | NON_NULL],
+                src: *const c_void: [READ | OFFSET_ADD | NON_NULL],
+                n: size_t,
+                // Same as `dest`, but while `dest` shouldn't be `NULL`,
+                // it can without error, and thus this can return `NULL`.
+            ) -> *mut c_void: [WRITE | OFFSET_ADD];
+
+            fn memmove(
+                // `dest` and `src` can overlap, which seems like it may be UB if they are slices,
+                // but since we can't safely produce those overlapping slices,
+                // we would instead end up with two `&[Cell<T>]`s in possibly overlapping cases.
+                dest: *mut c_void: [WRITE | OFFSET_ADD | NON_NULL],
+                src: *const c_void: [READ | OFFSET_ADD | NON_NULL],
+                n: size_t,
+                // Same as `dest`, but while `dest` shouldn't be `NULL`,
+                // it can without error, and thus this can return `NULL`.
+            ) -> *mut c_void: [WRITE | OFFSET_ADD];
+
+            // TODO(kkysen) Not in `libc` crate.
+            // fn mempcpy;
+
+            fn memset(
+                dest: *mut c_void: [WRITE | OFFSET_ADD | NON_NULL],
+                c: c_int,
+                n: size_t,
+                // Same as `dest`, but while `dest` shouldn't be `NULL`,
+                // it can without error, and thus this can return `NULL`.
+            ) -> *mut c_void: [WRITE | OFFSET_ADD];
+
+            #[cfg(target_os = "linux")]
+            fn mkostemp(
+                template: *mut c_char: [READ | WRITE | OFFSET_ADD | NON_NULL],
+                flags: c_int,
+            ) -> c_int;
+
+            fn mmap(
+                // Not yet a `VALID` pointer.
+                addr: *mut c_void: [NONE],
+                len: size_t,
+                prot: c_int,
+                flags: c_int,
+                fd: c_int,
+                offset: off_t,
+                // TODO(kkysen) Not always a `VALID` pointer, as it can be `-1`.
+            ) -> *mut c_void: [READ | WRITE | OFFSET_ADD | NON_NULL];
+
+            fn munmap(
+                addr: *mut c_void: [OFFSET_ADD | NON_NULL],
+                len: size_t,
+            ) -> c_int;
+
+            // TODO(kkysen) Not in `libc` crate.
+            // fn ntohs;
+
+            // fn open(
+            //     path: *const c_char,
+            //     oflag: c_int,
+                   // TODO(kkysen) varargs
+            //     ...
+            // ) -> c_int;
+
+            fn openlog(
+                ident: *const c_char: [READ | OFFSET_ADD],
+                logopt: c_int,
+                facility: c_int,
+            ) -> ();
+
+            fn perror(
+                s: *const c_char: [READ | OFFSET_ADD],
+            ) -> ();
+
+            fn pipe(
+                fds: *mut c_int: [WRITE | OFFSET_ADD | NON_NULL],
+            ) -> c_int;
+
+            #[cfg(target_os = "linux")]
+            fn pipe2(
+                fds: *mut c_int: [WRITE | OFFSET_ADD | NON_NULL],
+                flags: c_int,
+            ) -> c_int;
+
+            fn poll(
+                fds: *mut pollfd: [READ | WRITE | OFFSET_ADD | NON_NULL],
+                nfds: nfds_t,
+                timeout: c_int,
+            ) -> c_int;
+
+            // fn prctl(
+            //     option: c_int,
+                   // TODO(kkysen) varargs
+            //     ...
+            // ) -> c_int;
+
+            fn pread(
+                fd: c_int,
+                buf: *mut c_void: [WRITE | OFFSET_ADD | NON_NULL],
+                count: size_t,
+                offset: off_t,
+            ) -> ssize_t;
+
+            // fn printf(
+            //     format: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                   // TODO(kkysen) varargs, printf-style
+            //     ...
+            // ) -> c_int;
+
+            fn puts(
+                s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+            ) -> c_int;
+
+            fn pwrite(
+                fd: c_int,
+                buf: *const c_void: [READ | OFFSET_ADD | NON_NULL],
+                count: size_t,
+                offset: off_t,
+            ) -> ssize_t;
+
+            fn pwritev(
+                fd: c_int,
+                iov: *const iovec: [READ | OFFSET_ADD | NON_NULL],
+                iovcnt: c_int,
+                offset: off_t,
+            ) -> ssize_t;
+
+            fn raise(
+                signum: c_int,
+            ) -> c_int;
+
+            fn rand() -> c_int;
 
             fn read(
                 fd: c_int,
@@ -612,17 +1155,291 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 count: size_t,
             ) -> ssize_t;
 
+            fn realloc(
+                p: *mut c_void: [READ | WRITE | OFFSET_ADD | FREE],
+                size: size_t,
+            ) -> *mut c_void: [READ | WRITE | OFFSET_ADD | FREE];
+
+            fn recv(
+                socket: c_int,
+                buf: *mut c_void: [WRITE | OFFSET_ADD | NON_NULL],
+                len: size_t,
+                flags: c_int,
+            ) -> ssize_t;
+
+            fn rename(
+                oldname: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                newname: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+            ) -> c_int;
+
+            fn select(
+                nfds: c_int,
+                readfds: *mut fd_set: [READ | WRITE],
+                writefds: *mut fd_set: [READ | WRITE],
+                errorfds: *mut fd_set: [READ | WRITE],
+                timeout: *mut timeval: [READ | WRITE],
+            ) -> c_int;
+
+            #[cfg(target_os = "linux")]
+            fn sendfile(
+                out_fd: c_int,
+                in_fd: c_int,
+                offset: *mut off_t: [READ | WRITE],
+                count: size_t,
+            ) -> ssize_t;
+
+            #[cfg(target_os = "macos")]
+            fn sendfile(
+                fd: c_int,
+                s: c_int,
+                offset: off_t,
+                len: *mut off_t: [READ | WRITE | NON_NULL],
+                // The docs don't indicate that it is modified, but it is not declared `*const`.
+                hdtr: *mut sf_hdtr: [READ],
+                flags: c_int,
+            ) -> c_int;
+
+            fn setenv(
+                name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                val: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                overwrite: c_int,
+            ) -> c_int;
+
+            fn setgid(
+                gid: gid_t,
+            ) -> c_int;
+
+            #[cfg(target_os = "linux")]
+            fn setgroups(
+                ngroups: size_t,
+                ptr: *const gid_t: [READ | OFFSET_ADD | NON_NULL],
+            ) -> c_int;
+
+            #[cfg(target_os = "macos")]
+            fn setgroups(
+                ngroups: c_int,
+                ptr: *const gid_t: [READ | OFFSET_ADD | NON_NULL],
+            ) -> c_int;
+
+            fn setlocale(
+                category: c_int,
+                locale: *const c_char: [READ | OFFSET_ADD],
+                // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
+                // as it may be statically allocated and reused.  It is not meant to be modified.
+            ) -> *mut c_char: [READ | OFFSET_ADD];
+
+            #[cfg(target_os = "linux")]
+            fn setrlimit(
+                resource: __rlimit_resource_t,
+                rlim: *const rlimit: [READ | NON_NULL],
+            ) -> c_int;
+
+            #[cfg(target_os = "macos")]
+            fn setrlimit(
+                resource: c_int,
+                rlim: *const rlimit: [READ | NON_NULL],
+            ) -> c_int;
+
+            fn setsid() -> pid_t;
+
+            fn setsockopt(
+                socket: c_int,
+                level: c_int,
+                name: c_int,
+                value: *const c_void: [READ | NON_NULL],
+                option_len: socklen_t,
+            ) -> c_int;
+
+            fn setuid(
+                uid: uid_t,
+            ) -> c_int;
+
+            fn shutdown(
+                socket: c_int,
+                how: c_int,
+            ) -> c_int;
+
+            fn sigaction(
+                signum: c_int,
+                act: *const sigaction: [READ],
+                oldact: *mut sigaction: [WRITE],
+            ) -> c_int;
+
+            fn sigemptyset(
+                set: *mut sigset_t: [WRITE | NON_NULL],
+            ) -> c_int;
+
+            // fn signal(
+            //     signum: c_int,
+                   // TODO(kkysen) `libc::sighandler_t` is `size_t`, but may be a fn ptr.
+            //     handler: sighandler_t,
+            // ) -> sighandler_t;
+
+            // fn snprintf(
+            //     s: *mut c_char: [WRITE | OFFSET_ADD | NON_NULL],
+            //     n: size_t,
+            //     format: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                   // TODO(kkysen) varargs, printf-style
+            //     ...
+            // ) -> c_int;
+
+            fn socket(
+                domain: c_int,
+                ty: c_int,
+                protocol: c_int,
+            ) -> c_int;
+
+            #[cfg(target_os = "linux")]
+            fn splice(
+                fd_in: c_int,
+                off_in: *mut loff_t: [READ | WRITE],
+                fd_out: c_int,
+                off_out: *mut loff_t: [READ | WRITE],
+                len: size_t,
+                flags: c_uint,
+            ) -> ssize_t;
+
+            fn srand(
+                seed: c_uint,
+            ) -> ();
+
+            // TODO(kkysen) Not in `libc` crate.
+            // fn srandom;
+
+            fn stat(
+                path: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                buf: *mut stat: [WRITE | NON_NULL],
+            ) -> c_int;
+
+            fn strchr(
+                // `WRITE` because the return type is derived from `cs`'s provenance.
+                cs: *const c_char: [READ | WRITE | OFFSET_ADD | NON_NULL],
+                c: c_int,
+            ) -> *mut c_char: [READ | WRITE | OFFSET_ADD | OFFSET_SUB];
+
+            fn strcmp(
+                cs: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                ct: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+            ) -> c_int;
+
+            fn strcspn(
+                cs: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                ct: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+            ) -> size_t;
+
+            fn strdup(
+                cs: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+            ) -> *mut c_char: [READ | WRITE | OFFSET_ADD | FREE];
+
+            fn strerror_r(
+                errnum: c_int,
+                buf: *mut c_char: [WRITE | OFFSET_ADD | NON_NULL],
+                buflen: size_t,
+            ) -> c_int;
+
+            fn strftime(
+                s: *mut c_char: [WRITE | OFFSET_ADD | NON_NULL],
+                max: size_t,
+                format: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                tm: *const tm: [READ | NON_NULL],
+            ) -> size_t;
+
+            fn strlen(
+                cs: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+            ) -> size_t;
+
+            fn strncasecmp(
+                s1: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                s2: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                n: size_t,
+            ) -> c_int;
+
+            fn strncmp(
+                cs: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                ct: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                n: size_t,
+            ) -> c_int;
+
+            fn strrchr(
+                // `WRITE` because the return type is derived from `cs`'s provenance.
+                cs: *const c_char: [READ | WRITE | OFFSET_ADD | NON_NULL],
+                c: c_int,
+            ) -> *mut c_char: [READ | WRITE | OFFSET_ADD | OFFSET_SUB];
+
+            fn strstr(
+                // `WRITE` because it's returned.
+                cs: *const c_char: [READ | WRITE | OFFSET_ADD | NON_NULL],
+                ct: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+            ) -> *mut c_char: [READ | WRITE | OFFSET_ADD | OFFSET_SUB];
+
+            fn strtol(
+                s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                endp: *mut *mut c_char: [WRITE, WRITE | OFFSET_ADD],
+                base: c_int,
+            ) -> c_long;
+
+            fn strtoll(
+                s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                endp: *mut *mut c_char: [WRITE, WRITE | OFFSET_ADD],
+                base: c_int,
+            ) -> c_longlong;
+
+            fn strtoul(
+                s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                endp: *mut *mut c_char: [WRITE, WRITE | OFFSET_ADD],
+                base: c_int,
+            ) -> c_ulong;
+
+            fn sysconf(
+                name: c_int,
+            ) -> c_long;
+
+            // fn syslog(
+            //     priority: c_int,
+            //     message: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                   // TODO(kkysen) varargs, printf-style
+            //     ...
+            // );
+
+            fn time(
+                time: *mut time_t: [WRITE],
+            ) -> time_t;
+
+            fn timegm(
+                tm: *mut tm: [READ | WRITE | NON_NULL],
+            ) -> time_t;
+
+            // TODO(kkysen) Not in `libc` crate.
+            // fn tzset;
+
+            fn unlink(
+                c: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+            ) -> c_int;
+
+            fn unsetenv(
+                name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+            ) -> c_int;
+
+            // TODO(kkysen) Not in `libc` crate.
+            // fn vsnprintf;
+
+            fn waitpid(
+                pid: pid_t,
+                status: *mut c_int: [WRITE],
+                options: c_int,
+            ) -> pid_t;
+
             fn write(
                 fd: c_int,
                 buf: *const c_void: [READ | OFFSET_ADD],
                 count: size_t,
             ) -> ssize_t;
 
-            fn strtol(
-                s: *const c_char: [READ | OFFSET_ADD],
-                endp: *mut *mut c_char: [WRITE, WRITE | OFFSET_ADD],
-                base: c_int,
-            ) -> c_long;
+            fn writev(
+                fd: c_int,
+                iov: *const iovec: [READ | OFFSET_ADD | NON_NULL],
+                iovcnt: c_int,
+            ) -> ssize_t;
 
         }
     }
