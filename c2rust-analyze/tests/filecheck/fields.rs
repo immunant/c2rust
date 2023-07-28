@@ -36,11 +36,11 @@ struct VecTup<'a> {
 }
 
 struct Hypo {
-    h: *mut i32
+    h: *mut i32,
 }
 
 struct HypoWrapper {
-    hw: *const Hypo
+    hw: *const Hypo,
 }
 
 // let rd = (*(**ppd).a.pra).rd
@@ -61,9 +61,9 @@ struct HypoWrapper {
 
 // CHECK-LABEL: final labeling for "_field_access"
 // CHECK-DAG: ([[@LINE+3]]: ppd): addr_of = UNIQUE, type = READ | WRITE | UNIQUE
-// CHECK-DAG: ([[@LINE+2]]: ra): &mut A
+// CHECK-DAG: ([[@LINE+2]]: ra): &'d mut A<'d>
 // CHECK-DAG: ([[@LINE+1]]: ppd): &mut &mut Data
-unsafe fn _field_access<'d>(ra: &'d mut A<'d>, ppd: *mut *mut Data<'d>) {
+unsafe fn _field_access<'d, 'a: 'd, T: Clone + Copy>(ra: &'d mut A<'d>, ppd: *mut *mut Data<'d>) {
     // CHECK-DAG: ([[@LINE+2]]: rd): addr_of = UNIQUE, type = READ | UNIQUE
     // CHECK-DAG: ([[@LINE+1]]: rd): &Data
     let rd = (*(**ppd).a.pra).rd;
@@ -91,7 +91,7 @@ unsafe fn _field_access<'d>(ra: &'d mut A<'d>, ppd: *mut *mut Data<'d>) {
 // CHECK-DAG: struct HypoWrapper<'h6,'h5>
 // CHECK-DAG: hw: &'h6 (Hypo<'h5>)
 
-// CHECK-DAG: _field_access<'h0,'h1,'h2,'h3,'h4,'h5,'h6,'h7>(ra: &'d mut A<'d,'h0,'h1,'h2>, ppd: &'h3 mut (&'h4 mut (Data<'d,'h5,'h6,'h7>)))
+// CHECK-DAG: unsafe fn _field_access<'d,'a: 'd,'h0,'h1,'h2,'h3,'h4,'h5,'h6,'h7,T: std::marker::Sized + std::clone::Clone + std::marker::Copy>(ra: &'d mut A<'d,'h0,'h1,'h2>, ppd: &'h3 mut (&'h4 mut (Data<'d,'h5,'h6,'h7>))) {
 
 use std::ptr;
 
@@ -113,6 +113,9 @@ struct WithPtr {
 
 unsafe fn f() {
     let mut s = Simple { x: 1, y: 2 };
-    let wp = WithPtr { p: ptr::addr_of_mut!(s.x), q: ptr::addr_of_mut!(s.y) };
+    let wp = WithPtr {
+        p: ptr::addr_of_mut!(s.x),
+        q: ptr::addr_of_mut!(s.y),
+    };
     *(wp.p) = *(wp.q) + 1;
 }

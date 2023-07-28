@@ -16,7 +16,7 @@ use crate::pointer_id::PointerId;
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
 use crate::AdtMetadataTable;
-use hir::{GenericParamKind, ItemKind, Path, PathSegment, VariantData};
+use hir::{GenericParamKind, ItemKind, LifetimeParamKind, Path, PathSegment, VariantData};
 use log::warn;
 use rustc_ast::ast;
 use rustc_hir as hir;
@@ -27,8 +27,8 @@ use rustc_hir::{Mutability, Node};
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, LocalDecl};
 use rustc_middle::ty::print::{FmtPrinter, Print};
-use rustc_middle::ty::TyKind;
 use rustc_middle::ty::{self, AdtDef, GenericArg, GenericArgKind, List, ReErased, TyCtxt};
+use rustc_middle::ty::{PredicateKind, TyKind};
 use rustc_span::Span;
 
 use super::LifetimeName;
@@ -533,11 +533,89 @@ pub fn gen_ty_rewrites<'tcx>(
     let (origin_params, input_origin_args, output_origin_args) =
         &acx.gacx.fn_origins.fn_info[&ldid.to_def_id()];
     let hir_generics = acx.tcx().hir().get_generics(ldid);
+
+    let predicates = acx.tcx().predicates_of(ldid);
+
     if let Some(generics) = hir_generics {
         let mut generics_rws: Vec<Rewrite> = vec![];
-        for p in origin_params {
-            generics_rws.push(Rewrite::PrintTy(format!("{p:?}")))
+
+        for param in generics.params {
+            if let GenericParamKind::Lifetime {
+                kind: LifetimeParamKind::Explicit,
+            } = param.kind
+            {
+                let param_def_id = acx.tcx().hir().local_def_id(param.hir_id).to_def_id();
+                let mut lifetime_bounds: Vec<String> = Vec::new();
+                for (predicate, _) in predicates.predicates {
+                    match predicate.kind().skip_binder() {
+                        PredicateKind::RegionOutlives(outlives_predicate) => {
+                            match (outlives_predicate.0.kind(), outlives_predicate.1.kind()) {
+                                (
+                                    ty::RegionKind::ReEarlyBound(x),
+                                    ty::RegionKind::ReEarlyBound(ebr),
+                                ) if x.def_id == param_def_id => {
+                                    let outlived_region_path = acx.tcx().def_path_str(ebr.def_id);
+                                    let outlived_region_path = outlived_region_path
+                                        .split("::")
+                                        .last()
+                                        .unwrap_or(&outlived_region_path)
+                                        .to_string();
+                                    lifetime_bounds.push(outlived_region_path);
+                                }
+                                _ => {}
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if lifetime_bounds.is_empty() {
+                    generics_rws.push(Rewrite::PrintTy(format!("{}", param.name.ident().as_str())));
+                } else {
+                    let s = format!(
+                        "{}: {}",
+                        param.name.ident().as_str(),
+                        lifetime_bounds.join(" + ")
+                    );
+                    generics_rws.push(Rewrite::PrintTy(s));
+                }
+            }
         }
+
+        // Handle hypothetical rewrites
+        for p in origin_params {
+            if let OriginParam::Hypothetical(_) = p {
+                generics_rws.push(Rewrite::PrintTy(format!("{p:?}")))
+            }
+        }
+
+        // Handle type rewrites
+        for (param_index, param) in generics.params.iter().enumerate() {
+            if let GenericParamKind::Type { .. } = param.kind {
+                let mut trait_bounds: Vec<String> = Vec::new();
+                for (predicate, _) in predicates.predicates {
+                    match predicate.kind().skip_binder() {
+                        PredicateKind::Trait(trait_predicate) => {
+                            if trait_predicate.self_ty().is_param(param_index as u32) {
+                                let trait_path =
+                                    acx.tcx().def_path_str(trait_predicate.trait_ref.def_id);
+                                trait_bounds.push(trait_path);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if trait_bounds.is_empty() {
+                    generics_rws.push(Rewrite::PrintTy(format!("{}", param.name.ident().as_str())));
+                } else {
+                    generics_rws.push(Rewrite::PrintTy(format!(
+                        "{}: {}",
+                        param.name.ident().as_str(),
+                        trait_bounds.join(" + ")
+                    )));
+                }
+            }
+        }
+
         if !generics_rws.is_empty() {
             v.hir_rewrites
                 .push((generics.span, Rewrite::TyGenericParams(generics_rws)))
