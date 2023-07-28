@@ -91,7 +91,7 @@ unsafe fn _field_access<'d>(ra: &'d mut A<'d>, ppd: *mut *mut Data<'d>) {
 // CHECK-DAG: struct HypoWrapper<'h6,'h5>
 // CHECK-DAG: hw: &'h6 (Hypo<'h5>)
 
-// CHECK-DAG: _field_access<'h0,'h1,'h2,'h3,'h4,'h5,'h6,'h7>(ra: &'d mut A<'_,'h0,'h1,'h2>, ppd: &'h3 mut (&'h4 mut (Data<'_,'h5,'h6,'h7>)))
+// CHECK-DAG: _field_access<'h0,'h1,'h2,'h3,'h4,'h5,'h6,'h7>(ra: &'d mut A<'d,'h0,'h1,'h2>, ppd: &'h3 mut (&'h4 mut (Data<'d,'h5,'h6,'h7>)))
 
 use std::ptr;
 

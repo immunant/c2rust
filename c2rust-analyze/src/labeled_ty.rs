@@ -316,7 +316,32 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
     where
         F: FnMut(LabeledTy<'tcx, L1>, LabeledTy<'tcx, L2>, &'tcx [LabeledTy<'tcx, L>]) -> L,
     {
-        assert_eq!(lty1.ty, lty2.ty);
+        // If we're comparing two type where one has late-bound regions but the
+        // other has late bound regions erased, e.g. `&mut A` vs. `&'d mut A<'d>`
+        // we just want to check that both have type `A` (and generic type parameters)
+        // in common and ignore the lifetimes. `tcx.erase_regions` doesn't erase
+        // late bound regions, and there are cases where we'd like to keep those around
+        fn types_equal_ignore_lifetimes<'tcx>(ty1: Ty<'tcx>, ty2: Ty<'tcx>) -> bool {
+            match (&ty1.kind(), &ty2.kind()) {
+                (TyKind::Ref(_, ty1, _), TyKind::Ref(_, ty2, _))
+                | (
+                    TyKind::RawPtr(TypeAndMut { ty: ty1, .. }),
+                    TyKind::RawPtr(TypeAndMut { ty: ty2, .. }),
+                ) => types_equal_ignore_lifetimes(*ty1, *ty2),
+                (TyKind::Adt(def1, substs1), TyKind::Adt(def2, substs2)) => {
+                    eprintln!("doing that comparison thing");
+                    substs1
+                        .types()
+                        .eq_by(substs2.types(), types_equal_ignore_lifetimes)
+                }
+                (TyKind::Tuple(substs1), TyKind::Tuple(substs2)) => substs1
+                    .iter()
+                    .eq_by(substs2.iter(), types_equal_ignore_lifetimes),
+                _ => ty1 == ty2,
+            }
+        }
+
+        assert!(types_equal_ignore_lifetimes(lty1.ty, lty2.ty));
         assert_eq!(lty1.args.len(), lty2.args.len());
         let args = self.zip_args_with(lty1.args, lty2.args, func);
         self.mk(lty1.ty, args, func(lty1, lty2, args))

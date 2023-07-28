@@ -1,4 +1,5 @@
 #![feature(rustc_private)]
+#![feature(iter_order_by)]
 extern crate either;
 extern crate rustc_arena;
 extern crate rustc_ast;
