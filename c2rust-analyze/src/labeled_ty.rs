@@ -328,11 +328,9 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                     TyKind::RawPtr(TypeAndMut { ty: ty1, .. }),
                     TyKind::RawPtr(TypeAndMut { ty: ty2, .. }),
                 ) => types_equal_ignore_lifetimes(*ty1, *ty2),
-                (TyKind::Adt(_, substs1), TyKind::Adt(_, substs2)) => {
-                    substs1
-                        .types()
-                        .eq_by(substs2.types(), types_equal_ignore_lifetimes)
-                }
+                (TyKind::Adt(_, substs1), TyKind::Adt(_, substs2)) => substs1
+                    .types()
+                    .eq_by(substs2.types(), types_equal_ignore_lifetimes),
                 (TyKind::Tuple(substs1), TyKind::Tuple(substs2)) => substs1
                     .iter()
                     .eq_by(substs2.iter(), types_equal_ignore_lifetimes),
