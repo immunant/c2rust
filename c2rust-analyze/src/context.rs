@@ -509,24 +509,20 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
         struct_dids,
     };
 
-    // Gather known lifetime parameters for each struct
+    // Gather existing lifetime parameters for each struct
     for struct_did in &adt_metadata_table.struct_dids {
         let struct_ty = tcx.type_of(struct_did);
         if let TyKind::Adt(adt_def, substs) = struct_ty.kind() {
             adt_metadata_table
                 .table
                 .insert(adt_def.did(), AdtMetadata::default());
+            let metadata = adt_metadata_table.table.get_mut(&adt_def.did()).unwrap();
             eprintln!("gathering known lifetimes for {adt_def:?}");
             for sub in substs.iter() {
                 if let GenericArgKind::Lifetime(r) = sub.unpack() {
                     eprintln!("\tfound lifetime {r:?} in {adt_def:?}");
                     assert_matches!(r.kind(), ReEarlyBound(eb) => {
-                        let _ = adt_metadata_table
-                        .table
-                        .entry(adt_def.did())
-                        .and_modify(|metadata| {
-                            metadata.lifetime_params.insert(OriginParam::Actual(eb));
-                        });
+                        metadata.lifetime_params.insert(OriginParam::Actual(eb));
                     });
                 }
             }
@@ -534,6 +530,14 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
             panic!("{struct_ty:?} is not a struct");
         }
     }
+
+    // TODO: Build dependency graph of ADTs and work by depth-first traversal of strongly-connected
+    // components.  Currently, if `Foo` contains a pointer and `Bar` contains two `Foo`s, `Bar`
+    // gets one region param that is used for both pointers.  Since this case is acyclic, we could
+    // instead give `Bar` two region params and pass a different one to each `Foo`.  Within each
+    // SCC, we need to use the first approach, otherwise every ADT might require an infinite number
+    // of regions.  But for mentions of ADTs in other SCCs, we can use the second approach, which
+    // is more flexible.
 
     let ltcx = LabeledTyCtxt::<'tcx, &[OriginArg<'tcx>]>::new(tcx);
     let mut loop_count = 0;
