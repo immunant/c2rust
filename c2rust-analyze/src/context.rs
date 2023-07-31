@@ -424,7 +424,7 @@ fn fn_origin_args_params<'tcx>(
         let mut arg_origin_args = vec![];
 
         // gather new and existing OriginArgs and push new OriginParams
-        let sig = tcx.fn_sig(fn_did).skip_binder();
+        let sig = tcx.erase_late_bound_regions(tcx.fn_sig(fn_did));
         let ltcx = LabeledTyCtxt::<'tcx, &[OriginArg<'tcx>]>::new(tcx);
         let mut next_hypo_origin_id = 0;
         let mut origin_lty = |ty: Ty<'tcx>| {
