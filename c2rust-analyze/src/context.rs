@@ -436,13 +436,9 @@ fn fn_origin_args_params<'tcx>(
                 let mut origin_args = vec![];
                 match ty.kind() {
                     TyKind::RawPtr(_ty) => {
-                        let origin_arg = OriginArg::Hypothetical(next_hypo_origin_id);
+                        origin_args.push(OriginArg::Hypothetical(next_hypo_origin_id));
+                        origin_params.push(OriginParam::Hypothetical(next_hypo_origin_id));
                         next_hypo_origin_id += 1;
-                        origin_args.push(origin_arg);
-
-                        if let Ok(origin_param) = OriginParam::try_from(&origin_arg) {
-                            origin_params.push(origin_param);
-                        }
                     }
                     TyKind::Ref(reg, _ty, _mutability) => {
                         origin_args.push(OriginArg::Actual(*reg));
