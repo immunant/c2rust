@@ -22,11 +22,10 @@ pub fn gen_static_rewrites<'tcx>(
     } else {
         panic!("def id {:?} not found", def_id);
     };
-    let mutbl = match item.kind {
-        ItemKind::Static(_ty, mutbl, _body_id) => mutbl,
+    let is_mutable = match item.kind {
+        ItemKind::Static(_ty, mutbl, _body_id) => mutbl == Mutability::Mut,
         _ => panic!("expected item {:?} to be a `static`", item),
     };
-    let is_mutable = mutbl == Mutability::Mut;
     let perms = gasn.perms[ptr];
     let written_to = perms.contains(PermissionSet::WRITE);
     if written_to != is_mutable {
