@@ -249,7 +249,7 @@ impl<'c> Translation<'c> {
             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                 self.vector_list_initializer(ctx, ids, ctype, len)
             }
-            CTypeKind::Char | CTypeKind::Int => {
+            ref kind if kind.is_integral_type() => {
                 let id = ids.first().unwrap();
                 self.convert_expr(ctx.used(), *id)
             }
