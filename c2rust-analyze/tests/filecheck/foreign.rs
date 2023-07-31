@@ -8,6 +8,8 @@ type Alias = Bar;
 // CHECK-DAG: bz: ({{.*}}) perms = UNIQUE, flags = FIXED
 // CHECK-DAG: x: ({{.*}}) perms = UNIQUE, flags = FIXED
 // CHECK-DAG: y: ({{.*}}) perms = UNIQUE, flags = FIXED
+// CHECK-DAG: "s": addr_of flags = FIXED
+// CHECK-DAG: "STATIC_PTR": addr_of flags = FIXED, type flags = FIXED#{{.*}}
 
 // CHECK-LABEL: BEGIN{{.*}}foreign.rs
 
@@ -32,6 +34,7 @@ fn fizz(i: *const i32) {}
 
 extern "C" {
     static mut s: S;
+    static mut STATIC_PTR: *mut S;
 }
 
 #[derive(Copy, Clone)]

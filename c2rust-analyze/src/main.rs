@@ -357,6 +357,17 @@ fn mark_foreign_fixed<'tcx>(
         }
     }
 
+    // FIX the types of static declarations in extern blocks
+    for (did, lty) in gacx.static_tys.iter() {
+        if tcx.is_foreign_item(did) {
+            make_ty_fixed(gasn, lty);
+
+            // Also fix the `addr_of_static` permissions.
+            let ptr = gacx.addr_of_static[&did];
+            gasn.flags[ptr].insert(FlagSet::FIXED);
+        }
+    }
+
     // FIX the fields of structs mentioned in extern blocks
     for adt_did in &gacx.adt_metadata.struct_dids {
         if gacx.foreign_mentioned_tys.contains(adt_did) {
@@ -1269,14 +1280,10 @@ fn print_labeling_for_var<'tcx>(
 fn all_static_items(tcx: TyCtxt) -> Vec<DefId> {
     let mut order = Vec::new();
 
-    for root_ldid in tcx.hir().body_owners() {
+    for root_ldid in tcx.hir_crate_items(()).definitions() {
         match tcx.def_kind(root_ldid) {
-            DefKind::Fn | DefKind::AssocFn | DefKind::AnonConst | DefKind::Const => continue,
             DefKind::Static(_) => {}
-            dk => panic!(
-                "unexpected def_kind {:?} for body_owner {:?}",
-                dk, root_ldid
-            ),
+            _ => continue,
         }
         order.push(root_ldid.to_def_id())
     }
