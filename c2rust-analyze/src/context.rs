@@ -386,18 +386,14 @@ pub struct AnalysisCtxtData<'tcx> {
     string_literal_locs: Vec<Location>,
 }
 
+pub struct FnSigOrigins<'tcx> {
+    pub origin_params: Vec<OriginParam>,
+    pub inputs: Vec<LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>>,
+    pub output: LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>,
+}
+
 pub struct FnOriginMap<'tcx> {
-    pub fn_info: HashMap<
-        DefId,
-        (
-            // fn lifetime params
-            Vec<OriginParam>,
-            // inputs
-            Vec<LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>>,
-            // output
-            LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>,
-        ),
-    >,
+    pub fn_info: HashMap<DefId, FnSigOrigins<'tcx>>,
 }
 
 fn fn_origin_args_params<'tcx>(
@@ -478,11 +474,15 @@ fn fn_origin_args_params<'tcx>(
             arg_origin_args.push(arg_lty);
         }
 
-        let output_lty = origin_lty(sig.output());
+        let output = origin_lty(sig.output());
 
         fn_info.insert(
             fn_did.to_def_id(),
-            (origin_params, arg_origin_args, output_lty),
+            FnSigOrigins {
+                origin_params,
+                inputs: arg_origin_args,
+                output,
+            },
         );
     }
 

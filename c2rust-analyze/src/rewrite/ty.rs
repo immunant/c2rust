@@ -9,7 +9,8 @@ use std::ops::Index;
 
 use crate::borrowck::{OriginArg, OriginParam};
 use crate::context::{
-    AnalysisCtxt, Assignment, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LTy, PermissionSet,
+    AnalysisCtxt, Assignment, FlagSet, FnSigOrigins, GlobalAnalysisCtxt, GlobalAssignment, LTy,
+    PermissionSet,
 };
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::PointerId;
@@ -532,8 +533,11 @@ pub fn gen_ty_rewrites<'tcx>(
         .fn_sig_by_hir_id(hir_id)
         .unwrap_or_else(|| panic!("expected def {:?} to be a function", ldid));
 
-    let (origin_params, input_origin_args, output_origin_args) =
-        &acx.gacx.fn_origins.fn_info[&ldid.to_def_id()];
+    let FnSigOrigins {
+        origin_params,
+        inputs: input_origin_args,
+        output: output_origin_args,
+    } = &acx.gacx.fn_origins.fn_info[&ldid.to_def_id()];
     let hir_generics = acx.tcx().hir().get_generics(ldid);
 
     let predicates = acx.tcx().predicates_of(ldid);
