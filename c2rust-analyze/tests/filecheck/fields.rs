@@ -91,7 +91,7 @@ unsafe fn _field_access<'d, 'a: 'd, T: Clone + Copy>(ra: &'d mut A<'d>, ppd: *mu
 // CHECK-DAG: struct HypoWrapper<'h6,'h5>
 // CHECK-DAG: hw: &'h6 (Hypo<'h5>)
 
-// CHECK-DAG: unsafe fn _field_access<'d,'a: 'd,'h0,'h1,'h2,'h3,'h4,'h5,'h6,'h7,T: std::marker::Sized + std::clone::Clone + std::marker::Copy>(ra: &'d mut A<'d,'h0,'h1,'h2>, ppd: &'h3 mut (&'h4 mut (Data<'d,'h5,'h6,'h7>))) {
+// CHECK-DAG: unsafe fn _field_access<'d, 'a: 'd,'h0,'h1,'h2,'h3,'h4,'h5,'h6,'h7, T: Clone + Copy>(ra: &'d mut A<'d,'h0,'h1,'h2>, ppd: &'h3 mut (&'h4 mut (Data<'d,'h5,'h6,'h7>))) {
 
 use std::ptr;
 
@@ -104,7 +104,7 @@ struct Simple {
 }
 
 // CHECK: #[derive(Copy, Clone)]
-// CHECK-NEXT: struct SimpleGeneric<T: std::marker::Sized + std::clone::Clone>
+// CHECK-NEXT: struct SimpleGeneric<T: Clone>
 #[derive(Copy, Clone)]
 struct SimpleGeneric<T: Clone> {
     x: i32,

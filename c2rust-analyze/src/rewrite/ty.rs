@@ -17,9 +17,7 @@ use crate::pointer_id::PointerId;
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
 use crate::AdtMetadataTable;
-use hir::{
-    GenericParamKind, Generics, ItemKind, LifetimeParamKind, Path, PathSegment, VariantData,
-};
+use hir::{GenericParamKind, Generics, ItemKind, Path, PathSegment, VariantData};
 use log::warn;
 use rustc_ast::ast;
 use rustc_hir as hir;
@@ -30,7 +28,9 @@ use rustc_hir::{Mutability, Node};
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, LocalDecl};
 use rustc_middle::ty::print::{FmtPrinter, Print};
-use rustc_middle::ty::{self, AdtDef, GenericArg, GenericArgKind, List, ReErased, TyCtxt};
+use rustc_middle::ty::{
+    self, AdtDef, GenericArg, GenericArgKind, List, OutlivesPredicate, ReErased, TyCtxt,
+};
 use rustc_middle::ty::{PredicateKind, TyKind};
 use rustc_span::Span;
 
@@ -542,18 +542,13 @@ pub fn gen_ty_rewrites<'tcx>(
 
     let predicates = acx.tcx().predicates_of(ldid);
 
-    if let Some(generics) = hir_generics {
-        let generics_rws = gen_generics_rws(
-            acx.tcx(),
-            &generics,
-            &predicates,
-            origin_params.to_owned().into_iter(),
-        );
-        if !generics_rws.is_empty() {
-            v.hir_rewrites
-                .push((generics.span, Rewrite::TyGenericParams(generics_rws)))
-        }
-    }
+    let generics = hir_generics.unwrap_or(Generics::empty());
+    gen_generics_rws(
+        &mut v.hir_rewrites,
+        generics,
+        &predicates,
+        origin_params.iter(),
+    );
 
     let lty_sig = acx.gacx.fn_sigs.get(&ldid.to_def_id()).unwrap();
     assert_eq!(lty_sig.inputs.len(), hir_sig.decl.inputs.len());
@@ -606,6 +601,88 @@ pub fn gen_ty_rewrites<'tcx>(
     v.hir_rewrites
 }
 
+pub fn gen_generics_rws<'p, 'tcx>(
+    hir_rewrites: &mut Vec<(Span, Rewrite)>,
+    generics: &Generics<'tcx>,
+    predicates: &ty::GenericPredicates<'tcx>,
+    origin_params: impl Iterator<Item = &'p OriginParam>,
+) {
+    let mut last_lifetime_span: Option<Span> = None;
+    let mut first_generic_type_span: Option<Span> = None;
+    let mut first_generic_const_span: Option<Span> = None;
+
+    for (predicate, predicate_span) in predicates.predicates {
+        if matches!(
+            predicate.kind().skip_binder(),
+            PredicateKind::RegionOutlives(OutlivesPredicate(a, b)) if a != b
+        ) && (last_lifetime_span.is_none()
+            || last_lifetime_span.unwrap().hi() < predicate_span.hi())
+        {
+            last_lifetime_span = Some(*predicate_span)
+        }
+    }
+    for param in generics.params {
+        match param.kind {
+            GenericParamKind::Lifetime { .. } => {
+                if last_lifetime_span.is_none()
+                    || last_lifetime_span.unwrap().hi() < param.span.hi()
+                {
+                    last_lifetime_span = Some(param.span)
+                }
+            }
+            GenericParamKind::Type { .. } => {
+                if first_generic_type_span.is_none()
+                    || first_generic_type_span.unwrap().lo() < param.span.lo()
+                {
+                    first_generic_type_span = Some(param.span)
+                }
+            }
+            GenericParamKind::Const { .. } => {
+                if first_generic_const_span.is_none()
+                    || first_generic_const_span.unwrap().lo() < param.span.lo()
+                {
+                    first_generic_const_span = Some(param.span)
+                }
+            }
+        }
+    }
+
+    let generics_spans = (
+        last_lifetime_span,
+        first_generic_type_span,
+        first_generic_const_span,
+    );
+
+    let hypothetical_origin_params: Vec<_> = origin_params
+        .filter_map(|p| {
+            if let OriginParam::Hypothetical(_) = p {
+                Some(format!("{:?}", p))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let hypothetical_origin_string = hypothetical_origin_params.join(",");
+
+    if !hypothetical_origin_string.is_empty() {
+        let (hypothetical_origin_span, format_string) = match generics_spans {
+            (Some(last_lifetime_span), ..) => (
+                last_lifetime_span.shrink_to_hi(),
+                format!(",{}", hypothetical_origin_string),
+            ),
+            (_, Some(first_generics_span), _) | (_, _, Some(first_generics_span)) => (
+                first_generics_span.shrink_to_lo(),
+                format!("{},", hypothetical_origin_string),
+            ),
+            _ if generics.params.is_empty() => {
+                (generics.span, format!("<{}>", hypothetical_origin_string))
+            }
+            _ => (generics.span, format!("{}", hypothetical_origin_string)),
+        };
+        hir_rewrites.push((hypothetical_origin_span, Rewrite::PrintTy(format_string)));
+    }
+}
+
 pub fn gen_adt_ty_rewrites(
     gacx: &GlobalAnalysisCtxt,
     gasn: &GlobalAssignment,
@@ -634,19 +711,12 @@ pub fn gen_adt_ty_rewrites(
     let adt_metadata = &gacx.adt_metadata.table[&did];
     let predicates = tcx.predicates_of(did);
 
-    let generics_rws = gen_generics_rws(
-        tcx,
+    gen_generics_rws(
+        &mut hir_rewrites,
         generics,
         &predicates,
-        gacx.adt_metadata.table[&did]
-            .lifetime_params
-            .to_owned()
-            .into_iter(),
+        gacx.adt_metadata.table[&did].lifetime_params.iter(),
     );
-
-    if !generics_rws.is_empty() {
-        hir_rewrites.push((generics.span, Rewrite::TyGenericParams(generics_rws)));
-    }
 
     for field_def in field_defs.iter() {
         let fdid = tcx.hir().local_def_id(field_def.hir_id).to_def_id();
@@ -672,97 +742,6 @@ pub fn gen_adt_ty_rewrites(
     }
 
     hir_rewrites
-}
-
-pub fn gen_generics_rws<'tcx, I>(
-    tcx: TyCtxt<'tcx>,
-    generics: &Generics<'tcx>,
-    predicates: &ty::GenericPredicates<'tcx>,
-    origin_params: I,
-) -> Vec<Rewrite>
-where
-    I: Iterator<Item = OriginParam>,
-{
-    let mut generics_rws: Vec<Rewrite> = vec![];
-
-    // Handle lifetime parameters
-    for param in generics.params {
-        if let GenericParamKind::Lifetime {
-            kind: LifetimeParamKind::Explicit,
-        } = param.kind
-        {
-            let param_def_id = tcx.hir().local_def_id(param.hir_id).to_def_id();
-            let mut lifetime_bounds: Vec<String> = Vec::new();
-            for (predicate, _) in predicates.predicates {
-                match predicate.kind().skip_binder() {
-                    PredicateKind::RegionOutlives(outlives_predicate) => {
-                        match (outlives_predicate.0.kind(), outlives_predicate.1.kind()) {
-                            (
-                                ty::RegionKind::ReEarlyBound(outlives),
-                                ty::RegionKind::ReEarlyBound(outlived),
-                            ) if outlives.def_id == param_def_id && outlives != outlived => {
-                                let outlived_region_path = tcx.def_path_str(outlived.def_id);
-                                let outlived_region_path = outlived_region_path
-                                    .split("::")
-                                    .last()
-                                    .unwrap_or(&outlived_region_path)
-                                    .to_string();
-                                lifetime_bounds.push(outlived_region_path);
-                            }
-                            _ => {}
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            if lifetime_bounds.is_empty() {
-                generics_rws.push(Rewrite::PrintTy(format!("{}", param.name.ident().as_str())));
-            } else {
-                let s = format!(
-                    "{}: {}",
-                    param.name.ident().as_str(),
-                    lifetime_bounds.join(" + ")
-                );
-                generics_rws.push(Rewrite::PrintTy(s));
-            }
-        }
-    }
-
-    // Handle hypothetical rewrites
-    for p in origin_params {
-        if let OriginParam::Hypothetical(_) = p {
-            generics_rws.push(Rewrite::PrintTy(format!("{p:?}")))
-        }
-    }
-
-    // Handle type parameters
-    for (param_index, param) in generics.params.iter().enumerate() {
-        if let GenericParamKind::Type { .. } = param.kind {
-            let mut trait_bounds: Vec<String> = Vec::new();
-            for (predicate, _) in predicates.predicates {
-                match predicate.kind().skip_binder() {
-                    PredicateKind::Trait(trait_predicate) => {
-                        if trait_predicate.self_ty().is_param(param_index as u32) {
-                            let trait_path = tcx.def_path_str(trait_predicate.trait_ref.def_id);
-                            trait_bounds.push(trait_path);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            if trait_bounds.is_empty() {
-                generics_rws.push(Rewrite::PrintTy(format!("{}", param.name.ident().as_str())));
-            } else {
-                generics_rws.push(Rewrite::PrintTy(format!(
-                    "{}: {}",
-                    param.name.ident().as_str(),
-                    trait_bounds.join(" + ")
-                )));
-            }
-        }
-    }
-
-    generics_rws
 }
 
 /// Print the rewritten types for all locals in `mir`.  This is used for tests and debugging, as it
