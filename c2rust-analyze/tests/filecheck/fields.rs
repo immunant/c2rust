@@ -96,11 +96,20 @@ unsafe fn _field_access<'d, 'a: 'd, T: Clone + Copy>(ra: &'d mut A<'d>, ppd: *mu
 use std::ptr;
 
 // CHECK: #[derive(Copy, Clone)]
-// CHECK-NEXT: struct Simple {
+// CHECK-NEXT: struct Simple
 #[derive(Copy, Clone)]
 struct Simple {
     x: i32,
     y: i32,
+}
+
+// CHECK: #[derive(Copy, Clone)]
+// CHECK-NEXT: struct SimpleGeneric<T: std::marker::Sized + std::clone::Clone>
+#[derive(Copy, Clone)]
+struct SimpleGeneric<T: Clone> {
+    x: i32,
+    y: i32,
+    t: T,
 }
 
 // CHECK: #[derive(Copy, Clone)]
