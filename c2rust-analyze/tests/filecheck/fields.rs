@@ -129,8 +129,8 @@ unsafe fn f() {
     *(wp.p) = *(wp.q) + 1;
 }
 
-// CHECK-LABEL: fn empty<'h0>(test: &'h0 (i32))
-fn empty(test: *const i32) {}
+// CHECK-LABEL: fn empty_generics<'h0>(test: &'h0 (i32))
+fn empty_generics<>(test: *const i32) {}
 
 // CHECK-LABEL: fn no_generics<'h0>(test: &'h0 (i32))
 fn no_generics(test: *const i32) {}
