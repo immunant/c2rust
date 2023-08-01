@@ -696,7 +696,6 @@ pub fn gen_adt_ty_rewrites(
     };
 
     let adt_metadata = &gacx.adt_metadata.table[&did];
-    let predicates = tcx.predicates_of(did);
 
     gen_generics_rws(
         &mut hir_rewrites,
