@@ -128,3 +128,20 @@ unsafe fn f() {
     };
     *(wp.p) = *(wp.q) + 1;
 }
+
+// CHECK-LABEL: fn empty<'h0>(test: &'h0 (i32))
+fn empty(test: *const i32) {}
+
+// CHECK-LABEL: fn no_generics<'h0>(test: &'h0 (i32))
+fn no_generics(test: *const i32) {}
+
+// CHECK-LABEL: fn const_generics<'h0,const N: usize>(test: &'h0 (i32))
+fn const_generics<const N: usize>(test: *const i32) {}
+
+// CHECK-LABEL: fn lifetime_and_const_generics<'a, 't: 'a,'h0, const N: usize>(test: &'h0 (i32))
+fn lifetime_and_const_generics<'a, 't: 'a, const N: usize>(test: *const i32) {}
+
+// CHECK-LABEL: fn where_clause<'a, 'b,'h0>(x: &'a i32, y: &'b i32, test: &'h0 (i32))
+fn where_clause<'a, 'b>(x: &'a i32, y: &'b i32, test: *const i32)
+where 'a: 'b {
+}
