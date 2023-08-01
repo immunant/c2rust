@@ -17,7 +17,7 @@ use crate::pointer_id::PointerId;
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
 use crate::AdtMetadataTable;
-use hir::{GenericParamKind, Generics, ItemKind, Path, PathSegment, VariantData};
+use hir::{GenericParamKind, Generics, ItemKind, Path, PathSegment, VariantData, WherePredicate};
 use log::warn;
 use rustc_ast::ast;
 use rustc_hir as hir;
@@ -28,10 +28,8 @@ use rustc_hir::{Mutability, Node};
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, LocalDecl};
 use rustc_middle::ty::print::{FmtPrinter, Print};
-use rustc_middle::ty::{
-    self, AdtDef, GenericArg, GenericArgKind, List, OutlivesPredicate, ReErased, TyCtxt,
-};
-use rustc_middle::ty::{PredicateKind, TyKind};
+use rustc_middle::ty::TyKind;
+use rustc_middle::ty::{self, AdtDef, GenericArg, GenericArgKind, List, ReErased, TyCtxt};
 use rustc_span::Span;
 
 use super::LifetimeName;
@@ -540,15 +538,8 @@ pub fn gen_ty_rewrites<'tcx>(
     } = &acx.gacx.fn_origins.fn_info[&ldid.to_def_id()];
     let hir_generics = acx.tcx().hir().get_generics(ldid);
 
-    let predicates = acx.tcx().predicates_of(ldid);
-
     let generics = hir_generics.unwrap_or(Generics::empty());
-    gen_generics_rws(
-        &mut v.hir_rewrites,
-        generics,
-        &predicates,
-        origin_params.iter(),
-    );
+    gen_generics_rws(&mut v.hir_rewrites, generics, origin_params.iter());
 
     let lty_sig = acx.gacx.fn_sigs.get(&ldid.to_def_id()).unwrap();
     assert_eq!(lty_sig.inputs.len(), hir_sig.decl.inputs.len());
@@ -604,21 +595,20 @@ pub fn gen_ty_rewrites<'tcx>(
 pub fn gen_generics_rws<'p, 'tcx>(
     hir_rewrites: &mut Vec<(Span, Rewrite)>,
     generics: &Generics<'tcx>,
-    predicates: &ty::GenericPredicates<'tcx>,
     origin_params: impl Iterator<Item = &'p OriginParam>,
 ) {
     let mut last_lifetime_span: Option<Span> = None;
     let mut first_generic_type_span: Option<Span> = None;
     let mut first_generic_const_span: Option<Span> = None;
 
-    for (predicate, predicate_span) in predicates.predicates {
-        if matches!(
-            predicate.kind().skip_binder(),
-            PredicateKind::RegionOutlives(OutlivesPredicate(a, b)) if a != b
-        ) && (last_lifetime_span.is_none()
-            || last_lifetime_span.unwrap().hi() < predicate_span.hi())
+    for predicate in generics.predicates {
+        let predicate_span = predicate.span();
+        if matches!(predicate, WherePredicate::RegionPredicate(_))
+            && !predicate.in_where_clause()
+            && (last_lifetime_span.is_none()
+                || last_lifetime_span.unwrap().hi() < predicate_span.hi())
         {
-            last_lifetime_span = Some(*predicate_span)
+            last_lifetime_span = Some(predicate_span)
         }
     }
     for param in generics.params {
@@ -674,10 +664,7 @@ pub fn gen_generics_rws<'p, 'tcx>(
                 first_generics_span.shrink_to_lo(),
                 format!("{},", hypothetical_origin_string),
             ),
-            _ if generics.params.is_empty() => {
-                (generics.span, format!("<{}>", hypothetical_origin_string))
-            }
-            _ => (generics.span, format!("{}", hypothetical_origin_string)),
+            _ => (generics.span, format!("<{}>", hypothetical_origin_string)),
         };
         hir_rewrites.push((hypothetical_origin_span, Rewrite::Print(format_string)));
     }
@@ -714,7 +701,6 @@ pub fn gen_adt_ty_rewrites(
     gen_generics_rws(
         &mut hir_rewrites,
         generics,
-        &predicates,
         gacx.adt_metadata.table[&did].lifetime_params.iter(),
     );
 
