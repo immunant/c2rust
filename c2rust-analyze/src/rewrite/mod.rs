@@ -85,7 +85,7 @@ pub enum Rewrite<S = Span> {
 
     // Type builders
     /// Emit a complete pretty-printed type, discarding the original annotation.
-    PrintTy(String),
+    Print(String),
     /// `*const T`, `*mut T`
     TyPtr(Box<Rewrite>, Mutability),
     /// `&T`, `&mut T`

@@ -374,10 +374,10 @@ fn adt_ty_rw<S>(
 ) -> Rewrite<S> {
     let lifetime_names = lifetime_params
         .iter()
-        .map(|p| Rewrite::PrintTy(format!("{p:?}")));
+        .map(|p| Rewrite::Print(format!("{p:?}")));
     let other_param_names = substs.iter().filter_map(|p| match p.unpack() {
         GenericArgKind::Lifetime(..) => None,
-        _ => Some(Rewrite::PrintTy(format!("{p:?}"))),
+        _ => Some(Rewrite::Print(format!("{p:?}"))),
     });
 
     Rewrite::TyCtor(
@@ -409,7 +409,7 @@ fn rewrite_ty<'tcx>(
             let ty = mk_rewritten_ty(rw_lcx, rw_lty);
             let printer = FmtPrinter::new(*rw_lcx, Namespace::TypeNS);
             let s = ty.print(printer).unwrap().into_buffer();
-            hir_rewrites.push((hir_ty.span, Rewrite::PrintTy(s)));
+            hir_rewrites.push((hir_ty.span, Rewrite::Print(s)));
             return;
         }
     };
@@ -679,7 +679,7 @@ pub fn gen_generics_rws<'p, 'tcx>(
             }
             _ => (generics.span, format!("{}", hypothetical_origin_string)),
         };
-        hir_rewrites.push((hypothetical_origin_span, Rewrite::PrintTy(format_string)));
+        hir_rewrites.push((hypothetical_origin_span, Rewrite::Print(format_string)));
     }
 }
 
