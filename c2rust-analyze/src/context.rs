@@ -29,6 +29,8 @@ use rustc_middle::ty::FieldDef;
 use rustc_middle::ty::GenericArgKind;
 use rustc_middle::ty::GenericParamDefKind;
 use rustc_middle::ty::Instance;
+use rustc_middle::ty::List;
+use rustc_middle::ty::SubstsRef;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TyKind;
@@ -681,8 +683,8 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         self.fns_failed.keys().copied()
     }
 
-    pub fn known_fn(&self, def_id: DefId) -> Option<&'static KnownFn> {
-        let symbol = self.tcx.symbol_name(Instance::mono(self.tcx, def_id));
+    pub fn known_fn(&self, def_id: DefId, substs: SubstsRef<'tcx>) -> Option<&'static KnownFn> {
+        let symbol = self.tcx.symbol_name(Instance::new(def_id, substs));
         self.known_fns.get(symbol.name).copied()
     }
 
@@ -703,7 +705,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             .filter(|(def_id, _)| {
                 self.tcx.def_kind(self.tcx.parent(**def_id)) == DefKind::ForeignMod
             })
-            .filter_map(|(&def_id, fn_sig)| Some((fn_sig, self.known_fn(def_id)?)))
+            .filter_map(|(&def_id, fn_sig)| Some((fn_sig, self.known_fn(def_id, List::empty())?)))
             .flat_map(|(fn_sig, known_fn)| known_fn.ptr_perms(fn_sig))
     }
 }
