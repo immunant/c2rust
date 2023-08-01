@@ -9,14 +9,15 @@ use std::ops::Index;
 
 use crate::borrowck::{OriginArg, OriginParam};
 use crate::context::{
-    AnalysisCtxt, Assignment, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LTy, PermissionSet,
+    AnalysisCtxt, Assignment, FlagSet, FnSigOrigins, GlobalAnalysisCtxt, GlobalAssignment, LTy,
+    PermissionSet,
 };
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::PointerId;
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
 use crate::AdtMetadataTable;
-use hir::{GenericParamKind, ItemKind, Path, PathSegment, VariantData};
+use hir::{GenericParamKind, Generics, ItemKind, Path, PathSegment, VariantData, WherePredicate};
 use log::warn;
 use rustc_ast::ast;
 use rustc_hir as hir;
@@ -111,7 +112,7 @@ fn relabel_rewrites<'tcx, P, F>(
     flags: &F,
     lcx: LabeledTyCtxt<'tcx, RewriteLabel<'tcx>>,
     lty: LTy<'tcx>,
-    adt_metadata: &AdtMetadataTable,
+    gacx: &GlobalAnalysisCtxt<'tcx>,
 ) -> RwLTy<'tcx>
 where
     P: Index<PointerId, Output = PermissionSet>,
@@ -119,7 +120,7 @@ where
 {
     lcx.relabel_with_args(lty, &mut |pointer_lty, args| {
         // FIXME: get function lifetime parameters and pass them to this
-        create_rewrite_label(pointer_lty, args, perms, flags, &[], adt_metadata)
+        create_rewrite_label(pointer_lty, args, perms, flags, &[], &gacx.adt_metadata)
     })
 }
 
@@ -371,10 +372,10 @@ fn adt_ty_rw<S>(
 ) -> Rewrite<S> {
     let lifetime_names = lifetime_params
         .iter()
-        .map(|p| Rewrite::PrintTy(format!("{p:?}")));
+        .map(|p| Rewrite::Print(format!("{p:?}")));
     let other_param_names = substs.iter().filter_map(|p| match p.unpack() {
         GenericArgKind::Lifetime(..) => None,
-        _ => Some(Rewrite::PrintTy(format!("{p:?}"))),
+        _ => Some(Rewrite::Print(format!("{p:?}"))),
     });
 
     Rewrite::TyCtor(
@@ -406,7 +407,7 @@ fn rewrite_ty<'tcx>(
             let ty = mk_rewritten_ty(rw_lcx, rw_lty);
             let printer = FmtPrinter::new(*rw_lcx, Namespace::TypeNS);
             let s = ty.print(printer).unwrap().into_buffer();
-            hir_rewrites.push((hir_ty.span, Rewrite::PrintTy(s)));
+            hir_rewrites.push((hir_ty.span, Rewrite::Print(s)));
             return;
         }
     };
@@ -470,7 +471,7 @@ impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
+impl<'tcx, 'a> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
     type NestedFilter = nested_filter::OnlyBodies;
 
     fn nested_visit_map(&mut self) -> Self::Map {
@@ -490,7 +491,7 @@ impl<'a, 'tcx> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
                         &self.asn.flags(),
                         self.rw_lcx,
                         lty,
-                        &self.acx.gacx.adt_metadata,
+                        &self.acx.gacx,
                     );
                     let hir_ty = hir_local.ty.unwrap();
                     self.handle_ty(rw_lty, hir_ty);
@@ -530,28 +531,56 @@ pub fn gen_ty_rewrites<'tcx>(
         .fn_sig_by_hir_id(hir_id)
         .unwrap_or_else(|| panic!("expected def {:?} to be a function", ldid));
 
+    let FnSigOrigins {
+        origin_params,
+        inputs: input_origin_args,
+        output: output_origin_args,
+    } = &acx.gacx.fn_origins.fn_info[&ldid.to_def_id()];
+    let hir_generics = acx.tcx().hir().get_generics(ldid);
+
+    let generics = hir_generics.unwrap_or(Generics::empty());
+    gen_generics_rws(&mut v.hir_rewrites, generics, origin_params.iter());
+
     let lty_sig = acx.gacx.fn_sigs.get(&ldid.to_def_id()).unwrap();
     assert_eq!(lty_sig.inputs.len(), hir_sig.decl.inputs.len());
-    for (&lty, hir_ty) in lty_sig.inputs.iter().zip(hir_sig.decl.inputs.iter()) {
-        let rw_lty = relabel_rewrites(
-            &asn.perms(),
-            &asn.flags(),
-            rw_lcx,
-            lty,
-            &acx.gacx.adt_metadata,
-        );
+    for ((&lty, hir_ty), origin_args) in lty_sig
+        .inputs
+        .iter()
+        .zip(hir_sig.decl.inputs.iter())
+        .zip(input_origin_args.iter())
+    {
+        let rw_lty =
+            rw_lcx.zip_labels_with(lty, &origin_args, &mut |pointer_lty, lifetime_lty, args| {
+                create_rewrite_label(
+                    pointer_lty,
+                    args,
+                    &asn.perms(),
+                    &asn.flags(),
+                    lifetime_lty.label,
+                    &acx.gacx.adt_metadata,
+                )
+            });
+
         v.handle_ty(rw_lty, hir_ty);
     }
 
     if let hir::FnRetTy::Return(hir_ty) = hir_sig.decl.output {
-        let rw_lty = relabel_rewrites(
-            &asn.perms(),
-            &asn.flags(),
-            rw_lcx,
+        let output_rw_lty = rw_lcx.zip_labels_with(
             lty_sig.output,
-            &acx.gacx.adt_metadata,
+            &output_origin_args,
+            &mut |pointer_lty, lifetime_lty, args| {
+                create_rewrite_label(
+                    pointer_lty,
+                    args,
+                    &asn.perms(),
+                    &asn.flags(),
+                    lifetime_lty.label,
+                    &acx.gacx.adt_metadata,
+                )
+            },
         );
-        v.handle_ty(rw_lty, hir_ty);
+
+        v.handle_ty(output_rw_lty, hir_ty);
     }
 
     let hir_body_id = acx.tcx().hir().body_owned_by(ldid);
@@ -561,6 +590,84 @@ pub fn gen_ty_rewrites<'tcx>(
     // TODO: update cast RHS types
 
     v.hir_rewrites
+}
+
+pub fn gen_generics_rws<'p, 'tcx>(
+    hir_rewrites: &mut Vec<(Span, Rewrite)>,
+    generics: &Generics<'tcx>,
+    origin_params: impl Iterator<Item = &'p OriginParam>,
+) {
+    let mut last_lifetime_span: Option<Span> = None;
+    let mut first_generic_type_span: Option<Span> = None;
+    let mut first_generic_const_span: Option<Span> = None;
+
+    for predicate in generics.predicates {
+        let predicate_span = predicate.span();
+        if matches!(predicate, WherePredicate::RegionPredicate(_))
+            && !predicate.in_where_clause()
+            && (last_lifetime_span.is_none()
+                || last_lifetime_span.unwrap().hi() < predicate_span.hi())
+        {
+            last_lifetime_span = Some(predicate_span)
+        }
+    }
+    for param in generics.params {
+        match param.kind {
+            GenericParamKind::Lifetime { .. } => {
+                if last_lifetime_span.is_none()
+                    || last_lifetime_span.unwrap().hi() < param.span.hi()
+                {
+                    last_lifetime_span = Some(param.span)
+                }
+            }
+            GenericParamKind::Type { .. } => {
+                if first_generic_type_span.is_none()
+                    || first_generic_type_span.unwrap().lo() < param.span.lo()
+                {
+                    first_generic_type_span = Some(param.span)
+                }
+            }
+            GenericParamKind::Const { .. } => {
+                if first_generic_const_span.is_none()
+                    || first_generic_const_span.unwrap().lo() < param.span.lo()
+                {
+                    first_generic_const_span = Some(param.span)
+                }
+            }
+        }
+    }
+
+    let generics_spans = (
+        last_lifetime_span,
+        first_generic_type_span,
+        first_generic_const_span,
+    );
+
+    let hypothetical_origin_params: Vec<_> = origin_params
+        .filter_map(|p| {
+            if let OriginParam::Hypothetical(_) = p {
+                Some(format!("{:?}", p))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let hypothetical_origin_string = hypothetical_origin_params.join(",");
+
+    if !hypothetical_origin_string.is_empty() {
+        let (hypothetical_origin_span, format_string) = match generics_spans {
+            (Some(last_lifetime_span), ..) => (
+                last_lifetime_span.shrink_to_hi(),
+                format!(",{}", hypothetical_origin_string),
+            ),
+            (_, Some(first_generics_span), _) | (_, _, Some(first_generics_span)) => (
+                first_generics_span.shrink_to_lo(),
+                format!("{},", hypothetical_origin_string),
+            ),
+            _ => (generics.span, format!("<{}>", hypothetical_origin_string)),
+        };
+        hir_rewrites.push((hypothetical_origin_span, Rewrite::Print(format_string)));
+    }
 }
 
 pub fn gen_adt_ty_rewrites(
@@ -589,49 +696,12 @@ pub fn gen_adt_ty_rewrites(
     };
 
     let adt_metadata = &gacx.adt_metadata.table[&did];
-    let updated_lifetime_params = &adt_metadata.lifetime_params;
 
-    let original_lifetime_param_count = generics
-        .params
-        .iter()
-        .filter(|p| matches!(p.kind, GenericParamKind::Lifetime { .. }))
-        .count();
-
-    if updated_lifetime_params.len() != original_lifetime_param_count {
-        let new_substs: Vec<_> = {
-            let mut new_lifetime_params_iter = updated_lifetime_params.iter();
-
-            let mut updated_lifetimes = vec![];
-            let mut new_lifetimes = vec![];
-            let mut other_params = vec![];
-
-            for gp in generics.params {
-                match gp.kind {
-                    GenericParamKind::Lifetime { .. } => {
-                        let updated_lifetime_param = new_lifetime_params_iter
-                            .next()
-                            .expect("Not enough updated_lifetime_params");
-                        updated_lifetimes
-                            .push(Rewrite::PrintTy(format!("{:?}", updated_lifetime_param)))
-                    }
-                    _ => other_params.push(Rewrite::PrintTy(gp.name.ident().to_string())),
-                }
-            }
-
-            for ul in new_lifetime_params_iter {
-                new_lifetimes.push(Rewrite::PrintTy(format!("{:?}", ul)))
-            }
-
-            [updated_lifetimes, new_lifetimes, other_params]
-                .into_iter()
-                .flatten()
-                .collect()
-        };
-
-        // only the generic parameters need to be rewritten, not the
-        // struct name itself
-        hir_rewrites.push((generics.span, Rewrite::TyGenericParams(new_substs)));
-    }
+    gen_generics_rws(
+        &mut hir_rewrites,
+        generics,
+        gacx.adt_metadata.table[&did].lifetime_params.iter(),
+    );
 
     for field_def in field_defs.iter() {
         let fdid = tcx.hir().local_def_id(field_def.hir_id).to_def_id();
@@ -676,7 +746,7 @@ pub fn dump_rewritten_local_tys<'tcx>(
             &asn.flags(),
             rw_lcx,
             acx.local_tys[local],
-            &acx.gacx.adt_metadata,
+            &acx.gacx,
         );
         let ty = mk_rewritten_ty(rw_lcx, rw_lty);
         eprintln!(

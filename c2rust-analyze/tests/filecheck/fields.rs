@@ -36,11 +36,11 @@ struct VecTup<'a> {
 }
 
 struct Hypo {
-    h: *mut i32
+    h: *mut i32,
 }
 
 struct HypoWrapper {
-    hw: *const Hypo
+    hw: *const Hypo,
 }
 
 // let rd = (*(**ppd).a.pra).rd
@@ -61,9 +61,9 @@ struct HypoWrapper {
 
 // CHECK-LABEL: final labeling for "_field_access"
 // CHECK-DAG: ([[@LINE+3]]: ppd): addr_of = UNIQUE, type = READ | WRITE | UNIQUE
-// CHECK-DAG: ([[@LINE+2]]: ra): &mut A
+// CHECK-DAG: ([[@LINE+2]]: ra): &'d mut A<'d>
 // CHECK-DAG: ([[@LINE+1]]: ppd): &mut &mut Data
-unsafe fn _field_access<'d>(ra: &'d mut A<'d>, ppd: *mut *mut Data<'d>) {
+unsafe fn _field_access<'d, 'a: 'd, T: Clone + Copy>(ra: &'d mut A<'d>, ppd: *mut *mut Data<'d>) {
     // CHECK-DAG: ([[@LINE+2]]: rd): addr_of = UNIQUE, type = READ | UNIQUE
     // CHECK-DAG: ([[@LINE+1]]: rd): &Data
     let rd = (*(**ppd).a.pra).rd;
@@ -91,15 +91,25 @@ unsafe fn _field_access<'d>(ra: &'d mut A<'d>, ppd: *mut *mut Data<'d>) {
 // CHECK-DAG: struct HypoWrapper<'h6,'h5>
 // CHECK-DAG: hw: &'h6 (Hypo<'h5>)
 
+// CHECK-DAG: unsafe fn _field_access<'d, 'a: 'd,'h0,'h1,'h2,'h3,'h4,'h5,'h6,'h7, T: Clone + Copy>(ra: &'d mut A<'d,'h0,'h1,'h2>, ppd: &'h3 mut (&'h4 mut (Data<'d,'h5,'h6,'h7>))) {
 
 use std::ptr;
 
 // CHECK: #[derive(Copy, Clone)]
-// CHECK-NEXT: struct Simple {
+// CHECK-NEXT: struct Simple
 #[derive(Copy, Clone)]
 struct Simple {
     x: i32,
     y: i32,
+}
+
+// CHECK: #[derive(Copy, Clone)]
+// CHECK-NEXT: struct SimpleGeneric<T: Clone>
+#[derive(Copy, Clone)]
+struct SimpleGeneric<T: Clone> {
+    x: i32,
+    y: i32,
+    t: T,
 }
 
 // CHECK: #[derive(Copy, Clone)]
@@ -112,6 +122,26 @@ struct WithPtr {
 
 unsafe fn f() {
     let mut s = Simple { x: 1, y: 2 };
-    let wp = WithPtr { p: ptr::addr_of_mut!(s.x), q: ptr::addr_of_mut!(s.y) };
+    let wp = WithPtr {
+        p: ptr::addr_of_mut!(s.x),
+        q: ptr::addr_of_mut!(s.y),
+    };
     *(wp.p) = *(wp.q) + 1;
+}
+
+// CHECK-LABEL: fn empty_generics<'h0>(test: &'h0 (i32))
+fn empty_generics<>(test: *const i32) {}
+
+// CHECK-LABEL: fn no_generics<'h0>(test: &'h0 (i32))
+fn no_generics(test: *const i32) {}
+
+// CHECK-LABEL: fn const_generics<'h0,const N: usize>(test: &'h0 (i32))
+fn const_generics<const N: usize>(test: *const i32) {}
+
+// CHECK-LABEL: fn lifetime_and_const_generics<'a, 't: 'a,'h0, const N: usize>(test: &'h0 (i32))
+fn lifetime_and_const_generics<'a, 't: 'a, const N: usize>(test: *const i32) {}
+
+// CHECK-LABEL: fn where_clause<'a, 'b,'h0>(x: &'a i32, y: &'b i32, test: &'h0 (i32))
+fn where_clause<'a, 'b>(x: &'a i32, y: &'b i32, test: *const i32)
+where 'a: 'b {
 }

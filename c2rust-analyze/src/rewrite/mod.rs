@@ -85,7 +85,7 @@ pub enum Rewrite<S = Span> {
 
     // Type builders
     /// Emit a complete pretty-printed type, discarding the original annotation.
-    PrintTy(String),
+    Print(String),
     /// `*const T`, `*mut T`
     TyPtr(Box<Rewrite>, Mutability),
     /// `&T`, `&mut T`
@@ -97,6 +97,7 @@ pub enum Rewrite<S = Span> {
     /// `<'a, 'b, ...>`
     /// needed for cases when the span of the ADT name
     /// is different from ADT generic params
+    #[allow(dead_code)]
     TyGenericParams(Vec<Rewrite>),
 
     // `static` builders

@@ -33,7 +33,7 @@ unsafe fn pass_slice(x: *mut i32) -> *mut i32 {
 }
 
 
-// CHECK-LABEL: fn f(x: &mut (i32))
+// CHECK-LABEL: fn f<'h0>(x: &'h0 mut (i32))
 unsafe fn f(x: *mut i32) {
     // CHECK: use_single(core::ptr::addr_of_mut!(*(x)))
     use_single(x);
@@ -44,7 +44,7 @@ unsafe fn f(x: *mut i32) {
     use_single(y);
 }
 
-// CHECK-LABEL: fn g(x: &mut [(i32)])
+// CHECK-LABEL: fn g<'h0>(x: &'h0 mut [(i32)])
 unsafe fn g(x: *mut i32) {
     // CHECK: use_single(core::ptr::addr_of_mut!(*&mut (x)[0]))
     use_single(x);

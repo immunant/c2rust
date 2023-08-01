@@ -2,7 +2,7 @@
 #![register_tool(c2rust_analyze_test)]
 // Test calls between rewritten and non-rewritten functions.
 
-// CHECK-LABEL: fn good1(x: &mut (i32))
+// CHECK-LABEL: fn good1<'h0>(x: &'h0 mut (i32))
 unsafe fn good1(x: *mut i32) -> i32 {
     // CHECK: let y = &*(bad(core::ptr::addr_of_mut!(*(x)))).cast_const();
     let y = bad(x);
@@ -18,7 +18,7 @@ unsafe fn bad(x: *mut i32) -> *mut i32 {
     good2(x)
 }
 
-// CHECK-LABEL: fn good2(x: &mut (i32)) -> &(i32)
+// CHECK-LABEL: fn good2<'h0,'h1>(x: &'h0 mut (i32)) -> &'h1 (i32)
 unsafe fn good2(x: *mut i32) -> *mut i32 {
     *x = 1;
     // CHECK: &*(x)
