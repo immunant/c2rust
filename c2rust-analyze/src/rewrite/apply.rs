@@ -323,7 +323,7 @@ impl<S: Sink> Emitter<'_, S> {
             Rewrite::LitZero => self.emit_str("0"),
 
             Rewrite::Print(ref s) => self.emit_str(s),
-            Rewrite::TyGenericParams(ref rws) => {
+            Rewrite::_TyGenericParams(ref rws) => {
                 self.emit_str("<")?;
                 for (index, rw) in rws.iter().enumerate() {
                     self.emit(rw, 0)?;
