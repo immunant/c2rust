@@ -97,9 +97,7 @@ pub enum Rewrite<S = Span> {
     /// `<'a, 'b, ...>`
     /// needed for cases when the span of the ADT name
     /// is different from ADT generic params
-    #[allow(dead_code)]
-    TyGenericParams(Vec<Rewrite>),
-
+    _TyGenericParams(Vec<Rewrite>),
     // `static` builders
     /// `static` mutability (`static` <-> `static mut`)
     StaticMut(Mutability, S),
