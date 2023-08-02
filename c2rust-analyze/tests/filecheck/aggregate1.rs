@@ -56,7 +56,23 @@ pub unsafe fn repeat() {
 }
 
 // CHECK-DAG: #[derive(Clone)]
+// CHECK-DAG: struct Foo {
 #[derive(Clone)]
 struct Foo {
     x: i32,
+}
+
+// CHECK-DAG: #[derive(Copy, Clone)]
+// CHECK-DAG: pub union Onion<'h1> {
+#[derive(Copy, Clone)]
+pub union Onion {
+    x: usize,
+    // CHECK-DAG: y: &'h1 (u8)
+    y: *mut u8,
+}
+
+// CHECK-DAG: struct UseOnion<'h2,'h1> {
+struct UseOnion {
+    // CHECK-DAG: foo: &'h2 (Onion<'h1>)
+    foo: *mut Onion,
 }
