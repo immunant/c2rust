@@ -53,7 +53,28 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         self.ltcx.relabel(
                 field_metadata.origin_args,
                 &mut |flty| match flty.kind() {
-                    TyKind::Ref(..) | TyKind::RawPtr(..) => {
+                    TyKind::RawPtr(..) => {
+                        // A RawPtr will not have an `OriginArg` label when it is a part of
+                        // a type that is not getting rewritten, so it is not guaranteed that
+                        // the length of the arguments will always be equal to 1.
+                        let origin = flty.label.first().and_then(|origin_arg| {
+                            match origin_arg {
+                                OriginArg::Actual(region) if matches!(region.kind(), RegionKind::ReStatic) => Some(self.static_origin),
+                                _ => {
+                                    let o = OriginParam::try_from(origin_arg).unwrap();
+                                    eprintln!("finding {o:?} in {base_adt_def:?} {base_origin_param_map:?}");
+                                    base_origin_param_map.get(&o).cloned()
+                                }
+                            }
+                        });
+
+                        Label {
+                            origin,
+                            perm,
+                            origin_params: &[],
+                        }
+                    }
+                    TyKind::Ref(..) => {
                         let origin_arg = {
                             assert!(flty.label.len() == 1);
                             Some(flty.label[0])

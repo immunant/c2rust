@@ -228,7 +228,7 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
             let args: Vec<String> = lty.args.iter().map(|t| fmt_string(t)).collect();
             use rustc_type_ir::TyKind::*;
             match lty.kind() {
-                Ref(..) | RawPtr(..) => {
+                Ref(..) => {
                     format!("&{:?} {:}", lty.label[0], args[0])
                 }
                 Adt(adt, _) => {
@@ -489,7 +489,10 @@ fn fn_origin_args_params<'tcx>(
     FnOriginMap { fn_info }
 }
 
-fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
+fn construct_adt_metadata<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    foreign_mentioned_tys: &HashSet<DefId>,
+) -> AdtMetadataTable<'tcx> {
     let struct_dids: Vec<_> = tcx
         .hir_crate_items(())
         .definitions()
@@ -560,6 +563,11 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
                 let field_ty: Ty = tcx.type_of(field.did);
                 eprintln!("\t{adt_def:?}.{:}", field.name);
                 let field_origin_args = ltcx.label(field_ty, &mut |ty| {
+
+                    if foreign_mentioned_tys.contains(&struct_did) {
+                        return &[];
+                    }
+
                     let mut field_origin_args = IndexSet::new();
                     match ty.kind() {
                         TyKind::RawPtr(ty) => {
@@ -618,10 +626,12 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
                             {
                                 for adt_field_lifetime_param in adt_field_metadata.lifetime_params.iter() {
                                     adt_metadata_table.table.entry(*struct_did).and_modify(|adt| {
-                                        if let OriginParam::Hypothetical(h) = adt_field_lifetime_param {
-                                            eprintln!("\t\t\tbubbling {adt_field:?} origin {adt_field_lifetime_param:?} up into {adt_def:?} origins");
-                                            field_origin_args.insert(OriginArg::Hypothetical(*h));
-                                            adt.lifetime_params.insert(*adt_field_lifetime_param);
+                                        if !foreign_mentioned_tys.contains(&adt_field.did()) {
+                                            if let OriginParam::Hypothetical(h) = adt_field_lifetime_param {
+                                                eprintln!("\t\t\tbubbling {adt_field:?} origin {adt_field_lifetime_param:?} up into {adt_def:?} origins");
+                                                field_origin_args.insert(OriginArg::Hypothetical(*h));
+                                                adt.lifetime_params.insert(*adt_field_lifetime_param);
+                                            }
                                         }
                                     });
                                 }
@@ -662,9 +672,53 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
     adt_metadata_table
 }
 
+fn foreign_mentioned_tys(tcx: TyCtxt) -> HashSet<DefId> {
+    let mut foreign_mentioned_tys = HashSet::new();
+    for ty in tcx
+        .hir_crate_items(())
+        .foreign_items()
+        .map(|item| item.def_id.to_def_id())
+        .filter_map(|did| match tcx.def_kind(did) {
+            DefKind::Fn | DefKind::AssocFn => Some(tcx.mk_fn_ptr(tcx.fn_sig(did))),
+            DefKind::Static(_) => Some(tcx.type_of(did)),
+            _ => None,
+        })
+    {
+        walk_adts(tcx, ty, &mut |did| foreign_mentioned_tys.insert(did));
+    }
+    foreign_mentioned_tys
+}
+
+/// Walks the type `ty` and applies a function `f` to it if it's an ADT
+/// `f` gets applied recursively to `ty`'s generic types and fields (if applicable)
+/// If `f` returns false, the fields of the ADT are not recursed into.
+/// Otherwise, the function will naturally terminate given that the generic types
+/// of a type are finite in length.
+/// We only look for ADTs rather than other FFI-crossing types because ADTs
+/// are the only nominal ones, which are the ones that we may rewrite.
+fn walk_adts<'tcx, F>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, f: &mut F)
+where
+    F: FnMut(DefId) -> bool,
+{
+    for arg in ty.walk() {
+        if let GenericArgKind::Type(ty) = arg.unpack() {
+            if let TyKind::Adt(adt_def, _) = ty.kind() {
+                if !f(adt_def.did()) {
+                    continue;
+                }
+                for field in adt_def.all_fields() {
+                    let field_ty = tcx.type_of(field.did);
+                    walk_adts(tcx, field_ty, f);
+                }
+            }
+        }
+    }
+}
+
 impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> GlobalAnalysisCtxt<'tcx> {
-        let adt_metadata = construct_adt_metadata(tcx);
+        let foreign_mentioned_tys = foreign_mentioned_tys(tcx);
+        let adt_metadata = construct_adt_metadata(tcx, &foreign_mentioned_tys);
         let fn_origins = fn_origin_args_params(tcx, &adt_metadata);
         GlobalAnalysisCtxt {
             tcx,
@@ -681,7 +735,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             addr_of_static: HashMap::new(),
             adt_metadata,
             fn_origins,
-            foreign_mentioned_tys: HashSet::new(),
+            foreign_mentioned_tys,
         }
     }
 

@@ -1,9 +1,3 @@
-// CHECK-DAG: struct S<'h0> {
-struct S {
-    // CHECK-DAG: i: &'h0 i32
-    i: *const i32,
-}
-
 // The below ensures the concrete origins for `s` and `s.i` are the same and are hypothetical
 // CHECK-DAG: assign {{.*}}#*mut S{{.*}}origin_params: [('h0, Origin([[HYPO_ORIGIN:[0-9]+]]))]{{.*}} = Label{{.*}}origin_params: [('h0, Origin({{.*}}))]
 // CHECK-DAG: assign Label { origin: Some(Origin([[HYPO_ORIGIN]])){{.*}}*const i32{{.*}} = Label
@@ -17,6 +11,12 @@ pub unsafe fn null_ptr() {
     (*s).i = 0 as *const i32;
 }
 
+// CHECK-DAG: struct S<'h0> {
+struct S {
+    // CHECK-DAG: i: &'h0 (i32)
+    i: *const i32,
+}
+
 #[repr(C)]
 pub struct Foo {
     y: *mut i32,
@@ -27,7 +27,7 @@ extern "C" {
     fn bar(f: Foo);
 }
 
-// CHECK-LABEL: pub unsafe fn cell_as_mut_as_cell<'h0,'h1>(mut x: &'h0 core::cell::Cell<(i32)>, mut f: Foo<'h1>) {
+// CHECK-LABEL: pub unsafe fn cell_as_mut_as_cell<'h0>(mut x: &'h0 core::cell::Cell<(i32)>, mut f: Foo) {
 pub unsafe fn cell_as_mut_as_cell(mut x: *mut i32, mut f: Foo) {
     let z = x;
     let r = x;

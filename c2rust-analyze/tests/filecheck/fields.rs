@@ -1,37 +1,27 @@
-// CHECK-LABEL: === ADT Metadata ===
-// CHECK-DAG: struct Data<'d,'h0,'h1,'h2> {
 pub struct Data<'d> {
     // 1: hypothetical pointer field lifetime 'h0 -> Data<'d, 'h0>
-    // CHECK-DAG: pi: &'h0 i32
     pub pi: *mut i32,
 
     // 2: hypothetical pointer field lifetime 'h1 -> Data<'d, 'h0, 'h1>
     // 3: A has no new parameters to bubble up
     // 8: A has new lifetime param 'h2 -> Data<'d, 'h0, 'h1, 'h2>
-    // CHECK-DAG: pa: &'h1 A<'d,'h0,'h1,'h2>
     pub pa: *mut A<'d>,
 
     // 4: A has no new parameters to bubble up
-    // CHECK-DAG: a: A<'d,'h0,'h1,'h2>
     pub a: A<'d>,
 }
 
-// CHECK-DAG: struct A<'a,'h0,'h1,'h2> {
 pub struct A<'a> {
     // 5: Data has new lifetime params 'h0 and 'h1 -> A<'a, 'h0, 'h1>
     // 9: Data has new lifetime param 'h2, but 'h2 is already in A
-    // CHECK-DAG: rd: &'a Data<'a,'h0,'h1,'h2>
     pub rd: &'a Data<'a>,
 
     // 6: hypothetical pointer field lifetime 'h2 -> A<'a, 'h0, 'h1, 'h2>
     // 7: A has new lifetime params to bubble up, but they're already present
-    // CHECK-DAG: pra: &'h2 &'a A<'a,'h0,'h1,'h2>
     pub pra: *mut &'a mut A<'a>,
 }
 
-// CHECK-DAG: struct VecTup<'a,'h3,'h4,'h0,'h1,'h2> {
 struct VecTup<'a> {
-    // CHECK-DAG: bar: &'h3 std::vec::Vec<(VecTup<'a,'h3,'h4,'h0,'h1,'h2>,&'h4 A<'a,'h0,'h1,'h2>),std::alloc::Global>
     bar: *mut Vec<(VecTup<'a>, *mut A<'a>)>,
 }
 
@@ -86,6 +76,8 @@ unsafe fn _field_access<'d, 'a: 'd, T: Clone + Copy>(ra: &'d mut A<'d>, ppd: *mu
 // CHECK-DAG: pub struct A<'a,'h0,'h1,'h2> {
 // CHECK-DAG: pub rd: &'a Data<'a,'h0,'h1,'h2>,
 // CHECK-DAG: pub pra: &'h2 core::cell::Cell<(&'a mut A<'a,'h0,'h1,'h2>)>,
+
+// CHECK-DAG: struct VecTup<'a,'h3,'h4,'h0,'h1,'h2> {
 // CHECK-DAG: bar: &'h3 (Vec<(VecTup<'a,'h3,'h4,'h0,'h1,'h2>, &'h4 (A<'a,'h0,'h1,'h2>))>),
 
 // CHECK-DAG: struct HypoWrapper<'h6,'h5>
@@ -130,7 +122,7 @@ unsafe fn f() {
 }
 
 // CHECK-LABEL: fn empty_generics<'h0>(test: &'h0 (i32))
-fn empty_generics<>(test: *const i32) {}
+fn empty_generics(test: *const i32) {}
 
 // CHECK-LABEL: fn no_generics<'h0>(test: &'h0 (i32))
 fn no_generics(test: *const i32) {}
@@ -143,5 +135,7 @@ fn lifetime_and_const_generics<'a, 't: 'a, const N: usize>(test: *const i32) {}
 
 // CHECK-LABEL: fn where_clause<'a, 'b,'h0>(x: &'a i32, y: &'b i32, test: &'h0 (i32))
 fn where_clause<'a, 'b>(x: &'a i32, y: &'b i32, test: *const i32)
-where 'a: 'b {
+where
+    'a: 'b,
+{
 }

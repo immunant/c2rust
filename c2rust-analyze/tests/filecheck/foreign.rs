@@ -67,3 +67,24 @@ extern "C" {
     // CHECK-DAG: fn f(bin: *mut Bin)
     fn f(bin: *mut Bin);
 }
+
+extern "C" {
+    // CHECK-DAG: fn epoll_wait(events: *mut epoll_event);
+    fn epoll_wait(events: *mut epoll_event);
+}
+
+// CHECK-DAG: pub struct fdevents<'h0> {
+pub struct fdevents {
+    // CHECK-DAG: pub epoll_events: &'h0 (epoll_event),
+    pub epoll_events: *mut epoll_event,
+}
+
+// CHECK-DAG: pub struct epoll_event {
+pub struct epoll_event {
+    // CHECK-DAG: pub ptr: *mut u8,
+    pub ptr: *mut u8,
+}
+
+// CHECK-DAG: fn events<'h0>(f: fdevents<'h0>) {}
+fn events(f: fdevents) {}
+
