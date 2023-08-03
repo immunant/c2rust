@@ -948,6 +948,36 @@ fn run(tcx: TyCtxt) {
     }
     eprintln!("reached fixpoint in {} iterations", loop_count);
 
+    // Do final processing on each function.
+    for &ldid in &all_fn_ldids {
+        if gacx.fn_failed(ldid.to_def_id()) {
+            continue;
+        }
+
+        let info = func_info.get_mut(&ldid).unwrap();
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+        let mut asn = gasn.and(&mut info.lasn);
+
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+            // Add the CELL permission to pointers that need it.
+            info.dataflow.propagate_cell(&mut asn);
+
+            acx.check_string_literal_perms(&asn);
+        }));
+        match r {
+            Ok(()) => {}
+            Err(pd) => {
+                gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                continue;
+            }
+        }
+
+        info.acx_data.set(acx.into_data());
+    }
+
     // Check that these perms haven't changed.
     let mut known_perm_error_ptrs = HashSet::new();
     for (ptr, perms) in gacx.known_fn_ptr_perms() {
@@ -1032,14 +1062,9 @@ fn run(tcx: TyCtxt) {
             let mir = tcx.mir_built(ldid_const);
             let mir = mir.borrow();
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-            let mut asn = gasn.and(&mut info.lasn);
+            let asn = gasn.and(&mut info.lasn);
 
             let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
-                // Add the CELL permission to pointers that need it.
-                info.dataflow.propagate_cell(&mut asn);
-
-                acx.check_string_literal_perms(&asn);
-
                 if util::has_test_attr(tcx, ldid, TestAttr::SkipRewrite) {
                     return;
                 }
