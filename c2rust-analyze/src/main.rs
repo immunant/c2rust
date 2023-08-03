@@ -26,6 +26,7 @@ use crate::labeled_ty::LabeledTyCtxt;
 use crate::log::init_logger;
 use crate::panic_detail::PanicDetail;
 use crate::util::{Callee, TestAttr};
+use ::log::warn;
 use context::AdtMetadataTable;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{CrateNum, DefId, DefIndex, LocalDefId};
@@ -932,8 +933,30 @@ fn run(tcx: TyCtxt) {
     eprintln!("reached fixpoint in {} iterations", loop_count);
 
     // Check that these perms haven't changed.
+    let mut known_perm_error_ptrs = HashSet::new();
     for (ptr, perms) in gacx.known_fn_ptr_perms() {
-        assert_eq!(perms, gasn.perms[ptr]);
+        if gasn.perms[ptr] != perms {
+            known_perm_error_ptrs.insert(ptr);
+            warn!(
+                "known permissions changed for PointerId {ptr:?}: {perms:?} -> {:?}",
+                gasn.perms[ptr]
+            );
+        }
+    }
+
+    let mut known_perm_error_fns = HashSet::new();
+    for (&def_id, lsig) in &gacx.fn_sigs {
+        if !tcx.is_foreign_item(def_id) {
+            continue;
+        }
+        for lty in lsig.inputs_and_output().flat_map(|lty| lty.iter()) {
+            let ptr = lty.label;
+            if !ptr.is_none() && known_perm_error_ptrs.contains(&ptr) {
+                known_perm_error_fns.insert(def_id);
+                warn!("known permissions changed for {def_id:?}: {lsig:?}");
+                break;
+            }
+        }
     }
 
     // ----------------------------------
@@ -1251,6 +1274,13 @@ fn run(tcx: TyCtxt) {
         gacx.fns_failed.len(),
         all_fn_ldids.len()
     );
+
+    if known_perm_error_fns.len() > 0 {
+        eprintln!(
+            "saw permission errors in {} known fns",
+            known_perm_error_fns.len()
+        );
+    }
 }
 
 trait AssignPointerIds<'tcx> {
