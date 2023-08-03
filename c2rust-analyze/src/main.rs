@@ -25,6 +25,7 @@ use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use crate::labeled_ty::LabeledTyCtxt;
 use crate::log::init_logger;
 use crate::panic_detail::PanicDetail;
+use crate::type_desc::Ownership;
 use crate::util::{Callee, TestAttr};
 use ::log::warn;
 use context::AdtMetadataTable;
@@ -996,6 +997,25 @@ fn run(tcx: TyCtxt) {
     // ----------------------------------
     // Generate rewrites
     // ----------------------------------
+
+    // Regenerate region metadata, with hypothetical regions only in places where we intend to
+    // introduce refs.
+    gacx.construct_region_metadata_filtered(|lty| {
+        let ptr = lty.label;
+        if ptr.is_none() {
+            return false;
+        }
+        let flags = gasn.flags[ptr];
+        if flags.contains(FlagSet::FIXED) {
+            return false;
+        }
+        let perms = gasn.perms[ptr];
+        let desc = type_desc::perms_to_desc(lty.ty, perms, flags);
+        match desc.own {
+            Ownership::Imm | Ownership::Cell | Ownership::Mut => true,
+            Ownership::Raw | Ownership::RawMut | Ownership::Rc | Ownership::Box => false,
+        }
+    });
 
     // For testing, putting #[c2rust_analyze_test::fail_before_rewriting] on a function marks it as
     // failed at this point.
