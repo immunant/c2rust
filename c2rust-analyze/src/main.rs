@@ -539,6 +539,10 @@ fn run(tcx: TyCtxt) {
         gacx.assign_pointer_to_fields(did);
     }
 
+    // Compute hypothetical region data for all ADTs and functions.  This can only be done after
+    // all field types are labeled.
+    gacx.construct_region_metadata();
+
     // ----------------------------------
     // Compute dataflow constraints
     // ----------------------------------

@@ -71,7 +71,7 @@ pub union Onion {
     y: *mut u8,
 }
 
-// CHECK-DAG: struct UseOnion<'h2,'h1> {
+// CHECK-DAG: struct UseOnion<'h1,'h2> {
 struct UseOnion {
     // CHECK-DAG: foo: &'h2 (Onion<'h1>)
     foo: *mut Onion,
