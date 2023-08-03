@@ -29,9 +29,9 @@ pub struct A<'a> {
     pub pra: *mut &'a mut A<'a>,
 }
 
-// CHECK-DAG: struct VecTup<'a,'h3,'h4,'h0,'h1,'h2> {
+// CHECK-DAG: struct VecTup<'a,'h0,'h1,'h2,'h3,'h4> {
 struct VecTup<'a> {
-    // CHECK-DAG: bar: &'h3 std::vec::Vec<(VecTup<'a,'h3,'h4,'h0,'h1,'h2>,&'h4 A<'a,'h0,'h1,'h2>),std::alloc::Global>
+    // CHECK-DAG: bar: &'h4 std::vec::Vec<(VecTup<'a,'h0,'h1,'h2,'h3,'h4>,&'h3 A<'a,'h0,'h1,'h2>),std::alloc::Global>
     bar: *mut Vec<(VecTup<'a>, *mut A<'a>)>,
 }
 
@@ -86,9 +86,9 @@ unsafe fn _field_access<'d, 'a: 'd, T: Clone + Copy>(ra: &'d mut A<'d>, ppd: *mu
 // CHECK-DAG: pub struct A<'a,'h0,'h1,'h2> {
 // CHECK-DAG: pub rd: &'a Data<'a,'h0,'h1,'h2>,
 // CHECK-DAG: pub pra: &'h2 core::cell::Cell<(&'a mut A<'a,'h0,'h1,'h2>)>,
-// CHECK-DAG: bar: &'h3 (Vec<(VecTup<'a,'h3,'h4,'h0,'h1,'h2>, &'h4 (A<'a,'h0,'h1,'h2>))>),
+// CHECK-DAG: bar: &'h4 (Vec<(VecTup<'a,'h0,'h1,'h2,'h3,'h4>, &'h3 (A<'a,'h0,'h1,'h2>))>),
 
-// CHECK-DAG: struct HypoWrapper<'h6,'h5>
+// CHECK-DAG: struct HypoWrapper<'h5,'h6>
 // CHECK-DAG: hw: &'h6 (Hypo<'h5>)
 
 // CHECK-DAG: unsafe fn _field_access<'d, 'a: 'd,'h0,'h1,'h2,'h3,'h4,'h5,'h6,'h7, T: Clone + Copy>(ra: &'d mut A<'d,'h0,'h1,'h2>, ppd: &'h3 mut (&'h4 mut (Data<'d,'h5,'h6,'h7>))) {

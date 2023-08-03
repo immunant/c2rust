@@ -217,6 +217,7 @@ bitflags! {
     }
 }
 
+#[derive(Default)]
 pub struct AdtMetadataTable<'tcx> {
     pub table: HashMap<DefId, AdtMetadata<'tcx>>,
     pub struct_dids: Vec<DefId>,
@@ -392,6 +393,7 @@ pub struct FnSigOrigins<'tcx> {
     pub output: LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>,
 }
 
+#[derive(Default)]
 pub struct FnOriginMap<'tcx> {
     pub fn_info: HashMap<DefId, FnSigOrigins<'tcx>>,
 }
@@ -489,7 +491,13 @@ fn fn_origin_args_params<'tcx>(
     FnOriginMap { fn_info }
 }
 
-fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
+/// Build the `AdtMetadataTable`, which records the region parameters to be added to each ADT.  A
+/// region parameter will be created for each raw pointer where `needs_region(lty)` returns `true`.
+fn construct_adt_metadata<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    field_ltys: &HashMap<DefId, LTy<'tcx>>,
+    mut needs_region: impl FnMut(LTy<'tcx>) -> bool,
+) -> AdtMetadataTable<'tcx> {
     let struct_dids: Vec<_> = tcx
         .hir_crate_items(())
         .definitions()
@@ -561,35 +569,39 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
             let adt_def = tcx.adt_def(struct_did);
             eprintln!("gathering lifetimes and lifetime parameters for {adt_def:?}");
             for field in adt_def.all_fields() {
-                let field_ty: Ty = tcx.type_of(field.did);
+                let field_lty = field_ltys
+                    .get(&field.did)
+                    .unwrap_or_else(|| panic!("missing field_ltys entry for {:?}", field.did));
                 eprintln!("\t{adt_def:?}.{:}", field.name);
-                let field_origin_args = ltcx.label(field_ty, &mut |ty| {
+                let field_origin_args = ltcx.relabel(field_lty, &mut |lty| {
                     let mut field_origin_args = IndexSet::new();
-                    match ty.kind() {
+                    match lty.kind() {
                         TyKind::RawPtr(ty) => {
-                            eprintln!(
-                                "\t\tfound pointer that requires hypothetical lifetime: *{:}",
-                                if let Mutability::Mut = ty.mutbl {
-                                    "mut"
-                                } else {
-                                    "const"
-                                }
-                            );
-                            adt_metadata_table
-                                .table
-                                .entry(*struct_did)
-                                .and_modify(|adt| {
-                                    let origin_arg = OriginArg::Hypothetical(next_hypo_origin_id);
-                                    let origin_param =
-                                        OriginParam::Hypothetical(next_hypo_origin_id);
-                                    eprintln!(
-                                        "\t\t\tinserting origin {origin_param:?} into {adt_def:?}"
-                                    );
+                            if needs_region(lty) {
+                                eprintln!(
+                                    "\t\tfound pointer that requires hypothetical lifetime: *{:}",
+                                    if let Mutability::Mut = ty.mutbl {
+                                        "mut"
+                                    } else {
+                                        "const"
+                                    }
+                                );
+                                adt_metadata_table
+                                    .table
+                                    .entry(*struct_did)
+                                    .and_modify(|adt| {
+                                        let origin_arg = OriginArg::Hypothetical(next_hypo_origin_id);
+                                        let origin_param =
+                                            OriginParam::Hypothetical(next_hypo_origin_id);
+                                        eprintln!(
+                                            "\t\t\tinserting origin {origin_param:?} into {adt_def:?}"
+                                        );
 
-                                    adt.lifetime_params.insert(origin_param);
-                                    next_hypo_origin_id += 1;
-                                    field_origin_args.insert(origin_arg);
-                                });
+                                        adt.lifetime_params.insert(origin_param);
+                                        next_hypo_origin_id += 1;
+                                        field_origin_args.insert(origin_arg);
+                                    });
+                            }
                         }
                         TyKind::Ref(reg, _ty, _mutability) => {
                             eprintln!("\t\tfound reference field lifetime: {reg:}");
@@ -668,8 +680,6 @@ fn construct_adt_metadata<'tcx>(tcx: TyCtxt<'tcx>) -> AdtMetadataTable {
 
 impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> GlobalAnalysisCtxt<'tcx> {
-        let adt_metadata = construct_adt_metadata(tcx);
-        let fn_origins = fn_origin_args_params(tcx, &adt_metadata);
         GlobalAnalysisCtxt {
             tcx,
             lcx: LabeledTyCtxt::new(tcx),
@@ -683,10 +693,19 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             field_ltys: HashMap::new(),
             static_tys: HashMap::new(),
             addr_of_static: HashMap::new(),
-            adt_metadata,
-            fn_origins,
+            adt_metadata: AdtMetadataTable::default(),
+            fn_origins: FnOriginMap::default(),
             foreign_mentioned_tys: HashSet::new(),
         }
+    }
+
+    /// Initialize `self.adt_metadata` and `self.fn_origins`.  This requires that all field types
+    /// in the crate have already been labeled in `field_ltys`.
+    pub fn construct_region_metadata(&mut self) {
+        debug_assert!(self.adt_metadata.table.is_empty());
+        self.adt_metadata = construct_adt_metadata(self.tcx, &self.field_ltys, |_| true);
+        debug_assert!(self.fn_origins.fn_info.is_empty());
+        self.fn_origins = fn_origin_args_params(self.tcx, &self.adt_metadata);
     }
 
     pub fn function_context<'a>(&'a mut self, mir: &'a Body<'tcx>) -> AnalysisCtxt<'a, 'tcx> {
