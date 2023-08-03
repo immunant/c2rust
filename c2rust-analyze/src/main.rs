@@ -786,13 +786,10 @@ fn run(tcx: TyCtxt) {
     // Items in the "fixed defs" list have all pointers in their types set to `FIXED`.  For
     // testing, putting #[c2rust_analyze_test::fixed_signature] on an item has the same effect.
     for ldid in tcx.hir_crate_items(()).definitions() {
-        let make_fixed = fixed_defs.contains(&ldid.to_def_id())
+        let def_fixed = fixed_defs.contains(&ldid.to_def_id())
             || util::has_test_attr(tcx, ldid, TestAttr::FixedSignature);
-        if !make_fixed {
-            continue;
-        }
         match tcx.def_kind(ldid.to_def_id()) {
-            DefKind::Fn | DefKind::AssocFn => {
+            DefKind::Fn | DefKind::AssocFn if def_fixed => {
                 let lsig = match gacx.fn_sigs.get(&ldid.to_def_id()) {
                     Some(x) => x,
                     None => panic!("missing fn_sig for {:?}", ldid),
@@ -803,15 +800,25 @@ fn run(tcx: TyCtxt) {
             DefKind::Struct | DefKind::Enum | DefKind::Union => {
                 let adt_def = tcx.adt_def(ldid);
                 for field in adt_def.all_fields() {
-                    let lty = match gacx.field_ltys.get(&field.did) {
-                        Some(&x) => x,
-                        None => panic!("missing field_lty for {:?}", ldid),
-                    };
-                    make_ty_fixed(&mut gasn, lty);
+                    // Each field can be separately listed in `fixed_defs` or annotated with the
+                    // attribute to cause it to be marked FIXED.  If the whole ADT is
+                    // listed/annotated, then every field is marked FIXED.
+                    let field_fixed = def_fixed
+                        || fixed_defs.contains(&ldid.to_def_id())
+                        || field.did.as_local().map_or(false, |ldid| {
+                            util::has_test_attr(tcx, ldid, TestAttr::FixedSignature)
+                        });
+                    if field_fixed {
+                        let lty = match gacx.field_ltys.get(&field.did) {
+                            Some(&x) => x,
+                            None => panic!("missing field_lty for {:?}", ldid),
+                        };
+                        make_ty_fixed(&mut gasn, lty);
+                    }
                 }
             }
 
-            DefKind::Static(_) => {
+            DefKind::Static(_) if def_fixed => {
                 let lty = match gacx.static_tys.get(&ldid.to_def_id()) {
                     Some(&x) => x,
                     None => panic!("missing static_ty for {:?}", ldid),
