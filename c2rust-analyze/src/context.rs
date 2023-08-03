@@ -703,8 +703,12 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     /// in the crate have already been labeled in `field_ltys`.
     pub fn construct_region_metadata(&mut self) {
         debug_assert!(self.adt_metadata.table.is_empty());
-        self.adt_metadata = construct_adt_metadata(self.tcx, &self.field_ltys, |_| true);
         debug_assert!(self.fn_origins.fn_info.is_empty());
+        self.construct_region_metadata_filtered(|_| true);
+    }
+
+    pub fn construct_region_metadata_filtered(&mut self, filter: impl FnMut(LTy<'tcx>) -> bool) {
+        self.adt_metadata = construct_adt_metadata(self.tcx, &self.field_ltys, filter);
         self.fn_origins = fn_origin_args_params(self.tcx, &self.adt_metadata);
     }
 

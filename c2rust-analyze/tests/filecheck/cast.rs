@@ -27,7 +27,7 @@ extern "C" {
     fn bar(f: Foo);
 }
 
-// CHECK-LABEL: pub unsafe fn cell_as_mut_as_cell<'h0,'h1>(mut x: &'h0 core::cell::Cell<(i32)>, mut f: Foo<'h1>) {
+// CHECK-LABEL: pub unsafe fn cell_as_mut_as_cell<'h0>(mut x: &'h0 core::cell::Cell<(i32)>, mut f: Foo) {
 pub unsafe fn cell_as_mut_as_cell(mut x: *mut i32, mut f: Foo) {
     let z = x;
     let r = x;
