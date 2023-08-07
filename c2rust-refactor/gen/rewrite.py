@@ -51,7 +51,7 @@ The traits are:
 
 The generated `Rewrite` impl will by default try either `equal` or `recursive`
 (depending on type kind), then `print`.  If one of these strategies is
-unavailabe (due to missing impls), it will be skipped.  If no strategies are
+unavailable (due to missing impls), it will be skipped.  If no strategies are
 available, code generation raises an error.
 
 For the three built-in strategies:

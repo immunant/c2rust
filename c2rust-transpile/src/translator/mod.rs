@@ -108,7 +108,7 @@ pub struct ExprContext {
     decay_ref: DecayRef,
     is_bitfield_write: bool,
 
-    // We will be refering to the expression by address. In this context we
+    // We will be referring to the expression by address. In this context we
     // can't index arrays because they may legally go out of bounds. We also
     // need to explicitly cast function references to fn() so we get their
     // address in function pointer literals.
@@ -208,7 +208,7 @@ pub struct FuncContext {
     /// The name of the function we're currently translating
     name: Option<String>,
     /// The name we give to the Rust function argument corresponding
-    /// to the elipsis in variadic C functions.
+    /// to the ellipsis in variadic C functions.
     va_list_arg_name: Option<String>,
     /// The va_list decls that are either `va_start`ed or `va_copy`ed.
     va_list_decl_ids: Option<IndexSet<CDeclId>>,
@@ -460,7 +460,7 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&path
         mod_names.insert(file_path.clone(), path.to_path_buf());
     } else {
         let mod_path = mod_names.get(&file_path.clone()).unwrap();
-        // A collision in the module names has occured.
+        // A collision in the module names has occurred.
         // Ex: types.h can be included from
         // /usr/include/bits and /usr/include/sys
         if mod_path != path {
@@ -557,7 +557,7 @@ pub fn translate(
 
                         // Detect case where typedef and struct share the same name.
                         // In this case the purpose of the typedef was simply to eliminate
-                        // the need for the 'struct' tag when refering to the type name.
+                        // the need for the 'struct' tag when referring to the type name.
                         Struct {
                             name: Some(ref target_name),
                             ..
@@ -2097,7 +2097,7 @@ impl<'c> Translation<'c> {
                     mk()
                 };
 
-                // Force mutability due to the potential for raw pointers occuring in the type
+                // Force mutability due to the potential for raw pointers occurring in the type
                 // and because we may be assigning to these variables in the external initializer
                 let mut static_def = static_def.span(span).mutbl();
                 if has_thread_duration {

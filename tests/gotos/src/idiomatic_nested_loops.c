@@ -1,4 +1,4 @@
-// This shoud translate to a straightforward `break` with a loop label 
+// This should translate to a straightforward `break` with a loop label 
 int break_multiple(int x) {
   /* comment1 */
 

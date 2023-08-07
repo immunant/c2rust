@@ -76,10 +76,10 @@ rewrite_expr '__x + 1' '11 * __x'
 In each case, the expression bound to the `__x` metavariable is substituted
 into the right-hand side of the multiplication in the replacement.
 
-## Multiple occurences
+## Multiple occurrences
 
 Finally, the same metavariable can appear multiple times in the pattern.  In
-that case, the pattern matches only if each occurence of the metavariable
+that case, the pattern matches only if each occurrence of the metavariable
 matches the same expression.  For example:
 
 ```rust refactor-target hidden

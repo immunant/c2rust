@@ -212,7 +212,7 @@ impl<'a> Translation<'a> {
                         let end_bit = platform_bit_offset + bitfield_width;
 
                         // Add to the total byte size of the bitfield group only if
-                        // we have not already enountered this byte
+                        // we have not already encountered this byte
                         for bit in platform_bit_offset..end_bit {
                             let byte = bit / 8;
 
@@ -234,7 +234,7 @@ impl<'a> Translation<'a> {
                         let end_bit = platform_bit_offset + bitfield_width;
 
                         // Add to the total byte size of the bitfield group only if
-                        // we have not already enountered this byte
+                        // we have not already encountered this byte
                         for bit in platform_bit_offset..end_bit {
                             let byte = bit / 8;
 

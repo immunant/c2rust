@@ -138,7 +138,7 @@ pub fn fix_users(
                         expect!([e.kind] ExprKind::Call(_, ref mut args) => {
                             if let Some(ty) = cx.opt_node_type(args[i].id) {
                                 if ty_compare.eq_tys(ty, new_ty) {
-                                    // We don't need to conver this type, it already matches
+                                    // We don't need to convert this type, it already matches
                                     return;
                                 }
                             }

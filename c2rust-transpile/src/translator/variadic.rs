@@ -228,7 +228,7 @@ impl<'c> Translation<'c> {
     }
 
     /// Update the current function context by i) enabling the C variadics feature, ii) naming the
-    /// Rust function argument that corresponds to the elipsis in the original C function, and iii)
+    /// Rust function argument that corresponds to the ellipsis in the original C function, and iii)
     /// building a list of variable declarations to be translated into `VaListImpl`s. Returns the
     /// name of the `VaList` function argument for convenience.
     pub fn register_va_decls(&self, body: CStmtId) -> String {

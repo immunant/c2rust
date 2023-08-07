@@ -151,7 +151,7 @@ path permissions reflects the transitive nature of access restrictions in Rust:
 for example, if a struct field `x.f` has type `&mut T`, but `x` is an immutable
 reference (`&S`), then only immutable access is allowed to `*x.f`.
 
-The two additional constraints introduced by assigments are (1) the path
+The two additional constraints introduced by assignments are (1) the path
 permission of the LHS must be no lower than WRITE, and (2) the path permission
 of the RHS must be no lower than the permission of the LHS pointer type.
 Constraint (1) prevents writing through a READ pointer, or through any path
@@ -325,7 +325,7 @@ There are four annotation types currently supported by the ownership system.
 
   The `ownership_mono` annotation can appear multiple times on a single
   function to provide multiple monomorphic signatures.  However, if it appears
-  at all, monomorphization inference will be completely overriden for the
+  at all, monomorphization inference will be completely overridden for the
   annotated function, and only the provided signatures will be used in callee
   argument inference and later transformations.
 

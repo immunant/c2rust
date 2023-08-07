@@ -29,8 +29,8 @@ fn main() {
     S.g();  // Inherent ethod call
     S::g(&S);   // Inherent method call using type-dependent path
     S.h();      // Trait method call
-    S::h(&S);   // Trait method call using type-depedent path (Self)
-    T::h(&S);   // Trait method call using type-depedent path (trait)
+    S::h(&S);   // Trait method call using type-dependent path (Self)
+    T::h(&S);   // Trait method call using type-dependent path (trait)
     <S as T>::h(&S);    // Trait method call with explicit Self type
     FN_PTR();   // Call via (static) function pointer
     closure();  // Closure call / overloaded `Fn`

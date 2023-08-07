@@ -310,7 +310,7 @@ impl TypedAstContext {
     }
 
     /// Follow a chain of typedefs and return true iff the last typedef is named
-    /// `__buitin_va_list` thus naming the type clang uses to represent `va_list`s.
+    /// `__builtin_va_list` thus naming the type clang uses to represent `va_list`s.
     pub fn is_builtin_va_list(&self, typ: CTypeId) -> bool {
         match self.index(typ).kind {
             CTypeKind::Typedef(decl) => match &self.index(decl).kind {

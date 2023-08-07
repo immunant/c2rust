@@ -258,7 +258,7 @@ impl<S: Sink> Emitter<'_, S> {
     /// Emit the text of `rw` into `self.sink`, using `Sink` methods to paste in the expression
     /// being rewritten or its subexpressions if needed.
     ///
-    /// `prec` is the precedence of the surrounding context.  Each operatior is assigned a
+    /// `prec` is the precedence of the surrounding context.  Each operator is assigned a
     /// precedence number, where a higher precedence number means the operator binds more tightly.
     /// For example, `a + b * c` parses as `a + (b * c)`, not `(a + b) * c`, because `*` binds more
     /// tightly than `+`; this means `*` will have a higher precedence number than `+`.  Nesting a

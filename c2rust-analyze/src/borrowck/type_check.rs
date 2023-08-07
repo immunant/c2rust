@@ -368,7 +368,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 if let Some(true) = op.constant().cloned().map(util::is_null_const) {
                     // Here we relabel `expect_ty` to utilize the permissions it carries
                     // but substitute the rest of its `Label`s' parts with fresh origins
-                    // Othwerise, this is conceptually similar to labeling the cast target
+                    // Otherwise, this is conceptually similar to labeling the cast target
                     // `ty`. We would simply do that, but do not have the information necessary
                     // to set its permissions.
                     self.relabel_fresh_origins(expect_ty)
@@ -380,7 +380,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let op_lty = self.visit_operand(op);
                 // Here we relabel `expect_ty` to utilize the permissions it carries
                 // but substitute the rest of its `Label`s' parts with fresh origins
-                // Othwerise, this is conceptually similar to labeling the cast target
+                // Otherwise, this is conceptually similar to labeling the cast target
                 // `ty`. We would simply do that, but do not have the information necessary
                 // to set its permissions.
                 let result_lty = self.relabel_fresh_origins(expect_ty);

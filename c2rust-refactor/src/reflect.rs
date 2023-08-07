@@ -112,7 +112,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                 }
             }
             // `Bound` is "used only when preparing a trait query", so hopefully we never actually
-            // encouter one.
+            // encounter one.
             Bound(..) => mk().infer_ty(),
             // No idea what `Placeholder` is, but it sounds like something rustc-internal.
             Placeholder(..) => mk().infer_ty(),

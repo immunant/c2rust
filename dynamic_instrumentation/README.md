@@ -9,4 +9,4 @@ ${CARGO_TARGET_DIR:-target}/debug/c2rust-instrument --metadata analysis/tests/mi
 This instruments the binary built from main.rs with dynamic memory tracing, and
 outputs the necessary metadata to match up instrumentation points to source code
 into `metadata.bc`. We then run the binary, printing output to the
-debug console and using the aformentioned metadata file.
+debug console and using the aforementioned metadata file.

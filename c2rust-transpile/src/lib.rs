@@ -529,7 +529,7 @@ fn get_output_path(
     ancestor_path: &Path,
     build_dir: &Path,
 ) -> PathBuf {
-    // When an output file name is not explictly specified, we should convert files
+    // When an output file name is not explicitly specified, we should convert files
     // with dashes to underscores, as they are not allowed in rust file names.
     let file_name = input_path
         .file_name()

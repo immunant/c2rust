@@ -691,7 +691,7 @@ impl<Lbl: Clone + Ord + Hash + Debug, Stmt> Cfg<Lbl, Stmt> {
 
         self.nodes.retain(|lbl, _| visited.contains(lbl));
         self.loops.filter_unreachable(&visited);
-        // TODO mutliple info
+        // TODO multiple info
     }
 
     /// Removes empty blocks whose terminator is just a `Jump` by merging them with the block they
@@ -974,7 +974,7 @@ pub struct DeclStmtStore {
 ///
 ///  1. declare and initialize
 ///  2. declare only (and incidentally zero-initialize)
-///  3. intialize only (if the declaration has already been emitted)
+///  3. initialize only (if the declaration has already been emitted)
 ///
 #[derive(Clone, Debug)]
 pub struct DeclStmtInfo {

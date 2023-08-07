@@ -220,7 +220,7 @@ def _parse_args() -> argparse.Namespace:
 
     subparsers = parser.add_subparsers(dest='subcommand', required=True)
 
-    subparsers.add_parser('check', help='Check repo in preperation for publishing')
+    subparsers.add_parser('check', help='Check repo in preparation for publishing')
 
     subparsers.add_parser('package', help='Package crates')
 

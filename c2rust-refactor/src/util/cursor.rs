@@ -275,7 +275,7 @@ impl<T> Cursor<T> {
 
     /// Extract the elements between `start` and `end`, transform them using `func`, and insert the
     /// results in their place.  Afterward, the cursor points past the end of the replacement
-    /// sequnece.
+    /// sequence.
     pub fn replace_range<F>(&mut self, start: Mark, end: Mark, func: F)
     where
         F: FnOnce(Vec<T>) -> Vec<T>,

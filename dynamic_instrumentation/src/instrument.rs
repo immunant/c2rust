@@ -166,7 +166,7 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
                 && (is_non_assignment_use || is_assignment_to_local_projection)
                 // maintain drop semantics for original address-taken local -- the liveness
                 // properties of its address are not necessarily the same, and dropping
-                // `(*_y)` is undesireable
+                // `(*_y)` is undesirable
                 && !context.is_drop()
             {
                 // add deref
@@ -231,7 +231,7 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
         }
 
         // when the address-taken local is assigned to for the first time, we know it's active,
-        // so insert `_y = &raw x` just below that assignment, which is neccessary because
+        // so insert `_y = &raw x` just below that assignment, which is necessary because
         // otherwise the address-taking statement would be taking the address of an uninitialized
         // variable. For assignment statements, place `_y = &raw _x` one statement below. For
         // terminators with a destination to the address-taken local, or drop and replace
