@@ -17,7 +17,9 @@ use crate::pointer_id::PointerId;
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
 use crate::AdtMetadataTable;
-use hir::{GenericParamKind, Generics, ItemKind, Path, PathSegment, VariantData, WherePredicate};
+use hir::{
+    FnRetTy, GenericParamKind, Generics, ItemKind, Path, PathSegment, VariantData, WherePredicate,
+};
 use log::warn;
 use rustc_ast::ast;
 use rustc_hir as hir;
@@ -224,6 +226,18 @@ fn deconstruct_hir_ty<'a, 'tcx>(
                 }
                 type_args
             })
+        }
+        (&ty::TyKind::FnPtr(sig), &hir::TyKind::BareFn(bfnty)) => {
+            let args = sig.skip_binder().inputs_and_output;
+            if args.len() != bfnty.decl.inputs.len() + 1 {
+                panic!("mismatched number of function inputs for {sig:?} and {bfnty:?}");
+            }
+
+            let mut v: Vec<_> = bfnty.decl.inputs.iter().collect();
+            if let FnRetTy::Return(return_ty) = bfnty.decl.output {
+                v.push(return_ty)
+            }
+            Some(v)
         }
         (tk, hir_tk) => {
             eprintln!("deconstruct_hir_ty: {tk:?} -- {hir_tk:?} not supported");
