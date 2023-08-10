@@ -33,6 +33,7 @@ macro_rules! define_tests {
 define_tests! {
     addr_of,
     aggregate1,
+    algo_md5,
     alias1,
     alias2,
     alias3,
