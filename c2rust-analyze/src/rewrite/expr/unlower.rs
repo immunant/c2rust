@@ -155,17 +155,20 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         &'a mir::Operand<'tcx>,
         &'a [mir::Operand<'tcx>],
     )> {
-        let loc = *locs.last()?;
-        let term = self.mir.stmt_at(loc).right()?;
-        match term.kind {
-            mir::TerminatorKind::Call {
-                ref func,
-                ref args,
-                destination,
-                ..
-            } => Some((loc, destination, func, args)),
-            _ => None,
+        for &loc in locs.iter().rev() {
+            if let Some(term) = self.mir.stmt_at(loc).right() {
+                match term.kind {
+                    mir::TerminatorKind::Call {
+                        ref func,
+                        ref args,
+                        destination,
+                        ..
+                    } => return Some((loc, destination, func, args)),
+                    _ => {}
+                }
+            }
         }
+        None
     }
 
     fn should_ignore_statement(&self, loc: Location) -> bool {
