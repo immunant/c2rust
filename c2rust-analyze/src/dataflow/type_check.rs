@@ -494,7 +494,80 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let perms = PermissionSet::FREE;
                 self.constraints.add_all_perms(rv_lty.label, perms);
             }
+            Callee::Memcpy => {
+                let out_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                    loc,
+                    CVoidCastDirection::From,
+                    destination,
+                );
 
+                let dest_ptr = args[0]
+                    .place()
+                    .expect("Casts to/from null pointer are not yet supported");
+                let dest_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                    loc,
+                    CVoidCastDirection::To,
+                    dest_ptr,
+                );
+                self.visit_place(out_ptr, Mutability::Mut);
+                assert!(args.len() == 3);
+                self.visit_place(dest_ptr, Mutability::Mut);
+                let rv_lty = self.acx.type_of(dest_ptr);
+
+                // input needs WRITE permission
+                let perms = PermissionSet::WRITE;
+                self.constraints.add_all_perms(rv_lty.label, perms);
+
+                // TODO: the return values of `memcpy` are rarely used
+                // and may not always be casted to a non-void-pointer,
+                // so avoid unifying for now
+                // self.do_equivalence_nested(pl_lty, rv_lty);
+
+                let src_ptr = args[1]
+                    .place()
+                    .expect("Casts to/from null pointer are not yet supported");
+                let src_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                    loc,
+                    CVoidCastDirection::To,
+                    src_ptr,
+                );
+                self.visit_place(out_ptr, Mutability::Mut);
+                let pl_lty = self.acx.type_of(out_ptr);
+                assert!(args.len() == 3);
+                self.visit_place(src_ptr, Mutability::Not);
+                let rv_lty = self.acx.type_of(src_ptr);
+
+                // input needs READ permission
+                let perms = PermissionSet::READ;
+                self.constraints.add_all_perms(rv_lty.label, perms);
+
+                // TODO: the return values of `memcpy` are rarely used
+                // and may not always be casted to a non-void-pointer,
+                // so avoid unifying for now
+                // self.do_equivalence_nested(pl_lty, rv_lty);
+            }
+            Callee::Memset => {
+                let dest_ptr = args[0]
+                    .place()
+                    .expect("Casts to/from null pointer are not yet supported");
+                let dest_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                    loc,
+                    CVoidCastDirection::To,
+                    dest_ptr,
+                );
+                self.visit_place(destination, Mutability::Mut);
+                assert!(args.len() == 3);
+
+                let rv_lty = self.acx.type_of(dest_ptr);
+                let perms = PermissionSet::WRITE;
+                self.constraints.add_all_perms(rv_lty.label, perms);
+
+                // TODO: the return values of `memcpy` are rarely used
+                // and may not always be casted to a non-void-pointer,
+                // so avoid unifying for now
+                // let pl_lty = self.acx.type_of(out_ptr);
+                // self.do_equivalence_nested(pl_lty, rv_lty);
+            }
             Callee::IsNull => {
                 assert!(args.len() == 1);
                 self.visit_operand(&args[0]);

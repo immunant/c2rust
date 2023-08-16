@@ -583,6 +583,19 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             self.visit_operand(p)
                         });
                     }
+                    Callee::Memcpy => {
+                        let _pl_lty = self.visit_place(destination);
+                        let _rv_lty = assert_matches!(&args[..], [dest, src, _] => {
+                            self.visit_operand(dest);
+                            self.visit_operand(src);
+                        });
+                    }
+                    Callee::Memset => {
+                        let _pl_lty = self.visit_place(destination);
+                        let _rv_lty = assert_matches!(&args[..], [dest, ..] => {
+                            self.visit_operand(dest)
+                        });
+                    }
                     Callee::IsNull => {
                         let _rv_lty = assert_matches!(&args[..], [p] => {
                             self.visit_operand(p)

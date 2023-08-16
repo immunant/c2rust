@@ -1,10 +1,10 @@
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use rustc_middle::{
     mir::{
-        Body, LocalDecls, Location, Place, Rvalue, Statement, StatementKind, Terminator,
-        TerminatorKind,
+        BasicBlock, BasicBlockData, Body, LocalDecls, Location, Place, Rvalue, Statement,
+        StatementKind, Terminator, TerminatorKind,
     },
     ty::{TyCtxt, TyKind},
 };
@@ -48,6 +48,7 @@ impl CVoidCastDirection {
             Malloc | Calloc => &[From][..],
             Realloc => &[To, From][..],
             Free => &[To][..],
+            Memcpy | Memset => &[To][..],
             _ => &[],
         }
     }
@@ -81,6 +82,24 @@ impl<'tcx> CVoidPtr<'tcx> {
             assert_eq!(tcx.item_name(adt.did()).as_str(), "c_void");
         });
         Self { place }
+    }
+
+    pub fn checked_optional(
+        place: Place<'tcx>,
+        local_decls: &LocalDecls<'tcx>,
+        tcx: TyCtxt<'tcx>,
+    ) -> Option<Self> {
+        let deref_ty = place.ty(local_decls, tcx).ty.builtin_deref(true)?;
+
+        if let TyKind::Adt(adt, _) = deref_ty.ty.kind() {
+            if tcx.def_path(adt.did()).data[0].to_string() == "ffi"
+                && tcx.item_name(adt.did()).as_str() == "c_void"
+            {
+                return Some(Self { place });
+            }
+        }
+
+        None
     }
 
     /// Check another [`Place`] for being a [`*c_void`](core::ffi::c_void)
@@ -137,7 +156,7 @@ impl<'tcx> Borrow<Place<'tcx>> for CVoidPtr<'tcx> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 /// A cast to/from a [`*c_void`](core::ffi::c_void) to/from a properly typed pointer.
 pub struct CVoidCast<'tcx> {
     /// The [`*c_void`](core::ffi::c_void) side of the cast.
@@ -162,14 +181,14 @@ pub struct CVoidCast<'tcx> {
 pub struct CVoidCastsUniDirectional<'tcx> {
     /// Mapping from location of a call that either
     /// produces or consumes a [`CVoidPtr`] to its
-    /// succeeding or preceding [`CVoidCast`]
-    calls: HashMap<Location, CVoidCast<'tcx>>,
+    /// succeeding or preceding [`CVoidCast`]s
+    calls: HashMap<Location, HashSet<CVoidCast<'tcx>>>,
     /// Set of locations where [`CVoidCast`]s occur.
     casts: HashSet<Location>,
 }
 
 impl<'tcx> CVoidCastsUniDirectional<'tcx> {
-    /// Get the adjusted [`Place`] from a cast at a particulat [`Location`].
+    /// Get the adjusted [`Place`] from a cast at a particular [`Location`].
     ///
     /// Otherwise, the same `place` is returned, as no adjustments are necessary.
     pub fn get_adjusted_place_or_default_to(
@@ -177,20 +196,22 @@ impl<'tcx> CVoidCastsUniDirectional<'tcx> {
         loc: Location,
         place: Place<'tcx>,
     ) -> Place<'tcx> {
-        *self
-            .calls
-            .get(&loc)
-            .map(|cast| {
-                assert_eq!(cast.c_void_ptr.place, place);
-                &cast.other_ptr
-            })
-            .unwrap_or(&place)
+        // If there are multiple CVoidCasts for a Location, this logic may need to be adjusted
+        // depending on the intended behavior.
+        if let Some(casts) = self.calls.get(&loc) {
+            for cast in casts {
+                if cast.c_void_ptr.place == place {
+                    return cast.other_ptr;
+                }
+            }
+        }
+        place
     }
 
     /// Tracks the [Location] of the use of a casted pointer in a [TerminatorKind::Call]
     pub fn insert_call(&mut self, loc: Location, cast: CVoidCast<'tcx>) {
-        assert!(!self.calls.contains_key(&loc));
-        self.calls.insert(loc, cast);
+        let entry = self.calls.entry(loc).or_insert_with(HashSet::new);
+        entry.insert(cast);
     }
 
     /// Tracks the [Location] of void pointer [Rvalue::Cast]
@@ -377,7 +398,9 @@ impl<'tcx> CVoidCasts<'tcx> {
         for (sidx, stmt) in statements.iter().enumerate().rev() {
             let cast = c_void_ptr.get_cast_from_stmt(CVoidCastDirection::To, stmt);
             if let Some(cast) = cast {
-                return Some((sidx, cast));
+                if cast.c_void_ptr == c_void_ptr {
+                    return Some((sidx, cast));
+                }
             } else if Self::is_place_modified_by_statement(&c_void_ptr.place, stmt) {
                 return None;
             }
@@ -403,59 +426,99 @@ impl<'tcx> CVoidCasts<'tcx> {
     /// [`*c_void`]: core::ffi::c_void
     fn insert_all_from_body(&mut self, body: &Body<'tcx>, tcx: TyCtxt<'tcx>) {
         for (block, bb_data) in body.basic_blocks().iter_enumerated() {
-            let term: &Terminator = match &bb_data.terminator {
-                Some(term) => term,
-                None => continue,
-            };
-            let (func, args, destination, target) = match term.kind {
-                TerminatorKind::Call {
-                    ref func,
-                    ref args,
+            if let Some(term) = &bb_data.terminator {
+                if let TerminatorKind::Call {
+                    func,
+                    args,
                     destination,
                     target,
                     ..
-                } => (func, args, destination, target),
-                _ => continue,
-            };
-            let func_ty = func.ty(&body.local_decls, tcx);
+                } = &term.kind
+                {
+                    let func_ty = func.ty(&body.local_decls, tcx);
+                    let directions = CVoidCastDirection::from_callee(ty_callee(tcx, func_ty));
 
-            for direction in CVoidCastDirection::from_callee(ty_callee(tcx, func_ty))
-                .iter()
-                .copied()
-            {
-                use CVoidCastDirection::*;
-                let c_void_ptr = match direction {
-                    From => destination,
-                    To => args[0]
-                        .place()
-                        .expect("Casts to/from null pointer are not yet supported"),
-                };
-                let c_void_ptr = CVoidPtr::checked(c_void_ptr, &body.local_decls, tcx);
-                let cast = match direction {
-                    // For [`CVoidCastDirection::From`], we only count
-                    // a cast from `*c_void` to an arbitrary type in the subsequent block,
-                    // searching forward.
-                    From => Self::find_first_cast(
-                        &body.basic_blocks()[target.unwrap()].statements,
-                        c_void_ptr,
-                    ),
-                    // For [`CVoidCastDirection::To`], we only count
-                    // a cast to `*c_void` from an arbitrary type in the same block,
-                    // searching backwards.
-                    To => Self::find_last_cast(&bb_data.statements, c_void_ptr),
-                };
-                if let Some((statement_index, cast)) = cast {
+                    for direction in directions.iter().copied() {
+                        use CVoidCastDirection::*;
+
+                        match direction {
+                            From => {
+                                let c_void_ptr =
+                                    CVoidPtr::checked(*destination, &body.local_decls, tcx);
+                                if let Some((statement_index, cast)) = Self::find_first_cast(
+                                    &body.basic_blocks()[target.unwrap()].statements,
+                                    c_void_ptr,
+                                ) {
+                                    self.insert_cast(
+                                        direction,
+                                        Location {
+                                            statement_index,
+                                            block: target.unwrap(),
+                                        },
+                                    );
+                                    self.insert_call(
+                                        direction,
+                                        terminator_location(block, bb_data),
+                                        cast,
+                                    );
+                                }
+                            }
+                            To => {
+                                for arg in args {
+                                    if let Some(place) = arg.place() {
+                                        if let Some(c_void_ptr) = CVoidPtr::checked_optional(
+                                            place,
+                                            &body.local_decls,
+                                            tcx,
+                                        ) {
+                                            self.find_and_insert_pred_cast(
+                                                body, c_void_ptr, direction, block, bb_data,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Performs BFS in the CFG to find where the c_void_ptr
+    /// was cast to that type
+    fn find_and_insert_pred_cast(
+        &mut self,
+        body: &Body<'tcx>,
+        c_void_ptr: CVoidPtr<'tcx>,
+        direction: CVoidCastDirection,
+        block: BasicBlock,
+        bb_data: &BasicBlockData<'tcx>,
+    ) {
+        let predecessors = body.basic_blocks.predecessors();
+
+        let mut seen = HashSet::new();
+        let mut queue = VecDeque::new();
+        queue.push_back(block);
+
+        while let Some(current_block) = queue.pop_front() {
+            if seen.insert(current_block) {
+                let current_block_data = &body.basic_blocks()[current_block];
+                if let Some((statement_index, cast)) =
+                    Self::find_last_cast(&current_block_data.statements, c_void_ptr)
+                {
                     self.insert_cast(
                         direction,
                         Location {
                             statement_index,
-                            block: match direction {
-                                To => block,
-                                From => target.unwrap(),
-                            },
+                            block: current_block,
                         },
                     );
-                    self.insert_call(direction, terminator_location(block, bb_data), cast);
+                    self.insert_call(direction, terminator_location(current_block, bb_data), cast);
+                }
+
+                for &pred in &predecessors[current_block] {
+                    queue.push_back(pred);
                 }
             }
         }

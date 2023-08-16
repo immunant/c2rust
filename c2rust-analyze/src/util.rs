@@ -177,6 +177,12 @@ pub enum Callee<'tcx> {
     /// libc::calloc
     Calloc,
 
+    /// libc::memset
+    Memset,
+
+    /// libc::memcpy
+    Memcpy,
+
     /// libc::free
     Free,
 
@@ -299,6 +305,20 @@ fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, did: DefId, substs: SubstsRef<'tcx>) 
         "free" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
                 return Some(Callee::Free);
+            }
+            None
+        }
+
+        "memset" => {
+            if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
+                return Some(Callee::Memset);
+            }
+            None
+        }
+
+        "memcpy" => {
+            if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
+                return Some(Callee::Memcpy);
             }
             None
         }
