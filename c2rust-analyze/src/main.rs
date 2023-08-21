@@ -389,10 +389,11 @@ fn mark_foreign_fixed<'tcx>(
     }
 }
 
-fn parse_def_id(s: &str) -> Result<DefId, &'static str> {
+fn parse_def_id(s: &str) -> Result<DefId, String> {
     // DefId debug output looks like `DefId(0:1 ~ alias1[0dc4]::{use#0})`.  The ` ~ name` part may
     // be omitted if the name/DefPath info is not available at the point in the compiler where the
     // `DefId` was printed.
+    let orig_s = s;
     let s = s
         .strip_prefix("DefId(")
         .ok_or("does not start with `DefId(`")?;
@@ -404,14 +405,25 @@ fn parse_def_id(s: &str) -> Result<DefId, &'static str> {
     let i = s
         .find(':')
         .ok_or("does not contain `:` in `CrateNum:DefIndex` part")?;
+
     let krate_str = &s[..i];
     let index_str = &s[i + 1..];
     let krate = u32::from_str(krate_str).map_err(|_| "failed to parse CrateNum")?;
     let index = u32::from_str(index_str).map_err(|_| "failed to parse DefIndex")?;
-    Ok(DefId {
+    let def_id = DefId {
         krate: CrateNum::from_u32(krate),
         index: DefIndex::from_u32(index),
-    })
+    };
+
+    let rendered = format!("{:?}", def_id);
+    if &rendered != s {
+        return Err(format!(
+            "path mismatch: after parsing input {}, obtained a different path {:?}",
+            orig_s, def_id
+        ));
+    }
+
+    Ok(def_id)
 }
 
 fn read_fixed_defs_list(path: &str) -> io::Result<HashSet<DefId>> {
