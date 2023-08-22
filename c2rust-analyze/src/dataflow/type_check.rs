@@ -532,7 +532,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     src_ptr,
                 );
                 self.visit_place(out_ptr, Mutability::Mut);
-                let pl_lty = self.acx.type_of(out_ptr);
+                let _pl_lty = self.acx.type_of(out_ptr);
                 assert!(args.len() == 3);
                 self.visit_place(src_ptr, Mutability::Not);
                 let rv_lty = self.acx.type_of(src_ptr);
