@@ -28,7 +28,7 @@ use crate::panic_detail::PanicDetail;
 use crate::util::{Callee, TestAttr};
 use context::AdtMetadataTable;
 use rustc_hir::def::DefKind;
-use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_hir::def_id::{CrateNum, DefId, DefIndex, LocalDefId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
@@ -40,9 +40,12 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::{Debug, Display, Write as _};
+use std::fs::File;
+use std::io::{self, BufRead, BufReader};
 use std::iter;
 use std::ops::{Deref, DerefMut, Index};
 use std::panic::AssertUnwindSafe;
+use std::str::FromStr;
 
 use c2rust_pdg::graph::Graphs;
 
@@ -386,7 +389,74 @@ fn mark_foreign_fixed<'tcx>(
     }
 }
 
+fn parse_def_id(s: &str) -> Result<DefId, String> {
+    // DefId debug output looks like `DefId(0:1 ~ alias1[0dc4]::{use#0})`.  The ` ~ name` part may
+    // be omitted if the name/DefPath info is not available at the point in the compiler where the
+    // `DefId` was printed.
+    let orig_s = s;
+    let s = s
+        .strip_prefix("DefId(")
+        .ok_or("does not start with `DefId(`")?;
+    let s = s.strip_suffix(")").ok_or("does not end with `)`")?;
+    let s = match s.find(" ~ ") {
+        Some(i) => &s[..i],
+        None => s,
+    };
+    let i = s
+        .find(':')
+        .ok_or("does not contain `:` in `CrateNum:DefIndex` part")?;
+
+    let krate_str = &s[..i];
+    let index_str = &s[i + 1..];
+    let krate = u32::from_str(krate_str).map_err(|_| "failed to parse CrateNum")?;
+    let index = u32::from_str(index_str).map_err(|_| "failed to parse DefIndex")?;
+    let def_id = DefId {
+        krate: CrateNum::from_u32(krate),
+        index: DefIndex::from_u32(index),
+    };
+
+    let rendered = format!("{:?}", def_id);
+    if &rendered != s {
+        return Err(format!(
+            "path mismatch: after parsing input {}, obtained a different path {:?}",
+            orig_s, def_id
+        ));
+    }
+
+    Ok(def_id)
+}
+
+fn read_fixed_defs_list(path: &str) -> io::Result<HashSet<DefId>> {
+    let f = BufReader::new(File::open(path)?);
+    let mut def_ids = HashSet::new();
+    for (i, line) in f.lines().enumerate() {
+        let line = line?;
+        let line = line.trim();
+        if line.len() == 0 || line.starts_with('#') {
+            continue;
+        }
+
+        let def_id = parse_def_id(&line).unwrap_or_else(|e| {
+            panic!("failed to parse {} line {}: {}", path, i + 1, e);
+        });
+        def_ids.insert(def_id);
+    }
+    Ok(def_ids)
+}
+
 fn run(tcx: TyCtxt) {
+    eprintln!("all defs:");
+    for ldid in tcx.hir_crate_items(()).definitions() {
+        eprintln!("{:?}", ldid);
+    }
+
+    // Load the list of fixed defs early, so any errors are reported immediately.
+    let fixed_defs = if let Ok(path) = env::var("C2RUST_ANALYZE_FIXED_DEFS_LIST") {
+        read_fixed_defs_list(&path).unwrap()
+    } else {
+        HashSet::new()
+    };
+
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
 
@@ -725,17 +795,59 @@ fn run(tcx: TyCtxt) {
         }
     }
 
-    // For testing, putting #[c2rust_analyze_test::fixed_signature] on a function makes all
-    // pointers in its signature FIXED.
-    for &ldid in &all_fn_ldids {
-        if !util::has_test_attr(tcx, ldid, TestAttr::FixedSignature) {
-            continue;
+    // Items in the "fixed defs" list have all pointers in their types set to `FIXED`.  For
+    // testing, putting #[c2rust_analyze_test::fixed_signature] on an item has the same effect.
+    for ldid in tcx.hir_crate_items(()).definitions() {
+        let def_fixed = fixed_defs.contains(&ldid.to_def_id())
+            || util::has_test_attr(tcx, ldid, TestAttr::FixedSignature);
+        match tcx.def_kind(ldid.to_def_id()) {
+            DefKind::Fn | DefKind::AssocFn if def_fixed => {
+                let lsig = match gacx.fn_sigs.get(&ldid.to_def_id()) {
+                    Some(x) => x,
+                    None => panic!("missing fn_sig for {:?}", ldid),
+                };
+                make_sig_fixed(&mut gasn, lsig);
+            }
+
+            DefKind::Struct | DefKind::Enum | DefKind::Union => {
+                let adt_def = tcx.adt_def(ldid);
+                for field in adt_def.all_fields() {
+                    // Each field can be separately listed in `fixed_defs` or annotated with the
+                    // attribute to cause it to be marked FIXED.  If the whole ADT is
+                    // listed/annotated, then every field is marked FIXED.
+                    let field_fixed = def_fixed
+                        || fixed_defs.contains(&ldid.to_def_id())
+                        || field.did.as_local().map_or(false, |ldid| {
+                            util::has_test_attr(tcx, ldid, TestAttr::FixedSignature)
+                        });
+                    if field_fixed {
+                        let lty = match gacx.field_ltys.get(&field.did) {
+                            Some(&x) => x,
+                            None => panic!("missing field_lty for {:?}", ldid),
+                        };
+                        make_ty_fixed(&mut gasn, lty);
+                    }
+                }
+            }
+
+            DefKind::Static(_) if def_fixed => {
+                let lty = match gacx.static_tys.get(&ldid.to_def_id()) {
+                    Some(&x) => x,
+                    None => panic!("missing static_ty for {:?}", ldid),
+                };
+                make_ty_fixed(&mut gasn, lty);
+
+                let ptr = match gacx.addr_of_static.get(&ldid.to_def_id()) {
+                    Some(&x) => x,
+                    None => panic!("missing addr_of_static for {:?}", ldid),
+                };
+                if !ptr.is_none() {
+                    gasn.flags[ptr].insert(FlagSet::FIXED);
+                }
+            }
+
+            _ => {}
         }
-        let lsig = match gacx.fn_sigs.get(&ldid.to_def_id()) {
-            Some(x) => x,
-            None => panic!("missing fn_sig for {:?}", ldid),
-        };
-        make_sig_fixed(&mut gasn, lsig);
     }
 
     // ----------------------------------
@@ -904,6 +1016,9 @@ fn run(tcx: TyCtxt) {
                 if util::has_test_attr(tcx, ldid, TestAttr::SkipRewrite) {
                     return;
                 }
+                if fixed_defs.contains(&ldid.to_def_id()) {
+                    return;
+                }
 
                 let hir_body_id = tcx.hir().body_owned_by(ldid);
                 let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
@@ -965,6 +1080,9 @@ fn run(tcx: TyCtxt) {
     // Generate rewrites for statics
     let mut static_rewrites = Vec::new();
     for (&def_id, &ptr) in gacx.addr_of_static.iter() {
+        if fixed_defs.contains(&def_id) {
+            continue;
+        }
         static_rewrites.extend(rewrite::gen_static_rewrites(tcx, &gasn, def_id, ptr));
     }
     let mut statics_report = String::new();
@@ -990,6 +1108,9 @@ fn run(tcx: TyCtxt) {
     for &def_id in gacx.adt_metadata.table.keys() {
         if gacx.foreign_mentioned_tys.contains(&def_id) {
             eprintln!("Avoiding rewrite for foreign-mentioned type: {def_id:?}");
+            continue;
+        }
+        if fixed_defs.contains(&def_id) {
             continue;
         }
 
