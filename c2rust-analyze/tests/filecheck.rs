@@ -56,6 +56,7 @@ define_tests! {
     offset1,
     offset2,
     ptrptr1,
+    regions_fixed,
     statics,
     test_attrs,
     trivial,

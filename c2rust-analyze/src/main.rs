@@ -25,7 +25,9 @@ use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use crate::labeled_ty::LabeledTyCtxt;
 use crate::log::init_logger;
 use crate::panic_detail::PanicDetail;
+use crate::type_desc::Ownership;
 use crate::util::{Callee, TestAttr};
+use ::log::warn;
 use context::AdtMetadataTable;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{CrateNum, DefId, DefIndex, LocalDefId};
@@ -538,6 +540,10 @@ fn run(tcx: TyCtxt) {
         gacx.assign_pointer_to_fields(did);
     }
 
+    // Compute hypothetical region data for all ADTs and functions.  This can only be done after
+    // all field types are labeled.
+    gacx.construct_region_metadata();
+
     // ----------------------------------
     // Compute dataflow constraints
     // ----------------------------------
@@ -943,14 +949,85 @@ fn run(tcx: TyCtxt) {
     }
     eprintln!("reached fixpoint in {} iterations", loop_count);
 
+    // Do final processing on each function.
+    for &ldid in &all_fn_ldids {
+        if gacx.fn_failed(ldid.to_def_id()) {
+            continue;
+        }
+
+        let info = func_info.get_mut(&ldid).unwrap();
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+        let mut asn = gasn.and(&mut info.lasn);
+
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+            // Add the CELL permission to pointers that need it.
+            info.dataflow.propagate_cell(&mut asn);
+
+            acx.check_string_literal_perms(&asn);
+        }));
+        match r {
+            Ok(()) => {}
+            Err(pd) => {
+                gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                continue;
+            }
+        }
+
+        info.acx_data.set(acx.into_data());
+    }
+
     // Check that these perms haven't changed.
+    let mut known_perm_error_ptrs = HashSet::new();
     for (ptr, perms) in gacx.known_fn_ptr_perms() {
-        assert_eq!(perms, gasn.perms[ptr]);
+        if gasn.perms[ptr] != perms {
+            known_perm_error_ptrs.insert(ptr);
+            warn!(
+                "known permissions changed for PointerId {ptr:?}: {perms:?} -> {:?}",
+                gasn.perms[ptr]
+            );
+        }
+    }
+
+    let mut known_perm_error_fns = HashSet::new();
+    for (&def_id, lsig) in &gacx.fn_sigs {
+        if !tcx.is_foreign_item(def_id) {
+            continue;
+        }
+        for lty in lsig.inputs_and_output().flat_map(|lty| lty.iter()) {
+            let ptr = lty.label;
+            if !ptr.is_none() && known_perm_error_ptrs.contains(&ptr) {
+                known_perm_error_fns.insert(def_id);
+                warn!("known permissions changed for {def_id:?}: {lsig:?}");
+                break;
+            }
+        }
     }
 
     // ----------------------------------
     // Generate rewrites
     // ----------------------------------
+
+    // Regenerate region metadata, with hypothetical regions only in places where we intend to
+    // introduce refs.
+    gacx.construct_region_metadata_filtered(|lty| {
+        let ptr = lty.label;
+        if ptr.is_none() {
+            return false;
+        }
+        let flags = gasn.flags[ptr];
+        if flags.contains(FlagSet::FIXED) {
+            return false;
+        }
+        let perms = gasn.perms[ptr];
+        let desc = type_desc::perms_to_desc(lty.ty, perms, flags);
+        match desc.own {
+            Ownership::Imm | Ownership::Cell | Ownership::Mut => true,
+            Ownership::Raw | Ownership::RawMut | Ownership::Rc | Ownership::Box => false,
+        }
+    });
 
     // For testing, putting #[c2rust_analyze_test::fail_before_rewriting] on a function marks it as
     // failed at this point.
@@ -1005,14 +1082,9 @@ fn run(tcx: TyCtxt) {
             let mir = tcx.mir_built(ldid_const);
             let mir = mir.borrow();
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-            let mut asn = gasn.and(&mut info.lasn);
+            let asn = gasn.and(&mut info.lasn);
 
             let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
-                // Add the CELL permission to pointers that need it.
-                info.dataflow.propagate_cell(&mut asn);
-
-                acx.check_string_literal_perms(&asn);
-
                 if util::has_test_attr(tcx, ldid, TestAttr::SkipRewrite) {
                     return;
                 }
@@ -1263,6 +1335,13 @@ fn run(tcx: TyCtxt) {
         gacx.fns_failed.len(),
         all_fn_ldids.len()
     );
+
+    if known_perm_error_fns.len() > 0 {
+        eprintln!(
+            "saw permission errors in {} known fns",
+            known_perm_error_fns.len()
+        );
+    }
 }
 
 trait AssignPointerIds<'tcx> {
