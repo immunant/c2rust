@@ -65,7 +65,7 @@ pub fn distribute(
             let origin = match unlower_map.get(&key) {
                 Some(x) => x,
                 None => {
-                    error!("unlower_map has no origin for {:?} {:?}", key, unlower_map);
+                    error!("unlower_map has no origin for {:?}", key);
                     continue;
                 }
             };
