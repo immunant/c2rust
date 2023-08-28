@@ -518,11 +518,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let perms = PermissionSet::WRITE;
                 self.constraints.add_all_perms(rv_lty.label, perms);
 
-                // TODO: the return values of `memcpy` are rarely used
-                // and may not always be casted to a non-void-pointer,
-                // so avoid unifying for now
-                // self.do_equivalence_nested(pl_lty, rv_lty);
-
                 let src_ptr = args[1]
                     .place()
                     .expect("Casts to/from null pointer are not yet supported");
