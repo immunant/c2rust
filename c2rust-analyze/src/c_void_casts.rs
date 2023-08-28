@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use rustc_middle::{
     mir::{
         BasicBlockData, Body, LocalDecls, Location, Place, Rvalue, Statement, StatementKind,
-        Terminator, TerminatorKind,
+        TerminatorKind,
     },
     ty::{TyCtxt, TyKind},
 };
@@ -354,8 +354,10 @@ impl<'tcx> CVoidCasts<'tcx> {
     /// in a sequence of [Statement]s. We expect that the
     /// cast is the first non-[StatementKind::StorageDead]
     /// statement in the block, a special case for
-    /// [Terminator]s whose destination is casted from a
+    /// [`Terminator`]s whose destination is casted from a
     /// void pointer to some other pointer type.
+    ///
+    /// [`Terminator`]: rustc_middle::mir::Terminator
     fn find_first_cast(
         statements: &[Statement<'tcx>],
         c_void_ptr: CVoidPtr<'tcx>,
