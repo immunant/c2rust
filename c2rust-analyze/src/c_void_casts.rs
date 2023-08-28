@@ -70,18 +70,7 @@ impl<'tcx> CVoidPtr<'tcx> {
     ///
     /// This panics on failure.
     pub fn checked(place: Place<'tcx>, local_decls: &LocalDecls<'tcx>, tcx: TyCtxt<'tcx>) -> Self {
-        let deref_ty = place
-            .ty(local_decls, tcx)
-            .ty
-            .builtin_deref(true)
-            .unwrap()
-            .ty
-            .kind();
-        assert_matches!(deref_ty, TyKind::Adt(adt, _) => {
-            assert_eq!(tcx.def_path(adt.did()).data[0].to_string(), "ffi");
-            assert_eq!(tcx.item_name(adt.did()).as_str(), "c_void");
-        });
-        Self { place }
+        Self::checked_optional(place, local_decls, tcx).unwrap()
     }
 
     pub fn checked_optional(
