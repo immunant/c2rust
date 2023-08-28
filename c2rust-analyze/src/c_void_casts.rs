@@ -1,6 +1,7 @@
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 
+use rustc_middle::mir::LocalKind;
 use rustc_middle::{
     mir::{
         BasicBlockData, Body, LocalDecls, Location, Place, Rvalue, Statement, StatementKind,
@@ -493,6 +494,7 @@ impl<'tcx> CVoidCasts<'tcx> {
                     "Duplicate c_void_ptr.place found: {:?}",
                     c_void_ptr.place
                 );
+                assert_eq!(body.local_kind(c_void_ptr.place.local), LocalKind::Temp);
                 let location = Location {
                     statement_index,
                     block: current_block,
