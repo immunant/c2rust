@@ -527,19 +527,17 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     src_ptr,
                 );
                 self.visit_place(out_ptr, Mutability::Mut);
-                let _pl_lty = self.acx.type_of(out_ptr);
+                let dest_ptr_lty = self.acx.type_of(out_ptr);
                 assert!(args.len() == 3);
                 self.visit_place(src_ptr, Mutability::Not);
-                let rv_lty = self.acx.type_of(src_ptr);
+                let src_ptr_lty = self.acx.type_of(src_ptr);
 
                 // input needs READ permission
                 let perms = PermissionSet::READ;
-                self.constraints.add_all_perms(rv_lty.label, perms);
+                self.constraints.add_all_perms(src_ptr_lty.label, perms);
 
-                // TODO: the return values of `memcpy` are rarely used
-                // and may not always be casted to a non-void-pointer,
-                // so avoid unifying for now
-                // self.do_equivalence_nested(pl_lty, rv_lty);
+                // Perform a pseudo-assignment for *dest = *src
+                self.do_equivalence_nested(dest_ptr_lty.args[0], src_ptr_lty.args[0]);
             }
             Callee::Memset => {
                 let dest_ptr = args[0]
