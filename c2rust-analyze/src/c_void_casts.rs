@@ -1,15 +1,13 @@
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 
 use rustc_middle::{
     mir::{
-        BasicBlock, BasicBlockData, Body, LocalDecls, Location, Place, Rvalue, Statement,
-        StatementKind, TerminatorKind,
+        BasicBlockData, Body, LocalDecls, Location, Place, Rvalue, Statement, StatementKind,
+        TerminatorKind,
     },
     ty::{TyCtxt, TyKind},
 };
-
-use assert_matches::assert_matches;
 
 use crate::util::{get_assign_sides, get_cast_place, terminator_location, ty_callee, Callee};
 
@@ -461,7 +459,7 @@ impl<'tcx> CVoidCasts<'tcx> {
                                             tcx,
                                         ) {
                                             self.find_and_insert_pred_cast(
-                                                body, c_void_ptr, direction, block, bb_data,
+                                                body, c_void_ptr, direction, bb_data,
                                             );
                                         }
                                     }
@@ -481,34 +479,24 @@ impl<'tcx> CVoidCasts<'tcx> {
         body: &Body<'tcx>,
         c_void_ptr: CVoidPtr<'tcx>,
         direction: CVoidCastDirection,
-        block: BasicBlock,
         bb_data: &BasicBlockData<'tcx>,
     ) {
-        let predecessors = body.basic_blocks.predecessors();
-
-        let mut seen = HashSet::new();
-        let mut queue = VecDeque::new();
-        queue.push_back(block);
-
-        while let Some(current_block) = queue.pop_front() {
-            if seen.insert(current_block) {
-                let current_block_data = &body.basic_blocks()[current_block];
-                if let Some((statement_index, cast)) =
-                    Self::find_last_cast(&current_block_data.statements, c_void_ptr)
-                {
-                    self.insert_cast(
-                        direction,
-                        Location {
-                            statement_index,
-                            block: current_block,
-                        },
-                    );
-                    self.insert_call(direction, terminator_location(current_block, bb_data), cast);
-                }
-
-                for &pred in &predecessors[current_block] {
-                    queue.push_back(pred);
-                }
+        let mut inserted_places = HashSet::new();
+        for (current_block, current_block_data) in body.basic_blocks().iter_enumerated() {
+            if let Some((statement_index, cast)) =
+                Self::find_last_cast(&current_block_data.statements, c_void_ptr)
+            {
+                assert!(
+                    inserted_places.insert(c_void_ptr.place),
+                    "Duplicate c_void_ptr.place found: {:?}",
+                    c_void_ptr.place
+                );
+                let location = Location {
+                    statement_index,
+                    block: current_block,
+                };
+                self.insert_cast(direction, location);
+                self.insert_call(direction, terminator_location(current_block, bb_data), cast);
             }
         }
     }
