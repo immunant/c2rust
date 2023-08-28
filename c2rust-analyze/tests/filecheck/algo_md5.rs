@@ -81,6 +81,8 @@ static mut PADDING: [libc::c_uchar; 64] = [
     0 as libc::c_int as libc::c_uchar,
     0 as libc::c_int as libc::c_uchar,
 ];
+
+// CHECK-LABEL: MD5_Init
 #[no_mangle]
 pub unsafe extern "C" fn MD5_Init(mut context: *mut MD5_CTX) {
     (*context).count[1 as libc::c_int as usize] = 0 as libc::c_int as uint32_t;
@@ -117,7 +119,7 @@ pub unsafe extern "C" fn MD5_Update(
         memcpy(
             &mut *((*context).buffer).as_mut_ptr().offset(ndx as isize) as *mut libc::c_uchar
                 as *mut libc::c_void,
-            input as *mut libc::c_uchar as *const libc::c_void,
+            input /* as *mut libc::c_uchar */ as *const libc::c_void,
             partLen as libc::c_ulong,
         );
         li_MD5Transform(
@@ -171,7 +173,7 @@ pub unsafe extern "C" fn MD5_Final(mut digest: *mut libc::c_uchar, mut context: 
     //     16 as libc::c_int as libc::c_uint,
     // );
     memset(
-        context as *mut libc::c_uchar as *mut libc::c_void,
+        context /* as *mut libc::c_uchar */ as *mut libc::c_void,
         0 as libc::c_int,
         ::std::mem::size_of::<MD5_CTX>() as libc::c_ulong,
     );
@@ -640,7 +642,7 @@ unsafe extern "C" fn li_MD5Transform(mut state: *mut uint32_t, mut block: *const
     let ref mut fresh3 = *state.offset(3 as libc::c_int as isize);
     *fresh3 = (*fresh3 as libc::c_uint).wrapping_add(d) as uint32_t as uint32_t;
     memset(
-        x.as_mut_ptr() as *mut libc::c_uchar as *mut libc::c_void,
+        x.as_mut_ptr() /* as *mut libc::c_uchar */ as *mut libc::c_void,
         0 as libc::c_int,
         ::std::mem::size_of::<[uint32_t; 16]>() as libc::c_ulong,
     );
