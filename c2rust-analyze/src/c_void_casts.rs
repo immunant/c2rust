@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use rustc_middle::{
     mir::{
         BasicBlockData, Body, LocalDecls, Location, Place, Rvalue, Statement, StatementKind,
-        TerminatorKind,
+        Terminator, TerminatorKind,
     },
     ty::{TyCtxt, TyKind},
 };
