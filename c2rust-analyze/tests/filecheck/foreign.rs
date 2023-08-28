@@ -17,14 +17,14 @@ type Alias = Bar;
 #[repr(C)]
 struct Bar {
     // CHECK-DAG: br: *mut i32
-    br: *mut i32
+    br: *mut i32,
 }
 
 // CHECK-LABEL: struct Baz
 #[repr(C)]
 struct Baz {
     // CHECK-DAG: bz: *mut i32
-    bz: *mut i32
+    bz: *mut i32,
 }
 
 // we need something to get rewritten in order
@@ -66,9 +66,7 @@ struct Bin {
 extern "C" {
     // CHECK-DAG: fn f(bin: *mut Bin)
     fn f(bin: *mut Bin);
-}
 
-extern "C" {
     // CHECK-DAG: fn epoll_wait(events: *mut epoll_event);
     fn epoll_wait(events: *mut epoll_event);
 }
@@ -87,3 +85,17 @@ pub struct epoll_event {
 
 // CHECK-DAG: fn events<'h0>(f: fdevents<'h0>) {}
 fn events(f: fdevents) {}
+
+// CHECK-DAG: struct NeedsLifetime<'h1> {
+struct NeedsLifetime {
+    // CHECK-DAG: p: &'h1 (u8),
+    p: *mut u8,
+}
+
+// CHECK-DAG: struct Vtable<'h1,'h2,'h3,'h4> {
+struct Vtable {
+    // CHECK-DAG: copy: Option<unsafe extern "C" fn(&'h2 (NeedsLifetime<'h1>)) -> &'h3 (NeedsLifetime<'h1>)>
+    copy: Option<unsafe extern "C" fn(*const NeedsLifetime) -> *mut NeedsLifetime>,
+    // CHECK-DAG: noop: Option<unsafe extern "C" fn(&'h4 (NeedsLifetime<'h1>))>
+    noop: Option<unsafe extern "C" fn(*const NeedsLifetime)>,
+}
