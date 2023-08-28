@@ -404,6 +404,7 @@ fn rewrite_ty<'tcx>(
     hir_rewrites: &mut Vec<(Span, Rewrite)>,
     rw_lty: RwLTy<'tcx>,
     hir_ty: &hir::Ty<'tcx>,
+    adt_metadata: &AdtMetadataTable,
 ) {
     if !rw_lty.ty.is_adt() && rw_lty.label.ty_desc.is_none() && !rw_lty.label.descendant_has_rewrite
     {
@@ -472,16 +473,26 @@ fn rewrite_ty<'tcx>(
     }
 
     if rw_lty.label.descendant_has_rewrite {
-        for (&arg_rw_lty, arg_hir_ty) in rw_lty.args.iter().zip(hir_args.into_iter()) {
-            // FIXME: get the actual lifetime from ADT/Field Metadata
-            rewrite_ty(rw_lcx, hir_rewrites, arg_rw_lty, arg_hir_ty);
+        let (rw_lty_args, rw_lty_remainder) = rw_lty.args.split_at(hir_args.len());
+        assert!(
+            !descendant_has_rewrite(rw_lty_remainder, adt_metadata),
+            "descendant_has_rewrite is true for the remainder of rw_lty.args"
+        );
+        for (&arg_rw_lty, arg_hir_ty) in rw_lty_args.iter().zip(hir_args.into_iter()) {
+            rewrite_ty(rw_lcx, hir_rewrites, arg_rw_lty, arg_hir_ty, adt_metadata);
         }
     }
 }
 
 impl<'a, 'tcx> HirTyVisitor<'a, 'tcx> {
     fn handle_ty(&mut self, rw_lty: RwLTy<'tcx>, hir_ty: &hir::Ty<'tcx>) {
-        rewrite_ty(self.rw_lcx, &mut self.hir_rewrites, rw_lty, hir_ty);
+        rewrite_ty(
+            self.rw_lcx,
+            &mut self.hir_rewrites,
+            rw_lty,
+            hir_ty,
+            &self.acx.gacx.adt_metadata,
+        );
     }
 }
 
@@ -737,7 +748,13 @@ pub fn gen_adt_ty_rewrites(
             },
         );
 
-        rewrite_ty(lcx, &mut hir_rewrites, rw_lty, field_def.ty);
+        rewrite_ty(
+            lcx,
+            &mut hir_rewrites,
+            rw_lty,
+            field_def.ty,
+            &gacx.adt_metadata,
+        );
     }
 
     hir_rewrites
