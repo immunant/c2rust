@@ -475,7 +475,7 @@ impl<'tcx> CVoidCasts<'tcx> {
         }
     }
 
-    /// Performs BFS in the CFG to find where the c_void_ptr
+    /// Performs a search in the CFG to find where the c_void_ptr
     /// was cast to that type
     fn find_and_insert_pred_cast(
         &mut self,
