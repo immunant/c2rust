@@ -494,7 +494,10 @@ impl<'tcx> CVoidCasts<'tcx> {
                     "Duplicate c_void_ptr.place found: {:?}",
                     c_void_ptr.place
                 );
-                assert_eq!(body.local_kind(c_void_ptr.place.local), LocalKind::Temp);
+                assert!(
+                    body.local_kind(c_void_ptr.place.local) == LocalKind::Temp,
+                    "Unsupported cast into non-temporary local"
+                );
                 let location = Location {
                     statement_index,
                     block: current_block,
