@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 
-use rustc_middle::mir::LocalKind;
+use rustc_middle::mir::{BasicBlock, LocalKind};
 use rustc_middle::{
     mir::{
         BasicBlockData, Body, LocalDecls, Location, Place, Rvalue, Statement, StatementKind,
@@ -475,8 +475,32 @@ impl<'tcx> CVoidCasts<'tcx> {
         }
     }
 
-    /// Performs a search in the CFG to find where the c_void_ptr
-    /// was cast to that type
+    fn find_modifying_assignments(
+        current_block: BasicBlock,
+        current_block_data: &BasicBlockData<'tcx>,
+        c_void_ptr: &CVoidPtr<'tcx>,
+    ) -> Vec<(BasicBlock, usize)> {
+        let mut modifying_statements = current_block_data
+            .statements
+            .iter()
+            .enumerate()
+            .filter(|(_, stmt)| {
+                matches!(stmt.kind, StatementKind::Assign(..))
+                    && Self::is_place_modified_by_statement(&c_void_ptr.place, stmt)
+            })
+            .map(|(index, _stmt)| (current_block, index))
+            .collect::<Vec<_>>();
+
+        if let Some(terminator) = &current_block_data.terminator {
+            if matches!(terminator.kind, TerminatorKind::Call { destination, .. } if destination == c_void_ptr.place)
+            {
+                modifying_statements.push((current_block, usize::MAX));
+            }
+        }
+
+        modifying_statements
+    }
+
     fn find_and_insert_pred_cast(
         &mut self,
         body: &Body<'tcx>,
@@ -485,7 +509,15 @@ impl<'tcx> CVoidCasts<'tcx> {
         bb_data: &BasicBlockData<'tcx>,
     ) {
         let mut inserted_places = HashSet::new();
+        let mut modifying_statements = Vec::new();
+
         for (current_block, current_block_data) in body.basic_blocks().iter_enumerated() {
+            modifying_statements.extend(Self::find_modifying_assignments(
+                current_block,
+                current_block_data,
+                &c_void_ptr,
+            ));
+
             if let Some((statement_index, cast)) =
                 Self::find_last_cast(&current_block_data.statements, c_void_ptr)
             {
@@ -506,6 +538,12 @@ impl<'tcx> CVoidCasts<'tcx> {
                 self.insert_call(direction, terminator_location(current_block, bb_data), cast);
             }
         }
+
+        assert!(
+            modifying_statements.len() == 1,
+            "c_void_ptr.place modified multiple times: {:?}",
+            modifying_statements
+        );
     }
 
     pub fn new(body: &Body<'tcx>, tcx: TyCtxt<'tcx>) -> Self {
