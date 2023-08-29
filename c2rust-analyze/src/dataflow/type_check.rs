@@ -1,5 +1,5 @@
 use super::DataflowConstraints;
-use crate::c_void_casts::CVoidCastDirection;
+use crate::c_void_casts::{is_c_void_ptr, CVoidCastDirection};
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
 use crate::panic_detail;
 use crate::util::{
@@ -143,9 +143,17 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 match is_transmutable_ptr_cast(from_ty, to_ty) {
                     Some(true) => {
                         // TODO add other dataflow constraints
-                    },
-                    Some(false) => ::log::error!("TODO: unsupported ptr-to-ptr cast between pointee types not yet supported as safely transmutable: `{from_ty:?} as {to_ty:?}`"),
-                    None => {}, // not a ptr cast (no dataflow constraints needed); let rustc typeck this
+                    }
+                    Some(false) => {
+                        if is_c_void_ptr(self.acx.tcx(), to_lty.ty) {
+                            // allow casts to c_void
+                            self.do_assign_pointer_ids(to_lty.label, from_lty.label);
+                        } else {
+                            ::log::error!("TODO: unsupported ptr-to-ptr cast between pointee types not yet supported as safely transmutable: `{from_ty:?} as {to_ty:?}`");
+                        }
+                    }
+
+                    None => {} // not a ptr cast (no dataflow constraints needed); let rustc typeck this
                 };
             }
         }
@@ -521,22 +529,28 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let src_ptr = args[1]
                     .place()
                     .expect("Casts to/from null pointer are not yet supported");
-                let src_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
+                let src_ptr_casted_from = self.acx.c_void_casts.get_adjusted_place_or_default_to(
                     loc,
                     CVoidCastDirection::To,
                     src_ptr,
                 );
+
                 self.visit_place(out_ptr, Mutability::Mut);
                 let dest_ptr_lty = self.acx.type_of(out_ptr);
                 assert!(args.len() == 3);
-                self.visit_place(src_ptr, Mutability::Not);
-                let src_ptr_lty = self.acx.type_of(src_ptr);
+                self.visit_place(src_ptr_casted_from, Mutability::Not);
+                let src_ptr_casted_lty = self.acx.type_of(src_ptr_casted_from);
 
                 // input needs READ permission
                 let perms = PermissionSet::READ;
-                self.constraints.add_all_perms(src_ptr_lty.label, perms);
+                self.constraints
+                    .add_all_perms(src_ptr_casted_lty.label, perms);
 
-                // Perform a pseudo-assignment for *dest = *src
+                // Perform a pseudo-assignment for *dest = *src.
+                // We use `src_ptr` instead of `src_ptr_casted_from` because the type that was
+                // casted to the libc::c_void_ptr that `memcpy` takes likely differs from the
+                // type that's pointed to by `dest_ptr`
+                let src_ptr_lty = self.acx.type_of(src_ptr);
                 self.do_equivalence_nested(dest_ptr_lty.args[0], src_ptr_lty.args[0]);
             }
             Callee::Memset => {

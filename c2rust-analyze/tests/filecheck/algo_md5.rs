@@ -1,7 +1,6 @@
 #![feature(rustc_private)]
 
 extern crate libc;
-
 extern "C" {
     fn memcpy(_: *mut libc::c_void, _: *const libc::c_void, _: libc::c_ulong) -> *mut libc::c_void;
     fn memset(_: *mut libc::c_void, _: libc::c_int, _: libc::c_ulong) -> *mut libc::c_void;
@@ -81,8 +80,6 @@ static mut PADDING: [libc::c_uchar; 64] = [
     0 as libc::c_int as libc::c_uchar,
     0 as libc::c_int as libc::c_uchar,
 ];
-
-// CHECK-LABEL: MD5_Init
 #[no_mangle]
 pub unsafe extern "C" fn MD5_Init(mut context: *mut MD5_CTX) {
     (*context).count[1 as libc::c_int as usize] = 0 as libc::c_int as uint32_t;
@@ -95,13 +92,13 @@ pub unsafe extern "C" fn MD5_Init(mut context: *mut MD5_CTX) {
 #[no_mangle]
 pub unsafe extern "C" fn MD5_Update(
     mut context: *mut MD5_CTX,
-    mut input: *const libc::c_void,
+    mut _input: *const libc::c_void,
     mut inputLen: libc::c_uint,
 ) {
     let mut i: libc::c_uint = 0;
     let mut ndx: libc::c_uint = 0;
     let mut partLen: libc::c_uint = 0;
-    // let mut input: *const libc::c_uchar = _input as *const libc::c_uchar;
+    let mut input: *const libc::c_uchar = _input as *const libc::c_uchar;
     ndx = (*context).count[0 as libc::c_int as usize] >> 3 as libc::c_int
         & 0x3f as libc::c_int as libc::c_uint;
     (*context).count[0 as libc::c_int as usize] =
@@ -119,7 +116,7 @@ pub unsafe extern "C" fn MD5_Update(
         memcpy(
             &mut *((*context).buffer).as_mut_ptr().offset(ndx as isize) as *mut libc::c_uchar
                 as *mut libc::c_void,
-            input /* as *mut libc::c_uchar */ as *const libc::c_void,
+            input as *mut libc::c_uchar as *const libc::c_void,
             partLen as libc::c_ulong,
         );
         li_MD5Transform(
@@ -128,31 +125,31 @@ pub unsafe extern "C" fn MD5_Update(
         );
         i = partLen;
         while i.wrapping_add(63 as libc::c_int as libc::c_uint) < inputLen {
-            // li_MD5Transform(((*context).state).as_mut_ptr(), &*input.offset(i as isize));
+            li_MD5Transform(((*context).state).as_mut_ptr(), &*input.offset(i as isize));
             i = i.wrapping_add(64 as libc::c_int as libc::c_uint);
         }
         ndx = 0 as libc::c_int as libc::c_uint;
     } else {
         i = 0 as libc::c_int as libc::c_uint;
     }
-    // memcpy(
-    //     &mut *((*context).buffer).as_mut_ptr().offset(ndx as isize) as *mut libc::c_uchar
-    //         as *mut libc::c_void,
-    //     &*input.offset(i as isize) as *const libc::c_uchar as *mut libc::c_uchar
-    //         as *const libc::c_void,
-    //     inputLen.wrapping_sub(i) as libc::c_ulong,
-    // );
+    memcpy(
+        &mut *((*context).buffer).as_mut_ptr().offset(ndx as isize) as *mut libc::c_uchar
+            as *mut libc::c_void,
+        &*input.offset(i as isize) as *const libc::c_uchar as *mut libc::c_uchar
+            as *const libc::c_void,
+        inputLen.wrapping_sub(i) as libc::c_ulong,
+    );
 }
 #[no_mangle]
 pub unsafe extern "C" fn MD5_Final(mut digest: *mut libc::c_uchar, mut context: *mut MD5_CTX) {
     let mut bits: [libc::c_uchar; 8] = [0; 8];
     let mut ndx: libc::c_uint = 0;
     let mut padLen: libc::c_uint = 0;
-    // Encode(
-    //     bits.as_mut_ptr(),
-    //     ((*context).count).as_mut_ptr(),
-    //     8 as libc::c_int as libc::c_uint,
-    // );
+    Encode(
+        bits.as_mut_ptr(),
+        ((*context).count).as_mut_ptr(),
+        8 as libc::c_int as libc::c_uint,
+    );
     ndx = (*context).count[0 as libc::c_int as usize] >> 3 as libc::c_int
         & 0x3f as libc::c_int as libc::c_uint;
     padLen = if ndx < 56 as libc::c_int as libc::c_uint {
@@ -160,20 +157,19 @@ pub unsafe extern "C" fn MD5_Final(mut digest: *mut libc::c_uchar, mut context: 
     } else {
         (120 as libc::c_int as libc::c_uint).wrapping_sub(ndx)
     };
-    // MD5_Update(context, PADDING.as_mut_ptr(),// as *const libc::c_void,
-    //     padLen);
-    // MD5_Update(
-    //     context,
-    //     bits.as_mut_ptr(), // as *const libc::c_void,
-    //     8 as libc::c_int as libc::c_uint,
-    // );
-    // Encode(
-    //     digest,
-    //     ((*context).state).as_mut_ptr(),
-    //     16 as libc::c_int as libc::c_uint,
-    // );
+    MD5_Update(context, PADDING.as_mut_ptr() as *const libc::c_void, padLen);
+    MD5_Update(
+        context,
+        bits.as_mut_ptr() as *const libc::c_void,
+        8 as libc::c_int as libc::c_uint,
+    );
+    Encode(
+        digest,
+        ((*context).state).as_mut_ptr(),
+        16 as libc::c_int as libc::c_uint,
+    );
     memset(
-        context /* as *mut libc::c_uchar */ as *mut libc::c_void,
+        context as *mut libc::c_uchar as *mut libc::c_void,
         0 as libc::c_int,
         ::std::mem::size_of::<MD5_CTX>() as libc::c_ulong,
     );
@@ -184,7 +180,7 @@ unsafe extern "C" fn li_MD5Transform(mut state: *mut uint32_t, mut block: *const
     let mut c: uint32_t = *state.offset(2 as libc::c_int as isize);
     let mut d: uint32_t = *state.offset(3 as libc::c_int as isize);
     let mut x: [uint32_t; 16] = [0; 16];
-    // Decode(x.as_mut_ptr(), block, 64 as libc::c_int as libc::c_uint);
+    Decode(x.as_mut_ptr(), block, 64 as libc::c_int as libc::c_uint);
     a = (a as libc::c_uint).wrapping_add(
         (b & c | !b & d)
             .wrapping_add(x[0 as libc::c_int as usize])
@@ -642,7 +638,7 @@ unsafe extern "C" fn li_MD5Transform(mut state: *mut uint32_t, mut block: *const
     let ref mut fresh3 = *state.offset(3 as libc::c_int as isize);
     *fresh3 = (*fresh3 as libc::c_uint).wrapping_add(d) as uint32_t as uint32_t;
     memset(
-        x.as_mut_ptr() /* as *mut libc::c_uchar */ as *mut libc::c_void,
+        x.as_mut_ptr() as *mut libc::c_uchar as *mut libc::c_void,
         0 as libc::c_int,
         ::std::mem::size_of::<[uint32_t; 16]>() as libc::c_ulong,
     );
@@ -672,6 +668,8 @@ unsafe extern "C" fn Encode(
         j = j.wrapping_add(4 as libc::c_int as libc::c_uint);
     }
 }
+
+// CHECK-LABEL: Decode
 unsafe extern "C" fn Decode(
     mut output: *mut uint32_t,
     mut input: *const libc::c_uchar,
