@@ -212,7 +212,10 @@ fn deconstruct_hir_ty<'a, 'tcx>(
             }
         }
 
-        (&ty::TyKind::Adt(adt_def, substs), &hir::TyKind::Path(..)) => {
+        (
+            &ty::TyKind::Adt(adt_def, substs),
+            &hir::TyKind::Path(hir::QPath::Resolved(_, ref path)),
+        ) if path.res.def_id() == adt_def.did() => {
             hir_generic_ty_args(hir_ty).map(|type_args| {
                 if type_args.len() < substs.types().count() {
                     // this situation occurs when there are hidden type arguments
