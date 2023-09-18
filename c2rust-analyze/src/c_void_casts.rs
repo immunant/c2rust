@@ -256,7 +256,8 @@ pub struct CVoidCasts<'tcx> {
     to: CVoidCastsUniDirectional<'tcx>,
 }
 
-/// Gets the [`Place`] associated with [`Rvalue::Use`] or [`Rvalue::Cast`], and returns `None` otherwise.
+/// Gets the [`Place`] associated with [`Rvalue::Use`] or [`Rvalue::Cast`]
+/// and returns `None` otherwise.
 pub fn source_place<'tcx>(rv: &Rvalue<'tcx>) -> Option<Place<'tcx>> {
     use Rvalue::*;
     match rv {
