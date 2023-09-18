@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 
 use rustc_middle::mir::{BasicBlock, LocalKind};
+use rustc_middle::ty::Ty;
 use rustc_middle::{
     mir::{
         BasicBlockData, Body, LocalDecls, Location, Place, Rvalue, Statement, StatementKind,
@@ -53,6 +54,16 @@ impl CVoidCastDirection {
     }
 }
 
+pub fn is_c_void_ptr(tcx: TyCtxt, ty: Ty) -> bool {
+    if let Some(TyKind::Adt(adt, _)) = ty.builtin_deref(true).map(|ty_mut| ty_mut.ty.kind()) {
+        let def_path = tcx.def_path(adt.did()).data[0].to_string();
+        let item_name = tcx.item_name(adt.did());
+        def_path == "ffi" && item_name.as_str() == "c_void"
+    } else {
+        false
+    }
+}
+
 /// The [`Place`] of a [`*c_void`].
 ///
 /// It is checked to be a [`*c_void`] upon construction.
@@ -77,14 +88,8 @@ impl<'tcx> CVoidPtr<'tcx> {
         local_decls: &LocalDecls<'tcx>,
         tcx: TyCtxt<'tcx>,
     ) -> Option<Self> {
-        let deref_ty = place.ty(local_decls, tcx).ty.builtin_deref(true)?;
-
-        if let TyKind::Adt(adt, _) = deref_ty.ty.kind() {
-            if tcx.def_path(adt.did()).data[0].to_string() == "ffi"
-                && tcx.item_name(adt.did()).as_str() == "c_void"
-            {
-                return Some(Self { place });
-            }
+        if is_c_void_ptr(tcx, place.ty(local_decls, tcx).ty) {
+            return Some(Self { place });
         }
 
         None
@@ -251,6 +256,17 @@ pub struct CVoidCasts<'tcx> {
     to: CVoidCastsUniDirectional<'tcx>,
 }
 
+/// Gets the [`Place`] associated with [`Rvalue::Use`] or [`Rvalue::Cast`]
+/// and returns `None` otherwise.
+pub fn source_place<'tcx>(rv: &Rvalue<'tcx>) -> Option<Place<'tcx>> {
+    use Rvalue::*;
+    match rv {
+        Use(op) => op.place(),
+        Cast(_, op, _) => op.place(),
+        _ => None,
+    }
+}
+
 impl<'tcx> CVoidCasts<'tcx> {
     pub fn direction(&self, direction: CVoidCastDirection) -> &CVoidCastsUniDirectional<'tcx> {
         use CVoidCastDirection::*;
@@ -407,6 +423,8 @@ impl<'tcx> CVoidCasts<'tcx> {
     /// * `calloc`
     /// * `realloc`
     /// * `free`
+    /// * `memcpy`
+    /// * `memset`
     ///
     /// and insert their casts to and from [`*c_void`].
     ///
@@ -511,14 +529,36 @@ impl<'tcx> CVoidCasts<'tcx> {
         let mut inserted_places = HashSet::new();
         let mut modifying_statements = Vec::new();
 
-        for (current_block, current_block_data) in body.basic_blocks().iter_enumerated() {
+        let mut current_place = c_void_ptr.place;
+
+        for (current_block, current_block_data) in body.basic_blocks().iter_enumerated().rev() {
+            for (index, stmt) in current_block_data.statements.iter().enumerate().rev() {
+                if let Some((_, rhs)) =
+                    get_assign_sides(stmt).filter(|(lhs, _)| *lhs == current_place)
+                {
+                    // ancestors of a *libc::c_void are given special treatment;
+                    // casts between these ancestors are exempt from scrutiny
+                    if let Some(place) = source_place(rhs) {
+                        if get_cast_place(rhs).is_some() {
+                            let location = Location {
+                                statement_index: index,
+                                block: current_block,
+                            };
+                            self.insert_cast(direction, location);
+                        }
+
+                        current_place = place;
+                    }
+                }
+            }
+
             modifying_statements.extend(Self::find_modifying_assignments(
                 current_block,
                 current_block_data,
                 &c_void_ptr,
             ));
 
-            if let Some((statement_index, cast)) =
+            if let Some((_, cast)) =
                 Self::find_last_cast(&current_block_data.statements, c_void_ptr)
             {
                 assert!(
@@ -530,11 +570,6 @@ impl<'tcx> CVoidCasts<'tcx> {
                     body.local_kind(c_void_ptr.place.local) == LocalKind::Temp,
                     "Unsupported cast into non-temporary local"
                 );
-                let location = Location {
-                    statement_index,
-                    block: current_block,
-                };
-                self.insert_cast(direction, location);
                 self.insert_call(direction, terminator_location(current_block, bb_data), cast);
             }
         }
