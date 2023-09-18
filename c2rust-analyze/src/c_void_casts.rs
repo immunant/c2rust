@@ -256,23 +256,12 @@ pub struct CVoidCasts<'tcx> {
     to: CVoidCastsUniDirectional<'tcx>,
 }
 
-pub fn rv_place<'tcx>(rv: &Rvalue<'tcx>) -> Option<Place<'tcx>> {
+/// Gets the [`Place`] associated with [`Rvalue::Use`] or [`Rvalue::Cast`], and returns `None` otherwise.
+pub fn source_place<'tcx>(rv: &Rvalue<'tcx>) -> Option<Place<'tcx>> {
     use Rvalue::*;
     match rv {
         Use(op) => op.place(),
-        Repeat(op, _) => op.place(),
-        Ref(_, _, p) => Some(*p),
-        // ThreadLocalRef
-        AddressOf(_, p) => Some(*p),
-        Len(p) => Some(*p),
         Cast(_, op, _) => op.place(),
-        // BinaryOp
-        // CheckedBinaryOp
-        // NullaryOp
-        UnaryOp(_, op) => op.place(),
-        Discriminant(p) => Some(*p),
-        // Aggregate
-        ShallowInitBox(op, _) => op.place(),
         _ => None,
     }
 }
@@ -548,7 +537,7 @@ impl<'tcx> CVoidCasts<'tcx> {
                 {
                     // ancestors of a *libc::c_void are given special treatment;
                     // casts between these ancestors are exempt from scrutiny
-                    if let Some(place) = rv_place(rhs) {
+                    if let Some(place) = source_place(rhs) {
                         if get_cast_place(rhs).is_some() {
                             let location = Location {
                                 statement_index: index,
