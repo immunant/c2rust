@@ -117,9 +117,13 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
         let mir_rws = self.mir_rewrites.remove(&ex.hir_id).unwrap_or_default();
 
         let rewrite_from_mir_rws = |rw: &mir_op::RewriteKind, hir_rw: Rewrite| -> Rewrite {
+            // Cases that extract a subexpression are handled here; cases that only wrap the
+            // top-level expression (and thus can handle a non-`Identity` `hir_rw`) are handled by
+            // `convert_cast_rewrite`.
             match rw {
                 mir_op::RewriteKind::OffsetSlice { mutbl } => {
                     // `p.offset(i)` -> `&p[i as usize ..]`
+                    assert!(matches!(hir_rw, Rewrite::Identity));
                     let arr = self.get_subexpr(ex, 0);
                     let idx = Rewrite::Cast(Box::new(self.get_subexpr(ex, 1)), "usize".to_owned());
                     let elem = Rewrite::SliceTail(Box::new(arr), Box::new(idx));
@@ -134,11 +138,13 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
 
                 mir_op::RewriteKind::RawToRef { mutbl } => {
                     // &raw _ to &_ or &raw mut _ to &mut _
+                    assert!(matches!(hir_rw, Rewrite::Identity));
                     Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(*mutbl))
                 }
 
                 mir_op::RewriteKind::CellGet => {
                     // `*x` to `Cell::get(x)`
+                    assert!(matches!(hir_rw, Rewrite::Identity));
                     Rewrite::MethodCall(
                         "get".to_string(),
                         Box::new(self.get_subexpr(ex, 0)),
@@ -148,11 +154,13 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
 
                 mir_op::RewriteKind::CellSet => {
                     // `*x` to `Cell::set(x)`
+                    assert!(matches!(hir_rw, Rewrite::Identity));
                     let deref_lhs = assert_matches!(ex.kind, ExprKind::Assign(lhs, ..) => lhs);
                     let lhs = self.get_subexpr(deref_lhs, 0);
                     let rhs = self.get_subexpr(ex, 1);
                     Rewrite::MethodCall("set".to_string(), Box::new(lhs), vec![rhs])
                 }
+
                 _ => convert_cast_rewrite(rw, hir_rw),
             }
         };
@@ -270,15 +278,12 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
 
         mir_op::RewriteKind::CellNew => {
             // `x` to `Cell::new(x)`
-            Rewrite::Call("std::cell::Cell::new".to_string(), vec![Rewrite::Identity])
+            Rewrite::Call("std::cell::Cell::new".to_string(), vec![hir_rw])
         }
 
         mir_op::RewriteKind::CellFromMut => {
             // `x` to `Cell::from_mut(x)`
-            Rewrite::Call(
-                "std::cell::Cell::from_mut".to_string(),
-                vec![Rewrite::Identity],
-            )
+            Rewrite::Call("std::cell::Cell::from_mut".to_string(), vec![hir_rw])
         }
         mir_op::RewriteKind::AsPtr => {
             // `x` to `x.as_ptr()`
