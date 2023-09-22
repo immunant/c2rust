@@ -1,4 +1,5 @@
 use crate::panic_detail;
+use crate::rewrite::expr::distribute::DistRewrite;
 use crate::rewrite::expr::mir_op;
 use crate::rewrite::Rewrite;
 use assert_matches::assert_matches;
@@ -17,7 +18,7 @@ use std::collections::HashMap;
 struct ConvertVisitor<'tcx> {
     tcx: TyCtxt<'tcx>,
     typeck_results: &'tcx TypeckResults<'tcx>,
-    mir_rewrites: HashMap<HirId, Vec<mir_op::RewriteKind>>,
+    mir_rewrites: HashMap<HirId, Vec<DistRewrite>>,
     rewrites: Vec<(Span, Rewrite)>,
     /// When `true`, any `Expr` where rustc added an implicit adjustment will be rewritten to make
     /// that adjustment explicit.  Any node that emits a non-adjustment rewrite sets this flag when
@@ -166,7 +167,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
         };
 
         for mir_rw in mir_rws {
-            hir_rw = rewrite_from_mir_rws(&mir_rw, hir_rw);
+            hir_rw = rewrite_from_mir_rws(&mir_rw.rw, hir_rw);
         }
 
         // Emit rewrites on subexpressions first.
@@ -304,7 +305,7 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
 pub fn convert_rewrites(
     tcx: TyCtxt,
     hir_body_id: hir::BodyId,
-    mir_rewrites: HashMap<HirId, Vec<mir_op::RewriteKind>>,
+    mir_rewrites: HashMap<HirId, Vec<DistRewrite>>,
 ) -> Vec<(Span, Rewrite)> {
     // Run the visitor.
     let typeck_results = tcx.typeck_body(hir_body_id);

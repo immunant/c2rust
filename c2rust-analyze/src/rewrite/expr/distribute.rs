@@ -29,6 +29,21 @@ enum Priority {
     LoadResult,
 }
 
+#[derive(Clone, Debug)]
+pub struct DistRewrite {
+    pub rw: mir_op::RewriteKind,
+    pub desc: MirOriginDesc,
+}
+
+impl From<RewriteInfo> for DistRewrite {
+    fn from(x: RewriteInfo) -> DistRewrite {
+        DistRewrite {
+            rw: x.rw,
+            desc: x.desc,
+        }
+    }
+}
+
 /// Distributes MIR rewrites to HIR nodes.  This takes a list of MIR rewrites (from `mir_op`) and a
 /// map from MIR location to `HirId` (from `unlower`) and produces a map from `HirId` to a list of
 /// MIR rewrites.
@@ -52,7 +67,7 @@ pub fn distribute(
     tcx: TyCtxt,
     unlower_map: BTreeMap<PreciseLoc, MirOrigin>,
     mir_rewrites: HashMap<Location, Vec<MirRewrite>>,
-) -> HashMap<HirId, Vec<mir_op::RewriteKind>> {
+) -> HashMap<HirId, Vec<DistRewrite>> {
     let mut info_map = HashMap::<HirId, Vec<RewriteInfo>>::new();
 
     for (loc, mir_rws) in mir_rewrites {
@@ -127,6 +142,6 @@ pub fn distribute(
     // the `RewriteKind`s.
     info_map
         .into_iter()
-        .map(|(k, vs)| (k, vs.into_iter().map(|v| v.rw).collect()))
+        .map(|(k, vs)| (k, vs.into_iter().map(DistRewrite::from).collect()))
         .collect()
 }
