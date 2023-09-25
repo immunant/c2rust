@@ -37,6 +37,8 @@ pub enum MirOriginDesc {
     /// previously stored.  Loads from user-visible locals, which originate from HIR local variable
     /// expressions, use the `Expr` variant instead.
     LoadFromTemp,
+    /// This MIR applies adjustment `i` from the expression's list of adjustments.
+    Adjustment(usize),
 }
 
 struct UnlowerVisitor<'a, 'tcx> {

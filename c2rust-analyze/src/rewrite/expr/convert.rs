@@ -1,6 +1,7 @@
 use crate::panic_detail;
 use crate::rewrite::expr::distribute::DistRewrite;
 use crate::rewrite::expr::mir_op;
+use crate::rewrite::expr::unlower::MirOriginDesc;
 use crate::rewrite::Rewrite;
 use assert_matches::assert_matches;
 use log::*;
@@ -116,6 +117,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
         let callsite_span = ex.span.source_callsite();
 
         let mir_rws = self.mir_rewrites.remove(&ex.hir_id).unwrap_or_default();
+        let mut mir_rws = &mir_rws as &[_];
 
         let rewrite_from_mir_rws = |rw: &mir_op::RewriteKind, hir_rw: Rewrite| -> Rewrite {
             // Cases that extract a subexpression are handled here; cases that only wrap the
@@ -166,21 +168,40 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
             }
         };
 
+        let expr_rws = take_prefix_while(&mut mir_rws, |x: &DistRewrite| {
+            matches!(x.desc, MirOriginDesc::Expr)
+        });
+        for mir_rw in expr_rws {
+            hir_rw = rewrite_from_mir_rws(&mir_rw.rw, hir_rw);
+        }
+
+        // Materialize adjustments if requested by an ancestor or required locally.
+        let has_adjustment_rewrites = mir_rws
+            .iter()
+            .any(|x| matches!(x.desc, MirOriginDesc::Adjustment(_)));
+        if self.materialize_adjustments || has_adjustment_rewrites {
+            let adjusts = self.typeck_results.expr_adjustments(ex);
+            hir_rw = materialize_adjustments(self.tcx, adjusts, hir_rw, |i, mut hir_rw| {
+                let adj_rws =
+                    take_prefix_while(&mut mir_rws, |x| x.desc == MirOriginDesc::Adjustment(i));
+                for mir_rw in adj_rws {
+                    eprintln!("would apply {mir_rw:?} for adjustment #{i}, over {hir_rw:?}");
+                    hir_rw = rewrite_from_mir_rws(&mir_rw.rw, hir_rw);
+                }
+                hir_rw
+            });
+        }
+
+        // Apply late rewrites.
         for mir_rw in mir_rws {
             hir_rw = rewrite_from_mir_rws(&mir_rw.rw, hir_rw);
         }
 
-        // Emit rewrites on subexpressions first.
+        // Emit rewrites on subexpressions last.
         let applied_mir_rewrite = !matches!(hir_rw, Rewrite::Identity);
         self.with_materialize_adjustments(applied_mir_rewrite, |this| {
             intravisit::walk_expr(this, ex);
         });
-
-        // Materialize adjustments if requested by an ancestor.
-        if self.materialize_adjustments {
-            let adjusts = self.typeck_results.expr_adjustments(ex);
-            hir_rw = materialize_adjustments(self.tcx, adjusts, hir_rw);
-        }
 
         // Emit the rewrite, if it's nontrivial.
         if !matches!(hir_rw, Rewrite::Identity) {
@@ -225,14 +246,16 @@ fn materialize_adjustments<'tcx>(
     tcx: TyCtxt<'tcx>,
     adjustments: &[Adjustment<'tcx>],
     hir_rw: Rewrite,
+    mut callback: impl FnMut(usize, Rewrite) -> Rewrite,
 ) -> Rewrite {
     let adj_kinds: Vec<&_> = adjustments.iter().map(|a| &a.kind).collect();
     match (hir_rw, &adj_kinds[..]) {
         (Rewrite::Identity, []) => Rewrite::Identity,
         (Rewrite::Identity, _) => {
             let mut hir_rw = Rewrite::Identity;
-            for adj in adjustments {
+            for (i, adj) in adjustments.iter().enumerate() {
                 hir_rw = apply_identity_adjustment(tcx, adj, hir_rw);
+                hir_rw = callback(i, hir_rw);
             }
             hir_rw
         }
@@ -241,6 +264,13 @@ fn materialize_adjustments<'tcx>(
         (rw, &[]) => rw,
         (rw, adjs) => panic!("rewrite {rw:?} and materializations {adjs:?} NYI"),
     }
+}
+
+fn take_prefix_while<'a, T>(slice: &mut &'a [T], mut pred: impl FnMut(&'a T) -> bool) -> &'a [T] {
+    let i = slice.iter().position(|x| !pred(x)).unwrap_or(slice.len());
+    let (a, b) = slice.split_at(i);
+    *slice = b;
+    a
 }
 
 /// Convert a single `RewriteKind` representing a cast into a `Span`-based `Rewrite`.  This panics

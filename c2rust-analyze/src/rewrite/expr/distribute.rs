@@ -19,12 +19,14 @@ struct RewriteInfo {
 ///
 /// The order of variants follows the order of operations we typically see in generated MIR code.
 /// For a given HIR `Expr`, the MIR will usually evaluate the expression ([`Priority::Eval`]),
-/// store the result into a temporary ([`Priority::_StoreResult`]; currently unused), and later
-/// load the result back from the temporary ([`Priority::LoadResult`]) when computing the parent
-/// `Expr`.
+/// apply zero or more adjustments ([`Priority::Adjust(i)`][Priority::Adjust]), store the result
+/// into a temporary ([`Priority::_StoreResult`]; currently unused), and later load the result back
+/// from the temporary ([`Priority::LoadResult`]).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum Priority {
     Eval,
+    /// Apply the rewrite just after the adjustment at index `i`.
+    Adjust(usize),
     _StoreResult,
     LoadResult,
 }
@@ -87,6 +89,7 @@ pub fn distribute(
 
             let priority = match origin.desc {
                 MirOriginDesc::Expr => Priority::Eval,
+                MirOriginDesc::Adjustment(i) => Priority::Adjust(i),
                 MirOriginDesc::LoadFromTemp => Priority::LoadResult,
                 _ => {
                     panic!(
