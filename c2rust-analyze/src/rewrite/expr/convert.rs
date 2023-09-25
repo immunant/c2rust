@@ -141,8 +141,13 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
 
                 mir_op::RewriteKind::RawToRef { mutbl } => {
                     // &raw _ to &_ or &raw mut _ to &mut _
-                    assert!(matches!(hir_rw, Rewrite::Identity));
-                    Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(*mutbl))
+                    match hir_rw {
+                        Rewrite::Identity => {
+                            Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(*mutbl))
+                        }
+                        Rewrite::AddrOf(rw, mutbl) => Rewrite::Ref(rw, mutbl),
+                        _ => panic!("unexpected hir_rw {hir_rw:?} for RawToRef"),
+                    }
                 }
 
                 mir_op::RewriteKind::CellGet => {
