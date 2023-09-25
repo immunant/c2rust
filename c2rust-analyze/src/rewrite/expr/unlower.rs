@@ -12,6 +12,7 @@ use rustc_middle::mir::{self, Body, Location, Operand};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 use std::collections::btree_map::{BTreeMap, Entry};
+use std::collections::HashMap;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct PreciseLoc {
@@ -44,6 +45,11 @@ struct UnlowerVisitor<'a, 'tcx> {
     span_index: SpanIndex<Location>,
     /// Maps MIR (sub)locations to the HIR node that produced each one, if known.
     unlower_map: BTreeMap<PreciseLoc, MirOrigin>,
+
+    /// When processing the `hir::Expr` identified by the `HirId`, append some locations to the
+    /// list retrieved from the `SpanIndex`.  This is used in cases where some MIR statements have
+    /// their spans set to a parent expr but really belong to the child.
+    append_extra_locations: HashMap<HirId, Vec<Location>>,
 }
 
 impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
@@ -187,12 +193,20 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
     fn visit_expr_inner(&mut self, ex: &'tcx hir::Expr<'tcx>) {
         let _g = panic_detail::set_current_span(ex.span);
 
-        let locs = self
+        let mut locs = self
             .span_index
             .lookup_exact(ex.span)
             .copied()
             .filter(|&loc| !self.should_ignore_statement(loc))
             .collect::<Vec<_>>();
+        if let Some(extra) = self.append_extra_locations.remove(&ex.hir_id) {
+            locs.extend(
+                extra
+                    .into_iter()
+                    .filter(|&loc| !self.should_ignore_statement(loc)),
+            );
+        }
+        let locs = locs;
         if locs.is_empty() {
             return;
         }
@@ -242,17 +256,22 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 self.record(loc, &[SubLoc::Rvalue], ex);
                 for (i, (arg, mir_arg)) in args.iter().zip(mir_args).enumerate() {
                     self.record_operand(loc, &[SubLoc::Rvalue, SubLoc::CallArg(i)], arg, mir_arg);
-                    // TODO: Distribute extra `locs` among the various args.  For example, if
-                    // `locs` is `[a, b, loc]`, we may need to pass `[a]` as the `extra_locs` for
-                    // the first arg and `[b]` for the second, or `[a, b]` for the first and `[]`
-                    // for the second, or some other combination.  These extra locations are
-                    // usually coercions or other adjustments related to a particular argument.
-                    // However, figuring out which `Location`s are associated with which argument
-                    // may be nontrivial.
                     self.visit_expr_operand(arg, mir_arg, &[]);
                 }
+
                 if locs.len() > 1 {
-                    warn!("NYI: extra locations {:?} in Call", &locs[..locs.len() - 1]);
+                    // Special case: if the receiver of a `MethodCall` has adjustments, they are
+                    // emitted with the same span as the `MethodCall` itself, and thus show up as
+                    // extra `locs` here.  We associate them with the child instead so all of the
+                    // child's spans can be processed together.
+                    if matches!(ex.kind, hir::ExprKind::MethodCall(..)) {
+                        self.append_extra_locations
+                            .entry(args[0].hir_id)
+                            .or_insert_with(Vec::new)
+                            .extend_from_slice(&locs[..locs.len() - 1]);
+                    } else {
+                        warn!("NYI: extra locations {:?} in Call", &locs[..locs.len() - 1]);
+                    }
                 }
             }
 
@@ -390,8 +409,18 @@ pub fn unlower<'tcx>(
         mir,
         span_index,
         unlower_map: BTreeMap::new(),
+        append_extra_locations: HashMap::new(),
     };
     visitor.visit_body(hir);
+
+    if visitor.append_extra_locations.len() > 0 {
+        for (&hir_id, locs) in &visitor.append_extra_locations {
+            error!(
+                "leftover locations for {hir_id:?} = {:?}: locs = {locs:?}",
+                tcx.hir().get(hir_id)
+            );
+        }
+    }
 
     debug_print_unlower_map(tcx, mir, &visitor.unlower_map);
 
