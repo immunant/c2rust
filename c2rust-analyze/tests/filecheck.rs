@@ -32,6 +32,7 @@ macro_rules! define_tests {
 
 define_tests! {
     addr_of,
+    adjust_unsize,
     aggregate1,
     algo_md5,
     alias1,
