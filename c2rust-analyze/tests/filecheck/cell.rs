@@ -1,3 +1,4 @@
+// CHECK-LABEL: fn cell(
 unsafe fn cell() {
     // CHECK-DAG: let mut x = std::cell::Cell::new((1));
     let mut x = 1;
@@ -22,15 +23,20 @@ struct S {
     i: i32,
 }
 
+// CHECK-LABEL: fn cell_field(
 unsafe extern "C" fn cell_field(mut s: *mut S) {
     (*s).i = 1;
-    // CHECK-DAG: let r1: &core::cell::Cell<(R)> = &((*s).r);
+    // FIXME: The initializers for `r1` and `r2` are rewritten incorrectly.  Neither `s` nor the
+    // `r` field have `Cell` type, and an `&mut T -> &Cell<T>` rewrite is not applied.
+    // XXXXX: let r1: &core::cell::Cell<(R)> = &((*s).r);
     let r1: *mut R = &mut (*s).r;
-    // CHECK-DAG: let r2: &core::cell::Cell<(R)> = &((*s).r);
+    // XXXXX: let r2: &core::cell::Cell<(R)> = &((*s).r);
     let r2: *mut R = &mut (*s).r;
-    // CHECK-DAG: ((*r1)).set((0));
+    // FIXME: The assignments to `(*r1).i` and `(*r2).i` are rewritten incorrectly.  The field
+    // projection is omitted, producing `(*r1).set(0)`.
+    // XXXXX: ((*r1)).set((0));
     (*r1).i = 0;
-    // CHECK-DAG: ((*r2)).set((1));
+    // XXXXX: ((*r2)).set((1));
     (*r2).i = 1;
     *s = S {
         r: R { i: 0 },

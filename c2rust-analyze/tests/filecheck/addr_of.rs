@@ -27,6 +27,6 @@ fn shared_ref_with_struct() {
 
 // CHECK-LABEL: fn cast_array_to_ptr_explicit(s: &[u8; 1]) {
 pub fn cast_array_to_ptr_explicit(s: &[u8; 1]) {
-    // CHECK-DAG: &*(std::ptr::addr_of!(*s)) as *const u8
+    // CHECK: &*(std::ptr::addr_of!(*s)) as *const u8;
     std::ptr::addr_of!(*s) as *const u8;
 }
