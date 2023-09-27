@@ -25,6 +25,8 @@ use crate::equiv::{GlobalEquivSet, LocalEquivSet};
 use crate::labeled_ty::LabeledTyCtxt;
 use crate::log::init_logger;
 use crate::panic_detail::PanicDetail;
+use crate::pointee_type::PointeeTypes;
+use crate::pointer_id::{GlobalPointerTable, LocalPointerTable, OwnedPointerTable};
 use crate::type_desc::Ownership;
 use crate::util::{Callee, TestAttr};
 use ::log::warn;
@@ -60,6 +62,7 @@ mod known_fn;
 mod labeled_ty;
 mod log;
 mod panic_detail;
+mod pointee_type;
 mod pointer_id;
 mod rewrite;
 mod trivial;
@@ -179,10 +182,6 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                 statement_index: i,
                 block: bb,
             };
-
-            if acx.c_void_casts.should_skip_stmt(loc) {
-                continue;
-            }
 
             let _g = panic_detail::set_current_span(stmt.source_info.span);
 
@@ -486,6 +485,10 @@ fn run(tcx: TyCtxt) {
         /// get a complete [`Assignment`] for this function, which maps every [`PointerId`] in this
         /// function to a [`PermissionSet`] and [`FlagSet`].
         lasn: MaybeUnset<LocalAssignment>,
+        /// Constraints on pointee types gathered from the body of this function.
+        pointee_constraints: MaybeUnset<pointee_type::ConstraintSet<'tcx>>,
+        /// Local part of pointee type sets.
+        local_pointee_types: MaybeUnset<LocalPointerTable<PointeeTypes<'tcx>>>,
     }
 
     // Follow a postorder traversal, so that callers are visited after their callees.  This means
@@ -549,15 +552,10 @@ fn run(tcx: TyCtxt) {
     gacx.construct_region_metadata();
 
     // ----------------------------------
-    // Compute dataflow constraints
+    // Infer pointee types
     // ----------------------------------
 
-    // Initial pass to assign local `PointerId`s and gather equivalence constraints, which state
-    // that two pointer types must be converted to the same reference type.  Some additional data
-    // computed during this the process is kept around for use in later passes.
-    let mut global_equiv = GlobalEquivSet::new(gacx.num_pointers());
     for &ldid in &all_fn_ldids {
-        // The function might already be marked as failed if one of its callees previously failed.
         if gacx.fn_failed(ldid.to_def_id()) {
             continue;
         }
@@ -594,6 +592,175 @@ fn run(tcx: TyCtxt) {
             label_rvalue_tys(&mut acx, &mir);
             update_pointer_info(&mut acx, &mir);
 
+            pointee_type::generate_constraints(&acx, &mir)
+        }));
+
+        let pointee_constraints = match r {
+            Ok(x) => x,
+            Err(pd) => {
+                gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                continue;
+            }
+        };
+
+        let local_pointee_types = LocalPointerTable::new(acx.num_pointers());
+
+        let mut info = FuncInfo::default();
+        info.acx_data.set(acx.into_data());
+        info.pointee_constraints.set(pointee_constraints);
+        info.local_pointee_types.set(local_pointee_types);
+        func_info.insert(ldid, info);
+    }
+
+    // Iterate pointee constraints to a fixpoint.
+    let mut global_pointee_types = GlobalPointerTable::<PointeeTypes>::new(gacx.num_pointers());
+    let mut loop_count = 0;
+    loop {
+        // Loop until the global assignment reaches a fixpoint.  The inner loop also runs until a
+        // fixpoint, but it only considers a single function at a time.  The inner loop for one
+        // function can affect other functions by updating the `GlobalAssignment`, so we also need
+        // the outer loop, which runs until the `GlobalAssignment` converges as well.
+        loop_count += 1;
+        let old_global_pointee_types = global_pointee_types.clone();
+
+        // Clear the `incomplete` flags for all global pointers.  See comment in
+        // `pointee_types::solve::solve_constraints`.
+        for (_, tys) in global_pointee_types.iter_mut() {
+            tys.incomplete = false;
+        }
+
+        for &ldid in &all_fn_ldids {
+            if gacx.fn_failed(ldid.to_def_id()) {
+                continue;
+            }
+
+            let info = func_info.get_mut(&ldid).unwrap();
+            let ldid_const = WithOptConstParam::unknown(ldid);
+            let name = tcx.item_name(ldid.to_def_id());
+
+            let pointee_constraints = info.pointee_constraints.get();
+            let pointee_types = global_pointee_types.and_mut(info.local_pointee_types.get_mut());
+            pointee_type::solve_constraints(pointee_constraints, pointee_types);
+        }
+
+        if global_pointee_types == old_global_pointee_types {
+            break;
+        }
+    }
+
+    // Print results for debugging
+    for &ldid in &all_fn_ldids {
+        if gacx.fn_failed(ldid.to_def_id()) {
+            continue;
+        }
+
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let info = func_info.get_mut(&ldid).unwrap();
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+
+        let mut acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+
+        let pointee_constraints = info.pointee_constraints.get();
+        let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
+
+        let mut constraints_by_pointer = HashMap::new();
+        for c in &pointee_constraints.constraints {
+            //eprintln!("{:?}", c);
+            match *c {
+                pointee_type::Constraint::ContainsType(ptr, _)
+                | pointee_type::Constraint::AllTypesCompatibleWith(ptr, _)
+                | pointee_type::Constraint::AllTypesCompatible(ptr) => {
+                    constraints_by_pointer
+                        .entry(ptr)
+                        .or_insert(Vec::new())
+                        .push(c);
+                }
+                pointee_type::Constraint::Subset(ptr1, ptr2) => {
+                    constraints_by_pointer
+                        .entry(ptr1)
+                        .or_insert(Vec::new())
+                        .push(c);
+                    constraints_by_pointer
+                        .entry(ptr2)
+                        .or_insert(Vec::new())
+                        .push(c);
+                }
+            }
+        }
+
+        let name = tcx.item_name(ldid.to_def_id());
+        eprintln!("\npointee types for {:?}", name);
+        for (local, decl) in mir.local_decls.iter_enumerated() {
+            eprintln!(
+                "{:?} ({}): addr_of = {:?}, type = {:?}",
+                local,
+                describe_local(tcx, decl),
+                acx.addr_of_local[local],
+                acx.local_tys[local]
+            );
+
+            let mut all_pointer_ids = Vec::new();
+            if !acx.addr_of_local[local].is_none() {
+                all_pointer_ids.push(acx.addr_of_local[local]);
+            }
+            acx.local_tys[local].for_each_label(&mut |ptr| {
+                if !ptr.is_none() {
+                    all_pointer_ids.push(ptr);
+                }
+            });
+
+            for ptr in all_pointer_ids {
+                let tys = &pointee_types[ptr];
+                if tys.ltys.len() == 0 && !tys.incomplete {
+                    continue;
+                }
+                eprintln!(
+                    "  pointer {:?}: {:?}{}",
+                    ptr,
+                    tys.ltys,
+                    if tys.incomplete { " (INCOMPLETE)" } else { "" }
+                );
+                /*
+                eprintln!("  pointer {:?}:", ptr);
+                for &ty in &tys.ltys {
+                    eprintln!("    type {:?}", ty);
+                }
+                if tys.incomplete {
+                    eprintln!("    types are incomplete!");
+                }
+                for c in constraints_by_pointer.get(&ptr).map_or(&[] as &[_], |x| x) {
+                    eprintln!("    constraint {:?}", c);
+                }
+                */
+            }
+        }
+
+        info.acx_data.set(acx.into_data());
+    }
+
+    // ----------------------------------
+    // Compute dataflow constraints
+    // ----------------------------------
+
+    // Initial pass to assign local `PointerId`s and gather equivalence constraints, which state
+    // that two pointer types must be converted to the same reference type.  Some additional data
+    // computed during this the process is kept around for use in later passes.
+    let mut global_equiv = GlobalEquivSet::new(gacx.num_pointers());
+    for &ldid in &all_fn_ldids {
+        if gacx.fn_failed(ldid.to_def_id()) {
+            continue;
+        }
+
+        let info = func_info.get_mut(&ldid).unwrap();
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+        let lsig = *gacx.fn_sigs.get(&ldid.to_def_id()).unwrap();
+
+        let mut acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
             dataflow::generate_constraints(&acx, &mir)
         }));
 
@@ -612,11 +779,9 @@ fn run(tcx: TyCtxt) {
             equiv.unify(a, b);
         }
 
-        let mut info = FuncInfo::default();
         info.acx_data.set(acx.into_data());
         info.dataflow.set(dataflow);
         info.local_equiv.set(local_equiv);
-        func_info.insert(ldid, info);
     }
 
     // ----------------------------------
