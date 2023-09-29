@@ -4275,6 +4275,10 @@ impl<'c> Translation<'c> {
                     let expr =
                         expr.ok_or_else(|| format_err!("Casts to enums require a C ExprId"))?;
                     Ok(self.enum_cast(ty.ctype, enum_decl_id, expr, val, source_ty, target_ty))
+                } else if target_ty_ctype.is_floating_type() && source_ty_kind.is_bool() {
+                    val.and_then(|x| {
+                        Ok(WithStmts::new_val(mk().cast_expr(mk().cast_expr(x, mk().path_ty(vec!["u8"])), target_ty)))
+                    })
                 } else {
                     // Other numeric casts translate to Rust `as` casts,
                     // unless the cast is to a function pointer then use `transmute`.

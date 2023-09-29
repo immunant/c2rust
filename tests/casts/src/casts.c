@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdbool.h>
 
 void cast_stuff(void) {
         int inta[10] = {0};
@@ -26,4 +27,7 @@ void cast_stuff(void) {
         // need to make sure we handle this correctly.
         const int const_i = -1;
         int *x14 = (int*) &const_i;
+
+        bool b = true;
+        float x15 = b;
 }
