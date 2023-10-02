@@ -90,7 +90,9 @@ pub unsafe extern "C" fn MD5_Init(mut context: *mut MD5_CTX) {
     (*context).state[3 as libc::c_int as usize] = 0x10325476 as libc::c_int as uint32_t;
 }
 #[no_mangle]
+// CHECK-LABEL: pub unsafe extern "C" fn MD5_Update<'h0,'h1>(
 pub unsafe extern "C" fn MD5_Update(
+    // CHECK: mut context: &'h0 mut (MD5_CTX),
     mut context: *mut MD5_CTX,
     mut _input: *const libc::c_void,
     mut inputLen: libc::c_uint,

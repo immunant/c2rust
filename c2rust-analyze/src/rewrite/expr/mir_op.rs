@@ -227,7 +227,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     _ => {}
                 };
 
-                let rv_lty = self.acx.type_of_rvalue(rv, loc);
+                let (rv_lty, _) = self.acx.type_of_rvalue(rv, loc);
                 self.enter_rvalue(|v| v.visit_rvalue(rv, Some(rv_lty)));
                 // The cast from `rv_lty` to `pl_lty` should be applied to the RHS.
                 self.enter_rvalue(|v| v.emit_cast_lty_lty(rv_lty, pl_lty));

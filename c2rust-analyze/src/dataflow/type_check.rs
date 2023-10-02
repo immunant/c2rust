@@ -52,6 +52,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         self.constraints.add_subset(dest, src);
     }
 
+    fn add_edge_except(&mut self, src: PointerId, dest: PointerId, except: PermissionSet) {
+        // Copying `src` to `dest` can discard permissions, but can't add new ones,
+        // except for the specified exceptions.
+        self.constraints.add_subset_except(dest, src, except);
+    }
+
     fn add_equiv(&mut self, a: PointerId, b: PointerId) {
         self.equiv_constraints.push((a, b));
     }
@@ -303,6 +309,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         self.do_equivalence_nested(pl_lty, rv_lty);
     }
 
+    fn do_assign_except(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>, except: PermissionSet) {
+        self.do_assign_pointer_ids_except(pl_lty.label, rv_lty.label, except);
+        self.do_equivalence_nested(pl_lty, rv_lty);
+    }
+
     /// Add a dataflow edge indicating that `rv_ptr` flows into `pl_ptr`.  If both `PointerId`s are
     /// `NONE`, this has no effect.
     fn do_assign_pointer_ids(&mut self, pl_ptr: PointerId, rv_ptr: PointerId) {
@@ -310,6 +321,19 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             assert!(pl_ptr != PointerId::NONE);
             assert!(rv_ptr != PointerId::NONE);
             self.add_edge(rv_ptr, pl_ptr);
+        }
+    }
+
+    fn do_assign_pointer_ids_except(
+        &mut self,
+        pl_ptr: PointerId,
+        rv_ptr: PointerId,
+        except: PermissionSet,
+    ) {
+        if pl_ptr != PointerId::NONE || rv_ptr != PointerId::NONE {
+            assert!(pl_ptr != PointerId::NONE);
+            assert!(rv_ptr != PointerId::NONE);
+            self.add_edge_except(rv_ptr, pl_ptr, except);
         }
     }
 
@@ -359,9 +383,19 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.visit_place(pl, Mutability::Mut);
                 let pl_lty = self.acx.type_of(pl);
 
-                let rv_lty = self.acx.type_of_rvalue(rv, loc);
+                let (rv_lty, has_field_projection) = self.acx.type_of_rvalue(rv, loc);
                 self.visit_rvalue(rv, rv_lty);
-                self.do_assign(pl_lty, rv_lty);
+
+                if has_field_projection {
+                    // Fields don't get offset permissions propagated to their base pointer
+                    self.do_assign_except(
+                        pl_lty,
+                        rv_lty,
+                        PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB,
+                    )
+                } else {
+                    self.do_assign(pl_lty, rv_lty);
+                }
             }
             // TODO(spernsteiner): handle other `StatementKind`s
             _ => (),

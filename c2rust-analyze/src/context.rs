@@ -945,9 +945,12 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         }
     }
 
-    pub fn type_of_rvalue(&self, rv: &Rvalue<'tcx>, loc: Location) -> LTy<'tcx> {
+    /// Returns the [`LTy`] of an [`Rvalue`] and a boolean indicating whether or
+    /// not the `Rvalue` contains a field projection.
+    pub fn type_of_rvalue(&self, rv: &Rvalue<'tcx>, loc: Location) -> (LTy<'tcx>, bool) {
+        let mut has_field_projection = false;
         if let Some(&lty) = self.rvalue_tys.get(&loc) {
-            return lty;
+            return (lty, false);
         }
 
         self.derived_type_of_rvalue(rv)
@@ -993,6 +996,9 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
 
                 let mut pointee_lty = pointee_lty;
                 for p in proj {
+                    if let PlaceElem::Field(..) = p {
+                        has_field_projection = true;
+                    }
                     pointee_lty = self.projection_lty(pointee_lty, p);
                 }
 
@@ -1011,11 +1017,11 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                 );
 
                 let args = self.lcx().mk_slice(&[pointee_lty]);
-                return self.lcx().mk(ty, args, ptr);
+                return (self.lcx().mk(ty, args, ptr), has_field_projection);
             }
         }
 
-        match *rv {
+        let ty = match *rv {
             Rvalue::Use(ref op) => self.type_of(op),
             Rvalue::CopyForDeref(pl) => self.type_of(pl),
             Rvalue::Repeat(ref op, _) => {
@@ -1041,7 +1047,9 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             }
             Rvalue::Aggregate(ref _kind, ref _vals) => todo!("type_of Aggregate: rv = {rv:?}"),
             Rvalue::ShallowInitBox(ref _op, _ty) => todo!("type_of ShallowInitBox: rv = {rv:?}"),
-        }
+        };
+
+        (ty, false)
     }
 
     pub fn projection_lty(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
