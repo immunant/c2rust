@@ -127,7 +127,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
     }
 
     /// Special `record` variant for MIR [`Operand`]s.  This sets the [`MirOriginDesc`] to
-    /// `LoadFromLocal` if `op` is a MIR temporary and otherwise sets it to `Expr`.
+    /// `LoadFromTemp` if `op` is a MIR temporary and otherwise sets it to `Expr`.
     ///
     /// [`Operand`]: mir::Operand
     fn record_operand(
@@ -491,7 +491,23 @@ impl<'a, 'tcx> VisitExprState<'a, 'tcx> {
 
     /// If the current MIR is a temporary, and the previous `Location` is an assignment to
     /// that temporary, peel it off, leaving the temporary's initializer as the current
-    /// `Rvalue`.
+    /// `Rvalue`.  This also adds `LoadFromTemp` and `StoreIntoLocal` entries in `self.temp_info`
+    /// for the temporary's use and definition.
+    ///
+    /// For example, starting from this position:
+    /// ```Rust,ignore
+    /// _temp = Add(_1, _2)
+    /// _3 = move _temp
+    ///           ^^^^^
+    /// ```
+    /// A successful call to `peel_temp` will advance to this position:
+    /// ```Rust,ignore
+    /// _temp = Add(_1, _2)
+    ///         ^^^^^^^^^^^
+    /// _3 = move _temp
+    /// ```
+    /// That is, it steps from a use of the temporary (an `Rvalue`, `Operand`, or `Place`) to the
+    /// `Rvalue` that was used to initialize that temporary.
     pub fn peel_temp(&mut self) -> Option<()> {
         // Run `peel_temp_inner`, and restore `self.cur` and `self.sub_loc` if it fails.
         let old_cur = self.cur;
