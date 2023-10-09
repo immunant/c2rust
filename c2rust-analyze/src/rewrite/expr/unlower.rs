@@ -317,7 +317,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         // have been accounted for, the final remaining `Rvalue` is the `Expr` itself.
         let adjusts = self.typeck_results.expr_adjustments(ex);
 
-        let mut s = VisitExprState::new(
+        let mut cursor = VisitExprCursor::new(
             self.mir,
             ExprMir::from(rv),
             extra_locs,
@@ -326,58 +326,63 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         );
 
         for (i, adjust) in adjusts.iter().enumerate().rev() {
-            while s.peel_temp().is_some() {
+            while cursor.peel_temp().is_some() {
                 // No-op.  Just loop until we've peeled all temporaries.
             }
-            self.record_desc(s.loc, &s.sub_loc, ex, MirOriginDesc::Adjustment(i));
+            self.record_desc(
+                cursor.loc,
+                &cursor.sub_loc,
+                ex,
+                MirOriginDesc::Adjustment(i),
+            );
             match adjust.kind {
                 Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => {
-                    if s.peel_address_of() != Some(mutbl) {
+                    if cursor.peel_address_of() != Some(mutbl) {
                         warn!(
                             "expected Rvalue::AddressOf for {adjust:?} on expr {ex:?}, \
                             but got {:?}",
-                            s.cur
+                            cursor.cur
                         );
                         break;
                     }
                 }
                 Adjust::Borrow(AutoBorrow::Ref(_, AutoBorrowMutability::Not)) => {
-                    if s.peel_ref() != Some(mir::Mutability::Not) {
+                    if cursor.peel_ref() != Some(mir::Mutability::Not) {
                         warn!(
                             "expected Rvalue::Ref(Mutability::Not) for {adjust:?} \
                             on expr {ex:?}, but got {:?}",
-                            s.cur
+                            cursor.cur
                         );
                         break;
                     }
                 }
                 Adjust::Borrow(AutoBorrow::Ref(_, AutoBorrowMutability::Mut { .. })) => {
-                    if s.peel_ref() != Some(mir::Mutability::Mut) {
+                    if cursor.peel_ref() != Some(mir::Mutability::Mut) {
                         warn!(
                             "expected Rvalue::Ref(Mutability::Mut) for {adjust:?} \
                             on expr {ex:?}, but got {:?}",
-                            s.cur
+                            cursor.cur
                         );
                         break;
                     }
                 }
                 // Non-overloaded deref
                 Adjust::Deref(None) => {
-                    if s.peel_deref().is_none() {
+                    if cursor.peel_deref().is_none() {
                         warn!(
                             "expected Rvalue::Deref for {adjust:?} on expr {ex:?}, \
                             but got {:?}",
-                            s.cur
+                            cursor.cur
                         );
                         break;
                     }
                 }
                 Adjust::Pointer(pc) => {
-                    if s.peel_pointer_cast() != Some(pc) {
+                    if cursor.peel_pointer_cast() != Some(pc) {
                         warn!(
                             "expected Rvalue::Cast(Pointer({pc:?})) for {adjust:?} \
                             on expr {ex:?}, but got {:?}",
-                            s.cur
+                            cursor.cur
                         );
                         break;
                     }
@@ -389,16 +394,16 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             }
         }
 
-        while s.peel_temp().is_some() {
+        while cursor.peel_temp().is_some() {
             // No-op.  Just loop until we've peeled all temporaries.
         }
 
         // Record entries for temporaries that are buffered in `temp_info`.
-        for (precise_loc, desc) in s.temp_info {
+        for (precise_loc, desc) in cursor.temp_info {
             self.record_desc(precise_loc.loc, &precise_loc.sub, ex, desc);
         }
 
-        self.record_desc(s.loc, &s.sub_loc, ex, MirOriginDesc::Expr);
+        self.record_desc(cursor.loc, &cursor.sub_loc, ex, MirOriginDesc::Expr);
     }
 
     fn visit_expr_operand(
@@ -451,9 +456,9 @@ impl<'a, 'tcx> From<mir::PlaceRef<'tcx>> for ExprMir<'a, 'tcx> {
     }
 }
 
-/// Helper for `visit_expr_common`.  This type has methods for traversing the MIR produced from a
+/// Helper for `visit_expr_rvalue`.  This type has methods for traversing the MIR produced from a
 /// `hir::Expr` and its adjustments.
-struct VisitExprState<'a, 'tcx> {
+struct VisitExprCursor<'a, 'tcx> {
     mir: &'a Body<'tcx>,
     cur: ExprMir<'a, 'tcx>,
     locs: &'a [Location],
@@ -470,15 +475,15 @@ struct VisitExprState<'a, 'tcx> {
     temp_info: Vec<(PreciseLoc, MirOriginDesc)>,
 }
 
-impl<'a, 'tcx> VisitExprState<'a, 'tcx> {
+impl<'a, 'tcx> VisitExprCursor<'a, 'tcx> {
     pub fn new(
         mir: &'a Body<'tcx>,
         cur: ExprMir<'a, 'tcx>,
         extra_locs: &'a [Location],
         loc: Location,
         sub_loc: Vec<SubLoc>,
-    ) -> VisitExprState<'a, 'tcx> {
-        VisitExprState {
+    ) -> VisitExprCursor<'a, 'tcx> {
+        VisitExprCursor {
             mir,
             cur,
             locs: extra_locs,
