@@ -63,10 +63,16 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             .either(|stmt| stmt.source_info.span, |term| term.source_info.span)
     }
 
+    /// Record an `unlower_map` entry indicating that MIR location `loc, sub_loc` corresponds to
+    /// the HIR expression `ex`.
     fn record(&mut self, loc: Location, sub_loc: &[SubLoc], ex: &hir::Expr) {
         self.record_desc(loc, sub_loc, ex, MirOriginDesc::Expr);
     }
 
+    /// Like [`record`][Self::record], but also takes a [`MirOriginDesc`] to indicate how the MIR
+    /// location `loc, sub_loc` relates to the HIR expression `desc`.  For example, this can be
+    /// used to record that a particular piece of MIR loads/stores a temporary used in the
+    /// evaluation of `ex`.
     fn record_desc(
         &mut self,
         loc: Location,
