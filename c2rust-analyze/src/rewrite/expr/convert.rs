@@ -173,6 +173,8 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
             }
         };
 
+        // Apply rewrites on the expression itself.  These will be the first rewrites in the sorted
+        // list produced by `distribute`.
         let expr_rws = take_prefix_while(&mut mir_rws, |x: &DistRewrite| {
             matches!(x.desc, MirOriginDesc::Expr)
         });
@@ -199,16 +201,20 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
 
         // Apply late rewrites.
         for mir_rw in mir_rws {
+            assert!(matches!(
+                mir_rw.desc,
+                MirOriginDesc::StoreIntoLocal | MirOriginDesc::LoadFromTemp
+            ));
             hir_rw = rewrite_from_mir_rws(&mir_rw.rw, hir_rw);
         }
 
-        // Emit rewrites on subexpressions last.
+        // Emit rewrites on subexpressions first, then emit the rewrite on the expression itself,
+        // if it's nontrivial.
         let applied_mir_rewrite = !matches!(hir_rw, Rewrite::Identity);
         self.with_materialize_adjustments(applied_mir_rewrite, |this| {
             intravisit::walk_expr(this, ex);
         });
 
-        // Emit the rewrite, if it's nontrivial.
         if !matches!(hir_rw, Rewrite::Identity) {
             eprintln!(
                 "rewrite {:?} at {:?} (materialize? {})",

@@ -15,7 +15,7 @@ struct RewriteInfo {
 }
 
 /// This enum defines a sort order for [`RewriteInfo`], from innermost (applied earlier) to
-/// outermost (applied later).
+/// outermost (applied later).  The results of `fn distribute` are sorted in this order.
 ///
 /// The order of variants follows the order of operations we typically see in generated MIR code.
 /// For a given HIR `Expr`, the MIR will usually evaluate the expression ([`Priority::Eval`]),
@@ -65,6 +65,11 @@ impl From<RewriteInfo> for DistRewrite {
 /// result in an error: this MIR assignment is a store to a temporary that was introduced during
 /// HIR-to-MIR lowering, so there is no corresponding HIR assignment where such a rewrite could be
 /// attached.
+///
+/// The rewrites for each `HirId` are sorted in [`Priority`] order, matching the order in which the
+/// expression and related parts are evaluated.  For example, the [`Expr`][MirOriginDesc::Expr]
+/// itself is evaluated first, and any [`Adjustment`][MirOriginDesc::Adjustment]s are applied
+/// afterward.
 pub fn distribute(
     tcx: TyCtxt,
     unlower_map: BTreeMap<PreciseLoc, MirOrigin>,
