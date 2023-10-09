@@ -456,6 +456,11 @@ struct VisitExprState<'a, 'tcx> {
     sub_loc: Vec<SubLoc>,
 
     /// Buffer for temporaries handled by `peel_temp`.
+    ///
+    /// When `peel_temp` traverses past a temporary, it also needs to emit some `StoreIntoLocal`
+    /// and `LoadFromTemp` entries as a side effect.  But it doesn't have access to the
+    /// `UnlowerVisitor` to emit these entries directly, so instead we buffer those entries for the
+    /// caller to emit later.
     temp_info: Vec<(PreciseLoc, MirOriginDesc)>,
 }
 
