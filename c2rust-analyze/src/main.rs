@@ -664,31 +664,6 @@ fn run(tcx: TyCtxt) {
         let pointee_constraints = info.pointee_constraints.get();
         let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
 
-        let mut constraints_by_pointer = HashMap::new();
-        for c in &pointee_constraints.constraints {
-            //eprintln!("{:?}", c);
-            match *c {
-                pointee_type::Constraint::ContainsType(ptr, _)
-                | pointee_type::Constraint::AllTypesCompatibleWith(ptr, _)
-                | pointee_type::Constraint::AllTypesCompatible(ptr) => {
-                    constraints_by_pointer
-                        .entry(ptr)
-                        .or_insert(Vec::new())
-                        .push(c);
-                }
-                pointee_type::Constraint::Subset(ptr1, ptr2) => {
-                    constraints_by_pointer
-                        .entry(ptr1)
-                        .or_insert(Vec::new())
-                        .push(c);
-                    constraints_by_pointer
-                        .entry(ptr2)
-                        .or_insert(Vec::new())
-                        .push(c);
-                }
-            }
-        }
-
         let name = tcx.item_name(ldid.to_def_id());
         eprintln!("\npointee types for {:?}", name);
         for (local, decl) in mir.local_decls.iter_enumerated() {
@@ -721,18 +696,6 @@ fn run(tcx: TyCtxt) {
                     tys.ltys,
                     if tys.incomplete { " (INCOMPLETE)" } else { "" }
                 );
-                /*
-                eprintln!("  pointer {:?}:", ptr);
-                for &ty in &tys.ltys {
-                    eprintln!("    type {:?}", ty);
-                }
-                if tys.incomplete {
-                    eprintln!("    types are incomplete!");
-                }
-                for c in constraints_by_pointer.get(&ptr).map_or(&[] as &[_], |x| x) {
-                    eprintln!("    constraint {:?}", c);
-                }
-                */
             }
         }
 
