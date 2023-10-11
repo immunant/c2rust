@@ -946,7 +946,14 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     }
 
     /// Returns the [`LTy`] of an [`Rvalue`] and a boolean indicating whether or
-    /// not the `Rvalue` contains a field projection.
+    /// not the `Rvalue` is a reference or pointer containing a field projection.
+    /// For example, the following [`Rvalue`]s will satisfy that criteria:
+    /// - let r1 = std::ptr::addr_of!(x.field);
+    /// - let r2 = &x.field;
+    /// - let r3 = &(*p).field;
+    /// The following will NOT satisfy that critera:
+    /// - let r1 = x.field;
+    /// - let r2 = x.field + y;
     pub fn type_of_rvalue(&self, rv: &Rvalue<'tcx>, loc: Location) -> (LTy<'tcx>, bool) {
         let mut has_field_projection = false;
         if let Some(&lty) = self.rvalue_tys.get(&loc) {
