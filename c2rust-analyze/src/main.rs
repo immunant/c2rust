@@ -187,6 +187,10 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
             let _g = panic_detail::set_current_span(stmt.source_info.span);
 
             let lty = match rv {
+                Rvalue::Ref(..) | Rvalue::AddressOf(..) => {
+                    let ty = rv.ty(acx, acx.tcx());
+                    acx.assign_pointer_ids(ty)
+                }
                 Rvalue::Aggregate(ref kind, ref _ops) => match **kind {
                     AggregateKind::Array(elem_ty) => {
                         let elem_lty = acx.assign_pointer_ids(elem_ty);

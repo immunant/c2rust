@@ -15,18 +15,35 @@ struct RewriteInfo {
 }
 
 /// This enum defines a sort order for [`RewriteInfo`], from innermost (applied earlier) to
-/// outermost (applied later).
+/// outermost (applied later).  The results of `fn distribute` are sorted in this order.
 ///
 /// The order of variants follows the order of operations we typically see in generated MIR code.
 /// For a given HIR `Expr`, the MIR will usually evaluate the expression ([`Priority::Eval`]),
-/// store the result into a temporary ([`Priority::_StoreResult`]; currently unused), and later
-/// load the result back from the temporary ([`Priority::LoadResult`]) when computing the parent
-/// `Expr`.
+/// apply zero or more adjustments ([`Priority::Adjust(i)`][Priority::Adjust]), store the result
+/// into a temporary ([`Priority::_StoreResult`]; currently unused), and later load the result back
+/// from the temporary ([`Priority::LoadResult`]).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum Priority {
     Eval,
+    /// Apply the rewrite just after the adjustment at index `i`.
+    Adjust(usize),
     _StoreResult,
     LoadResult,
+}
+
+#[derive(Clone, Debug)]
+pub struct DistRewrite {
+    pub rw: mir_op::RewriteKind,
+    pub desc: MirOriginDesc,
+}
+
+impl From<RewriteInfo> for DistRewrite {
+    fn from(x: RewriteInfo) -> DistRewrite {
+        DistRewrite {
+            rw: x.rw,
+            desc: x.desc,
+        }
+    }
 }
 
 /// Distributes MIR rewrites to HIR nodes.  This takes a list of MIR rewrites (from `mir_op`) and a
@@ -48,11 +65,16 @@ enum Priority {
 /// result in an error: this MIR assignment is a store to a temporary that was introduced during
 /// HIR-to-MIR lowering, so there is no corresponding HIR assignment where such a rewrite could be
 /// attached.
+///
+/// The rewrites for each `HirId` are sorted in [`Priority`] order, matching the order in which the
+/// expression and related parts are evaluated.  For example, the [`Expr`][MirOriginDesc::Expr]
+/// itself is evaluated first, and any [`Adjustment`][MirOriginDesc::Adjustment]s are applied
+/// afterward.
 pub fn distribute(
     tcx: TyCtxt,
     unlower_map: BTreeMap<PreciseLoc, MirOrigin>,
     mir_rewrites: HashMap<Location, Vec<MirRewrite>>,
-) -> HashMap<HirId, Vec<mir_op::RewriteKind>> {
+) -> HashMap<HirId, Vec<DistRewrite>> {
     let mut info_map = HashMap::<HirId, Vec<RewriteInfo>>::new();
 
     for (loc, mir_rws) in mir_rewrites {
@@ -72,6 +94,7 @@ pub fn distribute(
 
             let priority = match origin.desc {
                 MirOriginDesc::Expr => Priority::Eval,
+                MirOriginDesc::Adjustment(i) => Priority::Adjust(i),
                 MirOriginDesc::LoadFromTemp => Priority::LoadResult,
                 _ => {
                     panic!(
@@ -127,6 +150,6 @@ pub fn distribute(
     // the `RewriteKind`s.
     info_map
         .into_iter()
-        .map(|(k, vs)| (k, vs.into_iter().map(|v| v.rw).collect()))
+        .map(|(k, vs)| (k, vs.into_iter().map(DistRewrite::from).collect()))
         .collect()
 }

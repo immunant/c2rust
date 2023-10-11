@@ -1,5 +1,7 @@
 use crate::panic_detail;
+use crate::rewrite::expr::distribute::DistRewrite;
 use crate::rewrite::expr::mir_op;
+use crate::rewrite::expr::unlower::MirOriginDesc;
 use crate::rewrite::Rewrite;
 use assert_matches::assert_matches;
 use log::*;
@@ -17,7 +19,7 @@ use std::collections::HashMap;
 struct ConvertVisitor<'tcx> {
     tcx: TyCtxt<'tcx>,
     typeck_results: &'tcx TypeckResults<'tcx>,
-    mir_rewrites: HashMap<HirId, Vec<mir_op::RewriteKind>>,
+    mir_rewrites: HashMap<HirId, Vec<DistRewrite>>,
     rewrites: Vec<(Span, Rewrite)>,
     /// When `true`, any `Expr` where rustc added an implicit adjustment will be rewritten to make
     /// that adjustment explicit.  Any node that emits a non-adjustment rewrite sets this flag when
@@ -115,11 +117,16 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
         let callsite_span = ex.span.source_callsite();
 
         let mir_rws = self.mir_rewrites.remove(&ex.hir_id).unwrap_or_default();
+        let mut mir_rws = &mir_rws as &[_];
 
         let rewrite_from_mir_rws = |rw: &mir_op::RewriteKind, hir_rw: Rewrite| -> Rewrite {
+            // Cases that extract a subexpression are handled here; cases that only wrap the
+            // top-level expression (and thus can handle a non-`Identity` `hir_rw`) are handled by
+            // `convert_cast_rewrite`.
             match rw {
                 mir_op::RewriteKind::OffsetSlice { mutbl } => {
                     // `p.offset(i)` -> `&p[i as usize ..]`
+                    assert!(matches!(hir_rw, Rewrite::Identity));
                     let arr = self.get_subexpr(ex, 0);
                     let idx = Rewrite::Cast(Box::new(self.get_subexpr(ex, 1)), "usize".to_owned());
                     let elem = Rewrite::SliceTail(Box::new(arr), Box::new(idx));
@@ -134,11 +141,18 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
 
                 mir_op::RewriteKind::RawToRef { mutbl } => {
                     // &raw _ to &_ or &raw mut _ to &mut _
-                    Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(*mutbl))
+                    match hir_rw {
+                        Rewrite::Identity => {
+                            Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(*mutbl))
+                        }
+                        Rewrite::AddrOf(rw, mutbl) => Rewrite::Ref(rw, mutbl),
+                        _ => panic!("unexpected hir_rw {hir_rw:?} for RawToRef"),
+                    }
                 }
 
                 mir_op::RewriteKind::CellGet => {
                     // `*x` to `Cell::get(x)`
+                    assert!(matches!(hir_rw, Rewrite::Identity));
                     Rewrite::MethodCall(
                         "get".to_string(),
                         Box::new(self.get_subexpr(ex, 0)),
@@ -148,32 +162,59 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
 
                 mir_op::RewriteKind::CellSet => {
                     // `*x` to `Cell::set(x)`
+                    assert!(matches!(hir_rw, Rewrite::Identity));
                     let deref_lhs = assert_matches!(ex.kind, ExprKind::Assign(lhs, ..) => lhs);
                     let lhs = self.get_subexpr(deref_lhs, 0);
                     let rhs = self.get_subexpr(ex, 1);
                     Rewrite::MethodCall("set".to_string(), Box::new(lhs), vec![rhs])
                 }
+
                 _ => convert_cast_rewrite(rw, hir_rw),
             }
         };
 
-        for mir_rw in mir_rws {
-            hir_rw = rewrite_from_mir_rws(&mir_rw, hir_rw);
+        // Apply rewrites on the expression itself.  These will be the first rewrites in the sorted
+        // list produced by `distribute`.
+        let expr_rws = take_prefix_while(&mut mir_rws, |x: &DistRewrite| {
+            matches!(x.desc, MirOriginDesc::Expr)
+        });
+        for mir_rw in expr_rws {
+            hir_rw = rewrite_from_mir_rws(&mir_rw.rw, hir_rw);
         }
 
-        // Emit rewrites on subexpressions first.
+        // Materialize adjustments if requested by an ancestor or required locally.
+        let has_adjustment_rewrites = mir_rws
+            .iter()
+            .any(|x| matches!(x.desc, MirOriginDesc::Adjustment(_)));
+        if self.materialize_adjustments || has_adjustment_rewrites {
+            let adjusts = self.typeck_results.expr_adjustments(ex);
+            hir_rw = materialize_adjustments(self.tcx, adjusts, hir_rw, |i, mut hir_rw| {
+                let adj_rws =
+                    take_prefix_while(&mut mir_rws, |x| x.desc == MirOriginDesc::Adjustment(i));
+                for mir_rw in adj_rws {
+                    eprintln!("would apply {mir_rw:?} for adjustment #{i}, over {hir_rw:?}");
+                    hir_rw = rewrite_from_mir_rws(&mir_rw.rw, hir_rw);
+                }
+                hir_rw
+            });
+        }
+
+        // Apply late rewrites.
+        for mir_rw in mir_rws {
+            assert!(matches!(
+                mir_rw.desc,
+                MirOriginDesc::StoreIntoLocal | MirOriginDesc::LoadFromTemp
+            ));
+            hir_rw = rewrite_from_mir_rws(&mir_rw.rw, hir_rw);
+        }
+
+        // Emit rewrites on subexpressions first, then emit the rewrite on the expression itself,
+        // if it's nontrivial.
         let applied_mir_rewrite = !matches!(hir_rw, Rewrite::Identity);
         self.with_materialize_adjustments(applied_mir_rewrite, |this| {
             intravisit::walk_expr(this, ex);
         });
 
-        // Materialize adjustments if requested by an ancestor.
-        if self.materialize_adjustments {
-            let adjusts = self.typeck_results.expr_adjustments(ex);
-            hir_rw = materialize_adjustments(self.tcx, adjusts, hir_rw);
-        }
-
-        // Emit the rewrite, if it's nontrivial.
         if !matches!(hir_rw, Rewrite::Identity) {
             eprintln!(
                 "rewrite {:?} at {:?} (materialize? {})",
@@ -216,14 +257,16 @@ fn materialize_adjustments<'tcx>(
     tcx: TyCtxt<'tcx>,
     adjustments: &[Adjustment<'tcx>],
     hir_rw: Rewrite,
+    mut callback: impl FnMut(usize, Rewrite) -> Rewrite,
 ) -> Rewrite {
     let adj_kinds: Vec<&_> = adjustments.iter().map(|a| &a.kind).collect();
     match (hir_rw, &adj_kinds[..]) {
         (Rewrite::Identity, []) => Rewrite::Identity,
         (Rewrite::Identity, _) => {
             let mut hir_rw = Rewrite::Identity;
-            for adj in adjustments {
+            for (i, adj) in adjustments.iter().enumerate() {
                 hir_rw = apply_identity_adjustment(tcx, adj, hir_rw);
+                hir_rw = callback(i, hir_rw);
             }
             hir_rw
         }
@@ -232,6 +275,13 @@ fn materialize_adjustments<'tcx>(
         (rw, &[]) => rw,
         (rw, adjs) => panic!("rewrite {rw:?} and materializations {adjs:?} NYI"),
     }
+}
+
+fn take_prefix_while<'a, T>(slice: &mut &'a [T], mut pred: impl FnMut(&'a T) -> bool) -> &'a [T] {
+    let i = slice.iter().position(|x| !pred(x)).unwrap_or(slice.len());
+    let (a, b) = slice.split_at(i);
+    *slice = b;
+    a
 }
 
 /// Convert a single `RewriteKind` representing a cast into a `Span`-based `Rewrite`.  This panics
@@ -270,15 +320,12 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
 
         mir_op::RewriteKind::CellNew => {
             // `x` to `Cell::new(x)`
-            Rewrite::Call("std::cell::Cell::new".to_string(), vec![Rewrite::Identity])
+            Rewrite::Call("std::cell::Cell::new".to_string(), vec![hir_rw])
         }
 
         mir_op::RewriteKind::CellFromMut => {
             // `x` to `Cell::from_mut(x)`
-            Rewrite::Call(
-                "std::cell::Cell::from_mut".to_string(),
-                vec![Rewrite::Identity],
-            )
+            Rewrite::Call("std::cell::Cell::from_mut".to_string(), vec![hir_rw])
         }
         mir_op::RewriteKind::AsPtr => {
             // `x` to `x.as_ptr()`
@@ -299,7 +346,7 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
 pub fn convert_rewrites(
     tcx: TyCtxt,
     hir_body_id: hir::BodyId,
-    mir_rewrites: HashMap<HirId, Vec<mir_op::RewriteKind>>,
+    mir_rewrites: HashMap<HirId, Vec<DistRewrite>>,
 ) -> Vec<(Span, Rewrite)> {
     // Run the visitor.
     let typeck_results = tcx.typeck_body(hir_body_id);

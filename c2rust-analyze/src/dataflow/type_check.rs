@@ -173,6 +173,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 }
                 RvalueDesc::AddrOfLocal { .. } => {}
             }
+            let derived_lty = self.acx.derived_type_of_rvalue(rv);
+            self.do_assign(rvalue_lty, derived_lty);
             return;
         }
 

@@ -950,6 +950,26 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             return lty;
         }
 
+        self.derived_type_of_rvalue(rv)
+    }
+
+    /// In some cases, we can compute an `LTy` for an `Rvalue` that uses `PointerId`s derived from
+    /// the `LTy`s of other value, rather than using the `PointerId`s assigned in `rvalue_tys`.
+    /// For example, suppose we have this code:
+    ///
+    /// ```ignore
+    /// let p: & /*p0*/ MyStruct = ...;
+    /// let q: & /*p2*/ i32 = &(*p).field: & /*p1*/ i32;
+    /// ```
+    ///
+    /// The type ascription on the rvalue `&(*p).field` represents the entry in `rvalue_tys`, which
+    /// uses `PointerId` `p1`.  However, we can derive another type for this rvalue from the type
+    /// of `p`: since `p` has type `& /*p0*/ MyStruct`, the projection `&(*p).field` can be given
+    /// the type `& /*p0*/ i32`, using the same `PointerId` `p0`.  Calling `type_of_rvalue` will
+    /// return the type assigned in `rvalue_tys`, which uses `p1`, whereas this method will return
+    /// the derived type using `p0`.  Certain cases in `dataflow::type_check` will establish
+    /// constraints relating the two types.
+    pub fn derived_type_of_rvalue(&self, rv: &Rvalue<'tcx>) -> LTy<'tcx> {
         if let Some(desc) = describe_rvalue(rv) {
             let ty = rv.ty(self, self.tcx());
             if matches!(ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)) {
