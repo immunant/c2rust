@@ -956,7 +956,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     /// - let r2 = x.field + y;
     pub fn type_of_rvalue(&self, rv: &Rvalue<'tcx>, loc: Location) -> (LTy<'tcx>, bool) {
         let mut has_field_projection = false;
-        if let Some(&lty) = self.rvalue_tys.get(&loc) {
+        if let Some(lty) = self.rvalue_tys.get(&loc) {
             return (lty, false);
         }
 
