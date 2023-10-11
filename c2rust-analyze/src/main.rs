@@ -26,7 +26,7 @@ use crate::labeled_ty::LabeledTyCtxt;
 use crate::log::init_logger;
 use crate::panic_detail::PanicDetail;
 use crate::pointee_type::PointeeTypes;
-use crate::pointer_id::{GlobalPointerTable, LocalPointerTable, OwnedPointerTable};
+use crate::pointer_id::{GlobalPointerTable, LocalPointerTable, OwnedPointerTable, PointerTable};
 use crate::type_desc::Ownership;
 use crate::util::{Callee, TestAttr};
 use ::log::warn;
@@ -659,45 +659,10 @@ fn run(tcx: TyCtxt) {
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
 
-        let mut acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-
-        let pointee_constraints = info.pointee_constraints.get();
-        let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
-
+        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
         let name = tcx.item_name(ldid.to_def_id());
-        eprintln!("\npointee types for {:?}", name);
-        for (local, decl) in mir.local_decls.iter_enumerated() {
-            eprintln!(
-                "{:?} ({}): addr_of = {:?}, type = {:?}",
-                local,
-                describe_local(tcx, decl),
-                acx.addr_of_local[local],
-                acx.local_tys[local]
-            );
-
-            let mut all_pointer_ids = Vec::new();
-            if !acx.addr_of_local[local].is_none() {
-                all_pointer_ids.push(acx.addr_of_local[local]);
-            }
-            acx.local_tys[local].for_each_label(&mut |ptr| {
-                if !ptr.is_none() {
-                    all_pointer_ids.push(ptr);
-                }
-            });
-
-            for ptr in all_pointer_ids {
-                let tys = &pointee_types[ptr];
-                if tys.ltys.len() == 0 && !tys.incomplete {
-                    continue;
-                }
-                eprintln!(
-                    "  pointer {:?}: {:?}{}",
-                    ptr,
-                    tys.ltys,
-                    if tys.incomplete { " (INCOMPLETE)" } else { "" }
-                );
-            }
-        }
+        let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
+        print_function_pointee_types(&acx, name, &mir, pointee_types);
 
         info.acx_data.set(acx.into_data());
     }
@@ -1608,6 +1573,49 @@ fn print_labeling_for_var<'tcx>(
     let ty3 = lty;
     eprintln!("{}: addr_of = {:?}, type = {:?}", desc, addr_of3, ty3);
 }
+
+fn print_function_pointee_types<'tcx>(
+    acx: &AnalysisCtxt<'_, 'tcx>,
+    name: impl Display,
+    mir: &Body<'tcx>,
+    pointee_types: PointerTable<PointeeTypes<'tcx>>,
+) {
+    eprintln!("\npointee types for {}", name);
+    for (local, decl) in mir.local_decls.iter_enumerated() {
+        eprintln!(
+            "{:?} ({}): addr_of = {:?}, type = {:?}",
+            local,
+            describe_local(acx.tcx(), decl),
+            acx.addr_of_local[local],
+            acx.local_tys[local]
+        );
+
+        let mut all_pointer_ids = Vec::new();
+        if !acx.addr_of_local[local].is_none() {
+            all_pointer_ids.push(acx.addr_of_local[local]);
+        }
+        acx.local_tys[local].for_each_label(&mut |ptr| {
+            if !ptr.is_none() {
+                all_pointer_ids.push(ptr);
+            }
+        });
+
+        for ptr in all_pointer_ids {
+            let tys = &pointee_types[ptr];
+            if tys.ltys.len() == 0 && !tys.incomplete {
+                continue;
+            }
+            eprintln!(
+                "  pointer {:?}: {:?}{}",
+                ptr,
+                tys.ltys,
+                if tys.incomplete { " (INCOMPLETE)" } else { "" }
+            );
+        }
+    }
+}
+
+
 
 /// Return `LocalDefId`s for all `static`s.
 fn all_static_items(tcx: TyCtxt) -> Vec<DefId> {
