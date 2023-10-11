@@ -59,34 +59,12 @@ impl DataflowConstraints {
         impl PropagateRules<PermissionSet> for PropagatePerms {
             fn subset(
                 &mut self,
-                _a_ptr: PointerId,
+                a_ptr: PointerId,
                 a_val: &PermissionSet,
-                _b_ptr: PointerId,
+                b_ptr: PointerId,
                 b_val: &PermissionSet,
             ) -> (PermissionSet, PermissionSet) {
-                let old_a = *a_val;
-                let old_b = *b_val;
-
-                // These should be `const`s, but that produces `error[E0015]: cannot call
-                // non-const operator in constants`.
-
-                // Permissions that should be propagated "down": if the superset (`b`)
-                // doesn't have it, then the subset (`a`) should have it removed.
-                #[allow(bad_style)]
-                let PROPAGATE_DOWN = PermissionSet::UNIQUE;
-                // Permissions that should be propagated "up": if the subset (`a`) has it,
-                // then the superset (`b`) should be given it.
-                #[allow(bad_style)]
-                let PROPAGATE_UP = PermissionSet::READ
-                    | PermissionSet::WRITE
-                    | PermissionSet::OFFSET_ADD
-                    | PermissionSet::OFFSET_SUB
-                    | PermissionSet::FREE;
-
-                (
-                    old_a & !(!old_b & PROPAGATE_DOWN),
-                    old_b | (old_a & PROPAGATE_UP),
-                )
+                self.subset_except(a_ptr, a_val, b_ptr, b_val, PermissionSet::NONE)
             }
 
             fn subset_except(
