@@ -59,6 +59,12 @@ impl<'tcx> ConstraintSet<'tcx> {
     }
 }
 
+/// A "constraint type", which is either an `LTy` or an inference variable.
+///
+/// Our current implementation of type inference / unification is very primitive.  In particular,
+/// currently we allow inference variables only at top level, so constraints can refer to `T` but
+/// not `*mut T` or `[T; 10]`.  Eventually we may need to replace this implementation with
+/// something more flexible.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum CTy<'tcx> {
     Ty(LTy<'tcx>),
