@@ -147,7 +147,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.visit_place(pl);
             }
             Rvalue::Aggregate(_, ref ops) => {
-                // TODO
+                // FIXME: Needs dataflow edges between `ops` types and the rvalue's `lty`, similar
+                // to the corresponding case in `dataflow::type_check`.
                 for op in ops {
                     self.visit_operand(op);
                 }
@@ -166,7 +167,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.visit_place(pl);
             }
             Operand::Constant(ref _c) => {
-                // TODO?
+                // TODO: addr of static may show up as `Operand::Constant`
             }
         }
     }
