@@ -1,20 +1,13 @@
 use super::constraint_set::{CTy, ConstraintSet};
-use crate::c_void_casts::CVoidCastDirection;
-use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
+use crate::context::{AnalysisCtxt, LTy, PointerId};
 use crate::panic_detail;
-use crate::util::{
-    describe_rvalue, is_null_const, is_transmutable_ptr_cast, ty_callee, Callee, RvalueDesc,
-    UnknownDefCallee,
-};
-use assert_matches::assert_matches;
+use crate::util::{describe_rvalue, ty_callee, Callee, RvalueDesc, UnknownDefCallee};
 use log::*;
-use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
-    AggregateKind, BinOp, Body, CastKind, Location, Mutability, Operand, Place, PlaceRef,
-    ProjectionElem, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
+    BinOp, Body, Location, Operand, Place, PlaceRef, ProjectionElem, Rvalue, Statement,
+    StatementKind, Terminator, TerminatorKind,
 };
-use rustc_middle::ty::adjustment::PointerCast;
-use rustc_middle::ty::{SubstsRef, Ty, TyKind};
+use rustc_middle::ty::{Ty, TyKind};
 
 struct TypeChecker<'tcx, 'a> {
     acx: &'a AnalysisCtxt<'a, 'tcx>,
@@ -194,7 +187,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    pub fn visit_terminator(&mut self, term: &Terminator<'tcx>, loc: Location) {
+    pub fn visit_terminator(&mut self, term: &Terminator<'tcx>, _loc: Location) {
         trace!(
             "visit_terminator({:?} @ {:?})",
             term.kind,
@@ -217,20 +210,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let dest_lty = self.visit_place(destination);
 
                 let func = func.ty(self.mir, tcx);
-                self.visit_call(loc, func, args, destination, dest_lty);
+                self.visit_call(func, args, dest_lty);
             }
             _ => (),
         }
     }
 
-    pub fn visit_call(
-        &mut self,
-        loc: Location,
-        func: Ty<'tcx>,
-        args: &[Operand<'tcx>],
-        destination: Place<'tcx>,
-        dest_lty: LTy<'tcx>,
-    ) {
+    pub fn visit_call(&mut self, func: Ty<'tcx>, args: &[Operand<'tcx>], dest_lty: LTy<'tcx>) {
         let tcx = self.acx.tcx();
         let callee = ty_callee(tcx, func);
         eprintln!("callee = {callee:?}");
@@ -260,7 +246,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Callee::UnknownDef(UnknownDefCallee::Direct {
                 ty: _,
                 def_id,
-                substs,
+                substs: _,
                 is_foreign: true,
             }) if self.acx.gacx.known_fn(def_id).is_some() => {
                 // TODO: no good handling for this currently - might need to expand KnownFn to
@@ -285,7 +271,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.assign(dest_lty.label, arg_lty.label);
             }
 
-            Callee::SliceAsPtr { elem_ty, .. } => {
+            Callee::SliceAsPtr { .. } => {
                 // The input is a `Ref`, so its underlying type is known precisely.
                 assert_eq!(args.len(), 1);
                 let arg_lty = self.acx.type_of(&args[0]);

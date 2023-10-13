@@ -26,7 +26,7 @@ use crate::labeled_ty::LabeledTyCtxt;
 use crate::log::init_logger;
 use crate::panic_detail::PanicDetail;
 use crate::pointee_type::PointeeTypes;
-use crate::pointer_id::{GlobalPointerTable, LocalPointerTable, OwnedPointerTable, PointerTable};
+use crate::pointer_id::{GlobalPointerTable, LocalPointerTable, PointerTable};
 use crate::type_desc::Ownership;
 use crate::util::{Callee, TestAttr};
 use ::log::warn;
@@ -618,9 +618,11 @@ fn run(tcx: TyCtxt) {
     loop {
         // Loop until the global assignment reaches a fixpoint.  The inner loop also runs until a
         // fixpoint, but it only considers a single function at a time.  The inner loop for one
-        // function can affect other functions by updating the `GlobalAssignment`, so we also need
-        // the outer loop, which runs until the `GlobalAssignment` converges as well.
+        // function can affect other functions by updating `global_pointee_types`, so we also need
+        // the outer loop, which runs until the global type sets converge as well.
         loop_count += 1;
+        // We shouldn't need more iterations than the longest acyclic path through the callgraph.
+        assert!(loop_count <= 1000);
         let old_global_pointee_types = global_pointee_types.clone();
 
         // Clear the `incomplete` flags for all global pointers.  See comment in
@@ -635,8 +637,6 @@ fn run(tcx: TyCtxt) {
             }
 
             let info = func_info.get_mut(&ldid).unwrap();
-            let ldid_const = WithOptConstParam::unknown(ldid);
-            let name = tcx.item_name(ldid.to_def_id());
 
             let pointee_constraints = info.pointee_constraints.get();
             let pointee_types = global_pointee_types.and_mut(info.local_pointee_types.get_mut());
@@ -684,9 +684,8 @@ fn run(tcx: TyCtxt) {
         let ldid_const = WithOptConstParam::unknown(ldid);
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
-        let lsig = *gacx.fn_sigs.get(&ldid.to_def_id()).unwrap();
 
-        let mut acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
 
         let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
             dataflow::generate_constraints(&acx, &mir)
@@ -1614,8 +1613,6 @@ fn print_function_pointee_types<'tcx>(
         }
     }
 }
-
-
 
 /// Return `LocalDefId`s for all `static`s.
 fn all_static_items(tcx: TyCtxt) -> Vec<DefId> {
