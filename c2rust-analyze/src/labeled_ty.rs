@@ -20,7 +20,7 @@ use std::slice;
 /// constructor in the tree can have its own label.  But maintaining a custom copy of
 /// `TyKind` would be annoying, so instead, we let labeled types form arbitrary trees, and
 /// make the `LabeledTyCtxt` responsible for making those trees match the `Ty`'s structure.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LabeledTyS<'tcx, L: 'tcx> {
     /// The underlying type.
     pub ty: Ty<'tcx>,
