@@ -19,7 +19,8 @@ pub enum Constraint<'tcx> {
     AllTypesCompatible(PointerId),
 
     /// The set of types for pointer `.0` must be a subset of the set of types for pointer `.1`.
-    /// This is used for pointer assignments like `p = q`, among other things.
+    /// Among other things, this is used for pointer assignments like `p = q`, where `p`'s types
+    /// must be a subset of `q`'s (`Subset(p_ptr, q_ptr)`).
     Subset(PointerId, PointerId),
 }
 
