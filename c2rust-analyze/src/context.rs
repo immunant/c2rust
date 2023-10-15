@@ -945,12 +945,37 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         }
     }
 
+    /// Returns the [`LTy`] of an [`Rvalue`]
     pub fn type_of_rvalue(&self, rv: &Rvalue<'tcx>, loc: Location) -> LTy<'tcx> {
-        if let Some(&lty) = self.rvalue_tys.get(&loc) {
+        if let Some(lty) = self.rvalue_tys.get(&loc) {
             return lty;
         }
 
         self.derived_type_of_rvalue(rv)
+    }
+
+    /// Returns a boolean indicating whether or
+    /// not the `Rvalue` is a reference or pointer containing a field projection.
+    /// For example, the following [`Rvalue`]s will satisfy that criteria:
+    /// - let r1 = std::ptr::addr_of!(x.field);
+    /// - let r2 = &x.field;
+    /// - let r3 = &(*p).field;
+    /// The following will NOT satisfy that critera:
+    /// - let r1 = x.field;
+    /// - let r2 = x.field + y;
+    pub fn has_field_projection(&self, rv: &Rvalue<'tcx>) -> bool {
+        if let Some(desc) = describe_rvalue(rv) {
+            match desc {
+                RvalueDesc::Project { proj, .. } | RvalueDesc::AddrOfLocal { proj, .. } => {
+                    for p in proj {
+                        if let PlaceElem::Field(..) = p {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// In some cases, we can compute an `LTy` for an `Rvalue` that uses `PointerId`s derived from
@@ -1015,7 +1040,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             }
         }
 
-        match *rv {
+        let ty = match *rv {
             Rvalue::Use(ref op) => self.type_of(op),
             Rvalue::CopyForDeref(pl) => self.type_of(pl),
             Rvalue::Repeat(ref op, _) => {
@@ -1041,7 +1066,9 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             }
             Rvalue::Aggregate(ref _kind, ref _vals) => todo!("type_of Aggregate: rv = {rv:?}"),
             Rvalue::ShallowInitBox(ref _op, _ty) => todo!("type_of ShallowInitBox: rv = {rv:?}"),
-        }
+        };
+
+        ty
     }
 
     pub fn projection_lty(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {

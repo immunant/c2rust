@@ -10,6 +10,9 @@ mod type_check;
 enum Constraint {
     /// Pointer `.0` must have a subset of the permissions of pointer `.1`.
     Subset(PointerId, PointerId),
+    /// Pointer `.0` must have a subset of permissions of pointer `.1`, except
+    /// for the provided permission set.
+    SubsetExcept(PointerId, PointerId, PermissionSet),
     /// Pointer `.0` must have all the permissions in `.1`.
     AllPerms(PointerId, PermissionSet),
     /// Pointer `.0` must not have any of the permissions in `.1`.
@@ -24,6 +27,11 @@ pub struct DataflowConstraints {
 impl DataflowConstraints {
     fn add_subset(&mut self, a: PointerId, b: PointerId) {
         self.constraints.push(Constraint::Subset(a, b));
+    }
+
+    fn add_subset_except(&mut self, a: PointerId, b: PointerId, except: PermissionSet) {
+        self.constraints
+            .push(Constraint::SubsetExcept(a, b, except));
     }
 
     fn add_all_perms(&mut self, ptr: PointerId, perms: PermissionSet) {
@@ -51,10 +59,21 @@ impl DataflowConstraints {
         impl PropagateRules<PermissionSet> for PropagatePerms {
             fn subset(
                 &mut self,
+                a_ptr: PointerId,
+                a_val: &PermissionSet,
+                b_ptr: PointerId,
+                b_val: &PermissionSet,
+            ) -> (PermissionSet, PermissionSet) {
+                self.subset_except(a_ptr, a_val, b_ptr, b_val, PermissionSet::NONE)
+            }
+
+            fn subset_except(
+                &mut self,
                 _a_ptr: PointerId,
                 a_val: &PermissionSet,
                 _b_ptr: PointerId,
                 b_val: &PermissionSet,
+                except: PermissionSet,
             ) -> (PermissionSet, PermissionSet) {
                 let old_a = *a_val;
                 let old_b = *b_val;
@@ -76,8 +95,8 @@ impl DataflowConstraints {
                     | PermissionSet::FREE;
 
                 (
-                    old_a & !(!old_b & PROPAGATE_DOWN),
-                    old_b | (old_a & PROPAGATE_UP),
+                    old_a & !(!old_b & (PROPAGATE_DOWN & !except)),
+                    old_b | (old_a & (PROPAGATE_UP & !except)),
                 )
             }
 
@@ -137,6 +156,18 @@ impl DataflowConstraints {
                         let old_a = xs.get(a);
                         let old_b = xs.get(b);
                         let (new_a, new_b) = rules.subset(a, old_a, b, old_b);
+                        xs.set(a, new_a);
+                        xs.set(b, new_b);
+                    }
+
+                    Constraint::SubsetExcept(a, b, except) => {
+                        if !xs.dirty(a) && !xs.dirty(b) {
+                            continue;
+                        }
+
+                        let old_a = xs.get(a);
+                        let old_b = xs.get(b);
+                        let (new_a, new_b) = rules.subset_except(a, old_a, b, old_b, except);
                         xs.set(a, new_a);
                         xs.set(b, new_b);
                     }
@@ -216,6 +247,18 @@ impl DataflowConstraints {
                 (a_flags, b_flags)
             }
 
+            fn subset_except(
+                &mut self,
+                a_ptr: PointerId,
+                a_val: &FlagSet,
+                b_ptr: PointerId,
+                b_val: &FlagSet,
+                _except: PermissionSet,
+            ) -> (FlagSet, FlagSet) {
+                // Call original subset function
+                self.subset(a_ptr, a_val, b_ptr, b_val)
+            }
+
             fn all_perms(
                 &mut self,
                 _ptr: PointerId,
@@ -248,6 +291,9 @@ impl Constraint {
     pub fn remap_pointers(&mut self, map: PointerTable<PointerId>) {
         *self = match *self {
             Constraint::Subset(a, b) => Constraint::Subset(map[a], map[b]),
+            Constraint::SubsetExcept(a, b, perms) => {
+                Constraint::SubsetExcept(map[a], map[b], perms)
+            }
             Constraint::AllPerms(ptr, perms) => Constraint::AllPerms(map[ptr], perms),
             Constraint::NoPerms(ptr, perms) => Constraint::NoPerms(map[ptr], perms),
         };
@@ -316,6 +362,14 @@ impl<'a, T: PartialEq> TrackedPointerTable<'a, T> {
 
 trait PropagateRules<T> {
     fn subset(&mut self, a_ptr: PointerId, a_val: &T, b_ptr: PointerId, b_val: &T) -> (T, T);
+    fn subset_except(
+        &mut self,
+        a_ptr: PointerId,
+        a_val: &T,
+        b_ptr: PointerId,
+        b_val: &T,
+        except: PermissionSet,
+    ) -> (T, T);
     fn all_perms(&mut self, ptr: PointerId, perms: PermissionSet, val: &T) -> T;
     fn no_perms(&mut self, ptr: PointerId, perms: PermissionSet, val: &T) -> T;
 }
