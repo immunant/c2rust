@@ -383,10 +383,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.visit_place(pl, Mutability::Mut);
                 let pl_lty = self.acx.type_of(pl);
 
-                let (rv_lty, has_field_projection) = self.acx.type_of_rvalue(rv, loc);
+                let rv_lty = self.acx.type_of_rvalue(rv, loc);
                 self.visit_rvalue(rv, rv_lty);
 
-                if has_field_projection {
+                if self.acx.has_field_projection(rv) {
                     // Fields don't get offset permissions propagated to their base pointer
                     self.do_assign_except(
                         pl_lty,
