@@ -121,9 +121,13 @@ pub unsafe extern "C" fn MD5_Update(
             input as *mut libc::c_uchar as *const libc::c_void,
             partLen as libc::c_ulong,
         );
+        // FIXME: buffer_ptr is pulled out to work around an `unlower` bug.  For some reason, rustc
+        // gives the cast the same span as the `as_mut_ptr` call, so the cast doesn't get added to
+        // the unlower map.
+        let buffer_ptr = ((*context).buffer).as_mut_ptr();
         li_MD5Transform(
             ((*context).state).as_mut_ptr(),
-            ((*context).buffer).as_mut_ptr() as *const libc::c_uchar,
+            buffer_ptr as *const libc::c_uchar,
         );
         i = partLen;
         while i.wrapping_add(63 as libc::c_int as libc::c_uint) < inputLen {
