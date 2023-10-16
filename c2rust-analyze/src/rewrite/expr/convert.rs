@@ -142,6 +142,20 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                     self.get_subexpr(ex, 0)
                 }
 
+                mir_op::RewriteKind::RemoveCast => {
+                    // `x as T` -> `x`
+                    match hir_rw {
+                        Rewrite::Identity => {
+                            assert!(matches!(hir_rw, Rewrite::Identity));
+                            self.get_subexpr(ex, 0)
+                        }
+                        // Can happen when attempting to delete a cast adjustment.
+                        Rewrite::Cast(rw, _) => *rw,
+                        Rewrite::RemovedCast(rw) => *rw,
+                        _ => panic!("unexpected hir_rw {hir_rw:?} for RawToRef"),
+                    }
+                }
+
                 mir_op::RewriteKind::RawToRef { mutbl } => {
                     // &raw _ to &_ or &raw mut _ to &mut _
                     match hir_rw {
@@ -246,7 +260,7 @@ fn apply_identity_adjustment<'tcx>(
         Adjust::Deref(_) => Rewrite::Deref(Box::new(rw)),
         Adjust::Borrow(AutoBorrow::Ref(_, mutbl)) => Rewrite::Ref(Box::new(rw), mutbl.into()),
         Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => Rewrite::AddrOf(Box::new(rw), mutbl),
-        Adjust::Pointer(PointerCast::Unsize) => {
+        Adjust::Pointer(PointerCast::Unsize) | Adjust::Pointer(PointerCast::MutToConstPointer) => {
             let target_ty = adjustment.target;
             let print_ty = |ty: Ty<'tcx>| -> String {
                 let printer = FmtPrinter::new(tcx, Namespace::TypeNS);
