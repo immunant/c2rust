@@ -141,8 +141,15 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
 
                 mir_op::RewriteKind::RemoveCast => {
                     // `x as T` -> `x`
-                    assert!(matches!(hir_rw, Rewrite::Identity));
-                    self.get_subexpr(ex, 0)
+                    match hir_rw {
+                        Rewrite::Identity => {
+                            assert!(matches!(hir_rw, Rewrite::Identity));
+                            self.get_subexpr(ex, 0)
+                        }
+                        // Can happen when attempting to delete a cast adjustment.
+                        Rewrite::Cast(rw, _) => *rw,
+                        _ => panic!("unexpected hir_rw {hir_rw:?} for RawToRef"),
+                    }
                 }
 
                 mir_op::RewriteKind::RawToRef { mutbl } => {
@@ -249,14 +256,12 @@ fn apply_identity_adjustment<'tcx>(
         Adjust::Deref(_) => Rewrite::Deref(Box::new(rw)),
         Adjust::Borrow(AutoBorrow::Ref(_, mutbl)) => Rewrite::Ref(Box::new(rw), mutbl.into()),
         Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => Rewrite::AddrOf(Box::new(rw), mutbl),
-        Adjust::Pointer(PointerCast::Unsize) => {
+        Adjust::Pointer(PointerCast::Unsize) |
+        Adjust::Pointer(PointerCast::MutToConstPointer) => {
             let ty = adjustment.target;
             let printer = FmtPrinter::new(tcx, Namespace::TypeNS);
             let s = ty.print(printer).unwrap().into_buffer();
             Rewrite::Cast(Box::new(rw), s)
-        }
-        Adjust::Pointer(PointerCast::MutToConstPointer) => {
-            todo!("MutToConstPointer")
         }
         Adjust::Pointer(cast) => todo!("Adjust::Pointer({:?})", cast),
     }

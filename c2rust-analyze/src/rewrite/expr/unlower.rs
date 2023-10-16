@@ -219,7 +219,9 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             );
         }
         let locs = locs;
+        eprintln!("visit_expr_inner: {:?}: locs = {:?}", ex.span, locs);
         if locs.is_empty() {
+            eprintln!("visit_expr_inner: bail out: expr at {:?} has no locs", ex.span);
             return;
         }
 
@@ -228,8 +230,8 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             info!("locs:");
             for &loc in &locs {
                 self.mir.stmt_at(loc).either(
-                    |stmt| info!("  {:?}: {:?}", locs, stmt),
-                    |term| info!("  {:?}: {:?}", locs, term),
+                    |stmt| info!("  {:?}: {:?}", loc, stmt),
+                    |term| info!("  {:?}: {:?}", loc, term),
                 );
             }
             info!("span = {:?}", ex.span);
@@ -294,6 +296,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                     Some(x @ (_, pl, _)) if is_var(pl) => x,
                     _ => {
                         warn("expected final Assign to store into var");
+                        eprintln!("visit_expr_inner: bail out: expr at {:?} isn't assigned to a var", ex.span);
                         return;
                     }
                 };
