@@ -139,6 +139,12 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                     self.get_subexpr(ex, 0)
                 }
 
+                mir_op::RewriteKind::RemoveCast => {
+                    // `x as T` -> `x`
+                    assert!(matches!(hir_rw, Rewrite::Identity));
+                    self.get_subexpr(ex, 0)
+                }
+
                 mir_op::RewriteKind::RawToRef { mutbl } => {
                     // &raw _ to &_ or &raw mut _ to &mut _
                     match hir_rw {
@@ -248,6 +254,9 @@ fn apply_identity_adjustment<'tcx>(
             let printer = FmtPrinter::new(tcx, Namespace::TypeNS);
             let s = ty.print(printer).unwrap().into_buffer();
             Rewrite::Cast(Box::new(rw), s)
+        }
+        Adjust::Pointer(PointerCast::MutToConstPointer) => {
+            todo!("MutToConstPointer")
         }
         Adjust::Pointer(cast) => todo!("Adjust::Pointer({:?})", cast),
     }

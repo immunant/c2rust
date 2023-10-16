@@ -9,6 +9,7 @@
 
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet};
 use crate::panic_detail;
+use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{PointerId, PointerTable};
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{ty_callee, Callee};
@@ -55,6 +56,8 @@ pub enum RewriteKind {
     MutToImm,
     /// Remove a call to `as_ptr` or `as_mut_ptr`.
     RemoveAsPtr,
+    /// Remove a cast, changing `x as T` to just `x`.
+    RemoveCast,
     /// Replace &raw with & or &raw mut with &mut
     RawToRef { mutbl: bool },
 
@@ -91,6 +94,7 @@ struct ExprRewriteVisitor<'a, 'tcx> {
     acx: &'a AnalysisCtxt<'a, 'tcx>,
     perms: PointerTable<'a, PermissionSet>,
     flags: PointerTable<'a, FlagSet>,
+    pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
     rewrites: &'a mut HashMap<Location, Vec<MirRewrite>>,
     mir: &'a Body<'tcx>,
     loc: Location,
@@ -101,6 +105,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     pub fn new(
         acx: &'a AnalysisCtxt<'a, 'tcx>,
         asn: &'a Assignment,
+        pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
         rewrites: &'a mut HashMap<Location, Vec<MirRewrite>>,
         mir: &'a Body<'tcx>,
     ) -> ExprRewriteVisitor<'a, 'tcx> {
@@ -110,6 +115,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             acx,
             perms,
             flags,
+            pointee_types,
             rewrites,
             mir,
             loc: Location {
@@ -155,6 +161,27 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     #[allow(dead_code)]
     fn _enter_place_pointer<F: FnOnce(&mut Self) -> R, R>(&mut self, i: usize, f: F) -> R {
         self.enter(SubLoc::PlacePointer(i), f)
+    }
+
+    /// Get the pointee type of `lty`.  Returns the inferred pointee type from `self.pointee_types`
+    /// if one is available, or the pointee type as represented in `lty` itself otherwise.  Returns
+    /// `None` if `lty` is not a `RawPtr` or `Ref` type.
+    ///
+    /// TODO: This does not yet have any pointer-to-pointer support.  For example, if `lty` is
+    /// `*mut *mut c_void` where the inner pointer is known to point to `u8`, this method will
+    /// still return `*mut c_void` instead of `*mut u8`.
+    fn pointee_lty(&self, lty: LTy<'tcx>) -> Option<LTy<'tcx>> {
+        if !matches!(lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)) {
+            return None;
+        }
+        debug_assert_eq!(lty.args.len(), 1);
+        let ptr = lty.label;
+        if !ptr.is_none() {
+            if let Some(pointee_lty) = self.pointee_types[ptr].get_sole_lty() {
+                return Some(pointee_lty);
+            }
+        }
+        Some(lty.args[0])
     }
 
     fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
@@ -356,6 +383,38 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             }
             Rvalue::Cast(_kind, ref op, _ty) => {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
+                if let Some(rv_lty) = expect_ty {
+                    let op_lty = self.acx.type_of(op);
+                    let op_pointee = self.pointee_lty(op_lty);
+                    let rv_pointee = self.pointee_lty(rv_lty);
+                    // TODO: Check `pointee_types` recursively to handle pointer-to-pointer cases.
+                    // For example `op_pointee = *mut /*p1*/ c_void` and `rv_pointee = *mut /*p2*/
+                    // c_void`, where `p1` and `p2` both have `pointee_types` entries of `u8`.
+                    let common_pointee = op_pointee.filter(|&x| Some(x) == rv_pointee);
+                    if let Some(pointee_lty) = common_pointee {
+                        let op_desc = type_desc::perms_to_desc_with_pointee(
+                            self.acx.tcx(),
+                            pointee_lty.ty,
+                            op_lty.ty,
+                            self.perms[op_lty.label],
+                            self.flags[op_lty.label],
+                        );
+                        let rv_desc = type_desc::perms_to_desc_with_pointee(
+                            self.acx.tcx(),
+                            pointee_lty.ty,
+                            rv_lty.ty,
+                            self.perms[rv_lty.label],
+                            self.flags[rv_lty.label],
+                        );
+                        eprintln!("Cast with common pointee {:?}:\n  op_desc = {:?}\n  rv_desc = {:?}\n  matches? {}",
+                            pointee_lty, op_desc, rv_desc, op_desc == rv_desc);
+                        if op_desc == rv_desc {
+                            // After rewriting, the input and output types of the cast will be
+                            // identical.  This means we can delete the cast.
+                            self.emit(RewriteKind::RemoveCast);
+                        }
+                    }
+                }
             }
             Rvalue::BinaryOp(_bop, ref ops) => {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(&ops.0, None));
@@ -804,11 +863,12 @@ where
 pub fn gen_mir_rewrites<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,
+    pointee_types: PointerTable<PointeeTypes<'tcx>>,
     mir: &Body<'tcx>,
 ) -> HashMap<Location, Vec<MirRewrite>> {
     let mut out = HashMap::new();
 
-    let mut v = ExprRewriteVisitor::new(acx, asn, &mut out, mir);
+    let mut v = ExprRewriteVisitor::new(acx, asn, pointee_types, &mut out, mir);
 
     for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb.statements.iter().enumerate() {

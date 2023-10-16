@@ -467,10 +467,11 @@ impl<'a, F: FnMut(&str)> RewriteTreeSink<'a, F> {
     fn emit_bytes(&mut self, lo: BytePos, hi: BytePos) -> Result<(), <Self as Sink>::Error> {
         assert!(
             self.file.start_pos <= lo && hi <= self.file.end_pos,
-            "bytes {:?} .. {:?} are out of range for file {:?}",
+            "bytes {:?} .. {:?} are out of range for file {:?} (span = {:?})",
             lo,
             hi,
-            self.file.name
+            self.file.name,
+            Span::new(lo, hi, SyntaxContext::root(), None),
         );
         let src = self
             .file

@@ -694,6 +694,7 @@ fn run(tcx: TyCtxt) {
         let (dataflow, equiv_constraints) = match r {
             Ok(x) => x,
             Err(pd) => {
+                info.acx_data.set(acx.into_data());
                 gacx.mark_fn_failed(ldid.to_def_id(), pd);
                 continue;
             }
@@ -1179,6 +1180,7 @@ fn run(tcx: TyCtxt) {
             let mir = mir.borrow();
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
             let asn = gasn.and(&mut info.lasn);
+            let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
 
             let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
                 if util::has_test_attr(tcx, ldid, TestAttr::SkipRewrite) {
@@ -1189,7 +1191,8 @@ fn run(tcx: TyCtxt) {
                 }
 
                 let hir_body_id = tcx.hir().body_owned_by(ldid);
-                let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
+                let expr_rewrites = rewrite::gen_expr_rewrites(
+                    &acx, &asn, pointee_types, &mir, hir_body_id);
                 let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
                 // Print rewrites
                 let report = func_reports.entry(ldid).or_default();

@@ -57,6 +57,7 @@ define_tests! {
     known_fn,
     offset1,
     offset2,
+    pointee,
     ptrptr1,
     regions_fixed,
     statics,
