@@ -1631,10 +1631,22 @@ impl<'c> Translation<'c> {
                 let (field_entries, contains_va_list) =
                     self.convert_struct_fields(decl_id, fields, platform_byte_size)?;
 
+                println!("field_entries = {field_entries:#?}");
+                println!("ast_context = {:#?}", self.ast_context);
+
+
+                // for f in field_entries {
+                // self.ast_context.resolve_type(f.ty)
+                // }
+
                 let mut derives = vec![];
                 if !contains_va_list {
                     derives.push("Copy");
                     derives.push("Clone");
+                    // WIP: only if possible
+                    // - no unions
+                    // - any other reqs?
+                    derives.push("Debug");
                 };
                 let has_bitfields =
                     fields
@@ -1700,7 +1712,7 @@ impl<'c> Translation<'c> {
                     let outer_struct = mk()
                         .span(span)
                         .pub_()
-                        .call_attr("derive", vec!["Copy", "Clone"])
+                        .call_attr("derive", vec!["Copy", "Clone", "Debug"])
                         .meta_item_attr(AttrStyle::Outer, repr_attr)
                         .struct_item(name, vec![outer_field], true);
 

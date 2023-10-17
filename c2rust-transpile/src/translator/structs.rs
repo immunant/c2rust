@@ -7,7 +7,7 @@ use std::ops::Index;
 
 use super::named_references::NamedReference;
 use super::TranslationError;
-use crate::c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId};
+use crate::c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId, CTypeKind};
 use crate::diagnostics::TranslationResult;
 use crate::translator::{ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
@@ -377,7 +377,19 @@ impl<'a> Translation<'a> {
 
                     field_entries.push(field);
                 }
-                FieldType::Regular { field, .. } => field_entries.push(*field),
+                FieldType::Regular { field, ctype,  .. } => {
+                    let t = self.ast_context.resolve_type(ctype);
+                    match t.kind {
+                        CTypeKind::Struct(s) => {
+                            // WIP: find struct members and recursively check if any are unions
+                        }
+                        CTypeKind::Union(..) => {
+                            println!("found a union. field: {field:?}");
+                        }
+                        _ => {}
+                    }
+                    field_entries.push(*field)
+                },
             }
         }
         Ok((field_entries, contains_va_list))
