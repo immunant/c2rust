@@ -370,9 +370,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         eprintln!("visit_statement({:?})", stmt);
+        /*
         if self.acx.c_void_casts.should_skip_stmt(loc) {
             return;
         }
+        */
 
         let _g = panic_detail::set_current_span(stmt.source_info.span);
 

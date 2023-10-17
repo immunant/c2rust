@@ -186,6 +186,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
     fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         let _g = panic_detail::set_current_span(stmt.source_info.span);
+        eprintln!("mir_op::visit_statement: {:?} @ {:?}: {:?}", loc, stmt.source_info.span, stmt);
         self.loc = loc;
         debug_assert!(self.sub_loc.is_empty());
 
@@ -200,7 +201,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     // TODO: we should probably emit a rewrite here to remove the cast; then when
                     // we implement rewriting of the actual call, it won't need to deal with
                     // additional rewrites at a separate location from the call itself.
-                    return;
+                    //return;
                 }
 
                 let pl_lty = self.acx.type_of(pl);
@@ -346,6 +347,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     /// Visit an `Rvalue`.  If `expect_ty` is `Some`, also emit whatever casts are necessary to
     /// make the `Rvalue` produce a value of type `expect_ty`.
     fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, expect_ty: Option<LTy<'tcx>>) {
+        eprintln!("mir_op::visit_rvalue: {:?}, expect {:?}", rv, expect_ty);
         match *rv {
             Rvalue::Use(ref op) => {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, expect_ty));
