@@ -1193,7 +1193,7 @@ fn run(tcx: TyCtxt) {
                 let hir_body_id = tcx.hir().body_owned_by(ldid);
                 let expr_rewrites = rewrite::gen_expr_rewrites(
                     &acx, &asn, pointee_types, &mir, hir_body_id);
-                let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
+                let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, pointee_types, &mir, ldid);
                 // Print rewrites
                 let report = func_reports.entry(ldid).or_default();
                 writeln!(
@@ -1325,6 +1325,7 @@ fn run(tcx: TyCtxt) {
         let mir = mir.borrow();
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
         let asn = gasn.and(&mut info.lasn);
+        let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
 
         // Print labeling and rewrites for the current function.
 
@@ -1344,7 +1345,7 @@ fn run(tcx: TyCtxt) {
         }
 
         eprintln!("\ntype assignment for {:?}:", name);
-        rewrite::dump_rewritten_local_tys(&acx, &asn, &mir, describe_local);
+        rewrite::dump_rewritten_local_tys(&acx, &asn, pointee_types, &mir, describe_local);
 
         eprintln!();
         if let Some(report) = func_reports.remove(&ldid) {

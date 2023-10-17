@@ -13,7 +13,8 @@ use crate::context::{
     PermissionSet,
 };
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
-use crate::pointer_id::PointerId;
+use crate::pointee_type::PointeeTypes;
+use crate::pointer_id::{PointerId, PointerTable};
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
 use crate::AdtMetadataTable;
@@ -38,13 +39,14 @@ use super::LifetimeName;
 
 /// A label for use with `LabeledTy` to indicate what rewrites to apply at each position in a type.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-struct RewriteLabel<'a> {
+struct RewriteLabel<'tcx> {
     /// Rewrite a raw pointer, whose ownership and quantity have been inferred as indicated.
     ty_desc: Option<(Ownership, Quantity)>,
+    pointee: Option<RwLTy<'tcx>>,
     /// If set, a child or other descendant of this type requires rewriting.
     descendant_has_rewrite: bool,
     /// A lifetime rewrite for a pointer or reference.
-    lifetime: &'a [OriginArg<'a>],
+    lifetime: &'tcx [OriginArg<'tcx>],
 }
 
 type RwLTy<'tcx> = LabeledTy<'tcx, RewriteLabel<'tcx>>;
@@ -104,14 +106,17 @@ fn create_rewrite_label<'tcx>(
 
     RewriteLabel {
         ty_desc,
+        // `pointee` will be set by caller if needed.
+        pointee: None,
         descendant_has_rewrite: descendant_has_rewrite(args, adt_metadata),
         lifetime,
     }
 }
 
-fn relabel_rewrites<'tcx, P, F>(
+fn relabel_rewrites<'tcx, P, F, PT>(
     perms: &P,
     flags: &F,
+    pointee_types: &PT,
     lcx: LabeledTyCtxt<'tcx, RewriteLabel<'tcx>>,
     lty: LTy<'tcx>,
     gacx: &GlobalAnalysisCtxt<'tcx>,
@@ -119,10 +124,20 @@ fn relabel_rewrites<'tcx, P, F>(
 where
     P: Index<PointerId, Output = PermissionSet>,
     F: Index<PointerId, Output = FlagSet>,
+    PT: Index<PointerId, Output = PointeeTypes<'tcx>>,
 {
     lcx.relabel_with_args(lty, &mut |pointer_lty, args| {
         // FIXME: get function lifetime parameters and pass them to this
-        create_rewrite_label(pointer_lty, args, perms, flags, &[], &gacx.adt_metadata)
+        let mut label = create_rewrite_label(pointer_lty, args, perms, flags, &[], &gacx.adt_metadata);
+
+        let ptr = pointer_lty.label;
+        if !ptr.is_none() {
+            if let Some(pointee_lty) = pointee_types[ptr].get_sole_lty() {
+                label.pointee = Some(relabel_rewrites(perms, flags, pointee_types, lcx, pointee_lty, gacx));
+            }
+        }
+
+        label
     })
 }
 
@@ -375,6 +390,7 @@ fn mk_rewritten_ty<'tcx>(
 
 struct HirTyVisitor<'a, 'tcx> {
     asn: &'a Assignment<'a>,
+    pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
     acx: &'a AnalysisCtxt<'a, 'tcx>,
     rw_lcx: LabeledTyCtxt<'tcx, RewriteLabel<'tcx>>,
     mir: &'a Body<'tcx>,
@@ -517,6 +533,7 @@ impl<'tcx, 'a> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
                     let rw_lty = relabel_rewrites(
                         &self.asn.perms(),
                         &self.asn.flags(),
+                        &self.pointee_types,
                         self.rw_lcx,
                         lty,
                         &self.acx.gacx,
@@ -533,6 +550,7 @@ impl<'tcx, 'a> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
 pub fn gen_ty_rewrites<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,
+    pointee_types: PointerTable<PointeeTypes<'tcx>>,
     mir: &Body<'tcx>,
     ldid: LocalDefId,
 ) -> Vec<(Span, Rewrite)> {
@@ -545,6 +563,7 @@ pub fn gen_ty_rewrites<'tcx>(
     let mut v = HirTyVisitor {
         asn,
         acx,
+        pointee_types,
         rw_lcx,
         mir,
         hir_rewrites: Vec::new(),
@@ -769,6 +788,7 @@ pub fn gen_adt_ty_rewrites(
 pub fn dump_rewritten_local_tys<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,
+    pointee_types: PointerTable<PointeeTypes<'tcx>>,
     mir: &Body<'tcx>,
     mut describe_local: impl FnMut(TyCtxt<'tcx>, &LocalDecl) -> String,
 ) {
@@ -778,6 +798,7 @@ pub fn dump_rewritten_local_tys<'tcx>(
         let rw_lty = relabel_rewrites(
             &asn.perms(),
             &asn.flags(),
+            &pointee_types,
             rw_lcx,
             acx.local_tys[local],
             &acx.gacx,
