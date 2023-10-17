@@ -1,5 +1,4 @@
 use super::DataflowConstraints;
-use crate::c_void_casts::{is_c_void_ptr, CVoidCastDirection};
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
 use crate::panic_detail;
 use crate::pointee_type::PointeeTypes;
@@ -158,13 +157,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         // TODO add other dataflow constraints
                     }
                     Some(false) => {
-                        if is_c_void_ptr(self.acx.tcx(), to_lty.ty) {
-                            // allow casts to c_void
-                            self.do_assign_pointer_ids(to_lty.label, from_lty.label);
-                        } else {
-                            self.do_assign_pointer_ids(to_lty.label, from_lty.label);
-                            ::log::warn!("TODO: unsupported ptr-to-ptr cast between pointee types not yet supported as safely transmutable: `{from_ty:?} as {to_ty:?}`");
-                        }
+                        self.do_assign_pointer_ids(to_lty.label, from_lty.label);
+                        ::log::warn!("TODO: unsupported ptr-to-ptr cast between pointee types not yet supported as safely transmutable: `{from_ty:?} as {to_ty:?}`");
                     }
 
                     None => {} // not a ptr cast (no dataflow constraints needed); let rustc typeck this
@@ -377,9 +371,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         eprintln!("visit_statement({:?})", stmt);
-        if self.acx.c_void_casts.should_skip_stmt(loc) {
-            return;
-        }
 
         let _g = panic_detail::set_current_span(stmt.source_info.span);
 
@@ -496,27 +487,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             }
 
             Callee::Malloc | Callee::Calloc => {
-                let out_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                    loc,
-                    CVoidCastDirection::From,
-                    destination,
-                );
-                self.visit_place(out_ptr, Mutability::Mut);
+                self.visit_place(destination, Mutability::Mut);
             }
             Callee::Realloc => {
-                let out_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                    loc,
-                    CVoidCastDirection::From,
-                    destination,
-                );
+                let out_ptr = destination;
                 let in_ptr = args[0]
                     .place()
                     .expect("Casts to/from null pointer are not yet supported");
-                let in_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                    loc,
-                    CVoidCastDirection::To,
-                    in_ptr,
-                );
                 self.visit_place(out_ptr, Mutability::Mut);
                 let pl_lty = self.acx.type_of(out_ptr);
                 assert!(args.len() == 2);
@@ -534,11 +511,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let in_ptr = args[0]
                     .place()
                     .expect("Casts to/from null pointer are not yet supported");
-                let in_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                    loc,
-                    CVoidCastDirection::To,
-                    in_ptr,
-                );
                 self.visit_place(destination, Mutability::Mut);
                 assert!(args.len() == 1);
 
@@ -547,20 +519,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.constraints.add_all_perms(rv_lty.label, perms);
             }
             Callee::Memcpy => {
-                let out_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                    loc,
-                    CVoidCastDirection::From,
-                    destination,
-                );
+                let out_ptr = destination;
 
                 let dest_ptr = args[0]
                     .place()
                     .expect("Casts to/from null pointer are not yet supported");
-                let dest_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                    loc,
-                    CVoidCastDirection::To,
-                    dest_ptr,
-                );
                 self.visit_place(out_ptr, Mutability::Mut);
                 assert!(args.len() == 3);
                 self.visit_place(dest_ptr, Mutability::Mut);
@@ -585,17 +548,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let src_ptr = args[1]
                     .place()
                     .expect("Casts to/from null pointer are not yet supported");
-                let src_ptr_casted_from = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                    loc,
-                    CVoidCastDirection::To,
-                    src_ptr,
-                );
 
                 self.visit_place(out_ptr, Mutability::Mut);
                 let dest_ptr_lty = self.acx.type_of(out_ptr);
                 assert!(args.len() == 3);
-                self.visit_place(src_ptr_casted_from, Mutability::Not);
-                let src_ptr_casted_lty = self.acx.type_of(src_ptr_casted_from);
+                self.visit_place(src_ptr, Mutability::Not);
+                let src_ptr_casted_lty = self.acx.type_of(src_ptr);
 
                 // input needs READ permission
                 let perms = PermissionSet::READ | maybe_offset_perm;
@@ -603,9 +561,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     .add_all_perms(src_ptr_casted_lty.label, perms);
 
                 // Perform a pseudo-assignment for *dest = *src.
-                // We use `src_ptr` instead of `src_ptr_casted_from` because the type that was
-                // casted to the libc::c_void_ptr that `memcpy` takes likely differs from the
-                // type that's pointed to by `dest_ptr`
                 let src_ptr_lty = self.acx.type_of(src_ptr);
                 self.do_equivalence_nested(dest_ptr_lty.args[0], src_ptr_lty.args[0]);
             }
@@ -613,11 +568,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let dest_ptr = args[0]
                     .place()
                     .expect("Casts to/from null pointer are not yet supported");
-                let dest_ptr = self.acx.c_void_casts.get_adjusted_place_or_default_to(
-                    loc,
-                    CVoidCastDirection::To,
-                    dest_ptr,
-                );
                 self.visit_place(destination, Mutability::Mut);
                 assert!(args.len() == 3);
 

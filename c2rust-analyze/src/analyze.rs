@@ -255,9 +255,6 @@ fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>)
                 bb, i, stmt
             );
 
-            // Note we ignore `c_void_casts` here.  It shouldn't affect any of the patterns we're
-            // looking for.
-
             if !pl.is_indirect() {
                 // This is a write directly to `pl.local`.
                 *write_count.entry(pl.local).or_insert(0) += 1;

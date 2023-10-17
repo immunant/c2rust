@@ -17,7 +17,6 @@ extern crate rustc_type_ir;
 
 mod analyze;
 mod borrowck;
-mod c_void_casts;
 mod context;
 mod dataflow;
 mod equiv;
