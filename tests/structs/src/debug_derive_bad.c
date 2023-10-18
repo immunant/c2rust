@@ -1,3 +1,4 @@
+// A struct containing a union is not debuggable
 typedef struct {
     struct {
         struct {
@@ -7,11 +8,6 @@ typedef struct {
             } c;
         } b;
     } a;
-} S1;
-
-typedef struct {
-    int a;
 } S2;
 
-S1 kS1;
 S2 kS2;

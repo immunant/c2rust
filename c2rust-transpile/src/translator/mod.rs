@@ -1628,26 +1628,19 @@ impl<'c> Translation<'c> {
                 }
 
                 // Gather up all the field names and field types
-                let (field_entries, contains_va_list) =
+                let (field_entries, contains_va_list, debuggable) =
                     self.convert_struct_fields(decl_id, fields, platform_byte_size)?;
 
-                println!("field_entries = {field_entries:#?}");
-                println!("ast_context = {:#?}", self.ast_context);
-
-
-                // for f in field_entries {
-                // self.ast_context.resolve_type(f.ty)
-                // }
+                println!("{name} debuggable = {debuggable}");
 
                 let mut derives = vec![];
                 if !contains_va_list {
                     derives.push("Copy");
                     derives.push("Clone");
-                    // WIP: only if possible
-                    // - no unions
-                    // - any other reqs?
-                    derives.push("Debug");
                 };
+                if debuggable {
+                    derives.push("Debug");
+                }
                 let has_bitfields =
                     fields
                         .iter()

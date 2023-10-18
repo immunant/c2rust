@@ -13,6 +13,7 @@ use crate::translator::{ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
 use c2rust_ast_printer::pprust;
+use failure::format_err;
 use syn::{
     self, AttrStyle, BinOp as RBinOp, Expr, ExprAssign, ExprAssignOp, ExprBinary, ExprBlock,
     ExprCast, ExprMethodCall, ExprUnary, Field, Meta, NestedMeta, Stmt, Type,
@@ -276,6 +277,51 @@ impl<'a> Translation<'a> {
         Ok(reorganized_fields)
     }
 
+    // WIP: debuggable if:
+    // - no unions
+    // - any other reqs?
+    fn is_struct_field_debuggable(&self, ctype: CTypeId) -> bool {
+        let ty = self.ast_context.resolve_type(ctype);
+        let debuggable = match ty.kind {
+            CTypeKind::Struct(decl_id) => {
+                let decl = self
+                    .ast_context
+                    .get_decl(&decl_id)
+                    .ok_or_else(|| format_err!("Missing decl {:?}", decl_id)).unwrap();
+                match &decl.kind {
+                    CDeclKind::Struct { fields, .. } => {
+                        // println!("found struct {name:?} with fields {fields:?}");
+                        for field_decl_id in fields.as_ref().unwrap_or(&vec![]) {
+                            let field_decl = self
+                                .ast_context
+                                .get_decl(&field_decl_id)
+                                .ok_or_else(|| format_err!("Missing decl {:?}", field_decl_id)).unwrap();
+                            match &field_decl.kind {
+                                CDeclKind::Field { typ, .. } => {
+                                    // println!("found field {name}");
+                                    let debuggable = self.is_struct_field_debuggable(typ.ctype);
+                                    // println!("{name} debuggable = {debuggable}");
+                                    if !debuggable {
+                                        return false;
+                                    }
+                                }
+                                _ => panic!("not a field"),
+                            }
+                        }
+                        true
+                    }
+                    _ => panic!("not a struct")
+                }
+            }
+            CTypeKind::Union(..) => {
+                false
+            }
+            _ => true
+        };
+
+        debuggable
+    }
+
     /// Here we output a struct derive to generate bitfield data that looks like this:
     ///
     /// ```no_run
@@ -296,7 +342,7 @@ impl<'a> Translation<'a> {
         struct_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
-    ) -> TranslationResult<(Vec<Field>, bool)> {
+    ) -> TranslationResult<(Vec<Field>, bool, bool)> {
         let mut field_entries = Vec::with_capacity(field_ids.len());
         // We need to clobber bitfields in consecutive bytes together (leaving
         // regular fields alone) and add in padding as necessary
@@ -317,6 +363,7 @@ impl<'a> Translation<'a> {
             field_name
         };
 
+        let mut debuggable = true;
         for field_type in reorganized_fields {
             match field_type {
                 FieldType::BitfieldGroup {
@@ -377,22 +424,16 @@ impl<'a> Translation<'a> {
 
                     field_entries.push(field);
                 }
-                FieldType::Regular { field, ctype,  .. } => {
-                    let t = self.ast_context.resolve_type(ctype);
-                    match t.kind {
-                        CTypeKind::Struct(s) => {
-                            // WIP: find struct members and recursively check if any are unions
-                        }
-                        CTypeKind::Union(..) => {
-                            println!("found a union. field: {field:?}");
-                        }
-                        _ => {}
-                    }
+                FieldType::Regular { field,  ctype, .. } => { 
+                    let field_debuggable = self.is_struct_field_debuggable(ctype);
+                    // println!("field_debuggable = {field_debuggable}: {field:?}");
+                    debuggable &= field_debuggable;
                     field_entries.push(*field)
                 },
             }
         }
-        Ok((field_entries, contains_va_list))
+        println!("debuggable = {debuggable}");
+        Ok((field_entries, contains_va_list, debuggable))
     }
 
     /// Here we output a block to generate a struct literal initializer in.
