@@ -307,13 +307,21 @@ impl<S: Sink> Emitter<'_, S> {
                 slf.emit(idx, 0)?;
                 slf.emit_str("]")
             }),
-            Rewrite::SliceTail(ref arr, ref idx) => self.emit_parenthesized(prec > 3, |slf| {
+            Rewrite::SliceRange(ref arr, ref idx1, ref idx2) => self.emit_parenthesized(prec > 3, |slf| {
                 slf.emit(arr, 3)?;
                 slf.emit_str("[")?;
-                // Rather than figure out the right precedence for `..`, just force
-                // parenthesization in this position.
-                slf.emit(idx, 999)?;
-                slf.emit_str(" ..]")
+                if let Some(idx1) = idx1.as_ref() {
+                    // Rather than figure out the right precedence for `..`, just force
+                    // parenthesization in this position.
+                    slf.emit(idx1, 999)?;
+                    slf.emit_str(" ")?;
+                }
+                slf.emit_str("..")?;
+                if let Some(idx2) = idx2.as_ref() {
+                    slf.emit_str(" ")?;
+                    slf.emit(idx2, 999)?;
+                }
+                slf.emit_str("]")
             }),
             Rewrite::Cast(ref rw, ref ty) => self.emit_parenthesized(prec > 1, |slf| {
                 slf.emit(rw, 1)?;

@@ -72,8 +72,8 @@ pub enum Rewrite<S = Span> {
     Deref(Box<Rewrite>),
     /// `arr[idx]`
     Index(Box<Rewrite>, Box<Rewrite>),
-    /// `arr[idx..]`
-    SliceTail(Box<Rewrite>, Box<Rewrite>),
+    /// `arr[idx1..idx2]`.  Both `idx1` and `idx2` are optional.
+    SliceRange(Box<Rewrite>, Option<Box<Rewrite>>, Option<Box<Rewrite>>),
     /// `e as T`
     Cast(Box<Rewrite>, String),
     /// The integer literal `0`.

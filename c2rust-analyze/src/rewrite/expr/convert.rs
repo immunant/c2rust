@@ -129,7 +129,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                     assert!(matches!(hir_rw, Rewrite::Identity));
                     let arr = self.get_subexpr(ex, 0);
                     let idx = Rewrite::Cast(Box::new(self.get_subexpr(ex, 1)), "usize".to_owned());
-                    let elem = Rewrite::SliceTail(Box::new(arr), Box::new(idx));
+                    let elem = Rewrite::SliceRange(Box::new(arr), Some(Box::new(idx)), None);
                     Rewrite::Ref(Box::new(elem), mutbl_from_bool(*mutbl))
                 }
 
