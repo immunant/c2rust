@@ -35,6 +35,7 @@ define_tests! {
     adjust_unsize,
     aggregate1,
     algo_md5,
+    algo_md5_fast,
     alias1,
     alias2,
     alias3,
