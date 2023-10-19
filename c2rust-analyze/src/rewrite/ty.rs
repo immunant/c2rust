@@ -13,7 +13,7 @@ use crate::context::{
     PermissionSet,
 };
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
-use crate::pointee_type::PointeeTypes;
+use crate::pointee_type::{self, PointeeTypes};
 use crate::pointer_id::{PointerId, PointerTable};
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
@@ -31,8 +31,7 @@ use rustc_hir::{Mutability, Node};
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, LocalDecl};
 use rustc_middle::ty::print::{FmtPrinter, Print};
-use rustc_middle::ty::TyKind;
-use rustc_middle::ty::{self, AdtDef, GenericArg, GenericArgKind, List, ReErased, TyCtxt};
+use rustc_middle::ty::{self, AdtDef, GenericArg, GenericArgKind, List, ReErased, TyCtxt, TypeAndMut, TyKind};
 use rustc_span::Span;
 
 use super::LifetimeName;
@@ -129,16 +128,30 @@ where
     lcx.relabel_with_args(lty, &mut |pointer_lty, args| {
         // FIXME: get function lifetime parameters and pass them to this
         let mut label = create_rewrite_label(pointer_lty, args, perms, flags, &[], &gacx.adt_metadata);
-
-        let ptr = pointer_lty.label;
-        if !ptr.is_none() {
-            if let Some(pointee_lty) = pointee_types[ptr].get_sole_lty() {
-                label.pointee = Some(relabel_rewrites(perms, flags, pointee_types, lcx, pointee_lty, gacx));
-            }
-        }
-
+        label.pointee = get_pointee_label(perms, flags, pointee_types, lcx, gacx, pointer_lty.label);
         label
     })
+}
+
+fn get_pointee_label<'tcx, P, F, PT>(
+    perms: &P,
+    flags: &F,
+    pointee_types: &PT,
+    lcx: LabeledTyCtxt<'tcx, RewriteLabel<'tcx>>,
+    gacx: &GlobalAnalysisCtxt<'tcx>,
+    ptr: PointerId,
+) -> Option<RwLTy<'tcx>>
+where
+    P: Index<PointerId, Output = PermissionSet>,
+    F: Index<PointerId, Output = FlagSet>,
+    PT: Index<PointerId, Output = PointeeTypes<'tcx>>,
+{
+    if ptr.is_none() {
+        return None;
+    }
+    let pointee_lty = pointee_types[ptr].get_sole_lty()?;
+    //eprintln!("add pointee {pointee_lty:?} for pointer {ptr:?}");
+    Some(relabel_rewrites(perms, flags, pointee_types, lcx, pointee_lty, gacx))
 }
 
 // Gets the generic type arguments of an HIR type.
@@ -353,6 +366,19 @@ fn mk_rewritten_ty<'tcx>(
 ) -> ty::Ty<'tcx> {
     let tcx = *lcx;
     lcx.rewrite_unlabeled(rw_lty, &mut |ty, args, label| {
+        if let Some(pointee_rw_lty) = label.pointee {
+            let pointee_ty = mk_rewritten_ty(lcx, pointee_rw_lty);
+            let ptr_ty = match *ty.kind() {
+                TyKind::Ref(rg, _, mutbl) => tcx.mk_ty(TyKind::Ref(rg, pointee_ty, mutbl)),
+                TyKind::RawPtr(tm) => tcx.mk_ty(TyKind::RawPtr(TypeAndMut {
+                    ty: pointee_ty,
+                    mutbl: tm.mutbl,
+                })),
+                _ => panic!("non-pointer type {:?} has pointee?", rw_lty),
+            };
+            return ptr_ty;
+        }
+
         let (own, qty) = match label.ty_desc {
             Some(x) => x,
             None => return ty,
@@ -425,7 +451,7 @@ fn rewrite_ty<'tcx>(
     hir_ty: &hir::Ty<'tcx>,
     adt_metadata: &AdtMetadataTable,
 ) {
-    if !rw_lty.ty.is_adt() && rw_lty.label.ty_desc.is_none() && !rw_lty.label.descendant_has_rewrite
+    if !rw_lty.ty.is_adt() && rw_lty.label.ty_desc.is_none() && rw_lty.label.pointee.is_none() && !rw_lty.label.descendant_has_rewrite
     {
         // No rewrites here or in any descendant of this HIR node.
         return;
@@ -446,10 +472,23 @@ fn rewrite_ty<'tcx>(
         }
     };
 
+
     if let Some((own, qty)) = rw_lty.label.ty_desc {
         assert_eq!(hir_args.len(), 1);
 
         let mut rw = Rewrite::Sub(0, hir_args[0].span);
+        // If a different pointee type was inferred, use that type instead of `Sub(0)` in the
+        // rewritten pointer type.
+        if let Some(pointee_rw_lty) = rw_lty.label.pointee {
+            if pointee_rw_lty != rw_lty.args[0] {
+                let pointee_ty = mk_rewritten_ty(rw_lcx, pointee_rw_lty);
+                eprintln!("rewrite_ty: got pointee {pointee_ty:?} for rw_lty {rw_lty:?} at {:?}",
+                    hir_ty.span);
+                let printer = FmtPrinter::new(*rw_lcx, Namespace::TypeNS);
+                let s = pointee_ty.print(printer).unwrap().into_buffer();
+                rw = Rewrite::Print(s);
+            }
+        }
 
         if own == Ownership::Cell {
             rw = Rewrite::TyCtor("core::cell::Cell".into(), vec![rw]);
@@ -480,6 +519,9 @@ fn rewrite_ty<'tcx>(
         };
 
         hir_rewrites.push((hir_ty.span, rw));
+    }
+    if rw_lty.label.pointee.is_some() {
+        assert!(rw_lty.label.ty_desc.is_some());
     }
 
     if let TyKind::Adt(adt_def, substs) = rw_lty.ty.kind() {
@@ -598,14 +640,16 @@ pub fn gen_ty_rewrites<'tcx>(
     {
         let rw_lty =
             rw_lcx.zip_labels_with(lty, &origin_args, &mut |pointer_lty, lifetime_lty, args| {
-                create_rewrite_label(
+                let mut label = create_rewrite_label(
                     pointer_lty,
                     args,
                     &asn.perms(),
                     &asn.flags(),
                     lifetime_lty.label,
                     &acx.gacx.adt_metadata,
-                )
+                );
+                label.pointee = get_pointee_label(&asn.perms(), &asn.flags(), &pointee_types, rw_lcx, &acx.gacx, pointer_lty.label);
+                label
             });
 
         v.handle_ty(rw_lty, hir_ty);
@@ -616,14 +660,16 @@ pub fn gen_ty_rewrites<'tcx>(
             lty_sig.output,
             &output_origin_args,
             &mut |pointer_lty, lifetime_lty, args| {
-                create_rewrite_label(
+                let mut label = create_rewrite_label(
                     pointer_lty,
                     args,
                     &asn.perms(),
                     &asn.flags(),
                     lifetime_lty.label,
                     &acx.gacx.adt_metadata,
-                )
+                );
+                label.pointee = get_pointee_label(&asn.perms(), &asn.flags(), &pointee_types, rw_lcx, &acx.gacx, pointer_lty.label);
+                label
             },
         );
 
@@ -767,6 +813,7 @@ pub fn gen_adt_ty_rewrites(
                     lifetime_lty.label,
                     &gacx.adt_metadata,
                 )
+                // TODO: add pointee handling
             },
         );
 
@@ -794,6 +841,15 @@ pub fn dump_rewritten_local_tys<'tcx>(
 ) {
     let rw_lcx = LabeledTyCtxt::new(acx.tcx());
     for (local, decl) in mir.local_decls.iter_enumerated() {
+        let pointee_expanded_lty = crate::pointee_type::expand_type(acx.lcx(), &pointee_types, acx.local_tys[local]);
+        if pointee_expanded_lty != acx.local_tys[local] {
+            eprintln!(
+                "{:?} ({}): POINTEE EXPANDED: {pointee_expanded_lty:?}",
+                local,
+                describe_local(acx.tcx(), decl),
+            );
+        }
+
         // TODO: apply `Cell` if `addr_of_local` indicates it's needed
         let rw_lty = relabel_rewrites(
             &asn.perms(),
