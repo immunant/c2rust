@@ -330,6 +330,7 @@ impl<S: Sink> Emitter<'_, S> {
                 slf.emit_str(" as ")?;
                 slf.emit(ty, 0)
             }),
+            Rewrite::RemovedCast(ref rw) => self.emit(rw, prec),
             Rewrite::LitZero => self.emit_str("0"),
 
             Rewrite::Print(ref s) => self.emit_str(s),
