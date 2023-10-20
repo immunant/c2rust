@@ -78,10 +78,21 @@ pub enum Rewrite<S = Span> {
     Cast(Box<Rewrite>, String),
     /// The integer literal `0`.
     LitZero,
-    // Function calls
+    /// Function calls
     Call(String, Vec<Rewrite>),
-    // Method calls
+    /// Method calls
     MethodCall(String, Box<Rewrite>, Vec<Rewrite>),
+    /// A block of statements, followed by an optional result expression.  This rewrite inserts a
+    /// semicolon after each statement.
+    Block(Vec<Rewrite>, Option<Box<Rewrite>>),
+    /// A multi-variable `let` binding, like `let (x, y) = (rw0, rw1)`.  Note that this rewrite
+    /// does not include a trailing semicolon.
+    ///
+    /// Since these variable bindings are not hygienic, a `StmtBind` can invalidate the expression
+    /// produced by `Identity` or `Sub` rewrites used later in the same scope.  In general,
+    /// `StmtBind` should only be used inside a `Block`, and `Identity` and `Sub` rewrites should
+    /// not be used later in that block.
+    Let(Vec<(String, Rewrite)>),
 
     // Type builders
     /// Emit a complete pretty-printed type, discarding the original annotation.

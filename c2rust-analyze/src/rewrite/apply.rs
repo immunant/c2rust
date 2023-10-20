@@ -369,6 +369,36 @@ impl<S: Sink> Emitter<'_, S> {
                     Ok(())
                 })
             }
+
+            Rewrite::Block(ref stmts, ref expr) => {
+                self.emit_str("{\n")?;
+                for stmt in stmts {
+                    self.emit_str("    ")?;
+                    self.emit(stmt, 0)?;
+                    self.emit_str(";\n")?;
+                }
+                if let Some(ref expr) = *expr {
+                    self.emit_str("    ")?;
+                    self.emit(expr, 0)?;
+                    self.emit_str("\n")?;
+                }
+                self.emit_str("}")
+            }
+
+            Rewrite::Let(ref vars) => {
+                self.emit_str("let (")?;
+                for (ref name, _) in vars {
+                    self.emit_str(name)?;
+                    self.emit_str(", ")?;
+                }
+                self.emit_str(") = (")?;
+                for (_, ref rw) in vars {
+                    self.emit(rw, 0)?;
+                    self.emit_str(", ")?;
+                }
+                self.emit_str(")")
+            }
+
             Rewrite::TyPtr(ref rw, mutbl) => {
                 match mutbl {
                     Mutability::Not => self.emit_str("*const ")?,
