@@ -154,30 +154,6 @@ impl apply::Sink for FormatterSink<'_, '_> {
     }
 }
 
-fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {
-    eprintln!("building span index for {:?}:", mir.source);
-    let mut span_index_items = Vec::new();
-    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
-        for (i, stmt) in bb_data.statements.iter().enumerate() {
-            let loc = Location {
-                block: bb,
-                statement_index: i,
-            };
-            eprintln!("  {:?}: {:?}", loc, stmt.source_info.span);
-            span_index_items.push((stmt.source_info.span, loc));
-        }
-
-        let loc = Location {
-            block: bb,
-            statement_index: bb_data.statements.len(),
-        };
-        eprintln!("  {:?}: {:?}", loc, bb_data.terminator().source_info.span);
-        span_index_items.push((bb_data.terminator().source_info.span, loc));
-    }
-
-    SpanIndex::new(span_index_items)
-}
-
 pub fn apply_rewrites(tcx: TyCtxt, rewrites: Vec<(Span, Rewrite)>) {
     // TODO: emit new source code properly instead of just printing
     let new_src = apply::apply_rewrites(tcx.sess.source_map(), rewrites);
