@@ -102,6 +102,27 @@ where F: FnMut(&'tcx hir::Expr<'tcx>) -> bool {
             }
         }
 
+        // Check for a cast that's made redundant by an adjustment on the inner expression.
+        if let hir::ExprKind::Cast(src_expr, dest_ty) = ex.kind {
+            let src_adjusts = self.typeck_results.expr_adjustments(src_expr);
+            if let Some(last_adjust) = src_adjusts.last() {
+                if matches!(last_adjust.kind, Adjust::Pointer(_)) {
+                    if last_adjust.target == self.typeck_results.expr_ty(ex) {
+                        // `ex` has the form `x as T`, where `x` has a pointer adjustment and its
+                        // final adjusted type is identical to `T`.  In this case, rustc skips
+                        // generating MIR for this cast.
+                        if (self.filter)(src_expr) {
+                            self.rewrites.push((
+                                ex.span,
+                                Rewrite::Sub(0, src_expr.span),
+                            ));
+                        }
+                    }
+                }
+            }
+
+        }
+
         intravisit::walk_expr(self, ex);
     }
 }
