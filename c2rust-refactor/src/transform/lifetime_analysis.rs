@@ -56,7 +56,7 @@ impl Transform for InstrumentCmd {
     }
 }
 
-/// List of functions we want hooked for the lifetime analyis runtime (see
+/// List of functions we want hooked for the lifetime analysis runtime (see
 /// ../../runtime/src/lib.rs for the implementations of these hooks)
 const HOOK_FUNCTIONS: &[&'static str] = c2rust_analysis_rt::HOOK_FUNCTIONS;
 

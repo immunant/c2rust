@@ -1901,7 +1901,7 @@ class TranslateASTVisitor final
         // Unfortunately, if there are two 'extern' variables in different
         // functions that should be the same at link time, Clang groups them.
         // That is unhelpful for us though, since we need to convert them into
-        // two seperate `extern` blocks.
+        // two separate `extern` blocks.
         if (!VD->isCanonicalDecl() && !VD->isExternC()) {
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {VD->getCanonicalDecl()};
@@ -2201,7 +2201,7 @@ class TranslateASTVisitor final
                          cbor_encode_uint(array, bitWidth);
                      });
 
-        // This might be the only occurence of this type in the translation unit
+        // This might be the only occurrence of this type in the translation unit
         typeEncoder.VisitQualType(t);
 
         return true;

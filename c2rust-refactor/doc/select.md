@@ -775,7 +775,7 @@ which `mark_uses` cannot handle.
 
 For purposes of `mark_callers`, a "use" is a function call (`foo::bar()`) or
 method call (`x.foo()`) expression where the function or method being called is
-one of the marked definitons.
+one of the marked definitions.
 
 ### `mark_arg_uses`
 

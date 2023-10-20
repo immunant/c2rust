@@ -217,7 +217,7 @@ class SpanMerger(Generic[T]):
         self.acc = []
 
     def add(self, span: Span[T]):
-        '''Add `span` to the result sequnece, merging it with the previous span
+        '''Add `span` to the result sequence, merging it with the previous span
         if it overlaps.  In case of overlap, the merged span retains the label
         of the first span provided with `add`.'''
         if len(self.acc) > 0 and span.start <= self.acc[-1].end:

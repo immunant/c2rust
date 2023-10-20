@@ -91,7 +91,7 @@ macro_rules! hook_fn {
     }};
 }
 
-/// List of functions we want hooked for the lifetime analyis runtime.
+/// List of functions we want hooked for the lifetime analysis runtime.
 ///
 /// For functions in [`HOOK_FUNCTIONS`], the tracing passes
 /// the return value of the traced function as the last argument to the trace hook for it.

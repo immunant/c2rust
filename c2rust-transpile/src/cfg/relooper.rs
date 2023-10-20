@@ -308,7 +308,7 @@ impl RelooperState {
             (predecessor_map, strict_reachable_from)
         };
 
-        // Try to match an existing branch point (from the intial C). See `MultipleInfo` for more
+        // Try to match an existing branch point (from the initial C). See `MultipleInfo` for more
         // information on this.
         let mut recognized_c_multiple = false;
         if let Some(ref multiple_info) = self.multiple_info {

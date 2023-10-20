@@ -10,11 +10,11 @@ extern int main(void);
 // External static global definition
 const int visible_everywhere = 9;
 
-// Internal static global defintion
+// Internal static global definition
 static int counter;
 extern int counter;
 
-// Internal static local defintiion
+// Internal static local definition
 int baz(void) {
   static int k = 0;
   counter++;

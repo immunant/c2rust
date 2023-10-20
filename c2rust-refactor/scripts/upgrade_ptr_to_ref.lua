@@ -858,7 +858,7 @@ function Visitor:rewrite_deref_expr(expr, output_slice)
                     expr:to_method_call("as_ptr", {expr})
                 end
 
-                -- For immut refs we skip the superflous as_ref call,
+                -- For immut refs we skip the superfluous as_ref call,
                 -- so we can also skip one of the corresponding derefs
                 if is_mut or cfg:is_box_any() then
                     expr:to_unary("Deref", expr)
@@ -1434,7 +1434,7 @@ function Visitor:flat_map_stmt(stmt, walk)
     -- a = a.offset(x);
     --
     -- where "a" is a mutable slice ref. In particular, we're just looking for the
-    -- offset assignment here (locals handeled elsewhere). We rewrite it to:
+    -- offset assignment here (locals handled elsewhere). We rewrite it to:
     --
     -- {
     --     let tup = a[.unwrap()].split_at_mut(x);

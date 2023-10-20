@@ -160,7 +160,7 @@ impl<'c> Translation<'c> {
         }
     }
 
-    /// Convert an initialization list into an expresion. These initialization lists can be
+    /// Convert an initialization list into an expression. These initialization lists can be
     /// used as array literals, struct literals, and union literals in code.
     pub fn convert_init_list(
         &self,

@@ -4,7 +4,7 @@ in `c2rust-refactor` would insert unnecessary parentheses around (at least) ever
 splice point, and this seemed like the easiest way to clean it up.  The
 approach taken here involves some ugly hacks (see the `ExprKind::Paren` case
 below), so it's probably not suitable for upstreaming in its current form.  I
-think this patch is now obsolete, thanks to improvemens in the `c2rust-refactor`
+think this patch is now obsolete, thanks to improvements in the `c2rust-refactor`
 rewriter, but I'm leaving a copy here anyway in case it turns out to be useful.
 
 

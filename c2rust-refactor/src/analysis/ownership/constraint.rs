@@ -191,7 +191,7 @@ impl<'lty, 'tcx> Perm<'lty> {
         }
     }
 
-    /// Iterater over each atomic (non-`Min`) permission that appears in `self`.
+    /// Iterator over each atomic (non-`Min`) permission that appears in `self`.
     pub fn for_each_atom<F: FnMut(Perm<'lty>)>(&self, callback: &mut F) {
         match *self {
             Perm::Min(ps) => {
@@ -285,7 +285,7 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
         for &(a, b) in other.less.iter() {
             let (a2, b2) = (subst_one(a), subst_one(b));
             debug!(
-                "IMPORT CONSTRANT: {:?} <= {:?} (substituted from {:?} <= {:?})",
+                "IMPORT CONSTRAINT: {:?} <= {:?} (substituted from {:?} <= {:?})",
                 a2, b2, a, b
             );
             self.add(a2, b2);

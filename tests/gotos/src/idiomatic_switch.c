@@ -1,4 +1,4 @@
-// This shoud translate to a straightforward `match`.
+// This should translate to a straightforward `match`.
 int idiomatic_switch(int x) {
 
     switch (1 + x) {
