@@ -1,6 +1,6 @@
 use crate::panic_detail;
 use crate::rewrite::expr::distribute::DistRewrite;
-use crate::rewrite::expr::mir_op;
+use crate::rewrite::expr::mir_op::{self, ZeroizeType};
 use crate::rewrite::expr::unlower::MirOriginDesc;
 use crate::rewrite::Rewrite;
 use assert_matches::assert_matches;
@@ -15,6 +15,14 @@ use rustc_middle::ty::print::{FmtPrinter, Print};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::Span;
 use std::collections::HashMap;
+use std::fmt::Write as _;
+
+
+macro_rules! format_rewrite {
+    ($($args:tt)*) => {
+        Rewrite::Text(format!($($args)*))
+    };
+}
 
 struct ConvertVisitor<'tcx> {
     tcx: TyCtxt<'tcx>,
@@ -163,6 +171,50 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                     }
                 }
 
+                mir_op::RewriteKind::MemcpySafe { elem_size } => {
+                    // `memcpy(dest, src, n)` to a `copy_from_slice` call
+                    assert!(matches!(hir_rw, Rewrite::Identity));
+                    Rewrite::Block(
+                        vec![
+                            Rewrite::Let(vec![
+                                ("dest".into(), self.get_subexpr(ex, 0)),
+                                ("src".into(), self.get_subexpr(ex, 1)),
+                                ("byte_len".into(), self.get_subexpr(ex, 2)),
+                            ]),
+                            Rewrite::Let(vec![
+                                ("n".into(), format_rewrite!("byte_len as usize / {elem_size}")),
+                            ]),
+                            Rewrite::MethodCall(
+                                "copy_from_slice".into(),
+                                Box::new(format_rewrite!("dest[..n]")),
+                                vec![format_rewrite!("&src[..n]")],
+                            ),
+                        ],
+                        Some(Box::new(format_rewrite!("dest"))),
+                    )
+                }
+
+                mir_op::RewriteKind::MemsetZeroize { ref zero_ty, elem_size } => {
+                    // `memcpy(dest, src, n)` to a `copy_from_slice` call
+                    assert!(matches!(hir_rw, Rewrite::Identity));
+                    Rewrite::Block(
+                        vec![
+                            Rewrite::Let(vec![
+                                ("dest".into(), self.get_subexpr(ex, 0)),
+                                ("val".into(), self.get_subexpr(ex, 1)),
+                                ("byte_len".into(), self.get_subexpr(ex, 2)),
+                            ]),
+                            Rewrite::Let(vec![
+                                ("n".into(), format_rewrite!("byte_len as usize / {elem_size}")),
+                            ]),
+                            format_rewrite!("assert_eq!(val, 0, \"non-zero memset NYI\")"),
+                            format_rewrite!("assert_eq!(n, 1, \"multiple-element memset NYI\")"),
+                            Rewrite::Text(generate_zeroize_code(zero_ty, "(*dest)")),
+                        ],
+                        Some(Box::new(format_rewrite!("dest"))),
+                    )
+                },
+
                 mir_op::RewriteKind::CellGet => {
                     // `*x` to `Cell::get(x)`
                     assert!(matches!(hir_rw, Rewrite::Identity));
@@ -288,6 +340,33 @@ fn materialize_adjustments<'tcx>(
         (rw @ Rewrite::MethodCall(..), &[Adjust::Deref(..), Adjust::Borrow(..)]) => rw,
         (rw, &[]) => rw,
         (rw, adjs) => panic!("rewrite {rw:?} and materializations {adjs:?} NYI"),
+    }
+}
+
+/// Generate code to zeroize an instance of `zero_ty` at place `lv`.  Returns an expression of type
+/// `()`, which can be used as a statement by appending a semicolon.
+fn generate_zeroize_code(zero_ty: &ZeroizeType, lv: &str) -> String {
+    match *zero_ty {
+        ZeroizeType::Int => format!("{lv} = 0"),
+        ZeroizeType::Bool => format!("{lv} = false"),
+        ZeroizeType::Iterable(ref elem_zero_ty) => format!("
+            {{
+                for elem in {lv}.iter_mut() {{
+                    {};
+                }}
+            }}
+        ", generate_zeroize_code(elem_zero_ty, "(*elem)")),
+        ZeroizeType::Struct(ref fields) => {
+            eprintln!("zeroize: {} fields on {lv}: {fields:?}", fields.len());
+            let mut s = String::new();
+            write!(s, "{{\n").unwrap();
+            for (name, field_zero_ty) in fields {
+                write!(s, "{};\n",
+                       generate_zeroize_code(field_zero_ty, &format!("{lv}.{name}"))).unwrap();
+            }
+            write!(s, "}}\n").unwrap();
+            s
+        },
     }
 }
 
