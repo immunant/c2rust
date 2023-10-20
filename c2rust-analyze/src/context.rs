@@ -141,6 +141,16 @@ bitflags! {
 impl PermissionSet {
     pub const NONE: Self = Self::empty();
 
+    /// Mask representing all ways of using a pointer.  If a pointer's permissions don't contain
+    /// any of the bits in this mask, then the pointer is unused.
+    pub const USED: Self = Self::from_bits_truncate(
+        Self::READ.bits
+            | Self::WRITE.bits
+            | Self::OFFSET_ADD.bits
+            | Self::OFFSET_SUB.bits
+            | Self::FREE.bits,
+    );
+
     pub const fn union_all<const N: usize>(a: [Self; N]) -> Self {
         let mut this = Self::empty();
         let mut i = 0;
