@@ -1,5 +1,7 @@
-//! Special handling for "two-part address-of" operations, which look like `&x as *const T` or
-//! `&mut x as *mut T`.  The lowering to MIR omits the cast and instead adds a `Borrow(RawPtr)`
+//! Special handling for casts that exist only in the HIR, for which no MIR is emitted by rustc.
+//!
+//! One example is the "two-part address-of" operation, which looks like `&x as *const T` or `&mut
+//! x as *mut T`.  The lowering to MIR omits the cast and instead adds a `Borrow(RawPtr)`
 //! adjustment on `&x`.  This module looks for occurrences of this pattern and generates `Rewrite`s
 //! to remove the cast if the `&x` part is rewritten.
 //!
@@ -16,7 +18,7 @@ use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability, Poi
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::Span;
 
-struct TwoPartAddressOfVisitor<'tcx, F> {
+struct HirOnlyCastVisitor<'tcx, F> {
     tcx: TyCtxt<'tcx>,
     typeck_results: &'tcx TypeckResults<'tcx>,
     filter: F,
@@ -46,7 +48,7 @@ fn match_two_part_address_of<'tcx>(
     Some((cast_expr, expr_mutbl))
 }
 
-impl<'tcx, F> TwoPartAddressOfVisitor<'tcx, F> {
+impl<'tcx, F> HirOnlyCastVisitor<'tcx, F> {
     fn expr_has_address_of_adjustments(
         &self,
         ex: &'tcx hir::Expr<'tcx>,
@@ -71,7 +73,7 @@ impl<'tcx, F> TwoPartAddressOfVisitor<'tcx, F> {
     }
 }
 
-impl<'tcx, F> Visitor<'tcx> for TwoPartAddressOfVisitor<'tcx, F>
+impl<'tcx, F> Visitor<'tcx> for HirOnlyCastVisitor<'tcx, F>
 where
     F: FnMut(&'tcx hir::Expr<'tcx>) -> bool,
 {
@@ -106,16 +108,16 @@ where
     }
 }
 
-/// Generate rewrites that remove the cast portion of each `&x as *const T`, if the `filter`
-/// accepts the subexpression `&x`.
-pub fn remove_two_part_address_of_casts<'tcx>(
+/// Generate rewrites that remove HIR-only casts where the `filter` indicates (by returning `true`)
+/// that the inner expression has rewrites.
+pub fn remove_hir_only_casts<'tcx>(
     tcx: TyCtxt<'tcx>,
     hir_body_id: hir::BodyId,
     filter: impl FnMut(&'tcx hir::Expr<'tcx>) -> bool,
 ) -> Vec<(Span, Rewrite)> {
     let hir = tcx.hir().body(hir_body_id);
     let typeck_results = tcx.typeck_body(hir_body_id);
-    let mut visitor = TwoPartAddressOfVisitor {
+    let mut visitor = HirOnlyCastVisitor {
         tcx,
         typeck_results,
         filter,
