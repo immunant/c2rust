@@ -1,5 +1,4 @@
 use crate::panic_detail;
-use crate::rewrite::build_span_index;
 use crate::rewrite::expr::mir_op::SubLoc;
 use crate::rewrite::span_index::SpanIndex;
 use crate::util;
@@ -671,6 +670,30 @@ fn is_var(pl: mir::Place) -> bool {
 
 fn is_temp_var(mir: &Body, pl: mir::PlaceRef) -> bool {
     pl.projection.len() == 0 && mir.local_kind(pl.local) == mir::LocalKind::Temp
+}
+
+fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {
+    eprintln!("building span index for {:?}:", mir.source);
+    let mut span_index_items = Vec::new();
+    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+        for (i, stmt) in bb_data.statements.iter().enumerate() {
+            let loc = Location {
+                block: bb,
+                statement_index: i,
+            };
+            eprintln!("  {:?}: {:?}", loc, stmt.source_info.span);
+            span_index_items.push((stmt.source_info.span, loc));
+        }
+
+        let loc = Location {
+            block: bb,
+            statement_index: bb_data.statements.len(),
+        };
+        eprintln!("  {:?}: {:?}", loc, bb_data.terminator().source_info.span);
+        span_index_items.push((bb_data.terminator().source_info.span, loc));
+    }
+
+    SpanIndex::new(span_index_items)
 }
 
 /// Builds the *unlowering map*, which maps each piece of the MIR to the HIR `Expr` that was
