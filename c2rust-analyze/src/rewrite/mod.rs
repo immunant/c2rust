@@ -76,6 +76,9 @@ pub enum Rewrite<S = Span> {
     SliceRange(Box<Rewrite>, Option<Box<Rewrite>>, Option<Box<Rewrite>>),
     /// `e as T`
     Cast(Box<Rewrite>, String),
+    /// Placeholder for a redundant cast that has already been removed.  This allows
+    /// `MirRewrite::RemoveCast` to still apply even though the cast is already gone.
+    RemovedCast(Box<Rewrite>),
     /// The integer literal `0`.
     LitZero,
     /// Function calls

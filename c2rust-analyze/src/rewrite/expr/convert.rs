@@ -156,6 +156,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                         }
                         // Can happen when attempting to delete a cast adjustment.
                         Rewrite::Cast(rw, _) => *rw,
+                        Rewrite::RemovedCast(rw) => *rw,
                         _ => panic!("unexpected hir_rw {hir_rw:?} for RawToRef"),
                     }
                 }
@@ -336,8 +337,22 @@ fn materialize_adjustments<'tcx>(
             }
             hir_rw
         }
+        // TODO: ideally we should always materialize all adjustments (removing these special
+        // cases), and use `MirRewrite`s to eliminate any adjustments we no longer need.
         (rw @ Rewrite::Ref(..), &[Adjust::Deref(..), Adjust::Borrow(..)]) => rw,
         (rw @ Rewrite::MethodCall(..), &[Adjust::Deref(..), Adjust::Borrow(..)]) => rw,
+        // The mut-to-const cast should be unneeded once the inner rewrite switches to a safe
+        // reference type appropriate for the pointer's uses.  However, we still want to give
+        // `callback` a chance to remove the cast itself so that if there's a `RemoveCast` rewrite
+        // on this adjustment, we don't get an error about it failing to apply.
+        (rw @ Rewrite::Ref(..), &[Adjust::Pointer(PointerCast::MutToConstPointer)]) => {
+            let mut hir_rw = Rewrite::RemovedCast(Box::new(rw));
+            hir_rw = callback(0, hir_rw);
+            match hir_rw {
+                Rewrite::RemovedCast(rw) => *rw,
+                rw => rw,
+            }
+        }
         (rw, &[]) => rw,
         (rw, adjs) => panic!("rewrite {rw:?} and materializations {adjs:?} NYI"),
     }
