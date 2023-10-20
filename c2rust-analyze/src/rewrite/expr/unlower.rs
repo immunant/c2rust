@@ -2,6 +2,7 @@ use crate::panic_detail;
 use crate::rewrite::expr::mir_op::SubLoc;
 use crate::rewrite::span_index::SpanIndex;
 use crate::util;
+use either::Either;
 use log::*;
 use rustc_hir as hir;
 use rustc_hir::intravisit::{self, Visitor};
@@ -289,25 +290,60 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             _ => {
                 // For all other `ExprKind`s, we expect the last `loc` to be an assignment storing
                 // the final result into a temporary.
-                let (loc, _mir_pl, mir_rv) = match self.get_last_assign(&locs) {
-                    Some(x @ (_, pl, _)) if is_var(pl) => x,
+                let (_mir_pl, mut cursor) = match self.make_visit_expr_cursor(ex, &locs) {
+                    Some(x @ (pl, _)) if is_var(pl) => x,
                     _ => {
                         warn("expected final Assign to store into var");
                         return;
                     }
                 };
-                self.record_desc(loc, &[], ex, MirOriginDesc::StoreIntoLocal);
-                self.visit_expr_rvalue(ex, loc, mir_rv, &locs[..locs.len() - 1]);
+                self.record_desc(cursor.loc, &[], ex, MirOriginDesc::StoreIntoLocal);
+                self.peel_adjustments(ex, &mut cursor);
+                self.record_desc(cursor.loc, &cursor.sub_loc, ex, MirOriginDesc::Expr);
+                self.finish_visit_expr_cursor(ex, cursor);
             }
         }
     }
 
-    fn visit_expr_rvalue(
+    /// Try to create a `VisitExprCursor` from the RHS of statement `locs.last()`.  Returns the LHS
+    /// of the statement and the cursor on success.  Fails (returning `None`) if the statement at
+    /// `locs.last()` is not `StatementKind::Assign` or `TerminatorKind::Call`.
+    fn make_visit_expr_cursor(
+        &self,
+        ex: &'tcx hir::Expr<'tcx>,
+        locs: &'a [Location],
+    ) -> Option<(mir::Place<'tcx>, VisitExprCursor<'a, 'tcx>)> {
+        let (&loc, extra_locs) = locs.split_last()?;
+
+        let (pl, expr_mir) = match self.mir.stmt_at(loc) {
+            Either::Left(stmt) => match stmt.kind {
+                mir::StatementKind::Assign(ref x) => (x.0, ExprMir::Rvalue(&x.1)),
+                _ => return None,
+            },
+            _ => return None,
+        };
+
+        let cursor =
+            VisitExprCursor::new(self.mir, expr_mir, extra_locs, loc, vec![SubLoc::Rvalue]);
+
+        Some((pl, cursor))
+    }
+
+    fn finish_visit_expr_cursor(
         &mut self,
         ex: &'tcx hir::Expr<'tcx>,
-        loc: Location,
-        rv: &'a mir::Rvalue<'tcx>,
-        extra_locs: &[Location],
+        cursor: VisitExprCursor<'_, 'tcx>,
+    ) {
+        // Record entries for temporaries that are buffered in `temp_info`.
+        for (precise_loc, desc) in cursor.temp_info {
+            self.record_desc(precise_loc.loc, &precise_loc.sub, ex, desc);
+        }
+    }
+
+    fn peel_adjustments(
+        &mut self,
+        ex: &'tcx hir::Expr<'tcx>,
+        cursor: &mut VisitExprCursor<'_, 'tcx>,
     ) {
         let _g = panic_detail::set_current_span(ex.span);
 
@@ -315,14 +351,6 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         // `Place` and/or consuming temporary assignments from `extra_locs`.  Once all adjustments
         // have been accounted for, the final remaining `Rvalue` is the `Expr` itself.
         let adjusts = self.typeck_results.expr_adjustments(ex);
-
-        let mut cursor = VisitExprCursor::new(
-            self.mir,
-            ExprMir::from(rv),
-            extra_locs,
-            loc,
-            vec![SubLoc::Rvalue],
-        );
 
         for (i, adjust) in adjusts.iter().enumerate().rev() {
             while cursor.peel_temp().is_some() {
@@ -396,13 +424,6 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         while cursor.peel_temp().is_some() {
             // No-op.  Just loop until we've peeled all temporaries.
         }
-
-        // Record entries for temporaries that are buffered in `temp_info`.
-        for (precise_loc, desc) in cursor.temp_info {
-            self.record_desc(precise_loc.loc, &precise_loc.sub, ex, desc);
-        }
-
-        self.record_desc(cursor.loc, &cursor.sub_loc, ex, MirOriginDesc::Expr);
     }
 
     fn visit_expr_operand(
