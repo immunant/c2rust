@@ -523,7 +523,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let rv_lty = self.acx.type_of(dest_ptr);
 
                 // input needs WRITE permission
-                let perms = PermissionSet::WRITE;
+                let perms = PermissionSet::WRITE | PermissionSet::OFFSET_ADD;
                 self.constraints.add_all_perms(rv_lty.label, perms);
 
                 let src_ptr = args[1]
@@ -537,7 +537,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let src_ptr_casted_lty = self.acx.type_of(src_ptr);
 
                 // input needs READ permission
-                let perms = PermissionSet::READ;
+                let perms = PermissionSet::READ | PermissionSet::OFFSET_ADD;
                 self.constraints
                     .add_all_perms(src_ptr_casted_lty.label, perms);
 
