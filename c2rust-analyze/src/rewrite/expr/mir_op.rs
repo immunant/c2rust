@@ -21,7 +21,7 @@ use rustc_middle::mir::{
 };
 use rustc_middle::ty::print::FmtPrinter;
 use rustc_middle::ty::print::Print;
-use rustc_middle::ty::{Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{ParamEnv, Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
 
@@ -61,6 +61,18 @@ pub enum RewriteKind {
     /// Replace &raw with & or &raw mut with &mut
     RawToRef { mutbl: bool },
 
+    /// Replace a call to `memcpy(dest, src, n)` with a safe copy operation that works on slices
+    /// instead of raw pointers.  `elem_size` is the size of the original, unrewritten pointee
+    /// type, which is used to convert the byte length `n` to an element count.
+    MemcpySafe { elem_size: u64 },
+    /// Replace a call to `memset(ptr, 0, n)` with a safe zeroize operation.  `elem_size` is the
+    /// size of the type being zeroized, which is used to convert the byte length `n` to an element
+    /// count.
+    MemsetZeroize {
+        zero_ty: ZeroizeType,
+        elem_size: u64,
+    },
+
     /// Cast `&T` to `*const T` or `&mut T` to `*mut T`.
     CastRefToRaw { mutbl: bool },
     /// Cast `*const T` to `*mut T` or vice versa.  If `to_mutbl` is true, we are casting to
@@ -82,6 +94,18 @@ pub enum RewriteKind {
     CellFromMut,
     /// `x` to `x.as_ptr()`
     AsPtr,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum ZeroizeType {
+    /// Zeroize by storing the literal `0`.
+    Int,
+    /// Zeroize by storing the literal `false`.
+    Bool,
+    /// Iterate over `x.iter_mut()` and zeroize each element.
+    Iterable(Box<ZeroizeType>),
+    /// Zeroize each named field.
+    Struct(Vec<(String, ZeroizeType)>),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -323,6 +347,81 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 }
                             });
                         }
+                    }
+
+                    Callee::Memcpy => {
+                        self.enter_rvalue(|v| {
+                            // TODO: Only emit `MemcpySafe` if the rewritten argument types and
+                            // pointees are suitable.  Specifically, the `src` and `dest` arguments
+                            // must both be rewritten to safe references, their pointee types must
+                            // be the same, and the pointee type must implement `Copy`.  If these
+                            // conditions don't hold, leave the `memcpy` call intact and emit casts
+                            // back to `void*` on the `dest` and `src` arguments.
+                            let dest_lty = v.acx.type_of(&args[0]);
+                            let dest_pointee = v.pointee_lty(dest_lty);
+                            let src_lty = v.acx.type_of(&args[1]);
+                            let src_pointee = v.pointee_lty(src_lty);
+                            let common_pointee = dest_pointee.filter(|&x| Some(x) == src_pointee);
+                            let pointee_lty = match common_pointee {
+                                Some(x) => x,
+                                // TODO: emit void* casts before bailing out, as described above
+                                None => return,
+                            };
+
+                            let orig_pointee_ty = pointee_lty.ty;
+                            let ty_layout = tcx
+                                .layout_of(ParamEnv::reveal_all().and(orig_pointee_ty))
+                                .unwrap();
+                            let elem_size = ty_layout.layout.size().bytes();
+                            v.emit(RewriteKind::MemcpySafe { elem_size });
+
+                            if !pl_ty.label.is_none() {
+                                if v.perms[pl_ty.label].intersects(PermissionSet::USED) {
+                                    let dest_lty = v.acx.type_of(&args[0]);
+                                    v.emit_cast_lty_lty(dest_lty, pl_ty);
+                                }
+                            }
+                        });
+                    }
+
+                    Callee::Memset => {
+                        self.enter_rvalue(|v| {
+                            // TODO: Only emit `MemsetSafe` if the rewritten argument type and
+                            // pointee are suitable.  Specifically, the `dest` arguments must be
+                            // rewritten to a safe reference type.  If these conditions don't hold,
+                            // leave the `memset` call intact and emit casts back to `void*` on the
+                            // `dest` argument.
+                            let dest_lty = v.acx.type_of(&args[0]);
+                            let dest_pointee = v.pointee_lty(dest_lty);
+                            let pointee_lty = match dest_pointee {
+                                Some(x) => x,
+                                // TODO: emit void* cast before bailing out, as described above
+                                None => return,
+                            };
+
+                            let orig_pointee_ty = pointee_lty.ty;
+                            let ty_layout = tcx
+                                .layout_of(ParamEnv::reveal_all().and(orig_pointee_ty))
+                                .unwrap();
+                            let elem_size = ty_layout.layout.size().bytes();
+
+                            // TODO: use rewritten types here, so that the `ZeroizeType` will
+                            // reflect the actual types and fields after rewriting.
+                            let zero_ty = match ZeroizeType::from_ty(tcx, orig_pointee_ty) {
+                                Some(x) => x,
+                                // TODO: emit void* cast before bailing out, as described above
+                                None => return,
+                            };
+
+                            v.emit(RewriteKind::MemsetZeroize { zero_ty, elem_size });
+
+                            if !pl_ty.label.is_none() {
+                                if v.perms[pl_ty.label].intersects(PermissionSet::USED) {
+                                    let dest_lty = v.acx.type_of(&args[0]);
+                                    v.emit_cast_lty_lty(dest_lty, pl_ty);
+                                }
+                            }
+                        });
                     }
 
                     _ => {}
@@ -573,6 +672,34 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         let flags = self.flags;
         let mut builder = CastBuilder::new(self.acx.tcx(), &perms, &flags, |rk| self.emit(rk));
         builder.build_cast_lty_lty(from_lty, to_lty);
+    }
+}
+
+impl ZeroizeType {
+    fn from_ty<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<ZeroizeType> {
+        Some(match *ty.kind() {
+            TyKind::Int(_) | TyKind::Uint(_) => ZeroizeType::Int,
+            TyKind::Bool => ZeroizeType::Bool,
+            TyKind::Adt(adt_def, substs) => {
+                if !adt_def.is_struct() {
+                    return None;
+                }
+                let variant = adt_def.non_enum_variant();
+                let mut fields = Vec::with_capacity(variant.fields.len());
+                for field in &variant.fields {
+                    let name = field.name.to_string();
+                    let ty = field.ty(tcx, substs);
+                    let zero = ZeroizeType::from_ty(tcx, ty)?;
+                    fields.push((name, zero));
+                }
+                ZeroizeType::Struct(fields)
+            }
+            TyKind::Array(elem_ty, _) => {
+                let elem_zero = ZeroizeType::from_ty(tcx, elem_ty)?;
+                ZeroizeType::Iterable(Box::new(elem_zero))
+            }
+            _ => return None,
+        })
     }
 }
 
