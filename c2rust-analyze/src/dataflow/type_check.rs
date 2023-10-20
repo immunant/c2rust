@@ -148,6 +148,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 match is_transmutable_ptr_cast(from_ty, to_ty) {
                     Some(true) => {
                         // TODO add other dataflow constraints
+                        self.do_assign_pointer_ids(to_lty.label, from_lty.label);
                     }
                     Some(false) => {
                         self.do_assign_pointer_ids(to_lty.label, from_lty.label);
