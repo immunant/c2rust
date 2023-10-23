@@ -13,12 +13,9 @@ unsafe fn memcpy1(dest: *mut (), src: *const ()) {
 unsafe fn remove_cast() {
     let src: u8 = 1;
     let mut dest: u8 = 2;
-    // Note that the pattern `&x as *const T` is special-cased in HIR lowering to produce
-    // `Rvalue::AddressOf` instead of `Rvalue::Cast`, so c2rust-analyze currently doesn't recognize
-    // it as a cast that could be removed.
-    // CHECK: let src_ptr = (&*(&src) as *const u8);
+    // CHECK: let src_ptr = ((&*(&src)));
     let src_ptr = &src as *const u8 as *const ();
-    // CHECK: let dest_ptr = (&mut *(&mut dest) as *mut u8);
+    // CHECK: let dest_ptr = ((&mut *(&mut dest)));
     let dest_ptr = &mut dest as *mut u8 as *mut ();
     memcpy1(dest_ptr, src_ptr);
 }
