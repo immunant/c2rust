@@ -2,7 +2,7 @@ use crate::panic_detail;
 use crate::rewrite::expr::distribute::DistRewrite;
 use crate::rewrite::expr::mir_op;
 use crate::rewrite::expr::unlower::MirOriginDesc;
-use crate::rewrite::Rewrite;
+use crate::rewrite::{LifetimeName, Rewrite};
 use assert_matches::assert_matches;
 use log::*;
 use rustc_hir as hir;
@@ -12,7 +12,7 @@ use rustc_hir::{ExprKind, HirId};
 use rustc_middle::hir::nested_filter;
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, PointerCast};
 use rustc_middle::ty::print::{FmtPrinter, Print};
-use rustc_middle::ty::{TyCtxt, TypeckResults};
+use rustc_middle::ty::{Ty, TyCtxt, TyKind, TypeckResults};
 use rustc_span::Span;
 use std::collections::HashMap;
 
@@ -128,7 +128,10 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                     // `p.offset(i)` -> `&p[i as usize ..]`
                     assert!(matches!(hir_rw, Rewrite::Identity));
                     let arr = self.get_subexpr(ex, 0);
-                    let idx = Rewrite::Cast(Box::new(self.get_subexpr(ex, 1)), "usize".to_owned());
+                    let idx = Rewrite::Cast(
+                        Box::new(self.get_subexpr(ex, 1)),
+                        Box::new(Rewrite::Print("usize".to_owned())),
+                    );
                     let elem = Rewrite::SliceRange(Box::new(arr), Some(Box::new(idx)), None);
                     Rewrite::Ref(Box::new(elem), mutbl_from_bool(*mutbl))
                 }
@@ -244,10 +247,25 @@ fn apply_identity_adjustment<'tcx>(
         Adjust::Borrow(AutoBorrow::Ref(_, mutbl)) => Rewrite::Ref(Box::new(rw), mutbl.into()),
         Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => Rewrite::AddrOf(Box::new(rw), mutbl),
         Adjust::Pointer(PointerCast::Unsize) => {
-            let ty = adjustment.target;
-            let printer = FmtPrinter::new(tcx, Namespace::TypeNS);
-            let s = ty.print(printer).unwrap().into_buffer();
-            Rewrite::Cast(Box::new(rw), s)
+            let target_ty = adjustment.target;
+            let print_ty = |ty: Ty<'tcx>| -> String {
+                let printer = FmtPrinter::new(tcx, Namespace::TypeNS);
+                ty.print(printer).unwrap().into_buffer()
+            };
+            // Use structured rewrites where possible.
+            // TODO: this should operate recursively and handle more cases
+            let ty_rw = match *target_ty.kind() {
+                TyKind::RawPtr(tm) => {
+                    Rewrite::TyPtr(Box::new(Rewrite::Print(print_ty(tm.ty))), tm.mutbl)
+                }
+                TyKind::Ref(_, ty, mutbl) => Rewrite::TyRef(
+                    LifetimeName::Elided,
+                    Box::new(Rewrite::Print(print_ty(ty))),
+                    mutbl,
+                ),
+                _ => Rewrite::Print(print_ty(target_ty)),
+            };
+            Rewrite::Cast(Box::new(rw), Box::new(ty_rw))
         }
         Adjust::Pointer(cast) => todo!("Adjust::Pointer({:?})", cast),
     }
@@ -331,9 +349,16 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
             // `x` to `x.as_ptr()`
             Rewrite::MethodCall("as_ptr".to_string(), Box::new(hir_rw), vec![])
         }
-        mir_op::RewriteKind::CastRawMutToCellPtr { ref ty } => {
-            Rewrite::Cast(Box::new(hir_rw), format!("*const std::cell::Cell<{}>", ty))
-        }
+        mir_op::RewriteKind::CastRawMutToCellPtr { ref ty } => Rewrite::Cast(
+            Box::new(hir_rw),
+            Box::new(Rewrite::TyPtr(
+                Box::new(Rewrite::TyCtor(
+                    "std::cell::Cell".into(),
+                    vec![Rewrite::Print(format!("{}", ty))],
+                )),
+                hir::Mutability::Not,
+            )),
+        ),
 
         _ => panic!(
             "rewrite {:?} is not supported by convert_cast_rewrite",

@@ -75,7 +75,7 @@ pub enum Rewrite<S = Span> {
     /// `arr[idx1..idx2]`.  Both `idx1` and `idx2` are optional.
     SliceRange(Box<Rewrite>, Option<Box<Rewrite>>, Option<Box<Rewrite>>),
     /// `e as T`
-    Cast(Box<Rewrite>, String),
+    Cast(Box<Rewrite>, Box<Rewrite>),
     /// The integer literal `0`.
     LitZero,
     /// Function calls
@@ -212,7 +212,10 @@ mod test {
     }
 
     fn cast_usize(rw: Box<Rewrite>) -> Box<Rewrite> {
-        Box::new(Rewrite::Cast(rw, "usize".to_owned()))
+        Box::new(Rewrite::Cast(
+            rw,
+            Box::new(Rewrite::Print("usize".to_owned())),
+        ))
     }
 
     /// Test precedence handling in `Rewrite::pretty`
