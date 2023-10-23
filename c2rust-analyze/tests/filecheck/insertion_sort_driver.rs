@@ -50,8 +50,8 @@ unsafe fn main_0() -> libc::c_int {
     // CHECK: &mut (arr1) as &mut [i32]
     insertion_sort(3 as libc::c_int, arr1.as_mut_ptr());
     let mut expect1: [libc::c_int; 3] = [1, 2, 3];
-    // CHECK: &mut *((&mut arr1)) as &mut [i32]
-    // CHECK-SAME: &mut (expect1) as &mut [i32]
+    // CHECK: &*((&mut arr1)) as &[i32]
+    // CHECK-SAME: &(expect1) as &[i32]
     check_eq(3 as libc::c_int, (&mut arr1).as_mut_ptr(), expect1.as_mut_ptr());
 
     let mut arr2: [libc::c_int; 7] = [15, 31, 50, 99, 18, 98, 85];

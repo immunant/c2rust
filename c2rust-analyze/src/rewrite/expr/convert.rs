@@ -323,7 +323,7 @@ fn materialize_adjustments<'tcx>(
         // reference type appropriate for the pointer's uses.  However, we still want to give
         // `callback` a chance to remove the cast itself so that if there's a `RemoveCast` rewrite
         // on this adjustment, we don't get an error about it failing to apply.
-        (rw @ Rewrite::Ref(..), &[Adjust::Pointer(PointerCast::MutToConstPointer)]) => {
+        (rw, &[Adjust::Pointer(PointerCast::MutToConstPointer)]) => {
             let mut hir_rw = Rewrite::RemovedCast(Box::new(rw));
             hir_rw = callback(0, hir_rw);
             match hir_rw {
@@ -358,6 +358,10 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
 
         mir_op::RewriteKind::MutToImm => {
             // `p` -> `&*p`
+            let hir_rw = match fold_mut_to_imm(hir_rw) {
+                Ok(folded_rw) => return folded_rw,
+                Err(rw) => rw,
+            };
             let place = Rewrite::Deref(Box::new(hir_rw));
             Rewrite::Ref(Box::new(place), hir::Mutability::Not)
         }
@@ -406,6 +410,38 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
             kind
         ),
     }
+}
+
+/// Try to change `&mut e -> &e` or `&mut e as &mut T -> &e as &T`.  Returns `Ok` on success, or
+/// `Err` with the original rewrite on failure.
+fn fold_mut_to_imm(rw: Rewrite) -> Result<Rewrite, Rewrite> {
+    // TODO: would be nice to make this work recursively through nested deref/ref chains
+    fn check(rw: &Rewrite) -> bool {
+        match *rw {
+            Rewrite::Cast(ref ref_expr, ref ref_ty) => {
+                matches!(**ref_expr, Rewrite::Ref(_, hir::Mutability::Mut))
+                    && matches!(**ref_ty, Rewrite::TyRef(_, _, hir::Mutability::Mut))
+            }
+            Rewrite::Ref(_, hir::Mutability::Mut) => true,
+            _ => false,
+        }
+    }
+    if !check(&rw) {
+        return Err(rw);
+    }
+
+    Ok(match rw {
+        Rewrite::Cast(ref_expr, ref_ty) => {
+            let expr = assert_matches!(*ref_expr, Rewrite::Ref(expr, _) => expr);
+            let (lt, ty) = assert_matches!(*ref_ty, Rewrite::TyRef(lt, ty, _) => (lt, ty));
+            Rewrite::Cast(
+                Box::new(Rewrite::Ref(expr, hir::Mutability::Not)),
+                Box::new(Rewrite::TyRef(lt, ty, hir::Mutability::Not)),
+            )
+        }
+        Rewrite::Ref(expr, hir::Mutability::Mut) => Rewrite::Ref(expr, hir::Mutability::Not),
+        _ => unreachable!(),
+    })
 }
 
 /// Convert the MIR rewrites attached to each HIR node into `Span`-based `rewrite::Rewrite`s.
