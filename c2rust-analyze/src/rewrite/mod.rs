@@ -75,7 +75,7 @@ pub enum Rewrite<S = Span> {
     /// `arr[idx1..idx2]`.  Both `idx1` and `idx2` are optional.
     SliceRange(Box<Rewrite>, Option<Box<Rewrite>>, Option<Box<Rewrite>>),
     /// `e as T`
-    Cast(Box<Rewrite>, String),
+    Cast(Box<Rewrite>, Box<Rewrite>),
     /// Placeholder for a redundant cast that has already been removed.  This allows
     /// `MirRewrite::RemoveCast` to still apply even though the cast is already gone.
     RemovedCast(Box<Rewrite>),
@@ -228,7 +228,7 @@ impl Rewrite {
                 try_subst_option(lo)?,
                 try_subst_option(hi)?,
             ),
-            Cast(ref rw, ref ty) => Cast(try_subst(rw)?, String::clone(ty)),
+            Cast(ref expr, ref ty) => Cast(try_subst(expr)?, try_subst(ty)?),
             RemovedCast(ref rw) => RemovedCast(try_subst(rw)?),
             LitZero => LitZero,
             Call(ref func, ref args) => Call(String::clone(func), try_subst_vec(args)?),
@@ -326,7 +326,7 @@ mod test {
     }
 
     fn cast_usize(rw: Box<Rewrite>) -> Box<Rewrite> {
-        Box::new(Rewrite::Cast(rw, "usize".to_owned()))
+        Box::new(Rewrite::Cast(rw, Box::new(Rewrite::Print("usize".to_owned()))))
     }
 
     /// Test precedence handling in `Rewrite::pretty`

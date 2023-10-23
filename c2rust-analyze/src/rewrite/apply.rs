@@ -326,7 +326,7 @@ impl<S: Sink> Emitter<'_, S> {
             Rewrite::Cast(ref rw, ref ty) => self.emit_parenthesized(prec > 1, |slf| {
                 slf.emit(rw, 1)?;
                 slf.emit_str(" as ")?;
-                slf.emit_str(ty)
+                slf.emit(ty, 0)
             }),
             Rewrite::RemovedCast(ref rw) => self.emit(rw, prec),
             Rewrite::LitZero => self.emit_str("0"),
