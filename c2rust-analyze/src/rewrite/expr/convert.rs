@@ -14,13 +14,15 @@ use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, PointerCast};
 use rustc_middle::ty::print::{FmtPrinter, Print};
 use rustc_middle::ty::{Ty, TyCtxt, TyKind, TypeckResults};
 use rustc_span::Span;
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 
 struct ConvertVisitor<'tcx> {
     tcx: TyCtxt<'tcx>,
     typeck_results: &'tcx TypeckResults<'tcx>,
     mir_rewrites: HashMap<HirId, Vec<DistRewrite>>,
-    rewrites: Vec<(Span, Rewrite)>,
+    rewrites: HashMap<HirId, (Span, Rewrite)>,
+    subsumed_child_rewrites: RefCell<HashSet<HirId>>,
     /// When `true`, any `Expr` where rustc added an implicit adjustment will be rewritten to make
     /// that adjustment explicit.  Any node that emits a non-adjustment rewrite sets this flag when
     /// visiting its children.  This is important to ensure that implicit ref/deref operations are
@@ -95,7 +97,20 @@ impl<'tcx> ConvertVisitor<'tcx> {
             (&Yield(e, _), 0) => e,
             _ => panic!("bad subexpression index {} for {:?}", idx, ex),
         };
-        Rewrite::Sub(idx, sub_ex.span)
+        let rw_sub = Rewrite::Sub(idx, sub_ex.span);
+        if let Some(child_span_rw) = self.rewrites.get(&sub_ex.hir_id) {
+            let child_rw = &child_span_rw.1;
+            if let Some(subst_rw) = child_rw.try_subst(&rw_sub) {
+                eprintln!(
+                    "get_subexpr: substituted {rw_sub:?} into {child_rw:?}, producing {subst_rw:?}"
+                );
+                self.subsumed_child_rewrites
+                    .borrow_mut()
+                    .insert(sub_ex.hir_id);
+                return subst_rw;
+            }
+        }
+        rw_sub
     }
 }
 
@@ -235,7 +250,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                 "rewrite {:?} at {:?} (materialize? {})",
                 hir_rw, callsite_span, self.materialize_adjustments
             );
-            self.rewrites.push((callsite_span, hir_rw));
+            self.rewrites.insert(ex.hir_id, (callsite_span, hir_rw));
         }
     }
 }
@@ -407,7 +422,8 @@ pub fn convert_rewrites(
         tcx,
         typeck_results,
         mir_rewrites,
-        rewrites: Vec::new(),
+        rewrites: HashMap::new(),
+        subsumed_child_rewrites: RefCell::new(HashSet::new()),
         materialize_adjustments: false,
     };
     v.visit_body(hir);
@@ -422,5 +438,10 @@ pub fn convert_rewrites(
         error!("found {} leftover rewrites", count);
     }
 
+    let subsumed = v.subsumed_child_rewrites.into_inner();
     v.rewrites
+        .into_iter()
+        .filter(|&(hir_id, _)| !subsumed.contains(&hir_id))
+        .map(|(_, (span, rw))| (span, rw))
+        .collect()
 }
