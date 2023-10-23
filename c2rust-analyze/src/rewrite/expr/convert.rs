@@ -119,6 +119,11 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
         let mir_rws = self.mir_rewrites.remove(&ex.hir_id).unwrap_or_default();
         let mut mir_rws = &mir_rws as &[_];
 
+        // Emit rewrites on subexpressions up front so we can access them in `get_subexpr`.
+        self.with_materialize_adjustments(mir_rws.len() > 0, |this| {
+            intravisit::walk_expr(this, ex);
+        });
+
         let rewrite_from_mir_rws = |rw: &mir_op::RewriteKind, hir_rw: Rewrite| -> Rewrite {
             // Cases that extract a subexpression are handled here; cases that only wrap the
             // top-level expression (and thus can handle a non-`Identity` `hir_rw`) are handled by
@@ -224,13 +229,6 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
             ));
             hir_rw = rewrite_from_mir_rws(&mir_rw.rw, hir_rw);
         }
-
-        // Emit rewrites on subexpressions first, then emit the rewrite on the expression itself,
-        // if it's nontrivial.
-        let applied_mir_rewrite = !matches!(hir_rw, Rewrite::Identity);
-        self.with_materialize_adjustments(applied_mir_rewrite, |this| {
-            intravisit::walk_expr(this, ex);
-        });
 
         if !matches!(hir_rw, Rewrite::Identity) {
             eprintln!(
