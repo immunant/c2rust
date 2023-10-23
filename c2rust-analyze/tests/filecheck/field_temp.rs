@@ -11,7 +11,7 @@ pub unsafe fn list_get(l: *const MyList, i: usize) -> i32 {
     // FIXME: regression: bad type rewrite; should be:
     // XXXXX: ([[@LINE+2]]: (*l).data): &[i32]
     // CHECK: ([[@LINE+2]]: (*l).data): *mut i32
-    // CHECK: [[@LINE+1]]: (*l).data: &*$e
+    // CHECK: [[@LINE+1]]: (*l).data.offse ... size): &(&(&*$0)[($1 as usize) ..])[0]
     *(*l).data.offset(i as isize)
 }
 

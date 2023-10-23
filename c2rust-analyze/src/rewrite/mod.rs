@@ -134,6 +134,138 @@ impl fmt::Display for Rewrite {
     }
 }
 
+impl Rewrite {
+    /*
+    fn has_sub(&self) -> bool {
+        use self::Rewrite::*;
+        match *self {
+            Identity => false,
+            Sub(..) => true,
+
+            Text(ref _s) => false,
+            Extract(_span) => false,
+
+            Ref(ref rw, _mutbl) => rw.has_sub(),
+            AddrOf(ref rw, _mutbl) => rw.has_sub(),
+            Deref(ref rw) => rw.has_sub(),
+            Index(ref arr, ref idx) => arr.has_sub() || idx.has_sub(),
+            SliceRange(ref arr, ref lo, ref hi) => {
+                arr.has_sub()
+                    || lo.as_ref().map_or(false, |x| x.has_sub()
+                    || hi.as_ref().map_or(false, |x| x.has_sub()
+            },
+            Cast(ref rw, _ty) => rw.has_sub(),
+            RemovedCast(ref rw) => rw.has_sub(),
+            LitZero => false,
+            Call(ref _func, ref args) => args.iter().any(|x| x.has_sub()),
+            MethodCall(ref _func, ref receiver, ref args) => {
+                receiver.has_sub() || args.iter().any(|x| x.has_sub())
+            },
+            Block(ref stmts, ref expr) => {
+                stmts.iter().any(|x| x.has_sub())
+                    || expr.as_ref().map_or(false, |x| x.has_sub()
+            },
+            Let(ref vars) => vars.iter().any(|&(ref _name, ref val)| val.has_sub()),
+
+            Print(ref _s) => false,
+            TyPtr(ref rw, _mutbl) => rw.has_sub(),
+            TyRef(ref lt, ref rw, _mutbl) => rw.has_sub(),
+            TySlice(ref tys) => tys.iter().any(|x| x.has_sub()),
+            TyCtor(ref _name, ref tys) => tys.iter().any(|x| x.has_sub()),
+            _TyGenericParams(ref tys) => tys.iter().any(|x| x.has_sub()),
+            StatiCMut(_mutbl, _span) => false,
+
+            DefineFn { name: _, ref arg_tys, ref return_ty, ref body } => {
+                arg_tys.iter().any(|x| x.has_sub())
+                    || return_ty.as_ref().map_or(false, |x| x.has_sub()
+                    || body.has_sub()
+            },
+            FnArg(_idx) => false,
+        }
+    }
+    */
+
+    /// Try to substitute `subst` for `Rewrite::Identity` anywhere it occurs within `self`.
+    /// Returns `None` if substitution fails; this happens when `self` contains `Rewrite::Sub`.
+    fn try_subst(&self, subst: &Rewrite) -> Option<Rewrite> {
+        use self::Rewrite::*;
+
+        let try_subst = |rw: &Rewrite| -> Option<Box<Rewrite>> {
+            Some(Box::new(rw.try_subst(subst)?))
+        };
+        let try_subst_option = |rw: &Option<Box<Rewrite>>| -> Option<Option<Box<Rewrite>>> {
+            let new_rw = if let Some(rw) = rw.as_ref() {
+                Some(try_subst(rw)?)
+            } else {
+                None
+            };
+            // Outer option indicates success/failure of the rewrite.  Inner option indicates
+            // presence/absence of `rw`.
+            Some(new_rw)
+        };
+        let try_subst_vec = |rws: &[Rewrite]| -> Option<Vec<Rewrite>> {
+            let mut new_rws = Vec::with_capacity(rws.len());
+            for rw in rws {
+                new_rws.push(rw.try_subst(subst)?);
+            }
+            Some(new_rws)
+        };
+
+        Some(match *self {
+            Identity => subst.clone(),
+            Sub(..) => return None,
+
+            Text(ref s) => Text(String::clone(s)),
+            Extract(span) => Extract(span),
+
+            Ref(ref rw, mutbl) => Ref(try_subst(rw)?, mutbl),
+            AddrOf(ref rw, mutbl) => AddrOf(try_subst(rw)?, mutbl),
+            Deref(ref rw) => Deref(try_subst(rw)?),
+            Index(ref arr, ref idx) =>
+                Index(try_subst(arr)?, try_subst(idx)?),
+            SliceRange(ref arr, ref lo, ref hi) => SliceRange(
+                try_subst(arr)?,
+                try_subst_option(lo)?,
+                try_subst_option(hi)?,
+            ),
+            Cast(ref rw, ref ty) => Cast(try_subst(rw)?, String::clone(ty)),
+            RemovedCast(ref rw) => RemovedCast(try_subst(rw)?),
+            LitZero => LitZero,
+            Call(ref func, ref args) => Call(String::clone(func), try_subst_vec(args)?),
+            MethodCall(ref func, ref receiver, ref args) => MethodCall(
+                String::clone(func),
+                try_subst(receiver)?,
+                try_subst_vec(args)?,
+            ),
+            Block(ref stmts, ref expr) => Block(try_subst_vec(stmts)?, try_subst_option(expr)?),
+            Let(ref vars) => {
+                let mut new_vars = Vec::with_capacity(vars.len());
+                for (ref name, ref rw) in vars {
+                    new_vars.push((String::clone(name), rw.try_subst(subst)?));
+                }
+                Let(new_vars)
+            },
+
+            Print(ref s) => Print(String::clone(s)),
+            TyPtr(ref rw, mutbl) => TyPtr(try_subst(rw)?, mutbl),
+            TyRef(ref lt, ref rw, mutbl) => TyRef(LifetimeName::clone(lt), try_subst(rw)?, mutbl),
+            TySlice(ref rw) => TySlice(try_subst(rw)?),
+            TyCtor(ref name, ref tys) => TyCtor(String::clone(name), try_subst_vec(tys)?),
+            _TyGenericParams(ref tys) => _TyGenericParams(try_subst_vec(tys)?),
+            StaticMut(mutbl, span) => StaticMut(mutbl, span),
+
+            DefineFn { ref name, ref arg_tys, ref return_ty, ref body } => DefineFn {
+                name: String::clone(name),
+                arg_tys: try_subst_vec(arg_tys)?,
+                return_ty: try_subst_option(return_ty)?,
+                body: try_subst(body)?,
+            },
+            FnArg(idx) => FnArg(idx),
+        })
+    }
+}
+
+
 struct FormatterSink<'a, 'b>(&'a mut fmt::Formatter<'b>);
 
 impl apply::Sink for FormatterSink<'_, '_> {
