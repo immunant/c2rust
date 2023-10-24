@@ -27,6 +27,7 @@ mod log;
 mod panic_detail;
 mod pointee_type;
 mod pointer_id;
+mod recent_writes;
 mod rewrite;
 mod trivial;
 mod type_desc;
