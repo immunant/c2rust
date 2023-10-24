@@ -150,7 +150,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
             // Cases that extract a subexpression are handled here; cases that only wrap the
             // top-level expression (and thus can handle a non-`Identity` `hir_rw`) are handled by
             // `convert_cast_rewrite`.
-            match rw {
+            match *rw {
                 mir_op::RewriteKind::OffsetSlice { mutbl } => {
                     // `p.offset(i)` -> `&p[i as usize ..]`
                     assert!(matches!(hir_rw, Rewrite::Identity));
@@ -160,7 +160,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                         Box::new(Rewrite::Print("usize".to_owned())),
                     );
                     let elem = Rewrite::SliceRange(Box::new(arr), Some(Box::new(idx)), None);
-                    Rewrite::Ref(Box::new(elem), mutbl_from_bool(*mutbl))
+                    Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
                 }
 
                 mir_op::RewriteKind::RemoveAsPtr => {
@@ -187,16 +187,22 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                     // &raw _ to &_ or &raw mut _ to &mut _
                     match hir_rw {
                         Rewrite::Identity => {
-                            Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(*mutbl))
+                            Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(mutbl))
                         }
                         Rewrite::AddrOf(rw, mutbl) => Rewrite::Ref(rw, mutbl),
                         _ => panic!("unexpected hir_rw {hir_rw:?} for RawToRef"),
                     }
                 }
 
-                mir_op::RewriteKind::MemcpySafe { elem_size } => {
+                mir_op::RewriteKind::MemcpySafe {
+                    elem_size,
+                    dest_single,
+                    src_single,
+                } => {
                     // `memcpy(dest, src, n)` to a `copy_from_slice` call
                     assert!(matches!(hir_rw, Rewrite::Identity));
+                    assert!(!dest_single, "&T -> &[T] conversion for memcpy dest NYI");
+                    assert!(!src_single, "&T -> &[T] conversion for memcpy src NYI");
                     Rewrite::Block(
                         vec![
                             Rewrite::Let(vec![
@@ -221,9 +227,18 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                 mir_op::RewriteKind::MemsetZeroize {
                     ref zero_ty,
                     elem_size,
+                    dest_single,
                 } => {
                     // `memcpy(dest, src, n)` to a `copy_from_slice` call
                     assert!(matches!(hir_rw, Rewrite::Identity));
+                    let zeroize_body = if dest_single {
+                        Rewrite::Text(generate_zeroize_code(zero_ty, "(*dest)"))
+                    } else {
+                        format_rewrite!(
+                            "for i in 0..n {{\n    {};\n}}",
+                            generate_zeroize_code(zero_ty, "(*dest)[i]")
+                        )
+                    };
                     Rewrite::Block(
                         vec![
                             Rewrite::Let(vec![
@@ -236,8 +251,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                                 format_rewrite!("byte_len as usize / {elem_size}"),
                             )]),
                             format_rewrite!("assert_eq!(val, 0, \"non-zero memset NYI\")"),
-                            format_rewrite!("assert_eq!(n, 1, \"multiple-element memset NYI\")"),
-                            Rewrite::Text(generate_zeroize_code(zero_ty, "(*dest)")),
+                            zeroize_body,
                         ],
                         Some(Box::new(format_rewrite!("dest"))),
                     )
