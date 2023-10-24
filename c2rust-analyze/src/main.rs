@@ -55,7 +55,6 @@ use std::str::FromStr;
 use c2rust_pdg::graph::Graphs;
 
 mod borrowck;
-mod c_void_casts;
 mod context;
 mod dataflow;
 mod equiv;
@@ -251,9 +250,6 @@ fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>)
                 "update_pointer_info: visit assignment: {:?}[{}]: {:?}",
                 bb, i, stmt
             );
-
-            // Note we ignore `c_void_casts` here.  It shouldn't affect any of the patterns we're
-            // looking for.
 
             if !pl.is_indirect() {
                 // This is a write directly to `pl.local`.

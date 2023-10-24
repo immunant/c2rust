@@ -644,10 +644,7 @@ pub fn visit_body<'tcx>(
                 statement_index: idx,
             };
             tc.current_location = loc;
-
-            if !acx.c_void_casts.should_skip_stmt(loc) {
-                tc.visit_statement(stmt);
-            }
+            tc.visit_statement(stmt);
         }
 
         tc.current_location = Location {

@@ -216,16 +216,6 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
 
-                if matches!(rv, Rvalue::Cast(..)) && self.acx.c_void_casts.should_skip_stmt(loc) {
-                    // This is a cast to or from `void*` associated with a `malloc`, `free`, or
-                    // other libc call.
-                    //
-                    // TODO: we should probably emit a rewrite here to remove the cast; then when
-                    // we implement rewriting of the actual call, it won't need to deal with
-                    // additional rewrites at a separate location from the call itself.
-                    //return;
-                }
-
                 let pl_lty = self.acx.type_of(pl);
 
                 // FIXME: Needs changes to handle CELL pointers in struct fields.  Suppose `pl` is

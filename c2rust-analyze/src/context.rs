@@ -1,5 +1,4 @@
 use crate::borrowck::{AdtMetadata, FieldMetadata, OriginArg, OriginParam};
-use crate::c_void_casts::CVoidCasts;
 use crate::known_fn::{all_known_fns, KnownFn};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::panic_detail::PanicDetail;
@@ -350,7 +349,6 @@ pub struct AnalysisCtxt<'a, 'tcx> {
     pub local_decls: &'a LocalDecls<'tcx>,
     pub local_tys: IndexVec<Local, LTy<'tcx>>,
     pub addr_of_local: IndexVec<Local, PointerId>,
-    pub c_void_casts: CVoidCasts<'tcx>,
     /// Types for certain [`Rvalue`]s.  Some `Rvalue`s introduce fresh [`PointerId`]s; to keep
     /// those `PointerId`s consistent, the `Rvalue`'s type must be stored rather than recomputed on
     /// the fly.
@@ -392,7 +390,6 @@ pub struct AnalysisCtxtData<'tcx> {
     ptr_info: LocalPointerTable<PointerInfo>,
     local_tys: IndexVec<Local, LTy<'tcx>>,
     addr_of_local: IndexVec<Local, PointerId>,
-    c_void_casts: CVoidCasts<'tcx>,
     rvalue_tys: HashMap<Location, LTy<'tcx>>,
     string_literal_locs: Vec<Location>,
 }
@@ -872,7 +869,6 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             local_decls: &mir.local_decls,
             local_tys: IndexVec::new(),
             addr_of_local: IndexVec::new(),
-            c_void_casts: CVoidCasts::new(mir, tcx),
             rvalue_tys: HashMap::new(),
             string_literal_locs: Default::default(),
         }
@@ -887,7 +883,6 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             ptr_info,
             local_tys,
             addr_of_local,
-            c_void_casts,
             rvalue_tys,
             string_literal_locs,
         } = data;
@@ -897,7 +892,6 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             local_decls: &mir.local_decls,
             local_tys,
             addr_of_local,
-            c_void_casts,
             rvalue_tys,
             string_literal_locs,
         }
@@ -908,7 +902,6 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             ptr_info: self.ptr_info,
             local_tys: self.local_tys,
             addr_of_local: self.addr_of_local,
-            c_void_casts: self.c_void_casts,
             rvalue_tys: self.rvalue_tys,
             string_literal_locs: self.string_literal_locs,
         }
@@ -1111,7 +1104,6 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
             ptr_info,
             local_tys,
             addr_of_local,
-            c_void_casts: _,
             rvalue_tys,
             string_literal_locs: _,
         } = self;
