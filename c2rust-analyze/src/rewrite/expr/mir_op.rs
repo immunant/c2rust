@@ -63,12 +63,13 @@ pub enum RewriteKind {
 
     /// Replace a call to `memcpy(dest, src, n)` with a safe copy operation that works on slices
     /// instead of raw pointers.  `elem_size` is the size of the original, unrewritten pointee
-    /// type, which is used to convert the byte length `n` to an element count.
-    MemcpySafe { elem_size: u64 },
+    /// type, which is used to convert the byte length `n` to an element count.  `dest_single` and
+    /// `src_single` are set when `dest`/`src` is a pointer to a single item rather than a slice.
+    MemcpySafe { elem_size: u64, dest_single: bool, src_single: bool },
     /// Replace a call to `memset(ptr, 0, n)` with a safe zeroize operation.  `elem_size` is the
     /// size of the type being zeroized, which is used to convert the byte length `n` to an element
-    /// count.
-    MemsetZeroize { zero_ty: ZeroizeType, elem_size: u64 },
+    /// count.  `dest_single` is set when `dest` is a pointer to a single item rather than a slice.
+    MemsetZeroize { zero_ty: ZeroizeType, elem_size: u64, dest_single: bool },
 
     /// Cast `&T` to `*const T` or `&mut T` to `*mut T`.
     CastRefToRaw { mutbl: bool },
@@ -376,7 +377,11 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             let ty_layout = tcx.layout_of(
                                 ParamEnv::reveal_all().and(orig_pointee_ty)).unwrap();
                             let elem_size = ty_layout.layout.size().bytes();
-                            v.emit(RewriteKind::MemcpySafe { elem_size });
+                            let dest_single = !v.perms[dest_lty.label]
+                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+                            let src_single = !v.perms[src_lty.label]
+                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+                            v.emit(RewriteKind::MemcpySafe { elem_size, src_single, dest_single });
 
                             if !pl_ty.label.is_none() {
                                 if v.perms[pl_ty.label].intersects(PermissionSet::USED) {
@@ -406,6 +411,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             let ty_layout = tcx.layout_of(
                                 ParamEnv::reveal_all().and(orig_pointee_ty)).unwrap();
                             let elem_size = ty_layout.layout.size().bytes();
+                            let dest_single = !v.perms[dest_lty.label]
+                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
 
                             // TODO: use rewritten types here, so that the `ZeroizeType` will
                             // reflect the actual types and fields after rewriting.
@@ -415,7 +422,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 None => return,
                             };
 
-                            v.emit(RewriteKind::MemsetZeroize { zero_ty, elem_size });
+                            v.emit(RewriteKind::MemsetZeroize { zero_ty, elem_size, dest_single });
 
                             if !pl_ty.label.is_none() {
                                 if v.perms[pl_ty.label].intersects(PermissionSet::USED) {
