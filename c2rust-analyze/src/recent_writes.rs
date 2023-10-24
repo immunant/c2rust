@@ -128,7 +128,8 @@ impl RecentWrites {
 
     /// Get the `Location` of the most recent write to `l` prior to `loc`.  `loc` must be a
     /// location within the block described by this `BlockWrites`.  Returns `None` if there are two
-    /// or more locations that may have written to `l`, or if `l` is uninitialized.
+    /// or more locations that may have written to `l`, if `l` is uninitialized, or if `l` has had
+    /// its address taken.
     pub fn get_write_before(&self, loc: Location, l: Local) -> Option<Location> {
         if self.addr_taken[l] {
             return None;

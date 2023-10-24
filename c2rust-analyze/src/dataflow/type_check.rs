@@ -1,11 +1,15 @@
 use super::DataflowConstraints;
 use crate::context::{AnalysisCtxt, LTy, PermissionSet, PointerId};
 use crate::panic_detail;
+use crate::pointee_type::PointeeTypes;
+use crate::pointer_id::PointerTable;
+use crate::recent_writes::RecentWrites;
 use crate::util::{
     describe_rvalue, is_null_const, is_transmutable_ptr_cast, ty_callee, Callee, RvalueDesc,
     UnknownDefCallee,
 };
 use assert_matches::assert_matches;
+use either::Either;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
     AggregateKind, BinOp, Body, CastKind, Location, Mutability, Operand, Place, PlaceRef,
@@ -30,6 +34,8 @@ use rustc_middle::ty::{SubstsRef, Ty, TyKind};
 struct TypeChecker<'tcx, 'a> {
     acx: &'a AnalysisCtxt<'a, 'tcx>,
     mir: &'a Body<'tcx>,
+    recent_writes: &'a RecentWrites,
+    pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
     /// Subset constraints on pointer permissions.  For example, this contains constraints like
     /// "the `PermissionSet` assigned to `PointerId` `l1` must be a subset of the `PermissionSet`
     /// assigned to `l2`".  See `dataflow::Constraint` for a full description of supported
@@ -522,8 +528,20 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.visit_place(dest_ptr, Mutability::Mut);
                 let rv_lty = self.acx.type_of(dest_ptr);
 
+                // Figure out whether we're copying one element or (possibly) several.
+                let mut maybe_offset_perm = PermissionSet::OFFSET_ADD;
+                let rv_ptr = rv_lty.label;
+                if let Some(pointee_lty) = self.pointee_types[rv_ptr].get_sole_lty() {
+                    if self.operand_is_size_of_t(loc, &args[2], pointee_lty.ty) {
+                        // The size is exactly the (original) size of the pointee type, so this
+                        // `memset` is operating on a single element only.
+                        maybe_offset_perm = PermissionSet::empty();
+                    }
+                }
+                eprintln!("memcpy at {:?} needs offset? {:?}", loc, maybe_offset_perm);
+
                 // input needs WRITE permission
-                let perms = PermissionSet::WRITE | PermissionSet::OFFSET_ADD;
+                let perms = PermissionSet::WRITE | maybe_offset_perm;
                 self.constraints.add_all_perms(rv_lty.label, perms);
 
                 let src_ptr = args[1]
@@ -537,7 +555,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let src_ptr_casted_lty = self.acx.type_of(src_ptr);
 
                 // input needs READ permission
-                let perms = PermissionSet::READ | PermissionSet::OFFSET_ADD;
+                let perms = PermissionSet::READ | maybe_offset_perm;
                 self.constraints
                     .add_all_perms(src_ptr_casted_lty.label, perms);
 
@@ -553,7 +571,20 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 assert!(args.len() == 3);
 
                 let rv_lty = self.acx.type_of(dest_ptr);
-                let perms = PermissionSet::WRITE;
+
+                // Figure out whether we're writing to one element or (possibly) several.
+                let mut maybe_offset_perm = PermissionSet::OFFSET_ADD;
+                let rv_ptr = rv_lty.label;
+                if let Some(pointee_lty) = self.pointee_types[rv_ptr].get_sole_lty() {
+                    if self.operand_is_size_of_t(loc, &args[2], pointee_lty.ty) {
+                        // The size is exactly the (original) size of the pointee type, so this
+                        // `memset` is operating on a single element only.
+                        maybe_offset_perm = PermissionSet::empty();
+                    }
+                }
+                eprintln!("memset at {:?} needs offset? {:?}", loc, maybe_offset_perm);
+
+                let perms = PermissionSet::WRITE | maybe_offset_perm;
                 self.constraints.add_all_perms(rv_lty.label, perms);
 
                 // TODO: the return values of `memcpy` are rarely used
@@ -600,15 +631,81 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         let output_lty = sig.output;
         self.do_assign(dest_lty, output_lty);
     }
+
+    /// Check whether the value of `op` at `loc` is equal to `mem::size_of::<ty>`.  Returns true if
+    /// the value is definitely equal, or false if unsure.
+    fn operand_is_size_of_t(&self, loc: Location, op: &Operand<'tcx>, ty: Ty<'tcx>) -> bool {
+        let tcx = self.acx.tcx();
+        let mut loc = loc;
+        let mut op = op;
+        loop {
+            let pl = match *op {
+                Operand::Copy(pl) | Operand::Move(pl) => pl,
+
+                // TODO: handle the case where `size_of` has already been const-evaluated
+                Operand::Constant(_) => return false,
+            };
+
+            if pl.projection.len() > 0 {
+                return false;
+            }
+            let l = pl.local;
+            let write_loc = match self.recent_writes.get_write_before(loc, l) {
+                Some(x) => x,
+                None => return false,
+            };
+
+            match self.mir.stmt_at(write_loc) {
+                Either::Left(stmt) => {
+                    if let StatementKind::Assign(ref x) = stmt.kind {
+                        match x.1 {
+                            Rvalue::Use(ref rhs_op) => {
+                                loc = write_loc;
+                                op = rhs_op;
+                                continue;
+                            },
+                            Rvalue::Cast(CastKind::Misc, ref rhs_op, _) => {
+                                // Allow casting from `usize` to `size_t`, for example.
+                                //
+                                // Note: we currently don't check that the cast preserves the
+                                // actual value, so we might wrongly return `true` in some
+                                // pathological cases like `size_of::<BigStruct>() as u8`.
+                                loc = write_loc;
+                                op = rhs_op;
+                                continue;
+                            },
+                            _ => {},
+                        }
+                    }
+                },
+                Either::Right(term) => {
+                    if let TerminatorKind::Call { ref func, .. } = term.kind {
+                        let func_ty = func.ty(self.mir, tcx);
+                        let callee = ty_callee(tcx, func_ty);
+                        if let Callee::SizeOf { ty: call_ty } = callee {
+                            if call_ty == ty {
+                                return true;
+                            }
+                        }
+                    }
+                },
+            }
+            return false;
+        }
+    }
 }
 
 pub fn visit<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     mir: &Body<'tcx>,
+    recent_writes: &RecentWrites,
+    pointee_types: PointerTable<PointeeTypes<'tcx>>,
 ) -> (DataflowConstraints, Vec<(PointerId, PointerId)>) {
     let mut tc = TypeChecker {
         acx,
         mir,
+        recent_writes,
+        pointee_types,
         constraints: DataflowConstraints::default(),
         equiv_constraints: Vec::new(),
     };

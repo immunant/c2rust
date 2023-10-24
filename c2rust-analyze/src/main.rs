@@ -691,9 +691,11 @@ fn run(tcx: TyCtxt) {
         let mir = mir.borrow();
 
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+        let recent_writes = info.recent_writes.get();
+        let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
 
         let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
-            dataflow::generate_constraints(&acx, &mir)
+            dataflow::generate_constraints(&acx, &mir, recent_writes, pointee_types)
         }));
 
         let (dataflow, equiv_constraints) = match r {
