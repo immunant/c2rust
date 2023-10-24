@@ -27,6 +27,7 @@ use crate::log::init_logger;
 use crate::panic_detail::PanicDetail;
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{GlobalPointerTable, LocalPointerTable, PointerTable};
+use crate::recent_writes::RecentWrites;
 use crate::type_desc::Ownership;
 use crate::util::{Callee, TestAttr};
 use ::log::warn;
@@ -64,6 +65,7 @@ mod log;
 mod panic_detail;
 mod pointee_type;
 mod pointer_id;
+mod recent_writes;
 mod rewrite;
 mod trivial;
 mod type_desc;
@@ -489,6 +491,8 @@ fn run(tcx: TyCtxt) {
         pointee_constraints: MaybeUnset<pointee_type::ConstraintSet<'tcx>>,
         /// Local part of pointee type sets.
         local_pointee_types: MaybeUnset<LocalPointerTable<PointeeTypes<'tcx>>>,
+        /// Table for looking up the most recent write to a given local.
+        recent_writes: MaybeUnset<RecentWrites>,
     }
 
     // Follow a postorder traversal, so that callers are visited after their callees.  This means
@@ -609,6 +613,7 @@ fn run(tcx: TyCtxt) {
         info.acx_data.set(acx.into_data());
         info.pointee_constraints.set(pointee_constraints);
         info.local_pointee_types.set(local_pointee_types);
+        info.recent_writes.set(RecentWrites::new(&mir));
         func_info.insert(ldid, info);
     }
 
