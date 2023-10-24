@@ -596,6 +596,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             self.visit_operand(dest)
                         });
                     }
+                    Callee::SizeOf { .. } => {}
                     Callee::IsNull => {
                         let _rv_lty = assert_matches!(&args[..], [p] => {
                             self.visit_operand(p)

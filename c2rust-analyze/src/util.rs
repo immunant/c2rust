@@ -3,7 +3,7 @@ use crate::trivial::IsTrivial;
 use rustc_ast::ast::AttrKind;
 use rustc_const_eval::interpret::Scalar;
 use rustc_hir::def::DefKind;
-use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_hir::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX};
 use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Body, Constant, Field, Local, Location, Mutability, Operand, Place,
     PlaceElem, PlaceRef, ProjectionElem, Rvalue, Statement, StatementKind,
@@ -191,6 +191,9 @@ pub enum Callee<'tcx> {
 
     /// core::ptr::is_null
     IsNull,
+
+    /// `core::mem::size_of<T>`
+    SizeOf { ty: Ty<'tcx> },
 }
 
 pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
@@ -202,10 +205,10 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
 
     match *ty.kind() {
         ty::FnDef(def_id, substs) => {
-            if is_trivial() {
-                Callee::Trivial
-            } else if let Some(callee) = builtin_callee(tcx, def_id, substs) {
+            if let Some(callee) = builtin_callee(tcx, def_id, substs) {
                 callee
+            } else if is_trivial() {
+                Callee::Trivial
             } else {
                 let is_foreign = tcx.def_kind(tcx.parent(def_id)) == DefKind::ForeignMod;
                 if !def_id.is_local() || is_foreign {
@@ -338,6 +341,26 @@ fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, did: DefId, substs: SubstsRef<'tcx>) 
                 _ => return None,
             };
             Some(Callee::IsNull)
+        }
+
+        "size_of" => {
+            // The `core::mem::size_of` function.
+            let parent_did = tcx.parent(did);
+            if tcx.def_kind(parent_did) != DefKind::Mod {
+                return None;
+            }
+            if tcx.item_name(parent_did).as_str() != "mem" {
+                return None;
+            }
+            let grandparent_did = tcx.parent(parent_did);
+            if grandparent_did.index != CRATE_DEF_INDEX {
+                return None;
+            }
+            if tcx.crate_name(grandparent_did.krate).as_str() != "core" {
+                return None;
+            }
+            let ty = substs.type_at(0);
+            Some(Callee::SizeOf { ty })
         }
 
         _ => {

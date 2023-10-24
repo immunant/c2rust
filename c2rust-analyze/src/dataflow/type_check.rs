@@ -611,6 +611,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // let pl_lty = self.acx.type_of(out_ptr);
                 // self.do_equivalence_nested(pl_lty, rv_lty);
             }
+            Callee::SizeOf { .. } => {}
             Callee::IsNull => {
                 assert!(args.len() == 1);
                 self.visit_operand(&args[0]);
