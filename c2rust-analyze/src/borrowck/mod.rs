@@ -1,10 +1,11 @@
 use self::atoms::{AllFacts, AtomMaps, Origin, Output, SubPoint};
+use crate::context;
+use crate::context::AdtMetadataTable;
 use crate::context::{AnalysisCtxt, PermissionSet};
 use crate::dataflow::DataflowConstraints;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::PointerTableMut;
 use crate::util::{describe_rvalue, RvalueDesc};
-use crate::AdtMetadataTable;
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{Body, LocalKind, Place, StatementKind, START_BLOCK};
@@ -119,7 +120,7 @@ pub fn borrowck_mir<'tcx>(
     hypothesis: &mut PointerTableMut<PermissionSet>,
     name: &str,
     mir: &Body<'tcx>,
-    field_ltys: HashMap<DefId, crate::LTy<'tcx>>,
+    field_ltys: HashMap<DefId, context::LTy<'tcx>>,
 ) {
     let mut i = 0;
     loop {
@@ -198,7 +199,7 @@ fn run_polonius<'tcx>(
     hypothesis: &PointerTableMut<PermissionSet>,
     name: &str,
     mir: &Body<'tcx>,
-    field_ltys: &HashMap<DefId, crate::LTy<'tcx>>,
+    field_ltys: &HashMap<DefId, context::LTy<'tcx>>,
 ) -> (AllFacts, AtomMaps<'tcx>, Output) {
     let tcx = acx.tcx();
     let mut facts = AllFacts::default();
@@ -391,7 +392,7 @@ fn assign_origins<'tcx>(
     _facts: &mut AllFacts,
     maps: &mut AtomMaps<'tcx>,
     adt_metadata: &AdtMetadataTable<'tcx>,
-    lty: crate::LTy<'tcx>,
+    lty: context::LTy<'tcx>,
 ) -> LTy<'tcx> {
     ltcx.relabel(lty, &mut |lty| {
         let perm = if lty.label.is_none() {
