@@ -31,11 +31,14 @@ impl SysRoot {
             .split(|c| c.is_ascii_whitespace())
             .next()
             .unwrap_or_default();
-        let path = if cfg!(unix) {
+        #[cfg(unix)]
+        let path = {
             use std::os::unix::ffi::OsStrExt;
 
             OsStr::from_bytes(path)
-        } else {
+        };
+        #[cfg(not(unix))]
+        let path = {
             // Windows is hard, so just require UTF-8
             let path = str::from_utf8(path).expect("`rustc --print sysroot` is not UTF-8");
             OsStr::new(path)
