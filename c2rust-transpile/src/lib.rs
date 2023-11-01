@@ -264,7 +264,7 @@ pub fn transpile(tcfg: TranspilerConfig, source_or_cc_db: &Path, extra_clang_arg
         let temp_json_content = format!("[{}]", temp_json.join(","));
         fs::File::create(temp_json_path.clone())
             .and_then(|mut f| f.write_all(temp_json_content.as_bytes()))
-            .expect("Failed to create temp json");
+            .expect("Failed to create temporary compile_commands.json");
 
         temp_json_path
     } else {
