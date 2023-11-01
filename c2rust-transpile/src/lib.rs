@@ -230,45 +230,59 @@ fn get_module_name(
 pub fn transpile(tcfg: TranspilerConfig, source_or_cc_db: &Path, extra_clang_args: &[&str]) {
     diagnostics::init(tcfg.enabled_warnings.clone(), tcfg.log_level);
 
+    let build_dir = get_build_dir(&tcfg, source_or_cc_db);
     let mut temp_json_path = std::env::temp_dir();
     temp_json_path.push("compile_commands.json");
 
-    let build_dir = get_build_dir(&tcfg, source_or_cc_db);
-
     let ext = source_or_cc_db.extension().unwrap_or_default();
     let is_c_or_h_file = ext == "c" || ext == "h";
+    let is_wildcard = source_or_cc_db
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .contains('*');
 
-    let cc_db = if is_c_or_h_file {
-        let mut temp_json = Vec::new();
+    let format_compile_command = |build_dir: &Path, file_path: &Path| -> String {
+        format!(
+            r#"{{
+                "directory": "{}",
+                "command": "clang {}",
+                "file": "{}"
+            }}"#,
+            build_dir.to_str().unwrap(),
+            file_path.to_str().unwrap(),
+            file_path.to_str().unwrap()
+        )
+    };
+
+    let mut temp_json = Vec::new();
+    if is_c_or_h_file {
+        let command = format_compile_command(&build_dir, source_or_cc_db);
+        temp_json.push(command);
+    } else if is_wildcard {
         for entry in read_dir(build_dir.clone()).unwrap() {
             if let Ok(entry) = entry {
                 let path = entry.path();
                 let ext = path.extension().unwrap_or_default();
                 if ext == "c" || ext == "h" {
-                    let command = format!(
-                        r#"{{
-                            "directory": "{}",
-                            "command": "clang {}",
-                            "file": "{}"
-                        }}"#,
-                        build_dir.to_str().unwrap(),
-                        path.to_str().unwrap(),
-                        path.to_str().unwrap()
-                    );
-
+                    let command = format_compile_command(&build_dir, &path);
                     temp_json.push(command);
                 }
             }
         }
+    }
 
+    if !temp_json.is_empty() {
         let temp_json_content = format!("[{}]", temp_json.join(","));
         fs::File::create(temp_json_path.clone())
             .and_then(|mut f| f.write_all(temp_json_content.as_bytes()))
             .expect("Failed to create temporary compile_commands.json");
+    }
 
-        temp_json_path
+    let cc_db = if !temp_json.is_empty() {
+        Path::new(&temp_json_path)
     } else {
-        source_or_cc_db.to_path_buf()
+        source_or_cc_db
     };
 
     let lcmds = get_compile_commands(&cc_db, &tcfg.filter).unwrap_or_else(|_| {
