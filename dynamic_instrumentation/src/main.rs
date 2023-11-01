@@ -203,8 +203,9 @@ const METADATA_VAR: &str = "C2RUST_INSTRUMENT_METADATA_PATH";
 
 /// Read a [`PathBuf`] from the [`mod@env`]ironment that should've been set by the [`cargo_wrapper`].
 fn env_path_from_wrapper(var: &str) -> anyhow::Result<PathBuf> {
-    let path = env::var_os(var)
-        .ok_or_else(|| anyhow!("the `cargo` wrapper should've `${var}` for the `rustc` wrapper"))?;
+    let path = env::var_os(var).ok_or_else(|| {
+        anyhow!("the `cargo` wrapper should've set `${{${var}}}` for the `rustc` wrapper")
+    })?;
     Ok(path.into())
 }
 
@@ -253,7 +254,7 @@ fn bin_crate_name() -> Option<PathBuf> {
 /// it doesn't specify `--target`.
 ///
 /// This would work more robustly if we were also instrumenting dependencies,
-/// as our currently solution would no longer work, but we aren't.
+/// as our current solution would no longer work, but we aren't.
 ///
 /// On the other hand, the `--target` solution has a drawback
 /// in that there are many ways to specify the target:
