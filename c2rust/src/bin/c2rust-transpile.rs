@@ -84,9 +84,9 @@ struct Args {
     #[clap(long = "ddebug-labels")]
     debug_labels: bool,
 
-    /// Input compile_commands.json file
+    /// Input compile_commands.json file or path to source files
     #[clap()]
-    compile_commands: PathBuf,
+    compile_commands_or_source: PathBuf,
 
     /// How to handle violated invariants or invalid code
     #[clap(long, value_enum, default_value_t = InvalidCodes::CompileError)]
@@ -226,7 +226,7 @@ fn main() {
         tcfg.emit_modules = true
     };
 
-    let source_or_cc_db = Path::new(&args.compile_commands);
+    let source_or_cc_db = Path::new(&args.compile_commands_or_source);
     let source_or_cc_db = source_or_cc_db.canonicalize().unwrap_or_else(|_| {
         panic!(
             "Could not find compile_commands.json or source files at path: {}",
