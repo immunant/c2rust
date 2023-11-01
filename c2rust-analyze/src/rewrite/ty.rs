@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::ops::Index;
 
 use crate::borrowck::{OriginArg, OriginParam};
+use crate::context::AdtMetadataTable;
 use crate::context::{
     AnalysisCtxt, Assignment, FlagSet, FnSigOrigins, GlobalAnalysisCtxt, GlobalAssignment, LTy,
     PermissionSet,
@@ -16,7 +17,6 @@ use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::PointerId;
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
-use crate::AdtMetadataTable;
 use hir::{
     FnRetTy, GenericParamKind, Generics, ItemKind, Path, PathSegment, VariantData, WherePredicate,
 };

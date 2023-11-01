@@ -1,7 +1,7 @@
+use crate::context::GlobalAssignment;
 use crate::context::{FlagSet, PermissionSet};
 use crate::pointer_id::PointerId;
 use crate::rewrite::Rewrite;
-use crate::GlobalAssignment;
 use rustc_hir::def_id::DefId;
 use rustc_hir::{ItemKind, Mutability, Node};
 use rustc_middle::ty::TyCtxt;

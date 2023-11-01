@@ -1,3 +1,5 @@
+use crate::analyze::fn_body_owners_postorder;
+use crate::analyze::AssignPointerIds;
 use crate::borrowck::{AdtMetadata, FieldMetadata, OriginArg, OriginParam};
 use crate::c_void_casts::CVoidCasts;
 use crate::known_fn::{all_known_fns, KnownFn};
@@ -8,7 +10,6 @@ use crate::pointer_id::{
     PointerTableMut,
 };
 use crate::util::{self, describe_rvalue, PhantomLifetime, RvalueDesc};
-use crate::{fn_body_owners_postorder, AssignPointerIds};
 use assert_matches::assert_matches;
 use bitflags::bitflags;
 use indexmap::IndexSet;
@@ -836,7 +837,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     /// looking up the [`KnownFn`] for that foreign `fn`, if it exists,
     /// and then `flat_map`ping that to each [`KnownFn::ptr_perms`].
     ///
-    /// [`gather_foreign_sigs`]: `crate::gather_foreign_sigs`
+    /// [`gather_foreign_sigs`]: crate::analyze::gather_foreign_sigs
     pub fn known_fn_ptr_perms<'a>(
         &'a self,
     ) -> impl Iterator<Item = (PointerId, PermissionSet)> + PhantomLifetime<'tcx> + 'a {

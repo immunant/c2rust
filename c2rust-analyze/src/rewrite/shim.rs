@@ -1,8 +1,8 @@
+use crate::context::LTy;
 use crate::context::{FlagSet, GlobalAnalysisCtxt, GlobalAssignment};
 use crate::rewrite::expr::{self, CastBuilder};
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, TypeDesc};
-use crate::LTy;
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::DefId;
 use rustc_hir::intravisit::{self, Visitor};
