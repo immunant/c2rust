@@ -230,7 +230,9 @@ fn get_module_name(
 pub fn transpile(tcfg: TranspilerConfig, source_or_cc_db: &Path, extra_clang_args: &[&str]) {
     diagnostics::init(tcfg.enabled_warnings.clone(), tcfg.log_level);
 
-    let temp_json_path = "compile_commands.json";
+    let mut temp_json_path = std::env::temp_dir();
+    temp_json_path.push("compile_commands.json");
+
     let build_dir = get_build_dir(&tcfg, source_or_cc_db);
 
     let ext = source_or_cc_db.extension().unwrap_or_default();
@@ -260,16 +262,16 @@ pub fn transpile(tcfg: TranspilerConfig, source_or_cc_db: &Path, extra_clang_arg
         }
 
         let temp_json_content = format!("[{}]", temp_json.join(","));
-        fs::File::create(temp_json_path)
+        fs::File::create(temp_json_path.clone())
             .and_then(|mut f| f.write_all(temp_json_content.as_bytes()))
             .expect("Failed to create temp json");
 
-        Path::new(temp_json_path)
+        temp_json_path
     } else {
-        source_or_cc_db
+        source_or_cc_db.to_path_buf()
     };
 
-    let lcmds = get_compile_commands(cc_db, &tcfg.filter).unwrap_or_else(|_| {
+    let lcmds = get_compile_commands(&cc_db, &tcfg.filter).unwrap_or_else(|_| {
         panic!(
             "Could not parse compile commands from {}",
             cc_db.to_string_lossy()
@@ -336,7 +338,7 @@ pub fn transpile(tcfg: TranspilerConfig, source_or_cc_db: &Path, extra_clang_arg
                     cmd.abs_file(),
                     &ancestor_path,
                     &build_dir,
-                    cc_db,
+                    &cc_db,
                     &clang_args,
                 )
             })
@@ -408,7 +410,7 @@ pub fn transpile(tcfg: TranspilerConfig, source_or_cc_db: &Path, extra_clang_arg
     tcfg.check_if_all_binaries_used(&transpiled_modules);
 
     if is_c_or_h_file {
-        let _ = fs::remove_file(temp_json_path);
+        let _ = fs::remove_file(cc_db);
     }
 }
 
