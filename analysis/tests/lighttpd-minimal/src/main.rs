@@ -6,8 +6,6 @@
 #![allow(unused_variables)]
 #![feature(extern_types)]
 
-extern crate libc;
-
 use libc::*;
 use std::mem;
 

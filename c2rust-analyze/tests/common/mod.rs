@@ -139,6 +139,10 @@ impl Analyze {
         Self { path }
     }
 
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
     fn run_with_(
         &self,
         rs_path: &Path,
