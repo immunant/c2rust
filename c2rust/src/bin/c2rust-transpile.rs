@@ -226,11 +226,11 @@ fn main() {
         tcfg.emit_modules = true
     };
 
-    let cc_json_path = Path::new(&args.compile_commands);
-    let cc_json_path = cc_json_path.canonicalize().unwrap_or_else(|_| {
+    let source_or_cc_db = Path::new(&args.compile_commands);
+    let source_or_cc_db = source_or_cc_db.canonicalize().unwrap_or_else(|_| {
         panic!(
-            "Could not find compile_commands.json file at path: {}",
-            cc_json_path.display()
+            "Could not find compile_commands.json or source files at path: {}",
+            source_or_cc_db.display()
         )
     });
 
@@ -240,5 +240,5 @@ fn main() {
         .map(AsRef::as_ref)
         .collect::<Vec<_>>();
 
-    c2rust_transpile::transpile(tcfg, &cc_json_path, &extra_args);
+    c2rust_transpile::transpile(tcfg, &source_or_cc_db, &extra_args);
 }
