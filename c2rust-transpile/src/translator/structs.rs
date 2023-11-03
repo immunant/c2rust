@@ -277,31 +277,30 @@ impl<'a> Translation<'a> {
         Ok(reorganized_fields)
     }
 
-    // WIP: debuggable if:
-    // - no unions
-    // - any other reqs?
-    fn is_struct_field_debuggable(&self, ctype: CTypeId) -> bool {
+    /// Returns true if a struct field with this type can be part of a struct that derives `Debug`
+    fn can_struct_field_derive_debug(&self, ctype: CTypeId) -> bool {
         let ty = self.ast_context.resolve_type(ctype);
-        let debuggable = match ty.kind {
+        let can_derive_debug = match ty.kind {
+
+            // Recurse into struct fields. A struct is debuggable iff all of its fields are
             CTypeKind::Struct(decl_id) => {
                 let decl = self
                     .ast_context
                     .get_decl(&decl_id)
-                    .ok_or_else(|| format_err!("Missing decl {:?}", decl_id)).unwrap();
+                    .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))
+                    .unwrap();
                 match &decl.kind {
                     CDeclKind::Struct { fields, .. } => {
-                        // println!("found struct {name:?} with fields {fields:?}");
                         for field_decl_id in fields.as_ref().unwrap_or(&vec![]) {
                             let field_decl = self
                                 .ast_context
                                 .get_decl(&field_decl_id)
-                                .ok_or_else(|| format_err!("Missing decl {:?}", field_decl_id)).unwrap();
+                                .ok_or_else(|| format_err!("Missing decl {:?}", field_decl_id))
+                                .unwrap();
                             match &field_decl.kind {
                                 CDeclKind::Field { typ, .. } => {
-                                    // println!("found field {name}");
-                                    let debuggable = self.is_struct_field_debuggable(typ.ctype);
-                                    // println!("{name} debuggable = {debuggable}");
-                                    if !debuggable {
+                                    let can_derive_debug = self.can_struct_field_derive_debug(typ.ctype);
+                                    if !can_derive_debug {
                                         return false;
                                     }
                                 }
@@ -310,16 +309,18 @@ impl<'a> Translation<'a> {
                         }
                         true
                     }
-                    _ => panic!("not a struct")
+                    _ => panic!("not a struct"),
                 }
             }
-            CTypeKind::Union(..) => {
-                false
-            }
-            _ => true
+
+            // A union or struct containing a union cannot derive Debug
+            CTypeKind::Union(..) => false,
+
+            // All translated non-union C types can derive Debug
+            _ => true,
         };
 
-        debuggable
+        can_derive_debug
     }
 
     /// Here we output a struct derive to generate bitfield data that looks like this:
@@ -363,7 +364,7 @@ impl<'a> Translation<'a> {
             field_name
         };
 
-        let mut debuggable = true;
+        let mut can_derive_debug = true;
         for field_type in reorganized_fields {
             match field_type {
                 FieldType::BitfieldGroup {
@@ -424,16 +425,16 @@ impl<'a> Translation<'a> {
 
                     field_entries.push(field);
                 }
-                FieldType::Regular { field,  ctype, .. } => { 
-                    let field_debuggable = self.is_struct_field_debuggable(ctype);
-                    // println!("field_debuggable = {field_debuggable}: {field:?}");
-                    debuggable &= field_debuggable;
+                FieldType::Regular { field, ctype, .. } => {
+                    // Struct is only debuggable if all regular fields are
+                    // debuggable. Assume any fields added by the translator
+                    // such as padding are debuggable
+                    can_derive_debug &= self.can_struct_field_derive_debug(ctype);
                     field_entries.push(*field)
-                },
+                }
             }
         }
-        println!("debuggable = {debuggable}");
-        Ok((field_entries, contains_va_list, debuggable))
+        Ok((field_entries, contains_va_list, can_derive_debug))
     }
 
     /// Here we output a block to generate a struct literal initializer in.
