@@ -281,7 +281,6 @@ impl<'a> Translation<'a> {
     fn can_struct_field_derive_debug(&self, ctype: CTypeId) -> bool {
         let ty = self.ast_context.resolve_type(ctype);
         let can_derive_debug = match ty.kind {
-
             // Recurse into struct fields. A struct is debuggable iff all of its fields are
             CTypeKind::Struct(decl_id) => {
                 let decl = self
@@ -299,7 +298,8 @@ impl<'a> Translation<'a> {
                                 .unwrap();
                             match &field_decl.kind {
                                 CDeclKind::Field { typ, .. } => {
-                                    let can_derive_debug = self.can_struct_field_derive_debug(typ.ctype);
+                                    let can_derive_debug =
+                                        self.can_struct_field_derive_debug(typ.ctype);
                                     if !can_derive_debug {
                                         return false;
                                     }
