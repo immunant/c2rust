@@ -139,6 +139,10 @@ impl Analyze {
         Self { path }
     }
 
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
     fn run_with_(
         &self,
         rs_path: &Path,
@@ -162,6 +166,13 @@ impl Analyze {
         let output_stderr = File::try_clone(&output_stdout).unwrap();
 
         let mut cmd = Command::new(&self.path);
+
+        // Simulate an invocation by [`cargo_wrapper`].
+        cmd.env("RUSTC_WRAPPER", &self.path); // Run as `rustc`, not `cargo`.
+        cmd.env("CARGO_PRIMARY_PACKAGE", ""); // `cargo` sets this.
+        cmd.env("CARGO_BIN_NAME", rs_path.file_name().unwrap()); // `cargo` sets this.
+        cmd.arg("rustc"); // `cargo` passes this to `$RUSTC_WRAPPER`.
+
         if !args.catch_panics {
             cmd.env("C2RUST_ANALYZE_TEST_DONT_CATCH_PANIC", "1");
         }

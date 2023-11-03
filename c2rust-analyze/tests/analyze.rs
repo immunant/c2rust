@@ -1,6 +1,13 @@
 pub mod common;
 
-use crate::common::{check_for_missing_tests_for, test_dir_for, Analyze, CrateOptions, CrateType};
+use crate::common::check_for_missing_tests_for;
+use crate::common::test_dir_for;
+use crate::common::Analyze;
+use crate::common::CrateOptions;
+use crate::common::CrateType;
+use fs_err::File;
+use std::path::Path;
+use std::process::Command;
 
 #[test]
 fn check_for_missing_tests() {
@@ -38,7 +45,27 @@ define_tests! {
 
 #[test]
 fn lighttpd_minimal() {
-    Analyze::resolve().run("../analysis/tests/lighttpd-minimal/src/main.rs");
+    let analyze = Analyze::resolve();
+    let mut cmd = Command::new(analyze.path());
+
+    cmd.arg("--");
+
+    cmd.arg("check");
+
+    let dir = Path::new("../analysis/tests/lighttpd-minimal");
+    let manifest_path = dir.join("Cargo.toml");
+    cmd.arg("--manifest-path").arg(manifest_path);
+
+    let output_path = dir.join("analysis.txt");
+    let output_stdout = File::create(&output_path).unwrap();
+    let output_stderr = File::try_clone(&output_stdout).unwrap();
+    cmd.stdout(output_stdout.into_parts().0)
+        .stderr(output_stderr.into_parts().0);
+
+    let status = cmd.status().unwrap();
+    assert!(status.success());
+
+    // TODO(kkysen) Handle error reporting better like [`Analyze::run`].
 }
 
 #[test]

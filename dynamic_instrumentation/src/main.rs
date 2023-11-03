@@ -57,7 +57,7 @@ struct Args {
     #[clap(long)]
     set_runtime: bool,
 
-    /// Set `$RUSTFLAGS` for the instrumented `cargo`.
+    /// Set `$RUSTFLAGS` for the wrapped `cargo`.
     ///
     /// This allows setting `$RUSTFLAGS` for the inner `cargo` when `c2rust-instrument` is invoked via `cargo run`, for example.
     /// If `$RUSTFLAGS` is already set, these `--rustflags` are appended with a space.
@@ -85,8 +85,8 @@ struct InterceptedCargoArgs {
     #[clap(long, value_parser)]
     manifest_path: Option<PathBuf>,
 
-    /// Need this so `--` is allowed.
-    /// Not actually used.
+    /// Need this so `--` is allowed.  Not actually used,
+    /// as we're just intercepting a few args and passing the rest through.
     extra_args: Vec<OsString>,
 }
 
@@ -105,7 +105,7 @@ fn exit_with_status(status: ExitStatus) {
 /// Note that the sysroot contains the toolchain and host target name,
 /// but this has no effect on cross-compiling.
 /// Every toolchain's `rustc` is able to itself cross-compile.
-/// I'm not sure why the host target needs to be in the sysroot directory name, but it is.
+/// It's unclear why the host target needs to be in the sysroot directory name, but it is.
 ///
 /// Also note that this sysroot lookup should be done at runtime,
 /// not at compile-time in the `build.rs`,
@@ -127,11 +127,14 @@ fn resolve_sysroot() -> anyhow::Result<PathBuf> {
         .split(|c| c.is_ascii_whitespace())
         .next()
         .unwrap_or_default();
-    let path = if cfg!(unix) {
+    #[cfg(unix)]
+    let path = {
         use std::os::unix::ffi::OsStrExt;
 
         OsStr::from_bytes(path)
-    } else {
+    };
+    #[cfg(not(unix))]
+    let path = {
         // Windows is hard, so just require UTF-8
         let path = std::str::from_utf8(path).context("`rustc --print sysroot` is not UTF-8")?;
         OsStr::new(path)
@@ -200,8 +203,9 @@ const METADATA_VAR: &str = "C2RUST_INSTRUMENT_METADATA_PATH";
 
 /// Read a [`PathBuf`] from the [`mod@env`]ironment that should've been set by the [`cargo_wrapper`].
 fn env_path_from_wrapper(var: &str) -> anyhow::Result<PathBuf> {
-    let path = env::var_os(var)
-        .ok_or_else(|| anyhow!("the `cargo` wrapper should've `${var}` for the `rustc` wrapper"))?;
+    let path = env::var_os(var).ok_or_else(|| {
+        anyhow!("the `cargo` wrapper should've set `${{${var}}}` for the `rustc` wrapper")
+    })?;
     Ok(path.into())
 }
 
@@ -250,7 +254,7 @@ fn bin_crate_name() -> Option<PathBuf> {
 /// it doesn't specify `--target`.
 ///
 /// This would work more robustly if we were also instrumenting dependencies,
-/// as our currently solution would no longer work, but we aren't.
+/// as our current solution would no longer work, but we aren't.
 ///
 /// On the other hand, the `--target` solution has a drawback
 /// in that there are many ways to specify the target:
