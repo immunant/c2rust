@@ -4921,6 +4921,9 @@ impl<'c> Translation<'c> {
                 // Handled in `import_simd_typedef`
             }
             TypeOfExpr(_) | BuiltinFn => {}
+            UnhandledSveType => {
+                // TODO: handle SVE types
+            }
         }
     }
 
