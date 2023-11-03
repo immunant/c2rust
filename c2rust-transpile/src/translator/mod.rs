@@ -1636,7 +1636,7 @@ impl<'c> Translation<'c> {
                     derives.push("Copy");
                     derives.push("Clone");
                 };
-                if can_derive_debug {
+                if self.tcfg.derive_debug && can_derive_debug {
                     derives.push("Debug");
                 }
                 let has_bitfields =
@@ -1700,10 +1700,16 @@ impl<'c> Translation<'c> {
                     ];
                     let repr_attr = mk().meta_list("repr", outer_reprs);
                     let outer_field = mk().pub_().enum_field(mk().ident_ty(inner_name));
+
+                    let mut outer_struct_derives = vec!["Copy", "Clone"];
+                    if self.tcfg.derive_debug {
+                        outer_struct_derives.push("Debug");
+                    }
+
                     let outer_struct = mk()
                         .span(span)
                         .pub_()
-                        .call_attr("derive", vec!["Copy", "Clone", "Debug"])
+                        .call_attr("derive", outer_struct_derives)
                         .meta_item_attr(AttrStyle::Outer, repr_attr)
                         .struct_item(name, vec![outer_field], true);
 

@@ -155,6 +155,10 @@ struct Args {
     /// Fail when the control-flow graph generates branching constructs
     #[clap(long)]
     fail_on_multiple: bool,
+
+    /// Derive `Debug` trait for any structs that allow it (i.e., do not recursively contain any unions)
+    #[clap(long)]
+    derive_debug: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, ValueEnum, Clone)]
@@ -216,6 +220,7 @@ fn main() {
         emit_no_std: args.emit_no_std,
         enabled_warnings: args.warn.into_iter().collect(),
         log_level: args.log_level,
+        derive_debug: args.derive_debug,
     };
     // binaries imply emit-build-files
     if !tcfg.binaries.is_empty() {

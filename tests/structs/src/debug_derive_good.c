@@ -1,3 +1,5 @@
+//! derive_debug
+
 #include <stdarg.h>
 
 typedef struct {

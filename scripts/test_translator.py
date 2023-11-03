@@ -72,6 +72,7 @@ class CFile:
         self.translate_const_macros = "translate_const_macros" in flags
         self.reorganize_definitions = "reorganize_definitions" in flags
         self.emit_build_files = "emit_build_files" in flags
+        self.derive_debug = "derive_debug" in flags
 
     def translate(self, cc_db: str, ld_lib_path: str, extra_args: List[str] = []) -> RustFile:
         extensionless_file, _ = os.path.splitext(self.path)
@@ -96,6 +97,8 @@ class CFile:
             args.append("--reorganize-definitions")
         if self.emit_build_files:
             args.append("--emit-build-files")
+        if self.derive_debug:
+            args.append("--derive-debug")
 
         if self.log_level == 'DEBUG':
             args.append("--log-level=debug")

@@ -82,6 +82,7 @@ pub struct TranspilerConfig {
     pub disable_refactoring: bool,
     pub preserve_unused_functions: bool,
     pub log_level: log::LevelFilter,
+    pub derive_debug: bool,
 
     // Options that control build files
     /// Emit `Cargo.toml` and `lib.rs`
