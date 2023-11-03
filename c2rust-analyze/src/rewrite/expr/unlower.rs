@@ -356,12 +356,11 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             while cursor.peel_temp().is_some() {
                 // No-op.  Just loop until we've peeled all temporaries.
             }
-            self.record_desc(
-                cursor.loc,
-                &cursor.sub_loc,
-                ex,
-                MirOriginDesc::Adjustment(i),
-            );
+            // Remember the current location.  If the following matching operations succeed, we
+            // want to record an entry at this location, but the operations in question will also
+            // update `cursor.loc`.
+            let loc = cursor.loc;
+            let sub_loc = cursor.sub_loc.clone();
             match adjust.kind {
                 Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => {
                     if cursor.peel_address_of() != Some(mutbl) {
@@ -419,6 +418,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                     break;
                 }
             }
+            self.record_desc(loc, &sub_loc, ex, MirOriginDesc::Adjustment(i));
         }
 
         while cursor.peel_temp().is_some() {
