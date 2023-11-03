@@ -1,6 +1,6 @@
 //! feature_c_variadic,
 
-use crate::debug_derive_good::{rust_kS1, rust_kS3};
+use crate::debug_derive_good::{rust_kS1, rust_get_struct_containing_va_list};
 
 pub fn test_simple_struct() {
     unsafe {
@@ -10,6 +10,7 @@ pub fn test_simple_struct() {
 
 pub fn test_struct_containing_va_list() {
     unsafe {
-        format!("{rust_kS3:?}");
+        let s = rust_get_struct_containing_va_list();
+        format!("{s:?}");
     }
 }
