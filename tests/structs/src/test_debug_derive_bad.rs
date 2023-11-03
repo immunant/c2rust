@@ -1,10 +1,10 @@
 //! xfail
 
 mod debug_derive_bad;
-use debug_derive_bad::rust_kS2;
+use debug_derive_bad::rust_kStructWithUnion;
 
 pub fn test_union() {
     unsafe {
-        format!("{rust_kS2:?}");
+        format!("{rust_kStructWithUnion:?}");
     }
 }

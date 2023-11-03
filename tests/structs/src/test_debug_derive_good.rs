@@ -1,16 +1,11 @@
-//! feature_c_variadic,
+//! feature_c_variadic
 
-use crate::debug_derive_good::{rust_kS1, rust_get_struct_containing_va_list};
+use crate::debug_derive_good::{rust_kS1, rust_kS2};
+use std::fmt::Debug;
 
-pub fn test_simple_struct() {
+pub fn test_debuggable() {
     unsafe {
-        format!("{rust_kS1:?}");
-    }
-}
-
-pub fn test_struct_containing_va_list() {
-    unsafe {
-        let s = rust_get_struct_containing_va_list();
-        format!("{s:?}");
+        // Make sure each struct implements `Debug`
+        let _debuggable: Vec<*mut dyn Debug> = vec![rust_kS1, rust_kS2];
     }
 }

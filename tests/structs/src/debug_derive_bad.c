@@ -10,6 +10,6 @@ typedef struct {
             } c;
         } b;
     } a;
-} S2;
+} StructWithUnion;
 
-S2 kS2;
+StructWithUnion kStructWithUnion;
