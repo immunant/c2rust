@@ -57,7 +57,7 @@ struct Args {
     #[clap(long)]
     set_runtime: bool,
 
-    /// Set `$RUSTFLAGS` for the instrumented `cargo`.
+    /// Set `$RUSTFLAGS` for the wrapped `cargo`.
     ///
     /// This allows setting `$RUSTFLAGS` for the inner `cargo` when `c2rust-instrument` is invoked via `cargo run`, for example.
     /// If `$RUSTFLAGS` is already set, these `--rustflags` are appended with a space.
@@ -85,8 +85,8 @@ struct InterceptedCargoArgs {
     #[clap(long, value_parser)]
     manifest_path: Option<PathBuf>,
 
-    /// Need this so `--` is allowed.
-    /// Not actually used.
+    /// Need this so `--` is allowed.  Not actually used,
+    /// as we're just intercepting a few args and passing the rest through.
     extra_args: Vec<OsString>,
 }
 
@@ -105,7 +105,7 @@ fn exit_with_status(status: ExitStatus) {
 /// Note that the sysroot contains the toolchain and host target name,
 /// but this has no effect on cross-compiling.
 /// Every toolchain's `rustc` is able to itself cross-compile.
-/// I'm not sure why the host target needs to be in the sysroot directory name, but it is.
+/// It's unclear why the host target needs to be in the sysroot directory name, but it is.
 ///
 /// Also note that this sysroot lookup should be done at runtime,
 /// not at compile-time in the `build.rs`,
