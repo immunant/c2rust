@@ -799,7 +799,7 @@ impl ConversionContext {
                 }
 
                 TypeTag::TagBFloat16 => {
-                    let ty = CTypeKind::BuiltinFn;
+                    let ty = CTypeKind::BFloat16;
                     self.add_type(new_id, not_located(ty));
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
