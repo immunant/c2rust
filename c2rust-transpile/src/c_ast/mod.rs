@@ -1672,6 +1672,10 @@ pub enum CTypeKind {
 
     Half,
     BFloat16,
+
+    // ARM Scalable Vector Extention types
+    // TODO: represent all the individual types in AArch64SVEACLETypes.def
+    UnhandledSveType,
 }
 
 impl CTypeKind {

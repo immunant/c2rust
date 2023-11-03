@@ -804,6 +804,15 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
+                TypeTag::TagSveCount
+                | TypeTag::TagSveBool
+                | TypeTag::TagSveBoolx2
+                | TypeTag::TagSveBoolx4 => {
+                    let ty = CTypeKind::UnhandledSveType;
+                    self.add_type(new_id, not_located(ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
                 TypeTag::TagVectorType => {
                     let elt =
                         from_value(ty_node.extras[0].clone()).expect("Vector child not found");

@@ -142,6 +142,11 @@ enum TypeTag {
     TagComplexType,
     TagHalf,
     TagBFloat16,
+
+    TagSveCount,
+    TagSveBool,
+    TagSveBoolx2,
+    TagSveBoolx4,
 };
 
 enum StringTypeTag {
@@ -150,6 +155,7 @@ enum StringTypeTag {
     TagUTF8,
     TagUTF16,
     TagUTF32,
+    TagUnevaluated,
 };
 
 // From `clang/Basic/TargetInfo.h`

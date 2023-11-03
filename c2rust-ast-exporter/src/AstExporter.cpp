@@ -85,6 +85,7 @@ std::string make_realpath(std::string const &path) {
 }
 
 // Helper to smooth out differences between versions of clang
+#if CLANG_VERSION_MAJOR < 17
 Optional<APSInt> getIntegerConstantExpr(const Expr &E, const ASTContext &Ctx) {
 #if CLANG_VERSION_MAJOR < 12
     APSInt value;
@@ -96,6 +97,13 @@ Optional<APSInt> getIntegerConstantExpr(const Expr &E, const ASTContext &Ctx) {
     return E.getIntegerConstantExpr(Ctx);
 #endif // CLANG_VERSION_MAJOR
 }
+#else
+#include <optional>
+std::optional<APSInt> getIntegerConstantExpr(const Expr &E,
+                                             const ASTContext &Ctx) {
+    return E.getIntegerConstantExpr(Ctx);
+}
+#endif // CLANG_VERSION_MAJOR
 } // namespace
 
 class TranslateASTVisitor;
@@ -363,7 +371,7 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
                 }
             }();
             // All the SVE types present in Clang 10 are 128-bit vectors
-            // (see `AArch64SVEACLETypes.def`), so we can divide 128 
+            // (see `AArch64SVEACLETypes.def`), so we can divide 128
             // by their element size to get element count.
             auto ElemCount = 128 / Context->getTypeSize(ElemType);
 #endif // CLANG_VERSION_MAJOR >= 11
@@ -403,7 +411,7 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             // Constructed as a consequence of the conversion of
             // built-in to normal vector types.
             case BuiltinType::Float16: return TagHalf;
-            case BuiltinType::Half: return TagHalf;     
+            case BuiltinType::Half: return TagHalf;
             #if CLANG_VERSION_MAJOR >= 11
             case BuiltinType::BFloat16: return TagBFloat16;
             #endif
@@ -418,6 +426,12 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             case BuiltinType::Bool: return TagBool;
             case BuiltinType::WChar_S: return TagSWChar;
             case BuiltinType::WChar_U: return TagUWChar;
+#if CLANG_VERSION_MAJOR >= 16
+            case BuiltinType::SveCount: return TagSveCount;
+            case BuiltinType::SveBool: return TagSveBool;
+            case BuiltinType::SveBoolx2: return TagSveBoolx2;
+            case BuiltinType::SveBoolx4: return TagSveBoolx4;
+#endif
             }
         }();
 
@@ -1499,7 +1513,11 @@ class TranslateASTVisitor final
                         cbor_encoder_create_array(&array, &entry, 2);
                         cbor_encode_int(&entry, 2);
                         cbor_encode_uint(&entry,
+#if CLANG_VERSION_MAJOR < 17
                                          uintptr_t(designator.getField()));
+#else
+                                         uintptr_t(designator.getFieldDecl()));
+#endif // CLANG_VERSION_MAJOR
                     } else if (designator.isArrayRangeDesignator()) {
                         cbor_encoder_create_array(&array, &entry, 3);
                         cbor_encode_int(&entry, 3);
@@ -2300,6 +2318,11 @@ class TranslateASTVisitor final
             case clang::StringLiteral::StringKind::UTF32:
                 cbor_encode_uint(array, StringTypeTag::TagUTF32);
                 break;
+#if CLANG_VERSION_MAJOR >= 17
+            case clang::StringLiteral::StringKind::Unevaluated:
+                cbor_encode_uint(array, StringTypeTag::TagUnevaluated);
+                break;
+#endif // CLANG_VERSION_MAJOR
             }
             // The size of the wchar_t type in C is implementation defined
             cbor_encode_uint(array, SL->getCharByteWidth());
