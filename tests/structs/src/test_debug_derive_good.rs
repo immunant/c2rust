@@ -1,3 +1,5 @@
+//! feature_c_variadic,
+
 use crate::debug_derive_good::{rust_kS1, rust_kS3};
 
 pub fn test_simple_struct() {
