@@ -389,14 +389,6 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
 
         const TypeTag tag = [&] {
             switch (kind) {
-            default: {
-                auto pol = clang::PrintingPolicy(Context->getLangOpts());
-                auto warning = std::string("Encountered unsupported BuiltinType kind ") +
-                               std::to_string((int)kind) + " for type " +
-                               T->getName(pol).str();
-                printWarning(warning, clang::FullSourceLoc());
-                return TagTypeUnknown;
-            }
             case BuiltinType::BuiltinFn: return TagBuiltinFn;
             case BuiltinType::UInt128: return TagUInt128;
             case BuiltinType::Int128: return TagInt128;
@@ -412,9 +404,9 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             // built-in to normal vector types.
             case BuiltinType::Float16: return TagHalf;
             case BuiltinType::Half: return TagHalf;
-            #if CLANG_VERSION_MAJOR >= 11
+#if CLANG_VERSION_MAJOR >= 11
             case BuiltinType::BFloat16: return TagBFloat16;
-            #endif
+#endif
             case BuiltinType::Float: return TagFloat;
             case BuiltinType::Double: return TagDouble;
             case BuiltinType::LongDouble: return TagLongDouble;
@@ -432,6 +424,13 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             case BuiltinType::SveBoolx2: return TagSveBoolx2;
             case BuiltinType::SveBoolx4: return TagSveBoolx4;
 #endif
+            default:
+                auto pol = clang::PrintingPolicy(Context->getLangOpts());
+                auto warning = std::string("Encountered unsupported BuiltinType kind ") +
+                               std::to_string((int)kind) + " for type " +
+                               T->getName(pol).str();
+                printWarning(warning, clang::FullSourceLoc());
+                return TagTypeUnknown;
             }
         }();
 
