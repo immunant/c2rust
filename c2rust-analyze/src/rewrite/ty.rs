@@ -32,7 +32,7 @@ use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, LocalDecl};
 use rustc_middle::ty::print::{FmtPrinter, Print};
 use rustc_middle::ty::{self, AdtDef, GenericArg, GenericArgKind, List, ReErased, TyCtxt};
-use rustc_middle::ty::{Ty, TyKind};
+use rustc_middle::ty::{Ty, TyKind, TypeAndMut};
 use rustc_span::Span;
 
 use super::LifetimeName;
@@ -117,7 +117,7 @@ fn create_rewrite_label<'tcx>(
     if !pointer_lty.label.is_none() {
         if let Some(lty) = pointee_types[pointer_lty.label].get_sole_lty() {
             let ty = lty.ty;
-            if !ty_has_adt_lifetime(ty, adt_metadata) {
+            if lty.args.len() == 0 && !ty_has_adt_lifetime(ty, adt_metadata) {
                 // Don't rewrite if the old and new types are the same.
                 if ty != args[0].ty {
                     pointee_ty = Some(ty);
@@ -372,15 +372,35 @@ fn mk_rewritten_ty<'tcx>(
     rw_lty: RwLTy<'tcx>,
 ) -> ty::Ty<'tcx> {
     let tcx = *lcx;
-    lcx.rewrite_unlabeled(rw_lty, &mut |ty, args, label| {
-        let (own, qty) = match label.ty_desc {
-            Some(x) => x,
-            None => return ty,
+    lcx.rewrite_unlabeled(rw_lty, &mut |ptr_ty, args, label| {
+        let (mut ty, own, qty) = match (label.pointee_ty, label.ty_desc) {
+            (Some(pointee_ty), Some((own, qty))) => {
+                // The `ty` should be a pointer.
+                assert_eq!(args.len(), 1);
+                (pointee_ty, own, qty)
+            }
+            (Some(pointee_ty), None) => {
+                // Just change the pointee type and nothing else.
+                let new_ty = match *ptr_ty.kind() {
+                    TyKind::Ref(rg, _ty, mutbl) => tcx.mk_ty(TyKind::Ref(rg, pointee_ty, mutbl)),
+                    TyKind::RawPtr(tm) => tcx.mk_ty(TyKind::RawPtr(TypeAndMut {
+                        ty: pointee_ty,
+                        mutbl: tm.mutbl,
+                    })),
+                    _ => panic!("expected Ref or RawPtr, but got {:?}", ptr_ty),
+                };
+                return new_ty;
+            }
+            (None, Some((own, qty))) => {
+                // The `ty` should be a pointer; the sole argument is the pointee type.
+                assert_eq!(args.len(), 1);
+                (args[0], own, qty)
+            }
+            (None, None) => {
+                // No rewrite to apply.
+                return ptr_ty;
+            }
         };
-
-        // The `ty` should be a pointer; the sole argument is the pointee type.
-        assert_eq!(args.len(), 1);
-        let mut ty = args[0];
 
         if own == Ownership::Cell {
             ty = mk_cell(tcx, ty);
