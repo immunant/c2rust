@@ -144,6 +144,11 @@ impl<'tcx> PointeeTypes<'tcx> {
         let lty = *self.ltys.iter().next().unwrap();
         Some(lty)
     }
+
+    pub fn merge(&mut self, other: PointeeTypes<'tcx>) {
+        self.ltys.extend(other.ltys);
+        self.incomplete |= other.incomplete;
+    }
 }
 
 /// Copy `LTy`s from `pointee_tys` into `ty_sets` for processing by the analysis.

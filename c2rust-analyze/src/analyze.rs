@@ -730,6 +730,11 @@ fn run(tcx: TyCtxt) {
     // the same `PointerId`.
     let (global_counter, global_equiv_map) = global_equiv.renumber();
     eprintln!("global_equiv_map = {global_equiv_map:?}");
+    pointee_type::remap_pointers_global(
+        &mut global_pointee_types,
+        &global_equiv_map,
+        &global_counter,
+    );
     gacx.remap_pointers(&global_equiv_map, global_counter);
 
     for &ldid in &all_fn_ldids {
@@ -740,6 +745,12 @@ fn run(tcx: TyCtxt) {
         let info = func_info.get_mut(&ldid).unwrap();
         let (local_counter, local_equiv_map) = info.local_equiv.renumber(&global_equiv_map);
         eprintln!("local_equiv_map = {local_equiv_map:?}");
+        pointee_type::remap_pointers_local(
+            &mut global_pointee_types,
+            &mut info.local_pointee_types,
+            global_equiv_map.and(&local_equiv_map),
+            &local_counter,
+        );
         info.acx_data.remap_pointers(
             &mut gacx,
             global_equiv_map.and(&local_equiv_map),
