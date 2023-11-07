@@ -14,7 +14,7 @@ use crate::context::{
     PermissionSet,
 };
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
-use crate::pointee_type::{self, PointeeTypes};
+use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{GlobalPointerTable, PointerId, PointerTable};
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};

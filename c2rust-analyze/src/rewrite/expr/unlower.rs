@@ -164,31 +164,6 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         }
     }
 
-    fn get_last_call(
-        &self,
-        locs: &[Location],
-    ) -> Option<(
-        Location,
-        mir::Place<'tcx>,
-        &'a mir::Operand<'tcx>,
-        &'a [mir::Operand<'tcx>],
-    )> {
-        for &loc in locs.iter().rev() {
-            if let Some(term) = self.mir.stmt_at(loc).right() {
-                match term.kind {
-                    mir::TerminatorKind::Call {
-                        ref func,
-                        ref args,
-                        destination,
-                        ..
-                    } => return Some((loc, destination, func, args)),
-                    _ => {}
-                }
-            }
-        }
-        None
-    }
-
     fn should_ignore_statement(&self, loc: Location) -> bool {
         if let Some(stmt) = self.mir.stmt_at(loc).left() {
             match stmt.kind {
@@ -258,7 +233,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
 
             hir::ExprKind::Call(_, args) | hir::ExprKind::MethodCall(_, args, _) => {
                 // Handle adjustments on the call's output first.
-                let (_mir_pl, mut cursor) = match self.make_visit_expr_cursor(ex, &locs) {
+                let (_mir_pl, mut cursor) = match self.make_visit_expr_cursor(&locs) {
                     Some(x @ (pl, _)) if is_var(pl) => x,
                     _ => {
                         warn("expected final Assign to store into var");
@@ -323,7 +298,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             _ => {
                 // For all other `ExprKind`s, we expect the last `loc` to be an assignment storing
                 // the final result into a temporary.
-                let (_mir_pl, mut cursor) = match self.make_visit_expr_cursor(ex, &locs) {
+                let (_mir_pl, mut cursor) = match self.make_visit_expr_cursor(&locs) {
                     Some(x @ (pl, _)) if is_var(pl) => x,
                     _ => {
                         warn("expected final Assign to store into var");
@@ -343,7 +318,6 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
     /// `locs.last()` is not `StatementKind::Assign` or `TerminatorKind::Call`.
     fn make_visit_expr_cursor<'b>(
         &self,
-        ex: &'tcx hir::Expr<'tcx>,
         locs: &'b [Location],
     ) -> Option<(mir::Place<'tcx>, VisitExprCursor<'a, 'b, 'tcx>)> {
         let (&loc, extra_locs) = locs.split_last()?;

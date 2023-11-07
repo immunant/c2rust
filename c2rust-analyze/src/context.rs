@@ -863,7 +863,6 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         gacx: &'a mut GlobalAnalysisCtxt<'tcx>,
         mir: &'a Body<'tcx>,
     ) -> AnalysisCtxt<'a, 'tcx> {
-        let tcx = gacx.tcx;
         AnalysisCtxt {
             gacx,
             ptr_info: LocalPointerTable::empty(),

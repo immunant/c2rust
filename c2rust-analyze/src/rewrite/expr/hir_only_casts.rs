@@ -9,12 +9,11 @@
 //! involves generating HIR rewrites on code with no corresponding MIR, whereas the normal code
 //! path starts with rewrites on MIR and lifts them up to the HIR level.
 
-use super::distribute::DistRewrite;
 use crate::rewrite::Rewrite;
 use rustc_hir as hir;
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_middle::hir::nested_filter;
-use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability, PointerCast};
+use rustc_middle::ty::adjustment::{Adjust, AutoBorrow};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::Span;
 
@@ -105,7 +104,7 @@ where
         }
 
         // Check for a cast that's made redundant by an adjustment on the inner expression.
-        if let hir::ExprKind::Cast(src_expr, dest_ty) = ex.kind {
+        if let hir::ExprKind::Cast(src_expr, _dest_ty) = ex.kind {
             let src_adjusts = self.typeck_results.expr_adjustments(src_expr);
             if let Some(last_adjust) = src_adjusts.last() {
                 if matches!(last_adjust.kind, Adjust::Pointer(_)) {

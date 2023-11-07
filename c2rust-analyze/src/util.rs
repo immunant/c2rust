@@ -5,8 +5,7 @@ use rustc_const_eval::interpret::Scalar;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, Constant, Field, Local, Location, Mutability, Operand, Place,
-    PlaceElem, PlaceRef, ProjectionElem, Rvalue, Statement, StatementKind,
+    Body, Constant, Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
 };
 use rustc_middle::ty::{
     self, AdtDef, DefIdTree, EarlyBinder, FnSig, GenericArg, List, Subst, SubstsRef, Ty, TyCtxt,
@@ -394,30 +393,6 @@ pub fn lty_project<'tcx, L: Debug>(
         ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
         ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
     }
-}
-
-pub fn get_cast_place<'tcx>(rv: &Rvalue<'tcx>) -> Option<Place<'tcx>> {
-    match rv {
-        Rvalue::Cast(_, op, _) => op.place(),
-        _ => None,
-    }
-}
-
-pub fn terminator_location(block: BasicBlock, block_data: &BasicBlockData) -> Location {
-    Location {
-        block,
-        statement_index: block_data.statements.len(),
-    }
-}
-
-pub fn get_assign_sides<'tcx, 'a>(
-    stmt: &'a Statement<'tcx>,
-) -> Option<(Place<'tcx>, &'a Rvalue<'tcx>)> {
-    let (pl, ref rv) = match &stmt.kind {
-        StatementKind::Assign(it) => Some(&**it),
-        _ => None,
-    }?;
-    Some((*pl, rv))
 }
 
 /// Check if a [`Constant`] is an integer constant that can be casted to a null pointer.

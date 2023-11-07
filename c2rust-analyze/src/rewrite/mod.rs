@@ -24,8 +24,6 @@
 //! the source code produced by the earlier ones).
 
 use rustc_hir::Mutability;
-use rustc_middle::mir::Body;
-use rustc_middle::mir::Location;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 use std::fmt;
@@ -39,7 +37,6 @@ mod ty;
 
 pub use self::expr::gen_expr_rewrites;
 pub use self::shim::{gen_shim_call_rewrites, gen_shim_definition_rewrite};
-use self::span_index::SpanIndex;
 pub use self::statics::gen_static_rewrites;
 pub use self::ty::dump_rewritten_local_tys;
 pub use self::ty::{gen_adt_ty_rewrites, gen_ty_rewrites};
