@@ -1194,6 +1194,12 @@ struct ConvertedVariable {
     pub init: TranslationResult<WithStmts<Box<Expr>>>,
 }
 
+pub struct ConvertedStructFields {
+    pub field_entries: Vec<Field>,
+    pub contains_va_list: bool,
+    pub can_derive_debug: bool,
+}
+
 impl<'c> Translation<'c> {
     pub fn new(
         mut ast_context: TypedAstContext,
@@ -1628,8 +1634,11 @@ impl<'c> Translation<'c> {
                 }
 
                 // Gather up all the field names and field types
-                let (field_entries, contains_va_list, can_derive_debug) =
-                    self.convert_struct_fields(decl_id, fields, platform_byte_size)?;
+                let ConvertedStructFields {
+                    field_entries,
+                    contains_va_list,
+                    can_derive_debug,
+                } = self.convert_struct_fields(decl_id, fields, platform_byte_size)?;
 
                 let mut derives = vec![];
                 if !contains_va_list {

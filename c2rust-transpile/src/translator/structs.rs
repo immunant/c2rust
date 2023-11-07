@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::ops::Index;
 
 use super::named_references::NamedReference;
-use super::TranslationError;
+use super::{ConvertedStructFields, TranslationError};
 use crate::c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId, CTypeKind};
 use crate::diagnostics::TranslationResult;
 use crate::translator::{ExprContext, Translation, PADDING_SUFFIX};
@@ -343,7 +343,7 @@ impl<'a> Translation<'a> {
         struct_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
-    ) -> TranslationResult<(Vec<Field>, bool, bool)> {
+    ) -> TranslationResult<ConvertedStructFields> {
         let mut field_entries = Vec::with_capacity(field_ids.len());
         // We need to clobber bitfields in consecutive bytes together (leaving
         // regular fields alone) and add in padding as necessary
@@ -434,7 +434,11 @@ impl<'a> Translation<'a> {
                 }
             }
         }
-        Ok((field_entries, contains_va_list, can_derive_debug))
+        Ok(ConvertedStructFields {
+            field_entries,
+            contains_va_list,
+            can_derive_debug,
+        })
     }
 
     /// Here we output a block to generate a struct literal initializer in.
