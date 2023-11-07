@@ -465,7 +465,10 @@ fn rewrite_ty<'tcx>(
     hir_ty: &hir::Ty<'tcx>,
     adt_metadata: &AdtMetadataTable,
 ) {
-    if !rw_lty.ty.is_adt() && rw_lty.label.ty_desc.is_none() && !rw_lty.label.descendant_has_rewrite
+    if !rw_lty.ty.is_adt()
+        && rw_lty.label.ty_desc.is_none()
+        && rw_lty.label.pointee_ty.is_none()
+        && !rw_lty.label.descendant_has_rewrite
     {
         // No rewrites here or in any descendant of this HIR node.
         return;
@@ -486,40 +489,61 @@ fn rewrite_ty<'tcx>(
         }
     };
 
-    if let Some((own, qty)) = rw_lty.label.ty_desc {
-        assert_eq!(hir_args.len(), 1);
-
-        let mut rw = Rewrite::Sub(0, hir_args[0].span);
-
-        if own == Ownership::Cell {
-            rw = Rewrite::TyCtor("core::cell::Cell".into(), vec![rw]);
-        }
-
-        rw = match qty {
-            Quantity::Single => rw,
-            Quantity::Slice => Rewrite::TySlice(Box::new(rw)),
-            // TODO: This should generate `OffsetPtr<T>` rather than `&[T]`, but `OffsetPtr` is
-            // NYI
-            Quantity::OffsetPtr => Rewrite::TySlice(Box::new(rw)),
-            Quantity::Array => panic!("can't rewrite to Quantity::Array"),
-        };
-
+    if rw_lty.label.ty_desc.is_some() || rw_lty.label.pointee_ty.is_some() {
+        assert!(matches!(
+            rw_lty.ty.kind(),
+            TyKind::Ref(..) | TyKind::RawPtr(..)
+        ));
         let lifetime_type = match rw_lty.label.lifetime {
             [lifetime] => LifetimeName::Explicit(format!("{lifetime:?}")),
             [] => LifetimeName::Elided,
             _ => panic!("Pointer or reference type cannot have multiple lifetime parameters"),
         };
-        rw = match own {
-            Ownership::Raw => Rewrite::TyPtr(Box::new(rw), Mutability::Not),
-            Ownership::RawMut => Rewrite::TyPtr(Box::new(rw), Mutability::Mut),
-            Ownership::Imm => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
-            Ownership::Cell => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
-            Ownership::Mut => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Mut),
-            Ownership::Rc => todo!(),
-            Ownership::Box => todo!(),
+
+        let mut rw = if let Some(pointee_ty) = rw_lty.label.pointee_ty {
+            let printer = FmtPrinter::new(*rw_lcx, Namespace::TypeNS);
+            let s = pointee_ty.print(printer).unwrap().into_buffer();
+            Rewrite::Print(s)
+        } else {
+            Rewrite::Sub(0, hir_args[0].span)
         };
 
-        hir_rewrites.push((hir_ty.span, rw));
+        if let Some((own, qty)) = rw_lty.label.ty_desc {
+            assert_eq!(hir_args.len(), 1);
+
+            if own == Ownership::Cell {
+                rw = Rewrite::TyCtor("core::cell::Cell".into(), vec![rw]);
+            }
+
+            rw = match qty {
+                Quantity::Single => rw,
+                Quantity::Slice => Rewrite::TySlice(Box::new(rw)),
+                // TODO: This should generate `OffsetPtr<T>` rather than `&[T]`, but `OffsetPtr` is
+                // NYI
+                Quantity::OffsetPtr => Rewrite::TySlice(Box::new(rw)),
+                Quantity::Array => panic!("can't rewrite to Quantity::Array"),
+            };
+
+            rw = match own {
+                Ownership::Raw => Rewrite::TyPtr(Box::new(rw), Mutability::Not),
+                Ownership::RawMut => Rewrite::TyPtr(Box::new(rw), Mutability::Mut),
+                Ownership::Imm => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
+                Ownership::Cell => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
+                Ownership::Mut => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Mut),
+                Ownership::Rc => todo!(),
+                Ownership::Box => todo!(),
+            };
+        } else {
+            rw = match *rw_lty.ty.kind() {
+                TyKind::Ref(_rg, _ty, mutbl) => Rewrite::TyRef(lifetime_type, Box::new(rw), mutbl),
+                TyKind::RawPtr(tm) => Rewrite::TyPtr(Box::new(rw), tm.mutbl),
+                _ => unreachable!(),
+            };
+        }
+
+        if rw != Rewrite::Identity {
+            hir_rewrites.push((hir_ty.span, rw));
+        }
     }
 
     if let TyKind::Adt(adt_def, substs) = rw_lty.ty.kind() {
