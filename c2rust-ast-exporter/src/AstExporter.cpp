@@ -418,7 +418,7 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             case BuiltinType::Bool: return TagBool;
             case BuiltinType::WChar_S: return TagSWChar;
             case BuiltinType::WChar_U: return TagUWChar;
-#if CLANG_VERSION_MAJOR >= 16
+#if CLANG_VERSION_MAJOR >= 17
             case BuiltinType::SveCount: return TagSveCount;
             case BuiltinType::SveBool: return TagSveBool;
             case BuiltinType::SveBoolx2: return TagSveBoolx2;
