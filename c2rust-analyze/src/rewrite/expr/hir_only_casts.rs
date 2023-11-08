@@ -54,16 +54,19 @@ impl<'tcx, F> HirOnlyCastVisitor<'tcx, F> {
         mutbl: hir::Mutability,
     ) -> bool {
         let adjusts = self.typeck_results.expr_adjustments(ex);
-        if adjusts.len() < 2 {
-            return false;
-        }
+        // Rustc implements the ref-to-rawptr coercion by adding `Deref` and `Borrow(RawPtr)`
+        // adjustments at the end of `expr_adjustments`.  Check if those adjustments are present.
+        let (kind1, kind2) = match *adjusts {
+            [.., ref x, ref y] => (&x.kind, &y.kind),
+            _ => return false,
+        };
 
-        match adjusts[adjusts.len() - 2].kind {
+        match *kind1 {
             Adjust::Deref(None) => {}
             _ => return false,
         }
 
-        match adjusts[adjusts.len() - 1].kind {
+        match *kind2 {
             Adjust::Borrow(AutoBorrow::RawPtr(adj_mutbl)) if adj_mutbl == mutbl => {}
             _ => return false,
         }
@@ -92,6 +95,7 @@ where
             // Check whether the `&x` / `&mut x` expr got the expected adjustments.
             if self.expr_has_address_of_adjustments(ref_expr, mutbl) {
                 if (self.filter)(ref_expr) {
+                    // Emit a rewrite to remove the cast, leaving only the inner `&x`.
                     eprintln!("  emit rewrite for expr at {:?}", ref_expr.span);
                     self.rewrites
                         .push((ex.span, Rewrite::Sub(0, ref_expr.span)));
