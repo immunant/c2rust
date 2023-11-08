@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use log::LevelFilter;
 use regex::Regex;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use c2rust_transpile::{Diagnostic, ReplaceMode, TranspilerConfig};
 
@@ -85,8 +85,17 @@ struct Args {
     debug_labels: bool,
 
     /// Input compile_commands.json file or path to source files
-    #[clap()]
-    compile_commands_or_source: PathBuf,
+    #[clap(long, parse(from_os_str), required = false, conflicts_with = "source")]
+    compile_commands: Option<PathBuf>,
+
+    /// Source files to process, only valid if compile_commands.json path is not provided.
+    #[clap(
+        long = "source",
+        parse(from_os_str),
+        multiple_values = true,
+        required = false
+    )]
+    source: Vec<PathBuf>,
 
     /// How to handle violated invariants or invalid code
     #[clap(long, value_enum, default_value_t = InvalidCodes::CompileError)]
@@ -226,13 +235,11 @@ fn main() {
         tcfg.emit_modules = true
     };
 
-    let source_or_cc_db = Path::new(&args.compile_commands_or_source);
-    let source_or_cc_db = source_or_cc_db.canonicalize().unwrap_or_else(|_| {
-        panic!(
-            "Could not find compile_commands.json or source files at path: {}",
-            source_or_cc_db.display()
-        )
-    });
+    let compile_commands = if let Some(compile_commands_path) = args.compile_commands {
+        compile_commands_path
+    } else {
+        c2rust_transpile::create_temp_compile_commands(&args.source)
+    };
 
     let extra_args = args
         .extra_clang_args
@@ -240,5 +247,11 @@ fn main() {
         .map(AsRef::as_ref)
         .collect::<Vec<_>>();
 
-    c2rust_transpile::transpile(tcfg, &source_or_cc_db, &extra_args);
+    c2rust_transpile::transpile(tcfg, &compile_commands, &extra_args);
+
+    // Remove the temporary compile_commands.json if it was created
+    if !args.source.is_empty() {
+        std::fs::remove_file(&compile_commands)
+            .expect("Failed to remove temporary compile_commands.json");
+    }
 }

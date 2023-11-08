@@ -13,7 +13,7 @@ pub mod translator;
 pub mod with_stmts;
 
 use std::collections::HashSet;
-use std::fs::{self, read_dir, File};
+use std::fs::{self, File};
 use std::io;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
@@ -226,63 +226,42 @@ fn get_module_name(
     file.to_str().map(String::from)
 }
 
+pub fn create_temp_compile_commands(sources: &[PathBuf]) -> PathBuf {
+    let temp_path = std::env::temp_dir().join("compile_commands.json");
+    let compile_commands: Vec<CompileCmd> = sources
+        .iter()
+        .map(|source_file| {
+            let absolute_path = fs::canonicalize(source_file)
+                .unwrap_or_else(|_| panic!("Could not canonicalize {}", source_file.display()));
+
+            CompileCmd {
+                directory: absolute_path.parent().unwrap().to_path_buf(),
+                file: absolute_path.clone(),
+                arguments: vec![
+                    "clang".to_string(),
+                    absolute_path.to_str().unwrap().to_owned(),
+                ],
+                command: None,
+                output: None,
+            }
+        })
+        .collect();
+
+    let json_content = serde_json::to_string(&compile_commands).unwrap();
+    let mut file =
+        File::create(&temp_path).expect("Failed to create temporary compile_commands.json");
+    file.write_all(json_content.as_bytes())
+        .expect("Failed to write to temporary compile_commands.json");
+
+    temp_path
+}
+
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
-pub fn transpile(tcfg: TranspilerConfig, source_or_cc_db: &Path, extra_clang_args: &[&str]) {
+pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
     diagnostics::init(tcfg.enabled_warnings.clone(), tcfg.log_level);
 
-    let build_dir = get_build_dir(&tcfg, source_or_cc_db);
-    let mut temp_json_path = std::env::temp_dir();
-    temp_json_path.push("compile_commands.json");
-
-    let ext = source_or_cc_db.extension().unwrap_or_default();
-    let is_c_or_h_file = ext == "c" || ext == "h";
-    let is_wildcard = source_or_cc_db
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .contains('*');
-
-    let format_compile_command = |build_dir: &Path, file_path: &Path| -> String {
-        let compile_cmd = CompileCmd {
-            directory: build_dir.to_path_buf(),
-            file: file_path.to_path_buf(),
-            arguments: vec!["clang".to_string(), file_path.to_str().unwrap().to_owned()],
-            command: None,
-            output: None,
-        };
-        serde_json::to_string(&compile_cmd).unwrap()
-    };
-
-    let mut temp_json = Vec::new();
-    if is_c_or_h_file {
-        let command = format_compile_command(&build_dir, source_or_cc_db);
-        temp_json.push(command);
-    } else if is_wildcard {
-        for entry in read_dir(build_dir.clone()).unwrap() {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                let ext = path.extension().unwrap_or_default();
-                if ext == "c" || ext == "h" {
-                    let command = format_compile_command(&build_dir, &path);
-                    temp_json.push(command);
-                }
-            }
-        }
-    }
-
-    if !temp_json.is_empty() {
-        let temp_json_content = format!("[{}]", temp_json.join(","));
-        fs::File::create(temp_json_path.clone())
-            .and_then(|mut f| f.write_all(temp_json_content.as_bytes()))
-            .expect("Failed to create temporary compile_commands.json");
-    }
-
-    let cc_db = if !temp_json.is_empty() {
-        Path::new(&temp_json_path)
-    } else {
-        source_or_cc_db
-    };
+    let build_dir = get_build_dir(&tcfg, cc_db);
 
     let lcmds = get_compile_commands(&cc_db, &tcfg.filter).unwrap_or_else(|_| {
         panic!(
@@ -421,10 +400,6 @@ pub fn transpile(tcfg: TranspilerConfig, source_or_cc_db: &Path, extra_clang_arg
     }
 
     tcfg.check_if_all_binaries_used(&transpiled_modules);
-
-    if is_c_or_h_file {
-        let _ = fs::remove_file(cc_db);
-    }
 }
 
 /// Ensure that clang can locate the system headers on macOS 10.14+.
