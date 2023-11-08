@@ -6,13 +6,13 @@ use std::rc::Rc;
 use failure::Error;
 use log::warn;
 use regex::Regex;
-use serde_derive::Deserialize;
+use serde_derive::{Deserialize, Serialize};
 
-#[derive(Deserialize, Debug, Default, Clone)]
+#[derive(Deserialize, Serialize, Debug, Default, Clone)]
 pub struct CompileCmd {
     /// The working directory of the compilation. All paths specified in the command
     /// or file fields must be either absolute or relative to this directory.
-    directory: PathBuf,
+    pub directory: PathBuf,
     /// The main translation unit source processed by this compilation step. This is
     /// used by tools as the key into the compilation database. There can be multiple
     /// command objects for the same file, for example if the same source file is compiled
@@ -23,13 +23,13 @@ pub struct CompileCmd {
     /// the build system uses. Parameters use shell quoting and shell escaping of quotes,
     /// with ‘"’ and ‘\’ being the only special characters. Shell expansion is not supported.
     #[serde(skip_deserializing)]
-    _command: Option<String>,
+    pub command: Option<String>,
     /// The compile command executed as list of strings. Either arguments or command is required.
     #[serde(default, skip_deserializing)]
-    _arguments: Vec<String>,
+    pub arguments: Vec<String>,
     /// The name of the output created by this compilation step. This field is optional. It can
     /// be used to distinguish different processing modes of the same input file.
-    output: Option<String>,
+    pub output: Option<String>,
 }
 
 impl CompileCmd {

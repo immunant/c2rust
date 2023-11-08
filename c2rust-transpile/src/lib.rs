@@ -19,6 +19,7 @@ use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use std::process;
 
+use compile_cmds::CompileCmd;
 use failure::Error;
 use itertools::Itertools;
 use log::{info, warn};
@@ -243,16 +244,14 @@ pub fn transpile(tcfg: TranspilerConfig, source_or_cc_db: &Path, extra_clang_arg
         .contains('*');
 
     let format_compile_command = |build_dir: &Path, file_path: &Path| -> String {
-        format!(
-            r#"{{
-                "directory": "{}",
-                "command": "clang {}",
-                "file": "{}"
-            }}"#,
-            build_dir.to_str().unwrap(),
-            file_path.to_str().unwrap(),
-            file_path.to_str().unwrap()
-        )
+        let compile_cmd = CompileCmd {
+            directory: build_dir.to_path_buf(),
+            file: file_path.to_path_buf(),
+            arguments: vec!["clang".to_string(), file_path.to_str().unwrap().to_owned()],
+            command: None,
+            output: None,
+        };
+        serde_json::to_string(&compile_cmd).unwrap()
     };
 
     let mut temp_json = Vec::new();
