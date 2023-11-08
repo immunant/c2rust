@@ -3,10 +3,9 @@ use crate::trivial::IsTrivial;
 use rustc_ast::ast::AttrKind;
 use rustc_const_eval::interpret::Scalar;
 use rustc_hir::def::DefKind;
-use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_hir::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, Constant, Field, Local, Location, Mutability, Operand, Place,
-    PlaceElem, PlaceRef, ProjectionElem, Rvalue, Statement, StatementKind,
+    Body, Constant, Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
 };
 use rustc_middle::ty::{
     self, AdtDef, DefIdTree, EarlyBinder, FnSig, GenericArg, List, Subst, SubstsRef, Ty, TyCtxt,
@@ -191,6 +190,9 @@ pub enum Callee<'tcx> {
 
     /// core::ptr::is_null
     IsNull,
+
+    /// `core::mem::size_of<T>`
+    SizeOf { ty: Ty<'tcx> },
 }
 
 pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
@@ -202,10 +204,10 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
 
     match *ty.kind() {
         ty::FnDef(def_id, substs) => {
-            if is_trivial() {
-                Callee::Trivial
-            } else if let Some(callee) = builtin_callee(tcx, def_id, substs) {
+            if let Some(callee) = builtin_callee(tcx, def_id, substs) {
                 callee
+            } else if is_trivial() {
+                Callee::Trivial
             } else {
                 let is_foreign = tcx.def_kind(tcx.parent(def_id)) == DefKind::ForeignMod;
                 if !def_id.is_local() || is_foreign {
@@ -340,6 +342,26 @@ fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, did: DefId, substs: SubstsRef<'tcx>) 
             Some(Callee::IsNull)
         }
 
+        "size_of" => {
+            // The `core::mem::size_of` function.
+            let parent_did = tcx.parent(did);
+            if tcx.def_kind(parent_did) != DefKind::Mod {
+                return None;
+            }
+            if tcx.item_name(parent_did).as_str() != "mem" {
+                return None;
+            }
+            let grandparent_did = tcx.parent(parent_did);
+            if grandparent_did.index != CRATE_DEF_INDEX {
+                return None;
+            }
+            if tcx.crate_name(grandparent_did.krate).as_str() != "core" {
+                return None;
+            }
+            let ty = substs.type_at(0);
+            Some(Callee::SizeOf { ty })
+        }
+
         _ => {
             eprintln!("name: {name:?}");
             None
@@ -371,30 +393,6 @@ pub fn lty_project<'tcx, L: Debug>(
         ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
         ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
     }
-}
-
-pub fn get_cast_place<'tcx>(rv: &Rvalue<'tcx>) -> Option<Place<'tcx>> {
-    match rv {
-        Rvalue::Cast(_, op, _) => op.place(),
-        _ => None,
-    }
-}
-
-pub fn terminator_location(block: BasicBlock, block_data: &BasicBlockData) -> Location {
-    Location {
-        block,
-        statement_index: block_data.statements.len(),
-    }
-}
-
-pub fn get_assign_sides<'tcx, 'a>(
-    stmt: &'a Statement<'tcx>,
-) -> Option<(Place<'tcx>, &'a Rvalue<'tcx>)> {
-    let (pl, ref rv) = match &stmt.kind {
-        StatementKind::Assign(it) => Some(&**it),
-        _ => None,
-    }?;
-    Some((*pl, rv))
 }
 
 /// Check if a [`Constant`] is an integer constant that can be casted to a null pointer.

@@ -1,7 +1,9 @@
 use std::mem;
 
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, PermissionSet, PointerId};
+use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{OwnedPointerTable, PointerTable, PointerTableMut};
+use crate::recent_writes::RecentWrites;
 use rustc_middle::mir::Body;
 
 mod type_check;
@@ -377,6 +379,8 @@ trait PropagateRules<T> {
 pub fn generate_constraints<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     mir: &Body<'tcx>,
+    recent_writes: &RecentWrites,
+    pointee_types: PointerTable<PointeeTypes<'tcx>>,
 ) -> (DataflowConstraints, Vec<(PointerId, PointerId)>) {
-    self::type_check::visit(acx, mir)
+    self::type_check::visit(acx, mir, recent_writes, pointee_types)
 }

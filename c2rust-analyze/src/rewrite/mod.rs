@@ -24,8 +24,6 @@
 //! the source code produced by the earlier ones).
 
 use rustc_hir::Mutability;
-use rustc_middle::mir::Body;
-use rustc_middle::mir::Location;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 use std::fmt;
@@ -39,7 +37,6 @@ mod ty;
 
 pub use self::expr::gen_expr_rewrites;
 pub use self::shim::{gen_shim_call_rewrites, gen_shim_definition_rewrite};
-use self::span_index::SpanIndex;
 pub use self::statics::gen_static_rewrites;
 pub use self::ty::dump_rewritten_local_tys;
 pub use self::ty::{gen_adt_ty_rewrites, gen_ty_rewrites};
@@ -72,16 +69,30 @@ pub enum Rewrite<S = Span> {
     Deref(Box<Rewrite>),
     /// `arr[idx]`
     Index(Box<Rewrite>, Box<Rewrite>),
-    /// `arr[idx..]`
-    SliceTail(Box<Rewrite>, Box<Rewrite>),
+    /// `arr[idx1..idx2]`.  Both `idx1` and `idx2` are optional.
+    SliceRange(Box<Rewrite>, Option<Box<Rewrite>>, Option<Box<Rewrite>>),
     /// `e as T`
-    Cast(Box<Rewrite>, String),
+    Cast(Box<Rewrite>, Box<Rewrite>),
+    /// Placeholder for a redundant cast that has already been removed.  This allows
+    /// `MirRewrite::RemoveCast` to still apply even though the cast is already gone.
+    RemovedCast(Box<Rewrite>),
     /// The integer literal `0`.
     LitZero,
-    // Function calls
+    /// Function calls
     Call(String, Vec<Rewrite>),
-    // Method calls
+    /// Method calls
     MethodCall(String, Box<Rewrite>, Vec<Rewrite>),
+    /// A block of statements, followed by an optional result expression.  This rewrite inserts a
+    /// semicolon after each statement.
+    Block(Vec<Rewrite>, Option<Box<Rewrite>>),
+    /// A multi-variable `let` binding, like `let (x, y) = (rw0, rw1)`.  Note that this rewrite
+    /// does not include a trailing semicolon.
+    ///
+    /// Since these variable bindings are not hygienic, a `StmtBind` can invalidate the expression
+    /// produced by `Identity` or `Sub` rewrites used later in the same scope.  In general,
+    /// `StmtBind` should only be used inside a `Block`, and `Identity` and `Sub` rewrites should
+    /// not be used later in that block.
+    Let(Vec<(String, Rewrite)>),
 
     // Type builders
     /// Emit a complete pretty-printed type, discarding the original annotation.
@@ -120,6 +131,90 @@ impl fmt::Display for Rewrite {
     }
 }
 
+impl Rewrite {
+    /// Try to substitute `subst` for `Rewrite::Identity` anywhere it occurs within `self`.
+    /// Returns `None` if substitution fails; this happens when `self` contains `Rewrite::Sub`.
+    fn try_subst(&self, subst: &Rewrite) -> Option<Rewrite> {
+        use self::Rewrite::*;
+
+        let try_subst =
+            |rw: &Rewrite| -> Option<Box<Rewrite>> { Some(Box::new(rw.try_subst(subst)?)) };
+        let try_subst_option = |rw: &Option<Box<Rewrite>>| -> Option<Option<Box<Rewrite>>> {
+            let new_rw = if let Some(rw) = rw.as_ref() {
+                Some(try_subst(rw)?)
+            } else {
+                None
+            };
+            // Outer option indicates success/failure of the rewrite.  Inner option indicates
+            // presence/absence of `rw`.
+            Some(new_rw)
+        };
+        let try_subst_vec = |rws: &[Rewrite]| -> Option<Vec<Rewrite>> {
+            let mut new_rws = Vec::with_capacity(rws.len());
+            for rw in rws {
+                new_rws.push(rw.try_subst(subst)?);
+            }
+            Some(new_rws)
+        };
+
+        Some(match *self {
+            Identity => subst.clone(),
+            Sub(..) => return None,
+
+            Text(ref s) => Text(String::clone(s)),
+            Extract(span) => Extract(span),
+
+            Ref(ref rw, mutbl) => Ref(try_subst(rw)?, mutbl),
+            AddrOf(ref rw, mutbl) => AddrOf(try_subst(rw)?, mutbl),
+            Deref(ref rw) => Deref(try_subst(rw)?),
+            Index(ref arr, ref idx) => Index(try_subst(arr)?, try_subst(idx)?),
+            SliceRange(ref arr, ref lo, ref hi) => SliceRange(
+                try_subst(arr)?,
+                try_subst_option(lo)?,
+                try_subst_option(hi)?,
+            ),
+            Cast(ref expr, ref ty) => Cast(try_subst(expr)?, try_subst(ty)?),
+            RemovedCast(ref rw) => RemovedCast(try_subst(rw)?),
+            LitZero => LitZero,
+            Call(ref func, ref args) => Call(String::clone(func), try_subst_vec(args)?),
+            MethodCall(ref func, ref receiver, ref args) => MethodCall(
+                String::clone(func),
+                try_subst(receiver)?,
+                try_subst_vec(args)?,
+            ),
+            Block(ref stmts, ref expr) => Block(try_subst_vec(stmts)?, try_subst_option(expr)?),
+            Let(ref vars) => {
+                let mut new_vars = Vec::with_capacity(vars.len());
+                for (ref name, ref rw) in vars {
+                    new_vars.push((String::clone(name), rw.try_subst(subst)?));
+                }
+                Let(new_vars)
+            }
+
+            Print(ref s) => Print(String::clone(s)),
+            TyPtr(ref rw, mutbl) => TyPtr(try_subst(rw)?, mutbl),
+            TyRef(ref lt, ref rw, mutbl) => TyRef(LifetimeName::clone(lt), try_subst(rw)?, mutbl),
+            TySlice(ref rw) => TySlice(try_subst(rw)?),
+            TyCtor(ref name, ref tys) => TyCtor(String::clone(name), try_subst_vec(tys)?),
+            _TyGenericParams(ref tys) => _TyGenericParams(try_subst_vec(tys)?),
+            StaticMut(mutbl, span) => StaticMut(mutbl, span),
+
+            DefineFn {
+                ref name,
+                ref arg_tys,
+                ref return_ty,
+                ref body,
+            } => DefineFn {
+                name: String::clone(name),
+                arg_tys: try_subst_vec(arg_tys)?,
+                return_ty: try_subst_option(return_ty)?,
+                body: try_subst(body)?,
+            },
+            FnArg(idx) => FnArg(idx),
+        })
+    }
+}
+
 struct FormatterSink<'a, 'b>(&'a mut fmt::Formatter<'b>);
 
 impl apply::Sink for FormatterSink<'_, '_> {
@@ -141,27 +236,6 @@ impl apply::Sink for FormatterSink<'_, '_> {
     fn emit_span(&mut self, span: Span) -> fmt::Result {
         self.0.write_fmt(format_args!("<span {:?}>", span))
     }
-}
-
-fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {
-    let mut span_index_items = Vec::new();
-    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
-        for (i, stmt) in bb_data.statements.iter().enumerate() {
-            let loc = Location {
-                block: bb,
-                statement_index: i,
-            };
-            span_index_items.push((stmt.source_info.span, loc));
-        }
-
-        let loc = Location {
-            block: bb,
-            statement_index: bb_data.statements.len(),
-        };
-        span_index_items.push((bb_data.terminator().source_info.span, loc));
-    }
-
-    SpanIndex::new(span_index_items)
 }
 
 pub fn apply_rewrites(tcx: TyCtxt, rewrites: Vec<(Span, Rewrite)>) {
@@ -201,7 +275,10 @@ mod test {
     }
 
     fn cast_usize(rw: Box<Rewrite>) -> Box<Rewrite> {
-        Box::new(Rewrite::Cast(rw, "usize".to_owned()))
+        Box::new(Rewrite::Cast(
+            rw,
+            Box::new(Rewrite::Print("usize".to_owned())),
+        ))
     }
 
     /// Test precedence handling in `Rewrite::pretty`

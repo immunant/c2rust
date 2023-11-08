@@ -17,7 +17,6 @@ extern crate rustc_type_ir;
 
 mod analyze;
 mod borrowck;
-mod c_void_casts;
 mod context;
 mod dataflow;
 mod equiv;
@@ -27,6 +26,7 @@ mod log;
 mod panic_detail;
 mod pointee_type;
 mod pointer_id;
+mod recent_writes;
 mod rewrite;
 mod trivial;
 mod type_desc;

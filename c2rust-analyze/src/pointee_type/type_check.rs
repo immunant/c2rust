@@ -328,6 +328,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.use_pointer_at_type(dest_lty.label, var);
                 self.assign(dest_lty.label, dest_arg_lty.label);
             }
+            Callee::SizeOf { .. } => {}
             Callee::IsNull => {
                 // No constraints.
             }

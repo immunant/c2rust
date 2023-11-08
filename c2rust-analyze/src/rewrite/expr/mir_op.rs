@@ -9,6 +9,7 @@
 
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet};
 use crate::panic_detail;
+use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{PointerId, PointerTable};
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{ty_callee, Callee};
@@ -20,7 +21,7 @@ use rustc_middle::mir::{
 };
 use rustc_middle::ty::print::FmtPrinter;
 use rustc_middle::ty::print::Print;
-use rustc_middle::ty::{Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{ParamEnv, Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
 
@@ -55,8 +56,28 @@ pub enum RewriteKind {
     MutToImm,
     /// Remove a call to `as_ptr` or `as_mut_ptr`.
     RemoveAsPtr,
+    /// Remove a cast, changing `x as T` to just `x`.
+    RemoveCast,
     /// Replace &raw with & or &raw mut with &mut
     RawToRef { mutbl: bool },
+
+    /// Replace a call to `memcpy(dest, src, n)` with a safe copy operation that works on slices
+    /// instead of raw pointers.  `elem_size` is the size of the original, unrewritten pointee
+    /// type, which is used to convert the byte length `n` to an element count.  `dest_single` and
+    /// `src_single` are set when `dest`/`src` is a pointer to a single item rather than a slice.
+    MemcpySafe {
+        elem_size: u64,
+        dest_single: bool,
+        src_single: bool,
+    },
+    /// Replace a call to `memset(ptr, 0, n)` with a safe zeroize operation.  `elem_size` is the
+    /// size of the type being zeroized, which is used to convert the byte length `n` to an element
+    /// count.  `dest_single` is set when `dest` is a pointer to a single item rather than a slice.
+    MemsetZeroize {
+        zero_ty: ZeroizeType,
+        elem_size: u64,
+        dest_single: bool,
+    },
 
     /// Cast `&T` to `*const T` or `&mut T` to `*mut T`.
     CastRefToRaw { mutbl: bool },
@@ -82,6 +103,18 @@ pub enum RewriteKind {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
+pub enum ZeroizeType {
+    /// Zeroize by storing the literal `0`.
+    Int,
+    /// Zeroize by storing the literal `false`.
+    Bool,
+    /// Iterate over `x.iter_mut()` and zeroize each element.
+    Iterable(Box<ZeroizeType>),
+    /// Zeroize each named field.
+    Struct(Vec<(String, ZeroizeType)>),
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct MirRewrite {
     pub kind: RewriteKind,
     pub sub_loc: Vec<SubLoc>,
@@ -91,6 +124,7 @@ struct ExprRewriteVisitor<'a, 'tcx> {
     acx: &'a AnalysisCtxt<'a, 'tcx>,
     perms: PointerTable<'a, PermissionSet>,
     flags: PointerTable<'a, FlagSet>,
+    pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
     rewrites: &'a mut HashMap<Location, Vec<MirRewrite>>,
     mir: &'a Body<'tcx>,
     loc: Location,
@@ -101,6 +135,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     pub fn new(
         acx: &'a AnalysisCtxt<'a, 'tcx>,
         asn: &'a Assignment,
+        pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
         rewrites: &'a mut HashMap<Location, Vec<MirRewrite>>,
         mir: &'a Body<'tcx>,
     ) -> ExprRewriteVisitor<'a, 'tcx> {
@@ -110,6 +145,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             acx,
             perms,
             flags,
+            pointee_types,
             rewrites,
             mir,
             loc: Location {
@@ -157,24 +193,39 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         self.enter(SubLoc::PlacePointer(i), f)
     }
 
+    /// Get the pointee type of `lty`.  Returns the inferred pointee type from `self.pointee_types`
+    /// if one is available, or the pointee type as represented in `lty` itself otherwise.  Returns
+    /// `None` if `lty` is not a `RawPtr` or `Ref` type.
+    ///
+    /// TODO: This does not yet have any pointer-to-pointer support.  For example, if `lty` is
+    /// `*mut *mut c_void` where the inner pointer is known to point to `u8`, this method will
+    /// still return `*mut c_void` instead of `*mut u8`.
+    fn pointee_lty(&self, lty: LTy<'tcx>) -> Option<LTy<'tcx>> {
+        if !matches!(lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)) {
+            return None;
+        }
+        debug_assert_eq!(lty.args.len(), 1);
+        let ptr = lty.label;
+        if !ptr.is_none() {
+            if let Some(pointee_lty) = self.pointee_types[ptr].get_sole_lty() {
+                return Some(pointee_lty);
+            }
+        }
+        Some(lty.args[0])
+    }
+
     fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         let _g = panic_detail::set_current_span(stmt.source_info.span);
+        eprintln!(
+            "mir_op::visit_statement: {:?} @ {:?}: {:?}",
+            loc, stmt.source_info.span, stmt
+        );
         self.loc = loc;
         debug_assert!(self.sub_loc.is_empty());
 
         match stmt.kind {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
-
-                if matches!(rv, Rvalue::Cast(..)) && self.acx.c_void_casts.should_skip_stmt(loc) {
-                    // This is a cast to or from `void*` associated with a `malloc`, `free`, or
-                    // other libc call.
-                    //
-                    // TODO: we should probably emit a rewrite here to remove the cast; then when
-                    // we implement rewriting of the actual call, it won't need to deal with
-                    // additional rewrites at a separate location from the call itself.
-                    return;
-                }
 
                 let pl_lty = self.acx.type_of(pl);
 
@@ -304,6 +355,95 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         }
                     }
 
+                    Callee::Memcpy => {
+                        self.enter_rvalue(|v| {
+                            // TODO: Only emit `MemcpySafe` if the rewritten argument types and
+                            // pointees are suitable.  Specifically, the `src` and `dest` arguments
+                            // must both be rewritten to safe references, their pointee types must
+                            // be the same, and the pointee type must implement `Copy`.  If these
+                            // conditions don't hold, leave the `memcpy` call intact and emit casts
+                            // back to `void*` on the `dest` and `src` arguments.
+                            let dest_lty = v.acx.type_of(&args[0]);
+                            let dest_pointee = v.pointee_lty(dest_lty);
+                            let src_lty = v.acx.type_of(&args[1]);
+                            let src_pointee = v.pointee_lty(src_lty);
+                            let common_pointee = dest_pointee.filter(|&x| Some(x) == src_pointee);
+                            let pointee_lty = match common_pointee {
+                                Some(x) => x,
+                                // TODO: emit void* casts before bailing out, as described above
+                                None => return,
+                            };
+
+                            let orig_pointee_ty = pointee_lty.ty;
+                            let ty_layout = tcx
+                                .layout_of(ParamEnv::reveal_all().and(orig_pointee_ty))
+                                .unwrap();
+                            let elem_size = ty_layout.layout.size().bytes();
+                            let dest_single = !v.perms[dest_lty.label]
+                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+                            let src_single = !v.perms[src_lty.label]
+                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+                            v.emit(RewriteKind::MemcpySafe {
+                                elem_size,
+                                src_single,
+                                dest_single,
+                            });
+
+                            if !pl_ty.label.is_none() {
+                                if v.perms[pl_ty.label].intersects(PermissionSet::USED) {
+                                    let dest_lty = v.acx.type_of(&args[0]);
+                                    v.emit_cast_lty_lty(dest_lty, pl_ty);
+                                }
+                            }
+                        });
+                    }
+
+                    Callee::Memset => {
+                        self.enter_rvalue(|v| {
+                            // TODO: Only emit `MemsetSafe` if the rewritten argument type and
+                            // pointee are suitable.  Specifically, the `dest` arguments must be
+                            // rewritten to a safe reference type.  If these conditions don't hold,
+                            // leave the `memset` call intact and emit casts back to `void*` on the
+                            // `dest` argument.
+                            let dest_lty = v.acx.type_of(&args[0]);
+                            let dest_pointee = v.pointee_lty(dest_lty);
+                            let pointee_lty = match dest_pointee {
+                                Some(x) => x,
+                                // TODO: emit void* cast before bailing out, as described above
+                                None => return,
+                            };
+
+                            let orig_pointee_ty = pointee_lty.ty;
+                            let ty_layout = tcx
+                                .layout_of(ParamEnv::reveal_all().and(orig_pointee_ty))
+                                .unwrap();
+                            let elem_size = ty_layout.layout.size().bytes();
+                            let dest_single = !v.perms[dest_lty.label]
+                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+
+                            // TODO: use rewritten types here, so that the `ZeroizeType` will
+                            // reflect the actual types and fields after rewriting.
+                            let zero_ty = match ZeroizeType::from_ty(tcx, orig_pointee_ty) {
+                                Some(x) => x,
+                                // TODO: emit void* cast before bailing out, as described above
+                                None => return,
+                            };
+
+                            v.emit(RewriteKind::MemsetZeroize {
+                                zero_ty,
+                                elem_size,
+                                dest_single,
+                            });
+
+                            if !pl_ty.label.is_none() {
+                                if v.perms[pl_ty.label].intersects(PermissionSet::USED) {
+                                    let dest_lty = v.acx.type_of(&args[0]);
+                                    v.emit_cast_lty_lty(dest_lty, pl_ty);
+                                }
+                            }
+                        });
+                    }
+
                     _ => {}
                 }
             }
@@ -319,6 +459,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     /// Visit an `Rvalue`.  If `expect_ty` is `Some`, also emit whatever casts are necessary to
     /// make the `Rvalue` produce a value of type `expect_ty`.
     fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, expect_ty: Option<LTy<'tcx>>) {
+        eprintln!("mir_op::visit_rvalue: {:?}, expect {:?}", rv, expect_ty);
         match *rv {
             Rvalue::Use(ref op) => {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, expect_ty));
@@ -356,6 +497,38 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             }
             Rvalue::Cast(_kind, ref op, _ty) => {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
+                if let Some(rv_lty) = expect_ty {
+                    let op_lty = self.acx.type_of(op);
+                    let op_pointee = self.pointee_lty(op_lty);
+                    let rv_pointee = self.pointee_lty(rv_lty);
+                    // TODO: Check `pointee_types` recursively to handle pointer-to-pointer cases.
+                    // For example `op_pointee = *mut /*p1*/ c_void` and `rv_pointee = *mut /*p2*/
+                    // c_void`, where `p1` and `p2` both have `pointee_types` entries of `u8`.
+                    let common_pointee = op_pointee.filter(|&x| Some(x) == rv_pointee);
+                    if let Some(pointee_lty) = common_pointee {
+                        let op_desc = type_desc::perms_to_desc_with_pointee(
+                            self.acx.tcx(),
+                            pointee_lty.ty,
+                            op_lty.ty,
+                            self.perms[op_lty.label],
+                            self.flags[op_lty.label],
+                        );
+                        let rv_desc = type_desc::perms_to_desc_with_pointee(
+                            self.acx.tcx(),
+                            pointee_lty.ty,
+                            rv_lty.ty,
+                            self.perms[rv_lty.label],
+                            self.flags[rv_lty.label],
+                        );
+                        eprintln!("Cast with common pointee {:?}:\n  op_desc = {:?}\n  rv_desc = {:?}\n  matches? {}",
+                            pointee_lty, op_desc, rv_desc, op_desc == rv_desc);
+                        if op_desc == rv_desc {
+                            // After rewriting, the input and output types of the cast will be
+                            // identical.  This means we can delete the cast.
+                            self.emit(RewriteKind::RemoveCast);
+                        }
+                    }
+                }
             }
             Rvalue::BinaryOp(_bop, ref ops) => {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(&ops.0, None));
@@ -519,6 +692,34 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         let flags = self.flags;
         let mut builder = CastBuilder::new(self.acx.tcx(), &perms, &flags, |rk| self.emit(rk));
         builder.build_cast_lty_lty(from_lty, to_lty);
+    }
+}
+
+impl ZeroizeType {
+    fn from_ty<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<ZeroizeType> {
+        Some(match *ty.kind() {
+            TyKind::Int(_) | TyKind::Uint(_) => ZeroizeType::Int,
+            TyKind::Bool => ZeroizeType::Bool,
+            TyKind::Adt(adt_def, substs) => {
+                if !adt_def.is_struct() {
+                    return None;
+                }
+                let variant = adt_def.non_enum_variant();
+                let mut fields = Vec::with_capacity(variant.fields.len());
+                for field in &variant.fields {
+                    let name = field.name.to_string();
+                    let ty = field.ty(tcx, substs);
+                    let zero = ZeroizeType::from_ty(tcx, ty)?;
+                    fields.push((name, zero));
+                }
+                ZeroizeType::Struct(fields)
+            }
+            TyKind::Array(elem_ty, _) => {
+                let elem_zero = ZeroizeType::from_ty(tcx, elem_ty)?;
+                ZeroizeType::Iterable(Box::new(elem_zero))
+            }
+            _ => return None,
+        })
     }
 }
 
@@ -804,11 +1005,12 @@ where
 pub fn gen_mir_rewrites<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,
+    pointee_types: PointerTable<PointeeTypes<'tcx>>,
     mir: &Body<'tcx>,
 ) -> HashMap<Location, Vec<MirRewrite>> {
     let mut out = HashMap::new();
 
-    let mut v = ExprRewriteVisitor::new(acx, asn, &mut out, mir);
+    let mut v = ExprRewriteVisitor::new(acx, asn, pointee_types, &mut out, mir);
 
     for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb.statements.iter().enumerate() {

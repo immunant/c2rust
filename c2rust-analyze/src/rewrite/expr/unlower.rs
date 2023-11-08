@@ -1,8 +1,8 @@
 use crate::panic_detail;
-use crate::rewrite::build_span_index;
 use crate::rewrite::expr::mir_op::SubLoc;
 use crate::rewrite::span_index::SpanIndex;
 use crate::util;
+use either::Either;
 use log::*;
 use rustc_hir as hir;
 use rustc_hir::intravisit::{self, Visitor};
@@ -164,31 +164,6 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         }
     }
 
-    fn get_last_call(
-        &self,
-        locs: &[Location],
-    ) -> Option<(
-        Location,
-        mir::Place<'tcx>,
-        &'a mir::Operand<'tcx>,
-        &'a [mir::Operand<'tcx>],
-    )> {
-        for &loc in locs.iter().rev() {
-            if let Some(term) = self.mir.stmt_at(loc).right() {
-                match term.kind {
-                    mir::TerminatorKind::Call {
-                        ref func,
-                        ref args,
-                        destination,
-                        ..
-                    } => return Some((loc, destination, func, args)),
-                    _ => {}
-                }
-            }
-        }
-        None
-    }
-
     fn should_ignore_statement(&self, loc: Location) -> bool {
         if let Some(stmt) = self.mir.stmt_at(loc).left() {
             match stmt.kind {
@@ -257,30 +232,63 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             }
 
             hir::ExprKind::Call(_, args) | hir::ExprKind::MethodCall(_, args, _) => {
-                let (loc, _mir_pl, _mir_func, mir_args) = match self.get_last_call(&locs) {
-                    Some(x @ (_, pl, _, _)) if is_var(pl) => x,
+                // Handle adjustments on the call's output first.
+                let (_mir_pl, mut cursor) = match self.make_visit_expr_cursor(&locs) {
+                    Some(x @ (pl, _)) if is_var(pl) => x,
                     _ => {
-                        warn("expected final Call to store into var");
+                        warn("expected final Assign to store into var");
+                        eprintln!(
+                            "visit_expr_inner: bail out: expr at {:?} isn't assigned to a var",
+                            ex.span
+                        );
                         return;
                     }
                 };
-                self.record_desc(loc, &[], ex, MirOriginDesc::StoreIntoLocal);
+                self.record_desc(cursor.loc, &[], ex, MirOriginDesc::StoreIntoLocal);
+                self.peel_adjustments(ex, &mut cursor);
+
+                // After all adjustments have been peeled, the next `Location` should be the call
+                // itself.
+                let mir_args = match cursor.cur {
+                    ExprMir::Call(term) => match term.kind {
+                        mir::TerminatorKind::Call {
+                            ref args,
+                            destination,
+                            ..
+                        } => {
+                            if !is_var(destination) {
+                                warn("expected final Call to store into var");
+                                return;
+                            }
+                            args
+                        }
+                        _ => unreachable!("ExprMir::Call should always contain Call terminator"),
+                    },
+                    _ => {
+                        warn("expected MIR Call for HIR Call/MethodCall");
+                        return;
+                    }
+                };
+                let loc = cursor.loc;
+                let extra_locs = cursor.locs;
+                self.finish_visit_expr_cursor(ex, cursor);
+
                 self.record(loc, &[SubLoc::Rvalue], ex);
                 for (i, (arg, mir_arg)) in args.iter().zip(mir_args).enumerate() {
                     self.record_operand(loc, &[SubLoc::Rvalue, SubLoc::CallArg(i)], arg, mir_arg);
                     self.visit_expr_operand(arg, mir_arg, &[]);
                 }
 
-                if locs.len() > 1 {
+                if extra_locs.len() > 0 {
                     // Special case: if the receiver of a `MethodCall` has adjustments, they are
                     // emitted with the same span as the `MethodCall` itself, and thus show up as
-                    // extra `locs` here.  We associate them with the child instead so all of the
-                    // child's spans can be processed together.
+                    // leftover `extra_locs` here.  We associate them with the child instead so all
+                    // of the child's statements can be processed together.
                     if matches!(ex.kind, hir::ExprKind::MethodCall(..)) {
                         self.append_extra_locations
                             .entry(args[0].hir_id)
                             .or_insert_with(Vec::new)
-                            .extend_from_slice(&locs[..locs.len() - 1]);
+                            .extend_from_slice(extra_locs);
                     } else {
                         warn!("NYI: extra locations {:?} in Call", &locs[..locs.len() - 1]);
                     }
@@ -290,25 +298,62 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             _ => {
                 // For all other `ExprKind`s, we expect the last `loc` to be an assignment storing
                 // the final result into a temporary.
-                let (loc, _mir_pl, mir_rv) = match self.get_last_assign(&locs) {
-                    Some(x @ (_, pl, _)) if is_var(pl) => x,
+                let (_mir_pl, mut cursor) = match self.make_visit_expr_cursor(&locs) {
+                    Some(x @ (pl, _)) if is_var(pl) => x,
                     _ => {
                         warn("expected final Assign to store into var");
                         return;
                     }
                 };
-                self.record_desc(loc, &[], ex, MirOriginDesc::StoreIntoLocal);
-                self.visit_expr_rvalue(ex, loc, mir_rv, &locs[..locs.len() - 1]);
+                self.record_desc(cursor.loc, &[], ex, MirOriginDesc::StoreIntoLocal);
+                self.peel_adjustments(ex, &mut cursor);
+                self.record_desc(cursor.loc, &cursor.sub_loc, ex, MirOriginDesc::Expr);
+                self.finish_visit_expr_cursor(ex, cursor);
             }
         }
     }
 
-    fn visit_expr_rvalue(
+    /// Try to create a `VisitExprCursor` from the RHS of statement `locs.last()`.  Returns the LHS
+    /// of the statement and the cursor on success.  Fails (returning `None`) if the statement at
+    /// `locs.last()` is not `StatementKind::Assign` or `TerminatorKind::Call`.
+    fn make_visit_expr_cursor<'b>(
+        &self,
+        locs: &'b [Location],
+    ) -> Option<(mir::Place<'tcx>, VisitExprCursor<'a, 'b, 'tcx>)> {
+        let (&loc, extra_locs) = locs.split_last()?;
+
+        let (pl, expr_mir) = match self.mir.stmt_at(loc) {
+            Either::Left(stmt) => match stmt.kind {
+                mir::StatementKind::Assign(ref x) => (x.0, ExprMir::Rvalue(&x.1)),
+                _ => return None,
+            },
+            Either::Right(term) => match term.kind {
+                mir::TerminatorKind::Call { destination, .. } => (destination, ExprMir::Call(term)),
+                _ => return None,
+            },
+        };
+
+        let cursor =
+            VisitExprCursor::new(self.mir, expr_mir, extra_locs, loc, vec![SubLoc::Rvalue]);
+
+        Some((pl, cursor))
+    }
+
+    fn finish_visit_expr_cursor(
         &mut self,
         ex: &'tcx hir::Expr<'tcx>,
-        loc: Location,
-        rv: &'a mir::Rvalue<'tcx>,
-        extra_locs: &[Location],
+        cursor: VisitExprCursor<'a, '_, 'tcx>,
+    ) {
+        // Record entries for temporaries that are buffered in `temp_info`.
+        for (precise_loc, desc) in cursor.temp_info {
+            self.record_desc(precise_loc.loc, &precise_loc.sub, ex, desc);
+        }
+    }
+
+    fn peel_adjustments(
+        &mut self,
+        ex: &'tcx hir::Expr<'tcx>,
+        cursor: &mut VisitExprCursor<'a, '_, 'tcx>,
     ) {
         let _g = panic_detail::set_current_span(ex.span);
 
@@ -317,24 +362,15 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         // have been accounted for, the final remaining `Rvalue` is the `Expr` itself.
         let adjusts = self.typeck_results.expr_adjustments(ex);
 
-        let mut cursor = VisitExprCursor::new(
-            self.mir,
-            ExprMir::from(rv),
-            extra_locs,
-            loc,
-            vec![SubLoc::Rvalue],
-        );
-
         for (i, adjust) in adjusts.iter().enumerate().rev() {
             while cursor.peel_temp().is_some() {
                 // No-op.  Just loop until we've peeled all temporaries.
             }
-            self.record_desc(
-                cursor.loc,
-                &cursor.sub_loc,
-                ex,
-                MirOriginDesc::Adjustment(i),
-            );
+            // Remember the current location.  If the following matching operations succeed, we
+            // want to record an entry at this location, but the operations in question will also
+            // update `cursor.loc`.
+            let loc = cursor.loc;
+            let sub_loc = cursor.sub_loc.clone();
             match adjust.kind {
                 Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => {
                     if cursor.peel_address_of() != Some(mutbl) {
@@ -392,18 +428,12 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                     break;
                 }
             }
+            self.record_desc(loc, &sub_loc, ex, MirOriginDesc::Adjustment(i));
         }
 
         while cursor.peel_temp().is_some() {
             // No-op.  Just loop until we've peeled all temporaries.
         }
-
-        // Record entries for temporaries that are buffered in `temp_info`.
-        for (precise_loc, desc) in cursor.temp_info {
-            self.record_desc(precise_loc.loc, &precise_loc.sub, ex, desc);
-        }
-
-        self.record_desc(cursor.loc, &cursor.sub_loc, ex, MirOriginDesc::Expr);
     }
 
     fn visit_expr_operand(
@@ -436,6 +466,8 @@ enum ExprMir<'a, 'tcx> {
     Rvalue(&'a mir::Rvalue<'tcx>),
     Operand(&'a mir::Operand<'tcx>),
     Place(mir::PlaceRef<'tcx>),
+    /// The RHS of a `TerminatorKind::Call`.
+    Call(&'a mir::Terminator<'tcx>),
 }
 
 impl<'a, 'tcx> From<&'a mir::Rvalue<'tcx>> for ExprMir<'a, 'tcx> {
@@ -458,10 +490,10 @@ impl<'a, 'tcx> From<mir::PlaceRef<'tcx>> for ExprMir<'a, 'tcx> {
 
 /// Helper for `visit_expr_rvalue`.  This type has methods for traversing the MIR produced from a
 /// `hir::Expr` and its adjustments.
-struct VisitExprCursor<'a, 'tcx> {
+struct VisitExprCursor<'a, 'b, 'tcx> {
     mir: &'a Body<'tcx>,
     cur: ExprMir<'a, 'tcx>,
-    locs: &'a [Location],
+    locs: &'b [Location],
 
     loc: Location,
     sub_loc: Vec<SubLoc>,
@@ -475,14 +507,14 @@ struct VisitExprCursor<'a, 'tcx> {
     temp_info: Vec<(PreciseLoc, MirOriginDesc)>,
 }
 
-impl<'a, 'tcx> VisitExprCursor<'a, 'tcx> {
+impl<'a, 'b, 'tcx> VisitExprCursor<'a, 'b, 'tcx> {
     pub fn new(
         mir: &'a Body<'tcx>,
         cur: ExprMir<'a, 'tcx>,
-        extra_locs: &'a [Location],
+        extra_locs: &'b [Location],
         loc: Location,
         sub_loc: Vec<SubLoc>,
-    ) -> VisitExprCursor<'a, 'tcx> {
+    ) -> VisitExprCursor<'a, 'b, 'tcx> {
         VisitExprCursor {
             mir,
             cur,
@@ -545,11 +577,18 @@ impl<'a, 'tcx> VisitExprCursor<'a, 'tcx> {
         }
 
         let (&loc, remaining_locs) = self.locs.split_last()?;
-        let stmt = self.mir.stmt_at(loc).left()?;
-        let (assign_pl, assign_rv) = match stmt.kind {
-            mir::StatementKind::Assign(ref x) => (&x.0, &x.1),
-            _ => return None,
+
+        let (assign_pl, rv_expr_mir) = match self.mir.stmt_at(loc) {
+            Either::Left(stmt) => match stmt.kind {
+                mir::StatementKind::Assign(ref x) => (x.0, ExprMir::Rvalue(&x.1)),
+                _ => return None,
+            },
+            Either::Right(term) => match term.kind {
+                mir::TerminatorKind::Call { destination, .. } => (destination, ExprMir::Call(term)),
+                _ => return None,
+            },
         };
+
         if !is_temp_var(self.mir, assign_pl.as_ref()) {
             return None;
         }
@@ -559,8 +598,8 @@ impl<'a, 'tcx> VisitExprCursor<'a, 'tcx> {
         self.temp_info
             .push((store_loc, MirOriginDesc::StoreIntoLocal));
 
-        // Success - the next relevant MIR is `assign_rv`.
-        self.cur = ExprMir::Rvalue(assign_rv);
+        // Success - the next relevant MIR is `rv_expr_mir`.
+        self.cur = rv_expr_mir;
         self.locs = remaining_locs;
         self.loc = loc;
         self.sub_loc = vec![SubLoc::Rvalue];
@@ -671,6 +710,30 @@ fn is_var(pl: mir::Place) -> bool {
 
 fn is_temp_var(mir: &Body, pl: mir::PlaceRef) -> bool {
     pl.projection.len() == 0 && mir.local_kind(pl.local) == mir::LocalKind::Temp
+}
+
+fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {
+    eprintln!("building span index for {:?}:", mir.source);
+    let mut span_index_items = Vec::new();
+    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+        for (i, stmt) in bb_data.statements.iter().enumerate() {
+            let loc = Location {
+                block: bb,
+                statement_index: i,
+            };
+            eprintln!("  {:?}: {:?}", loc, stmt.source_info.span);
+            span_index_items.push((stmt.source_info.span, loc));
+        }
+
+        let loc = Location {
+            block: bb,
+            statement_index: bb_data.statements.len(),
+        };
+        eprintln!("  {:?}: {:?}", loc, bb_data.terminator().source_info.span);
+        span_index_items.push((bb_data.terminator().source_info.span, loc));
+    }
+
+    SpanIndex::new(span_index_items)
 }
 
 /// Builds the *unlowering map*, which maps each piece of the MIR to the HIR `Expr` that was

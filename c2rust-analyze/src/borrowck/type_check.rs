@@ -596,6 +596,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             self.visit_operand(dest)
                         });
                     }
+                    Callee::SizeOf { .. } => {}
                     Callee::IsNull => {
                         let _rv_lty = assert_matches!(&args[..], [p] => {
                             self.visit_operand(p)
@@ -643,10 +644,7 @@ pub fn visit_body<'tcx>(
                 statement_index: idx,
             };
             tc.current_location = loc;
-
-            if !acx.c_void_casts.should_skip_stmt(loc) {
-                tc.visit_statement(stmt);
-            }
+            tc.visit_statement(stmt);
         }
 
         tc.current_location = Location {

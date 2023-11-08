@@ -307,19 +307,30 @@ impl<S: Sink> Emitter<'_, S> {
                 slf.emit(idx, 0)?;
                 slf.emit_str("]")
             }),
-            Rewrite::SliceTail(ref arr, ref idx) => self.emit_parenthesized(prec > 3, |slf| {
-                slf.emit(arr, 3)?;
-                slf.emit_str("[")?;
-                // Rather than figure out the right precedence for `..`, just force
-                // parenthesization in this position.
-                slf.emit(idx, 999)?;
-                slf.emit_str(" ..]")
-            }),
+            Rewrite::SliceRange(ref arr, ref idx1, ref idx2) => {
+                self.emit_parenthesized(prec > 3, |slf| {
+                    slf.emit(arr, 3)?;
+                    slf.emit_str("[")?;
+                    if let Some(idx1) = idx1.as_ref() {
+                        // Rather than figure out the right precedence for `..`, just force
+                        // parenthesization in this position.
+                        slf.emit(idx1, 999)?;
+                        slf.emit_str(" ")?;
+                    }
+                    slf.emit_str("..")?;
+                    if let Some(idx2) = idx2.as_ref() {
+                        slf.emit_str(" ")?;
+                        slf.emit(idx2, 999)?;
+                    }
+                    slf.emit_str("]")
+                })
+            }
             Rewrite::Cast(ref rw, ref ty) => self.emit_parenthesized(prec > 1, |slf| {
                 slf.emit(rw, 1)?;
                 slf.emit_str(" as ")?;
-                slf.emit_str(ty)
+                slf.emit(ty, 0)
             }),
+            Rewrite::RemovedCast(ref rw) => self.emit(rw, prec),
             Rewrite::LitZero => self.emit_str("0"),
 
             Rewrite::Print(ref s) => self.emit_str(s),
@@ -359,6 +370,36 @@ impl<S: Sink> Emitter<'_, S> {
                     Ok(())
                 })
             }
+
+            Rewrite::Block(ref stmts, ref expr) => {
+                self.emit_str("{\n")?;
+                for stmt in stmts {
+                    self.emit_str("    ")?;
+                    self.emit(stmt, 0)?;
+                    self.emit_str(";\n")?;
+                }
+                if let Some(ref expr) = *expr {
+                    self.emit_str("    ")?;
+                    self.emit(expr, 0)?;
+                    self.emit_str("\n")?;
+                }
+                self.emit_str("}")
+            }
+
+            Rewrite::Let(ref vars) => {
+                self.emit_str("let (")?;
+                for (ref name, _) in vars {
+                    self.emit_str(name)?;
+                    self.emit_str(", ")?;
+                }
+                self.emit_str(") = (")?;
+                for (_, ref rw) in vars {
+                    self.emit(rw, 0)?;
+                    self.emit_str(", ")?;
+                }
+                self.emit_str(")")
+            }
+
             Rewrite::TyPtr(ref rw, mutbl) => {
                 match mutbl {
                     Mutability::Not => self.emit_str("*const ")?,

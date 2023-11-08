@@ -14,7 +14,8 @@ use crate::context::{
     PermissionSet,
 };
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
-use crate::pointer_id::PointerId;
+use crate::pointee_type::PointeeTypes;
+use crate::pointer_id::{GlobalPointerTable, PointerId, PointerTable};
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, Quantity};
 use hir::{
@@ -30,32 +31,29 @@ use rustc_hir::{Mutability, Node};
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, LocalDecl};
 use rustc_middle::ty::print::{FmtPrinter, Print};
-use rustc_middle::ty::TyKind;
 use rustc_middle::ty::{self, AdtDef, GenericArg, GenericArgKind, List, ReErased, TyCtxt};
+use rustc_middle::ty::{Ty, TyKind, TypeAndMut};
 use rustc_span::Span;
 
 use super::LifetimeName;
 
 /// A label for use with `LabeledTy` to indicate what rewrites to apply at each position in a type.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-struct RewriteLabel<'a> {
+struct RewriteLabel<'tcx> {
     /// Rewrite a raw pointer, whose ownership and quantity have been inferred as indicated.
     ty_desc: Option<(Ownership, Quantity)>,
+    /// Rewrite the pointee type of this pointer.
+    pointee_ty: Option<Ty<'tcx>>,
     /// If set, a child or other descendant of this type requires rewriting.
     descendant_has_rewrite: bool,
     /// A lifetime rewrite for a pointer or reference.
-    lifetime: &'a [OriginArg<'a>],
+    lifetime: &'tcx [OriginArg<'tcx>],
 }
 
 type RwLTy<'tcx> = LabeledTy<'tcx, RewriteLabel<'tcx>>;
 
-fn has_lifetime_rws(rw_lty: &RwLTy, adt_metadata: &AdtMetadataTable) -> bool {
-    let has_pointer_lifetime = rw_lty
-        .label
-        .lifetime
-        .iter()
-        .any(|lt| matches!(lt, OriginArg::Hypothetical(..)));
-    let has_adt_lifetime = match rw_lty.ty.kind() {
+fn ty_has_adt_lifetime(ty: Ty, adt_metadata: &AdtMetadataTable) -> bool {
+    match ty.kind() {
         TyKind::Adt(adt_def, _) => adt_metadata
             .table
             .get(&adt_def.did())
@@ -66,13 +64,23 @@ fn has_lifetime_rws(rw_lty: &RwLTy, adt_metadata: &AdtMetadataTable) -> bool {
             })
             .unwrap_or(false),
         _ => false,
-    };
+    }
+}
+
+fn has_lifetime_rws(rw_lty: &RwLTy, adt_metadata: &AdtMetadataTable) -> bool {
+    let has_pointer_lifetime = rw_lty
+        .label
+        .lifetime
+        .iter()
+        .any(|lt| matches!(lt, OriginArg::Hypothetical(..)));
+    let has_adt_lifetime = ty_has_adt_lifetime(rw_lty.ty, adt_metadata);
     has_adt_lifetime || has_pointer_lifetime
 }
 
 fn descendant_has_rewrite(args: &[RwLTy], adt_metadata: &AdtMetadataTable) -> bool {
     args.iter().any(|child| {
         child.label.ty_desc.is_some()
+            || child.label.pointee_ty.is_some()
             || child.label.descendant_has_rewrite
             || has_lifetime_rws(child, adt_metadata)
     })
@@ -83,6 +91,7 @@ fn create_rewrite_label<'tcx>(
     args: &[RwLTy<'tcx>],
     perms: &impl Index<PointerId, Output = PermissionSet>,
     flags: &impl Index<PointerId, Output = FlagSet>,
+    pointee_types: &impl Index<PointerId, Output = PointeeTypes<'tcx>>,
     lifetime: &'tcx [OriginArg<'tcx>],
     adt_metadata: &AdtMetadataTable,
 ) -> RewriteLabel<'tcx> {
@@ -102,16 +111,33 @@ fn create_rewrite_label<'tcx>(
         }
     };
 
+    let mut pointee_ty = None;
+    // For now, we only rewrite in cases where the inferred pointee has no arguments.
+    // TODO: expand this to handle pointer-to-pointer cases and other complex inferred pointees
+    if !pointer_lty.label.is_none() {
+        if let Some(lty) = pointee_types[pointer_lty.label].get_sole_lty() {
+            let ty = lty.ty;
+            if lty.args.len() == 0 && !ty_has_adt_lifetime(ty, adt_metadata) {
+                // Don't rewrite if the old and new types are the same.
+                if ty != args[0].ty {
+                    pointee_ty = Some(ty);
+                }
+            }
+        }
+    }
+
     RewriteLabel {
         ty_desc,
+        pointee_ty,
         descendant_has_rewrite: descendant_has_rewrite(args, adt_metadata),
         lifetime,
     }
 }
 
-fn relabel_rewrites<'tcx, P, F>(
+fn relabel_rewrites<'tcx, P, F, PT>(
     perms: &P,
     flags: &F,
+    pointee_types: &PT,
     lcx: LabeledTyCtxt<'tcx, RewriteLabel<'tcx>>,
     lty: LTy<'tcx>,
     gacx: &GlobalAnalysisCtxt<'tcx>,
@@ -119,10 +145,19 @@ fn relabel_rewrites<'tcx, P, F>(
 where
     P: Index<PointerId, Output = PermissionSet>,
     F: Index<PointerId, Output = FlagSet>,
+    PT: Index<PointerId, Output = PointeeTypes<'tcx>>,
 {
     lcx.relabel_with_args(lty, &mut |pointer_lty, args| {
         // FIXME: get function lifetime parameters and pass them to this
-        create_rewrite_label(pointer_lty, args, perms, flags, &[], &gacx.adt_metadata)
+        create_rewrite_label(
+            pointer_lty,
+            args,
+            perms,
+            flags,
+            pointee_types,
+            &[],
+            &gacx.adt_metadata,
+        )
     })
 }
 
@@ -337,15 +372,35 @@ fn mk_rewritten_ty<'tcx>(
     rw_lty: RwLTy<'tcx>,
 ) -> ty::Ty<'tcx> {
     let tcx = *lcx;
-    lcx.rewrite_unlabeled(rw_lty, &mut |ty, args, label| {
-        let (own, qty) = match label.ty_desc {
-            Some(x) => x,
-            None => return ty,
+    lcx.rewrite_unlabeled(rw_lty, &mut |ptr_ty, args, label| {
+        let (mut ty, own, qty) = match (label.pointee_ty, label.ty_desc) {
+            (Some(pointee_ty), Some((own, qty))) => {
+                // The `ty` should be a pointer.
+                assert_eq!(args.len(), 1);
+                (pointee_ty, own, qty)
+            }
+            (Some(pointee_ty), None) => {
+                // Just change the pointee type and nothing else.
+                let new_ty = match *ptr_ty.kind() {
+                    TyKind::Ref(rg, _ty, mutbl) => tcx.mk_ty(TyKind::Ref(rg, pointee_ty, mutbl)),
+                    TyKind::RawPtr(tm) => tcx.mk_ty(TyKind::RawPtr(TypeAndMut {
+                        ty: pointee_ty,
+                        mutbl: tm.mutbl,
+                    })),
+                    _ => panic!("expected Ref or RawPtr, but got {:?}", ptr_ty),
+                };
+                return new_ty;
+            }
+            (None, Some((own, qty))) => {
+                // The `ty` should be a pointer; the sole argument is the pointee type.
+                assert_eq!(args.len(), 1);
+                (args[0], own, qty)
+            }
+            (None, None) => {
+                // No rewrite to apply.
+                return ptr_ty;
+            }
         };
-
-        // The `ty` should be a pointer; the sole argument is the pointee type.
-        assert_eq!(args.len(), 1);
-        let mut ty = args[0];
 
         if own == Ownership::Cell {
             ty = mk_cell(tcx, ty);
@@ -375,6 +430,7 @@ fn mk_rewritten_ty<'tcx>(
 
 struct HirTyVisitor<'a, 'tcx> {
     asn: &'a Assignment<'a>,
+    pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
     acx: &'a AnalysisCtxt<'a, 'tcx>,
     rw_lcx: LabeledTyCtxt<'tcx, RewriteLabel<'tcx>>,
     mir: &'a Body<'tcx>,
@@ -409,7 +465,10 @@ fn rewrite_ty<'tcx>(
     hir_ty: &hir::Ty<'tcx>,
     adt_metadata: &AdtMetadataTable,
 ) {
-    if !rw_lty.ty.is_adt() && rw_lty.label.ty_desc.is_none() && !rw_lty.label.descendant_has_rewrite
+    if !rw_lty.ty.is_adt()
+        && rw_lty.label.ty_desc.is_none()
+        && rw_lty.label.pointee_ty.is_none()
+        && !rw_lty.label.descendant_has_rewrite
     {
         // No rewrites here or in any descendant of this HIR node.
         return;
@@ -430,40 +489,61 @@ fn rewrite_ty<'tcx>(
         }
     };
 
-    if let Some((own, qty)) = rw_lty.label.ty_desc {
-        assert_eq!(hir_args.len(), 1);
-
-        let mut rw = Rewrite::Sub(0, hir_args[0].span);
-
-        if own == Ownership::Cell {
-            rw = Rewrite::TyCtor("core::cell::Cell".into(), vec![rw]);
-        }
-
-        rw = match qty {
-            Quantity::Single => rw,
-            Quantity::Slice => Rewrite::TySlice(Box::new(rw)),
-            // TODO: This should generate `OffsetPtr<T>` rather than `&[T]`, but `OffsetPtr` is
-            // NYI
-            Quantity::OffsetPtr => Rewrite::TySlice(Box::new(rw)),
-            Quantity::Array => panic!("can't rewrite to Quantity::Array"),
-        };
-
+    if rw_lty.label.ty_desc.is_some() || rw_lty.label.pointee_ty.is_some() {
+        assert!(matches!(
+            rw_lty.ty.kind(),
+            TyKind::Ref(..) | TyKind::RawPtr(..)
+        ));
         let lifetime_type = match rw_lty.label.lifetime {
             [lifetime] => LifetimeName::Explicit(format!("{lifetime:?}")),
             [] => LifetimeName::Elided,
             _ => panic!("Pointer or reference type cannot have multiple lifetime parameters"),
         };
-        rw = match own {
-            Ownership::Raw => Rewrite::TyPtr(Box::new(rw), Mutability::Not),
-            Ownership::RawMut => Rewrite::TyPtr(Box::new(rw), Mutability::Mut),
-            Ownership::Imm => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
-            Ownership::Cell => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
-            Ownership::Mut => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Mut),
-            Ownership::Rc => todo!(),
-            Ownership::Box => todo!(),
+
+        let mut rw = if let Some(pointee_ty) = rw_lty.label.pointee_ty {
+            let printer = FmtPrinter::new(*rw_lcx, Namespace::TypeNS);
+            let s = pointee_ty.print(printer).unwrap().into_buffer();
+            Rewrite::Print(s)
+        } else {
+            Rewrite::Sub(0, hir_args[0].span)
         };
 
-        hir_rewrites.push((hir_ty.span, rw));
+        if let Some((own, qty)) = rw_lty.label.ty_desc {
+            assert_eq!(hir_args.len(), 1);
+
+            if own == Ownership::Cell {
+                rw = Rewrite::TyCtor("core::cell::Cell".into(), vec![rw]);
+            }
+
+            rw = match qty {
+                Quantity::Single => rw,
+                Quantity::Slice => Rewrite::TySlice(Box::new(rw)),
+                // TODO: This should generate `OffsetPtr<T>` rather than `&[T]`, but `OffsetPtr` is
+                // NYI
+                Quantity::OffsetPtr => Rewrite::TySlice(Box::new(rw)),
+                Quantity::Array => panic!("can't rewrite to Quantity::Array"),
+            };
+
+            rw = match own {
+                Ownership::Raw => Rewrite::TyPtr(Box::new(rw), Mutability::Not),
+                Ownership::RawMut => Rewrite::TyPtr(Box::new(rw), Mutability::Mut),
+                Ownership::Imm => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
+                Ownership::Cell => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
+                Ownership::Mut => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Mut),
+                Ownership::Rc => todo!(),
+                Ownership::Box => todo!(),
+            };
+        } else {
+            rw = match *rw_lty.ty.kind() {
+                TyKind::Ref(_rg, _ty, mutbl) => Rewrite::TyRef(lifetime_type, Box::new(rw), mutbl),
+                TyKind::RawPtr(tm) => Rewrite::TyPtr(Box::new(rw), tm.mutbl),
+                _ => unreachable!(),
+            };
+        }
+
+        if rw != Rewrite::Identity {
+            hir_rewrites.push((hir_ty.span, rw));
+        }
     }
 
     if let TyKind::Adt(adt_def, substs) = rw_lty.ty.kind() {
@@ -517,6 +597,7 @@ impl<'tcx, 'a> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
                     let rw_lty = relabel_rewrites(
                         &self.asn.perms(),
                         &self.asn.flags(),
+                        &self.pointee_types,
                         self.rw_lcx,
                         lty,
                         &self.acx.gacx,
@@ -533,6 +614,7 @@ impl<'tcx, 'a> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
 pub fn gen_ty_rewrites<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,
+    pointee_types: PointerTable<PointeeTypes<'tcx>>,
     mir: &Body<'tcx>,
     ldid: LocalDefId,
 ) -> Vec<(Span, Rewrite)> {
@@ -545,6 +627,7 @@ pub fn gen_ty_rewrites<'tcx>(
     let mut v = HirTyVisitor {
         asn,
         acx,
+        pointee_types,
         rw_lcx,
         mir,
         hir_rewrites: Vec::new(),
@@ -584,6 +667,7 @@ pub fn gen_ty_rewrites<'tcx>(
                     args,
                     &asn.perms(),
                     &asn.flags(),
+                    &pointee_types,
                     lifetime_lty.label,
                     &acx.gacx.adt_metadata,
                 )
@@ -602,6 +686,7 @@ pub fn gen_ty_rewrites<'tcx>(
                     args,
                     &asn.perms(),
                     &asn.flags(),
+                    &pointee_types,
                     lifetime_lty.label,
                     &acx.gacx.adt_metadata,
                 )
@@ -698,9 +783,10 @@ pub fn gen_generics_rws<'p, 'tcx>(
     }
 }
 
-pub fn gen_adt_ty_rewrites(
-    gacx: &GlobalAnalysisCtxt,
+pub fn gen_adt_ty_rewrites<'tcx>(
+    gacx: &GlobalAnalysisCtxt<'tcx>,
     gasn: &GlobalAssignment,
+    pointee_types: &GlobalPointerTable<PointeeTypes<'tcx>>,
     did: DefId,
 ) -> Vec<(Span, Rewrite)> {
     let tcx = gacx.tcx;
@@ -745,6 +831,7 @@ pub fn gen_adt_ty_rewrites(
                     args,
                     &gasn.perms,
                     &gasn.flags,
+                    pointee_types,
                     lifetime_lty.label,
                     &gacx.adt_metadata,
                 )
@@ -769,6 +856,7 @@ pub fn gen_adt_ty_rewrites(
 pub fn dump_rewritten_local_tys<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,
+    pointee_types: PointerTable<PointeeTypes<'tcx>>,
     mir: &Body<'tcx>,
     mut describe_local: impl FnMut(TyCtxt<'tcx>, &LocalDecl) -> String,
 ) {
@@ -778,6 +866,7 @@ pub fn dump_rewritten_local_tys<'tcx>(
         let rw_lty = relabel_rewrites(
             &asn.perms(),
             &asn.flags(),
+            &pointee_types,
             rw_lcx,
             acx.local_tys[local],
             &acx.gacx,

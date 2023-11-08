@@ -1,8 +1,8 @@
 use crate::panic_detail;
 use crate::rewrite::expr::distribute::DistRewrite;
-use crate::rewrite::expr::mir_op;
+use crate::rewrite::expr::mir_op::{self, ZeroizeType};
 use crate::rewrite::expr::unlower::MirOriginDesc;
-use crate::rewrite::Rewrite;
+use crate::rewrite::{LifetimeName, Rewrite};
 use assert_matches::assert_matches;
 use log::*;
 use rustc_hir as hir;
@@ -12,15 +12,24 @@ use rustc_hir::{ExprKind, HirId};
 use rustc_middle::hir::nested_filter;
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, PointerCast};
 use rustc_middle::ty::print::{FmtPrinter, Print};
-use rustc_middle::ty::{TyCtxt, TypeckResults};
+use rustc_middle::ty::{Ty, TyCtxt, TyKind, TypeckResults};
 use rustc_span::Span;
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
+
+macro_rules! format_rewrite {
+    ($($args:tt)*) => {
+        Rewrite::Text(format!($($args)*))
+    };
+}
 
 struct ConvertVisitor<'tcx> {
     tcx: TyCtxt<'tcx>,
     typeck_results: &'tcx TypeckResults<'tcx>,
     mir_rewrites: HashMap<HirId, Vec<DistRewrite>>,
-    rewrites: Vec<(Span, Rewrite)>,
+    rewrites: HashMap<HirId, (Span, Rewrite)>,
+    subsumed_child_rewrites: RefCell<HashSet<HirId>>,
     /// When `true`, any `Expr` where rustc added an implicit adjustment will be rewritten to make
     /// that adjustment explicit.  Any node that emits a non-adjustment rewrite sets this flag when
     /// visiting its children.  This is important to ensure that implicit ref/deref operations are
@@ -95,7 +104,20 @@ impl<'tcx> ConvertVisitor<'tcx> {
             (&Yield(e, _), 0) => e,
             _ => panic!("bad subexpression index {} for {:?}", idx, ex),
         };
-        Rewrite::Sub(idx, sub_ex.span)
+        let rw_sub = Rewrite::Sub(idx, sub_ex.span);
+        if let Some(child_span_rw) = self.rewrites.get(&sub_ex.hir_id) {
+            let child_rw = &child_span_rw.1;
+            if let Some(subst_rw) = child_rw.try_subst(&rw_sub) {
+                eprintln!(
+                    "get_subexpr: substituted {rw_sub:?} into {child_rw:?}, producing {subst_rw:?}"
+                );
+                self.subsumed_child_rewrites
+                    .borrow_mut()
+                    .insert(sub_ex.hir_id);
+                return subst_rw;
+            }
+        }
+        rw_sub
     }
 }
 
@@ -119,18 +141,26 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
         let mir_rws = self.mir_rewrites.remove(&ex.hir_id).unwrap_or_default();
         let mut mir_rws = &mir_rws as &[_];
 
+        // Emit rewrites on subexpressions up front so we can access them in `get_subexpr`.
+        self.with_materialize_adjustments(mir_rws.len() > 0, |this| {
+            intravisit::walk_expr(this, ex);
+        });
+
         let rewrite_from_mir_rws = |rw: &mir_op::RewriteKind, hir_rw: Rewrite| -> Rewrite {
             // Cases that extract a subexpression are handled here; cases that only wrap the
             // top-level expression (and thus can handle a non-`Identity` `hir_rw`) are handled by
             // `convert_cast_rewrite`.
-            match rw {
+            match *rw {
                 mir_op::RewriteKind::OffsetSlice { mutbl } => {
                     // `p.offset(i)` -> `&p[i as usize ..]`
                     assert!(matches!(hir_rw, Rewrite::Identity));
                     let arr = self.get_subexpr(ex, 0);
-                    let idx = Rewrite::Cast(Box::new(self.get_subexpr(ex, 1)), "usize".to_owned());
-                    let elem = Rewrite::SliceTail(Box::new(arr), Box::new(idx));
-                    Rewrite::Ref(Box::new(elem), mutbl_from_bool(*mutbl))
+                    let idx = Rewrite::Cast(
+                        Box::new(self.get_subexpr(ex, 1)),
+                        Box::new(Rewrite::Print("usize".to_owned())),
+                    );
+                    let elem = Rewrite::SliceRange(Box::new(arr), Some(Box::new(idx)), None);
+                    Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
                 }
 
                 mir_op::RewriteKind::RemoveAsPtr => {
@@ -139,15 +169,92 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                     self.get_subexpr(ex, 0)
                 }
 
+                mir_op::RewriteKind::RemoveCast => {
+                    // `x as T` -> `x`
+                    match hir_rw {
+                        Rewrite::Identity => {
+                            assert!(matches!(hir_rw, Rewrite::Identity));
+                            self.get_subexpr(ex, 0)
+                        }
+                        // Can happen when attempting to delete a cast adjustment.
+                        Rewrite::Cast(rw, _) => *rw,
+                        Rewrite::RemovedCast(rw) => *rw,
+                        _ => panic!("unexpected hir_rw {hir_rw:?} for RawToRef"),
+                    }
+                }
+
                 mir_op::RewriteKind::RawToRef { mutbl } => {
                     // &raw _ to &_ or &raw mut _ to &mut _
                     match hir_rw {
                         Rewrite::Identity => {
-                            Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(*mutbl))
+                            Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(mutbl))
                         }
                         Rewrite::AddrOf(rw, mutbl) => Rewrite::Ref(rw, mutbl),
                         _ => panic!("unexpected hir_rw {hir_rw:?} for RawToRef"),
                     }
+                }
+
+                mir_op::RewriteKind::MemcpySafe {
+                    elem_size,
+                    dest_single,
+                    src_single,
+                } => {
+                    // `memcpy(dest, src, n)` to a `copy_from_slice` call
+                    assert!(matches!(hir_rw, Rewrite::Identity));
+                    assert!(!dest_single, "&T -> &[T] conversion for memcpy dest NYI");
+                    assert!(!src_single, "&T -> &[T] conversion for memcpy src NYI");
+                    Rewrite::Block(
+                        vec![
+                            Rewrite::Let(vec![
+                                ("dest".into(), self.get_subexpr(ex, 0)),
+                                ("src".into(), self.get_subexpr(ex, 1)),
+                                ("byte_len".into(), self.get_subexpr(ex, 2)),
+                            ]),
+                            Rewrite::Let(vec![(
+                                "n".into(),
+                                format_rewrite!("byte_len as usize / {elem_size}"),
+                            )]),
+                            Rewrite::MethodCall(
+                                "copy_from_slice".into(),
+                                Box::new(format_rewrite!("dest[..n]")),
+                                vec![format_rewrite!("&src[..n]")],
+                            ),
+                        ],
+                        Some(Box::new(format_rewrite!("dest"))),
+                    )
+                }
+
+                mir_op::RewriteKind::MemsetZeroize {
+                    ref zero_ty,
+                    elem_size,
+                    dest_single,
+                } => {
+                    // `memcpy(dest, src, n)` to a `copy_from_slice` call
+                    assert!(matches!(hir_rw, Rewrite::Identity));
+                    let zeroize_body = if dest_single {
+                        Rewrite::Text(generate_zeroize_code(zero_ty, "(*dest)"))
+                    } else {
+                        format_rewrite!(
+                            "for i in 0..n {{\n    {};\n}}",
+                            generate_zeroize_code(zero_ty, "(*dest)[i]")
+                        )
+                    };
+                    Rewrite::Block(
+                        vec![
+                            Rewrite::Let(vec![
+                                ("dest".into(), self.get_subexpr(ex, 0)),
+                                ("val".into(), self.get_subexpr(ex, 1)),
+                                ("byte_len".into(), self.get_subexpr(ex, 2)),
+                            ]),
+                            Rewrite::Let(vec![(
+                                "n".into(),
+                                format_rewrite!("byte_len as usize / {elem_size}"),
+                            )]),
+                            format_rewrite!("assert_eq!(val, 0, \"non-zero memset NYI\")"),
+                            zeroize_body,
+                        ],
+                        Some(Box::new(format_rewrite!("dest"))),
+                    )
                 }
 
                 mir_op::RewriteKind::CellGet => {
@@ -208,19 +315,12 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
             hir_rw = rewrite_from_mir_rws(&mir_rw.rw, hir_rw);
         }
 
-        // Emit rewrites on subexpressions first, then emit the rewrite on the expression itself,
-        // if it's nontrivial.
-        let applied_mir_rewrite = !matches!(hir_rw, Rewrite::Identity);
-        self.with_materialize_adjustments(applied_mir_rewrite, |this| {
-            intravisit::walk_expr(this, ex);
-        });
-
         if !matches!(hir_rw, Rewrite::Identity) {
             eprintln!(
                 "rewrite {:?} at {:?} (materialize? {})",
                 hir_rw, callsite_span, self.materialize_adjustments
             );
-            self.rewrites.push((callsite_span, hir_rw));
+            self.rewrites.insert(ex.hir_id, (callsite_span, hir_rw));
         }
     }
 }
@@ -243,11 +343,26 @@ fn apply_identity_adjustment<'tcx>(
         Adjust::Deref(_) => Rewrite::Deref(Box::new(rw)),
         Adjust::Borrow(AutoBorrow::Ref(_, mutbl)) => Rewrite::Ref(Box::new(rw), mutbl.into()),
         Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => Rewrite::AddrOf(Box::new(rw), mutbl),
-        Adjust::Pointer(PointerCast::Unsize) => {
-            let ty = adjustment.target;
-            let printer = FmtPrinter::new(tcx, Namespace::TypeNS);
-            let s = ty.print(printer).unwrap().into_buffer();
-            Rewrite::Cast(Box::new(rw), s)
+        Adjust::Pointer(PointerCast::Unsize) | Adjust::Pointer(PointerCast::MutToConstPointer) => {
+            let target_ty = adjustment.target;
+            let print_ty = |ty: Ty<'tcx>| -> String {
+                let printer = FmtPrinter::new(tcx, Namespace::TypeNS);
+                ty.print(printer).unwrap().into_buffer()
+            };
+            // Use structured rewrites where possible.
+            // TODO: this should operate recursively and handle more cases
+            let ty_rw = match *target_ty.kind() {
+                TyKind::RawPtr(tm) => {
+                    Rewrite::TyPtr(Box::new(Rewrite::Print(print_ty(tm.ty))), tm.mutbl)
+                }
+                TyKind::Ref(_, ty, mutbl) => Rewrite::TyRef(
+                    LifetimeName::Elided,
+                    Box::new(Rewrite::Print(print_ty(ty))),
+                    mutbl,
+                ),
+                _ => Rewrite::Print(print_ty(target_ty)),
+            };
+            Rewrite::Cast(Box::new(rw), Box::new(ty_rw))
         }
         Adjust::Pointer(cast) => todo!("Adjust::Pointer({:?})", cast),
     }
@@ -270,10 +385,58 @@ fn materialize_adjustments<'tcx>(
             }
             hir_rw
         }
+        // TODO: ideally we should always materialize all adjustments (removing these special
+        // cases), and use `MirRewrite`s to eliminate any adjustments we no longer need.
         (rw @ Rewrite::Ref(..), &[Adjust::Deref(..), Adjust::Borrow(..)]) => rw,
         (rw @ Rewrite::MethodCall(..), &[Adjust::Deref(..), Adjust::Borrow(..)]) => rw,
+        // The mut-to-const cast should be unneeded once the inner rewrite switches to a safe
+        // reference type appropriate for the pointer's uses.  However, we still want to give
+        // `callback` a chance to remove the cast itself so that if there's a `RemoveCast` rewrite
+        // on this adjustment, we don't get an error about it failing to apply.
+        (rw, &[Adjust::Pointer(PointerCast::MutToConstPointer)]) => {
+            let mut hir_rw = Rewrite::RemovedCast(Box::new(rw));
+            hir_rw = callback(0, hir_rw);
+            match hir_rw {
+                Rewrite::RemovedCast(rw) => *rw,
+                rw => rw,
+            }
+        }
         (rw, &[]) => rw,
         (rw, adjs) => panic!("rewrite {rw:?} and materializations {adjs:?} NYI"),
+    }
+}
+
+/// Generate code to zeroize an instance of `zero_ty` at place `lv`.  Returns an expression of type
+/// `()`, which can be used as a statement by appending a semicolon.
+fn generate_zeroize_code(zero_ty: &ZeroizeType, lv: &str) -> String {
+    match *zero_ty {
+        ZeroizeType::Int => format!("{lv} = 0"),
+        ZeroizeType::Bool => format!("{lv} = false"),
+        ZeroizeType::Iterable(ref elem_zero_ty) => format!(
+            "
+            {{
+                for elem in {lv}.iter_mut() {{
+                    {};
+                }}
+            }}
+        ",
+            generate_zeroize_code(elem_zero_ty, "(*elem)")
+        ),
+        ZeroizeType::Struct(ref fields) => {
+            eprintln!("zeroize: {} fields on {lv}: {fields:?}", fields.len());
+            let mut s = String::new();
+            write!(s, "{{\n").unwrap();
+            for (name, field_zero_ty) in fields {
+                write!(
+                    s,
+                    "{};\n",
+                    generate_zeroize_code(field_zero_ty, &format!("{lv}.{name}"))
+                )
+                .unwrap();
+            }
+            write!(s, "}}\n").unwrap();
+            s
+        }
     }
 }
 
@@ -299,6 +462,10 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
 
         mir_op::RewriteKind::MutToImm => {
             // `p` -> `&*p`
+            let hir_rw = match fold_mut_to_imm(hir_rw) {
+                Ok(folded_rw) => return folded_rw,
+                Err(rw) => rw,
+            };
             let place = Rewrite::Deref(Box::new(hir_rw));
             Rewrite::Ref(Box::new(place), hir::Mutability::Not)
         }
@@ -331,15 +498,54 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
             // `x` to `x.as_ptr()`
             Rewrite::MethodCall("as_ptr".to_string(), Box::new(hir_rw), vec![])
         }
-        mir_op::RewriteKind::CastRawMutToCellPtr { ref ty } => {
-            Rewrite::Cast(Box::new(hir_rw), format!("*const std::cell::Cell<{}>", ty))
-        }
+        mir_op::RewriteKind::CastRawMutToCellPtr { ref ty } => Rewrite::Cast(
+            Box::new(hir_rw),
+            Box::new(Rewrite::TyPtr(
+                Box::new(Rewrite::TyCtor(
+                    "std::cell::Cell".into(),
+                    vec![Rewrite::Print(format!("{}", ty))],
+                )),
+                hir::Mutability::Not,
+            )),
+        ),
 
         _ => panic!(
             "rewrite {:?} is not supported by convert_cast_rewrite",
             kind
         ),
     }
+}
+
+/// Try to change `&mut e -> &e` or `&mut e as &mut T -> &e as &T`.  Returns `Ok` on success, or
+/// `Err` with the original rewrite on failure.
+fn fold_mut_to_imm(rw: Rewrite) -> Result<Rewrite, Rewrite> {
+    // TODO: would be nice to make this work recursively through nested deref/ref chains
+    fn check(rw: &Rewrite) -> bool {
+        match *rw {
+            Rewrite::Cast(ref ref_expr, ref ref_ty) => {
+                matches!(**ref_expr, Rewrite::Ref(_, hir::Mutability::Mut))
+                    && matches!(**ref_ty, Rewrite::TyRef(_, _, hir::Mutability::Mut))
+            }
+            Rewrite::Ref(_, hir::Mutability::Mut) => true,
+            _ => false,
+        }
+    }
+    if !check(&rw) {
+        return Err(rw);
+    }
+
+    Ok(match rw {
+        Rewrite::Cast(ref_expr, ref_ty) => {
+            let expr = assert_matches!(*ref_expr, Rewrite::Ref(expr, _) => expr);
+            let (lt, ty) = assert_matches!(*ref_ty, Rewrite::TyRef(lt, ty, _) => (lt, ty));
+            Rewrite::Cast(
+                Box::new(Rewrite::Ref(expr, hir::Mutability::Not)),
+                Box::new(Rewrite::TyRef(lt, ty, hir::Mutability::Not)),
+            )
+        }
+        Rewrite::Ref(expr, hir::Mutability::Mut) => Rewrite::Ref(expr, hir::Mutability::Not),
+        _ => unreachable!(),
+    })
 }
 
 /// Convert the MIR rewrites attached to each HIR node into `Span`-based `rewrite::Rewrite`s.
@@ -356,7 +562,8 @@ pub fn convert_rewrites(
         tcx,
         typeck_results,
         mir_rewrites,
-        rewrites: Vec::new(),
+        rewrites: HashMap::new(),
+        subsumed_child_rewrites: RefCell::new(HashSet::new()),
         materialize_adjustments: false,
     };
     v.visit_body(hir);
@@ -371,5 +578,10 @@ pub fn convert_rewrites(
         error!("found {} leftover rewrites", count);
     }
 
+    let subsumed = v.subsumed_child_rewrites.into_inner();
     v.rewrites
+        .into_iter()
+        .filter(|&(hir_id, _)| !subsumed.contains(&hir_id))
+        .map(|(_, (span, rw))| (span, rw))
+        .collect()
 }

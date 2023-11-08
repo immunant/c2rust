@@ -23,6 +23,7 @@ use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::GlobalPointerTable;
 use crate::pointer_id::LocalPointerTable;
 use crate::pointer_id::PointerTable;
+use crate::recent_writes::RecentWrites;
 use crate::rewrite;
 use crate::type_desc;
 use crate::type_desc::Ownership;
@@ -253,9 +254,6 @@ fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>)
                 "update_pointer_info: visit assignment: {:?}[{}]: {:?}",
                 bb, i, stmt
             );
-
-            // Note we ignore `c_void_casts` here.  It shouldn't affect any of the patterns we're
-            // looking for.
 
             if !pl.is_indirect() {
                 // This is a write directly to `pl.local`.
@@ -493,6 +491,8 @@ fn run(tcx: TyCtxt) {
         pointee_constraints: MaybeUnset<pointee_type::ConstraintSet<'tcx>>,
         /// Local part of pointee type sets.
         local_pointee_types: MaybeUnset<LocalPointerTable<PointeeTypes<'tcx>>>,
+        /// Table for looking up the most recent write to a given local.
+        recent_writes: MaybeUnset<RecentWrites>,
     }
 
     // Follow a postorder traversal, so that callers are visited after their callees.  This means
@@ -613,6 +613,7 @@ fn run(tcx: TyCtxt) {
         info.acx_data.set(acx.into_data());
         info.pointee_constraints.set(pointee_constraints);
         info.local_pointee_types.set(local_pointee_types);
+        info.recent_writes.set(RecentWrites::new(&mir));
         func_info.insert(ldid, info);
     }
 
@@ -690,14 +691,17 @@ fn run(tcx: TyCtxt) {
         let mir = mir.borrow();
 
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+        let recent_writes = info.recent_writes.get();
+        let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
 
         let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
-            dataflow::generate_constraints(&acx, &mir)
+            dataflow::generate_constraints(&acx, &mir, recent_writes, pointee_types)
         }));
 
         let (dataflow, equiv_constraints) = match r {
             Ok(x) => x,
             Err(pd) => {
+                info.acx_data.set(acx.into_data());
                 gacx.mark_fn_failed(ldid.to_def_id(), pd);
                 continue;
             }
@@ -723,6 +727,11 @@ fn run(tcx: TyCtxt) {
     // the same `PointerId`.
     let (global_counter, global_equiv_map) = global_equiv.renumber();
     eprintln!("global_equiv_map = {global_equiv_map:?}");
+    pointee_type::remap_pointers_global(
+        &mut global_pointee_types,
+        &global_equiv_map,
+        &global_counter,
+    );
     gacx.remap_pointers(&global_equiv_map, global_counter);
 
     for &ldid in &all_fn_ldids {
@@ -733,6 +742,12 @@ fn run(tcx: TyCtxt) {
         let info = func_info.get_mut(&ldid).unwrap();
         let (local_counter, local_equiv_map) = info.local_equiv.renumber(&global_equiv_map);
         eprintln!("local_equiv_map = {local_equiv_map:?}");
+        pointee_type::remap_pointers_local(
+            &mut global_pointee_types,
+            &mut info.local_pointee_types,
+            global_equiv_map.and(&local_equiv_map),
+            &local_counter,
+        );
         info.acx_data.remap_pointers(
             &mut gacx,
             global_equiv_map.and(&local_equiv_map),
@@ -1183,6 +1198,7 @@ fn run(tcx: TyCtxt) {
             let mir = mir.borrow();
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
             let asn = gasn.and(&mut info.lasn);
+            let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
 
             let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
                 if util::has_test_attr(tcx, ldid, TestAttr::SkipRewrite) {
@@ -1193,8 +1209,9 @@ fn run(tcx: TyCtxt) {
                 }
 
                 let hir_body_id = tcx.hir().body_owned_by(ldid);
-                let expr_rewrites = rewrite::gen_expr_rewrites(&acx, &asn, &mir, hir_body_id);
-                let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, &mir, ldid);
+                let expr_rewrites =
+                    rewrite::gen_expr_rewrites(&acx, &asn, pointee_types, &mir, hir_body_id);
+                let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, pointee_types, &mir, ldid);
                 // Print rewrites
                 let report = func_reports.entry(ldid).or_default();
                 writeln!(
@@ -1286,7 +1303,8 @@ fn run(tcx: TyCtxt) {
             continue;
         }
 
-        let adt_rewrites = rewrite::gen_adt_ty_rewrites(&gacx, &gasn, def_id);
+        let adt_rewrites =
+            rewrite::gen_adt_ty_rewrites(&gacx, &gasn, &global_pointee_types, def_id);
         let report = adt_reports.entry(def_id).or_default();
         writeln!(
             report,
@@ -1326,6 +1344,7 @@ fn run(tcx: TyCtxt) {
         let mir = mir.borrow();
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
         let asn = gasn.and(&mut info.lasn);
+        let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
 
         // Print labeling and rewrites for the current function.
 
@@ -1345,7 +1364,7 @@ fn run(tcx: TyCtxt) {
         }
 
         eprintln!("\ntype assignment for {:?}:", name);
-        rewrite::dump_rewritten_local_tys(&acx, &asn, &mir, describe_local);
+        rewrite::dump_rewritten_local_tys(&acx, &asn, pointee_types, &mir, describe_local);
 
         eprintln!();
         if let Some(report) = func_reports.remove(&ldid) {

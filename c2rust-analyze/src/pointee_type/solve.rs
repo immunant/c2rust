@@ -135,6 +135,22 @@ pub struct PointeeTypes<'tcx> {
     pub incomplete: bool,
 }
 
+impl<'tcx> PointeeTypes<'tcx> {
+    /// Get the sole `LTy` in this set, if there is exactly one.
+    pub fn get_sole_lty(&self) -> Option<LTy<'tcx>> {
+        if self.incomplete || self.ltys.len() != 1 {
+            return None;
+        }
+        let lty = *self.ltys.iter().next().unwrap();
+        Some(lty)
+    }
+
+    pub fn merge(&mut self, other: PointeeTypes<'tcx>) {
+        self.ltys.extend(other.ltys);
+        self.incomplete |= other.incomplete;
+    }
+}
+
 /// Copy `LTy`s from `pointee_tys` into `ty_sets` for processing by the analysis.
 fn import<'tcx>(
     pointee_tys: PointerTable<PointeeTypes<'tcx>>,
