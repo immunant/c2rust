@@ -13,7 +13,6 @@ use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{PointerId, PointerTable};
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{ty_callee, Callee};
-use log::*;
 use rustc_ast::Mutability;
 use rustc_middle::mir::{
     BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
@@ -751,25 +750,41 @@ where
     }
 
     pub fn build_cast_desc_desc(&mut self, from: TypeDesc<'tcx>, to: TypeDesc<'tcx>) {
+        self.try_build_cast_desc_desc(from, to).unwrap()
+    }
+
+    /// Try to build a cast between `from` and `to`, emitting any intermediate rewrites that are
+    /// necessary through the `self.emit` callback.
+    ///
+    /// Note that when cast building fails, this method may still call `self.emit` one or more
+    /// times before returning `Err`.  The caller should be prepared to roll back the effects of
+    /// any `self.emit` calls if the overall operation fails.
+    pub fn try_build_cast_desc_desc(
+        &mut self,
+        from: TypeDesc<'tcx>,
+        to: TypeDesc<'tcx>,
+    ) -> Result<(), String> {
         let orig_from = from;
         let mut from = orig_from;
 
         // The `from` and `to` pointee types should only differ in their lifetimes.
-        assert_eq!(
-            self.tcx.erase_regions(from.pointee_ty),
-            self.tcx.erase_regions(to.pointee_ty),
-        );
+        let from_pointee_erased = self.tcx.erase_regions(from.pointee_ty);
+        let to_pointee_erased = self.tcx.erase_regions(to.pointee_ty);
+        if from_pointee_erased != to_pointee_erased {
+            return Err(format!(
+                    "pointee type mismatch: {from_pointee_erased:?} != {to_pointee_erased:?}"));
+        }
         // There might still be differences in lifetimes, which we don't care about here.
         // Overwriting `from.pointee_ty` allows the final `from == to` check to succeed below.
         from.pointee_ty = to.pointee_ty;
 
         if from == to {
-            return;
+            return Ok(());
         }
 
         // Early `Ownership` casts.  We do certain casts here in hopes of reaching an `Ownership`
         // on which we can safely adjust `Quantity`.
-        from.own = self.cast_ownership(from, to, true);
+        from.own = self.cast_ownership(from, to, true)?;
 
         // Safe casts that change `Quantity`.
         while from.qty != to.qty {
@@ -787,8 +802,8 @@ where
                 (Quantity::Array, _) => {
                     // `Array` goes only to `Slice` directly.  All other `Array` conversions go
                     // through `Slice` first.
-                    error!("TODO: cast Array to {:?}", to.qty);
-                    from.qty = Quantity::Slice;
+                    return Err(format!("TODO: cast Array to {:?}", to.qty));
+                    //from.qty = Quantity::Slice;
                 }
                 // Bidirectional conversions between `Slice` and `OffsetPtr`.
                 (Quantity::Slice, Quantity::OffsetPtr) | (Quantity::OffsetPtr, Quantity::Slice) => {
@@ -819,14 +834,16 @@ where
         }
 
         // Late `Ownership` casts.
-        from.own = self.cast_ownership(from, to, false);
+        from.own = self.cast_ownership(from, to, false)?;
 
         if from != to {
-            panic!(
+            return Err(format!(
                 "unsupported cast kind: {:?} -> {:?} (original input: {:?})",
                 from, to, orig_from
-            );
+            ));
         }
+
+        Ok(())
     }
 
     fn cast_ownership(
@@ -834,17 +851,17 @@ where
         from: TypeDesc<'tcx>,
         to: TypeDesc<'tcx>,
         early: bool,
-    ) -> Ownership {
+    ) -> Result<Ownership, String> {
         let mut from = from;
         while from.own != to.own {
-            match self.cast_ownership_one_step(from, to, early) {
+            match self.cast_ownership_one_step(from, to, early)? {
                 Some(new_own) => {
                     from.own = new_own;
                 }
                 None => break,
             }
         }
-        from.own
+        Ok(from.own)
     }
 
     fn cast_ownership_one_step(
@@ -852,23 +869,23 @@ where
         from: TypeDesc<'tcx>,
         to: TypeDesc<'tcx>,
         early: bool,
-    ) -> Option<Ownership> {
-        match from.own {
+    ) -> Result<Option<Ownership>, String> {
+        Ok(match from.own {
             Ownership::Box => match to.own {
                 Ownership::Raw | Ownership::Imm => {
-                    error!("TODO: cast Box to Imm");
-                    Some(Ownership::Imm)
+                    return Err(format!("TODO: cast Box to Imm"));
+                    //Some(Ownership::Imm)
                 }
                 Ownership::RawMut | Ownership::Mut => {
-                    error!("TODO: cast Box to Mut");
-                    Some(Ownership::Mut)
+                    return Err(format!("TODO: cast Box to Mut"));
+                    //Some(Ownership::Mut)
                 }
                 _ => None,
             },
             Ownership::Rc => match to.own {
                 Ownership::Imm | Ownership::Raw | Ownership::RawMut => {
-                    error!("TODO: cast Rc to Imm");
-                    Some(Ownership::Imm)
+                    return Err(format!("TODO: cast Rc to Imm"));
+                    //Some(Ownership::Imm)
                 }
                 _ => None,
             },
@@ -932,7 +949,7 @@ where
                 }
                 _ => None,
             },
-        }
+        })
     }
 
     pub fn build_cast_lty_desc(&mut self, from_lty: LTy<'tcx>, to: TypeDesc<'tcx>) {
