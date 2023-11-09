@@ -1421,7 +1421,13 @@ fn run(tcx: TyCtxt) {
     // ----------------------------------
 
     // Apply rewrite to all functions at once.
-    rewrite::apply_rewrites(tcx, all_rewrites);
+    let mut update_files = rewrite::UpdateFiles::No;
+    if let Ok(val) = env::var("C2RUST_ANALYZE_REWRITE_IN_PLACE") {
+        if val == "1" {
+            update_files = rewrite::UpdateFiles::Yes;
+        }
+    }
+    rewrite::apply_rewrites(tcx, all_rewrites, update_files);
 
     // ----------------------------------
     // Report caught panics
