@@ -104,9 +104,9 @@ impl<'a, 'tcx> Visitor<'tcx> for ShimCallVisitor<'a, 'tcx> {
     }
 }
 
-/// For each failed function that calls or mentions a non-failed function meeting certain criteria,
-/// generate rewrites to change calls to `foo` into calls to `foo_shim`.  Also produces a set of
-/// callee `DefId`s for the calls that were rewritten this way.
+/// For each non-rewritable function that calls or mentions a rewritable function meeting certain
+/// criteria, generate rewrites to change calls to `foo` into calls to `foo_shim`.  Also produces a
+/// set of callee `DefId`s for the calls that were rewritten this way.
 ///
 /// The criteria we look for are:
 /// * The callee must be a local function.
@@ -122,12 +122,12 @@ pub fn gen_shim_call_rewrites<'tcx>(
     let mut rewrites = Vec::new();
     let mut mentioned_fns = HashSet::new();
 
-    for &failed_def_id in gacx.fns_failed.keys() {
-        let failed_def_id = match failed_def_id.as_local() {
+    for skip_def_id in gacx.iter_fns_skip_rewrite() {
+        let skip_def_id = match skip_def_id.as_local() {
             Some(x) => x,
             None => continue,
         };
-        let hir_body_id = tcx.hir().body_owned_by(failed_def_id);
+        let hir_body_id = tcx.hir().body_owned_by(skip_def_id);
         let hir = tcx.hir().body(hir_body_id);
         let typeck_results = tcx.typeck_body(hir_body_id);
         let mut v = ShimCallVisitor {
