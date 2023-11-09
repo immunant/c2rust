@@ -329,6 +329,9 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     /// `DefId`s of functions where analysis failed, and a [`PanicDetail`] explaining the reason
     /// for each failure.
     pub fns_failed: HashMap<DefId, PanicDetail>,
+    /// `DefId`s of functions that were marked "fixed" (non-rewritable) through command-line
+    /// arguments.
+    pub fns_fixed: HashSet<DefId>,
 
     pub field_ltys: HashMap<DefId, LTy<'tcx>>,
 
@@ -698,6 +701,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
                 .map(|known_fn| (known_fn.name, known_fn))
                 .collect(),
             fns_failed: HashMap::new(),
+            fns_fixed: HashSet::new(),
             field_ltys: HashMap::new(),
             static_tys: HashMap::new(),
             addr_of_static: HashMap::new(),
@@ -759,6 +763,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             ref mut fn_sigs,
             known_fns: _,
             fns_failed: _,
+            fns_fixed: _,
             ref mut field_ltys,
             ref mut static_tys,
             ref mut addr_of_static,
@@ -815,7 +820,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         }
     }
 
-    pub fn fn_failed(&mut self, did: DefId) -> bool {
+    pub fn fn_failed(&self, did: DefId) -> bool {
         self.fns_failed.contains_key(&did)
     }
 
@@ -829,6 +834,21 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
 
     pub fn iter_fns_failed(&self) -> impl Iterator<Item = DefId> + '_ {
         self.fns_failed.keys().copied()
+    }
+
+    pub fn fn_skip_rewrite(&self, did: DefId) -> bool {
+        self.fn_failed(did) || self.fns_fixed.contains(&did)
+    }
+
+    /// Iterate over the `DefId`s of all functions that should skip rewriting.
+    pub fn iter_fns_skip_rewrite<'a>(&'a self) -> impl Iterator<Item = DefId> + 'a {
+        // This let binding avoids a lifetime error with the closure and return-position `impl
+        // Trait`.
+        let fns_fixed = &self.fns_fixed;
+        // If the same `DefId` is in both `fns_failed` and `fns_fixed`, be sure to return it only
+        // once.
+        fns_fixed.iter().copied()
+            .chain(self.fns_failed.keys().copied().filter(move |did| !fns_fixed.contains(&did)))
     }
 
     pub fn known_fn(&self, def_id: DefId) -> Option<&'static KnownFn> {

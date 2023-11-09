@@ -980,6 +980,8 @@ fn run(tcx: TyCtxt) {
 
     // Items in the "fixed defs" list have all pointers in their types set to `FIXED`.  For
     // testing, putting #[c2rust_analyze_test::fixed_signature] on an item has the same effect.
+    //
+    // Functions in the list are also added to `gacx.fns_fixed`.
     for ldid in tcx.hir_crate_items(()).definitions() {
         let def_fixed = fixed_defs.contains(&ldid.to_def_id())
             || util::has_test_attr(tcx, ldid, TestAttr::FixedSignature);
@@ -990,6 +992,7 @@ fn run(tcx: TyCtxt) {
                     None => panic!("missing fn_sig for {:?}", ldid),
                 };
                 make_sig_fixed(&mut gasn, lsig);
+                gacx.fns_fixed.insert(ldid.to_def_id());
             }
 
             DefKind::Struct | DefKind::Enum | DefKind::Union => {
@@ -1257,7 +1260,7 @@ fn run(tcx: TyCtxt) {
         }
 
         for &ldid in &all_fn_ldids {
-            if gacx.fn_failed(ldid.to_def_id()) {
+            if gacx.fn_skip_rewrite(ldid.to_def_id()) {
                 continue;
             }
 

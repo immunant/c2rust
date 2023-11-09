@@ -1,6 +1,7 @@
 use std::{
     collections::HashSet,
     env,
+    ffi::OsString,
     fmt::{self, Display, Formatter},
     fs::{self, File},
     path::{Path, PathBuf},
@@ -56,6 +57,21 @@ struct AnalyzeArgs {
     /// this flag.
     #[arg(long)]
     catch_panics: bool,
+
+    /// Comma-separated list of paths to rewrite.  Any item whose path does not start with a prefix
+    /// from this list will be marked non-rewritable (`FIXED`).
+    #[clap(long)]
+    rewrite_paths: Option<OsString>,
+
+    /// Use `todo!()` placeholders in shims for casts that must be implemented manually.
+    ///
+    /// When a function requires a shim, and the shim requires a cast that can't be generated
+    /// automatically, the default is to cancel rewriting of the function.  With this option,
+    /// rewriting proceeds as normal, and shim generation emits `todo!()` in place of each
+    /// unsupported cast.
+    #[clap(long)]
+    use_manual_shims: bool,
+
 }
 
 impl AnalyzeArgs {
@@ -175,6 +191,12 @@ impl Analyze {
 
         if !args.catch_panics {
             cmd.env("C2RUST_ANALYZE_TEST_DONT_CATCH_PANIC", "1");
+        }
+        if args.use_manual_shims {
+            cmd.env("C2RUST_ANALYZE_USE_MANUAL_SHIMS", "1");
+        }
+        if let Some(ref rewrite_paths) = args.rewrite_paths {
+            cmd.env("C2RUST_ANALYZE_REWRITE_PATHS", rewrite_paths);
         }
         cmd.arg(&rs_path)
             .arg("-L")
