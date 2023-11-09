@@ -193,35 +193,46 @@ pub fn gen_shim_definition_rewrite<'tcx>(
     // valid `fn_sigs` entries.
     let lsig = gacx.fn_sigs[&def_id];
 
+    // 1 cast per arg, 1 call, 1 cast for the result.  The final result is returned using the
+    // trailing expression of the block.
+    let mut stmts = Vec::with_capacity(arg_tys.len() + 2);
+
+    // Generate `let safe_arg0 = arg0 as ...;` for each argument.
     let mut arg_exprs = Vec::with_capacity(arg_tys.len());
     for (i, arg_lty) in lsig.inputs.iter().enumerate() {
         let mut hir_rw = Rewrite::FnArg(i);
 
-        let (arg_desc, fixed_desc) = match lty_to_desc_pair(tcx, gasn, arg_lty) {
-            Some(x) => x,
-            None => {
-                // `arg_lty` is a FIXED pointer, which doesn't need a cast; the shim argument
-                // type is the same as the argument type of the wrapped function.
-                arg_exprs.push(hir_rw);
-                continue;
-            }
-        };
+        if let Some((arg_desc, fixed_desc)) = lty_to_desc_pair(tcx, gasn, arg_lty) {
+            let mut cast_builder = CastBuilder::new(tcx, &gasn.perms, &gasn.flags, |rk| {
+                hir_rw = expr::convert_cast_rewrite(&rk, mem::take(&mut hir_rw));
+            });
+            cast_builder.build_cast_desc_desc(fixed_desc, arg_desc);
+        } else {
+            // No-op.  `arg_lty` is a FIXED pointer, which doesn't need a cast; the shim argument
+            // type is the same as the argument type of the wrapped function.
+        }
 
-        let mut cast_builder = CastBuilder::new(tcx, &gasn.perms, &gasn.flags, |rk| {
-            hir_rw = expr::convert_cast_rewrite(&rk, mem::take(&mut hir_rw));
-        });
-        cast_builder.build_cast_desc_desc(fixed_desc, arg_desc);
-        arg_exprs.push(hir_rw);
+        let safe_name = format!("safe_arg{}", i);
+        stmts.push(Rewrite::Let1(safe_name.clone(), Box::new(hir_rw)));
+        arg_exprs.push(Rewrite::Print(safe_name));
     }
 
-    let mut body_rw = Rewrite::Call(owner_node.ident().unwrap().as_str().to_owned(), arg_exprs);
+    // Generate the call: `let safe_result = f(safe_arg0, safe_arg1);`
+    let call_rw = Rewrite::Call(owner_node.ident().unwrap().as_str().to_owned(), arg_exprs);
+    stmts.push(Rewrite::Let1("safe_result".into(), Box::new(call_rw)));
 
+    // Generate `let result = safe_result as ...;`
+    let mut result_rw = Rewrite::Print("safe_result".into());
     if let Some((return_desc, fixed_desc)) = lty_to_desc_pair(tcx, gasn, lsig.output) {
         let mut cast_builder = CastBuilder::new(tcx, &gasn.perms, &gasn.flags, |rk| {
-            body_rw = expr::convert_cast_rewrite(&rk, mem::take(&mut body_rw));
+            result_rw = expr::convert_cast_rewrite(&rk, mem::take(&mut result_rw));
         });
         cast_builder.build_cast_desc_desc(return_desc, fixed_desc);
     }
+    stmts.push(Rewrite::Let1("result".into(), Box::new(result_rw)));
+
+    // Build the function body.
+    let body_rw = Rewrite::Block(stmts, Some(Box::new(Rewrite::Print("result".into()))));
 
     let rw = Rewrite::DefineFn {
         name: format!("{}_shim", owner_node.ident().unwrap().as_str()),
