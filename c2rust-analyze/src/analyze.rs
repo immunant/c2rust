@@ -1225,6 +1225,14 @@ fn run(tcx: TyCtxt) {
     // Generate rewrites for all functions.
     let mut all_rewrites = Vec::new();
 
+    let mut manual_shim_casts = rewrite::ManualShimCasts::No;
+    if let Ok(val) = env::var("C2RUST_ANALYZE_USE_MANUAL_SHIMS") {
+        if val == "1" {
+            manual_shim_casts = rewrite::ManualShimCasts::Yes;
+        }
+    }
+    let manual_shim_casts = manual_shim_casts;
+
     // It may take multiple tries to reach a state where all rewrites succeed.
     loop {
         func_reports.clear();
@@ -1311,7 +1319,12 @@ fn run(tcx: TyCtxt) {
         let mut any_failed = false;
         for def_id in shim_fn_def_ids {
             let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
-                all_rewrites.push(rewrite::gen_shim_definition_rewrite(&gacx, &gasn, def_id));
+                all_rewrites.push(rewrite::gen_shim_definition_rewrite(
+                    &gacx,
+                    &gasn,
+                    def_id,
+                    manual_shim_casts,
+                ));
             }));
             match r {
                 Ok(()) => {}
