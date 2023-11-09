@@ -400,6 +400,13 @@ impl<S: Sink> Emitter<'_, S> {
                 self.emit_str(")")
             }
 
+            Rewrite::Let1(ref name, ref rw) => {
+                self.emit_str("let ")?;
+                self.emit_str(name)?;
+                self.emit_str(" = ")?;
+                self.emit(rw, 0)
+            }
+
             Rewrite::TyPtr(ref rw, mutbl) => {
                 match mutbl {
                     Mutability::Not => self.emit_str("*const ")?,

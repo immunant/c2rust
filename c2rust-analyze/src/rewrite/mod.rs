@@ -89,11 +89,14 @@ pub enum Rewrite<S = Span> {
     /// A multi-variable `let` binding, like `let (x, y) = (rw0, rw1)`.  Note that this rewrite
     /// does not include a trailing semicolon.
     ///
-    /// Since these variable bindings are not hygienic, a `StmtBind` can invalidate the expression
-    /// produced by `Identity` or `Sub` rewrites used later in the same scope.  In general,
-    /// `StmtBind` should only be used inside a `Block`, and `Identity` and `Sub` rewrites should
-    /// not be used later in that block.
+    /// Since these variable bindings are not hygienic, a `Let` can invalidate the expression
+    /// produced by `Identity` or `Sub` rewrites used later in the same scope.  In general, `Let`
+    /// should only be used inside a `Block`, and `Identity` and `Sub` rewrites should not be used
+    /// later in that block.
     Let(Vec<(String, Rewrite)>),
+    /// Single-variable `let` binding.  This has the same scoping issues as multi-variable `Let`;
+    /// because of this, `Let` should generally be used instead of multiple `Let1`s.
+    Let1(String, Box<Rewrite>),
 
     // Type builders
     /// Emit a complete pretty-printed type, discarding the original annotation.
@@ -191,6 +194,7 @@ impl Rewrite {
                 }
                 Let(new_vars)
             }
+            Let1(ref name, ref rw) => Let1(String::clone(name), try_subst(rw)?),
 
             Print(ref s) => Print(String::clone(s)),
             TyPtr(ref rw, mutbl) => TyPtr(try_subst(rw)?, mutbl),

@@ -24,5 +24,7 @@ unsafe fn good2(x: *mut i32) -> *mut i32 {
     // CHECK: &*(x)
     x
 }
-// CHECK: unsafe fn good2_shim(arg0: *mut i32) -> *mut i32
-// CHECK: core::ptr::addr_of!(*good2(&mut *arg0)).cast_mut()
+// CHECK-LABEL: unsafe fn good2_shim(arg0: *mut i32) -> *mut i32
+// CHECK: let safe_arg0 = &mut *arg0;
+// CHECK: let safe_result = good2(safe_arg0);
+// CHECK: let result = core::ptr::addr_of!(*safe_result).cast_mut();
