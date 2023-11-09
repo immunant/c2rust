@@ -37,7 +37,7 @@ mod statics;
 mod ty;
 
 pub use self::expr::gen_expr_rewrites;
-pub use self::shim::{gen_shim_call_rewrites, gen_shim_definition_rewrite};
+pub use self::shim::{gen_shim_call_rewrites, gen_shim_definition_rewrite, ManualShimCasts};
 pub use self::statics::gen_static_rewrites;
 pub use self::ty::dump_rewritten_local_tys;
 pub use self::ty::{gen_adt_ty_rewrites, gen_ty_rewrites};

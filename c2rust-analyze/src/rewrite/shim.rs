@@ -2,6 +2,7 @@ use crate::context::LTy;
 use crate::context::{FlagSet, GlobalAnalysisCtxt, GlobalAssignment};
 use crate::rewrite::expr::{self, CastBuilder};
 use crate::rewrite::Rewrite;
+use crate::rewrite::ty;
 use crate::type_desc::{self, TypeDesc};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::DefId;
@@ -168,10 +169,19 @@ fn lty_to_desc_pair<'tcx>(
     Some((desc, fixed_desc))
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum ManualShimCasts {
+    No,
+    /// Emit `todo!("cast X from T1 to T2")` instead of panicking when a cast can't be generated.
+    /// The user can then implement the necessary casts manually.
+    Yes,
+}
+
 pub fn gen_shim_definition_rewrite<'tcx>(
     gacx: &GlobalAnalysisCtxt<'tcx>,
     gasn: &GlobalAssignment,
     def_id: DefId,
+    manual_casts: ManualShimCasts,
 ) -> (Span, Rewrite) {
     let tcx = gacx.tcx;
 
@@ -206,7 +216,20 @@ pub fn gen_shim_definition_rewrite<'tcx>(
             let mut cast_builder = CastBuilder::new(tcx, &gasn.perms, &gasn.flags, |rk| {
                 hir_rw = expr::convert_cast_rewrite(&rk, mem::take(&mut hir_rw));
             });
-            cast_builder.build_cast_desc_desc(fixed_desc, arg_desc);
+            match cast_builder.try_build_cast_desc_desc(fixed_desc, arg_desc) {
+                Ok(()) => {},
+                Err(e) => {
+                    if manual_casts == ManualShimCasts::Yes {
+                        hir_rw = Rewrite::Print(format!(
+                            r#"todo!("cast arg{i} from {} to {}")"#,
+                            ty::desc_to_ty(tcx, fixed_desc),
+                            ty::desc_to_ty(tcx, arg_desc),
+                        ));
+                    } else {
+                        panic!("error generating cast for {:?} arg{}: {}", def_id, i, e);
+                    }
+                },
+            }
         } else {
             // No-op.  `arg_lty` is a FIXED pointer, which doesn't need a cast; the shim argument
             // type is the same as the argument type of the wrapped function.
@@ -227,7 +250,20 @@ pub fn gen_shim_definition_rewrite<'tcx>(
         let mut cast_builder = CastBuilder::new(tcx, &gasn.perms, &gasn.flags, |rk| {
             result_rw = expr::convert_cast_rewrite(&rk, mem::take(&mut result_rw));
         });
-        cast_builder.build_cast_desc_desc(return_desc, fixed_desc);
+        match cast_builder.try_build_cast_desc_desc(return_desc, fixed_desc) {
+            Ok(()) => {},
+            Err(e) => {
+                if manual_casts == ManualShimCasts::Yes {
+                    result_rw = Rewrite::Print(format!(
+                        r#"todo!("cast safe_result from {} to {}")"#,
+                        ty::desc_to_ty(tcx, return_desc),
+                        ty::desc_to_ty(tcx, fixed_desc),
+                    ));
+                } else {
+                    panic!("error generating cast for {:?} result: {}", def_id, e);
+                }
+            },
+        }
     }
     stmts.push(Rewrite::Let1("result".into(), Box::new(result_rw)));
 

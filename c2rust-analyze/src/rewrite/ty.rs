@@ -17,7 +17,7 @@ use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{GlobalPointerTable, PointerId, PointerTable};
 use crate::rewrite::Rewrite;
-use crate::type_desc::{self, Ownership, Quantity};
+use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use hir::{
     FnRetTy, GenericParamKind, Generics, ItemKind, Path, PathSegment, VariantData, WherePredicate,
 };
@@ -373,7 +373,7 @@ fn mk_rewritten_ty<'tcx>(
 ) -> ty::Ty<'tcx> {
     let tcx = *lcx;
     lcx.rewrite_unlabeled(rw_lty, &mut |ptr_ty, args, label| {
-        let (mut ty, own, qty) = match (label.pointee_ty, label.ty_desc) {
+        let (ty, own, qty) = match (label.pointee_ty, label.ty_desc) {
             (Some(pointee_ty), Some((own, qty))) => {
                 // The `ty` should be a pointer.
                 assert_eq!(args.len(), 1);
@@ -402,30 +402,45 @@ fn mk_rewritten_ty<'tcx>(
             }
         };
 
-        if own == Ownership::Cell {
-            ty = mk_cell(tcx, ty);
-        }
-
-        ty = match qty {
-            Quantity::Single => ty,
-            Quantity::Slice => tcx.mk_slice(ty),
-            // TODO: This should generate `OffsetPtr<T>` rather than `&[T]`, but `OffsetPtr` is NYI
-            Quantity::OffsetPtr => tcx.mk_slice(ty),
-            Quantity::Array => panic!("can't mk_rewritten_ty with Quantity::Array"),
-        };
-
-        ty = match own {
-            Ownership::Raw => tcx.mk_imm_ptr(ty),
-            Ownership::RawMut => tcx.mk_mut_ptr(ty),
-            Ownership::Imm => tcx.mk_imm_ref(tcx.mk_region(ReErased), ty),
-            Ownership::Cell => tcx.mk_imm_ref(tcx.mk_region(ReErased), ty),
-            Ownership::Mut => tcx.mk_mut_ref(tcx.mk_region(ReErased), ty),
-            Ownership::Rc => todo!(),
-            Ownership::Box => tcx.mk_box(ty),
-        };
-
-        ty
+        desc_parts_to_ty(tcx, own, qty, ty)
     })
+}
+
+pub fn desc_parts_to_ty<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    own: Ownership,
+    qty: Quantity,
+    pointee_ty: Ty<'tcx>,
+) -> Ty<'tcx> {
+    let mut ty = pointee_ty;
+
+    if own == Ownership::Cell {
+        ty = mk_cell(tcx, ty);
+    }
+
+    ty = match qty {
+        Quantity::Single => ty,
+        Quantity::Slice => tcx.mk_slice(ty),
+        // TODO: This should generate `OffsetPtr<T>` rather than `&[T]`, but `OffsetPtr` is NYI
+        Quantity::OffsetPtr => tcx.mk_slice(ty),
+        Quantity::Array => panic!("can't mk_rewritten_ty with Quantity::Array"),
+    };
+
+    ty = match own {
+        Ownership::Raw => tcx.mk_imm_ptr(ty),
+        Ownership::RawMut => tcx.mk_mut_ptr(ty),
+        Ownership::Imm => tcx.mk_imm_ref(tcx.mk_region(ReErased), ty),
+        Ownership::Cell => tcx.mk_imm_ref(tcx.mk_region(ReErased), ty),
+        Ownership::Mut => tcx.mk_mut_ref(tcx.mk_region(ReErased), ty),
+        Ownership::Rc => todo!(),
+        Ownership::Box => tcx.mk_box(ty),
+    };
+
+    ty
+}
+
+pub fn desc_to_ty<'tcx>(tcx: TyCtxt<'tcx>, desc: TypeDesc<'tcx>) -> Ty<'tcx> {
+    desc_parts_to_ty(tcx, desc.own, desc.qty, desc.pointee_ty)
 }
 
 struct HirTyVisitor<'a, 'tcx> {
