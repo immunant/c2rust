@@ -25,8 +25,9 @@
 
 use rustc_hir::Mutability;
 use rustc_middle::ty::TyCtxt;
-use rustc_span::Span;
+use rustc_span::{Span, FileName};
 use std::fmt;
+use std::fs;
 
 mod apply;
 mod expr;
@@ -238,24 +239,44 @@ impl apply::Sink for FormatterSink<'_, '_> {
     }
 }
 
-pub fn apply_rewrites(tcx: TyCtxt, rewrites: Vec<(Span, Rewrite)>) {
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum UpdateFiles {
+    No,
+    Yes,
+}
+
+pub fn apply_rewrites(tcx: TyCtxt, rewrites: Vec<(Span, Rewrite)>, update_files: UpdateFiles) {
     // TODO: emit new source code properly instead of just printing
     let new_src = apply::apply_rewrites(tcx.sess.source_map(), rewrites);
 
     for (filename, src) in new_src {
-        eprintln!("\n\n ===== BEGIN {:?} =====", filename);
+        println!("\n\n ===== BEGIN {:?} =====", filename);
         for line in src.lines() {
             // Omit filecheck directives from the debug output, as filecheck can get confused due
             // to directives matching themselves (e.g. `// CHECK: foo` will match the `foo` in the
             // line `// CHECK: foo`).
             if let Some((pre, _post)) = line.split_once("// CHECK") {
-                eprintln!("{}// (FileCheck directive omitted)", pre);
+                println!("{}// (FileCheck directive omitted)", pre);
             } else {
-                eprintln!("{}", line);
+                println!("{}", line);
             }
         }
-        eprintln!(" ===== END {:?} =====", filename);
+        println!(" ===== END {:?} =====", filename);
+
+        if update_files == UpdateFiles::Yes {
+            let mut path_ok = false;
+            if let FileName::Real(ref rfn) = filename {
+                if let Some(path) = rfn.local_path() {
+                    fs::write(path, src).unwrap();
+                    path_ok = true;
+                }
+            }
+            if !path_ok {
+                log::warn!("couldn't write to non-real file {filename:?}");
+            }
+        }
     }
+
 }
 
 #[cfg(test)]
