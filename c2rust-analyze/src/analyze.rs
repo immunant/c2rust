@@ -37,6 +37,7 @@ use rustc_hir::def_id::CrateNum;
 use rustc_hir::def_id::DefId;
 use rustc_hir::def_id::DefIndex;
 use rustc_hir::def_id::LocalDefId;
+use rustc_hir::definitions::DefPathData;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::AggregateKind;
@@ -57,6 +58,7 @@ use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TyKind;
 use rustc_middle::ty::WithOptConstParam;
 use rustc_span::Span;
+use rustc_span::Symbol;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -433,9 +435,8 @@ fn parse_def_id(s: &str) -> Result<DefId, String> {
     Ok(def_id)
 }
 
-fn read_fixed_defs_list(path: &str) -> io::Result<HashSet<DefId>> {
+fn read_fixed_defs_list(fixed_defs: &mut HashSet<DefId>, path: &str) -> io::Result<()> {
     let f = BufReader::new(File::open(path)?);
-    let mut def_ids = HashSet::new();
     for (i, line) in f.lines().enumerate() {
         let line = line?;
         let line = line.trim();
@@ -446,9 +447,74 @@ fn read_fixed_defs_list(path: &str) -> io::Result<HashSet<DefId>> {
         let def_id = parse_def_id(&line).unwrap_or_else(|e| {
             panic!("failed to parse {} line {}: {}", path, i + 1, e);
         });
-        def_ids.insert(def_id);
+        fixed_defs.insert(def_id);
     }
-    Ok(def_ids)
+    Ok(())
+}
+
+/// Examine each `DefId` in the crate, and add to `fixed_defs` any that doesn't match at least one
+/// prefix in `prefixes`.  For example, if `prefixes` is `foo,bar::baz`, only `foo`, `bar::baz`,
+/// and their descendants will be eligible for rewriting; all other `DefId`s will be added to
+/// `fixed_defs`.
+fn check_rewrite_path_prefixes(tcx: TyCtxt, fixed_defs: &mut HashSet<DefId>, prefixes: &str) {
+    let hir = tcx.hir();
+    let prefixes: HashSet<Vec<Symbol>> = prefixes
+        .split(',')
+        .map(|prefix| prefix.split("::").map(Symbol::intern).collect::<Vec<_>>())
+        .collect();
+    let sym_impl = Symbol::intern("{impl}");
+    // Buffer for accumulating the path to a particular def.
+    let mut path_buf = Vec::with_capacity(10);
+    for ldid in tcx.hir_crate_items(()).definitions() {
+        let def_path = hir.def_path(ldid);
+
+        // Traverse `def_path`, adding each `Symbol` to `path_buf`.  We check after each push
+        // whether `path_buf` matches something in `prefixes`, which has the effect of checking
+        // every prefix of the path of `ldid`.
+        path_buf.clear();
+        let mut matched = false;
+        for ddpd in &def_path.data {
+            match ddpd.data {
+                // We ignore these when building the `Symbol` path.
+                DefPathData::CrateRoot
+                | DefPathData::ForeignMod
+                | DefPathData::Use
+                | DefPathData::GlobalAsm
+                | DefPathData::ClosureExpr
+                | DefPathData::Ctor
+                | DefPathData::AnonConst
+                | DefPathData::ImplTrait => continue,
+                DefPathData::TypeNs(sym)
+                | DefPathData::ValueNs(sym)
+                | DefPathData::MacroNs(sym)
+                | DefPathData::LifetimeNs(sym) => {
+                    path_buf.push(sym);
+                }
+                DefPathData::Impl => {
+                    path_buf.push(sym_impl);
+                }
+            }
+            if prefixes.contains(&path_buf) {
+                matched = true;
+                break;
+            }
+        }
+
+        if !matched {
+            fixed_defs.insert(ldid.to_def_id());
+        }
+    }
+}
+
+fn get_fixed_defs(tcx: TyCtxt) -> io::Result<HashSet<DefId>> {
+    let mut fixed_defs = HashSet::new();
+    if let Ok(path) = env::var("C2RUST_ANALYZE_FIXED_DEFS_LIST") {
+        read_fixed_defs_list(&mut fixed_defs, &path)?;
+    }
+    if let Ok(prefixes) = env::var("C2RUST_ANALYZE_REWRITE_PATHS") {
+        check_rewrite_path_prefixes(tcx, &mut fixed_defs, &prefixes);
+    }
+    Ok(fixed_defs)
 }
 
 fn run(tcx: TyCtxt) {
@@ -458,11 +524,7 @@ fn run(tcx: TyCtxt) {
     }
 
     // Load the list of fixed defs early, so any errors are reported immediately.
-    let fixed_defs = if let Ok(path) = env::var("C2RUST_ANALYZE_FIXED_DEFS_LIST") {
-        read_fixed_defs_list(&path).unwrap()
-    } else {
-        HashSet::new()
-    };
+    let fixed_defs = get_fixed_defs(tcx).unwrap();
 
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
