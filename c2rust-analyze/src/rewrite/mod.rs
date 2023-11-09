@@ -25,7 +25,7 @@
 
 use rustc_hir::Mutability;
 use rustc_middle::ty::TyCtxt;
-use rustc_span::{Span, FileName};
+use rustc_span::{FileName, Span};
 use std::fmt;
 use std::fs;
 
@@ -276,7 +276,6 @@ pub fn apply_rewrites(tcx: TyCtxt, rewrites: Vec<(Span, Rewrite)>, update_files:
             }
         }
     }
-
 }
 
 #[cfg(test)]
