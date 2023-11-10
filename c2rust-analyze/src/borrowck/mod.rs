@@ -14,9 +14,11 @@ use rustc_middle::ty::{
     TyKind,
 };
 use rustc_type_ir::RegionKind::ReEarlyBound;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::fmt::{Debug, Formatter};
-use std::hash::Hash;
+use std::fmt::{Debug, Formatter, Write as _};
+use std::fs::{self, File};
+use std::hash::{Hash, Hasher};
 
 mod atoms;
 mod def_use;
@@ -358,10 +360,211 @@ fn run_polonius<'tcx>(
 
     dump::dump_facts_to_dir(&facts, &maps, format!("inspect/{}", name)).unwrap();
 
-    let output = polonius_engine::Output::compute(&facts, polonius_engine::Algorithm::Naive, true);
+    eprintln!("running polonius analysis on {name}");
+    let facts_hash = bytes_to_hex_string(&hash_facts(&facts));
+    let output = match try_load_cached_output(&facts_hash) {
+        Some(output) => output,
+        None => {
+            let output = polonius_engine::Output::compute(
+                &facts,
+                polonius_engine::Algorithm::DatafrogOpt,
+                true,
+            );
+            save_cached_output(&facts_hash, &output).unwrap();
+            output
+        }
+    };
     dump::dump_output_to_dir(&output, &maps, format!("inspect/{}", name)).unwrap();
 
     (facts, maps, output)
+}
+
+fn try_load_cached_output(facts_hash: &str) -> Option<Output> {
+    let path = format!("polonius_cache/{}.output", facts_hash);
+
+    let f = File::open(&path).ok()?;
+    let raw = match bincode::deserialize_from(f) {
+        Ok(x) => x,
+        Err(e) => {
+            log::warn!("failed to parse polonius cache file {path:?}: {e}");
+            return None;
+        }
+    };
+    // Tuples only implement `Deserialize` up to length 12, so split up this 17-element tuple into
+    // several pieces.
+    let (
+        (
+            errors,
+            subset_errors,
+            move_errors,
+            dump_enabled,
+            loan_live_at,
+            origin_contains_loan_at,
+            origin_contains_loan_anywhere,
+            origin_live_on_entry,
+            loan_invalidated_at,
+            subset,
+            subset_anywhere,
+            var_live_on_entry,
+        ),
+        (
+            var_drop_live_on_entry,
+            path_maybe_initialized_on_exit,
+            path_maybe_uninitialized_on_exit,
+            known_contains,
+            var_maybe_partly_initialized_on_exit,
+        ),
+    ) = raw;
+
+    eprintln!("loaded cached facts from {}", path);
+
+    Some(Output {
+        errors,
+        subset_errors,
+        move_errors,
+        dump_enabled,
+        loan_live_at,
+        origin_contains_loan_at,
+        origin_contains_loan_anywhere,
+        origin_live_on_entry,
+        loan_invalidated_at,
+        subset,
+        subset_anywhere,
+        var_live_on_entry,
+        var_drop_live_on_entry,
+        path_maybe_initialized_on_exit,
+        path_maybe_uninitialized_on_exit,
+        known_contains,
+        var_maybe_partly_initialized_on_exit,
+    })
+}
+
+fn save_cached_output(facts_hash: &str, output: &Output) -> Result<(), bincode::Error> {
+    fs::create_dir_all("polonius_cache")?;
+    let path = format!("polonius_cache/{}.output", facts_hash);
+
+    let Output {
+        ref errors,
+        ref subset_errors,
+        ref move_errors,
+        ref dump_enabled,
+        ref loan_live_at,
+        ref origin_contains_loan_at,
+        ref origin_contains_loan_anywhere,
+        ref origin_live_on_entry,
+        ref loan_invalidated_at,
+        ref subset,
+        ref subset_anywhere,
+        ref var_live_on_entry,
+        ref var_drop_live_on_entry,
+        ref path_maybe_initialized_on_exit,
+        ref path_maybe_uninitialized_on_exit,
+        ref known_contains,
+        ref var_maybe_partly_initialized_on_exit,
+    } = *output;
+
+    // Tuples only implement `Serialize` up to length 12, so split up this 17-element tuple into
+    // several pieces.  Note this must match the tuple format in `try_load_cached_output`.
+    let raw = (
+        (
+            errors,
+            subset_errors,
+            move_errors,
+            dump_enabled,
+            loan_live_at,
+            origin_contains_loan_at,
+            origin_contains_loan_anywhere,
+            origin_live_on_entry,
+            loan_invalidated_at,
+            subset,
+            subset_anywhere,
+            var_live_on_entry,
+        ),
+        (
+            var_drop_live_on_entry,
+            path_maybe_initialized_on_exit,
+            path_maybe_uninitialized_on_exit,
+            known_contains,
+            var_maybe_partly_initialized_on_exit,
+        ),
+    );
+
+    let f = File::create(path)?;
+    bincode::serialize_into(f, &raw)
+}
+
+fn bytes_to_hex_string(b: &[u8]) -> String {
+    let mut s = String::with_capacity(b.len() * 2);
+    for &x in b {
+        write!(s, "{:02x}", x).unwrap();
+    }
+    s
+}
+
+fn hash_facts(facts: &AllFacts) -> [u8; 32] {
+    let AllFacts {
+        ref loan_issued_at,
+        ref universal_region,
+        ref cfg_edge,
+        ref loan_killed_at,
+        ref subset_base,
+        ref loan_invalidated_at,
+        ref var_used_at,
+        ref var_defined_at,
+        ref var_dropped_at,
+        ref use_of_var_derefs_origin,
+        ref drop_of_var_derefs_origin,
+        ref child_path,
+        ref path_is_var,
+        ref path_assigned_at_base,
+        ref path_moved_at_base,
+        ref path_accessed_at_base,
+        ref known_placeholder_subset,
+        ref placeholder,
+    } = *facts;
+
+    // Only tuples up to size 12 implement `Hash`, so we break up this list into nested tuples.
+    sha256_hash(&(
+        (
+            loan_issued_at,
+            universal_region,
+            cfg_edge,
+            loan_killed_at,
+            subset_base,
+            loan_invalidated_at,
+            var_used_at,
+            var_defined_at,
+            var_dropped_at,
+            use_of_var_derefs_origin,
+            drop_of_var_derefs_origin,
+            child_path,
+        ),
+        (
+            path_is_var,
+            path_assigned_at_base,
+            path_moved_at_base,
+            path_accessed_at_base,
+            known_placeholder_subset,
+            placeholder,
+        ),
+    ))
+}
+
+fn sha256_hash<T: Hash>(x: &T) -> [u8; 32] {
+    struct Sha256Hasher(Sha256);
+    impl Hasher for Sha256Hasher {
+        fn write(&mut self, bytes: &[u8]) {
+            self.0.update(bytes);
+        }
+        fn finish(&self) -> u64 {
+            panic!("Sha256Hasher doesn't support finish()");
+        }
+    }
+
+    let mut hasher = Sha256Hasher(Sha256::new());
+    x.hash(&mut hasher);
+    let digest = hasher.0.finalize();
+    digest.as_slice().try_into().unwrap()
 }
 
 fn construct_adt_origins<'tcx>(
