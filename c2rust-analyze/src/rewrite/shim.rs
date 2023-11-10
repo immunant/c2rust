@@ -127,7 +127,12 @@ pub fn gen_shim_call_rewrites<'tcx>(
             Some(x) => x,
             None => continue,
         };
-        let hir_body_id = tcx.hir().body_owned_by(skip_def_id);
+        // When using --rewrite-paths, fns in extern blocks may show up here.  We can't do anything
+        // with these, since they don't have a HIR body, so skip them.
+        let hir_body_id = match tcx.hir().maybe_body_owned_by(skip_def_id) {
+            Some(x) => x,
+            None => continue,
+        };
         let hir = tcx.hir().body(hir_body_id);
         let typeck_results = tcx.typeck_body(hir_body_id);
         let mut v = ShimCallVisitor {
