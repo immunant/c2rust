@@ -983,6 +983,11 @@ fn run(tcx: TyCtxt) {
     //
     // Functions in the list are also added to `gacx.fns_fixed`.
     for ldid in tcx.hir_crate_items(()).definitions() {
+        // TODO (HACK): `Clone::clone` impls are omitted from `fn_sigs` and cause a panic below.
+        if is_impl_clone(tcx, ldid.to_def_id()) {
+            continue;
+        }
+
         let def_fixed = fixed_defs.contains(&ldid.to_def_id())
             || util::has_test_attr(tcx, ldid, TestAttr::FixedSignature);
         match tcx.def_kind(ldid.to_def_id()) {
