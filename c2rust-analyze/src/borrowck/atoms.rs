@@ -1,12 +1,13 @@
 use polonius_engine::{self, Atom, FactTypes};
 use rustc_middle::mir::{BasicBlock, Local, Location, Place, PlaceElem};
 use rustc_middle::ty::TyCtxt;
+use serde::{Serialize, Deserialize};
 use std::collections::hash_map::{Entry, HashMap};
 use std::hash::Hash;
 
 macro_rules! define_atom_type {
     ($Atom:ident) => {
-        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Serialize, Deserialize)]
         pub struct $Atom(usize);
 
         impl From<usize> for $Atom {
