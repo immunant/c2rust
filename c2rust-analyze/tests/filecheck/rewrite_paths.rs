@@ -27,3 +27,9 @@ unsafe fn good2(x: *mut i32) -> *mut i32 {
 // CHECK: let safe_arg0 = &mut *arg0;
 // CHECK: let safe_result = good2(safe_arg0);
 // CHECK: let result = core::ptr::addr_of!(*safe_result).cast_mut();
+
+// Regression test for an issue where `gen_shim_call_rewrites` would panic upon encountering a
+// non-rewritten function that doesn't have a body.
+extern "C" {
+    fn memcpy(_: *mut u8, _: *const u8, _: usize) -> *mut u8;
+}
