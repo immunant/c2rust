@@ -229,10 +229,18 @@ fn main() {
     let compile_commands = if args.compile_commands.len() == 1
         && args.compile_commands[0].extension() == Some(std::ffi::OsStr::new("json"))
     {
-        // Only one file provided and it's a JSON file
+        // Only one file provided and it's a compile commands JSON file
         args.compile_commands[0].clone()
+    } else if args
+        .compile_commands
+        .iter()
+        .any(|path| path.extension() == Some(std::ffi::OsStr::new("json")))
+    {
+        // More than one file provided and at least one is a JSON file
+        panic!("Compile commands JSON and multiple sources provided. 
+                Exactly one compile_commands.json file should be provided, or a list of source files, but not both.");
     } else {
-        // Otherwise, handle as a list of source files
+        // Handle as a list of source files
         c2rust_transpile::create_temp_compile_commands(&args.compile_commands)
     };
 
