@@ -84,7 +84,7 @@ struct Args {
     #[clap(long = "ddebug-labels")]
     debug_labels: bool,
 
-    /// Path to compile_commands.json
+    /// Path to compile_commands.json, or a list of source files
     #[clap(parse(from_os_str), multiple_values = true)]
     compile_commands: Vec<PathBuf>,
 
