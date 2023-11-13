@@ -85,17 +85,17 @@ struct Args {
     debug_labels: bool,
 
     /// Input compile_commands.json file or path to source files
-    #[clap(long, parse(from_os_str), required = false, conflicts_with = "source")]
+    #[clap(long, parse(from_os_str), required = false, conflicts_with = "sources")]
     compile_commands: Option<PathBuf>,
 
     /// Source files to process, only valid if compile_commands.json path is not provided.
     #[clap(
-        long = "source",
+        long = "sources",
         parse(from_os_str),
         multiple_values = true,
         required = false
     )]
-    source: Vec<PathBuf>,
+    sources: Vec<PathBuf>,
 
     /// How to handle violated invariants or invalid code
     #[clap(long, value_enum, default_value_t = InvalidCodes::CompileError)]
@@ -238,7 +238,7 @@ fn main() {
     let compile_commands = if let Some(compile_commands_path) = args.compile_commands {
         compile_commands_path
     } else {
-        c2rust_transpile::create_temp_compile_commands(&args.source)
+        c2rust_transpile::create_temp_compile_commands(&args.sources)
     };
 
     let extra_args = args
@@ -250,7 +250,7 @@ fn main() {
     c2rust_transpile::transpile(tcfg, &compile_commands, &extra_args);
 
     // Remove the temporary compile_commands.json if it was created
-    if !args.source.is_empty() {
+    if !args.sources.is_empty() {
         std::fs::remove_file(&compile_commands)
             .expect("Failed to remove temporary compile_commands.json");
     }
