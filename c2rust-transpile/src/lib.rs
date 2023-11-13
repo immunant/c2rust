@@ -235,7 +235,7 @@ pub fn create_temp_compile_commands(sources: &[PathBuf]) -> PathBuf {
                 .unwrap_or_else(|_| panic!("Could not canonicalize {}", source_file.display()));
 
             CompileCmd {
-                directory: absolute_path.parent().unwrap().to_path_buf(),
+                directory: PathBuf::from("."),
                 file: absolute_path.clone(),
                 arguments: vec![
                     "clang".to_string(),
