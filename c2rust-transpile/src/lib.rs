@@ -19,7 +19,7 @@ use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use std::process;
 
-use compile_cmds::CompileCmd;
+use crate::compile_cmds::CompileCmd;
 use failure::Error;
 use itertools::Itertools;
 use log::{info, warn};
