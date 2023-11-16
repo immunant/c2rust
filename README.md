@@ -150,9 +150,15 @@ run the `c2rust` tool with the `transpile` subcommand:
 c2rust transpile compile_commands.json
 ```
 
+`c2rust` also supports a trivial transpile of source files, e.g.:
+
+```sh
+c2rust transpile project/*.c project/*.h
+```
+
 (The `c2rust refactor` tool was also available for refactoring Rust code, see [refactoring](./c2rust-refactor/), but is now being replaced by a more robust way to refactor.)
 
-The translator requires the exact compiler commands used to build the C code.
+For non-trivial projects, the translator requires the exact compiler commands used to build the C code.
 This information is provided via a [compilation database](https://clang.llvm.org/docs/JSONCompilationDatabase.html) file named `compile_commands.json`.
 (Read more about [compilation databases here](https://sarcasm.github.io/notes/dev/compilation-database.html)).
 Many build systems can automatically generate this file;
