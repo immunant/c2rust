@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use log::LevelFilter;
 use regex::Regex;
-use std::path::{Path, PathBuf};
+use std::{fs, path::PathBuf};
 
 use c2rust_transpile::{Diagnostic, ReplaceMode, TranspilerConfig};
 
@@ -84,9 +84,9 @@ struct Args {
     #[clap(long = "ddebug-labels")]
     debug_labels: bool,
 
-    /// Input compile_commands.json file
-    #[clap()]
-    compile_commands: PathBuf,
+    /// Path to compile_commands.json, or a list of source files
+    #[clap(parse(from_os_str), multiple_values = true)]
+    compile_commands: Vec<PathBuf>,
 
     /// How to handle violated invariants or invalid code
     #[clap(long, value_enum, default_value_t = InvalidCodes::CompileError)]
@@ -129,7 +129,7 @@ struct Args {
     reorganize_definitions: bool,
 
     /// Extra arguments to pass to clang frontend during parsing the input C file
-    #[clap(multiple = true)]
+    #[clap(multiple = true, last(true))]
     extra_clang_args: Vec<String>,
 
     /// Enable the specified warning (all enables all warnings)
@@ -226,13 +226,26 @@ fn main() {
         tcfg.emit_modules = true
     };
 
-    let cc_json_path = Path::new(&args.compile_commands);
-    let cc_json_path = cc_json_path.canonicalize().unwrap_or_else(|_| {
-        panic!(
-            "Could not find compile_commands.json file at path: {}",
-            cc_json_path.display()
-        )
-    });
+    let compile_commands = if args.compile_commands.len() == 1
+        && args.compile_commands[0].extension() == Some(std::ffi::OsStr::new("json"))
+    {
+        // Only one file provided and it's a JSON file
+        match fs::canonicalize(&args.compile_commands[0]) {
+            Ok(canonical_path) => canonical_path,
+            Err(e) => panic!("Failed to canonicalize path: {:?}", e),
+        }
+    } else if args
+        .compile_commands
+        .iter()
+        .any(|path| path.extension() == Some(std::ffi::OsStr::new("json")))
+    {
+        // More than one file provided and at least one is a JSON file
+        panic!("Compile commands JSON and multiple sources provided.
+                Exactly one compile_commands.json file should be provided, or a list of source files, but not both.");
+    } else {
+        // Handle as a list of source files
+        c2rust_transpile::create_temp_compile_commands(&args.compile_commands)
+    };
 
     let extra_args = args
         .extra_clang_args
@@ -240,5 +253,11 @@ fn main() {
         .map(AsRef::as_ref)
         .collect::<Vec<_>>();
 
-    c2rust_transpile::transpile(tcfg, &cc_json_path, &extra_args);
+    c2rust_transpile::transpile(tcfg, &compile_commands, &extra_args);
+
+    // Remove the temporary compile_commands.json if it was created
+    if args.compile_commands.len() > 0 {
+        std::fs::remove_file(&compile_commands)
+            .expect("Failed to remove temporary compile_commands.json");
+    }
 }

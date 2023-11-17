@@ -11,6 +11,11 @@ The transpiler module is invoked using the `transpile` sub-command of `c2rust`:
 
     c2rust transpile [args] compile_commands.json [-- extra-clang-args]
 
+The transpiler can also be given source files directly, which is ideal for projects that are trivially compiled, e.g.:
+
+    c2rust transpile [args] *.h *.c [-- extra-clang-args]
+
+
 The following arguments control the basic transpiler behavior:
 
 - `--emit-modules` - Emit each translated Rust file as a module (the default is
