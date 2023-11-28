@@ -11,6 +11,7 @@ use dtoa;
 use failure::{err_msg, format_err, Fail};
 use indexmap::indexmap;
 use indexmap::{IndexMap, IndexSet};
+use itertools::Itertools;
 use log::{error, info, trace, warn};
 use proc_macro2::{Punct, Spacing::*, Span, TokenStream, TokenTree};
 use syn::spanned::Spanned as _;
@@ -27,12 +28,12 @@ use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_printer::pprust::{self};
 
 use crate::c_ast::iterators::{DFExpr, SomeId};
-use crate::c_ast::*;
 use crate::cfg;
 use crate::convert_type::TypeConverter;
 use crate::renamer::Renamer;
 use crate::with_stmts::WithStmts;
 use crate::{c_ast, format_translation_err};
+use crate::{c_ast::*, Derive};
 use crate::{ExternCrate, ExternCrateDetails, TranspilerConfig};
 use c2rust_ast_exporter::clang_ast::LRValue;
 
@@ -1640,14 +1641,6 @@ impl<'c> Translation<'c> {
                     can_derive_debug,
                 } = self.convert_struct_fields(decl_id, fields, platform_byte_size)?;
 
-                let mut derives = vec![];
-                if !contains_va_list {
-                    derives.push("Copy");
-                    derives.push("Clone");
-                };
-                if self.tcfg.derive_debug && can_derive_debug {
-                    derives.push("Debug");
-                }
                 let has_bitfields =
                     fields
                         .iter()
@@ -1656,9 +1649,26 @@ impl<'c> Translation<'c> {
                             _ => unreachable!("Found non-field in record field list"),
                         });
                 if has_bitfields {
-                    derives.push("BitfieldStruct");
                     self.use_crate(ExternCrate::C2RustBitfields);
                 }
+
+                let derives = self
+                    .tcfg
+                    .derives
+                    .iter()
+                    .flat_map(|derive| {
+                        let can_derive = match derive {
+                            Derive::Clone | Derive::Copy => !contains_va_list,
+                            Derive::Debug => can_derive_debug,
+                            Derive::BitfieldStruct => has_bitfields,
+                        };
+                        if can_derive {
+                            Some(derive.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect_vec();
 
                 let mut reprs = vec![simple_metaitem("C")];
                 let max_field_alignment = if is_packed {
@@ -1710,10 +1720,22 @@ impl<'c> Translation<'c> {
                     let repr_attr = mk().meta_list("repr", outer_reprs);
                     let outer_field = mk().pub_().enum_field(mk().ident_ty(inner_name));
 
-                    let mut outer_struct_derives = vec!["Copy", "Clone"];
-                    if self.tcfg.derive_debug {
-                        outer_struct_derives.push("Debug");
-                    }
+                    let outer_struct_derives = self
+                        .tcfg
+                        .derives
+                        .iter()
+                        .flat_map(|derive| {
+                            let can_derive = match derive {
+                                Derive::Clone | Derive::Copy | Derive::Debug => true,
+                                Derive::BitfieldStruct => false,
+                            };
+                            if can_derive {
+                                Some(derive.to_string())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect_vec();
 
                     let outer_struct = mk()
                         .span(span)

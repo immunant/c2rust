@@ -25,6 +25,7 @@ use itertools::Itertools;
 use log::{info, warn};
 use regex::Regex;
 use serde_derive::Serialize;
+use strum_macros::Display;
 
 use crate::c_ast::Printer;
 use crate::c_ast::*;
@@ -82,7 +83,7 @@ pub struct TranspilerConfig {
     pub disable_refactoring: bool,
     pub preserve_unused_functions: bool,
     pub log_level: log::LevelFilter,
-    pub derive_debug: bool,
+    pub derives: HashSet<Derive>,
 
     // Options that control build files
     /// Emit `Cargo.toml` and `lib.rs`
@@ -90,6 +91,14 @@ pub struct TranspilerConfig {
     /// Names of translation units containing main functions that we should make
     /// into binaries
     pub binaries: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Display)]
+pub enum Derive {
+    Clone,
+    Copy,
+    Debug,
+    BitfieldStruct,
 }
 
 impl TranspilerConfig {

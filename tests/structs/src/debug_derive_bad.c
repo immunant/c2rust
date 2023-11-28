@@ -1,4 +1,4 @@
-//! derive_debug
+//! derive:Debug
 
 // A struct containing a union is not debuggable
 typedef struct {

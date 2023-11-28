@@ -1,4 +1,4 @@
-//! derive_debug
+//! derive:Debug
 
 #include <stdarg.h>
 

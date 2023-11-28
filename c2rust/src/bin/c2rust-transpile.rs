@@ -3,7 +3,9 @@ use log::LevelFilter;
 use regex::Regex;
 use std::{fs, path::PathBuf};
 
-use c2rust_transpile::{Diagnostic, ReplaceMode, TranspilerConfig};
+use c2rust_transpile::{Derive, Diagnostic, ReplaceMode, TranspilerConfig};
+
+const DEFAULT_DERIVES: &[Derive] = &[Derive::Clone, Derive::Copy, Derive::BitfieldStruct];
 
 #[derive(Debug, Parser)]
 #[clap(
@@ -156,9 +158,16 @@ struct Args {
     #[clap(long)]
     fail_on_multiple: bool,
 
-    /// Derive `Debug` trait for any structs that allow it (i.e., do not recursively contain any unions)
-    #[clap(long)]
-    derive_debug: bool,
+    /// Add extra derived traits to generated structs in addition to the default
+    /// set of derives (Copy, Clone, BitfieldStruct). Specify multiple times to
+    /// add more than one derive. A struct will derive all traits in the set for
+    /// which it is eligible.
+    ///
+    /// For example, a struct containing a union cannot derive Debug, so
+    /// `#[derive(Debug)]` will not be added to that struct regardless of
+    /// whether `--derive Debug` is specified.
+    #[clap(long = "derive", value_enum, value_name = "TRAIT")]
+    extra_derives: Vec<ExtraDerive>,
 }
 
 #[derive(Debug, PartialEq, Eq, ValueEnum, Clone)]
@@ -168,8 +177,28 @@ enum InvalidCodes {
     CompileError,
 }
 
+#[derive(Clone, Copy, Debug, ValueEnum)]
+#[clap(rename_all = "PascalCase")]
+enum ExtraDerive {
+    Debug,
+}
+
+impl ExtraDerive {
+    fn to_transpiler_derive(&self) -> Derive {
+        match self {
+            Self::Debug => Derive::Debug,
+        }
+    }
+}
+
 fn main() {
     let args = Args::parse();
+
+    let derives = DEFAULT_DERIVES
+        .iter()
+        .cloned()
+        .chain(args.extra_derives.iter().map(|d| d.to_transpiler_derive()))
+        .collect();
 
     // Build a TranspilerConfig from the command line
     let mut tcfg = TranspilerConfig {
@@ -220,7 +249,7 @@ fn main() {
         emit_no_std: args.emit_no_std,
         enabled_warnings: args.warn.into_iter().collect(),
         log_level: args.log_level,
-        derive_debug: args.derive_debug,
+        derives,
     };
     // binaries imply emit-build-files
     if !tcfg.binaries.is_empty() {
