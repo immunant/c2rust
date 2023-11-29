@@ -76,7 +76,7 @@ class CFile:
         derive_flag_prefix = "derive:"
         derives = set()
         for derive_flag in filter(lambda f: f.startswith(derive_flag_prefix), flags):
-            derives.add(derive_flag.removeprefix(derive_flag_prefix))
+            derives.add(derive_flag[len(derive_flag_prefix):])
         self.derives = derives
 
     def translate(self, cc_db: str, ld_lib_path: str, extra_args: List[str] = []) -> RustFile:
