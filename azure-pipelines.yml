@@ -100,12 +100,6 @@ jobs:
       ./scripts/provision_mac.sh
       # speeds up provisioning
       export HOMEBREW_NO_AUTO_UPDATE=1
-      # helps the `curl-sys` create determine how to link in libcurl.
-      brew install pkg-config
-      # we want to use the host curl because it has the `HTTP2` feature
-      # whereas the brew version does not, this causes curl-sys to
-      # build its own curl which then fails to link on Azure Devops.
-      brew remove curl
       # prepare environment for the following steps
       source $HOME/.cargo/env
       brew info llvm
