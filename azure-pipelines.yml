@@ -102,7 +102,10 @@ jobs:
       export HOMEBREW_NO_AUTO_UPDATE=1
       # prepare environment for the following steps
       source $HOME/.cargo/env
+      # print some useful info to help troubleshoot
       brew info llvm
+      which python3
+      /usr/bin/env python3 -c "import sys; print(sys.path)"
     displayName: 'Provision macOS'
 
   - script: |

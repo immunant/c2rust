@@ -1,7 +1,5 @@
 #!/bin/bash
 
-set -e
-
 # complain if we're not on macOS
 UNAME=$(uname -s)
 if [ "$UNAME" != "Darwin" ]; then
@@ -22,18 +20,11 @@ export HOMEBREW_NO_AUTO_UPDATE=1
 # NOTE: Pin LLVM to a known good version since new releases
 # tend not to be backwards compatible
 # `bash` needed b/c macOS ships with bash 3, which doesn't support arrays properly
-hb_packages=(python cmake ninja gpg llvm bash)
-for item in "${hb_packages[@]}"; do
-  brew info "${item}" | grep 'Not installed' > /dev/null && brew install "${item}"
-done
-
-type -P "pip3" >/dev/null || {
-    echo >&2 "pip3 not in path."; exit 1;
-}
+brew install -q python cmake ninja gpg llvm@17 bash
 
 # Python 3 packages
-pip3 install --user --upgrade pip
-pip3 install -r "$SCRIPT_DIR/requirements.txt" --user --disable-pip-version-check
+python3 -m pip install --user --upgrade pip
+python3 -m pip install --user -r "$SCRIPT_DIR/requirements.txt"
 
 # Rust and dependencies
 RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain.toml"
