@@ -47,17 +47,6 @@ jobs:
       export RUSTDOCFLAGS="-D warnings"
       cargo fmt --check
     displayName: 'cargo fmt --check'
-  
-  - script: |
-      export PATH="/home/docker/.cargo/bin:$PATH"
-      export RUSTUP_HOME=/home/docker/.rustup
-      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      export RUSTFLAGS="-D warnings"
-      export RUSTDOCFLAGS="-D warnings"
-      # Differs from `cargo build` since we can use `--all-features` here.
-      # We plan to eventually replace `cargo check` with `cargo clippy`.
-      cargo check --tests --all-features
-    displayName: 'cargo check'
 
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
@@ -88,7 +77,7 @@ jobs:
       export RUSTDOCFLAGS="-D warnings"
       cargo test --release --workspace
     displayName: 'cargo test'
-  
+
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
@@ -121,15 +110,6 @@ jobs:
       source $HOME/.cargo/env
       brew info llvm
     displayName: 'Provision macOS'
-  
-  - script: |
-      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      export RUSTFLAGS="-D warnings"
-      export RUSTDOCFLAGS="-D warnings"
-      # Differs from `cargo build` since we can use `--all-features` here.
-      # We plan to eventually replace `cargo check` with `cargo clippy`.
-      cargo check --tests --all-features
-    displayName: 'cargo check'
 
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
