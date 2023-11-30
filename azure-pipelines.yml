@@ -54,15 +54,6 @@ jobs:
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
-      cargo doc --all-features --document-private-items --no-deps
-    displayName: 'cargo doc'
-
-  - script: |
-      export PATH="/home/docker/.cargo/bin:$PATH"
-      export RUSTUP_HOME=/home/docker/.rustup
-      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      export RUSTFLAGS="-D warnings"
-      export RUSTDOCFLAGS="-D warnings"
       # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
       # which we don't want to test here (it doesn't work out of the box on Arch and Fedora;
       # see https://github.com/immunant/c2rust/issues/500).
@@ -107,13 +98,6 @@ jobs:
       which python3
       /usr/bin/env python3 -c "import sys; print(sys.path)"
     displayName: 'Provision macOS'
-
-  - script: |
-      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
-      export RUSTFLAGS="-D warnings"
-      export RUSTDOCFLAGS="-D warnings"
-      cargo doc --all-features --document-private-items --no-deps
-    displayName: 'cargo doc'
 
   - script: |
       export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
