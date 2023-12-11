@@ -127,8 +127,16 @@ fn build_native(llvm_info: &LLVMInfo) {
             // Build libclangAstExporter.a with cmake
             let dst = Config::new("src")
                 // Where to find LLVM/Clang CMake files
-                .define("LLVM_DIR", &format!("{}/cmake/llvm", llvm_lib_dir))
-                .define("Clang_DIR", &format!("{}/cmake/clang", llvm_lib_dir))
+                .define(
+                    "LLVM_DIR",
+                    &env::var("CMAKE_LLVM_DIR")
+                        .unwrap_or_else(|_| format!("{}/cmake/llvm", llvm_lib_dir)),
+                )
+                .define(
+                    "Clang_DIR",
+                    &env::var("CMAKE_CLANG_DIR")
+                        .unwrap_or_else(|_| format!("{}/cmake/clang", llvm_lib_dir)),
+                )
                 // What to build
                 .build_target("clangAstExporter")
                 .build();
