@@ -83,7 +83,7 @@ pub struct TranspilerConfig {
     pub disable_refactoring: bool,
     pub preserve_unused_functions: bool,
     pub log_level: log::LevelFilter,
-    pub derives: HashSet<Derive>,
+    pub derives: Vec<Derive>,
 
     // Options that control build files
     /// Emit `Cargo.toml` and `lib.rs`
@@ -93,7 +93,7 @@ pub struct TranspilerConfig {
     pub binaries: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Display)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Display, PartialOrd, Ord)]
 pub enum Derive {
     Clone,
     Copy,

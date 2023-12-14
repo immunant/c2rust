@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use log::LevelFilter;
 use regex::Regex;
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, collections::HashSet};
 
 use c2rust_transpile::{Derive, Diagnostic, ReplaceMode, TranspilerConfig};
 
@@ -194,12 +194,6 @@ impl ExtraDerive {
 fn main() {
     let args = Args::parse();
 
-    let derives = DEFAULT_DERIVES
-        .iter()
-        .cloned()
-        .chain(args.extra_derives.iter().map(|d| d.to_transpiler_derive()))
-        .collect();
-
     // Build a TranspilerConfig from the command line
     let mut tcfg = TranspilerConfig {
         dump_untyped_context: args.dump_untyped_clang_ast,
@@ -249,7 +243,7 @@ fn main() {
         emit_no_std: args.emit_no_std,
         enabled_warnings: args.warn.into_iter().collect(),
         log_level: args.log_level,
-        derives,
+        derives: get_derives(&args.extra_derives),
     };
     // binaries imply emit-build-files
     if !tcfg.binaries.is_empty() {
@@ -294,4 +288,16 @@ fn main() {
         std::fs::remove_file(&compile_commands)
             .expect("Failed to remove temporary compile_commands.json");
     }
+}
+
+fn get_derives(extra_derives: &[ExtraDerive]) -> Vec<Derive> {
+    // Make sure there are no dupes and sort so the derives are always in the same order
+    let derives_set: HashSet<_> = DEFAULT_DERIVES
+        .iter()
+        .cloned()
+        .chain(extra_derives.iter().map(|d| d.to_transpiler_derive()))
+        .collect();
+    let mut derives: Vec<Derive> = derives_set.into_iter().collect();
+    derives.sort();
+    derives
 }
