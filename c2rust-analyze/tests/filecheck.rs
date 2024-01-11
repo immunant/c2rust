@@ -60,6 +60,8 @@ define_tests! {
     pointee,
     ptrptr1,
     regions_fixed,
+    rewrite_paths,
+    rewrite_paths_manual_shim,
     statics,
     test_attrs,
     trivial,

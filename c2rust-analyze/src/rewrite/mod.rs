@@ -25,8 +25,9 @@
 
 use rustc_hir::Mutability;
 use rustc_middle::ty::TyCtxt;
-use rustc_span::Span;
+use rustc_span::{FileName, Span};
 use std::fmt;
+use std::fs;
 
 mod apply;
 mod expr;
@@ -36,7 +37,7 @@ mod statics;
 mod ty;
 
 pub use self::expr::gen_expr_rewrites;
-pub use self::shim::{gen_shim_call_rewrites, gen_shim_definition_rewrite};
+pub use self::shim::{gen_shim_call_rewrites, gen_shim_definition_rewrite, ManualShimCasts};
 pub use self::statics::gen_static_rewrites;
 pub use self::ty::dump_rewritten_local_tys;
 pub use self::ty::{gen_adt_ty_rewrites, gen_ty_rewrites};
@@ -88,11 +89,14 @@ pub enum Rewrite<S = Span> {
     /// A multi-variable `let` binding, like `let (x, y) = (rw0, rw1)`.  Note that this rewrite
     /// does not include a trailing semicolon.
     ///
-    /// Since these variable bindings are not hygienic, a `StmtBind` can invalidate the expression
-    /// produced by `Identity` or `Sub` rewrites used later in the same scope.  In general,
-    /// `StmtBind` should only be used inside a `Block`, and `Identity` and `Sub` rewrites should
-    /// not be used later in that block.
+    /// Since these variable bindings are not hygienic, a `Let` can invalidate the expression
+    /// produced by `Identity` or `Sub` rewrites used later in the same scope.  In general, `Let`
+    /// should only be used inside a `Block`, and `Identity` and `Sub` rewrites should not be used
+    /// later in that block.
     Let(Vec<(String, Rewrite)>),
+    /// Single-variable `let` binding.  This has the same scoping issues as multi-variable `Let`;
+    /// because of this, `Let` should generally be used instead of multiple `Let1`s.
+    Let1(String, Box<Rewrite>),
 
     // Type builders
     /// Emit a complete pretty-printed type, discarding the original annotation.
@@ -190,6 +194,7 @@ impl Rewrite {
                 }
                 Let(new_vars)
             }
+            Let1(ref name, ref rw) => Let1(String::clone(name), try_subst(rw)?),
 
             Print(ref s) => Print(String::clone(s)),
             TyPtr(ref rw, mutbl) => TyPtr(try_subst(rw)?, mutbl),
@@ -238,23 +243,42 @@ impl apply::Sink for FormatterSink<'_, '_> {
     }
 }
 
-pub fn apply_rewrites(tcx: TyCtxt, rewrites: Vec<(Span, Rewrite)>) {
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum UpdateFiles {
+    No,
+    Yes,
+}
+
+pub fn apply_rewrites(tcx: TyCtxt, rewrites: Vec<(Span, Rewrite)>, update_files: UpdateFiles) {
     // TODO: emit new source code properly instead of just printing
     let new_src = apply::apply_rewrites(tcx.sess.source_map(), rewrites);
 
     for (filename, src) in new_src {
-        eprintln!("\n\n ===== BEGIN {:?} =====", filename);
+        println!("\n\n ===== BEGIN {:?} =====", filename);
         for line in src.lines() {
             // Omit filecheck directives from the debug output, as filecheck can get confused due
             // to directives matching themselves (e.g. `// CHECK: foo` will match the `foo` in the
             // line `// CHECK: foo`).
             if let Some((pre, _post)) = line.split_once("// CHECK") {
-                eprintln!("{}// (FileCheck directive omitted)", pre);
+                println!("{}// (FileCheck directive omitted)", pre);
             } else {
-                eprintln!("{}", line);
+                println!("{}", line);
             }
         }
-        eprintln!(" ===== END {:?} =====", filename);
+        println!(" ===== END {:?} =====", filename);
+
+        if update_files == UpdateFiles::Yes {
+            let mut path_ok = false;
+            if let FileName::Real(ref rfn) = filename {
+                if let Some(path) = rfn.local_path() {
+                    fs::write(path, src).unwrap();
+                    path_ok = true;
+                }
+            }
+            if !path_ok {
+                log::warn!("couldn't write to non-real file {filename:?}");
+            }
+        }
     }
 }
 
