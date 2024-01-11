@@ -229,6 +229,9 @@ impl apply::Sink for FormatterSink<'_, '_> {
     fn emit_str(&mut self, s: &str) -> fmt::Result {
         self.0.write_str(s)
     }
+    fn emit_orig_str(&mut self, s: &str, _line: usize) -> fmt::Result {
+        self.0.write_str(s)
+    }
     fn emit_fmt(&mut self, args: fmt::Arguments) -> fmt::Result {
         self.0.write_fmt(args)
     }
