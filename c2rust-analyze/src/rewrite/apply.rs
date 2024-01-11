@@ -212,6 +212,10 @@ pub trait Sink {
     type Error;
     const PARENTHESIZE_EXPRS: bool;
     fn emit_str(&mut self, s: &str) -> Result<(), Self::Error>;
+    /// Emit a string from the original file into the output.  `s` is a contiguous substring of the
+    /// original, and the start of `s` is on line `line`.  If the first character of `s` is `'\n'`,
+    /// then it's the newline separating `line` from `line + 1`.
+    fn emit_orig_str(&mut self, s: &str, line: usize) -> Result<(), Self::Error>;
     fn emit_fmt(&mut self, args: fmt::Arguments) -> Result<(), Self::Error>;
     fn emit_expr(&mut self) -> Result<(), Self::Error>;
     fn emit_sub(&mut self, idx: usize, span: Span) -> Result<(), Self::Error>;
@@ -226,6 +230,9 @@ struct Emitter<'a, S> {
 impl<S: Sink> Emitter<'_, S> {
     fn emit_str(&mut self, s: &str) -> Result<(), S::Error> {
         self.sink.emit_str(s)
+    }
+    fn emit_orig_str(&mut self, s: &str, line: usize) -> Result<(), S::Error> {
+        self.sink.emit_orig_str(s, line)
     }
     fn emit_fmt(&mut self, args: fmt::Arguments) -> Result<(), S::Error> {
         self.sink.emit_fmt(args)
@@ -529,7 +536,12 @@ impl<'a, F: FnMut(&str)> RewriteTreeSink<'a, F> {
         // so subtract the file's start to obtain indices within its data.
         let lo_in_file = lo - self.file.start_pos;
         let hi_in_file = hi - self.file.start_pos;
-        self.emit_str(&src[lo_in_file.0 as usize..hi_in_file.0 as usize])
+        let s = &src[lo_in_file.0 as usize..hi_in_file.0 as usize];
+        if let Some(line) = self.file.lookup_line(lo) {
+            self.emit_orig_str(s, line)
+        } else {
+            self.emit_str(s)
+        }
     }
 
     fn emit_span_with_rewrites(
@@ -560,6 +572,10 @@ impl<'a, F: FnMut(&str)> Sink for RewriteTreeSink<'a, F> {
     const PARENTHESIZE_EXPRS: bool = true;
 
     fn emit_str(&mut self, s: &str) -> Result<(), Self::Error> {
+        (self.emit)(s);
+        Ok(())
+    }
+    fn emit_orig_str(&mut self, s: &str, _line: usize) -> Result<(), Self::Error> {
         (self.emit)(s);
         Ok(())
     }
