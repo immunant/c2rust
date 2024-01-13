@@ -1515,7 +1515,7 @@ fn run(tcx: TyCtxt) {
             update_files = rewrite::UpdateFiles::Yes;
         }
     }
-    rewrite::apply_rewrites(tcx, all_rewrites, update_files);
+    rewrite::apply_rewrites(tcx, all_rewrites, HashMap::new(), update_files);
 
     // ----------------------------------
     // Report caught panics
