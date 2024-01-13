@@ -255,6 +255,25 @@ fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, did: DefId, substs: SubstsRef<'tcx>) 
             Some(Callee::PtrOffset { pointee_ty, mutbl })
         }
 
+        "offset_from" => {
+            // The `offset_from` inherent method of `*const T` and `*mut T`.
+            let parent_did = tcx.parent(did);
+            if tcx.def_kind(parent_did) != DefKind::Impl {
+                return None;
+            }
+            if tcx.impl_trait_ref(parent_did).is_some() {
+                return None;
+            }
+            let parent_impl_ty = EarlyBinder(tcx.type_of(parent_did)).subst(tcx, substs);
+            let (pointee_ty, mutbl) = match parent_impl_ty.kind() {
+                TyKind::RawPtr(tm) => (tm.ty, tm.mutbl),
+                _ => return None,
+            };
+            // TODO: For now, we just return `Trivial`, which is valid for analysis, but eventually
+            // we'll need a separate `Callee` for `offset_from` so we can identify it in rewriting.
+            Some(Callee::Trivial)
+        }
+
         name @ "as_ptr" | name @ "as_mut_ptr" => {
             // The `as_ptr` and `as_mut_ptr` inherent methods of `[T]`, `[T; n]`, and `str`.
             let parent_did = tcx.parent(did);
@@ -320,6 +339,15 @@ fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, did: DefId, substs: SubstsRef<'tcx>) 
 
         "memcpy" => {
             if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
+                return Some(Callee::Memcpy);
+            }
+            None
+        }
+
+        "mempcpy" => {
+            if matches!(tcx.def_kind(tcx.parent(did)), DefKind::ForeignMod) {
+                // FIXME: this is incorrect!  memcpy and mempcpy have different return values,
+                // though otherwise they're almost identical in behavior
                 return Some(Callee::Memcpy);
             }
             None
