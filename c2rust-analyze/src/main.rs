@@ -16,6 +16,7 @@ extern crate rustc_target;
 extern crate rustc_type_ir;
 
 mod analyze;
+mod annotate;
 mod borrowck;
 mod context;
 mod dataflow;
