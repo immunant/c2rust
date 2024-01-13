@@ -26,6 +26,7 @@
 use rustc_hir::Mutability;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::{FileName, Span};
+use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 
@@ -246,17 +247,77 @@ impl apply::Sink for FormatterSink<'_, '_> {
     }
 }
 
+/// Return a copy of `src` with `annotations` added as comments.  If `line_map` is provided, the
+/// line numbers in `annotations` are remapped using `line_map` before the annotations are inserted
+/// in `src`.
+fn add_annotations(
+    src: String,
+    line_map: Option<&[usize]>,
+    mut annotations: Vec<(usize, String)>,
+) -> String {
+    if annotations.len() == 0 {
+        return src;
+    }
+
+    let map_line = |i: usize| -> usize {
+        if let Some(line_map) = line_map {
+            line_map.get(i).copied().unwrap_or(usize::MAX)
+        } else {
+            i
+        }
+    };
+
+    // Stable sort by input line, preserving the order in which annotations were added.
+    annotations.sort_by_key(|&(line, _)| line);
+    // The `usize` in each `annotations` entry is an input line number.  Map it to an output line
+    // number using `line_map`.  Input lines with no matching output line are placed at the end.
+    for &mut (ref mut line, _) in &mut annotations {
+        *line = map_line(*line);
+    }
+    // Now stable sort by output line, preserving the order of input line if several input lines
+    // map to one output line, and also preserving the order in which annotations were added.
+    annotations.sort_by_key(|&(line, _)| line);
+
+    let mut out = String::with_capacity(src.len());
+    let mut idx = 0;
+    for (j, line) in src.lines().enumerate() {
+        out.push_str(line);
+        out.push('\n');
+        // Now emit all annotations associated with line `j`.
+        while let Some((_, ann)) = annotations.get(idx).filter(|&&(line, _)| line == j) {
+            idx += 1;
+            let indent_len = line.len() - line.trim_start().len();
+            out.push_str(&line[..indent_len]);
+            out.push_str("// ");
+            out.push_str(ann);
+            out.push('\n');
+        }
+    }
+
+    // Emit any leftover annotations at the end of the file.
+    while let Some((_, ann)) = annotations.get(idx) {
+        idx += 1;
+        out.push_str("// ");
+        out.push_str(ann);
+        out.push('\n');
+    }
+
+    out
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum UpdateFiles {
     No,
     Yes,
 }
 
-pub fn apply_rewrites(tcx: TyCtxt, rewrites: Vec<(Span, Rewrite)>, update_files: UpdateFiles) {
-    // TODO: emit new source code properly instead of just printing
-    let new_src = apply::apply_rewrites(tcx.sess.source_map(), rewrites);
-
-    for (filename, (src, _line_map)) in new_src {
+pub fn apply_rewrites(
+    tcx: TyCtxt,
+    rewrites: Vec<(Span, Rewrite)>,
+    mut annotations: HashMap<FileName, Vec<(usize, String)>>,
+    update_files: UpdateFiles,
+) {
+    let emit = |filename, src: String| {
         println!("\n\n ===== BEGIN {:?} =====", filename);
         for line in src.lines() {
             // Omit filecheck directives from the debug output, as filecheck can get confused due
@@ -281,6 +342,29 @@ pub fn apply_rewrites(tcx: TyCtxt, rewrites: Vec<(Span, Rewrite)>, update_files:
             if !path_ok {
                 log::warn!("couldn't write to non-real file {filename:?}");
             }
+        }
+    };
+
+    let new_src = apply::apply_rewrites(tcx.sess.source_map(), rewrites);
+    for (filename, (src, line_map)) in new_src {
+        let annotations = annotations.remove(&filename).unwrap_or(Vec::new());
+        let src = add_annotations(src, Some(&line_map), annotations);
+        emit(filename, src);
+    }
+
+    // Also emit files that have annotations but no rewrites.
+    if annotations.len() > 0 {
+        let mut leftover_annotations = annotations.into_iter().collect::<Vec<_>>();
+        leftover_annotations.sort();
+        let sm = tcx.sess.source_map();
+        for (filename, annotations) in leftover_annotations {
+            let sf = sm.get_source_file(&filename).unwrap();
+            let src = match sf.src {
+                Some(ref x) => String::clone(x),
+                None => continue,
+            };
+            let src = add_annotations(src, None, annotations);
+            emit(filename, src);
         }
     }
 }
