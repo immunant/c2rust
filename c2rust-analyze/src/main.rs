@@ -202,6 +202,8 @@ impl Cargo {
 
 const RUSTC_WRAPPER_VAR: &str = "RUSTC_WRAPPER";
 const RUST_SYSROOT_VAR: &str = "RUST_SYSROOT";
+/// If this env var is set, we skip all cargo integration and just behave like rustc.
+const NO_CARGO_VAR: &str = "C2RUST_ANALYZE_NO_CARGO";
 
 /// Read a [`PathBuf`] from the [`mod@env`]ironment that should've been set by the [`cargo_wrapper`].
 fn env_path_from_wrapper(var: &str) -> anyhow::Result<PathBuf> {
@@ -274,10 +276,15 @@ fn is_build_script(at_args: &[String]) -> anyhow::Result<bool> {
 
 /// Run as a `rustc` wrapper (a la `$RUSTC_WRAPPER`/[`RUSTC_WRAPPER_VAR`]).
 fn rustc_wrapper() -> anyhow::Result<()> {
-    let mut at_args = env::args().skip(1).collect::<Vec<_>>();
+    let no_cargo = env::var_os(NO_CARGO_VAR).is_some();
+    let mut at_args = if no_cargo {
+        env::args().collect::<Vec<_>>()
+    } else {
+        env::args().skip(1).collect::<Vec<_>>()
+    };
     // We also want to avoid proc-macro crates,
     // but those must be separate crates, so we should be okay.
-    let is_primary_compilation = is_primary_package() && !is_build_script(&at_args)?;
+    let is_primary_compilation = (is_primary_package() && !is_build_script(&at_args)?) || no_cargo;
 
     let sysroot = env_path_from_wrapper(RUST_SYSROOT_VAR).or_else(|_| resolve_sysroot())?;
     let sysroot = sysroot
@@ -419,7 +426,8 @@ fn main() -> anyhow::Result<()> {
 
     let own_exe = env::current_exe()?;
 
-    let wrapping_rustc = env::var_os(RUSTC_WRAPPER_VAR).as_deref() == Some(own_exe.as_os_str());
+    let wrapping_rustc = env::var_os(RUSTC_WRAPPER_VAR).as_deref() == Some(own_exe.as_os_str())
+        || env::var_os(NO_CARGO_VAR).is_some();
     if wrapping_rustc {
         rustc_wrapper()
     } else {
