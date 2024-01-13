@@ -256,7 +256,7 @@ pub fn apply_rewrites(tcx: TyCtxt, rewrites: Vec<(Span, Rewrite)>, update_files:
     // TODO: emit new source code properly instead of just printing
     let new_src = apply::apply_rewrites(tcx.sess.source_map(), rewrites);
 
-    for (filename, src) in new_src {
+    for (filename, (src, _line_map)) in new_src {
         println!("\n\n ===== BEGIN {:?} =====", filename);
         for line in src.lines() {
             // Omit filecheck directives from the debug output, as filecheck can get confused due
