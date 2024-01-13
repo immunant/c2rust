@@ -35,7 +35,7 @@ use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TyKind;
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::{HashMap, HashSet};
-use std::fmt::Debug;
+use std::fmt::{Debug, Write as _};
 use std::ops::Index;
 
 bitflags! {
@@ -1397,5 +1397,130 @@ impl Assignment<'_> {
             self.global.perms.and_mut(&mut self.local.perms),
             self.global.flags.and_mut(&mut self.local.flags),
         )
+    }
+}
+
+
+/// Print an `LTy` as a string, using the provided callback to print the labels on each pointer and
+/// reference type.
+///
+/// Note this completely omits any labels on non-pointer types.
+pub fn print_ty_with_pointer_labels<L: Copy>(
+    lty: LabeledTy<L>,
+    mut f: impl FnMut(L) -> String,
+) -> String {
+    let mut out = String::new();
+    print_ty_with_pointer_labels_into(&mut out, lty, &mut f);
+    out
+}
+
+pub fn print_ty_with_pointer_labels_into<L: Copy>(
+    dest: &mut String,
+    lty: LabeledTy<L>,
+    f: &mut impl FnMut(L) -> String,
+) {
+    use rustc_type_ir::TyKind::*;
+    match lty.ty.kind() {
+        // Types with no arguments
+        Bool | Char | Int(_) | Uint(_) | Float(_) | Str | Foreign(_) | Never => {
+            write!(dest, "{:?}", lty.ty).unwrap();
+        }
+
+        // Types with arguments
+        Adt(adt_def, _substs) => {
+            write!(dest, "{:?}", adt_def.did()).unwrap();
+            if lty.args.len() != 0 {
+                dest.push('<');
+                // TODO: region args
+                for (i, &arg_lty) in lty.args.iter().enumerate() {
+                    if i > 0 {
+                        dest.push_str(", ");
+                    }
+                    print_ty_with_pointer_labels_into(dest, arg_lty, f);
+                }
+                dest.push('>');
+            }
+        }
+        &Array(_elem, len) => {
+            dest.push('[');
+            print_ty_with_pointer_labels_into(dest, lty.args[0], f);
+            write!(dest, "; {:?}]", len).unwrap();
+        }
+        &Slice(_elem) => {
+            dest.push('[');
+            print_ty_with_pointer_labels_into(dest, lty.args[0], f);
+            dest.push(']');
+        }
+        RawPtr(mty) => {
+            if mty.mutbl == Mutability::Not {
+                dest.push_str("*const ");
+            } else {
+                dest.push_str("*mut ");
+            }
+            let s = f(lty.label);
+            if s.len() > 0 {
+                dest.push_str(&s);
+                dest.push_str(" ");
+            }
+            print_ty_with_pointer_labels_into(dest, lty.args[0], f);
+        }
+        &Ref(_rg, _ty, mutbl) => {
+            let s = f(lty.label);
+            if mutbl == Mutability::Not {
+                dest.push_str("&");
+                if s.len() > 0 {
+                    dest.push(' ');
+                }
+            } else {
+                dest.push_str("&mut ");
+            }
+            if s.len() > 0 {
+                dest.push_str(&s);
+                dest.push_str(" ");
+            }
+            print_ty_with_pointer_labels_into(dest, lty.args[0], f);
+        }
+        FnDef(def_id, _substs) => {
+            write!(dest, "{:?}", def_id).unwrap();
+            if lty.args.len() != 0 {
+                dest.push('<');
+                // TODO: region args
+                for (i, &arg_lty) in lty.args.iter().enumerate() {
+                    if i > 0 {
+                        dest.push_str(", ");
+                    }
+                    print_ty_with_pointer_labels_into(dest, arg_lty, f);
+                }
+                dest.push('>');
+            }
+        }
+        FnPtr(_) => {
+            let (ret_lty, arg_ltys) = lty.args.split_last().unwrap();
+            dest.push_str("fn(");
+            for (i, &arg_lty) in arg_ltys.iter().enumerate() {
+                if i > 0 {
+                    dest.push_str(", ");
+                }
+                print_ty_with_pointer_labels_into(dest, arg_lty, f);
+            }
+            dest.push_str(") -> ");
+            print_ty_with_pointer_labels_into(dest, ret_lty, f);
+        }
+        Tuple(_) => {
+            dest.push_str("(");
+            for (i, &arg_lty) in lty.args.iter().enumerate() {
+                if i > 0 {
+                    dest.push_str(", ");
+                }
+                print_ty_with_pointer_labels_into(dest, arg_lty, f);
+            }
+            dest.push_str(")");
+        }
+
+        // Types that aren't actually supported by this code yet
+        Dynamic(..) | Closure(..) | Generator(..) | GeneratorWitness(..) | Projection(..)
+        | Opaque(..) | Param(..) | Bound(..) | Placeholder(..) | Infer(..) | Error(..) => {
+            write!(dest, "unknown:{:?}", lty.ty).unwrap();
+        }
     }
 }
