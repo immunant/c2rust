@@ -661,19 +661,19 @@ fn run(tcx: TyCtxt) {
             pointee_type::generate_constraints(&acx, &mir)
         }));
 
-        let pointee_constraints = match r {
-            Ok(x) => x,
+        let mut info = FuncInfo::default();
+        let local_pointee_types = LocalPointerTable::new(acx.num_pointers());
+        info.acx_data.set(acx.into_data());
+
+        match r {
+            Ok(pointee_constraints) => {
+                info.pointee_constraints.set(pointee_constraints);
+            },
             Err(pd) => {
                 gacx.mark_fn_failed(ldid.to_def_id(), pd);
-                continue;
             }
-        };
+        }
 
-        let local_pointee_types = LocalPointerTable::new(acx.num_pointers());
-
-        let mut info = FuncInfo::default();
-        info.acx_data.set(acx.into_data());
-        info.pointee_constraints.set(pointee_constraints);
         info.local_pointee_types.set(local_pointee_types);
         info.recent_writes.set(RecentWrites::new(&mir));
         func_info.insert(ldid, info);
@@ -1098,6 +1098,9 @@ fn run(tcx: TyCtxt) {
                     field_ltys,
                 );
             }));
+
+            info.acx_data.set(acx.into_data());
+
             match r {
                 Ok(()) => {}
                 Err(pd) => {
@@ -1105,8 +1108,6 @@ fn run(tcx: TyCtxt) {
                     continue;
                 }
             }
-
-            info.acx_data.set(acx.into_data());
         }
 
         let mut num_changed = 0;
@@ -1153,6 +1154,9 @@ fn run(tcx: TyCtxt) {
 
             acx.check_string_literal_perms(&asn);
         }));
+
+        info.acx_data.set(acx.into_data());
+
         match r {
             Ok(()) => {}
             Err(pd) => {
@@ -1160,8 +1164,6 @@ fn run(tcx: TyCtxt) {
                 continue;
             }
         }
-
-        info.acx_data.set(acx.into_data());
     }
 
     // Check that these perms haven't changed.
@@ -1307,6 +1309,9 @@ fn run(tcx: TyCtxt) {
                 all_rewrites.extend(expr_rewrites);
                 all_rewrites.extend(ty_rewrites);
             }));
+
+            info.acx_data.set(acx.into_data());
+
             match r {
                 Ok(()) => {}
                 Err(pd) => {
@@ -1314,8 +1319,6 @@ fn run(tcx: TyCtxt) {
                     continue;
                 }
             }
-
-            info.acx_data.set(acx.into_data());
         }
 
         // This call never panics, which is important because this is the fallback if the more
@@ -1453,6 +1456,8 @@ fn run(tcx: TyCtxt) {
         if let Some(report) = func_reports.remove(&ldid) {
             eprintln!("{}", report);
         }
+
+        info.acx_data.set(acx.into_data());
     }
 
     // Print results for `static` items.
