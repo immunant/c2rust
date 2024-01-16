@@ -308,7 +308,8 @@ fn add_annotations(
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum UpdateFiles {
     No,
-    Yes,
+    InPlace,
+    Alongside,
 }
 
 pub fn apply_rewrites(
@@ -331,10 +332,15 @@ pub fn apply_rewrites(
         }
         println!(" ===== END {:?} =====", filename);
 
-        if update_files == UpdateFiles::Yes {
+        if matches!(update_files, UpdateFiles::InPlace | UpdateFiles::Alongside) {
             let mut path_ok = false;
             if let FileName::Real(ref rfn) = filename {
                 if let Some(path) = rfn.local_path() {
+                    let path = match update_files {
+                        UpdateFiles::InPlace => path.to_owned(),
+                        UpdateFiles::Alongside => path.with_extension("new.rs"),
+                        _ => unreachable!(),
+                    };
                     fs::write(path, src).unwrap();
                     path_ok = true;
                 }

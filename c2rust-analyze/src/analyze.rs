@@ -1581,9 +1581,16 @@ fn run(tcx: TyCtxt) {
 
     // Apply rewrite to all functions at once.
     let mut update_files = rewrite::UpdateFiles::No;
-    if let Ok(val) = env::var("C2RUST_ANALYZE_REWRITE_IN_PLACE") {
-        if val == "1" {
-            update_files = rewrite::UpdateFiles::Yes;
+    if let Ok(val) = env::var("C2RUST_ANALYZE_REWRITE_MODE") {
+        match val.as_str() {
+            "none" => {}
+            "inplace" => {
+                update_files = rewrite::UpdateFiles::InPlace;
+            }
+            "alongside" => {
+                update_files = rewrite::UpdateFiles::Alongside;
+            }
+            _ => panic!("bad value {:?} for C2RUST_ANALYZE_REWRITE_MODE", val),
         }
     }
     rewrite::apply_rewrites(tcx, all_rewrites, annotations, update_files);
