@@ -38,7 +38,7 @@ use analyze::AnalysisCallbacks;
 use anyhow::anyhow;
 use anyhow::ensure;
 use anyhow::Context;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use rustc_driver::RunCompiler;
 use rustc_driver::TimePassesCallbacks;
 use rustc_session::config::CrateType;
@@ -78,10 +78,16 @@ struct Args {
     /// from this list will be marked non-rewritable (`FIXED`).
     #[clap(long)]
     rewrite_paths: Option<OsString>,
-    /// Rewrite source files on disk.  The default is to print the rewritten source code to stdout
-    /// as part of the tool's debug output.
-    #[clap(long)]
+
+    /// Whether to rewrite source files on disk.  The default is to print the rewritten source code
+    /// to stdout as part of the tool's debug output.
+    #[clap(long, value_enum)]
+    rewrite_mode: Option<RewriteMode>,
+
+    /// Synonym for `--rewrite-mode inplace`, kept around for backward compatibility.
+    #[clap(long, hide(true), conflicts_with("rewrite_mode"))]
     rewrite_in_place: bool,
+
     /// Use `todo!()` placeholders in shims for casts that must be implemented manually.
     ///
     /// When a function requires a shim, and the shim requires a cast that can't be generated
@@ -112,6 +118,19 @@ struct InterceptedCargoArgs {
     /// Need this so `--` is allowed.  Not actually used,
     /// as we're just intercepting a few args and passing the rest through.
     extra_args: Vec<OsString>,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum RewriteMode {
+    /// Do not write rewritten code to disk.
+    #[value(name = "none")]
+    None,
+    /// Apply rewrites to the original source files in-place.
+    #[value(name = "inplace")]
+    InPlace,
+    /// Save rewritten code to a separate file alongside each source file.
+    #[value(name = "alongside")]
+    Alongside,
 }
 
 fn exit_with_status(status: ExitStatus) {
@@ -361,6 +380,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     let Args {
         rustflags,
         rewrite_paths,
+        mut rewrite_mode,
         rewrite_in_place,
         use_manual_shims,
         fixed_defs_list,
@@ -376,6 +396,13 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
 
     let manifest_path = manifest_path.as_deref();
     let _manifest_dir = manifest_path.and_then(|path| path.parent());
+
+    if rewrite_in_place {
+        // `rewrite_in_place` and `rewrite_mode` are annotated as conflicting options, so if both
+        // are set, `Args::parse()` should have exited with an error.
+        assert!(rewrite_mode.is_none());
+        rewrite_mode = Some(RewriteMode::InPlace);
+    }
 
     set_rust_toolchain()?;
 
@@ -408,8 +435,13 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
             cmd.env("C2RUST_ANALYZE_REWRITE_PATHS", rewrite_paths);
         }
 
-        if rewrite_in_place {
-            cmd.env("C2RUST_ANALYZE_REWRITE_IN_PLACE", "1");
+        if let Some(rewrite_mode) = rewrite_mode {
+            let val = match rewrite_mode {
+                RewriteMode::None => "none",
+                RewriteMode::InPlace => "inplace",
+                RewriteMode::Alongside => "alongside",
+            };
+            cmd.env("C2RUST_ANALYZE_REWRITE_MODE", val);
         }
 
         if use_manual_shims {
