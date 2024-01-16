@@ -1,4 +1,7 @@
+use log::trace;
+use std::fmt::Debug;
 use std::mem;
+use std::ops::Sub;
 
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, PermissionSet, PointerId};
 use crate::pointee_type::PointeeTypes;
@@ -136,6 +139,8 @@ impl DataflowConstraints {
     ) -> Result<bool, String>
     where
         T: PartialEq,
+        // These four are used for debug output in `trace_change`:
+        T: Copy + Sub<T, Output = T> + Default + Debug,
         R: PropagateRules<T>,
     {
         let mut xs = TrackedPointerTable::new(xs.borrow_mut());
@@ -149,6 +154,26 @@ impl DataflowConstraints {
             i += 1;
 
             for c in &self.constraints {
+                let trace_change = |ptr, old: &T, new: T| {
+                    let old = *old;
+                    if old == new {
+                        return;
+                    }
+                    let added = new - old;
+                    let removed = old - new;
+                    if added == T::default() {
+                        trace!("propagate_inner: {ptr:?}: \
+                            removed {removed:?} for {c:?}; new {ptr:?} = {new:?}");
+                    } else if removed == T::default() {
+                        trace!("propagate_inner: {ptr:?}: \
+                            added {added:?} for {c:?}; new {ptr:?} = {new:?}");
+                    } else {
+                        trace!("propagate_inner: {ptr:?}: \
+                            added {added:?} and removed {removed:?} for {c:?}; \
+                            new {ptr:?} = {new:?}");
+                    }
+                };
+
                 match *c {
                     Constraint::Subset(a, b) => {
                         if !xs.dirty(a) && !xs.dirty(b) {
@@ -158,6 +183,8 @@ impl DataflowConstraints {
                         let old_a = xs.get(a);
                         let old_b = xs.get(b);
                         let (new_a, new_b) = rules.subset(a, old_a, b, old_b);
+                        trace_change(a, old_a, new_a);
+                        trace_change(b, old_b, new_b);
                         xs.set(a, new_a);
                         xs.set(b, new_b);
                     }
@@ -170,6 +197,8 @@ impl DataflowConstraints {
                         let old_a = xs.get(a);
                         let old_b = xs.get(b);
                         let (new_a, new_b) = rules.subset_except(a, old_a, b, old_b, except);
+                        trace_change(a, old_a, new_a);
+                        trace_change(b, old_b, new_b);
                         xs.set(a, new_a);
                         xs.set(b, new_b);
                     }
@@ -181,6 +210,7 @@ impl DataflowConstraints {
 
                         let old = xs.get(ptr);
                         let new = rules.all_perms(ptr, perms, old);
+                        trace_change(ptr, old, new);
                         xs.set(ptr, new);
                     }
 
@@ -191,6 +221,7 @@ impl DataflowConstraints {
 
                         let old = xs.get(ptr);
                         let new = rules.no_perms(ptr, perms, old);
+                        trace_change(ptr, old, new);
                         xs.set(ptr, new);
                     }
                 }
