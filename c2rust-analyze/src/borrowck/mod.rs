@@ -390,8 +390,10 @@ fn try_load_cached_output(facts_hash: &str) -> Option<Output> {
             return None;
         }
     };
-    // Tuples only implement `Deserialize` up to length 12, so split up this 17-element tuple into
-    // several pieces.
+    // The Polonius `Output` type doesn't implement `Serialize`.  Rather than define a local
+    // wrapper or proxy type and implement `Serialize` on that, we just unpack the struct into a
+    // tuple and serialize that instead.  However, tuples only implement `Deserialize` up to length
+    // 12, so we have to split up this 17-element tuple into several pieces.
     let (
         (
             errors,
@@ -463,8 +465,8 @@ fn save_cached_output(facts_hash: &str, output: &Output) -> Result<(), bincode::
         ref var_maybe_partly_initialized_on_exit,
     } = *output;
 
-    // Tuples only implement `Serialize` up to length 12, so split up this 17-element tuple into
-    // several pieces.  Note this must match the tuple format in `try_load_cached_output`.
+    // Split the tuple into several pieces, as described in `try_load_cached_output`.  The tuple
+    // format used here must match the one in `try_load_cached_output`.
     let raw = (
         (
             errors,
