@@ -29,6 +29,7 @@ clap = { version = "4.2.7", features = ["derive"] }
 fs-err = "2.9.0"
 anyhow = "1.0.75"
 toml_edit = "0.19.8"
+sha2 = "0.10.8"
 
 [build-dependencies]
 c2rust-build-paths = { path = "../c2rust-build-paths", version = "0.18.0" }
