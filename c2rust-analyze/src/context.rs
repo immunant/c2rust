@@ -186,6 +186,60 @@ bitflags! {
     }
 }
 
+bitflags! {
+    /// Flags indicating reasons why a function isn't being rewritten.
+    #[derive(Default)]
+    pub struct DontRewriteFnReason: u16 {
+        /// The user requested that this function be left unchanged.
+        const USER_REQUEST = 0x0001;
+        /// The function contains an unsupported int-to-pointer cast.
+        const INT_TO_PTR_CAST = 0x0002;
+        /// The function calls an extern function that has no safe rewrite.
+        const EXTERN_CALL = 0x0004;
+        /// The function calls another local function that isn't being rewritten.
+        const NON_REWRITTEN_CALLEE = 0x0008;
+        /// The function uses `Cell` pointers whose types are too complex for the current rewrite
+        /// rules.
+        const COMPLEX_CELL = 0x0010;
+        /// The function contains a pointer-to-pointer cast that isn't covered by rewrite rules.
+        const PTR_TO_PTR_CAST = 0x0020;
+        /// The function dereferences a pointer that would remain raw after rewriting.
+        const RAW_PTR_DEREF = 0x0040;
+
+        /// Dataflow analysis failed on this function.
+        const DATAFLOW_FAILED = 0x0080;
+        /// Borrowcheck/Polonius analysis failed on this function.
+        const BORROWCK_FAILED = 0x0100;
+        /// MIR rewrite generation failed on this function.
+        const MIR_REWRITE_FAILED = 0x0200;
+        /// HIR/AST rewrite generation failed on this function.
+        const HIR_REWRITE_FAILED = 0x0200;
+    }
+}
+
+bitflags! {
+    /// Flags indicating reasons why a static isn't being rewritten.
+    #[derive(Default)]
+    pub struct DontRewriteStaticReason: u16 {
+        /// The user requested that this static be left unchanged.
+        const USER_REQUEST = 0x0001;
+        /// The field is used in a function that isn't being rewritten.
+        const NON_REWRITTEN_USER = 0x0002;
+    }
+}
+
+bitflags! {
+    /// Flags indicating reasons why an ADT field isn't being rewritten.
+    #[derive(Default)]
+    pub struct DontRewriteFieldReason: u16 {
+        /// The user requested that this field be left unchanged.
+        const USER_REQUEST = 0x0001;
+        /// The field is used in a function that isn't being rewritten.
+        const NON_REWRITTEN_USER = 0x0002;
+    }
+}
+
+
 pub use crate::pointer_id::PointerId;
 
 pub type LTy<'tcx> = LabeledTy<'tcx, PointerId>;
@@ -325,6 +379,10 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     ///
     /// [`name`]: KnownFn::name
     known_fns: HashMap<&'static str, &'static KnownFn>,
+
+    dont_rewrite_fns: HashMap<DefId, DontRewriteFnReason>,
+    dont_rewrite_statics: HashMap<DefId, DontRewriteStaticReason>,
+    dont_rewrite_fields: HashMap<DefId, DontRewriteFieldReason>,
 
     /// `DefId`s of functions where analysis failed, and a [`PanicDetail`] explaining the reason
     /// for each failure.
@@ -700,6 +758,9 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
                 .iter()
                 .map(|known_fn| (known_fn.name, known_fn))
                 .collect(),
+            dont_rewrite_fns: HashMap::new(),
+            dont_rewrite_statics: HashMap::new(),
+            dont_rewrite_fields: HashMap::new(),
             fns_failed: HashMap::new(),
             fns_fixed: HashSet::new(),
             field_ltys: HashMap::new(),
@@ -762,6 +823,9 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             ref mut ptr_info,
             ref mut fn_sigs,
             known_fns: _,
+            dont_rewrite_fns: _,
+            dont_rewrite_statics: _,
+            dont_rewrite_fields: _,
             fns_failed: _,
             fns_fixed: _,
             ref mut field_ltys,
@@ -879,6 +943,45 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             })
             .filter_map(|(&def_id, fn_sig)| Some((fn_sig, self.known_fn(def_id)?)))
             .flat_map(|(fn_sig, known_fn)| known_fn.ptr_perms(fn_sig))
+    }
+
+    pub fn dont_rewrite_fn(&self, def_id: DefId) -> bool {
+        self.dont_rewrite_fns.contains_key(&def_id)
+    }
+
+    pub fn dont_rewrite_fn_reason(&self, def_id: DefId) -> DontRewriteFnReason {
+        self.dont_rewrite_fns.get(&def_id).copied().unwrap_or_default()
+    }
+
+    pub fn set_dont_rewrite_fn(&mut self, def_id: DefId, reason: DontRewriteFnReason) {
+        assert_ne!(reason, DontRewriteFnReason::empty());
+        *self.dont_rewrite_fns.entry(def_id).or_default() |= reason;
+    }
+
+    pub fn dont_rewrite_static(&self, def_id: DefId) -> bool {
+        self.dont_rewrite_statics.contains_key(&def_id)
+    }
+
+    pub fn dont_rewrite_static_reason(&self, def_id: DefId) -> DontRewriteStaticReason {
+        self.dont_rewrite_statics.get(&def_id).copied().unwrap_or_default()
+    }
+
+    pub fn set_dont_rewrite_static(&mut self, def_id: DefId, reason: DontRewriteStaticReason) {
+        assert_ne!(reason, DontRewriteStaticReason::empty());
+        *self.dont_rewrite_statics.entry(def_id).or_default() |= reason;
+    }
+
+    pub fn dont_rewrite_field(&self, def_id: DefId) -> bool {
+        self.dont_rewrite_fields.contains_key(&def_id)
+    }
+
+    pub fn dont_rewrite_field_reason(&self, def_id: DefId) -> DontRewriteFieldReason {
+        self.dont_rewrite_fields.get(&def_id).copied().unwrap_or_default()
+    }
+
+    pub fn set_dont_rewrite_field(&mut self, def_id: DefId, reason: DontRewriteFieldReason) {
+        assert_ne!(reason, DontRewriteFieldReason::empty());
+        *self.dont_rewrite_fields.entry(def_id).or_default() |= reason;
     }
 }
 
