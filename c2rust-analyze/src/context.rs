@@ -191,29 +191,44 @@ bitflags! {
     #[derive(Default)]
     pub struct DontRewriteFnReason: u16 {
         /// The user requested that this function be left unchanged.
-        const USER_REQUEST = 0x0001;
+        const USER_REQUEST = 1 << 0;
         /// The function contains an unsupported int-to-pointer cast.
-        const INT_TO_PTR_CAST = 0x0002;
+        const INT_TO_PTR_CAST = 1 << 1;
         /// The function calls an extern function that has no safe rewrite.
-        const EXTERN_CALL = 0x0004;
+        const EXTERN_CALL = 1 << 2;
         /// The function calls another local function that isn't being rewritten.
-        const NON_REWRITTEN_CALLEE = 0x0008;
+        const NON_REWRITTEN_CALLEE = 1 << 3;
         /// The function uses `Cell` pointers whose types are too complex for the current rewrite
         /// rules.
-        const COMPLEX_CELL = 0x0010;
+        const COMPLEX_CELL = 1 << 4;
         /// The function contains a pointer-to-pointer cast that isn't covered by rewrite rules.
-        const PTR_TO_PTR_CAST = 0x0020;
+        const PTR_TO_PTR_CAST = 1 << 5;
         /// The function dereferences a pointer that would remain raw after rewriting.
-        const RAW_PTR_DEREF = 0x0040;
+        const RAW_PTR_DEREF = 1 << 6;
+        /// Calling this function from non-rewritten code requires a shim, but shim generation
+        /// failed.
+        const SHIM_GENERATION_FAILED = 1 << 7;
 
-        /// Dataflow analysis failed on this function.
-        const DATAFLOW_FAILED = 0x0080;
-        /// Borrowcheck/Polonius analysis failed on this function.
-        const BORROWCK_FAILED = 0x0100;
-        /// MIR rewrite generation failed on this function.
-        const MIR_REWRITE_FAILED = 0x0200;
-        /// HIR/AST rewrite generation failed on this function.
-        const HIR_REWRITE_FAILED = 0x0200;
+        /// Pointee analysis results for this function are invalid.
+        const POINTEE_INVALID = 1 << 10;
+        /// Dataflow analysis results for this function are invalid.
+        const DATAFLOW_INVALID = 1 << 11;
+        /// Borrowcheck/Polonius analysis results for this function are invalid.
+        const BORROWCK_INVALID = 1 << 12;
+        /// Results of some other analysis for this function are invalid.
+        const MISC_ANALYSIS_INVALID = 1 << 13;
+        /// The set of rewrites generated for this function is invalid or incomplete.
+        const REWRITE_INVALID = 1 << 14;
+        /// Analysis results for this function are valid, but were marked as invalid anyway in
+        /// order to test error recovery.
+        const FAKE_INVALID_FOR_TESTING = 1 << 15;
+
+        const ANALYSIS_INVALID_MASK = Self::POINTEE_INVALID.bits
+            | Self::DATAFLOW_INVALID.bits
+            | Self::BORROWCK_INVALID.bits
+            | Self::MISC_ANALYSIS_INVALID.bits
+            | Self::REWRITE_INVALID.bits
+            | Self::FAKE_INVALID_FOR_TESTING.bits;
     }
 }
 
@@ -386,9 +401,6 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     /// `DefId`s of functions where analysis failed, and a [`PanicDetail`] explaining the reason
     /// for each failure.
     pub fns_failed: HashMap<DefId, PanicDetail>,
-    /// `DefId`s of functions that were marked "fixed" (non-rewritable) through command-line
-    /// arguments.
-    pub fns_fixed: HashSet<DefId>,
 
     pub field_ltys: HashMap<DefId, LTy<'tcx>>,
 
@@ -761,7 +773,6 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             dont_rewrite_statics: HashMap::new(),
             dont_rewrite_fields: HashMap::new(),
             fns_failed: HashMap::new(),
-            fns_fixed: HashSet::new(),
             field_ltys: HashMap::new(),
             static_tys: HashMap::new(),
             addr_of_static: HashMap::new(),
@@ -826,7 +837,6 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             dont_rewrite_statics: _,
             dont_rewrite_fields: _,
             fns_failed: _,
-            fns_fixed: _,
             ref mut field_ltys,
             ref mut static_tys,
             ref mut addr_of_static,
@@ -883,39 +893,15 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         }
     }
 
-    pub fn fn_failed(&self, did: DefId) -> bool {
-        self.fns_failed.contains_key(&did)
-    }
-
-    pub fn mark_fn_failed(&mut self, did: DefId, detail: PanicDetail) {
-        if self.fns_failed.contains_key(&did) {
-            return;
-        }
-
-        self.fns_failed.insert(did, detail);
-    }
-
-    pub fn iter_fns_failed(&self) -> impl Iterator<Item = DefId> + '_ {
-        self.fns_failed.keys().copied()
-    }
-
-    pub fn fn_skip_rewrite(&self, did: DefId) -> bool {
-        self.fn_failed(did) || self.fns_fixed.contains(&did)
+    pub fn mark_fn_failed(&mut self, did: DefId, reason: DontRewriteFnReason, detail: PanicDetail) {
+        self.set_dont_rewrite_fn(did, reason);
+        // Insert `detail` if there isn't yet an entry for this `DefId`.
+        self.fns_failed.entry(did).or_insert(detail);
     }
 
     /// Iterate over the `DefId`s of all functions that should skip rewriting.
     pub fn iter_fns_skip_rewrite<'a>(&'a self) -> impl Iterator<Item = DefId> + 'a {
-        // This let binding avoids a lifetime error with the closure and return-position `impl
-        // Trait`.
-        let fns_fixed = &self.fns_fixed;
-        // If the same `DefId` is in both `fns_failed` and `fns_fixed`, be sure to return it only
-        // once.
-        fns_fixed.iter().copied().chain(
-            self.fns_failed
-                .keys()
-                .copied()
-                .filter(move |did| !fns_fixed.contains(&did)),
-        )
+        self.dont_rewrite_fns.keys().copied()
     }
 
     pub fn known_fn(&self, def_id: DefId) -> Option<&'static KnownFn> {
@@ -958,6 +944,11 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     pub fn set_dont_rewrite_fn(&mut self, def_id: DefId, reason: DontRewriteFnReason) {
         assert_ne!(reason, DontRewriteFnReason::empty());
         *self.dont_rewrite_fns.entry(def_id).or_default() |= reason;
+    }
+
+    pub fn fn_analysis_invalid(&self, def_id: DefId) -> bool {
+        self.dont_rewrite_fn_reason(def_id)
+            .intersects(DontRewriteFnReason::ANALYSIS_INVALID_MASK)
     }
 
     pub fn dont_rewrite_static(&self, def_id: DefId) -> bool {
