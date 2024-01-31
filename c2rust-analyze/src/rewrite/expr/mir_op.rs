@@ -7,7 +7,7 @@
 //! all adjustments, as this would make even non-rewritten code extremely verbose, so we try to
 //! materialize adjustments only on code that's subject to some rewrite.
 
-use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet};
+use crate::context::{AnalysisCtxt, Assignment, DontRewriteFnReason, FlagSet, LTy, PermissionSet};
 use crate::panic_detail;
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{PointerId, PointerTable};
@@ -128,6 +128,7 @@ struct ExprRewriteVisitor<'a, 'tcx> {
     mir: &'a Body<'tcx>,
     loc: Location,
     sub_loc: Vec<SubLoc>,
+    errors: DontRewriteFnReason,
 }
 
 impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
@@ -152,7 +153,12 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 statement_index: 0,
             },
             sub_loc: Vec::new(),
+            errors: DontRewriteFnReason::empty(),
         }
+    }
+
+    fn err(&mut self, reason: DontRewriteFnReason) {
+        self.errors.insert(reason);
     }
 
     fn enter<F: FnOnce(&mut Self) -> R, R>(&mut self, sub: SubLoc, f: F) -> R {
@@ -240,6 +246,10 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     if !flags.contains(FlagSet::FIXED) {
                         let desc = type_desc::perms_to_desc(local_lty.ty, perms, flags);
                         if desc.own == Ownership::Cell {
+                            if pl.projection.len() > 1 || desc.qty != Quantity::Single {
+                                // NYI: `Cell` inside structs, arrays, or ptr-to-ptr
+                                self.err(DontRewriteFnReason::COMPLEX_CELL);
+                            }
                             // this is an assignment like `*x = 2` but `x` has CELL permissions
                             self.emit(RewriteKind::CellSet);
                         }
@@ -256,6 +266,10 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         let desc = type_desc::local_perms_to_desc(local_ty, perms, flags);
                         if desc.own == Ownership::Cell {
                             // this is an assignment like `let x = 2` but `x` has CELL permissions
+                            if !pl.projection.is_empty() || desc.qty != Quantity::Single {
+                                // NYI: `Cell` inside structs, arrays, or ptr-to-ptr
+                                self.err(DontRewriteFnReason::COMPLEX_CELL);
+                            }
                             self.enter_rvalue(|v| v.emit(RewriteKind::CellNew))
                         }
 
@@ -269,6 +283,10 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 if !flags.contains(FlagSet::FIXED) && flags.contains(FlagSet::CELL)
                                 {
                                     // this is an assignment like `let x = *y` but `y` has CELL permissions
+                                    if pl.projection.len() > 1 || desc.qty != Quantity::Single {
+                                        // NYI: `Cell` inside structs, arrays, or ptr-to-ptr
+                                        self.err(DontRewriteFnReason::COMPLEX_CELL);
+                                    }
                                     self.enter_rvalue(|v| v.emit(RewriteKind::CellGet))
                                 }
                             }
@@ -1025,7 +1043,7 @@ pub fn gen_mir_rewrites<'tcx>(
     asn: &Assignment,
     pointee_types: PointerTable<PointeeTypes<'tcx>>,
     mir: &Body<'tcx>,
-) -> HashMap<Location, Vec<MirRewrite>> {
+) -> (HashMap<Location, Vec<MirRewrite>>, DontRewriteFnReason) {
     let mut out = HashMap::new();
 
     let mut v = ExprRewriteVisitor::new(acx, asn, pointee_types, &mut out, mir);
@@ -1048,5 +1066,6 @@ pub fn gen_mir_rewrites<'tcx>(
         }
     }
 
-    out
+    let errors = v.errors;
+    (out, errors)
 }
