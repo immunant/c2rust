@@ -1289,7 +1289,7 @@ fn run(tcx: TyCtxt) {
             let name = tcx.item_name(ldid.to_def_id());
             let mir = tcx.mir_built(ldid_const);
             let mir = mir.borrow();
-            let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+            let mut acx = gacx.function_context_with_data(&mir, info.acx_data.take());
             let asn = gasn.and(&mut info.lasn);
             let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
 
@@ -1302,8 +1302,14 @@ fn run(tcx: TyCtxt) {
                 }
 
                 let hir_body_id = tcx.hir().body_owned_by(ldid);
-                let expr_rewrites =
-                    rewrite::gen_expr_rewrites(&acx, &asn, pointee_types, &mir, hir_body_id);
+                let expr_rewrites = rewrite::gen_expr_rewrites(
+                    &mut acx,
+                    &asn,
+                    pointee_types,
+                    ldid.to_def_id(),
+                    &mir,
+                    hir_body_id,
+                );
                 let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, pointee_types, &mir, ldid);
                 // Print rewrites
                 let report = func_reports.entry(ldid).or_default();
@@ -1628,13 +1634,16 @@ fn run(tcx: TyCtxt) {
 
     eprintln!("\nerror summary:");
     for ldid in tcx.hir().body_owners() {
-        if let Some(detail) = gacx.fns_failed.get(&ldid.to_def_id()) {
-            eprintln!(
-                "analysis of {:?} failed: {}",
-                ldid,
-                detail.to_string_short()
-            );
+        let opt_detail = gacx.fns_failed.get(&ldid.to_def_id());
+        let flags = gacx.dont_rewrite_fns.get(ldid.to_def_id());
+        if opt_detail.is_none() && flags.is_empty() {
+            continue;
         }
+        let detail_str = match opt_detail {
+            Some(detail) => detail.to_string_short(),
+            None => "(no panic)".into(),
+        };
+        eprintln!("analysis of {:?} failed: {:?}, {}", ldid, flags, detail_str,);
     }
 
     eprintln!(
