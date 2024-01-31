@@ -1251,21 +1251,18 @@ fn run(tcx: TyCtxt) {
         all_rewrites.clear();
         eprintln!("\n--- start rewriting ---");
 
+        // Clear the list of newly non-rewritable fns.  After generating rewrites, if any functions
+        // became non-rewritable, we run another iteration.
+        let new_non_rewritable_fns = gacx.dont_rewrite_fns.take_new_keys();
+
         // Before generating rewrites, add the FIXED flag to the signatures of all functions where
         // rewriting will be skipped.
         //
         // The set of nonrewritten functions is monotonically nondecreasing throughout this loop,
         // so there's no need to worry about potentially removing `FIXED` from some functions.
-        for did in gacx.iter_fns_skip_rewrite() {
-            let lsig = gacx.fn_sigs[&did];
-            for sig_lty in lsig.inputs_and_output() {
-                for lty in sig_lty.iter() {
-                    let ptr = lty.label;
-                    if !ptr.is_none() {
-                        gasn.flags[ptr].insert(FlagSet::FIXED);
-                    }
-                }
-            }
+        for did in new_non_rewritable_fns {
+            let lsig = &gacx.fn_sigs[&did];
+            make_sig_fixed(&mut gasn, lsig);
         }
 
         for &ldid in &all_fn_ldids {
@@ -1329,7 +1326,6 @@ fn run(tcx: TyCtxt) {
         all_rewrites.extend(shim_call_rewrites);
 
         // Generate shims for functions that need them.
-        let mut any_failed = false;
         for def_id in shim_fn_def_ids {
             let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
                 all_rewrites.push(rewrite::gen_shim_definition_rewrite(
@@ -1343,13 +1339,14 @@ fn run(tcx: TyCtxt) {
                 Ok(()) => {}
                 Err(pd) => {
                     gacx.mark_fn_failed(def_id, DontRewriteFnReason::SHIM_GENERATION_FAILED, pd);
-                    any_failed = true;
                     continue;
                 }
             }
         }
 
-        if !any_failed {
+
+        // Exit the loop upon reaching a fixpoint.
+        if gacx.dont_rewrite_fns.new_keys().is_empty() {
             break;
         }
     }
