@@ -992,7 +992,7 @@ fn run(tcx: TyCtxt) {
                     None => panic!("missing fn_sig for {:?}", ldid),
                 };
                 make_sig_fixed(&mut gasn, lsig);
-                gacx.set_dont_rewrite_fn(ldid.to_def_id(), DontRewriteFnReason::USER_REQUEST);
+                gacx.dont_rewrite_fns.add(ldid.to_def_id(), DontRewriteFnReason::USER_REQUEST);
             }
 
             DefKind::Struct | DefKind::Enum | DefKind::Union => {
@@ -1013,7 +1013,7 @@ fn run(tcx: TyCtxt) {
                         };
                         make_ty_fixed(&mut gasn, lty);
                     }
-                    gacx.set_dont_rewrite_field(field.did, DontRewriteFieldReason::USER_REQUEST);
+                    gacx.dont_rewrite_fields.add(field.did, DontRewriteFieldReason::USER_REQUEST);
                 }
             }
 
@@ -1031,7 +1031,7 @@ fn run(tcx: TyCtxt) {
                 if !ptr.is_none() {
                     gasn.flags[ptr].insert(FlagSet::FIXED);
                 }
-                gacx.set_dont_rewrite_static(ldid.to_def_id(), DontRewriteStaticReason::USER_REQUEST);
+                gacx.dont_rewrite_statics.add(ldid.to_def_id(), DontRewriteStaticReason::USER_REQUEST);
             }
 
             _ => {}

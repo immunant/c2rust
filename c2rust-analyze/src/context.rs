@@ -36,7 +36,9 @@ use rustc_middle::ty::TyKind;
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Write as _};
-use std::ops::Index;
+use std::hash::Hash;
+use std::mem;
+use std::ops::{BitOr, Index};
 
 bitflags! {
     /// Permissions are created such that we allow dropping permissions in any assignment.
@@ -395,9 +397,9 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     /// [`name`]: KnownFn::name
     known_fns: HashMap<&'static str, &'static KnownFn>,
 
-    dont_rewrite_fns: HashMap<DefId, DontRewriteFnReason>,
-    dont_rewrite_statics: HashMap<DefId, DontRewriteStaticReason>,
-    dont_rewrite_fields: HashMap<DefId, DontRewriteFieldReason>,
+    pub dont_rewrite_fns: FlagMap<DefId, DontRewriteFnReason>,
+    pub dont_rewrite_statics: FlagMap<DefId, DontRewriteStaticReason>,
+    pub dont_rewrite_fields: FlagMap<DefId, DontRewriteFieldReason>,
 
     /// `DefId`s of functions where analysis failed, and a [`PanicDetail`] explaining the reason
     /// for each failure.
@@ -770,9 +772,9 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
                 .iter()
                 .map(|known_fn| (known_fn.name, known_fn))
                 .collect(),
-            dont_rewrite_fns: HashMap::new(),
-            dont_rewrite_statics: HashMap::new(),
-            dont_rewrite_fields: HashMap::new(),
+            dont_rewrite_fns: FlagMap::new(),
+            dont_rewrite_statics: FlagMap::new(),
+            dont_rewrite_fields: FlagMap::new(),
             fns_failed: HashMap::new(),
             field_ltys: HashMap::new(),
             static_tys: HashMap::new(),
@@ -900,14 +902,14 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         reason: DontRewriteFnReason,
         detail: PanicDetail,
     ) {
-        self.set_dont_rewrite_fn(did, reason);
+        self.dont_rewrite_fns.add(did, reason);
         // Insert `detail` if there isn't yet an entry for this `DefId`.
         self.fns_failed.entry(did).or_insert(detail);
     }
 
     /// Iterate over the `DefId`s of all functions that should skip rewriting.
     pub fn iter_fns_skip_rewrite<'a>(&'a self) -> impl Iterator<Item = DefId> + 'a {
-        self.dont_rewrite_fns.keys().copied()
+        self.dont_rewrite_fns.keys()
     }
 
     pub fn known_fn(&self, def_id: DefId) -> Option<&'static KnownFn> {
@@ -937,46 +939,17 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     }
 
     pub fn dont_rewrite_fn(&self, def_id: DefId) -> bool {
-        self.dont_rewrite_fns.contains_key(&def_id)
+        self.dont_rewrite_fns.contains(def_id)
     }
-
-    pub fn dont_rewrite_fn_reason(&self, def_id: DefId) -> DontRewriteFnReason {
-        self.dont_rewrite_fns.get(&def_id).copied().unwrap_or_default()
-    }
-
-    pub fn set_dont_rewrite_fn(&mut self, def_id: DefId, reason: DontRewriteFnReason) {
-        assert_ne!(reason, DontRewriteFnReason::empty());
-        *self.dont_rewrite_fns.entry(def_id).or_default() |= reason;
-    }
-
     pub fn fn_analysis_invalid(&self, def_id: DefId) -> bool {
-        self.dont_rewrite_fn_reason(def_id).intersects(DontRewriteFnReason::ANALYSIS_INVALID_MASK)
+        self.dont_rewrite_fns.get(def_id).intersects(DontRewriteFnReason::ANALYSIS_INVALID_MASK)
     }
 
     pub fn dont_rewrite_static(&self, def_id: DefId) -> bool {
-        self.dont_rewrite_statics.contains_key(&def_id)
+        self.dont_rewrite_statics.contains(def_id)
     }
-
-    pub fn dont_rewrite_static_reason(&self, def_id: DefId) -> DontRewriteStaticReason {
-        self.dont_rewrite_statics.get(&def_id).copied().unwrap_or_default()
-    }
-
-    pub fn set_dont_rewrite_static(&mut self, def_id: DefId, reason: DontRewriteStaticReason) {
-        assert_ne!(reason, DontRewriteStaticReason::empty());
-        *self.dont_rewrite_statics.entry(def_id).or_default() |= reason;
-    }
-
     pub fn dont_rewrite_field(&self, def_id: DefId) -> bool {
-        self.dont_rewrite_fields.contains_key(&def_id)
-    }
-
-    pub fn dont_rewrite_field_reason(&self, def_id: DefId) -> DontRewriteFieldReason {
-        self.dont_rewrite_fields.get(&def_id).copied().unwrap_or_default()
-    }
-
-    pub fn set_dont_rewrite_field(&mut self, def_id: DefId, reason: DontRewriteFieldReason) {
-        assert_ne!(reason, DontRewriteFieldReason::empty());
-        *self.dont_rewrite_fields.entry(def_id).or_default() |= reason;
+        self.dont_rewrite_fields.contains(def_id)
     }
 }
 
@@ -1620,5 +1593,62 @@ pub fn print_ty_with_pointer_labels_into<L: Copy>(
         | Opaque(..) | Param(..) | Bound(..) | Placeholder(..) | Infer(..) | Error(..) => {
             write!(dest, "unknown:{:?}", lty.ty).unwrap();
         }
+    }
+}
+
+
+/// Map for associating flags (such as `DontRewriteFnReason`) with keys (such as `DefId`).
+pub struct FlagMap<K, V> {
+    /// Stores the current flags for each key.  If no flags are set, the entry is omitted; that is,
+    /// for every entry `(k, v)`, it's always the case that `v != V::default()`.
+    m: HashMap<K, V>,
+    /// Keys that were added to `m` since the last call to `take_new()`.  Specifically, this
+    /// includes every `k` for which `get(k)` was `V::default()` but `get(k)` now has a different,
+    /// non-default value.
+    new: Vec<K>,
+}
+
+impl<K, V> FlagMap<K, V>
+where
+    K: Copy + Hash + Eq,
+    V: Copy + Default + Eq + BitOr<Output = V>,
+{
+    pub fn new() -> FlagMap<K, V> {
+        FlagMap {
+            m: HashMap::new(),
+            new: Vec::new(),
+        }
+    }
+
+    pub fn add(&mut self, k: K, v: V) {
+        if v == V::default() {
+            return;
+        }
+        let cur = self.m.entry(k).or_default();
+        if *cur == V::default() {
+            self.new.push(k);
+        }
+        *cur = *cur | v;
+    }
+
+    /// Get the current flags for `k`.  Returns `V::default()` if no flags have been set.
+    pub fn get(&self, k: K) -> V {
+        self.m.get(&k).copied().unwrap_or_default()
+    }
+
+    pub fn contains(&self, k: K) -> bool {
+        self.m.contains_key(&k)
+    }
+
+    pub fn new_keys(&self) -> &[K] {
+        &self.new
+    }
+
+    pub fn take_new_keys(&mut self) -> Vec<K> {
+        mem::take(&mut self.new)
+    }
+
+    pub fn keys<'a>(&'a self) -> impl Iterator<Item = K> + 'a {
+        self.m.keys().copied()
     }
 }
