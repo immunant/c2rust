@@ -1,8 +1,9 @@
 use crate::annotate::AnnotationBuffer;
 use crate::borrowck;
 use crate::context::{
-    self, AnalysisCtxt, AnalysisCtxtData, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig,
-    LTy, LTyCtxt, LocalAssignment, PermissionSet, PointerId, PointerInfo,
+    self, AnalysisCtxt, AnalysisCtxtData, DontRewriteFieldReason, DontRewriteFnReason,
+    DontRewriteStaticReason, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy, LTyCtxt,
+    LocalAssignment, PermissionSet, PointerId, PointerInfo,
 };
 use crate::dataflow;
 use crate::dataflow::DataflowConstraints;
@@ -621,7 +622,7 @@ fn run(tcx: TyCtxt) {
     // ----------------------------------
 
     for &ldid in &all_fn_ldids {
-        if gacx.fn_failed(ldid.to_def_id()) {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
 
@@ -669,7 +670,7 @@ fn run(tcx: TyCtxt) {
                 info.pointee_constraints.set(pointee_constraints);
             }
             Err(pd) => {
-                gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                gacx.mark_fn_failed(ldid.to_def_id(), DontRewriteFnReason::POINTEE_INVALID, pd);
             }
         }
 
@@ -698,7 +699,7 @@ fn run(tcx: TyCtxt) {
         }
 
         for &ldid in &all_fn_ldids {
-            if gacx.fn_failed(ldid.to_def_id()) {
+            if gacx.fn_analysis_invalid(ldid.to_def_id()) {
                 continue;
             }
 
@@ -716,7 +717,7 @@ fn run(tcx: TyCtxt) {
 
     // Print results for debugging
     for &ldid in &all_fn_ldids {
-        if gacx.fn_failed(ldid.to_def_id()) {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
 
@@ -742,7 +743,7 @@ fn run(tcx: TyCtxt) {
     // computed during this the process is kept around for use in later passes.
     let mut global_equiv = GlobalEquivSet::new(gacx.num_pointers());
     for &ldid in &all_fn_ldids {
-        if gacx.fn_failed(ldid.to_def_id()) {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
 
@@ -763,7 +764,7 @@ fn run(tcx: TyCtxt) {
             Ok(x) => x,
             Err(pd) => {
                 info.acx_data.set(acx.into_data());
-                gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                gacx.mark_fn_failed(ldid.to_def_id(), DontRewriteFnReason::DATAFLOW_INVALID, pd);
                 continue;
             }
         };
@@ -796,7 +797,7 @@ fn run(tcx: TyCtxt) {
     gacx.remap_pointers(&global_equiv_map, global_counter);
 
     for &ldid in &all_fn_ldids {
-        if gacx.fn_failed(ldid.to_def_id()) {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
 
@@ -979,8 +980,6 @@ fn run(tcx: TyCtxt) {
 
     // Items in the "fixed defs" list have all pointers in their types set to `FIXED`.  For
     // testing, putting #[c2rust_analyze_test::fixed_signature] on an item has the same effect.
-    //
-    // Functions in the list are also added to `gacx.fns_fixed`.
     for ldid in tcx.hir_crate_items(()).definitions() {
         // TODO (HACK): `Clone::clone` impls are omitted from `fn_sigs` and cause a panic below.
         if is_impl_clone(tcx, ldid.to_def_id()) {
@@ -996,7 +995,7 @@ fn run(tcx: TyCtxt) {
                     None => panic!("missing fn_sig for {:?}", ldid),
                 };
                 make_sig_fixed(&mut gasn, lsig);
-                gacx.fns_fixed.insert(ldid.to_def_id());
+                gacx.set_dont_rewrite_fn(ldid.to_def_id(), DontRewriteFnReason::USER_REQUEST);
             }
 
             DefKind::Struct | DefKind::Enum | DefKind::Union => {
@@ -1016,6 +1015,10 @@ fn run(tcx: TyCtxt) {
                             None => panic!("missing field_lty for {:?}", ldid),
                         };
                         make_ty_fixed(&mut gasn, lty);
+                        gacx.set_dont_rewrite_field(
+                            field.did,
+                            DontRewriteFieldReason::USER_REQUEST,
+                        );
                     }
                 }
             }
@@ -1034,6 +1037,10 @@ fn run(tcx: TyCtxt) {
                 if !ptr.is_none() {
                     gasn.flags[ptr].insert(FlagSet::FIXED);
                 }
+                gacx.set_dont_rewrite_static(
+                    ldid.to_def_id(),
+                    DontRewriteStaticReason::USER_REQUEST,
+                );
             }
 
             _ => {}
@@ -1052,6 +1059,7 @@ fn run(tcx: TyCtxt) {
         }
         gacx.mark_fn_failed(
             ldid.to_def_id(),
+            DontRewriteFnReason::FAKE_INVALID_FOR_TESTING,
             PanicDetail::new("explicit fail_before_analysis for testing".to_owned()),
         );
     }
@@ -1069,7 +1077,7 @@ fn run(tcx: TyCtxt) {
         let old_gasn = gasn.clone();
 
         for &ldid in &all_fn_ldids {
-            if gacx.fn_failed(ldid.to_def_id()) {
+            if gacx.fn_analysis_invalid(ldid.to_def_id()) {
                 continue;
             }
 
@@ -1103,7 +1111,11 @@ fn run(tcx: TyCtxt) {
             match r {
                 Ok(()) => {}
                 Err(pd) => {
-                    gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                    gacx.mark_fn_failed(
+                        ldid.to_def_id(),
+                        DontRewriteFnReason::BORROWCK_INVALID,
+                        pd,
+                    );
                     continue;
                 }
             }
@@ -1136,7 +1148,7 @@ fn run(tcx: TyCtxt) {
 
     // Do final processing on each function.
     for &ldid in &all_fn_ldids {
-        if gacx.fn_failed(ldid.to_def_id()) {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
 
@@ -1159,7 +1171,11 @@ fn run(tcx: TyCtxt) {
         match r {
             Ok(()) => {}
             Err(pd) => {
-                gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                gacx.mark_fn_failed(
+                    ldid.to_def_id(),
+                    DontRewriteFnReason::MISC_ANALYSIS_INVALID,
+                    pd,
+                );
                 continue;
             }
         }
@@ -1223,6 +1239,7 @@ fn run(tcx: TyCtxt) {
         }
         gacx.mark_fn_failed(
             ldid.to_def_id(),
+            DontRewriteFnReason::FAKE_INVALID_FOR_TESTING,
             PanicDetail::new("explicit fail_before_rewriting for testing".to_owned()),
         );
     }
@@ -1251,12 +1268,12 @@ fn run(tcx: TyCtxt) {
         all_rewrites.clear();
         eprintln!("\n--- start rewriting ---");
 
-        // Before generating rewrites, add the FIXED flag to the signatures of all functions that
-        // failed analysis.
+        // Before generating rewrites, add the FIXED flag to the signatures of all functions where
+        // rewriting will be skipped.
         //
-        // The set of failed functions is monotonically nondecreasing throughout this loop, so
-        // there's no need to worry about potentially removing `FIXED` from some functions.
-        for did in gacx.iter_fns_failed() {
+        // The set of nonrewritten functions is monotonically nondecreasing throughout this loop,
+        // so there's no need to worry about potentially removing `FIXED` from some functions.
+        for did in gacx.iter_fns_skip_rewrite() {
             let lsig = gacx.fn_sigs[&did];
             for sig_lty in lsig.inputs_and_output() {
                 for lty in sig_lty.iter() {
@@ -1269,7 +1286,7 @@ fn run(tcx: TyCtxt) {
         }
 
         for &ldid in &all_fn_ldids {
-            if gacx.fn_skip_rewrite(ldid.to_def_id()) {
+            if gacx.dont_rewrite_fn(ldid.to_def_id()) {
                 continue;
             }
 
@@ -1317,7 +1334,7 @@ fn run(tcx: TyCtxt) {
             match r {
                 Ok(()) => {}
                 Err(pd) => {
-                    gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                    gacx.mark_fn_failed(ldid.to_def_id(), DontRewriteFnReason::REWRITE_INVALID, pd);
                     continue;
                 }
             }
@@ -1342,7 +1359,7 @@ fn run(tcx: TyCtxt) {
             match r {
                 Ok(()) => {}
                 Err(pd) => {
-                    gacx.mark_fn_failed(def_id, pd);
+                    gacx.mark_fn_failed(def_id, DontRewriteFnReason::SHIM_GENERATION_FAILED, pd);
                     any_failed = true;
                     continue;
                 }
@@ -1422,7 +1439,7 @@ fn run(tcx: TyCtxt) {
             None => continue,
         };
 
-        if gacx.fn_failed(ldid.to_def_id()) {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
 
