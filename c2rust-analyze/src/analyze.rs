@@ -33,19 +33,11 @@ use rustc_hir::def_id::DefIndex;
 use rustc_hir::def_id::LocalDefId;
 use rustc_hir::definitions::DefPathData;
 use rustc_index::vec::IndexVec;
-use rustc_middle::mir::visit::Visitor;
-use rustc_middle::mir::AggregateKind;
-use rustc_middle::mir::BindingForm;
-use rustc_middle::mir::Body;
-use rustc_middle::mir::Constant;
-use rustc_middle::mir::Local;
-use rustc_middle::mir::LocalDecl;
-use rustc_middle::mir::LocalInfo;
-use rustc_middle::mir::LocalKind;
-use rustc_middle::mir::Location;
-use rustc_middle::mir::Operand;
-use rustc_middle::mir::Rvalue;
-use rustc_middle::mir::StatementKind;
+use rustc_middle::mir::visit::{PlaceContext, Visitor};
+use rustc_middle::mir::{
+    AggregateKind, BindingForm, Body, Constant, Local, LocalDecl, LocalInfo, LocalKind, Location,
+    Operand, Place, PlaceElem, PlaceRef, Rvalue, StatementKind,
+};
 use rustc_middle::ty::GenericArgKind;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
@@ -564,6 +556,8 @@ fn run(tcx: TyCtxt) {
     for &ldid in &all_fn_ldids {
         eprintln!("  {:?}", ldid);
     }
+
+    populate_field_users(&mut gacx, &all_fn_ldids);
 
     // ----------------------------------
     // Label all global types
@@ -1952,6 +1946,85 @@ fn for_each_callee(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(LocalDefId)) {
     }
 
     CalleeVisitor { tcx, mir, f }.visit_body(mir);
+}
+
+/// Call `f` for each field mentioned in a place projection within the body of `ldid`.
+fn for_each_field_use(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(DefId)) {
+    let ldid_const = WithOptConstParam::unknown(ldid);
+    let mir = tcx.mir_built(ldid_const);
+    let mir = mir.borrow();
+    let mir: &Body = &mir;
+
+    struct FieldUseVisitor<'a, 'tcx, F> {
+        tcx: TyCtxt<'tcx>,
+        mir: &'a Body<'tcx>,
+        f: F,
+    }
+
+    impl<'tcx, F: FnMut(DefId)> Visitor<'tcx> for FieldUseVisitor<'_, 'tcx, F> {
+        fn visit_place(
+            &mut self,
+            place: &Place<'tcx>,
+            _context: PlaceContext,
+            _location: Location,
+        ) {
+            for (i, elem) in place.projection.iter().enumerate() {
+                let field_idx = match elem {
+                    PlaceElem::Field(x, _) => x,
+                    _ => continue,
+                };
+                // Build a `PlaceRef` with all the projections up to, but not including, `elem`.
+                let place_ref = PlaceRef {
+                    local: place.local,
+                    projection: &place.projection[..i],
+                };
+                let adt_pty = place_ref.ty(self.mir, self.tcx);
+                let adt_def = match adt_pty.ty.ty_adt_def() {
+                    Some(x) => x,
+                    // `PlaceElem::Field` also works on tuple types, which don't have an `AdtDef`.
+                    None => continue,
+                };
+                let variant_def = match adt_pty.variant_index {
+                    None => adt_def.non_enum_variant(),
+                    Some(i) => adt_def.variant(i),
+                };
+                let field_def = &variant_def.fields[field_idx.index()];
+                (self.f)(field_def.did);
+            }
+        }
+    }
+
+    FieldUseVisitor { tcx, mir, f }.visit_body(mir);
+}
+
+/// Populate `gacx.field_users` and `gacx.fn_fields_used`.
+fn populate_field_users(gacx: &mut GlobalAnalysisCtxt, fn_ldids: &[LocalDefId]) {
+    let mut field_users = HashMap::new();
+    let mut seen = HashSet::new();
+
+    for &ldid in fn_ldids {
+        let mut fn_fields = Vec::new();
+        let mut fn_seen = HashSet::new();
+        for_each_field_use(gacx.tcx, ldid, |field_def_id| {
+            if let Some(field_ldid) = field_def_id.as_local() {
+                if seen.insert((field_ldid, ldid)) {
+                    field_users
+                        .entry(field_ldid)
+                        .or_insert_with(Vec::new)
+                        .push(ldid);
+                }
+
+                if fn_seen.insert(field_ldid) {
+                    fn_fields.push(field_ldid);
+                }
+            }
+        });
+        gacx.fn_fields_used.insert(ldid, fn_fields);
+    }
+
+    for (k, v) in field_users {
+        gacx.field_users.insert(k, v);
+    }
 }
 
 pub struct AnalysisCallbacks;
