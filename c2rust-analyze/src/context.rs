@@ -34,11 +34,12 @@ use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TyKind;
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use std::collections::hash_map::{Entry, HashMap};
 use std::fmt::{Debug, Write as _};
 use std::hash::Hash;
 use std::mem;
-use std::ops::{BitOr, Index};
+use std::ops::{BitOr, Index, Range};
 
 bitflags! {
     /// Permissions are created such that we allow dropping permissions in any assignment.
@@ -388,6 +389,7 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     ptr_info: GlobalPointerTable<PointerInfo>,
 
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
+    pub fn_fields_used: MultiMap<LocalDefId, LocalDefId>,
 
     /// A map of all [`KnownFn`]s as determined by [`all_known_fns`].
     ///
@@ -406,6 +408,7 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     pub fns_failed: HashMap<DefId, PanicDetail>,
 
     pub field_ltys: HashMap<DefId, LTy<'tcx>>,
+    pub field_users: MultiMap<LocalDefId, LocalDefId>,
 
     pub static_tys: HashMap<DefId, LTy<'tcx>>,
     pub addr_of_static: HashMap<DefId, PointerId>,
@@ -768,6 +771,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             lcx: LabeledTyCtxt::new(tcx),
             ptr_info: GlobalPointerTable::empty(),
             fn_sigs: HashMap::new(),
+            fn_fields_used: MultiMap::new(),
             known_fns: all_known_fns()
                 .iter()
                 .map(|known_fn| (known_fn.name, known_fn))
@@ -777,6 +781,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             dont_rewrite_fields: FlagMap::new(),
             fns_failed: HashMap::new(),
             field_ltys: HashMap::new(),
+            field_users: MultiMap::new(),
             static_tys: HashMap::new(),
             addr_of_static: HashMap::new(),
             adt_metadata: AdtMetadataTable::default(),
@@ -835,12 +840,14 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             lcx,
             ref mut ptr_info,
             ref mut fn_sigs,
+            fn_fields_used: _,
             known_fns: _,
             dont_rewrite_fns: _,
             dont_rewrite_statics: _,
             dont_rewrite_fields: _,
             fns_failed: _,
             ref mut field_ltys,
+            field_users: _,
             ref mut static_tys,
             ref mut addr_of_static,
             adt_metadata: _,
@@ -1650,5 +1657,42 @@ where
 
     pub fn keys<'a>(&'a self) -> impl Iterator<Item = K> + 'a {
         self.m.keys().copied()
+    }
+}
+
+
+/// A map from keys to lists of values, with a compact representation.
+#[derive(Clone, Debug)]
+pub struct MultiMap<K, V> {
+    defs: HashMap<K, Range<usize>>,
+    users: Vec<V>,
+}
+
+impl<K, V> MultiMap<K, V>
+where K: Copy + Hash + Eq + Debug {
+    pub fn new() -> MultiMap<K, V> {
+        MultiMap {
+            defs: HashMap::new(),
+            users: Vec::new(),
+        }
+    }
+
+    pub fn insert(&mut self, def: K, users: impl IntoIterator<Item = V>) {
+        let e = match self.defs.entry(def) {
+            Entry::Vacant(e) => e,
+            Entry::Occupied(_) => panic!("duplicate entry for {def:?}"),
+        };
+        let start = self.users.len();
+        self.users.extend(users);
+        let end = self.users.len();
+        e.insert(start .. end);
+    }
+
+    pub fn get(&self, def: K) -> &[V] {
+        let range = match self.defs.get(&def) {
+            Some(x) => x,
+            None => return &[],
+        };
+        &self.users[range.clone()]
     }
 }
