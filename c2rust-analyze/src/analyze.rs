@@ -1623,17 +1623,30 @@ fn run(tcx: TyCtxt) {
     }
 
     eprintln!("\nerror summary:");
-    for ldid in tcx.hir().body_owners() {
-        let opt_detail = gacx.fns_failed.get(&ldid.to_def_id());
-        let flags = gacx.dont_rewrite_fns.get(ldid.to_def_id());
-        if opt_detail.is_none() && flags.is_empty() {
-            continue;
-        }
+    fn sorted_def_ids(it: impl IntoIterator<Item = DefId>) -> Vec<DefId> {
+        let mut v = it.into_iter().collect::<Vec<_>>();
+        v.sort();
+        v
+    }
+    for def_id in sorted_def_ids(gacx.dont_rewrite_fns.keys()) {
+        let opt_detail = gacx.fns_failed.get(&def_id);
+        let flags = gacx.dont_rewrite_fns.get(def_id);
+        assert!(opt_detail.is_some() || !flags.is_empty());
         let detail_str = match opt_detail {
             Some(detail) => detail.to_string_short(),
             None => "(no panic)".into(),
         };
-        eprintln!("analysis of {:?} failed: {:?}, {}", ldid, flags, detail_str,);
+        eprintln!("analysis of {def_id:?} failed: {flags:?}, {detail_str}");
+    }
+
+    for def_id in sorted_def_ids(gacx.dont_rewrite_statics.keys()) {
+        let flags = gacx.dont_rewrite_statics.get(def_id);
+        eprintln!("analysis of {def_id:?} failed: {flags:?}");
+    }
+
+    for def_id in sorted_def_ids(gacx.dont_rewrite_fields.keys()) {
+        let flags = gacx.dont_rewrite_fields.get(def_id);
+        eprintln!("analysis of {def_id:?} failed: {flags:?}");
     }
 
     eprintln!(
