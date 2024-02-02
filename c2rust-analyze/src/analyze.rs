@@ -1254,24 +1254,17 @@ fn run(tcx: TyCtxt) {
     let manual_shim_casts = manual_shim_casts;
 
     // It may take multiple tries to reach a state where all rewrites succeed.
-    loop {
+    for i in 0.. {
+        assert!(i < 100);
         func_reports.clear();
         all_rewrites.clear();
         eprintln!("\n--- start rewriting ---");
 
-        // Clear the list of newly non-rewritable fns.  After generating rewrites, if any functions
-        // became non-rewritable, we run another iteration.
-        let new_non_rewritable_fns = gacx.dont_rewrite_fns.take_new_keys();
-
-        // Before generating rewrites, add the FIXED flag to the signatures of all functions where
-        // rewriting will be skipped.
-        //
-        // The set of nonrewritten functions is monotonically nondecreasing throughout this loop,
-        // so there's no need to worry about potentially removing `FIXED` from some functions.
-        for did in new_non_rewritable_fns {
-            let lsig = &gacx.fn_sigs[&did];
-            make_sig_fixed(&mut gasn, lsig);
-        }
+        // Update non-rewritten items first.  This has two purposes.  First, it clears the
+        // `new_keys()` lists, which we check at the end of the loop to see whether we've reached a
+        // fixpoint.  Second, doing this adds the `FIXED` flag to pointers that we shouldn't
+        // rewrite, such as pointers in the signatures of non-rewritten functions.
+        process_new_dont_rewrite_items(&mut gacx, &mut gasn);
 
         for &ldid in &all_fn_ldids {
             if gacx.dont_rewrite_fn(ldid.to_def_id()) {
@@ -1359,7 +1352,10 @@ fn run(tcx: TyCtxt) {
         }
 
         // Exit the loop upon reaching a fixpoint.
-        if gacx.dont_rewrite_fns.new_keys().is_empty() {
+        let any_new_dont_rewrite_keys = !gacx.dont_rewrite_fns.new_keys().is_empty()
+            || !gacx.dont_rewrite_statics.new_keys().is_empty()
+            || !gacx.dont_rewrite_fields.new_keys().is_empty();
+        if !any_new_dont_rewrite_keys {
             break;
         }
     }
@@ -2024,6 +2020,54 @@ fn populate_field_users(gacx: &mut GlobalAnalysisCtxt, fn_ldids: &[LocalDefId]) 
 
     for (k, v) in field_users {
         gacx.field_users.insert(k, v);
+    }
+}
+
+/// Call `take_new_keys()` on `gacx.dont_rewrite_{fns,statics,fields}` and process the results.
+/// This involves adding `FIXED` to some pointers and maybe propagating `DontRewrite` flags to
+/// other items.
+fn process_new_dont_rewrite_items(gacx: &mut GlobalAnalysisCtxt, gasn: &mut GlobalAssignment) {
+    for i in 0.. {
+        assert!(i < 20);
+        let mut found_any = false;
+
+        for did in gacx.dont_rewrite_fns.take_new_keys() {
+            found_any = true;
+            let lsig = &gacx.fn_sigs[&did];
+            make_sig_fixed(gasn, lsig);
+
+            let ldid = match did.as_local() {
+                Some(x) => x,
+                None => continue,
+            };
+
+            for &field_ldid in gacx.fn_fields_used.get(ldid) {
+                gacx.dont_rewrite_fields.add(
+                    field_ldid.to_def_id(),
+                    DontRewriteFieldReason::NON_REWRITTEN_USER,
+                );
+            }
+
+            // TODO: callers/callees
+        }
+
+        for did in gacx.dont_rewrite_statics.take_new_keys() {
+            found_any = true;
+            let lty = gacx.static_tys[&did];
+            make_ty_fixed(gasn, lty);
+        }
+
+        for did in gacx.dont_rewrite_fields.take_new_keys() {
+            found_any = true;
+            let lty = gacx.field_ltys[&did];
+            make_ty_fixed(gasn, lty);
+        }
+
+        // The previous steps can cause more items to become non-rewritten.  Keep going until
+        // there's no more work to do.
+        if !found_any {
+            break;
+        }
     }
 }
 
