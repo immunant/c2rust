@@ -1,0 +1,17 @@
+[workspace]
+members = [
+]
+[package]
+name = "object_graph"
+authors = ["C2Rust"]
+version = "0.0.0"
+publish = false
+edition = "2021"
+autobins = false
+
+[[bin]]
+name = "object_graph"
+path = "object_graph.rs"
+
+[dependencies]
+libc= "0.2"
