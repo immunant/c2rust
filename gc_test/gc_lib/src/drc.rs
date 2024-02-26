@@ -1,8 +1,7 @@
 use std::cell::Cell;
-use std::marker::PhantomData;
-use std::mem::MaybeUninit;
 use std::ptr::NonNull;
 use std::ops::Deref;
+use crate::cell2::SimpleClone;
 
 
 pub struct Drc<T> {
@@ -11,18 +10,20 @@ pub struct Drc<T> {
 
 struct DrcInner<T> {
     ref_count: Cell<usize>,
-    users: Cell<usize>,
     alive: Cell<bool>,
-    data: MaybeUninit<T>,
+    data: T,
+}
+
+pub trait BreakCycles {
+    fn break_cycles(&self);
 }
 
 impl<T> DrcInner<T> {
     fn alloc(data: T) -> *mut DrcInner<T> {
         let inner = DrcInner {
             ref_count: Cell::new(1),
-            users: Cell::new(0),
             alive: Cell::new(true),
-            data: MaybeUninit::new(data),
+            data,
         };
         Box::into_raw(Box::new(inner))
     }
@@ -38,51 +39,20 @@ impl<T> DrcInner<T> {
         if rc > 1 {
             ref_count.set(rc - 1);
         } else {
-            assert_eq!((*ptr).users.get(), 0);
-            if (*ptr).alive.get() {
-                (*ptr).data.assume_init_drop();
-            }
             drop(Box::from_raw(ptr));
         }
     }
 
     unsafe fn get<'a>(ptr: *mut DrcInner<T>) -> &'a T {
-        (*ptr).data.assume_init_ref()
+        assert!((*ptr).alive.get());
+        &(*ptr).data
     }
 
-    unsafe fn inc_users(ptr: *mut DrcInner<T>) {
-        assert!((*ptr).alive.get(), "data has already been dropped");
-        let users = &(*ptr).users;
-        users.set(users.get().checked_add(1).unwrap());
-    }
-
-    unsafe fn dec_users(ptr: *mut DrcInner<T>) {
-        let users = &(*ptr).users;
-        let u = users.get();
-        users.set(u - 1);
-        if u == 1 && !(*ptr).alive.get() {
-            (*ptr).data.assume_init_drop();
-        }
-    }
-
-    unsafe fn drop_data(ptr: *mut DrcInner<T>) {
-        assert!((*ptr).alive.get(), "data has already been dropped");
+    unsafe fn drop_data(ptr: *mut DrcInner<T>)
+    where T: BreakCycles {
         (*ptr).alive.set(false);
-        if (*ptr).users.get() == 0 {
-            (*ptr).data.assume_init_drop();
-        }
+        (*ptr).data.break_cycles();
     }
-
-    /*
-    fn data_offset() -> usize {
-        let header_layout = Layout::new::<DrcHeader>();
-        let data_layout = Layout::new::<T>();
-        let (layout, data_offset) = header_layout.extend(data_layout).unwrap();
-        let layout = layout.pad_to_align();
-        assert_eq!(layout, Layout::new::<DrcInner<T>>());
-        data_offset
-    }
-    */
 }
 
 impl<T> Drc<T> {
@@ -94,13 +64,8 @@ impl<T> Drc<T> {
         }
     }
 
-    pub fn get<'a>(&'a self) -> Ref<'a, T> {
-        unsafe {
-            Ref::new(self.ptr)
-        }
-    }
-
-    pub fn drop_data(&self) {
+    pub fn drop_data(&self)
+    where T: BreakCycles {
         unsafe {
             DrcInner::drop_data(self.ptr.as_ptr());
         }
@@ -115,7 +80,7 @@ impl<T> Clone for Drc<T> {
         }
     }
 }
-unsafe impl<T> crate::cell2::SimpleClone for Drc<T> {}
+unsafe impl<T> SimpleClone for Drc<T> {}
 
 impl<T> Drop for Drc<T> {
     fn drop(&mut self) {
@@ -125,28 +90,7 @@ impl<T> Drop for Drc<T> {
     }
 }
 
-
-pub struct Ref<'a, T> {
-    ptr: NonNull<DrcInner<T>>,
-    _marker: PhantomData<&'a T>,
-}
-
-impl<'a, T> Ref<'a, T> {
-    unsafe fn new(ptr: NonNull<DrcInner<T>>) -> Ref<'a, T> {
-        DrcInner::inc_users(ptr.as_ptr());
-        Ref { ptr, _marker: PhantomData }
-    }
-}
-
-impl<'a, T> Drop for Ref<'a, T> {
-    fn drop(&mut self) {
-        unsafe {
-            DrcInner::dec_users(self.ptr.as_ptr());
-        }
-    }
-}
-
-impl<T> Deref for Ref<'_, T> {
+impl<T> Deref for Drc<T> {
     type Target = T;
     fn deref(&self) -> &T {
         unsafe {
@@ -171,11 +115,8 @@ impl<T> NullableDrc<T> {
         self.0.is_none()
     }
 
-    pub fn get<'a>(&'a self) -> Ref<'a, T> {
-        self.0.as_ref().unwrap().get()
-    }
-
-    pub fn drop_data(&self) {
+    pub fn drop_data(&self)
+    where T: BreakCycles {
         if let Some(ref x) = self.0 {
             x.drop_data();
         }
@@ -187,7 +128,14 @@ impl<T> Clone for NullableDrc<T> {
         NullableDrc(self.0.clone())
     }
 }
-unsafe impl<T> crate::cell2::SimpleClone for NullableDrc<T> {}
+unsafe impl<T> SimpleClone for NullableDrc<T> {}
+
+impl<T> Deref for NullableDrc<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        self.0.as_ref().unwrap()
+    }
+}
 
 impl<T> From<Drc<T>> for NullableDrc<T> {
     fn from(x: Drc<T>) -> NullableDrc<T> {

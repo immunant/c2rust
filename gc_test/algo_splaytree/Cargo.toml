@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 libc= "0.2"
+gc_lib = { path = "../gc_lib" }

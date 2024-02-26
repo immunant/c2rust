@@ -2,11 +2,8 @@ use ::libc;
 
 use std::cell::Cell;
 
-pub mod drc;
-use self::drc::{Drc, NullableDrc};
-
-pub mod cell2;
-use self::cell2::Cell2;
+use gc_lib::cell2::Cell2;
+use gc_lib::drc::{Drc, NullableDrc};
 
 extern "C" {
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
@@ -46,55 +43,55 @@ pub extern "C" fn splaytree_splay(
     if t.is_null() {
         return t;
     }
-    N.get().right.set(NullableDrc::null());
-    N.get().left.set(N.get().right.get());
+    N.right.set(NullableDrc::null());
+    N.left.set(N.right.get());
     r = N.clone().into();
     l = r.clone();
     loop {
-        comp = i - (*t.get()).key.get();
+        comp = i - (*t).key.get();
         if comp < 0 as libc::c_int {
-            if ((*t.get()).left.get()).is_null() {
+            if (*t).left.get().is_null() {
                 break;
             }
-            if i - (*(*t.get()).left.get().get()).key.get() < 0 as libc::c_int {
-                y = (*t.get()).left.get();
-                (*t.get()).left.set((*y.get()).right.get());
-                (*y.get()).right.set(t.clone());
+            if i - (*(*t).left.get()).key.get() < 0 as libc::c_int {
+                y = (*t).left.get();
+                (*t).left.set((*y).right.get());
+                (*y).right.set(t.clone());
                 t = y.clone();
-                if ((*t.get()).left.get()).is_null() {
+                if ((*t).left.get()).is_null() {
                     break;
                 }
             }
-            (*r.get()).left.set(t.clone());
+            (*r).left.set(t.clone());
             r = t.clone();
-            let tmp = (*t.get()).left.get();
+            let tmp = (*t).left.get();
             t = tmp;
         } else {
             if !(comp > 0 as libc::c_int) {
                 break;
             }
-            if ((*t.get()).right.get()).is_null() {
+            if ((*t).right.get()).is_null() {
                 break;
             }
-            if i - (*(*t.get()).right.get().get()).key.get() > 0 as libc::c_int {
-                y = (*t.get()).right.get();
-                (*t.get()).right.set((*y.get()).left.get());
-                (*y.get()).left.set(t.clone());
+            if i - (*(*t).right.get()).key.get() > 0 as libc::c_int {
+                y = (*t).right.get();
+                (*t).right.set((*y).left.get());
+                (*y).left.set(t.clone());
                 t = y.clone();
-                if ((*t.get()).right.get()).is_null() {
+                if ((*t).right.get()).is_null() {
                     break;
                 }
             }
-            (*l.get()).right.set(t.clone());
+            (*l).right.set(t.clone());
             l = t.clone();
-            let tmp = (*t.get()).right.get();
+            let tmp = (*t).right.get();
             t = tmp;
         }
     }
-    (*l.get()).right.set((*t.get()).left.get());
-    (*r.get()).left.set((*t.get()).right.get());
-    (*t.get()).left.set(N.get().right.get());
-    (*t.get()).right.set(N.get().left.get());
+    (*l).right.set((*t).left.get());
+    (*r).left.set((*t).right.get());
+    (*t).left.set(N.right.get());
+    (*t).right.set(N.left.get());
     return t;
 }
 #[no_mangle]
@@ -106,7 +103,7 @@ pub extern "C" fn splaytree_insert(
     let mut new: NullableDrc<splay_tree> = NullableDrc::null();
     if !t.is_null() {
         t = splaytree_splay(t, i);
-        if i - (*t.get()).key.get() == 0 as libc::c_int {
+        if i - (*t).key.get() == 0 as libc::c_int {
             return t;
         }
     }
@@ -134,19 +131,19 @@ pub extern "C" fn splaytree_insert(
     }
     */
     if t.is_null() {
-        (*new.get()).right.set(NullableDrc::null());
-        (*new.get()).left.set((*new.get()).right.get());
-    } else if i - (*t.get()).key.get() < 0 as libc::c_int {
-        (*new.get()).left.set((*t.get()).left.get());
-        (*new.get()).right.set(t.clone());
-        (*t.get()).left.set(NullableDrc::null());
+        (*new).right.set(NullableDrc::null());
+        (*new).left.set((*new).right.get());
+    } else if i - (*t).key.get() < 0 as libc::c_int {
+        (*new).left.set((*t).left.get());
+        (*new).right.set(t.clone());
+        (*t).left.set(NullableDrc::null());
     } else {
-        (*new.get()).right.set((*t.get()).right.get());
-        (*new.get()).left.set(t.clone());
-        (*t.get()).right.set(NullableDrc::null());
+        (*new).right.set((*t).right.get());
+        (*new).left.set(t.clone());
+        (*t).right.set(NullableDrc::null());
     }
-    (*new.get()).key.set(i);
-    (*new.get()).data.set(data);
+    (*new).key.set(i);
+    (*new).data.set(data);
     return new;
 }
 /*

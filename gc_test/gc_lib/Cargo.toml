@@ -1,0 +1,10 @@
+[workspace]
+members = [
+]
+[package]
+name = "gc_lib"
+authors = ["C2Rust"]
+version = "0.0.0"
+publish = false
+edition = "2021"
+autobins = false

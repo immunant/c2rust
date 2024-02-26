@@ -1,5 +1,5 @@
 use algo_splaytree::{splaytree_insert, splaytree_splay};
-use algo_splaytree::drc::NullableDrc;
+use gc_lib::drc::NullableDrc;
 
 fn main() {
     let mut t = splaytree_insert(NullableDrc::null(), 1, 10);
@@ -8,7 +8,7 @@ fn main() {
 
     for i in 0 ..= 5 {
         t = splaytree_splay(t, i);
-        eprintln!("{}: {} -> {}", i, t.get().key.get(), t.get().data.get());
+        eprintln!("{}: {} -> {}", i, t.key.get(), t.data.get());
     }
 }
 
