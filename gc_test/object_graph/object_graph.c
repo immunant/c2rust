@@ -25,7 +25,9 @@ TAILQ_HEAD(links, link);
 
 struct session {
     int id;
+#ifdef GLOBAL_LISTS
     TAILQ_ENTRY(session) global_entry;
+#endif
     struct links links;
 };
 #ifdef GLOBAL_LISTS
@@ -36,7 +38,9 @@ static int next_session_id = 0;
 
 struct window {
     int id;
+#ifdef GLOBAL_LISTS
     TAILQ_ENTRY(window) global_entry;
+#endif
     struct links links;
 };
 #ifdef GLOBAL_LISTS

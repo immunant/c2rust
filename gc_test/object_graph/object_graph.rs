@@ -1,4 +1,4 @@
-use ::libc;
+#![allow(dead_code, mutable_transmutes, non_camel_case_types, non_snake_case, non_upper_case_globals, unused_assignments, unused_mut)]
 extern "C" {
     fn calloc(_: libc::c_ulong, _: libc::c_ulong) -> *mut libc::c_void;
     fn free(_: *mut libc::c_void);
@@ -8,7 +8,6 @@ extern "C" {
 #[repr(C)]
 pub struct session {
     pub id: libc::c_int,
-    pub global_entry: C2RustUnnamed_2,
     pub links: links,
 }
 #[derive(Copy, Clone)]
@@ -41,20 +40,7 @@ pub struct C2RustUnnamed_0 {
 #[repr(C)]
 pub struct window {
     pub id: libc::c_int,
-    pub global_entry: C2RustUnnamed_1,
     pub links: links,
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct C2RustUnnamed_1 {
-    pub tqe_next: *mut window,
-    pub tqe_prev: *mut *mut window,
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct C2RustUnnamed_2 {
-    pub tqe_next: *mut session,
-    pub tqe_prev: *mut *mut session,
 }
 static mut next_session_id: libc::c_int = 0 as libc::c_int;
 static mut next_window_id: libc::c_int = 0 as libc::c_int;
