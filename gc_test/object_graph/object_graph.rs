@@ -1,4 +1,7 @@
 #![allow(dead_code, mutable_transmutes, non_camel_case_types, non_snake_case, non_upper_case_globals, unused_assignments, unused_mut)]
+
+use std::sync::atomic::{AtomicI32, Ordering};
+
 extern "C" {
     fn calloc(_: libc::c_ulong, _: libc::c_ulong) -> *mut libc::c_void;
     fn free(_: *mut libc::c_void);
@@ -36,16 +39,16 @@ pub struct window {
     pub id: libc::c_int,
     pub links: links,
 }
-static mut next_session_id: libc::c_int = 0 as libc::c_int;
-static mut next_window_id: libc::c_int = 0 as libc::c_int;
+static next_session_id: AtomicI32 = AtomicI32::new(0 as libc::c_int);
+static next_window_id: AtomicI32 = AtomicI32::new(0 as libc::c_int);
 #[no_mangle]
 pub unsafe extern "C" fn session_new() -> *mut session {
     let mut sess: *mut session = calloc(
         1 as libc::c_int as libc::c_ulong,
         ::core::mem::size_of::<session>() as libc::c_ulong,
     ) as *mut session;
-    next_session_id += 1;
-    (*sess).id = next_session_id;
+    next_session_id.fetch_add(1, Ordering::Relaxed);
+    (*sess).id = next_session_id.load(Ordering::Relaxed);
     printf(b"new session %d\n\0" as *const u8 as *const libc::c_char, (*sess).id);
     (*sess).links.tqh_first = 0 as *mut link;
     (*sess).links.tqh_last = &mut (*sess).links.tqh_first;
@@ -91,8 +94,8 @@ pub unsafe extern "C" fn window_new(mut sess: *mut session) -> *mut window {
         1 as libc::c_int as libc::c_ulong,
         ::core::mem::size_of::<window>() as libc::c_ulong,
     ) as *mut window;
-    next_window_id += 1;
-    (*win).id = next_window_id;
+    next_window_id.fetch_add(1, Ordering::Relaxed);
+    (*win).id = next_window_id.load(Ordering::Relaxed);
     printf(b"new window %d\n\0" as *const u8 as *const libc::c_char, (*win).id);
     (*win).links.tqh_first = 0 as *mut link;
     (*win).links.tqh_last = &mut (*win).links.tqh_first;
