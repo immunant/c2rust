@@ -21,18 +21,12 @@ pub struct links {
 pub struct link {
     pub session: *mut session,
     pub window: *mut window,
-    pub session_entry: C2RustUnnamed_0,
-    pub window_entry: C2RustUnnamed,
+    pub session_entry: tailq_entry_link,
+    pub window_entry: tailq_entry_link,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub struct C2RustUnnamed {
-    pub tqe_next: *mut link,
-    pub tqe_prev: *mut *mut link,
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct C2RustUnnamed_0 {
+pub struct tailq_entry_link {
     pub tqe_next: *mut link,
     pub tqe_prev: *mut *mut link,
 }
