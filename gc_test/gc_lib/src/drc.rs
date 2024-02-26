@@ -64,6 +64,10 @@ impl<T> Drc<T> {
         }
     }
 
+    pub fn ptr_eq(&self, other: &Drc<T>) -> bool {
+        self.ptr.as_ptr() == other.ptr.as_ptr()
+    }
+
     pub fn drop_data(&self)
     where T: BreakCycles {
         unsafe {
@@ -115,6 +119,14 @@ impl<T> NullableDrc<T> {
         self.0.is_none()
     }
 
+    pub fn ptr_eq(&self, other: &NullableDrc<T>) -> bool {
+        match (&self.0, &other.0) {
+            (&Some(ref a), &Some(ref b)) => a.ptr_eq(b),
+            (&None, &None) => true,
+            _ => false,
+        }
+    }
+
     pub fn drop_data(&self)
     where T: BreakCycles {
         if let Some(ref x) = self.0 {
@@ -130,6 +142,12 @@ impl<T> Clone for NullableDrc<T> {
 }
 unsafe impl<T> SimpleClone for NullableDrc<T> {}
 
+impl<T> Default for NullableDrc<T> {
+    fn default() -> NullableDrc<T> {
+        NullableDrc::null()
+    }
+}
+
 impl<T> Deref for NullableDrc<T> {
     type Target = T;
     fn deref(&self) -> &T {
@@ -140,5 +158,11 @@ impl<T> Deref for NullableDrc<T> {
 impl<T> From<Drc<T>> for NullableDrc<T> {
     fn from(x: Drc<T>) -> NullableDrc<T> {
         NullableDrc(Some(x))
+    }
+}
+
+impl<T> From<NullableDrc<T>> for Drc<T> {
+    fn from(x: NullableDrc<T>) -> Drc<T> {
+        x.0.unwrap()
     }
 }

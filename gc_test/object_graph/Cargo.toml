@@ -14,4 +14,5 @@ name = "object_graph"
 path = "object_graph.rs"
 
 [dependencies]
-libc= "0.2"
+libc = "0.2"
+gc_lib = { path = "../gc_lib" }

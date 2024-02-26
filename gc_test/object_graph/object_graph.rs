@@ -1,7 +1,10 @@
 #![allow(dead_code, mutable_transmutes, non_camel_case_types, non_snake_case, non_upper_case_globals, unused_assignments, unused_mut)]
 
 use std::cell::Cell;
+use std::ptr;
 use std::sync::atomic::{AtomicI32, Ordering};
+use gc_lib::cell2::Cell2;
+use gc_lib::drc::{Drc, NullableDrc, BreakCycles};
 
 extern "C" {
     fn calloc(_: libc::c_ulong, _: libc::c_ulong) -> *mut libc::c_void;
@@ -18,13 +21,13 @@ pub struct session {
 #[repr(C)]
 pub struct links {
     pub tqh_first: Cell<*mut link>,
-    pub tqh_last: Cell<*mut Cell<*mut link>>,
+    pub tqh_last: Cell<*const Cell<*mut link>>,
 }
 #[derive(Clone)]
 #[repr(C)]
 pub struct link {
-    pub session: Cell<*mut session>,
-    pub window: Cell<*mut window>,
+    pub session: Cell2<NullableDrc<session>>,
+    pub window: Cell2<NullableDrc<window>>,
     pub session_entry: tailq_entry_link,
     pub window_entry: tailq_entry_link,
 }
@@ -32,7 +35,7 @@ pub struct link {
 #[repr(C)]
 pub struct tailq_entry_link {
     pub tqe_next: Cell<*mut link>,
-    pub tqe_prev: Cell<*mut Cell<*mut link>>,
+    pub tqe_prev: Cell<*const Cell<*mut link>>,
 }
 #[derive(Clone)]
 #[repr(C)]
@@ -42,22 +45,59 @@ pub struct window {
 }
 static next_session_id: AtomicI32 = AtomicI32::new(0 as libc::c_int);
 static next_window_id: AtomicI32 = AtomicI32::new(0 as libc::c_int);
+
+impl BreakCycles for session {
+    fn break_cycles(&self) {
+        self.links.break_cycles();
+    }
+}
+
+impl BreakCycles for links {
+    fn break_cycles(&self) {
+        // TODO
+    }
+}
+
+impl BreakCycles for link {
+    fn break_cycles(&self) {
+        self.session.set(NullableDrc::null());
+        self.window.set(NullableDrc::null());
+        self.session_entry.break_cycles();
+        self.window_entry.break_cycles();
+    }
+}
+
+impl BreakCycles for tailq_entry_link {
+    fn break_cycles(&self) {
+        // TODO
+    }
+}
+
+impl BreakCycles for window {
+    fn break_cycles(&self) {
+        self.links.break_cycles();
+    }
+}
+
 #[no_mangle]
-pub unsafe extern "C" fn session_new() -> *mut session {
-    let mut sess: *mut session = calloc(
-        1 as libc::c_int as libc::c_ulong,
-        ::core::mem::size_of::<session>() as libc::c_ulong,
-    ) as *mut session;
+pub unsafe extern "C" fn session_new() -> Drc<session> {
+    let sess: Drc<session> = Drc::new(session {
+        id: Cell::new(0),
+        links: links {
+            tqh_first: Cell::new(ptr::null_mut()),
+            tqh_last: Cell::new(ptr::null_mut()),
+        },
+    });
     next_session_id.fetch_add(1, Ordering::Relaxed);
     (*sess).id.set(next_session_id.load(Ordering::Relaxed));
     printf(b"new session %d\n\0" as *const u8 as *const libc::c_char, (*sess).id.get());
     (*sess).links.tqh_first.set(0 as *mut link);
-    (*sess).links.tqh_last.set(&mut (*sess).links.tqh_first);
-    window_new(sess);
+    (*sess).links.tqh_last.set(&(*sess).links.tqh_first);
+    window_new(sess.clone());
     return sess;
 }
 #[no_mangle]
-pub unsafe extern "C" fn session_delete(mut sess: *mut session) {
+pub unsafe extern "C" fn session_delete(mut sess: Drc<session>) {
     printf(b"delete session %d\n\0" as *const u8 as *const libc::c_char, (*sess).id.get());
     let mut l: *mut link = (*sess).links.tqh_first.get();
     while !l.is_null() {
@@ -66,10 +106,10 @@ pub unsafe extern "C" fn session_delete(mut sess: *mut session) {
         l = next;
     }
     printf(b"deleted session %d\n\0" as *const u8 as *const libc::c_char, (*sess).id.get());
-    free(sess as *mut libc::c_void);
+    sess.drop_data();
 }
 #[no_mangle]
-pub unsafe extern "C" fn session_render(mut sess: *mut session) {
+pub unsafe extern "C" fn session_render(mut sess: Drc<session>) {
     printf(b"session %d windows: \0" as *const u8 as *const libc::c_char, (*sess).id.get());
     let mut l: *mut link = 0 as *mut link;
     let mut first: libc::c_int = 1 as libc::c_int;
@@ -90,21 +130,24 @@ pub unsafe extern "C" fn session_render(mut sess: *mut session) {
     };
 }
 #[no_mangle]
-pub unsafe extern "C" fn window_new(mut sess: *mut session) -> *mut window {
-    let mut win: *mut window = calloc(
-        1 as libc::c_int as libc::c_ulong,
-        ::core::mem::size_of::<window>() as libc::c_ulong,
-    ) as *mut window;
+pub unsafe extern "C" fn window_new(mut sess: Drc<session>) -> Drc<window> {
+    let mut win: Drc<window> = Drc::new(window {
+        id: Cell::new(0),
+        links: links {
+            tqh_first: Cell::new(ptr::null_mut()),
+            tqh_last: Cell::new(ptr::null_mut()),
+        },
+    });
     next_window_id.fetch_add(1, Ordering::Relaxed);
     (*win).id.set(next_window_id.load(Ordering::Relaxed));
     printf(b"new window %d\n\0" as *const u8 as *const libc::c_char, (*win).id.get());
     (*win).links.tqh_first.set(0 as *mut link);
-    (*win).links.tqh_last.set(&mut (*win).links.tqh_first);
-    window_link(win, sess);
+    (*win).links.tqh_last.set(&(*win).links.tqh_first);
+    window_link(win.clone(), sess);
     return win;
 }
 #[no_mangle]
-pub unsafe extern "C" fn window_delete(mut win: *mut window) {
+pub unsafe extern "C" fn window_delete(mut win: Drc<window>) {
     printf(b"delete window %d\n\0" as *const u8 as *const libc::c_char, (*win).id.get());
     let mut l: *mut link = (*win).links.tqh_first.get();
     while !l.is_null() {
@@ -113,10 +156,10 @@ pub unsafe extern "C" fn window_delete(mut win: *mut window) {
         l = next;
     }
     printf(b"deleted window %d\n\0" as *const u8 as *const libc::c_char, (*win).id.get());
-    free(win as *mut libc::c_void);
+    win.drop_data();
 }
 #[no_mangle]
-pub unsafe extern "C" fn window_link(mut win: *mut window, mut sess: *mut session) {
+pub unsafe extern "C" fn window_link(mut win: Drc<window>, mut sess: Drc<session>) {
     printf(
         b"link session %d, window %d\n\0" as *const u8 as *const libc::c_char,
         (*sess).id.get(),
@@ -126,8 +169,8 @@ pub unsafe extern "C" fn window_link(mut win: *mut window, mut sess: *mut sessio
         1 as libc::c_int as libc::c_ulong,
         ::core::mem::size_of::<link>() as libc::c_ulong,
     ) as *mut link;
-    (*link).session.set(sess);
-    (*link).window.set(win);
+    (*link).session.set(sess.clone().into());
+    (*link).window.set(win.clone().into());
     (*link).session_entry.tqe_next.set(0 as *mut link);
     (*link).session_entry.tqe_prev.set((*sess).links.tqh_last.get());
     (*(*sess).links.tqh_last.get()).set(link);
@@ -138,11 +181,11 @@ pub unsafe extern "C" fn window_link(mut win: *mut window, mut sess: *mut sessio
     (*win).links.tqh_last.set(&mut (*link).window_entry.tqe_next);
 }
 #[no_mangle]
-pub unsafe extern "C" fn window_unlink(mut win: *mut window, mut sess: *mut session) {
+pub unsafe extern "C" fn window_unlink(mut win: Drc<window>, mut sess: Drc<session>) {
     let mut l: *mut link = 0 as *mut link;
     l = (*win).links.tqh_first.get();
     while !l.is_null() {
-        if (*l).session.get() == sess {
+        if Drc::ptr_eq(&(*l).session.get().into(), &sess) {
             break;
         }
         l = (*l).window_entry.tqe_next.get();
@@ -168,7 +211,7 @@ pub unsafe extern "C" fn link_delete(mut l: *mut link, mut cleanup_flags: libc::
         }
         (*(*l).session_entry.tqe_prev.get()).set((*l).session_entry.tqe_next.get());
         if ((*(*l).session.get()).links.tqh_first.get()).is_null() {
-            session_delete((*l).session.get());
+            session_delete((*l).session.get().into());
         }
     }
     if cleanup_flags & 2 as libc::c_int != 0 {
@@ -181,55 +224,56 @@ pub unsafe extern "C" fn link_delete(mut l: *mut link, mut cleanup_flags: libc::
         }
         (*(*l).window_entry.tqe_prev.get()).set((*l).window_entry.tqe_next.get());
         if ((*(*l).window.get()).links.tqh_first.get()).is_null() {
-            window_delete((*l).window.get());
+            window_delete((*l).window.get().into());
         }
     }
+    (*l).break_cycles();
     free(l as *mut libc::c_void);
 }
 unsafe fn main_0() -> libc::c_int {
-    let mut sess1: *mut session = session_new();
-    let mut sess2: *mut session = session_new();
+    let mut sess1: Drc<session> = session_new();
+    let mut sess2: Drc<session> = session_new();
     printf(
         b"\ndelete a window explicitly, which removes it from its sessions\n\0"
             as *const u8 as *const libc::c_char,
     );
-    let mut win3: *mut window = window_new(sess1);
-    window_link(win3, sess2);
-    session_render(sess1);
-    session_render(sess2);
+    let mut win3: Drc<window> = window_new(sess1.clone());
+    window_link(win3.clone(), sess2.clone());
+    session_render(sess1.clone());
+    session_render(sess2.clone());
     window_delete(win3);
-    session_render(sess1);
-    session_render(sess2);
+    session_render(sess1.clone());
+    session_render(sess2.clone());
     printf(
         b"\ndelete a window implicitly by removing it from all sessions\n\0" as *const u8
             as *const libc::c_char,
     );
-    let mut win4: *mut window = window_new(sess1);
-    window_unlink(win4, sess1);
-    session_render(sess1);
-    session_render(sess2);
+    let mut win4: Drc<window> = window_new(sess1.clone());
+    window_unlink(win4, sess1.clone());
+    session_render(sess1.clone());
+    session_render(sess2.clone());
     printf(
         b"\ndelete a session implicitly by removing all of its windows\n\0" as *const u8
             as *const libc::c_char,
     );
-    let mut sess3: *mut session = session_new();
-    let mut win5: *mut window = (*(*sess3).links.tqh_first.get()).window.get();
+    let mut sess3: Drc<session> = session_new();
+    let mut win5: Drc<window> = (*(*sess3).links.tqh_first.get()).window.get().into();
     window_unlink(win5, sess3);
     printf(
         b"\ndelete a session implicitly by deleting all of its windows\n\0" as *const u8
             as *const libc::c_char,
     );
-    let mut sess4: *mut session = session_new();
-    let mut win6: *mut window = (*(*sess4).links.tqh_first.get()).window.get();
+    let mut sess4: Drc<session> = session_new();
+    let mut win6: Drc<window> = (*(*sess4).links.tqh_first.get()).window.get().into();
     window_delete(win6);
     printf(
         b"\ndelete sessions, which removes and deletes all of their windows\n\0"
             as *const u8 as *const libc::c_char,
     );
-    let mut win7: *mut window = window_new(sess1);
-    window_link(win7, sess2);
-    session_render(sess1);
-    session_render(sess2);
+    let mut win7: Drc<window> = window_new(sess1.clone());
+    window_link(win7, sess2.clone());
+    session_render(sess1.clone());
+    session_render(sess2.clone());
     session_delete(sess2);
     session_delete(sess1);
     return 0;
