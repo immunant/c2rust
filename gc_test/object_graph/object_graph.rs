@@ -1,5 +1,6 @@
 #![allow(dead_code, mutable_transmutes, non_camel_case_types, non_snake_case, non_upper_case_globals, unused_assignments, unused_mut)]
 
+use std::any;
 use std::cell::Cell;
 use std::ptr;
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -20,8 +21,8 @@ pub struct session {
 #[derive(Clone)]
 #[repr(C)]
 pub struct links {
-    pub tqh_first: Cell<*mut link>,
-    pub tqh_last: Cell<*const Cell<*mut link>>,
+    pub tqh_first: Cell2<NullableDrc<link>>,
+    pub tqh_last: Cell<*const Cell2<NullableDrc<link>>>,
 }
 #[derive(Clone)]
 #[repr(C)]
@@ -34,8 +35,8 @@ pub struct link {
 #[derive(Clone)]
 #[repr(C)]
 pub struct tailq_entry_link {
-    pub tqe_next: Cell<*mut link>,
-    pub tqe_prev: Cell<*const Cell<*mut link>>,
+    pub tqe_next: Cell2<NullableDrc<link>>,
+    pub tqe_prev: Cell<*const Cell2<NullableDrc<link>>>,
 }
 #[derive(Clone)]
 #[repr(C)]
@@ -54,7 +55,7 @@ impl BreakCycles for session {
 
 impl BreakCycles for links {
     fn break_cycles(&self) {
-        // TODO
+        self.tqh_first.set(NullableDrc::null());
     }
 }
 
@@ -69,7 +70,7 @@ impl BreakCycles for link {
 
 impl BreakCycles for tailq_entry_link {
     fn break_cycles(&self) {
-        // TODO
+        self.tqe_next.set(NullableDrc::null());
     }
 }
 
@@ -84,14 +85,14 @@ pub unsafe extern "C" fn session_new() -> Drc<session> {
     let sess: Drc<session> = Drc::new(session {
         id: Cell::new(0),
         links: links {
-            tqh_first: Cell::new(ptr::null_mut()),
+            tqh_first: Cell2::new(NullableDrc::null()),
             tqh_last: Cell::new(ptr::null_mut()),
         },
     });
     next_session_id.fetch_add(1, Ordering::Relaxed);
     (*sess).id.set(next_session_id.load(Ordering::Relaxed));
     printf(b"new session %d\n\0" as *const u8 as *const libc::c_char, (*sess).id.get());
-    (*sess).links.tqh_first.set(0 as *mut link);
+    (*sess).links.tqh_first.set(NullableDrc::null());
     (*sess).links.tqh_last.set(&(*sess).links.tqh_first);
     window_new(sess.clone());
     return sess;
@@ -99,9 +100,9 @@ pub unsafe extern "C" fn session_new() -> Drc<session> {
 #[no_mangle]
 pub unsafe extern "C" fn session_delete(mut sess: Drc<session>) {
     printf(b"delete session %d\n\0" as *const u8 as *const libc::c_char, (*sess).id.get());
-    let mut l: *mut link = (*sess).links.tqh_first.get();
+    let mut l: NullableDrc<link> = (*sess).links.tqh_first.get();
     while !l.is_null() {
-        let mut next: *mut link = (*l).session_entry.tqe_next.get();
+        let mut next: NullableDrc<link> = (*l).session_entry.tqe_next.get();
         link_delete(l, 2 as libc::c_int);
         l = next;
     }
@@ -111,7 +112,7 @@ pub unsafe extern "C" fn session_delete(mut sess: Drc<session>) {
 #[no_mangle]
 pub unsafe extern "C" fn session_render(mut sess: Drc<session>) {
     printf(b"session %d windows: \0" as *const u8 as *const libc::c_char, (*sess).id.get());
-    let mut l: *mut link = 0 as *mut link;
+    let mut l: NullableDrc<link> = NullableDrc::null();
     let mut first: libc::c_int = 1 as libc::c_int;
     l = (*sess).links.tqh_first.get();
     while !l.is_null() {
@@ -134,14 +135,14 @@ pub unsafe extern "C" fn window_new(mut sess: Drc<session>) -> Drc<window> {
     let mut win: Drc<window> = Drc::new(window {
         id: Cell::new(0),
         links: links {
-            tqh_first: Cell::new(ptr::null_mut()),
+            tqh_first: Cell2::new(NullableDrc::null()),
             tqh_last: Cell::new(ptr::null_mut()),
         },
     });
     next_window_id.fetch_add(1, Ordering::Relaxed);
     (*win).id.set(next_window_id.load(Ordering::Relaxed));
     printf(b"new window %d\n\0" as *const u8 as *const libc::c_char, (*win).id.get());
-    (*win).links.tqh_first.set(0 as *mut link);
+    (*win).links.tqh_first.set(NullableDrc::null());
     (*win).links.tqh_last.set(&(*win).links.tqh_first);
     window_link(win.clone(), sess);
     return win;
@@ -149,9 +150,9 @@ pub unsafe extern "C" fn window_new(mut sess: Drc<session>) -> Drc<window> {
 #[no_mangle]
 pub unsafe extern "C" fn window_delete(mut win: Drc<window>) {
     printf(b"delete window %d\n\0" as *const u8 as *const libc::c_char, (*win).id.get());
-    let mut l: *mut link = (*win).links.tqh_first.get();
+    let mut l: NullableDrc<link> = (*win).links.tqh_first.get();
     while !l.is_null() {
-        let mut next: *mut link = (*l).window_entry.tqe_next.get();
+        let mut next: NullableDrc<link> = (*l).window_entry.tqe_next.get();
         link_delete(l, 1 as libc::c_int);
         l = next;
     }
@@ -165,24 +166,32 @@ pub unsafe extern "C" fn window_link(mut win: Drc<window>, mut sess: Drc<session
         (*sess).id.get(),
         (*win).id.get(),
     );
-    let mut link: *mut link = calloc(
-        1 as libc::c_int as libc::c_ulong,
-        ::core::mem::size_of::<link>() as libc::c_ulong,
-    ) as *mut link;
+    let mut link: NullableDrc<link> = NullableDrc::new(link {
+        session: Cell2::new(NullableDrc::null()),
+        window: Cell2::new(NullableDrc::null()),
+        session_entry: tailq_entry_link {
+            tqe_next: Cell2::new(NullableDrc::null()),
+            tqe_prev: Cell::new(ptr::null_mut()),
+        },
+        window_entry: tailq_entry_link {
+            tqe_next: Cell2::new(NullableDrc::null()),
+            tqe_prev: Cell::new(ptr::null_mut()),
+        },
+    });
     (*link).session.set(sess.clone().into());
     (*link).window.set(win.clone().into());
-    (*link).session_entry.tqe_next.set(0 as *mut link);
+    (*link).session_entry.tqe_next.set(NullableDrc::null());
     (*link).session_entry.tqe_prev.set((*sess).links.tqh_last.get());
-    (*(*sess).links.tqh_last.get()).set(link);
-    (*sess).links.tqh_last.set(&mut (*link).session_entry.tqe_next);
-    (*link).window_entry.tqe_next.set(0 as *mut link);
+    (*(*sess).links.tqh_last.get()).set(link.clone());
+    (*sess).links.tqh_last.set(&(*link).session_entry.tqe_next);
+    (*link).window_entry.tqe_next.set(NullableDrc::null());
     (*link).window_entry.tqe_prev.set((*win).links.tqh_last.get());
-    (*(*win).links.tqh_last.get()).set(link);
-    (*win).links.tqh_last.set(&mut (*link).window_entry.tqe_next);
+    (*(*win).links.tqh_last.get()).set(link.clone());
+    (*win).links.tqh_last.set(&(*link).window_entry.tqe_next);
 }
 #[no_mangle]
 pub unsafe extern "C" fn window_unlink(mut win: Drc<window>, mut sess: Drc<session>) {
-    let mut l: *mut link = 0 as *mut link;
+    let mut l: NullableDrc<link> = NullableDrc::null();
     l = (*win).links.tqh_first.get();
     while !l.is_null() {
         if Drc::ptr_eq(&(*l).session.get().into(), &sess) {
@@ -195,7 +204,7 @@ pub unsafe extern "C" fn window_unlink(mut win: Drc<window>, mut sess: Drc<sessi
     }
 }
 #[no_mangle]
-pub unsafe extern "C" fn link_delete(mut l: *mut link, mut cleanup_flags: libc::c_int) {
+pub unsafe extern "C" fn link_delete(mut l: NullableDrc<link>, mut cleanup_flags: libc::c_int) {
     printf(
         b"unlink session %d, window %d\n\0" as *const u8 as *const libc::c_char,
         (*(*l).session.get()).id.get(),
@@ -227,8 +236,7 @@ pub unsafe extern "C" fn link_delete(mut l: *mut link, mut cleanup_flags: libc::
             window_delete((*l).window.get().into());
         }
     }
-    (*l).break_cycles();
-    free(l as *mut libc::c_void);
+    l.break_cycles();
 }
 unsafe fn main_0() -> libc::c_int {
     let mut sess1: Drc<session> = session_new();
