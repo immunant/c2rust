@@ -76,7 +76,7 @@ impl BreakCycles for window {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn session_new() -> Drc<session> {
+pub extern "C" fn session_new() -> Drc<session> {
     let sess: Drc<session> = Drc::new(session {
         id: Cell::new(0),
         links: links {
@@ -93,7 +93,7 @@ pub unsafe extern "C" fn session_new() -> Drc<session> {
     return sess;
 }
 #[no_mangle]
-pub unsafe extern "C" fn session_delete(mut sess: Drc<session>) {
+pub extern "C" fn session_delete(mut sess: Drc<session>) {
     println!("delete session {}", (*sess).id.get());
     let mut l: NullableDrc<link> = (*sess).links.tqh_first.get();
     while !l.is_null() {
@@ -105,7 +105,7 @@ pub unsafe extern "C" fn session_delete(mut sess: Drc<session>) {
     sess.drop_data();
 }
 #[no_mangle]
-pub unsafe extern "C" fn session_render(mut sess: Drc<session>) {
+pub extern "C" fn session_render(mut sess: Drc<session>) {
     print!("session {} windows: ", (*sess).id.get());
     let mut l: NullableDrc<link> = NullableDrc::null();
     let mut first: libc::c_int = 1 as libc::c_int;
@@ -126,7 +126,7 @@ pub unsafe extern "C" fn session_render(mut sess: Drc<session>) {
     };
 }
 #[no_mangle]
-pub unsafe extern "C" fn window_new(mut sess: Drc<session>) -> Drc<window> {
+pub extern "C" fn window_new(mut sess: Drc<session>) -> Drc<window> {
     let mut win: Drc<window> = Drc::new(window {
         id: Cell::new(0),
         links: links {
@@ -143,7 +143,7 @@ pub unsafe extern "C" fn window_new(mut sess: Drc<session>) -> Drc<window> {
     return win;
 }
 #[no_mangle]
-pub unsafe extern "C" fn window_delete(mut win: Drc<window>) {
+pub extern "C" fn window_delete(mut win: Drc<window>) {
     println!("delete window {}", (*win).id.get());
     let mut l: NullableDrc<link> = (*win).links.tqh_first.get();
     while !l.is_null() {
@@ -155,7 +155,7 @@ pub unsafe extern "C" fn window_delete(mut win: Drc<window>) {
     win.drop_data();
 }
 #[no_mangle]
-pub unsafe extern "C" fn window_link(mut win: Drc<window>, mut sess: Drc<session>) {
+pub extern "C" fn window_link(mut win: Drc<window>, mut sess: Drc<session>) {
     println!(
         "link session {}, window {}",
         (*sess).id.get(),
@@ -185,7 +185,7 @@ pub unsafe extern "C" fn window_link(mut win: Drc<window>, mut sess: Drc<session
     (*win).links.tqh_last.set(link.clone().project(|link| &(*link).window_entry.tqe_next));
 }
 #[no_mangle]
-pub unsafe extern "C" fn window_unlink(mut win: Drc<window>, mut sess: Drc<session>) {
+pub extern "C" fn window_unlink(mut win: Drc<window>, mut sess: Drc<session>) {
     let mut l: NullableDrc<link> = NullableDrc::null();
     l = (*win).links.tqh_first.get();
     while !l.is_null() {
@@ -199,7 +199,7 @@ pub unsafe extern "C" fn window_unlink(mut win: Drc<window>, mut sess: Drc<sessi
     }
 }
 #[no_mangle]
-pub unsafe extern "C" fn link_delete(mut l: NullableDrc<link>, mut cleanup_flags: libc::c_int) {
+pub extern "C" fn link_delete(mut l: NullableDrc<link>, mut cleanup_flags: libc::c_int) {
     println!(
         "unlink session {}, window {}",
         (*(*l).session.get()).id.get(),
@@ -233,7 +233,7 @@ pub unsafe extern "C" fn link_delete(mut l: NullableDrc<link>, mut cleanup_flags
     }
     l.break_cycles();
 }
-unsafe fn main_0() -> libc::c_int {
+fn main_0() -> libc::c_int {
     let mut sess1: Drc<session> = session_new();
     let mut sess2: Drc<session> = session_new();
     println!("\ndelete a window explicitly, which removes it from its sessions");
@@ -267,5 +267,5 @@ unsafe fn main_0() -> libc::c_int {
     return 0;
 }
 pub fn main() {
-    unsafe { ::std::process::exit(main_0() as i32) }
+    ::std::process::exit(main_0() as i32)
 }
