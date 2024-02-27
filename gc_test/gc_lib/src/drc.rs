@@ -1,6 +1,6 @@
 use std::any;
 use std::cell::Cell;
-use std::mem;
+use std::mem::{self, ManuallyDrop};
 use std::ptr::NonNull;
 use std::ops::Deref;
 use crate::cell2::SimpleClone;
@@ -93,6 +93,19 @@ impl<T: ?Sized> Drc<T> {
             DrcInner::drop_data(self.ptr.as_ptr());
         }
     }
+
+    pub fn project<U, F>(self, f: F) -> SubDrc<U>
+    where F: for<'a> FnOnce(&'a T) -> &'a U {
+        unsafe {
+            let this = ManuallyDrop::new(self);
+            let child = f(&this) as *const U;
+            let child = NonNull::new_unchecked(child as *mut U);
+            SubDrc {
+                parent: this.ptr.cast(),
+                child,
+            }
+        }
+    }
 }
 
 impl<T: ?Sized> Clone for Drc<T> {
@@ -118,6 +131,54 @@ impl<T: ?Sized> Deref for Drc<T> {
     fn deref(&self) -> &T {
         unsafe {
             DrcInner::get(self.ptr.as_ptr())
+        }
+    }
+}
+
+
+pub struct SubDrc<U: ?Sized> {
+    parent: NonNull<DrcInner<Erased>>,
+    child: NonNull<U>,
+}
+
+impl<U: ?Sized> SubDrc<U> {
+    pub fn project<V, F>(self, f: F) -> SubDrc<V>
+    where F: for<'a> FnOnce(&'a U) -> &'a V {
+        unsafe {
+            let this = ManuallyDrop::new(self);
+            let child = f(&this) as *const V;
+            let child = NonNull::new_unchecked(child as *mut V);
+            SubDrc {
+                parent: this.parent,
+                child,
+            }
+        }
+    }
+}
+
+impl<U: ?Sized> Clone for SubDrc<U> {
+    fn clone(&self) -> SubDrc<U> {
+        unsafe {
+            DrcInner::inc_ref(self.parent.as_ptr());
+            SubDrc { parent: self.parent, child: self.child }
+        }
+    }
+}
+unsafe impl<U: ?Sized> SimpleClone for SubDrc<U> {}
+
+impl<U: ?Sized> Drop for SubDrc<U> {
+    fn drop(&mut self) {
+        unsafe {
+            DrcInner::dec_ref(self.parent.as_ptr());
+        }
+    }
+}
+
+impl<U: ?Sized> Deref for SubDrc<U> {
+    type Target = U;
+    fn deref(&self) -> &U {
+        unsafe {
+            &*self.child.as_ptr()
         }
     }
 }
@@ -153,6 +214,12 @@ impl<T: ?Sized> NullableDrc<T> {
             x.drop_data();
         }
     }
+
+    pub fn project<U, F>(self, f: F) -> NullableSubDrc<U>
+    where F: for<'a> FnOnce(&'a T) -> &'a U {
+        let x = self.0.unwrap();
+        NullableSubDrc(Some(x.project(f)))
+    }
 }
 
 impl<T: ?Sized> Clone for NullableDrc<T> {
@@ -183,6 +250,57 @@ impl<T: ?Sized> From<Drc<T>> for NullableDrc<T> {
 
 impl<T: ?Sized> From<NullableDrc<T>> for Drc<T> {
     fn from(x: NullableDrc<T>) -> Drc<T> {
+        x.0.unwrap()
+    }
+}
+
+
+pub struct NullableSubDrc<U: ?Sized>(Option<SubDrc<U>>);
+
+impl<U: ?Sized> NullableSubDrc<U> {
+    pub fn null() -> NullableSubDrc<U> {
+        NullableSubDrc(None)
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.0.is_none()
+    }
+
+    pub fn project<V, F>(self, f: F) -> NullableSubDrc<V>
+    where F: for<'a> FnOnce(&'a U) -> &'a V {
+        let x = self.0.unwrap();
+        NullableSubDrc(Some(x.project(f)))
+    }
+}
+
+impl<U: ?Sized> Clone for NullableSubDrc<U> {
+    fn clone(&self) -> NullableSubDrc<U> {
+        NullableSubDrc(self.0.clone())
+    }
+}
+unsafe impl<U: ?Sized> SimpleClone for NullableSubDrc<U> {}
+
+impl<U: ?Sized> Default for NullableSubDrc<U> {
+    fn default() -> NullableSubDrc<U> {
+        NullableSubDrc::null()
+    }
+}
+
+impl<U: ?Sized> Deref for NullableSubDrc<U> {
+    type Target = U;
+    fn deref(&self) -> &U {
+        self.0.as_ref().unwrap()
+    }
+}
+
+impl<U: ?Sized> From<SubDrc<U>> for NullableSubDrc<U> {
+    fn from(x: SubDrc<U>) -> NullableSubDrc<U> {
+        NullableSubDrc(Some(x))
+    }
+}
+
+impl<U: ?Sized> From<NullableSubDrc<U>> for SubDrc<U> {
+    fn from(x: NullableSubDrc<U>) -> SubDrc<U> {
         x.0.unwrap()
     }
 }
