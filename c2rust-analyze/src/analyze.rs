@@ -509,6 +509,34 @@ fn get_fixed_defs(tcx: TyCtxt) -> io::Result<HashSet<DefId>> {
     Ok(fixed_defs)
 }
 
+/// Local information, specific to a single function.  Many of the data structures we use for
+/// the pointer analysis have a "global" part that's shared between all functions and a "local"
+/// part that's specific to the function being analyzed; this struct contains only the local
+/// parts.  The different fields are set, used, and cleared at various points below.
+#[derive(Clone, Default)]
+struct FuncInfo<'tcx> {
+    /// Local analysis context data, such as [`LTy`]s for all MIR locals.  Combine with the
+    /// [`GlobalAnalysisCtxt`] to get a complete [`AnalysisCtxt`] for use within this function.
+    acx_data: MaybeUnset<AnalysisCtxtData<'tcx>>,
+    /// Dataflow constraints gathered from the body of this function.  These are used for
+    /// propagating `READ`/`WRITE`/`OFFSET_ADD` and similar permissions.
+    dataflow: MaybeUnset<DataflowConstraints>,
+    /// Local equivalence-class information.  Combine with the [`GlobalEquivSet`] to get a
+    /// complete [`EquivSet`], which assigns an equivalence class to each [`PointerId`] that
+    /// appears in the function.  Used for renumbering [`PointerId`]s.
+    local_equiv: MaybeUnset<LocalEquivSet>,
+    /// Local part of the permission/flag assignment.  Combine with the [`GlobalAssignment`] to
+    /// get a complete [`Assignment`] for this function, which maps every [`PointerId`] in this
+    /// function to a [`PermissionSet`] and [`FlagSet`].
+    lasn: MaybeUnset<LocalAssignment>,
+    /// Constraints on pointee types gathered from the body of this function.
+    pointee_constraints: MaybeUnset<pointee_type::ConstraintSet<'tcx>>,
+    /// Local part of pointee type sets.
+    local_pointee_types: MaybeUnset<LocalPointerTable<PointeeTypes<'tcx>>>,
+    /// Table for looking up the most recent write to a given local.
+    recent_writes: MaybeUnset<RecentWrites>,
+}
+
 fn run(tcx: TyCtxt) {
     eprintln!("all defs:");
     for ldid in tcx.hir_crate_items(()).definitions() {
@@ -520,34 +548,6 @@ fn run(tcx: TyCtxt) {
 
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
-
-    /// Local information, specific to a single function.  Many of the data structures we use for
-    /// the pointer analysis have a "global" part that's shared between all functions and a "local"
-    /// part that's specific to the function being analyzed; this struct contains only the local
-    /// parts.  The different fields are set, used, and cleared at various points below.
-    #[derive(Clone, Default)]
-    struct FuncInfo<'tcx> {
-        /// Local analysis context data, such as [`LTy`]s for all MIR locals.  Combine with the
-        /// [`GlobalAnalysisCtxt`] to get a complete [`AnalysisCtxt`] for use within this function.
-        acx_data: MaybeUnset<AnalysisCtxtData<'tcx>>,
-        /// Dataflow constraints gathered from the body of this function.  These are used for
-        /// propagating `READ`/`WRITE`/`OFFSET_ADD` and similar permissions.
-        dataflow: MaybeUnset<DataflowConstraints>,
-        /// Local equivalence-class information.  Combine with the [`GlobalEquivSet`] to get a
-        /// complete [`EquivSet`], which assigns an equivalence class to each [`PointerId`] that
-        /// appears in the function.  Used for renumbering [`PointerId`]s.
-        local_equiv: MaybeUnset<LocalEquivSet>,
-        /// Local part of the permission/flag assignment.  Combine with the [`GlobalAssignment`] to
-        /// get a complete [`Assignment`] for this function, which maps every [`PointerId`] in this
-        /// function to a [`PermissionSet`] and [`FlagSet`].
-        lasn: MaybeUnset<LocalAssignment>,
-        /// Constraints on pointee types gathered from the body of this function.
-        pointee_constraints: MaybeUnset<pointee_type::ConstraintSet<'tcx>>,
-        /// Local part of pointee type sets.
-        local_pointee_types: MaybeUnset<LocalPointerTable<PointeeTypes<'tcx>>>,
-        /// Table for looking up the most recent write to a given local.
-        recent_writes: MaybeUnset<RecentWrites>,
-    }
 
     // Follow a postorder traversal, so that callers are visited after their callees.  This means
     // callee signatures will usually be up to date when we visit the call site.
@@ -1199,6 +1199,28 @@ fn run(tcx: TyCtxt) {
         }
     }
 
+    run2(
+        tcx,
+        gacx,
+        gasn,
+        global_pointee_types,
+        func_info,
+        all_fn_ldids,
+        fixed_defs,
+        known_perm_error_fns,
+    );
+}
+
+fn run2<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    mut gacx: GlobalAnalysisCtxt<'tcx>,
+    mut gasn: GlobalAssignment,
+    global_pointee_types: GlobalPointerTable<PointeeTypes<'tcx>>,
+    mut func_info: HashMap<LocalDefId, FuncInfo<'tcx>>,
+    all_fn_ldids: Vec<LocalDefId>,
+    fixed_defs: HashSet<DefId>,
+    known_perm_error_fns: HashSet<DefId>,
+) {
     // ----------------------------------
     // Generate rewrites
     // ----------------------------------
