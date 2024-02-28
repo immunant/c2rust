@@ -525,7 +525,7 @@ fn run(tcx: TyCtxt) {
     /// the pointer analysis have a "global" part that's shared between all functions and a "local"
     /// part that's specific to the function being analyzed; this struct contains only the local
     /// parts.  The different fields are set, used, and cleared at various points below.
-    #[derive(Default)]
+    #[derive(Clone, Default)]
     struct FuncInfo<'tcx> {
         /// Local analysis context data, such as [`LTy`]s for all MIR locals.  Combine with the
         /// [`GlobalAnalysisCtxt`] to get a complete [`AnalysisCtxt`] for use within this function.
