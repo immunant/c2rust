@@ -67,6 +67,9 @@ def download_llvm_sources() -> None:
             tar("xf", os.path.join(c.ROOT_DIR, c.LLVM_ARCHIVE_FILES[1]))
             os.rename(c.LLVM_ARCHIVE_DIRS[1], "clang")
 
+    (major, _minor, _point) = c.LLVM_VER.split(".")
+    major = int(major)
+
     # finally cmake files if we're building LLVM 15 or later
     if len(c.LLVM_ARCHIVE_FILES) == 4:
         assert os.path.basename(c.LLVM_ARCHIVE_FILES[3]).startswith("cmake")
@@ -78,6 +81,23 @@ def download_llvm_sources() -> None:
                 "--strip-components=2",
                 "--directory", cmake_modules_dir)
 
+        if major > 15:
+            # workaround for https://stackoverflow.com/questions/75787113
+            cmake_symlink_dir = os.path.join(c.LLVM_SRC, os.pardir, "cmake",
+                                                "Modules")
+            cmake_symlink_dir = os.path.abspath(cmake_symlink_dir)
+            ensure_dir(os.path.join(c.LLVM_SRC, os.pardir, "cmake"))
+            if not os.path.exists(cmake_symlink_dir):
+                os.symlink(cmake_modules_dir, cmake_symlink_dir)
+
+        if major >= 17:
+            # similar to above workaround but for compiler-rt
+            cmake_symlink_dir = os.path.join(c.LLVM_SRC, "projects", "cmake",
+                                                "Modules")
+            ensure_dir(os.path.join(c.LLVM_SRC, "projects", "cmake"))
+            if not os.path.exists(cmake_symlink_dir):
+                os.symlink(cmake_modules_dir, cmake_symlink_dir)
+
 
 def configure_and_build_llvm(args: argparse.Namespace) -> None:
     """
@@ -87,49 +107,25 @@ def configure_and_build_llvm(args: argparse.Namespace) -> None:
     build_type = "Debug" if args.debug else "RelWithDebInfo"
     ninja_build_file = os.path.join(c.LLVM_BLD, "build.ninja")
     with pb.local.cwd(c.LLVM_BLD):
-        if os.path.isfile(ninja_build_file) and not args.xcode:
-            prev_build_type = get_ninja_build_type(ninja_build_file)
-            run_cmake = prev_build_type != build_type
-        else:
-            run_cmake = True
+        cmake = get_cmd_or_die("cmake")
+        max_link_jobs = est_parallel_link_jobs()
+        assertions = "1" if args.assertions else "0"
+        cargs = ["-G", "Ninja", c.LLVM_SRC,
+                    "-Wno-dev",
+                    "-DLLVM_ENABLE_ZSTD=0",
+                    "-DLLVM_INCLUDE_TESTS=0",
+                    "-DCOMPILER_RT_INCLUDE_TESTS=0",
+                    "-DCMAKE_INSTALL_PREFIX=" + c.LLVM_INSTALL,
+                    "-DCMAKE_BUILD_TYPE=" + build_type,
+                    "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
+                    "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
+                    "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
+                    "-DLLVM_TARGETS_TO_BUILD=host",
+                    "-DLLVM_INCLUDE_BENCHMARKS=0",
+                    "-DCOMPILER_RT_ENABLE_IOS=OFF",
+        ]
 
-        if run_cmake:
-            cmake = get_cmd_or_die("cmake")
-            max_link_jobs = est_parallel_link_jobs()
-            assertions = "1" if args.assertions else "0"
-            cargs = ["-G", "Ninja", c.LLVM_SRC,
-                     "-Wno-dev",
-                     "-DCMAKE_INSTALL_PREFIX=" + c.LLVM_INSTALL,
-                     "-DCMAKE_BUILD_TYPE=" + build_type,
-                     "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
-                     "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
-                     "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
-                     "-DLLVM_TARGETS_TO_BUILD=host",
-                     "-DLLVM_INCLUDE_BENCHMARKS=0",
-                     "-DCOMPILER_RT_ENABLE_IOS=OFF",
-            ]
-
-            invoke(cmake[cargs])
-
-            # NOTE: we only generate Xcode project files for IDE support
-            # and don't build with them since the cargo build.rs files
-            # rely on cmake to build native code.
-            if args.xcode:
-                cargs[1] = "Xcode"
-                # output Xcode project files in a separate dir
-                ensure_dir(c.AST_EXPO_PRJ_DIR)
-                with pb.local.cwd(c.AST_EXPO_PRJ_DIR):
-                    invoke(cmake[cargs])
-        else:
-            logging.debug("found existing ninja.build, not running cmake")
-
-        # if args.xcode:
-        #     xcodebuild = get_cmd_or_die("xcodebuild")
-        #     xc_conf_args = ['-configuration', build_type]
-        #     xc_args = xc_conf_args + ['-target', 'llvm-config']
-        #     invoke(xcodebuild, *xc_args)
-        #     xc_args = xc_conf_args + ['-target', 'c2rust-ast-exporter']
-        #     invoke(xcodebuild, *xc_args)
+        invoke(cmake[cargs])
 
         # We must install headers here so our clang tool can reference
         # compiler-internal headers such as stddef.h. This reference is
@@ -271,16 +267,14 @@ def _parse_args() -> argparse.Namespace:
     llvm_ver_help = 'fetch and build specified version of clang/LLVM (default: {})'.format(c.LLVM_VER)
     # FIXME: build this list by globbing for scripts/llvm-*.0.*-key.asc
     llvm_ver_choices = ["6.0.0", "6.0.1", "7.0.0", "7.0.1", "8.0.0", "9.0.0",
-        "10.0.0", "10.0.1", "11.0.0", "11.1.0", "12.0.0", "15.0.1"]
+        "10.0.0", "10.0.1", "11.0.0", "11.1.0", "12.0.0", "15.0.1", "16.0.6",
+        "17.0.6", "18.1.1"]
     parser.add_argument('--with-llvm-version', default=None,
                         action='store', dest='llvm_ver',
                         help=llvm_ver_help, choices=llvm_ver_choices)
     parser.add_argument('--without-assertions', default=True,
                         action='store_false', dest='assertions',
                         help='build the tool and clang without assertions')
-    parser.add_argument('-x', '--xcode', default=False,
-                        action='store_true', dest='xcode',
-                        help='generate Xcode project files (macOS only)')
     parser.add_argument('-v', '--verbose', default=False,
                         action='store_true', dest='verbose',
                         help='emit verbose information during build')
@@ -290,9 +284,6 @@ def _parse_args() -> argparse.Namespace:
 
     c.add_args(parser)
     args = parser.parse_args()
-
-    if not on_mac() and args.xcode:
-        die("-x/--xcode option requires macOS host.")
 
     c.update_args(args)
     return args
