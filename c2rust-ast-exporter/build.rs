@@ -199,6 +199,14 @@ fn build_native(llvm_info: &LLVMInfo) {
             let sema_pos = clang_libs.iter().position(|&r| r == "clangSema").unwrap();
             clang_libs.insert(sema_pos + 1, "clangSupport");
         }
+        if llvm_info.llvm_major_version >= 18 {
+            // insert after clangSupport
+            let sema_pos = clang_libs
+                .iter()
+                .position(|&r| r == "clangSupport")
+                .unwrap();
+            clang_libs.insert(sema_pos + 1, "clangAPINotes");
+        }
 
         for lib in &clang_libs {
             println!("cargo:rustc-link-lib={}", lib);
