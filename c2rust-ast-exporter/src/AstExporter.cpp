@@ -2298,27 +2298,49 @@ class TranslateASTVisitor final
             // C and C++ supports different string types, so
             // we need to identify the string literal type
             switch (SL->getKind()) {
-#if CLANG_VERSION_MAJOR >= 15
+#if CLANG_VERSION_MAJOR >= 18
+            case clang::StringLiteralKind::Ordinary:
+#elif CLANG_VERSION_MAJOR >= 15
             case clang::StringLiteral::StringKind::Ordinary:
 #else
             case clang::StringLiteral::StringKind::Ascii:
 #endif // CLANG_VERSION_MAJOR
                 cbor_encode_uint(array, StringTypeTag::TagAscii);
                 break;
+#if CLANG_VERSION_MAJOR >= 18
+            case clang::StringLiteralKind::Wide:
+#else
             case clang::StringLiteral::StringKind::Wide:
+#endif // CLANG_VERSION_MAJOR
                 cbor_encode_uint(array, StringTypeTag::TagWide);
                 break;
+#if CLANG_VERSION_MAJOR >= 18
+            case clang::StringLiteralKind::UTF8:
+#else
             case clang::StringLiteral::StringKind::UTF8:
+#endif // CLANG_VERSION_MAJOR
                 cbor_encode_uint(array, StringTypeTag::TagUTF8);
                 break;
+#if CLANG_VERSION_MAJOR >= 18
+            case clang::StringLiteralKind::UTF16:
+#else
             case clang::StringLiteral::StringKind::UTF16:
+#endif // CLANG_VERSION_MAJOR
                 cbor_encode_uint(array, StringTypeTag::TagUTF16);
                 break;
+#if CLANG_VERSION_MAJOR >= 18
+            case clang::StringLiteralKind::UTF32:
+#else
             case clang::StringLiteral::StringKind::UTF32:
+#endif // CLANG_VERSION_MAJOR
                 cbor_encode_uint(array, StringTypeTag::TagUTF32);
                 break;
 #if CLANG_VERSION_MAJOR >= 17
+#if CLANG_VERSION_MAJOR >= 18
+            case clang::StringLiteralKind::Unevaluated:
+#else // CLANG_VERSION_MAJOR >= 17
             case clang::StringLiteral::StringKind::Unevaluated:
+#endif
                 cbor_encode_uint(array, StringTypeTag::TagUnevaluated);
                 break;
 #endif // CLANG_VERSION_MAJOR
