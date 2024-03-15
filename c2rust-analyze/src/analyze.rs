@@ -460,6 +460,9 @@ fn check_rewrite_path_prefixes(tcx: TyCtxt, fixed_defs: &mut HashSet<DefId>, pre
     let hir = tcx.hir();
     let prefixes: HashSet<Vec<Symbol>> = prefixes
         .split(',')
+        // Exclude empty paths.  This allows for leading/trailing commas or double commas within
+        // the list, which may result when building the list programmatically.
+        .filter(|prefix| prefix.len() > 0)
         .map(|prefix| prefix.split("::").map(Symbol::intern).collect::<Vec<_>>())
         .collect();
     let sym_impl = Symbol::intern("{impl}");

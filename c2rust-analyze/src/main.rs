@@ -37,7 +37,7 @@ use analyze::AnalysisCallbacks;
 use anyhow::anyhow;
 use anyhow::ensure;
 use anyhow::Context;
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use rustc_driver::RunCompiler;
 use rustc_driver::TimePassesCallbacks;
 use rustc_session::config::CrateType;
@@ -75,8 +75,8 @@ struct Args {
 
     /// Comma-separated list of paths to rewrite.  Any item whose path does not start with a prefix
     /// from this list will be marked non-rewritable (`FIXED`).
-    #[clap(long)]
-    rewrite_paths: Option<OsString>,
+    #[clap(long, action(ArgAction::Append))]
+    rewrite_paths: Vec<OsString>,
     /// Rewrite source files on disk.  The default is to print the rewritten source code to stdout
     /// as part of the tool's debug output.
     #[clap(long)]
@@ -95,7 +95,7 @@ struct Args {
     /// in the crate being analyzed; the file passed to this option should list a subset of those
     /// defs.
     #[clap(long)]
-    fixed_defs_list: Option<OsString>,
+    fixed_defs_list: Option<PathBuf>,
 
     /// `cargo` args.
     cargo_args: Vec<OsString>,
@@ -395,7 +395,8 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
             cmd.env("C2RUST_ANALYZE_FIXED_DEFS_LIST", fixed_defs_list);
         }
 
-        if let Some(ref rewrite_paths) = rewrite_paths {
+        if rewrite_paths.len() > 0 {
+            let rewrite_paths = rewrite_paths.join(OsStr::new(","));
             cmd.env("C2RUST_ANALYZE_REWRITE_PATHS", rewrite_paths);
         }
 
