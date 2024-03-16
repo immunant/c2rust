@@ -1,6 +1,7 @@
 use crate::context::LTy;
 use crate::context::{FlagSet, GlobalAnalysisCtxt, GlobalAssignment};
 use crate::rewrite::expr::{self, CastBuilder};
+use crate::rewrite::ty;
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, TypeDesc};
 use rustc_hir::def::{DefKind, Res};
@@ -103,9 +104,9 @@ impl<'a, 'tcx> Visitor<'tcx> for ShimCallVisitor<'a, 'tcx> {
     }
 }
 
-/// For each failed function that calls or mentions a non-failed function meeting certain criteria,
-/// generate rewrites to change calls to `foo` into calls to `foo_shim`.  Also produces a set of
-/// callee `DefId`s for the calls that were rewritten this way.
+/// For each non-rewritable function that calls or mentions a rewritable function meeting certain
+/// criteria, generate rewrites to change calls to `foo` into calls to `foo_shim`.  Also produces a
+/// set of callee `DefId`s for the calls that were rewritten this way.
 ///
 /// The criteria we look for are:
 /// * The callee must be a local function.
@@ -121,12 +122,17 @@ pub fn gen_shim_call_rewrites<'tcx>(
     let mut rewrites = Vec::new();
     let mut mentioned_fns = HashSet::new();
 
-    for &failed_def_id in gacx.fns_failed.keys() {
-        let failed_def_id = match failed_def_id.as_local() {
+    for skip_def_id in gacx.iter_fns_skip_rewrite() {
+        let skip_def_id = match skip_def_id.as_local() {
             Some(x) => x,
             None => continue,
         };
-        let hir_body_id = tcx.hir().body_owned_by(failed_def_id);
+        // When using --rewrite-paths, fns in extern blocks may show up here.  We can't do anything
+        // with these, since they don't have a HIR body, so skip them.
+        let hir_body_id = match tcx.hir().maybe_body_owned_by(skip_def_id) {
+            Some(x) => x,
+            None => continue,
+        };
         let hir = tcx.hir().body(hir_body_id);
         let typeck_results = tcx.typeck_body(hir_body_id);
         let mut v = ShimCallVisitor {
@@ -168,10 +174,19 @@ fn lty_to_desc_pair<'tcx>(
     Some((desc, fixed_desc))
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum ManualShimCasts {
+    No,
+    /// Emit `todo!("cast X from T1 to T2")` instead of panicking when a cast can't be generated.
+    /// The user can then implement the necessary casts manually.
+    Yes,
+}
+
 pub fn gen_shim_definition_rewrite<'tcx>(
     gacx: &GlobalAnalysisCtxt<'tcx>,
     gasn: &GlobalAssignment,
     def_id: DefId,
+    manual_casts: ManualShimCasts,
 ) -> (Span, Rewrite) {
     let tcx = gacx.tcx;
 
@@ -193,35 +208,72 @@ pub fn gen_shim_definition_rewrite<'tcx>(
     // valid `fn_sigs` entries.
     let lsig = gacx.fn_sigs[&def_id];
 
+    // 1 cast per arg, 1 call, 1 cast for the result.  The final result is returned using the
+    // trailing expression of the block.
+    let mut stmts = Vec::with_capacity(arg_tys.len() + 2);
+
+    // Generate `let safe_arg0 = arg0 as ...;` for each argument.
     let mut arg_exprs = Vec::with_capacity(arg_tys.len());
     for (i, arg_lty) in lsig.inputs.iter().enumerate() {
         let mut hir_rw = Rewrite::FnArg(i);
 
-        let (arg_desc, fixed_desc) = match lty_to_desc_pair(tcx, gasn, arg_lty) {
-            Some(x) => x,
-            None => {
-                // `arg_lty` is a FIXED pointer, which doesn't need a cast; the shim argument
-                // type is the same as the argument type of the wrapped function.
-                arg_exprs.push(hir_rw);
-                continue;
+        if let Some((arg_desc, fixed_desc)) = lty_to_desc_pair(tcx, gasn, arg_lty) {
+            let mut cast_builder = CastBuilder::new(tcx, &gasn.perms, &gasn.flags, |rk| {
+                hir_rw = expr::convert_cast_rewrite(&rk, mem::take(&mut hir_rw));
+            });
+            match cast_builder.try_build_cast_desc_desc(fixed_desc, arg_desc) {
+                Ok(()) => {}
+                Err(e) => {
+                    if manual_casts == ManualShimCasts::Yes {
+                        hir_rw = Rewrite::Print(format!(
+                            r#"todo!("cast arg{i} from {} to {}")"#,
+                            ty::desc_to_ty(tcx, fixed_desc),
+                            ty::desc_to_ty(tcx, arg_desc),
+                        ));
+                    } else {
+                        panic!("error generating cast for {:?} arg{}: {}", def_id, i, e);
+                    }
+                }
             }
-        };
+        } else {
+            // No-op.  `arg_lty` is a FIXED pointer, which doesn't need a cast; the shim argument
+            // type is the same as the argument type of the wrapped function.
+        }
 
-        let mut cast_builder = CastBuilder::new(tcx, &gasn.perms, &gasn.flags, |rk| {
-            hir_rw = expr::convert_cast_rewrite(&rk, mem::take(&mut hir_rw));
-        });
-        cast_builder.build_cast_desc_desc(fixed_desc, arg_desc);
-        arg_exprs.push(hir_rw);
+        let safe_name = format!("safe_arg{}", i);
+        stmts.push(Rewrite::Let1(safe_name.clone(), Box::new(hir_rw)));
+        arg_exprs.push(Rewrite::Print(safe_name));
     }
 
-    let mut body_rw = Rewrite::Call(owner_node.ident().unwrap().as_str().to_owned(), arg_exprs);
+    // Generate the call: `let safe_result = f(safe_arg0, safe_arg1);`
+    let call_rw = Rewrite::Call(owner_node.ident().unwrap().as_str().to_owned(), arg_exprs);
+    stmts.push(Rewrite::Let1("safe_result".into(), Box::new(call_rw)));
 
+    // Generate `let result = safe_result as ...;`
+    let mut result_rw = Rewrite::Print("safe_result".into());
     if let Some((return_desc, fixed_desc)) = lty_to_desc_pair(tcx, gasn, lsig.output) {
         let mut cast_builder = CastBuilder::new(tcx, &gasn.perms, &gasn.flags, |rk| {
-            body_rw = expr::convert_cast_rewrite(&rk, mem::take(&mut body_rw));
+            result_rw = expr::convert_cast_rewrite(&rk, mem::take(&mut result_rw));
         });
-        cast_builder.build_cast_desc_desc(return_desc, fixed_desc);
+        match cast_builder.try_build_cast_desc_desc(return_desc, fixed_desc) {
+            Ok(()) => {}
+            Err(e) => {
+                if manual_casts == ManualShimCasts::Yes {
+                    result_rw = Rewrite::Print(format!(
+                        r#"todo!("cast safe_result from {} to {}")"#,
+                        ty::desc_to_ty(tcx, return_desc),
+                        ty::desc_to_ty(tcx, fixed_desc),
+                    ));
+                } else {
+                    panic!("error generating cast for {:?} result: {}", def_id, e);
+                }
+            }
+        }
     }
+    stmts.push(Rewrite::Let1("result".into(), Box::new(result_rw)));
+
+    // Build the function body.
+    let body_rw = Rewrite::Block(stmts, Some(Box::new(Rewrite::Print("result".into()))));
 
     let rw = Rewrite::DefineFn {
         name: format!("{}_shim", owner_node.ident().unwrap().as_str()),

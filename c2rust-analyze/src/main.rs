@@ -37,7 +37,7 @@ use analyze::AnalysisCallbacks;
 use anyhow::anyhow;
 use anyhow::ensure;
 use anyhow::Context;
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use rustc_driver::RunCompiler;
 use rustc_driver::TimePassesCallbacks;
 use rustc_session::config::CrateType;
@@ -72,6 +72,30 @@ struct Args {
     //    `--rustflags` lets you do that easily.
     #[clap(long)]
     rustflags: Option<OsString>,
+
+    /// Comma-separated list of paths to rewrite.  Any item whose path does not start with a prefix
+    /// from this list will be marked non-rewritable (`FIXED`).
+    #[clap(long, action(ArgAction::Append))]
+    rewrite_paths: Vec<OsString>,
+    /// Rewrite source files on disk.  The default is to print the rewritten source code to stdout
+    /// as part of the tool's debug output.
+    #[clap(long)]
+    rewrite_in_place: bool,
+    /// Use `todo!()` placeholders in shims for casts that must be implemented manually.
+    ///
+    /// When a function requires a shim, and the shim requires a cast that can't be generated
+    /// automatically, the default is to cancel rewriting of the function.  With this option,
+    /// rewriting proceeds as normal, and shim generation emits `todo!()` in place of each
+    /// unsupported cast.
+    #[clap(long)]
+    use_manual_shims: bool,
+
+    /// Read a list of defs that should be marked non-rewritable (`FIXED`) from this file path.
+    /// Run `c2rust-analyze` without this option and check the debug output for a full list of defs
+    /// in the crate being analyzed; the file passed to this option should list a subset of those
+    /// defs.
+    #[clap(long)]
+    fixed_defs_list: Option<PathBuf>,
 
     /// `cargo` args.
     cargo_args: Vec<OsString>,
@@ -327,6 +351,10 @@ where
 fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
     let Args {
         rustflags,
+        rewrite_paths,
+        rewrite_in_place,
+        use_manual_shims,
+        fixed_defs_list,
         cargo_args,
     } = Args::parse();
 
@@ -362,6 +390,24 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
             .env(RUSTC_WRAPPER_VAR, rustc_wrapper)
             .env(RUST_SYSROOT_VAR, &sysroot)
             .env("RUSTFLAGS", &rustflags);
+
+        if let Some(ref fixed_defs_list) = fixed_defs_list {
+            cmd.env("C2RUST_ANALYZE_FIXED_DEFS_LIST", fixed_defs_list);
+        }
+
+        if rewrite_paths.len() > 0 {
+            let rewrite_paths = rewrite_paths.join(OsStr::new(","));
+            cmd.env("C2RUST_ANALYZE_REWRITE_PATHS", rewrite_paths);
+        }
+
+        if rewrite_in_place {
+            cmd.env("C2RUST_ANALYZE_REWRITE_IN_PLACE", "1");
+        }
+
+        if use_manual_shims {
+            cmd.env("C2RUST_ANALYZE_USE_MANUAL_SHIMS", "1");
+        }
+
         Ok(())
     })?;
 
