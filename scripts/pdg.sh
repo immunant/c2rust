@@ -11,18 +11,22 @@ SCRIPT_DIR="${CWD}/$(dirname "${SCRIPT_PATH}")"
 # Environment Variables:
 # * `PROFILE` (default `release`):
 #       a `cargo` profile as in `target/$PROFILE`
+# * `NO_USE_PDG` (default empty):
+#       if non-empty, do not use the PDG as a starting point for analysis
 # 
-# Instrument and run a test crate and create its PDG.
+# Instrument and run a test crate, create its PDG, and then run analysis on it.
 # 
 # 1. Compile `c2rust-dynamic-instrumentation`.
-# 3. Redirect `c2rust-dynamic-instrumentation` stdout to `instrument.out.log` in the test crate directory,
+# 2. Redirect `c2rust-dynamic-instrumentation` stdout to `instrument.out.log` in the test crate directory,
 #    as it prints a lot of debugging info currently.
-# 4. Run the instrumented binary directly.
+# 3. Run the instrumented binary directly.
 #    The `bincode`-encoded event log is written to `log.bc`.
-# 5. Using the `metadata.bc` metadata and the `log.bc` event log,
+# 4. Using the `metadata.bc` metadata and the `log.bc` event log,
 #    run `c2rust-pdg` to generate the pdg.
 #    The output is saved to `pdg.log` (relative to the test crate directory).
 #    A machine-readable PDG is saved to `pdg.bc` in the same directory.
+# 5. Using the `pdg.bc` file as an initial state for analysis, run static
+#    analysis using `c2rust-analyze`.
 main() {
     local test_dir="${1}"
     local args=("${@:2}")
@@ -41,6 +45,7 @@ main() {
     local event_log="${test_dir}/log.bc"
     local runtime="analysis/runtime"
 
+    # build and run a test with instrumentation
     (
         unset RUSTFLAGS # transpiled code has tons of warnings; don't allow `-D warnings`
         export RUST_BACKTRACE=1
@@ -62,6 +67,7 @@ main() {
             "${profile_args[@]}" \
             -- "${args[@]}"
     )
+    # construct pdg from log events
     (
         export RUST_BACKTRACE=full # print sources w/ color-eyre
         export RUST_LOG=error
@@ -76,6 +82,24 @@ main() {
             --print counts \
             --output "${pdg}" \
         > "${test_dir}/pdg.log"
+    )
+    # use pdg in analysis
+    (
+        export RUST_BACKTRACE=full # print sources w/ color-eyre
+        export RUST_LOG=error
+        if [[ "${NO_USE_PDG:-}" == "" ]]; then
+            # cargo runs this from a different pwd, so make path absolute
+            export PDG_FILE="$(realpath ${pdg})"
+        fi
+        cargo run \
+            --bin c2rust-analyze \
+            "${profile_args[@]}" \
+            -- \
+            build \
+            -- \
+            "${profile_args[@]}" \
+            --features=c2rust-analysis-rt \
+            --manifest-path "${test_dir}/Cargo.toml"
     )
 }
 
