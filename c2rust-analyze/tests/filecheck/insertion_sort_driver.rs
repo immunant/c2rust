@@ -13,7 +13,8 @@ pub unsafe extern "C" fn insertion_sort(n: libc::c_int, p: *mut libc::c_int) {
         // CHECK: let tmp: {{.*}} = *&(&(&*(p))[((i as isize) as usize) ..])[0];
         let tmp: libc::c_int = *p.offset(i as isize);
         let mut j: libc::c_int = i;
-        // CHECK-NOT: p.offset
+        // `p.offset` should not appear, except in inline annotation comments.
+        // CHECK-NOT: {{^[^/]*}}p.offset
         while j > 0 as libc::c_int &&
                   *p.offset((j - 1 as libc::c_int) as isize) > tmp {
             *p.offset(j as isize) =
@@ -28,10 +29,9 @@ pub unsafe extern "C" fn insertion_sort(n: libc::c_int, p: *mut libc::c_int) {
 
 // CHECK-LABEL: pub unsafe extern "C" fn check_eq
 // CHECK-SAME: p: &'h0 [(libc::c_int)]
-// CHECK-NEXT: q: &'h1 [(libc::c_int)]
+// CHECK-SAME: q: &'h1 [(libc::c_int)]
 #[no_mangle]
-pub unsafe extern "C" fn check_eq(n: libc::c_int, p: *mut libc::c_int,
-                                  q: *mut libc::c_int) {
+pub unsafe extern "C" fn check_eq(n: libc::c_int, p: *mut libc::c_int, q: *mut libc::c_int) {
     let mut i: libc::c_int = 0 as libc::c_int;
     while i < n {
         //assert!(*p.offset(i as isize) == *q.offset(i as isize));
