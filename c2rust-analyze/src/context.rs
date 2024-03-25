@@ -939,20 +939,15 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             .flat_map(|(fn_sig, known_fn)| known_fn.ptr_perms(fn_sig))
     }
 
+    /// Check whether the function with the given `def_id` has been marked as non-rewritable.
     pub fn dont_rewrite_fn(&self, def_id: DefId) -> bool {
         self.dont_rewrite_fns.contains(def_id)
     }
+    /// Check whether analysis failed for the function with the given `def_id`.
     pub fn fn_analysis_invalid(&self, def_id: DefId) -> bool {
         self.dont_rewrite_fns
             .get(def_id)
             .intersects(DontRewriteFnReason::ANALYSIS_INVALID_MASK)
-    }
-
-    pub fn dont_rewrite_static(&self, def_id: DefId) -> bool {
-        self.dont_rewrite_statics.contains(def_id)
-    }
-    pub fn dont_rewrite_field(&self, def_id: DefId) -> bool {
-        self.dont_rewrite_fields.contains(def_id)
     }
 }
 
