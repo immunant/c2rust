@@ -17,7 +17,7 @@ impl<'tcx> AnnotationBuffer<'tcx> {
         }
     }
 
-    pub fn clear(&mut self) {
+    pub fn _clear(&mut self) {
         self.m.clear();
     }
 
