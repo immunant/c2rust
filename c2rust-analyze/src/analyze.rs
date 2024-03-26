@@ -387,6 +387,31 @@ fn mark_foreign_fixed<'tcx>(
     }
 }
 
+fn mark_all_statics_fixed<'tcx>(gacx: &mut GlobalAnalysisCtxt<'tcx>, gasn: &mut GlobalAssignment) {
+    for (did, lty) in gacx.static_tys.iter() {
+        make_ty_fixed(gasn, lty);
+
+        // Also fix the `addr_of_static` permissions.
+        let ptr = gacx.addr_of_static[&did];
+        gasn.flags[ptr].insert(FlagSet::FIXED);
+    }
+}
+
+fn mark_all_structs_fixed<'tcx>(
+    gacx: &mut GlobalAnalysisCtxt<'tcx>,
+    gasn: &mut GlobalAssignment,
+    tcx: TyCtxt<'tcx>,
+) {
+    for adt_did in &gacx.adt_metadata.struct_dids {
+        let adt_def = tcx.adt_def(adt_did);
+        let fields = adt_def.all_fields();
+        for field in fields {
+            let field_lty = gacx.field_ltys[&field.did];
+            make_ty_fixed(gasn, field_lty);
+        }
+    }
+}
+
 fn parse_def_id(s: &str) -> Result<DefId, String> {
     // DefId debug output looks like `DefId(0:1 ~ alias1[0dc4]::{use#0})`.  The ` ~ name` part may
     // be omitted if the name/DefPath info is not available at the point in the compiler where the
@@ -545,6 +570,8 @@ fn run(tcx: TyCtxt) {
 
     // Load the list of fixed defs early, so any errors are reported immediately.
     let fixed_defs = get_fixed_defs(tcx).unwrap();
+
+    let rewrite_pointwise = true;
 
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
@@ -847,6 +874,13 @@ fn run(tcx: TyCtxt) {
     }
 
     mark_foreign_fixed(&mut gacx, &mut gasn, tcx);
+
+    if rewrite_pointwise {
+        // In pointwise mode, we restrict rewriting to a single fn at a time.  All statics and
+        // struct fields are marked `FIXED` so they won't be rewritten.
+        mark_all_statics_fixed(&mut gacx, &mut gasn);
+        mark_all_structs_fixed(&mut gacx, &mut gasn, tcx);
+    }
 
     for (ptr, perms) in gacx.known_fn_ptr_perms() {
         let existing_perms = &mut gasn.perms[ptr];
@@ -1199,7 +1233,6 @@ fn run(tcx: TyCtxt) {
         }
     }
 
-    let rewrite_pointwise = true;
     if !rewrite_pointwise {
         run2(
             None,
