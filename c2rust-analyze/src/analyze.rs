@@ -571,7 +571,9 @@ fn run(tcx: TyCtxt) {
     // Load the list of fixed defs early, so any errors are reported immediately.
     let fixed_defs = get_fixed_defs(tcx).unwrap();
 
-    let rewrite_pointwise = true;
+    let rewrite_pointwise = env::var("C2RUST_ANALYZE_REWRITE_MODE")
+        .ok()
+        .map_or(false, |val| val == "pointwise");
 
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
@@ -1686,12 +1688,16 @@ fn run2<'tcx>(
             "alongside" => {
                 update_files = rewrite::UpdateFiles::Alongside;
             }
+            "pointwise" => {
+                let pointwise_fn_ldid = pointwise_fn_ldid.expect(
+                    "C2RUST_ANALYZE_REWRITE_MODE=pointwise, \
+                            but pointwise_fn_ldid is unset?",
+                );
+                let pointwise_fn_name = tcx.item_name(pointwise_fn_ldid.to_def_id());
+                update_files = rewrite::UpdateFiles::AlongsidePointwise(pointwise_fn_name);
+            }
             _ => panic!("bad value {:?} for C2RUST_ANALYZE_REWRITE_MODE", val),
         }
-    }
-    if let Some(pointwise_fn_ldid) = pointwise_fn_ldid {
-        let pointwise_fn_name = tcx.item_name(pointwise_fn_ldid.to_def_id());
-        update_files = rewrite::UpdateFiles::AlongsidePointwise(pointwise_fn_name);
     }
     rewrite::apply_rewrites(tcx, all_rewrites, annotations, update_files);
 

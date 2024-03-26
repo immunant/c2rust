@@ -131,6 +131,9 @@ enum RewriteMode {
     /// Save rewritten code to a separate file alongside each source file.
     #[value(name = "alongside")]
     Alongside,
+    /// Rewrite each function separately, and write the results for each to a separate file.
+    #[value(name = "pointwise")]
+    Pointwise,
 }
 
 fn exit_with_status(status: ExitStatus) {
@@ -445,6 +448,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
                 RewriteMode::None => "none",
                 RewriteMode::InPlace => "inplace",
                 RewriteMode::Alongside => "alongside",
+                RewriteMode::Pointwise => "pointwise",
             };
             cmd.env("C2RUST_ANALYZE_REWRITE_MODE", val);
         }
