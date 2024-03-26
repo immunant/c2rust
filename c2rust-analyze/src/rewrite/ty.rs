@@ -114,7 +114,7 @@ fn create_rewrite_label<'tcx>(
     let mut pointee_ty = None;
     // For now, we only rewrite in cases where the inferred pointee has no arguments.
     // TODO: expand this to handle pointer-to-pointer cases and other complex inferred pointees
-    if !pointer_lty.label.is_none() {
+    if !pointer_lty.label.is_none() && !flags[pointer_lty.label].contains(FlagSet::FIXED) {
         if let Some(lty) = pointee_types[pointer_lty.label].get_sole_lty() {
             let ty = lty.ty;
             if lty.args.len() == 0 && !ty_has_adt_lifetime(ty, adt_metadata) {
