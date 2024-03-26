@@ -1199,27 +1199,46 @@ fn run(tcx: TyCtxt) {
         }
     }
 
-    run2(
-        tcx,
-        gacx,
-        gasn,
-        global_pointee_types,
-        func_info,
-        all_fn_ldids,
-        fixed_defs,
-        known_perm_error_fns,
-    );
+    let rewrite_pointwise = true;
+    if !rewrite_pointwise {
+        run2(
+            None,
+            tcx,
+            gacx,
+            gasn,
+            &global_pointee_types,
+            func_info,
+            &all_fn_ldids,
+            &fixed_defs,
+            &known_perm_error_fns,
+        );
+    } else {
+        for &ldid in &all_fn_ldids {
+            run2(
+                Some(ldid),
+                tcx,
+                gacx.clone(),
+                gasn.clone(),
+                &global_pointee_types,
+                func_info.clone(),
+                &all_fn_ldids,
+                &fixed_defs,
+                &known_perm_error_fns,
+            );
+        }
+    }
 }
 
 fn run2<'tcx>(
+    pointwise_fn_ldid: Option<LocalDefId>,
     tcx: TyCtxt<'tcx>,
     mut gacx: GlobalAnalysisCtxt<'tcx>,
     mut gasn: GlobalAssignment,
-    global_pointee_types: GlobalPointerTable<PointeeTypes<'tcx>>,
+    global_pointee_types: &GlobalPointerTable<PointeeTypes<'tcx>>,
     mut func_info: HashMap<LocalDefId, FuncInfo<'tcx>>,
-    all_fn_ldids: Vec<LocalDefId>,
-    fixed_defs: HashSet<DefId>,
-    known_perm_error_fns: HashSet<DefId>,
+    all_fn_ldids: &Vec<LocalDefId>,
+    fixed_defs: &HashSet<DefId>,
+    known_perm_error_fns: &HashSet<DefId>,
 ) {
     // ----------------------------------
     // Generate rewrites
@@ -1246,15 +1265,25 @@ fn run2<'tcx>(
 
     // For testing, putting #[c2rust_analyze_test::fail_before_rewriting] on a function marks it as
     // failed at this point.
-    for &ldid in &all_fn_ldids {
-        if !util::has_test_attr(tcx, ldid, TestAttr::FailBeforeRewriting) {
-            continue;
+    for &ldid in all_fn_ldids {
+        let mut should_mark_failed = false;
+        if util::has_test_attr(tcx, ldid, TestAttr::FailBeforeRewriting) {
+            should_mark_failed = true;
         }
-        gacx.mark_fn_failed(
-            ldid.to_def_id(),
-            DontRewriteFnReason::FAKE_INVALID_FOR_TESTING,
-            PanicDetail::new("explicit fail_before_rewriting for testing".to_owned()),
-        );
+        if let Some(pointwise_fn_ldid) = pointwise_fn_ldid {
+            // In pointwise mode, mark all functions except `pointwise_fn_ldid` as failed to
+            // prevent rewriting.
+            if ldid != pointwise_fn_ldid {
+                should_mark_failed = true;
+            }
+        }
+        if should_mark_failed {
+            gacx.mark_fn_failed(
+                ldid.to_def_id(),
+                DontRewriteFnReason::FAKE_INVALID_FOR_TESTING,
+                PanicDetail::new("explicit fail_before_rewriting for testing".to_owned()),
+            );
+        }
     }
 
     // Buffer debug output for each function.  Grouping together all the different types of info
@@ -1288,7 +1317,7 @@ fn run2<'tcx>(
         // rewrite, such as pointers in the signatures of non-rewritten functions.
         process_new_dont_rewrite_items(&mut gacx, &mut gasn);
 
-        for &ldid in &all_fn_ldids {
+        for &ldid in all_fn_ldids {
             if gacx.dont_rewrite_fn(ldid.to_def_id()) {
                 continue;
             }
@@ -1626,6 +1655,10 @@ fn run2<'tcx>(
             }
             _ => panic!("bad value {:?} for C2RUST_ANALYZE_REWRITE_MODE", val),
         }
+    }
+    if let Some(pointwise_fn_ldid) = pointwise_fn_ldid {
+        let pointwise_fn_name = tcx.item_name(pointwise_fn_ldid.to_def_id());
+        update_files = rewrite::UpdateFiles::AlongsidePointwise(pointwise_fn_name);
     }
     rewrite::apply_rewrites(tcx, all_rewrites, annotations, update_files);
 
