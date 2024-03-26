@@ -298,7 +298,7 @@ bitflags! {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct AdtMetadataTable<'tcx> {
     pub table: HashMap<DefId, AdtMetadata<'tcx>>,
     pub struct_dids: Vec<DefId>,
@@ -381,6 +381,7 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
     }
 }
 
+#[derive(Clone)]
 pub struct GlobalAnalysisCtxt<'tcx> {
     pub tcx: TyCtxt<'tcx>,
     pub lcx: LTyCtxt<'tcx>,
@@ -464,6 +465,7 @@ impl<'a, 'tcx> AnalysisCtxt<'_, 'tcx> {
     }
 }
 
+#[derive(Clone)]
 pub struct AnalysisCtxtData<'tcx> {
     ptr_info: LocalPointerTable<PointerInfo>,
     local_tys: IndexVec<Local, LTy<'tcx>>,
@@ -472,13 +474,14 @@ pub struct AnalysisCtxtData<'tcx> {
     string_literal_locs: Vec<Location>,
 }
 
+#[derive(Clone)]
 pub struct FnSigOrigins<'tcx> {
     pub origin_params: Vec<OriginParam>,
     pub inputs: Vec<LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>>,
     pub output: LabeledTy<'tcx, &'tcx [OriginArg<'tcx>]>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct FnOriginMap<'tcx> {
     pub fn_info: HashMap<DefId, FnSigOrigins<'tcx>>,
 }
@@ -1420,6 +1423,7 @@ impl GlobalAssignment {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct LocalAssignment {
     pub perms: LocalPointerTable<PermissionSet>,
     pub flags: LocalPointerTable<FlagSet>,
@@ -1594,6 +1598,7 @@ pub fn print_ty_with_pointer_labels_into<L: Copy>(
 }
 
 /// Map for associating flags (such as `DontRewriteFnReason`) with keys (such as `DefId`).
+#[derive(Clone, Debug)]
 pub struct FlagMap<K, V> {
     /// Stores the current flags for each key.  If no flags are set, the entry is omitted; that is,
     /// for every entry `(k, v)`, it's always the case that `v != V::default()`.
