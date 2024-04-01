@@ -177,11 +177,11 @@ pub fn window_link(mut win: NullableDrc<window>, mut sess: NullableDrc<session>)
     link.window.set(win);
     link.session_entry.tqe_next.set(NullableDrc::null());
     link.session_entry.tqe_prev.set(sess.links.tqh_last.get());
-    (*sess.links.tqh_last.get()).set(link);
+    sess.links.tqh_last.get().set(link);
     sess.links.tqh_last.set(link.project(|link| &link.session_entry.tqe_next));
     link.window_entry.tqe_next.set(NullableDrc::null());
     link.window_entry.tqe_prev.set(win.links.tqh_last.get());
-    (*win.links.tqh_last.get()).set(link);
+    win.links.tqh_last.get().set(link);
     win.links.tqh_last.set(link.project(|link| &link.window_entry.tqe_next));
 }
 #[no_mangle]
@@ -213,7 +213,7 @@ pub fn link_delete(mut l: NullableDrc<link>, mut cleanup_flags: libc::c_int) {
         } else {
             l.session.get().links.tqh_last.set(l.session_entry.tqe_prev.get());
         }
-        (*l.session_entry.tqe_prev.get()).set(l.session_entry.tqe_next.get());
+        l.session_entry.tqe_prev.get().set(l.session_entry.tqe_next.get());
         if (l.session.get().links.tqh_first.get()).is_null() {
             session_delete(l.session.get());
         }
@@ -226,7 +226,7 @@ pub fn link_delete(mut l: NullableDrc<link>, mut cleanup_flags: libc::c_int) {
         } else {
             l.window.get().links.tqh_last.set(l.window_entry.tqe_prev.get());
         }
-        (*l.window_entry.tqe_prev.get()).set(l.window_entry.tqe_next.get());
+        l.window_entry.tqe_prev.get().set(l.window_entry.tqe_next.get());
         if (l.window.get().links.tqh_first.get()).is_null() {
             window_delete(l.window.get());
         }
