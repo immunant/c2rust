@@ -88,8 +88,8 @@ pub fn session_new() -> Drc<session> {
     sess.id.set(next_session_id.load(Ordering::Relaxed));
     println!("new session {}", sess.id.get());
     sess.links.tqh_first.set(NullableDrc::null());
-    sess.links.tqh_last.set(sess.clone().project(|sess| &sess.links.tqh_first).into());
-    window_new(sess.clone());
+    sess.links.tqh_last.set(sess.project(|sess| &sess.links.tqh_first).into());
+    window_new(sess);
     sess
 }
 #[no_mangle]
@@ -138,8 +138,8 @@ pub fn window_new(mut sess: Drc<session>) -> Drc<window> {
     win.id.set(next_window_id.load(Ordering::Relaxed));
     println!("new window {}", win.id.get());
     win.links.tqh_first.set(NullableDrc::null());
-    win.links.tqh_last.set(win.clone().project(|win| &win.links.tqh_first).into());
-    window_link(win.clone(), sess);
+    win.links.tqh_last.set(win.project(|win| &win.links.tqh_first).into());
+    window_link(win, sess);
     win
 }
 #[no_mangle]
@@ -173,15 +173,15 @@ pub fn window_link(mut win: Drc<window>, mut sess: Drc<session>) {
             tqe_prev: Cell2::new(NullableSubDrc::null()),
         },
     });
-    link.session.set(sess.clone().into());
-    link.window.set(win.clone().into());
+    link.session.set(sess.into());
+    link.window.set(win.into());
     link.session_entry.tqe_next.set(NullableDrc::null());
     link.session_entry.tqe_prev.set(sess.links.tqh_last.get());
-    (*sess.links.tqh_last.get()).set(link.clone());
-    sess.links.tqh_last.set(link.clone().project(|link| &link.session_entry.tqe_next));
+    (*sess.links.tqh_last.get()).set(link);
+    sess.links.tqh_last.set(link.project(|link| &link.session_entry.tqe_next));
     link.window_entry.tqe_next.set(NullableDrc::null());
     link.window_entry.tqe_prev.set(win.links.tqh_last.get());
-    (*win.links.tqh_last.get()).set(link.clone());
+    (*win.links.tqh_last.get()).set(link);
     win.links.tqh_last.set(link.project(|link| &link.window_entry.tqe_next));
 }
 #[no_mangle]
@@ -237,18 +237,18 @@ fn main_0() -> libc::c_int {
     let mut sess1: Drc<session> = session_new();
     let mut sess2: Drc<session> = session_new();
     println!("\ndelete a window explicitly, which removes it from its sessions");
-    let mut win3: Drc<window> = window_new(sess1.clone());
-    window_link(win3.clone(), sess2.clone());
-    session_render(sess1.clone());
-    session_render(sess2.clone());
+    let mut win3: Drc<window> = window_new(sess1);
+    window_link(win3, sess2);
+    session_render(sess1);
+    session_render(sess2);
     window_delete(win3);
-    session_render(sess1.clone());
-    session_render(sess2.clone());
+    session_render(sess1);
+    session_render(sess2);
     println!("\ndelete a window implicitly by removing it from all sessions");
-    let mut win4: Drc<window> = window_new(sess1.clone());
-    window_unlink(win4, sess1.clone());
-    session_render(sess1.clone());
-    session_render(sess2.clone());
+    let mut win4: Drc<window> = window_new(sess1);
+    window_unlink(win4, sess1);
+    session_render(sess1);
+    session_render(sess2);
     println!("\ndelete a session implicitly by removing all of its windows");
     let mut sess3: Drc<session> = session_new();
     let mut win5: Drc<window> = sess3.links.tqh_first.get().window.get().into();
@@ -258,10 +258,10 @@ fn main_0() -> libc::c_int {
     let mut win6: Drc<window> = sess4.links.tqh_first.get().window.get().into();
     window_delete(win6);
     println!("\ndelete sessions, which removes and deletes all of their windows");
-    let mut win7: Drc<window> = window_new(sess1.clone());
-    window_link(win7, sess2.clone());
-    session_render(sess1.clone());
-    session_render(sess2.clone());
+    let mut win7: Drc<window> = window_new(sess1);
+    window_link(win7, sess2);
+    session_render(sess1);
+    session_render(sess2);
     session_delete(sess2);
     session_delete(sess1);
     0
