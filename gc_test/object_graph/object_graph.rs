@@ -88,7 +88,7 @@ pub fn session_new() -> NullableDrc<session> {
     sess.id.set(next_session_id.load(Ordering::Relaxed));
     println!("new session {}", sess.id.get());
     sess.links.tqh_first.set(NullableDrc::null());
-    sess.links.tqh_last.set(sess.project(|sess| &sess.links.tqh_first).into());
+    sess.links.tqh_last.set(sess.project(|sess| &sess.links.tqh_first));
     window_new(sess);
     sess
 }
@@ -138,7 +138,7 @@ pub fn window_new(mut sess: NullableDrc<session>) -> NullableDrc<window> {
     win.id.set(next_window_id.load(Ordering::Relaxed));
     println!("new window {}", win.id.get());
     win.links.tqh_first.set(NullableDrc::null());
-    win.links.tqh_last.set(win.project(|win| &win.links.tqh_first).into());
+    win.links.tqh_last.set(win.project(|win| &win.links.tqh_first));
     window_link(win, sess);
     win
 }
@@ -173,8 +173,8 @@ pub fn window_link(mut win: NullableDrc<window>, mut sess: NullableDrc<session>)
             tqe_prev: Cell2::new(NullableSubDrc::null()),
         },
     });
-    link.session.set(sess.into());
-    link.window.set(win.into());
+    link.session.set(sess);
+    link.window.set(win);
     link.session_entry.tqe_next.set(NullableDrc::null());
     link.session_entry.tqe_prev.set(sess.links.tqh_last.get());
     (*sess.links.tqh_last.get()).set(link);
@@ -215,7 +215,7 @@ pub fn link_delete(mut l: NullableDrc<link>, mut cleanup_flags: libc::c_int) {
         }
         (*l.session_entry.tqe_prev.get()).set(l.session_entry.tqe_next.get());
         if (l.session.get().links.tqh_first.get()).is_null() {
-            session_delete(l.session.get().into());
+            session_delete(l.session.get());
         }
     }
     if cleanup_flags & 2 as libc::c_int != 0 {
@@ -228,7 +228,7 @@ pub fn link_delete(mut l: NullableDrc<link>, mut cleanup_flags: libc::c_int) {
         }
         (*l.window_entry.tqe_prev.get()).set(l.window_entry.tqe_next.get());
         if (l.window.get().links.tqh_first.get()).is_null() {
-            window_delete(l.window.get().into());
+            window_delete(l.window.get());
         }
     }
     l.break_cycles();
@@ -251,11 +251,11 @@ fn main_0() -> libc::c_int {
     session_render(sess2);
     println!("\ndelete a session implicitly by removing all of its windows");
     let mut sess3: NullableDrc<session> = session_new();
-    let mut win5: NullableDrc<window> = sess3.links.tqh_first.get().window.get().into();
+    let mut win5: NullableDrc<window> = sess3.links.tqh_first.get().window.get();
     window_unlink(win5, sess3);
     println!("\ndelete a session implicitly by deleting all of its windows");
     let mut sess4: NullableDrc<session> = session_new();
-    let mut win6: NullableDrc<window> = sess4.links.tqh_first.get().window.get().into();
+    let mut win6: NullableDrc<window> = sess4.links.tqh_first.get().window.get();
     window_delete(win6);
     println!("\ndelete sessions, which removes and deletes all of their windows");
     let mut win7: NullableDrc<window> = window_new(sess1);
