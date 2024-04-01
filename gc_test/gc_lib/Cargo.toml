@@ -8,3 +8,6 @@ version = "0.0.0"
 publish = false
 edition = "2021"
 autobins = false
+
+[dependencies]
+boehm_alloc = { path = "../boehm_alloc" }
