@@ -3,7 +3,7 @@
 use std::cell::Cell;
 use std::sync::atomic::{AtomicI32, Ordering};
 use gc_lib::cell2::Cell2;
-use gc_lib::drc_gc::{Drc, NullableDrc, NullableSubDrc, BreakCycles};
+use gc_lib::drc_gc::{NullableDrc, NullableSubDrc, BreakCycles};
 
 #[derive(Clone)]
 #[repr(C)]
@@ -76,8 +76,8 @@ impl BreakCycles for window {
 }
 
 #[no_mangle]
-pub fn session_new() -> Drc<session> {
-    let sess: Drc<session> = Drc::new(session {
+pub fn session_new() -> NullableDrc<session> {
+    let sess: NullableDrc<session> = NullableDrc::new(session {
         id: Cell::new(0),
         links: links {
             tqh_first: Cell2::new(NullableDrc::null()),
@@ -93,7 +93,7 @@ pub fn session_new() -> Drc<session> {
     sess
 }
 #[no_mangle]
-pub fn session_delete(mut sess: Drc<session>) {
+pub fn session_delete(mut sess: NullableDrc<session>) {
     println!("delete session {}", sess.id.get());
     let mut l: NullableDrc<link> = sess.links.tqh_first.get();
     while !l.is_null() {
@@ -105,7 +105,7 @@ pub fn session_delete(mut sess: Drc<session>) {
     sess.drop_data();
 }
 #[no_mangle]
-pub fn session_render(mut sess: Drc<session>) {
+pub fn session_render(mut sess: NullableDrc<session>) {
     print!("session {} windows: ", sess.id.get());
     let mut l: NullableDrc<link> = NullableDrc::null();
     let mut first: libc::c_int = 1 as libc::c_int;
@@ -126,8 +126,8 @@ pub fn session_render(mut sess: Drc<session>) {
     };
 }
 #[no_mangle]
-pub fn window_new(mut sess: Drc<session>) -> Drc<window> {
-    let mut win: Drc<window> = Drc::new(window {
+pub fn window_new(mut sess: NullableDrc<session>) -> NullableDrc<window> {
+    let mut win: NullableDrc<window> = NullableDrc::new(window {
         id: Cell::new(0),
         links: links {
             tqh_first: Cell2::new(NullableDrc::null()),
@@ -143,7 +143,7 @@ pub fn window_new(mut sess: Drc<session>) -> Drc<window> {
     win
 }
 #[no_mangle]
-pub fn window_delete(mut win: Drc<window>) {
+pub fn window_delete(mut win: NullableDrc<window>) {
     println!("delete window {}", win.id.get());
     let mut l: NullableDrc<link> = win.links.tqh_first.get();
     while !l.is_null() {
@@ -155,7 +155,7 @@ pub fn window_delete(mut win: Drc<window>) {
     win.drop_data();
 }
 #[no_mangle]
-pub fn window_link(mut win: Drc<window>, mut sess: Drc<session>) {
+pub fn window_link(mut win: NullableDrc<window>, mut sess: NullableDrc<session>) {
     println!(
         "link session {}, window {}",
         sess.id.get(),
@@ -185,11 +185,11 @@ pub fn window_link(mut win: Drc<window>, mut sess: Drc<session>) {
     win.links.tqh_last.set(link.project(|link| &link.window_entry.tqe_next));
 }
 #[no_mangle]
-pub fn window_unlink(mut win: Drc<window>, mut sess: Drc<session>) {
+pub fn window_unlink(mut win: NullableDrc<window>, mut sess: NullableDrc<session>) {
     let mut l: NullableDrc<link> = NullableDrc::null();
     l = win.links.tqh_first.get();
     while !l.is_null() {
-        if Drc::ptr_eq(l.session.get().into(), sess) {
+        if NullableDrc::ptr_eq(l.session.get(), sess) {
             break;
         }
         l = l.window_entry.tqe_next.get();
@@ -234,10 +234,10 @@ pub fn link_delete(mut l: NullableDrc<link>, mut cleanup_flags: libc::c_int) {
     l.break_cycles();
 }
 fn main_0() -> libc::c_int {
-    let mut sess1: Drc<session> = session_new();
-    let mut sess2: Drc<session> = session_new();
+    let mut sess1: NullableDrc<session> = session_new();
+    let mut sess2: NullableDrc<session> = session_new();
     println!("\ndelete a window explicitly, which removes it from its sessions");
-    let mut win3: Drc<window> = window_new(sess1);
+    let mut win3: NullableDrc<window> = window_new(sess1);
     window_link(win3, sess2);
     session_render(sess1);
     session_render(sess2);
@@ -245,20 +245,20 @@ fn main_0() -> libc::c_int {
     session_render(sess1);
     session_render(sess2);
     println!("\ndelete a window implicitly by removing it from all sessions");
-    let mut win4: Drc<window> = window_new(sess1);
+    let mut win4: NullableDrc<window> = window_new(sess1);
     window_unlink(win4, sess1);
     session_render(sess1);
     session_render(sess2);
     println!("\ndelete a session implicitly by removing all of its windows");
-    let mut sess3: Drc<session> = session_new();
-    let mut win5: Drc<window> = sess3.links.tqh_first.get().window.get().into();
+    let mut sess3: NullableDrc<session> = session_new();
+    let mut win5: NullableDrc<window> = sess3.links.tqh_first.get().window.get().into();
     window_unlink(win5, sess3);
     println!("\ndelete a session implicitly by deleting all of its windows");
-    let mut sess4: Drc<session> = session_new();
-    let mut win6: Drc<window> = sess4.links.tqh_first.get().window.get().into();
+    let mut sess4: NullableDrc<session> = session_new();
+    let mut win6: NullableDrc<window> = sess4.links.tqh_first.get().window.get().into();
     window_delete(win6);
     println!("\ndelete sessions, which removes and deletes all of their windows");
-    let mut win7: Drc<window> = window_new(sess1);
+    let mut win7: NullableDrc<window> = window_new(sess1);
     window_link(win7, sess2);
     session_render(sess1);
     session_render(sess2);
