@@ -1,10 +1,5 @@
-use std::any;
-use std::cell::Cell;
-use std::mem::{self, ManuallyDrop};
-use std::ptr::NonNull;
 use std::ops::Deref;
 use boehm_alloc::Gc;
-use crate::cell2::SimpleClone;
 
 
 pub use crate::drc::BreakCycles;
@@ -13,8 +8,6 @@ pub use crate::drc::BreakCycles;
 pub struct Drc<T: ?Sized> {
     ptr: Gc<T>,
 }
-
-type Erased = ();
 
 impl<T: ?Sized> Drc<T> {
     pub fn new(x: T) -> Drc<T>

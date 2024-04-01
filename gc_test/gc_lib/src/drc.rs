@@ -1,4 +1,3 @@
-use std::any;
 use std::cell::Cell;
 use std::mem::{self, ManuallyDrop};
 use std::ptr::NonNull;
