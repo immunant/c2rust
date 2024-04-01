@@ -3,7 +3,7 @@
 use std::cell::Cell;
 use std::sync::atomic::{AtomicI32, Ordering};
 use gc_lib::cell2::Cell2;
-use gc_lib::drc::{Drc, NullableDrc, NullableSubDrc, BreakCycles};
+use gc_lib::drc_gc::{Drc, NullableDrc, NullableSubDrc, BreakCycles};
 
 #[derive(Clone)]
 #[repr(C)]
@@ -189,7 +189,7 @@ pub fn window_unlink(mut win: Drc<window>, mut sess: Drc<session>) {
     let mut l: NullableDrc<link> = NullableDrc::null();
     l = win.links.tqh_first.get();
     while !l.is_null() {
-        if Drc::ptr_eq(&l.session.get().into(), &sess) {
+        if Drc::ptr_eq(l.session.get().into(), sess) {
             break;
         }
         l = l.window_entry.tqe_next.get();
