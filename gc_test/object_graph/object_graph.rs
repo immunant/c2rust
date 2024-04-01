@@ -85,39 +85,39 @@ pub fn session_new() -> Drc<session> {
         },
     });
     next_session_id.fetch_add(1, Ordering::Relaxed);
-    (*sess).id.set(next_session_id.load(Ordering::Relaxed));
-    println!("new session {}", (*sess).id.get());
-    (*sess).links.tqh_first.set(NullableDrc::null());
-    (*sess).links.tqh_last.set(sess.clone().project(|sess| &(*sess).links.tqh_first).into());
+    sess.id.set(next_session_id.load(Ordering::Relaxed));
+    println!("new session {}", sess.id.get());
+    sess.links.tqh_first.set(NullableDrc::null());
+    sess.links.tqh_last.set(sess.clone().project(|sess| &sess.links.tqh_first).into());
     window_new(sess.clone());
-    return sess;
+    sess
 }
 #[no_mangle]
 pub fn session_delete(mut sess: Drc<session>) {
-    println!("delete session {}", (*sess).id.get());
-    let mut l: NullableDrc<link> = (*sess).links.tqh_first.get();
+    println!("delete session {}", sess.id.get());
+    let mut l: NullableDrc<link> = sess.links.tqh_first.get();
     while !l.is_null() {
-        let mut next: NullableDrc<link> = (*l).session_entry.tqe_next.get();
+        let mut next: NullableDrc<link> = l.session_entry.tqe_next.get();
         link_delete(l, 2 as libc::c_int);
         l = next;
     }
-    println!("deleted session {}", (*sess).id.get());
+    println!("deleted session {}", sess.id.get());
     sess.drop_data();
 }
 #[no_mangle]
 pub fn session_render(mut sess: Drc<session>) {
-    print!("session {} windows: ", (*sess).id.get());
+    print!("session {} windows: ", sess.id.get());
     let mut l: NullableDrc<link> = NullableDrc::null();
     let mut first: libc::c_int = 1 as libc::c_int;
-    l = (*sess).links.tqh_first.get();
+    l = sess.links.tqh_first.get();
     while !l.is_null() {
         if first != 0 {
             first = 0 as libc::c_int;
-            print!("{}", (*(*l).window.get()).id.get());
+            print!("{}", l.window.get().id.get());
         } else {
-            print!(", {}", (*(*l).window.get()).id.get());
+            print!(", {}", l.window.get().id.get());
         }
-        l = (*l).session_entry.tqe_next.get();
+        l = l.session_entry.tqe_next.get();
     }
     if first != 0 {
         println!("(none)");
@@ -135,31 +135,31 @@ pub fn window_new(mut sess: Drc<session>) -> Drc<window> {
         },
     });
     next_window_id.fetch_add(1, Ordering::Relaxed);
-    (*win).id.set(next_window_id.load(Ordering::Relaxed));
-    println!("new window {}", (*win).id.get());
-    (*win).links.tqh_first.set(NullableDrc::null());
-    (*win).links.tqh_last.set(win.clone().project(|win| &(*win).links.tqh_first).into());
+    win.id.set(next_window_id.load(Ordering::Relaxed));
+    println!("new window {}", win.id.get());
+    win.links.tqh_first.set(NullableDrc::null());
+    win.links.tqh_last.set(win.clone().project(|win| &win.links.tqh_first).into());
     window_link(win.clone(), sess);
-    return win;
+    win
 }
 #[no_mangle]
 pub fn window_delete(mut win: Drc<window>) {
-    println!("delete window {}", (*win).id.get());
-    let mut l: NullableDrc<link> = (*win).links.tqh_first.get();
+    println!("delete window {}", win.id.get());
+    let mut l: NullableDrc<link> = win.links.tqh_first.get();
     while !l.is_null() {
-        let mut next: NullableDrc<link> = (*l).window_entry.tqe_next.get();
+        let mut next: NullableDrc<link> = l.window_entry.tqe_next.get();
         link_delete(l, 1 as libc::c_int);
         l = next;
     }
-    println!("deleted window {}", (*win).id.get());
+    println!("deleted window {}", win.id.get());
     win.drop_data();
 }
 #[no_mangle]
 pub fn window_link(mut win: Drc<window>, mut sess: Drc<session>) {
     println!(
         "link session {}, window {}",
-        (*sess).id.get(),
-        (*win).id.get(),
+        sess.id.get(),
+        win.id.get(),
     );
     let mut link: NullableDrc<link> = NullableDrc::new(link {
         session: Cell2::new(NullableDrc::null()),
@@ -173,26 +173,26 @@ pub fn window_link(mut win: Drc<window>, mut sess: Drc<session>) {
             tqe_prev: Cell2::new(NullableSubDrc::null()),
         },
     });
-    (*link).session.set(sess.clone().into());
-    (*link).window.set(win.clone().into());
-    (*link).session_entry.tqe_next.set(NullableDrc::null());
-    (*link).session_entry.tqe_prev.set((*sess).links.tqh_last.get());
-    (*(*sess).links.tqh_last.get()).set(link.clone());
-    (*sess).links.tqh_last.set(link.clone().project(|link| &(*link).session_entry.tqe_next));
-    (*link).window_entry.tqe_next.set(NullableDrc::null());
-    (*link).window_entry.tqe_prev.set((*win).links.tqh_last.get());
-    (*(*win).links.tqh_last.get()).set(link.clone());
-    (*win).links.tqh_last.set(link.clone().project(|link| &(*link).window_entry.tqe_next));
+    link.session.set(sess.clone().into());
+    link.window.set(win.clone().into());
+    link.session_entry.tqe_next.set(NullableDrc::null());
+    link.session_entry.tqe_prev.set(sess.links.tqh_last.get());
+    (*sess.links.tqh_last.get()).set(link.clone());
+    sess.links.tqh_last.set(link.clone().project(|link| &link.session_entry.tqe_next));
+    link.window_entry.tqe_next.set(NullableDrc::null());
+    link.window_entry.tqe_prev.set(win.links.tqh_last.get());
+    (*win.links.tqh_last.get()).set(link.clone());
+    win.links.tqh_last.set(link.project(|link| &link.window_entry.tqe_next));
 }
 #[no_mangle]
 pub fn window_unlink(mut win: Drc<window>, mut sess: Drc<session>) {
     let mut l: NullableDrc<link> = NullableDrc::null();
-    l = (*win).links.tqh_first.get();
+    l = win.links.tqh_first.get();
     while !l.is_null() {
-        if Drc::ptr_eq(&(*l).session.get().into(), &sess) {
+        if Drc::ptr_eq(&l.session.get().into(), &sess) {
             break;
         }
-        l = (*l).window_entry.tqe_next.get();
+        l = l.window_entry.tqe_next.get();
     }
     if !l.is_null() {
         link_delete(l, 1 as libc::c_int | 2 as libc::c_int);
@@ -202,33 +202,33 @@ pub fn window_unlink(mut win: Drc<window>, mut sess: Drc<session>) {
 pub fn link_delete(mut l: NullableDrc<link>, mut cleanup_flags: libc::c_int) {
     println!(
         "unlink session {}, window {}",
-        (*(*l).session.get()).id.get(),
-        (*(*l).window.get()).id.get(),
+        l.session.get().id.get(),
+        l.window.get().id.get(),
     );
     if cleanup_flags & 1 as libc::c_int != 0 {
-        if !((*l).session_entry.tqe_next.get()).is_null() {
-            (*(*l).session_entry.tqe_next.get())
+        if !(l.session_entry.tqe_next.get()).is_null() {
+            l.session_entry.tqe_next.get()
                 .session_entry
-                .tqe_prev.set((*l).session_entry.tqe_prev.get());
+                .tqe_prev.set(l.session_entry.tqe_prev.get());
         } else {
-            (*(*l).session.get()).links.tqh_last.set((*l).session_entry.tqe_prev.get());
+            l.session.get().links.tqh_last.set(l.session_entry.tqe_prev.get());
         }
-        (*(*l).session_entry.tqe_prev.get()).set((*l).session_entry.tqe_next.get());
-        if ((*(*l).session.get()).links.tqh_first.get()).is_null() {
-            session_delete((*l).session.get().into());
+        (*l.session_entry.tqe_prev.get()).set(l.session_entry.tqe_next.get());
+        if (l.session.get().links.tqh_first.get()).is_null() {
+            session_delete(l.session.get().into());
         }
     }
     if cleanup_flags & 2 as libc::c_int != 0 {
-        if !((*l).window_entry.tqe_next.get()).is_null() {
-            (*(*l).window_entry.tqe_next.get())
+        if !(l.window_entry.tqe_next.get()).is_null() {
+            l.window_entry.tqe_next.get()
                 .window_entry
-                .tqe_prev.set((*l).window_entry.tqe_prev.get());
+                .tqe_prev.set(l.window_entry.tqe_prev.get());
         } else {
-            (*(*l).window.get()).links.tqh_last.set((*l).window_entry.tqe_prev.get());
+            l.window.get().links.tqh_last.set(l.window_entry.tqe_prev.get());
         }
-        (*(*l).window_entry.tqe_prev.get()).set((*l).window_entry.tqe_next.get());
-        if ((*(*l).window.get()).links.tqh_first.get()).is_null() {
-            window_delete((*l).window.get().into());
+        (*l.window_entry.tqe_prev.get()).set(l.window_entry.tqe_next.get());
+        if (l.window.get().links.tqh_first.get()).is_null() {
+            window_delete(l.window.get().into());
         }
     }
     l.break_cycles();
@@ -251,11 +251,11 @@ fn main_0() -> libc::c_int {
     session_render(sess2.clone());
     println!("\ndelete a session implicitly by removing all of its windows");
     let mut sess3: Drc<session> = session_new();
-    let mut win5: Drc<window> = (*(*sess3).links.tqh_first.get()).window.get().into();
+    let mut win5: Drc<window> = sess3.links.tqh_first.get().window.get().into();
     window_unlink(win5, sess3);
     println!("\ndelete a session implicitly by deleting all of its windows");
     let mut sess4: Drc<session> = session_new();
-    let mut win6: Drc<window> = (*(*sess4).links.tqh_first.get()).window.get().into();
+    let mut win6: Drc<window> = sess4.links.tqh_first.get().window.get().into();
     window_delete(win6);
     println!("\ndelete sessions, which removes and deletes all of their windows");
     let mut win7: Drc<window> = window_new(sess1.clone());
@@ -264,7 +264,7 @@ fn main_0() -> libc::c_int {
     session_render(sess2.clone());
     session_delete(sess2);
     session_delete(sess1);
-    return 0;
+    0
 }
 pub fn main() {
     ::std::process::exit(main_0() as i32)
