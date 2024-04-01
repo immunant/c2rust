@@ -2735,7 +2735,7 @@ static std::vector<const char *> augment_argv(int argc, const char *argv[]) {
     // the path to the tool (in this case, the binary running the AST Exporter).
     SmallString<128> P("-extra-arg=-resource-dir=" CLANG_BIN_PATH);
     llvm::sys::path::append(P, "..", Twine("lib") + CLANG_LIBDIR_SUFFIX,
-                            "clang", CLANG_VERSION_STRING);
+                            "clang", std::to_string(CLANG_VERSION_MAJOR));
     std::string resource_dir = P.str().str();
     char *resource_dir_cstr = new char[resource_dir.length() + 1];
     strncpy(resource_dir_cstr, resource_dir.c_str(), resource_dir.length() + 1);
