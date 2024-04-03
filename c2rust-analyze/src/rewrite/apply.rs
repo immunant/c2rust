@@ -607,10 +607,7 @@ impl LineMapBuilder {
         if i >= self.v.len() {
             self.v.resize(i + 1, None);
         }
-        self.v[i] = match self.v[i] {
-            None => Some(j),
-            Some(old_j) => Some(cmp::min(j, old_j)),
-        };
+        self.v[i] = Some(self.v[i].map_or(j, |old_j| cmp::min(j, old_j)));
     }
 
     pub fn finish(self) -> Vec<usize> {

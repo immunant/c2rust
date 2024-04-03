@@ -1491,7 +1491,7 @@ fn run(tcx: TyCtxt) {
                 ptrs.push(ptr);
                 format!("{{{}}}", ptr)
             });
-            if ptrs.len() == 0 {
+            if ptrs.is_empty() {
                 continue;
             }
             // TODO: emit addr_of when it's nontrivial

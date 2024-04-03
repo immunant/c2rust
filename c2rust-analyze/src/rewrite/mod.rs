@@ -255,7 +255,7 @@ fn add_annotations(
     line_map: Option<&[usize]>,
     mut annotations: Vec<(usize, String)>,
 ) -> String {
-    if annotations.len() == 0 {
+    if annotations.is_empty() {
         return src;
     }
 
