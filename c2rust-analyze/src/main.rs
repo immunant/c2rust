@@ -202,8 +202,6 @@ impl Cargo {
 
 const RUSTC_WRAPPER_VAR: &str = "RUSTC_WRAPPER";
 const RUST_SYSROOT_VAR: &str = "RUST_SYSROOT";
-/// If this env var is set, we skip all cargo integration and just behave like rustc.
-const NO_CARGO_VAR: &str = "C2RUST_ANALYZE_NO_CARGO";
 
 /// Read a [`PathBuf`] from the [`mod@env`]ironment that should've been set by the [`cargo_wrapper`].
 fn env_path_from_wrapper(var: &str) -> anyhow::Result<PathBuf> {
@@ -274,9 +272,16 @@ fn is_build_script(at_args: &[String]) -> anyhow::Result<bool> {
     Ok(bin_crate_name().is_none() && is_bin_crate(at_args)?)
 }
 
+/// Check whether "no Cargo" mode is enabled.  In this mode, `c2rust-analyze` behaves like `rustc`
+/// instead of like `cargo`.  For example, `C2RUST_ANALYZE_NO_CARGO=1 c2rust-analyze foo.rs` will
+/// process `foo.rs` much like `rustc foo.rs` does.
+fn in_no_cargo_mode() -> bool {
+    env::var_os("C2RUST_ANALYZE_NO_CARGO").is_some()
+}
+
 /// Run as a `rustc` wrapper (a la `$RUSTC_WRAPPER`/[`RUSTC_WRAPPER_VAR`]).
 fn rustc_wrapper() -> anyhow::Result<()> {
-    let no_cargo = env::var_os(NO_CARGO_VAR).is_some();
+    let no_cargo = in_no_cargo_mode();
     let mut at_args = if no_cargo {
         env::args().collect::<Vec<_>>()
     } else {
@@ -427,7 +432,7 @@ fn main() -> anyhow::Result<()> {
     let own_exe = env::current_exe()?;
 
     let wrapping_rustc = env::var_os(RUSTC_WRAPPER_VAR).as_deref() == Some(own_exe.as_os_str())
-        || env::var_os(NO_CARGO_VAR).is_some();
+        || in_no_cargo_mode();
     if wrapping_rustc {
         rustc_wrapper()
     } else {
