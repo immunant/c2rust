@@ -627,14 +627,20 @@ impl LineMapBuilder {
     }
 }
 
+pub struct FileRewrite {
+    /// The rewritten source code for this file.
+    pub new_src: String,
+    /// For each input line in the original source code, this gives the line number within
+    /// `new_src` of the first output line that contains some part of the input line.
+    pub line_map: Vec<usize>,
+}
+
 /// Apply rewrites `rws` to the source files covered by their `Span`s.  Returns a map giving the
-/// rewritten source code for each file that contains at least one rewritten `Span`.  The
-/// `Vec<usize>` is a line map: for each line of the original source code, it gives the line number
-/// in the output `String` of the first output line that contains some part of the input line.
+/// rewritten source code for each file that contains at least one rewritten `Span`.
 pub fn apply_rewrites(
     source_map: &SourceMap,
     rws: Vec<(Span, Rewrite)>,
-) -> HashMap<FileName, (String, Vec<usize>)> {
+) -> HashMap<FileName, FileRewrite> {
     let (rts, errs) = RewriteTree::build(rws);
     for (span, rw, err) in errs {
         eprintln!(
@@ -643,7 +649,7 @@ pub fn apply_rewrites(
         );
     }
 
-    let mut new_src = HashMap::new();
+    let mut file_rewrites = HashMap::new();
     let mut rts = &rts as &[RewriteTree<Span>];
     while !rts.is_empty() {
         let file = source_map.lookup_source_file(rts[0].span.lo());
@@ -677,10 +683,16 @@ pub fn apply_rewrites(
         let file_span = Span::new(file.start_pos, file.end_pos, SyntaxContext::root(), None);
         sink.emit_span_with_rewrites(file_span, file_rts).unwrap();
 
-        new_src.insert(file.name.clone(), (buf, line_map.finish()));
+        file_rewrites.insert(
+            file.name.clone(),
+            FileRewrite {
+                new_src: buf,
+                line_map: line_map.finish(),
+            },
+        );
     }
 
-    new_src
+    file_rewrites
 }
 
 #[cfg(test)]

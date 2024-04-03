@@ -352,10 +352,10 @@ pub fn apply_rewrites(
     };
 
     let new_src = apply::apply_rewrites(tcx.sess.source_map(), rewrites);
-    for (filename, (src, line_map)) in new_src {
+    for (filename, file_rw) in new_src {
         let annotations = annotations.remove(&filename).unwrap_or(Vec::new());
-        let src = add_annotations(src, Some(&line_map), annotations);
-        emit(filename, src);
+        let new_src = add_annotations(file_rw.new_src, Some(&file_rw.line_map), annotations);
+        emit(filename, new_src);
     }
 
     // Also emit files that have annotations but no rewrites.
