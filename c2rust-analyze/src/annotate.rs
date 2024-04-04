@@ -1,3 +1,4 @@
+use log::warn;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::{FileName, Span};
 use std::collections::HashMap;
@@ -22,6 +23,16 @@ impl<'tcx> AnnotationBuffer<'tcx> {
     }
 
     pub fn emit(&mut self, span: Span, msg: impl Display) {
+        if span.is_dummy() {
+            // `DUMMY_SP` covers the range `BytePos(0) .. BytePos(0)`.  Whichever file happens to
+            // be added to the `SourceMap` first will be assigned a range starting at `BytePos(0)`,
+            // so the `SourceFile` lookup below would attach the annotation to that file.  Rather
+            // than letting the annotation be attached to an arbitrary file, we warn and discard
+            // it.
+            warn!("discarding annotation on DUMMY_SP: {}", msg);
+            return;
+        }
+
         let sm = self.tcx.sess.source_map();
 
         let span = span.source_callsite();

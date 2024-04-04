@@ -50,7 +50,7 @@ use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TyKind;
 use rustc_middle::ty::WithOptConstParam;
-use rustc_span::{Span, Symbol, DUMMY_SP};
+use rustc_span::{Span, Symbol};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -1544,7 +1544,13 @@ fn run(tcx: TyCtxt) {
         }
 
         // Emit annotations for fields
-        let span = tcx.def_ident_span(did).unwrap_or(DUMMY_SP);
+        let span = match tcx.def_ident_span(did) {
+            Some(x) => x,
+            None => {
+                warn!("field {:?} has no def_ident_span to annotate", did);
+                continue;
+            }
+        };
         let mut ptrs = Vec::new();
         let ty_str = context::print_ty_with_pointer_labels(field_lty, |ptr| {
             if ptr.is_none() {
