@@ -226,6 +226,8 @@ fn main() {
         tcfg.emit_modules = true
     };
 
+    let mut created_temp_compile_commands = false;
+
     let compile_commands = if args.compile_commands.len() == 1
         && args.compile_commands[0].extension() == Some(std::ffi::OsStr::new("json"))
     {
@@ -244,6 +246,7 @@ fn main() {
                 Exactly one compile_commands.json file should be provided, or a list of source files, but not both.");
     } else {
         // Handle as a list of source files
+        created_temp_compile_commands = true;
         c2rust_transpile::create_temp_compile_commands(&args.compile_commands)
     };
 
@@ -256,7 +259,7 @@ fn main() {
     c2rust_transpile::transpile(tcfg, &compile_commands, &extra_args);
 
     // Remove the temporary compile_commands.json if it was created
-    if args.compile_commands.len() > 0 {
+    if created_temp_compile_commands {
         std::fs::remove_file(&compile_commands)
             .expect("Failed to remove temporary compile_commands.json");
     }
