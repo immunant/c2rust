@@ -2,7 +2,7 @@ use crate::rewrite::Rewrite;
 use rustc_hir::Mutability;
 use rustc_span::source_map::{FileName, SourceMap};
 use rustc_span::{BytePos, SourceFile, Span, SyntaxContext};
-use std::cmp::Reverse;
+use std::cmp::{self, Reverse};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fmt;
@@ -212,6 +212,10 @@ pub trait Sink {
     type Error;
     const PARENTHESIZE_EXPRS: bool;
     fn emit_str(&mut self, s: &str) -> Result<(), Self::Error>;
+    /// Emit a string from the original file into the output.  `s` is a contiguous substring of the
+    /// original, and the start of `s` is on line `line`.  If the first character of `s` is `'\n'`,
+    /// then it's the newline separating `line` from `line + 1`.
+    fn emit_orig_str(&mut self, s: &str, line: usize) -> Result<(), Self::Error>;
     fn emit_fmt(&mut self, args: fmt::Arguments) -> Result<(), Self::Error>;
     fn emit_expr(&mut self) -> Result<(), Self::Error>;
     fn emit_sub(&mut self, idx: usize, span: Span) -> Result<(), Self::Error>;
@@ -496,7 +500,7 @@ struct RewriteTreeSink<'a, F> {
     rt: Option<&'a RewriteTree>,
 }
 
-impl<'a, F: FnMut(&str)> RewriteTreeSink<'a, F> {
+impl<'a, F: FnMut(&str, Option<usize>)> RewriteTreeSink<'a, F> {
     fn new(file: &'a SourceFile, emit: &'a mut F) -> RewriteTreeSink<'a, F> {
         RewriteTreeSink {
             file,
@@ -529,7 +533,12 @@ impl<'a, F: FnMut(&str)> RewriteTreeSink<'a, F> {
         // so subtract the file's start to obtain indices within its data.
         let lo_in_file = lo - self.file.start_pos;
         let hi_in_file = hi - self.file.start_pos;
-        self.emit_str(&src[lo_in_file.0 as usize..hi_in_file.0 as usize])
+        let s = &src[lo_in_file.0 as usize..hi_in_file.0 as usize];
+        if let Some(line) = self.file.lookup_line(lo) {
+            self.emit_orig_str(s, line)
+        } else {
+            self.emit_str(s)
+        }
     }
 
     fn emit_span_with_rewrites(
@@ -555,16 +564,20 @@ impl<'a, F: FnMut(&str)> RewriteTreeSink<'a, F> {
     }
 }
 
-impl<'a, F: FnMut(&str)> Sink for RewriteTreeSink<'a, F> {
+impl<'a, F: FnMut(&str, Option<usize>)> Sink for RewriteTreeSink<'a, F> {
     type Error = Infallible;
     const PARENTHESIZE_EXPRS: bool = true;
 
     fn emit_str(&mut self, s: &str) -> Result<(), Self::Error> {
-        (self.emit)(s);
+        (self.emit)(s, None);
+        Ok(())
+    }
+    fn emit_orig_str(&mut self, s: &str, line: usize) -> Result<(), Self::Error> {
+        (self.emit)(s, Some(line));
         Ok(())
     }
     fn emit_fmt(&mut self, args: fmt::Arguments) -> Result<(), Self::Error> {
-        (self.emit)(&format!("{args}"));
+        (self.emit)(&format!("{args}"), None);
         Ok(())
     }
     fn emit_expr(&mut self) -> Result<(), Self::Error> {
@@ -580,12 +593,54 @@ impl<'a, F: FnMut(&str)> Sink for RewriteTreeSink<'a, F> {
     }
 }
 
+#[derive(Debug, Default)]
+struct LineMapBuilder {
+    /// Map from line indices in the original source code to line indices in `buf`.  For each input
+    /// line, we give the index of the first output line containing some unmodified portion of the
+    /// input line.
+    v: Vec<Option<usize>>,
+}
+
+impl LineMapBuilder {
+    /// Record that part of input line `i` is found in output line `j`.
+    pub fn record(&mut self, i: usize, j: usize) {
+        if i >= self.v.len() {
+            self.v.resize(i + 1, None);
+        }
+        self.v[i] = Some(self.v[i].map_or(j, |old_j| cmp::min(j, old_j)));
+    }
+
+    pub fn finish(self) -> Vec<usize> {
+        // If an input line is missing from the output, find the next non-missing input line and
+        // use its output index instead.  This way, we always have somewhere to attach annotations
+        // for any line.
+        let mut out = Vec::with_capacity(self.v.len());
+        for (i, j) in self.v.into_iter().enumerate() {
+            if let Some(j) = j {
+                // Reuse `j` to fill in for any previous `None` entries, then push a `j` for input
+                // line `i` itself.
+                out.resize(i + 1, j);
+            }
+            // Otherwise, do nothing.
+        }
+        out
+    }
+}
+
+pub struct FileRewrite {
+    /// The rewritten source code for this file.
+    pub new_src: String,
+    /// For each input line in the original source code, this gives the line number within
+    /// `new_src` of the first output line that contains some part of the input line.
+    pub line_map: Vec<usize>,
+}
+
 /// Apply rewrites `rws` to the source files covered by their `Span`s.  Returns a map giving the
 /// rewritten source code for each file that contains at least one rewritten `Span`.
 pub fn apply_rewrites(
     source_map: &SourceMap,
     rws: Vec<(Span, Rewrite)>,
-) -> HashMap<FileName, String> {
+) -> HashMap<FileName, FileRewrite> {
     let (rts, errs) = RewriteTree::build(rws);
     for (span, rw, err) in errs {
         eprintln!(
@@ -594,7 +649,7 @@ pub fn apply_rewrites(
         );
     }
 
-    let mut new_src = HashMap::new();
+    let mut file_rewrites = HashMap::new();
     let mut rts = &rts as &[RewriteTree<Span>];
     while !rts.is_empty() {
         let file = source_map.lookup_source_file(rts[0].span.lo());
@@ -607,15 +662,37 @@ pub fn apply_rewrites(
         rts = rest;
 
         let mut buf = String::new();
-        let mut emit = |s: &str| buf.push_str(s);
+        // Number of newlines in `buf`.
+        let mut buf_line = 0;
+        let mut line_map = LineMapBuilder::default();
+        let mut emit = |s: &str, line| {
+            if let Some(mut line) = line {
+                line_map.record(line, buf_line);
+                for _ in s.matches('\n') {
+                    line += 1;
+                    buf_line += 1;
+                    line_map.record(line, buf_line);
+                }
+            } else {
+                buf_line += s.matches('\n').count();
+            }
+            buf.push_str(s);
+        };
+
         let mut sink = RewriteTreeSink::new(&file, &mut emit);
         let file_span = Span::new(file.start_pos, file.end_pos, SyntaxContext::root(), None);
         sink.emit_span_with_rewrites(file_span, file_rts).unwrap();
 
-        new_src.insert(file.name.clone(), buf);
+        file_rewrites.insert(
+            file.name.clone(),
+            FileRewrite {
+                new_src: buf,
+                line_map: line_map.finish(),
+            },
+        );
     }
 
-    new_src
+    file_rewrites
 }
 
 #[cfg(test)]

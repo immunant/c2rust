@@ -1,16 +1,9 @@
+use crate::annotate::AnnotationBuffer;
 use crate::borrowck;
-use crate::context::AnalysisCtxt;
-use crate::context::AnalysisCtxtData;
-use crate::context::FlagSet;
-use crate::context::GlobalAnalysisCtxt;
-use crate::context::GlobalAssignment;
-use crate::context::LFnSig;
-use crate::context::LTy;
-use crate::context::LTyCtxt;
-use crate::context::LocalAssignment;
-use crate::context::PermissionSet;
-use crate::context::PointerId;
-use crate::context::PointerInfo;
+use crate::context::{
+    self, AnalysisCtxt, AnalysisCtxtData, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig,
+    LTy, LTyCtxt, LocalAssignment, PermissionSet, PointerId, PointerInfo,
+};
 use crate::dataflow;
 use crate::dataflow::DataflowConstraints;
 use crate::equiv::GlobalEquivSet;
@@ -57,8 +50,7 @@ use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TyKind;
 use rustc_middle::ty::WithOptConstParam;
-use rustc_span::Span;
-use rustc_span::Symbol;
+use rustc_span::{Span, Symbol};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -114,6 +106,10 @@ impl<T> MaybeUnset<T> {
 
     pub fn take(&mut self) -> T {
         self.0.take().expect("value is not set")
+    }
+
+    pub fn is_set(&self) -> bool {
+        self.0.is_some()
     }
 }
 
@@ -664,19 +660,19 @@ fn run(tcx: TyCtxt) {
             pointee_type::generate_constraints(&acx, &mir)
         }));
 
-        let pointee_constraints = match r {
-            Ok(x) => x,
+        let mut info = FuncInfo::default();
+        let local_pointee_types = LocalPointerTable::new(acx.num_pointers());
+        info.acx_data.set(acx.into_data());
+
+        match r {
+            Ok(pointee_constraints) => {
+                info.pointee_constraints.set(pointee_constraints);
+            }
             Err(pd) => {
                 gacx.mark_fn_failed(ldid.to_def_id(), pd);
-                continue;
             }
-        };
+        }
 
-        let local_pointee_types = LocalPointerTable::new(acx.num_pointers());
-
-        let mut info = FuncInfo::default();
-        info.acx_data.set(acx.into_data());
-        info.pointee_constraints.set(pointee_constraints);
         info.local_pointee_types.set(local_pointee_types);
         info.recent_writes.set(RecentWrites::new(&mir));
         func_info.insert(ldid, info);
@@ -1101,6 +1097,9 @@ fn run(tcx: TyCtxt) {
                     field_ltys,
                 );
             }));
+
+            info.acx_data.set(acx.into_data());
+
             match r {
                 Ok(()) => {}
                 Err(pd) => {
@@ -1108,8 +1107,6 @@ fn run(tcx: TyCtxt) {
                     continue;
                 }
             }
-
-            info.acx_data.set(acx.into_data());
         }
 
         let mut num_changed = 0;
@@ -1156,6 +1153,9 @@ fn run(tcx: TyCtxt) {
 
             acx.check_string_literal_perms(&asn);
         }));
+
+        info.acx_data.set(acx.into_data());
+
         match r {
             Ok(()) => {}
             Err(pd) => {
@@ -1163,8 +1163,6 @@ fn run(tcx: TyCtxt) {
                 continue;
             }
         }
-
-        info.acx_data.set(acx.into_data());
     }
 
     // Check that these perms haven't changed.
@@ -1232,6 +1230,9 @@ fn run(tcx: TyCtxt) {
     // Buffer debug output for each function.  Grouping together all the different types of info
     // for a single function makes FileCheck tests easier to write.
     let mut func_reports = HashMap::<LocalDefId, String>::new();
+
+    // Buffer for annotations, which are inserted inline as comments when rewriting.
+    let mut ann = AnnotationBuffer::new(tcx);
 
     // Generate rewrites for all functions.
     let mut all_rewrites = Vec::new();
@@ -1310,6 +1311,9 @@ fn run(tcx: TyCtxt) {
                 all_rewrites.extend(expr_rewrites);
                 all_rewrites.extend(ty_rewrites);
             }));
+
+            info.acx_data.set(acx.into_data());
+
             match r {
                 Ok(()) => {}
                 Err(pd) => {
@@ -1317,8 +1321,6 @@ fn run(tcx: TyCtxt) {
                     continue;
                 }
             }
-
-            info.acx_data.set(acx.into_data());
         }
 
         // This call never panics, which is important because this is the fallback if the more
@@ -1456,6 +1458,54 @@ fn run(tcx: TyCtxt) {
         if let Some(report) = func_reports.remove(&ldid) {
             eprintln!("{}", report);
         }
+
+        info.acx_data.set(acx.into_data());
+    }
+
+    // Generate annotations for all functions.
+    for ldid in tcx.hir().body_owners() {
+        // Skip any body owners that aren't present in `func_info`, and also get the info itself.
+        let info = match func_info.get_mut(&ldid) {
+            Some(x) => x,
+            None => continue,
+        };
+
+        if !info.acx_data.is_set() {
+            continue;
+        }
+
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+        let asn = gasn.and(&mut info.lasn);
+
+        // Generate inline annotations for pointer-typed locals
+        for (local, decl) in mir.local_decls.iter_enumerated() {
+            let span = local_span(decl);
+            let mut ptrs = Vec::new();
+            let ty_str = context::print_ty_with_pointer_labels(acx.local_tys[local], |ptr| {
+                if ptr.is_none() {
+                    return String::new();
+                }
+                ptrs.push(ptr);
+                format!("{{{}}}", ptr)
+            });
+            if ptrs.is_empty() {
+                continue;
+            }
+            // TODO: emit addr_of when it's nontrivial
+            // TODO: emit pointee_types when nontrivial
+            ann.emit(span, format_args!("typeof({:?}) = {}", local, ty_str));
+            for ptr in ptrs {
+                ann.emit(
+                    span,
+                    format_args!("  {} = {:?}, {:?}", ptr, asn.perms()[ptr], asn.flags()[ptr]),
+                );
+            }
+        }
+
+        info.acx_data.set(acx.into_data());
     }
 
     // Print results for `static` items.
@@ -1492,6 +1542,33 @@ fn run(tcx: TyCtxt) {
             let ty_flags = gasn.flags[pid];
             eprintln!("{name:}: ({pid}) perms = {ty_perms:?}, flags = {ty_flags:?}");
         }
+
+        // Emit annotations for fields
+        let span = match tcx.def_ident_span(did) {
+            Some(x) => x,
+            None => {
+                warn!("field {:?} has no def_ident_span to annotate", did);
+                continue;
+            }
+        };
+        let mut ptrs = Vec::new();
+        let ty_str = context::print_ty_with_pointer_labels(field_lty, |ptr| {
+            if ptr.is_none() {
+                return String::new();
+            }
+            ptrs.push(ptr);
+            format!("{{{}}}", ptr)
+        });
+        if ptrs.len() == 0 {
+            continue;
+        }
+        ann.emit(span, format_args!("typeof({}) = {}", name, ty_str));
+        for ptr in ptrs {
+            ann.emit(
+                span,
+                format_args!("  {} = {:?}, {:?}", ptr, gasn.perms[ptr], gasn.flags[ptr]),
+            );
+        }
     }
 
     let mut adt_dids = gacx.adt_metadata.table.keys().cloned().collect::<Vec<_>>();
@@ -1506,14 +1583,23 @@ fn run(tcx: TyCtxt) {
     // Apply rewrites
     // ----------------------------------
 
+    let annotations = ann.finish();
+
     // Apply rewrite to all functions at once.
     let mut update_files = rewrite::UpdateFiles::No;
-    if let Ok(val) = env::var("C2RUST_ANALYZE_REWRITE_IN_PLACE") {
-        if val == "1" {
-            update_files = rewrite::UpdateFiles::Yes;
+    if let Ok(val) = env::var("C2RUST_ANALYZE_REWRITE_MODE") {
+        match val.as_str() {
+            "none" => {}
+            "inplace" => {
+                update_files = rewrite::UpdateFiles::InPlace;
+            }
+            "alongside" => {
+                update_files = rewrite::UpdateFiles::Alongside;
+            }
+            _ => panic!("bad value {:?} for C2RUST_ANALYZE_REWRITE_MODE", val),
         }
     }
-    rewrite::apply_rewrites(tcx, all_rewrites, update_files);
+    rewrite::apply_rewrites(tcx, all_rewrites, annotations, update_files);
 
     // ----------------------------------
     // Report caught panics
@@ -1612,7 +1698,7 @@ fn make_sig_fixed(gasn: &mut GlobalAssignment, lsig: &LFnSig) {
     }
 }
 
-fn describe_local(tcx: TyCtxt, decl: &LocalDecl) -> String {
+fn local_span(decl: &LocalDecl) -> Span {
     let mut span = decl.source_info.span;
     if let Some(ref info) = decl.local_info {
         if let LocalInfo::User(ref binding_form) = **info {
@@ -1622,6 +1708,11 @@ fn describe_local(tcx: TyCtxt, decl: &LocalDecl) -> String {
             }
         }
     }
+    span
+}
+
+fn describe_local(tcx: TyCtxt, decl: &LocalDecl) -> String {
+    let span = local_span(decl);
     describe_span(tcx, span)
 }
 
