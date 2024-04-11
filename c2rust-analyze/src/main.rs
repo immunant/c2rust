@@ -272,12 +272,24 @@ fn is_build_script(at_args: &[String]) -> anyhow::Result<bool> {
     Ok(bin_crate_name().is_none() && is_bin_crate(at_args)?)
 }
 
+/// Check whether "no Cargo" mode is enabled.  In this mode, `c2rust-analyze` behaves like `rustc`
+/// instead of like `cargo`.  For example, `C2RUST_ANALYZE_NO_CARGO=1 c2rust-analyze foo.rs` will
+/// process `foo.rs` much like `rustc foo.rs` does.
+fn in_no_cargo_mode() -> bool {
+    env::var_os("C2RUST_ANALYZE_NO_CARGO").is_some()
+}
+
 /// Run as a `rustc` wrapper (a la `$RUSTC_WRAPPER`/[`RUSTC_WRAPPER_VAR`]).
 fn rustc_wrapper() -> anyhow::Result<()> {
-    let mut at_args = env::args().skip(1).collect::<Vec<_>>();
+    let no_cargo = in_no_cargo_mode();
+    let mut at_args = if no_cargo {
+        env::args().collect::<Vec<_>>()
+    } else {
+        env::args().skip(1).collect::<Vec<_>>()
+    };
     // We also want to avoid proc-macro crates,
     // but those must be separate crates, so we should be okay.
-    let is_primary_compilation = is_primary_package() && !is_build_script(&at_args)?;
+    let is_primary_compilation = (is_primary_package() && !is_build_script(&at_args)?) || no_cargo;
 
     let sysroot = env_path_from_wrapper(RUST_SYSROOT_VAR).or_else(|_| resolve_sysroot())?;
     let sysroot = sysroot
@@ -419,7 +431,8 @@ fn main() -> anyhow::Result<()> {
 
     let own_exe = env::current_exe()?;
 
-    let wrapping_rustc = env::var_os(RUSTC_WRAPPER_VAR).as_deref() == Some(own_exe.as_os_str());
+    let wrapping_rustc = env::var_os(RUSTC_WRAPPER_VAR).as_deref() == Some(own_exe.as_os_str())
+        || in_no_cargo_mode();
     if wrapping_rustc {
         rustc_wrapper()
     } else {
