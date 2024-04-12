@@ -1,0 +1,34 @@
+use std::ptr;
+
+// CHECK-LABEL: final labeling for "f"
+fn f(cond: bool) {
+    let x = 1_i32;
+    // CHECK: ([[@LINE+1]]: mut y): {{.*}}, type = UNIQUE#
+    let mut y = ptr::addr_of!(x);
+    if cond {
+        y = ptr::null();
+    }
+}
+
+// CHECK-LABEL: final labeling for "g"
+fn g(cond: bool) {
+    let x = 1_i32;
+    // CHECK: ([[@LINE+1]]: y): {{.*}}, type = UNIQUE | NON_NULL#
+    let y = ptr::addr_of!(x);
+    if cond {
+        let z = ptr::null::<i32>();
+    }
+}
+
+// CHECK-LABEL: final labeling for "h"
+fn h(cond: bool) {
+    let x = 1_i32;
+    // CHECK: ([[@LINE+1]]: y): {{.*}}, type = UNIQUE | NON_NULL#
+    let y = ptr::addr_of!(x);
+    // CHECK: ([[@LINE+1]]: z): {{.*}}, type = UNIQUE#
+    let z = if cond {
+        y
+    } else {
+        ptr::null()
+    };
+}
