@@ -123,6 +123,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 if !op.constant().copied().map(is_null_const).unwrap_or(false) {
                     panic!("Creating non-null pointers from exposed addresses not supported");
                 }
+                // The target type of the cast must not have `NON_NULL` permission.
+                self.constraints
+                    .add_no_perms(to_lty.label, PermissionSet::NON_NULL);
             }
             CastKind::PointerExposeAddress => {
                 // Allow, as [`CastKind::PointerFromExposedAddress`] is the dangerous one,

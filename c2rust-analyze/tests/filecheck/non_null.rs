@@ -32,3 +32,15 @@ fn h(cond: bool) {
         ptr::null()
     };
 }
+
+
+// Like `f`, but uses `0 as *const _` instead of `ptr::null()`.
+// CHECK-LABEL: final labeling for "f_zero"
+fn f_zero(cond: bool) {
+    let x = 1_i32;
+    // CHECK: ([[@LINE+1]]: mut y): {{.*}}, type = UNIQUE#
+    let mut y = ptr::addr_of!(x);
+    if cond {
+        y = 0 as *const _;
+    }
+}
