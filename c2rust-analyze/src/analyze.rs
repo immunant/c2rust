@@ -867,8 +867,11 @@ fn run(tcx: TyCtxt) {
     // don't want to rewrite those
     gacx.foreign_mentioned_tys = foreign_mentioned_tys(tcx);
 
-    let mut gasn =
-        GlobalAssignment::new(gacx.num_pointers(), PermissionSet::UNIQUE, FlagSet::empty());
+    const INITIAL_PERMS: PermissionSet =
+        PermissionSet::union_all([PermissionSet::UNIQUE, PermissionSet::NON_NULL]);
+    const INITIAL_FLAGS: FlagSet = FlagSet::empty();
+
+    let mut gasn = GlobalAssignment::new(gacx.num_pointers(), INITIAL_PERMS, INITIAL_FLAGS);
     for (ptr, &info) in gacx.ptr_info().iter() {
         if should_make_fixed(info) {
             gasn.flags[ptr].insert(FlagSet::FIXED);
@@ -886,14 +889,14 @@ fn run(tcx: TyCtxt) {
 
     for (ptr, perms) in gacx.known_fn_ptr_perms() {
         let existing_perms = &mut gasn.perms[ptr];
-        existing_perms.remove(PermissionSet::UNIQUE);
+        existing_perms.remove(INITIAL_PERMS);
         assert_eq!(*existing_perms, PermissionSet::empty());
         *existing_perms = perms;
     }
 
     for info in func_info.values_mut() {
         let num_pointers = info.acx_data.num_pointers();
-        let mut lasn = LocalAssignment::new(num_pointers, PermissionSet::UNIQUE, FlagSet::empty());
+        let mut lasn = LocalAssignment::new(num_pointers, INITIAL_PERMS, INITIAL_FLAGS);
 
         for (ptr, &info) in info.acx_data.local_ptr_info().iter() {
             if should_make_fixed(info) {
@@ -990,6 +993,7 @@ fn run(tcx: TyCtxt) {
                 if !node_info.unique {
                     perms.remove(PermissionSet::UNIQUE);
                 }
+                // TODO: PermissionSet::NON_NULL
 
                 if perms != old_perms {
                     let added = perms & !old_perms;
