@@ -241,8 +241,8 @@ bitflags! {
     pub struct DontRewriteStaticReason: u16 {
         /// The user requested that this static be left unchanged.
         const USER_REQUEST = 0x0001;
-        /// The field is used in a function that isn't being rewritten.
-        const NON_REWRITTEN_USER = 0x0002;
+        /// The static is used in a function that isn't being rewritten.
+        const NON_REWRITTEN_USE = 0x0002;
     }
 }
 
@@ -253,7 +253,7 @@ bitflags! {
         /// The user requested that this field be left unchanged.
         const USER_REQUEST = 0x0001;
         /// The field is used in a function that isn't being rewritten.
-        const NON_REWRITTEN_USER = 0x0002;
+        const NON_REWRITTEN_USE = 0x0002;
     }
 }
 

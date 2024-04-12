@@ -2057,7 +2057,7 @@ fn process_new_dont_rewrite_items(gacx: &mut GlobalAnalysisCtxt, gasn: &mut Glob
             for &field_ldid in gacx.fn_fields_used.get(ldid) {
                 gacx.dont_rewrite_fields.add(
                     field_ldid.to_def_id(),
-                    DontRewriteFieldReason::NON_REWRITTEN_USER,
+                    DontRewriteFieldReason::NON_REWRITTEN_USE,
                 );
             }
 
