@@ -191,6 +191,9 @@ pub enum Callee<'tcx> {
     /// core::ptr::is_null
     IsNull,
 
+    /// core::ptr::null or core::ptr::null_mut
+    Null { mutbl: Mutability },
+
     /// `core::mem::size_of<T>`
     SizeOf { ty: Ty<'tcx> },
 }
@@ -340,6 +343,30 @@ fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, did: DefId, substs: SubstsRef<'tcx>) 
                 _ => return None,
             };
             Some(Callee::IsNull)
+        }
+
+        "null" | "null_mut" => {
+            // The `core::mem::size_of` function.
+            let parent_did = tcx.parent(did);
+            if tcx.def_kind(parent_did) != DefKind::Mod {
+                return None;
+            }
+            if tcx.item_name(parent_did).as_str() != "ptr" {
+                return None;
+            }
+            let grandparent_did = tcx.parent(parent_did);
+            if grandparent_did.index != CRATE_DEF_INDEX {
+                return None;
+            }
+            if tcx.crate_name(grandparent_did.krate).as_str() != "core" {
+                return None;
+            }
+            let mutbl = match name.as_str() {
+                "null" => Mutability::Not,
+                "null_mut" => Mutability::Mut,
+                _ => unreachable!(),
+            };
+            Some(Callee::Null { mutbl })
         }
 
         "size_of" => {

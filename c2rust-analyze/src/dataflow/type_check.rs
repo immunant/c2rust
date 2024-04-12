@@ -599,6 +599,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 assert!(args.len() == 1);
                 self.visit_operand(&args[0]);
             }
+            Callee::Null { .. } => {
+                assert!(args.len() == 0);
+                self.visit_place(destination, Mutability::Mut);
+                let pl_lty = self.acx.type_of(destination);
+                // We are assigning a null pointer to `destination`, so it must not have the
+                // `NON_NULL` flag.
+                self.constraints
+                    .add_no_perms(pl_lty.label, PermissionSet::NON_NULL);
+            }
         }
     }
 

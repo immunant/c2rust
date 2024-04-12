@@ -332,6 +332,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Callee::IsNull => {
                 // No constraints.
             }
+            Callee::Null { .. } => {
+                // No constraints.
+            }
         }
     }
 }

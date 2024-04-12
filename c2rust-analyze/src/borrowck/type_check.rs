@@ -602,6 +602,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             self.visit_operand(p)
                         });
                     }
+                    Callee::Null { .. } => {
+                        // TODO: do we need to do anything here?
+                    }
                 }
             }
             // TODO(spernsteiner): handle other `TerminatorKind`s

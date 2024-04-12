@@ -40,8 +40,7 @@ impl DataflowConstraints {
         self.constraints.push(Constraint::AllPerms(ptr, perms));
     }
 
-    #[allow(dead_code)]
-    fn _add_no_perms(&mut self, ptr: PointerId, perms: PermissionSet) {
+    fn add_no_perms(&mut self, ptr: PointerId, perms: PermissionSet) {
         self.constraints.push(Constraint::NoPerms(ptr, perms));
     }
 
