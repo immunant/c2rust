@@ -10,7 +10,7 @@ struct S {
 
 // CHECK-LABEL: final labeling for "null_ptr"
 pub unsafe fn null_ptr() {
-    // CHECK-DAG: ([[@LINE+3]]: s): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE | NON_NULL#
+    // CHECK-DAG: ([[@LINE+3]]: s): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE#
     // CHECK-LABEL: type assignment for "null_ptr":
     // CHECK-DAG: ([[@LINE+1]]: s): &mut S
     let s = 0 as *mut S;
