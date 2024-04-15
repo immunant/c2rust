@@ -24,7 +24,7 @@ pub enum Constraint<'tcx> {
     Subset(PointerId, PointerId),
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ConstraintSet<'tcx> {
     pub constraints: Vec<Constraint<'tcx>>,
     constraint_dedup: HashSet<Constraint<'tcx>>,
@@ -79,7 +79,7 @@ impl<'tcx> From<LTy<'tcx>> for CTy<'tcx> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct VarTable<'tcx> {
     /// Equivalence class representative for each variable.  This can be either a known type
     /// (`CTy::Ty`) or an inference variable (`CTy::Var`).

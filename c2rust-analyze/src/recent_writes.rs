@@ -6,6 +6,7 @@ use rustc_middle::mir::{
 use std::collections::HashMap;
 
 /// Table for looking up the most recent write to a `Local` prior to a particular MIR statement.
+#[derive(Clone, Debug)]
 pub struct RecentWrites {
     blocks: IndexVec<BasicBlock, BlockWrites>,
     /// For each local, whether its address is taken anywhere within the current function.

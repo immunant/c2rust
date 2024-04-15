@@ -387,6 +387,31 @@ fn mark_foreign_fixed<'tcx>(
     }
 }
 
+fn mark_all_statics_fixed<'tcx>(gacx: &mut GlobalAnalysisCtxt<'tcx>, gasn: &mut GlobalAssignment) {
+    for (did, lty) in gacx.static_tys.iter() {
+        make_ty_fixed(gasn, lty);
+
+        // Also fix the `addr_of_static` permissions.
+        let ptr = gacx.addr_of_static[&did];
+        gasn.flags[ptr].insert(FlagSet::FIXED);
+    }
+}
+
+fn mark_all_structs_fixed<'tcx>(
+    gacx: &mut GlobalAnalysisCtxt<'tcx>,
+    gasn: &mut GlobalAssignment,
+    tcx: TyCtxt<'tcx>,
+) {
+    for adt_did in &gacx.adt_metadata.struct_dids {
+        let adt_def = tcx.adt_def(adt_did);
+        let fields = adt_def.all_fields();
+        for field in fields {
+            let field_lty = gacx.field_ltys[&field.did];
+            make_ty_fixed(gasn, field_lty);
+        }
+    }
+}
+
 fn parse_def_id(s: &str) -> Result<DefId, String> {
     // DefId debug output looks like `DefId(0:1 ~ alias1[0dc4]::{use#0})`.  The ` ~ name` part may
     // be omitted if the name/DefPath info is not available at the point in the compiler where the
@@ -509,6 +534,34 @@ fn get_fixed_defs(tcx: TyCtxt) -> io::Result<HashSet<DefId>> {
     Ok(fixed_defs)
 }
 
+/// Local information, specific to a single function.  Many of the data structures we use for
+/// the pointer analysis have a "global" part that's shared between all functions and a "local"
+/// part that's specific to the function being analyzed; this struct contains only the local
+/// parts.  The different fields are set, used, and cleared at various points below.
+#[derive(Clone, Default)]
+struct FuncInfo<'tcx> {
+    /// Local analysis context data, such as [`LTy`]s for all MIR locals.  Combine with the
+    /// [`GlobalAnalysisCtxt`] to get a complete [`AnalysisCtxt`] for use within this function.
+    acx_data: MaybeUnset<AnalysisCtxtData<'tcx>>,
+    /// Dataflow constraints gathered from the body of this function.  These are used for
+    /// propagating `READ`/`WRITE`/`OFFSET_ADD` and similar permissions.
+    dataflow: MaybeUnset<DataflowConstraints>,
+    /// Local equivalence-class information.  Combine with the [`GlobalEquivSet`] to get a
+    /// complete [`EquivSet`], which assigns an equivalence class to each [`PointerId`] that
+    /// appears in the function.  Used for renumbering [`PointerId`]s.
+    local_equiv: MaybeUnset<LocalEquivSet>,
+    /// Local part of the permission/flag assignment.  Combine with the [`GlobalAssignment`] to
+    /// get a complete [`Assignment`] for this function, which maps every [`PointerId`] in this
+    /// function to a [`PermissionSet`] and [`FlagSet`].
+    lasn: MaybeUnset<LocalAssignment>,
+    /// Constraints on pointee types gathered from the body of this function.
+    pointee_constraints: MaybeUnset<pointee_type::ConstraintSet<'tcx>>,
+    /// Local part of pointee type sets.
+    local_pointee_types: MaybeUnset<LocalPointerTable<PointeeTypes<'tcx>>>,
+    /// Table for looking up the most recent write to a given local.
+    recent_writes: MaybeUnset<RecentWrites>,
+}
+
 fn run(tcx: TyCtxt) {
     eprintln!("all defs:");
     for ldid in tcx.hir_crate_items(()).definitions() {
@@ -518,36 +571,12 @@ fn run(tcx: TyCtxt) {
     // Load the list of fixed defs early, so any errors are reported immediately.
     let fixed_defs = get_fixed_defs(tcx).unwrap();
 
+    let rewrite_pointwise = env::var("C2RUST_ANALYZE_REWRITE_MODE")
+        .ok()
+        .map_or(false, |val| val == "pointwise");
+
     let mut gacx = GlobalAnalysisCtxt::new(tcx);
     let mut func_info = HashMap::new();
-
-    /// Local information, specific to a single function.  Many of the data structures we use for
-    /// the pointer analysis have a "global" part that's shared between all functions and a "local"
-    /// part that's specific to the function being analyzed; this struct contains only the local
-    /// parts.  The different fields are set, used, and cleared at various points below.
-    #[derive(Default)]
-    struct FuncInfo<'tcx> {
-        /// Local analysis context data, such as [`LTy`]s for all MIR locals.  Combine with the
-        /// [`GlobalAnalysisCtxt`] to get a complete [`AnalysisCtxt`] for use within this function.
-        acx_data: MaybeUnset<AnalysisCtxtData<'tcx>>,
-        /// Dataflow constraints gathered from the body of this function.  These are used for
-        /// propagating `READ`/`WRITE`/`OFFSET_ADD` and similar permissions.
-        dataflow: MaybeUnset<DataflowConstraints>,
-        /// Local equivalence-class information.  Combine with the [`GlobalEquivSet`] to get a
-        /// complete [`EquivSet`], which assigns an equivalence class to each [`PointerId`] that
-        /// appears in the function.  Used for renumbering [`PointerId`]s.
-        local_equiv: MaybeUnset<LocalEquivSet>,
-        /// Local part of the permission/flag assignment.  Combine with the [`GlobalAssignment`] to
-        /// get a complete [`Assignment`] for this function, which maps every [`PointerId`] in this
-        /// function to a [`PermissionSet`] and [`FlagSet`].
-        lasn: MaybeUnset<LocalAssignment>,
-        /// Constraints on pointee types gathered from the body of this function.
-        pointee_constraints: MaybeUnset<pointee_type::ConstraintSet<'tcx>>,
-        /// Local part of pointee type sets.
-        local_pointee_types: MaybeUnset<LocalPointerTable<PointeeTypes<'tcx>>>,
-        /// Table for looking up the most recent write to a given local.
-        recent_writes: MaybeUnset<RecentWrites>,
-    }
 
     // Follow a postorder traversal, so that callers are visited after their callees.  This means
     // callee signatures will usually be up to date when we visit the call site.
@@ -847,6 +876,13 @@ fn run(tcx: TyCtxt) {
     }
 
     mark_foreign_fixed(&mut gacx, &mut gasn, tcx);
+
+    if rewrite_pointwise {
+        // In pointwise mode, we restrict rewriting to a single fn at a time.  All statics and
+        // struct fields are marked `FIXED` so they won't be rewritten.
+        mark_all_statics_fixed(&mut gacx, &mut gasn);
+        mark_all_structs_fixed(&mut gacx, &mut gasn, tcx);
+    }
 
     for (ptr, perms) in gacx.known_fn_ptr_perms() {
         let existing_perms = &mut gasn.perms[ptr];
@@ -1199,6 +1235,46 @@ fn run(tcx: TyCtxt) {
         }
     }
 
+    if !rewrite_pointwise {
+        run2(
+            None,
+            tcx,
+            gacx,
+            gasn,
+            &global_pointee_types,
+            func_info,
+            &all_fn_ldids,
+            &fixed_defs,
+            &known_perm_error_fns,
+        );
+    } else {
+        for &ldid in &all_fn_ldids {
+            run2(
+                Some(ldid),
+                tcx,
+                gacx.clone(),
+                gasn.clone(),
+                &global_pointee_types,
+                func_info.clone(),
+                &all_fn_ldids,
+                &fixed_defs,
+                &known_perm_error_fns,
+            );
+        }
+    }
+}
+
+fn run2<'tcx>(
+    pointwise_fn_ldid: Option<LocalDefId>,
+    tcx: TyCtxt<'tcx>,
+    mut gacx: GlobalAnalysisCtxt<'tcx>,
+    mut gasn: GlobalAssignment,
+    global_pointee_types: &GlobalPointerTable<PointeeTypes<'tcx>>,
+    mut func_info: HashMap<LocalDefId, FuncInfo<'tcx>>,
+    all_fn_ldids: &Vec<LocalDefId>,
+    fixed_defs: &HashSet<DefId>,
+    known_perm_error_fns: &HashSet<DefId>,
+) {
     // ----------------------------------
     // Generate rewrites
     // ----------------------------------
@@ -1224,15 +1300,25 @@ fn run(tcx: TyCtxt) {
 
     // For testing, putting #[c2rust_analyze_test::fail_before_rewriting] on a function marks it as
     // failed at this point.
-    for &ldid in &all_fn_ldids {
-        if !util::has_test_attr(tcx, ldid, TestAttr::FailBeforeRewriting) {
-            continue;
+    for &ldid in all_fn_ldids {
+        let mut should_mark_failed = false;
+        if util::has_test_attr(tcx, ldid, TestAttr::FailBeforeRewriting) {
+            should_mark_failed = true;
         }
-        gacx.mark_fn_failed(
-            ldid.to_def_id(),
-            DontRewriteFnReason::FAKE_INVALID_FOR_TESTING,
-            PanicDetail::new("explicit fail_before_rewriting for testing".to_owned()),
-        );
+        if let Some(pointwise_fn_ldid) = pointwise_fn_ldid {
+            // In pointwise mode, mark all functions except `pointwise_fn_ldid` as failed to
+            // prevent rewriting.
+            if ldid != pointwise_fn_ldid {
+                should_mark_failed = true;
+            }
+        }
+        if should_mark_failed {
+            gacx.mark_fn_failed(
+                ldid.to_def_id(),
+                DontRewriteFnReason::FAKE_INVALID_FOR_TESTING,
+                PanicDetail::new("explicit fail_before_rewriting for testing".to_owned()),
+            );
+        }
     }
 
     // Buffer debug output for each function.  Grouping together all the different types of info
@@ -1266,7 +1352,7 @@ fn run(tcx: TyCtxt) {
         // rewrite, such as pointers in the signatures of non-rewritten functions.
         process_new_dont_rewrite_items(&mut gacx, &mut gasn);
 
-        for &ldid in &all_fn_ldids {
+        for &ldid in all_fn_ldids {
             if gacx.dont_rewrite_fn(ldid.to_def_id()) {
                 continue;
             }
@@ -1601,6 +1687,14 @@ fn run(tcx: TyCtxt) {
             }
             "alongside" => {
                 update_files = rewrite::UpdateFiles::Alongside;
+            }
+            "pointwise" => {
+                let pointwise_fn_ldid = pointwise_fn_ldid.expect(
+                    "C2RUST_ANALYZE_REWRITE_MODE=pointwise, \
+                            but pointwise_fn_ldid is unset?",
+                );
+                let pointwise_fn_name = tcx.item_name(pointwise_fn_ldid.to_def_id());
+                update_files = rewrite::UpdateFiles::AlongsidePointwise(pointwise_fn_name);
             }
             _ => panic!("bad value {:?} for C2RUST_ANALYZE_REWRITE_MODE", val),
         }
