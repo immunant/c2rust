@@ -34,9 +34,12 @@ use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TyKind;
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
-use std::collections::{HashMap, HashSet};
+use std::collections::hash_map::{Entry, HashMap};
+use std::collections::HashSet;
 use std::fmt::{Debug, Write as _};
-use std::ops::Index;
+use std::hash::Hash;
+use std::mem;
+use std::ops::{BitOr, Index, Range};
 
 bitflags! {
     /// Permissions are created such that we allow dropping permissions in any assignment.
@@ -186,6 +189,74 @@ bitflags! {
     }
 }
 
+bitflags! {
+    /// Flags indicating reasons why a function isn't being rewritten.
+    #[derive(Default)]
+    pub struct DontRewriteFnReason: u16 {
+        /// The user requested that this function be left unchanged.
+        const USER_REQUEST = 1 << 0;
+        /// The function contains an unsupported int-to-pointer cast.
+        const INT_TO_PTR_CAST = 1 << 1;
+        /// The function calls an extern function that has no safe rewrite.
+        const EXTERN_CALL = 1 << 2;
+        /// The function calls another local function that isn't being rewritten.
+        const NON_REWRITTEN_CALLEE = 1 << 3;
+        /// The function uses `Cell` pointers whose types are too complex for the current rewrite
+        /// rules.
+        const COMPLEX_CELL = 1 << 4;
+        /// The function contains a pointer-to-pointer cast that isn't covered by rewrite rules.
+        const PTR_TO_PTR_CAST = 1 << 5;
+        /// The function dereferences a pointer that would remain raw after rewriting.
+        const RAW_PTR_DEREF = 1 << 6;
+        /// Calling this function from non-rewritten code requires a shim, but shim generation
+        /// failed.
+        const SHIM_GENERATION_FAILED = 1 << 7;
+
+        /// Pointee analysis results for this function are invalid.
+        const POINTEE_INVALID = 1 << 10;
+        /// Dataflow analysis results for this function are invalid.
+        const DATAFLOW_INVALID = 1 << 11;
+        /// Borrowcheck/Polonius analysis results for this function are invalid.
+        const BORROWCK_INVALID = 1 << 12;
+        /// Results of some other analysis for this function are invalid.
+        const MISC_ANALYSIS_INVALID = 1 << 13;
+        /// The set of rewrites generated for this function is invalid or incomplete.
+        const REWRITE_INVALID = 1 << 14;
+        /// Analysis results for this function are valid, but were marked as invalid anyway in
+        /// order to test error recovery.
+        const FAKE_INVALID_FOR_TESTING = 1 << 15;
+
+        const ANALYSIS_INVALID_MASK = Self::POINTEE_INVALID.bits
+            | Self::DATAFLOW_INVALID.bits
+            | Self::BORROWCK_INVALID.bits
+            | Self::MISC_ANALYSIS_INVALID.bits
+            | Self::REWRITE_INVALID.bits
+            | Self::FAKE_INVALID_FOR_TESTING.bits;
+    }
+}
+
+bitflags! {
+    /// Flags indicating reasons why a static isn't being rewritten.
+    #[derive(Default)]
+    pub struct DontRewriteStaticReason: u16 {
+        /// The user requested that this static be left unchanged.
+        const USER_REQUEST = 0x0001;
+        /// The static is used in a function that isn't being rewritten.
+        const NON_REWRITTEN_USE = 0x0002;
+    }
+}
+
+bitflags! {
+    /// Flags indicating reasons why an ADT field isn't being rewritten.
+    #[derive(Default)]
+    pub struct DontRewriteFieldReason: u16 {
+        /// The user requested that this field be left unchanged.
+        const USER_REQUEST = 0x0001;
+        /// The field is used in a function that isn't being rewritten.
+        const NON_REWRITTEN_USE = 0x0002;
+    }
+}
+
 pub use crate::pointer_id::PointerId;
 
 pub type LTy<'tcx> = LabeledTy<'tcx, PointerId>;
@@ -317,6 +388,7 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     ptr_info: GlobalPointerTable<PointerInfo>,
 
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
+    pub fn_fields_used: MultiMap<LocalDefId, LocalDefId>,
 
     /// A map of all [`KnownFn`]s as determined by [`all_known_fns`].
     ///
@@ -326,14 +398,16 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     /// [`name`]: KnownFn::name
     known_fns: HashMap<&'static str, &'static KnownFn>,
 
+    pub dont_rewrite_fns: FlagMap<DefId, DontRewriteFnReason>,
+    pub dont_rewrite_statics: FlagMap<DefId, DontRewriteStaticReason>,
+    pub dont_rewrite_fields: FlagMap<DefId, DontRewriteFieldReason>,
+
     /// `DefId`s of functions where analysis failed, and a [`PanicDetail`] explaining the reason
     /// for each failure.
     pub fns_failed: HashMap<DefId, PanicDetail>,
-    /// `DefId`s of functions that were marked "fixed" (non-rewritable) through command-line
-    /// arguments.
-    pub fns_fixed: HashSet<DefId>,
 
     pub field_ltys: HashMap<DefId, LTy<'tcx>>,
+    pub field_users: MultiMap<LocalDefId, LocalDefId>,
 
     pub static_tys: HashMap<DefId, LTy<'tcx>>,
     pub addr_of_static: HashMap<DefId, PointerId>,
@@ -696,13 +770,17 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             lcx: LabeledTyCtxt::new(tcx),
             ptr_info: GlobalPointerTable::empty(),
             fn_sigs: HashMap::new(),
+            fn_fields_used: MultiMap::new(),
             known_fns: all_known_fns()
                 .iter()
                 .map(|known_fn| (known_fn.name, known_fn))
                 .collect(),
+            dont_rewrite_fns: FlagMap::new(),
+            dont_rewrite_statics: FlagMap::new(),
+            dont_rewrite_fields: FlagMap::new(),
             fns_failed: HashMap::new(),
-            fns_fixed: HashSet::new(),
             field_ltys: HashMap::new(),
+            field_users: MultiMap::new(),
             static_tys: HashMap::new(),
             addr_of_static: HashMap::new(),
             adt_metadata: AdtMetadataTable::default(),
@@ -761,10 +839,14 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             lcx,
             ref mut ptr_info,
             ref mut fn_sigs,
+            fn_fields_used: _,
             known_fns: _,
+            dont_rewrite_fns: _,
+            dont_rewrite_statics: _,
+            dont_rewrite_fields: _,
             fns_failed: _,
-            fns_fixed: _,
             ref mut field_ltys,
+            field_users: _,
             ref mut static_tys,
             ref mut addr_of_static,
             adt_metadata: _,
@@ -820,39 +902,15 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         }
     }
 
-    pub fn fn_failed(&self, did: DefId) -> bool {
-        self.fns_failed.contains_key(&did)
-    }
-
-    pub fn mark_fn_failed(&mut self, did: DefId, detail: PanicDetail) {
-        if self.fns_failed.contains_key(&did) {
-            return;
-        }
-
-        self.fns_failed.insert(did, detail);
-    }
-
-    pub fn iter_fns_failed(&self) -> impl Iterator<Item = DefId> + '_ {
-        self.fns_failed.keys().copied()
-    }
-
-    pub fn fn_skip_rewrite(&self, did: DefId) -> bool {
-        self.fn_failed(did) || self.fns_fixed.contains(&did)
+    pub fn mark_fn_failed(&mut self, did: DefId, reason: DontRewriteFnReason, detail: PanicDetail) {
+        self.dont_rewrite_fns.add(did, reason);
+        // Insert `detail` if there isn't yet an entry for this `DefId`.
+        self.fns_failed.entry(did).or_insert(detail);
     }
 
     /// Iterate over the `DefId`s of all functions that should skip rewriting.
     pub fn iter_fns_skip_rewrite<'a>(&'a self) -> impl Iterator<Item = DefId> + 'a {
-        // This let binding avoids a lifetime error with the closure and return-position `impl
-        // Trait`.
-        let fns_fixed = &self.fns_fixed;
-        // If the same `DefId` is in both `fns_failed` and `fns_fixed`, be sure to return it only
-        // once.
-        fns_fixed.iter().copied().chain(
-            self.fns_failed
-                .keys()
-                .copied()
-                .filter(move |did| !fns_fixed.contains(&did)),
-        )
+        self.dont_rewrite_fns.keys()
     }
 
     pub fn known_fn(&self, def_id: DefId) -> Option<&'static KnownFn> {
@@ -879,6 +937,17 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             })
             .filter_map(|(&def_id, fn_sig)| Some((fn_sig, self.known_fn(def_id)?)))
             .flat_map(|(fn_sig, known_fn)| known_fn.ptr_perms(fn_sig))
+    }
+
+    /// Check whether the function with the given `def_id` has been marked as non-rewritable.
+    pub fn dont_rewrite_fn(&self, def_id: DefId) -> bool {
+        self.dont_rewrite_fns.contains(def_id)
+    }
+    /// Check whether analysis failed for the function with the given `def_id`.
+    pub fn fn_analysis_invalid(&self, def_id: DefId) -> bool {
+        self.dont_rewrite_fns
+            .get(def_id)
+            .intersects(DontRewriteFnReason::ANALYSIS_INVALID_MASK)
     }
 }
 
@@ -1521,5 +1590,99 @@ pub fn print_ty_with_pointer_labels_into<L: Copy>(
         | Opaque(..) | Param(..) | Bound(..) | Placeholder(..) | Infer(..) | Error(..) => {
             write!(dest, "unknown:{:?}", lty.ty).unwrap();
         }
+    }
+}
+
+/// Map for associating flags (such as `DontRewriteFnReason`) with keys (such as `DefId`).
+pub struct FlagMap<K, V> {
+    /// Stores the current flags for each key.  If no flags are set, the entry is omitted; that is,
+    /// for every entry `(k, v)`, it's always the case that `v != V::default()`.
+    m: HashMap<K, V>,
+    /// Keys that were added to `m` since the last call to `take_new()`.  Specifically, this
+    /// includes every `k` for which `get(k)` was `V::default()` but `get(k)` now has a different,
+    /// non-default value.
+    new: Vec<K>,
+}
+
+impl<K, V> FlagMap<K, V>
+where
+    K: Copy + Hash + Eq,
+    V: Copy + Default + Eq + BitOr<Output = V>,
+{
+    pub fn new() -> FlagMap<K, V> {
+        FlagMap {
+            m: HashMap::new(),
+            new: Vec::new(),
+        }
+    }
+
+    pub fn add(&mut self, k: K, v: V) {
+        if v == V::default() {
+            return;
+        }
+        let cur = self.m.entry(k).or_default();
+        if *cur == V::default() {
+            self.new.push(k);
+        }
+        *cur = *cur | v;
+    }
+
+    /// Get the current flags for `k`.  Returns `V::default()` if no flags have been set.
+    pub fn get(&self, k: K) -> V {
+        self.m.get(&k).copied().unwrap_or_default()
+    }
+
+    pub fn contains(&self, k: K) -> bool {
+        self.m.contains_key(&k)
+    }
+
+    pub fn new_keys(&self) -> &[K] {
+        &self.new
+    }
+
+    pub fn take_new_keys(&mut self) -> Vec<K> {
+        mem::take(&mut self.new)
+    }
+
+    pub fn keys<'a>(&'a self) -> impl Iterator<Item = K> + 'a {
+        self.m.keys().copied()
+    }
+}
+
+/// A map from keys to lists of values, with a compact representation.
+#[derive(Clone, Debug)]
+pub struct MultiMap<K, V> {
+    defs: HashMap<K, Range<usize>>,
+    users: Vec<V>,
+}
+
+impl<K, V> MultiMap<K, V>
+where
+    K: Copy + Hash + Eq + Debug,
+{
+    pub fn new() -> MultiMap<K, V> {
+        MultiMap {
+            defs: HashMap::new(),
+            users: Vec::new(),
+        }
+    }
+
+    pub fn insert(&mut self, def: K, users: impl IntoIterator<Item = V>) {
+        let e = match self.defs.entry(def) {
+            Entry::Vacant(e) => e,
+            Entry::Occupied(_) => panic!("duplicate entry for {def:?}"),
+        };
+        let start = self.users.len();
+        self.users.extend(users);
+        let end = self.users.len();
+        e.insert(start..end);
+    }
+
+    pub fn get(&self, def: K) -> &[V] {
+        let range = match self.defs.get(&def) {
+            Some(x) => x,
+            None => return &[],
+        };
+        &self.users[range.clone()]
     }
 }

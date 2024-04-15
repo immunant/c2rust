@@ -1,8 +1,9 @@
 use crate::annotate::AnnotationBuffer;
 use crate::borrowck;
 use crate::context::{
-    self, AnalysisCtxt, AnalysisCtxtData, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig,
-    LTy, LTyCtxt, LocalAssignment, PermissionSet, PointerId, PointerInfo,
+    self, AnalysisCtxt, AnalysisCtxtData, DontRewriteFieldReason, DontRewriteFnReason,
+    DontRewriteStaticReason, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy, LTyCtxt,
+    LocalAssignment, PermissionSet, PointerId, PointerInfo,
 };
 use crate::dataflow;
 use crate::dataflow::DataflowConstraints;
@@ -32,19 +33,11 @@ use rustc_hir::def_id::DefIndex;
 use rustc_hir::def_id::LocalDefId;
 use rustc_hir::definitions::DefPathData;
 use rustc_index::vec::IndexVec;
-use rustc_middle::mir::visit::Visitor;
-use rustc_middle::mir::AggregateKind;
-use rustc_middle::mir::BindingForm;
-use rustc_middle::mir::Body;
-use rustc_middle::mir::Constant;
-use rustc_middle::mir::Local;
-use rustc_middle::mir::LocalDecl;
-use rustc_middle::mir::LocalInfo;
-use rustc_middle::mir::LocalKind;
-use rustc_middle::mir::Location;
-use rustc_middle::mir::Operand;
-use rustc_middle::mir::Rvalue;
-use rustc_middle::mir::StatementKind;
+use rustc_middle::mir::visit::{PlaceContext, Visitor};
+use rustc_middle::mir::{
+    AggregateKind, BindingForm, Body, Constant, Local, LocalDecl, LocalInfo, LocalKind, Location,
+    Operand, Place, PlaceElem, PlaceRef, Rvalue, StatementKind,
+};
 use rustc_middle::ty::GenericArgKind;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
@@ -564,6 +557,8 @@ fn run(tcx: TyCtxt) {
         eprintln!("  {:?}", ldid);
     }
 
+    populate_field_users(&mut gacx, &all_fn_ldids);
+
     // ----------------------------------
     // Label all global types
     // ----------------------------------
@@ -621,7 +616,7 @@ fn run(tcx: TyCtxt) {
     // ----------------------------------
 
     for &ldid in &all_fn_ldids {
-        if gacx.fn_failed(ldid.to_def_id()) {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
 
@@ -669,7 +664,7 @@ fn run(tcx: TyCtxt) {
                 info.pointee_constraints.set(pointee_constraints);
             }
             Err(pd) => {
-                gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                gacx.mark_fn_failed(ldid.to_def_id(), DontRewriteFnReason::POINTEE_INVALID, pd);
             }
         }
 
@@ -698,7 +693,7 @@ fn run(tcx: TyCtxt) {
         }
 
         for &ldid in &all_fn_ldids {
-            if gacx.fn_failed(ldid.to_def_id()) {
+            if gacx.fn_analysis_invalid(ldid.to_def_id()) {
                 continue;
             }
 
@@ -716,7 +711,7 @@ fn run(tcx: TyCtxt) {
 
     // Print results for debugging
     for &ldid in &all_fn_ldids {
-        if gacx.fn_failed(ldid.to_def_id()) {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
 
@@ -742,7 +737,7 @@ fn run(tcx: TyCtxt) {
     // computed during this the process is kept around for use in later passes.
     let mut global_equiv = GlobalEquivSet::new(gacx.num_pointers());
     for &ldid in &all_fn_ldids {
-        if gacx.fn_failed(ldid.to_def_id()) {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
 
@@ -763,7 +758,7 @@ fn run(tcx: TyCtxt) {
             Ok(x) => x,
             Err(pd) => {
                 info.acx_data.set(acx.into_data());
-                gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                gacx.mark_fn_failed(ldid.to_def_id(), DontRewriteFnReason::DATAFLOW_INVALID, pd);
                 continue;
             }
         };
@@ -796,7 +791,7 @@ fn run(tcx: TyCtxt) {
     gacx.remap_pointers(&global_equiv_map, global_counter);
 
     for &ldid in &all_fn_ldids {
-        if gacx.fn_failed(ldid.to_def_id()) {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
 
@@ -979,8 +974,6 @@ fn run(tcx: TyCtxt) {
 
     // Items in the "fixed defs" list have all pointers in their types set to `FIXED`.  For
     // testing, putting #[c2rust_analyze_test::fixed_signature] on an item has the same effect.
-    //
-    // Functions in the list are also added to `gacx.fns_fixed`.
     for ldid in tcx.hir_crate_items(()).definitions() {
         // TODO (HACK): `Clone::clone` impls are omitted from `fn_sigs` and cause a panic below.
         if is_impl_clone(tcx, ldid.to_def_id()) {
@@ -996,7 +989,8 @@ fn run(tcx: TyCtxt) {
                     None => panic!("missing fn_sig for {:?}", ldid),
                 };
                 make_sig_fixed(&mut gasn, lsig);
-                gacx.fns_fixed.insert(ldid.to_def_id());
+                gacx.dont_rewrite_fns
+                    .add(ldid.to_def_id(), DontRewriteFnReason::USER_REQUEST);
             }
 
             DefKind::Struct | DefKind::Enum | DefKind::Union => {
@@ -1016,6 +1010,8 @@ fn run(tcx: TyCtxt) {
                             None => panic!("missing field_lty for {:?}", ldid),
                         };
                         make_ty_fixed(&mut gasn, lty);
+                        gacx.dont_rewrite_fields
+                            .add(field.did, DontRewriteFieldReason::USER_REQUEST);
                     }
                 }
             }
@@ -1034,6 +1030,8 @@ fn run(tcx: TyCtxt) {
                 if !ptr.is_none() {
                     gasn.flags[ptr].insert(FlagSet::FIXED);
                 }
+                gacx.dont_rewrite_statics
+                    .add(ldid.to_def_id(), DontRewriteStaticReason::USER_REQUEST);
             }
 
             _ => {}
@@ -1052,6 +1050,7 @@ fn run(tcx: TyCtxt) {
         }
         gacx.mark_fn_failed(
             ldid.to_def_id(),
+            DontRewriteFnReason::FAKE_INVALID_FOR_TESTING,
             PanicDetail::new("explicit fail_before_analysis for testing".to_owned()),
         );
     }
@@ -1069,7 +1068,7 @@ fn run(tcx: TyCtxt) {
         let old_gasn = gasn.clone();
 
         for &ldid in &all_fn_ldids {
-            if gacx.fn_failed(ldid.to_def_id()) {
+            if gacx.fn_analysis_invalid(ldid.to_def_id()) {
                 continue;
             }
 
@@ -1103,7 +1102,11 @@ fn run(tcx: TyCtxt) {
             match r {
                 Ok(()) => {}
                 Err(pd) => {
-                    gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                    gacx.mark_fn_failed(
+                        ldid.to_def_id(),
+                        DontRewriteFnReason::BORROWCK_INVALID,
+                        pd,
+                    );
                     continue;
                 }
             }
@@ -1136,7 +1139,7 @@ fn run(tcx: TyCtxt) {
 
     // Do final processing on each function.
     for &ldid in &all_fn_ldids {
-        if gacx.fn_failed(ldid.to_def_id()) {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
 
@@ -1159,7 +1162,11 @@ fn run(tcx: TyCtxt) {
         match r {
             Ok(()) => {}
             Err(pd) => {
-                gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                gacx.mark_fn_failed(
+                    ldid.to_def_id(),
+                    DontRewriteFnReason::MISC_ANALYSIS_INVALID,
+                    pd,
+                );
                 continue;
             }
         }
@@ -1223,6 +1230,7 @@ fn run(tcx: TyCtxt) {
         }
         gacx.mark_fn_failed(
             ldid.to_def_id(),
+            DontRewriteFnReason::FAKE_INVALID_FOR_TESTING,
             PanicDetail::new("explicit fail_before_rewriting for testing".to_owned()),
         );
     }
@@ -1246,30 +1254,20 @@ fn run(tcx: TyCtxt) {
     let manual_shim_casts = manual_shim_casts;
 
     // It may take multiple tries to reach a state where all rewrites succeed.
-    loop {
+    for i in 0.. {
+        assert!(i < 100);
         func_reports.clear();
         all_rewrites.clear();
         eprintln!("\n--- start rewriting ---");
 
-        // Before generating rewrites, add the FIXED flag to the signatures of all functions that
-        // failed analysis.
-        //
-        // The set of failed functions is monotonically nondecreasing throughout this loop, so
-        // there's no need to worry about potentially removing `FIXED` from some functions.
-        for did in gacx.iter_fns_failed() {
-            let lsig = gacx.fn_sigs[&did];
-            for sig_lty in lsig.inputs_and_output() {
-                for lty in sig_lty.iter() {
-                    let ptr = lty.label;
-                    if !ptr.is_none() {
-                        gasn.flags[ptr].insert(FlagSet::FIXED);
-                    }
-                }
-            }
-        }
+        // Update non-rewritten items first.  This has two purposes.  First, it clears the
+        // `new_keys()` lists, which we check at the end of the loop to see whether we've reached a
+        // fixpoint.  Second, doing this adds the `FIXED` flag to pointers that we shouldn't
+        // rewrite, such as pointers in the signatures of non-rewritten functions.
+        process_new_dont_rewrite_items(&mut gacx, &mut gasn);
 
         for &ldid in &all_fn_ldids {
-            if gacx.fn_skip_rewrite(ldid.to_def_id()) {
+            if gacx.dont_rewrite_fn(ldid.to_def_id()) {
                 continue;
             }
 
@@ -1278,7 +1276,7 @@ fn run(tcx: TyCtxt) {
             let name = tcx.item_name(ldid.to_def_id());
             let mir = tcx.mir_built(ldid_const);
             let mir = mir.borrow();
-            let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+            let mut acx = gacx.function_context_with_data(&mir, info.acx_data.take());
             let asn = gasn.and(&mut info.lasn);
             let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
 
@@ -1291,8 +1289,14 @@ fn run(tcx: TyCtxt) {
                 }
 
                 let hir_body_id = tcx.hir().body_owned_by(ldid);
-                let expr_rewrites =
-                    rewrite::gen_expr_rewrites(&acx, &asn, pointee_types, &mir, hir_body_id);
+                let expr_rewrites = rewrite::gen_expr_rewrites(
+                    &mut acx,
+                    &asn,
+                    pointee_types,
+                    ldid.to_def_id(),
+                    &mir,
+                    hir_body_id,
+                );
                 let ty_rewrites = rewrite::gen_ty_rewrites(&acx, &asn, pointee_types, &mir, ldid);
                 // Print rewrites
                 let report = func_reports.entry(ldid).or_default();
@@ -1317,7 +1321,7 @@ fn run(tcx: TyCtxt) {
             match r {
                 Ok(()) => {}
                 Err(pd) => {
-                    gacx.mark_fn_failed(ldid.to_def_id(), pd);
+                    gacx.mark_fn_failed(ldid.to_def_id(), DontRewriteFnReason::REWRITE_INVALID, pd);
                     continue;
                 }
             }
@@ -1329,7 +1333,6 @@ fn run(tcx: TyCtxt) {
         all_rewrites.extend(shim_call_rewrites);
 
         // Generate shims for functions that need them.
-        let mut any_failed = false;
         for def_id in shim_fn_def_ids {
             let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
                 all_rewrites.push(rewrite::gen_shim_definition_rewrite(
@@ -1342,14 +1345,17 @@ fn run(tcx: TyCtxt) {
             match r {
                 Ok(()) => {}
                 Err(pd) => {
-                    gacx.mark_fn_failed(def_id, pd);
-                    any_failed = true;
+                    gacx.mark_fn_failed(def_id, DontRewriteFnReason::SHIM_GENERATION_FAILED, pd);
                     continue;
                 }
             }
         }
 
-        if !any_failed {
+        // Exit the loop upon reaching a fixpoint.
+        let any_new_dont_rewrite_keys = !gacx.dont_rewrite_fns.new_keys().is_empty()
+            || !gacx.dont_rewrite_statics.new_keys().is_empty()
+            || !gacx.dont_rewrite_fields.new_keys().is_empty();
+        if !any_new_dont_rewrite_keys {
             break;
         }
     }
@@ -1422,7 +1428,7 @@ fn run(tcx: TyCtxt) {
             None => continue,
         };
 
-        if gacx.fn_failed(ldid.to_def_id()) {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
 
@@ -1617,14 +1623,30 @@ fn run(tcx: TyCtxt) {
     }
 
     eprintln!("\nerror summary:");
-    for ldid in tcx.hir().body_owners() {
-        if let Some(detail) = gacx.fns_failed.get(&ldid.to_def_id()) {
-            eprintln!(
-                "analysis of {:?} failed: {}",
-                ldid,
-                detail.to_string_short()
-            );
-        }
+    fn sorted_def_ids(it: impl IntoIterator<Item = DefId>) -> Vec<DefId> {
+        let mut v = it.into_iter().collect::<Vec<_>>();
+        v.sort();
+        v
+    }
+    for def_id in sorted_def_ids(gacx.dont_rewrite_fns.keys()) {
+        let opt_detail = gacx.fns_failed.get(&def_id);
+        let flags = gacx.dont_rewrite_fns.get(def_id);
+        assert!(opt_detail.is_some() || !flags.is_empty());
+        let detail_str = match opt_detail {
+            Some(detail) => detail.to_string_short(),
+            None => "(no panic)".into(),
+        };
+        eprintln!("analysis of {def_id:?} failed: {flags:?}, {detail_str}");
+    }
+
+    for def_id in sorted_def_ids(gacx.dont_rewrite_statics.keys()) {
+        let flags = gacx.dont_rewrite_statics.get(def_id);
+        eprintln!("analysis of {def_id:?} failed: {flags:?}");
+    }
+
+    for def_id in sorted_def_ids(gacx.dont_rewrite_fields.keys()) {
+        let flags = gacx.dont_rewrite_fields.get(def_id);
+        eprintln!("analysis of {def_id:?} failed: {flags:?}");
     }
 
     eprintln!(
@@ -1933,6 +1955,133 @@ fn for_each_callee(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(LocalDefId)) {
     }
 
     CalleeVisitor { tcx, mir, f }.visit_body(mir);
+}
+
+/// Call `f` for each field mentioned in a place projection within the body of `ldid`.
+fn for_each_field_use(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(DefId)) {
+    let ldid_const = WithOptConstParam::unknown(ldid);
+    let mir = tcx.mir_built(ldid_const);
+    let mir = mir.borrow();
+    let mir: &Body = &mir;
+
+    struct FieldUseVisitor<'a, 'tcx, F> {
+        tcx: TyCtxt<'tcx>,
+        mir: &'a Body<'tcx>,
+        f: F,
+    }
+
+    impl<'tcx, F: FnMut(DefId)> Visitor<'tcx> for FieldUseVisitor<'_, 'tcx, F> {
+        fn visit_place(
+            &mut self,
+            place: &Place<'tcx>,
+            _context: PlaceContext,
+            _location: Location,
+        ) {
+            for (i, elem) in place.projection.iter().enumerate() {
+                let field_idx = match elem {
+                    PlaceElem::Field(x, _) => x,
+                    _ => continue,
+                };
+                // Build a `PlaceRef` with all the projections up to, but not including, `elem`.
+                let place_ref = PlaceRef {
+                    local: place.local,
+                    projection: &place.projection[..i],
+                };
+                let adt_pty = place_ref.ty(self.mir, self.tcx);
+                let adt_def = match adt_pty.ty.ty_adt_def() {
+                    Some(x) => x,
+                    // `PlaceElem::Field` also works on tuple types, which don't have an `AdtDef`.
+                    None => continue,
+                };
+                let variant_def = match adt_pty.variant_index {
+                    None => adt_def.non_enum_variant(),
+                    Some(i) => adt_def.variant(i),
+                };
+                let field_def = &variant_def.fields[field_idx.index()];
+                (self.f)(field_def.did);
+            }
+        }
+    }
+
+    FieldUseVisitor { tcx, mir, f }.visit_body(mir);
+}
+
+/// Populate `gacx.field_users` and `gacx.fn_fields_used`.
+fn populate_field_users(gacx: &mut GlobalAnalysisCtxt, fn_ldids: &[LocalDefId]) {
+    let mut field_users = HashMap::new();
+    let mut seen = HashSet::new();
+
+    for &ldid in fn_ldids {
+        let mut fn_fields = Vec::new();
+        let mut fn_seen = HashSet::new();
+        for_each_field_use(gacx.tcx, ldid, |field_def_id| {
+            if let Some(field_ldid) = field_def_id.as_local() {
+                if seen.insert((field_ldid, ldid)) {
+                    field_users
+                        .entry(field_ldid)
+                        .or_insert_with(Vec::new)
+                        .push(ldid);
+                }
+
+                if fn_seen.insert(field_ldid) {
+                    fn_fields.push(field_ldid);
+                }
+            }
+        });
+        gacx.fn_fields_used.insert(ldid, fn_fields);
+    }
+
+    for (k, v) in field_users {
+        gacx.field_users.insert(k, v);
+    }
+}
+
+/// Call `take_new_keys()` on `gacx.dont_rewrite_{fns,statics,fields}` and process the results.
+/// This involves adding `FIXED` to some pointers and maybe propagating `DontRewrite` flags to
+/// other items.
+fn process_new_dont_rewrite_items(gacx: &mut GlobalAnalysisCtxt, gasn: &mut GlobalAssignment) {
+    for i in 0.. {
+        assert!(i < 20);
+        let mut found_any = false;
+
+        for did in gacx.dont_rewrite_fns.take_new_keys() {
+            found_any = true;
+            let lsig = &gacx.fn_sigs[&did];
+            make_sig_fixed(gasn, lsig);
+
+            let ldid = match did.as_local() {
+                Some(x) => x,
+                None => continue,
+            };
+
+            for &field_ldid in gacx.fn_fields_used.get(ldid) {
+                gacx.dont_rewrite_fields.add(
+                    field_ldid.to_def_id(),
+                    DontRewriteFieldReason::NON_REWRITTEN_USE,
+                );
+            }
+
+            // TODO: callers/callees
+        }
+
+        for did in gacx.dont_rewrite_statics.take_new_keys() {
+            found_any = true;
+            let lty = gacx.static_tys[&did];
+            make_ty_fixed(gasn, lty);
+        }
+
+        for did in gacx.dont_rewrite_fields.take_new_keys() {
+            found_any = true;
+            let lty = gacx.field_ltys[&did];
+            make_ty_fixed(gasn, lty);
+        }
+
+        // The previous steps can cause more items to become non-rewritten.  Keep going until
+        // there's no more work to do.
+        if !found_any {
+            break;
+        }
+    }
 }
 
 pub struct AnalysisCallbacks;
