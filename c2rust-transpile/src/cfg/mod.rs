@@ -2249,7 +2249,7 @@ impl Cfg<Label, StmtOrDecl> {
                     let cases: Vec<(String, Label)> = cases
                         .iter()
                         .map(|(pat, tgt)| -> (String, Label) {
-                            let pat: String = pprust::pat_to_string(pat.deref());
+                            let pat: String = pprust::pat_to_string(pat);
 
                             (pat, tgt.clone())
                         })
