@@ -346,7 +346,7 @@ fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, did: DefId, substs: SubstsRef<'tcx>) 
         }
 
         "null" | "null_mut" => {
-            // The `core::mem::size_of` function.
+            // The `core::ptr::null/null_mut` function.
             let parent_did = tcx.parent(did);
             if tcx.def_kind(parent_did) != DefKind::Mod {
                 return None;

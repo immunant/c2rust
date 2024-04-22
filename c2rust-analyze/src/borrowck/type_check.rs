@@ -603,7 +603,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         });
                     }
                     Callee::Null { .. } => {
-                        // TODO: do we need to do anything here?
+                        // Just visit the place.  The null pointer returned here has no origin, so
+                        // there's no need to call `do_assign` to set up subset relations.
+                        let _pl_lty = self.visit_place(destination);
                     }
                 }
             }
