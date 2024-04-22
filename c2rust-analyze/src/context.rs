@@ -166,7 +166,7 @@ impl PermissionSet {
 
     /// The permissions for a (byte-)string literal.
     //
-    // `.union` is used here since it's a `const fn`, unlike `BitOr::bitor`.
+    // `union_all` is used here since it's a `const fn`, unlike `BitOr::bitor`.
     pub const STRING_LITERAL: Self = Self::union_all([Self::READ, Self::OFFSET_ADD]);
 }
 
@@ -456,10 +456,11 @@ impl<'a, 'tcx> AnalysisCtxt<'_, 'tcx> {
             let ptr = lty.label;
             let expected_perms = PermissionSet::STRING_LITERAL;
             let mut actual_perms = asn.perms()[ptr];
-            // Ignore `UNIQUE` as it gets automatically added to all permissions
-            // and then removed later if it can't apply.
-            // We don't care about `UNIQUE` for const refs, so just unset it here.
+            // Ignore `UNIQUE` and `NON_NULL` as they get automatically added to all permissions
+            // and then removed later if it can't apply.  We don't care about `UNIQUE` or
+            // `NON_NULL` for const refs, so just unset it here.
             actual_perms.set(PermissionSet::UNIQUE, false);
+            actual_perms.set(PermissionSet::NON_NULL, false);
             assert_eq!(expected_perms, actual_perms);
         }
     }

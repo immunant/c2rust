@@ -123,6 +123,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 if !op.constant().copied().map(is_null_const).unwrap_or(false) {
                     panic!("Creating non-null pointers from exposed addresses not supported");
                 }
+                // The target type of the cast must not have `NON_NULL` permission.
+                self.constraints
+                    .add_no_perms(to_lty.label, PermissionSet::NON_NULL);
             }
             CastKind::PointerExposeAddress => {
                 // Allow, as [`CastKind::PointerFromExposedAddress`] is the dangerous one,
@@ -598,6 +601,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Callee::IsNull => {
                 assert!(args.len() == 1);
                 self.visit_operand(&args[0]);
+            }
+            Callee::Null { .. } => {
+                assert!(args.len() == 0);
+                self.visit_place(destination, Mutability::Mut);
+                let pl_lty = self.acx.type_of(destination);
+                // We are assigning a null pointer to `destination`, so it must not have the
+                // `NON_NULL` flag.
+                self.constraints
+                    .add_no_perms(pl_lty.label, PermissionSet::NON_NULL);
             }
         }
     }

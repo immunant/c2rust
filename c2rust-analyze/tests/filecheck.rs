@@ -55,6 +55,7 @@ define_tests! {
     insertion_sort_driver,
     insertion_sort_rewrites,
     known_fn,
+    non_null,
     offset1,
     offset2,
     pointee,

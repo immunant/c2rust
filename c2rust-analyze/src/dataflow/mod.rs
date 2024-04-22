@@ -40,8 +40,7 @@ impl DataflowConstraints {
         self.constraints.push(Constraint::AllPerms(ptr, perms));
     }
 
-    #[allow(dead_code)]
-    fn _add_no_perms(&mut self, ptr: PointerId, perms: PermissionSet) {
+    fn add_no_perms(&mut self, ptr: PointerId, perms: PermissionSet) {
         self.constraints.push(Constraint::NoPerms(ptr, perms));
     }
 
@@ -86,7 +85,7 @@ impl DataflowConstraints {
                 // Permissions that should be propagated "down": if the superset (`b`)
                 // doesn't have it, then the subset (`a`) should have it removed.
                 #[allow(bad_style)]
-                let PROPAGATE_DOWN = PermissionSet::UNIQUE;
+                let PROPAGATE_DOWN = PermissionSet::UNIQUE | PermissionSet::NON_NULL;
                 // Permissions that should be propagated "up": if the subset (`a`) has it,
                 // then the superset (`b`) should be given it.
                 #[allow(bad_style)]

@@ -2,23 +2,23 @@ use std::ptr;
 
 // CHECK-LABEL: final labeling for "alias1_good"
 pub unsafe fn alias1_good() {
-    // CHECK-DAG: ([[@LINE+1]]: mut x): addr_of = READ | WRITE | UNIQUE,
+    // CHECK-DAG: ([[@LINE+1]]: mut x): addr_of = READ | WRITE | UNIQUE | NON_NULL,
     let mut x = 0;
-    // CHECK-DAG: ([[@LINE+1]]: p): {{.*}}type = UNIQUE#
+    // CHECK-DAG: ([[@LINE+1]]: p): {{.*}}type = UNIQUE | NON_NULL#
     let p = ptr::addr_of_mut!(x);
-    // CHECK-DAG: ([[@LINE+1]]: q): {{.*}}type = READ | WRITE | UNIQUE#
+    // CHECK-DAG: ([[@LINE+1]]: q): {{.*}}type = READ | WRITE | UNIQUE | NON_NULL#
     let q = ptr::addr_of_mut!(x);
     *q = 1;
 }
 
 // CHECK-LABEL: final labeling for "alias1_bad"
 pub unsafe fn alias1_bad() {
-    // CHECK-DAG: ([[@LINE+2]]: mut x): addr_of = READ | WRITE,
+    // CHECK-DAG: ([[@LINE+2]]: mut x): addr_of = READ | WRITE | NON_NULL,
     // CHECK-DAG: ([[@LINE+1]]: mut x): addr_of flags = CELL,
     let mut x = 0;
-    // CHECK-DAG: ([[@LINE+1]]: p): {{.*}}type = READ | WRITE#
+    // CHECK-DAG: ([[@LINE+1]]: p): {{.*}}type = READ | WRITE | NON_NULL#
     let p = ptr::addr_of_mut!(x);
-    // CHECK-DAG: ([[@LINE+2]]: q): {{.*}}type = (empty)#
+    // CHECK-DAG: ([[@LINE+2]]: q): {{.*}}type = NON_NULL#
     // CHECK-DAG: ([[@LINE+1]]: q): {{.*}}type flags = CELL#
     let q = ptr::addr_of_mut!(x);
     *p = 1;

@@ -602,6 +602,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                             self.visit_operand(p)
                         });
                     }
+                    Callee::Null { .. } => {
+                        // Just visit the place.  The null pointer returned here has no origin, so
+                        // there's no need to call `do_assign` to set up subset relations.
+                        let _pl_lty = self.visit_place(destination);
+                    }
                 }
             }
             // TODO(spernsteiner): handle other `TerminatorKind`s
