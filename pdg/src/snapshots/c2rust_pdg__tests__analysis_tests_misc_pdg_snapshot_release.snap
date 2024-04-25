@@ -3,21 +3,21 @@ source: pdg/src/main.rs
 assertion_line: 384
 expression: pdg
 ---
-g {
+g is_null=false {
 	n[0]: &_1  _    => _   @ bb3[0]:  fn main;   _22 = &raw mut _1;
 	n[1]: copy n[0] => _11 @ bb3[10]: fn main;   _11 = &(*_22);
 	n[2]: copy n[1] => _1  @ bb0[0]:  fn deref;  _10 = deref(move _11);
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: copy _    => _10 @ bb3[11]: fn main;  _10 = deref(move _11);
 	n[1]: copy n[0] => _9  @ bb4[0]:  fn main;  _9 = &(*_10);
 	n[2]: copy n[1] => _1  @ bb0[0]:  fn iter;  _8 = iter(move _9);
 }
 nodes_that_need_write = []
 
-g {
+g is_null=true {
 	n[0]: copy        _    => _14    @ bb6[4]:  fn main;                 _14 = null_mut();
 	n[1]: copy        n[0] => _1     @ bb0[0]:  fn once;                 _13 = once(move _14);
 	n[2]: int_to_ptr  n[0] => _17    @ bb4[29]: fn simple;               _17 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
@@ -30,7 +30,7 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: &_5  _    => _   @ bb10[0]: fn main;  _23 = &raw mut _5;
 	n[1]: copy n[0] => _19 @ bb10[9]: fn main;  _19 = &(*_23);
 	n[2]: copy n[1] => _1  @ bb0[0]:  fn len;   _18 = len(move _19);
@@ -38,13 +38,13 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: copy _    => _20 @ bb11[8]: fn main;    _20 = as_mut_ptr(move _21);
 	n[1]: copy n[0] => _2  @ bb0[0]:  fn main_0;  _15 = main_0(move _16, move _20);
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc        _    => _2  @ bb1[2]: fn simple;  _2 = malloc(move _3);
 	n[1]: copy         n[0] => _1  @ bb2[1]: fn simple;  _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: copy         n[1] => _5  @ bb2[5]: fn simple;  _5 = _1;
@@ -55,7 +55,7 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]:  alloc         _     => _7     @ bb3[2]:  fn simple;  _7 = malloc(move _8);
 	n[1]:  copy          n[0]  => _6     @ bb4[1]:  fn simple;  _6 = move _7 as *mut pointers::S (Misc);
 	n[2]:  copy          n[1]  => _11    @ bb4[8]:  fn simple;  _11 = _6;
@@ -93,14 +93,14 @@ g {
 }
 nodes_that_need_write = [22, 20, 17, 11, 9, 5, 3, 2, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: copy _    => _13 @ bb8[4]: fn recur;  _13 = _2;
 	n[1]: copy n[0] => _13 @ bb8[4]: fn recur;  _13 = _2;
 	n[2]: copy n[0] => _13 @ bb8[4]: fn recur;  _13 = _2;
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc        _    => _2  @ bb1[2]:  fn exercise_allocator;  _2 = malloc(move _3);
 	n[1]: copy         n[0] => _1  @ bb2[1]:  fn exercise_allocator;  _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: project[0]@0 n[1] => _   @ bb2[5]:  fn exercise_allocator;  ((*_1).0: i32) = const 10_i32;
@@ -113,7 +113,7 @@ g {
 }
 nodes_that_need_write = [3, 1, 0]
 
-g {
+g is_null=false {
 	n[0]:  sized(4) _     => _9  @ bb2[11]: fn exercise_allocator;       _9 = const b"%i\n\x00";
 	n[1]:  copy     n[0]  => _8  @ bb2[12]: fn exercise_allocator;       _8 = &raw const (*_9);
 	n[2]:  copy     n[1]  => _7  @ bb2[13]: fn exercise_allocator;       _7 = move _8 as *const u8 (Pointer(ArrayToPointer));
@@ -178,7 +178,7 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]:  alloc        _     => _11 @ bb5[2]:   fn exercise_allocator;  _11 = realloc(move _12, move _14);
 	n[1]:  copy         n[0]  => _1  @ bb6[2]:   fn exercise_allocator;  _1 = move _11 as *mut pointers::S (Misc);
 	n[2]:  copy         n[1]  => _19 @ bb6[6]:   fn exercise_allocator;  _19 = _1;
@@ -205,12 +205,12 @@ g {
 }
 nodes_that_need_write = [9, 7, 6, 5, 3, 2, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: sized(4) _ => _31 @ bb11[5]: fn exercise_allocator;  _31 = const b"%i\n\x00";
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]:  alloc        _     => _40 @ bb21[2]:  fn exercise_allocator;  _40 = reallocarray(move _41, move _43, move _44);
 	n[1]:  copy         n[0]  => _1  @ bb22[3]:  fn exercise_allocator;  _1 = move _40 as *mut pointers::S (Misc);
 	n[2]:  copy         n[1]  => _47 @ bb22[7]:  fn exercise_allocator;  _47 = _1;
@@ -243,12 +243,12 @@ g {
 }
 nodes_that_need_write = [13, 11, 10, 9, 7, 6, 5, 3, 2, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: sized(4) _ => _60 @ bb28[5]: fn exercise_allocator;  _60 = const b"%i\n\x00";
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]:  alloc        _     => _72  @ bb39[2]:  fn exercise_allocator;  _72 = calloc(move _73, move _74);
 	n[1]:  copy         n[0]  => _1   @ bb40[2]:  fn exercise_allocator;  _1 = move _72 as *mut pointers::S (Misc);
 	n[2]:  copy         n[1]  => _77  @ bb40[6]:  fn exercise_allocator;  _77 = _1;
@@ -289,12 +289,12 @@ g {
 }
 nodes_that_need_write = [17, 15, 14, 13, 11, 10, 9, 7, 6, 5, 3, 2, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: sized(4) _ => _92 @ bb47[5]: fn exercise_allocator;  _92 = const b"%i\n\x00";
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc        _    => _2  @ bb1[2]:  fn simple_analysis;  _2 = malloc(move _3);
 	n[1]: copy         n[0] => _1  @ bb2[1]:  fn simple_analysis;  _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: project[0]@0 n[1] => _   @ bb2[5]:  fn simple_analysis;  ((*_1).0: i32) = const 10_i32;
@@ -307,12 +307,12 @@ g {
 }
 nodes_that_need_write = [3, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: sized(4) _ => _9 @ bb2[11]: fn simple_analysis;  _9 = const b"%i\n\x00";
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]:  alloc        _    => _2 @ bb1[2]:  fn analysis2;         _2 = malloc(move _3);
 	n[1]:  copy         n[0] => _1 @ bb2[1]:  fn analysis2;         _1 = move _2 as *mut pointers::S (Misc);
 	n[2]:  project[0]@0 n[1] => _  @ bb2[5]:  fn analysis2;         ((*_1).0: i32) = const 10_i32;
@@ -327,12 +327,12 @@ g {
 }
 nodes_that_need_write = [3, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: sized(4) _ => _6 @ bb0[5]: fn analysis2_helper;  _6 = const b"%i\n\x00";
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc        _    => _0  @ bb0[2]:  fn malloc_wrapper;           _0 = malloc(move _3);
 	n[1]: copy         n[0] => _2  @ bb1[2]:  fn inter_function_analysis;  _2 = malloc_wrapper(move _3);
 	n[2]: copy         n[1] => _1  @ bb2[1]:  fn inter_function_analysis;  _1 = move _2 as *mut pointers::S (Misc);
@@ -346,12 +346,12 @@ g {
 }
 nodes_that_need_write = [4, 2, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: sized(4) _ => _9 @ bb2[11]: fn inter_function_analysis;  _9 = const b"%i\n\x00";
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc       _    => _2   @ bb1[2]: fn no_owner;  _2 = malloc(move _3);
 	n[1]: value.store n[0] => _5.* @ bb2[3]: fn no_owner;  (*_5) = move _2 as *mut pointers::S (Misc);
 	n[2]: value.load  n[0] => _12  @ bb6[6]: fn main_0;    _12 = (*_13);
@@ -360,7 +360,7 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: sized(8)   _    => _5 @ bb2[2]:  fn no_owner;  _5 = const {alloc8: *mut *mut pointers::S};
 	n[1]: addr.store n[0] => _  @ bb2[3]:  fn no_owner;  (*_5) = move _2 as *mut pointers::S (Misc);
 	n[2]: addr.load  n[0] => _  @ bb6[6]:  fn main_0;    _12 = (*_13);
@@ -372,12 +372,12 @@ g {
 }
 nodes_that_need_write = [7, 5, 3, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: sized(8) _ => _13 @ bb6[5]: fn main_0;  _13 = const {alloc8: *mut *mut pointers::S};
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc       _    => _2   @ bb1[2]: fn no_owner;  _2 = malloc(move _3);
 	n[1]: value.store n[0] => _5.* @ bb2[3]: fn no_owner;  (*_5) = move _2 as *mut pointers::S (Misc);
 	n[2]: value.load  n[0] => _11  @ bb3[5]: fn no_owner;  _11 = (*_12);
@@ -386,17 +386,17 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: sized(8) _ => _5 @ bb2[2]: fn no_owner;  _5 = const {alloc8: *mut *mut pointers::S};
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: sized(8) _ => _12 @ bb3[4]: fn no_owner;  _12 = const {alloc8: *mut *mut pointers::S};
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]:  alloc        _     => _2   @ bb1[2]:  fn invalid;  _2 = malloc(move _3);
 	n[1]:  copy         n[0]  => _1   @ bb2[1]:  fn invalid;  _1 = move _2 as *mut pointers::S (Misc);
 	n[2]:  project[0]@0 n[1]  => _    @ bb2[5]:  fn invalid;  ((*_1).0: i32) = const 10_i32;
@@ -414,32 +414,32 @@ g {
 }
 nodes_that_need_write = [3, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: sized(8) _ => _6 @ bb2[9]: fn invalid;  _6 = const {alloc8: *mut *mut pointers::S};
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: sized(4) _ => _11 @ bb2[18]: fn invalid;  _11 = const b"%i\n\x00";
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: sized(4) _ => _17 @ bb3[9]: fn invalid;  _17 = const b"%i\n\x00";
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: sized(8) _ => _19 @ bb3[17]: fn invalid;  _19 = const {alloc8: *mut *mut pointers::S};
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: sized(8) _ => _20 @ bb4[6]: fn invalid;  _20 = const {alloc8: *mut *mut pointers::S};
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: &_1         _    => _    @ bb0[2]:  fn testing;  _8 = &raw mut _1;
 	n[1]: addr.store  n[0] => _    @ bb0[1]:  fn testing;  _1 = const 10_i32;
 	n[2]: copy        n[0] => _4   @ bb0[9]:  fn testing;  _4 = &mut (*_8);
@@ -450,7 +450,7 @@ g {
 }
 nodes_that_need_write = [1, 0]
 
-g {
+g is_null=false {
 	n[0]: &_3        _    => _  @ bb0[11]: fn testing;  _9 = &raw mut _3;
 	n[1]: addr.store n[0] => _  @ bb0[10]: fn testing;  _3 = &raw mut (*_4);
 	n[2]: copy       n[0] => _5 @ bb0[15]: fn testing;  _5 = &mut (*_9);
@@ -458,7 +458,7 @@ g {
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: alloc _    => _2 @ bb1[2]: fn simple1;  _2 = malloc(move _3);
 	n[1]: copy  n[0] => _1 @ bb2[1]: fn simple1;  _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: copy  n[1] => _8 @ bb2[8]: fn simple1;  _8 = _1;
@@ -467,7 +467,7 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]:  alloc        _     => _6  @ bb3[2]:  fn simple1;  _6 = realloc(move _7, move _9);
 	n[1]:  copy         n[0]  => _5  @ bb4[2]:  fn simple1;  _5 = move _6 as *mut pointers::S (Misc);
 	n[2]:  copy         n[1]  => _11 @ bb4[6]:  fn simple1;  _11 = _5;
@@ -484,14 +484,14 @@ g {
 }
 nodes_that_need_write = [4, 2, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: &_13       _    => _   @ bb4[14]: fn simple1;  _22 = &raw mut _13;
 	n[1]: addr.store n[0] => _   @ bb4[13]: fn simple1;  _13 = _11;
 	n[2]: copy       n[0] => _14 @ bb4[17]: fn simple1;  _14 = &raw const (*_22);
 }
 nodes_that_need_write = [1, 0]
 
-g {
+g is_null=false {
 	n[0]:  alloc       _     => _2     @ bb1[2]:  fn lighttpd_test;       _2 = malloc(move _3);
 	n[1]:  copy        n[0]  => _1     @ bb2[1]:  fn lighttpd_test;       _1 = move _2 as *mut *mut pointers::fdnode_st (Misc);
 	n[2]:  copy        n[1]  => _9     @ bb4[5]:  fn lighttpd_test;       _9 = _1;
@@ -514,7 +514,7 @@ g {
 }
 nodes_that_need_write = [15, 14, 13, 12, 7, 6, 5, 4, 0]
 
-g {
+g is_null=false {
 	n[0]:  alloc        _     => _6  @ bb3[2]:  fn lighttpd_test;                  _6 = malloc(move _7);
 	n[1]:  copy         n[0]  => _5  @ bb4[1]:  fn lighttpd_test;                  _5 = move _6 as *mut pointers::fdevents (Misc);
 	n[2]:  project[0]@0 n[1]  => _   @ bb4[6]:  fn lighttpd_test;                  ((*_5).0: *mut *mut pointers::fdnode_st) = move _9;
@@ -540,7 +540,7 @@ g {
 }
 nodes_that_need_write = [3, 1, 0]
 
-g {
+g is_null=false {
 	n[0]:  &_11         _    => _   @ bb4[12]: fn lighttpd_test;        _24 = &raw mut _11;
 	n[1]:  addr.store   n[0] => _   @ bb4[11]: fn lighttpd_test;        _11 = pointers::server { ev: move _12 };
 	n[2]:  copy         n[0] => _10 @ bb4[15]: fn lighttpd_test;        _10 = &mut (*_24);
@@ -557,7 +557,7 @@ g {
 }
 nodes_that_need_write = [1, 0]
 
-g {
+g is_null=false {
 	n[0]:  alloc        _     => _5      @ bb1[2]:  fn connection_accepted;  _5 = malloc(move _6);
 	n[1]:  copy         n[0]  => _4      @ bb2[1]:  fn connection_accepted;  _4 = move _5 as *mut pointers::connection (Misc);
 	n[2]:  project[0]@0 n[1]  => _       @ bb2[6]:  fn connection_accepted;  ((*_4).0: i32) = move _8;
@@ -585,7 +585,7 @@ g {
 }
 nodes_that_need_write = [12, 8, 7, 6, 3, 1, 0]
 
-g {
+g is_null=false {
 	n[0]:  alloc         _     => _3     @ bb1[2]:  fn fdnode_init;                    _3 = calloc(move _4, move _6);
 	n[1]:  copy          n[0]  => _2     @ bb2[2]:  fn fdnode_init;                    _2 = move _3 as *mut pointers::fdnode_st (Misc);
 	n[2]:  copy          n[1]  => _10    @ bb2[9]:  fn fdnode_init;                    _10 = _2;
@@ -626,14 +626,14 @@ g {
 }
 nodes_that_need_write = [17, 15, 13, 11, 9, 7, 0]
 
-g {
+g is_null=false {
 	n[0]: alloc _    => _1 @ bb1[2]: fn test_malloc_free;  _1 = malloc(move _2);
 	n[1]: copy  n[0] => _5 @ bb2[4]: fn test_malloc_free;  _5 = _1;
 	n[2]: free  n[1] => _4 @ bb2[5]: fn test_malloc_free;  _4 = free(move _5);
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc _    => _2 @ bb1[2]:  fn test_malloc_free_cast;  _2 = malloc(move _3);
 	n[1]: copy  n[0] => _1 @ bb2[1]:  fn test_malloc_free_cast;  _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: copy  n[1] => _7 @ bb2[7]:  fn test_malloc_free_cast;  _7 = _1;
@@ -642,7 +642,7 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc _    => _1 @ bb1[2]: fn test_arg;  _1 = malloc(move _2);
 	n[1]: copy  n[0] => _5 @ bb2[4]: fn test_arg;  _5 = _1;
 	n[2]: copy  n[1] => _1 @ bb0[0]: fn foo;       _4 = foo(move _5);
@@ -653,7 +653,7 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]:  alloc _     => _1  @ bb1[2]: fn test_arg_rec;  _1 = malloc(move _2);
 	n[1]:  copy  n[0]  => _5  @ bb2[4]: fn test_arg_rec;  _5 = _1;
 	n[2]:  copy  n[1]  => _2  @ bb0[0]: fn foo_rec;       _4 = foo_rec(const 3_i32, move _5);
@@ -679,7 +679,7 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: &_1        _    => _  @ bb0[2]:  fn test_shared_ref;  _7 = &raw mut _1;
 	n[1]: addr.store n[0] => _  @ bb0[1]:  fn test_shared_ref;  _1 = const 2_u8;
 	n[2]: copy       n[0] => _2 @ bb0[5]:  fn test_shared_ref;  _2 = &(*_7);
@@ -692,7 +692,7 @@ g {
 }
 nodes_that_need_write = [1, 0]
 
-g {
+g is_null=false {
 	n[0]: &_1         _    => _    @ bb0[2]:  fn test_unique_ref;  _8 = &raw mut _1;
 	n[1]: addr.store  n[0] => _    @ bb0[1]:  fn test_unique_ref;  _1 = const 10_i32;
 	n[2]: copy        n[0] => _4   @ bb0[9]:  fn test_unique_ref;  _4 = &mut (*_8);
@@ -703,7 +703,7 @@ g {
 }
 nodes_that_need_write = [1, 0]
 
-g {
+g is_null=false {
 	n[0]: &_3        _    => _  @ bb0[11]: fn test_unique_ref;  _9 = &raw mut _3;
 	n[1]: addr.store n[0] => _  @ bb0[10]: fn test_unique_ref;  _3 = &raw mut (*_4);
 	n[2]: copy       n[0] => _5 @ bb0[15]: fn test_unique_ref;  _5 = &mut (*_9);
@@ -711,14 +711,14 @@ g {
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: alloc _    => _1 @ bb1[2]: fn test_realloc_reassign;  _1 = malloc(move _2);
 	n[1]: copy  n[0] => _5 @ bb2[4]: fn test_realloc_reassign;  _5 = _1;
 	n[2]: free  n[1] => _4 @ bb3[4]: fn test_realloc_reassign;  _4 = realloc(move _5, move _6);
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc _    => _4  @ bb3[4]: fn test_realloc_reassign;  _4 = realloc(move _5, move _6);
 	n[1]: copy  n[0] => _1  @ bb4[2]: fn test_realloc_reassign;  _1 = move _4;
 	n[2]: copy  n[1] => _10 @ bb4[6]: fn test_realloc_reassign;  _10 = _1;
@@ -726,21 +726,21 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc _    => _1 @ bb1[2]: fn test_realloc_fresh;  _1 = malloc(move _2);
 	n[1]: copy  n[0] => _5 @ bb2[4]: fn test_realloc_fresh;  _5 = _1;
 	n[2]: free  n[1] => _4 @ bb3[2]: fn test_realloc_fresh;  _4 = realloc(move _5, move _6);
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc _    => _4 @ bb3[2]: fn test_realloc_fresh;  _4 = realloc(move _5, move _6);
 	n[1]: copy  n[0] => _9 @ bb4[5]: fn test_realloc_fresh;  _9 = _4;
 	n[2]: free  n[1] => _8 @ bb4[6]: fn test_realloc_fresh;  _8 = free(move _9);
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc     _    => _2 @ bb1[2]:  fn test_load_addr;  _2 = calloc(const 1_u64, move _3);
 	n[1]: copy      n[0] => _1 @ bb2[1]:  fn test_load_addr;  _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: addr.load n[1] => _  @ bb2[5]:  fn test_load_addr;  _5 = (*_1);
@@ -750,7 +750,7 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc _    => _1  @ bb1[2]: fn test_overwrite;  _1 = malloc(move _2);
 	n[1]: copy  n[0] => _4  @ bb2[3]: fn test_overwrite;  _4 = _1;
 	n[2]: copy  n[1] => _12 @ bb5[4]: fn test_overwrite;  _12 = _4;
@@ -758,7 +758,7 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc _    => _5  @ bb3[2]: fn test_overwrite;  _5 = malloc(move _6);
 	n[1]: copy  n[0] => _8  @ bb4[3]: fn test_overwrite;  _8 = _5;
 	n[2]: copy  n[1] => _1  @ bb4[4]: fn test_overwrite;  _1 = move _8;
@@ -767,7 +767,7 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc        _    => _2 @ bb1[2]:  fn test_store_addr;  _2 = malloc(move _3);
 	n[1]: copy         n[0] => _1 @ bb2[1]:  fn test_store_addr;  _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: project[0]@0 n[1] => _  @ bb2[4]:  fn test_store_addr;  ((*_1).0: i32) = const 10_i32;
@@ -778,7 +778,7 @@ g {
 }
 nodes_that_need_write = [3, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: alloc        _    => _2  @ bb1[2]:  fn test_load_other_store_self;  _2 = malloc(move _3);
 	n[1]: copy         n[0] => _1  @ bb2[1]:  fn test_load_other_store_self;  _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: project[0]@0 n[1] => _   @ bb4[4]:  fn test_load_other_store_self;  ((*_1).0: i32) = const 10_i32;
@@ -791,7 +791,7 @@ g {
 }
 nodes_that_need_write = [3, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: alloc        _    => _6  @ bb3[2]: fn test_load_other_store_self;  _6 = malloc(move _7);
 	n[1]: copy         n[0] => _5  @ bb4[1]: fn test_load_other_store_self;  _5 = move _6 as *mut pointers::S (Misc);
 	n[2]: project[0]@0 n[1] => _   @ bb4[7]: fn test_load_other_store_self;  ((*_5).0: i32) = move _9;
@@ -802,7 +802,7 @@ g {
 }
 nodes_that_need_write = [3, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: alloc            _    => _2 @ bb1[2]:  fn test_load_self_store_self;  _2 = calloc(move _3, move _4);
 	n[1]: copy             n[0] => _1 @ bb2[2]:  fn test_load_self_store_self;  _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: project[3, 3]@48 n[1] => _  @ bb2[6]:  fn test_load_self_store_self;  _6 = (((*_1).3: pointers::T).3: i32);
@@ -815,7 +815,7 @@ g {
 }
 nodes_that_need_write = [5, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: alloc        _    => _2  @ bb1[2]:  fn test_load_self_store_self_inter;  _2 = calloc(move _3, move _4);
 	n[1]: copy         n[0] => _1  @ bb2[2]:  fn test_load_self_store_self_inter;  _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: project[0]@0 n[1] => _   @ bb2[6]:  fn test_load_self_store_self_inter;  _6 = ((*_1).0: i32);
@@ -828,7 +828,7 @@ g {
 }
 nodes_that_need_write = [5, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: alloc      _    => _1 @ bb1[2]:  fn test_ptr_int_ptr;  _1 = malloc(move _2);
 	n[1]: copy       n[0] => _5 @ bb2[4]:  fn test_ptr_int_ptr;  _5 = _1;
 	n[2]: ptr_to_int n[1] => _  @ bb2[5]:  fn test_ptr_int_ptr;  _4 = move _5 as usize (PointerExposeAddress);
@@ -838,21 +838,21 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc      _    => _1 @ bb1[2]: fn test_load_value;  _1 = malloc(move _2);
 	n[1]: value.load n[0] => _6 @ bb2[8]: fn test_load_value;  _6 = (*_4);
 	n[2]: free       n[1] => _5 @ bb2[9]: fn test_load_value;  _5 = free(move _6);
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: &_1       _    => _  @ bb2[0]: fn test_load_value;  _7 = &raw mut _1;
 	n[1]: copy      n[0] => _4 @ bb2[4]: fn test_load_value;  _4 = &raw const (*_7);
 	n[2]: addr.load n[1] => _  @ bb2[8]: fn test_load_value;  _6 = (*_4);
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: alloc       _    => _1   @ bb1[2]:  fn test_store_value;  _1 = malloc(move _2);
 	n[1]: value.load  n[0] => _4   @ bb2[4]:  fn test_store_value;  _4 = (*_9);
 	n[2]: copy        n[1] => _6   @ bb2[10]: fn test_store_value;  _6 = _4;
@@ -862,7 +862,7 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: &_1        _    => _  @ bb2[0]:  fn test_store_value;  _9 = &raw mut _1;
 	n[1]: addr.load  n[0] => _  @ bb2[4]:  fn test_store_value;  _4 = (*_9);
 	n[2]: copy       n[0] => _5 @ bb2[7]:  fn test_store_value;  _5 = &raw mut (*_9);
@@ -871,7 +871,7 @@ g {
 }
 nodes_that_need_write = [3, 2, 0]
 
-g {
+g is_null=false {
 	n[0]:  alloc         _    => _2     @ bb1[2]:  fn test_store_value_field;  _2 = malloc(move _3);
 	n[1]:  copy          n[0] => _1     @ bb2[1]:  fn test_store_value_field;  _1 = move _2 as *mut pointers::S (Misc);
 	n[2]:  copy          n[1] => _9     @ bb4[5]:  fn test_store_value_field;  _9 = _1;
@@ -886,7 +886,7 @@ g {
 }
 nodes_that_need_write = [6, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: alloc         _    => _6  @ bb3[2]:  fn test_store_value_field;  _6 = malloc(move _7);
 	n[1]: copy          n[0] => _5  @ bb4[1]:  fn test_store_value_field;  _5 = move _6 as *mut pointers::S (Misc);
 	n[2]: project[2]@16 n[1] => _   @ bb4[6]:  fn test_store_value_field;  ((*_5).2: *const pointers::S) = move _9 as *const pointers::S (Pointer(MutToConstPointer));
@@ -899,7 +899,7 @@ g {
 }
 nodes_that_need_write = [3, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: alloc       _    => _1   @ bb1[2]:  fn test_load_value_store_value;  _1 = malloc(move _2);
 	n[1]: value.load  n[0] => _5   @ bb2[7]:  fn test_load_value_store_value;  _5 = (*_4);
 	n[2]: value.store n[1] => _4.* @ bb2[8]:  fn test_load_value_store_value;  (*_4) = move _5;
@@ -908,7 +908,7 @@ g {
 }
 nodes_that_need_write = []
 
-g {
+g is_null=false {
 	n[0]: &_1        _    => _  @ bb2[0]:  fn test_load_value_store_value;  _8 = &raw mut _1;
 	n[1]: copy       n[0] => _4 @ bb2[4]:  fn test_load_value_store_value;  _4 = &raw mut (*_8);
 	n[2]: addr.load  n[1] => _  @ bb2[7]:  fn test_load_value_store_value;  _5 = (*_4);
@@ -919,7 +919,7 @@ g {
 }
 nodes_that_need_write = [6, 3, 1, 0]
 
-g {
+g is_null=false {
 	n[0]:  &_40       _     => _   @ bb32[4]:  fn main_0;          _59 = &raw mut _40;
 	n[1]:  addr.store n[0]  => _   @ bb32[3]:  fn main_0;          _40 = [const 2_i32, const 5_i32, const 3_i32, const 1_i32, const 6_i32];
 	n[2]:  copy       n[0]  => _39 @ bb32[5]:  fn main_0;          _39 = &mut (*_59);
@@ -1001,7 +1001,7 @@ g {
 }
 nodes_that_need_write = [77, 76, 75, 68, 67, 66, 65, 64, 63, 56, 55, 54, 47, 46, 45, 35, 34, 33, 29, 28, 27, 17, 16, 15, 8, 7, 6, 2, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: &_4              _    => _  @ bb0[12]: fn test_ref_field;  _8 = &raw mut _4;
 	n[1]: addr.store       n[0] => _  @ bb0[11]: fn test_ref_field;  _4 = pointers::S { field: const 0_i32, field2: const 0_u64, field3: move _5, field4: move _6 };
 	n[2]: copy             n[0] => _3 @ bb0[16]: fn test_ref_field;  _3 = &mut (*_8);
@@ -1010,7 +1010,7 @@ g {
 }
 nodes_that_need_write = [1, 0]
 
-g {
+g is_null=false {
 	n[0]: &_1        _    => _  @ bb0[2]:  fn test_addr_taken;  _8 = &raw mut _1;
 	n[1]: addr.store n[0] => _  @ bb0[1]:  fn test_addr_taken;  _1 = const 2_i32;
 	n[2]: addr.load  n[0] => _  @ bb0[6]:  fn test_addr_taken;  _3 = (*_8);
@@ -1019,7 +1019,7 @@ g {
 }
 nodes_that_need_write = [1, 0]
 
-g {
+g is_null=false {
 	n[0]: &_1           _    => _  @ bb0[0]: fn test_addr_taken_arg;  _3 = &raw mut _1;
 	n[1]: project[2]@16 n[0] => _  @ bb0[1]: fn test_addr_taken_arg;  ((*_3).2: *const pointers::S) = const 0_usize as *const pointers::S (PointerFromExposedAddress);
 	n[2]: addr.store    n[0] => _  @ bb0[1]: fn test_addr_taken_arg;  ((*_3).2: *const pointers::S) = const 0_usize as *const pointers::S (PointerFromExposedAddress);
@@ -1027,7 +1027,7 @@ g {
 }
 nodes_that_need_write = [2, 0]
 
-g {
+g is_null=false {
 	n[0]:  &_3        _    => _   @ bb2[2]:  fn test_addr_taken_loop;  _19 = &raw mut _3;
 	n[1]:  addr.store n[0] => _   @ bb2[1]:  fn test_addr_taken_loop;  _3 = const 2_i32;
 	n[2]:  copy       n[0] => _4  @ bb5[0]:  fn test_addr_taken_loop;  _4 = &(*_19);
@@ -1042,7 +1042,7 @@ g {
 }
 nodes_that_need_write = [9, 8, 5, 4, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: &_2        _    => _  @ bb1[1]: fn test_addr_taken_cond;  _6 = &raw mut _2;
 	n[1]: addr.store n[0] => _  @ bb1[0]: fn test_addr_taken_cond;  _2 = const 1_i32;
 	n[2]: copy       n[0] => _4 @ bb4[3]: fn test_addr_taken_cond;  _4 = &(*_6);
@@ -1050,7 +1050,7 @@ g {
 }
 nodes_that_need_write = [1, 0]
 
-g {
+g is_null=false {
 	n[0]: &_2        _    => _  @ bb3[1]: fn test_addr_taken_cond;  _6 = &raw mut _2;
 	n[1]: addr.store n[0] => _  @ bb3[0]: fn test_addr_taken_cond;  _2 = const 2_i32;
 	n[2]: copy       n[0] => _4 @ bb4[3]: fn test_addr_taken_cond;  _4 = &(*_6);
@@ -1058,7 +1058,7 @@ g {
 }
 nodes_that_need_write = [1, 0]
 
-g {
+g is_null=false {
 	n[0]: &_2        _    => _  @ bb1[1]: fn test_addr_taken_init_cond;  _8 = &raw mut _2;
 	n[1]: addr.store n[0] => _  @ bb1[0]: fn test_addr_taken_init_cond;  _2 = const 1_i32;
 	n[2]: copy       n[0] => _6 @ bb1[3]: fn test_addr_taken_init_cond;  _6 = &(*_8);
@@ -1069,7 +1069,7 @@ g {
 }
 nodes_that_need_write = [5, 4, 1, 0]
 
-g {
+g is_null=false {
 	n[0]: &_2        _    => _ @ bb4[3]: fn test_addr_taken_init_cond;  _8 = &raw mut _2;
 	n[1]: addr.store n[0] => _ @ bb4[2]: fn test_addr_taken_init_cond;  _2 = const 2_i32;
 	n[2]: addr.load  n[0] => _ @ bb4[5]: fn test_addr_taken_init_cond;  _7 = (*_8);
