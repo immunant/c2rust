@@ -323,12 +323,24 @@ pub fn add_node(
         info: None,
     };
 
+    let ptr_is_null = ptr.map_or(false, |ptr| ptr == 0);
     let graph_id = source
         .as_ref()
         .and_then(|p| parent(&node_kind, p))
         .map(|pi| pi.gid)
-        .unwrap_or_else(|| graphs.graphs.push(Graph::new()));
+        .unwrap_or_else(|| graphs.graphs.push(Graph::new(ptr_is_null)));
     let node_id = graphs.graphs[graph_id].nodes.push(node);
+
+    // Assert that we're not mixing null and non-null pointers
+    assert!(
+        graphs.graphs[graph_id].is_null == ptr_is_null,
+        "graph[{}].is_null == {:?} != {:x?} for {:?}:{:?}",
+        graph_id,
+        graphs.graphs[graph_id].is_null,
+        ptr,
+        event,
+        event_metadata
+    );
 
     update_provenance(
         provenances,
