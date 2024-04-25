@@ -163,10 +163,10 @@ pub fn add_node(
         statement_idx = 0;
     }
 
-    let provenance = event
+    let ptr = event
         .kind
-        .ptr(event_metadata)
-        .and_then(|ptr| provenances.get(&ptr).cloned());
+        .ptr(event_metadata);
+    let provenance = ptr.and_then(|ptr| provenances.get(&ptr).cloned());
     let direct_source = provenance.and_then(|(gid, _last_nid_ref)| {
         graphs.graphs[gid]
             .nodes
@@ -223,13 +223,17 @@ pub fn add_node(
         info: None,
     };
 
+    let ptr_is_null = ptr.map_or(false, |ptr| ptr == 0);
     let graph_id = source
         .or(direct_source)
         .or(provenance)
         .and_then(|p| parent(&node_kind, p))
         .map(|(gid, _)| gid)
-        .unwrap_or_else(|| graphs.graphs.push(Graph::new()));
+        .unwrap_or_else(|| graphs.graphs.push(Graph::new(ptr_is_null)));
     let node_id = graphs.graphs[graph_id].nodes.push(node);
+
+    // Assert that we're not mixing null and non-null pointers
+    assert!(graphs.graphs[graph_id].is_null == ptr_is_null);
 
     update_provenance(
         provenances,

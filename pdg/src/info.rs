@@ -296,7 +296,7 @@ mod test {
     /// ```
     #[test]
     fn unique_interleave() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = 0;
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -344,7 +344,7 @@ mod test {
     /// ```
     #[test]
     fn unique_interleave_onesided() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = 0;   // A
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -388,7 +388,7 @@ mod test {
     /// ```
     #[test]
     fn unique_sub_borrow() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = 0;
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -434,7 +434,7 @@ mod test {
     /// ```
     #[test]
     fn unique_sub_borrow_bad() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = 0;
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -480,7 +480,7 @@ mod test {
     /// ```
     #[test]
     fn okay_use_different_fields() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = Point { x: 0, y: 0 };
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -528,7 +528,7 @@ mod test {
     /// ```
     #[test]
     fn same_fields_cousins() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = Point { x: 0, y: 0 };
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -577,7 +577,7 @@ mod test {
     /// ```
     #[test]
     fn field_vs_raw() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = Point { x: 0, y: 0 };
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -623,7 +623,7 @@ mod test {
     /// ```
     #[test]
     fn fields_different_levels() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = Point { x: 0, y: 0 };
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -667,7 +667,7 @@ mod test {
     /// ```
     #[test]
     fn lots_of_siblings() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         let (x, y, z) = (0_u32, 1_u32, 2_u32);
         let (red, green, _blue) = (0_u32, 1_u32, 2_u32);
@@ -753,7 +753,7 @@ mod test {
     /// ```
     #[test]
     fn field_no_conflict() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = (1, (2, 3));
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -811,7 +811,7 @@ mod test {
     /// ```
     #[test]
     fn nested_field_no_conflict() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = (1, (2, 3));
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -865,7 +865,7 @@ mod test {
     /// ```
     #[test]
     fn diff_field_conflict() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         //let mut a = (1, (2, 3));
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -919,7 +919,7 @@ mod test {
     /// ```
     #[test]
     fn nested_field_conflict() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = (1, (2, 3));
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -981,7 +981,7 @@ mod test {
     /// ```
     #[test]
     fn field_offset_conflict() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = ([1, 2], [3, 4]);
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -1043,7 +1043,7 @@ mod test {
     /// ```
     #[test]
     fn field_offset_no_conflict() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = ([1, 2], [3, 4]);
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -1113,7 +1113,7 @@ mod test {
     /// `rustc` would reject the modified code.
     #[test]
     fn offset_field_conflict() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = ([1, 2], [3, 4]);
         // let p = &mut a;

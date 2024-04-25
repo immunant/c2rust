@@ -281,18 +281,26 @@ impl Display for DisplayNode<'_> {
 }
 
 /// A pointer derivation graph, which tracks the handling of one object throughout its lifetime.
-#[derive(Debug, Default, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
 pub struct Graph {
     /// The nodes in the graph.  Nodes are stored in increasing order by timestamp.  The first
     /// node, called the "root node", creates the object described by this graph, and all other
     /// nodes are derived from it.
     #[serde(with = "crate::util::serde::index_vec")]
     pub nodes: IndexVec<NodeId, Node>,
+
+    /// Whether this graph was built from a null pointer. This should be `Some(true)` or
+    /// `Some(false)` in most cases, but we use `None` to represent an uninitialized value
+    /// to detect internal contradictions.
+    pub is_null: bool,
 }
 
 impl Graph {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(is_null: bool) -> Self {
+        Self {
+            nodes: Default::default(),
+            is_null,
+        }
     }
 }
 
@@ -311,7 +319,7 @@ impl Display for Graph {
                 .to_string()
             })
             .collect::<Vec<_>>();
-        writeln!(f, "g {{")?;
+        writeln!(f, "g is_null={} {{", self.is_null)?;
         for line in pad_columns(&lines, sep, " ") {
             let line = line.trim_end();
             writeln!(f, "\t{line}")?;
