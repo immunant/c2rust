@@ -997,36 +997,29 @@ fn run(tcx: TyCtxt) {
                     }
                 };
 
-                let node_info = match n.info.as_ref() {
-                    Some(x) => x,
-                    None => {
-                        eprintln!(
-                            "pdg: {}: node with dest {:?} is missing NodeInfo",
-                            n.function.name, dest
-                        );
-                        info.acx_data.set(acx.into_data());
-                        continue;
-                    }
-                };
-
                 let old_perms = asn.perms()[ptr];
                 let mut perms = old_perms;
-                if node_info.flows_to.load.is_some() {
-                    perms.insert(PermissionSet::READ);
+                if g.is_null {
+                    perms.remove(PermissionSet::NON_NULL);
                 }
-                if node_info.flows_to.store.is_some() {
-                    perms.insert(PermissionSet::WRITE);
+
+                if let Some(node_info) = n.info.as_ref() {
+                    if node_info.flows_to.load.is_some() {
+                        perms.insert(PermissionSet::READ);
+                    }
+                    if node_info.flows_to.store.is_some() {
+                        perms.insert(PermissionSet::WRITE);
+                    }
+                    if node_info.flows_to.pos_offset.is_some() {
+                        perms.insert(PermissionSet::OFFSET_ADD);
+                    }
+                    if node_info.flows_to.neg_offset.is_some() {
+                        perms.insert(PermissionSet::OFFSET_SUB);
+                    }
+                    if !node_info.unique {
+                        perms.remove(PermissionSet::UNIQUE);
+                    }
                 }
-                if node_info.flows_to.pos_offset.is_some() {
-                    perms.insert(PermissionSet::OFFSET_ADD);
-                }
-                if node_info.flows_to.neg_offset.is_some() {
-                    perms.insert(PermissionSet::OFFSET_SUB);
-                }
-                if !node_info.unique {
-                    perms.remove(PermissionSet::UNIQUE);
-                }
-                // TODO: PermissionSet::NON_NULL
 
                 if perms != old_perms {
                     let added = perms & !old_perms;
