@@ -94,13 +94,13 @@ jobs:
       # prepare environment for the following steps
       source $HOME/.cargo/env
       # print some useful info to help troubleshoot
-      brew info llvm
+      brew info llvm@17
       which python3
       /usr/bin/env python3 -c "import sys; print(sys.path)"
     displayName: 'Provision macOS'
 
   - script: |
-      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+      export LLVM_CONFIG_PATH=$(brew --prefix llvm@17)/bin/llvm-config
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
       # Don't build with `--all-features` (see analogous step for Linux).
@@ -108,7 +108,7 @@ jobs:
     displayName: 'cargo build against host clang/LLVM (fast build)'
 
   - script: |
-      export LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+      $(brew --prefix llvm@17)/bin/llvm-config
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
       cargo test --release --workspace
