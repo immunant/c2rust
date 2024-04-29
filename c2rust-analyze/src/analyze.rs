@@ -1101,6 +1101,29 @@ fn run(tcx: TyCtxt) {
         );
     }
 
+    // For testing, putting #[c2rust_analyze_test::force_non_null_args] on a function marks its
+    // arguments as `NON_NULL` and also adds `NON_NULL` to the `updates_forbidden` mask.
+    for &ldid in &all_fn_ldids {
+        if !util::has_test_attr(tcx, ldid, TestAttr::ForceNonNullArgs) {
+            continue;
+        }
+
+        let info = func_info.get_mut(&ldid).unwrap();
+        let mut asn = gasn.and(&mut info.lasn);
+        let mut updates_forbidden = g_updates_forbidden.and_mut(&mut info.l_updates_forbidden);
+
+        let lsig = &gacx.fn_sigs[&ldid.to_def_id()];
+        for arg_lty in lsig.inputs.iter().copied() {
+            for lty in arg_lty.iter() {
+                let ptr = lty.label;
+                if !ptr.is_none() {
+                    asn.perms_mut()[ptr].insert(PermissionSet::NON_NULL);
+                    updates_forbidden[ptr].insert(PermissionSet::NON_NULL);
+                }
+            }
+        }
+    }
+
     eprintln!("=== ADT Metadata ===");
     eprintln!("{:?}", gacx.adt_metadata);
 

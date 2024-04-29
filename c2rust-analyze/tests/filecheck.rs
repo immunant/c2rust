@@ -56,6 +56,7 @@ define_tests! {
     insertion_sort_rewrites,
     known_fn,
     non_null,
+    non_null_force,
     offset1,
     offset2,
     pointee,
