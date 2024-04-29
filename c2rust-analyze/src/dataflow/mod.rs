@@ -45,7 +45,14 @@ impl DataflowConstraints {
     }
 
     /// Update the pointer permissions in `hypothesis` to satisfy these constraints.
-    pub fn propagate(&self, hypothesis: &mut PointerTableMut<PermissionSet>) -> bool {
+    ///
+    /// If `restrict_updates[ptr]` has some flags set, then those flags will be left unchanged in
+    /// `hypothesis[ptr]`.
+    pub fn propagate(
+        &self,
+        hypothesis: &mut PointerTableMut<PermissionSet>,
+        updates_forbidden: &PointerTable<PermissionSet>,
+    ) -> bool {
         eprintln!("=== propagating ===");
         eprintln!("constraints:");
         for c in &self.constraints {
@@ -130,7 +137,7 @@ impl DataflowConstraints {
             }
         }
 
-        match self.propagate_inner(hypothesis, &mut PropagatePerms, None) {
+        match self.propagate_inner(hypothesis, &mut PropagatePerms, Some(updates_forbidden)) {
             Ok(changed) => changed,
             Err(msg) => {
                 panic!("{}", msg);

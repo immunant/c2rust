@@ -554,6 +554,8 @@ struct FuncInfo<'tcx> {
     /// get a complete [`Assignment`] for this function, which maps every [`PointerId`] in this
     /// function to a [`PermissionSet`] and [`FlagSet`].
     lasn: MaybeUnset<LocalAssignment>,
+    /// Local part of the `updates_forbidden` mask.
+    l_updates_forbidden: MaybeUnset<LocalPointerTable<PermissionSet>>,
     /// Constraints on pointee types gathered from the body of this function.
     pointee_constraints: MaybeUnset<pointee_type::ConstraintSet<'tcx>>,
     /// Local part of pointee type sets.
@@ -872,6 +874,8 @@ fn run(tcx: TyCtxt) {
     const INITIAL_FLAGS: FlagSet = FlagSet::empty();
 
     let mut gasn = GlobalAssignment::new(gacx.num_pointers(), INITIAL_PERMS, INITIAL_FLAGS);
+    let mut g_updates_forbidden = GlobalPointerTable::new(gacx.num_pointers());
+
     for (ptr, &info) in gacx.ptr_info().iter() {
         if should_make_fixed(info) {
             gasn.flags[ptr].insert(FlagSet::FIXED);
@@ -897,6 +901,7 @@ fn run(tcx: TyCtxt) {
     for info in func_info.values_mut() {
         let num_pointers = info.acx_data.num_pointers();
         let mut lasn = LocalAssignment::new(num_pointers, INITIAL_PERMS, INITIAL_FLAGS);
+        let l_updates_forbidden = LocalPointerTable::new(num_pointers);
 
         for (ptr, &info) in info.acx_data.local_ptr_info().iter() {
             if should_make_fixed(info) {
@@ -905,6 +910,7 @@ fn run(tcx: TyCtxt) {
         }
 
         info.lasn.set(lasn);
+        info.l_updates_forbidden.set(l_updates_forbidden);
     }
 
     // Load permission info from PDG
@@ -1121,16 +1127,19 @@ fn run(tcx: TyCtxt) {
             let field_ltys = gacx.field_ltys.clone();
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
             let mut asn = gasn.and(&mut info.lasn);
+            let updates_forbidden = g_updates_forbidden.and(&info.l_updates_forbidden);
 
             let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
                 // `dataflow.propagate` and `borrowck_mir` both run until the assignment converges
                 // on a fixpoint, so there's no need to do multiple iterations here.
-                info.dataflow.propagate(&mut asn.perms_mut());
+                info.dataflow
+                    .propagate(&mut asn.perms_mut(), &updates_forbidden);
 
                 borrowck::borrowck_mir(
                     &acx,
                     &info.dataflow,
                     &mut asn.perms_mut(),
+                    &updates_forbidden,
                     name.as_str(),
                     &mir,
                     field_ltys,
