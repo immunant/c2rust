@@ -55,7 +55,7 @@ case "$project" in
         ;;
 
     cfs_*)
-        : cargo run --bin c2rust-analyze --release -- \
+        cargo run --bin c2rust-analyze --release -- \
             --rewrite-mode pointwise --use-manual-shims -- \
             build --manifest-path "$MODULE_DIR/Cargo.toml" \
             |& tee pointwise-cfs-analyze-$now.log \
