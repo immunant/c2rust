@@ -1,7 +1,7 @@
 use crate::annotate::AnnotationBuffer;
 use crate::borrowck;
 use crate::context::{
-    self, AnalysisCtxt, AnalysisCtxtData, DontRewriteFieldReason, DontRewriteFnReason,
+    self, AnalysisCtxt, AnalysisCtxtData, Assignment, DontRewriteFieldReason, DontRewriteFnReason,
     DontRewriteStaticReason, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy, LTyCtxt,
     LocalAssignment, PermissionSet, PointerId, PointerInfo,
 };
@@ -14,9 +14,7 @@ use crate::panic_detail;
 use crate::panic_detail::PanicDetail;
 use crate::pointee_type;
 use crate::pointee_type::PointeeTypes;
-use crate::pointer_id::GlobalPointerTable;
-use crate::pointer_id::LocalPointerTable;
-use crate::pointer_id::PointerTable;
+use crate::pointer_id::{GlobalPointerTable, LocalPointerTable, PointerTable, PointerTableMut};
 use crate::recent_writes::RecentWrites;
 use crate::rewrite;
 use crate::type_desc;
@@ -26,6 +24,7 @@ use crate::util::Callee;
 use crate::util::TestAttr;
 use ::log::warn;
 use c2rust_pdg::graph::Graphs;
+use c2rust_pdg::info::NodeInfo;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::CrateNum;
 use rustc_hir::def_id::DefId;
@@ -1821,6 +1820,71 @@ fn pdg_update_permissions<'tcx>(
     g_updates_forbidden: &mut GlobalPointerTable<PermissionSet>,
     pdg_file_path: impl AsRef<Path>,
 ) {
+    pdg_update_permissions_with_callback(
+        gacx,
+        all_fn_ldids,
+        func_info,
+        gasn,
+        g_updates_forbidden,
+        pdg_file_path,
+        |asn, updates_forbidden, _ldid, ptr, node_info, is_known_null| {
+            let old_perms = asn.perms()[ptr];
+            let mut perms = old_perms;
+            if is_known_null {
+                perms.remove(PermissionSet::NON_NULL);
+            } else {
+                perms.insert(PermissionSet::NON_NULL);
+                // Unsound update: if we have never seen a NULL for
+                // this local in the PDG, prevent the static analysis
+                // from changing that permission.
+                updates_forbidden[ptr].insert(PermissionSet::NON_NULL);
+            }
+
+            if node_info.flows_to.load.is_some() {
+                perms.insert(PermissionSet::READ);
+            }
+            if node_info.flows_to.store.is_some() {
+                perms.insert(PermissionSet::WRITE);
+            }
+            if node_info.flows_to.pos_offset.is_some() {
+                perms.insert(PermissionSet::OFFSET_ADD);
+            }
+            if node_info.flows_to.neg_offset.is_some() {
+                perms.insert(PermissionSet::OFFSET_SUB);
+            }
+            if !node_info.unique {
+                perms.remove(PermissionSet::UNIQUE);
+            }
+
+            if perms != old_perms {
+                let added = perms & !old_perms;
+                let removed = old_perms & !perms;
+                let kept = old_perms & perms;
+                eprintln!(
+                    "pdg: changed {:?}: added {:?}, removed {:?}, kept {:?}",
+                    ptr, added, removed, kept
+                );
+
+                asn.perms_mut()[ptr] = perms;
+            }
+        },
+    );
+}
+
+/// Load PDG from `pdg_file_path` and update permissions.
+///
+/// Each time a pointer's permissions are changed, this function calls `callback(ptr, old, new)`
+/// where `ptr` is the `PointerId` in question, `old` is the old `PermissionSet`, and `new` is the
+/// new one.
+fn pdg_update_permissions_with_callback<'tcx>(
+    gacx: &mut GlobalAnalysisCtxt<'tcx>,
+    all_fn_ldids: &[LocalDefId],
+    func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
+    gasn: &mut GlobalAssignment,
+    g_updates_forbidden: &mut GlobalPointerTable<PermissionSet>,
+    pdg_file_path: impl AsRef<Path>,
+    mut callback: impl FnMut(&mut Assignment, &mut PointerTableMut<PermissionSet>, LocalDefId, PointerId, &NodeInfo, bool),
+) {
     let tcx = gacx.tcx;
 
     let f = std::fs::File::open(pdg_file_path).unwrap();
@@ -1908,47 +1972,21 @@ fn pdg_update_permissions<'tcx>(
                 }
             };
 
-            let old_perms = asn.perms()[ptr];
-            let mut perms = old_perms;
-            if known_nulls.contains(&(n.function.id, dest)) {
-                perms.remove(PermissionSet::NON_NULL);
-            } else {
-                perms.insert(PermissionSet::NON_NULL);
-                // Unsound update: if we have never seen a NULL for
-                // this local in the PDG, prevent the static analysis
-                // from changing that permission.
-                updates_forbidden[ptr].insert(PermissionSet::NON_NULL);
-            }
+            let is_known_null = known_nulls.contains(&(n.function.id, dest));
 
-            if let Some(node_info) = n.info.as_ref() {
-                if node_info.flows_to.load.is_some() {
-                    perms.insert(PermissionSet::READ);
+            let node_info = match n.info.as_ref() {
+                Some(x) => x,
+                None => {
+                    eprintln!(
+                        "pdg: {}: node with dest {:?} is missing NodeInfo",
+                        n.function.name, dest
+                    );
+                    info.acx_data.set(acx.into_data());
+                    continue;
                 }
-                if node_info.flows_to.store.is_some() {
-                    perms.insert(PermissionSet::WRITE);
-                }
-                if node_info.flows_to.pos_offset.is_some() {
-                    perms.insert(PermissionSet::OFFSET_ADD);
-                }
-                if node_info.flows_to.neg_offset.is_some() {
-                    perms.insert(PermissionSet::OFFSET_SUB);
-                }
-                if !node_info.unique {
-                    perms.remove(PermissionSet::UNIQUE);
-                }
-            }
+            };
 
-            if perms != old_perms {
-                let added = perms & !old_perms;
-                let removed = old_perms & !perms;
-                let kept = old_perms & perms;
-                eprintln!(
-                    "pdg: changed {:?}: added {:?}, removed {:?}, kept {:?}",
-                    ptr, added, removed, kept
-                );
-
-                asn.perms_mut()[ptr] = perms;
-            }
+            callback(&mut asn, &mut updates_forbidden, ldid, ptr, node_info, is_known_null);
 
             info.acx_data.set(acx.into_data());
         }
