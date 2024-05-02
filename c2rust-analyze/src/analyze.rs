@@ -935,15 +935,19 @@ fn run(tcx: TyCtxt) {
     }
 
     // Load permission info from PDG
-    if let Some(pdg_file_path) = std::env::var_os("PDG_FILE") {
-        pdg_update_permissions(
-            &mut gacx,
-            &all_fn_ldids,
-            &mut func_info,
-            &mut gasn,
-            &mut g_updates_forbidden,
-            pdg_file_path,
-        );
+    let pdg_compare = env::var("C2RUST_ANALYZE_COMPARE_PDG").as_deref() == Ok("1");
+    // In compare mode, we load the PDG for comparison after analysis, not before.
+    if !pdg_compare {
+        if let Some(pdg_file_path) = std::env::var_os("PDG_FILE") {
+            pdg_update_permissions(
+                &mut gacx,
+                &all_fn_ldids,
+                &mut func_info,
+                &mut gasn,
+                &mut g_updates_forbidden,
+                pdg_file_path,
+            );
+        }
     }
 
     // Items in the "fixed defs" list have all pointers in their types set to `FIXED`.  For
@@ -1170,6 +1174,111 @@ fn run(tcx: TyCtxt) {
                 break;
             }
         }
+    }
+
+    // PDG comparison mode: skip all normal rewriting, and instead add annotations describing
+    // places where the static analysis and PDG differ.
+    if pdg_compare {
+        // For each `PointerId`, this records whether we saw a null pointer stored in a location
+        // annotated with that `PointerId` and whether we saw at least one non-null pointer stored
+        // in such a location.
+        let mut observations = HashMap::<(Option<LocalDefId>, PointerId), (bool, bool)>::new();
+
+        let pdg_file_path = std::env::var_os("PDG_FILE")
+            .unwrap_or_else(|| panic!("must set PDG_FILE for PDG comparison mode"));
+        pdg_update_permissions_with_callback(
+            &mut gacx,
+            &all_fn_ldids,
+            &mut func_info,
+            &mut gasn,
+            &mut g_updates_forbidden,
+            pdg_file_path,
+            |_asn, _updates_forbidden, ldid, ptr, _node_info, node_is_non_null| {
+                let parent = if ptr.is_global() { None } else { Some(ldid) };
+                let obs = observations.entry((parent, ptr)).or_insert((false, false));
+                if node_is_non_null {
+                    obs.1 = true;
+                } else {
+                    obs.0 = true;
+                }
+            },
+        );
+
+        let mut ann = AnnotationBuffer::new(tcx);
+        // Generate comparison annotations for all functions.
+        for ldid in tcx.hir().body_owners() {
+            // Skip any body owners that aren't present in `func_info`, and also get the info
+            // itself.
+            let info = match func_info.get_mut(&ldid) {
+                Some(x) => x,
+                None => continue,
+            };
+
+            if !info.acx_data.is_set() {
+                continue;
+            }
+
+            let ldid_const = WithOptConstParam::unknown(ldid);
+            let mir = tcx.mir_built(ldid_const);
+            let mir = mir.borrow();
+            let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+            let asn = gasn.and(&mut info.lasn);
+
+            // Generate inline annotations for pointer-typed locals
+            for (local, decl) in mir.local_decls.iter_enumerated() {
+                let span = local_span(decl);
+                let mut ptrs = Vec::new();
+                let ty_str = context::print_ty_with_pointer_labels(acx.local_tys[local], |ptr| {
+                    if ptr.is_none() {
+                        return String::new();
+                    }
+                    ptrs.push(ptr);
+                    format!("{{{}}}", ptr)
+                });
+                // Pointers where static analysis reports `NON_NULL` but dynamic reports nullable.
+                let mut static_non_null_ptrs = Vec::new();
+                // Pointers where dynamic analysis reports `NON_NULL` but static reports nullable.
+                let mut dynamic_non_null_ptrs = Vec::new();
+                for ptr in ptrs {
+                    let static_non_null: bool = asn.perms()[ptr].contains(PermissionSet::NON_NULL);
+                    let parent = if ptr.is_global() { None } else { Some(ldid) };
+                    let dynamic_non_null: Option<bool> = observations
+                        .get(&(parent, ptr))
+                        .map(|&(saw_null, saw_non_null)| saw_non_null && !saw_null);
+                    if dynamic_non_null.is_none() || dynamic_non_null == Some(static_non_null) {
+                        // No conflict between static and dynamic results.
+                        continue;
+                    }
+                    if static_non_null {
+                        static_non_null_ptrs.push(ptr);
+                    } else {
+                        dynamic_non_null_ptrs.push(ptr);
+                    }
+                }
+                if static_non_null_ptrs.is_empty() && dynamic_non_null_ptrs.is_empty() {
+                    continue;
+                }
+                ann.emit(span, format_args!("typeof({:?}) = {}", local, ty_str));
+                if static_non_null_ptrs.len() > 0 {
+                    ann.emit(
+                        span,
+                        format_args!("  static NON_NULL: {:?}", static_non_null_ptrs),
+                    );
+                }
+                if dynamic_non_null_ptrs.len() > 0 {
+                    ann.emit(
+                        span,
+                        format_args!("  dynamic NON_NULL: {:?}", dynamic_non_null_ptrs),
+                    );
+                }
+            }
+
+            info.acx_data.set(acx.into_data());
+        }
+
+        let annotations = ann.finish();
+        rewrite::apply_rewrites(tcx, Vec::new(), annotations, rewrite::UpdateFiles::No);
+        return;
     }
 
     if !rewrite_pointwise {
