@@ -59,6 +59,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ops::Index;
 use std::panic::AssertUnwindSafe;
+use std::path::Path;
 use std::str::FromStr;
 
 /// A wrapper around `T` that dynamically tracks whether it's initialized or not.
@@ -915,110 +916,13 @@ fn run(tcx: TyCtxt) {
 
     // Load permission info from PDG
     if let Some(pdg_file_path) = std::env::var_os("PDG_FILE") {
-        let f = std::fs::File::open(pdg_file_path).unwrap();
-        let graphs: Graphs = bincode::deserialize_from(f).unwrap();
-
-        let mut func_def_path_hash_to_ldid = HashMap::new();
-        for &ldid in &all_fn_ldids {
-            let def_path_hash: (u64, u64) = tcx.def_path_hash(ldid.to_def_id()).0.as_value();
-            eprintln!("def_path_hash {:?} = {:?}", def_path_hash, ldid);
-            func_def_path_hash_to_ldid.insert(def_path_hash, ldid);
-        }
-
-        for g in &graphs.graphs {
-            for n in &g.nodes {
-                let def_path_hash: (u64, u64) = n.function.id.0.into();
-                let ldid = match func_def_path_hash_to_ldid.get(&def_path_hash) {
-                    Some(&x) => x,
-                    None => {
-                        panic!(
-                            "pdg: unknown DefPathHash {:?} for function {:?}",
-                            n.function.id, n.function.name
-                        );
-                    }
-                };
-                let info = func_info.get_mut(&ldid).unwrap();
-                let ldid_const = WithOptConstParam::unknown(ldid);
-                let mir = tcx.mir_built(ldid_const);
-                let mir = mir.borrow();
-                let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-                let mut asn = gasn.and(&mut info.lasn);
-
-                let dest_pl = match n.dest.as_ref() {
-                    Some(x) => x,
-                    None => {
-                        info.acx_data.set(acx.into_data());
-                        continue;
-                    }
-                };
-                if !dest_pl.projection.is_empty() {
-                    info.acx_data.set(acx.into_data());
-                    continue;
-                }
-                let dest = dest_pl.local;
-                let dest = Local::from_u32(dest.index);
-
-                let ptr = match acx.ptr_of(dest) {
-                    Some(x) => x,
-                    None => {
-                        eprintln!(
-                            "pdg: {}: local {:?} appears as dest, but has no PointerId",
-                            n.function.name, dest
-                        );
-                        info.acx_data.set(acx.into_data());
-                        continue;
-                    }
-                };
-
-                let node_info = match n.info.as_ref() {
-                    Some(x) => x,
-                    None => {
-                        eprintln!(
-                            "pdg: {}: node with dest {:?} is missing NodeInfo",
-                            n.function.name, dest
-                        );
-                        info.acx_data.set(acx.into_data());
-                        continue;
-                    }
-                };
-
-                let old_perms = asn.perms()[ptr];
-                let mut perms = old_perms;
-                if node_info.flows_to.load.is_some() {
-                    perms.insert(PermissionSet::READ);
-                }
-                if node_info.flows_to.store.is_some() {
-                    perms.insert(PermissionSet::WRITE);
-                }
-                if node_info.flows_to.pos_offset.is_some() {
-                    perms.insert(PermissionSet::OFFSET_ADD);
-                }
-                if node_info.flows_to.neg_offset.is_some() {
-                    perms.insert(PermissionSet::OFFSET_SUB);
-                }
-                if !node_info.unique {
-                    perms.remove(PermissionSet::UNIQUE);
-                }
-                if g.is_null {
-                    // TODO: is this enough?
-                    perms.remove(PermissionSet::NON_NULL);
-                }
-
-                if perms != old_perms {
-                    let added = perms & !old_perms;
-                    let removed = old_perms & !perms;
-                    let kept = old_perms & perms;
-                    eprintln!(
-                        "pdg: changed {:?}: added {:?}, removed {:?}, kept {:?}",
-                        ptr, added, removed, kept
-                    );
-
-                    asn.perms_mut()[ptr] = perms;
-                }
-
-                info.acx_data.set(acx.into_data());
-            }
-        }
+        pdg_update_permissions(
+            &mut gacx,
+            &all_fn_ldids,
+            &mut func_info,
+            &mut gasn,
+            pdg_file_path,
+        );
     }
 
     // Items in the "fixed defs" list have all pointers in their types set to `FIXED`.  For
@@ -1886,6 +1790,121 @@ fn apply_test_attr_force_non_null_args(
                     updates_forbidden[ptr].insert(PermissionSet::NON_NULL);
                 }
             }
+        }
+    }
+}
+
+fn pdg_update_permissions<'tcx>(
+    gacx: &mut GlobalAnalysisCtxt<'tcx>,
+    all_fn_ldids: &[LocalDefId],
+    func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
+    gasn: &mut GlobalAssignment,
+    pdg_file_path: impl AsRef<Path>,
+) {
+    let tcx = gacx.tcx;
+
+    let f = std::fs::File::open(pdg_file_path).unwrap();
+    let graphs: Graphs = bincode::deserialize_from(f).unwrap();
+
+    let mut func_def_path_hash_to_ldid = HashMap::new();
+    for &ldid in all_fn_ldids {
+        let def_path_hash: (u64, u64) = tcx.def_path_hash(ldid.to_def_id()).0.as_value();
+        eprintln!("def_path_hash {:?} = {:?}", def_path_hash, ldid);
+        func_def_path_hash_to_ldid.insert(def_path_hash, ldid);
+    }
+
+    for g in &graphs.graphs {
+        for n in &g.nodes {
+            let def_path_hash: (u64, u64) = n.function.id.0.into();
+            let ldid = match func_def_path_hash_to_ldid.get(&def_path_hash) {
+                Some(&x) => x,
+                None => {
+                    panic!(
+                        "pdg: unknown DefPathHash {:?} for function {:?}",
+                        n.function.id, n.function.name
+                    );
+                }
+            };
+            let info = func_info.get_mut(&ldid).unwrap();
+            let ldid_const = WithOptConstParam::unknown(ldid);
+            let mir = tcx.mir_built(ldid_const);
+            let mir = mir.borrow();
+            let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+            let mut asn = gasn.and(&mut info.lasn);
+
+            let dest_pl = match n.dest.as_ref() {
+                Some(x) => x,
+                None => {
+                    info.acx_data.set(acx.into_data());
+                    continue;
+                }
+            };
+            if !dest_pl.projection.is_empty() {
+                info.acx_data.set(acx.into_data());
+                continue;
+            }
+            let dest = dest_pl.local;
+            let dest = Local::from_u32(dest.index);
+
+            let ptr = match acx.ptr_of(dest) {
+                Some(x) => x,
+                None => {
+                    eprintln!(
+                        "pdg: {}: local {:?} appears as dest, but has no PointerId",
+                        n.function.name, dest
+                    );
+                    info.acx_data.set(acx.into_data());
+                    continue;
+                }
+            };
+
+            let node_info = match n.info.as_ref() {
+                Some(x) => x,
+                None => {
+                    eprintln!(
+                        "pdg: {}: node with dest {:?} is missing NodeInfo",
+                        n.function.name, dest
+                    );
+                    info.acx_data.set(acx.into_data());
+                    continue;
+                }
+            };
+
+            let old_perms = asn.perms()[ptr];
+            let mut perms = old_perms;
+            if node_info.flows_to.load.is_some() {
+                perms.insert(PermissionSet::READ);
+            }
+            if node_info.flows_to.store.is_some() {
+                perms.insert(PermissionSet::WRITE);
+            }
+            if node_info.flows_to.pos_offset.is_some() {
+                perms.insert(PermissionSet::OFFSET_ADD);
+            }
+            if node_info.flows_to.neg_offset.is_some() {
+                perms.insert(PermissionSet::OFFSET_SUB);
+            }
+            if !node_info.unique {
+                perms.remove(PermissionSet::UNIQUE);
+            }
+            if g.is_null {
+                // TODO: is this enough?
+                perms.remove(PermissionSet::NON_NULL);
+            }
+
+            if perms != old_perms {
+                let added = perms & !old_perms;
+                let removed = old_perms & !perms;
+                let kept = old_perms & perms;
+                eprintln!(
+                    "pdg: changed {:?}: added {:?}, removed {:?}, kept {:?}",
+                    ptr, added, removed, kept
+                );
+
+                asn.perms_mut()[ptr] = perms;
+            }
+
+            info.acx_data.set(acx.into_data());
         }
     }
 }
