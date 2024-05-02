@@ -1088,41 +1088,14 @@ fn run(tcx: TyCtxt) {
     // Run dataflow solver and borrowck analysis
     // ----------------------------------
 
-    // For testing, putting #[c2rust_analyze_test::fail_before_analysis] on a function marks it as
-    // failed at this point.
-    for &ldid in &all_fn_ldids {
-        if !util::has_test_attr(tcx, ldid, TestAttr::FailBeforeAnalysis) {
-            continue;
-        }
-        gacx.mark_fn_failed(
-            ldid.to_def_id(),
-            DontRewriteFnReason::FAKE_INVALID_FOR_TESTING,
-            PanicDetail::new("explicit fail_before_analysis for testing".to_owned()),
-        );
-    }
-
-    // For testing, putting #[c2rust_analyze_test::force_non_null_args] on a function marks its
-    // arguments as `NON_NULL` and also adds `NON_NULL` to the `updates_forbidden` mask.
-    for &ldid in &all_fn_ldids {
-        if !util::has_test_attr(tcx, ldid, TestAttr::ForceNonNullArgs) {
-            continue;
-        }
-
-        let info = func_info.get_mut(&ldid).unwrap();
-        let mut asn = gasn.and(&mut info.lasn);
-        let mut updates_forbidden = g_updates_forbidden.and_mut(&mut info.l_updates_forbidden);
-
-        let lsig = &gacx.fn_sigs[&ldid.to_def_id()];
-        for arg_lty in lsig.inputs.iter().copied() {
-            for lty in arg_lty.iter() {
-                let ptr = lty.label;
-                if !ptr.is_none() {
-                    asn.perms_mut()[ptr].insert(PermissionSet::NON_NULL);
-                    updates_forbidden[ptr].insert(PermissionSet::NON_NULL);
-                }
-            }
-        }
-    }
+    apply_test_attr_fail_before_analysis(&mut gacx, &all_fn_ldids);
+    apply_test_attr_force_non_null_args(
+        &mut gacx,
+        &all_fn_ldids,
+        &mut func_info,
+        &mut gasn,
+        &mut g_updates_forbidden,
+    );
 
     eprintln!("=== ADT Metadata ===");
     eprintln!("{:?}", gacx.adt_metadata);
@@ -1847,6 +1820,57 @@ fn make_ty_fixed(gasn: &mut GlobalAssignment, lty: LTy) {
 fn make_sig_fixed(gasn: &mut GlobalAssignment, lsig: &LFnSig) {
     for lty in lsig.inputs.iter().copied().chain(iter::once(lsig.output)) {
         make_ty_fixed(gasn, lty);
+    }
+}
+
+/// For testing, putting #[c2rust_analyze_test::fail_before_analysis] on a function marks it as
+/// failed at this point.
+fn apply_test_attr_fail_before_analysis(
+    gacx: &mut GlobalAnalysisCtxt,
+    all_fn_ldids: &[LocalDefId],
+) {
+    let tcx = gacx.tcx;
+    for &ldid in all_fn_ldids {
+        if !util::has_test_attr(tcx, ldid, TestAttr::FailBeforeAnalysis) {
+            continue;
+        }
+        gacx.mark_fn_failed(
+            ldid.to_def_id(),
+            DontRewriteFnReason::FAKE_INVALID_FOR_TESTING,
+            PanicDetail::new("explicit fail_before_analysis for testing".to_owned()),
+        );
+    }
+}
+
+/// For testing, putting #[c2rust_analyze_test::force_non_null_args] on a function marks its
+/// arguments as `NON_NULL` and also adds `NON_NULL` to the `updates_forbidden` mask.
+fn apply_test_attr_force_non_null_args(
+    gacx: &mut GlobalAnalysisCtxt,
+    all_fn_ldids: &[LocalDefId],
+    func_info: &mut HashMap<LocalDefId, FuncInfo>,
+    gasn: &mut GlobalAssignment,
+    g_updates_forbidden: &mut GlobalPointerTable<PermissionSet>,
+) {
+    let tcx = gacx.tcx;
+    for &ldid in all_fn_ldids {
+        if !util::has_test_attr(tcx, ldid, TestAttr::ForceNonNullArgs) {
+            continue;
+        }
+
+        let info = func_info.get_mut(&ldid).unwrap();
+        let mut asn = gasn.and(&mut info.lasn);
+        let mut updates_forbidden = g_updates_forbidden.and_mut(&mut info.l_updates_forbidden);
+
+        let lsig = &gacx.fn_sigs[&ldid.to_def_id()];
+        for arg_lty in lsig.inputs.iter().copied() {
+            for lty in arg_lty.iter() {
+                let ptr = lty.label;
+                if !ptr.is_none() {
+                    asn.perms_mut()[ptr].insert(PermissionSet::NON_NULL);
+                    updates_forbidden[ptr].insert(PermissionSet::NON_NULL);
+                }
+            }
+        }
     }
 }
 
