@@ -914,16 +914,16 @@ fn run(tcx: TyCtxt) {
     }
 
     // Load permission info from PDG
-    let mut func_def_path_hash_to_ldid = HashMap::new();
-    for &ldid in &all_fn_ldids {
-        let def_path_hash: (u64, u64) = tcx.def_path_hash(ldid.to_def_id()).0.as_value();
-        eprintln!("def_path_hash {:?} = {:?}", def_path_hash, ldid);
-        func_def_path_hash_to_ldid.insert(def_path_hash, ldid);
-    }
-
     if let Some(pdg_file_path) = std::env::var_os("PDG_FILE") {
         let f = std::fs::File::open(pdg_file_path).unwrap();
         let graphs: Graphs = bincode::deserialize_from(f).unwrap();
+
+        let mut func_def_path_hash_to_ldid = HashMap::new();
+        for &ldid in &all_fn_ldids {
+            let def_path_hash: (u64, u64) = tcx.def_path_hash(ldid.to_def_id()).0.as_value();
+            eprintln!("def_path_hash {:?} = {:?}", def_path_hash, ldid);
+            func_def_path_hash_to_ldid.insert(def_path_hash, ldid);
+        }
 
         for g in &graphs.graphs {
             for n in &g.nodes {
