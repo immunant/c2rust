@@ -1,7 +1,7 @@
 use crate::annotate::AnnotationBuffer;
 use crate::borrowck;
 use crate::context::{
-    self, AnalysisCtxt, AnalysisCtxtData, DontRewriteFieldReason, DontRewriteFnReason,
+    self, AnalysisCtxt, AnalysisCtxtData, Assignment, DontRewriteFieldReason, DontRewriteFnReason,
     DontRewriteStaticReason, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy, LTyCtxt,
     LocalAssignment, PermissionSet, PointerId, PointerInfo,
 };
@@ -25,7 +25,8 @@ use crate::util;
 use crate::util::Callee;
 use crate::util::TestAttr;
 use ::log::warn;
-use c2rust_pdg::graph::Graphs;
+use c2rust_pdg::graph::{Graph, Graphs};
+use c2rust_pdg::info::NodeInfo;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::CrateNum;
 use rustc_hir::def_id::DefId;
@@ -1801,6 +1802,63 @@ fn pdg_update_permissions<'tcx>(
     gasn: &mut GlobalAssignment,
     pdg_file_path: impl AsRef<Path>,
 ) {
+    pdg_update_permissions_with_callback(
+        gacx,
+        all_fn_ldids,
+        func_info,
+        gasn,
+        pdg_file_path,
+        |asn, _ldid, ptr, g, node_info| {
+            let old_perms = asn.perms()[ptr];
+            let mut perms = old_perms;
+            if node_info.flows_to.load.is_some() {
+                perms.insert(PermissionSet::READ);
+            }
+            if node_info.flows_to.store.is_some() {
+                perms.insert(PermissionSet::WRITE);
+            }
+            if node_info.flows_to.pos_offset.is_some() {
+                perms.insert(PermissionSet::OFFSET_ADD);
+            }
+            if node_info.flows_to.neg_offset.is_some() {
+                perms.insert(PermissionSet::OFFSET_SUB);
+            }
+            if !node_info.unique {
+                perms.remove(PermissionSet::UNIQUE);
+            }
+            if g.is_null {
+                // TODO: is this enough?
+                perms.remove(PermissionSet::NON_NULL);
+            }
+
+            if perms != old_perms {
+                let added = perms & !old_perms;
+                let removed = old_perms & !perms;
+                let kept = old_perms & perms;
+                eprintln!(
+                    "pdg: changed {:?}: added {:?}, removed {:?}, kept {:?}",
+                    ptr, added, removed, kept
+                );
+
+                asn.perms_mut()[ptr] = perms;
+            }
+        },
+    );
+}
+
+/// Load PDG from `pdg_file_path` and update permissions.
+///
+/// Each time a pointer's permissions are changed, this function calls `callback(ptr, old, new)`
+/// where `ptr` is the `PointerId` in question, `old` is the old `PermissionSet`, and `new` is the
+/// new one.
+fn pdg_update_permissions_with_callback<'tcx>(
+    gacx: &mut GlobalAnalysisCtxt<'tcx>,
+    all_fn_ldids: &[LocalDefId],
+    func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
+    gasn: &mut GlobalAssignment,
+    pdg_file_path: impl AsRef<Path>,
+    mut callback: impl FnMut(&mut Assignment, LocalDefId, PointerId, &Graph, &NodeInfo),
+) {
     let tcx = gacx.tcx;
 
     let f = std::fs::File::open(pdg_file_path).unwrap();
@@ -1870,39 +1928,7 @@ fn pdg_update_permissions<'tcx>(
                 }
             };
 
-            let old_perms = asn.perms()[ptr];
-            let mut perms = old_perms;
-            if node_info.flows_to.load.is_some() {
-                perms.insert(PermissionSet::READ);
-            }
-            if node_info.flows_to.store.is_some() {
-                perms.insert(PermissionSet::WRITE);
-            }
-            if node_info.flows_to.pos_offset.is_some() {
-                perms.insert(PermissionSet::OFFSET_ADD);
-            }
-            if node_info.flows_to.neg_offset.is_some() {
-                perms.insert(PermissionSet::OFFSET_SUB);
-            }
-            if !node_info.unique {
-                perms.remove(PermissionSet::UNIQUE);
-            }
-            if g.is_null {
-                // TODO: is this enough?
-                perms.remove(PermissionSet::NON_NULL);
-            }
-
-            if perms != old_perms {
-                let added = perms & !old_perms;
-                let removed = old_perms & !perms;
-                let kept = old_perms & perms;
-                eprintln!(
-                    "pdg: changed {:?}: added {:?}, removed {:?}, kept {:?}",
-                    ptr, added, removed, kept
-                );
-
-                asn.perms_mut()[ptr] = perms;
-            }
+            callback(&mut asn, ldid, ptr, g, node_info);
 
             info.acx_data.set(acx.into_data());
         }
