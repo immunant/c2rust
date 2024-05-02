@@ -554,6 +554,8 @@ struct FuncInfo<'tcx> {
     /// get a complete [`Assignment`] for this function, which maps every [`PointerId`] in this
     /// function to a [`PermissionSet`] and [`FlagSet`].
     lasn: MaybeUnset<LocalAssignment>,
+    /// Local part of the `updates_forbidden` mask.
+    l_updates_forbidden: MaybeUnset<LocalPointerTable<PermissionSet>>,
     /// Constraints on pointee types gathered from the body of this function.
     pointee_constraints: MaybeUnset<pointee_type::ConstraintSet<'tcx>>,
     /// Local part of pointee type sets.
@@ -872,6 +874,8 @@ fn run(tcx: TyCtxt) {
     const INITIAL_FLAGS: FlagSet = FlagSet::empty();
 
     let mut gasn = GlobalAssignment::new(gacx.num_pointers(), INITIAL_PERMS, INITIAL_FLAGS);
+    let mut g_updates_forbidden = GlobalPointerTable::new(gacx.num_pointers());
+
     for (ptr, &info) in gacx.ptr_info().iter() {
         if should_make_fixed(info) {
             gasn.flags[ptr].insert(FlagSet::FIXED);
@@ -897,6 +901,7 @@ fn run(tcx: TyCtxt) {
     for info in func_info.values_mut() {
         let num_pointers = info.acx_data.num_pointers();
         let mut lasn = LocalAssignment::new(num_pointers, INITIAL_PERMS, INITIAL_FLAGS);
+        let l_updates_forbidden = LocalPointerTable::new(num_pointers);
 
         for (ptr, &info) in info.acx_data.local_ptr_info().iter() {
             if should_make_fixed(info) {
@@ -905,6 +910,7 @@ fn run(tcx: TyCtxt) {
         }
 
         info.lasn.set(lasn);
+        info.l_updates_forbidden.set(l_updates_forbidden);
     }
 
     // Load permission info from PDG
@@ -1082,18 +1088,14 @@ fn run(tcx: TyCtxt) {
     // Run dataflow solver and borrowck analysis
     // ----------------------------------
 
-    // For testing, putting #[c2rust_analyze_test::fail_before_analysis] on a function marks it as
-    // failed at this point.
-    for &ldid in &all_fn_ldids {
-        if !util::has_test_attr(tcx, ldid, TestAttr::FailBeforeAnalysis) {
-            continue;
-        }
-        gacx.mark_fn_failed(
-            ldid.to_def_id(),
-            DontRewriteFnReason::FAKE_INVALID_FOR_TESTING,
-            PanicDetail::new("explicit fail_before_analysis for testing".to_owned()),
-        );
-    }
+    apply_test_attr_fail_before_analysis(&mut gacx, &all_fn_ldids);
+    apply_test_attr_force_non_null_args(
+        &mut gacx,
+        &all_fn_ldids,
+        &mut func_info,
+        &mut gasn,
+        &mut g_updates_forbidden,
+    );
 
     eprintln!("=== ADT Metadata ===");
     eprintln!("{:?}", gacx.adt_metadata);
@@ -1121,16 +1123,19 @@ fn run(tcx: TyCtxt) {
             let field_ltys = gacx.field_ltys.clone();
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
             let mut asn = gasn.and(&mut info.lasn);
+            let updates_forbidden = g_updates_forbidden.and(&info.l_updates_forbidden);
 
             let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
                 // `dataflow.propagate` and `borrowck_mir` both run until the assignment converges
                 // on a fixpoint, so there's no need to do multiple iterations here.
-                info.dataflow.propagate(&mut asn.perms_mut());
+                info.dataflow
+                    .propagate(&mut asn.perms_mut(), &updates_forbidden);
 
                 borrowck::borrowck_mir(
                     &acx,
                     &info.dataflow,
                     &mut asn.perms_mut(),
+                    &updates_forbidden,
                     name.as_str(),
                     &mir,
                     field_ltys,
@@ -1815,6 +1820,57 @@ fn make_ty_fixed(gasn: &mut GlobalAssignment, lty: LTy) {
 fn make_sig_fixed(gasn: &mut GlobalAssignment, lsig: &LFnSig) {
     for lty in lsig.inputs.iter().copied().chain(iter::once(lsig.output)) {
         make_ty_fixed(gasn, lty);
+    }
+}
+
+/// For testing, putting #[c2rust_analyze_test::fail_before_analysis] on a function marks it as
+/// failed at this point.
+fn apply_test_attr_fail_before_analysis(
+    gacx: &mut GlobalAnalysisCtxt,
+    all_fn_ldids: &[LocalDefId],
+) {
+    let tcx = gacx.tcx;
+    for &ldid in all_fn_ldids {
+        if !util::has_test_attr(tcx, ldid, TestAttr::FailBeforeAnalysis) {
+            continue;
+        }
+        gacx.mark_fn_failed(
+            ldid.to_def_id(),
+            DontRewriteFnReason::FAKE_INVALID_FOR_TESTING,
+            PanicDetail::new("explicit fail_before_analysis for testing".to_owned()),
+        );
+    }
+}
+
+/// For testing, putting #[c2rust_analyze_test::force_non_null_args] on a function marks its
+/// arguments as `NON_NULL` and also adds `NON_NULL` to the `updates_forbidden` mask.
+fn apply_test_attr_force_non_null_args(
+    gacx: &mut GlobalAnalysisCtxt,
+    all_fn_ldids: &[LocalDefId],
+    func_info: &mut HashMap<LocalDefId, FuncInfo>,
+    gasn: &mut GlobalAssignment,
+    g_updates_forbidden: &mut GlobalPointerTable<PermissionSet>,
+) {
+    let tcx = gacx.tcx;
+    for &ldid in all_fn_ldids {
+        if !util::has_test_attr(tcx, ldid, TestAttr::ForceNonNullArgs) {
+            continue;
+        }
+
+        let info = func_info.get_mut(&ldid).unwrap();
+        let mut asn = gasn.and(&mut info.lasn);
+        let mut updates_forbidden = g_updates_forbidden.and_mut(&mut info.l_updates_forbidden);
+
+        let lsig = &gacx.fn_sigs[&ldid.to_def_id()];
+        for arg_lty in lsig.inputs.iter().copied() {
+            for lty in arg_lty.iter() {
+                let ptr = lty.label;
+                if !ptr.is_none() {
+                    asn.perms_mut()[ptr].insert(PermissionSet::NON_NULL);
+                    updates_forbidden[ptr].insert(PermissionSet::NON_NULL);
+                }
+            }
+        }
     }
 }
 

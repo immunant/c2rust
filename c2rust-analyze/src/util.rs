@@ -530,6 +530,9 @@ pub enum TestAttr {
     FailBeforeRewriting,
     /// `#[c2rust_analyze_test::skip_rewrite]`: Skip generating rewrites for the function.
     SkipRewrite,
+    /// `#[c2rust_analyze_test::force_non_null_args]`: Mark arguments as `NON_NULL` and don't allow
+    /// that flag to be changed during dataflow analysis.
+    ForceNonNullArgs,
 }
 
 impl TestAttr {
@@ -539,6 +542,7 @@ impl TestAttr {
             TestAttr::FailBeforeAnalysis => "fail_before_analysis",
             TestAttr::FailBeforeRewriting => "fail_before_rewriting",
             TestAttr::SkipRewrite => "skip_rewrite",
+            TestAttr::ForceNonNullArgs => "force_non_null_args",
         }
     }
 }

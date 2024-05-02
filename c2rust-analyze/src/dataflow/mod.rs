@@ -45,7 +45,14 @@ impl DataflowConstraints {
     }
 
     /// Update the pointer permissions in `hypothesis` to satisfy these constraints.
-    pub fn propagate(&self, hypothesis: &mut PointerTableMut<PermissionSet>) -> bool {
+    ///
+    /// If `restrict_updates[ptr]` has some flags set, then those flags will be left unchanged in
+    /// `hypothesis[ptr]`.
+    pub fn propagate(
+        &self,
+        hypothesis: &mut PointerTableMut<PermissionSet>,
+        updates_forbidden: &PointerTable<PermissionSet>,
+    ) -> bool {
         eprintln!("=== propagating ===");
         eprintln!("constraints:");
         for c in &self.constraints {
@@ -118,9 +125,19 @@ impl DataflowConstraints {
             ) -> PermissionSet {
                 *val & !perms
             }
+
+            fn restrict_updates(
+                &mut self,
+                old: &PermissionSet,
+                new: &PermissionSet,
+                updates_forbidden: &PermissionSet,
+            ) -> PermissionSet {
+                let (old, new, updates_forbidden) = (*old, *new, *updates_forbidden);
+                (new & !updates_forbidden) | (old & updates_forbidden)
+            }
         }
 
-        match self.propagate_inner(hypothesis, &mut PropagatePerms) {
+        match self.propagate_inner(hypothesis, &mut PropagatePerms, Some(updates_forbidden)) {
             Ok(changed) => changed,
             Err(msg) => {
                 panic!("{}", msg);
@@ -128,16 +145,31 @@ impl DataflowConstraints {
         }
     }
 
+    /// Update `xs` by propagating dataflow information of type `T` according to the constraints
+    /// recorded in `self`.
+    ///
+    /// If `updates_forbidden` is provided, then the parts of `xs` indicated by `updates_forbidden`
+    /// will not be modified.  (Specifically, all updates will be filtered through the method
+    /// `PropagateRules::restrict_updates`.)
     fn propagate_inner<T, R>(
         &self,
         xs: &mut PointerTableMut<T>,
         rules: &mut R,
+        updates_forbidden: Option<&PointerTable<T>>,
     ) -> Result<bool, String>
     where
         T: PartialEq,
         R: PropagateRules<T>,
     {
         let mut xs = TrackedPointerTable::new(xs.borrow_mut());
+
+        let restrict_updates = |rules: &mut R, ptr, old: &T, new: T| {
+            if let Some(updates_forbidden) = updates_forbidden {
+                rules.restrict_updates(old, &new, &updates_forbidden[ptr])
+            } else {
+                new
+            }
+        };
 
         let mut changed = false;
         let mut i = 0;
@@ -157,6 +189,8 @@ impl DataflowConstraints {
                         let old_a = xs.get(a);
                         let old_b = xs.get(b);
                         let (new_a, new_b) = rules.subset(a, old_a, b, old_b);
+                        let new_a = restrict_updates(rules, a, old_a, new_a);
+                        let new_b = restrict_updates(rules, b, old_b, new_b);
                         xs.set(a, new_a);
                         xs.set(b, new_b);
                     }
@@ -169,6 +203,8 @@ impl DataflowConstraints {
                         let old_a = xs.get(a);
                         let old_b = xs.get(b);
                         let (new_a, new_b) = rules.subset_except(a, old_a, b, old_b, except);
+                        let new_a = restrict_updates(rules, a, old_a, new_a);
+                        let new_b = restrict_updates(rules, b, old_b, new_b);
                         xs.set(a, new_a);
                         xs.set(b, new_b);
                     }
@@ -180,6 +216,7 @@ impl DataflowConstraints {
 
                         let old = xs.get(ptr);
                         let new = rules.all_perms(ptr, perms, old);
+                        let new = restrict_updates(rules, ptr, old, new);
                         xs.set(ptr, new);
                     }
 
@@ -190,6 +227,7 @@ impl DataflowConstraints {
 
                         let old = xs.get(ptr);
                         let new = rules.no_perms(ptr, perms, old);
+                        let new = restrict_updates(rules, ptr, old, new);
                         xs.set(ptr, new);
                     }
                 }
@@ -277,9 +315,19 @@ impl DataflowConstraints {
             ) -> FlagSet {
                 *val
             }
+
+            fn restrict_updates(
+                &mut self,
+                old: &FlagSet,
+                new: &FlagSet,
+                updates_forbidden: &FlagSet,
+            ) -> FlagSet {
+                let (old, new, updates_forbidden) = (*old, *new, *updates_forbidden);
+                (new & !updates_forbidden) | (old & updates_forbidden)
+            }
         }
 
-        match self.propagate_inner(&mut flags, &mut Rules { perms }) {
+        match self.propagate_inner(&mut flags, &mut Rules { perms }, None) {
             Ok(_changed) => {}
             Err(msg) => {
                 panic!("{}", msg);
@@ -373,6 +421,9 @@ trait PropagateRules<T> {
     ) -> (T, T);
     fn all_perms(&mut self, ptr: PointerId, perms: PermissionSet, val: &T) -> T;
     fn no_perms(&mut self, ptr: PointerId, perms: PermissionSet, val: &T) -> T;
+    /// Apply a filter to restrict updates.  The result is similar to `new`, but all flags marked
+    /// in `updates_forbidden` are adjusted to match their `old` values.
+    fn restrict_updates(&mut self, old: &T, new: &T, updates_forbidden: &T) -> T;
 }
 
 pub fn generate_constraints<'tcx>(

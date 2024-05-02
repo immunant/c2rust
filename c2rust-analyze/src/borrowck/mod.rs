@@ -4,7 +4,7 @@ use crate::context::AdtMetadataTable;
 use crate::context::{AnalysisCtxt, PermissionSet};
 use crate::dataflow::DataflowConstraints;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
-use crate::pointer_id::PointerTableMut;
+use crate::pointer_id::{PointerTable, PointerTableMut};
 use crate::util::{describe_rvalue, RvalueDesc};
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::def_id::DefId;
@@ -120,6 +120,7 @@ pub fn borrowck_mir<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     dataflow: &DataflowConstraints,
     hypothesis: &mut PointerTableMut<PermissionSet>,
+    updates_forbidden: &PointerTable<PermissionSet>,
     name: &str,
     mir: &Body<'tcx>,
     field_ltys: HashMap<DefId, context::LTy<'tcx>>,
@@ -181,7 +182,7 @@ pub fn borrowck_mir<'tcx>(
         }
 
         eprintln!("propagate");
-        changed |= dataflow.propagate(hypothesis);
+        changed |= dataflow.propagate(hypothesis, updates_forbidden);
         eprintln!("done propagating");
 
         if !changed {
