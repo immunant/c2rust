@@ -78,6 +78,11 @@ pub enum RewriteKind {
         dest_single: bool,
     },
 
+    /// Convert `Option<T>` to `T` by calling `.unwrap()`.
+    OptionUnwrap,
+    /// Convert `T` to `Option<T>` by wrapping the value in `Some`.
+    OptionSome,
+
     /// Cast `&T` to `*const T` or `&mut T` to `*mut T`.
     CastRefToRaw { mutbl: bool },
     /// Cast `*const T` to `*mut T` or vice versa.  If `to_mutbl` is true, we are casting to
@@ -800,11 +805,21 @@ where
         // Overwriting `from.pointee_ty` allows the final `from == to` check to succeed below.
         from.pointee_ty = to.pointee_ty;
 
-        // FIXME: checking `option` flags is disabled for now (not yet implemented)
-        from.option = to.option;
-
         if from == to {
             return Ok(());
+        }
+
+        if from.option && !to.option {
+            // Unwrap first, then perform remaining casts.
+            // TODO: Need to use `.as_ref()`/`.as_mut()` in some cases to avoid moving `from`.
+            // Which one to use depends on the ownership of `from` and `to`.
+            (self.emit)(RewriteKind::OptionUnwrap);
+            from.option = false;
+        }
+
+        if from.option && to.option {
+            // FIXME: mapping casts over an `Option` is not yet implemented
+            from.option = to.option;
         }
 
         // Early `Ownership` casts.  We do certain casts here in hopes of reaching an `Ownership`
@@ -860,6 +875,12 @@ where
 
         // Late `Ownership` casts.
         from.own = self.cast_ownership(from, to, false)?;
+
+        if !from.option && to.option {
+            // Wrap at the end, after performing all other steps of the cast.
+            (self.emit)(RewriteKind::OptionSome);
+            from.option = true;
+        }
 
         if from != to {
             return Err(format!(
