@@ -94,6 +94,9 @@ pub enum RewriteKind {
     /// rewrites applied within the closure.  This has the same effect when the input is `Some`,
     /// but passes through `None` unchanged instead of panicking.
     OptionMapEnd,
+    /// Downgrade ownership of an `Option` to `Option<&_>` or `Option<&mut _>` by calling
+    /// `as_ref()`/`as_mut()` and optionally `as_deref()`/`as_deref_mut()`.
+    OptionDowngrade { mutbl: bool, deref: bool },
 
     /// Cast `&T` to `*const T` or `&mut T` to `*mut T`.
     CastRefToRaw { mutbl: bool },
@@ -823,8 +826,36 @@ where
             return Ok(());
         }
 
-        // TODO: If `from.option`, we need to use `.as_ref()`/`.as_mut()` in some cases to avoid
-        // moving `from`.  Which one to use depends on the ownership of `from` and `to`.
+        if from.option && from.own != to.own {
+            // Downgrade ownership before unwrapping the `Option` when possible.  This can avoid
+            // moving/consuming the input.  For example, if the `from` type is `Option<Box<T>>` and
+            // `to` is `&mut T`, we start by calling `p.as_mut().as_deref()`, which gives
+            // `Option<&mut T>` without consuming `p`.
+            match from.own {
+                Ownership::Raw | Ownership::RawMut | Ownership::Imm | Ownership::Cell => {
+                    // No-op.  The `from` type is `Copy`, so we can unwrap it without consequence.
+                }
+                Ownership::Mut | Ownership::Rc | Ownership::Box => match to.own {
+                    Ownership::Raw | Ownership::Imm => {
+                        (self.emit)(RewriteKind::OptionDowngrade {
+                            mutbl: false,
+                            deref: true,
+                        });
+                        from.own = Ownership::Imm;
+                    }
+                    Ownership::RawMut | Ownership::Cell | Ownership::Mut => {
+                        (self.emit)(RewriteKind::OptionDowngrade {
+                            mutbl: true,
+                            deref: true,
+                        });
+                        from.own = Ownership::Mut;
+                    }
+                    _ => {
+                        // Remaining cases are unsupported.
+                    }
+                },
+            }
+        }
 
         let mut in_option_map = false;
         if from.option && !to.option {
