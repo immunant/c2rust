@@ -627,6 +627,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 Quantity::OffsetPtr => Quantity::OffsetPtr,
                 Quantity::Array => unreachable!("perms_to_desc should not return Quantity::Array"),
             },
+            option: result_desc.option,
             pointee_ty: result_desc.pointee_ty,
         };
 
@@ -635,6 +636,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
             // Emit `OffsetSlice` for the offset itself.
             let mutbl = matches!(result_desc.own, Ownership::Mut);
+            // TODO: need to support an `Option`-compatible version of `OffsetSlice`
+            // e.g. `{ let offset = <...>; p.map(|p| &p[offset..]) }
             v.emit(RewriteKind::OffsetSlice { mutbl });
 
             // The `OffsetSlice` operation returns something of the same type as its input.
@@ -796,6 +799,9 @@ where
         // There might still be differences in lifetimes, which we don't care about here.
         // Overwriting `from.pointee_ty` allows the final `from == to` check to succeed below.
         from.pointee_ty = to.pointee_ty;
+
+        // FIXME: checking `option` flags is disabled for now (not yet implemented)
+        from.option = to.option;
 
         if from == to {
             return Ok(());
