@@ -163,6 +163,31 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                     Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
                 }
 
+                mir_op::RewriteKind::OptionMapOffsetSlice { mutbl } => {
+                    // `p.offset(i)` -> `p.as_ref().map(|p| &p[i as usize ..])`
+                    assert!(matches!(hir_rw, Rewrite::Identity));
+
+                    // Build let binding
+                    let arr = self.get_subexpr(ex, 0);
+                    let idx = Rewrite::Cast(
+                        Box::new(self.get_subexpr(ex, 1)),
+                        Box::new(Rewrite::Print("usize".to_owned())),
+                    );
+                    let rw_let = Rewrite::Let(vec![("arr".into(), arr), ("idx".into(), idx)]);
+                    let arr = Rewrite::Text("arr".into());
+                    let idx = Rewrite::Text("idx".into());
+
+                    // Build  closure
+                    let elem =
+                        Rewrite::SliceRange(Box::new(arr.clone()), Some(Box::new(idx)), None);
+                    let ref_elem = Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl));
+                    let closure = Rewrite::Closure1("arr".into(), Box::new(ref_elem));
+
+                    // Call `Option::map`
+                    let call = Rewrite::MethodCall("map".into(), Box::new(arr), vec![closure]);
+                    Rewrite::Block(vec![rw_let], Some(Box::new(call)))
+                }
+
                 mir_op::RewriteKind::RemoveAsPtr => {
                     // `slice.as_ptr()` -> `slice`
                     assert!(matches!(hir_rw, Rewrite::Identity));

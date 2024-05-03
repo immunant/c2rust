@@ -49,6 +49,8 @@ pub enum SubLoc {
 pub enum RewriteKind {
     /// Replace `ptr.offset(i)` with something like `&ptr[i..]`.
     OffsetSlice { mutbl: bool },
+    /// Replace `ptr.offset(i)` with something like `ptr.as_ref().map(|p| &p[i..])`.
+    OptionMapOffsetSlice { mutbl: bool },
     /// Replace `slice` with `&slice[0]`.
     SliceFirst { mutbl: bool },
     /// Replace `ptr` with `&*ptr`, converting `&mut T` to `&T`.
@@ -641,9 +643,11 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
             // Emit `OffsetSlice` for the offset itself.
             let mutbl = matches!(result_desc.own, Ownership::Mut);
-            // TODO: need to support an `Option`-compatible version of `OffsetSlice`
-            // e.g. `{ let offset = <...>; p.map(|p| &p[offset..]) }
-            v.emit(RewriteKind::OffsetSlice { mutbl });
+            if !result_desc.option {
+                v.emit(RewriteKind::OffsetSlice { mutbl });
+            } else {
+                v.emit(RewriteKind::OptionMapOffsetSlice { mutbl });
+            }
 
             // The `OffsetSlice` operation returns something of the same type as its input.
             // Afterward, we must cast the result to the `result_ty`/`result_desc`.
