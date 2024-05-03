@@ -84,6 +84,16 @@ pub enum RewriteKind {
     OptionUnwrap,
     /// Convert `T` to `Option<T>` by wrapping the value in `Some`.
     OptionSome,
+    /// Begin an `Option::map` operation, converting `Option<T>` to `T`.
+    OptionMapBegin,
+    /// End an `Option::map` operation, converting `T` to `Option<T>`.
+    ///
+    /// `OptionMapBegin` and `OptionMapEnd` could legally be implemented as aliases for
+    /// `OptionUnwrap` and `OptionSome` respectively.  However, when `OptionMapBegin` and
+    /// `OptionMapEnd` are paired, we instead emit a call to `Option::map` with the intervening
+    /// rewrites applied within the closure.  This has the same effect when the input is `Some`,
+    /// but passes through `None` unchanged instead of panicking.
+    OptionMapEnd,
 
     /// Cast `&T` to `*const T` or `&mut T` to `*mut T`.
     CastRefToRaw { mutbl: bool },
@@ -813,17 +823,31 @@ where
             return Ok(());
         }
 
+        // TODO: If `from.option`, we need to use `.as_ref()`/`.as_mut()` in some cases to avoid
+        // moving `from`.  Which one to use depends on the ownership of `from` and `to`.
+
+        let mut in_option_map = false;
         if from.option && !to.option {
             // Unwrap first, then perform remaining casts.
-            // TODO: Need to use `.as_ref()`/`.as_mut()` in some cases to avoid moving `from`.
-            // Which one to use depends on the ownership of `from` and `to`.
             (self.emit)(RewriteKind::OptionUnwrap);
             from.option = false;
-        }
-
-        if from.option && to.option {
-            // FIXME: mapping casts over an `Option` is not yet implemented
-            from.option = to.option;
+        } else if from.option && to.option {
+            eprintln!("try_build_cast_desc_desc: emit OptionMapBegin");
+            if from.own != to.own {
+                eprintln!("  own differs: {:?} != {:?}", from.own, to.own);
+            }
+            if from.qty != to.qty {
+                eprintln!("  qty differs: {:?} != {:?}", from.qty, to.qty);
+            }
+            if from.pointee_ty != to.pointee_ty {
+                eprintln!(
+                    "  pointee_ty differs: {:?} != {:?}",
+                    from.pointee_ty, to.pointee_ty
+                );
+            }
+            (self.emit)(RewriteKind::OptionMapBegin);
+            from.option = false;
+            in_option_map = true;
         }
 
         // Early `Ownership` casts.  We do certain casts here in hopes of reaching an `Ownership`
@@ -880,7 +904,12 @@ where
         // Late `Ownership` casts.
         from.own = self.cast_ownership(from, to, false)?;
 
-        if !from.option && to.option {
+        if in_option_map {
+            assert!(!from.option);
+            assert!(to.option);
+            (self.emit)(RewriteKind::OptionMapEnd);
+            from.option = true;
+        } else if !from.option && to.option {
             // Wrap at the end, after performing all other steps of the cast.
             (self.emit)(RewriteKind::OptionSome);
             from.option = true;

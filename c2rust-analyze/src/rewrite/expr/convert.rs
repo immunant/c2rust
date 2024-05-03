@@ -504,6 +504,18 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
             Rewrite::Call("std::option::Option::Some".to_string(), vec![hir_rw])
         }
 
+        mir_op::RewriteKind::OptionMapBegin => {
+            // `p` -> `p.unwrap()`
+            Rewrite::MethodCall("unwrap /*map_begin*/".to_string(), Box::new(hir_rw), vec![])
+        }
+        mir_op::RewriteKind::OptionMapEnd => {
+            // `p` -> `Some(p)`
+            Rewrite::Call(
+                "std::option::Option::Some /*map_end*/".to_string(),
+                vec![hir_rw],
+            )
+        }
+
         mir_op::RewriteKind::CastRefToRaw { mutbl } => {
             // `addr_of!(*p)` is cleaner than `p as *const _`; we don't know the pointee
             // type here, so we can't emit `p as *const T`.

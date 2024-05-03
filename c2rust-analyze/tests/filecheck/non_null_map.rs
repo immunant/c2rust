@@ -8,7 +8,7 @@ pub unsafe fn f(cond: bool, p: *mut i32) {
     }
 
 
-    // CHECK: let ([[arr:.+]], [[idx:.+]], ) = ((p), (3) as usize, );
+    // CHECK: let ([[arr:.+]], [[idx:.+]], ) = ({{.*}}(p){{.*}}, (3) as usize, );
     // CHECK-NEXT: [[arr]].map(|arr| &arr[[[idx]] ..])
     let q = p.offset(3);
 }
