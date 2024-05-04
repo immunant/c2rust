@@ -1,11 +1,10 @@
 use std::{
-    sync::{
-        mpsc::{self, SyncSender},
-        Mutex,
-    },
+    sync::{Arc, Mutex},
     thread,
 };
 
+use crossbeam_queue::ArrayQueue;
+use crossbeam_utils::Backoff;
 use enum_dispatch::enum_dispatch;
 use once_cell::sync::OnceCell;
 
@@ -117,8 +116,24 @@ impl Runtime for MainThreadRuntime {
 }
 
 pub struct BackgroundThreadRuntime {
-    tx: SyncSender<Event>,
+    tx: Arc<ArrayQueue<Event>>,
     finalized: OnceCell<()>,
+}
+
+impl BackgroundThreadRuntime {
+    fn push_event(&self, mut event: Event, can_sleep: bool) {
+        let backoff = Backoff::new();
+        while let Err(event_back) = self.tx.push(event) {
+            if can_sleep {
+                backoff.snooze();
+            } else {
+                // We have no choice but to spin here because
+                // we might be inside a signal handler
+                backoff.spin();
+            }
+            event = event_back;
+        }
+    }
 }
 
 impl ExistingRuntime for BackgroundThreadRuntime {
@@ -126,7 +141,7 @@ impl ExistingRuntime for BackgroundThreadRuntime {
         // Only run the finalizer once.
         self.finalized.get_or_init(|| {
             // Notify the backend that we're done.
-            self.tx.send(Event::done()).unwrap();
+            self.push_event(Event::done(), true);
 
             // Wait for the backend thread to finish.
             let (lock, cvar) = &*FINISHED;
@@ -147,9 +162,7 @@ impl ExistingRuntime for BackgroundThreadRuntime {
     fn send_event(&self, event: Event) {
         match self.finalized.get() {
             None => {
-                // `.unwrap()` as we're in no place to handle an error here,
-                // unless we should silently drop the [`Event`] instead.
-                self.tx.send(event).unwrap();
+                self.push_event(event, false);
             }
             Some(()) => {
                 // Silently drop the [`Event`] as the [`BackgroundThreadRuntime`] has already been [`BackgroundThreadRuntime::finalize`]d.
@@ -172,7 +185,8 @@ impl Runtime for BackgroundThreadRuntime {
     /// Initialize the [`BackgroundThreadRuntime`], which includes [`thread::spawn`]ing,
     /// so it must be run post-`main`.
     fn try_init(mut backend: Backend) -> Result<Self, AnyError> {
-        let (tx, rx) = mpsc::sync_channel(1024);
+        let tx = Arc::new(ArrayQueue::new(1 << 20));
+        let rx = Arc::clone(&tx);
         thread::spawn(move || backend.run(rx));
         Ok(Self {
             tx,
