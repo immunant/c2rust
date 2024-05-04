@@ -1,7 +1,10 @@
+use crossbeam_queue::ArrayQueue;
+use crossbeam_utils::Backoff;
 use enum_dispatch::enum_dispatch;
 use fs_err::{File, OpenOptions};
 use std::fmt::Debug;
 use std::io::{stderr, BufWriter, Write};
+use std::sync::Arc;
 
 use bincode;
 
@@ -80,18 +83,32 @@ pub enum Backend {
 }
 
 impl Backend {
-    fn write_all(&mut self, events: impl IntoIterator<Item = Event>) {
-        for event in events {
+    fn write_all(&mut self, events: Arc<ArrayQueue<Event>>) {
+        let backoff = Backoff::new();
+        loop {
+            let event = match events.pop() {
+                Some(event) => event,
+                None => {
+                    // We can't use anything with a futex here since
+                    // the event sender might run inside a signal handler
+                    backoff.snooze();
+                    continue;
+                }
+            };
+
             let done = matches!(event.kind, EventKind::Done);
             self.write(event);
             if done {
                 break;
             }
+
+            // Reset the backoff timer since we got an event
+            backoff.reset();
         }
         self.flush();
     }
 
-    pub fn run(&mut self, events: impl IntoIterator<Item = Event>) {
+    pub fn run(&mut self, events: Arc<ArrayQueue<Event>>) {
         let (lock, cvar) = &*FINISHED;
         let mut finished = lock.lock().unwrap();
         self.write_all(events);
