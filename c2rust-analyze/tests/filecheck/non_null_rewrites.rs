@@ -32,7 +32,7 @@ unsafe fn use_mut(p: *mut i32) -> i32 {
         *p = 1;
     }
     // CHECK: use_const
-    // CHECK-SAME: (p).as_ref().as_deref()
+    // CHECK-SAME: (p).as_deref()
     use_const(p)
 }
 

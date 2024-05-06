@@ -621,21 +621,20 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
 
         mir_op::RewriteKind::OptionDowngrade { mutbl, deref } => {
             // `p` -> `Some(p)`
-            let ref_method = if mutbl {
-                "as_mut".into()
-            } else {
-                "as_ref".into()
-            };
-            let mut hir_rw = Rewrite::MethodCall(ref_method, Box::new(hir_rw), vec![]);
-            if deref {
-                let deref_method = if mutbl {
+            let ref_method = if deref {
+                if mutbl {
                     "as_deref_mut".into()
                 } else {
                     "as_deref".into()
-                };
-                hir_rw = Rewrite::MethodCall(deref_method, Box::new(hir_rw), vec![]);
-            }
-            hir_rw
+                }
+            } else {
+                if mutbl {
+                    "as_mut".into()
+                } else {
+                    "as_ref".into()
+                }
+            };
+            Rewrite::MethodCall(ref_method, Box::new(hir_rw), vec![])
         }
 
         mir_op::RewriteKind::CastRefToRaw { mutbl } => {
