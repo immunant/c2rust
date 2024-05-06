@@ -17,7 +17,7 @@ use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{GlobalPointerTable, PointerId, PointerTable};
 use crate::rewrite::Rewrite;
-use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
+use crate::type_desc::{self, Ownership, PtrDesc, Quantity, TypeDesc};
 use hir::{
     FnRetTy, GenericParamKind, Generics, ItemKind, Path, PathSegment, VariantData, WherePredicate,
 };
@@ -41,7 +41,7 @@ use super::LifetimeName;
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 struct RewriteLabel<'tcx> {
     /// Rewrite a raw pointer, whose ownership and quantity have been inferred as indicated.
-    ty_desc: Option<(Ownership, Quantity)>,
+    ty_desc: Option<PtrDesc>,
     /// Rewrite the pointee type of this pointer.
     pointee_ty: Option<Ty<'tcx>>,
     /// If set, a child or other descendant of this type requires rewriting.
@@ -107,7 +107,7 @@ fn create_rewrite_label<'tcx>(
             // can be `None` (no rewriting required).  This might let us avoid inlining a type
             // alias for some pointers where no actual improvement was possible.
             let desc = type_desc::perms_to_desc(pointer_lty.ty, perms, flags);
-            Some((desc.own, desc.qty))
+            Some(desc.into())
         }
     };
 
@@ -378,11 +378,11 @@ fn mk_rewritten_ty<'tcx>(
 ) -> ty::Ty<'tcx> {
     let tcx = *lcx;
     lcx.rewrite_unlabeled(rw_lty, &mut |ptr_ty, args, label| {
-        let (ty, own, qty) = match (label.pointee_ty, label.ty_desc) {
-            (Some(pointee_ty), Some((own, qty))) => {
+        let (ty, ptr_desc) = match (label.pointee_ty, label.ty_desc) {
+            (Some(pointee_ty), Some(ptr_desc)) => {
                 // The `ty` should be a pointer.
                 assert_eq!(args.len(), 1);
-                (pointee_ty, own, qty)
+                (pointee_ty, ptr_desc)
             }
             (Some(pointee_ty), None) => {
                 // Just change the pointee type and nothing else.
@@ -396,10 +396,10 @@ fn mk_rewritten_ty<'tcx>(
                 };
                 return new_ty;
             }
-            (None, Some((own, qty))) => {
+            (None, Some(ptr_desc)) => {
                 // The `ty` should be a pointer; the sole argument is the pointee type.
                 assert_eq!(args.len(), 1);
-                (args[0], own, qty)
+                (args[0], ptr_desc)
             }
             (None, None) => {
                 // No rewrite to apply.
@@ -407,17 +407,21 @@ fn mk_rewritten_ty<'tcx>(
             }
         };
 
-        desc_parts_to_ty(tcx, own, qty, ty)
+        desc_parts_to_ty(tcx, ptr_desc, ty)
     })
 }
 
 pub fn desc_parts_to_ty<'tcx>(
     tcx: TyCtxt<'tcx>,
-    own: Ownership,
-    qty: Quantity,
+    ptr_desc: PtrDesc,
     pointee_ty: Ty<'tcx>,
 ) -> Ty<'tcx> {
     let mut ty = pointee_ty;
+    let PtrDesc {
+        own,
+        qty,
+        option: _,
+    } = ptr_desc;
 
     if own == Ownership::Cell {
         ty = mk_cell(tcx, ty);
@@ -445,7 +449,7 @@ pub fn desc_parts_to_ty<'tcx>(
 }
 
 pub fn desc_to_ty<'tcx>(tcx: TyCtxt<'tcx>, desc: TypeDesc<'tcx>) -> Ty<'tcx> {
-    desc_parts_to_ty(tcx, desc.own, desc.qty, desc.pointee_ty)
+    desc_parts_to_ty(tcx, PtrDesc::from(desc), desc.pointee_ty)
 }
 
 struct HirTyVisitor<'a, 'tcx> {
@@ -528,8 +532,13 @@ fn rewrite_ty<'tcx>(
             Rewrite::Sub(0, hir_args[0].span)
         };
 
-        if let Some((own, qty)) = rw_lty.label.ty_desc {
+        if let Some(ptr_desc) = rw_lty.label.ty_desc {
             assert_eq!(hir_args.len(), 1);
+            let PtrDesc {
+                own,
+                qty,
+                option: _,
+            } = ptr_desc;
 
             if own == Ownership::Cell {
                 rw = Rewrite::TyCtor("core::cell::Cell".into(), vec![rw]);
