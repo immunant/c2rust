@@ -67,6 +67,8 @@ pub enum RewriteKind {
     /// Replace `ptr.is_null()` with the constant `false`.  We use this in cases where the rewritten
     /// type of `ptr` is non-optional because we inferred `ptr` to be non-nullable.
     IsNullToConstFalse,
+    /// Replace `ptr::null()` or `ptr::null_mut()` with `None`.
+    PtrNullToNone,
 
     /// Replace a call to `memcpy(dest, src, n)` with a safe copy operation that works on slices
     /// instead of raw pointers.  `elem_size` is the size of the original, unrewritten pointee
@@ -497,6 +499,20 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                     v.emit(RewriteKind::IsNullToConstFalse);
                                 } else {
                                     v.emit(RewriteKind::IsNullToIsNone);
+                                }
+                            }
+                        });
+                    }
+
+                    Callee::Null { .. } => {
+                        self.enter_rvalue(|v| {
+                            if !v.flags[pl_ty.label].contains(FlagSet::FIXED) {
+                                let arg_non_null =
+                                    v.perms[pl_ty.label].contains(PermissionSet::NON_NULL);
+                                if arg_non_null {
+                                    panic!("impossible: result of null() is a NON_NULL pointer?");
+                                } else {
+                                    v.emit(RewriteKind::PtrNullToNone);
                                 }
                             }
                         });

@@ -212,6 +212,11 @@ impl<'tcx> ConvertVisitor<'tcx> {
                 assert!(matches!(hir_rw, Rewrite::Identity));
                 Rewrite::Text("false".into())
             }
+            mir_op::RewriteKind::PtrNullToNone => {
+                // `ptr::null()` -> `None`
+                assert!(matches!(hir_rw, Rewrite::Identity));
+                Rewrite::Text("None".into())
+            }
 
             mir_op::RewriteKind::MemcpySafe {
                 elem_size,

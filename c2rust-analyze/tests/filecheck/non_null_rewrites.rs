@@ -49,8 +49,10 @@ unsafe fn call_use_slice(cond: bool, q: *const i32) -> i32 {
         // No-op
     }
     let p = if cond {
+        // CHECK: Some((q))
         q
     } else {
+        // CHECK: None
         ptr::null_mut()
     };
     use_slice(p)
