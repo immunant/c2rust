@@ -122,10 +122,15 @@ impl<'tcx> ConvertVisitor<'tcx> {
 
     fn rewrite_from_mir_rw(
         &self,
-        ex: &'tcx hir::Expr<'tcx>,
+        ex: Option<&'tcx hir::Expr<'tcx>>,
         rw: &mir_op::RewriteKind,
         hir_rw: Rewrite,
     ) -> Rewrite {
+        if ex.is_none() {
+            return convert_cast_rewrite(rw, hir_rw);
+        }
+        let ex = ex.unwrap();
+
         // Cases that extract a subexpression are handled here; cases that only wrap the
         // top-level expression (and thus can handle a non-`Identity` `hir_rw`) are handled by
         // `convert_cast_rewrite`.
@@ -281,7 +286,7 @@ impl<'tcx> ConvertVisitor<'tcx> {
 
     fn rewrite_from_mir_rws(
         &self,
-        ex: &'tcx hir::Expr<'tcx>,
+        ex: Option<&'tcx hir::Expr<'tcx>>,
         mir_rws: &[DistRewrite],
         mut hir_rw: Rewrite,
     ) -> Rewrite {
@@ -322,7 +327,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
         let expr_rws = take_prefix_while(&mut mir_rws, |x: &DistRewrite| {
             matches!(x.desc, MirOriginDesc::Expr)
         });
-        hir_rw = self.rewrite_from_mir_rws(ex, expr_rws, hir_rw);
+        hir_rw = self.rewrite_from_mir_rws(Some(ex), expr_rws, hir_rw);
 
         // Materialize adjustments if requested by an ancestor or required locally.
         let has_adjustment_rewrites = mir_rws
@@ -333,7 +338,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
             hir_rw = materialize_adjustments(self.tcx, adjusts, hir_rw, |i, hir_rw| {
                 let adj_rws =
                     take_prefix_while(&mut mir_rws, |x| x.desc == MirOriginDesc::Adjustment(i));
-                self.rewrite_from_mir_rws(ex, adj_rws, hir_rw)
+                self.rewrite_from_mir_rws(Some(ex), adj_rws, hir_rw)
             });
         }
 
@@ -344,7 +349,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                 MirOriginDesc::StoreIntoLocal | MirOriginDesc::LoadFromTemp
             )
         }));
-        hir_rw = self.rewrite_from_mir_rws(ex, mir_rws, hir_rw);
+        hir_rw = self.rewrite_from_mir_rws(Some(ex), mir_rws, hir_rw);
 
         if !matches!(hir_rw, Rewrite::Identity) {
             eprintln!(
