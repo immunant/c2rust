@@ -284,13 +284,94 @@ impl<'tcx> ConvertVisitor<'tcx> {
         }
     }
 
+    /// Generate an `Option::map` call from the rewrites in `mir_rws`.  After seeing an
+    /// `OptionMapBegin` in a list of MIR rewrites, pass the remaining rewrites to this method.  If
+    /// it returns `Ok((new_hir_rw, remaining_mir_rws))`, then the `OptionMapBegin` and some
+    /// additional rewrites have been processed, and only `remaining_mir_rws` are left.  Otherwise,
+    /// if it failed to process any rewrites, it returns `Err(original_hir_rw)`.
+    fn try_rewrite_option_map<'a>(
+        &self,
+        mut mir_rws: &'a [DistRewrite],
+        mut hir_rw: Rewrite,
+    ) -> Result<(Rewrite, &'a [DistRewrite]), Rewrite> {
+        /// Find the next `OptionMapEnd` and return the parts of `mir_rws` that come strictly
+        /// before it and strictly after it.  Returns `None` if there's an `OptionMapBegin` before
+        /// the next `OptionMapEnd`, or if there's no `OptionMapEnd` found in `mir_rws`.
+        fn split_option_map_rewrites(
+            mir_rws: &[DistRewrite],
+        ) -> Option<(&[DistRewrite], &[DistRewrite])> {
+            for (i, mir_rw) in mir_rws.iter().enumerate() {
+                match mir_rw.rw {
+                    // Bail out if we see nested delimiters.
+                    mir_op::RewriteKind::OptionMapBegin => return None,
+                    mir_op::RewriteKind::OptionMapEnd => {
+                        let (a, b) = mir_rws.split_at(i);
+                        return Some((a, &b[1..]));
+                    }
+                    _ => {}
+                }
+            }
+            None
+        }
+
+        // Build up the body of the closure.  We expect `mir_rws` to start just after an
+        // `OptionMapBegin` delimiter.  If we find a matching `OptionMapEnd` (with no intervening
+        // `OptionMapBegin`; nesting is unsupported), then we add all the rewrites between the
+        // delimiters to the `Option::map` body.  Furthermore, as long as the `OptionMapEnd` is
+        // followed by another `OptionMapBegin/End` delimited range, we add those rewrites to the
+        // body as well.
+        let mut opt_body_hir_rw = None;
+        // Did we find a matching delimiter for the implicit `OptionMapBegin` that precedes
+        // `mir_rws`?
+        let mut found_matching_delim = false;
+        while let Some((body_rws, other_rws)) = split_option_map_rewrites(mir_rws) {
+            found_matching_delim = true;
+            mir_rws = other_rws;
+            if body_rws.is_empty() {
+                // Don't initialize `opt_body_hir_rw` until we've seen at least one actual rewrite.
+                // This lets us omit empty `Option::map` calls.
+                continue;
+            }
+
+            let mut body_hir_rw = opt_body_hir_rw.unwrap_or_else(|| Rewrite::Text("__ptr".into()));
+            body_hir_rw = self.rewrite_from_mir_rws(None, body_rws, body_hir_rw);
+
+            opt_body_hir_rw = Some(body_hir_rw);
+        }
+
+        if !found_matching_delim {
+            return Err(hir_rw);
+        }
+
+        // If some actual rewrites were collected, generate the `map` call.
+        if let Some(body) = opt_body_hir_rw {
+            let closure = Rewrite::Closure1("__ptr".into(), Box::new(body));
+            hir_rw = Rewrite::MethodCall("map".into(), Box::new(hir_rw), vec![closure]);
+        }
+        return Ok((hir_rw, mir_rws));
+    }
+
     fn rewrite_from_mir_rws(
         &self,
         ex: Option<&'tcx hir::Expr<'tcx>>,
         mir_rws: &[DistRewrite],
         mut hir_rw: Rewrite,
     ) -> Rewrite {
-        for mir_rw in mir_rws {
+        let mut iter = mir_rws.iter();
+        while let Some(mir_rw) = iter.next() {
+            if let mir_op::RewriteKind::OptionMapBegin = mir_rw.rw {
+                match self.try_rewrite_option_map(iter.as_slice(), hir_rw) {
+                    Ok((new_hir_rw, remaining_mir_rws)) => {
+                        hir_rw = new_hir_rw;
+                        iter = remaining_mir_rws.iter();
+                        continue;
+                    }
+                    Err(orig_hir_rw) => {
+                        hir_rw = orig_hir_rw;
+                    }
+                }
+            }
+
             hir_rw = self.rewrite_from_mir_rw(ex, &mir_rw.rw, hir_rw);
         }
         hir_rw

@@ -8,7 +8,7 @@ pub unsafe fn f(cond: bool, p: *mut i32) {
     }
 
 
-    // CHECK: let ([[arr:.+]], [[idx:.+]], ) = ({{.*}}(p){{.*}}, (3) as usize, );
+    // CHECK: let ([[arr:.+]], [[idx:.+]], ) = ((p), (3) as usize, );
     // CHECK-NEXT: [[arr]].map(|arr| &arr[[[idx]] ..])
     let q = p.offset(3);
 }
@@ -38,5 +38,29 @@ unsafe fn use_mut(p: *mut i32) -> i32 {
 
 // CHECK-LABEL: unsafe fn use_const{{[<(]}}
 unsafe fn use_const(p: *const i32) -> i32 {
+    *p
+}
+
+// CHECK-LABEL: unsafe fn call_use_slice{{[<(]}}
+unsafe fn call_use_slice(cond: bool, q: *const i32) -> i32 {
+    let p = if cond {
+        q
+    } else {
+        ptr::null_mut()
+    };
+    use_slice(p)
+}
+
+// CHECK-LABEL: unsafe fn use_slice{{[<(]}}
+unsafe fn use_slice(p: *const i32) -> i32 {
+    if !p.is_null() {
+        let x = *p.offset(1);
+    }
+    // CHECK: use_single((p).map(|__ptr| &__ptr[0]))
+    use_single(p)
+}
+
+// CHECK-LABEL: unsafe fn use_single{{[<(]}}
+unsafe fn use_single(p: *const i32) -> i32 {
     *p
 }
