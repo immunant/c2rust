@@ -119,6 +119,177 @@ impl<'tcx> ConvertVisitor<'tcx> {
         }
         rw_sub
     }
+
+    fn rewrite_from_mir_rw(
+        &self,
+        ex: &'tcx hir::Expr<'tcx>,
+        rw: &mir_op::RewriteKind,
+        hir_rw: Rewrite,
+    ) -> Rewrite {
+        // Cases that extract a subexpression are handled here; cases that only wrap the
+        // top-level expression (and thus can handle a non-`Identity` `hir_rw`) are handled by
+        // `convert_cast_rewrite`.
+        match *rw {
+            mir_op::RewriteKind::OffsetSlice { mutbl } => {
+                // `p.offset(i)` -> `&p[i as usize ..]`
+                assert!(matches!(hir_rw, Rewrite::Identity));
+                let arr = self.get_subexpr(ex, 0);
+                let idx = Rewrite::Cast(
+                    Box::new(self.get_subexpr(ex, 1)),
+                    Box::new(Rewrite::Print("usize".to_owned())),
+                );
+                let elem = Rewrite::SliceRange(Box::new(arr), Some(Box::new(idx)), None);
+                Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
+            }
+
+            mir_op::RewriteKind::OptionMapOffsetSlice { mutbl } => {
+                // `p.offset(i)` -> `p.as_ref().map(|p| &p[i as usize ..])`
+                assert!(matches!(hir_rw, Rewrite::Identity));
+
+                // Build let binding
+                let arr = self.get_subexpr(ex, 0);
+                let idx = Rewrite::Cast(
+                    Box::new(self.get_subexpr(ex, 1)),
+                    Box::new(Rewrite::Print("usize".to_owned())),
+                );
+                let rw_let = Rewrite::Let(vec![("arr".into(), arr), ("idx".into(), idx)]);
+                let arr = Rewrite::Text("arr".into());
+                let idx = Rewrite::Text("idx".into());
+
+                // Build  closure
+                let elem = Rewrite::SliceRange(Box::new(arr.clone()), Some(Box::new(idx)), None);
+                let ref_elem = Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl));
+                let closure = Rewrite::Closure1("arr".into(), Box::new(ref_elem));
+
+                // Call `Option::map`
+                let call = Rewrite::MethodCall("map".into(), Box::new(arr), vec![closure]);
+                Rewrite::Block(vec![rw_let], Some(Box::new(call)))
+            }
+
+            mir_op::RewriteKind::RemoveAsPtr => {
+                // `slice.as_ptr()` -> `slice`
+                assert!(matches!(hir_rw, Rewrite::Identity));
+                self.get_subexpr(ex, 0)
+            }
+
+            mir_op::RewriteKind::RemoveCast => {
+                // `x as T` -> `x`
+                match hir_rw {
+                    Rewrite::Identity => {
+                        assert!(matches!(hir_rw, Rewrite::Identity));
+                        self.get_subexpr(ex, 0)
+                    }
+                    // Can happen when attempting to delete a cast adjustment.
+                    Rewrite::Cast(rw, _) => *rw,
+                    Rewrite::RemovedCast(rw) => *rw,
+                    _ => panic!("unexpected hir_rw {hir_rw:?} for RawToRef"),
+                }
+            }
+
+            mir_op::RewriteKind::RawToRef { mutbl } => {
+                // &raw _ to &_ or &raw mut _ to &mut _
+                match hir_rw {
+                    Rewrite::Identity => {
+                        Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(mutbl))
+                    }
+                    Rewrite::AddrOf(rw, mutbl) => Rewrite::Ref(rw, mutbl),
+                    _ => panic!("unexpected hir_rw {hir_rw:?} for RawToRef"),
+                }
+            }
+
+            mir_op::RewriteKind::MemcpySafe {
+                elem_size,
+                dest_single,
+                src_single,
+            } => {
+                // `memcpy(dest, src, n)` to a `copy_from_slice` call
+                assert!(matches!(hir_rw, Rewrite::Identity));
+                assert!(!dest_single, "&T -> &[T] conversion for memcpy dest NYI");
+                assert!(!src_single, "&T -> &[T] conversion for memcpy src NYI");
+                Rewrite::Block(
+                    vec![
+                        Rewrite::Let(vec![
+                            ("dest".into(), self.get_subexpr(ex, 0)),
+                            ("src".into(), self.get_subexpr(ex, 1)),
+                            ("byte_len".into(), self.get_subexpr(ex, 2)),
+                        ]),
+                        Rewrite::Let(vec![(
+                            "n".into(),
+                            format_rewrite!("byte_len as usize / {elem_size}"),
+                        )]),
+                        Rewrite::MethodCall(
+                            "copy_from_slice".into(),
+                            Box::new(format_rewrite!("dest[..n]")),
+                            vec![format_rewrite!("&src[..n]")],
+                        ),
+                    ],
+                    Some(Box::new(format_rewrite!("dest"))),
+                )
+            }
+
+            mir_op::RewriteKind::MemsetZeroize {
+                ref zero_ty,
+                elem_size,
+                dest_single,
+            } => {
+                // `memcpy(dest, src, n)` to a `copy_from_slice` call
+                assert!(matches!(hir_rw, Rewrite::Identity));
+                let zeroize_body = if dest_single {
+                    Rewrite::Text(generate_zeroize_code(zero_ty, "(*dest)"))
+                } else {
+                    format_rewrite!(
+                        "for i in 0..n {{\n    {};\n}}",
+                        generate_zeroize_code(zero_ty, "(*dest)[i]")
+                    )
+                };
+                Rewrite::Block(
+                    vec![
+                        Rewrite::Let(vec![
+                            ("dest".into(), self.get_subexpr(ex, 0)),
+                            ("val".into(), self.get_subexpr(ex, 1)),
+                            ("byte_len".into(), self.get_subexpr(ex, 2)),
+                        ]),
+                        Rewrite::Let(vec![(
+                            "n".into(),
+                            format_rewrite!("byte_len as usize / {elem_size}"),
+                        )]),
+                        format_rewrite!("assert_eq!(val, 0, \"non-zero memset NYI\")"),
+                        zeroize_body,
+                    ],
+                    Some(Box::new(format_rewrite!("dest"))),
+                )
+            }
+
+            mir_op::RewriteKind::CellGet => {
+                // `*x` to `Cell::get(x)`
+                assert!(matches!(hir_rw, Rewrite::Identity));
+                Rewrite::MethodCall("get".to_string(), Box::new(self.get_subexpr(ex, 0)), vec![])
+            }
+
+            mir_op::RewriteKind::CellSet => {
+                // `*x` to `Cell::set(x)`
+                assert!(matches!(hir_rw, Rewrite::Identity));
+                let deref_lhs = assert_matches!(ex.kind, ExprKind::Assign(lhs, ..) => lhs);
+                let lhs = self.get_subexpr(deref_lhs, 0);
+                let rhs = self.get_subexpr(ex, 1);
+                Rewrite::MethodCall("set".to_string(), Box::new(lhs), vec![rhs])
+            }
+
+            _ => convert_cast_rewrite(rw, hir_rw),
+        }
+    }
+
+    fn rewrite_from_mir_rws(
+        &self,
+        ex: &'tcx hir::Expr<'tcx>,
+        mir_rws: &[DistRewrite],
+        mut hir_rw: Rewrite,
+    ) -> Rewrite {
+        for mir_rw in mir_rws {
+            hir_rw = self.rewrite_from_mir_rw(ex, &mir_rw.rw, hir_rw);
+        }
+        hir_rw
+    }
 }
 
 impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
@@ -146,178 +317,12 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
             intravisit::walk_expr(this, ex);
         });
 
-        let rewrite_from_mir_rw = |rw: &mir_op::RewriteKind, hir_rw: Rewrite| -> Rewrite {
-            // Cases that extract a subexpression are handled here; cases that only wrap the
-            // top-level expression (and thus can handle a non-`Identity` `hir_rw`) are handled by
-            // `convert_cast_rewrite`.
-            match *rw {
-                mir_op::RewriteKind::OffsetSlice { mutbl } => {
-                    // `p.offset(i)` -> `&p[i as usize ..]`
-                    assert!(matches!(hir_rw, Rewrite::Identity));
-                    let arr = self.get_subexpr(ex, 0);
-                    let idx = Rewrite::Cast(
-                        Box::new(self.get_subexpr(ex, 1)),
-                        Box::new(Rewrite::Print("usize".to_owned())),
-                    );
-                    let elem = Rewrite::SliceRange(Box::new(arr), Some(Box::new(idx)), None);
-                    Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
-                }
-
-                mir_op::RewriteKind::OptionMapOffsetSlice { mutbl } => {
-                    // `p.offset(i)` -> `p.as_ref().map(|p| &p[i as usize ..])`
-                    assert!(matches!(hir_rw, Rewrite::Identity));
-
-                    // Build let binding
-                    let arr = self.get_subexpr(ex, 0);
-                    let idx = Rewrite::Cast(
-                        Box::new(self.get_subexpr(ex, 1)),
-                        Box::new(Rewrite::Print("usize".to_owned())),
-                    );
-                    let rw_let = Rewrite::Let(vec![("arr".into(), arr), ("idx".into(), idx)]);
-                    let arr = Rewrite::Text("arr".into());
-                    let idx = Rewrite::Text("idx".into());
-
-                    // Build  closure
-                    let elem =
-                        Rewrite::SliceRange(Box::new(arr.clone()), Some(Box::new(idx)), None);
-                    let ref_elem = Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl));
-                    let closure = Rewrite::Closure1("arr".into(), Box::new(ref_elem));
-
-                    // Call `Option::map`
-                    let call = Rewrite::MethodCall("map".into(), Box::new(arr), vec![closure]);
-                    Rewrite::Block(vec![rw_let], Some(Box::new(call)))
-                }
-
-                mir_op::RewriteKind::RemoveAsPtr => {
-                    // `slice.as_ptr()` -> `slice`
-                    assert!(matches!(hir_rw, Rewrite::Identity));
-                    self.get_subexpr(ex, 0)
-                }
-
-                mir_op::RewriteKind::RemoveCast => {
-                    // `x as T` -> `x`
-                    match hir_rw {
-                        Rewrite::Identity => {
-                            assert!(matches!(hir_rw, Rewrite::Identity));
-                            self.get_subexpr(ex, 0)
-                        }
-                        // Can happen when attempting to delete a cast adjustment.
-                        Rewrite::Cast(rw, _) => *rw,
-                        Rewrite::RemovedCast(rw) => *rw,
-                        _ => panic!("unexpected hir_rw {hir_rw:?} for RawToRef"),
-                    }
-                }
-
-                mir_op::RewriteKind::RawToRef { mutbl } => {
-                    // &raw _ to &_ or &raw mut _ to &mut _
-                    match hir_rw {
-                        Rewrite::Identity => {
-                            Rewrite::Ref(Box::new(self.get_subexpr(ex, 0)), mutbl_from_bool(mutbl))
-                        }
-                        Rewrite::AddrOf(rw, mutbl) => Rewrite::Ref(rw, mutbl),
-                        _ => panic!("unexpected hir_rw {hir_rw:?} for RawToRef"),
-                    }
-                }
-
-                mir_op::RewriteKind::MemcpySafe {
-                    elem_size,
-                    dest_single,
-                    src_single,
-                } => {
-                    // `memcpy(dest, src, n)` to a `copy_from_slice` call
-                    assert!(matches!(hir_rw, Rewrite::Identity));
-                    assert!(!dest_single, "&T -> &[T] conversion for memcpy dest NYI");
-                    assert!(!src_single, "&T -> &[T] conversion for memcpy src NYI");
-                    Rewrite::Block(
-                        vec![
-                            Rewrite::Let(vec![
-                                ("dest".into(), self.get_subexpr(ex, 0)),
-                                ("src".into(), self.get_subexpr(ex, 1)),
-                                ("byte_len".into(), self.get_subexpr(ex, 2)),
-                            ]),
-                            Rewrite::Let(vec![(
-                                "n".into(),
-                                format_rewrite!("byte_len as usize / {elem_size}"),
-                            )]),
-                            Rewrite::MethodCall(
-                                "copy_from_slice".into(),
-                                Box::new(format_rewrite!("dest[..n]")),
-                                vec![format_rewrite!("&src[..n]")],
-                            ),
-                        ],
-                        Some(Box::new(format_rewrite!("dest"))),
-                    )
-                }
-
-                mir_op::RewriteKind::MemsetZeroize {
-                    ref zero_ty,
-                    elem_size,
-                    dest_single,
-                } => {
-                    // `memcpy(dest, src, n)` to a `copy_from_slice` call
-                    assert!(matches!(hir_rw, Rewrite::Identity));
-                    let zeroize_body = if dest_single {
-                        Rewrite::Text(generate_zeroize_code(zero_ty, "(*dest)"))
-                    } else {
-                        format_rewrite!(
-                            "for i in 0..n {{\n    {};\n}}",
-                            generate_zeroize_code(zero_ty, "(*dest)[i]")
-                        )
-                    };
-                    Rewrite::Block(
-                        vec![
-                            Rewrite::Let(vec![
-                                ("dest".into(), self.get_subexpr(ex, 0)),
-                                ("val".into(), self.get_subexpr(ex, 1)),
-                                ("byte_len".into(), self.get_subexpr(ex, 2)),
-                            ]),
-                            Rewrite::Let(vec![(
-                                "n".into(),
-                                format_rewrite!("byte_len as usize / {elem_size}"),
-                            )]),
-                            format_rewrite!("assert_eq!(val, 0, \"non-zero memset NYI\")"),
-                            zeroize_body,
-                        ],
-                        Some(Box::new(format_rewrite!("dest"))),
-                    )
-                }
-
-                mir_op::RewriteKind::CellGet => {
-                    // `*x` to `Cell::get(x)`
-                    assert!(matches!(hir_rw, Rewrite::Identity));
-                    Rewrite::MethodCall(
-                        "get".to_string(),
-                        Box::new(self.get_subexpr(ex, 0)),
-                        vec![],
-                    )
-                }
-
-                mir_op::RewriteKind::CellSet => {
-                    // `*x` to `Cell::set(x)`
-                    assert!(matches!(hir_rw, Rewrite::Identity));
-                    let deref_lhs = assert_matches!(ex.kind, ExprKind::Assign(lhs, ..) => lhs);
-                    let lhs = self.get_subexpr(deref_lhs, 0);
-                    let rhs = self.get_subexpr(ex, 1);
-                    Rewrite::MethodCall("set".to_string(), Box::new(lhs), vec![rhs])
-                }
-
-                _ => convert_cast_rewrite(rw, hir_rw),
-            }
-        };
-
-        let rewrite_from_mir_rws = |mir_rws: &[DistRewrite], mut hir_rw: Rewrite| -> Rewrite {
-            for mir_rw in mir_rws {
-                hir_rw = rewrite_from_mir_rw(&mir_rw.rw, hir_rw);
-            }
-            hir_rw
-        };
-
         // Apply rewrites on the expression itself.  These will be the first rewrites in the sorted
         // list produced by `distribute`.
         let expr_rws = take_prefix_while(&mut mir_rws, |x: &DistRewrite| {
             matches!(x.desc, MirOriginDesc::Expr)
         });
-        hir_rw = rewrite_from_mir_rws(expr_rws, hir_rw);
+        hir_rw = self.rewrite_from_mir_rws(ex, expr_rws, hir_rw);
 
         // Materialize adjustments if requested by an ancestor or required locally.
         let has_adjustment_rewrites = mir_rws
@@ -328,7 +333,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
             hir_rw = materialize_adjustments(self.tcx, adjusts, hir_rw, |i, hir_rw| {
                 let adj_rws =
                     take_prefix_while(&mut mir_rws, |x| x.desc == MirOriginDesc::Adjustment(i));
-                rewrite_from_mir_rws(adj_rws, hir_rw)
+                self.rewrite_from_mir_rws(ex, adj_rws, hir_rw)
             });
         }
 
@@ -339,7 +344,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
                 MirOriginDesc::StoreIntoLocal | MirOriginDesc::LoadFromTemp
             )
         }));
-        hir_rw = rewrite_from_mir_rws(mir_rws, hir_rw);
+        hir_rw = self.rewrite_from_mir_rws(ex, mir_rws, hir_rw);
 
         if !matches!(hir_rw, Rewrite::Identity) {
             eprintln!(
