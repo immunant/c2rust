@@ -371,6 +371,10 @@ fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
     mk_adt_with_arg(tcx, "core::cell::Cell", ty)
 }
 
+fn mk_option<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
+    mk_adt_with_arg(tcx, "core::option::Option", ty)
+}
+
 /// Produce a `Ty` reflecting the rewrites indicated by the labels in `rw_lty`.
 fn mk_rewritten_ty<'tcx>(
     lcx: LabeledTyCtxt<'tcx, RewriteLabel<'tcx>>,
@@ -417,11 +421,7 @@ pub fn desc_parts_to_ty<'tcx>(
     pointee_ty: Ty<'tcx>,
 ) -> Ty<'tcx> {
     let mut ty = pointee_ty;
-    let PtrDesc {
-        own,
-        qty,
-        option: _,
-    } = ptr_desc;
+    let PtrDesc { own, qty, option } = ptr_desc;
 
     if own == Ownership::Cell {
         ty = mk_cell(tcx, ty);
@@ -444,6 +444,10 @@ pub fn desc_parts_to_ty<'tcx>(
         Ownership::Rc => todo!(),
         Ownership::Box => tcx.mk_box(ty),
     };
+
+    if option {
+        ty = mk_option(tcx, ty);
+    }
 
     ty
 }
@@ -534,11 +538,7 @@ fn rewrite_ty<'tcx>(
 
         if let Some(ptr_desc) = rw_lty.label.ty_desc {
             assert_eq!(hir_args.len(), 1);
-            let PtrDesc {
-                own,
-                qty,
-                option: _,
-            } = ptr_desc;
+            let PtrDesc { own, qty, option } = ptr_desc;
 
             if own == Ownership::Cell {
                 rw = Rewrite::TyCtor("core::cell::Cell".into(), vec![rw]);
@@ -562,6 +562,10 @@ fn rewrite_ty<'tcx>(
                 Ownership::Rc => todo!(),
                 Ownership::Box => todo!(),
             };
+
+            if option {
+                rw = Rewrite::TyCtor("core::option::Option".into(), vec![rw]);
+            }
         } else {
             rw = match *rw_lty.ty.kind() {
                 TyKind::Ref(_rg, _ty, mutbl) => Rewrite::TyRef(lifetime_type, Box::new(rw), mutbl),
