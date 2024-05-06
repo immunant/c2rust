@@ -62,6 +62,12 @@ pub enum RewriteKind {
     /// Replace &raw with & or &raw mut with &mut
     RawToRef { mutbl: bool },
 
+    /// Replace `ptr.is_null()` with `ptr.is_none()`.
+    IsNullToIsNone,
+    /// Replace `ptr.is_null()` with the constant `false`.  We use this in cases where the rewritten
+    /// type of `ptr` is non-optional because we inferred `ptr` to be non-nullable.
+    IsNullToConstFalse,
+
     /// Replace a call to `memcpy(dest, src, n)` with a safe copy operation that works on slices
     /// instead of raw pointers.  `elem_size` is the size of the original, unrewritten pointee
     /// type, which is used to convert the byte length `n` to an element count.  `dest_single` and
@@ -476,6 +482,21 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 if v.perms[pl_ty.label].intersects(PermissionSet::USED) {
                                     let dest_lty = v.acx.type_of(&args[0]);
                                     v.emit_cast_lty_lty(dest_lty, pl_ty);
+                                }
+                            }
+                        });
+                    }
+
+                    Callee::IsNull => {
+                        self.enter_rvalue(|v| {
+                            let arg_lty = v.acx.type_of(&args[0]);
+                            if !v.flags[arg_lty.label].contains(FlagSet::FIXED) {
+                                let arg_non_null =
+                                    v.perms[arg_lty.label].contains(PermissionSet::NON_NULL);
+                                if arg_non_null {
+                                    v.emit(RewriteKind::IsNullToConstFalse);
+                                } else {
+                                    v.emit(RewriteKind::IsNullToIsNone);
                                 }
                             }
                         });

@@ -43,6 +43,11 @@ unsafe fn use_const(p: *const i32) -> i32 {
 
 // CHECK-LABEL: unsafe fn call_use_slice{{[<(]}}
 unsafe fn call_use_slice(cond: bool, q: *const i32) -> i32 {
+    // `q` is not nullable, so `q.is_null()` should be rewritten to `false`.
+    // CHECK: if !false {
+    if !q.is_null() {
+        // No-op
+    }
     let p = if cond {
         q
     } else {
@@ -53,6 +58,8 @@ unsafe fn call_use_slice(cond: bool, q: *const i32) -> i32 {
 
 // CHECK-LABEL: unsafe fn use_slice{{[<(]}}
 unsafe fn use_slice(p: *const i32) -> i32 {
+    // `p`'s new type is `Option<&[i32]>`, so `is_null()` should become `is_none()`.
+    // CHECK: .is_none()
     if !p.is_null() {
         let x = *p.offset(1);
     }

@@ -202,6 +202,17 @@ impl<'tcx> ConvertVisitor<'tcx> {
                 }
             }
 
+            mir_op::RewriteKind::IsNullToIsNone => {
+                // `p.is_null()` -> `p.is_none()`
+                assert!(matches!(hir_rw, Rewrite::Identity));
+                Rewrite::MethodCall("is_none".into(), Box::new(self.get_subexpr(ex, 0)), vec![])
+            }
+            mir_op::RewriteKind::IsNullToConstFalse => {
+                // `p.is_null()` -> `false`
+                assert!(matches!(hir_rw, Rewrite::Identity));
+                Rewrite::Text("false".into())
+            }
+
             mir_op::RewriteKind::MemcpySafe {
                 elem_size,
                 dest_single,
