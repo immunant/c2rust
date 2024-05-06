@@ -146,7 +146,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
             intravisit::walk_expr(this, ex);
         });
 
-        let rewrite_from_mir_rws = |rw: &mir_op::RewriteKind, hir_rw: Rewrite| -> Rewrite {
+        let rewrite_from_mir_rw = |rw: &mir_op::RewriteKind, hir_rw: Rewrite| -> Rewrite {
             // Cases that extract a subexpression are handled here; cases that only wrap the
             // top-level expression (and thus can handle a non-`Identity` `hir_rw`) are handled by
             // `convert_cast_rewrite`.
@@ -305,14 +305,19 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
             }
         };
 
+        let rewrite_from_mir_rws = |mir_rws: &[DistRewrite], mut hir_rw: Rewrite| -> Rewrite {
+            for mir_rw in mir_rws {
+                hir_rw = rewrite_from_mir_rw(&mir_rw.rw, hir_rw);
+            }
+            hir_rw
+        };
+
         // Apply rewrites on the expression itself.  These will be the first rewrites in the sorted
         // list produced by `distribute`.
         let expr_rws = take_prefix_while(&mut mir_rws, |x: &DistRewrite| {
             matches!(x.desc, MirOriginDesc::Expr)
         });
-        for mir_rw in expr_rws {
-            hir_rw = rewrite_from_mir_rws(&mir_rw.rw, hir_rw);
-        }
+        hir_rw = rewrite_from_mir_rws(expr_rws, hir_rw);
 
         // Materialize adjustments if requested by an ancestor or required locally.
         let has_adjustment_rewrites = mir_rws
@@ -320,25 +325,21 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
             .any(|x| matches!(x.desc, MirOriginDesc::Adjustment(_)));
         if self.materialize_adjustments || has_adjustment_rewrites {
             let adjusts = self.typeck_results.expr_adjustments(ex);
-            hir_rw = materialize_adjustments(self.tcx, adjusts, hir_rw, |i, mut hir_rw| {
+            hir_rw = materialize_adjustments(self.tcx, adjusts, hir_rw, |i, hir_rw| {
                 let adj_rws =
                     take_prefix_while(&mut mir_rws, |x| x.desc == MirOriginDesc::Adjustment(i));
-                for mir_rw in adj_rws {
-                    eprintln!("would apply {mir_rw:?} for adjustment #{i}, over {hir_rw:?}");
-                    hir_rw = rewrite_from_mir_rws(&mir_rw.rw, hir_rw);
-                }
-                hir_rw
+                rewrite_from_mir_rws(adj_rws, hir_rw)
             });
         }
 
         // Apply late rewrites.
-        for mir_rw in mir_rws {
-            assert!(matches!(
+        assert!(mir_rws.iter().all(|mir_rw| {
+            matches!(
                 mir_rw.desc,
                 MirOriginDesc::StoreIntoLocal | MirOriginDesc::LoadFromTemp
-            ));
-            hir_rw = rewrite_from_mir_rws(&mir_rw.rw, hir_rw);
-        }
+            )
+        }));
+        hir_rw = rewrite_from_mir_rws(mir_rws, hir_rw);
 
         if !matches!(hir_rw, Rewrite::Identity) {
             eprintln!(
