@@ -333,37 +333,42 @@ impl Convert<hir::Mutability> for mir::Mutability {
     }
 }
 
-fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
-    let core_crate = tcx
+fn mk_adt_with_arg<'tcx>(tcx: TyCtxt<'tcx>, path: &str, arg_ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
+    let mut path_parts_iter = path.split("::");
+    let crate_name = path_parts_iter
+        .next()
+        .unwrap_or_else(|| panic!("couldn't find crate name in {path:?}"));
+
+    let krate = tcx
         .crates(())
         .iter()
         .cloned()
         .find(|&krate| tcx.crate_name(krate).as_str() == "core")
-        .expect("failed to find crate `core`");
+        .unwrap_or_else(|| panic!("couldn't find crate {crate_name:?} for {path:?}"));
 
-    let cell_mod_child = tcx
-        .module_children(core_crate.as_def_id())
-        .iter()
-        .find(|child| child.ident.as_str() == "cell")
-        .expect("failed to find module `core::cell`");
-    let cell_mod_did = match cell_mod_child.res {
-        Res::Def(DefKind::Mod, did) => did,
-        ref r => panic!("unexpected resolution {:?} for `core::cell`", r),
-    };
+    let mut cur_did = krate.as_def_id();
+    for part in path_parts_iter {
+        let mod_child = tcx
+            .module_children(cur_did)
+            .iter()
+            .find(|child| child.ident.as_str() == part)
+            .unwrap_or_else(|| panic!("failed to find {part:?} for {path:?}"));
+        cur_did = match mod_child.res {
+            Res::Def(DefKind::Mod, did) => did,
+            Res::Def(DefKind::Struct, did) => did,
+            Res::Def(DefKind::Enum, did) => did,
+            Res::Def(DefKind::Union, did) => did,
+            ref r => panic!("unexpected resolution {r:?} for {part:?} in {path:?}"),
+        };
+    }
 
-    let cell_struct_child = tcx
-        .module_children(cell_mod_did)
-        .iter()
-        .find(|child| child.ident.as_str() == "Cell")
-        .expect("failed to find struct `core::cell::Cell`");
-    let cell_struct_did = match cell_struct_child.res {
-        Res::Def(DefKind::Struct, did) => did,
-        ref r => panic!("unexpected resolution {:?} for `core::cell::Cell`", r),
-    };
+    let adt = tcx.adt_def(cur_did);
+    let substs = tcx.mk_substs([GenericArg::from(arg_ty)].into_iter());
+    tcx.mk_adt(adt, substs)
+}
 
-    let cell_adt = tcx.adt_def(cell_struct_did);
-    let substs = tcx.mk_substs([GenericArg::from(ty)].into_iter());
-    tcx.mk_adt(cell_adt, substs)
+fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
+    mk_adt_with_arg(tcx, "core::cell::Cell", ty)
 }
 
 /// Produce a `Ty` reflecting the rewrites indicated by the labels in `rw_lty`.
