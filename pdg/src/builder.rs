@@ -44,6 +44,7 @@ impl EventKindExt for EventKind {
         use EventKind::*;
         Some(match *self {
             CopyPtr(lhs) => lhs,
+            // Question: this takes a pointer as input and produces another?
             Field(ptr, ..) => ptr,
             Free { ptr } => ptr,
             Ret(ptr) => ptr,
@@ -54,10 +55,12 @@ impl EventKindExt for EventKind {
             StoreValue(ptr) => ptr,
             CopyRef => return None, // FIXME
             ToInt(ptr) => ptr,
+            // Question: this has two pointers, is the input one sufficient?
             Realloc { old_ptr, .. } => old_ptr,
             FromInt(lhs) => lhs,
             Alloc { ptr, .. } => ptr,
             AddrOfLocal(lhs, _) => lhs,
+            // Question: same, is the base pointer enough?
             Offset(ptr, _, _) => ptr,
             Done | BeginFuncBody => return None,
         })
@@ -120,6 +123,7 @@ fn update_provenance(
             }
         }
         Realloc { new_ptr, .. } => {
+            // Nit: might be worth removing the old pointer, just in case
             provenances.insert(new_ptr, mapping);
         }
         Offset(_, _, new_ptr) => {
@@ -131,6 +135,9 @@ fn update_provenance(
         AddrOfLocal(ptr, _) => {
             provenances.insert(ptr, mapping);
         }
+        // Question: it feels like Free should remove a pointer?
+        // It might not matter much since the next Alloc with
+        // the same address will overwrite the map entry
         _ => {}
     }
 }
@@ -163,15 +170,33 @@ pub fn add_node(
         statement_idx = 0;
     }
 
+    // Question: is "provenance" exactly tied to the memory address of this pointer?
+    // Why don't we just use that for everything?
+    // Answer attempt: provenance only covers the original
+    // source of the pointer, and not any copies like LoadValue
     let provenance = event
         .kind
         .ptr(event_metadata)
         .and_then(|ptr| provenances.get(&ptr).cloned());
+
+    // Question 1: why do we need another source (or even two of them)?
+    // Answer attempt: "provenance" returns the original source of the
+    // pointer; direct_source covers the last time this pointer was
+    // assigned to this specific local?
+    //
+    // Question 2: if that is the case, could this be simpler, e.g.,
+    // by using another hash table like "provenances" that covers
+    // all event kinds?
+    //
+    // Question 3: shouldn't the second argument be _first_nid_ref?
     let direct_source = provenance.and_then(|(gid, _last_nid_ref)| {
         graphs.graphs[gid]
             .nodes
             .iter()
             .rposition(|n| {
+                // Question/nitpick: event_metadata is captured here, so it
+                // will be constant for the entire iteration; if event_metadata
+                // is None, we could skip this whole thing?
                 if let (Some(d), Some(s)) = (&n.dest, &event_metadata.source) {
                     d == s
                 } else {
@@ -181,13 +206,21 @@ pub fn add_node(
             .map(|nid| (gid, NodeId::from(nid)))
     });
 
+    // Question: why do we need a third source?
+    // How is this different from direct_source?
     let source = direct_source.or_else(|| {
         event_metadata.source.as_ref().and_then(|src| {
+            // Question: will this always return a node from the current graph,
+            // always from a different graph, or a mix or both?
+            //
+            // Question: why would the latest assignment be in a different graph?
             let latest_assignment = graphs.latest_assignment.get(&(src_fn, src.local)).cloned();
             if !src.projection.is_empty() {
                 if let Some((gid, _)) = latest_assignment {
+                    // Question: why only the last element?
                     if let Some((nid, n)) = graphs.graphs[gid].nodes.iter_enumerated().rev().next()
                     {
+                        // Question: why does the field id not matter here?
                         if let NodeKind::Field(..) = n.kind {
                             return Some((gid, nid));
                         }
@@ -195,11 +228,18 @@ pub fn add_node(
                 }
             }
 
+            // Question: what's the logic behind these specific conditions?
+            // Why is AddrOfLocal an exception here?
             if !matches!(event.kind, EventKind::AddrOfLocal(..)) && src.projection.is_empty() {
                 latest_assignment
             } else if let EventKind::Field(..) = event.kind {
+                // Note: we get here if (matches!(AddrOfLocal) || !src.projection.is_empty())
+                // Question: why latest_assignment for fields,
+                // but provenance for everything else?
                 latest_assignment
             } else {
+                // Nit: could we return None here?
+                // Since we have .or(provenance) anyway
                 provenance
             }
         })
@@ -223,7 +263,9 @@ pub fn add_node(
         info: None,
     };
 
+    // Question: why this exact priority?: source, then direct_source, then provenance
     let graph_id = source
+        // Question: if source == None, then wouldn't direct_source also be None?
         .or(direct_source)
         .or(provenance)
         .and_then(|p| parent(&node_kind, p))
@@ -245,6 +287,11 @@ pub fn add_node(
         if let Some(last @ (last_gid, last_nid)) =
             graphs.latest_assignment.insert(unique_place, last_setting)
         {
+            // Question 1: the logic here seems to be "prefer a
+            // non-projection over a projection"; why?
+            //
+            // Question 2: what about two different projections?
+            // Is it fine for the later one to overwrite the earlier?
             if !dest.projection.is_empty()
                 && graphs.graphs[last_gid].nodes[last_nid]
                     .dest
