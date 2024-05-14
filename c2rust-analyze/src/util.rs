@@ -430,6 +430,10 @@ pub fn is_null_const(constant: Constant) -> bool {
     }
 }
 
+pub fn is_null_const_operand(op: &Operand) -> bool {
+    op.constant().copied().map_or(false, is_null_const)
+}
+
 pub trait PhantomLifetime<'a> {}
 impl<'a, T: ?Sized> PhantomLifetime<'a> for T {}
 

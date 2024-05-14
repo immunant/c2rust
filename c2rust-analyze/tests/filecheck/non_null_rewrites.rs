@@ -4,7 +4,15 @@ use std::ptr;
 pub unsafe fn f(cond: bool, p: *mut i32) {
     let mut p = p;
     if cond {
+        // Both ways of writing null constants should be rewritten to `None`.
+
+        // CHECK: p = None;
         p = ptr::null_mut();
+        // CHECK: [[@LINE-1]]: ptr::null_mut():
+
+        // CHECK: p = None;
+        p = 0 as *mut _;
+        // CHECK: [[@LINE-1]]: 0 as *mut _:
     }
 
 
@@ -18,9 +26,10 @@ pub unsafe fn f(cond: bool, p: *mut i32) {
 unsafe fn call_use_mut(cond: bool) -> i32 {
     let mut x = 1;
     let p = if cond {
-
+        // CHECK: Some(&mut (x))
         ptr::addr_of_mut!(x)
     } else {
+        // CHECK: None
         ptr::null_mut()
     };
     use_mut(p)

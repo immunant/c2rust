@@ -12,7 +12,7 @@ use crate::panic_detail;
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{PointerId, PointerTable};
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
-use crate::util::{ty_callee, Callee};
+use crate::util::{self, ty_callee, Callee};
 use rustc_ast::Mutability;
 use rustc_middle::mir::{
     BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
@@ -69,6 +69,8 @@ pub enum RewriteKind {
     IsNullToConstFalse,
     /// Replace `ptr::null()` or `ptr::null_mut()` with `None`.
     PtrNullToNone,
+    /// Replace `0 as *const T` or `0 as *mut T` with `None`.
+    ZeroAsPtrToNone,
 
     /// Replace a call to `memcpy(dest, src, n)` with a safe copy operation that works on slices
     /// instead of raw pointers.  `elem_size` is the size of the original, unrewritten pointee
@@ -569,7 +571,18 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             Rvalue::Len(pl) => {
                 self.enter_rvalue_place(0, |v| v.visit_place(pl));
             }
-            Rvalue::Cast(_kind, ref op, _ty) => {
+            Rvalue::Cast(_kind, ref op, ty) => {
+                if util::is_null_const_operand(op) && ty.is_unsafe_ptr() {
+                    // Special case: convert `0 as *const T` to `None`.
+                    if let Some(rv_lty) = expect_ty {
+                        if !self.perms[rv_lty.label].contains(PermissionSet::NON_NULL)
+                            && !self.flags[rv_lty.label].contains(FlagSet::FIXED)
+                        {
+                            self.emit(RewriteKind::ZeroAsPtrToNone);
+                        }
+                    }
+                }
+
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
                 if let Some(rv_lty) = expect_ty {
                     let op_lty = self.acx.type_of(op);
