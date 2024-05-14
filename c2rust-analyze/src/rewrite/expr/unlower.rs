@@ -712,11 +712,32 @@ fn is_temp_var(mir: &Body, pl: mir::PlaceRef) -> bool {
     pl.projection.len() == 0 && mir.local_kind(pl.local) == mir::LocalKind::Temp
 }
 
+/// Indicate whether a given MIR statement should be considered when building the unlowering map.
+fn filter_stmt(stmt: &mir::Statement) -> bool {
+    match stmt.kind {
+        // Ignore `AscribeUserType` annotations.  These appear in the middle of some expressions.
+        // It's easier to ignore them all at this level rather than try to handle them in all the
+        // places they might appear.
+        mir::StatementKind::AscribeUserType(..) => false,
+        _ => true,
+    }
+}
+
+/// Indicate whether a given MIR terminator should be considered when building the unlowering map.
+fn filter_term(term: &mir::Terminator) -> bool {
+    match term.kind {
+        _ => true,
+    }
+}
+
 fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {
     eprintln!("building span index for {:?}:", mir.source);
     let mut span_index_items = Vec::new();
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb_data.statements.iter().enumerate() {
+            if !filter_stmt(stmt) {
+                continue;
+            }
             let loc = Location {
                 block: bb,
                 statement_index: i,
@@ -725,12 +746,15 @@ fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {
             span_index_items.push((stmt.source_info.span, loc));
         }
 
-        let loc = Location {
-            block: bb,
-            statement_index: bb_data.statements.len(),
-        };
-        eprintln!("  {:?}: {:?}", loc, bb_data.terminator().source_info.span);
-        span_index_items.push((bb_data.terminator().source_info.span, loc));
+        let term = bb_data.terminator();
+        if filter_term(term) {
+            let loc = Location {
+                block: bb,
+                statement_index: bb_data.statements.len(),
+            };
+            eprintln!("  {:?}: {:?}", loc, term.source_info.span);
+            span_index_items.push((term.source_info.span, loc));
+        }
     }
 
     SpanIndex::new(span_index_items)
