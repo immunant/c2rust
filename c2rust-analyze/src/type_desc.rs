@@ -74,6 +74,15 @@ impl PtrDesc {
     }
 }
 
+impl Ownership {
+    pub fn is_copy(&self) -> bool {
+        match *self {
+            Ownership::Raw | Ownership::RawMut | Ownership::Imm | Ownership::Cell => true,
+            Ownership::Mut | Ownership::Rc | Ownership::Box => false,
+        }
+    }
+}
+
 fn perms_to_ptr_desc(perms: PermissionSet, flags: FlagSet) -> PtrDesc {
     let own = if perms.contains(PermissionSet::UNIQUE | PermissionSet::WRITE) {
         Ownership::Mut

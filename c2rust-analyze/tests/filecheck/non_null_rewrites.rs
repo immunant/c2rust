@@ -39,7 +39,7 @@ unsafe fn call_use_mut(cond: bool) -> i32 {
 // CHECK-SAME: p: core::option::Option<&{{('[^ ]* )?}}mut (i32)>
 unsafe fn use_mut(p: *mut i32) -> i32 {
     if !p.is_null() {
-        // CHECK: *(p).unwrap() = 1;
+        // CHECK: *(p).as_deref_mut().unwrap() = 1;
         *p = 1;
     }
     // CHECK: use_const
