@@ -15,8 +15,8 @@ use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{self, ty_callee, Callee};
 use rustc_ast::Mutability;
 use rustc_middle::mir::{
-    BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
-    TerminatorKind,
+    BasicBlock, Body, Location, Operand, Place, PlaceElem, PlaceRef, Rvalue, Statement,
+    StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::print::FmtPrinter;
 use rustc_middle::ty::print::Print;
@@ -222,19 +222,19 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         self.enter(SubLoc::RvaluePlace(i), f)
     }
 
-    fn _enter_operand_place<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+    fn enter_operand_place<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
         self.enter(SubLoc::OperandPlace, f)
     }
 
-    fn _enter_place_deref_pointer<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+    fn enter_place_deref_pointer<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
         self.enter(SubLoc::PlaceDerefPointer, f)
     }
 
-    fn _enter_place_field_base<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+    fn enter_place_field_base<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
         self.enter(SubLoc::PlaceFieldBase, f)
     }
 
-    fn _enter_place_index_array<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+    fn enter_place_index_array<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
         self.enter(SubLoc::PlaceIndexArray, f)
     }
 
@@ -661,7 +661,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn visit_operand(&mut self, op: &Operand<'tcx>, expect_ty: Option<LTy<'tcx>>) {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
-                self.visit_place(pl);
+                self.enter_operand_place(|v| v.visit_place(pl));
 
                 if let Some(expect_ty) = expect_ty {
                     let ptr_lty = self.acx.type_of(pl);
@@ -689,8 +689,51 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         }
     }
 
-    fn visit_place(&mut self, _pl: Place<'tcx>) {
-        // TODO: walk over `pl` to handle all derefs (casts, `*x` -> `(*x).get()`)
+    fn visit_place(&mut self, pl: Place<'tcx>) {
+        let mut ltys = Vec::with_capacity(1 + pl.projection.len());
+        ltys.push(self.acx.type_of(pl.local));
+        for proj in pl.projection {
+            let prev_lty = ltys.last().copied().unwrap();
+            ltys.push(self.acx.projection_lty(prev_lty, &proj));
+        }
+        self.visit_place_ref(pl.as_ref(), &ltys);
+    }
+
+    /// Generate rewrites for a `Place` represented as a `PlaceRef`.  `proj_ltys` gives the `LTy`
+    /// for the `Local` and after each projection.
+    fn visit_place_ref(&mut self, pl: PlaceRef<'tcx>, proj_ltys: &[LTy<'tcx>]) {
+        let (&last_proj, rest) = match pl.projection.split_last() {
+            Some(x) => x,
+            None => return,
+        };
+
+        debug_assert!(pl.projection.len() >= 1);
+        // `LTy` of the base place, before the last projection.
+        let base_lty = proj_ltys[pl.projection.len() - 1];
+        // `LTy` resulting from applying `last_proj` to `base_lty`.
+        let _proj_lty = proj_ltys[pl.projection.len()];
+
+        let base_pl = PlaceRef {
+            local: pl.local,
+            projection: rest,
+        };
+        match last_proj {
+            PlaceElem::Deref => {
+                self.enter_place_deref_pointer(|v| {
+                    v.visit_place_ref(base_pl, proj_ltys);
+                    if !v.perms[base_lty.label].contains(PermissionSet::NON_NULL) {
+                        v.emit(RewriteKind::OptionUnwrap);
+                    }
+                });
+            }
+            PlaceElem::Field(_idx, _ty) => {
+                self.enter_place_field_base(|v| v.visit_place_ref(base_pl, proj_ltys));
+            }
+            PlaceElem::Index(_) | PlaceElem::ConstantIndex { .. } | PlaceElem::Subslice { .. } => {
+                self.enter_place_index_array(|v| v.visit_place_ref(base_pl, proj_ltys));
+            }
+            PlaceElem::Downcast(_, _) => {}
+        }
     }
 
     fn visit_ptr_offset(&mut self, op: &Operand<'tcx>, result_ty: LTy<'tcx>) {
