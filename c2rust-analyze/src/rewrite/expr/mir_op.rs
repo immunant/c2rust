@@ -41,8 +41,12 @@ pub enum SubLoc {
     RvaluePlace(usize),
     /// The place referenced by an operand.  `Operand::Move/Operand::Copy -> Place`
     OperandPlace,
-    /// The pointer used in the Nth innermost deref within a place.  `Place -> Place`
-    PlacePointer(usize),
+    /// The pointer used in a deref projection.  `Place -> Place`
+    PlaceDerefPointer,
+    /// The base of a field projection.  `Place -> Place`
+    PlaceFieldBase,
+    /// The array used in an index or slice projection.  `Place -> Place`
+    PlaceIndexArray,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -218,14 +222,20 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         self.enter(SubLoc::RvaluePlace(i), f)
     }
 
-    #[allow(dead_code)]
     fn _enter_operand_place<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
         self.enter(SubLoc::OperandPlace, f)
     }
 
-    #[allow(dead_code)]
-    fn _enter_place_pointer<F: FnOnce(&mut Self) -> R, R>(&mut self, i: usize, f: F) -> R {
-        self.enter(SubLoc::PlacePointer(i), f)
+    fn _enter_place_deref_pointer<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+        self.enter(SubLoc::PlaceDerefPointer, f)
+    }
+
+    fn _enter_place_field_base<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+        self.enter(SubLoc::PlaceFieldBase, f)
+    }
+
+    fn _enter_place_index_array<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+        self.enter(SubLoc::PlaceIndexArray, f)
     }
 
     /// Get the pointee type of `lty`.  Returns the inferred pointee type from `self.pointee_types`

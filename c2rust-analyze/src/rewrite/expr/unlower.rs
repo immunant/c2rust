@@ -114,15 +114,10 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
     }
 
     fn operand_desc(&self, op: &Operand<'tcx>) -> MirOriginDesc {
-        match *op {
-            mir::Operand::Copy(pl) | mir::Operand::Move(pl) => {
-                if is_temp_var(self.mir, pl.as_ref()) {
-                    MirOriginDesc::LoadFromTemp
-                } else {
-                    MirOriginDesc::Expr
-                }
-            }
-            mir::Operand::Constant(..) => MirOriginDesc::Expr,
+        if is_temp_var_operand(self.mir, op) {
+            MirOriginDesc::LoadFromTemp
+        } else {
+            MirOriginDesc::Expr
         }
     }
 
@@ -215,20 +210,16 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         match ex.kind {
             hir::ExprKind::Assign(pl, rv, _span) => {
                 // For `Assign`, we expect the assignment to be the whole thing.
-                let (loc, _mir_pl, mir_rv) = match self.get_sole_assign(&locs) {
+                let (loc, mir_pl, mir_rv) = match self.get_sole_assign(&locs) {
                     Some(x) => x,
                     None => {
                         warn("expected exactly one StatementKind::Assign");
                         return;
                     }
                 };
-                let desc = match mir_rv {
-                    mir::Rvalue::Use(op) => self.operand_desc(op),
-                    _ => MirOriginDesc::Expr,
-                };
                 self.record(loc, &[], ex);
-                self.record(loc, &[SubLoc::Dest], pl);
-                self.record_desc(loc, &[SubLoc::Rvalue], rv, desc);
+                self.visit_expr_place(pl, loc, vec![SubLoc::Dest], mir_pl, &[]);
+                self.visit_expr_rvalue(rv, loc, vec![SubLoc::Rvalue], mir_rv, &[]);
             }
 
             hir::ExprKind::Call(_, args) | hir::ExprKind::MethodCall(_, args, _) => {
@@ -275,8 +266,9 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
 
                 self.record(loc, &[SubLoc::Rvalue], ex);
                 for (i, (arg, mir_arg)) in args.iter().zip(mir_args).enumerate() {
-                    self.record_operand(loc, &[SubLoc::Rvalue, SubLoc::CallArg(i)], arg, mir_arg);
-                    self.visit_expr_operand(arg, mir_arg, &[]);
+                    let sub_loc = vec![SubLoc::Rvalue, SubLoc::CallArg(i)];
+                    self.record_operand(loc, &sub_loc, arg, mir_arg);
+                    self.visit_expr_operand(arg, loc, sub_loc, mir_arg, &[]);
                 }
 
                 if extra_locs.len() > 0 {
@@ -306,8 +298,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                     }
                 };
                 self.record_desc(cursor.loc, &[], ex, MirOriginDesc::StoreIntoLocal);
-                self.peel_adjustments(ex, &mut cursor);
-                self.record_desc(cursor.loc, &cursor.sub_loc, ex, MirOriginDesc::Expr);
+                self.walk_expr(ex, &mut cursor);
                 self.finish_visit_expr_cursor(ex, cursor);
             }
         }
@@ -436,14 +427,124 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         }
     }
 
+    fn visit_expr_rvalue(
+        &mut self,
+        ex: &'tcx hir::Expr<'tcx>,
+        loc: Location,
+        sub_loc: Vec<SubLoc>,
+        rv: &'a mir::Rvalue<'tcx>,
+        extra_locs: &[Location],
+    ) {
+        let _g = panic_detail::set_current_span(ex.span);
+
+        // TODO: We do this check early to ensure that the `LoadFromTemp` is emitted with subloc
+        // `[Rvalue]` rather than `[Rvalue, RvalueOperand(0)]`, since `mir_op` emits rewrites with
+        // just `[Rvalue]`.  For `Rvalue::Use`, the rvalue and its operand are basically
+        // synonymous, so ideally we would accept both sublocs as well.  We should probably add an
+        // aliasing system or some kind of cleverness in `distribute` to make both versions work,
+        // or else modify the definition of `SubLoc` so there's only one way to express this
+        // location.
+        if is_temp_var_rvalue(self.mir, rv) {
+            self.record_desc(loc, &sub_loc, ex, MirOriginDesc::LoadFromTemp);
+            return;
+        }
+
+        let mut cursor = VisitExprCursor::new(
+            self.mir,
+            ExprMir::Rvalue(rv),
+            extra_locs,
+            loc,
+            sub_loc.to_owned(),
+        );
+        self.walk_expr(ex, &mut cursor);
+
+        self.finish_visit_expr_cursor(ex, cursor);
+    }
+
     fn visit_expr_operand(
         &mut self,
         ex: &'tcx hir::Expr<'tcx>,
-        _rv: &'a mir::Operand<'tcx>,
-        _extra_locs: &[Location],
+        loc: Location,
+        sub_loc: Vec<SubLoc>,
+        op: &'a mir::Operand<'tcx>,
+        extra_locs: &[Location],
     ) {
         let _g = panic_detail::set_current_span(ex.span);
-        // TODO: handle adjustments, overloaded operators, etc
+
+        if is_temp_var_operand(self.mir, op) {
+            self.record_desc(loc, &sub_loc, ex, MirOriginDesc::LoadFromTemp);
+            return;
+        }
+
+        let mut cursor = VisitExprCursor::new(
+            self.mir,
+            ExprMir::Operand(op),
+            extra_locs,
+            loc,
+            sub_loc.to_owned(),
+        );
+        self.walk_expr(ex, &mut cursor);
+
+        self.finish_visit_expr_cursor(ex, cursor);
+    }
+
+    fn visit_expr_place(
+        &mut self,
+        ex: &'tcx hir::Expr<'tcx>,
+        loc: Location,
+        sub_loc: Vec<SubLoc>,
+        pl: mir::Place<'tcx>,
+        extra_locs: &[Location],
+    ) {
+        let _g = panic_detail::set_current_span(ex.span);
+
+        let mut cursor = VisitExprCursor::new(
+            self.mir,
+            ExprMir::Place(pl.as_ref()),
+            extra_locs,
+            loc,
+            sub_loc.to_owned(),
+        );
+        self.walk_expr(ex, &mut cursor);
+
+        self.finish_visit_expr_cursor(ex, cursor);
+    }
+
+    fn walk_expr(&mut self, ex: &'tcx hir::Expr<'tcx>, cursor: &mut VisitExprCursor<'a, '_, 'tcx>) {
+        let mut ex = ex;
+        loop {
+            self.peel_adjustments(ex, cursor);
+            if cursor.is_temp_var() {
+                self.record_desc(cursor.loc, &cursor.sub_loc, ex, MirOriginDesc::LoadFromTemp);
+                break;
+            } else {
+                self.record_desc(cursor.loc, &cursor.sub_loc, ex, MirOriginDesc::Expr);
+            }
+
+            match ex.kind {
+                hir::ExprKind::Unary(hir::UnOp::Deref, ptr_ex) => {
+                    if let Some(()) = cursor.peel_deref() {
+                        ex = ptr_ex;
+                        continue;
+                    }
+                }
+                hir::ExprKind::Field(base_ex, _field_ident) => {
+                    if let Some(()) = cursor.peel_field() {
+                        ex = base_ex;
+                        continue;
+                    }
+                }
+                hir::ExprKind::Index(arr_ex, _idx_ex) => {
+                    if let Some(()) = cursor.peel_index() {
+                        ex = arr_ex;
+                        continue;
+                    }
+                }
+                _ => {}
+            }
+            // Keep looping only in cases that we specifically recognize.
+            break;
+        }
     }
 }
 
@@ -523,6 +624,16 @@ impl<'a, 'b, 'tcx> VisitExprCursor<'a, 'b, 'tcx> {
             sub_loc,
 
             temp_info: Vec::new(),
+        }
+    }
+
+    /// Check whether the current MIR is a temporary.
+    pub fn is_temp_var(&self) -> bool {
+        match self.cur {
+            ExprMir::Rvalue(rv) => is_temp_var_rvalue(self.mir, rv),
+            ExprMir::Operand(op) => is_temp_var_operand(self.mir, op),
+            ExprMir::Place(pl) => is_temp_var(self.mir, pl),
+            ExprMir::Call(_) => false,
         }
     }
 
@@ -673,12 +784,37 @@ impl<'a, 'b, 'tcx> VisitExprCursor<'a, 'b, 'tcx> {
             if let Some((&outer_proj, remaining_proj)) = pl.projection.split_last() {
                 if matches!(outer_proj, mir::PlaceElem::Deref) {
                     pl.projection = remaining_proj;
-                    // Number of derefs, not counting the outermost one we just peeled off.
-                    let num_inner_derefs = remaining_proj
-                        .iter()
-                        .filter(|p| matches!(p, mir::PlaceElem::Deref))
-                        .count();
-                    self.sub_loc.push(SubLoc::PlacePointer(num_inner_derefs));
+                    self.sub_loc.push(SubLoc::PlaceDerefPointer);
+                    return Some(());
+                }
+            }
+            self.peel_temp()?;
+        }
+    }
+
+    /// If the current MIR is a `Place` ending with a `Field` projection, peel off the `Field`.
+    pub fn peel_field(&mut self) -> Option<()> {
+        loop {
+            let pl = self.require_place_mut()?;
+            if let Some((&outer_proj, remaining_proj)) = pl.projection.split_last() {
+                if matches!(outer_proj, mir::PlaceElem::Field(_idx, _ty)) {
+                    pl.projection = remaining_proj;
+                    self.sub_loc.push(SubLoc::PlaceFieldBase);
+                    return Some(());
+                }
+            }
+            self.peel_temp()?;
+        }
+    }
+
+    /// If the current MIR is a `Place` ending with an `Index` projection, peel off the `Index`.
+    pub fn peel_index(&mut self) -> Option<()> {
+        loop {
+            let pl = self.require_place_mut()?;
+            if let Some((&outer_proj, remaining_proj)) = pl.projection.split_last() {
+                if matches!(outer_proj, mir::PlaceElem::Index(_)) {
+                    pl.projection = remaining_proj;
+                    self.sub_loc.push(SubLoc::PlaceIndexArray);
                     return Some(());
                 }
             }
@@ -710,6 +846,34 @@ fn is_var(pl: mir::Place) -> bool {
 
 fn is_temp_var(mir: &Body, pl: mir::PlaceRef) -> bool {
     pl.projection.len() == 0 && mir.local_kind(pl.local) == mir::LocalKind::Temp
+}
+
+fn is_temp_var_operand(mir: &Body, op: &mir::Operand) -> bool {
+    match get_operand_place(op) {
+        Some(pl) => is_temp_var(mir, pl.as_ref()),
+        None => false,
+    }
+}
+
+fn is_temp_var_rvalue(mir: &Body, rv: &mir::Rvalue) -> bool {
+    match get_rvalue_operand(rv) {
+        Some(op) => is_temp_var_operand(mir, op),
+        None => false,
+    }
+}
+
+fn get_rvalue_operand<'a, 'tcx>(rv: &'a mir::Rvalue<'tcx>) -> Option<&'a mir::Operand<'tcx>> {
+    match *rv {
+        mir::Rvalue::Use(ref op) => Some(op),
+        _ => None,
+    }
+}
+
+fn get_operand_place<'tcx>(op: &mir::Operand<'tcx>) -> Option<mir::Place<'tcx>> {
+    match *op {
+        mir::Operand::Copy(pl) | mir::Operand::Move(pl) => Some(pl),
+        _ => None,
+    }
 }
 
 /// Indicate whether a given MIR statement should be considered when building the unlowering map.
