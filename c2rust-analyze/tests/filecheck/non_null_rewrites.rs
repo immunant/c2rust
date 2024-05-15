@@ -37,7 +37,7 @@ unsafe fn call_use_mut(cond: bool) -> i32 {
 
 // CHECK-LABEL: unsafe fn use_mut{{[<(]}}
 // CHECK-SAME: p: core::option::Option<&{{('[^ ]* )?}}mut (i32)>
-unsafe fn use_mut(p: *mut i32) -> i32 {
+unsafe fn use_mut(mut p: *mut i32) -> i32 {
     if !p.is_null() {
         // CHECK: *(p).as_deref_mut().unwrap() = 1;
         *p = 1;
@@ -88,4 +88,21 @@ unsafe fn use_slice(p: *const i32) -> i32 {
 // CHECK-SAME: p: core::option::Option<&{{('[^ ]* )?}}(i32)>
 unsafe fn use_single(p: *const i32) -> i32 {
     *p
+}
+
+
+// CHECK-LABEL: unsafe fn downgrade_mut_to_imm_on_deref{{[<(]}}
+// CHECK-SAME: p: core::option::Option<&{{('[^ ]* )?}}mut (i32)>
+unsafe fn downgrade_mut_to_imm_on_deref(cond: bool, mut p: *mut i32) -> i32 {
+    if cond {
+        // Ensure `p` is wrapped in `Option`.
+        p = ptr::null_mut();
+    }
+    // Ensure `p` is mutable.
+    *p = 1;
+    // This read needs a downgrade via `as_deref()` to avoid moving `p: Option<&mut _>`.
+    // CHECK: let x = *(p).as_deref().unwrap();
+    let x = *p;
+    *p = 2;
+    x
 }
