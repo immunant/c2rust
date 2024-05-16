@@ -540,6 +540,20 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                         continue;
                     }
                 }
+                hir::ExprKind::AddrOf(kind, _mutbl, pl_ex) => match kind {
+                    hir::BorrowKind::Ref => {
+                        if let Some(_mir_mutbl) = cursor.peel_ref() {
+                            ex = pl_ex;
+                            continue;
+                        }
+                    }
+                    hir::BorrowKind::Raw => {
+                        if let Some(_mir_mutbl) = cursor.peel_address_of() {
+                            ex = pl_ex;
+                            continue;
+                        }
+                    }
+                },
                 _ => {}
             }
             // Keep looping only in cases that we specifically recognize.
