@@ -106,3 +106,23 @@ unsafe fn downgrade_mut_to_imm_on_deref(cond: bool, mut p: *mut i32) -> i32 {
     *p = 2;
     x
 }
+
+struct S {
+    x: i32,
+    y: i32,
+}
+
+// CHECK-LABEL: unsafe fn field_projection{{[<(]}}
+// CHECK-SAME: p: core::option::Option<&{{('[^ ]* )?}}(S)>
+unsafe fn field_projection(cond: bool, mut p: *const S) -> i32 {
+    if cond {
+        // Ensure `p` is wrapped in `Option`.
+        p = ptr::null();
+    }
+    // Do a field projection.  This should become a `.map()` call.
+    // TODO: Currently, we generate an incorrect rewrite for such projections
+    // CHECK: let q: core::option::Option<&(i32)> =
+    // CHECK-SAME: &(*(p).unwrap()).x
+    let q: *const i32 = &(*p).x;
+    *q
+}
