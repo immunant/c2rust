@@ -126,3 +126,18 @@ unsafe fn field_projection(cond: bool, mut p: *const S) -> i32 {
     let q: *const i32 = &(*p).x;
     *q
 }
+
+// CHECK-LABEL: unsafe fn local_field_projection{{[<(]}}
+unsafe fn local_field_projection(cond: bool) -> i32 {
+    let s = S { x: 1, y: 2 };
+
+    // Obtain a pointer to a field of a local.  This should produce `Some(&s.x)`.
+    // CHECK: let mut p: core::option::Option<&(i32)> = std::option::Option::Some(&*(&s.x));
+    let mut p: *const i32 = &s.x;
+
+    if cond {
+        // Ensure `p` is wrapped in `Option`.
+        p = ptr::null();
+    }
+    *p
+}
