@@ -333,7 +333,7 @@ fn mutbl_from_bool(m: bool) -> hir::Mutability {
     }
 }
 
-fn apply_identity_adjustment<'tcx>(
+fn apply_adjustment<'tcx>(
     tcx: TyCtxt<'tcx>,
     adjustment: &Adjustment<'tcx>,
     rw: Rewrite,
@@ -376,19 +376,6 @@ fn materialize_adjustments<'tcx>(
 ) -> Rewrite {
     let adj_kinds: Vec<&_> = adjustments.iter().map(|a| &a.kind).collect();
     match (hir_rw, &adj_kinds[..]) {
-        (Rewrite::Identity, []) => Rewrite::Identity,
-        (Rewrite::Identity, _) => {
-            let mut hir_rw = Rewrite::Identity;
-            for (i, adj) in adjustments.iter().enumerate() {
-                hir_rw = apply_identity_adjustment(tcx, adj, hir_rw);
-                hir_rw = callback(i, hir_rw);
-            }
-            hir_rw
-        }
-        // TODO: ideally we should always materialize all adjustments (removing these special
-        // cases), and use `MirRewrite`s to eliminate any adjustments we no longer need.
-        (rw @ Rewrite::Ref(..), &[Adjust::Deref(..), Adjust::Borrow(..)]) => rw,
-        (rw @ Rewrite::MethodCall(..), &[Adjust::Deref(..), Adjust::Borrow(..)]) => rw,
         // The mut-to-const cast should be unneeded once the inner rewrite switches to a safe
         // reference type appropriate for the pointer's uses.  However, we still want to give
         // `callback` a chance to remove the cast itself so that if there's a `RemoveCast` rewrite
@@ -401,8 +388,14 @@ fn materialize_adjustments<'tcx>(
                 rw => rw,
             }
         }
-        (rw, &[]) => rw,
-        (rw, adjs) => panic!("rewrite {rw:?} and materializations {adjs:?} NYI"),
+        (rw, _) => {
+            let mut hir_rw = rw;
+            for (i, adj) in adjustments.iter().enumerate() {
+                hir_rw = apply_adjustment(tcx, adj, hir_rw);
+                hir_rw = callback(i, hir_rw);
+            }
+            hir_rw
+        }
     }
 }
 
