@@ -1,5 +1,5 @@
 use c2rust_analysis_rt::mir_loc::{self, DefPathHash, Func};
-use c2rust_analysis_rt::mir_loc::{FuncId, MirPlace};
+use c2rust_analysis_rt::mir_loc::{FuncId, MirPlace, MirProjection};
 use rustc_index::newtype_index;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BasicBlock, Field, Local};
@@ -359,6 +359,61 @@ impl Display for GraphId {
     }
 }
 
+/// A tree describing the last node that stored to a particular
+/// projection of the given local.
+#[derive(Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProjectionTree {
+    /// The last node where the current projection was assigned to.
+    /// This node must chronologically precede all descendants;
+    /// otherwise, they should get pruned instead because it means
+    /// their ancestor overwrote them in aggregate.
+    node: Option<(GraphId, NodeId)>,
+
+    /// Children of this node that have an extra projection.
+    children: HashMap<MirProjection, ProjectionTree>,
+}
+
+impl ProjectionTree {
+    pub fn get_projection_node(&self, proj: &[MirProjection]) -> Option<(GraphId, NodeId)> {
+        if proj.is_empty() {
+            return self.node.as_ref().copied();
+        }
+
+        if matches!(proj[0], MirProjection::Deref) {
+            // We do not currently keep track of projections that deref
+            // because of pointer aliasing: it means we would need to
+            // explicitly keep track of all other pointers that could
+            // alias with the projection.
+            return None;
+        }
+
+        if let Some(child) = self.children.get(&proj[0]) {
+            let ch_res = child.get_projection_node(&proj[1..]);
+            // The child should have a valid node, otherwise it gets pruned
+            debug_assert!(ch_res.is_some());
+            ch_res
+        } else {
+            self.node.as_ref().copied()
+        }
+    }
+
+    pub fn set_projection_node(&mut self, proj: &[MirProjection], gid: GraphId, nid: NodeId) {
+        if proj.is_empty() {
+            self.node = Some((gid, nid));
+            // Prune all children since this assignment overwrites all of them
+            self.children.clear();
+            return;
+        }
+
+        if matches!(proj[0], MirProjection::Deref) {
+            return;
+        }
+
+        let child = self.children.entry(proj[0].clone()).or_default();
+        child.set_projection_node(&proj[1..], gid, nid);
+    }
+}
+
 /// A collection of graphs describing the handling of one or more objects within the program.
 #[derive(Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Graphs {
@@ -368,7 +423,7 @@ pub struct Graphs {
     pub graphs: IndexVec<GraphId, Graph>,
 
     /// Lookup table for finding all nodes in all graphs that store to a particular MIR local.
-    pub latest_assignment: HashMap<(FuncId, mir_loc::Local), (GraphId, NodeId)>,
+    pub latest_assignment: HashMap<(FuncId, mir_loc::Local), ProjectionTree>,
 }
 
 impl Graphs {

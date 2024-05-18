@@ -183,25 +183,11 @@ pub fn add_node(
 
     let source = direct_source.or_else(|| {
         event_metadata.source.as_ref().and_then(|src| {
-            let latest_assignment = graphs.latest_assignment.get(&(src_fn, src.local)).cloned();
-            if !src.projection.is_empty() {
-                if let Some((gid, _)) = latest_assignment {
-                    if let Some((nid, n)) = graphs.graphs[gid].nodes.iter_enumerated().rev().next()
-                    {
-                        if let NodeKind::Field(..) = n.kind {
-                            return Some((gid, nid));
-                        }
-                    }
-                }
-            }
-
-            if !matches!(event.kind, EventKind::AddrOfLocal(..)) && src.projection.is_empty() {
-                latest_assignment
-            } else if let EventKind::Field(..) = event.kind {
-                latest_assignment
-            } else {
-                provenance
-            }
+            let latest_assignment = graphs
+                .latest_assignment
+                .get(&(src_fn, src.local))
+                .and_then(|pt| pt.get_projection_node(&src.projection));
+            latest_assignment.or(provenance)
         })
     });
 
@@ -244,22 +230,11 @@ pub fn add_node(
 
     if let Some(dest) = &event_metadata.destination {
         let unique_place = (dest_fn, dest.local);
-        let last_setting = (graph_id, node_id);
-
-        if let Some(last @ (last_gid, last_nid)) =
-            graphs.latest_assignment.insert(unique_place, last_setting)
-        {
-            if !dest.projection.is_empty()
-                && graphs.graphs[last_gid].nodes[last_nid]
-                    .dest
-                    .as_ref()
-                    .unwrap()
-                    .projection
-                    .is_empty()
-            {
-                graphs.latest_assignment.insert(unique_place, last);
-            }
-        }
+        graphs
+            .latest_assignment
+            .entry(unique_place)
+            .or_default()
+            .set_projection_node(&dest.projection, graph_id, node_id);
     }
 
     Some(node_id)
