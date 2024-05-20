@@ -1581,11 +1581,9 @@ fn run2<'tcx>(
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
         let asn = gasn.and(&mut info.lasn);
 
-        // Generate inline annotations for pointer-typed locals
-        for (local, decl) in mir.local_decls.iter_enumerated() {
-            let span = local_span(decl);
+        let mut emit_lty_annotations = |span, lty: LTy, desc: &str| {
             let mut ptrs = Vec::new();
-            let ty_str = context::print_ty_with_pointer_labels(acx.local_tys[local], |ptr| {
+            let ty_str = context::print_ty_with_pointer_labels(lty, |ptr| {
                 if ptr.is_none() {
                     return String::new();
                 }
@@ -1593,17 +1591,32 @@ fn run2<'tcx>(
                 format!("{{{}}}", ptr)
             });
             if ptrs.is_empty() {
-                continue;
+                return;
             }
-            // TODO: emit addr_of when it's nontrivial
             // TODO: emit pointee_types when nontrivial
-            ann.emit(span, format_args!("typeof({:?}) = {}", local, ty_str));
+            ann.emit(span, format_args!("typeof({}) = {}", desc, ty_str));
             for ptr in ptrs {
                 ann.emit(
                     span,
                     format_args!("  {} = {:?}, {:?}", ptr, asn.perms()[ptr], asn.flags()[ptr]),
                 );
             }
+        };
+
+        // Generate inline annotations for pointer-typed locals
+        for (local, decl) in mir.local_decls.iter_enumerated() {
+            let span = local_span(decl);
+            // TODO: emit addr_of when it's nontrivial
+            let desc = format!("{:?}", local);
+            emit_lty_annotations(span, acx.local_tys[local], &desc);
+        }
+
+        for (&loc, &rv_lty) in &acx.rvalue_tys {
+            // `loc` must refer to a statement.  Terminators don't have `Rvalue`s and thus never
+            // appear in `rvalue_tys`.
+            let stmt = mir.stmt_at(loc).either(|stmt| stmt, |_term| unreachable!());
+            let span = stmt.source_info.span;
+            emit_lty_annotations(span, rv_lty, &format!("{:?}", stmt));
         }
 
         info.acx_data.set(acx.into_data());
