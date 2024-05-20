@@ -1033,52 +1033,5 @@ pub fn unlower<'tcx>(
         }
     }
 
-    debug_print_unlower_map(tcx, mir, &visitor.unlower_map);
-
     visitor.unlower_map
-}
-
-fn debug_print_unlower_map<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    mir: &Body<'tcx>,
-    unlower_map: &BTreeMap<PreciseLoc, MirOrigin>,
-) {
-    eprintln!("unlowering for {:?}:", mir.source);
-    for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
-        eprintln!("  block {bb_id:?}:");
-        for (i, stmt) in bb.statements.iter().enumerate() {
-            let loc = Location {
-                block: bb_id,
-                statement_index: i,
-            };
-
-            eprintln!("    {loc:?}: {stmt:?}");
-            for (k, v) in unlower_map.range(&PreciseLoc { loc, sub: vec![] }..) {
-                if k.loc != loc {
-                    break;
-                }
-                let sublocs = &k.sub;
-                let ex = tcx.hir().expect_expr(v.hir_id);
-                eprintln!("      {sublocs:?}: {:?}, {:?}", v.desc, ex.span);
-            }
-        }
-
-        {
-            let term = bb.terminator();
-            let loc = Location {
-                block: bb_id,
-                statement_index: bb.statements.len(),
-            };
-
-            eprintln!("    {loc:?}: {term:?}");
-            for (k, v) in unlower_map.range(&PreciseLoc { loc, sub: vec![] }..) {
-                if k.loc != loc {
-                    break;
-                }
-                let sublocs = &k.sub;
-                let ex = tcx.hir().expect_expr(v.hir_id);
-                eprintln!("      {sublocs:?}: {:?}, {:?}", v.desc, ex.span);
-            }
-        }
-    }
 }
