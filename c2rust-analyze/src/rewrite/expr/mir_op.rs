@@ -564,6 +564,14 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     BorrowKind::Shared | BorrowKind::Shallow | BorrowKind::Unique => false,
                 };
                 self.enter_rvalue_place(0, |v| v.visit_place(pl, mutbl));
+
+                if let Some(expect_ty) = expect_ty {
+                    if self.is_nullable(expect_ty.label) {
+                        // Nullable (`Option`) output is expected, but `Ref` always produces a
+                        // `NON_NULL` pointer.  Cast rvalue from `&T` to `Option<&T>` or similar.
+                        self.emit(RewriteKind::OptionSome);
+                    }
+                }
             }
             Rvalue::ThreadLocalRef(_def_id) => {
                 // TODO
@@ -584,6 +592,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             mutbl: mutbl == Mutability::Mut,
                         }),
                         _ => (),
+                    }
+                    if desc.option {
+                        self.emit(RewriteKind::OptionSome);
                     }
                 }
             }
