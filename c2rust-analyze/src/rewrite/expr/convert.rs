@@ -440,7 +440,11 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
             .any(|x| matches!(x.desc, MirOriginDesc::Adjustment(_)));
         if self.materialize_adjustments || has_adjustment_rewrites {
             let adjusts = self.typeck_results.expr_adjustments(ex);
-            hir_rw = materialize_adjustments(self.tcx, adjusts, hir_rw, |i, hir_rw| {
+            hir_rw = materialize_adjustments(self.tcx, adjusts, hir_rw, |i, mut hir_rw| {
+                let load_rws = take_prefix_while(&mut mir_rws, |x| {
+                    x.desc == MirOriginDesc::LoadFromTempForAdjustment(i)
+                });
+                hir_rw = self.rewrite_from_mir_rws(Some(ex), load_rws, hir_rw);
                 let adj_rws =
                     take_prefix_while(&mut mir_rws, |x| x.desc == MirOriginDesc::Adjustment(i));
                 self.rewrite_from_mir_rws(Some(ex), adj_rws, hir_rw)
