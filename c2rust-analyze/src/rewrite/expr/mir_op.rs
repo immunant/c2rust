@@ -260,6 +260,12 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         Some(lty.args[0])
     }
 
+    fn is_nullable(&self, ptr: PointerId) -> bool {
+        !ptr.is_none()
+            && !self.perms[ptr].contains(PermissionSet::NON_NULL)
+            && !self.flags[ptr].contains(FlagSet::FIXED)
+    }
+
     fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         let _g = panic_detail::set_current_span(stmt.source_info.span);
         eprintln!(
@@ -588,9 +594,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 if util::is_null_const_operand(op) && ty.is_unsafe_ptr() {
                     // Special case: convert `0 as *const T` to `None`.
                     if let Some(rv_lty) = expect_ty {
-                        if !self.perms[rv_lty.label].contains(PermissionSet::NON_NULL)
-                            && !self.flags[rv_lty.label].contains(FlagSet::FIXED)
-                        {
+                        if self.is_nullable(rv_lty.label) {
                             self.emit(RewriteKind::ZeroAsPtrToNone);
                         }
                     }
@@ -730,9 +734,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             PlaceElem::Deref => {
                 self.enter_place_deref_pointer(|v| {
                     v.visit_place_ref(base_pl, proj_ltys, in_mutable_context);
-                    if !v.perms[base_lty.label].contains(PermissionSet::NON_NULL)
-                        && !v.flags[base_lty.label].contains(FlagSet::FIXED)
-                    {
+                    if v.is_nullable(base_lty.label) {
                         // If the pointer type is non-copy, downgrade (borrow) before calling
                         // `unwrap()`.
                         let desc = type_desc::perms_to_desc(
