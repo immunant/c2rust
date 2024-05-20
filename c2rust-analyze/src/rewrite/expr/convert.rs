@@ -448,12 +448,16 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
         }
 
         // Apply late rewrites.
-        assert!(mir_rws.iter().all(|mir_rw| {
-            matches!(
+        for mir_rw in mir_rws {
+            assert!(
+                matches!(
+                    mir_rw.desc,
+                    MirOriginDesc::StoreIntoLocal | MirOriginDesc::LoadFromTemp
+                ),
+                "bad desc {:?} for late rewrite: {mir_rw:?}",
                 mir_rw.desc,
-                MirOriginDesc::StoreIntoLocal | MirOriginDesc::LoadFromTemp
-            )
-        }));
+            );
+        }
         hir_rw = self.rewrite_from_mir_rws(Some(ex), mir_rws, hir_rw);
 
         if !matches!(hir_rw, Rewrite::Identity) {
