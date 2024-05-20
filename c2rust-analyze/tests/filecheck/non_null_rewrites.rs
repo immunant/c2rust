@@ -119,11 +119,16 @@ unsafe fn field_projection(cond: bool, mut p: *const S) -> i32 {
         // Ensure `p` is wrapped in `Option`.
         p = ptr::null();
     }
-    // Do a field projection.  This should become a `.map()` call.
-    // TODO: Currently, we generate an incorrect rewrite for such projections
-    // CHECK: let q: core::option::Option<&(i32)> =
-    // CHECK-SAME: &(*(p).unwrap()).x
-    let q: *const i32 = &(*p).x;
+
+    // Do a field projection.  This becomes an `unwrap()` + project + `Some(_)`.
+    // CHECK: let q: core::option::Option<&(i32)> = std::option::Option::Some(&((*(p).unwrap()).x));
+    let q: *const i32 = ptr::addr_of!((*p).x);
+
+    // Same projection, but using `&` instead of `addr_of!`.  This produces an equivalent but more
+    // convoluted result due to the implicit `addr_of!(*_)` adjustment.
+    // CHECK: let q: core::option::Option<&(i32)> = std::option::Option::Some(&*std::option::Option::Some((&((*(p).unwrap()).x))).unwrap());
+    let q: *const i32 = &((*p).x);
+
     *q
 }
 
