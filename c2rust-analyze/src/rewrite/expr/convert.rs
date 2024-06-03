@@ -258,7 +258,7 @@ impl<'tcx> ConvertVisitor<'tcx> {
                 elem_size,
                 dest_single,
             } => {
-                // `memcpy(dest, src, n)` to a `copy_from_slice` call
+                // `memset(dest, 0, n)` to assignments that zero out each field of `*dest`
                 assert!(matches!(hir_rw, Rewrite::Identity));
                 let zeroize_body = if dest_single {
                     Rewrite::Text(generate_zeroize_code(zero_ty, "(*dest)"))
