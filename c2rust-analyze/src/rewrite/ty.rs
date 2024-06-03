@@ -33,6 +33,7 @@ use rustc_middle::mir::{self, Body, LocalDecl};
 use rustc_middle::ty::print::{FmtPrinter, Print};
 use rustc_middle::ty::{self, AdtDef, GenericArg, GenericArgKind, List, ReErased, TyCtxt};
 use rustc_middle::ty::{Ty, TyKind, TypeAndMut};
+use rustc_span::symbol::Symbol;
 use rustc_span::Span;
 
 use super::LifetimeName;
@@ -338,12 +339,13 @@ fn mk_adt_with_arg<'tcx>(tcx: TyCtxt<'tcx>, path: &str, arg_ty: ty::Ty<'tcx>) ->
     let crate_name = path_parts_iter
         .next()
         .unwrap_or_else(|| panic!("couldn't find crate name in {path:?}"));
+    let crate_name = Symbol::intern(crate_name);
 
     let krate = tcx
         .crates(())
         .iter()
         .cloned()
-        .find(|&krate| tcx.crate_name(krate).as_str() == "core")
+        .find(|&krate| tcx.crate_name(krate) == crate_name)
         .unwrap_or_else(|| panic!("couldn't find crate {crate_name:?} for {path:?}"));
 
     let mut cur_did = krate.as_def_id();
