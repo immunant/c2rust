@@ -323,7 +323,10 @@ impl<'tcx> ConvertVisitor<'tcx> {
         ) -> Option<(&[DistRewrite], &[DistRewrite])> {
             for (i, mir_rw) in mir_rws.iter().enumerate() {
                 match mir_rw.rw {
-                    // Bail out if we see nested delimiters.
+                    // Bail out if we see nested delimiters.  This prevents the special
+                    // `Option::map` rewrite from applying, so the caller will fall back on the
+                    // `unwrap()` + `Some(_)` rewrites for `OptionMapBegin/End` that are
+                    // implemented in `convert_cast_rewrite`.
                     mir_op::RewriteKind::OptionMapBegin => return None,
                     mir_op::RewriteKind::OptionMapEnd => {
                         let (a, b) = mir_rws.split_at(i);
