@@ -959,7 +959,7 @@ where
         if from.option && from.own != to.own {
             // Downgrade ownership before unwrapping the `Option` when possible.  This can avoid
             // moving/consuming the input.  For example, if the `from` type is `Option<Box<T>>` and
-            // `to` is `&mut T`, we start by calling `p.as_mut().as_deref()`, which gives
+            // `to` is `&mut T`, we start by calling `p.as_deref_mut()`, which produces
             // `Option<&mut T>` without consuming `p`.
             if !from.own.is_copy() {
                 match to.own {
