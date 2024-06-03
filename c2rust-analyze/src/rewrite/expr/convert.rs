@@ -440,20 +440,34 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
             .any(|x| matches!(x.desc, MirOriginDesc::Adjustment(_)));
         if self.materialize_adjustments || has_adjustment_rewrites {
             let adjusts = self.typeck_results.expr_adjustments(ex);
-            hir_rw = materialize_adjustments(self.tcx, adjusts, hir_rw, |i, hir_rw| {
-                let adj_rws =
-                    take_prefix_while(&mut mir_rws, |x| x.desc == MirOriginDesc::Adjustment(i));
-                self.rewrite_from_mir_rws(Some(ex), adj_rws, hir_rw)
-            });
+            hir_rw =
+                materialize_adjustments(self.tcx, adjusts, hir_rw, |step, hir_rw| match step {
+                    AdjustmentStep::Before(i) => {
+                        let load_rws = take_prefix_while(&mut mir_rws, |x| {
+                            x.desc == MirOriginDesc::LoadFromTempForAdjustment(i)
+                        });
+                        self.rewrite_from_mir_rws(Some(ex), load_rws, hir_rw)
+                    }
+                    AdjustmentStep::After(i) => {
+                        let adj_rws = take_prefix_while(&mut mir_rws, |x| {
+                            x.desc == MirOriginDesc::Adjustment(i)
+                        });
+                        self.rewrite_from_mir_rws(Some(ex), adj_rws, hir_rw)
+                    }
+                });
         }
 
         // Apply late rewrites.
-        assert!(mir_rws.iter().all(|mir_rw| {
-            matches!(
+        for mir_rw in mir_rws {
+            assert!(
+                matches!(
+                    mir_rw.desc,
+                    MirOriginDesc::StoreIntoLocal | MirOriginDesc::LoadFromTemp
+                ),
+                "bad desc {:?} for late rewrite: {mir_rw:?}",
                 mir_rw.desc,
-                MirOriginDesc::StoreIntoLocal | MirOriginDesc::LoadFromTemp
-            )
-        }));
+            );
+        }
         hir_rw = self.rewrite_from_mir_rws(Some(ex), mir_rws, hir_rw);
 
         if !matches!(hir_rw, Rewrite::Identity) {
@@ -474,7 +488,7 @@ fn mutbl_from_bool(m: bool) -> hir::Mutability {
     }
 }
 
-fn apply_identity_adjustment<'tcx>(
+fn apply_adjustment<'tcx>(
     tcx: TyCtxt<'tcx>,
     adjustment: &Adjustment<'tcx>,
     rw: Rewrite,
@@ -509,41 +523,40 @@ fn apply_identity_adjustment<'tcx>(
     }
 }
 
+enum AdjustmentStep {
+    Before(usize),
+    After(usize),
+}
+
 fn materialize_adjustments<'tcx>(
     tcx: TyCtxt<'tcx>,
     adjustments: &[Adjustment<'tcx>],
     hir_rw: Rewrite,
-    mut callback: impl FnMut(usize, Rewrite) -> Rewrite,
+    mut callback: impl FnMut(AdjustmentStep, Rewrite) -> Rewrite,
 ) -> Rewrite {
     let adj_kinds: Vec<&_> = adjustments.iter().map(|a| &a.kind).collect();
     match (hir_rw, &adj_kinds[..]) {
-        (Rewrite::Identity, []) => Rewrite::Identity,
-        (Rewrite::Identity, _) => {
-            let mut hir_rw = Rewrite::Identity;
-            for (i, adj) in adjustments.iter().enumerate() {
-                hir_rw = apply_identity_adjustment(tcx, adj, hir_rw);
-                hir_rw = callback(i, hir_rw);
-            }
-            hir_rw
-        }
-        // TODO: ideally we should always materialize all adjustments (removing these special
-        // cases), and use `MirRewrite`s to eliminate any adjustments we no longer need.
-        (rw @ Rewrite::Ref(..), &[Adjust::Deref(..), Adjust::Borrow(..)]) => rw,
-        (rw @ Rewrite::MethodCall(..), &[Adjust::Deref(..), Adjust::Borrow(..)]) => rw,
         // The mut-to-const cast should be unneeded once the inner rewrite switches to a safe
         // reference type appropriate for the pointer's uses.  However, we still want to give
         // `callback` a chance to remove the cast itself so that if there's a `RemoveCast` rewrite
         // on this adjustment, we don't get an error about it failing to apply.
-        (rw, &[Adjust::Pointer(PointerCast::MutToConstPointer)]) => {
-            let mut hir_rw = Rewrite::RemovedCast(Box::new(rw));
-            hir_rw = callback(0, hir_rw);
+        (mut hir_rw, &[Adjust::Pointer(PointerCast::MutToConstPointer)]) => {
+            hir_rw = callback(AdjustmentStep::Before(0), hir_rw);
+            hir_rw = Rewrite::RemovedCast(Box::new(hir_rw));
+            hir_rw = callback(AdjustmentStep::After(0), hir_rw);
             match hir_rw {
                 Rewrite::RemovedCast(rw) => *rw,
                 rw => rw,
             }
         }
-        (rw, &[]) => rw,
-        (rw, adjs) => panic!("rewrite {rw:?} and materializations {adjs:?} NYI"),
+        (mut hir_rw, _) => {
+            for (i, adj) in adjustments.iter().enumerate() {
+                hir_rw = callback(AdjustmentStep::Before(i), hir_rw);
+                hir_rw = apply_adjustment(tcx, adj, hir_rw);
+                hir_rw = callback(AdjustmentStep::After(i), hir_rw);
+            }
+            hir_rw
+        }
     }
 }
 
