@@ -111,7 +111,12 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
             };
 
             // push return value to argument list
-            if let Some((casts, cast_local)) = cast_ptr_to_usize(tcx, locals, &ret_value) {
+            if let Some((casts, cast_local, ty)) = cast_ptr_to_usize(tcx, locals, &ret_value) {
+                assert!(
+                    ty.is_none(),
+                    "Got a type substitution for call result: {:?}",
+                    call
+                );
                 extra_statements = Some(casts);
                 args.push(InstrumentationArg::Op(ArgKind::AddressUsize(cast_local)));
             } else {

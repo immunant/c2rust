@@ -943,16 +943,37 @@ fn run(tcx: TyCtxt) {
         let f = std::fs::File::open(pdg_file_path).unwrap();
         let graphs: Graphs = bincode::deserialize_from(f).unwrap();
 
+        let mut known_nulls = HashSet::new();
+        for g in &graphs.graphs {
+            for n in &g.nodes {
+                let dest_pl = match n.dest.as_ref() {
+                    Some(x) => x,
+                    None => {
+                        continue;
+                    }
+                };
+                if !dest_pl.projection.is_empty() {
+                    continue;
+                }
+                let dest = dest_pl.local;
+                let dest = Local::from_u32(dest.index);
+                if g.is_null {
+                    known_nulls.insert((n.function.id, dest));
+                }
+            }
+        }
+
         for g in &graphs.graphs {
             for n in &g.nodes {
                 let def_path_hash: (u64, u64) = n.function.id.0.into();
                 let ldid = match func_def_path_hash_to_ldid.get(&def_path_hash) {
                     Some(&x) => x,
                     None => {
-                        panic!(
+                        eprintln!(
                             "pdg: unknown DefPathHash {:?} for function {:?}",
                             n.function.id, n.function.name
                         );
+                        continue;
                     }
                 };
                 let info = func_info.get_mut(&ldid).unwrap();
@@ -961,6 +982,7 @@ fn run(tcx: TyCtxt) {
                 let mir = mir.borrow();
                 let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
                 let mut asn = gasn.and(&mut info.lasn);
+                let mut updates_forbidden = g_updates_forbidden.and_mut(&mut info.l_updates_forbidden);
 
                 let dest_pl = match n.dest.as_ref() {
                     Some(x) => x,
@@ -976,6 +998,14 @@ fn run(tcx: TyCtxt) {
                 let dest = dest_pl.local;
                 let dest = Local::from_u32(dest.index);
 
+                if acx.local_tys.get(dest).is_none() {
+                    eprintln!(
+                        "pdg: {}: local {:?} appears as dest, but is out of bounds",
+                        n.function.name, dest
+                    );
+                    info.acx_data.set(acx.into_data());
+                    continue;
+                }
                 let ptr = match acx.ptr_of(dest) {
                     Some(x) => x,
                     None => {
@@ -988,36 +1018,35 @@ fn run(tcx: TyCtxt) {
                     }
                 };
 
-                let node_info = match n.info.as_ref() {
-                    Some(x) => x,
-                    None => {
-                        eprintln!(
-                            "pdg: {}: node with dest {:?} is missing NodeInfo",
-                            n.function.name, dest
-                        );
-                        info.acx_data.set(acx.into_data());
-                        continue;
-                    }
-                };
-
                 let old_perms = asn.perms()[ptr];
                 let mut perms = old_perms;
-                if node_info.flows_to.load.is_some() {
-                    perms.insert(PermissionSet::READ);
+                if known_nulls.contains(&(n.function.id, dest)) {
+                    perms.remove(PermissionSet::NON_NULL);
+                } else {
+                    perms.insert(PermissionSet::NON_NULL);
+                    // Unsound update: if we have never seen a NULL for
+                    // this local in the PDG, prevent the static analysis
+                    // from changing that permission.
+                    updates_forbidden[ptr].insert(PermissionSet::NON_NULL);
                 }
-                if node_info.flows_to.store.is_some() {
-                    perms.insert(PermissionSet::WRITE);
+
+                if let Some(node_info) = n.info.as_ref() {
+                    if node_info.flows_to.load.is_some() {
+                        perms.insert(PermissionSet::READ);
+                    }
+                    if node_info.flows_to.store.is_some() {
+                        perms.insert(PermissionSet::WRITE);
+                    }
+                    if node_info.flows_to.pos_offset.is_some() {
+                        perms.insert(PermissionSet::OFFSET_ADD);
+                    }
+                    if node_info.flows_to.neg_offset.is_some() {
+                        perms.insert(PermissionSet::OFFSET_SUB);
+                    }
+                    if !node_info.unique {
+                        perms.remove(PermissionSet::UNIQUE);
+                    }
                 }
-                if node_info.flows_to.pos_offset.is_some() {
-                    perms.insert(PermissionSet::OFFSET_ADD);
-                }
-                if node_info.flows_to.neg_offset.is_some() {
-                    perms.insert(PermissionSet::OFFSET_SUB);
-                }
-                if !node_info.unique {
-                    perms.remove(PermissionSet::UNIQUE);
-                }
-                // TODO: PermissionSet::NON_NULL
 
                 if perms != old_perms {
                     let added = perms & !old_perms;

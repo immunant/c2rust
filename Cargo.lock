@@ -198,6 +198,7 @@ dependencies = [
  "crossbeam-utils",
  "enum_dispatch",
  "fs-err",
+ "indexmap",
  "once_cell",
  "serde",
 ]
