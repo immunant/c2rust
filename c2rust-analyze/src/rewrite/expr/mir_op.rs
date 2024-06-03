@@ -519,13 +519,11 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     Callee::Null { .. } => {
                         self.enter_rvalue(|v| {
                             if !v.flags[pl_ty.label].contains(FlagSet::FIXED) {
-                                let arg_non_null =
-                                    v.perms[pl_ty.label].contains(PermissionSet::NON_NULL);
-                                if arg_non_null {
-                                    panic!("impossible: result of null() is a NON_NULL pointer?");
-                                } else {
-                                    v.emit(RewriteKind::PtrNullToNone);
-                                }
+                                assert!(
+                                    !v.perms[pl_ty.label].contains(PermissionSet::NON_NULL),
+                                    "impossible: result of null() is a NON_NULL pointer?"
+                                );
+                                v.emit(RewriteKind::PtrNullToNone);
                             }
                         });
                     }
