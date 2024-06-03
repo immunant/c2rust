@@ -82,6 +82,18 @@ pub fn reallocarray(mir_loc: MirLocId, old_ptr: usize, nmemb: u64, size: u64, ne
 ///   = note: rustdoc does not allow disambiguating between `*const` and `*mut`, and pointers are unstable until it does
 /// ```
 pub fn offset(mir_loc: MirLocId, ptr: usize, offset: isize, new_ptr: usize) {
+    // Corner case: Offset(..) events with a base pointer of zero are special
+    // because the result might be an actual pointer, e.g., c2rust will
+    // emit a pointer increment `a += b` as `a = a.offset(b)` which we need
+    // to ignore here if `a == 0` which is equivalent to `a = b`.
+    if ptr == 0 {
+        RUNTIME.send_event(Event {
+            mir_loc,
+            kind: EventKind::CopyPtr(offset as usize),
+        });
+        return;
+    }
+
     RUNTIME.send_event(Event {
         mir_loc,
         kind: EventKind::Offset(ptr, offset, new_ptr),
@@ -110,10 +122,10 @@ pub const HOOK_FUNCTIONS: &[&str] = &[
     hook_fn!(offset),
 ];
 
-pub fn ptr_field(mir_loc: MirLocId, ptr: usize, field_id: u32) {
+pub fn ptr_project(mir_loc: MirLocId, ptr: usize, new_ptr: usize, proj_key: u64) {
     RUNTIME.send_event(Event {
         mir_loc,
-        kind: EventKind::Field(ptr, field_id),
+        kind: EventKind::Project(ptr, new_ptr, proj_key),
     });
 }
 
@@ -138,10 +150,25 @@ pub fn ptr_to_int(mir_loc: MirLocId, ptr: usize) {
     });
 }
 
-pub fn addr_of_local(mir_loc: MirLocId, ptr: usize, local: u32) {
+pub fn addr_of_local(mir_loc: MirLocId, ptr: usize, local: u32, size: u32) {
     RUNTIME.send_event(Event {
         mir_loc,
-        kind: EventKind::AddrOfLocal(ptr, local.into()),
+        kind: EventKind::AddrOfLocal {
+            ptr,
+            local: local.into(),
+            size,
+        },
+    });
+}
+
+pub fn addr_of_sized<T: ?Sized>(mir_loc: MirLocId, ptr: *const T) {
+    let size = unsafe { core::mem::size_of_val(&*ptr) };
+    RUNTIME.send_event(Event {
+        mir_loc,
+        kind: EventKind::AddrOfSized {
+            ptr: ptr as *const u8 as usize,
+            size,
+        },
     });
 }
 

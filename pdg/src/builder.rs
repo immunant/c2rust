@@ -6,7 +6,7 @@ use color_eyre::eyre;
 use fs_err::File;
 use indexmap::IndexSet;
 use itertools::Itertools;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io::{self, BufReader};
 use std::iter;
 use std::path::Path;
@@ -23,10 +23,10 @@ pub fn read_metadata(path: &Path) -> eyre::Result<Metadata> {
     Ok(Metadata::read(&bytes)?)
 }
 
-fn parent(e: &NodeKind, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)> {
+fn parent<'a, 'b>(e: &'a NodeKind, obj: &'b ProvenanceInfo) -> Option<&'b ProvenanceInfo> {
     use NodeKind::*;
     match e {
-        Alloc(..) | AddrOfLocal(..) => None,
+        Alloc(..) | AddrOfLocal(..) | AddrOfSized(..) => None,
         _ => Some(obj),
     }
 }
@@ -35,7 +35,12 @@ type AddressTaken = IndexSet<(FuncId, Local)>;
 
 pub trait EventKindExt {
     fn ptr(&self, metadata: &EventMetadata) -> Option<Pointer>;
-    fn to_node_kind(&self, func: FuncId, address_taken: &mut AddressTaken) -> Option<NodeKind>;
+    fn to_node_kind(
+        &self,
+        func: FuncId,
+        metadata: &Metadata,
+        address_taken: &mut AddressTaken,
+    ) -> Option<NodeKind>;
 }
 
 impl EventKindExt for EventKind {
@@ -44,7 +49,7 @@ impl EventKindExt for EventKind {
         use EventKind::*;
         Some(match *self {
             CopyPtr(lhs) => lhs,
-            Field(ptr, ..) => ptr,
+            Project(ptr, ..) => ptr,
             Free { ptr } => ptr,
             Ret(ptr) => ptr,
             LoadAddr(ptr) => ptr,
@@ -52,31 +57,42 @@ impl EventKindExt for EventKind {
             StoreAddrTaken(ptr) => ptr,
             LoadValue(ptr) => ptr,
             StoreValue(ptr) => ptr,
-            CopyRef => return None, // FIXME
             ToInt(ptr) => ptr,
             Realloc { old_ptr, .. } => old_ptr,
             FromInt(lhs) => lhs,
             Alloc { ptr, .. } => ptr,
-            AddrOfLocal(lhs, _) => lhs,
+            AddrOfLocal { ptr, .. } => ptr,
+            AddrOfSized { ptr, .. } => ptr,
             Offset(ptr, _, _) => ptr,
             Done | BeginFuncBody => return None,
         })
     }
 
-    fn to_node_kind(&self, func: FuncId, address_taken: &mut AddressTaken) -> Option<NodeKind> {
+    fn to_node_kind(
+        &self,
+        func: FuncId,
+        metadata: &Metadata,
+        address_taken: &mut AddressTaken,
+    ) -> Option<NodeKind> {
         use EventKind::*;
         Some(match *self {
             Alloc { .. } => NodeKind::Alloc(1),
             Realloc { .. } => NodeKind::Alloc(1),
             Free { .. } => NodeKind::Free,
-            CopyPtr(..) | CopyRef => NodeKind::Copy,
-            Field(_, field) => NodeKind::Field(field.into()),
+            CopyPtr(..) => NodeKind::Copy,
+            Project(base_ptr, new_ptr, key) => {
+                let proj = metadata
+                    .projections
+                    .get(&key)
+                    .expect("Invalid projection metadata");
+                NodeKind::Project(new_ptr - base_ptr, proj.clone())
+            }
             LoadAddr(..) => NodeKind::LoadAddr,
             StoreAddr(..) => NodeKind::StoreAddr,
             StoreAddrTaken(..) => NodeKind::StoreAddr,
             LoadValue(..) => NodeKind::LoadValue,
             StoreValue(..) => NodeKind::StoreValue,
-            AddrOfLocal(_, local) => {
+            AddrOfLocal { local, .. } => {
                 // All but the first instance of AddrOfLocal in a given
                 // function body are considered copies of that local's address
                 let (_, inserted) = address_taken.insert_full((func, local));
@@ -86,6 +102,7 @@ impl EventKindExt for EventKind {
                     NodeKind::Copy
                 }
             }
+            AddrOfSized { size, .. } => NodeKind::AddrOfSized(size),
             BeginFuncBody => {
                 // Reset the collection of address-taken locals, in order to
                 // properly consider the first instance of each address-taking
@@ -102,34 +119,109 @@ impl EventKindExt for EventKind {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ProvenanceInfo {
+    /// Size of this allocation or local object.
+    size: Option<usize>,
+
+    /// Graph containing all the nodes for this object.
+    gid: GraphId,
+
+    /// One node that created this object.
+    nid: NodeId,
+}
+
+impl ProvenanceInfo {
+    fn new(gid: GraphId, nid: NodeId) -> Self {
+        Self {
+            size: None,
+            gid,
+            nid,
+        }
+    }
+
+    /// Return a copy of the current object with a different node.
+    fn with_node(&self, nid: NodeId) -> Self {
+        Self {
+            nid,
+            ..self.clone()
+        }
+    }
+}
+
 fn update_provenance(
-    provenances: &mut HashMap<Pointer, (GraphId, NodeId)>,
+    provenances: &mut BTreeMap<Pointer, ProvenanceInfo>,
     event_kind: &EventKind,
-    metadata: &EventMetadata,
-    mapping: (GraphId, NodeId),
+    mut mapping: ProvenanceInfo,
 ) {
     use EventKind::*;
     match *event_kind {
-        Alloc { ptr, .. } => {
+        Alloc { ptr, size, .. } => {
+            // TODO: check for overlap with existing allocations
+            mapping.size = Some(size);
             provenances.insert(ptr, mapping);
         }
-        CopyPtr(ptr) => {
-            // only insert if not already there
-            if let Err(..) = provenances.try_insert(ptr, mapping) {
-                log::warn!("0x{:x} already has a source", ptr);
+        Realloc { new_ptr, size, .. } => {
+            mapping.size = Some(size);
+            provenances.insert(new_ptr, mapping);
+        }
+        Free { ptr } if ptr != 0 => {
+            // TODO: handle the case where `ptr` falls inside an allocation
+            let old_prov = provenances.remove(&ptr);
+            if old_prov.is_none() {
+                log::warn!("Tried to free invalid pointer 0x{:x}", ptr);
             }
         }
-        Realloc { new_ptr, .. } => {
-            provenances.insert(new_ptr, mapping);
+        CopyPtr(ptr) | Offset(_, _, ptr) | Project(_, ptr, _) => {
+            // Check that the pointer falls inside an existing allocation
+            let need_insert = provenances
+                .range(0..=ptr)
+                .next_back()
+                .map(|(start, pi)| {
+                    // If the existing pointer has a size, check it
+                    // Otherwise, insert ours if it's different
+                    let size = match pi.size {
+                        Some(size) => size,
+                        None => return ptr != *start,
+                    };
+
+                    let end = start.saturating_add(size);
+                    if (*start..=end).contains(&ptr) {
+                        return false;
+                    }
+
+                    if matches!(*event_kind, CopyPtr(_)) {
+                        // A new pointer that we don't know where it came from
+                        // Insert it for now, we should decide later what to do
+                        //
+                        // Assume an unknown pointer points to a word-sized object
+                        log::warn!("Pointer of unknown origin 0x{:x}", ptr);
+                        return true;
+                    }
+
+                    log::warn!(
+                        "0x{:x} outside of object bounds 0x{:x}-0x{:x}",
+                        ptr,
+                        start,
+                        end
+                    );
+
+                    false
+                })
+                .unwrap_or(true);
+
+            if need_insert {
+                provenances.insert(ptr, mapping);
+            }
         }
-        Offset(_, _, new_ptr) => {
-            provenances.insert(new_ptr, mapping);
-        }
-        CopyRef => {
-            provenances.insert(metadata.destination.clone().unwrap().local.into(), mapping);
-        }
-        AddrOfLocal(ptr, _) => {
+        AddrOfLocal { ptr, size, .. } => {
+            // TODO: is this a local from another function?
+            mapping.size = size.try_into().ok();
             provenances.insert(ptr, mapping);
+        }
+        AddrOfSized { ptr, size } => {
+            mapping.size = Some(size);
+            let _ = provenances.try_insert(ptr, mapping);
         }
         _ => {}
     }
@@ -137,7 +229,7 @@ fn update_provenance(
 
 pub fn add_node(
     graphs: &mut Graphs,
-    provenances: &mut HashMap<Pointer, (GraphId, NodeId)>,
+    provenances: &mut BTreeMap<Pointer, ProvenanceInfo>,
     address_taken: &mut AddressTaken,
     event: &Event,
     metadata: &Metadata,
@@ -149,9 +241,9 @@ pub fn add_node(
         metadata: event_metadata,
     } = metadata.get(event.mir_loc);
 
-    let node_kind = event.kind.to_node_kind(func.id, address_taken)?;
+    let node_kind = event.kind.to_node_kind(func.id, metadata, address_taken)?;
     let this_id = func.id;
-    let (src_fn, dest_fn) = match event_metadata.transfer_kind {
+    let (_src_fn, dest_fn) = match event_metadata.transfer_kind {
         TransferKind::None => (this_id, this_id),
         TransferKind::Arg(id) => (this_id, id),
         TransferKind::Ret(id) => (id, this_id),
@@ -163,47 +255,54 @@ pub fn add_node(
         statement_idx = 0;
     }
 
-    let provenance = event
-        .kind
-        .ptr(event_metadata)
-        .and_then(|ptr| provenances.get(&ptr).cloned());
-    let direct_source = provenance.and_then(|(gid, _last_nid_ref)| {
-        graphs.graphs[gid]
+    let ptr = event.kind.ptr(event_metadata);
+    let provenance = ptr.and_then(|ptr| {
+        provenances
+            .range(0..=ptr)
+            .next_back()
+            .and_then(|(start, pi)| {
+                let size = match pi.size {
+                    Some(size) => size,
+                    None if ptr == *start => return Some(pi),
+                    None => return None,
+                };
+
+                // If the current pointer falls outside the
+                // original object, make a new graph for it
+                let end = start.saturating_add(size);
+
+                // This is intentionally greater-than because
+                // one past the end is still a valid pointer
+                if ptr > end {
+                    None
+                } else {
+                    Some(pi)
+                }
+            })
+    });
+
+    let direct_source = provenance.and_then(|pi| {
+        graphs.graphs[pi.gid]
             .nodes
             .iter()
             .rposition(|n| {
                 if let (Some(d), Some(s)) = (&n.dest, &event_metadata.source) {
-                    d == s
+                    // TODO: Ignore direct assignments with projections for now,
+                    // e.g., `_1.0 = _2;`. We should later add support for
+                    // assignments to sub-fields, e.g.
+                    // ```
+                    //   _1 = _2;
+                    //   _1.0 = _3;
+                    //   _1 = _4;
+                    // ```
+                    d == s && s.projection.is_empty()
                 } else {
                     false
                 }
             })
-            .map(|nid| (gid, NodeId::from(nid)))
+            .map(|nid| pi.with_node(NodeId::from(nid)))
     });
-
-    let source = direct_source.or_else(|| {
-        event_metadata.source.as_ref().and_then(|src| {
-            let latest_assignment = graphs.latest_assignment.get(&(src_fn, src.local)).cloned();
-            if !src.projection.is_empty() {
-                if let Some((gid, _)) = latest_assignment {
-                    if let Some((nid, n)) = graphs.graphs[gid].nodes.iter_enumerated().rev().next()
-                    {
-                        if let NodeKind::Field(..) = n.kind {
-                            return Some((gid, nid));
-                        }
-                    }
-                }
-            }
-
-            if !matches!(event.kind, EventKind::AddrOfLocal(..)) && src.projection.is_empty() {
-                latest_assignment
-            } else if let EventKind::Field(..) = event.kind {
-                latest_assignment
-            } else {
-                provenance
-            }
-        })
-    });
+    let source = direct_source.or(provenance.cloned());
 
     let function = Func {
         id: dest_fn,
@@ -214,56 +313,47 @@ pub fn add_node(
         function,
         block: basic_block_idx.into(),
         statement_idx,
-        kind: node_kind,
+        kind: node_kind.clone(),
         source: source
+            .as_ref()
             .and_then(|p| parent(&node_kind, p))
-            .map(|(_, nid)| nid),
+            .map(|pi| pi.nid),
         dest: event_metadata.destination.clone(),
         debug_info: event_metadata.debug_info.clone(),
         info: None,
     };
 
+    let ptr_is_null = ptr.map_or(false, |ptr| ptr == 0);
     let graph_id = source
-        .or(direct_source)
-        .or(provenance)
+        .as_ref()
         .and_then(|p| parent(&node_kind, p))
-        .map(|(gid, _)| gid)
-        .unwrap_or_else(|| graphs.graphs.push(Graph::new()));
+        .map(|pi| pi.gid)
+        .unwrap_or_else(|| graphs.graphs.push(Graph::new(ptr_is_null)));
     let node_id = graphs.graphs[graph_id].nodes.push(node);
+
+    // Assert that we're not mixing null and non-null pointers
+    assert!(
+        graphs.graphs[graph_id].is_null == ptr_is_null,
+        "graph[{}].is_null == {:?} != {:x?} for {:?}:{:?}",
+        graph_id,
+        graphs.graphs[graph_id].is_null,
+        ptr,
+        event,
+        event_metadata
+    );
 
     update_provenance(
         provenances,
         &event.kind,
-        event_metadata,
-        (graph_id, node_id),
+        ProvenanceInfo::new(graph_id, node_id),
     );
-
-    if let Some(dest) = &event_metadata.destination {
-        let unique_place = (dest_fn, dest.local);
-        let last_setting = (graph_id, node_id);
-
-        if let Some(last @ (last_gid, last_nid)) =
-            graphs.latest_assignment.insert(unique_place, last_setting)
-        {
-            if !dest.projection.is_empty()
-                && graphs.graphs[last_gid].nodes[last_nid]
-                    .dest
-                    .as_ref()
-                    .unwrap()
-                    .projection
-                    .is_empty()
-            {
-                graphs.latest_assignment.insert(unique_place, last);
-            }
-        }
-    }
 
     Some(node_id)
 }
 
 pub fn construct_pdg(events: &[Event], metadata: &Metadata) -> Graphs {
     let mut graphs = Graphs::new();
-    let mut provenances = HashMap::new();
+    let mut provenances = BTreeMap::new();
     let mut address_taken = AddressTaken::new();
     for event in events {
         add_node(

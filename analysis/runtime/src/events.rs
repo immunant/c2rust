@@ -28,12 +28,12 @@ pub enum EventKind {
     /// the pointer.
     CopyPtr(Pointer),
 
-    CopyRef,
-
-    /// Field projection. Used for operations like `_2 = &(*_1).0`. Nested field
-    /// accesses like `_4 = &(*_1).x.y.z` are broken into multiple `Node`s, each
-    /// covering one level.
-    Field(Pointer, u32),
+    /// Projection. Used for operations like `_2 = &(*_1).0`.
+    /// The third value is a "projection key" that points to an element
+    /// of the projections data structure in the metadata. It is used to
+    /// disambiguate between different projections with the same pointer,
+    /// e.g., `(*p).x` and `(*p).x.a` where `a` is at offset 0.
+    Project(Pointer, Pointer, u64),
 
     Alloc {
         size: usize,
@@ -61,8 +61,19 @@ pub enum EventKind {
     /// are necessary for its underlying address.
     StoreAddrTaken(Pointer),
 
-    /// The pointer that appears as the address result of addr_of(Local)
-    AddrOfLocal(Pointer, Local),
+    /// The pointer that appears as the address result of addr_of(Local).
+    /// The fields encode the pointer of the local, its MIR index, and its size.
+    AddrOfLocal {
+        ptr: Pointer,
+        local: Local,
+        size: u32,
+    },
+
+    /// The address and size of a sized pointee of a pointer.
+    AddrOfSized {
+        ptr: Pointer,
+        size: usize,
+    },
 
     /// Casting the pointer to an int
     ToInt(Pointer),
@@ -90,7 +101,9 @@ impl Debug for EventKind {
         use EventKind::*;
         match *self {
             CopyPtr(ptr) => write!(f, "copy(0x{:x})", ptr),
-            Field(ptr, id) => write!(f, "field(0x{:x}, {})", ptr, id),
+            Project(ptr, new_ptr, idx) => {
+                write!(f, "project(0x{:x}, 0x{:x}, [{}])", ptr, new_ptr, idx)
+            }
             Alloc { size, ptr } => {
                 write!(f, "malloc({}) -> 0x{:x}", size, ptr)
             }
@@ -106,8 +119,10 @@ impl Debug for EventKind {
             LoadAddr(ptr) => write!(f, "load(0x{:x})", ptr),
             StoreAddr(ptr) => write!(f, "store(0x{:x})", ptr),
             StoreAddrTaken(ptr) => write!(f, "store(0x{:x})", ptr),
-            CopyRef => write!(f, "copy_ref"),
-            AddrOfLocal(ptr, _) => write!(f, "addr_of_local = 0x{:x}", ptr),
+            AddrOfLocal { ptr, local, size } => {
+                write!(f, "addr_of_local({:?}, {}) = 0x{:x}", local, size, ptr)
+            }
+            AddrOfSized { ptr, size } => write!(f, "addr_of_sized({}) = 0x{:x}", size, ptr),
             ToInt(ptr) => write!(f, "to_int(0x{:x})", ptr),
             FromInt(ptr) => write!(f, "from_int(0x{:x})", ptr),
             LoadValue(ptr) => write!(f, "load_value(0x{:x})", ptr),
