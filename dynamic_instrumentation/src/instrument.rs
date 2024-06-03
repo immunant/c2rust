@@ -11,7 +11,7 @@ use rustc_index::vec::Idx;
 use rustc_middle::mir::visit::{MutVisitor, MutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Body, BorrowKind, ClearCrossCrate, HasLocalDecls, Local, LocalDecl,
-    Location, Operand, Place, PlaceElem, ProjectionElem, Rvalue, Safety, SourceInfo, SourceScope,
+    Location, Operand, Place, ProjectionElem, Rvalue, Safety, SourceInfo, SourceScope,
     SourceScopeData, Statement, StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, Ty, TyCtxt};
@@ -340,35 +340,39 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
 }
 
 impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
-    fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
-        self.super_place(place, context, location);
-
-        let field_fn = self.hooks().find("ptr_field");
-
-        let base_ty = self.local_decls()[place.local].ty;
-
-        // Instrument field projections on raw-ptr places
-        if is_region_or_unsafe_ptr(base_ty) && context.is_use() {
-            for (base, elem) in place.iter_projections() {
-                if let PlaceElem::Field(field, _) = elem {
-                    let proj_dest = || {
-                        // Only the last field projection gets a destination
-                        self.assignment()
-                            .as_ref()
-                            .map(|(dest, _)| dest)
-                            .copied()
-                            .filter(|_| base.projection.len() == place.projection.len() - 1)
-                    };
-                    self.loc(location, location, field_fn)
-                        .arg_var(place.local)
-                        .arg_index_of(field)
-                        .source(place)
-                        .dest_from(proj_dest)
-                        .add_to(self);
-                }
-            }
-        }
-    }
+// TODO(ahomescu): this is completely broken and needs a rewrite
+// One problem is that it does not distinguish between the depth
+// of a field, e.g., x.1.2 and x.2 will generate the same event
+// Field(&x, 2) for the .2 projection.
+//    fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
+//        self.super_place(place, context, location);
+//
+//        let field_fn = self.hooks().find("ptr_field");
+//
+//        let base_ty = self.local_decls()[place.local].ty;
+//
+//        // Instrument field projections on raw-ptr places
+//        if is_region_or_unsafe_ptr(base_ty) && context.is_use() {
+//            for (base, elem) in place.iter_projections() {
+//                if let PlaceElem::Field(field, _) = elem {
+//                    let proj_dest = || {
+//                        // Only the last field projection gets a destination
+//                        self.assignment()
+//                            .as_ref()
+//                            .map(|(dest, _)| dest)
+//                            .copied()
+//                            .filter(|_| base.projection.len() == place.projection.len() - 1)
+//                    };
+//                    self.loc(location, location, field_fn)
+//                        .arg_var(place.local)
+//                        .arg_index_of(field)
+//                        .source(place)
+//                        .dest_from(proj_dest)
+//                        .add_to(self);
+//                }
+//            }
+//        }
+//    }
 
     fn visit_assign(&mut self, dest: &Place<'tcx>, value: &Rvalue<'tcx>, location: Location) {
         let copy_fn = self.hooks().find("ptr_copy");

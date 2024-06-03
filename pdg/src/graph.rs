@@ -1,5 +1,5 @@
 use c2rust_analysis_rt::mir_loc::{self, DefPathHash, Func};
-use c2rust_analysis_rt::mir_loc::{FuncId, MirPlace};
+use c2rust_analysis_rt::mir_loc::{FuncId, MirPlace, MirProjection};
 use rustc_index::newtype_index;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{BasicBlock, Field, Local};
@@ -281,18 +281,26 @@ impl Display for DisplayNode<'_> {
 }
 
 /// A pointer derivation graph, which tracks the handling of one object throughout its lifetime.
-#[derive(Debug, Default, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
 pub struct Graph {
     /// The nodes in the graph.  Nodes are stored in increasing order by timestamp.  The first
     /// node, called the "root node", creates the object described by this graph, and all other
     /// nodes are derived from it.
     #[serde(with = "crate::util::serde::index_vec")]
     pub nodes: IndexVec<NodeId, Node>,
+
+    /// Whether this graph was built from a null pointer. This should be `Some(true)` or
+    /// `Some(false)` in most cases, but we use `None` to represent an uninitialized value
+    /// to detect internal contradictions.
+    pub is_null: bool,
 }
 
 impl Graph {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(is_null: bool) -> Self {
+        Self {
+            nodes: Default::default(),
+            is_null,
+        }
     }
 }
 
@@ -311,7 +319,7 @@ impl Display for Graph {
                 .to_string()
             })
             .collect::<Vec<_>>();
-        writeln!(f, "g {{")?;
+        writeln!(f, "g is_null={} {{", self.is_null)?;
         for line in pad_columns(&lines, sep, " ") {
             let line = line.trim_end();
             writeln!(f, "\t{line}")?;
@@ -351,6 +359,61 @@ impl Display for GraphId {
     }
 }
 
+/// A tree describing the last node that stored to a particular
+/// projection of the given local.
+#[derive(Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProjectionTree {
+    /// The last node where the current projection was assigned to.
+    /// This node must chronologically precede all descendants;
+    /// otherwise, they should get pruned instead because it means
+    /// their ancestor overwrote them in aggregate.
+    node: Option<(GraphId, NodeId)>,
+
+    /// Children of this node that have an extra projection.
+    children: HashMap<MirProjection, ProjectionTree>,
+}
+
+impl ProjectionTree {
+    pub fn get_projection_node(&self, proj: &[MirProjection]) -> Option<(GraphId, NodeId)> {
+        if proj.is_empty() {
+            return self.node.as_ref().copied();
+        }
+
+        if matches!(proj[0], MirProjection::Deref) {
+            // We do not currently keep track of projections that deref
+            // because of pointer aliasing: it means we would need to
+            // explicitly keep track of all other pointers that could
+            // alias with the projection.
+            return None;
+        }
+
+        if let Some(child) = self.children.get(&proj[0]) {
+            let ch_res = child.get_projection_node(&proj[1..]);
+            // The child should have a valid node, otherwise it gets pruned
+            debug_assert!(ch_res.is_some());
+            ch_res
+        } else {
+            self.node.as_ref().copied()
+        }
+    }
+
+    pub fn set_projection_node(&mut self, proj: &[MirProjection], gid: GraphId, nid: NodeId) {
+        if proj.is_empty() {
+            self.node = Some((gid, nid));
+            // Prune all children since this assignment overwrites all of them
+            self.children.clear();
+            return;
+        }
+
+        if matches!(proj[0], MirProjection::Deref) {
+            return;
+        }
+
+        let child = self.children.entry(proj[0].clone()).or_default();
+        child.set_projection_node(&proj[1..], gid, nid);
+    }
+}
+
 /// A collection of graphs describing the handling of one or more objects within the program.
 #[derive(Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Graphs {
@@ -360,7 +423,7 @@ pub struct Graphs {
     pub graphs: IndexVec<GraphId, Graph>,
 
     /// Lookup table for finding all nodes in all graphs that store to a particular MIR local.
-    pub latest_assignment: HashMap<(FuncId, mir_loc::Local), (GraphId, NodeId)>,
+    pub latest_assignment: HashMap<(FuncId, mir_loc::Local), ProjectionTree>,
 }
 
 impl Graphs {
