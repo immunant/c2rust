@@ -1,9 +1,7 @@
 use std::{
     fmt::{self, Display, Formatter},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
 };
-
-use once_cell::sync::OnceCell;
 
 use crate::events::Event;
 
@@ -24,8 +22,7 @@ impl Display for SkipReason {
 }
 
 static EVENTS_SKIPPED_BEFORE_MAIN: AtomicU64 = AtomicU64::new(0);
-
-static WARNED_AFTER_MAIN: OnceCell<()> = OnceCell::new();
+static WARNED_AFTER_MAIN: AtomicBool = AtomicBool::new(false);
 
 /// Notify the user if any [`Event`]s were skipped before `main`.
 ///
@@ -45,14 +42,22 @@ pub(super) fn skip_event(event: Event, reason: SkipReason) {
     use SkipReason::*;
     match reason {
         BeforeMain => {
+            // # Async-signal-safety: atomic increments are safe.
             EVENTS_SKIPPED_BEFORE_MAIN.fetch_add(1, Ordering::Relaxed);
         }
         AfterMain => {
-            // This is after `main`, so it's safe to use things like `eprintln!`,
-            // which uses `ReentrantMutex` internally, which may use `pthread` mutexes.
-            WARNED_AFTER_MAIN.get_or_init(|| {
+            // # Async-signal-safety: not really signal-safe, but if we
+            // get a signal after `main` ends, we're probably fine.
+            // The allocator should have enough free memory by now
+            // to not need to call `mmap`.
+            if !WARNED_AFTER_MAIN.swap(true, Ordering::Relaxed) {
+                // WARNED_AFTER_MAIN was previously `false` but we swapped it,
+                // which will happen exactly once per run so we can print now.
                 eprintln!("skipping {reason}");
-            });
+            }
+            // TODO: It would be nice to get rid of the two `eprintln`s here
+            // so we can guarantee signal safety, but then we would get no
+            // debugging output.
             eprintln!("skipped event after `main`: {:?}", event.kind);
         }
     };

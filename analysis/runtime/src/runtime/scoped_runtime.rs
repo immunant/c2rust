@@ -103,6 +103,8 @@ impl ExistingRuntime for MainThreadRuntime {
         self.backend.lock().unwrap().flush();
     }
 
+    // # Async-signal-safety: NOT SAFE!!!
+    // Do not use this with programs that install signal handlers.
     fn send_event(&self, event: Event) {
         self.backend.lock().unwrap().write(event);
     }
@@ -122,6 +124,10 @@ pub struct BackgroundThreadRuntime {
 
 impl BackgroundThreadRuntime {
     fn push_event(&self, mut event: Event, can_sleep: bool) {
+        // # Async-signal-safety: This needs `can_sleep == false` if called from
+        // a signal handler; in that case, it spins instead of sleeping
+        // which should be safe. `ArrayQueue::push` is backed by a fixed-size
+        // array so it does not allocate.
         let backoff = Backoff::new();
         while let Err(event_back) = self.tx.push(event) {
             if can_sleep {
@@ -162,10 +168,16 @@ impl ExistingRuntime for BackgroundThreadRuntime {
     fn send_event(&self, event: Event) {
         match self.finalized.get() {
             None => {
+                // # Async-signal-safety: `push_event` is safe if `can_sleep == false`
                 self.push_event(event, false);
             }
             Some(()) => {
-                // Silently drop the [`Event`] as the [`BackgroundThreadRuntime`] has already been [`BackgroundThreadRuntime::finalize`]d.
+                // Silently drop the [`Event`] as the [`BackgroundThreadRuntime`]
+                // has already been [`BackgroundThreadRuntime::finalize`]d.
+                //
+                // # Async-signal-safety: `skip_event(_, AfterMain)` is NOT SAFE;
+                // however, see the comment in `skip_event` for an explanation
+                // of why this will probably be okay in practice.
                 skip_event(event, SkipReason::AfterMain);
             }
         }
