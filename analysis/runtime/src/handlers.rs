@@ -2,6 +2,11 @@ use crate::events::{Event, EventKind};
 use crate::mir_loc::MirLocId;
 use crate::runtime::global_runtime::RUNTIME;
 
+// WARNING! Most handlers in this file may be called from a signal handler,
+// so they and all their callees should be signal-safe.
+// Signal handlers are generally not supposed to call memory allocation
+// functions, so those do not need to be signal-safe.
+
 /// A hook function (see [`HOOK_FUNCTIONS`]).
 ///
 /// Instruments 64-bit `c2rust transpile`d `malloc`, which is similar to `libc::malloc`.

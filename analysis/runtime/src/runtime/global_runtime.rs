@@ -40,10 +40,15 @@ impl GlobalRuntime {
     ///
     /// It also silently drops the [`Event`] if the [`ScopedRuntime`]
     /// has been [`ScopedRuntime::finalize`]d/[`GlobalRuntime::finalize`]d.
+    ///
+    /// May be called from a signal handler, so it needs to be async-signal-safe.
     pub fn send_event(&self, event: Event) {
+        // # Async-signal-safety: OnceCell::get() is just a dereference
         match self.runtime.get() {
             None => {
                 // Silently drop the [`Event`] as the [`ScopedRuntime`] isn't ready/initialized yet.
+                //
+                // # Async-signal-safety: `skip_event(_, BeforeMain)` is async-signal-safe.
                 skip_event(event, SkipReason::BeforeMain);
             }
             Some(runtime) => {

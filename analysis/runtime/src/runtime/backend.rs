@@ -89,8 +89,9 @@ impl Backend {
             let event = match events.pop() {
                 Some(event) => event,
                 None => {
-                    // We can't use anything with a futex here since
-                    // the event sender might run inside a signal handler
+                    // We can't block on a lock/semaphore here since
+                    // it might not be safe for the event sender to wake
+                    // us from inside a signal handler
                     backoff.snooze();
                     continue;
                 }
