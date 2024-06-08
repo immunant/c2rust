@@ -82,6 +82,18 @@ pub fn reallocarray(mir_loc: MirLocId, old_ptr: usize, nmemb: u64, size: u64, ne
 ///   = note: rustdoc does not allow disambiguating between `*const` and `*mut`, and pointers are unstable until it does
 /// ```
 pub fn offset(mir_loc: MirLocId, ptr: usize, offset: isize, new_ptr: usize) {
+    // Corner case: Offset(..) events with a base pointer of zero are special
+    // because the result might be an actual pointer, e.g., c2rust will
+    // emit a pointer increment `a += b` as `a = a.offset(b)` which we need
+    // to ignore here if `a == 0` which is equivalent to `a = b`.
+    if ptr == 0 {
+        RUNTIME.send_event(Event {
+            mir_loc,
+            kind: EventKind::CopyPtr(offset as usize),
+        });
+        return;
+    }
+
     RUNTIME.send_event(Event {
         mir_loc,
         kind: EventKind::Offset(ptr, offset, new_ptr),
