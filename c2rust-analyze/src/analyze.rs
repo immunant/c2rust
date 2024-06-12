@@ -536,6 +536,34 @@ fn get_fixed_defs(tcx: TyCtxt) -> io::Result<HashSet<DefId>> {
     Ok(fixed_defs)
 }
 
+fn get_rewrite_mode(
+    tcx: TyCtxt,
+    pointwise_fn_ldid: Option<LocalDefId>,
+) -> rewrite::UpdateFiles {
+    let mut update_files = rewrite::UpdateFiles::No;
+    if let Ok(val) = env::var("C2RUST_ANALYZE_REWRITE_MODE") {
+        match val.as_str() {
+            "none" => {}
+            "inplace" => {
+                update_files = rewrite::UpdateFiles::InPlace;
+            }
+            "alongside" => {
+                update_files = rewrite::UpdateFiles::Alongside;
+            }
+            "pointwise" => {
+                let pointwise_fn_ldid = pointwise_fn_ldid.expect(
+                    "C2RUST_ANALYZE_REWRITE_MODE=pointwise, \
+                            but pointwise_fn_ldid is unset?",
+                );
+                let pointwise_fn_name = tcx.item_name(pointwise_fn_ldid.to_def_id());
+                update_files = rewrite::UpdateFiles::AlongsidePointwise(pointwise_fn_name);
+            }
+            _ => panic!("bad value {:?} for C2RUST_ANALYZE_REWRITE_MODE", val),
+        }
+    }
+    update_files
+}
+
 /// Local information, specific to a single function.  Many of the data structures we use for
 /// the pointer analysis have a "global" part that's shared between all functions and a "local"
 /// part that's specific to the function being analyzed; this struct contains only the local
@@ -567,9 +595,16 @@ struct FuncInfo<'tcx> {
 }
 
 fn run(tcx: TyCtxt) {
+    eprintln!("C2RUST_ANALYZE_REWRITE_MODE = {:?}", env::var("C2RUST_ANALYZE_REWRITE_MODE"));
+
     eprintln!("all defs:");
     for ldid in tcx.hir_crate_items(()).definitions() {
         eprintln!("{:?}", ldid);
+    }
+
+    eprintln!("\nall defpathhashes:");
+    for ldid in tcx.hir_crate_items(()).definitions() {
+        eprintln!("{:?}", tcx.def_path_hash(ldid.to_def_id()));
     }
 
     // Load the list of fixed defs early, so any errors are reported immediately.
@@ -1172,10 +1207,10 @@ fn run(tcx: TyCtxt) {
             &mut func_info,
             &mut gasn,
             pdg_file_path,
-            |_asn, ldid, ptr, _node_info| {
+            |_asn, ldid, ptr, g, _node_info| {
                 let parent = if ptr.is_global() { None } else { Some(ldid) };
                 let obs = observations.entry((parent, ptr)).or_insert((false, false));
-                let node_info_is_null = ptr.index() % 2 == 0; // FIXME
+                let node_info_is_null = g.is_null;
                 if node_info_is_null {
                     obs.0 = true;
                 } else {
@@ -1208,6 +1243,10 @@ fn run(tcx: TyCtxt) {
             for (local, decl) in mir.local_decls.iter_enumerated() {
                 let span = local_span(decl);
                 let mut ptrs = Vec::new();
+                if acx.local_tys.get(local).is_none() {
+                    eprintln!("missing local_tys entry for {:?} {:?}", ldid, local);
+                    continue;
+                }
                 let ty_str = context::print_ty_with_pointer_labels(acx.local_tys[local], |ptr| {
                     if ptr.is_none() {
                         return String::new();
@@ -1219,11 +1258,15 @@ fn run(tcx: TyCtxt) {
                 let mut static_non_null_ptrs = Vec::new();
                 // Pointers where dynamic analysis reports `NON_NULL` but static reports nullable.
                 let mut dynamic_non_null_ptrs = Vec::new();
+                let mut has_dynamic_observations = false;
                 for ptr in ptrs {
                     let static_non_null: bool = asn.perms()[ptr].contains(PermissionSet::NON_NULL);
                     let parent = if ptr.is_global() { None } else { Some(ldid) };
                     let dynamic_non_null: Option<bool> = observations.get(&(parent, ptr))
                         .map(|&(saw_null, saw_non_null)| saw_non_null && !saw_null);
+                    if dynamic_non_null.is_some() {
+                        has_dynamic_observations = true;
+                    }
                     if dynamic_non_null.is_none() || dynamic_non_null == Some(static_non_null) {
                         // No conflict between static and dynamic results.
                         continue;
@@ -1235,7 +1278,15 @@ fn run(tcx: TyCtxt) {
                     }
                 }
                 if static_non_null_ptrs.is_empty() && dynamic_non_null_ptrs.is_empty() {
+                    if has_dynamic_observations {
+                        ann.emit(span, format_args!("typeof({:?}) = {}; dynamic and static NON_NULL agree", local, ty_str));
+                    }
                     continue;
+                }
+                if dynamic_non_null_ptrs.len() > 0 {
+                    if local.as_usize() <= mir.arg_count {
+                        eprintln!("dynamic NON_NULL in signature: {ldid:?} {local:?}");
+                    }
                 }
                 ann.emit(span, format_args!("typeof({:?}) = {}", local, ty_str));
                 if static_non_null_ptrs.len() > 0 {
@@ -1250,7 +1301,9 @@ fn run(tcx: TyCtxt) {
         }
 
         let annotations = ann.finish();
-        rewrite::apply_rewrites(tcx, Vec::new(), annotations, rewrite::UpdateFiles::No);
+        let update_files = get_rewrite_mode(tcx, None);
+        rewrite::apply_rewrites(tcx, Vec::new(), annotations, update_files);
+        eprintln!("finished writing pdg_compare annotations - exiting");
         return;
     }
 
@@ -1710,27 +1763,7 @@ fn run2<'tcx>(
     let annotations = ann.finish();
 
     // Apply rewrite to all functions at once.
-    let mut update_files = rewrite::UpdateFiles::No;
-    if let Ok(val) = env::var("C2RUST_ANALYZE_REWRITE_MODE") {
-        match val.as_str() {
-            "none" => {}
-            "inplace" => {
-                update_files = rewrite::UpdateFiles::InPlace;
-            }
-            "alongside" => {
-                update_files = rewrite::UpdateFiles::Alongside;
-            }
-            "pointwise" => {
-                let pointwise_fn_ldid = pointwise_fn_ldid.expect(
-                    "C2RUST_ANALYZE_REWRITE_MODE=pointwise, \
-                            but pointwise_fn_ldid is unset?",
-                );
-                let pointwise_fn_name = tcx.item_name(pointwise_fn_ldid.to_def_id());
-                update_files = rewrite::UpdateFiles::AlongsidePointwise(pointwise_fn_name);
-            }
-            _ => panic!("bad value {:?} for C2RUST_ANALYZE_REWRITE_MODE", val),
-        }
-    }
+    let update_files = get_rewrite_mode(tcx, pointwise_fn_ldid);
     rewrite::apply_rewrites(tcx, all_rewrites, annotations, update_files);
 
     // ----------------------------------
@@ -1979,10 +2012,11 @@ fn pdg_update_permissions_with_callback<'tcx>(
             let ldid = match func_def_path_hash_to_ldid.get(&def_path_hash) {
                 Some(&x) => x,
                 None => {
-                    panic!(
+                    warn!(
                         "pdg: unknown DefPathHash {:?} for function {:?}",
                         n.function.id, n.function.name
                     );
+                    continue;
                 }
             };
             let info = func_info.get_mut(&ldid).unwrap();
