@@ -908,6 +908,12 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     }
 
     pub fn mark_fn_failed(&mut self, did: DefId, reason: DontRewriteFnReason, detail: PanicDetail) {
+        info!(
+            "record panic for {:?}: {:?}; {}",
+            did,
+            reason,
+            detail.to_string_short()
+        );
         self.dont_rewrite_fns.add(did, reason);
         // Insert `detail` if there isn't yet an entry for this `DefId`.
         self.fns_failed.entry(did).or_insert(detail);

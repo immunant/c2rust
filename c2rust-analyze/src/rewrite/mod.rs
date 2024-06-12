@@ -340,10 +340,15 @@ pub fn apply_rewrites(
         }
         println!(" ===== END {:?} =====", filename);
 
+        eprintln!("update_files = {:?}", update_files);
+
         if !matches!(update_files, UpdateFiles::No) {
+            eprintln!("got update_files != No");
             let mut path_ok = false;
             if let FileName::Real(ref rfn) = filename {
+                eprintln!("got real filename {:?}", rfn);
                 if let Some(path) = rfn.local_path() {
+                    eprintln!("got local path {:?}", path);
                     let path = match update_files {
                         UpdateFiles::InPlace => path.to_owned(),
                         UpdateFiles::Alongside => path.with_extension("new.rs"),
@@ -355,7 +360,10 @@ pub fn apply_rewrites(
                         }
                         UpdateFiles::No => unreachable!(),
                     };
-                    fs::write(path, src).unwrap();
+                    eprintln!("writing to {:?}", path);
+                    eprintln!("current dir = {:?}", std::env::current_dir());
+                    fs::write(&path, src).unwrap();
+                    eprintln!("wrote to {:?}", path);
                     path_ok = true;
                 }
             }
