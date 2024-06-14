@@ -6,7 +6,7 @@ use color_eyre::eyre;
 use fs_err::File;
 use indexmap::IndexSet;
 use itertools::Itertools;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io::{self, BufReader};
 use std::iter;
 use std::path::Path;
@@ -23,7 +23,7 @@ pub fn read_metadata(path: &Path) -> eyre::Result<Metadata> {
     Ok(Metadata::read(&bytes)?)
 }
 
-fn parent(e: &NodeKind, obj: (GraphId, NodeId)) -> Option<(GraphId, NodeId)> {
+fn parent<'a, 'b>(e: &'a NodeKind, obj: &'b ProvenanceInfo) -> Option<&'b ProvenanceInfo> {
     use NodeKind::*;
     match e {
         Alloc(..) | AddrOfLocal(..) => None,
@@ -117,29 +117,103 @@ impl EventKindExt for EventKind {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ProvenanceInfo {
+    /// Size of this allocation or local object.
+    size: Option<usize>,
+
+    /// Graph containing all the nodes for this object.
+    gid: GraphId,
+
+    /// One node that created this object.
+    nid: NodeId,
+}
+
+impl ProvenanceInfo {
+    fn new(gid: GraphId, nid: NodeId) -> Self {
+        Self {
+            size: None,
+            gid,
+            nid,
+        }
+    }
+
+    /// Return a copy of the current object with a different node.
+    fn with_node(&self, nid: NodeId) -> Self {
+        Self {
+            nid,
+            ..self.clone()
+        }
+    }
+}
+
 fn update_provenance(
-    provenances: &mut HashMap<Pointer, (GraphId, NodeId)>,
+    provenances: &mut BTreeMap<Pointer, ProvenanceInfo>,
     event_kind: &EventKind,
-    mapping: (GraphId, NodeId),
+    mut mapping: ProvenanceInfo,
 ) {
     use EventKind::*;
     match *event_kind {
-        Alloc { ptr, .. } => {
+        Alloc { ptr, size, .. } => {
+            // TODO: check for overlap with existing allocations
+            mapping.size = Some(size);
             provenances.insert(ptr, mapping);
         }
-        CopyPtr(ptr) => {
-            // only insert if not already there
-            if let Err(..) = provenances.try_insert(ptr, mapping) {
-                log::warn!("0x{:x} already has a source", ptr);
+        Realloc { new_ptr, size, .. } => {
+            mapping.size = Some(size);
+            provenances.insert(new_ptr, mapping);
+        }
+        Free { ptr } if ptr != 0 => {
+            // TODO: handle the case where `ptr` falls inside an allocation
+            let old_prov = provenances.remove(&ptr);
+            if old_prov.is_none() {
+                log::warn!("Tried to free invalid pointer 0x{:x}", ptr);
             }
         }
-        Realloc { new_ptr, .. } => {
-            provenances.insert(new_ptr, mapping);
-        }
-        Offset(_, _, new_ptr) | Project(_, new_ptr, _) => {
-            provenances.insert(new_ptr, mapping);
+        CopyPtr(ptr) | Offset(_, _, ptr) | Project(_, ptr, _) => {
+            // Check that the pointer falls inside an existing allocation
+            let need_insert = provenances
+                .range(0..=ptr)
+                .next_back()
+                .map(|(start, pi)| {
+                    // If the existing pointer has a size, check it
+                    // Otherwise, insert ours if it's different
+                    let size = match pi.size {
+                        Some(size) => size,
+                        None => return ptr != *start,
+                    };
+
+                    let end = start.saturating_add(size);
+                    if (*start..=end).contains(&ptr) {
+                        return false;
+                    }
+
+                    if matches!(*event_kind, CopyPtr(_)) {
+                        // A new pointer that we don't know where it came from
+                        // Insert it for now, we should decide later what to do
+                        //
+                        // Assume an unknown pointer points to a word-sized object
+                        log::warn!("Pointer of unknown origin 0x{:x}", ptr);
+                        return true;
+                    }
+
+                    log::warn!(
+                        "0x{:x} outside of object bounds 0x{:x}-0x{:x}",
+                        ptr,
+                        start,
+                        end
+                    );
+
+                    false
+                })
+                .unwrap_or(true);
+
+            if need_insert {
+                provenances.insert(ptr, mapping);
+            }
         }
         AddrOfLocal(ptr, _) => {
+            // TODO: is this a local from another function?
             provenances.insert(ptr, mapping);
         }
         _ => {}
@@ -148,7 +222,7 @@ fn update_provenance(
 
 pub fn add_node(
     graphs: &mut Graphs,
-    provenances: &mut HashMap<Pointer, (GraphId, NodeId)>,
+    provenances: &mut BTreeMap<Pointer, ProvenanceInfo>,
     address_taken: &mut AddressTaken,
     event: &Event,
     metadata: &Metadata,
@@ -174,12 +248,34 @@ pub fn add_node(
         statement_idx = 0;
     }
 
-    let provenance = event
-        .kind
-        .ptr(event_metadata)
-        .and_then(|ptr| provenances.get(&ptr).cloned());
-    let direct_source = provenance.and_then(|(gid, _last_nid_ref)| {
-        graphs.graphs[gid]
+    let ptr = event.kind.ptr(event_metadata);
+    let provenance = ptr.and_then(|ptr| {
+        provenances
+            .range(0..=ptr)
+            .next_back()
+            .and_then(|(start, pi)| {
+                let size = match pi.size {
+                    Some(size) => size,
+                    None if ptr == *start => return Some(pi),
+                    None => return None,
+                };
+
+                // If the current pointer falls outside the
+                // original object, make a new graph for it
+                let end = start.saturating_add(size);
+
+                // This is intentionally greater-than because
+                // one past the end is still a valid pointer
+                if ptr > end {
+                    None
+                } else {
+                    Some(pi)
+                }
+            })
+    });
+
+    let direct_source = provenance.and_then(|pi| {
+        graphs.graphs[pi.gid]
             .nodes
             .iter()
             .rposition(|n| {
@@ -197,9 +293,9 @@ pub fn add_node(
                     false
                 }
             })
-            .map(|nid| (gid, NodeId::from(nid)))
+            .map(|nid| pi.with_node(NodeId::from(nid)))
     });
-    let source = direct_source.or(provenance);
+    let source = direct_source.or(provenance.cloned());
 
     let function = Func {
         id: dest_fn,
@@ -212,23 +308,25 @@ pub fn add_node(
         statement_idx,
         kind: node_kind.clone(),
         source: source
+            .as_ref()
             .and_then(|p| parent(&node_kind, p))
-            .map(|(_, nid)| nid),
+            .map(|pi| pi.nid),
         dest: event_metadata.destination.clone(),
         debug_info: event_metadata.debug_info.clone(),
         info: None,
     };
 
     let graph_id = source
+        .as_ref()
         .and_then(|p| parent(&node_kind, p))
-        .map(|(gid, _)| gid)
+        .map(|pi| pi.gid)
         .unwrap_or_else(|| graphs.graphs.push(Graph::new()));
     let node_id = graphs.graphs[graph_id].nodes.push(node);
 
     update_provenance(
         provenances,
         &event.kind,
-        (graph_id, node_id),
+        ProvenanceInfo::new(graph_id, node_id),
     );
 
     Some(node_id)
@@ -236,7 +334,7 @@ pub fn add_node(
 
 pub fn construct_pdg(events: &[Event], metadata: &Metadata) -> Graphs {
     let mut graphs = Graphs::new();
-    let mut provenances = HashMap::new();
+    let mut provenances = BTreeMap::new();
     let mut address_taken = AddressTaken::new();
     for event in events {
         add_node(
