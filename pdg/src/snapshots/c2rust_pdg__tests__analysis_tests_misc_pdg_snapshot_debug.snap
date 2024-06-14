@@ -90,11 +90,15 @@ g {
 	n[31]: copy          n[30] => _8     @ bb1[2]:  fn recur;   _8 = _2;
 	n[32]: copy          n[31] => _7     @ bb1[3]:  fn recur;   _7 = move _8 as *mut libc::c_void (Misc);
 	n[33]: free          n[32] => _0     @ bb1[5]:  fn recur;   _0 = free(move _7);
-	n[34]: copy          n[30] => _14    @ bb9[4]:  fn recur;   _14 = _2;
-	n[35]: copy          n[30] => _14    @ bb9[4]:  fn recur;   _14 = _2;
-	n[36]: copy          n[30] => _14    @ bb9[4]:  fn recur;   _14 = _2;
 }
 nodes_that_need_write = [22, 20, 17, 11, 9, 5, 3, 2, 1, 0]
+
+g {
+	n[0]: copy _    => _14 @ bb9[4]: fn recur;  _14 = _2;
+	n[1]: copy n[0] => _14 @ bb9[4]: fn recur;  _14 = _2;
+	n[2]: copy n[0] => _14 @ bb9[4]: fn recur;  _14 = _2;
+}
+nodes_that_need_write = []
 
 g {
 	n[0]: alloc        _    => _2  @ bb1[2]:  fn exercise_allocator;  _2 = malloc(move _3);
@@ -376,9 +380,9 @@ g {
 	n[5]:  value.store  n[4]  => _6.* @ bb2[10]: fn invalid;  (*_6) = move _5;
 	n[6]:  project[0]@0 n[1]  => _    @ bb2[25]: fn invalid;  _12 = ((*_1).0: i32);
 	n[7]:  addr.load    n[1]  => _    @ bb2[25]: fn invalid;  _12 = ((*_1).0: i32);
-	n[8]:  value.load   n[6]  => _    @ bb3[18]: fn invalid;  _18 = ((*(*_19)).0: i32);
-	n[9]:  project[0]@0 n[6]  => _    @ bb3[18]: fn invalid;  _18 = ((*(*_19)).0: i32);
-	n[10]: addr.load    n[9]  => _    @ bb3[18]: fn invalid;  _18 = ((*(*_19)).0: i32);
+	n[8]:  value.load   n[0]  => _    @ bb3[18]: fn invalid;  _18 = ((*(*_19)).0: i32);
+	n[9]:  project[0]@0 n[0]  => _    @ bb3[18]: fn invalid;  _18 = ((*(*_19)).0: i32);
+	n[10]: addr.load    n[0]  => _    @ bb3[18]: fn invalid;  _18 = ((*(*_19)).0: i32);
 	n[11]: copy         n[1]  => _23  @ bb4[12]: fn invalid;  _23 = _1;
 	n[12]: copy         n[11] => _22  @ bb4[13]: fn invalid;  _22 = move _23 as *mut libc::c_void (Misc);
 	n[13]: free         n[12] => _21  @ bb4[15]: fn invalid;  _21 = free(move _22);
@@ -421,9 +425,9 @@ g {
 	n[4]:  addr.store   n[2]  => _   @ bb4[8]:  fn simple1;  ((*_11).0: i32) = const 10_i32;
 	n[5]:  copy         n[1]  => _12 @ bb4[10]: fn simple1;  _12 = _5;
 	n[6]:  copy         n[2]  => _13 @ bb4[13]: fn simple1;  _13 = _11;
-	n[7]:  copy         n[3]  => _16 @ bb4[21]: fn simple1;  _16 = _1;
+	n[7]:  copy         n[0]  => _16 @ bb4[21]: fn simple1;  _16 = _1;
 	n[8]:  ptr_to_int   n[7]  => _   @ bb4[22]: fn simple1;  _15 = move _16 as usize (PointerExposeAddress);
-	n[9]:  int_to_ptr   n[3]  => _17 @ bb4[28]: fn simple1;  _17 = move _18 as *const libc::c_void (PointerFromExposedAddress);
+	n[9]:  int_to_ptr   n[0]  => _17 @ bb4[28]: fn simple1;  _17 = move _18 as *const libc::c_void (PointerFromExposedAddress);
 	n[10]: copy         n[1]  => _21 @ bb4[34]: fn simple1;  _21 = _5;
 	n[11]: copy         n[10] => _20 @ bb4[35]: fn simple1;  _20 = move _21 as *mut libc::c_void (Misc);
 	n[12]: free         n[11] => _19 @ bb4[37]: fn simple1;  _19 = free(move _20);
@@ -447,10 +451,10 @@ g {
 	n[6]:  copy        n[5]  => _6     @ bb1[3]:  fn fdevent_register;    _6 = &mut (*_7);
 	n[7]:  addr.store  n[6]  => _      @ bb2[0]:  fn fdevent_register;    (*_6) = move _11;
 	n[8]:  addr.load   n[6]  => _      @ bb2[3]:  fn fdevent_register;    _12 = (*_6);
-	n[9]:  value.load  n[5]  => _5     @ bb0[3]:  fn fdevent_unregister;  _5 = ((*_1).0: *mut *mut pointers::fdnode_st);
+	n[9]:  value.load  n[0]  => _5     @ bb0[3]:  fn fdevent_unregister;  _5 = ((*_1).0: *mut *mut pointers::fdnode_st);
 	n[10]: offset[0]   n[9]  => _4     @ bb0[9]:  fn fdevent_unregister;  _4 = offset(move _5, move _6);
 	n[11]: addr.load   n[10] => _      @ bb1[2]:  fn fdevent_unregister;  _3 = (*_4);
-	n[12]: value.load  n[10] => _19    @ bb7[4]:  fn fdevent_unregister;  _19 = ((*_1).0: *mut *mut pointers::fdnode_st);
+	n[12]: value.load  n[0]  => _19    @ bb7[4]:  fn fdevent_unregister;  _19 = ((*_1).0: *mut *mut pointers::fdnode_st);
 	n[13]: offset[0]   n[12] => _18    @ bb7[10]: fn fdevent_unregister;  _18 = offset(move _19, move _20);
 	n[14]: copy        n[13] => _17    @ bb8[3]:  fn fdevent_unregister;  _17 = &mut (*_18);
 	n[15]: addr.store  n[14] => _      @ bb8[4]:  fn fdevent_unregister;  (*_17) = const 0_usize as *mut pointers::fdnode_st (PointerFromExposedAddress);
@@ -458,7 +462,7 @@ g {
 	n[17]: copy        n[16] => _19    @ bb6[7]:  fn lighttpd_test;       _19 = move _20 as *mut libc::c_void (Misc);
 	n[18]: free        n[17] => _18    @ bb6[9]:  fn lighttpd_test;       _18 = free(move _19);
 }
-nodes_that_need_write = [15, 14, 13, 12, 10, 9, 7, 6, 5, 4, 0]
+nodes_that_need_write = [15, 14, 13, 12, 7, 6, 5, 4, 0]
 
 g {
 	n[0]:  alloc        _     => _6  @ bb3[2]:  fn lighttpd_test;                  _6 = malloc(move _7);
@@ -466,15 +470,15 @@ g {
 	n[2]:  project[0]@0 n[1]  => _   @ bb4[6]:  fn lighttpd_test;                  ((*_5).0: *mut *mut pointers::fdnode_st) = move _9;
 	n[3]:  addr.store   n[1]  => _   @ bb4[6]:  fn lighttpd_test;                  ((*_5).0: *mut *mut pointers::fdnode_st) = move _9;
 	n[4]:  copy         n[1]  => _12 @ bb4[10]: fn lighttpd_test;                  _12 = _5;
-	n[5]:  value.load   n[2]  => _10 @ bb2[10]: fn connection_accepted;            _10 = ((*_1).0: *mut pointers::fdevents);
+	n[5]:  value.load   n[0]  => _10 @ bb2[10]: fn connection_accepted;            _10 = ((*_1).0: *mut pointers::fdevents);
 	n[6]:  copy         n[5]  => _1  @ bb0[0]:  fn fdevent_register;               _9 = fdevent_register(move _10, move _11, move _12, move _14);
 	n[7]:  project[0]@0 n[6]  => _   @ bb0[2]:  fn fdevent_register;               _8 = ((*_1).0: *mut *mut pointers::fdnode_st);
 	n[8]:  addr.load    n[6]  => _   @ bb0[2]:  fn fdevent_register;               _8 = ((*_1).0: *mut *mut pointers::fdnode_st);
-	n[9]:  value.load   n[7]  => _4  @ bb0[2]:  fn connection_close;               _4 = ((*_1).0: *mut pointers::fdevents);
+	n[9]:  value.load   n[0]  => _4  @ bb0[2]:  fn connection_close;               _4 = ((*_1).0: *mut pointers::fdevents);
 	n[10]: copy         n[9]  => _1  @ bb0[0]:  fn fdevent_fdnode_event_del;       _3 = fdevent_fdnode_event_del(move _4, move _5);
 	n[11]: copy         n[10] => _7  @ bb2[2]:  fn fdevent_fdnode_event_del;       _7 = _1;
 	n[12]: copy         n[11] => _1  @ bb0[0]:  fn fdevent_fdnode_event_unsetter;  _6 = fdevent_fdnode_event_unsetter(move _7, move _8);
-	n[13]: value.load   n[7]  => _7  @ bb1[5]:  fn connection_close;               _7 = ((*_1).0: *mut pointers::fdevents);
+	n[13]: value.load   n[0]  => _7  @ bb1[5]:  fn connection_close;               _7 = ((*_1).0: *mut pointers::fdevents);
 	n[14]: copy         n[13] => _1  @ bb0[0]:  fn fdevent_unregister;             _6 = fdevent_unregister(move _7, move _8);
 	n[15]: project[0]@0 n[14] => _   @ bb0[3]:  fn fdevent_unregister;             _5 = ((*_1).0: *mut *mut pointers::fdnode_st);
 	n[16]: addr.load    n[14] => _   @ bb0[3]:  fn fdevent_unregister;             _5 = ((*_1).0: *mut *mut pointers::fdnode_st);
@@ -553,7 +557,7 @@ g {
 	n[18]: copy          n[7]  => _0     @ bb3[2]:  fn fdevent_register;               _0 = _12;
 	n[19]: copy          n[18] => _9     @ bb2[23]: fn connection_accepted;            _9 = fdevent_register(move _10, move _11, move _12, move _14);
 	n[20]: value.store   n[19] => _4.*.1 @ bb3[4]:  fn connection_accepted;            ((*_4).1: *mut pointers::fdnode_st) = move _9;
-	n[21]: value.load    n[8]  => _5     @ bb0[4]:  fn connection_close;               _5 = ((*_2).1: *mut pointers::fdnode_st);
+	n[21]: value.load    n[0]  => _5     @ bb0[4]:  fn connection_close;               _5 = ((*_2).1: *mut pointers::fdnode_st);
 	n[22]: copy          n[21] => _2     @ bb0[0]:  fn fdevent_fdnode_event_del;       _3 = fdevent_fdnode_event_del(move _4, move _5);
 	n[23]: copy          n[22] => _5     @ bb0[3]:  fn fdevent_fdnode_event_del;       _5 = _2;
 	n[24]: copy          n[23] => _1     @ bb0[0]:  fn is_null;                        _4 = is_null(move _5);
@@ -561,7 +565,7 @@ g {
 	n[26]: copy          n[25] => _2     @ bb0[0]:  fn fdevent_fdnode_event_unsetter;  _6 = fdevent_fdnode_event_unsetter(move _7, move _8);
 	n[27]: project[4]@24 n[26] => _      @ bb1[3]:  fn fdevent_fdnode_event_unsetter;  _8 = ((*_2).4: i32);
 	n[28]: addr.load     n[26] => _      @ bb1[3]:  fn fdevent_fdnode_event_unsetter;  _8 = ((*_2).4: i32);
-	n[29]: value.load    n[8]  => _3     @ bb1[2]:  fn fdevent_unregister;             _3 = (*_4);
+	n[29]: value.load    n[0]  => _3     @ bb1[2]:  fn fdevent_unregister;             _3 = (*_4);
 	n[30]: copy          n[29] => _12    @ bb1[11]: fn fdevent_unregister;             _12 = _3;
 	n[31]: ptr_to_int    n[30] => _      @ bb1[12]: fn fdevent_unregister;             _11 = move _12 as usize (PointerExposeAddress);
 	n[32]: copy          n[29] => _23    @ bb8[7]:  fn fdevent_unregister;             _23 = _3;
@@ -1022,6 +1026,6 @@ g {
 }
 nodes_that_need_write = [1, 0]
 
-num_graphs = 66
+num_graphs = 67
 num_nodes = 755
 
