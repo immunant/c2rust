@@ -57,6 +57,9 @@ pub enum NodeKind {
     /// Can't have a [`Node::source`].
     _AddrOfStatic(DefPathHash),
 
+    /// Get the address of a constant.
+    AddrOfConst(usize),
+
     /// Heap allocation.
     ///
     /// The [`usize`] is the number of array elements allocated
@@ -123,6 +126,7 @@ impl Display for NodeKind {
             Offset(offset) => write!(f, "offset[{offset}]"),
             AddrOfLocal(local) => write!(f, "&{local:?}"),
             _AddrOfStatic(static_) => write!(f, "&'static {static_:?}"),
+            AddrOfConst(size) => write!(f, "&const[{}]", size),
             Alloc(n) => {
                 // Right now we only create `Alloc(1)`, so special case it,
                 // as the increased readability helps.
