@@ -63,8 +63,13 @@ pub enum EventKind {
     /// are necessary for its underlying address.
     StoreAddrTaken(Pointer),
 
-    /// The pointer that appears as the address result of addr_of(Local)
-    AddrOfLocal(Pointer, Local),
+    /// The pointer that appears as the address result of addr_of(Local).
+    /// The fields encode the pointer of the local, its MIR index, and its size.
+    AddrOfLocal {
+        ptr: Pointer,
+        local: Local,
+        size: u32,
+    },
 
     /// Casting the pointer to an int
     ToInt(Pointer),
@@ -111,7 +116,9 @@ impl Debug for EventKind {
             StoreAddr(ptr) => write!(f, "store(0x{:x})", ptr),
             StoreAddrTaken(ptr) => write!(f, "store(0x{:x})", ptr),
             CopyRef => write!(f, "copy_ref"),
-            AddrOfLocal(ptr, _) => write!(f, "addr_of_local = 0x{:x}", ptr),
+            AddrOfLocal { ptr, local, size } => {
+                write!(f, "addr_of_local({:?}, {}) = 0x{:x}", local, size, ptr)
+            }
             ToInt(ptr) => write!(f, "to_int(0x{:x})", ptr),
             FromInt(ptr) => write!(f, "from_int(0x{:x})", ptr),
             LoadValue(ptr) => write!(f, "load_value(0x{:x})", ptr),
