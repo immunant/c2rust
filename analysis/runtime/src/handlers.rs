@@ -149,6 +149,17 @@ pub fn addr_of_local(mir_loc: MirLocId, ptr: usize, local: u32, size: u32) {
     });
 }
 
+pub fn addr_of_sized<T: ?Sized>(mir_loc: MirLocId, ptr: *const T) {
+    let size = unsafe { core::mem::size_of_val(&*ptr) };
+    RUNTIME.send_event(Event {
+        mir_loc,
+        kind: EventKind::AddrOfSized {
+            ptr: ptr as *const u8 as usize,
+            size,
+        },
+    });
+}
+
 pub fn load_value(mir_loc: MirLocId, ptr: usize) {
     RUNTIME.send_event(Event {
         mir_loc,

@@ -93,7 +93,7 @@ pub fn cast_ptr_to_usize<'tcx>(
             new_stmts.push(addr_of_stmt);
             Operand::Move(raw_ptr_local.into())
         }
-        // We want to preserve the operand as a pointer, e.g., for `AddrOfConst`.
+        // We want to preserve the operand as a pointer, e.g., for `AddrOfSized`.
         // The argument might be a reference, so we need to do a double cast, e.g.
         // `&x` => `&x as *const T` and `&mut x` => `&mut x as *mut T as *const T`
         InstrumentationArg::Pointer(arg) => {

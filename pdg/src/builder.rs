@@ -26,7 +26,7 @@ pub fn read_metadata(path: &Path) -> eyre::Result<Metadata> {
 fn parent<'a, 'b>(e: &'a NodeKind, obj: &'b ProvenanceInfo) -> Option<&'b ProvenanceInfo> {
     use NodeKind::*;
     match e {
-        Alloc(..) | AddrOfLocal(..) => None,
+        Alloc(..) | AddrOfLocal(..) | AddrOfSized(..) => None,
         _ => Some(obj),
     }
 }
@@ -62,6 +62,7 @@ impl EventKindExt for EventKind {
             FromInt(lhs) => lhs,
             Alloc { ptr, .. } => ptr,
             AddrOfLocal { ptr, .. } => ptr,
+            AddrOfSized { ptr, .. } => ptr,
             Offset(ptr, _, _) => ptr,
             Done | BeginFuncBody => return None,
         })
@@ -101,6 +102,7 @@ impl EventKindExt for EventKind {
                     NodeKind::Copy
                 }
             }
+            AddrOfSized { size, .. } => NodeKind::AddrOfSized(size),
             BeginFuncBody => {
                 // Reset the collection of address-taken locals, in order to
                 // properly consider the first instance of each address-taking
@@ -216,6 +218,10 @@ fn update_provenance(
             // TODO: is this a local from another function?
             mapping.size = size.try_into().ok();
             provenances.insert(ptr, mapping);
+        }
+        AddrOfSized { ptr, size } => {
+            mapping.size = Some(size);
+            let _ = provenances.try_insert(ptr, mapping);
         }
         _ => {}
     }

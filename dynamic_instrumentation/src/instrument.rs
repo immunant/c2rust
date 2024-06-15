@@ -559,6 +559,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
     fn visit_assign(&mut self, dest: &Place<'tcx>, value: &Rvalue<'tcx>, location: Location) {
         let copy_fn = self.hooks().find("ptr_copy");
         let addr_local_fn = self.hooks().find("addr_of_local");
+        let addr_sized_fn = self.hooks().find("addr_of_sized");
         let ptr_contrive_fn = self.hooks().find("ptr_contrive");
         let ptr_to_int_fn = self.hooks().find("ptr_to_int");
         let load_value_fn = self.hooks().find("load_value");
@@ -643,9 +644,8 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
             Rvalue::Use(Operand::Constant(..)) => {
                 // Track (as copies) assignments that give local names to constants so that code
                 // taking references to said constants can refer to these assignments as sources.
-                // TODO: should be replaced by AddrOfStatic when support for that is added
-                self.loc(location, location.successor_within_block(), copy_fn)
-                    .arg_var(dest)
+                self.loc(location, location.successor_within_block(), addr_sized_fn)
+                    .arg_ptr(dest)
                     .dest(&dest)
                     .debug_mir()
                     .add_to(self);
