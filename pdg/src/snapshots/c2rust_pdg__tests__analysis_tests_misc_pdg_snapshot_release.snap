@@ -114,81 +114,67 @@ g {
 nodes_that_need_write = [3, 1, 0]
 
 g {
-	n[0]:  copy _     => _9  @ bb2[11]: fn exercise_allocator;       _9 = const b"%i\n\x00";
-	n[1]:  copy n[0]  => _8  @ bb2[12]: fn exercise_allocator;       _8 = &raw const (*_9);
-	n[2]:  copy n[1]  => _7  @ bb2[13]: fn exercise_allocator;       _7 = move _8 as *const u8 (Pointer(ArrayToPointer));
-	n[3]:  copy n[2]  => _6  @ bb2[15]: fn exercise_allocator;       _6 = move _7 as *const i8 (Misc);
-	n[4]:  copy n[3]  => _1  @ bb0[0]:  fn printf;                   _5 = printf(move _6, move _10);
-	n[5]:  copy n[0]  => _31 @ bb11[5]: fn exercise_allocator;       _31 = const b"%i\n\x00";
-	n[6]:  copy n[5]  => _30 @ bb11[6]: fn exercise_allocator;       _30 = &raw const (*_31);
-	n[7]:  copy n[6]  => _29 @ bb11[7]: fn exercise_allocator;       _29 = move _30 as *const u8 (Pointer(ArrayToPointer));
-	n[8]:  copy n[7]  => _28 @ bb11[9]: fn exercise_allocator;       _28 = move _29 as *const i8 (Misc);
-	n[9]:  copy n[8]  => _1  @ bb0[0]:  fn printf;                   _27 = printf(move _28, move _32);
-	n[10]: copy n[0]  => _31 @ bb11[5]: fn exercise_allocator;       _31 = const b"%i\n\x00";
-	n[11]: copy n[10] => _30 @ bb11[6]: fn exercise_allocator;       _30 = &raw const (*_31);
-	n[12]: copy n[11] => _29 @ bb11[7]: fn exercise_allocator;       _29 = move _30 as *const u8 (Pointer(ArrayToPointer));
-	n[13]: copy n[12] => _28 @ bb11[9]: fn exercise_allocator;       _28 = move _29 as *const i8 (Misc);
-	n[14]: copy n[13] => _1  @ bb0[0]:  fn printf;                   _27 = printf(move _28, move _32);
-	n[15]: copy n[0]  => _60 @ bb28[5]: fn exercise_allocator;       _60 = const b"%i\n\x00";
-	n[16]: copy n[15] => _59 @ bb28[6]: fn exercise_allocator;       _59 = &raw const (*_60);
-	n[17]: copy n[16] => _58 @ bb28[7]: fn exercise_allocator;       _58 = move _59 as *const u8 (Pointer(ArrayToPointer));
-	n[18]: copy n[17] => _57 @ bb28[9]: fn exercise_allocator;       _57 = move _58 as *const i8 (Misc);
-	n[19]: copy n[18] => _1  @ bb0[0]:  fn printf;                   _56 = printf(move _57, move _61);
-	n[20]: copy n[0]  => _60 @ bb28[5]: fn exercise_allocator;       _60 = const b"%i\n\x00";
-	n[21]: copy n[20] => _59 @ bb28[6]: fn exercise_allocator;       _59 = &raw const (*_60);
-	n[22]: copy n[21] => _58 @ bb28[7]: fn exercise_allocator;       _58 = move _59 as *const u8 (Pointer(ArrayToPointer));
-	n[23]: copy n[22] => _57 @ bb28[9]: fn exercise_allocator;       _57 = move _58 as *const i8 (Misc);
-	n[24]: copy n[23] => _1  @ bb0[0]:  fn printf;                   _56 = printf(move _57, move _61);
-	n[25]: copy n[0]  => _60 @ bb28[5]: fn exercise_allocator;       _60 = const b"%i\n\x00";
-	n[26]: copy n[25] => _59 @ bb28[6]: fn exercise_allocator;       _59 = &raw const (*_60);
-	n[27]: copy n[26] => _58 @ bb28[7]: fn exercise_allocator;       _58 = move _59 as *const u8 (Pointer(ArrayToPointer));
-	n[28]: copy n[27] => _57 @ bb28[9]: fn exercise_allocator;       _57 = move _58 as *const i8 (Misc);
-	n[29]: copy n[28] => _1  @ bb0[0]:  fn printf;                   _56 = printf(move _57, move _61);
-	n[30]: copy n[0]  => _92 @ bb47[5]: fn exercise_allocator;       _92 = const b"%i\n\x00";
-	n[31]: copy n[30] => _91 @ bb47[6]: fn exercise_allocator;       _91 = &raw const (*_92);
-	n[32]: copy n[31] => _90 @ bb47[7]: fn exercise_allocator;       _90 = move _91 as *const u8 (Pointer(ArrayToPointer));
-	n[33]: copy n[32] => _89 @ bb47[9]: fn exercise_allocator;       _89 = move _90 as *const i8 (Misc);
-	n[34]: copy n[33] => _1  @ bb0[0]:  fn printf;                   _88 = printf(move _89, move _93);
-	n[35]: copy n[0]  => _92 @ bb47[5]: fn exercise_allocator;       _92 = const b"%i\n\x00";
-	n[36]: copy n[35] => _91 @ bb47[6]: fn exercise_allocator;       _91 = &raw const (*_92);
-	n[37]: copy n[36] => _90 @ bb47[7]: fn exercise_allocator;       _90 = move _91 as *const u8 (Pointer(ArrayToPointer));
-	n[38]: copy n[37] => _89 @ bb47[9]: fn exercise_allocator;       _89 = move _90 as *const i8 (Misc);
-	n[39]: copy n[38] => _1  @ bb0[0]:  fn printf;                   _88 = printf(move _89, move _93);
-	n[40]: copy n[0]  => _92 @ bb47[5]: fn exercise_allocator;       _92 = const b"%i\n\x00";
-	n[41]: copy n[40] => _91 @ bb47[6]: fn exercise_allocator;       _91 = &raw const (*_92);
-	n[42]: copy n[41] => _90 @ bb47[7]: fn exercise_allocator;       _90 = move _91 as *const u8 (Pointer(ArrayToPointer));
-	n[43]: copy n[42] => _89 @ bb47[9]: fn exercise_allocator;       _89 = move _90 as *const i8 (Misc);
-	n[44]: copy n[43] => _1  @ bb0[0]:  fn printf;                   _88 = printf(move _89, move _93);
-	n[45]: copy n[0]  => _92 @ bb47[5]: fn exercise_allocator;       _92 = const b"%i\n\x00";
-	n[46]: copy n[45] => _91 @ bb47[6]: fn exercise_allocator;       _91 = &raw const (*_92);
-	n[47]: copy n[46] => _90 @ bb47[7]: fn exercise_allocator;       _90 = move _91 as *const u8 (Pointer(ArrayToPointer));
-	n[48]: copy n[47] => _89 @ bb47[9]: fn exercise_allocator;       _89 = move _90 as *const i8 (Misc);
-	n[49]: copy n[48] => _1  @ bb0[0]:  fn printf;                   _88 = printf(move _89, move _93);
-	n[50]: copy n[0]  => _9  @ bb2[11]: fn simple_analysis;          _9 = const b"%i\n\x00";
-	n[51]: copy n[50] => _8  @ bb2[12]: fn simple_analysis;          _8 = &raw const (*_9);
-	n[52]: copy n[51] => _7  @ bb2[13]: fn simple_analysis;          _7 = move _8 as *const u8 (Pointer(ArrayToPointer));
-	n[53]: copy n[52] => _6  @ bb2[15]: fn simple_analysis;          _6 = move _7 as *const i8 (Misc);
-	n[54]: copy n[53] => _1  @ bb0[0]:  fn printf;                   _5 = printf(move _6, move _10);
-	n[55]: copy n[0]  => _6  @ bb0[5]:  fn analysis2_helper;         _6 = const b"%i\n\x00";
-	n[56]: copy n[55] => _5  @ bb0[6]:  fn analysis2_helper;         _5 = &raw const (*_6);
-	n[57]: copy n[56] => _4  @ bb0[7]:  fn analysis2_helper;         _4 = move _5 as *const u8 (Pointer(ArrayToPointer));
-	n[58]: copy n[57] => _3  @ bb0[9]:  fn analysis2_helper;         _3 = move _4 as *const i8 (Misc);
-	n[59]: copy n[58] => _1  @ bb0[0]:  fn printf;                   _2 = printf(move _3, move _7);
-	n[60]: copy n[0]  => _9  @ bb2[11]: fn inter_function_analysis;  _9 = const b"%i\n\x00";
-	n[61]: copy n[60] => _8  @ bb2[12]: fn inter_function_analysis;  _8 = &raw const (*_9);
-	n[62]: copy n[61] => _7  @ bb2[13]: fn inter_function_analysis;  _7 = move _8 as *const u8 (Pointer(ArrayToPointer));
-	n[63]: copy n[62] => _6  @ bb2[15]: fn inter_function_analysis;  _6 = move _7 as *const i8 (Misc);
-	n[64]: copy n[63] => _1  @ bb0[0]:  fn printf;                   _5 = printf(move _6, move _10);
-	n[65]: copy n[0]  => _11 @ bb2[18]: fn invalid;                  _11 = const b"%i\n\x00";
-	n[66]: copy n[65] => _10 @ bb2[19]: fn invalid;                  _10 = &raw const (*_11);
-	n[67]: copy n[66] => _9  @ bb2[20]: fn invalid;                  _9 = move _10 as *const u8 (Pointer(ArrayToPointer));
-	n[68]: copy n[67] => _8  @ bb2[22]: fn invalid;                  _8 = move _9 as *const i8 (Misc);
-	n[69]: copy n[68] => _1  @ bb0[0]:  fn printf;                   _7 = printf(move _8, move _12);
-	n[70]: copy n[0]  => _17 @ bb3[9]:  fn invalid;                  _17 = const b"%i\n\x00";
-	n[71]: copy n[70] => _16 @ bb3[10]: fn invalid;                  _16 = &raw const (*_17);
-	n[72]: copy n[71] => _15 @ bb3[11]: fn invalid;                  _15 = move _16 as *const u8 (Pointer(ArrayToPointer));
-	n[73]: copy n[72] => _14 @ bb3[13]: fn invalid;                  _14 = move _15 as *const i8 (Misc);
-	n[74]: copy n[73] => _1  @ bb0[0]:  fn printf;                   _13 = printf(move _14, move _18);
+	n[0]:  sized(4) _     => _9  @ bb2[11]: fn exercise_allocator;       _9 = const b"%i\n\x00";
+	n[1]:  copy     n[0]  => _8  @ bb2[12]: fn exercise_allocator;       _8 = &raw const (*_9);
+	n[2]:  copy     n[1]  => _7  @ bb2[13]: fn exercise_allocator;       _7 = move _8 as *const u8 (Pointer(ArrayToPointer));
+	n[3]:  copy     n[2]  => _6  @ bb2[15]: fn exercise_allocator;       _6 = move _7 as *const i8 (Misc);
+	n[4]:  copy     n[3]  => _1  @ bb0[0]:  fn printf;                   _5 = printf(move _6, move _10);
+	n[5]:  copy     n[0]  => _30 @ bb11[6]: fn exercise_allocator;       _30 = &raw const (*_31);
+	n[6]:  copy     n[5]  => _29 @ bb11[7]: fn exercise_allocator;       _29 = move _30 as *const u8 (Pointer(ArrayToPointer));
+	n[7]:  copy     n[6]  => _28 @ bb11[9]: fn exercise_allocator;       _28 = move _29 as *const i8 (Misc);
+	n[8]:  copy     n[7]  => _1  @ bb0[0]:  fn printf;                   _27 = printf(move _28, move _32);
+	n[9]:  copy     n[0]  => _30 @ bb11[6]: fn exercise_allocator;       _30 = &raw const (*_31);
+	n[10]: copy     n[9]  => _29 @ bb11[7]: fn exercise_allocator;       _29 = move _30 as *const u8 (Pointer(ArrayToPointer));
+	n[11]: copy     n[10] => _28 @ bb11[9]: fn exercise_allocator;       _28 = move _29 as *const i8 (Misc);
+	n[12]: copy     n[11] => _1  @ bb0[0]:  fn printf;                   _27 = printf(move _28, move _32);
+	n[13]: copy     n[0]  => _59 @ bb28[6]: fn exercise_allocator;       _59 = &raw const (*_60);
+	n[14]: copy     n[13] => _58 @ bb28[7]: fn exercise_allocator;       _58 = move _59 as *const u8 (Pointer(ArrayToPointer));
+	n[15]: copy     n[14] => _57 @ bb28[9]: fn exercise_allocator;       _57 = move _58 as *const i8 (Misc);
+	n[16]: copy     n[15] => _1  @ bb0[0]:  fn printf;                   _56 = printf(move _57, move _61);
+	n[17]: copy     n[0]  => _59 @ bb28[6]: fn exercise_allocator;       _59 = &raw const (*_60);
+	n[18]: copy     n[17] => _58 @ bb28[7]: fn exercise_allocator;       _58 = move _59 as *const u8 (Pointer(ArrayToPointer));
+	n[19]: copy     n[18] => _57 @ bb28[9]: fn exercise_allocator;       _57 = move _58 as *const i8 (Misc);
+	n[20]: copy     n[19] => _1  @ bb0[0]:  fn printf;                   _56 = printf(move _57, move _61);
+	n[21]: copy     n[0]  => _59 @ bb28[6]: fn exercise_allocator;       _59 = &raw const (*_60);
+	n[22]: copy     n[21] => _58 @ bb28[7]: fn exercise_allocator;       _58 = move _59 as *const u8 (Pointer(ArrayToPointer));
+	n[23]: copy     n[22] => _57 @ bb28[9]: fn exercise_allocator;       _57 = move _58 as *const i8 (Misc);
+	n[24]: copy     n[23] => _1  @ bb0[0]:  fn printf;                   _56 = printf(move _57, move _61);
+	n[25]: copy     n[0]  => _91 @ bb47[6]: fn exercise_allocator;       _91 = &raw const (*_92);
+	n[26]: copy     n[25] => _90 @ bb47[7]: fn exercise_allocator;       _90 = move _91 as *const u8 (Pointer(ArrayToPointer));
+	n[27]: copy     n[26] => _89 @ bb47[9]: fn exercise_allocator;       _89 = move _90 as *const i8 (Misc);
+	n[28]: copy     n[27] => _1  @ bb0[0]:  fn printf;                   _88 = printf(move _89, move _93);
+	n[29]: copy     n[0]  => _91 @ bb47[6]: fn exercise_allocator;       _91 = &raw const (*_92);
+	n[30]: copy     n[29] => _90 @ bb47[7]: fn exercise_allocator;       _90 = move _91 as *const u8 (Pointer(ArrayToPointer));
+	n[31]: copy     n[30] => _89 @ bb47[9]: fn exercise_allocator;       _89 = move _90 as *const i8 (Misc);
+	n[32]: copy     n[31] => _1  @ bb0[0]:  fn printf;                   _88 = printf(move _89, move _93);
+	n[33]: copy     n[0]  => _91 @ bb47[6]: fn exercise_allocator;       _91 = &raw const (*_92);
+	n[34]: copy     n[33] => _90 @ bb47[7]: fn exercise_allocator;       _90 = move _91 as *const u8 (Pointer(ArrayToPointer));
+	n[35]: copy     n[34] => _89 @ bb47[9]: fn exercise_allocator;       _89 = move _90 as *const i8 (Misc);
+	n[36]: copy     n[35] => _1  @ bb0[0]:  fn printf;                   _88 = printf(move _89, move _93);
+	n[37]: copy     n[0]  => _91 @ bb47[6]: fn exercise_allocator;       _91 = &raw const (*_92);
+	n[38]: copy     n[37] => _90 @ bb47[7]: fn exercise_allocator;       _90 = move _91 as *const u8 (Pointer(ArrayToPointer));
+	n[39]: copy     n[38] => _89 @ bb47[9]: fn exercise_allocator;       _89 = move _90 as *const i8 (Misc);
+	n[40]: copy     n[39] => _1  @ bb0[0]:  fn printf;                   _88 = printf(move _89, move _93);
+	n[41]: copy     n[0]  => _8  @ bb2[12]: fn simple_analysis;          _8 = &raw const (*_9);
+	n[42]: copy     n[41] => _7  @ bb2[13]: fn simple_analysis;          _7 = move _8 as *const u8 (Pointer(ArrayToPointer));
+	n[43]: copy     n[42] => _6  @ bb2[15]: fn simple_analysis;          _6 = move _7 as *const i8 (Misc);
+	n[44]: copy     n[43] => _1  @ bb0[0]:  fn printf;                   _5 = printf(move _6, move _10);
+	n[45]: copy     n[43] => _5  @ bb0[6]:  fn analysis2_helper;         _5 = &raw const (*_6);
+	n[46]: copy     n[45] => _4  @ bb0[7]:  fn analysis2_helper;         _4 = move _5 as *const u8 (Pointer(ArrayToPointer));
+	n[47]: copy     n[46] => _3  @ bb0[9]:  fn analysis2_helper;         _3 = move _4 as *const i8 (Misc);
+	n[48]: copy     n[47] => _1  @ bb0[0]:  fn printf;                   _2 = printf(move _3, move _7);
+	n[49]: copy     n[0]  => _8  @ bb2[12]: fn inter_function_analysis;  _8 = &raw const (*_9);
+	n[50]: copy     n[49] => _7  @ bb2[13]: fn inter_function_analysis;  _7 = move _8 as *const u8 (Pointer(ArrayToPointer));
+	n[51]: copy     n[50] => _6  @ bb2[15]: fn inter_function_analysis;  _6 = move _7 as *const i8 (Misc);
+	n[52]: copy     n[51] => _1  @ bb0[0]:  fn printf;                   _5 = printf(move _6, move _10);
+	n[53]: copy     n[0]  => _10 @ bb2[19]: fn invalid;                  _10 = &raw const (*_11);
+	n[54]: copy     n[53] => _9  @ bb2[20]: fn invalid;                  _9 = move _10 as *const u8 (Pointer(ArrayToPointer));
+	n[55]: copy     n[54] => _8  @ bb2[22]: fn invalid;                  _8 = move _9 as *const i8 (Misc);
+	n[56]: copy     n[55] => _1  @ bb0[0]:  fn printf;                   _7 = printf(move _8, move _12);
+	n[57]: copy     n[0]  => _16 @ bb3[10]: fn invalid;                  _16 = &raw const (*_17);
+	n[58]: copy     n[57] => _15 @ bb3[11]: fn invalid;                  _15 = move _16 as *const u8 (Pointer(ArrayToPointer));
+	n[59]: copy     n[58] => _14 @ bb3[13]: fn invalid;                  _14 = move _15 as *const i8 (Misc);
+	n[60]: copy     n[59] => _1  @ bb0[0]:  fn printf;                   _13 = printf(move _14, move _18);
 }
 nodes_that_need_write = []
 
@@ -218,6 +204,11 @@ g {
 	n[22]: free         n[19] => _40 @ bb21[2]:  fn exercise_allocator;  _40 = reallocarray(move _41, move _43, move _44);
 }
 nodes_that_need_write = [9, 7, 6, 5, 3, 2, 1, 0]
+
+g {
+	n[0]: sized(4) _ => _31 @ bb11[5]: fn exercise_allocator;  _31 = const b"%i\n\x00";
+}
+nodes_that_need_write = []
 
 g {
 	n[0]:  alloc        _     => _40 @ bb21[2]:  fn exercise_allocator;  _40 = reallocarray(move _41, move _43, move _44);
@@ -251,6 +242,11 @@ g {
 	n[28]: free         n[27] => _69 @ bb37[9]:  fn exercise_allocator;  _69 = free(move _70);
 }
 nodes_that_need_write = [13, 11, 10, 9, 7, 6, 5, 3, 2, 1, 0]
+
+g {
+	n[0]: sized(4) _ => _60 @ bb28[5]: fn exercise_allocator;  _60 = const b"%i\n\x00";
+}
+nodes_that_need_write = []
 
 g {
 	n[0]:  alloc        _     => _72  @ bb39[2]:  fn exercise_allocator;  _72 = calloc(move _73, move _74);
@@ -294,6 +290,11 @@ g {
 nodes_that_need_write = [17, 15, 14, 13, 11, 10, 9, 7, 6, 5, 3, 2, 1, 0]
 
 g {
+	n[0]: sized(4) _ => _92 @ bb47[5]: fn exercise_allocator;  _92 = const b"%i\n\x00";
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: alloc        _    => _2  @ bb1[2]:  fn simple_analysis;  _2 = malloc(move _3);
 	n[1]: copy         n[0] => _1  @ bb2[1]:  fn simple_analysis;  _1 = move _2 as *mut pointers::S (Misc);
 	n[2]: project[0]@0 n[1] => _   @ bb2[5]:  fn simple_analysis;  ((*_1).0: i32) = const 10_i32;
@@ -305,6 +306,11 @@ g {
 	n[8]: free         n[7] => _11 @ bb3[10]: fn simple_analysis;  _11 = free(move _12);
 }
 nodes_that_need_write = [3, 1, 0]
+
+g {
+	n[0]: sized(4) _ => _9 @ bb2[11]: fn simple_analysis;  _9 = const b"%i\n\x00";
+}
+nodes_that_need_write = []
 
 g {
 	n[0]:  alloc        _    => _2 @ bb1[2]:  fn analysis2;         _2 = malloc(move _3);
@@ -322,6 +328,11 @@ g {
 nodes_that_need_write = [3, 1, 0]
 
 g {
+	n[0]: sized(4) _ => _6 @ bb0[5]: fn analysis2_helper;  _6 = const b"%i\n\x00";
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: alloc        _    => _0  @ bb0[2]:  fn malloc_wrapper;           _0 = malloc(move _3);
 	n[1]: copy         n[0] => _2  @ bb1[2]:  fn inter_function_analysis;  _2 = malloc_wrapper(move _3);
 	n[2]: copy         n[1] => _1  @ bb2[1]:  fn inter_function_analysis;  _1 = move _2 as *mut pointers::S (Misc);
@@ -336,6 +347,11 @@ g {
 nodes_that_need_write = [4, 2, 1, 0]
 
 g {
+	n[0]: sized(4) _ => _9 @ bb2[11]: fn inter_function_analysis;  _9 = const b"%i\n\x00";
+}
+nodes_that_need_write = []
+
+g {
 	n[0]: alloc       _    => _2   @ bb1[2]: fn no_owner;  _2 = malloc(move _3);
 	n[1]: value.store n[0] => _5.* @ bb2[3]: fn no_owner;  (*_5) = move _2 as *mut pointers::S (Misc);
 	n[2]: value.load  n[0] => _12  @ bb6[6]: fn main_0;    _12 = (*_13);
@@ -345,22 +361,21 @@ g {
 nodes_that_need_write = []
 
 g {
-	n[0]:  copy       _     => _5  @ bb2[2]:  fn no_owner;  _5 = const {alloc8: *mut *mut pointers::S};
-	n[1]:  addr.store n[0]  => _   @ bb2[3]:  fn no_owner;  (*_5) = move _2 as *mut pointers::S (Misc);
-	n[2]:  copy       n[0]  => _13 @ bb6[5]:  fn main_0;    _13 = const {alloc8: *mut *mut pointers::S};
-	n[3]:  addr.load  n[2]  => _   @ bb6[6]:  fn main_0;    _12 = (*_13);
-	n[4]:  copy       n[0]  => _5  @ bb2[2]:  fn no_owner;  _5 = const {alloc8: *mut *mut pointers::S};
-	n[5]:  addr.store n[4]  => _   @ bb2[3]:  fn no_owner;  (*_5) = move _2 as *mut pointers::S (Misc);
-	n[6]:  copy       n[0]  => _12 @ bb3[4]:  fn no_owner;  _12 = const {alloc8: *mut *mut pointers::S};
-	n[7]:  addr.load  n[6]  => _   @ bb3[5]:  fn no_owner;  _11 = (*_12);
-	n[8]:  copy       n[0]  => _6  @ bb2[9]:  fn invalid;   _6 = const {alloc8: *mut *mut pointers::S};
-	n[9]:  addr.store n[8]  => _   @ bb2[10]: fn invalid;   (*_6) = move _5;
-	n[10]: copy       n[0]  => _19 @ bb3[17]: fn invalid;   _19 = const {alloc8: *mut *mut pointers::S};
-	n[11]: addr.load  n[10] => _   @ bb3[18]: fn invalid;   _18 = ((*(*_19)).0: i32);
-	n[12]: copy       n[0]  => _20 @ bb4[6]:  fn invalid;   _20 = const {alloc8: *mut *mut pointers::S};
-	n[13]: addr.store n[12] => _   @ bb4[7]:  fn invalid;   (*_20) = const 0_usize as *mut pointers::S (PointerFromExposedAddress);
+	n[0]: sized(8)   _    => _5 @ bb2[2]:  fn no_owner;  _5 = const {alloc8: *mut *mut pointers::S};
+	n[1]: addr.store n[0] => _  @ bb2[3]:  fn no_owner;  (*_5) = move _2 as *mut pointers::S (Misc);
+	n[2]: addr.load  n[0] => _  @ bb6[6]:  fn main_0;    _12 = (*_13);
+	n[3]: addr.store n[0] => _  @ bb2[3]:  fn no_owner;  (*_5) = move _2 as *mut pointers::S (Misc);
+	n[4]: addr.load  n[0] => _  @ bb3[5]:  fn no_owner;  _11 = (*_12);
+	n[5]: addr.store n[0] => _  @ bb2[10]: fn invalid;   (*_6) = move _5;
+	n[6]: addr.load  n[0] => _  @ bb3[18]: fn invalid;   _18 = ((*(*_19)).0: i32);
+	n[7]: addr.store n[0] => _  @ bb4[7]:  fn invalid;   (*_20) = const 0_usize as *mut pointers::S (PointerFromExposedAddress);
 }
-nodes_that_need_write = [13, 12, 9, 8, 5, 4, 1, 0]
+nodes_that_need_write = [7, 5, 3, 1, 0]
+
+g {
+	n[0]: sized(8) _ => _13 @ bb6[5]: fn main_0;  _13 = const {alloc8: *mut *mut pointers::S};
+}
+nodes_that_need_write = []
 
 g {
 	n[0]: alloc       _    => _2   @ bb1[2]: fn no_owner;  _2 = malloc(move _3);
@@ -368,6 +383,16 @@ g {
 	n[2]: value.load  n[0] => _11  @ bb3[5]: fn no_owner;  _11 = (*_12);
 	n[3]: copy        n[2] => _10  @ bb3[6]: fn no_owner;  _10 = move _11 as *mut libc::c_void (Misc);
 	n[4]: free        n[3] => _9   @ bb3[8]: fn no_owner;  _9 = free(move _10);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: sized(8) _ => _5 @ bb2[2]: fn no_owner;  _5 = const {alloc8: *mut *mut pointers::S};
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: sized(8) _ => _12 @ bb3[4]: fn no_owner;  _12 = const {alloc8: *mut *mut pointers::S};
 }
 nodes_that_need_write = []
 
@@ -388,6 +413,31 @@ g {
 	n[13]: free         n[12] => _21  @ bb4[15]: fn invalid;  _21 = free(move _22);
 }
 nodes_that_need_write = [3, 1, 0]
+
+g {
+	n[0]: sized(8) _ => _6 @ bb2[9]: fn invalid;  _6 = const {alloc8: *mut *mut pointers::S};
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: sized(4) _ => _11 @ bb2[18]: fn invalid;  _11 = const b"%i\n\x00";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: sized(4) _ => _17 @ bb3[9]: fn invalid;  _17 = const b"%i\n\x00";
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: sized(8) _ => _19 @ bb3[17]: fn invalid;  _19 = const {alloc8: *mut *mut pointers::S};
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: sized(8) _ => _20 @ bb4[6]: fn invalid;  _20 = const {alloc8: *mut *mut pointers::S};
+}
+nodes_that_need_write = []
 
 g {
 	n[0]: &_1         _    => _    @ bb0[2]:  fn testing;  _8 = &raw mut _1;
@@ -1026,6 +1076,6 @@ g {
 }
 nodes_that_need_write = [1, 0]
 
-num_graphs = 67
-num_nodes = 755
+num_graphs = 81
+num_nodes = 749
 

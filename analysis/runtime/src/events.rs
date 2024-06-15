@@ -69,6 +69,12 @@ pub enum EventKind {
         size: u32,
     },
 
+    /// The address and size of a sized pointee of a pointer.
+    AddrOfSized {
+        ptr: Pointer,
+        size: usize,
+    },
+
     /// Casting the pointer to an int
     ToInt(Pointer),
 
@@ -116,6 +122,7 @@ impl Debug for EventKind {
             AddrOfLocal { ptr, local, size } => {
                 write!(f, "addr_of_local({:?}, {}) = 0x{:x}", local, size, ptr)
             }
+            AddrOfSized { ptr, size } => write!(f, "addr_of_sized({}) = 0x{:x}", size, ptr),
             ToInt(ptr) => write!(f, "to_int(0x{:x})", ptr),
             FromInt(ptr) => write!(f, "from_int(0x{:x})", ptr),
             LoadValue(ptr) => write!(f, "load_value(0x{:x})", ptr),
