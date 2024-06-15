@@ -160,10 +160,6 @@ impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
         &self.hooks
     }
 
-    pub fn assignment(&self) -> Option<&(Place<'tcx>, Rvalue<'tcx>)> {
-        self.assignment.as_ref()
-    }
-
     pub fn with_assignment(
         &mut self,
         assignment: (Place<'tcx>, Rvalue<'tcx>),

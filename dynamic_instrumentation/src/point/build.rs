@@ -156,16 +156,6 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
         self
     }
 
-    pub fn dest_from<F>(mut self, f: F) -> Self
-    where
-        F: Fn() -> Option<Place<'tcx>>,
-    {
-        if let Some(p) = f() {
-            self.point.metadata.destination = Some(p.convert());
-        }
-        self
-    }
-
     pub fn transfer(mut self, transfer_kind: TransferKind) -> Self {
         self.point.metadata.transfer_kind = transfer_kind;
         self

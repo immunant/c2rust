@@ -110,10 +110,10 @@ pub const HOOK_FUNCTIONS: &[&str] = &[
     hook_fn!(offset),
 ];
 
-pub fn ptr_field(mir_loc: MirLocId, ptr: usize, field_id: u32) {
+pub fn ptr_project(mir_loc: MirLocId, ptr: usize, new_ptr: usize) {
     RUNTIME.send_event(Event {
         mir_loc,
-        kind: EventKind::Field(ptr, field_id),
+        kind: EventKind::Project(ptr, new_ptr),
     });
 }
 
@@ -138,10 +138,17 @@ pub fn ptr_to_int(mir_loc: MirLocId, ptr: usize) {
     });
 }
 
-pub fn addr_of_local(mir_loc: MirLocId, ptr: usize, local: u32) {
+pub fn addr_of_local(mir_loc: MirLocId, ptr: usize, local: u32, size: u32) {
     RUNTIME.send_event(Event {
         mir_loc,
-        kind: EventKind::AddrOfLocal(ptr, local.into()),
+        kind: EventKind::AddrOfLocal(ptr, local.into(), size),
+    });
+}
+
+pub fn addr_of_const(mir_loc: MirLocId, ptr: usize, size: u32) {
+    RUNTIME.send_event(Event {
+        mir_loc,
+        kind: EventKind::AddrOfConst(ptr, size),
     });
 }
 

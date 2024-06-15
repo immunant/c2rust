@@ -30,10 +30,8 @@ pub enum EventKind {
 
     CopyRef,
 
-    /// Field projection. Used for operations like `_2 = &(*_1).0`. Nested field
-    /// accesses like `_4 = &(*_1).x.y.z` are broken into multiple `Node`s, each
-    /// covering one level.
-    Field(Pointer, u32),
+    /// Projection. Used for operations like `_2 = &(*_1).0`.
+    Project(Pointer, Pointer),
 
     Alloc {
         size: usize,
@@ -62,7 +60,10 @@ pub enum EventKind {
     StoreAddrTaken(Pointer),
 
     /// The pointer that appears as the address result of addr_of(Local)
-    AddrOfLocal(Pointer, Local),
+    AddrOfLocal(Pointer, Local, u32),
+
+    /// The address of a constant value
+    AddrOfConst(Pointer, u32),
 
     /// Casting the pointer to an int
     ToInt(Pointer),
@@ -90,7 +91,7 @@ impl Debug for EventKind {
         use EventKind::*;
         match *self {
             CopyPtr(ptr) => write!(f, "copy(0x{:x})", ptr),
-            Field(ptr, id) => write!(f, "field(0x{:x}, {})", ptr, id),
+            Project(ptr, new_ptr) => write!(f, "project(0x{:x}, 0x{:x})", ptr, new_ptr),
             Alloc { size, ptr } => {
                 write!(f, "malloc({}) -> 0x{:x}", size, ptr)
             }
@@ -107,7 +108,8 @@ impl Debug for EventKind {
             StoreAddr(ptr) => write!(f, "store(0x{:x})", ptr),
             StoreAddrTaken(ptr) => write!(f, "store(0x{:x})", ptr),
             CopyRef => write!(f, "copy_ref"),
-            AddrOfLocal(ptr, _) => write!(f, "addr_of_local = 0x{:x}", ptr),
+            AddrOfLocal(ptr, _, size) => write!(f, "addr_of_local({}) = 0x{:x}", size, ptr),
+            AddrOfConst(ptr, size) => write!(f, "addr_of_const({}) = 0x{:x}", size, ptr),
             ToInt(ptr) => write!(f, "to_int(0x{:x})", ptr),
             FromInt(ptr) => write!(f, "from_int(0x{:x})", ptr),
             LoadValue(ptr) => write!(f, "load_value(0x{:x})", ptr),

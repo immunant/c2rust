@@ -999,7 +999,10 @@ fn run(tcx: TyCtxt) {
                 if !node_info.unique {
                     perms.remove(PermissionSet::UNIQUE);
                 }
-                // TODO: PermissionSet::NON_NULL
+                if g.is_null {
+                    // TODO: is this enough?
+                    perms.remove(PermissionSet::NON_NULL);
+                }
 
                 if perms != old_perms {
                     let added = perms & !old_perms;

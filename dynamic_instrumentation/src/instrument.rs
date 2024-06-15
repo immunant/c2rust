@@ -8,13 +8,13 @@ use indexmap::IndexSet;
 use log::{debug, trace};
 use rustc_ast::Mutability;
 use rustc_index::vec::Idx;
-use rustc_middle::mir::visit::{MutVisitor, MutatingUseContext, PlaceContext, Visitor};
+use rustc_middle::mir::visit::{MutVisitor, MutatingUseContext, NonMutatingUseContext, PlaceContext, Visitor};
 use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Body, BorrowKind, ClearCrossCrate, HasLocalDecls, Local, LocalDecl,
     Location, Operand, Place, PlaceElem, ProjectionElem, Rvalue, Safety, SourceInfo, SourceScope,
     SourceScopeData, Statement, StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
-use rustc_middle::ty::{self, Ty, TyCtxt};
+use rustc_middle::ty::{self, Ty, TyCtxt, TyKind, TypeAndMut};
 use rustc_span::def_id::{DefId, DefPathHash};
 use rustc_span::DUMMY_SP;
 use std::collections::HashMap;
@@ -24,7 +24,7 @@ use std::sync::Mutex;
 
 use crate::arg::{ArgKind, InstrumentationArg};
 use crate::hooks::Hooks;
-use crate::mir_utils::{has_outer_deref, remove_outer_deref, strip_all_deref};
+use crate::mir_utils::{has_outer_deref, remove_outer_deref};
 use crate::point::InstrumentationApplier;
 use crate::point::{cast_ptr_to_usize, InstrumentationPriority};
 use crate::point::{
@@ -343,43 +343,110 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         self.super_place(place, context, location);
 
-        let field_fn = self.hooks().find("ptr_field");
+        if !place.is_indirect() {
+            return;
+        }
+        if !context.is_use() {
+            return;
+        }
 
-        let base_ty = self.local_decls()[place.local].ty;
+        let copy_fn = self.hooks().find("ptr_copy");
+        let project_fn = self.hooks().find("ptr_project");
+        let load_fn = self.hooks().find("ptr_load");
+        let load_value_fn = self.hooks().find("load_value");
+        let store_fn = self.hooks().find("ptr_store");
 
-        // Instrument field projections on raw-ptr places
-        if is_region_or_unsafe_ptr(base_ty) && context.is_use() {
-            for (base, elem) in place.iter_projections() {
-                if let PlaceElem::Field(field, _) = elem {
-                    let proj_dest = || {
-                        // Only the last field projection gets a destination
-                        self.assignment()
-                            .as_ref()
-                            .map(|(dest, _)| dest)
-                            .copied()
-                            .filter(|_| base.projection.len() == place.projection.len() - 1)
-                    };
-                    self.loc(location, location, field_fn)
-                        .arg_var(place.local)
-                        .arg_index_of(field)
-                        .source(place)
-                        .dest_from(proj_dest)
-                        .add_to(self);
+        // Instrument nested projections and derefs
+        let mut proj_iter = place.iter_projections().peekable();
+
+        // Skip over the initial projections of the local since we do
+        // not want to take its address; we only care about the ones
+        // past the first dereference since at that point we have an
+        // actual pointer.
+        while let Some((_, elem)) = proj_iter.peek() {
+            if matches!(elem, PlaceElem::Deref) {
+                break;
+            }
+            let _ = proj_iter.next();
+        }
+
+        while let Some((deref1_base, PlaceElem::Deref)) = proj_iter.next() {
+            // Find the next Deref or end of projections
+            let (deref2_base, have_deref2) = loop {
+                match proj_iter.peek() {
+                    Some((base, PlaceElem::Deref)) => break (base.clone(), true),
+                    // Reached the end, we can use the full place
+                    None => break (place.as_ref(), false),
+                    _ => {
+                        let _ = proj_iter.next();
+                    }
                 }
+            };
+
+            // We have some other elements between the two projections
+            if deref2_base.projection.len() - deref1_base.projection.len() > 1 {
+                self.loc(location, location, project_fn)
+                    .arg_var(deref1_base)
+                    .arg_addr_of(deref2_base.clone())
+                    .add_to(self);
+            }
+
+            use PlaceContext::*;
+            if let Some(ptr_fn) = match context {
+                // We are just loading the address for the next dereference
+                _ if have_deref2 => Some(load_fn),
+
+                NonMutatingUse(NonMutatingUseContext::Inspect) |
+                NonMutatingUse(NonMutatingUseContext::Copy) |
+                NonMutatingUse(NonMutatingUseContext::Move) => Some(load_fn),
+
+                MutatingUse(MutatingUseContext::Store) |
+                MutatingUse(MutatingUseContext::Call) |
+                MutatingUse(MutatingUseContext::AsmOutput) => Some(store_fn),
+
+                NonMutatingUse(NonMutatingUseContext::ShallowBorrow) |
+                NonMutatingUse(NonMutatingUseContext::SharedBorrow) |
+                NonMutatingUse(NonMutatingUseContext::UniqueBorrow) |
+                NonMutatingUse(NonMutatingUseContext::AddressOf) |
+                MutatingUse(MutatingUseContext::Borrow) |
+                MutatingUse(MutatingUseContext::AddressOf) => Some(copy_fn),
+
+                NonMutatingUse(NonMutatingUseContext::Projection) |
+                MutatingUse(MutatingUseContext::SetDiscriminant) |
+                MutatingUse(MutatingUseContext::Deinit) |
+                MutatingUse(MutatingUseContext::Yield) |
+                MutatingUse(MutatingUseContext::Drop) |
+                MutatingUse(MutatingUseContext::Projection) |
+                MutatingUse(MutatingUseContext::Retag) |
+                NonUse(_) => None
+            } {
+                self.loc(location, location, ptr_fn)
+                    .arg_addr_of(deref2_base)
+                    .add_to(self);
+            }
+
+            if have_deref2 {
+                // Add an event for the pointer of the second dereference
+                self.loc(location, location, load_value_fn)
+                    .arg_var(deref2_base.clone())
+                    .add_to(self);
             }
         }
+        // If this algorithm is correct,
+        // we should have consumed the entire iterator
+        assert!(proj_iter.peek().is_none());
     }
 
     fn visit_assign(&mut self, dest: &Place<'tcx>, value: &Rvalue<'tcx>, location: Location) {
         let copy_fn = self.hooks().find("ptr_copy");
         let addr_local_fn = self.hooks().find("addr_of_local");
+        let addr_const_fn = self.hooks().find("addr_of_const");
         let ptr_contrive_fn = self.hooks().find("ptr_contrive");
         let ptr_to_int_fn = self.hooks().find("ptr_to_int");
+        let project_fn = self.hooks().find("ptr_project");
         let load_value_fn = self.hooks().find("load_value");
         let store_value_fn = self.hooks().find("store_value");
-        let store_fn = self.hooks().find("ptr_store");
         let store_addr_taken_fn = self.hooks().find("ptr_store_addr_taken");
-        let load_fn = self.hooks().find("ptr_load");
 
         let dest = *dest;
         self.with_assignment((dest, value.clone()), |this| {
@@ -427,33 +494,8 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
             _ => (),
         }
 
-        let mut add_load_instr = |p: &Place<'tcx>| {
-            self.loc(location, location, load_fn)
-                .arg_var(p.local)
-                .source(&remove_outer_deref(*p, ctx))
-                .add_to(self);
-        };
-
-        // add instrumentation for load-from-address operations
-        match value {
-            Rvalue::Use(Operand::Copy(p) | Operand::Move(p))
-                if p.is_indirect() && is_region_or_unsafe_ptr(local_ty(p)) =>
-            {
-                add_load_instr(p)
-            }
-            _ => (),
-        }
-
         match value {
             _ if dest.is_indirect() => {
-                // Strip all derefs to set base_dest to the pointer that is deref'd
-                let base_dest = strip_all_deref(&dest, self.tcx());
-
-                self.loc(location, location, store_fn)
-                    .arg_var(base_dest)
-                    .source(&remove_outer_deref(dest, self.tcx()))
-                    .add_to(self);
-
                 if is_region_or_unsafe_ptr(value_ty) {
                     self.loc(location, location.successor_within_block(), store_value_fn)
                         .arg_var(dest)
@@ -485,16 +527,6 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     .dest(&dest)
                     .add_to(self);
             }
-            Rvalue::AddressOf(_, p) => {
-                // Instrument which local's address is taken
-                self.loc(location, location.successor_within_block(), addr_local_fn)
-                    .arg_var(dest)
-                    .arg_index_of(p.local)
-                    .source(p)
-                    .dest(&dest)
-                    .instrumentation_priority(InstrumentationPriority::Early)
-                    .add_to(self);
-            }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) if p.is_indirect() => {
                 // We're dereferencing something, the result of which is a reference or pointer
                 self.loc(location, location.successor_within_block(), load_value_fn)
@@ -502,12 +534,22 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     .dest(&dest)
                     .add_to(self);
             }
-            Rvalue::Use(Operand::Constant(..)) => {
+            Rvalue::Use(op @ Operand::Constant(..)) => {
+                let const_ty = match op_ty(op).kind() {
+                    TyKind::RawPtr(TypeAndMut { ty, .. }) => *ty,
+                    TyKind::Ref(_, ty, _) => *ty,
+                    ty @ _ => unimplemented!("Unsupported constant ty {:?}", ty)
+                };
+                let layout = ctx.layout_of(ty::ParamEnv::reveal_all().and(const_ty))
+                    .expect("Failed to compute layout of constant");
+                let size = u32::try_from(layout.size.bytes())
+                    .expect("Failed to convert local size");
+
                 // Track (as copies) assignments that give local names to constants so that code
                 // taking references to said constants can refer to these assignments as sources.
-                // TODO: should be replaced by AddrOfStatic when support for that is added
-                self.loc(location, location.successor_within_block(), copy_fn)
+                self.loc(location, location.successor_within_block(), addr_const_fn)
                     .arg_var(dest)
+                    .arg_var(size)
                     .dest(&dest)
                     .debug_mir()
                     .add_to(self);
@@ -553,27 +595,40 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                         .add_to(self);
                 };
             }
-            Rvalue::Ref(_, bkind, p) if !p.is_indirect() => {
+            Rvalue::AddressOf(_, p) |
+            Rvalue::Ref(_, _, p) if !p.is_indirect() => {
                 let source = remove_outer_deref(*p, self.tcx());
-                if let BorrowKind::Mut { .. } = bkind {
-                    // Instrument which local's address is taken
+                let layout = ctx.layout_of(ty::ParamEnv::reveal_all().and(local_ty(p)))
+                    .expect("Failed to compute layout of local");
+                let size = u32::try_from(layout.size.bytes())
+                    .expect("Failed to convert local size");
+
+                let mut b =
                     self.loc(location, location, addr_local_fn)
-                        .arg_addr_of(*p)
+                        .arg_addr_of(p.local)
                         .arg_index_of(p.local)
+                        .arg_var(size)
                         .source(&source)
-                        .dest(&dest)
-                        .instrumentation_priority(InstrumentationPriority::Early)
-                        .add_to(self);
-                } else {
-                    // Instrument immutable borrows by tracing the reference itself
-                    self.loc(location, location.successor_within_block(), addr_local_fn)
-                        .arg_var(dest)
-                        .arg_index_of(p.local)
-                        .source(&source)
-                        .dest(&dest)
-                        .instrumentation_priority(InstrumentationPriority::Early)
-                        .add_to(self);
-                };
+                        .instrumentation_priority(InstrumentationPriority::Early);
+                if p.projection.is_empty() {
+                    // No projections, store directly to the destination
+                    b = b.dest(&dest);
+                }
+                b.add_to(self);
+
+                if !p.projection.is_empty() {
+                    let mut b =
+                        self.loc(location, location, project_fn)
+                            .arg_addr_of(p.local)
+                            .dest(&dest)
+                            .instrumentation_priority(InstrumentationPriority::Early);
+                    if matches!(value, Rvalue::Ref(_, BorrowKind::Mut { .. }, _)) {
+                        b = b.arg_addr_of(*p);
+                    } else {
+                        b = b.arg_var(dest);
+                    }
+                    b.add_to(self);
+                }
             }
             _ => (),
         }
