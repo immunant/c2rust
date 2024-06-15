@@ -13,8 +13,8 @@ use rustc_middle::mir::visit::{
     MutVisitor, MutatingUseContext, NonMutatingUseContext, PlaceContext, Visitor,
 };
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, BorrowKind, ClearCrossCrate, HasLocalDecls, Local, LocalDecl,
-    Location, Operand, Place, PlaceElem, ProjectionElem, Rvalue, Safety, SourceInfo, SourceScope,
+    BasicBlock, BasicBlockData, Body, ClearCrossCrate, HasLocalDecls, Local, LocalDecl, Location,
+    Operand, Place, PlaceElem, ProjectionElem, Rvalue, Safety, SourceInfo, SourceScope,
     SourceScopeData, Statement, StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, Ty, TyCtxt};
@@ -562,6 +562,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
         let ptr_contrive_fn = self.hooks().find("ptr_contrive");
         let ptr_to_int_fn = self.hooks().find("ptr_to_int");
         let load_value_fn = self.hooks().find("load_value");
+        let project_fn = self.hooks().find("ptr_project");
         let store_value_fn = self.hooks().find("store_value");
         let store_addr_taken_fn = self.hooks().find("ptr_store_addr_taken");
 
@@ -575,6 +576,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
 
         let op_ty = |op: &Operand<'tcx>| op.ty(&locals, ctx);
         let place_ty = |p: &Place<'tcx>| p.ty(&locals, ctx).ty;
+        let local_ty = |p: &Place| place_ty(&p.local.into());
         let value_ty = value.ty(self, self.tcx());
 
         self.visit_place(
@@ -631,16 +633,6 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                 }
             }
             _ if !is_region_or_unsafe_ptr(value_ty) => {}
-            Rvalue::AddressOf(_, p) if !p.is_indirect() => {
-                // Instrument which local's address is taken
-                self.loc(location, location.successor_within_block(), addr_local_fn)
-                    .arg_var(dest)
-                    .arg_index_of(p.local)
-                    .source(p)
-                    .dest(&dest)
-                    .instrumentation_priority(InstrumentationPriority::Early)
-                    .add_to(self);
-            }
             Rvalue::Use(Operand::Copy(p) | Operand::Move(p)) if p.is_indirect() => {
                 // We're dereferencing something, the result of which is a reference or pointer
                 self.loc(location, location.successor_within_block(), load_value_fn)
@@ -677,27 +669,46 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     .dest(&dest)
                     .add_to(self);
             }
-            Rvalue::Ref(_, bkind, p) if !p.is_indirect() => {
+            Rvalue::AddressOf(_, p) | Rvalue::Ref(_, _, p) if !p.is_indirect() => {
                 let source = remove_outer_deref(*p, self.tcx());
-                if let BorrowKind::Mut { .. } = bkind {
-                    // Instrument which local's address is taken
-                    self.loc(location, location, addr_local_fn)
+                let layout = ctx
+                    .layout_of(ty::ParamEnv::reveal_all().and(local_ty(p)))
+                    .expect("Failed to compute layout of local");
+                let size =
+                    u32::try_from(layout.size.bytes()).expect("Failed to convert local size");
+
+                let mut b = self
+                    .loc(location, location, addr_local_fn)
+                    .arg_addr_of(p.local)
+                    .arg_index_of(p.local)
+                    .arg_var(size)
+                    .source(&source)
+                    .instrumentation_priority(InstrumentationPriority::Early);
+                if p.projection.is_empty() {
+                    // No projections, store directly to the destination
+                    b = b.dest(&dest);
+                }
+                b.add_to(self);
+
+                if !p.projection.is_empty() {
+                    let fields = p
+                        .projection
+                        .iter()
+                        .filter_map(|elem| match elem {
+                            PlaceElem::Field(idx, _) => Some(idx.index()),
+                            _ => None,
+                        })
+                        .collect::<Vec<usize>>();
+                    let proj_idx = self.projections.add_proj(fields);
+
+                    self.loc(location, location, project_fn)
+                        .arg_addr_of(p.local)
                         .arg_addr_of(*p)
-                        .arg_index_of(p.local)
-                        .source(&source)
+                        .arg_var(proj_idx)
                         .dest(&dest)
                         .instrumentation_priority(InstrumentationPriority::Early)
                         .add_to(self);
-                } else {
-                    // Instrument immutable borrows by tracing the reference itself
-                    self.loc(location, location.successor_within_block(), addr_local_fn)
-                        .arg_var(dest)
-                        .arg_index_of(p.local)
-                        .source(&source)
-                        .dest(&dest)
-                        .instrumentation_priority(InstrumentationPriority::Early)
-                        .add_to(self);
-                };
+                }
             }
             _ => (),
         }

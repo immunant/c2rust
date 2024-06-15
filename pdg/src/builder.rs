@@ -61,7 +61,7 @@ impl EventKindExt for EventKind {
             Realloc { old_ptr, .. } => old_ptr,
             FromInt(lhs) => lhs,
             Alloc { ptr, .. } => ptr,
-            AddrOfLocal(lhs, _) => lhs,
+            AddrOfLocal { ptr, .. } => ptr,
             Offset(ptr, _, _) => ptr,
             Done | BeginFuncBody => return None,
         })
@@ -91,7 +91,7 @@ impl EventKindExt for EventKind {
             StoreAddrTaken(..) => NodeKind::StoreAddr,
             LoadValue(..) => NodeKind::LoadValue,
             StoreValue(..) => NodeKind::StoreValue,
-            AddrOfLocal(_, local) => {
+            AddrOfLocal { local, .. } => {
                 // All but the first instance of AddrOfLocal in a given
                 // function body are considered copies of that local's address
                 let (_, inserted) = address_taken.insert_full((func, local));
@@ -212,8 +212,9 @@ fn update_provenance(
                 provenances.insert(ptr, mapping);
             }
         }
-        AddrOfLocal(ptr, _) => {
+        AddrOfLocal { ptr, size, .. } => {
             // TODO: is this a local from another function?
+            mapping.size = size.try_into().ok();
             provenances.insert(ptr, mapping);
         }
         _ => {}
