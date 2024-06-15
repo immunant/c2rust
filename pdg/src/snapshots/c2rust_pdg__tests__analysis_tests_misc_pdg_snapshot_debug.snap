@@ -954,11 +954,19 @@ g {
 	n[1]: addr.store       n[0] => _  @ bb0[11]: fn test_ref_field;  _4 = pointers::S { field: const 0_i32, field2: const 0_u64, field3: move _5, field4: move _6 };
 	n[2]: copy             n[0] => _3 @ bb0[16]: fn test_ref_field;  _3 = &mut (*_8);
 	n[3]: project[3, 3]@48 n[2] => _  @ bb0[18]: fn test_ref_field;  _7 = (((*_3).3: pointers::T).3: i32);
-	n[4]: addr.load        n[2] => _  @ bb0[18]: fn test_ref_field;  _7 = (((*_3).3: pointers::T).3: i32);
-	n[5]: project[3, 3]@48 n[2] => _  @ bb0[19]: fn test_ref_field;  (((*_3).3: pointers::T).3: i32) = move _7;
-	n[6]: addr.store       n[2] => _  @ bb0[19]: fn test_ref_field;  (((*_3).3: pointers::T).3: i32) = move _7;
+	n[4]: project[3, 3]@48 n[2] => _  @ bb0[19]: fn test_ref_field;  (((*_3).3: pointers::T).3: i32) = move _7;
 }
-nodes_that_need_write = [6, 2, 1, 0]
+nodes_that_need_write = [1, 0]
+
+g {
+	n[0]: addr.load _ => _ @ bb0[18]: fn test_ref_field;  _7 = (((*_3).3: pointers::T).3: i32);
+}
+nodes_that_need_write = []
+
+g {
+	n[0]: addr.store _ => _ @ bb0[19]: fn test_ref_field;  (((*_3).3: pointers::T).3: i32) = move _7;
+}
+nodes_that_need_write = [0]
 
 g {
 	n[0]: &_1        _    => _  @ bb0[2]: fn test_addr_taken;  _10 = &raw mut _1;
@@ -1026,6 +1034,6 @@ g {
 }
 nodes_that_need_write = [1, 0]
 
-num_graphs = 67
+num_graphs = 69
 num_nodes = 755
 
