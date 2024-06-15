@@ -138,10 +138,14 @@ pub fn ptr_to_int(mir_loc: MirLocId, ptr: usize) {
     });
 }
 
-pub fn addr_of_local(mir_loc: MirLocId, ptr: usize, local: u32) {
+pub fn addr_of_local(mir_loc: MirLocId, ptr: usize, local: u32, size: u32) {
     RUNTIME.send_event(Event {
         mir_loc,
-        kind: EventKind::AddrOfLocal(ptr, local.into()),
+        kind: EventKind::AddrOfLocal {
+            ptr,
+            local: local.into(),
+            size,
+        },
     });
 }
 
