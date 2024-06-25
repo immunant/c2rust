@@ -13,6 +13,7 @@ use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{PointerId, PointerTable};
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{self, ty_callee, Callee};
+use log::trace;
 use rustc_ast::Mutability;
 use rustc_middle::mir::{
     BasicBlock, Body, BorrowKind, Location, Operand, Place, PlaceElem, PlaceRef, Rvalue, Statement,
@@ -990,17 +991,18 @@ where
             (self.emit)(RewriteKind::OptionUnwrap);
             from.option = false;
         } else if from.option && to.option {
-            eprintln!("try_build_cast_desc_desc: emit OptionMapBegin");
+            trace!("try_build_cast_desc_desc: emit OptionMapBegin");
             if from.own != to.own {
-                eprintln!("  own differs: {:?} != {:?}", from.own, to.own);
+                trace!("  own differs: {:?} != {:?}", from.own, to.own);
             }
             if from.qty != to.qty {
-                eprintln!("  qty differs: {:?} != {:?}", from.qty, to.qty);
+                trace!("  qty differs: {:?} != {:?}", from.qty, to.qty);
             }
             if from.pointee_ty != to.pointee_ty {
-                eprintln!(
+                trace!(
                     "  pointee_ty differs: {:?} != {:?}",
-                    from.pointee_ty, to.pointee_ty
+                    from.pointee_ty,
+                    to.pointee_ty
                 );
             }
             (self.emit)(RewriteKind::OptionMapBegin);
