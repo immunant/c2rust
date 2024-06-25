@@ -57,6 +57,7 @@ define_tests! {
     known_fn,
     non_null,
     non_null_force,
+    non_null_rewrites,
     offset1,
     offset2,
     pointee,

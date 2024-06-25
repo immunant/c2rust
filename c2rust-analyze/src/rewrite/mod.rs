@@ -98,6 +98,9 @@ pub enum Rewrite<S = Span> {
     /// Single-variable `let` binding.  This has the same scoping issues as multi-variable `Let`;
     /// because of this, `Let` should generally be used instead of multiple `Let1`s.
     Let1(String, Box<Rewrite>),
+    /// Single-argument closure.  As with `Let` and `Let1`, the body must be carefully constructed
+    /// to avoid potential shadowing.
+    Closure1(String, Box<Rewrite>),
 
     // Type builders
     /// Emit a complete pretty-printed type, discarding the original annotation.
@@ -196,6 +199,7 @@ impl Rewrite {
                 Let(new_vars)
             }
             Let1(ref name, ref rw) => Let1(String::clone(name), try_subst(rw)?),
+            Closure1(ref name, ref rw) => Closure1(String::clone(name), try_subst(rw)?),
 
             Print(ref s) => Print(String::clone(s)),
             TyPtr(ref rw, mutbl) => TyPtr(try_subst(rw)?, mutbl),

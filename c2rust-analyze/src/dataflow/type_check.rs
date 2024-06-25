@@ -5,7 +5,7 @@ use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::PointerTable;
 use crate::recent_writes::RecentWrites;
 use crate::util::{
-    describe_rvalue, is_null_const, is_transmutable_ptr_cast, ty_callee, Callee, RvalueDesc,
+    self, describe_rvalue, is_transmutable_ptr_cast, ty_callee, Callee, RvalueDesc,
     UnknownDefCallee,
 };
 use assert_matches::assert_matches;
@@ -120,7 +120,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             CastKind::PointerFromExposedAddress => {
                 // We support only one case here, which is the case of null pointers
                 // constructed via casts such as `0 as *const T`
-                if !op.constant().copied().map(is_null_const).unwrap_or(false) {
+                if !util::is_null_const_operand(op) {
                     panic!("Creating non-null pointers from exposed addresses not supported");
                 }
                 // The target type of the cast must not have `NON_NULL` permission.

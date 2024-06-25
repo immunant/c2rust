@@ -17,7 +17,7 @@ use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{GlobalPointerTable, PointerId, PointerTable};
 use crate::rewrite::Rewrite;
-use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
+use crate::type_desc::{self, Ownership, PtrDesc, Quantity, TypeDesc};
 use hir::{
     FnRetTy, GenericParamKind, Generics, ItemKind, Path, PathSegment, VariantData, WherePredicate,
 };
@@ -33,6 +33,7 @@ use rustc_middle::mir::{self, Body, LocalDecl};
 use rustc_middle::ty::print::{FmtPrinter, Print};
 use rustc_middle::ty::{self, AdtDef, GenericArg, GenericArgKind, List, ReErased, TyCtxt};
 use rustc_middle::ty::{Ty, TyKind, TypeAndMut};
+use rustc_span::symbol::Symbol;
 use rustc_span::Span;
 
 use super::LifetimeName;
@@ -41,7 +42,7 @@ use super::LifetimeName;
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 struct RewriteLabel<'tcx> {
     /// Rewrite a raw pointer, whose ownership and quantity have been inferred as indicated.
-    ty_desc: Option<(Ownership, Quantity)>,
+    ty_desc: Option<PtrDesc>,
     /// Rewrite the pointee type of this pointer.
     pointee_ty: Option<Ty<'tcx>>,
     /// If set, a child or other descendant of this type requires rewriting.
@@ -107,7 +108,7 @@ fn create_rewrite_label<'tcx>(
             // can be `None` (no rewriting required).  This might let us avoid inlining a type
             // alias for some pointers where no actual improvement was possible.
             let desc = type_desc::perms_to_desc(pointer_lty.ty, perms, flags);
-            Some((desc.own, desc.qty))
+            Some(desc.into())
         }
     };
 
@@ -333,37 +334,47 @@ impl Convert<hir::Mutability> for mir::Mutability {
     }
 }
 
-fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
-    let core_crate = tcx
+fn mk_adt_with_arg<'tcx>(tcx: TyCtxt<'tcx>, path: &str, arg_ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
+    let mut path_parts_iter = path.split("::");
+    let crate_name = path_parts_iter
+        .next()
+        .unwrap_or_else(|| panic!("couldn't find crate name in {path:?}"));
+    let crate_name = Symbol::intern(crate_name);
+
+    let krate = tcx
         .crates(())
         .iter()
         .cloned()
-        .find(|&krate| tcx.crate_name(krate).as_str() == "core")
-        .expect("failed to find crate `core`");
+        .find(|&krate| tcx.crate_name(krate) == crate_name)
+        .unwrap_or_else(|| panic!("couldn't find crate {crate_name:?} for {path:?}"));
 
-    let cell_mod_child = tcx
-        .module_children(core_crate.as_def_id())
-        .iter()
-        .find(|child| child.ident.as_str() == "cell")
-        .expect("failed to find module `core::cell`");
-    let cell_mod_did = match cell_mod_child.res {
-        Res::Def(DefKind::Mod, did) => did,
-        ref r => panic!("unexpected resolution {:?} for `core::cell`", r),
-    };
+    let mut cur_did = krate.as_def_id();
+    for part in path_parts_iter {
+        let mod_child = tcx
+            .module_children(cur_did)
+            .iter()
+            .find(|child| child.ident.as_str() == part)
+            .unwrap_or_else(|| panic!("failed to find {part:?} for {path:?}"));
+        cur_did = match mod_child.res {
+            Res::Def(DefKind::Mod, did) => did,
+            Res::Def(DefKind::Struct, did) => did,
+            Res::Def(DefKind::Enum, did) => did,
+            Res::Def(DefKind::Union, did) => did,
+            ref r => panic!("unexpected resolution {r:?} for {part:?} in {path:?}"),
+        };
+    }
 
-    let cell_struct_child = tcx
-        .module_children(cell_mod_did)
-        .iter()
-        .find(|child| child.ident.as_str() == "Cell")
-        .expect("failed to find struct `core::cell::Cell`");
-    let cell_struct_did = match cell_struct_child.res {
-        Res::Def(DefKind::Struct, did) => did,
-        ref r => panic!("unexpected resolution {:?} for `core::cell::Cell`", r),
-    };
+    let adt = tcx.adt_def(cur_did);
+    let substs = tcx.mk_substs([GenericArg::from(arg_ty)].into_iter());
+    tcx.mk_adt(adt, substs)
+}
 
-    let cell_adt = tcx.adt_def(cell_struct_did);
-    let substs = tcx.mk_substs([GenericArg::from(ty)].into_iter());
-    tcx.mk_adt(cell_adt, substs)
+fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
+    mk_adt_with_arg(tcx, "core::cell::Cell", ty)
+}
+
+fn mk_option<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
+    mk_adt_with_arg(tcx, "core::option::Option", ty)
 }
 
 /// Produce a `Ty` reflecting the rewrites indicated by the labels in `rw_lty`.
@@ -373,11 +384,11 @@ fn mk_rewritten_ty<'tcx>(
 ) -> ty::Ty<'tcx> {
     let tcx = *lcx;
     lcx.rewrite_unlabeled(rw_lty, &mut |ptr_ty, args, label| {
-        let (ty, own, qty) = match (label.pointee_ty, label.ty_desc) {
-            (Some(pointee_ty), Some((own, qty))) => {
+        let (ty, ptr_desc) = match (label.pointee_ty, label.ty_desc) {
+            (Some(pointee_ty), Some(ptr_desc)) => {
                 // The `ty` should be a pointer.
                 assert_eq!(args.len(), 1);
-                (pointee_ty, own, qty)
+                (pointee_ty, ptr_desc)
             }
             (Some(pointee_ty), None) => {
                 // Just change the pointee type and nothing else.
@@ -391,10 +402,10 @@ fn mk_rewritten_ty<'tcx>(
                 };
                 return new_ty;
             }
-            (None, Some((own, qty))) => {
+            (None, Some(ptr_desc)) => {
                 // The `ty` should be a pointer; the sole argument is the pointee type.
                 assert_eq!(args.len(), 1);
-                (args[0], own, qty)
+                (args[0], ptr_desc)
             }
             (None, None) => {
                 // No rewrite to apply.
@@ -402,17 +413,17 @@ fn mk_rewritten_ty<'tcx>(
             }
         };
 
-        desc_parts_to_ty(tcx, own, qty, ty)
+        desc_parts_to_ty(tcx, ptr_desc, ty)
     })
 }
 
 pub fn desc_parts_to_ty<'tcx>(
     tcx: TyCtxt<'tcx>,
-    own: Ownership,
-    qty: Quantity,
+    ptr_desc: PtrDesc,
     pointee_ty: Ty<'tcx>,
 ) -> Ty<'tcx> {
     let mut ty = pointee_ty;
+    let PtrDesc { own, qty, option } = ptr_desc;
 
     if own == Ownership::Cell {
         ty = mk_cell(tcx, ty);
@@ -436,11 +447,15 @@ pub fn desc_parts_to_ty<'tcx>(
         Ownership::Box => tcx.mk_box(ty),
     };
 
+    if option {
+        ty = mk_option(tcx, ty);
+    }
+
     ty
 }
 
 pub fn desc_to_ty<'tcx>(tcx: TyCtxt<'tcx>, desc: TypeDesc<'tcx>) -> Ty<'tcx> {
-    desc_parts_to_ty(tcx, desc.own, desc.qty, desc.pointee_ty)
+    desc_parts_to_ty(tcx, PtrDesc::from(desc), desc.pointee_ty)
 }
 
 struct HirTyVisitor<'a, 'tcx> {
@@ -523,8 +538,9 @@ fn rewrite_ty<'tcx>(
             Rewrite::Sub(0, hir_args[0].span)
         };
 
-        if let Some((own, qty)) = rw_lty.label.ty_desc {
+        if let Some(ptr_desc) = rw_lty.label.ty_desc {
             assert_eq!(hir_args.len(), 1);
+            let PtrDesc { own, qty, option } = ptr_desc;
 
             if own == Ownership::Cell {
                 rw = Rewrite::TyCtor("core::cell::Cell".into(), vec![rw]);
@@ -548,6 +564,10 @@ fn rewrite_ty<'tcx>(
                 Ownership::Rc => todo!(),
                 Ownership::Box => todo!(),
             };
+
+            if option {
+                rw = Rewrite::TyCtor("core::option::Option".into(), vec![rw]);
+            }
         } else {
             rw = match *rw_lty.ty.kind() {
                 TyKind::Ref(_rg, _ty, mutbl) => Rewrite::TyRef(lifetime_type, Box::new(rw), mutbl),

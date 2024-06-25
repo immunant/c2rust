@@ -39,10 +39,51 @@ pub enum Quantity {
 pub struct TypeDesc<'tcx> {
     pub own: Ownership,
     pub qty: Quantity,
+    pub option: bool,
     pub pointee_ty: Ty<'tcx>,
 }
 
-fn perms_to_own_and_qty(perms: PermissionSet, flags: FlagSet) -> (Ownership, Quantity) {
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub struct PtrDesc {
+    pub own: Ownership,
+    pub qty: Quantity,
+    pub option: bool,
+}
+
+impl<'tcx> From<TypeDesc<'tcx>> for PtrDesc {
+    fn from(x: TypeDesc<'tcx>) -> PtrDesc {
+        let TypeDesc {
+            own,
+            qty,
+            option,
+            pointee_ty: _,
+        } = x;
+        PtrDesc { own, qty, option }
+    }
+}
+
+impl PtrDesc {
+    pub fn to_type_desc<'tcx>(self, pointee_ty: Ty<'tcx>) -> TypeDesc<'tcx> {
+        let PtrDesc { own, qty, option } = self;
+        TypeDesc {
+            own,
+            qty,
+            option,
+            pointee_ty,
+        }
+    }
+}
+
+impl Ownership {
+    pub fn is_copy(&self) -> bool {
+        match *self {
+            Ownership::Raw | Ownership::RawMut | Ownership::Imm | Ownership::Cell => true,
+            Ownership::Mut | Ownership::Rc | Ownership::Box => false,
+        }
+    }
+}
+
+fn perms_to_ptr_desc(perms: PermissionSet, flags: FlagSet) -> PtrDesc {
     let own = if perms.contains(PermissionSet::UNIQUE | PermissionSet::WRITE) {
         Ownership::Mut
     } else if flags.contains(FlagSet::CELL) {
@@ -61,7 +102,9 @@ fn perms_to_own_and_qty(perms: PermissionSet, flags: FlagSet) -> (Ownership, Qua
         Quantity::Single
     };
 
-    (own, qty)
+    let option = !perms.contains(PermissionSet::NON_NULL);
+
+    PtrDesc { own, qty, option }
 }
 
 /// Obtain the `TypeDesc` for a pointer.  `ptr_ty` should be the `Ty` of the pointer, and `perms`
@@ -73,7 +116,7 @@ pub fn perms_to_desc(ptr_ty: Ty, perms: PermissionSet, flags: FlagSet) -> TypeDe
         "building TypeDesc for FIXED pointer requires a related pointee type"
     );
 
-    let (own, qty) = perms_to_own_and_qty(perms, flags);
+    let ptr_desc = perms_to_ptr_desc(perms, flags);
 
     let pointee_ty = match *ptr_ty.kind() {
         TyKind::Ref(_, ty, _) => ty,
@@ -83,23 +126,15 @@ pub fn perms_to_desc(ptr_ty: Ty, perms: PermissionSet, flags: FlagSet) -> TypeDe
         _ => panic!("expected a pointer type, but got {:?}", ptr_ty),
     };
 
-    TypeDesc {
-        own,
-        qty,
-        pointee_ty,
-    }
+    ptr_desc.to_type_desc(pointee_ty)
 }
 
 /// Obtain the `TypeDesc` for a pointer to a local.  `local_ty` should be the `Ty` of the local
 /// itself, and `perms` and `flags` should be taken from its `addr_of_local` `PointerId`.
 pub fn local_perms_to_desc(local_ty: Ty, perms: PermissionSet, flags: FlagSet) -> TypeDesc {
-    let (own, qty) = perms_to_own_and_qty(perms, flags);
+    let ptr_desc = perms_to_ptr_desc(perms, flags);
     let pointee_ty = local_ty;
-    TypeDesc {
-        own,
-        qty,
-        pointee_ty,
-    }
+    ptr_desc.to_type_desc(pointee_ty)
 }
 
 pub fn perms_to_desc_with_pointee<'tcx>(
@@ -109,26 +144,18 @@ pub fn perms_to_desc_with_pointee<'tcx>(
     perms: PermissionSet,
     flags: FlagSet,
 ) -> TypeDesc<'tcx> {
-    let (own, qty) = if flags.contains(FlagSet::FIXED) {
+    let ptr_desc = if flags.contains(FlagSet::FIXED) {
         unpack_pointer_type(tcx, ptr_ty, pointee_ty)
     } else {
-        perms_to_own_and_qty(perms, flags)
+        perms_to_ptr_desc(perms, flags)
     };
-    TypeDesc {
-        own,
-        qty,
-        pointee_ty,
-    }
+    ptr_desc.to_type_desc(pointee_ty)
 }
 
 /// Unpack an existing `Ty` into its ownership and quantity.  The pointee type must already be
 /// known.  Panics if there are no `Ownership` and `Quantity` that combine with `pointee_ty` to
 /// produce `ty`.
-pub fn unpack_pointer_type<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    ty: Ty<'tcx>,
-    pointee_ty: Ty<'tcx>,
-) -> (Ownership, Quantity) {
+pub fn unpack_pointer_type<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, pointee_ty: Ty<'tcx>) -> PtrDesc {
     #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
     enum Step {
         Ref(Mutability),
@@ -139,6 +166,7 @@ pub fn unpack_pointer_type<'tcx>(
         Slice,
         OffsetPtr,
         Array,
+        Option,
     }
 
     let mut steps = Vec::new();
@@ -151,6 +179,9 @@ pub fn unpack_pointer_type<'tcx>(
             TyKind::Adt(adt_def, substs) if is_rc(tcx, adt_def) => (Step::Rc, substs.type_at(0)),
             TyKind::Adt(adt_def, substs) if is_cell(tcx, adt_def) => {
                 (Step::Cell, substs.type_at(0))
+            }
+            TyKind::Adt(adt_def, substs) if is_option(tcx, adt_def) => {
+                (Step::Option, substs.type_at(0))
             }
             TyKind::Adt(adt_def, substs) if is_offset_ptr(tcx, adt_def) => {
                 (Step::OffsetPtr, substs.type_at(0))
@@ -181,6 +212,8 @@ pub fn unpack_pointer_type<'tcx>(
     };
 
     // This logic is roughly the inverse of that in `rewrite::ty::mk_rewritten_ty`.
+    let option = eat(Step::Option);
+
     let mut own = if eat(Step::Ref(Mutability::Not)) {
         Ownership::Imm
     } else if eat(Step::Ref(Mutability::Mut)) {
@@ -226,11 +259,17 @@ pub fn unpack_pointer_type<'tcx>(
         &steps[i..],
     );
 
-    (own, qty)
+    PtrDesc { own, qty, option }
 }
 
 /// Returns `true` if `adt_def` is the type `std::cell::Cell`.
 fn is_cell<'tcx>(_tcx: TyCtxt<'tcx>, _adt_def: AdtDef<'tcx>) -> bool {
+    // TODO
+    false
+}
+
+/// Returns `true` if `adt_def` is the type `std::option::Option`.
+fn is_option<'tcx>(_tcx: TyCtxt<'tcx>, _adt_def: AdtDef<'tcx>) -> bool {
     // TODO
     false
 }

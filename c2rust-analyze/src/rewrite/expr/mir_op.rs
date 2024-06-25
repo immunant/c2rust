@@ -12,11 +12,12 @@ use crate::panic_detail;
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{PointerId, PointerTable};
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
-use crate::util::{ty_callee, Callee};
+use crate::util::{self, ty_callee, Callee};
+use log::{error, trace};
 use rustc_ast::Mutability;
 use rustc_middle::mir::{
-    BasicBlock, Body, Location, Operand, Place, Rvalue, Statement, StatementKind, Terminator,
-    TerminatorKind,
+    BasicBlock, Body, BorrowKind, Location, Operand, Place, PlaceElem, PlaceRef, Rvalue, Statement,
+    StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::print::FmtPrinter;
 use rustc_middle::ty::print::Print;
@@ -41,14 +42,20 @@ pub enum SubLoc {
     RvaluePlace(usize),
     /// The place referenced by an operand.  `Operand::Move/Operand::Copy -> Place`
     OperandPlace,
-    /// The pointer used in the Nth innermost deref within a place.  `Place -> Place`
-    PlacePointer(usize),
+    /// The pointer used in a deref projection.  `Place -> Place`
+    PlaceDerefPointer,
+    /// The base of a field projection.  `Place -> Place`
+    PlaceFieldBase,
+    /// The array used in an index or slice projection.  `Place -> Place`
+    PlaceIndexArray,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum RewriteKind {
     /// Replace `ptr.offset(i)` with something like `&ptr[i..]`.
     OffsetSlice { mutbl: bool },
+    /// Replace `ptr.offset(i)` with something like `ptr.as_ref().map(|p| &p[i..])`.
+    OptionMapOffsetSlice { mutbl: bool },
     /// Replace `slice` with `&slice[0]`.
     SliceFirst { mutbl: bool },
     /// Replace `ptr` with `&*ptr`, converting `&mut T` to `&T`.
@@ -59,6 +66,16 @@ pub enum RewriteKind {
     RemoveCast,
     /// Replace &raw with & or &raw mut with &mut
     RawToRef { mutbl: bool },
+
+    /// Replace `ptr.is_null()` with `ptr.is_none()`.
+    IsNullToIsNone,
+    /// Replace `ptr.is_null()` with the constant `false`.  We use this in cases where the rewritten
+    /// type of `ptr` is non-optional because we inferred `ptr` to be non-nullable.
+    IsNullToConstFalse,
+    /// Replace `ptr::null()` or `ptr::null_mut()` with `None`.
+    PtrNullToNone,
+    /// Replace `0 as *const T` or `0 as *mut T` with `None`.
+    ZeroAsPtrToNone,
 
     /// Replace a call to `memcpy(dest, src, n)` with a safe copy operation that works on slices
     /// instead of raw pointers.  `elem_size` is the size of the original, unrewritten pointee
@@ -77,6 +94,24 @@ pub enum RewriteKind {
         elem_size: u64,
         dest_single: bool,
     },
+
+    /// Convert `Option<T>` to `T` by calling `.unwrap()`.
+    OptionUnwrap,
+    /// Convert `T` to `Option<T>` by wrapping the value in `Some`.
+    OptionSome,
+    /// Begin an `Option::map` operation, converting `Option<T>` to `T`.
+    OptionMapBegin,
+    /// End an `Option::map` operation, converting `T` to `Option<T>`.
+    ///
+    /// `OptionMapBegin` and `OptionMapEnd` could legally be implemented as aliases for
+    /// `OptionUnwrap` and `OptionSome` respectively.  However, when `OptionMapBegin` and
+    /// `OptionMapEnd` are paired, we instead emit a call to `Option::map` with the intervening
+    /// rewrites applied within the closure.  This has the same effect when the input is `Some`,
+    /// but passes through `None` unchanged instead of panicking.
+    OptionMapEnd,
+    /// Downgrade ownership of an `Option` to `Option<&_>` or `Option<&mut _>` by calling
+    /// `as_ref()`/`as_mut()` and optionally `as_deref()`/`as_deref_mut()`.
+    OptionDowngrade { mutbl: bool, deref: bool },
 
     /// Cast `&T` to `*const T` or `&mut T` to `*mut T`.
     CastRefToRaw { mutbl: bool },
@@ -188,14 +223,20 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         self.enter(SubLoc::RvaluePlace(i), f)
     }
 
-    #[allow(dead_code)]
-    fn _enter_operand_place<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+    fn enter_operand_place<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
         self.enter(SubLoc::OperandPlace, f)
     }
 
-    #[allow(dead_code)]
-    fn _enter_place_pointer<F: FnOnce(&mut Self) -> R, R>(&mut self, i: usize, f: F) -> R {
-        self.enter(SubLoc::PlacePointer(i), f)
+    fn enter_place_deref_pointer<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+        self.enter(SubLoc::PlaceDerefPointer, f)
+    }
+
+    fn enter_place_field_base<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+        self.enter(SubLoc::PlaceFieldBase, f)
+    }
+
+    fn enter_place_index_array<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+        self.enter(SubLoc::PlaceIndexArray, f)
     }
 
     /// Get the pointee type of `lty`.  Returns the inferred pointee type from `self.pointee_types`
@@ -299,7 +340,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 self.enter_rvalue(|v| v.visit_rvalue(rv, Some(rv_lty)));
                 // The cast from `rv_lty` to `pl_lty` should be applied to the RHS.
                 self.enter_rvalue(|v| v.emit_cast_lty_lty(rv_lty, pl_lty));
-                self.enter_dest(|v| v.visit_place(pl));
+                self.enter_dest(|v| v.visit_place(pl, true));
             }
             StatementKind::FakeRead(..) => {}
             StatementKind::SetDiscriminant { .. } => todo!("statement {:?}", stmt),
@@ -461,6 +502,33 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         });
                     }
 
+                    Callee::IsNull => {
+                        self.enter_rvalue(|v| {
+                            let arg_lty = v.acx.type_of(&args[0]);
+                            if !v.flags[arg_lty.label].contains(FlagSet::FIXED) {
+                                let arg_non_null =
+                                    v.perms[arg_lty.label].contains(PermissionSet::NON_NULL);
+                                if arg_non_null {
+                                    v.emit(RewriteKind::IsNullToConstFalse);
+                                } else {
+                                    v.emit(RewriteKind::IsNullToIsNone);
+                                }
+                            }
+                        });
+                    }
+
+                    Callee::Null { .. } => {
+                        self.enter_rvalue(|v| {
+                            if !v.flags[pl_ty.label].contains(FlagSet::FIXED) {
+                                assert!(
+                                    !v.perms[pl_ty.label].contains(PermissionSet::NON_NULL),
+                                    "impossible: result of null() is a NON_NULL pointer?"
+                                );
+                                v.emit(RewriteKind::PtrNullToNone);
+                            }
+                        });
+                    }
+
                     _ => {}
                 }
             }
@@ -484,14 +552,18 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             Rvalue::Repeat(ref op, _) => {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
             }
-            Rvalue::Ref(_rg, _kind, pl) => {
-                self.enter_rvalue_place(0, |v| v.visit_place(pl));
+            Rvalue::Ref(_rg, kind, pl) => {
+                let mutbl = match kind {
+                    BorrowKind::Mut { .. } => true,
+                    BorrowKind::Shared | BorrowKind::Shallow | BorrowKind::Unique => false,
+                };
+                self.enter_rvalue_place(0, |v| v.visit_place(pl, mutbl));
             }
             Rvalue::ThreadLocalRef(_def_id) => {
                 // TODO
             }
             Rvalue::AddressOf(mutbl, pl) => {
-                self.enter_rvalue_place(0, |v| v.visit_place(pl));
+                self.enter_rvalue_place(0, |v| v.visit_place(pl, mutbl == Mutability::Mut));
                 if let Some(expect_ty) = expect_ty {
                     let desc = type_desc::perms_to_desc_with_pointee(
                         self.acx.tcx(),
@@ -510,9 +582,20 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 }
             }
             Rvalue::Len(pl) => {
-                self.enter_rvalue_place(0, |v| v.visit_place(pl));
+                self.enter_rvalue_place(0, |v| v.visit_place(pl, false));
             }
-            Rvalue::Cast(_kind, ref op, _ty) => {
+            Rvalue::Cast(_kind, ref op, ty) => {
+                if util::is_null_const_operand(op) && ty.is_unsafe_ptr() {
+                    // Special case: convert `0 as *const T` to `None`.
+                    if let Some(rv_lty) = expect_ty {
+                        if !self.perms[rv_lty.label].contains(PermissionSet::NON_NULL)
+                            && !self.flags[rv_lty.label].contains(FlagSet::FIXED)
+                        {
+                            self.emit(RewriteKind::ZeroAsPtrToNone);
+                        }
+                    }
+                }
+
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
                 if let Some(rv_lty) = expect_ty {
                     let op_lty = self.acx.type_of(op);
@@ -560,7 +643,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
             }
             Rvalue::Discriminant(pl) => {
-                self.enter_rvalue_place(0, |v| v.visit_place(pl));
+                self.enter_rvalue_place(0, |v| v.visit_place(pl, false));
             }
             Rvalue::Aggregate(ref _kind, ref ops) => {
                 for (i, op) in ops.iter().enumerate() {
@@ -571,7 +654,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
             }
             Rvalue::CopyForDeref(pl) => {
-                self.enter_rvalue_place(0, |v| v.visit_place(pl));
+                self.enter_rvalue_place(0, |v| v.visit_place(pl, false));
             }
         }
     }
@@ -581,7 +664,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn visit_operand(&mut self, op: &Operand<'tcx>, expect_ty: Option<LTy<'tcx>>) {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
-                self.visit_place(pl);
+                self.enter_operand_place(|v| v.visit_place(pl, false));
 
                 if let Some(expect_ty) = expect_ty {
                     let ptr_lty = self.acx.type_of(pl);
@@ -598,7 +681,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn visit_operand_desc(&mut self, op: &Operand<'tcx>, expect_desc: TypeDesc<'tcx>) {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
-                self.visit_place(pl);
+                self.visit_place(pl, false);
 
                 let ptr_lty = self.acx.type_of(pl);
                 if !ptr_lty.label.is_none() {
@@ -609,8 +692,76 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         }
     }
 
-    fn visit_place(&mut self, _pl: Place<'tcx>) {
-        // TODO: walk over `pl` to handle all derefs (casts, `*x` -> `(*x).get()`)
+    fn visit_place(&mut self, pl: Place<'tcx>, in_mutable_context: bool) {
+        let mut ltys = Vec::with_capacity(1 + pl.projection.len());
+        ltys.push(self.acx.type_of(pl.local));
+        for proj in pl.projection {
+            let prev_lty = ltys.last().copied().unwrap();
+            ltys.push(self.acx.projection_lty(prev_lty, &proj));
+        }
+        self.visit_place_ref(pl.as_ref(), &ltys, in_mutable_context);
+    }
+
+    /// Generate rewrites for a `Place` represented as a `PlaceRef`.  `proj_ltys` gives the `LTy`
+    /// for the `Local` and after each projection.  `in_mutable_context` is `true` if the `Place`
+    /// is in a mutable context, such as the LHS of an assignment.
+    fn visit_place_ref(
+        &mut self,
+        pl: PlaceRef<'tcx>,
+        proj_ltys: &[LTy<'tcx>],
+        in_mutable_context: bool,
+    ) {
+        let (&last_proj, rest) = match pl.projection.split_last() {
+            Some(x) => x,
+            None => return,
+        };
+
+        debug_assert!(pl.projection.len() >= 1);
+        // `LTy` of the base place, before the last projection.
+        let base_lty = proj_ltys[pl.projection.len() - 1];
+        // `LTy` resulting from applying `last_proj` to `base_lty`.
+        let _proj_lty = proj_ltys[pl.projection.len()];
+
+        let base_pl = PlaceRef {
+            local: pl.local,
+            projection: rest,
+        };
+        match last_proj {
+            PlaceElem::Deref => {
+                self.enter_place_deref_pointer(|v| {
+                    v.visit_place_ref(base_pl, proj_ltys, in_mutable_context);
+                    if !v.perms[base_lty.label].contains(PermissionSet::NON_NULL)
+                        && !v.flags[base_lty.label].contains(FlagSet::FIXED)
+                    {
+                        // If the pointer type is non-copy, downgrade (borrow) before calling
+                        // `unwrap()`.
+                        let desc = type_desc::perms_to_desc(
+                            base_lty.ty,
+                            v.perms[base_lty.label],
+                            v.flags[base_lty.label],
+                        );
+                        if !desc.own.is_copy() {
+                            v.emit(RewriteKind::OptionDowngrade {
+                                mutbl: in_mutable_context,
+                                deref: true,
+                            });
+                        }
+                        v.emit(RewriteKind::OptionUnwrap);
+                    }
+                });
+            }
+            PlaceElem::Field(_idx, _ty) => {
+                self.enter_place_field_base(|v| {
+                    v.visit_place_ref(base_pl, proj_ltys, in_mutable_context)
+                });
+            }
+            PlaceElem::Index(_) | PlaceElem::ConstantIndex { .. } | PlaceElem::Subslice { .. } => {
+                self.enter_place_index_array(|v| {
+                    v.visit_place_ref(base_pl, proj_ltys, in_mutable_context)
+                });
+            }
+            PlaceElem::Downcast(_, _) => {}
+        }
     }
 
     fn visit_ptr_offset(&mut self, op: &Operand<'tcx>, result_ty: LTy<'tcx>) {
@@ -627,6 +778,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 Quantity::OffsetPtr => Quantity::OffsetPtr,
                 Quantity::Array => unreachable!("perms_to_desc should not return Quantity::Array"),
             },
+            option: result_desc.option,
             pointee_ty: result_desc.pointee_ty,
         };
 
@@ -635,7 +787,11 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
             // Emit `OffsetSlice` for the offset itself.
             let mutbl = matches!(result_desc.own, Ownership::Mut);
-            v.emit(RewriteKind::OffsetSlice { mutbl });
+            if !result_desc.option {
+                v.emit(RewriteKind::OffsetSlice { mutbl });
+            } else {
+                v.emit(RewriteKind::OptionMapOffsetSlice { mutbl });
+            }
 
             // The `OffsetSlice` operation returns something of the same type as its input.
             // Afterward, we must cast the result to the `result_ty`/`result_desc`.
@@ -801,6 +957,70 @@ where
             return Ok(());
         }
 
+        if from.option && from.own != to.own {
+            // Downgrade ownership before unwrapping the `Option` when possible.  This can avoid
+            // moving/consuming the input.  For example, if the `from` type is `Option<Box<T>>` and
+            // `to` is `&mut T`, we start by calling `p.as_deref_mut()`, which produces
+            // `Option<&mut T>` without consuming `p`.
+            if !from.own.is_copy() {
+                // Note that all non-`Copy` ownership types are also safe.  We don't reach this
+                // code when `from.own` is `Raw` or `RawMut`.
+                match to.own {
+                    Ownership::Raw | Ownership::Imm => {
+                        (self.emit)(RewriteKind::OptionDowngrade {
+                            mutbl: false,
+                            deref: true,
+                        });
+                        from.own = Ownership::Imm;
+                    }
+                    Ownership::RawMut | Ownership::Cell | Ownership::Mut => {
+                        (self.emit)(RewriteKind::OptionDowngrade {
+                            mutbl: true,
+                            deref: true,
+                        });
+                        from.own = Ownership::Mut;
+                    }
+                    Ownership::Rc if from.own == Ownership::Rc => {
+                        // `p.clone()` allows using an `Option<Rc<T>>` without consuming the
+                        // original.  However, `RewriteKind::Clone` is not yet implemented.
+                        error!("Option<Rc> -> Option<Rc> clone rewrite NYI");
+                    }
+                    _ => {
+                        // Remaining cases don't have a valid downgrade operation.  We leave them
+                        // as is, and the `unwrap`/`map` operations below will consume the original
+                        // value.  Some cases are also impossible to implement, like casting from
+                        // `Rc` to `Box`, which will be caught when attempting the `qty`/`own`
+                        // casts below.
+                    }
+                }
+            }
+        }
+
+        let mut in_option_map = false;
+        if from.option && !to.option {
+            // Unwrap first, then perform remaining casts.
+            (self.emit)(RewriteKind::OptionUnwrap);
+            from.option = false;
+        } else if from.option && to.option {
+            trace!("try_build_cast_desc_desc: emit OptionMapBegin");
+            if from.own != to.own {
+                trace!("  own differs: {:?} != {:?}", from.own, to.own);
+            }
+            if from.qty != to.qty {
+                trace!("  qty differs: {:?} != {:?}", from.qty, to.qty);
+            }
+            if from.pointee_ty != to.pointee_ty {
+                trace!(
+                    "  pointee_ty differs: {:?} != {:?}",
+                    from.pointee_ty,
+                    to.pointee_ty
+                );
+            }
+            (self.emit)(RewriteKind::OptionMapBegin);
+            from.option = false;
+            in_option_map = true;
+        }
+
         // Early `Ownership` casts.  We do certain casts here in hopes of reaching an `Ownership`
         // on which we can safely adjust `Quantity`.
         from.own = self.cast_ownership(from, to, true)?;
@@ -854,6 +1074,17 @@ where
 
         // Late `Ownership` casts.
         from.own = self.cast_ownership(from, to, false)?;
+
+        if in_option_map {
+            assert!(!from.option);
+            assert!(to.option);
+            (self.emit)(RewriteKind::OptionMapEnd);
+            from.option = true;
+        } else if !from.option && to.option {
+            // Wrap at the end, after performing all other steps of the cast.
+            (self.emit)(RewriteKind::OptionSome);
+            from.option = true;
+        }
 
         if from != to {
             return Err(format!(
