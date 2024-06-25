@@ -13,7 +13,7 @@ use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{PointerId, PointerTable};
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{self, ty_callee, Callee};
-use log::trace;
+use log::{error, trace};
 use rustc_ast::Mutability;
 use rustc_middle::mir::{
     BasicBlock, Body, BorrowKind, Location, Operand, Place, PlaceElem, PlaceRef, Rvalue, Statement,
@@ -963,6 +963,8 @@ where
             // `to` is `&mut T`, we start by calling `p.as_deref_mut()`, which produces
             // `Option<&mut T>` without consuming `p`.
             if !from.own.is_copy() {
+                // Note that all non-`Copy` ownership types are also safe.  We don't reach this
+                // code when `from.own` is `Raw` or `RawMut`.
                 match to.own {
                     Ownership::Raw | Ownership::Imm => {
                         (self.emit)(RewriteKind::OptionDowngrade {
@@ -978,8 +980,17 @@ where
                         });
                         from.own = Ownership::Mut;
                     }
+                    Ownership::Rc if from.own == Ownership::Rc => {
+                        // `p.clone()` allows using an `Option<Rc<T>>` without consuming the
+                        // original.  However, `RewriteKind::Clone` is not yet implemented.
+                        error!("Option<Rc> -> Option<Rc> clone rewrite NYI");
+                    }
                     _ => {
-                        // Remaining cases are unsupported.
+                        // Remaining cases don't have a valid downgrade operation.  We leave them
+                        // as is, and the `unwrap`/`map` operations below will consume the original
+                        // value.  Some cases are also impossible to implement, like casting from
+                        // `Rc` to `Box`, which will be caught when attempting the `qty`/`own`
+                        // casts below.
                     }
                 }
             }
