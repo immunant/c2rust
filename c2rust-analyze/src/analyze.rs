@@ -712,7 +712,7 @@ fn run(tcx: TyCtxt) {
                 let l = acx.local_tys.push(lty);
                 assert_eq!(local, l);
 
-                let ptr = acx.new_pointer(PointerInfo::empty());
+                let ptr = acx.new_pointer(PointerInfo::ADDR_OF_LOCAL);
                 let l = acx.addr_of_local.push(ptr);
                 assert_eq!(local, l);
             }
@@ -906,8 +906,12 @@ fn run(tcx: TyCtxt) {
     // don't want to rewrite those
     gacx.foreign_mentioned_tys = foreign_mentioned_tys(tcx);
 
-    const INITIAL_PERMS: PermissionSet =
-        PermissionSet::union_all([PermissionSet::UNIQUE, PermissionSet::NON_NULL]);
+    const INITIAL_PERMS: PermissionSet = PermissionSet::union_all([
+        PermissionSet::UNIQUE,
+        PermissionSet::NON_NULL,
+        PermissionSet::HEAP,
+        PermissionSet::STACK,
+    ]);
     const INITIAL_FLAGS: FlagSet = FlagSet::empty();
 
     let mut gasn = GlobalAssignment::new(gacx.num_pointers(), INITIAL_PERMS, INITIAL_FLAGS);
@@ -916,6 +920,11 @@ fn run(tcx: TyCtxt) {
     for (ptr, &info) in gacx.ptr_info().iter() {
         if should_make_fixed(info) {
             gasn.flags[ptr].insert(FlagSet::FIXED);
+        }
+        if info.contains(PointerInfo::ADDR_OF_LOCAL) {
+            // `addr_of_local` is always a stack pointer, though it should be rare for the
+            // `ADDR_OF_LOCAL` flag to appear on a global `PointerId`.
+            gasn.perms[ptr].remove(PermissionSet::HEAP);
         }
     }
 
@@ -943,6 +952,11 @@ fn run(tcx: TyCtxt) {
         for (ptr, &info) in info.acx_data.local_ptr_info().iter() {
             if should_make_fixed(info) {
                 lasn.flags[ptr].insert(FlagSet::FIXED);
+            }
+            if info.contains(PointerInfo::ADDR_OF_LOCAL) {
+                // `addr_of_local` is always a stack pointer.  This will be propagated
+                // automatically through dataflow whenever the address of the local is taken.
+                lasn.perms[ptr].remove(PermissionSet::HEAP);
             }
         }
 
