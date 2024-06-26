@@ -60,15 +60,15 @@ struct HypoWrapper {
 // CHECK-DAG: assign Label { origin: Some(Origin([[P_REF_A_ORIGIN]]))
 
 // CHECK-LABEL: final labeling for "_field_access"
-// CHECK-DAG: ([[@LINE+3]]: ppd): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE | NON_NULL
+// CHECK-DAG: ([[@LINE+3]]: ppd): addr_of = UNIQUE | NON_NULL | STACK, type = READ | WRITE | UNIQUE | NON_NULL | HEAP | STACK
 // CHECK-DAG: ([[@LINE+2]]: ra): &'d mut A<'d>
 // CHECK-DAG: ([[@LINE+1]]: ppd): &mut &mut Data
 unsafe fn _field_access<'d, 'a: 'd, T: Clone + Copy>(ra: &'d mut A<'d>, ppd: *mut *mut Data<'d>) {
-    // CHECK-DAG: ([[@LINE+2]]: rd): addr_of = UNIQUE | NON_NULL, type = READ | UNIQUE | NON_NULL
+    // CHECK-DAG: ([[@LINE+2]]: rd): addr_of = UNIQUE | NON_NULL | STACK, type = READ | UNIQUE | NON_NULL | HEAP | STACK
     // CHECK-DAG: ([[@LINE+1]]: rd): &Data
     let rd = (*(**ppd).a.pra).rd;
 
-    // CHECK-DAG: ([[@LINE+2]]: pi): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE | NON_NULL
+    // CHECK-DAG: ([[@LINE+2]]: pi): addr_of = UNIQUE | NON_NULL | STACK, type = READ | WRITE | UNIQUE | NON_NULL | HEAP | STACK
     // CHECK-DAG: ([[@LINE+1]]: pi): &mut i32
     let pi = rd.pi;
     *pi = 3;
