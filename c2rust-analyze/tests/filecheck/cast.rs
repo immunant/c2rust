@@ -4,7 +4,7 @@
 
 // CHECK-LABEL: final labeling for "null_ptr"
 pub unsafe fn null_ptr() {
-    // CHECK-DAG: ([[@LINE+3]]: s): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE#
+    // CHECK-DAG: ([[@LINE+3]]: s): addr_of = UNIQUE | NON_NULL | STACK, type = READ | WRITE | UNIQUE | HEAP | STACK#
     // CHECK-LABEL: type assignment for "null_ptr":
     // CHECK-DAG: ([[@LINE+1]]: s): std::option::Option<&mut S>
     let s = 0 as *mut S;
