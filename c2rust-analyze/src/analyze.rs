@@ -24,7 +24,7 @@ use crate::type_desc::Ownership;
 use crate::util;
 use crate::util::Callee;
 use crate::util::TestAttr;
-use ::log::warn;
+use ::log::{warn, info};
 use c2rust_pdg::graph::{Graph, Graphs};
 use c2rust_pdg::info::NodeInfo;
 use rustc_hir::def::DefKind;
@@ -1304,6 +1304,164 @@ fn run(tcx: TyCtxt) {
         let update_files = get_rewrite_mode(tcx, None);
         rewrite::apply_rewrites(tcx, Vec::new(), annotations, update_files);
         eprintln!("finished writing pdg_compare annotations - exiting");
+        return;
+    }
+
+    if let Ok(json_path) = env::var("C2RUST_ANALYZE_COMPARE_JSON") {
+        use std::path::PathBuf;
+        use serde::Deserialize;
+        #[derive(Clone, Debug, Deserialize)]
+        struct FuncAnalysis {
+            #[serde(rename = "funcname")]
+            func_name: String,
+            #[serde(rename = "filepath")]
+            file_path: PathBuf,
+            #[serde(default)]
+            params: ParamAnalysisWrapper,
+            #[serde(default)]
+            analysis: String,
+            error: Option<String>,
+        }
+        #[derive(Clone, Debug, Deserialize, Default)]
+        struct ParamAnalysisWrapper {
+            function_parameters: Vec<ParamAnalysis>,
+        }
+        #[derive(Clone, Debug, Deserialize)]
+        struct ParamAnalysis {
+            #[serde(rename = "argument_name")]
+            name: String,
+            #[serde(rename = "argument_type")]
+            type_: String,
+            #[serde(rename = "is_pointer_type")]
+            is_pointer: bool,
+            #[serde(default, rename = "unchecked_dereference_locations")]
+            unchecked_deref_locs: Vec<DerefLoc>,
+        }
+        #[derive(Clone, Debug, Deserialize)]
+        struct DerefLoc {
+            #[serde(rename = "line_number")]
+            line: Option<usize>,
+            #[serde(rename = "c_expression")]
+            expr: String,
+        }
+
+        let json_str = std::fs::read_to_string(&json_path).unwrap();
+        let mut non_null_args = HashMap::<String, HashMap<String, bool>>::new();
+        for (i, line) in json_str.lines().enumerate() {
+            let line = line.trim();
+            let j: FuncAnalysis = match serde_json::from_str(line) {
+                Ok(x) => x,
+                Err(e) => {
+                    warn!("{}:{}: bad json input: {}", json_path, i + 1, e);
+                    continue;
+                },
+            };
+            if let Some(ref e) = j.error {
+                warn!("{}:{}: analysis failed on function {:?}: {}",
+                    json_path, i + 1, j.func_name, e);
+                continue;
+            }
+            let mut args = HashMap::new();
+            for param in &j.params.function_parameters {
+                if param.is_pointer {
+                    let non_null = param.unchecked_deref_locs.len() > 0;
+                    let old = args.insert(param.name.clone(), non_null);
+                    if old.is_some() {
+                        warn!("{}:{}: duplicate entry for function {:?}, argument {:?}",
+                            json_path, i + 1, j.func_name, param.name);
+                    }
+                }
+            }
+            let old = non_null_args.insert(j.func_name.clone(), args);
+            if old.is_some() {
+                warn!("{}:{}: duplicate entry for function {:?}",
+                    json_path, i + 1, j.func_name);
+            }
+        }
+
+        eprintln!("non_null_args = {:#?}", non_null_args);
+
+
+        let mut ann = AnnotationBuffer::new(tcx);
+        // Generate comparison annotations for all functions.
+        for ldid in tcx.hir().body_owners() {
+            // Skip any body owners that aren't present in `func_info`, and also get the info
+            // itself.
+            let info = match func_info.get_mut(&ldid) {
+                Some(x) => x,
+                None => continue,
+            };
+
+            if !info.acx_data.is_set() {
+                continue;
+            }
+
+            let ldid_const = WithOptConstParam::unknown(ldid);
+            let name = tcx.item_name(ldid.to_def_id()).to_string();
+            let mir = tcx.mir_built(ldid_const);
+            let mir = mir.borrow();
+            let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+            let asn = gasn.and(&mut info.lasn);
+
+            let arg_names = tcx.fn_arg_names(ldid);
+
+            // Generate inline annotations for pointer-typed arguments.
+            for (local, decl) in mir.local_decls.iter_enumerated().skip(1).take(mir.arg_count) {
+                if acx.local_tys.get(local).is_none() {
+                    eprintln!("missing local_tys entry for {:?} {:?}", ldid, local);
+                    continue;
+                }
+
+                // Get static annotation
+                let lty = acx.local_tys[local];
+                if lty.label.is_none() {
+                    // Non-pointer argument
+                    continue;
+                }
+                let static_non_null = asn.perms()[lty.label].contains(PermissionSet::NON_NULL);
+
+                // Get annotation from JSON input
+                let arg_name = match arg_names.get(local.as_usize() - 1) {
+                    Some(ident) => ident.name.to_string(),
+                    None => {
+                        info!("argument {:?} of function {} has no name", local, name);
+                        continue;
+                    },
+                };
+                let json_non_null = non_null_args.get(&name)
+                    .and_then(|args| args.get(&arg_name).copied());
+
+                info!("compare {} {}: static = {:?}, json = {:?}",
+                    name, arg_name, static_non_null, json_non_null);
+
+                if json_non_null.is_none() {
+                    // JSON input did not include any information about this argument.
+                    continue;
+                }
+
+                let json_non_null = json_non_null.unwrap();
+                if static_non_null == json_non_null {
+                    // Both analyses match - no annotation is required.
+                    continue;
+                }
+
+                let span = local_span(decl);
+                ann.emit(span, format_args!("arg {} ({:?}): static {}, json {}",
+                    arg_name, local,
+                    if static_non_null { "NON_NULL" } else { "nullable" },
+                    if json_non_null { "NON_NULL" } else { "nullable" },
+                ));
+            }
+
+            info.acx_data.set(acx.into_data());
+        }
+
+        let annotations = ann.finish();
+        let update_files = get_rewrite_mode(tcx, None);
+        eprintln!("update mode = {:?}", update_files);
+        rewrite::apply_rewrites(tcx, Vec::new(), annotations, update_files);
+        eprintln!("finished writing json_compare annotations - exiting");
+
         return;
     }
 
