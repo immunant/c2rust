@@ -228,6 +228,7 @@ dependencies = [
  "print_bytes",
  "rustc-hash",
  "serde",
+ "serde_json",
  "sha2",
  "shlex",
  "toml_edit",
