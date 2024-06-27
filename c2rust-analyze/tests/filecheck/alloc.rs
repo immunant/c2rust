@@ -51,27 +51,27 @@ unsafe extern "C" fn free1(mut i: *mut i32) {
 }
 
 // CHECK-LABEL: final labeling for "realloc1"
-unsafe extern "C" fn realloc1(mut i: *mut i32, len: libc::c_ulong) {
-    let mut capacity = 1;
-    let mut x = 1;
-    // CHECK-DAG: ([[@LINE+1]]: mut elem): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | OFFSET_ADD | OFFSET_SUB | NON_NULL
-    let mut elem = i;
-    loop {
-        if x == capacity {
+unsafe extern "C" fn realloc1(n: libc::c_ulong) {
+    // CHECK-DAG: ([[@LINE+1]]: mut buf): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE | OFFSET_ADD | OFFSET_SUB | FREE | NON_NULL
+    let mut buf: *mut i32 = malloc(2 * mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
+    let mut len = 0;
+    let mut capacity = 2;
+    memset(buf as *mut libc::c_void, 0, 2 * mem::size_of::<i32>() as usize);
+
+    let mut i = 0;
+    while i < n {
+        if len == capacity {
             capacity *= 2;
-            // CHECK-DAG: ([[@LINE+2]]: i{{.*}}): addr_of = UNIQUE | NON_NULL, type = OFFSET_ADD | OFFSET_SUB | FREE | NON_NULL
-            i = realloc(
-                i as *mut libc::c_void,
-                4 as libc::c_ulong,
+            // CHECK-DAG: ([[@LINE+2]]: buf{{.*}}): addr_of = UNIQUE | NON_NULL, type = UNIQUE | OFFSET_ADD | OFFSET_SUB | FREE | NON_NULL
+            buf = realloc(
+                buf as *mut libc::c_void,
+                capacity as libc::c_ulong,
             ) as *mut i32;
         }
-        *elem = 1;
-        elem = elem.offset(1isize);
-        if x == 10 {
-            break;
-        }
-        x += 1;
+        *buf.offset(i as isize) = i as i32;
     }
+
+    free(buf as *mut libc::c_void);
 }
 
 // CHECK-LABEL: final labeling for "alloc_and_free1"
