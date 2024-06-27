@@ -84,7 +84,9 @@ impl Ownership {
 }
 
 fn perms_to_ptr_desc(perms: PermissionSet, flags: FlagSet) -> PtrDesc {
-    let own = if perms.contains(PermissionSet::UNIQUE | PermissionSet::WRITE) {
+    let own = if perms.contains(PermissionSet::FREE) {
+        Ownership::Box
+    } else if perms.contains(PermissionSet::UNIQUE | PermissionSet::WRITE) {
         Ownership::Mut
     } else if flags.contains(FlagSet::CELL) {
         Ownership::Cell
