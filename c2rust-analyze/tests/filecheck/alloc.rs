@@ -59,7 +59,7 @@ unsafe extern "C" fn realloc1(mut i: *mut i32, len: libc::c_ulong) {
     loop {
         if x == capacity {
             capacity *= 2;
-            // CHECK-DAG: ([[@LINE+2]]: i{{.*}}): addr_of = UNIQUE | NON_NULL, type = FREE | NON_NULL
+            // CHECK-DAG: ([[@LINE+2]]: i{{.*}}): addr_of = UNIQUE | NON_NULL, type = OFFSET_ADD | OFFSET_SUB | FREE | NON_NULL
             i = realloc(
                 i as *mut libc::c_void,
                 4 as libc::c_ulong,
