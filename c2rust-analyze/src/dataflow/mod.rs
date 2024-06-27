@@ -11,6 +11,18 @@ mod type_check;
 #[derive(Clone, Debug)]
 enum Constraint {
     /// Pointer `.0` must have a subset of the permissions of pointer `.1`.
+    ///
+    /// `Subset` and `SubsetExcept` have a special case involving `FREE` and `OFFSET` permissions.
+    /// The rewriter can't produce a cast that converts `Box<[T]>` to `Box<T>`; to avoid needing
+    /// such casts, we forbid assignment operations from discarding the `OFFSET` permission while
+    /// keeping `FREE`.  We implement this restriction by adding an additional requirement to the
+    /// definition of `Subset(L, R)`: if `L` contains `FREE` and `R` contains `OFFSET`, then `L`
+    /// must also contain `OFFSET`.  This is sufficient because all assignments and
+    /// pseudo-assignments generate `Subset` constraints.
+    ///
+    /// If `L` does not contain `FREE`, then no additional requirement applies, even if `R` does
+    /// contain `OFFSET`.  We allow discarding both `FREE` and `OFFSET` simultaneously during an
+    /// assignment.
     Subset(PointerId, PointerId),
     /// Pointer `.0` must have a subset of permissions of pointer `.1`, except
     /// for the provided permission set.
@@ -105,10 +117,25 @@ impl DataflowConstraints {
                     | PermissionSet::OFFSET_SUB
                     | PermissionSet::FREE;
 
-                (
-                    old_a & !(!old_b & (PROPAGATE_DOWN & !except)),
-                    old_b | (old_a & (PROPAGATE_UP & !except)),
-                )
+                let remove_a = !old_b & PROPAGATE_DOWN & !except;
+                let add_b = old_a & PROPAGATE_UP & !except;
+
+                // Special case: as documented on `Constraint::Subset`, if the subset has `FREE`,
+                // we propagate `OFFSET` in the opposite direction.  Specifically, if the superset
+                // has `OFFSET`, we add it to the subset, propagating "down".  (Propagating "up"
+                // here could allow `OFFSET` and `!OFFSET` to propagated up into the same
+                // `PointerId` through two different constraints, creating a conflict.)
+                let add_a = if old_a.contains(PermissionSet::FREE) {
+                    #[allow(bad_style)]
+                    let PROPAGATE_DOWN_WHEN_FREE = PermissionSet::OFFSET_ADD
+                        | PermissionSet::OFFSET_SUB;
+                    old_b & PROPAGATE_DOWN_WHEN_FREE & !except
+                } else {
+                    PermissionSet::empty()
+                };
+                debug_assert_eq!(add_a & remove_a, PermissionSet::empty());
+
+                ((old_a | add_a) & !remove_a, old_b | add_b)
             }
 
             fn all_perms(
