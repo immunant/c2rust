@@ -491,6 +491,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
             Callee::Malloc | Callee::Calloc => {
                 self.visit_place(destination, Mutability::Mut);
+
+                // The output of `malloc` is known not to be a stack pointer.
+                let pl_lty = self.acx.type_of(destination);
+                self.constraints.add_no_perms(pl_lty.label, PermissionSet::STACK);
             }
             Callee::Realloc => {
                 let out_ptr = destination;
@@ -506,6 +510,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // input needs FREE permission
                 let perms = PermissionSet::FREE;
                 self.constraints.add_all_perms(rv_lty.label, perms);
+
+                // Output loses the STACK permission.
+                self.constraints.add_no_perms(pl_lty.label, PermissionSet::STACK);
 
                 // unify inner-most pointer types
                 self.do_equivalence_nested(pl_lty, rv_lty);
@@ -723,8 +730,9 @@ pub fn visit<'tcx>(
         equiv_constraints: Vec::new(),
     };
 
-    for (ptr, perms) in acx.string_literal_perms() {
+    for (ptr, perms, neg_perms) in acx.string_literal_perms() {
         tc.constraints.add_all_perms(ptr, perms);
+        tc.constraints.add_no_perms(ptr, neg_perms);
     }
 
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {

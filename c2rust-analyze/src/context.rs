@@ -138,6 +138,20 @@ bitflags! {
         /// [`_.is_null()`]: core::ptr::is_null
         /// [`_.is_some()`]: Option::is_some
         const NON_NULL = 0x0080;
+
+        /// This pointer points to the heap (or is null).
+        ///
+        /// `HEAP` and `STACK` form a four-element lattice.  `HEAP` means definitely heap, `STACK`
+        /// means definitely stack, neither means it could be either (top), and both means the
+        /// pointer is either definitely null or comes from an unknown source (bottom).
+        const HEAP = 0x0100;
+
+        /// This pointer points to the stack or to static memory (or is null).
+        ///
+        /// Currently we distinguish stack/static vs heap, but don't distinguish stack vs static.
+        /// The reason is that heap pointers can be rewritten to `Box<T>`, but stack and static
+        /// pointers both cannot.
+        const STACK = 0x0200;
     }
 }
 
@@ -167,7 +181,11 @@ impl PermissionSet {
     /// The permissions for a (byte-)string literal.
     //
     // `union_all` is used here since it's a `const fn`, unlike `BitOr::bitor`.
-    pub const STRING_LITERAL: Self = Self::union_all([Self::READ, Self::OFFSET_ADD]);
+    pub const STRING_LITERAL: Self = Self::union_all([Self::READ, Self::OFFSET_ADD, Self::STACK]);
+
+    /// Negative permissions for a (byte-)string literal.  These permissions should be absent from
+    /// all string literals, contrary to the defaults for most pointers.
+    pub const STRING_LITERAL_NEGATIVE: Self = Self::union_all([Self::HEAP]);
 }
 
 bitflags! {
@@ -295,6 +313,9 @@ bitflags! {
         /// This `PointerId` has at least one local declaration that is not a temporary reference
         /// arising from an `&x` or `&mut x` expression in the source.
         const NOT_TEMPORARY_REF = 0x0004;
+
+        /// This `PointerId` appeared as the `addr_of_local` `PointerId` for at least one local.
+        const ADDR_OF_LOCAL = 0x0008;
     }
 }
 
@@ -446,9 +467,12 @@ impl<'a, 'tcx> AnalysisCtxt<'_, 'tcx> {
 
     pub fn string_literal_perms(
         &'a self,
-    ) -> impl Iterator<Item = (PointerId, PermissionSet)> + PhantomLifetime<'tcx> + 'a {
-        self.string_literal_tys()
-            .map(|lty| (lty.label, PermissionSet::STRING_LITERAL))
+    ) -> impl Iterator<Item = (PointerId, PermissionSet, PermissionSet)> + PhantomLifetime<'tcx> + 'a {
+        self.string_literal_tys().map(|lty| (
+            lty.label,
+            PermissionSet::STRING_LITERAL,
+            PermissionSet::STRING_LITERAL_NEGATIVE,
+        ))
     }
 
     pub fn check_string_literal_perms(&self, asn: &Assignment) {
