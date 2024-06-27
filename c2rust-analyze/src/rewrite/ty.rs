@@ -562,7 +562,7 @@ fn rewrite_ty<'tcx>(
                 Ownership::Cell => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
                 Ownership::Mut => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Mut),
                 Ownership::Rc => todo!(),
-                Ownership::Box => todo!(),
+                Ownership::Box => Rewrite::TyCtor("alloc::boxed::Box".into(), vec![rw]),
             };
 
             if option {

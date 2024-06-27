@@ -1136,12 +1136,12 @@ where
         Ok(match from.own {
             Ownership::Box => match to.own {
                 Ownership::Raw | Ownership::Imm => {
-                    return Err(format!("TODO: cast Box to Imm"));
-                    //Some(Ownership::Imm)
+                    (self.emit)(RewriteKind::Reborrow { mutbl: false });
+                    Some(Ownership::Imm)
                 }
-                Ownership::RawMut | Ownership::Mut => {
-                    return Err(format!("TODO: cast Box to Mut"));
-                    //Some(Ownership::Mut)
+                Ownership::RawMut | Ownership::Mut | Ownership::Cell => {
+                    (self.emit)(RewriteKind::Reborrow { mutbl: true });
+                    Some(Ownership::Mut)
                 }
                 _ => None,
             },
