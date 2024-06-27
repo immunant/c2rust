@@ -614,14 +614,14 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
             Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
         }
 
-        mir_op::RewriteKind::MutToImm => {
-            // `p` -> `&*p`
+        mir_op::RewriteKind::Reborrow { mutbl } => {
+            // `p` -> `&*p` / `&mut *p`
             let hir_rw = match fold_mut_to_imm(hir_rw) {
                 Ok(folded_rw) => return folded_rw,
                 Err(rw) => rw,
             };
             let place = Rewrite::Deref(Box::new(hir_rw));
-            Rewrite::Ref(Box::new(place), hir::Mutability::Not)
+            Rewrite::Ref(Box::new(place), mutbl_from_bool(mutbl))
         }
 
         mir_op::RewriteKind::OptionUnwrap => {

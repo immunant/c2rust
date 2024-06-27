@@ -58,8 +58,8 @@ pub enum RewriteKind {
     OptionMapOffsetSlice { mutbl: bool },
     /// Replace `slice` with `&slice[0]`.
     SliceFirst { mutbl: bool },
-    /// Replace `ptr` with `&*ptr`, converting `&mut T` to `&T`.
-    MutToImm,
+    /// Replace `ptr` with `&*ptr` or `&mut *ptr`, converting `ptr` to `&T` or `&mut T`.
+    Reborrow { mutbl: bool },
     /// Remove a call to `as_ptr` or `as_mut_ptr`.
     RemoveAsPtr,
     /// Remove a cast, changing `x as T` to just `x`.
@@ -1154,7 +1154,7 @@ where
             },
             Ownership::Mut => match to.own {
                 Ownership::Imm | Ownership::Raw => {
-                    (self.emit)(RewriteKind::MutToImm);
+                    (self.emit)(RewriteKind::Reborrow { mutbl: false });
                     Some(Ownership::Imm)
                 }
                 Ownership::Cell => {
