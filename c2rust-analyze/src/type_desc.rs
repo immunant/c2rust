@@ -39,6 +39,12 @@ pub enum Quantity {
 pub struct TypeDesc<'tcx> {
     pub own: Ownership,
     pub qty: Quantity,
+    /// If set, wrap the new type to support dynamic ownership tracking.  This effectively wraps
+    /// the type in `Option` to represent the fact that it may or may not hold ownership.
+    ///
+    /// If `dyn_owned` and `option` are both set, `dyn_owned` is applied first, then `option`,
+    /// resulting in two levels of wrapping.
+    pub dyn_owned: bool,
     pub option: bool,
     pub pointee_ty: Ty<'tcx>,
 }
@@ -47,6 +53,7 @@ pub struct TypeDesc<'tcx> {
 pub struct PtrDesc {
     pub own: Ownership,
     pub qty: Quantity,
+    pub dyn_owned: bool,
     pub option: bool,
 }
 
@@ -55,19 +62,31 @@ impl<'tcx> From<TypeDesc<'tcx>> for PtrDesc {
         let TypeDesc {
             own,
             qty,
+            dyn_owned,
             option,
             pointee_ty: _,
         } = x;
-        PtrDesc { own, qty, option }
+        PtrDesc {
+            own,
+            qty,
+            dyn_owned,
+            option,
+        }
     }
 }
 
 impl PtrDesc {
     pub fn to_type_desc<'tcx>(self, pointee_ty: Ty<'tcx>) -> TypeDesc<'tcx> {
-        let PtrDesc { own, qty, option } = self;
+        let PtrDesc {
+            own,
+            qty,
+            dyn_owned,
+            option,
+        } = self;
         TypeDesc {
             own,
             qty,
+            dyn_owned,
             option,
             pointee_ty,
         }
@@ -84,7 +103,10 @@ impl Ownership {
 }
 
 fn perms_to_ptr_desc(perms: PermissionSet, flags: FlagSet) -> PtrDesc {
+    let mut dyn_owned = false;
+
     let own = if perms.contains(PermissionSet::FREE) {
+        dyn_owned = true;
         Ownership::Box
     } else if perms.contains(PermissionSet::UNIQUE | PermissionSet::WRITE) {
         Ownership::Mut
@@ -106,7 +128,12 @@ fn perms_to_ptr_desc(perms: PermissionSet, flags: FlagSet) -> PtrDesc {
 
     let option = !perms.contains(PermissionSet::NON_NULL);
 
-    PtrDesc { own, qty, option }
+    PtrDesc {
+        own,
+        qty,
+        dyn_owned,
+        option,
+    }
 }
 
 /// Obtain the `TypeDesc` for a pointer.  `ptr_ty` should be the `Ty` of the pointer, and `perms`
@@ -169,6 +196,7 @@ pub fn unpack_pointer_type<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, pointee_ty: Ty
         OffsetPtr,
         Array,
         Option,
+        DynOwned,
     }
 
     let mut steps = Vec::new();
@@ -184,6 +212,9 @@ pub fn unpack_pointer_type<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, pointee_ty: Ty
             }
             TyKind::Adt(adt_def, substs) if is_option(tcx, adt_def) => {
                 (Step::Option, substs.type_at(0))
+            }
+            TyKind::Adt(adt_def, substs) if is_dyn_owned(tcx, adt_def) => {
+                (Step::DynOwned, substs.type_at(0))
             }
             TyKind::Adt(adt_def, substs) if is_offset_ptr(tcx, adt_def) => {
                 (Step::OffsetPtr, substs.type_at(0))
@@ -215,6 +246,8 @@ pub fn unpack_pointer_type<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, pointee_ty: Ty
 
     // This logic is roughly the inverse of that in `rewrite::ty::mk_rewritten_ty`.
     let option = eat(Step::Option);
+
+    let dyn_owned = eat(Step::DynOwned);
 
     let mut own = if eat(Step::Ref(Mutability::Not)) {
         Ownership::Imm
@@ -261,7 +294,12 @@ pub fn unpack_pointer_type<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, pointee_ty: Ty
         &steps[i..],
     );
 
-    PtrDesc { own, qty, option }
+    PtrDesc {
+        own,
+        qty,
+        dyn_owned,
+        option,
+    }
 }
 
 /// Returns `true` if `adt_def` is the type `std::cell::Cell`.
@@ -272,6 +310,12 @@ fn is_cell<'tcx>(_tcx: TyCtxt<'tcx>, _adt_def: AdtDef<'tcx>) -> bool {
 
 /// Returns `true` if `adt_def` is the type `std::option::Option`.
 fn is_option<'tcx>(_tcx: TyCtxt<'tcx>, _adt_def: AdtDef<'tcx>) -> bool {
+    // TODO
+    false
+}
+
+/// Returns `true` if `adt_def` is the wrapper type used for dynamic ownership.
+fn is_dyn_owned<'tcx>(_tcx: TyCtxt<'tcx>, _adt_def: AdtDef<'tcx>) -> bool {
     // TODO
     false
 }
