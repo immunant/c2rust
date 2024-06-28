@@ -95,3 +95,14 @@ pub unsafe extern "C" fn alloc_and_free2(mut cnt: libc::c_int) {
         free(i as *mut libc::c_void);
     }
 }
+
+// CHECK-LABEL: final labeling for "alloc_and_free3"
+pub unsafe extern "C" fn alloc_and_free3(mut cnt: libc::c_int) {
+    // CHECK-DAG: ([[@LINE+1]]: mut i): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE | FREE | NON_NULL#
+    let mut i: *mut i32 = malloc(::std::mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
+    // CHECK-DAG: ([[@LINE+1]]: mut b): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE | FREE | NON_NULL#
+    let mut b: *mut i32 = i;
+    *b = 2;
+    // CHECK-DAG: ([[@LINE+1]]: b): {{.*}}type = UNIQUE | FREE | NON_NULL#
+    free(b as *mut libc::c_void);
+}
