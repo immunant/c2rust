@@ -28,18 +28,42 @@ pub struct MirOrigin {
     pub desc: MirOriginDesc,
 }
 
+/// The `MirOriginDesc`s for a complex case might look like this:
+///
+/// * `Expr`
+/// * `Adjustment(0)`
+/// * `StoreIntoLocal`
+/// * `LoadFromTempForAdjustment(1)`
+/// * `Adjustment(1)`
+/// * `Adjustment(2)`
+/// * `StoreIntoLocal`
+/// * `LoadFromTemp`
+///
+/// Note there isn't a 1-to-1 relationship between `Adjustment` and `LoadFromTempForAdjustment`;
+/// the latter is present only when the expression and/or its adjustments are split across multiple
+/// statements.
+///
+/// Currently, we don't support MIR rewrites on `StoreIntoLocal` nodes, so there's no need to
+/// disambiguate between "store into a temporary, to be loaded by a future adjustment" and "store
+/// into the final variable/temporary".  In the future, we might need to modify `StoreIntoLocal` or
+/// add a new variant to account for this.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum MirOriginDesc {
-    /// This MIR represents the whole HIR expression.
+    /// This MIR represents the main HIR expression.  This is the value before any adjustments are
+    /// applied.
     Expr,
     /// This MIR stores the result of the HIR expression into a MIR local of some kind.
     StoreIntoLocal,
-    /// This MIR loads the result of the HIR expression from a MIR temporary where it was
-    /// previously stored.  Loads from user-visible locals, which originate from HIR local variable
-    /// expressions, use the `Expr` variant instead.
+    /// This MIR loads the final result of the HIR expression (after all adjustments have been
+    /// applied) from a MIR temporary where it was previously stored.  Loads from user-visible
+    /// locals, which originate from HIR local variable expressions, use the `Expr` variant
+    /// instead.
     LoadFromTemp,
     /// This MIR applies adjustment `i` from the expression's list of adjustments.
     Adjustment(usize),
+    /// This MIR loads from a MIR temporary the intermediate value used as input for adjustment `i`
+    /// of the HIR expression.
+    LoadFromTempForAdjustment(usize),
 }
 
 struct UnlowerVisitor<'a, 'tcx> {
@@ -420,6 +444,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 }
             }
             self.record_desc(loc, &sub_loc, ex, MirOriginDesc::Adjustment(i));
+            cursor.set_last_adjustment(i);
         }
 
         while cursor.peel_temp().is_some() {
@@ -540,6 +565,20 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                         continue;
                     }
                 }
+                hir::ExprKind::AddrOf(kind, _mutbl, pl_ex) => match kind {
+                    hir::BorrowKind::Ref => {
+                        if let Some(_mir_mutbl) = cursor.peel_ref() {
+                            ex = pl_ex;
+                            continue;
+                        }
+                    }
+                    hir::BorrowKind::Raw => {
+                        if let Some(_mir_mutbl) = cursor.peel_address_of() {
+                            ex = pl_ex;
+                            continue;
+                        }
+                    }
+                },
                 _ => {}
             }
             // Keep looping only in cases that we specifically recognize.
@@ -606,6 +645,11 @@ struct VisitExprCursor<'a, 'b, 'tcx> {
     /// `UnlowerVisitor` to emit these entries directly, so instead we buffer those entries for the
     /// caller to emit later.
     temp_info: Vec<(PreciseLoc, MirOriginDesc)>,
+
+    /// Index of the most recently traversed adjustment.  This is updated by the caller through
+    /// `set_last_adjustment()`.  If this is `Some`, we generate `LoadFromTempForAdjustment`
+    /// instead of `LoadFromTemp`.
+    last_adjustment: Option<usize>,
 }
 
 impl<'a, 'b, 'tcx> VisitExprCursor<'a, 'b, 'tcx> {
@@ -624,6 +668,7 @@ impl<'a, 'b, 'tcx> VisitExprCursor<'a, 'b, 'tcx> {
             sub_loc,
 
             temp_info: Vec::new(),
+            last_adjustment: None,
         }
     }
 
@@ -635,6 +680,10 @@ impl<'a, 'b, 'tcx> VisitExprCursor<'a, 'b, 'tcx> {
             ExprMir::Place(pl) => is_temp_var(self.mir, pl),
             ExprMir::Call(_) => false,
         }
+    }
+
+    pub fn set_last_adjustment(&mut self, i: usize) {
+        self.last_adjustment = Some(i);
     }
 
     /// If the current MIR is a temporary, and the previous `Location` is an assignment to
@@ -705,7 +754,11 @@ impl<'a, 'b, 'tcx> VisitExprCursor<'a, 'b, 'tcx> {
         }
 
         let store_loc = PreciseLoc { loc, sub: vec![] };
-        self.temp_info.push((load_loc, MirOriginDesc::LoadFromTemp));
+        let load_desc = match self.last_adjustment {
+            Some(i) => MirOriginDesc::LoadFromTempForAdjustment(i),
+            None => MirOriginDesc::LoadFromTemp,
+        };
+        self.temp_info.push((load_loc, load_desc));
         self.temp_info
             .push((store_loc, MirOriginDesc::StoreIntoLocal));
 
@@ -1019,52 +1072,5 @@ pub fn unlower<'tcx>(
         }
     }
 
-    debug_print_unlower_map(tcx, mir, &visitor.unlower_map);
-
     visitor.unlower_map
-}
-
-fn debug_print_unlower_map<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    mir: &Body<'tcx>,
-    unlower_map: &BTreeMap<PreciseLoc, MirOrigin>,
-) {
-    eprintln!("unlowering for {:?}:", mir.source);
-    for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
-        eprintln!("  block {bb_id:?}:");
-        for (i, stmt) in bb.statements.iter().enumerate() {
-            let loc = Location {
-                block: bb_id,
-                statement_index: i,
-            };
-
-            eprintln!("    {loc:?}: {stmt:?}");
-            for (k, v) in unlower_map.range(&PreciseLoc { loc, sub: vec![] }..) {
-                if k.loc != loc {
-                    break;
-                }
-                let sublocs = &k.sub;
-                let ex = tcx.hir().expect_expr(v.hir_id);
-                eprintln!("      {sublocs:?}: {:?}, {:?}", v.desc, ex.span);
-            }
-        }
-
-        {
-            let term = bb.terminator();
-            let loc = Location {
-                block: bb_id,
-                statement_index: bb.statements.len(),
-            };
-
-            eprintln!("    {loc:?}: {term:?}");
-            for (k, v) in unlower_map.range(&PreciseLoc { loc, sub: vec![] }..) {
-                if k.loc != loc {
-                    break;
-                }
-                let sublocs = &k.sub;
-                let ex = tcx.hir().expect_expr(v.hir_id);
-                eprintln!("      {sublocs:?}: {:?}, {:?}", v.desc, ex.span);
-            }
-        }
-    }
 }
