@@ -663,6 +663,27 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
             Rewrite::MethodCall(ref_method, Box::new(hir_rw), vec![])
         }
 
+        mir_op::RewriteKind::DynOwnedTakeUnwrap => {
+            let hir_rw = Rewrite::Call("std::mem::replace".to_string(), vec![
+                Rewrite::Ref(Box::new(hir_rw), hir::Mutability::Mut),
+                Rewrite::Text("Err(())".into()),
+            ]);
+            Rewrite::MethodCall("unwrap".to_string(), Box::new(hir_rw), vec![])
+        }
+        mir_op::RewriteKind::DynOwnedWrap => {
+            Rewrite::Call("std::result::Result::<_, ()>::Ok".to_string(), vec![hir_rw])
+        }
+
+        mir_op::RewriteKind::DynOwnedDowngrade { mutbl } => {
+            let ref_method = if mutbl {
+                "as_deref_mut".into()
+            } else {
+                "as_deref".into()
+            };
+            let hir_rw = Rewrite::MethodCall(ref_method, Box::new(hir_rw), vec![]);
+            Rewrite::MethodCall("unwrap".into(), Box::new(hir_rw), vec![])
+        }
+
         mir_op::RewriteKind::CastRefToRaw { mutbl } => {
             // `addr_of!(*p)` is cleaner than `p as *const _`; we don't know the pointee
             // type here, so we can't emit `p as *const T`.

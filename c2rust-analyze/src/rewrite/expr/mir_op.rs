@@ -110,8 +110,16 @@ pub enum RewriteKind {
     /// but passes through `None` unchanged instead of panicking.
     OptionMapEnd,
     /// Downgrade ownership of an `Option` to `Option<&_>` or `Option<&mut _>` by calling
-    /// `as_ref()`/`as_mut()` and optionally `as_deref()`/`as_deref_mut()`.
+    /// `as_ref()`/`as_mut()` or `as_deref()`/`as_deref_mut()`.
     OptionDowngrade { mutbl: bool, deref: bool },
+
+    /// Extract the `T` from `DynOwned<T>`.
+    DynOwnedTakeUnwrap,
+    /// Wrap `T` in `Ok` to produce `DynOwned<T>`.
+    DynOwnedWrap,
+    /// Downgrade ownership of a `DynOwned<T>` to `&T` or `&mut T` by calling
+    /// `as_deref()`/`as_deref_mut()` and `unwrap`.
+    DynOwnedDowngrade { mutbl: bool },
 
     /// Cast `&T` to `*const T` or `&mut T` to `*mut T`.
     CastRefToRaw { mutbl: bool },
@@ -791,6 +799,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 Quantity::OffsetPtr => Quantity::OffsetPtr,
                 Quantity::Array => unreachable!("perms_to_desc should not return Quantity::Array"),
             },
+            dyn_owned: result_desc.dyn_owned,
             option: result_desc.option,
             pointee_ty: result_desc.pointee_ty,
         };
@@ -1034,6 +1043,21 @@ where
             in_option_map = true;
         }
 
+        if from.dyn_owned {
+            match to.own {
+                Ownership::Raw | Ownership::Imm => {
+                    (self.emit)(RewriteKind::DynOwnedDowngrade { mutbl: false });
+                },
+                Ownership::RawMut | Ownership::Cell | Ownership::Mut => {
+                    (self.emit)(RewriteKind::DynOwnedDowngrade { mutbl: true });
+                },
+                Ownership::Rc | Ownership::Box => {
+                    (self.emit)(RewriteKind::DynOwnedTakeUnwrap);
+                },
+            }
+            from.dyn_owned = false;
+        }
+
         // Early `Ownership` casts.  We do certain casts here in hopes of reaching an `Ownership`
         // on which we can safely adjust `Quantity`.
         from.own = self.cast_ownership(from, to, true)?;
@@ -1087,6 +1111,11 @@ where
 
         // Late `Ownership` casts.
         from.own = self.cast_ownership(from, to, false)?;
+
+        if to.dyn_owned {
+            (self.emit)(RewriteKind::DynOwnedWrap);
+            from.dyn_owned = true;
+        }
 
         if in_option_map {
             assert!(!from.option);
