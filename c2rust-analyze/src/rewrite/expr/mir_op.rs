@@ -162,6 +162,30 @@ pub struct MirRewrite {
     pub sub_loc: Vec<SubLoc>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+enum PlaceAccess {
+    Imm,
+    Mut,
+    Move,
+}
+
+impl PlaceAccess {
+    pub fn from_bool(mutbl: bool) -> PlaceAccess {
+        if mutbl {
+            PlaceAccess::Mut
+        } else {
+            PlaceAccess::Imm
+        }
+    }
+
+    pub fn from_mutbl(mutbl: Mutability) -> PlaceAccess {
+        match mutbl {
+            Mutability::Not => PlaceAccess::Imm,
+            Mutability::Mut => PlaceAccess::Mut,
+        }
+    }
+}
+
 struct ExprRewriteVisitor<'a, 'tcx> {
     acx: &'a AnalysisCtxt<'a, 'tcx>,
     perms: PointerTable<'a, PermissionSet>,
@@ -354,7 +378,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 self.enter_rvalue(|v| v.visit_rvalue(rv, Some(rv_lty)));
                 // The cast from `rv_lty` to `pl_lty` should be applied to the RHS.
                 self.enter_rvalue(|v| v.emit_cast_lty_lty(rv_lty, pl_lty));
-                self.enter_dest(|v| v.visit_place(pl, true));
+                self.enter_dest(|v| v.visit_place(pl, PlaceAccess::Mut));
             }
             StatementKind::FakeRead(..) => {}
             StatementKind::SetDiscriminant { .. } => todo!("statement {:?}", stmt),
@@ -571,7 +595,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     BorrowKind::Mut { .. } => true,
                     BorrowKind::Shared | BorrowKind::Shallow | BorrowKind::Unique => false,
                 };
-                self.enter_rvalue_place(0, |v| v.visit_place(pl, mutbl));
+                self.enter_rvalue_place(0, |v| v.visit_place(pl, PlaceAccess::from_bool(mutbl)));
 
                 if let Some(expect_ty) = expect_ty {
                     if self.is_nullable(expect_ty.label) {
@@ -585,7 +609,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 // TODO
             }
             Rvalue::AddressOf(mutbl, pl) => {
-                self.enter_rvalue_place(0, |v| v.visit_place(pl, mutbl == Mutability::Mut));
+                self.enter_rvalue_place(0, |v| v.visit_place(pl, PlaceAccess::from_mutbl(mutbl)));
                 if let Some(expect_ty) = expect_ty {
                     let desc = type_desc::perms_to_desc_with_pointee(
                         self.acx.tcx(),
@@ -607,7 +631,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 }
             }
             Rvalue::Len(pl) => {
-                self.enter_rvalue_place(0, |v| v.visit_place(pl, false));
+                self.enter_rvalue_place(0, |v| v.visit_place(pl, PlaceAccess::Imm));
             }
             Rvalue::Cast(_kind, ref op, ty) => {
                 if util::is_null_const_operand(op) && ty.is_unsafe_ptr() {
@@ -666,7 +690,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
             }
             Rvalue::Discriminant(pl) => {
-                self.enter_rvalue_place(0, |v| v.visit_place(pl, false));
+                self.enter_rvalue_place(0, |v| v.visit_place(pl, PlaceAccess::Imm));
             }
             Rvalue::Aggregate(ref _kind, ref ops) => {
                 for (i, op) in ops.iter().enumerate() {
@@ -677,7 +701,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
             }
             Rvalue::CopyForDeref(pl) => {
-                self.enter_rvalue_place(0, |v| v.visit_place(pl, false));
+                self.enter_rvalue_place(0, |v| v.visit_place(pl, PlaceAccess::Imm));
             }
         }
     }
@@ -687,7 +711,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn visit_operand(&mut self, op: &Operand<'tcx>, expect_ty: Option<LTy<'tcx>>) {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
-                self.enter_operand_place(|v| v.visit_place(pl, false));
+                // TODO: should this be Move, Imm, or dependent on the type?
+                self.enter_operand_place(|v| v.visit_place(pl, PlaceAccess::Move));
 
                 if let Some(expect_ty) = expect_ty {
                     let ptr_lty = self.acx.type_of(pl);
@@ -704,7 +729,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn visit_operand_desc(&mut self, op: &Operand<'tcx>, expect_desc: TypeDesc<'tcx>) {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
-                self.visit_place(pl, false);
+                // TODO: should this be Move, Imm, or dependent on the type?
+                self.visit_place(pl, PlaceAccess::Move);
 
                 let ptr_lty = self.acx.type_of(pl);
                 if !ptr_lty.label.is_none() {
@@ -715,24 +741,24 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         }
     }
 
-    fn visit_place(&mut self, pl: Place<'tcx>, in_mutable_context: bool) {
+    fn visit_place(&mut self, pl: Place<'tcx>, access: PlaceAccess) {
         let mut ltys = Vec::with_capacity(1 + pl.projection.len());
         ltys.push(self.acx.type_of(pl.local));
         for proj in pl.projection {
             let prev_lty = ltys.last().copied().unwrap();
             ltys.push(self.acx.projection_lty(prev_lty, &proj));
         }
-        self.visit_place_ref(pl.as_ref(), &ltys, in_mutable_context);
+        self.visit_place_ref(pl.as_ref(), &ltys, access);
     }
 
     /// Generate rewrites for a `Place` represented as a `PlaceRef`.  `proj_ltys` gives the `LTy`
-    /// for the `Local` and after each projection.  `in_mutable_context` is `true` if the `Place`
-    /// is in a mutable context, such as the LHS of an assignment.
+    /// for the `Local` and after each projection.  `access` describes how the place is being used:
+    /// immutably, mutably, or being moved out of.
     fn visit_place_ref(
         &mut self,
         pl: PlaceRef<'tcx>,
         proj_ltys: &[LTy<'tcx>],
-        in_mutable_context: bool,
+        access: PlaceAccess,
     ) {
         let (&last_proj, rest) = match pl.projection.split_last() {
             Some(x) => x,
@@ -752,7 +778,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         match last_proj {
             PlaceElem::Deref => {
                 self.enter_place_deref_pointer(|v| {
-                    v.visit_place_ref(base_pl, proj_ltys, in_mutable_context);
+                    v.visit_place_ref(base_pl, proj_ltys, access);
                     if v.is_nullable(base_lty.label) {
                         // If the pointer type is non-copy, downgrade (borrow) before calling
                         // `unwrap()`.
@@ -763,7 +789,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         );
                         if !desc.own.is_copy() {
                             v.emit(RewriteKind::OptionDowngrade {
-                                mutbl: in_mutable_context,
+                                mutbl: access == PlaceAccess::Mut,
                                 deref: true,
                             });
                         }
@@ -773,12 +799,12 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             }
             PlaceElem::Field(_idx, _ty) => {
                 self.enter_place_field_base(|v| {
-                    v.visit_place_ref(base_pl, proj_ltys, in_mutable_context)
+                    v.visit_place_ref(base_pl, proj_ltys, access)
                 });
             }
             PlaceElem::Index(_) | PlaceElem::ConstantIndex { .. } | PlaceElem::Subslice { .. } => {
                 self.enter_place_index_array(|v| {
-                    v.visit_place_ref(base_pl, proj_ltys, in_mutable_context)
+                    v.visit_place_ref(base_pl, proj_ltys, access)
                 });
             }
             PlaceElem::Downcast(_, _) => {}
