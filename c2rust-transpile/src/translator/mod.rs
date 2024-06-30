@@ -3595,22 +3595,6 @@ impl<'c> Translation<'c> {
                     (rhs, lhs, rhs_node)
                 };
 
-                let lhs_node_type = lhs_node
-                    .get_type()
-                    .ok_or_else(|| format_err!("lhs node bad type"))?;
-                if self
-                    .ast_context
-                    .resolve_type(lhs_node_type)
-                    .kind
-                    .is_vector()
-                {
-                    return Err(TranslationError::new(
-                        self.ast_context.display_loc(src_loc),
-                        err_msg("Attempting to index a vector type")
-                            .context(TranslationErrorKind::OldLLVMSimd),
-                    ));
-                }
-
                 let rhs = self.convert_expr(ctx.used(), *rhs)?;
                 rhs.and_then(|rhs| {
                     let simple_index_array = if ctx.needs_address() {
@@ -3680,6 +3664,40 @@ impl<'c> Translation<'c> {
                                 mk().index_expr(lhs, cast_int(rhs, "usize", false))
                             }
                         }))
+                    } else if lhs_node_kind.is_vector() {
+                        // LHS is a vector type, we just need to do a transmute to an array and
+                        // take the type
+                        match lhs_node_kind {
+                            CTypeKind::Vector(vkind, _vsize) => {
+                                let vector_kind_size_of =
+                                    self.compute_size_of_type(ctx, vkind.ctype)?;
+                                let vector_ty = self.convert_type(vkind.ctype)?;
+
+                                let lhs = self.convert_expr(ctx.used(), *lhs)?;
+                                let lhs_type = lhs_node
+                                    .get_type()
+                                    .ok_or_else(|| format_err!("bad lhs type"))?;
+                                let lhs_type_size_of = self.compute_size_of_type(ctx, lhs_type)?;
+
+                                Ok(lhs.map(|lhs| {
+                                    // Array size is vector_kind_size (e.g. size_of::<__mm256>()) / element size (e.g. size_of::<u16>())
+                                    let array_ty = mk().array_ty(
+                                        vector_ty,
+                                        mk().binary_expr(
+                                            BinOp::Div(Default::default()),
+                                            // mk().lit_expr(mk().int_lit(*size as u128, "usize")),
+                                            lhs_type_size_of.to_expr(),
+                                            vector_kind_size_of.to_expr(),
+                                        ),
+                                    );
+                                    mk().unsafe_().index_expr(
+                                        transmute_expr(mk().infer_ty(), array_ty, lhs),
+                                        cast_int(rhs, "usize", false),
+                                    )
+                                }))
+                            }
+                            _ => unreachable!(),
+                        }
                     } else {
                         // LHS must be ref decayed for the offset method call's self param
                         let lhs = self.convert_expr(ctx.used().decay_ref(), *lhs)?;
@@ -3720,6 +3738,7 @@ impl<'c> Translation<'c> {
                             })?,
                         )
                         .map(|ty| &self.ast_context.resolve_type(ty.ctype).kind);
+
                 let is_variadic = match fn_ty {
                     Some(CTypeKind::Function(_, _, is_variadic, _, _)) => *is_variadic,
                     _ => false,
@@ -3738,6 +3757,7 @@ impl<'c> Translation<'c> {
                     CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _, _) => {
                         return self.convert_builtin(ctx, fexp, args);
                     }
+
 
                     // Function pointer call
                     _ => {
