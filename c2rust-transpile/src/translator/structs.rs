@@ -6,13 +6,14 @@ use std::collections::HashSet;
 use std::ops::Index;
 
 use super::named_references::NamedReference;
-use super::TranslationError;
-use crate::c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId};
+use super::{ConvertedStructFields, TranslationError};
+use crate::c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId, CTypeKind};
 use crate::diagnostics::TranslationResult;
 use crate::translator::{ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
 use c2rust_ast_printer::pprust;
+use failure::format_err;
 use syn::{
     self, AttrStyle, BinOp as RBinOp, Expr, ExprAssign, ExprAssignOp, ExprBinary, ExprBlock,
     ExprCast, ExprMethodCall, ExprUnary, Field, Meta, NestedMeta, Stmt, Type,
@@ -276,6 +277,52 @@ impl<'a> Translation<'a> {
         Ok(reorganized_fields)
     }
 
+    /// Returns true if a struct field with this type can be part of a struct that derives `Debug`
+    fn can_struct_field_derive_debug(&self, ctype: CTypeId) -> bool {
+        let ty = self.ast_context.resolve_type(ctype);
+        let can_derive_debug = match ty.kind {
+            // Recurse into struct fields. A struct is debuggable iff all of its fields are
+            CTypeKind::Struct(decl_id) => {
+                let decl = self
+                    .ast_context
+                    .get_decl(&decl_id)
+                    .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))
+                    .unwrap();
+                match &decl.kind {
+                    CDeclKind::Struct { fields, .. } => {
+                        for field_decl_id in fields.as_ref().unwrap_or(&vec![]) {
+                            let field_decl = self
+                                .ast_context
+                                .get_decl(&field_decl_id)
+                                .ok_or_else(|| format_err!("Missing decl {:?}", field_decl_id))
+                                .unwrap();
+                            match &field_decl.kind {
+                                CDeclKind::Field { typ, .. } => {
+                                    let can_derive_debug =
+                                        self.can_struct_field_derive_debug(typ.ctype);
+                                    if !can_derive_debug {
+                                        return false;
+                                    }
+                                }
+                                _ => panic!("not a field"),
+                            }
+                        }
+                        true
+                    }
+                    _ => panic!("not a struct"),
+                }
+            }
+
+            // A union or struct containing a union cannot derive Debug
+            CTypeKind::Union(..) => false,
+
+            // All translated non-union C types can derive Debug
+            _ => true,
+        };
+
+        can_derive_debug
+    }
+
     /// Here we output a struct derive to generate bitfield data that looks like this:
     ///
     /// ```no_run
@@ -296,7 +343,7 @@ impl<'a> Translation<'a> {
         struct_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
-    ) -> TranslationResult<(Vec<Field>, bool)> {
+    ) -> TranslationResult<ConvertedStructFields> {
         let mut field_entries = Vec::with_capacity(field_ids.len());
         // We need to clobber bitfields in consecutive bytes together (leaving
         // regular fields alone) and add in padding as necessary
@@ -317,6 +364,7 @@ impl<'a> Translation<'a> {
             field_name
         };
 
+        let mut can_derive_debug = true;
         for field_type in reorganized_fields {
             match field_type {
                 FieldType::BitfieldGroup {
@@ -377,10 +425,20 @@ impl<'a> Translation<'a> {
 
                     field_entries.push(field);
                 }
-                FieldType::Regular { field, .. } => field_entries.push(*field),
+                FieldType::Regular { field, ctype, .. } => {
+                    // Struct is only debuggable if all regular fields are
+                    // debuggable. Assume any fields added by the translator
+                    // such as padding are debuggable
+                    can_derive_debug &= self.can_struct_field_derive_debug(ctype);
+                    field_entries.push(*field)
+                }
             }
         }
-        Ok((field_entries, contains_va_list))
+        Ok(ConvertedStructFields {
+            field_entries,
+            contains_va_list,
+            can_derive_debug,
+        })
     }
 
     /// Here we output a block to generate a struct literal initializer in.
