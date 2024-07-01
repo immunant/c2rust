@@ -661,15 +661,18 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
             Rewrite::MethodCall(ref_method, Box::new(hir_rw), vec![])
         }
 
-        mir_op::RewriteKind::DynOwnedTakeUnwrap => {
-            let hir_rw = Rewrite::Call(
+        mir_op::RewriteKind::DynOwnedUnwrap => {
+            Rewrite::MethodCall("unwrap".to_string(), Box::new(hir_rw), vec![])
+        }
+        mir_op::RewriteKind::DynOwnedTake => {
+            // `p` -> `mem::replace(&mut p, Err(()))`
+            Rewrite::Call(
                 "std::mem::replace".to_string(),
                 vec![
                     Rewrite::Ref(Box::new(hir_rw), hir::Mutability::Mut),
                     Rewrite::Text("Err(())".into()),
                 ],
-            );
-            Rewrite::MethodCall("unwrap".to_string(), Box::new(hir_rw), vec![])
+            )
         }
         mir_op::RewriteKind::DynOwnedWrap => {
             Rewrite::Call("std::result::Result::<_, ()>::Ok".to_string(), vec![hir_rw])
