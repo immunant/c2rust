@@ -35,3 +35,6 @@ categories = ["development-tools", "development-tools::ffi", "command-line-utili
 
 [profile.dev.package."*"]
 opt-level = 3
+
+[patch.crates-io]
+time = { git = "https://github.com/time-rs/time" }
