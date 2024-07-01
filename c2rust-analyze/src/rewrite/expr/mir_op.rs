@@ -114,7 +114,9 @@ pub enum RewriteKind {
     OptionDowngrade { mutbl: bool, deref: bool },
 
     /// Extract the `T` from `DynOwned<T>`.
-    DynOwnedTakeUnwrap,
+    DynOwnedUnwrap,
+    /// Move out of a `DynOwned<T>` and set the original location to empty / non-owned.
+    DynOwnedTake,
     /// Wrap `T` in `Ok` to produce `DynOwned<T>`.
     DynOwnedWrap,
     /// Downgrade ownership of a `DynOwned<T>` to `&T` or `&mut T` by calling
@@ -164,8 +166,11 @@ pub struct MirRewrite {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 enum PlaceAccess {
+    /// Enclosing context intends to read from the place.
     Imm,
+    /// Enclosing context intends to write to the place.
     Mut,
+    /// Enclosing context intends to move out of the place.
     Move,
 }
 
@@ -298,6 +303,22 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             && !self.flags[ptr].contains(FlagSet::FIXED)
     }
 
+    fn is_dyn_owned(&self, lty: LTy) -> bool {
+        if !matches!(lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)) {
+            return false;
+        }
+        if lty.label.is_none() {
+            return false;
+        }
+        let perms = self.perms[lty.label];
+        let flags = self.flags[lty.label];
+        if flags.contains(FlagSet::FIXED) {
+            return false;
+        }
+        let desc = type_desc::perms_to_desc(lty.ty, perms, flags);
+        desc.dyn_owned
+    }
+
     fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         let _g = panic_detail::set_current_span(stmt.source_info.span);
         eprintln!(
@@ -375,9 +396,47 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 };
 
                 let rv_lty = self.acx.type_of_rvalue(rv, loc);
-                self.enter_rvalue(|v| v.visit_rvalue(rv, Some(rv_lty)));
                 // The cast from `rv_lty` to `pl_lty` should be applied to the RHS.
-                self.enter_rvalue(|v| v.emit_cast_lty_lty(rv_lty, pl_lty));
+                self.enter_rvalue(|v| {
+                    // Special case: when reading from a `DynOwned` place to another `DynOwned`
+                    // place, visit the RHS place mutably and `mem::take` out of it to avoid a
+                    // static ownership transfer.
+
+                    // Check whether this assignment transfers ownership of its RHS.  If so, return
+                    // the RHS `Place`.
+                    let assignment_transfers_ownership = || {
+                        if !v.is_dyn_owned(v.acx.type_of(pl)) {
+                            return None;
+                        }
+                        let op = match rv {
+                            Rvalue::Use(ref x) => x,
+                            _ => return None,
+                        };
+                        let rv_pl = op.place()?;
+                        if !v.is_dyn_owned(v.acx.type_of(rv_pl)) {
+                            return None;
+                        }
+                        Some(rv_pl)
+                    };
+                    if let Some(rv_pl) = assignment_transfers_ownership() {
+                        // Obtain mutable access to `pl`, so we can `mem::take(&mut pl)`.
+                        // Normally, `Operand::Move` would ask for `PlaceAccess::Move`; we
+                        // instead bypass `visit_rvalue` and `visit_operand` so we can call
+                        // `visit_place` directly with the desired access.
+                        v.enter_rvalue_operand(0, |v| {
+                            v.enter_operand_place(|v| {
+                                v.visit_place(rv_pl, PlaceAccess::Mut);
+                            });
+                        });
+                        v.emit(RewriteKind::DynOwnedTake);
+                        v.emit_cast_lty_lty(rv_lty, pl_lty);
+                        return;
+                    }
+
+                    // Normal case: just `visit_rvalue` and emit a cast if needed.
+                    v.visit_rvalue(rv, Some(rv_lty));
+                    v.emit_cast_lty_lty(rv_lty, pl_lty)
+                });
                 self.enter_dest(|v| v.visit_place(pl, PlaceAccess::Mut));
             }
             StatementKind::FakeRead(..) => {}
@@ -765,6 +824,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             None => return,
         };
 
+        // TODO: downgrade Move to Imm if the new type is Copy
+
         debug_assert!(pl.projection.len() >= 1);
         // `LTy` of the base place, before the last projection.
         let base_lty = proj_ltys[pl.projection.len() - 1];
@@ -794,6 +855,11 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             });
                         }
                         v.emit(RewriteKind::OptionUnwrap);
+                    }
+                    if v.is_dyn_owned(base_lty) {
+                        v.emit(RewriteKind::DynOwnedDowngrade {
+                            mutbl: access == PlaceAccess::Mut,
+                        });
                     }
                 });
             }
@@ -1078,7 +1144,7 @@ where
                     (self.emit)(RewriteKind::DynOwnedDowngrade { mutbl: true });
                 },
                 Ownership::Rc | Ownership::Box => {
-                    (self.emit)(RewriteKind::DynOwnedTakeUnwrap);
+                    (self.emit)(RewriteKind::DynOwnedUnwrap);
                 },
             }
             from.dyn_owned = false;
