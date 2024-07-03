@@ -153,7 +153,7 @@ pub enum ZeroizeType {
     /// Zeroize by storing the literal `false`.
     Bool,
     /// Iterate over `x.iter_mut()` and zeroize each element.
-    Iterable(Box<ZeroizeType>),
+    Array(Box<ZeroizeType>),
     /// Zeroize each named field.
     Struct(Vec<(String, ZeroizeType)>),
 }
@@ -999,7 +999,7 @@ impl ZeroizeType {
             }
             TyKind::Array(elem_ty, _) => {
                 let elem_zero = ZeroizeType::from_ty(tcx, elem_ty)?;
-                ZeroizeType::Iterable(Box::new(elem_zero))
+                ZeroizeType::Array(Box::new(elem_zero))
             }
             _ => return None,
         })

@@ -566,7 +566,7 @@ fn generate_zeroize_code(zero_ty: &ZeroizeType, lv: &str) -> String {
     match *zero_ty {
         ZeroizeType::Int => format!("{lv} = 0"),
         ZeroizeType::Bool => format!("{lv} = false"),
-        ZeroizeType::Iterable(ref elem_zero_ty) => format!(
+        ZeroizeType::Array(ref elem_zero_ty) => format!(
             "
             {{
                 for elem in {lv}.iter_mut() {{
