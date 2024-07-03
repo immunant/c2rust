@@ -94,6 +94,14 @@ pub enum RewriteKind {
         dest_single: bool,
     },
 
+    /// Replace a call to `malloc(n)` with a safe `Box::new` operation.  The new allocation will be
+    /// zero-initialized.
+    MallocSafe {
+        zero_ty: ZeroizeType,
+        elem_size: u64,
+        single: bool,
+    },
+
     /// Convert `Option<T>` to `T` by calling `.unwrap()`.
     OptionUnwrap,
     /// Convert `T` to `Option<T>` by wrapping the value in `Some`.
@@ -622,6 +630,57 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 );
                                 v.emit(RewriteKind::PtrNullToNone);
                             }
+                        });
+                    }
+
+                    Callee::Malloc => {
+                        self.enter_rvalue(|v| {
+                            let dest_lty = v.acx.type_of(destination);
+                            let dest_pointee = v.pointee_lty(dest_lty);
+                            let pointee_lty = match dest_pointee {
+                                Some(x) => x,
+                                // TODO: emit void* cast before bailing out
+                                None => return,
+                            };
+
+                            let orig_pointee_ty = pointee_lty.ty;
+                            let ty_layout = tcx
+                                .layout_of(ParamEnv::reveal_all().and(orig_pointee_ty))
+                                .unwrap();
+                            let elem_size = ty_layout.layout.size().bytes();
+                            let single = !v.perms[dest_lty.label]
+                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+
+                            // TODO: use rewritten types here, so that the `ZeroizeType` will
+                            // reflect the actual types and fields after rewriting.
+                            let zero_ty = match ZeroizeType::from_ty(tcx, orig_pointee_ty) {
+                                Some(x) => x,
+                                // TODO: emit void* cast before bailing out
+                                None => return,
+                            };
+
+                            v.emit(RewriteKind::MallocSafe {
+                                zero_ty,
+                                elem_size,
+                                single,
+                            });
+
+                            // `MallocSafe` produces either `Box<T>` or `Box<[T]>`.  Emit a cast
+                            // from that type to the required output type.
+                            let desc = TypeDesc {
+                                own: Ownership::Box,
+                                qty: if single {
+                                    Quantity::Single
+                                } else {
+                                    Quantity::Slice
+                                },
+                                dyn_owned: false,
+                                option: false,
+                                // Use the non-rewritten pointee type rather than `dest_pointee`,
+                                // since the former is what `emit_cast_*` will expect.
+                                pointee_ty: dest_lty.args[0].ty,
+                            };
+                            v.emit_cast_desc_lty(desc, dest_lty);
                         });
                     }
 
