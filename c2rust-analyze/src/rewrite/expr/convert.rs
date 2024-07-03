@@ -286,6 +286,38 @@ impl<'tcx> ConvertVisitor<'tcx> {
                 )
             }
 
+            mir_op::RewriteKind::MallocSafe {
+                ref zero_ty,
+                elem_size,
+                single,
+            } => {
+                // `malloc(n)` -> `Box::new(z)` or similar
+                assert!(matches!(hir_rw, Rewrite::Identity));
+                let zeroize_expr = generate_zeroize_expr(zero_ty);
+                let mut stmts = vec![
+                    Rewrite::Let(vec![("byte_len".into(), self.get_subexpr(ex, 0))]),
+                    Rewrite::Let1(
+                        "n".into(),
+                        Box::new(format_rewrite!("byte_len as usize / {elem_size}")),
+                    ),
+                ];
+                let expr = if single {
+                    stmts.push(Rewrite::Text("assert_eq!(n, 1)".into()));
+                    format_rewrite!("Box::new({})", zeroize_expr)
+                } else {
+                    stmts.push(Rewrite::Let1(
+                        "mut v".into(),
+                        Box::new(Rewrite::Text("Vec::with_capacity(n)".into())),
+                    ));
+                    stmts.push(format_rewrite!(
+                        "for i in 0..n {{\n    v.push({});\n}}",
+                        zeroize_expr,
+                    ));
+                    Rewrite::Text("v.into_boxed_slice()".into())
+                };
+                Rewrite::Block(stmts, Some(Box::new(expr)))
+            }
+
             mir_op::RewriteKind::CellGet => {
                 // `*x` to `Cell::get(x)`
                 assert!(matches!(hir_rw, Rewrite::Identity));
@@ -589,6 +621,27 @@ fn generate_zeroize_code(zero_ty: &ZeroizeType, lv: &str) -> String {
                 .unwrap();
             }
             writeln!(s, "}}").unwrap();
+            s
+        }
+    }
+}
+
+/// Generate an expression to produce a zeroized version of a value.
+fn generate_zeroize_expr(zero_ty: &ZeroizeType) -> String {
+    match *zero_ty {
+        ZeroizeType::Int => format!("0"),
+        ZeroizeType::Bool => format!("false"),
+        ZeroizeType::Array(ref elem_zero_ty) => format!(
+            "std::array::from_fn(|| {})",
+            generate_zeroize_expr(elem_zero_ty)
+        ),
+        ZeroizeType::Struct(ref name, ref fields) => {
+            let mut s = String::new();
+            write!(s, "{} {{\n", name).unwrap();
+            for (name, field_zero_ty) in fields {
+                write!(s, "{}: {},\n", name, generate_zeroize_expr(field_zero_ty),).unwrap();
+            }
+            write!(s, "}}\n").unwrap();
             s
         }
     }
