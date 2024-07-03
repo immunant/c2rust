@@ -576,7 +576,7 @@ fn generate_zeroize_code(zero_ty: &ZeroizeType, lv: &str) -> String {
         ",
             generate_zeroize_code(elem_zero_ty, "(*elem)")
         ),
-        ZeroizeType::Struct(ref fields) => {
+        ZeroizeType::Struct(_, ref fields) => {
             eprintln!("zeroize: {} fields on {lv}: {fields:?}", fields.len());
             let mut s = String::new();
             write!(s, "{{\n").unwrap();

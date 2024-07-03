@@ -19,8 +19,7 @@ use rustc_middle::mir::{
     BasicBlock, Body, BorrowKind, Location, Operand, Place, PlaceElem, PlaceRef, Rvalue, Statement,
     StatementKind, Terminator, TerminatorKind,
 };
-use rustc_middle::ty::print::FmtPrinter;
-use rustc_middle::ty::print::Print;
+use rustc_middle::ty::print::{FmtPrinter, Print, PrettyPrinter};
 use rustc_middle::ty::{ParamEnv, Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
@@ -155,7 +154,7 @@ pub enum ZeroizeType {
     /// Iterate over `x.iter_mut()` and zeroize each element.
     Array(Box<ZeroizeType>),
     /// Zeroize each named field.
-    Struct(Vec<(String, ZeroizeType)>),
+    Struct(String, Vec<(String, ZeroizeType)>),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -999,7 +998,11 @@ impl ZeroizeType {
                     let zero = ZeroizeType::from_ty(tcx, ty)?;
                     fields.push((name, zero));
                 }
-                ZeroizeType::Struct(fields)
+
+                let name_printer = FmtPrinter::new(tcx, Namespace::ValueNS);
+                let name = name_printer.print_value_path(adt_def.did(), &[]).unwrap().into_buffer();
+
+                ZeroizeType::Struct(name, fields)
             }
             TyKind::Array(elem_ty, _) => {
                 let elem_zero = ZeroizeType::from_ty(tcx, elem_ty)?;
