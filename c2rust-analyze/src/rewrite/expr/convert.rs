@@ -318,6 +318,12 @@ impl<'tcx> ConvertVisitor<'tcx> {
                 Rewrite::Block(stmts, Some(Box::new(expr)))
             }
 
+            mir_op::RewriteKind::FreeSafe { single: _ } => {
+                // `free(p)` -> `drop(p)`
+                assert!(matches!(hir_rw, Rewrite::Identity));
+                Rewrite::Call("std::mem::drop".to_string(), vec![self.get_subexpr(ex, 0)])
+            }
+
             mir_op::RewriteKind::CellGet => {
                 // `*x` to `Cell::get(x)`
                 assert!(matches!(hir_rw, Rewrite::Identity));

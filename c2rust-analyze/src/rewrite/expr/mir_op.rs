@@ -101,6 +101,8 @@ pub enum RewriteKind {
         elem_size: u64,
         single: bool,
     },
+    /// Replace a call to `free(p)` with a safe `drop` operation.
+    FreeSafe { single: bool },
 
     /// Convert `Option<T>` to `T` by calling `.unwrap()`.
     OptionUnwrap,
@@ -681,6 +683,39 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 },
                                 dest_lty,
                             );
+                        });
+                    }
+
+                    Callee::Free => {
+                        self.enter_rvalue(|v| {
+                            let src_lty = v.acx.type_of(&args[0]);
+                            let src_pointee = v.pointee_lty(src_lty);
+                            if src_pointee.is_none() {
+                                // TODO: emit void* cast before bailing out
+                                return;
+                            }
+
+                            let single = !v.perms[src_lty.label]
+                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+
+                            // Cast to either `Box<T>` or `Box<[T]>` (depending on `single`).  This
+                            // ensures a panic occurs when `free`ing a pointer that no longer has
+                            // ownership.
+                            v.enter_call_arg(0, |v| {
+                                v.emit_cast_lty_adjust(src_lty, |desc| TypeDesc {
+                                    own: desc.own,
+                                    qty: if single {
+                                        Quantity::Single
+                                    } else {
+                                        Quantity::Slice
+                                    },
+                                    dyn_owned: false,
+                                    option: desc.option,
+                                    pointee_ty: desc.pointee_ty,
+                                });
+                            });
+
+                            v.emit(RewriteKind::FreeSafe { single });
                         });
                     }
 
