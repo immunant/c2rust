@@ -671,7 +671,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             // from that type to the required output type.
                             v.emit_cast_adjust_lty(
                                 |desc| TypeDesc {
-                                    own: desc.own,
+                                    own: Ownership::Box,
                                     qty: if single {
                                         Quantity::Single
                                     } else {
@@ -703,7 +703,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             // ownership.
                             v.enter_call_arg(0, |v| {
                                 v.emit_cast_lty_adjust(src_lty, |desc| TypeDesc {
-                                    own: desc.own,
+                                    own: Ownership::Box,
                                     qty: if single {
                                         Quantity::Single
                                     } else {
