@@ -24,28 +24,48 @@ extern "C" {
     fn calloc(_: libc::c_ulong, _: libc::c_ulong) -> *mut libc::c_void;
 }
 
-// CHECK-LABEL: final labeling for "calloc1"
-unsafe extern "C" fn calloc1() -> *mut i32 {
-    // CHECK-DAG: ([[@LINE+1]]: i): addr_of = UNIQUE
-    let i = calloc(
-        1 as libc::c_int as libc::c_ulong,
-        ::std::mem::size_of::<i32>() as libc::c_ulong,
-    ) as *mut i32;
-    if i.is_null() {}
-
-    return i;
-}
-
-// CHECK-LABEL: final labeling for "malloc1"
-pub unsafe extern "C" fn malloc1(mut cnt: libc::c_int) -> *mut i32 {
-    // CHECK-DAG: ([[@LINE+1]]: i): addr_of = UNIQUE | NON_NULL, type = READ | NON_NULL
-    let i = malloc(::std::mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
+// CHECK-LABEL: final labeling for "malloc_and_free1"
+pub unsafe extern "C" fn malloc_and_free1(mut cnt: libc::c_int) {
+    // CHECK-DAG: ([[@LINE+1]]: mut i): addr_of = UNIQUE | NON_NULL, type = READ | UNIQUE | FREE | NON_NULL#
+    let mut i = malloc(::std::mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
+    // Perform an access to constrain the pointee type.  Without a pointee type, some rewrites will
+    // be skipped.
     let x = *i;
-    return i;
+    // CHECK-DAG: ([[@LINE+1]]: i{{.*}}): {{.*}}type = UNIQUE | FREE | NON_NULL#
+    free(i as *mut libc::c_void);
 }
 
-// CHECK-LABEL: final labeling for "free1"
-unsafe extern "C" fn free1(mut i: *mut i32) {
+// CHECK-LABEL: final labeling for "malloc_and_free2"
+pub unsafe extern "C" fn malloc_and_free2(mut cnt: libc::c_int) {
+    // CHECK-DAG: ([[@LINE+1]]: mut i): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE | FREE | NON_NULL#
+    let mut i = malloc(::std::mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
+    if !i.is_null() {
+        // CHECK-DAG: ([[@LINE+1]]: mut b): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE | NON_NULL#
+        let mut b = i;
+        *b = 2;
+        // CHECK-DAG: ([[@LINE+1]]: i): {{.*}}type = UNIQUE | FREE | NON_NULL#
+        free(i as *mut libc::c_void);
+    }
+}
+
+// CHECK-LABEL: final labeling for "malloc_and_free3"
+pub unsafe extern "C" fn malloc_and_free3(mut cnt: libc::c_int) {
+    // CHECK-DAG: ([[@LINE+1]]: mut i): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE | FREE | NON_NULL#
+    let mut i: *mut i32 = malloc(::std::mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
+    // CHECK-DAG: ([[@LINE+1]]: mut b): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE | FREE | NON_NULL#
+    let mut b: *mut i32 = i;
+    *b = 2;
+    // CHECK-DAG: ([[@LINE+1]]: b): {{.*}}type = UNIQUE | FREE | NON_NULL#
+    free(b as *mut libc::c_void);
+}
+
+// CHECK-LABEL: final labeling for "calloc_and_free1"
+pub unsafe extern "C" fn calloc_and_free1(mut cnt: libc::c_int) {
+    // CHECK-DAG: ([[@LINE+1]]: mut i): addr_of = UNIQUE | NON_NULL, type = READ | UNIQUE | FREE | NON_NULL#
+    let mut i = calloc(1, ::std::mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
+    // Perform an access to constrain the pointee type.  Without a pointee type, some rewrites will
+    // be skipped.
+    let x = *i;
     // CHECK-DAG: ([[@LINE+1]]: i{{.*}}): {{.*}}type = UNIQUE | FREE | NON_NULL#
     free(i as *mut libc::c_void);
 }
@@ -74,37 +94,4 @@ unsafe extern "C" fn realloc1(n: libc::c_ulong) {
     }
 
     free(buf as *mut libc::c_void);
-}
-
-// CHECK-LABEL: final labeling for "alloc_and_free1"
-pub unsafe extern "C" fn alloc_and_free1(mut cnt: libc::c_int) {
-    // CHECK-DAG: ([[@LINE+1]]: i): addr_of = UNIQUE | NON_NULL, type = UNIQUE | FREE | NON_NULL#
-    let i = malloc(::std::mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
-    // CHECK-DAG: ([[@LINE+1]]: i{{.*}}): {{.*}}type = UNIQUE | FREE | NON_NULL#
-    free(i as *mut libc::c_void);
-}
-
-
-// CHECK-LABEL: final labeling for "alloc_and_free2"
-pub unsafe extern "C" fn alloc_and_free2(mut cnt: libc::c_int) {
-    // CHECK-DAG: ([[@LINE+1]]: i): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE | FREE | NON_NULL#
-    let i = malloc(::std::mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
-    if !i.is_null() {
-        // CHECK-DAG: ([[@LINE+1]]: mut b): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE | NON_NULL#
-        let mut b = i;
-        *b = 2;
-        // CHECK-DAG: ([[@LINE+1]]: i): {{.*}}type = UNIQUE | FREE | NON_NULL#
-        free(i as *mut libc::c_void);
-    }
-}
-
-// CHECK-LABEL: final labeling for "alloc_and_free3"
-pub unsafe extern "C" fn alloc_and_free3(mut cnt: libc::c_int) {
-    // CHECK-DAG: ([[@LINE+1]]: mut i): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE | FREE | NON_NULL#
-    let mut i: *mut i32 = malloc(::std::mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
-    // CHECK-DAG: ([[@LINE+1]]: mut b): addr_of = UNIQUE | NON_NULL, type = READ | WRITE | UNIQUE | FREE | NON_NULL#
-    let mut b: *mut i32 = i;
-    *b = 2;
-    // CHECK-DAG: ([[@LINE+1]]: b): {{.*}}type = UNIQUE | FREE | NON_NULL#
-    free(b as *mut libc::c_void);
 }
