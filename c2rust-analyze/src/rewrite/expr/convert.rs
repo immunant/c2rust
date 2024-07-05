@@ -290,19 +290,38 @@ impl<'tcx> ConvertVisitor<'tcx> {
                 ref zero_ty,
                 elem_size,
                 single,
+            } |
+            mir_op::RewriteKind::CallocSafe {
+                ref zero_ty,
+                elem_size,
+                single,
             } => {
                 // `malloc(n)` -> `Box::new(z)` or similar
                 assert!(matches!(hir_rw, Rewrite::Identity));
                 let zeroize_expr = generate_zeroize_expr(zero_ty);
-                let mut stmts = vec![
-                    Rewrite::Let(vec![
-                        ("byte_len".into(), self.get_subexpr(ex, 0)),
-                    ]),
-                    Rewrite::Let1(
-                        "n".into(),
-                        Box::new(format_rewrite!("byte_len as usize / {elem_size}")),
-                    ),
-                ];
+                let mut stmts = match *rw {
+                    mir_op::RewriteKind::MallocSafe { .. } => vec![
+                        Rewrite::Let(vec![
+                            ("byte_len".into(), self.get_subexpr(ex, 0)),
+                        ]),
+                        Rewrite::Let1(
+                            "n".into(),
+                            Box::new(format_rewrite!("byte_len as usize / {elem_size}")),
+                        ),
+                    ],
+                    mir_op::RewriteKind::CallocSafe { .. } => vec![
+                        Rewrite::Let(vec![
+                            ("count".into(), self.get_subexpr(ex, 0)),
+                            ("size".into(), self.get_subexpr(ex, 1)),
+                        ]),
+                        format_rewrite!("assert_eq!(size, {elem_size})"),
+                        Rewrite::Let1(
+                            "n".into(),
+                            Box::new(format_rewrite!("count as usize")),
+                        ),
+                    ],
+                    _ => unreachable!(),
+                };
                 let expr = if single {
                     stmts.push(Rewrite::Text("assert_eq!(n, 1)".into()));
                     format_rewrite!("Box::new({})", zeroize_expr)
