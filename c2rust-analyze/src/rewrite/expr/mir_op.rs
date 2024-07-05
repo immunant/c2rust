@@ -109,6 +109,11 @@ pub enum RewriteKind {
         src_single: bool,
         dest_single: bool,
     },
+    CallocSafe {
+        zero_ty: ZeroizeType,
+        elem_size: u64,
+        single: bool,
+    },
 
     /// Convert `Option<T>` to `T` by calling `.unwrap()`.
     OptionUnwrap,
@@ -641,7 +646,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         });
                     }
 
-                    Callee::Malloc => {
+                    ref callee @ (Callee::Malloc | Callee::Calloc) => {
                         self.enter_rvalue(|v| {
                             let dest_lty = v.acx.type_of(destination);
                             let dest_pointee = v.pointee_lty(dest_lty);
@@ -667,11 +672,20 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 None => return,
                             };
 
-                            v.emit(RewriteKind::MallocSafe {
-                                zero_ty,
-                                elem_size,
-                                single,
-                            });
+                            let rw = match *callee {
+                                Callee::Malloc => RewriteKind::MallocSafe {
+                                    zero_ty,
+                                    elem_size,
+                                    single,
+                                },
+                                Callee::Calloc => RewriteKind::CallocSafe {
+                                    zero_ty,
+                                    elem_size,
+                                    single,
+                                },
+                                _ => unreachable!(),
+                            };
+                            v.emit(rw);
 
                             // `MallocSafe` produces either `Box<T>` or `Box<[T]>`.  Emit a cast
                             // from that type to the required output type.
