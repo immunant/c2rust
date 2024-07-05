@@ -667,20 +667,19 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
                             // `MallocSafe` produces either `Box<T>` or `Box<[T]>`.  Emit a cast
                             // from that type to the required output type.
-                            let desc = TypeDesc {
-                                own: Ownership::Box,
-                                qty: if single {
-                                    Quantity::Single
-                                } else {
-                                    Quantity::Slice
-                                },
-                                dyn_owned: false,
-                                option: false,
-                                // Use the non-rewritten pointee type rather than `dest_pointee`,
-                                // since the former is what `emit_cast_*` will expect.
-                                pointee_ty: dest_lty.args[0].ty,
-                            };
-                            v.emit_cast_desc_lty(desc, dest_lty);
+                            v.emit_cast_adjust_lty(|desc| {
+                                TypeDesc {
+                                    own: desc.own,
+                                    qty: if single {
+                                        Quantity::Single
+                                    } else {
+                                        Quantity::Slice
+                                    },
+                                    dyn_owned: false,
+                                    option: false,
+                                    pointee_ty: desc.pointee_ty,
+                                }
+                            }, dest_lty);
                         });
                     }
 
@@ -1037,6 +1036,32 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         let flags = self.flags;
         let mut builder = CastBuilder::new(self.acx.tcx(), &perms, &flags, |rk| self.emit(rk));
         builder.build_cast_lty_lty(from_lty, to_lty);
+    }
+
+    /// Cast `from_lty` to an adjusted version of itself.  If `from_desc` is the `TypeDesc`
+    /// corresponding to `from_lty`, this emits a cast from `from_desc` to `to_adjust(from_desc)`.
+    fn emit_cast_lty_adjust(
+        &mut self,
+        from_lty: LTy<'tcx>,
+        to_adjust: impl FnOnce(TypeDesc<'tcx>) -> TypeDesc<'tcx>,
+    ) {
+        let perms = self.perms;
+        let flags = self.flags;
+        let mut builder = CastBuilder::new(self.acx.tcx(), &perms, &flags, |rk| self.emit(rk));
+        builder.build_cast_lty_adjust(from_lty, to_adjust);
+    }
+
+    /// Cast an adjusted version of `to_lty` to `to_lty` itself.  If `to_desc` is the `TypeDesc`
+    /// corresponding to `to_lty`, this emits a cast from `from_adjust(to_desc)` to `to_desc`.
+    fn emit_cast_adjust_lty(
+        &mut self,
+        from_adjust: impl FnOnce(TypeDesc<'tcx>) -> TypeDesc<'tcx>,
+        to_lty: LTy<'tcx>,
+    ) {
+        let perms = self.perms;
+        let flags = self.flags;
+        let mut builder = CastBuilder::new(self.acx.tcx(), &perms, &flags, |rk| self.emit(rk));
+        builder.build_cast_adjust_lty(from_adjust, to_lty);
     }
 }
 
@@ -1420,9 +1445,11 @@ where
         self.build_cast_desc_desc(from, to);
     }
 
-    pub fn build_cast_lty_lty(&mut self, from_lty: LTy<'tcx>, to_lty: LTy<'tcx>) {
-        let Self { perms, flags, .. } = *self;
+    fn lty_to_desc(&self, lty: LTy<'tcx>) -> TypeDesc<'tcx> {
+        type_desc::perms_to_desc(lty.ty, self.perms[lty.label], self.flags[lty.label])
+    }
 
+    pub fn build_cast_lty_lty(&mut self, from_lty: LTy<'tcx>, to_lty: LTy<'tcx>) {
         if from_lty.label.is_none() && to_lty.label.is_none() {
             // Input and output are both non-pointers.
             return;
@@ -1435,26 +1462,23 @@ where
             return;
         }
 
-        let from_fixed = flags[from_lty.label].contains(FlagSet::FIXED);
-        let to_fixed = flags[to_lty.label].contains(FlagSet::FIXED);
-
-        let lty_to_desc =
-            |lty: LTy<'tcx>| type_desc::perms_to_desc(lty.ty, perms[lty.label], flags[lty.label]);
+        let from_fixed = self.flags[from_lty.label].contains(FlagSet::FIXED);
+        let to_fixed = self.flags[to_lty.label].contains(FlagSet::FIXED);
 
         match (from_fixed, to_fixed) {
             (false, false) => {
-                let from = lty_to_desc(from_lty);
-                let to = lty_to_desc(to_lty);
+                let from = self.lty_to_desc(from_lty);
+                let to = self.lty_to_desc(to_lty);
                 self.build_cast_desc_desc(from, to);
             }
 
             (false, true) => {
-                let from = lty_to_desc(from_lty);
+                let from = self.lty_to_desc(from_lty);
                 self.build_cast_desc_lty(from, to_lty);
             }
 
             (true, false) => {
-                let to = lty_to_desc(to_lty);
+                let to = self.lty_to_desc(to_lty);
                 self.build_cast_lty_desc(from_lty, to);
             }
 
@@ -1462,6 +1486,50 @@ where
                 // No-op.  Both sides are `FIXED`, so we assume the existing code is already valid.
             }
         }
+    }
+
+    pub fn build_cast_lty_adjust(
+        &mut self,
+        from_lty: LTy<'tcx>,
+        to_adjust: impl FnOnce(TypeDesc<'tcx>) -> TypeDesc<'tcx>,
+    ) {
+        if from_lty.label.is_none() {
+            // Input and output are both non-pointers.
+            return;
+        }
+        if !matches!(from_lty.ty.kind(), TyKind::RawPtr(..)) {
+            // TODO: hack to work around issues with already-safe code
+            return;
+        }
+        if self.flags[from_lty.label].contains(FlagSet::FIXED) {
+            return;
+        }
+
+        let from = self.lty_to_desc(from_lty);
+        let to = to_adjust(from);
+        self.build_cast_desc_desc(from, to);
+    }
+
+    pub fn build_cast_adjust_lty(
+        &mut self,
+        from_adjust: impl FnOnce(TypeDesc<'tcx>) -> TypeDesc<'tcx>,
+        to_lty: LTy<'tcx>,
+    ) {
+        if to_lty.label.is_none() {
+            // Input and output are both non-pointers.
+            return;
+        }
+        if !matches!(to_lty.ty.kind(), TyKind::RawPtr(..)) {
+            // TODO: hack to work around issues with already-safe code
+            return;
+        }
+        if self.flags[to_lty.label].contains(FlagSet::FIXED) {
+            return;
+        }
+
+        let to = self.lty_to_desc(to_lty);
+        let from = from_adjust(to);
+        self.build_cast_desc_desc(from, to);
     }
 }
 
