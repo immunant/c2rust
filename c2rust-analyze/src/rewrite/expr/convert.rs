@@ -328,6 +328,65 @@ impl<'tcx> ConvertVisitor<'tcx> {
                 Rewrite::Call("std::mem::drop".to_string(), vec![self.get_subexpr(ex, 0)])
             }
 
+            mir_op::RewriteKind::ReallocSafe {
+                ref zero_ty,
+                elem_size,
+                src_single,
+                dest_single,
+            } => {
+                // `realloc(p, n)` -> `Box::new(...)`
+                assert!(matches!(hir_rw, Rewrite::Identity));
+                let zeroize_expr = generate_zeroize_expr(zero_ty);
+                let mut stmts = vec![
+                    Rewrite::Let(vec![
+                        ("src_ptr".into(), self.get_subexpr(ex, 0)),
+                        ("dest_byte_len".into(), self.get_subexpr(ex, 1)),
+                    ]),
+                    Rewrite::Let1(
+                        "dest_n".into(),
+                        Box::new(format_rewrite!("dest_byte_len as usize / {elem_size}")),
+                    ),
+                ];
+                if dest_single {
+                    stmts.push(Rewrite::Text("assert_eq!(dest_n, 1)".into()));
+                }
+                let expr = match (src_single, dest_single) {
+                    (false, false) => {
+                        stmts.push(Rewrite::Let1(
+                            "mut dest_ptr".into(),
+                            Box::new(Rewrite::Text("Vec::from(src_ptr)".into())),
+                        ));
+                        stmts.push(format_rewrite!(
+                            "dest_ptr.resize_with(dest_n, || {})",
+                            zeroize_expr,
+                        ));
+                        Rewrite::Text("dest_ptr.into_boxed_slice()".into())
+                    },
+                    (false, true) => {
+                        format_rewrite!("src_ptr.into_iter().next().unwrap_or_else(|| {})",
+                            zeroize_expr)
+                    },
+                    (true, false) => {
+                        stmts.push(Rewrite::Let1(
+                            "mut dest_ptr".into(),
+                            Box::new(Rewrite::Text("Vec::with_capacity(dest_n)".into())),
+                        ));
+                        stmts.push(Rewrite::Text(
+                            "if dest_n >= 1 { dest_ptr.push(*src_ptr); }".into(),
+                        ));
+                        stmts.push(format_rewrite!(
+                            "dest_ptr.resize_with(dest_n, || {})",
+                            zeroize_expr,
+                        ));
+                        Rewrite::Text("dest_ptr.into_boxed_slice()".into())
+                    },
+                    (true, true) => {
+                        Rewrite::Text("src_ptr".into())
+                    },
+                };
+                Rewrite::Block(stmts, Some(Box::new(expr)))
+            }
+
             mir_op::RewriteKind::CellGet => {
                 // `*x` to `Cell::get(x)`
                 assert!(matches!(hir_rw, Rewrite::Identity));
