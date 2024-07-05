@@ -103,6 +103,12 @@ pub enum RewriteKind {
     },
     /// Replace a call to `free(p)` with a safe `drop` operation.
     FreeSafe { single: bool },
+    ReallocSafe {
+        zero_ty: ZeroizeType,
+        elem_size: u64,
+        src_single: bool,
+        dest_single: bool,
+    },
 
     /// Convert `Option<T>` to `T` by calling `.unwrap()`.
     OptionUnwrap,
@@ -716,6 +722,78 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             });
 
                             v.emit(RewriteKind::FreeSafe { single });
+                        });
+                    }
+
+                    Callee::Realloc => {
+                        self.enter_rvalue(|v| {
+                            let src_lty = v.acx.type_of(&args[0]);
+                            let src_pointee = v.pointee_lty(src_lty);
+                            let dest_lty = v.acx.type_of(destination);
+                            let dest_pointee = v.pointee_lty(dest_lty);
+                            let common_pointee = dest_pointee.filter(|&x| Some(x) == src_pointee);
+                            let pointee_lty = match common_pointee {
+                                Some(x) => x,
+                                // TODO: emit void* cast before bailing out
+                                None => return,
+                            };
+
+                            let orig_pointee_ty = pointee_lty.ty;
+                            let ty_layout = tcx
+                                .layout_of(ParamEnv::reveal_all().and(orig_pointee_ty))
+                                .unwrap();
+                            let elem_size = ty_layout.layout.size().bytes();
+                            let dest_single = !v.perms[dest_lty.label]
+                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+                            let src_single = !v.perms[src_lty.label]
+                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+
+                            // TODO: use rewritten types here, so that the `ZeroizeType` will
+                            // reflect the actual types and fields after rewriting.
+                            let zero_ty = match ZeroizeType::from_ty(tcx, orig_pointee_ty) {
+                                Some(x) => x,
+                                // TODO: emit void* cast before bailing out
+                                None => return,
+                            };
+
+                            // Cast input to either `Box<T>` or `Box<[T]>`, as in `free`.
+                            v.enter_call_arg(0, |v| {
+                                v.emit_cast_lty_adjust(src_lty, |desc| TypeDesc {
+                                    own: Ownership::Box,
+                                    qty: if src_single {
+                                        Quantity::Single
+                                    } else {
+                                        Quantity::Slice
+                                    },
+                                    dyn_owned: false,
+                                    option: desc.option,
+                                    pointee_ty: desc.pointee_ty,
+                                });
+                            });
+
+                            v.emit(RewriteKind::ReallocSafe {
+                                zero_ty,
+                                elem_size,
+                                src_single,
+                                dest_single,
+                            });
+
+                            // Cast output from `Box<T>`/`Box<[T]>` to the target type, as in
+                            // `malloc`.
+                            v.emit_cast_adjust_lty(
+                                |desc| TypeDesc {
+                                    own: Ownership::Box,
+                                    qty: if dest_single {
+                                        Quantity::Single
+                                    } else {
+                                        Quantity::Slice
+                                    },
+                                    dyn_owned: false,
+                                    option: false,
+                                    pointee_ty: desc.pointee_ty,
+                                },
+                                dest_lty,
+                            );
                         });
                     }
 
