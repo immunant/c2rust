@@ -21,7 +21,7 @@ use crate::type_desc::{self, Ownership, PtrDesc, Quantity, TypeDesc};
 use hir::{
     FnRetTy, GenericParamKind, Generics, ItemKind, Path, PathSegment, VariantData, WherePredicate,
 };
-use log::warn;
+use log::{debug, warn};
 use rustc_ast::ast;
 use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Namespace, Res};
@@ -255,9 +255,9 @@ fn deconstruct_hir_ty<'a, 'tcx>(
                 if type_args.len() < substs.types().count() {
                     // this situation occurs when there are hidden type arguments
                     // such as the allocator `std::alloc::Global` type argument in `Vec`
-                    eprintln!("warning: extra MIR type argument for {adt_def:?}:");
+                    debug!("warning: extra MIR type argument for {adt_def:?}:");
                     for mir_arg in substs.types().into_iter().skip(type_args.len()) {
-                        eprintln!("\t{:?}", mir_arg)
+                        debug!("\t{:?}", mir_arg)
                     }
                 } else if type_args.len() != substs.types().count() {
                     panic!("mismatched number of type arguments for {adt_def:?} and {hir_ty:?}")
@@ -278,7 +278,7 @@ fn deconstruct_hir_ty<'a, 'tcx>(
             Some(v)
         }
         (tk, hir_tk) => {
-            eprintln!("deconstruct_hir_ty: {tk:?} -- {hir_tk:?} not supported");
+            debug!("deconstruct_hir_ty: {tk:?} -- {hir_tk:?} not supported");
             None
         }
     }
@@ -946,7 +946,7 @@ pub fn dump_rewritten_local_tys<'tcx>(
             acx.gacx,
         );
         let ty = mk_rewritten_ty(rw_lcx, rw_lty);
-        eprintln!(
+        debug!(
             "{:?} ({}): {:?}",
             local,
             describe_local(acx.tcx(), decl),

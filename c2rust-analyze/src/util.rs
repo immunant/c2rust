@@ -1,5 +1,6 @@
 use crate::labeled_ty::LabeledTy;
 use crate::trivial::IsTrivial;
+use log::debug;
 use rustc_ast::ast::AttrKind;
 use rustc_const_eval::interpret::Scalar;
 use rustc_hir::def::DefKind;
@@ -201,7 +202,7 @@ pub enum Callee<'tcx> {
 pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
     let is_trivial = || {
         let is_trivial = ty.fn_sig(tcx).is_trivial(tcx);
-        eprintln!("{ty:?} is trivial: {is_trivial}");
+        debug!("{ty:?} is trivial: {is_trivial}");
         is_trivial
     };
 
@@ -390,7 +391,7 @@ fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, did: DefId, substs: SubstsRef<'tcx>) 
         }
 
         _ => {
-            eprintln!("name: {name:?}");
+            debug!("name: {name:?}");
             None
         }
     }

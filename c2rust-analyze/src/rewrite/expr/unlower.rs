@@ -252,7 +252,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                     Some(x @ (pl, _)) if is_var(pl) => x,
                     _ => {
                         warn("expected final Assign to store into var");
-                        eprintln!(
+                        debug!(
                             "visit_expr_inner: bail out: expr at {:?} isn't assigned to a var",
                             ex.span
                         );

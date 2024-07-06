@@ -10,6 +10,7 @@ use crate::util::{
 };
 use assert_matches::assert_matches;
 use either::Either;
+use log::{debug, error};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
     AggregateKind, BinOp, Body, CastKind, Location, Mutability, Operand, Place, PlaceRef,
@@ -68,7 +69,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     fn record_access(&mut self, ptr: PointerId, mutbl: Mutability) {
-        eprintln!("record_access({:?}, {:?})", ptr, mutbl);
+        debug!("record_access({:?}, {:?})", ptr, mutbl);
         if ptr == PointerId::NONE {
             return;
         }
@@ -174,7 +175,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
     pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, rvalue_lty: LTy<'tcx>) {
         let rv_desc = describe_rvalue(rv);
-        eprintln!("visit_rvalue({rv:?}), desc = {rv_desc:?}");
+        debug!("visit_rvalue({rv:?}), desc = {rv_desc:?}");
 
         if let Some(desc) = rv_desc {
             match desc {
@@ -363,7 +364,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             self.acx.tcx().erase_regions(lty2.ty)
         );
         for (sub_lty1, sub_lty2) in lty1.iter().zip(lty2.iter()) {
-            eprintln!("equate {:?} = {:?}", sub_lty1, sub_lty2);
+            debug!("equate {:?} = {:?}", sub_lty1, sub_lty2);
             if sub_lty1.label != PointerId::NONE || sub_lty2.label != PointerId::NONE {
                 assert!(sub_lty1.label != PointerId::NONE);
                 assert!(sub_lty2.label != PointerId::NONE);
@@ -373,7 +374,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
-        eprintln!("visit_statement({:?})", stmt);
+        debug!("visit_statement({:?})", stmt);
 
         let _g = panic_detail::set_current_span(stmt.source_info.span);
 
@@ -405,7 +406,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     pub fn visit_terminator(&mut self, term: &Terminator<'tcx>, loc: Location) {
-        eprintln!("visit_terminator({:?})", term.kind);
+        debug!("visit_terminator({:?})", term.kind);
         let tcx = self.acx.tcx();
         let _g = panic_detail::set_current_span(term.source_info.span);
         // TODO(spernsteiner): other `TerminatorKind`s will be handled in the future
@@ -435,7 +436,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     ) {
         let tcx = self.acx.tcx();
         let callee = ty_callee(tcx, func);
-        eprintln!("callee = {callee:?}");
+        debug!("callee = {callee:?}");
         match callee {
             Callee::Trivial => {}
             Callee::LocalDef { def_id, substs } => {
@@ -451,7 +452,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.visit_local_call(def_id, substs, args, destination);
             }
             Callee::UnknownDef(_) => {
-                log::error!("TODO: visit Callee::{callee:?}");
+                error!("TODO: visit Callee::{callee:?}");
             }
             Callee::PtrOffset { .. } => {
                 // We handle this like a pointer assignment.
@@ -551,7 +552,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         maybe_offset_perm = PermissionSet::empty();
                     }
                 }
-                eprintln!("memcpy at {:?} needs offset? {:?}", loc, maybe_offset_perm);
+                debug!("memcpy at {:?} needs offset? {:?}", loc, maybe_offset_perm);
 
                 // input needs WRITE permission
                 let perms = PermissionSet::WRITE | maybe_offset_perm;
@@ -595,7 +596,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         maybe_offset_perm = PermissionSet::empty();
                     }
                 }
-                eprintln!("memset at {:?} needs offset? {:?}", loc, maybe_offset_perm);
+                debug!("memset at {:?} needs offset? {:?}", loc, maybe_offset_perm);
 
                 let perms = PermissionSet::WRITE | maybe_offset_perm;
                 self.constraints.add_all_perms(rv_lty.label, perms);

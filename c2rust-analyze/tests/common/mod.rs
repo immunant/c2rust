@@ -1,3 +1,4 @@
+use log::warn;
 use std::{
     collections::HashSet,
     env,
@@ -337,7 +338,7 @@ pub fn check_for_missing_tests_for(main_test_path: impl AsRef<Path>) {
         .collect::<Vec<_>>();
     for test_name in &missing_tests {
         let test_path = rel_test_dir.join(format!("{test_name}.rs"));
-        eprintln!("missing a `#[test] fn {test_name}` for {test_path:?}");
+        warn!("missing a `#[test] fn {test_name}` for {test_path:?}");
     }
     assert!(missing_tests.is_empty(), "see missing tests above");
 }
