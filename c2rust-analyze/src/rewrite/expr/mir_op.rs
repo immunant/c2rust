@@ -13,7 +13,7 @@ use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{PointerId, PointerTable};
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{self, ty_callee, Callee};
-use log::{error, trace};
+use log::{debug, error, trace};
 use rustc_ast::Mutability;
 use rustc_middle::mir::{
     BasicBlock, Body, BorrowKind, Location, Operand, Place, PlaceElem, PlaceRef, Rvalue, Statement,
@@ -347,7 +347,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
     fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         let _g = panic_detail::set_current_span(stmt.source_info.span);
-        eprintln!(
+        debug!(
             "mir_op::visit_statement: {:?} @ {:?}: {:?}",
             loc, stmt.source_info.span, stmt
         );
@@ -880,7 +880,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     /// Visit an `Rvalue`.  If `expect_ty` is `Some`, also emit whatever casts are necessary to
     /// make the `Rvalue` produce a value of type `expect_ty`.
     fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, expect_ty: Option<LTy<'tcx>>) {
-        eprintln!("mir_op::visit_rvalue: {:?}, expect {:?}", rv, expect_ty);
+        debug!("mir_op::visit_rvalue: {:?}, expect {:?}", rv, expect_ty);
         match *rv {
             Rvalue::Use(ref op) => {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, expect_ty));
@@ -965,7 +965,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             self.perms[rv_lty.label],
                             self.flags[rv_lty.label],
                         );
-                        eprintln!("Cast with common pointee {:?}:\n  op_desc = {:?}\n  rv_desc = {:?}\n  matches? {}",
+                        debug!("Cast with common pointee {:?}:\n  op_desc = {:?}\n  rv_desc = {:?}\n  matches? {}",
                             pointee_lty, op_desc, rv_desc, op_desc == rv_desc);
                         if op_desc == rv_desc {
                             // After rewriting, the input and output types of the cast will be

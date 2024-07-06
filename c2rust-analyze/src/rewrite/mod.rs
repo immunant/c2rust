@@ -23,6 +23,7 @@
 //! require us to update the `Span`s mentioned in the later rewrites to account for the changes in
 //! the source code produced by the earlier ones).
 
+use log::{debug, info, warn};
 use rustc_hir::Mutability;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::{FileName, Span};
@@ -327,18 +328,18 @@ pub fn apply_rewrites(
     update_files: UpdateFiles,
 ) {
     let emit = |filename, src: String| {
-        println!("\n\n ===== BEGIN {:?} =====", filename);
+        info!("\n\n ===== BEGIN {:?} =====", filename);
         for line in src.lines() {
             // Omit filecheck directives from the debug output, as filecheck can get confused due
             // to directives matching themselves (e.g. `// CHECK: foo` will match the `foo` in the
             // line `// CHECK: foo`).
             if let Some((pre, _post)) = line.split_once("// CHECK") {
-                println!("{}// (FileCheck directive omitted)", pre);
+                info!("{}// (FileCheck directive omitted)", pre);
             } else {
-                println!("{}", line);
+                info!("{}", line);
             }
         }
-        println!(" ===== END {:?} =====", filename);
+        info!(" ===== END {:?} =====", filename);
 
         if !matches!(update_files, UpdateFiles::No) {
             let mut path_ok = false;
@@ -350,7 +351,7 @@ pub fn apply_rewrites(
                         UpdateFiles::AlongsidePointwise(ref s) => {
                             let ext = format!("{}.rs", s);
                             let p = path.with_extension(&ext);
-                            eprintln!("writing to {:?}", p);
+                            debug!("writing to {:?}", p);
                             p
                         }
                         UpdateFiles::No => unreachable!(),
@@ -360,7 +361,7 @@ pub fn apply_rewrites(
                 }
             }
             if !path_ok {
-                log::warn!("couldn't write to non-real file {filename:?}");
+                warn!("couldn't write to non-real file {filename:?}");
             }
         }
     };

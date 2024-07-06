@@ -10,6 +10,7 @@
 //! path starts with rewrites on MIR and lifts them up to the HIR level.
 
 use crate::rewrite::Rewrite;
+use log::debug;
 use rustc_hir as hir;
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_middle::hir::nested_filter;
@@ -88,7 +89,7 @@ where
     fn visit_expr(&mut self, ex: &'tcx hir::Expr<'tcx>) {
         // Check for the syntactic pattern of a two-part address-of.
         if let Some((ref_expr, mutbl)) = match_two_part_address_of(ex) {
-            eprintln!(
+            debug!(
                 "found two-part address-of pattern at {:?}, {:?}, {:?}",
                 ex.span, ref_expr.span, mutbl
             );
@@ -96,14 +97,14 @@ where
             if self.expr_has_address_of_adjustments(ref_expr, mutbl) {
                 if (self.filter)(ref_expr) {
                     // Emit a rewrite to remove the cast, leaving only the inner `&x`.
-                    eprintln!("  emit rewrite for expr at {:?}", ref_expr.span);
+                    debug!("  emit rewrite for expr at {:?}", ref_expr.span);
                     self.rewrites
                         .push((ex.span, Rewrite::Sub(0, ref_expr.span)));
                 } else {
-                    eprintln!("  filter rejected expr at {:?}", ref_expr.span);
+                    debug!("  filter rejected expr at {:?}", ref_expr.span);
                 }
             } else {
-                eprintln!("  missing adjustments for expr at {:?}", ref_expr.span);
+                debug!("  missing adjustments for expr at {:?}", ref_expr.span);
             }
         }
 

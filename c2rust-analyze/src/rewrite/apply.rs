@@ -1,4 +1,5 @@
 use crate::rewrite::Rewrite;
+use log::warn;
 use rustc_hir::Mutability;
 use rustc_span::source_map::{FileName, SourceMap};
 use rustc_span::{BytePos, SourceFile, Span, SyntaxContext};
@@ -650,7 +651,7 @@ pub fn apply_rewrites(
 ) -> HashMap<FileName, FileRewrite> {
     let (rts, errs) = RewriteTree::build(rws);
     for (span, rw, err) in errs {
-        eprintln!(
+        warn!(
             "{:?}: warning: failed to apply rewrite {:?}: {:?}",
             span, rw, err
         );

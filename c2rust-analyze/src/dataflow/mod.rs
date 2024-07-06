@@ -4,6 +4,7 @@ use crate::context::{AnalysisCtxt, Assignment, FlagSet, PermissionSet, PointerId
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{OwnedPointerTable, PointerTable, PointerTableMut};
 use crate::recent_writes::RecentWrites;
+use log::debug;
 use rustc_middle::mir::Body;
 
 mod type_check;
@@ -65,14 +66,14 @@ impl DataflowConstraints {
         hypothesis: &mut PointerTableMut<PermissionSet>,
         updates_forbidden: &PointerTable<PermissionSet>,
     ) -> bool {
-        eprintln!("=== propagating ===");
-        eprintln!("constraints:");
+        debug!("=== propagating ===");
+        debug!("constraints:");
         for c in &self.constraints {
-            eprintln!("  {:?}", c);
+            debug!("  {:?}", c);
         }
-        eprintln!("hypothesis:");
+        debug!("hypothesis:");
         for (id, p) in hypothesis.iter() {
-            eprintln!("  {}: {:?}", id, p);
+            debug!("  {}: {:?}", id, p);
         }
 
         struct PropagatePerms;

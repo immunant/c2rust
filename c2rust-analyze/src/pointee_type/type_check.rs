@@ -219,7 +219,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     pub fn visit_call(&mut self, func: Ty<'tcx>, args: &[Operand<'tcx>], dest_lty: LTy<'tcx>) {
         let tcx = self.acx.tcx();
         let callee = ty_callee(tcx, func);
-        eprintln!("callee = {callee:?}");
+        debug!("callee = {callee:?}");
         match callee {
             Callee::Trivial => {}
             Callee::LocalDef { def_id, substs } => {
@@ -253,7 +253,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // include information about expected/required pointee types
             }
             Callee::UnknownDef(_) => {
-                log::error!("TODO: visit Callee::{callee:?}");
+                error!("TODO: visit Callee::{callee:?}");
             }
 
             Callee::PtrOffset { .. } => {

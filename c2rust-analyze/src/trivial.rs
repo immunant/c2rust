@@ -1,3 +1,4 @@
+use log::debug;
 use rustc_middle::ty::{self, Binder, EarlyBinder, FnSig, GenSig, Subst, Ty, TyCtxt};
 
 pub trait IsTrivial<'tcx> {
@@ -60,7 +61,7 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
     fn is_trivial(&self, tcx: TyCtxt<'tcx>) -> bool {
         let not_sure_yet = |is_trivial: bool| {
             let kind = self.kind();
-            eprintln!("assuming non-trivial for now as a safe backup (guessed {is_trivial:?}): ty.kind() = {kind:?}, ty = {self:?}");
+            debug!("assuming non-trivial for now as a safe backup (guessed {is_trivial:?}): ty.kind() = {kind:?}, ty = {self:?}");
             false
         };
 
@@ -84,7 +85,7 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
 
             // don't know, as `dyn Trait` could be anything
             ty::Dynamic(trait_ty, _reg) => {
-                eprintln!("unsure how to check `dyn Trait` for accessible pointers, so assuming non-trivial: ty = {self:?}, trait_ty = {trait_ty:?}");
+                debug!("unsure how to check `dyn Trait` for accessible pointers, so assuming non-trivial: ty = {self:?}, trait_ty = {trait_ty:?}");
                 false
             }
 

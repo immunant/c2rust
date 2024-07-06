@@ -642,10 +642,10 @@ fn construct_adt_metadata<'tcx>(
                 .table
                 .insert(adt_def.did(), AdtMetadata::default());
             let metadata = adt_metadata_table.table.get_mut(&adt_def.did()).unwrap();
-            eprintln!("gathering known lifetimes for {adt_def:?}");
+            debug!("gathering known lifetimes for {adt_def:?}");
             for sub in substs.iter() {
                 if let GenericArgKind::Lifetime(r) = sub.unpack() {
-                    eprintln!("\tfound lifetime {r:?} in {adt_def:?}");
+                    debug!("\nfound lifetime {r:?} in {adt_def:?}");
                     assert_matches!(r.kind(), ReEarlyBound(eb) => {
                         metadata.lifetime_params.insert(OriginParam::Actual(eb));
                     });
@@ -677,25 +677,25 @@ fn construct_adt_metadata<'tcx>(
         loop_count += 1;
         assert!(loop_count < 1000);
 
-        eprintln!("---- running fixed point struct field analysis iteration #{loop_count:?} ----");
+        info!("---- running fixed point struct field analysis iteration #{loop_count:?} ----");
         let old_adt_metadata = adt_metadata_table.table.clone();
         let mut next_hypo_origin_id = 0;
 
         // for each struct, gather lifetime information (actual and hypothetical)
         for struct_did in &adt_metadata_table.struct_dids {
             let adt_def = tcx.adt_def(struct_did);
-            eprintln!("gathering lifetimes and lifetime parameters for {adt_def:?}");
+            debug!("gathering lifetimes and lifetime parameters for {adt_def:?}");
             for field in adt_def.all_fields() {
                 let field_lty = field_ltys
                     .get(&field.did)
                     .unwrap_or_else(|| panic!("missing field_ltys entry for {:?}", field.did));
-                eprintln!("\t{adt_def:?}.{:}", field.name);
+                debug!("\t{adt_def:?}.{:}", field.name);
                 let field_origin_args = ltcx.relabel(field_lty, &mut |lty| {
                     let mut field_origin_args = IndexSet::new();
                     match lty.kind() {
                         TyKind::RawPtr(ty) => {
                             if needs_region(lty) {
-                                eprintln!(
+                                debug!(
                                     "\t\tfound pointer that requires hypothetical lifetime: *{:}",
                                     if let Mutability::Mut = ty.mutbl {
                                         "mut"
@@ -710,7 +710,7 @@ fn construct_adt_metadata<'tcx>(
                                         let origin_arg = OriginArg::Hypothetical(next_hypo_origin_id);
                                         let origin_param =
                                             OriginParam::Hypothetical(next_hypo_origin_id);
-                                        eprintln!(
+                                        debug!(
                                             "\t\t\tinserting origin {origin_param:?} into {adt_def:?}"
                                         );
 
@@ -721,7 +721,7 @@ fn construct_adt_metadata<'tcx>(
                             }
                         }
                         TyKind::Ref(reg, _ty, _mutability) => {
-                            eprintln!("\t\tfound reference field lifetime: {reg:}");
+                            debug!("\t\tfound reference field lifetime: {reg:}");
                             assert_matches!(reg.kind(), ReEarlyBound(..) | ReStatic);
                             let origin_arg = OriginArg::Actual(*reg);
                             adt_metadata_table
@@ -729,7 +729,7 @@ fn construct_adt_metadata<'tcx>(
                                 .entry(*struct_did)
                                 .and_modify(|adt| {
                                     if let ReEarlyBound(eb) = reg.kind() {
-                                        eprintln!("\t\t\tinserting origin {eb:?} into {adt_def:?}");
+                                        debug!("\t\tinserting origin {eb:?} into {adt_def:?}");
                                         adt.lifetime_params.insert(OriginParam::Actual(eb));
                                     }
 
@@ -737,11 +737,11 @@ fn construct_adt_metadata<'tcx>(
                                 });
                         }
                         TyKind::Adt(adt_field, substs) => {
-                            eprintln!("\t\tfound ADT field base type: {adt_field:?}");
+                            debug!("\t\tfound ADT field base type: {adt_field:?}");
                             for sub in substs.iter() {
                                 if let GenericArgKind::Lifetime(r) = sub.unpack() {
-                                    eprintln!("\tfound field lifetime {r:?} in {adt_def:?}.{adt_field:?}");
-                                    eprintln!("\t\t\tinserting {adt_field:?} lifetime param {r:?} into {adt_def:?}.{:} lifetime parameters", field.name);
+                                    debug!("\tfound field lifetime {r:?} in {adt_def:?}.{adt_field:?}");
+                                    debug!("\t\tinserting {adt_field:?} lifetime param {r:?} into {adt_def:?}.{:} lifetime parameters", field.name);
                                     assert_matches!(r.kind(), ReEarlyBound(..) | ReStatic);
                                     field_origin_args.insert(OriginArg::Actual(r));
                                 }
@@ -752,7 +752,7 @@ fn construct_adt_metadata<'tcx>(
                                 for adt_field_lifetime_param in adt_field_metadata.lifetime_params.iter() {
                                     adt_metadata_table.table.entry(*struct_did).and_modify(|adt| {
                                         if let OriginParam::Hypothetical(h) = adt_field_lifetime_param {
-                                            eprintln!("\t\t\tbubbling {adt_field:?} origin {adt_field_lifetime_param:?} up into {adt_def:?} origins");
+                                            debug!("\t\tbubbling {adt_field:?} origin {adt_field_lifetime_param:?} up into {adt_def:?} origins");
                                             field_origin_args.insert(OriginArg::Hypothetical(*h));
                                             adt.lifetime_params.insert(*adt_field_lifetime_param);
                                         }
@@ -783,11 +783,11 @@ fn construct_adt_metadata<'tcx>(
                     });
             }
 
-            eprintln!();
+            debug!("");
         }
 
         if adt_metadata_table.table == old_adt_metadata {
-            eprintln!("reached a fixed point in struct lifetime reconciliation\n");
+            info!("reached a fixed point in struct lifetime reconciliation\n");
             break;
         }
     }
@@ -1129,7 +1129,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                 let (pointee_lty, proj, ptr) = match desc {
                     RvalueDesc::Project { base, proj } => {
                         let base_lty = self.type_of(base);
-                        eprintln!(
+                        debug!(
                             "rvalue = {:?}, desc = {:?}, base_lty = {:?}",
                             rv, desc, base_lty
                         );
@@ -1203,7 +1203,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         let projection_lty = |_lty: LTy, adt_def: AdtDef, field: Field| {
             let field_def = &adt_def.non_enum_variant().fields[field.index()];
             let field_def_name = field_def.name;
-            eprintln!("projecting into {adt_def:?}.{field_def_name:}");
+            debug!("projecting into {adt_def:?}.{field_def_name:}");
             let field_lty: LTy = self.gacx.field_ltys.get(&field_def.did).unwrap_or_else(|| {
                 panic!("Could not find {adt_def:?}.{field_def_name:?} in field type map")
             });

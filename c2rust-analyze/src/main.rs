@@ -216,7 +216,7 @@ impl Cargo {
         f(&mut cmd)?;
         let status = cmd.status()?;
         if !status.success() {
-            eprintln!("error ({status}) running: {cmd:?}");
+            ::log::error!("error ({status}) running: {cmd:?}");
             exit_with_status(status);
         }
         Ok(())
