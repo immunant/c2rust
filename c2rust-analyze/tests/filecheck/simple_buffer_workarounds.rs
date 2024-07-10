@@ -31,7 +31,9 @@ pub unsafe extern "C" fn buffer_new(mut cap: size_t) -> *mut buffer {
         *fresh0 = 0 as *mut uint8_t;
     } else {
         let fresh1 = &mut (*buf).data;
-        *fresh1 = malloc(cap) as *mut uint8_t;
+        let p = malloc(cap) as *mut uint8_t;
+        *p.offset(0) = 1;
+        *fresh1 = p;
     }
     (*buf).len = 0 as libc::c_int as size_t;
     (*buf).cap = cap;
@@ -54,14 +56,18 @@ pub unsafe extern "C" fn buffer_realloc(mut buf: *mut buffer, mut new_cap: size_
     }
     if (*buf).cap == 0 as libc::c_int as libc::c_ulong {
         let fresh2 = &mut (*buf).data;
-        *fresh2 = malloc(new_cap) as *mut uint8_t;
+        let p = malloc(new_cap) as *mut uint8_t;
+        *p.offset(0) = 1;
+        *fresh2 = p;
     } else if new_cap == 0 as libc::c_int as libc::c_ulong {
         free((*buf).data as *mut libc::c_void);
         let fresh3 = &mut (*buf).data;
         *fresh3 = 0 as *mut uint8_t;
     } else {
         let fresh4 = &mut (*buf).data;
-        *fresh4 = realloc((*buf).data as *mut libc::c_void, new_cap) as *mut uint8_t;
+        let p = realloc((*buf).data as *mut libc::c_void, new_cap) as *mut uint8_t;
+        *p.offset(0) = 1;
+        *fresh4 = p;
     }
     (*buf).cap = new_cap;
     if (*buf).len > new_cap {
