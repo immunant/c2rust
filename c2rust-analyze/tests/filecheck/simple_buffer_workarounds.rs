@@ -27,10 +27,10 @@ pub unsafe extern "C" fn buffer_new(mut cap: size_t) -> *mut buffer {
     let mut buf: *mut buffer = malloc(::std::mem::size_of::<buffer>() as libc::c_ulong)
         as *mut buffer;
     if cap == 0 as libc::c_int as libc::c_ulong {
-        let ref mut fresh0 = (*buf).data;
+        let fresh0 = &mut (*buf).data;
         *fresh0 = 0 as *mut uint8_t;
     } else {
-        let ref mut fresh1 = (*buf).data;
+        let fresh1 = &mut (*buf).data;
         *fresh1 = malloc(cap) as *mut uint8_t;
     }
     (*buf).len = 0 as libc::c_int as size_t;
@@ -53,14 +53,14 @@ pub unsafe extern "C" fn buffer_realloc(mut buf: *mut buffer, mut new_cap: size_
         return;
     }
     if (*buf).cap == 0 as libc::c_int as libc::c_ulong {
-        let ref mut fresh2 = (*buf).data;
+        let fresh2 = &mut (*buf).data;
         *fresh2 = malloc(new_cap) as *mut uint8_t;
     } else if new_cap == 0 as libc::c_int as libc::c_ulong {
         free((*buf).data as *mut libc::c_void);
-        let ref mut fresh3 = (*buf).data;
+        let fresh3 = &mut (*buf).data;
         *fresh3 = 0 as *mut uint8_t;
     } else {
-        let ref mut fresh4 = (*buf).data;
+        let fresh4 = &mut (*buf).data;
         *fresh4 = realloc((*buf).data as *mut libc::c_void, new_cap) as *mut uint8_t;
     }
     (*buf).cap = new_cap;
@@ -82,7 +82,7 @@ pub unsafe extern "C" fn buffer_push(mut buf: *mut buffer, mut byte: uint8_t) {
         }
     }
     *((*buf).data).offset((*buf).len as isize) = byte;
-    let ref mut fresh5 = (*buf).len;
+    let fresh5 = &mut (*buf).len;
     *fresh5 = (*fresh5).wrapping_add(1);
 }
 
