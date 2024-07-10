@@ -6,6 +6,7 @@ use crate::dataflow::DataflowConstraints;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointer_id::{PointerTable, PointerTableMut};
 use crate::util::{describe_rvalue, RvalueDesc};
+use log::debug;
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{Body, LocalKind, Place, StatementKind, START_BLOCK};
@@ -172,7 +173,9 @@ pub fn borrowck_mir<'tcx>(
                     },
                     _ => panic!("loan {:?} was issued by non-assign stmt {:?}?", loan, stmt),
                 };
-                eprintln!("want to drop UNIQUE from pointer {:?}", ptr);
+                debug!("drop UNIQUE from pointer {ptr:?} due to error \
+                    with {loan:?}, issued at {issued_loc:?} ({:?})",
+                    stmt.source_info.span);
 
                 if hypothesis[ptr].contains(PermissionSet::UNIQUE) {
                     hypothesis[ptr].remove(PermissionSet::UNIQUE);

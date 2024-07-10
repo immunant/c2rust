@@ -389,6 +389,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.do_assign(result_lty, op_lty);
                 result_lty
             }
+            // FIXME
+            Rvalue::Cast(_, _, _) => expect_ty,
+            /*
             Rvalue::Cast(_, _, ty) => self.ltcx.label(ty, &mut |_ty| {
                 // TODO: handle Unsize casts at minimum
                 /*
@@ -399,6 +402,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 */
                 Label::default()
             }),
+            */
             Rvalue::Aggregate(ref kind, ref ops) => match **kind {
                 AggregateKind::Array(..) => {
                     let ty = rv.ty(self.local_decls, *self.ltcx);
