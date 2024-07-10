@@ -1048,6 +1048,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             PlaceElem::Deref => {
                 self.enter_place_deref_pointer(|v| {
                     v.visit_place_ref(base_pl, proj_ltys, access);
+                    let dyn_owned = v.is_dyn_owned(base_lty);
                     if v.is_nullable(base_lty.label) {
                         // If the pointer type is non-copy, downgrade (borrow) before calling
                         // `unwrap()`.
@@ -1059,12 +1060,15 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         if !desc.own.is_copy() {
                             v.emit(RewriteKind::OptionDowngrade {
                                 mutbl: access == PlaceAccess::Mut,
-                                deref: true,
+                                deref: !dyn_owned,
                             });
                         }
                         v.emit(RewriteKind::OptionUnwrap);
+                        if dyn_owned {
+                            v.emit(RewriteKind::Deref);
+                        }
                     }
-                    if v.is_dyn_owned(base_lty) {
+                    if dyn_owned {
                         v.emit(RewriteKind::DynOwnedDowngrade {
                             mutbl: access == PlaceAccess::Mut,
                         });
@@ -1309,6 +1313,12 @@ where
             return Ok(());
         }
 
+        // To downgrade and unwrap a non-`dyn_owned` pointer, we call `p.as_deref().unwrap()`,
+        // which goes from `Option<Box<T>>` to `&T`.  To downgrade a `dyn_owned` pointer, we
+        // instead do `*p.as_ref().unwrap()`, which goes from `Option<DynOwned<T>>` to
+        // `DynOwned<T>`, with the latter being a read-only `Place` that can be further downgraded
+        // to eventually reach `&T`.
+        let mut deref_after_unwrap = false;
         if from.option && from.own != to.own {
             // Downgrade ownership before unwrapping the `Option` when possible.  This can avoid
             // moving/consuming the input.  For example, if the `from` type is `Option<Box<T>>` and
@@ -1321,15 +1331,17 @@ where
                     Ownership::Raw | Ownership::Imm => {
                         (self.emit)(RewriteKind::OptionDowngrade {
                             mutbl: false,
-                            deref: true,
+                            deref: !from.dyn_owned,
                         });
+                        deref_after_unwrap = from.dyn_owned;
                         from.own = Ownership::Imm;
                     }
                     Ownership::RawMut | Ownership::Cell | Ownership::Mut => {
                         (self.emit)(RewriteKind::OptionDowngrade {
                             mutbl: true,
-                            deref: true,
+                            deref: !from.dyn_owned,
                         });
+                        deref_after_unwrap = from.dyn_owned;
                         from.own = Ownership::Mut;
                     }
                     Ownership::Rc if from.own == Ownership::Rc => {
@@ -1352,6 +1364,9 @@ where
         if from.option && !to.option {
             // Unwrap first, then perform remaining casts.
             (self.emit)(RewriteKind::OptionUnwrap);
+            if deref_after_unwrap {
+                (self.emit)(RewriteKind::Deref);
+            }
             from.option = false;
         } else if from.option && to.option {
             trace!("try_build_cast_desc_desc: emit OptionMapBegin");
@@ -1369,6 +1384,9 @@ where
                 );
             }
             (self.emit)(RewriteKind::OptionMapBegin);
+            if deref_after_unwrap {
+                (self.emit)(RewriteKind::Deref);
+            }
             from.option = false;
             in_option_map = true;
         }
