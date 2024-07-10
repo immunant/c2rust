@@ -266,6 +266,7 @@ pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, PointerId>;
 pub struct LFnSig<'tcx> {
     pub inputs: &'tcx [LTy<'tcx>],
     pub output: LTy<'tcx>,
+    pub c_variadic: bool,
 }
 
 impl<'tcx> LFnSig<'tcx> {

@@ -342,7 +342,12 @@ pub(super) fn gather_foreign_sigs<'tcx>(gacx: &mut GlobalAnalysisCtxt<'tcx>, tcx
 
         let inputs = gacx.lcx.mk_slice(&inputs);
         let output = gacx.assign_pointer_ids_with_info(sig.output(), PointerInfo::ANNOTATED);
-        let lsig = LFnSig { inputs, output };
+        let c_variadic = sig.c_variadic;
+        let lsig = LFnSig {
+            inputs,
+            output,
+            c_variadic,
+        };
         gacx.fn_sigs.insert(did, lsig);
     }
 }
@@ -607,8 +612,13 @@ fn run(tcx: TyCtxt) {
             .collect::<Vec<_>>();
         let inputs = gacx.lcx.mk_slice(&inputs);
         let output = gacx.assign_pointer_ids_with_info(sig.output(), PointerInfo::ANNOTATED);
+        let c_variadic = sig.c_variadic;
 
-        let lsig = LFnSig { inputs, output };
+        let lsig = LFnSig {
+            inputs,
+            output,
+            c_variadic,
+        };
         gacx.fn_sigs.insert(ldid.to_def_id(), lsig);
     }
 
@@ -666,6 +676,14 @@ fn run(tcx: TyCtxt) {
                 // TODO: set PointerInfo::ANNOTATED for the parts of the type with user annotations
                 let lty = match mir.local_kind(local) {
                     LocalKind::Var | LocalKind::Temp => acx.assign_pointer_ids(decl.ty),
+                    LocalKind::Arg
+                        if lsig.c_variadic && local.as_usize() - 1 == lsig.inputs.len() =>
+                    {
+                        // This is the hidden VaList<'a> argument at the end
+                        // of the argument list of a variadic function. It does not
+                        // appear in lsig.inputs, so we handle it separately here.
+                        acx.assign_pointer_ids(decl.ty)
+                    }
                     LocalKind::Arg => {
                         debug_assert!(local.as_usize() >= 1 && local.as_usize() <= mir.arg_count);
                         lsig.inputs[local.as_usize() - 1]
