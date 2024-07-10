@@ -63,6 +63,7 @@ define_tests! {
     pointee,
     ptrptr1,
     regions_fixed,
+    rewrite_nullable_box,
     rewrite_paths,
     rewrite_paths_manual_shim,
     simple_buffer,
