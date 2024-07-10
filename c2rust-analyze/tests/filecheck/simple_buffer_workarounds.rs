@@ -2,6 +2,7 @@
 #![allow(dead_code, mutable_transmutes, non_camel_case_types, non_snake_case, non_upper_case_globals, unused_assignments, unused_mut)]
 #![register_tool(c2rust)]
 #![feature(register_tool)]
+#![register_tool(c2rust_analyze_test)]
 
 extern crate libc;
 extern "C" {
@@ -21,6 +22,7 @@ pub struct buffer {
 }
 
 #[no_mangle]
+#[c2rust_analyze_test::skip_borrowck]
 pub unsafe extern "C" fn buffer_new(mut cap: size_t) -> *mut buffer {
     let mut buf: *mut buffer = malloc(::std::mem::size_of::<buffer>() as libc::c_ulong)
         as *mut buffer;
@@ -45,6 +47,7 @@ pub unsafe extern "C" fn buffer_delete(mut buf: *mut buffer) {
 }
 
 #[no_mangle]
+#[c2rust_analyze_test::skip_borrowck]
 pub unsafe extern "C" fn buffer_realloc(mut buf: *mut buffer, mut new_cap: size_t) {
     if new_cap == (*buf).cap {
         return;
