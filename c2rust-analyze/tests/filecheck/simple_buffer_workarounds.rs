@@ -75,9 +75,10 @@ pub unsafe extern "C" fn buffer_push(mut buf: *mut buffer, mut byte: uint8_t) {
         if (*buf).cap == 0 as libc::c_int as libc::c_ulong {
             buffer_realloc(buf, 4 as libc::c_int as size_t);
         } else {
+            let new_cap = ((*buf).cap).wrapping_mul(2 as libc::c_int as libc::c_ulong);
             buffer_realloc(
                 buf,
-                ((*buf).cap).wrapping_mul(2 as libc::c_int as libc::c_ulong),
+                new_cap,
             );
         }
     }
