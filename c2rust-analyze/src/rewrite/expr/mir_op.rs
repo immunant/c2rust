@@ -452,15 +452,16 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         // `visit_place` directly with the desired access.
                         v.enter_rvalue_operand(0, |v| {
                             v.enter_operand_place(|v| {
+                                eprintln!("BEGIN visit_place for ownership transfer");
                                 v.visit_place(rv_pl, PlaceAccess::Mut);
+                                eprintln!("END visit_place for ownership transfer");
                             });
                         });
                         // Obtain a reference to the place containing the `DynOwned` pointer.
                         if v.is_nullable(rv_lty.label) {
                             v.emit(RewriteKind::OptionDowngrade { mutbl: true, deref: false });
                             v.emit(RewriteKind::OptionMapBegin);
-                        } else {
-                            v.emit(RewriteKind::Ref { mutbl: true });
+                            v.emit(RewriteKind::Deref);
                         }
                         // Take the pointer out of that place.
                         v.emit(RewriteKind::DynOwnedTake);
