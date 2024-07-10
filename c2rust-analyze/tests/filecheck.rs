@@ -66,6 +66,7 @@ define_tests! {
     rewrite_paths,
     rewrite_paths_manual_shim,
     simple_buffer,
+    simple_buffer_workarounds,
     statics,
     test_attrs,
     trivial,
