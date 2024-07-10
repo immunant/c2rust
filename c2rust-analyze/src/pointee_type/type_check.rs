@@ -299,8 +299,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.assign(dest_lty.label, arg_lty.label);
             }
             Callee::Free => {
-                // No constraints on `free`, since it doesn't reveal anything about the concrete
-                // type.
+                // Here we create a fresh inference variable and associate it with the argument
+                // pointer.  This doesn't constraint the type, since `free` doesn't reveal anything
+                // about the concrete type of the data, but it does ensure that the pointee type of
+                // the argument operand matches the pointee type of other pointers to the same
+                // allocation, which lets us remove a `void*` cast during rewriting.
+                let var = self.constraints.fresh_var();
+                assert_eq!(args.len(), 1);
+                let arg_lty = self.acx.type_of(&args[0]);
+                self.use_pointer_at_type(arg_lty.label, var);
             }
 
             Callee::Memcpy => {

@@ -334,7 +334,11 @@ impl Convert<hir::Mutability> for mir::Mutability {
     }
 }
 
-fn mk_adt_with_arg<'tcx>(tcx: TyCtxt<'tcx>, path: &str, arg_ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
+fn mk_adt_with_generic_args<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    path: &str,
+    args: impl IntoIterator<Item = GenericArg<'tcx>>,
+) -> ty::Ty<'tcx> {
     let mut path_parts_iter = path.split("::");
     let crate_name = path_parts_iter
         .next()
@@ -365,8 +369,12 @@ fn mk_adt_with_arg<'tcx>(tcx: TyCtxt<'tcx>, path: &str, arg_ty: ty::Ty<'tcx>) ->
     }
 
     let adt = tcx.adt_def(cur_did);
-    let substs = tcx.mk_substs([GenericArg::from(arg_ty)].into_iter());
+    let substs = tcx.mk_substs(args.into_iter());
     tcx.mk_adt(adt, substs)
+}
+
+fn mk_adt_with_arg<'tcx>(tcx: TyCtxt<'tcx>, path: &str, arg_ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
+    mk_adt_with_generic_args(tcx, path, [GenericArg::from(arg_ty)])
 }
 
 fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
@@ -375,6 +383,14 @@ fn mk_cell<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
 
 fn mk_option<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
     mk_adt_with_arg(tcx, "core::option::Option", ty)
+}
+
+fn mk_dyn_owned<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
+    let args = [
+        GenericArg::from(ty),
+        GenericArg::from(tcx.mk_unit()),
+    ];
+    mk_adt_with_generic_args(tcx, "core::result::Result", args)
 }
 
 /// Produce a `Ty` reflecting the rewrites indicated by the labels in `rw_lty`.
@@ -423,7 +439,7 @@ pub fn desc_parts_to_ty<'tcx>(
     pointee_ty: Ty<'tcx>,
 ) -> Ty<'tcx> {
     let mut ty = pointee_ty;
-    let PtrDesc { own, qty, option } = ptr_desc;
+    let PtrDesc { own, qty, dyn_owned, option } = ptr_desc;
 
     if own == Ownership::Cell {
         ty = mk_cell(tcx, ty);
@@ -446,6 +462,10 @@ pub fn desc_parts_to_ty<'tcx>(
         Ownership::Rc => todo!(),
         Ownership::Box => tcx.mk_box(ty),
     };
+
+    if dyn_owned {
+        ty = mk_dyn_owned(tcx, ty);
+    }
 
     if option {
         ty = mk_option(tcx, ty);
@@ -540,7 +560,7 @@ fn rewrite_ty<'tcx>(
 
         if let Some(ptr_desc) = rw_lty.label.ty_desc {
             assert_eq!(hir_args.len(), 1);
-            let PtrDesc { own, qty, option } = ptr_desc;
+            let PtrDesc { own, qty, dyn_owned, option } = ptr_desc;
 
             if own == Ownership::Cell {
                 rw = Rewrite::TyCtor("core::cell::Cell".into(), vec![rw]);
@@ -562,8 +582,13 @@ fn rewrite_ty<'tcx>(
                 Ownership::Cell => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Not),
                 Ownership::Mut => Rewrite::TyRef(lifetime_type, Box::new(rw), Mutability::Mut),
                 Ownership::Rc => todo!(),
-                Ownership::Box => todo!(),
+                Ownership::Box => Rewrite::TyCtor("std::boxed::Box".into(), vec![rw]),
             };
+
+            if dyn_owned {
+                rw = Rewrite::TyCtor("core::result::Result".into(),
+                    vec![rw, Rewrite::Print("()".into())]);
+            }
 
             if option {
                 rw = Rewrite::TyCtor("core::option::Option".into(), vec![rw]);

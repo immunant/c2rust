@@ -286,6 +286,126 @@ impl<'tcx> ConvertVisitor<'tcx> {
                 )
             }
 
+            mir_op::RewriteKind::MallocSafe {
+                ref zero_ty,
+                elem_size,
+                single,
+            } |
+            mir_op::RewriteKind::CallocSafe {
+                ref zero_ty,
+                elem_size,
+                single,
+            } => {
+                // `malloc(n)` -> `Box::new(z)` or similar
+                assert!(matches!(hir_rw, Rewrite::Identity));
+                let zeroize_expr = generate_zeroize_expr(zero_ty);
+                let mut stmts = match *rw {
+                    mir_op::RewriteKind::MallocSafe { .. } => vec![
+                        Rewrite::Let(vec![
+                            ("byte_len".into(), self.get_subexpr(ex, 0)),
+                        ]),
+                        Rewrite::Let1(
+                            "n".into(),
+                            Box::new(format_rewrite!("byte_len as usize / {elem_size}")),
+                        ),
+                    ],
+                    mir_op::RewriteKind::CallocSafe { .. } => vec![
+                        Rewrite::Let(vec![
+                            ("count".into(), self.get_subexpr(ex, 0)),
+                            ("size".into(), self.get_subexpr(ex, 1)),
+                        ]),
+                        format_rewrite!("assert_eq!(size, {elem_size})"),
+                        Rewrite::Let1(
+                            "n".into(),
+                            Box::new(format_rewrite!("count as usize")),
+                        ),
+                    ],
+                    _ => unreachable!(),
+                };
+                let expr = if single {
+                    stmts.push(Rewrite::Text("assert_eq!(n, 1)".into()));
+                    format_rewrite!("Box::new({})", zeroize_expr)
+                } else {
+                    stmts.push(Rewrite::Let1(
+                        "mut v".into(),
+                        Box::new(Rewrite::Text("Vec::with_capacity(n)".into())),
+                    ));
+                    stmts.push(format_rewrite!(
+                        "for i in 0..n {{\n    v.push({});\n}}",
+                        zeroize_expr,
+                    ));
+                    Rewrite::Text("v.into_boxed_slice()".into())
+                };
+                Rewrite::Block(stmts, Some(Box::new(expr)))
+            }
+
+            mir_op::RewriteKind::FreeSafe {
+                single: _,
+            } => {
+                // `free(p)` -> `drop(p)`
+                assert!(matches!(hir_rw, Rewrite::Identity));
+                Rewrite::Call("std::mem::drop".to_string(), vec![self.get_subexpr(ex, 0)])
+            }
+
+            mir_op::RewriteKind::ReallocSafe {
+                ref zero_ty,
+                elem_size,
+                src_single,
+                dest_single,
+            } => {
+                // `realloc(p, n)` -> `Box::new(...)`
+                assert!(matches!(hir_rw, Rewrite::Identity));
+                let zeroize_expr = generate_zeroize_expr(zero_ty);
+                let mut stmts = vec![
+                    Rewrite::Let(vec![
+                        ("src_ptr".into(), self.get_subexpr(ex, 0)),
+                        ("dest_byte_len".into(), self.get_subexpr(ex, 1)),
+                    ]),
+                    Rewrite::Let1(
+                        "dest_n".into(),
+                        Box::new(format_rewrite!("dest_byte_len as usize / {elem_size}")),
+                    ),
+                ];
+                if dest_single {
+                    stmts.push(Rewrite::Text("assert_eq!(dest_n, 1)".into()));
+                }
+                let expr = match (src_single, dest_single) {
+                    (false, false) => {
+                        stmts.push(Rewrite::Let1(
+                            "mut dest_ptr".into(),
+                            Box::new(Rewrite::Text("Vec::from(src_ptr)".into())),
+                        ));
+                        stmts.push(format_rewrite!(
+                            "dest_ptr.resize_with(dest_n, || {})",
+                            zeroize_expr,
+                        ));
+                        Rewrite::Text("dest_ptr.into_boxed_slice()".into())
+                    },
+                    (false, true) => {
+                        format_rewrite!("src_ptr.into_iter().next().unwrap_or_else(|| {})",
+                            zeroize_expr)
+                    },
+                    (true, false) => {
+                        stmts.push(Rewrite::Let1(
+                            "mut dest_ptr".into(),
+                            Box::new(Rewrite::Text("Vec::with_capacity(dest_n)".into())),
+                        ));
+                        stmts.push(Rewrite::Text(
+                            "if dest_n >= 1 { dest_ptr.push(*src_ptr); }".into(),
+                        ));
+                        stmts.push(format_rewrite!(
+                            "dest_ptr.resize_with(dest_n, || {})",
+                            zeroize_expr,
+                        ));
+                        Rewrite::Text("dest_ptr.into_boxed_slice()".into())
+                    },
+                    (true, true) => {
+                        Rewrite::Text("src_ptr".into())
+                    },
+                };
+                Rewrite::Block(stmts, Some(Box::new(expr)))
+            }
+
             mir_op::RewriteKind::CellGet => {
                 // `*x` to `Cell::get(x)`
                 assert!(matches!(hir_rw, Rewrite::Identity));
@@ -566,7 +686,7 @@ fn generate_zeroize_code(zero_ty: &ZeroizeType, lv: &str) -> String {
     match *zero_ty {
         ZeroizeType::Int => format!("{lv} = 0"),
         ZeroizeType::Bool => format!("{lv} = false"),
-        ZeroizeType::Iterable(ref elem_zero_ty) => format!(
+        ZeroizeType::Array(ref elem_zero_ty) => format!(
             "
             {{
                 for elem in {lv}.iter_mut() {{
@@ -576,7 +696,7 @@ fn generate_zeroize_code(zero_ty: &ZeroizeType, lv: &str) -> String {
         ",
             generate_zeroize_code(elem_zero_ty, "(*elem)")
         ),
-        ZeroizeType::Struct(ref fields) => {
+        ZeroizeType::Struct(_, ref fields) => {
             eprintln!("zeroize: {} fields on {lv}: {fields:?}", fields.len());
             let mut s = String::new();
             write!(s, "{{\n").unwrap();
@@ -585,6 +705,31 @@ fn generate_zeroize_code(zero_ty: &ZeroizeType, lv: &str) -> String {
                     s,
                     "{};\n",
                     generate_zeroize_code(field_zero_ty, &format!("{lv}.{name}"))
+                )
+                .unwrap();
+            }
+            write!(s, "}}\n").unwrap();
+            s
+        }
+    }
+}
+
+/// Generate an expression to produce a zeroized version of a value.
+fn generate_zeroize_expr(zero_ty: &ZeroizeType) -> String {
+    match *zero_ty {
+        ZeroizeType::Int => format!("0"),
+        ZeroizeType::Bool => format!("false"),
+        ZeroizeType::Array(ref elem_zero_ty) =>
+            format!("std::array::from_fn(|| {})", generate_zeroize_expr(elem_zero_ty)),
+        ZeroizeType::Struct(ref name, ref fields) => {
+            let mut s = String::new();
+            write!(s, "{} {{\n", name).unwrap();
+            for (name, field_zero_ty) in fields {
+                write!(
+                    s,
+                    "{}: {},\n",
+                    name,
+                    generate_zeroize_expr(field_zero_ty),
                 )
                 .unwrap();
             }
@@ -614,14 +759,14 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
             Rewrite::Ref(Box::new(elem), mutbl_from_bool(mutbl))
         }
 
-        mir_op::RewriteKind::MutToImm => {
-            // `p` -> `&*p`
+        mir_op::RewriteKind::Reborrow { mutbl } => {
+            // `p` -> `&*p` / `&mut *p`
             let hir_rw = match fold_mut_to_imm(hir_rw) {
                 Ok(folded_rw) => return folded_rw,
                 Err(rw) => rw,
             };
             let place = Rewrite::Deref(Box::new(hir_rw));
-            Rewrite::Ref(Box::new(place), hir::Mutability::Not)
+            Rewrite::Ref(Box::new(place), mutbl_from_bool(mutbl))
         }
 
         mir_op::RewriteKind::OptionUnwrap => {
@@ -661,6 +806,30 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
                 }
             };
             Rewrite::MethodCall(ref_method, Box::new(hir_rw), vec![])
+        }
+
+        mir_op::RewriteKind::DynOwnedUnwrap => {
+            Rewrite::MethodCall("unwrap".to_string(), Box::new(hir_rw), vec![])
+        }
+        mir_op::RewriteKind::DynOwnedTake => {
+            // `p` -> `mem::replace(&mut p, Err(()))`
+            Rewrite::Call("std::mem::replace".to_string(), vec![
+                Rewrite::Ref(Box::new(hir_rw), hir::Mutability::Mut),
+                Rewrite::Text("Err(())".into()),
+            ])
+        }
+        mir_op::RewriteKind::DynOwnedWrap => {
+            Rewrite::Call("std::result::Result::<_, ()>::Ok".to_string(), vec![hir_rw])
+        }
+
+        mir_op::RewriteKind::DynOwnedDowngrade { mutbl } => {
+            let ref_method = if mutbl {
+                "as_deref_mut".into()
+            } else {
+                "as_deref".into()
+            };
+            let hir_rw = Rewrite::MethodCall(ref_method, Box::new(hir_rw), vec![]);
+            Rewrite::MethodCall("unwrap".into(), Box::new(hir_rw), vec![])
         }
 
         mir_op::RewriteKind::CastRefToRaw { mutbl } => {
