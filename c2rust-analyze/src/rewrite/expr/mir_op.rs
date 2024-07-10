@@ -115,6 +115,7 @@ pub enum RewriteKind {
         elem_size: u64,
         src_single: bool,
         dest_single: bool,
+        option: bool,
     },
     CallocSafe {
         zero_ty: ZeroizeType,
@@ -808,8 +809,14 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             };
 
                             // Cast input to either `Box<T>` or `Box<[T]>`, as in `free`.
+                            let mut option = false;
                             v.enter_call_arg(0, |v| {
                                 v.emit_cast_lty_adjust(src_lty, |desc| {
+                                    // `realloc(NULL, ...)` is explicitly allowed by the spec, so
+                                    // we can't force an unwrap here by returning `option: false`.
+                                    // Instead, we record the `option` flag as part of the rewrite
+                                    // so the nullable case can be handled appropriately.
+                                    option = desc.option;
                                     TypeDesc {
                                         own: Ownership::Box,
                                         qty: if src_single {
@@ -829,6 +836,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 elem_size,
                                 src_single,
                                 dest_single,
+                                option,
                             });
 
                             // Cast output from `Box<T>`/`Box<[T]>` to the target type, as in
@@ -842,6 +850,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                         Quantity::Slice
                                     },
                                     dyn_owned: false,
+                                    // We always return non-null from `realloc`.
                                     option: false,
                                     pointee_ty: desc.pointee_ty,
                                 }
