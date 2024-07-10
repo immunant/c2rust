@@ -452,9 +452,20 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             });
                         });
                         // Obtain a reference to the place containing the `DynOwned` pointer.
-                        v.emit(RewriteKind::Ref { mutbl: true });
+                        if v.is_nullable(rv_lty.label) {
+                            v.emit(RewriteKind::OptionDowngrade {
+                                mutbl: true,
+                                deref: false,
+                            });
+                            v.emit(RewriteKind::OptionMapBegin);
+                        } else {
+                            v.emit(RewriteKind::Ref { mutbl: true });
+                        }
                         // Take the pointer out of that place.
                         v.emit(RewriteKind::DynOwnedTake);
+                        if v.is_nullable(rv_lty.label) {
+                            v.emit(RewriteKind::OptionMapEnd);
+                        }
                         v.emit_cast_lty_lty(rv_lty, pl_lty);
                         return;
                     }
