@@ -13,7 +13,7 @@ extern "C" {
 pub type uint8_t = libc::c_uchar;
 pub type size_t = libc::c_ulong;
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 #[repr(C)]
 pub struct buffer {
     pub data: *mut uint8_t,
