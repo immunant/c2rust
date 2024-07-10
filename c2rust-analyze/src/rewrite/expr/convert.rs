@@ -807,10 +807,7 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
             // `p` -> `mem::replace(&mut p, Err(()))`
             Rewrite::Call(
                 "std::mem::replace".to_string(),
-                vec![
-                    Rewrite::Ref(Box::new(hir_rw), hir::Mutability::Mut),
-                    Rewrite::Text("Err(())".into()),
-                ],
+                vec![hir_rw, Rewrite::Text("Err(())".into())],
             )
         }
         mir_op::RewriteKind::DynOwnedWrap => {
