@@ -762,6 +762,10 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
             // `p` -> `&p` / `&mut p`
             Rewrite::Ref(Box::new(hir_rw), mutbl_from_bool(mutbl))
         }
+        mir_op::RewriteKind::Deref => {
+            // `p` -> `*p`
+            Rewrite::Deref(Box::new(hir_rw))
+        }
 
         mir_op::RewriteKind::OptionUnwrap => {
             // `p` -> `p.unwrap()`
