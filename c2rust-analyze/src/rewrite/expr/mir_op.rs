@@ -66,6 +66,9 @@ pub enum RewriteKind {
     /// Replace &raw with & or &raw mut with &mut
     RawToRef { mutbl: bool },
 
+    /// Replace `ptr` with `*ptr`.
+    Deref,
+
     /// Replace `ptr.is_null()` with `ptr.is_none()`.
     IsNullToIsNone,
     /// Replace `ptr.is_null()` with the constant `false`.  We use this in cases where the rewritten
