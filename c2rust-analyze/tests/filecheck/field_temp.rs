@@ -7,7 +7,7 @@ pub struct MyList {
 
 // CHECK-LABEL: final labeling for "list_get"
 pub unsafe fn list_get(l: *const MyList, i: usize) -> i32 {
-    // The temporary `(*l).data` requires a MIR `MutToImm` rewrite.
+    // The temporary `(*l).data` requires a MIR `Reborrow` rewrite.
     // CHECK: ([[@LINE+2]]: (*l).data): &[i32]
     // CHECK: [[@LINE+1]]: (*l).data.offse ... size): &(&(&*$0)[($1 as usize) ..])[0]
     *(*l).data.offset(i as isize)
