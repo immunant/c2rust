@@ -552,6 +552,9 @@ pub enum TestAttr {
     /// `#[c2rust_analyze_test::force_non_null_args]`: Mark arguments as `NON_NULL` and don't allow
     /// that flag to be changed during dataflow analysis.
     ForceNonNullArgs,
+    /// `#[c2rust_analyze_test::skip_borrowck]`: Don't run borrowck for this function.  The
+    /// `UNIQUE` permission won't be removed from pointers.
+    SkipBorrowck,
 }
 
 impl TestAttr {
@@ -562,6 +565,7 @@ impl TestAttr {
             TestAttr::FailBeforeRewriting => "fail_before_rewriting",
             TestAttr::SkipRewrite => "skip_rewrite",
             TestAttr::ForceNonNullArgs => "force_non_null_args",
+            TestAttr::SkipBorrowck => "skip_borrowck",
         }
     }
 }
