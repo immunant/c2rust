@@ -673,7 +673,10 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             let pointee_lty = match dest_pointee {
                                 Some(x) => x,
                                 // TODO: emit void* cast before bailing out
-                                None => return,
+                                None => {
+                                    trace!("{callee:?}: no pointee type for dest");
+                                    return;
+                                }
                             };
 
                             let orig_pointee_ty = pointee_lty.ty;
@@ -689,7 +692,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             let zero_ty = match ZeroizeType::from_ty(tcx, orig_pointee_ty) {
                                 Some(x) => x,
                                 // TODO: emit void* cast before bailing out
-                                None => return,
+                                None => {
+                                    trace!(
+                                        "{callee:?}: failed to compute ZeroizeType \
+                                        for {orig_pointee_ty:?}"
+                                    );
+                                    return;
+                                }
                             };
 
                             let rw = match *callee {
@@ -759,7 +768,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         });
                     }
 
-                    Callee::Realloc => {
+                    ref callee @ Callee::Realloc => {
                         self.enter_rvalue(|v| {
                             let src_lty = v.acx.type_of(&args[0]);
                             let src_pointee = v.pointee_lty(src_lty);
@@ -769,7 +778,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             let pointee_lty = match common_pointee {
                                 Some(x) => x,
                                 // TODO: emit void* cast before bailing out
-                                None => return,
+                                None => {
+                                    trace!(
+                                        "{callee:?}: no common pointee type \
+                                        between {src_pointee:?} and {dest_pointee:?}"
+                                    );
+                                    return;
+                                }
                             };
 
                             let orig_pointee_ty = pointee_lty.ty;
@@ -787,7 +802,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             let zero_ty = match ZeroizeType::from_ty(tcx, orig_pointee_ty) {
                                 Some(x) => x,
                                 // TODO: emit void* cast before bailing out
-                                None => return,
+                                None => {
+                                    trace!(
+                                        "{callee:?}: failed to compute ZeroizeType \
+                                        for {orig_pointee_ty:?}"
+                                    );
+                                    return;
+                                }
                             };
 
                             // Cast input to either `Box<T>` or `Box<[T]>`, as in `free`.
