@@ -140,7 +140,7 @@ pub enum RewriteKind {
 
     /// Extract the `T` from `DynOwned<T>`.
     DynOwnedUnwrap,
-    /// Move out of a `DynOwned<T>` and set the original location to empty / non-owned.
+    /// Move out of `&mut DynOwned<T>` and set the original location to empty / non-owned.
     DynOwnedTake,
     /// Wrap `T` in `Ok` to produce `DynOwned<T>`.
     DynOwnedWrap,
@@ -453,6 +453,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 v.visit_place(rv_pl, PlaceAccess::Mut);
                             });
                         });
+                        // Obtain a reference to the place containing the `DynOwned` pointer.
+                        v.emit(RewriteKind::Ref { mutbl: true });
+                        // Take the pointer out of that place.
                         v.emit(RewriteKind::DynOwnedTake);
                         v.emit_cast_lty_lty(rv_lty, pl_lty);
                         return;

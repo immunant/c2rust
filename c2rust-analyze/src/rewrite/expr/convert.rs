@@ -819,7 +819,7 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
         mir_op::RewriteKind::DynOwnedTake => {
             // `p` -> `mem::replace(&mut p, Err(()))`
             Rewrite::Call("std::mem::replace".to_string(), vec![
-                Rewrite::Ref(Box::new(hir_rw), hir::Mutability::Mut),
+                hir_rw,
                 Rewrite::Text("Err(())".into()),
             ])
         }
