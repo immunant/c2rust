@@ -176,6 +176,8 @@ pub enum ZeroizeType {
     Int,
     /// Zeroize by storing the literal `false`.
     Bool,
+    /// Zeroize by storing `None`.
+    Option,
     /// Iterate over `x.iter_mut()` and zeroize each element.
     Array(Box<ZeroizeType>),
     /// Zeroize each named field.
@@ -686,15 +688,15 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             let single = !v.perms[dest_lty.label]
                                 .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
 
-                            // TODO: use rewritten types here, so that the `ZeroizeType` will
-                            // reflect the actual types and fields after rewriting.
-                            let zero_ty = match ZeroizeType::from_ty(tcx, orig_pointee_ty) {
+                            let opt_zero_ty =
+                                ZeroizeType::from_lty(&v.acx, &v.perms, &v.flags, pointee_lty);
+                            let zero_ty = match opt_zero_ty {
                                 Some(x) => x,
                                 // TODO: emit void* cast before bailing out
                                 None => {
                                     trace!(
                                         "{callee:?}: failed to compute ZeroizeType \
-                                        for {orig_pointee_ty:?}"
+                                        for {pointee_lty:?}"
                                     );
                                     return;
                                 }
@@ -1274,6 +1276,64 @@ impl ZeroizeType {
             TyKind::Array(elem_ty, _) => {
                 let elem_zero = ZeroizeType::from_ty(tcx, elem_ty)?;
                 ZeroizeType::Array(Box::new(elem_zero))
+            }
+            _ => return None,
+        })
+    }
+
+    fn from_lty<'tcx>(
+        acx: &AnalysisCtxt<'_, 'tcx>,
+        perms: &PointerTable<'_, PermissionSet>,
+        flags: &PointerTable<'_, FlagSet>,
+        lty: LTy<'tcx>,
+    ) -> Option<ZeroizeType> {
+        Some(match *lty.kind() {
+            TyKind::Int(_) | TyKind::Uint(_) => ZeroizeType::Int,
+            TyKind::Bool => ZeroizeType::Bool,
+            TyKind::Adt(adt_def, substs) => {
+                if !adt_def.is_struct() {
+                    eprintln!("ZeroizeType::from_lty({lty:?}): not a struct");
+                    return None;
+                }
+                let variant = adt_def.non_enum_variant();
+                let mut fields = Vec::with_capacity(variant.fields.len());
+                for (field_idx, field) in variant.fields.iter().enumerate() {
+                    let name = field.name.to_string();
+                    let ty = field.ty(acx.tcx(), substs);
+                    let lty = acx.projection_lty(lty, &PlaceElem::Field(field_idx.into(), ty));
+                    let zero = ZeroizeType::from_lty(acx, perms, flags, lty)?;
+                    fields.push((name, zero));
+                }
+
+                let name_printer = FmtPrinter::new(acx.tcx(), Namespace::ValueNS);
+                let name = name_printer
+                    .print_value_path(adt_def.did(), &[])
+                    .unwrap()
+                    .into_buffer();
+
+                ZeroizeType::Struct(name, fields)
+            }
+            TyKind::Array(_, _) => {
+                let elem_zero = ZeroizeType::from_lty(acx, perms, flags, lty.args[0])?;
+                ZeroizeType::Array(Box::new(elem_zero))
+            }
+            TyKind::Ref(..) | TyKind::RawPtr(..) => {
+                if lty.label.is_none() {
+                    eprintln!("ZeroizeType::from_lty({lty:?}): ptr has no label");
+                    return None;
+                }
+                let ptr = lty.label;
+                if flags[ptr].contains(FlagSet::FIXED) {
+                    eprintln!("ZeroizeType::from_lty({lty:?}): ptr is FIXED");
+                    return None;
+                }
+                let nullable = !perms[ptr].contains(PermissionSet::NON_NULL);
+                if nullable {
+                    ZeroizeType::Option
+                } else {
+                    eprintln!("ZeroizeType::from_lty({lty:?}): ptr is NON_NULL");
+                    return None;
+                }
             }
             _ => return None,
         })
