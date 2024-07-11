@@ -704,6 +704,7 @@ fn generate_zeroize_code(zero_ty: &ZeroizeType, lv: &str) -> String {
     match *zero_ty {
         ZeroizeType::Int => format!("{lv} = 0"),
         ZeroizeType::Bool => format!("{lv} = false"),
+        ZeroizeType::Option => format!("{lv} = None"),
         ZeroizeType::Array(ref elem_zero_ty) => format!(
             "
             {{
@@ -737,6 +738,7 @@ fn generate_zeroize_expr(zero_ty: &ZeroizeType) -> String {
     match *zero_ty {
         ZeroizeType::Int => format!("0"),
         ZeroizeType::Bool => format!("false"),
+        ZeroizeType::Option => format!("None"),
         ZeroizeType::Array(ref elem_zero_ty) =>
             format!("std::array::from_fn(|| {})", generate_zeroize_expr(elem_zero_ty)),
         ZeroizeType::Struct(ref name, ref fields) => {
