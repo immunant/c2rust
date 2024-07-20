@@ -30,10 +30,8 @@ pub enum EventKind {
 
     CopyRef,
 
-    /// Field projection. Used for operations like `_2 = &(*_1).0`. Nested field
-    /// accesses like `_4 = &(*_1).x.y.z` are broken into multiple `Node`s, each
-    /// covering one level.
-    Field(Pointer, u32),
+    /// Projection. Used for operations like `_2 = &(*_1).0`.
+    Project(Pointer, Pointer),
 
     Alloc {
         size: usize,
@@ -90,7 +88,7 @@ impl Debug for EventKind {
         use EventKind::*;
         match *self {
             CopyPtr(ptr) => write!(f, "copy(0x{:x})", ptr),
-            Field(ptr, id) => write!(f, "field(0x{:x}, {})", ptr, id),
+            Project(ptr, new_ptr) => write!(f, "project(0x{:x}, 0x{:x})", ptr, new_ptr),
             Alloc { size, ptr } => {
                 write!(f, "malloc({}) -> 0x{:x}", size, ptr)
             }
