@@ -110,10 +110,10 @@ pub const HOOK_FUNCTIONS: &[&str] = &[
     hook_fn!(offset),
 ];
 
-pub fn ptr_field(mir_loc: MirLocId, ptr: usize, field_id: u32) {
+pub fn ptr_project(mir_loc: MirLocId, ptr: usize, new_ptr: usize) {
     RUNTIME.send_event(Event {
         mir_loc,
-        kind: EventKind::Field(ptr, field_id),
+        kind: EventKind::Project(ptr, new_ptr),
     });
 }
 
