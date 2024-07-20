@@ -1,5 +1,5 @@
 use rustc_middle::{
-    mir::{Constant, ConstantKind, Local, Operand, Place},
+    mir::{Constant, ConstantKind, Local, Operand, Place, PlaceRef},
     ty::{self, ParamEnv, TyCtxt},
 };
 use rustc_span::DUMMY_SP;
@@ -10,8 +10,18 @@ pub trait IntoOperand<'tcx> {
 }
 
 impl<'tcx> IntoOperand<'tcx> for Place<'tcx> {
-    fn op(self, _tcx: TyCtxt) -> Operand<'tcx> {
+    fn op(self, _tcx: TyCtxt<'tcx>) -> Operand<'tcx> {
         Operand::Copy(self)
+    }
+}
+
+impl<'tcx> IntoOperand<'tcx> for PlaceRef<'tcx> {
+    fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx> {
+        let place = Place {
+            local: self.local,
+            projection: tcx.mk_place_elems(self.projection.iter()),
+        };
+        place.op(tcx)
     }
 }
 

@@ -44,7 +44,7 @@ impl EventKindExt for EventKind {
         use EventKind::*;
         Some(match *self {
             CopyPtr(lhs) => lhs,
-            Field(ptr, ..) => ptr,
+            Project(ptr, ..) => ptr,
             Free { ptr } => ptr,
             Ret(ptr) => ptr,
             LoadAddr(ptr) => ptr,
@@ -70,7 +70,7 @@ impl EventKindExt for EventKind {
             Realloc { .. } => NodeKind::Alloc(1),
             Free { .. } => NodeKind::Free,
             CopyPtr(..) | CopyRef => NodeKind::Copy,
-            Field(_, field) => NodeKind::Field(field.into()),
+            Project(base_ptr, new_ptr) => NodeKind::Project(new_ptr - base_ptr),
             LoadAddr(..) => NodeKind::LoadAddr,
             StoreAddr(..) => NodeKind::StoreAddr,
             StoreAddrTaken(..) => NodeKind::StoreAddr,
@@ -188,7 +188,7 @@ pub fn add_node(
                 if let Some((gid, _)) = latest_assignment {
                     if let Some((nid, n)) = graphs.graphs[gid].nodes.iter_enumerated().rev().next()
                     {
-                        if let NodeKind::Field(..) = n.kind {
+                        if let NodeKind::Project(..) = n.kind {
                             return Some((gid, nid));
                         }
                     }
@@ -197,7 +197,7 @@ pub fn add_node(
 
             if !matches!(event.kind, EventKind::AddrOfLocal(..)) && src.projection.is_empty() {
                 latest_assignment
-            } else if let EventKind::Field(..) = event.kind {
+            } else if let EventKind::Project(..) = event.kind {
                 latest_assignment
             } else {
                 provenance

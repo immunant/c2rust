@@ -2,7 +2,7 @@ use c2rust_analysis_rt::mir_loc::{self, DefPathHash, Func};
 use c2rust_analysis_rt::mir_loc::{FuncId, MirPlace};
 use rustc_index::newtype_index;
 use rustc_index::vec::IndexVec;
-use rustc_middle::mir::{BasicBlock, Field, Local};
+use rustc_middle::mir::{BasicBlock, Local};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::Display;
 use std::{
@@ -25,9 +25,7 @@ pub enum NodeKind {
     /// [`Field`] projection.
     ///
     /// Used for operations like `_2 = &(*_1).0`.
-    /// Nested field accesses like `_4 = &(*_1).x.y.z`
-    /// are broken into multiple [`Node`]s, each covering one level.
-    Field(#[serde(with = "crate::util::serde::FieldDef")] Field),
+    Project(usize),
 
     /// Pointer arithmetic.
     ///
@@ -121,7 +119,7 @@ impl Display for NodeKind {
         use NodeKind::*;
         match self {
             Copy => write!(f, "copy"),
-            Field(field) => write!(f, "field.{}", field.as_usize()),
+            Project(offset) => write!(f, "project.{offset}"),
             Offset(offset) => write!(f, "offset[{offset}]"),
             AddrOfLocal(local) => write!(f, "&{local:?}"),
             _AddrOfStatic(static_) => write!(f, "&'static {static_:?}"),
