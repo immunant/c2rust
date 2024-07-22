@@ -1095,6 +1095,8 @@ fn run(tcx: TyCtxt) {
                 continue;
             }
 
+            let skip_borrowck = util::has_test_attr(tcx, ldid, TestAttr::SkipBorrowck);
+
             let info = func_info.get_mut(&ldid).unwrap();
             let ldid_const = WithOptConstParam::unknown(ldid);
             let name = tcx.item_name(ldid.to_def_id());
@@ -1112,15 +1114,17 @@ fn run(tcx: TyCtxt) {
                 info.dataflow
                     .propagate(&mut asn.perms_mut(), &updates_forbidden);
 
-                borrowck::borrowck_mir(
-                    &acx,
-                    &info.dataflow,
-                    &mut asn.perms_mut(),
-                    &updates_forbidden,
-                    name.as_str(),
-                    &mir,
-                    field_ltys,
-                );
+                if !skip_borrowck {
+                    borrowck::borrowck_mir(
+                        &acx,
+                        &info.dataflow,
+                        &mut asn.perms_mut(),
+                        &updates_forbidden,
+                        name.as_str(),
+                        &mir,
+                        field_ltys,
+                    );
+                }
             }));
 
             info.acx_data.set(acx.into_data());
