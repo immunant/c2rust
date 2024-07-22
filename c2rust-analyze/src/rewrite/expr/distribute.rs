@@ -5,6 +5,7 @@ use log::*;
 use rustc_hir::HirId;
 use rustc_middle::mir::Location;
 use rustc_middle::ty::TyCtxt;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 
 struct RewriteInfo {
@@ -19,16 +20,63 @@ struct RewriteInfo {
 ///
 /// The order of variants follows the order of operations we typically see in generated MIR code.
 /// For a given HIR `Expr`, the MIR will usually evaluate the expression ([`Priority::Eval`]),
-/// apply zero or more adjustments ([`Priority::Adjust(i)`][Priority::Adjust]), store the result
-/// into a temporary ([`Priority::_StoreResult`]; currently unused), and later load the result back
-/// from the temporary ([`Priority::LoadResult`]).
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+/// apply zero or more adjustments ([`Priority::LoadForAdjust(i)`][Priority::LoadForAdjust] and
+/// [`Priority::Adjust(i)`][Priority::Adjust]), store the result into a temporary
+/// ([`Priority::_StoreResult`]; currently unused), and later load the result back from the
+/// temporary ([`Priority::LoadResult`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Priority {
     Eval,
+    /// Load from a temporary for use in the adjustment at index `i`.
+    LoadForAdjust(usize),
     /// Apply the rewrite just after the adjustment at index `i`.
     Adjust(usize),
     _StoreResult,
     LoadResult,
+}
+
+impl PartialOrd for Priority {
+    fn partial_cmp(&self, other: &Priority) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Priority {
+    fn cmp(&self, other: &Priority) -> Ordering {
+        use Priority::*;
+        match (*self, *other) {
+            // 1. Eval
+            (Eval, Eval) => Ordering::Equal,
+            (Eval, _) => Ordering::Less,
+            (_, Eval) => Ordering::Greater,
+
+            // 2. LoadForAdjust(0), Adjust(0), LoadForAdjust(1), Adjust(1), ...
+            (LoadForAdjust(i), LoadForAdjust(j)) => i.cmp(&j),
+            (LoadForAdjust(i), Adjust(j)) => match i.cmp(&j) {
+                Ordering::Equal => Ordering::Less,
+                Ordering::Less => Ordering::Less,
+                Ordering::Greater => Ordering::Greater,
+            },
+            (Adjust(i), Adjust(j)) => i.cmp(&j),
+            (Adjust(i), LoadForAdjust(j)) => match i.cmp(&j) {
+                Ordering::Equal => Ordering::Greater,
+                Ordering::Less => Ordering::Less,
+                Ordering::Greater => Ordering::Greater,
+            },
+            (LoadForAdjust(_), _) => Ordering::Less,
+            (_, LoadForAdjust(_)) => Ordering::Greater,
+            (Adjust(_), _) => Ordering::Less,
+            (_, Adjust(_)) => Ordering::Greater,
+
+            // 3. _StoreResult
+            (_StoreResult, _StoreResult) => Ordering::Equal,
+            (_StoreResult, _) => Ordering::Less,
+            (_, _StoreResult) => Ordering::Greater,
+
+            // 4. LoadResult
+            (LoadResult, LoadResult) => Ordering::Equal,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -96,6 +144,7 @@ pub fn distribute(
                 MirOriginDesc::Expr => Priority::Eval,
                 MirOriginDesc::Adjustment(i) => Priority::Adjust(i),
                 MirOriginDesc::LoadFromTemp => Priority::LoadResult,
+                MirOriginDesc::LoadFromTempForAdjustment(i) => Priority::LoadForAdjust(i),
                 _ => {
                     panic!(
                         "can't distribute rewrites onto {:?} origin {:?}\n\
