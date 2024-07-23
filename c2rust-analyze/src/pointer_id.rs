@@ -70,7 +70,7 @@ impl NextLocalPointerId {
 
     pub fn next(&mut self) -> PointerId {
         let x = self.0;
-        self.0 += 1;
+        self.0 = self.0.checked_add(1).unwrap();
         PointerId::local(x)
     }
 
@@ -89,7 +89,7 @@ impl NextGlobalPointerId {
 
     pub fn next(&mut self) -> PointerId {
         let x = self.0;
-        self.0 += 1;
+        self.0 = self.0.checked_add(1).unwrap();
         PointerId::global(x)
     }
 
