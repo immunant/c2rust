@@ -66,8 +66,6 @@ pub enum RewriteKind {
     /// Replace &raw with & or &raw mut with &mut
     RawToRef { mutbl: bool },
 
-    /// Replace `x` with `&x` or `&mut x`.
-    Ref { mutbl: bool },
     /// Replace `ptr` with `*ptr`.
     Deref,
 
