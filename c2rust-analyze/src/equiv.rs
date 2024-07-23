@@ -71,11 +71,11 @@ impl GlobalEquivSet {
 }
 
 impl LocalEquivSet {
-    pub fn new(len: usize) -> LocalEquivSet {
+    pub fn new(base: u32, len: usize) -> LocalEquivSet {
         let raw = (0..len as u32)
-            .map(|x| Cell::new(PointerId::local(x)))
+            .map(|x| Cell::new(PointerId::local(base + x)))
             .collect();
-        LocalEquivSet(LocalPointerTable::from_raw(raw))
+        LocalEquivSet(LocalPointerTable::from_raw(base, raw))
     }
 
     fn parent(&self, x: PointerId) -> PointerId {
@@ -114,7 +114,7 @@ impl LocalEquivSet {
         global_map: &GlobalPointerTable<PointerId>,
     ) -> (NextLocalPointerId, LocalPointerTable<PointerId>) {
         let mut counter = NextLocalPointerId::new();
-        let mut map = LocalPointerTable::from_raw(vec![PointerId::NONE; self.0.len()]);
+        let mut map = LocalPointerTable::from_raw(0, vec![PointerId::NONE; self.0.len()]);
 
         for old_id in self.0.iter().map(|(x, _)| x) {
             let rep = self.rep(old_id);
