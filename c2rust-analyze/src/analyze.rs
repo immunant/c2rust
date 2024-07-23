@@ -329,32 +329,6 @@ where
     }
 }
 
-pub(super) fn gather_foreign_sigs<'tcx>(gacx: &mut GlobalAnalysisCtxt<'tcx>, tcx: TyCtxt<'tcx>) {
-    for did in tcx
-        .hir_crate_items(())
-        .foreign_items()
-        .map(|item| item.def_id.to_def_id())
-        .filter(|did| matches!(tcx.def_kind(did), DefKind::Fn | DefKind::AssocFn))
-    {
-        let sig = tcx.erase_late_bound_regions(tcx.fn_sig(did));
-        let inputs = sig
-            .inputs()
-            .iter()
-            .map(|&ty| gacx.assign_pointer_ids_with_info(ty, PointerInfo::ANNOTATED))
-            .collect::<Vec<_>>();
-
-        let inputs = gacx.lcx.mk_slice(&inputs);
-        let output = gacx.assign_pointer_ids_with_info(sig.output(), PointerInfo::ANNOTATED);
-        let c_variadic = sig.c_variadic;
-        let lsig = LFnSig {
-            inputs,
-            output,
-            c_variadic,
-        };
-        gacx.fn_sigs.insert(did, lsig);
-    }
-}
-
 fn mark_foreign_fixed<'tcx>(
     gacx: &mut GlobalAnalysisCtxt<'tcx>,
     gasn: &mut GlobalAssignment,
@@ -634,57 +608,10 @@ fn run(tcx: TyCtxt) {
     populate_field_users(&mut gacx, &all_fn_ldids);
 
     // ----------------------------------
-    // Label all global types
+    // Label all global and local types
     // ----------------------------------
 
-    // Assign global `PointerId`s for all pointers that appear in function signatures.
-    for &ldid in &all_fn_ldids {
-        let sig = tcx.fn_sig(ldid.to_def_id());
-        let sig = tcx.erase_late_bound_regions(sig);
-
-        // All function signatures are fully annotated.
-        let inputs = sig
-            .inputs()
-            .iter()
-            .map(|&ty| gacx.assign_pointer_ids_with_info(ty, PointerInfo::ANNOTATED))
-            .collect::<Vec<_>>();
-        let inputs = gacx.lcx.mk_slice(&inputs);
-        let output = gacx.assign_pointer_ids_with_info(sig.output(), PointerInfo::ANNOTATED);
-        let c_variadic = sig.c_variadic;
-
-        let lsig = LFnSig {
-            inputs,
-            output,
-            c_variadic,
-        };
-        gacx.fn_sigs.insert(ldid.to_def_id(), lsig);
-    }
-
-    gather_foreign_sigs(&mut gacx, tcx);
-
-    // Collect all `static` items.
-    let all_static_dids = all_static_items(tcx);
-    eprintln!("statics:");
-    for &did in &all_static_dids {
-        eprintln!("  {:?}", did);
-    }
-
-    // Assign global `PointerId`s for types of `static` items.
-    assert!(gacx.static_tys.is_empty());
-    gacx.static_tys = HashMap::with_capacity(all_static_dids.len());
-    for &did in &all_static_dids {
-        gacx.assign_pointer_to_static(did);
-    }
-
-    // Label the field types of each struct.
-    for ldid in tcx.hir_crate_items(()).definitions() {
-        let did = ldid.to_def_id();
-        use DefKind::*;
-        if !matches!(tcx.def_kind(did), Struct | Enum | Union) {
-            continue;
-        }
-        gacx.assign_pointer_to_fields(did);
-    }
+    assign_pointer_ids(&mut gacx, &mut func_info, &all_fn_ldids);
 
     // Compute hypothetical region data for all ADTs and functions.  This can only be done after
     // all field types are labeled.
@@ -700,49 +627,15 @@ fn run(tcx: TyCtxt) {
         }
 
         let ldid_const = WithOptConstParam::unknown(ldid);
+        let info = func_info.get_mut(&ldid).unwrap();
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
-        let lsig = *gacx.fn_sigs.get(&ldid.to_def_id()).unwrap();
-
-        let mut acx = gacx.function_context(&mir);
+        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
 
         let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
-            // Assign PointerIds to local types
-            assert!(acx.local_tys.is_empty());
-            acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
-            for (local, decl) in mir.local_decls.iter_enumerated() {
-                // TODO: set PointerInfo::ANNOTATED for the parts of the type with user annotations
-                let lty = match mir.local_kind(local) {
-                    LocalKind::Var | LocalKind::Temp => acx.assign_pointer_ids(decl.ty),
-                    LocalKind::Arg
-                        if lsig.c_variadic && local.as_usize() - 1 == lsig.inputs.len() =>
-                    {
-                        // This is the hidden VaList<'a> argument at the end
-                        // of the argument list of a variadic function. It does not
-                        // appear in lsig.inputs, so we handle it separately here.
-                        acx.assign_pointer_ids(decl.ty)
-                    }
-                    LocalKind::Arg => {
-                        debug_assert!(local.as_usize() >= 1 && local.as_usize() <= mir.arg_count);
-                        lsig.inputs[local.as_usize() - 1]
-                    }
-                    LocalKind::ReturnPointer => lsig.output,
-                };
-                let l = acx.local_tys.push(lty);
-                assert_eq!(local, l);
-
-                let ptr = acx.new_pointer(PointerInfo::ADDR_OF_LOCAL);
-                let l = acx.addr_of_local.push(ptr);
-                assert_eq!(local, l);
-            }
-
-            label_rvalue_tys(&mut acx, &mir);
-            update_pointer_info(&mut acx, &mir);
-
             pointee_type::generate_constraints(&acx, &mir)
         }));
 
-        let mut info = FuncInfo::default();
         let local_pointee_types = LocalPointerTable::new(0, acx.num_pointers());
         info.acx_data.set(acx.into_data());
 
@@ -752,12 +645,12 @@ fn run(tcx: TyCtxt) {
             }
             Err(pd) => {
                 gacx.mark_fn_failed(ldid.to_def_id(), DontRewriteFnReason::POINTEE_INVALID, pd);
+                assert!(gacx.fn_analysis_invalid(ldid.to_def_id()));
             }
         }
 
         info.local_pointee_types.set(local_pointee_types);
         info.recent_writes.set(RecentWrites::new(&mir));
-        func_info.insert(ldid, info);
     }
 
     // Iterate pointee constraints to a fixpoint.
@@ -2066,6 +1959,158 @@ fn run2<'tcx>(
             "saw permission errors in {} known fns",
             known_perm_error_fns.len()
         );
+    }
+}
+
+fn assign_pointer_ids<'tcx>(
+    gacx: &mut GlobalAnalysisCtxt<'tcx>,
+    func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
+    all_fn_ldids: &[LocalDefId],
+) {
+    let tcx = gacx.tcx;
+
+    // Global items: functions
+
+    // Assign global `PointerId`s for all pointers that appear in function signatures.
+    for &ldid in all_fn_ldids {
+        let sig = tcx.fn_sig(ldid.to_def_id());
+        let sig = tcx.erase_late_bound_regions(sig);
+
+        // All function signatures are fully annotated.
+        let inputs = sig
+            .inputs()
+            .iter()
+            .map(|&ty| gacx.assign_pointer_ids_with_info(ty, PointerInfo::ANNOTATED))
+            .collect::<Vec<_>>();
+        let inputs = gacx.lcx.mk_slice(&inputs);
+        let output = gacx.assign_pointer_ids_with_info(sig.output(), PointerInfo::ANNOTATED);
+        let c_variadic = sig.c_variadic;
+
+        let lsig = LFnSig {
+            inputs,
+            output,
+            c_variadic,
+        };
+        gacx.fn_sigs.insert(ldid.to_def_id(), lsig);
+    }
+
+    // Foreign function signatures
+    for did in tcx
+        .hir_crate_items(())
+        .foreign_items()
+        .map(|item| item.def_id.to_def_id())
+        .filter(|did| matches!(tcx.def_kind(did), DefKind::Fn | DefKind::AssocFn))
+    {
+        let sig = tcx.erase_late_bound_regions(tcx.fn_sig(did));
+        let inputs = sig
+            .inputs()
+            .iter()
+            .map(|&ty| gacx.assign_pointer_ids_with_info(ty, PointerInfo::ANNOTATED))
+            .collect::<Vec<_>>();
+
+        let inputs = gacx.lcx.mk_slice(&inputs);
+        let output = gacx.assign_pointer_ids_with_info(sig.output(), PointerInfo::ANNOTATED);
+        let c_variadic = sig.c_variadic;
+
+        let lsig = LFnSig {
+            inputs,
+            output,
+            c_variadic,
+        };
+        gacx.fn_sigs.insert(did, lsig);
+    }
+
+    // Global items: statics
+
+    // Collect all `static` items.
+    let all_static_dids = all_static_items(tcx);
+    eprintln!("statics:");
+    for &did in &all_static_dids {
+        eprintln!("  {:?}", did);
+    }
+
+    // Assign global `PointerId`s for types of `static` items.
+    assert!(gacx.static_tys.is_empty());
+    gacx.static_tys = HashMap::with_capacity(all_static_dids.len());
+    for &did in &all_static_dids {
+        gacx.assign_pointer_to_static(did);
+    }
+
+    // Global items: ADTs
+
+    // Label the field types of each struct.
+    for ldid in tcx.hir_crate_items(()).definitions() {
+        let did = ldid.to_def_id();
+        use DefKind::*;
+        if !matches!(tcx.def_kind(did), Struct | Enum | Union) {
+            continue;
+        }
+        gacx.assign_pointer_to_fields(did);
+    }
+
+    // Local variables
+
+    for &ldid in all_fn_ldids {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
+            continue;
+        }
+
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+        let lsig = *gacx.fn_sigs.get(&ldid.to_def_id()).unwrap();
+
+        let mut acx = gacx.function_context(&mir);
+
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+            // Assign PointerIds to local types
+            assert!(acx.local_tys.is_empty());
+            acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
+            for (local, decl) in mir.local_decls.iter_enumerated() {
+                // TODO: set PointerInfo::ANNOTATED for the parts of the type with user annotations
+                let lty = match mir.local_kind(local) {
+                    LocalKind::Var | LocalKind::Temp => acx.assign_pointer_ids(decl.ty),
+                    LocalKind::Arg
+                        if lsig.c_variadic && local.as_usize() - 1 == lsig.inputs.len() =>
+                    {
+                        // This is the hidden VaList<'a> argument at the end
+                        // of the argument list of a variadic function. It does not
+                        // appear in lsig.inputs, so we handle it separately here.
+                        acx.assign_pointer_ids(decl.ty)
+                    }
+                    LocalKind::Arg => {
+                        debug_assert!(local.as_usize() >= 1 && local.as_usize() <= mir.arg_count);
+                        lsig.inputs[local.as_usize() - 1]
+                    }
+                    LocalKind::ReturnPointer => lsig.output,
+                };
+                let l = acx.local_tys.push(lty);
+                assert_eq!(local, l);
+
+                let ptr = acx.new_pointer(PointerInfo::ADDR_OF_LOCAL);
+                let l = acx.addr_of_local.push(ptr);
+                assert_eq!(local, l);
+            }
+
+            label_rvalue_tys(&mut acx, &mir);
+            update_pointer_info(&mut acx, &mir);
+        }));
+
+        let mut info = FuncInfo::default();
+        info.acx_data.set(acx.into_data());
+        func_info.insert(ldid, info);
+
+        match r {
+            Ok(()) => {}
+            Err(pd) => {
+                gacx.mark_fn_failed(
+                    ldid.to_def_id(),
+                    DontRewriteFnReason::MISC_ANALYSIS_INVALID,
+                    pd,
+                );
+                continue;
+            }
+        }
     }
 }
 
