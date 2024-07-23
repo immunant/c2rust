@@ -1365,10 +1365,12 @@ fn run(tcx: TyCtxt) {
         struct FuncAnalysis {
             #[serde(rename = "funcname")]
             func_name: String,
+            #[allow(unused)]
             #[serde(rename = "filepath")]
             file_path: PathBuf,
             #[serde(default)]
             params: ParamAnalysisWrapper,
+            #[allow(unused)]
             #[serde(default)]
             analysis: String,
             error: Option<String>,
@@ -1381,6 +1383,7 @@ fn run(tcx: TyCtxt) {
         struct ParamAnalysis {
             #[serde(rename = "argument_name")]
             name: String,
+            #[allow(unused)]
             #[serde(rename = "argument_type")]
             type_: String,
             #[serde(rename = "is_pointer_type")]
@@ -1390,8 +1393,10 @@ fn run(tcx: TyCtxt) {
         }
         #[derive(Clone, Debug, Deserialize)]
         struct DerefLoc {
+            #[allow(unused)]
             #[serde(rename = "line_number")]
             line: Option<usize>,
+            #[allow(unused)]
             #[serde(rename = "c_expression")]
             expr: String,
         }
