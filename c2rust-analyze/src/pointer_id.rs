@@ -101,7 +101,10 @@ impl NextGlobalPointerId {
 #[derive(Clone, PartialEq, Eq, Debug)]
 struct PointerTableInner<T>(Vec<T>);
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct LocalPointerTable<T>(PointerTableInner<T>);
+pub struct LocalPointerTable<T> {
+    table: PointerTableInner<T>,
+    base: u32,
+}
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct GlobalPointerTable<T>(PointerTableInner<T>);
 pub struct PointerTable<'a, T> {
@@ -161,55 +164,66 @@ impl<T> IndexMut<u32> for PointerTableInner<T> {
 
 #[allow(dead_code)]
 impl<T> LocalPointerTable<T> {
-    pub fn empty() -> LocalPointerTable<T> {
-        LocalPointerTable(PointerTableInner::empty())
+    pub fn empty(base: u32) -> LocalPointerTable<T> {
+        LocalPointerTable {
+            table: PointerTableInner::empty(),
+            base,
+        }
     }
 
-    pub fn new(len: usize) -> LocalPointerTable<T>
+    pub fn new(base: u32, len: usize) -> LocalPointerTable<T>
     where
         T: Default,
     {
-        LocalPointerTable(PointerTableInner::new(len))
+        LocalPointerTable {
+            table: PointerTableInner::new(len),
+            base,
+        }
     }
 
-    pub fn from_raw(raw: Vec<T>) -> LocalPointerTable<T> {
-        LocalPointerTable(PointerTableInner::from_raw(raw))
+    pub fn from_raw(base: u32, raw: Vec<T>) -> LocalPointerTable<T> {
+        LocalPointerTable {
+            table: PointerTableInner::from_raw(raw),
+            base,
+        }
     }
 
-    pub fn into_raw(self) -> Vec<T> {
-        self.0.into_raw()
+    pub fn into_raw(self) -> (u32, Vec<T>) {
+        (self.base, self.table.into_raw())
     }
 
     pub fn len(&self) -> usize {
-        self.0 .0.len()
+        self.table.0.len()
     }
 
     pub fn fill(&mut self, x: T)
     where
         T: Clone,
     {
-        self.0 .0.fill(x);
+        self.table.0.fill(x);
     }
 
     pub fn push(&mut self, x: T) -> PointerId {
-        let raw = self.0.push(x);
+        let raw = self.table.push(x);
         PointerId::local(raw)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
-        self.0
-             .0
+        let base = self.base;
+        self.table
+            .0
             .iter()
             .enumerate()
-            .map(|(i, x)| (PointerId::local(i as u32), x))
+            .map(move |(i, x)| (PointerId::local(i as u32 + base), x))
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (PointerId, &mut T)> {
-        self.0
-             .0
+        let base = self.base;
+        self.table
+            .0
             .iter_mut()
             .enumerate()
-            .map(|(i, x)| (PointerId::local(i as u32), x))
+            .map(move |(i, x)| (PointerId::local(i as u32 + base), x))
     }
 }
 
@@ -217,14 +231,14 @@ impl<T> Index<PointerId> for LocalPointerTable<T> {
     type Output = T;
     fn index(&self, id: PointerId) -> &T {
         assert!(id.is_local());
-        &self.0[id.index()]
+        &self.table[id.index() - self.base]
     }
 }
 
 impl<T> IndexMut<PointerId> for LocalPointerTable<T> {
     fn index_mut(&mut self, id: PointerId) -> &mut T {
         assert!(id.is_local());
-        &mut self.0[id.index()]
+        &mut self.table[id.index() - self.base]
     }
 }
 
@@ -453,7 +467,7 @@ impl<T> OwnedPointerTable<T> {
     {
         OwnedPointerTable::new(
             GlobalPointerTable::new(table.global.len()),
-            LocalPointerTable::new(table.local.len()),
+            LocalPointerTable::new(table.local.base, table.local.len()),
         )
     }
 

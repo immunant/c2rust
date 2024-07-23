@@ -996,7 +996,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     ) -> AnalysisCtxt<'a, 'tcx> {
         AnalysisCtxt {
             gacx,
-            ptr_info: LocalPointerTable::empty(),
+            ptr_info: LocalPointerTable::empty(0),
             local_decls: &mir.local_decls,
             local_tys: IndexVec::new(),
             addr_of_local: IndexVec::new(),
@@ -1304,7 +1304,7 @@ fn remap_local_ptr_info(
     map: &PointerTable<PointerId>,
     num_pointers: usize,
 ) -> LocalPointerTable<PointerInfo> {
-    let mut new_local_ptr_info = LocalPointerTable::<PointerInfo>::new(num_pointers);
+    let mut new_local_ptr_info = LocalPointerTable::<PointerInfo>::new(0, num_pointers);
     let mut new_ptr_info = new_global_ptr_info.and_mut(&mut new_local_ptr_info);
     for (old, &new) in map.iter() {
         if old.is_global() {
@@ -1466,13 +1466,14 @@ pub struct LocalAssignment {
 
 impl LocalAssignment {
     pub fn new(
+        base: u32,
         len: usize,
         default_perms: PermissionSet,
         default_flags: FlagSet,
     ) -> LocalAssignment {
         LocalAssignment {
-            perms: LocalPointerTable::from_raw(vec![default_perms; len]),
-            flags: LocalPointerTable::from_raw(vec![default_flags; len]),
+            perms: LocalPointerTable::from_raw(base, vec![default_perms; len]),
+            flags: LocalPointerTable::from_raw(base, vec![default_flags; len]),
         }
     }
 }

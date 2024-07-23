@@ -743,7 +743,7 @@ fn run(tcx: TyCtxt) {
         }));
 
         let mut info = FuncInfo::default();
-        let local_pointee_types = LocalPointerTable::new(acx.num_pointers());
+        let local_pointee_types = LocalPointerTable::new(0, acx.num_pointers());
         info.acx_data.set(acx.into_data());
 
         match r {
@@ -851,7 +851,7 @@ fn run(tcx: TyCtxt) {
         };
 
         // Compute local equivalence classes and dataflow constraints.
-        let mut local_equiv = LocalEquivSet::new(acx.num_pointers());
+        let mut local_equiv = LocalEquivSet::new(0, acx.num_pointers());
         let mut equiv = global_equiv.and_mut(&mut local_equiv);
         for (a, b) in equiv_constraints {
             equiv.unify(a, b);
@@ -965,8 +965,8 @@ fn run(tcx: TyCtxt) {
 
     for info in func_info.values_mut() {
         let num_pointers = info.acx_data.num_pointers();
-        let mut lasn = LocalAssignment::new(num_pointers, INITIAL_PERMS, INITIAL_FLAGS);
-        let l_updates_forbidden = LocalPointerTable::new(num_pointers);
+        let mut lasn = LocalAssignment::new(0, num_pointers, INITIAL_PERMS, INITIAL_FLAGS);
+        let l_updates_forbidden = LocalPointerTable::new(0, num_pointers);
 
         for (ptr, &info) in info.acx_data.local_ptr_info().iter() {
             if should_make_fixed(info) {

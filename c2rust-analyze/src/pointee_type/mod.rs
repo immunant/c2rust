@@ -44,7 +44,7 @@ pub fn remap_pointers_local<'tcx>(
 ) {
     let mut old = mem::replace(
         local_pointee_types,
-        LocalPointerTable::new(counter.num_pointers()),
+        LocalPointerTable::new(0, counter.num_pointers()),
     );
     let mut new = global_pointee_types.and_mut(local_pointee_types);
     for (old_ptr, old_val) in old.iter_mut() {
