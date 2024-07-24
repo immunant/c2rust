@@ -737,28 +737,33 @@ fn run(tcx: TyCtxt) {
     pointee_type::remap_pointers_global(
         &mut global_pointee_types,
         &global_equiv_map,
-        &global_counter,
+        global_counter.num_pointers(),
     );
-    gacx.remap_pointers(&global_equiv_map, global_counter);
+    gacx.remap_pointers(&global_equiv_map, global_counter.num_pointers());
 
+    let mut local_counter = global_counter.into_local();
     for &ldid in &all_fn_ldids {
         // Note that we apply this `PointerId` remapping even for failed functions.
 
         let info = func_info.get_mut(&ldid).unwrap();
-        let (local_counter, local_equiv_map) = info.local_equiv.renumber(&global_equiv_map);
+        let (local_base, local_count, local_equiv_map) = info
+            .local_equiv
+            .renumber(&global_equiv_map, &mut local_counter);
         debug!("local_equiv_map = {local_equiv_map:?}");
         if info.local_pointee_types.is_set() {
             pointee_type::remap_pointers_local(
                 &mut global_pointee_types,
                 &mut info.local_pointee_types,
                 global_equiv_map.and(&local_equiv_map),
-                &local_counter,
+                local_base,
+                local_count,
             );
         }
         info.acx_data.remap_pointers(
             &mut gacx,
             global_equiv_map.and(&local_equiv_map),
-            local_counter,
+            local_base,
+            local_count,
         );
         if info.dataflow.is_set() {
             info.dataflow
@@ -831,8 +836,9 @@ fn run(tcx: TyCtxt) {
 
     for info in func_info.values_mut() {
         let num_pointers = info.acx_data.num_pointers();
-        let mut lasn = LocalAssignment::new(0, num_pointers, INITIAL_PERMS, INITIAL_FLAGS);
-        let l_updates_forbidden = LocalPointerTable::new(0, num_pointers);
+        let base = info.acx_data.local_ptr_base();
+        let mut lasn = LocalAssignment::new(base, num_pointers, INITIAL_PERMS, INITIAL_FLAGS);
+        let l_updates_forbidden = LocalPointerTable::new(base, num_pointers);
 
         for (ptr, &info) in info.acx_data.local_ptr_info().iter() {
             if should_make_fixed(info) {
