@@ -32,7 +32,6 @@ impl GlobalEquivSet {
     }
 
     fn set_parent(&self, x: PointerId, parent: PointerId) {
-        debug_assert!(parent.is_global());
         self.0[x].set(parent);
     }
 
@@ -84,7 +83,7 @@ impl LocalEquivSet {
 
     fn set_parent(&self, x: PointerId, parent: PointerId) {
         // `x` must be a local ID; its parent can be either local or global.
-        debug_assert!(!x.is_global());
+        debug_assert!(x.index() >= self.0.base());
         self.0[x].set(parent);
     }
 
@@ -97,7 +96,7 @@ impl LocalEquivSet {
     /// method.
     fn rep(&self, x: PointerId) -> PointerId {
         let parent = self.parent(x);
-        if parent == x || parent.is_global() || self.parent(parent) == parent {
+        if parent == x || parent.index() < self.0.base() || self.parent(parent) == parent {
             return parent;
         }
 
@@ -121,7 +120,7 @@ impl LocalEquivSet {
         for old_id in self.0.iter().map(|(x, _)| x) {
             let rep = self.rep(old_id);
 
-            if rep.is_global() {
+            if rep.index() < self.0.base() {
                 map[old_id] = global_map[rep];
             } else if !map[rep].is_none() {
                 map[old_id] = map[rep];
@@ -144,9 +143,9 @@ impl<'g> EquivSet<'g> {
 
     fn set_parent(&self, x: PointerId, parent: PointerId) {
         // Local items can point to global ones, but not vice versa.
-        if x.is_global() {
-            debug_assert!(parent.is_global());
-        }
+        //if x.is_global() {
+        //    debug_assert!(parent.is_global());
+        //}
 
         self.0[x].set(parent);
     }
@@ -173,7 +172,9 @@ impl<'g> EquivSet<'g> {
             return;
         }
 
-        if x_rep.is_global() {
+        // Prefer lower-numbered reps over higher-numbered ones.  This ensures that we always pick
+        // a global `PointerId` as the rep if the equivalence class contains one.
+        if x_rep.index() < y_rep.index() {
             self.set_parent(y_rep, x_rep);
             self.set_parent(y, x_rep);
         } else {
