@@ -170,14 +170,14 @@ fn export<'tcx>(
     ty_sets: PointerTable<HashSet<CTy<'tcx>>>,
     mut pointee_tys: PointerTableMut<PointeeTypes<'tcx>>,
 ) {
-    let local_ptr_base = pointee_tys.local().base();
+    let local_ptr_range = pointee_tys.local().range();
     for (ptr, ctys) in ty_sets.iter() {
         let out = &mut pointee_tys[ptr];
         for &cty in ctys {
             if let CTy::Ty(lty) = var_table.cty_rep(cty) {
                 let mut ok = true;
                 lty.for_each_label(&mut |p| {
-                    if !p.is_none() && p.index() >= local_ptr_base {
+                    if local_ptr_range.contains(p) {
                         ok = false;
                     }
                 });

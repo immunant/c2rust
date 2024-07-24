@@ -978,6 +978,10 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             .get(def_id)
             .intersects(DontRewriteFnReason::ANALYSIS_INVALID_MASK)
     }
+
+    pub fn ptr_is_global(&self, ptr: PointerId) -> bool {
+        self.ptr_info.contains(ptr)
+    }
 }
 
 impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
@@ -1060,6 +1064,10 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
 
     pub fn local_ptr_base(&self) -> u32 {
         self.ptr_info.base()
+    }
+
+    pub fn ptr_is_global(&self, ptr: PointerId) -> bool {
+        self.gacx.ptr_is_global(ptr)
     }
 
     pub fn type_of<T: TypeOf<'tcx>>(&self, x: T) -> LTy<'tcx> {
@@ -1309,7 +1317,7 @@ fn remap_local_ptr_info(
     let mut new_local_ptr_info = LocalPointerTable::<PointerInfo>::new(base, count);
     let mut new_ptr_info = new_global_ptr_info.and_mut(&mut new_local_ptr_info);
     for (old, &new) in map.iter() {
-        if old.index() < old_local_ptr_info.base() {
+        if !old_local_ptr_info.contains(old) {
             // If `old` is global then `new` is also global, and this remapping was handled already
             // by `remap_global_ptr_info`.
             continue;

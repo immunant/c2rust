@@ -262,6 +262,20 @@ impl<T> LocalPointerTable<T> {
         PointerId::local(raw + self.base)
     }
 
+    pub fn contains(&self, ptr: PointerId) -> bool {
+        // If `ptr.index() < self.base`, the subtraction will wrap to a large number in excess of
+        // `self.len()`.
+        ptr.index().wrapping_sub(self.base) < self.len() as u32
+    }
+
+    /// Helper for performing `contains` checks while `self` is mutably borrowed.
+    pub fn range(&self) -> PointerRange {
+        PointerRange {
+            base: self.base,
+            len: self.len() as u32,
+        }
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
         let base = self.base;
         self.table
@@ -328,6 +342,10 @@ impl<T> GlobalPointerTable<T> {
         PointerId::global(raw)
     }
 
+    pub fn contains(&self, ptr: PointerId) -> bool {
+        ptr.index() < self.len() as u32
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
         self.0
              .0
@@ -382,6 +400,19 @@ impl<T> IndexMut<PointerId> for GlobalPointerTable<T> {
     }
 }
 
+pub struct PointerRange {
+    base: u32,
+    len: u32,
+}
+
+impl PointerRange {
+    pub fn contains(&self, ptr: PointerId) -> bool {
+        // If `ptr.index() < self.base`, the subtraction will wrap to a large number in excess of
+        // `self.len()`.
+        ptr.index().wrapping_sub(self.base) < self.len
+    }
+}
+
 #[allow(dead_code)]
 impl<'a, T> PointerTable<'a, T> {
     pub fn new(
@@ -405,6 +436,14 @@ impl<'a, T> PointerTable<'a, T> {
 
     pub fn local(&self) -> &'a LocalPointerTable<T> {
         self.local
+    }
+
+    pub fn ptr_is_global(&self, ptr: PointerId) -> bool {
+        self.global.contains(ptr)
+    }
+
+    pub fn ptr_is_local(&self, ptr: PointerId) -> bool {
+        self.local.contains(ptr)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
@@ -467,6 +506,14 @@ impl<'a, T> PointerTableMut<'a, T> {
 
     pub fn local_mut(&mut self) -> &mut LocalPointerTable<T> {
         self.local
+    }
+
+    pub fn ptr_is_global(&self, ptr: PointerId) -> bool {
+        self.global.contains(ptr)
+    }
+
+    pub fn ptr_is_local(&self, ptr: PointerId) -> bool {
+        self.local.contains(ptr)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
@@ -535,6 +582,14 @@ impl<T> OwnedPointerTable<T> {
 
     pub fn len(&self) -> usize {
         self.global.len() + self.local.len()
+    }
+
+    pub fn ptr_is_global(&self, ptr: PointerId) -> bool {
+        self.global.contains(ptr)
+    }
+
+    pub fn ptr_is_local(&self, ptr: PointerId) -> bool {
+        self.local.contains(ptr)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
