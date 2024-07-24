@@ -31,7 +31,11 @@ pub enum EventKind {
     CopyRef,
 
     /// Projection. Used for operations like `_2 = &(*_1).0`.
-    Project(Pointer, Pointer),
+    /// The third value is a "projection index" that points to an element
+    /// of the projections data structure in the metadata. It is used to
+    /// disambiguate between different projections with the same pointer,
+    /// e.g., `(*p).x` and `(*p).x.a` where `a` is at offset 0.
+    Project(Pointer, Pointer, usize),
 
     Alloc {
         size: usize,
@@ -88,7 +92,9 @@ impl Debug for EventKind {
         use EventKind::*;
         match *self {
             CopyPtr(ptr) => write!(f, "copy(0x{:x})", ptr),
-            Project(ptr, new_ptr) => write!(f, "project(0x{:x}, 0x{:x})", ptr, new_ptr),
+            Project(ptr, new_ptr, idx) => {
+                write!(f, "project(0x{:x}, 0x{:x}, [{}])", ptr, new_ptr, idx)
+            }
             Alloc { size, ptr } => {
                 write!(f, "malloc({}) -> 0x{:x}", size, ptr)
             }

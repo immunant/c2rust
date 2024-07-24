@@ -31,6 +31,20 @@ impl<'tcx> IntoOperand<'tcx> for u32 {
     }
 }
 
+impl<'tcx> IntoOperand<'tcx> for usize {
+    fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx> {
+        Operand::Constant(Box::new(Constant {
+            span: DUMMY_SP,
+            user_ty: None,
+            literal: ConstantKind::Ty(ty::Const::from_bits(
+                tcx,
+                self.try_into().unwrap(),
+                ParamEnv::empty().and(tcx.types.usize),
+            )),
+        }))
+    }
+}
+
 impl<'tcx> IntoOperand<'tcx> for Local {
     fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx> {
         Place::from(self).op(tcx)

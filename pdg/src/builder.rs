@@ -70,7 +70,7 @@ impl EventKindExt for EventKind {
             Realloc { .. } => NodeKind::Alloc(1),
             Free { .. } => NodeKind::Free,
             CopyPtr(..) | CopyRef => NodeKind::Copy,
-            Project(base_ptr, new_ptr) => NodeKind::Project(new_ptr - base_ptr),
+            Project(base_ptr, new_ptr, idx) => NodeKind::Project(new_ptr - base_ptr, idx),
             LoadAddr(..) => NodeKind::LoadAddr,
             StoreAddr(..) => NodeKind::StoreAddr,
             StoreAddrTaken(..) => NodeKind::StoreAddr,

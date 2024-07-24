@@ -113,7 +113,7 @@ fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<(NodeId, Vec<Field>)>> {
         .rev()
         .filter_map(|(child, child_node)| Some((child_node.source?, child, child_node)))
     {
-        if let NodeKind::Project(f) = child_node.kind {
+        if let NodeKind::Project(_, f) = child_node.kind {
             let my_children =
                 children
                     .remove(&child)
@@ -256,8 +256,8 @@ mod test {
         mk_node(g, NodeKind::StoreAddr, Some(source))
     }
 
-    fn mk_project(g: &mut Graph, source: NodeId, field: impl Into<Field>) -> NodeId {
-        mk_node(g, NodeKind::Project(field.into()), Some(source))
+    fn mk_project(g: &mut Graph, source: NodeId, field: impl Into<Field>, idx: usize) -> NodeId {
+        mk_node(g, NodeKind::Project(field.into(), idx), Some(source))
     }
 
     fn mk_offset(g: &mut Graph, source: NodeId, i: isize) -> NodeId {
@@ -486,10 +486,10 @@ mod test {
         // let mut a = Point { x: 0, y: 0 };
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a.x;
-        let b11 = mk_project(&mut g, a, 0_usize);
+        let b11 = mk_project(&mut g, a, 0_usize, 0);
         let b1 = mk_copy(&mut g, b11);
         // let c = &mut a.y;
-        let c11 = mk_project(&mut g, a, 1_usize);
+        let c11 = mk_project(&mut g, a, 1_usize, 1);
         let c1 = mk_copy(&mut g, c11);
         // *b = 1;
         let b2 = mk_store_addr(&mut g, b1);
@@ -536,17 +536,17 @@ mod test {
         // let j = &mut a;
         let j = mk_copy(&mut g, a);
         // let b = &mut j.x;
-        let b11 = mk_project(&mut g, j, 0_usize);
+        let b11 = mk_project(&mut g, j, 0_usize, 0);
         let b1 = mk_copy(&mut g, b11);
         // let c = &mut j.x;
-        let c11 = mk_project(&mut g, j, 0_usize);
+        let c11 = mk_project(&mut g, j, 0_usize, 0);
         let c1 = mk_copy(&mut g, c11);
         // *b = 1;
         let b2 = mk_store_addr(&mut g, b1);
         // *c = 2;
         let c2 = mk_store_addr(&mut g, c1);
         // *(a.y) = 3;
-        let d1 = mk_project(&mut g, a, 1_usize);
+        let d1 = mk_project(&mut g, a, 1_usize, 1);
         let d2 = mk_store_addr(&mut g, d1);
 
         let pdg = build_pdg(g);
@@ -585,7 +585,7 @@ mod test {
         // let b = &mut a;
         let b1 = mk_copy(&mut g, a);
         // let c = &mut a.y;
-        let c11 = mk_project(&mut g, a, 1_usize);
+        let c11 = mk_project(&mut g, a, 1_usize, 0);
         let c1 = mk_copy(&mut g, c11);
         // *c = 2;
         let c2 = mk_store_addr(&mut g, c1);
@@ -631,10 +631,10 @@ mod test {
         // let b = &mut a;
         let b1 = mk_copy(&mut g, a);
         // let c = &mut b.y;
-        let c1 = mk_project(&mut g, a, 1_usize);
+        let c1 = mk_project(&mut g, a, 1_usize, 0);
         let c2 = mk_copy(&mut g, c1);
         // let bb = &mut b.y;
-        let bb = mk_project(&mut g, b1, 1_usize);
+        let bb = mk_project(&mut g, b1, 1_usize, 0);
         let bb1 = mk_copy(&mut g, bb);
         // *c = 2;
         let c3 = mk_store_addr(&mut g, c2);
@@ -676,14 +676,14 @@ mod test {
         // let mut a = ColorPoint { x: 0, y: 0, z: Color { r: 100, g: 100, b: 100 } };
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a.x;
-        let bb1 = mk_project(&mut g, a, x);
+        let bb1 = mk_project(&mut g, a, x, 0);
         let b1 = mk_copy(&mut g, bb1);
         // let c = &mut a.y;
-        let cc1 = mk_project(&mut g, a, y);
+        let cc1 = mk_project(&mut g, a, y, 1);
         let c1 = mk_copy(&mut g, cc1);
         // a.z.r = 200;
-        let x1 = mk_project(&mut g, a, z);
-        let x2 = mk_project(&mut g, x1, red);
+        let x1 = mk_project(&mut g, a, z, 2);
+        let x2 = mk_project(&mut g, x1, red, 0);
         let x3 = mk_store_addr(&mut g, x2);
         // *b = 4;
         let b2 = mk_store_addr(&mut g, b1);
@@ -694,19 +694,19 @@ mod test {
         // *d = ColorPoint { x: 0, y: 0, z: Color { r: 20, g: 200, b: 20 } };
         let d2 = mk_store_addr(&mut g, d1);
         // let e = &mut a.z;
-        let ee = mk_project(&mut g, a, z);
+        let ee = mk_project(&mut g, a, z, 2);
         let e = mk_copy(&mut g, ee);
         // let f = &mut e.g;
-        let ff1 = mk_project(&mut g, e, green);
+        let ff1 = mk_project(&mut g, e, green, 1);
         let f1 = mk_copy(&mut g, ff1);
         // let g = &mut e.g;
-        let ggg = mk_project(&mut g, e, green);
+        let ggg = mk_project(&mut g, e, green, 1);
         let gg = mk_copy(&mut g, ggg);
         // *f = 3;
         let f2 = mk_store_addr(&mut g, f1);
         // a.z.r = 100;
-        let x4 = mk_project(&mut g, a, z);
-        let x5 = mk_project(&mut g, x4, green);
+        let x4 = mk_project(&mut g, a, z, 2);
+        let x5 = mk_project(&mut g, x4, green, 1);
         let x6 = mk_store_addr(&mut g, x5);
 
         let pdg = build_pdg(g);
@@ -759,10 +759,10 @@ mod test {
         // let mut a = (1, (2, 3));
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let x = &mut a.0;
-        let x1 = mk_project(&mut g, a, 0_usize);
+        let x1 = mk_project(&mut g, a, 0_usize, 0);
         let x2 = mk_copy(&mut g, x1);
         // let y = &mut a.1;
-        let y1 = mk_project(&mut g, a, 1_usize);
+        let y1 = mk_project(&mut g, a, 1_usize, 1);
         let y2 = mk_copy(&mut g, y1);
         // *x = 1;
         let x3 = mk_store_addr(&mut g, x2);
@@ -817,12 +817,12 @@ mod test {
         // let mut a = (1, (2, 3));
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let x = &mut a.1.0;
-        let x1 = mk_project(&mut g, a, 1_usize);
-        let x2 = mk_project(&mut g, x1, 0_usize);
+        let x1 = mk_project(&mut g, a, 1_usize, 0);
+        let x2 = mk_project(&mut g, x1, 0_usize, 1);
         let x3 = mk_copy(&mut g, x2);
         // let y = &mut a.1.1;
-        let y1 = mk_project(&mut g, a, 1_usize);
-        let y2 = mk_project(&mut g, y1, 1_usize);
+        let y1 = mk_project(&mut g, a, 1_usize, 0);
+        let y2 = mk_project(&mut g, y1, 1_usize, 0);
         let y3 = mk_copy(&mut g, y2);
         // *x = 1;
         let x4 = mk_store_addr(&mut g, x3);
@@ -871,16 +871,16 @@ mod test {
         //let mut a = (1, (2, 3));
         let a = mk_addr_of_local(&mut g, 0_u32);
         //let mut x = &mut a.1;
-        let x1 = mk_project(&mut g, a, 1_usize);
+        let x1 = mk_project(&mut g, a, 1_usize, 0);
         let x2 = mk_copy(&mut g, x1);
         //let mut y = &mut a.1;
-        let y1 = mk_project(&mut g, a, 1_usize);
+        let y1 = mk_project(&mut g, a, 1_usize, 0);
         let y2 = mk_copy(&mut g, y1);
         // *(x.0) = 4;
-        let x3 = mk_project(&mut g, x2, 0_usize);
+        let x3 = mk_project(&mut g, x2, 0_usize, 1);
         let x4 = mk_store_addr(&mut g, x3);
         // *(y.1) = 2;
-        let y3 = mk_project(&mut g, y2, 1_usize);
+        let y3 = mk_project(&mut g, y2, 1_usize, 0);
         let y4 = mk_store_addr(&mut g, y3);
 
         let pdg = build_pdg(g);
@@ -925,12 +925,12 @@ mod test {
         // let mut a = (1, (2, 3));
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let x = &mut a.1.0;
-        let x1 = mk_project(&mut g, a, 1_usize);
-        let x2 = mk_project(&mut g, x1, 0_usize);
+        let x1 = mk_project(&mut g, a, 1_usize, 0);
+        let x2 = mk_project(&mut g, x1, 0_usize, 1);
         let x3 = mk_copy(&mut g, x2);
         // let y = &mut a.1.0;
-        let y1 = mk_project(&mut g, a, 1_usize);
-        let y2 = mk_project(&mut g, y1, 0_usize);
+        let y1 = mk_project(&mut g, a, 1_usize, 0);
+        let y2 = mk_project(&mut g, y1, 0_usize, 1);
         let y3 = mk_copy(&mut g, y2);
         // *x = 1;
         let x4 = mk_store_addr(&mut g, x3);
@@ -987,11 +987,11 @@ mod test {
         // let mut a = ([1, 2], [3, 4]);
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let x = &mut a.0[0];
-        let x1 = mk_project(&mut g, a, 1_usize);
+        let x1 = mk_project(&mut g, a, 1_usize, 0);
         let x2 = mk_offset(&mut g, x1, 0);
         let x3 = mk_copy(&mut g, x2);
         // let y = &mut a.0[1];
-        let y1 = mk_project(&mut g, a, 1_usize);
+        let y1 = mk_project(&mut g, a, 1_usize, 0);
         let y2 = mk_offset(&mut g, y1, 1);
         let y3 = mk_copy(&mut g, y2);
         // *x = 1;
@@ -1049,11 +1049,11 @@ mod test {
         // let mut a = ([1, 2], [3, 4]);
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let x = &mut a.0[0];
-        let x1 = mk_project(&mut g, a, 0_usize);
+        let x1 = mk_project(&mut g, a, 0_usize, 0);
         let x2 = mk_offset(&mut g, x1, 0);
         let x3 = mk_copy(&mut g, x2);
         // let y = &mut a.1[0];
-        let y1 = mk_project(&mut g, a, 1_usize);
+        let y1 = mk_project(&mut g, a, 1_usize, 1);
         let y2 = mk_offset(&mut g, y1, 0);
         let y3 = mk_copy(&mut g, y2);
         // *x = 1;
@@ -1121,11 +1121,11 @@ mod test {
         let p = mk_addr_of_local(&mut g, 0_u32);
         // let x = &mut (*p)[0].0;
         let x1 = mk_offset(&mut g, p, 0);
-        let x2 = mk_project(&mut g, x1, 0_usize);
+        let x2 = mk_project(&mut g, x1, 0_usize, 0);
         let x3 = mk_copy(&mut g, x2);
         // let y = &mut (*p)[0].1;
         let y1 = mk_offset(&mut g, p, 0);
-        let y2 = mk_project(&mut g, y1, 1_usize);
+        let y2 = mk_project(&mut g, y1, 1_usize, 1);
         let y3 = mk_copy(&mut g, y2);
         // *x = 1;
         let x4 = mk_store_addr(&mut g, x3);
