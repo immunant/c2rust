@@ -200,8 +200,16 @@ impl<T> LocalPointerTable<T> {
         (self.base, self.table.into_raw())
     }
 
+    pub fn base(&self) -> u32 {
+        self.base
+    }
+
     pub fn len(&self) -> usize {
         self.table.0.len()
+    }
+
+    pub fn next_index(&self) -> u32 {
+        self.base + self.len() as u32
     }
 
     pub fn fill(&mut self, x: T)
@@ -274,6 +282,10 @@ impl<T> GlobalPointerTable<T> {
 
     pub fn len(&self) -> usize {
         self.0 .0.len()
+    }
+
+    pub fn next_index(&self) -> u32 {
+        self.len() as u32
     }
 
     pub fn push(&mut self, x: T) -> PointerId {
