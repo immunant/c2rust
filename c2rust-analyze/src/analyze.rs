@@ -1150,8 +1150,8 @@ fn run(tcx: TyCtxt) {
             &mut gasn,
             &mut g_updates_forbidden,
             pdg_file_path,
-            |_asn, _updates_forbidden, ldid, ptr, _node_info, is_known_null| {
-                let parent = if ptr.is_global() { None } else { Some(ldid) };
+            |_asn, _updates_forbidden, ldid, ptr, ptr_is_global, _node_info, is_known_null| {
+                let parent = if ptr_is_global { None } else { Some(ldid) };
                 let obs = observations.entry((parent, ptr)).or_insert((false, false));
                 if is_known_null {
                     obs.0 = true;
@@ -1203,7 +1203,8 @@ fn run(tcx: TyCtxt) {
                 let mut has_dynamic_observations = false;
                 for ptr in ptrs {
                     let static_non_null: bool = asn.perms()[ptr].contains(PermissionSet::NON_NULL);
-                    let parent = if ptr.is_global() { None } else { Some(ldid) };
+                    let ptr_is_global = ptr.index() < acx.local_ptr_base();
+                    let parent = if ptr_is_global { None } else { Some(ldid) };
                     let dynamic_non_null: Option<bool> = observations
                         .get(&(parent, ptr))
                         .map(|&(saw_null, saw_non_null)| saw_non_null && !saw_null);
@@ -2258,7 +2259,7 @@ fn pdg_update_permissions<'tcx>(
         gasn,
         g_updates_forbidden,
         pdg_file_path,
-        |asn, updates_forbidden, _ldid, ptr, node_info, is_known_null| {
+        |asn, updates_forbidden, _ldid, ptr, _ptr_is_global, node_info, is_known_null| {
             let old_perms = asn.perms()[ptr];
             let mut perms = old_perms;
             if is_known_null {
@@ -2314,7 +2315,7 @@ fn pdg_update_permissions_with_callback<'tcx>(
     gasn: &mut GlobalAssignment,
     g_updates_forbidden: &mut GlobalPointerTable<PermissionSet>,
     pdg_file_path: impl AsRef<Path>,
-    mut callback: impl FnMut(&mut Assignment, &mut PointerTableMut<PermissionSet>, LocalDefId, PointerId, &NodeInfo, bool),
+    mut callback: impl FnMut(&mut Assignment, &mut PointerTableMut<PermissionSet>, LocalDefId, PointerId, bool, &NodeInfo, bool),
 ) {
     let tcx = gacx.tcx;
 
@@ -2417,7 +2418,8 @@ fn pdg_update_permissions_with_callback<'tcx>(
                 }
             };
 
-            callback(&mut asn, &mut updates_forbidden, ldid, ptr, node_info, is_known_null);
+            let ptr_is_global = ptr.index() < acx.local_ptr_base();
+            callback(&mut asn, &mut updates_forbidden, ldid, ptr, ptr_is_global, node_info, is_known_null);
 
             info.acx_data.set(acx.into_data());
         }

@@ -1,8 +1,15 @@
+use std::cmp::Ordering;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::ops::{Index, IndexMut};
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy)]
 pub struct PointerId(u32);
+
+/// Flag used to indicate that a `PointerId` is a global pointer instead of a local one.
+///
+/// This is only for debug purposes.  The `Display` impl for `PointerId`s prints global pointers
+/// like `g99` and local pointers like `l99`.
 const GLOBAL_BIT: u32 = 0x8000_0000;
 
 #[allow(dead_code)]
@@ -31,24 +38,16 @@ impl PointerId {
     pub fn is_none(self) -> bool {
         self == PointerId::NONE
     }
-
-    pub fn is_global(self) -> bool {
-        self.0 & GLOBAL_BIT != 0 && !self.is_none()
-    }
-
-    pub fn is_local(self) -> bool {
-        self.0 & GLOBAL_BIT == 0
-    }
 }
 
 impl fmt::Display for PointerId {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         if self.is_none() {
             write!(fmt, "NONE")
-        } else if self.is_local() {
+        } else if self.0 & GLOBAL_BIT == 0 {
             write!(fmt, "l{}", self.index())
         } else {
-            debug_assert!(self.is_global());
+            debug_assert!(self.0 & GLOBAL_BIT != 0);
             write!(fmt, "g{}", self.index())
         }
     }
@@ -57,6 +56,36 @@ impl fmt::Display for PointerId {
 impl fmt::Debug for PointerId {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self)
+    }
+}
+
+impl PartialEq for PointerId {
+    fn eq(&self, other: &PointerId) -> bool {
+        self.index() == other.index()
+    }
+
+    fn ne(&self, other: &PointerId) -> bool {
+        self.index() != other.index()
+    }
+}
+
+impl Eq for PointerId {}
+
+impl PartialOrd for PointerId {
+    fn partial_cmp(&self, other: &PointerId) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for PointerId {
+    fn cmp(&self, other: &PointerId) -> Ordering {
+        self.index().cmp(&other.index())
+    }
+}
+
+impl Hash for PointerId {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.index().hash(hasher);
     }
 }
 
@@ -255,14 +284,12 @@ impl<T> LocalPointerTable<T> {
 impl<T> Index<PointerId> for LocalPointerTable<T> {
     type Output = T;
     fn index(&self, id: PointerId) -> &T {
-        assert!(id.is_local());
         &self.table[id.index() - self.base]
     }
 }
 
 impl<T> IndexMut<PointerId> for LocalPointerTable<T> {
     fn index_mut(&mut self, id: PointerId) -> &mut T {
-        assert!(id.is_local());
         &mut self.table[id.index() - self.base]
     }
 }
@@ -345,14 +372,12 @@ impl<T> GlobalPointerTable<T> {
 impl<T> Index<PointerId> for GlobalPointerTable<T> {
     type Output = T;
     fn index(&self, id: PointerId) -> &T {
-        assert!(id.is_global());
         &self.0[id.index()]
     }
 }
 
 impl<T> IndexMut<PointerId> for GlobalPointerTable<T> {
     fn index_mut(&mut self, id: PointerId) -> &mut T {
-        assert!(id.is_global());
         &mut self.0[id.index()]
     }
 }
@@ -399,7 +424,7 @@ impl<'a, T> Index<PointerId> for PointerTable<'a, T> {
     type Output = T;
     fn index(&self, id: PointerId) -> &T {
         debug_assert!(!id.is_none());
-        if id.is_global() {
+        if id.index() < self.local.base {
             &self.global[id]
         } else {
             &self.local[id]
@@ -465,7 +490,7 @@ impl<'a, T> Index<PointerId> for PointerTableMut<'a, T> {
     type Output = T;
     fn index(&self, id: PointerId) -> &T {
         debug_assert!(!id.is_none());
-        if id.is_global() {
+        if id.index() < self.local.base {
             &self.global[id]
         } else {
             &self.local[id]
@@ -476,7 +501,7 @@ impl<'a, T> Index<PointerId> for PointerTableMut<'a, T> {
 impl<'a, T> IndexMut<PointerId> for PointerTableMut<'a, T> {
     fn index_mut(&mut self, id: PointerId) -> &mut T {
         debug_assert!(!id.is_none());
-        if id.is_global() {
+        if id.index() < self.local.base {
             &mut self.global[id]
         } else {
             &mut self.local[id]
@@ -533,7 +558,7 @@ impl<T> Index<PointerId> for OwnedPointerTable<T> {
     type Output = T;
     fn index(&self, id: PointerId) -> &T {
         debug_assert!(!id.is_none());
-        if id.is_global() {
+        if id.index() < self.local.base {
             &self.global[id]
         } else {
             &self.local[id]
@@ -544,7 +569,7 @@ impl<T> Index<PointerId> for OwnedPointerTable<T> {
 impl<T> IndexMut<PointerId> for OwnedPointerTable<T> {
     fn index_mut(&mut self, id: PointerId) -> &mut T {
         debug_assert!(!id.is_none());
-        if id.is_global() {
+        if id.index() < self.local.base {
             &mut self.global[id]
         } else {
             &mut self.local[id]
