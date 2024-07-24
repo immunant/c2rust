@@ -74,6 +74,10 @@ impl NextLocalPointerId {
         PointerId::local(x)
     }
 
+    pub fn value(&self) -> u32 {
+        self.0
+    }
+
     pub fn num_pointers(&self) -> usize {
         self.0 as usize
     }
@@ -95,6 +99,10 @@ impl NextGlobalPointerId {
 
     pub fn num_pointers(&self) -> usize {
         self.0 as usize
+    }
+
+    pub fn into_local(self) -> NextLocalPointerId {
+        NextLocalPointerId(self.0)
     }
 }
 

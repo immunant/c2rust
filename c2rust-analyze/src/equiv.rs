@@ -107,13 +107,14 @@ impl LocalEquivSet {
     }
 
     /// Assign new `PointerId`s for the pointers in this set, with one ID per equivalence class.
-    /// Returns the next-ID counter for the new numbering and a map from old `PointerId`s to new
-    /// ones.
+    /// Returns the base, the number of pointers after remapping, and a map from old `PointerId`s
+    /// to new ones.
     pub fn renumber(
         &self,
         global_map: &GlobalPointerTable<PointerId>,
-    ) -> (NextLocalPointerId, LocalPointerTable<PointerId>) {
-        let mut counter = NextLocalPointerId::new();
+        counter: &mut NextLocalPointerId,
+    ) -> (u32, usize, LocalPointerTable<PointerId>) {
+        let base = counter.value();
         let mut map =
             LocalPointerTable::from_raw(self.0.base(), vec![PointerId::NONE; self.0.len()]);
 
@@ -131,7 +132,8 @@ impl LocalEquivSet {
             };
         }
 
-        (counter, map)
+        let count = (counter.value() - base) as usize;
+        (base, count, map)
     }
 }
 
