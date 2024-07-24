@@ -83,7 +83,7 @@ impl LocalEquivSet {
 
     fn set_parent(&self, x: PointerId, parent: PointerId) {
         // `x` must be a local ID; its parent can be either local or global.
-        debug_assert!(x.index() >= self.0.base());
+        debug_assert!(self.0.contains(x));
         self.0[x].set(parent);
     }
 
@@ -96,7 +96,7 @@ impl LocalEquivSet {
     /// method.
     fn rep(&self, x: PointerId) -> PointerId {
         let parent = self.parent(x);
-        if parent == x || parent.index() < self.0.base() || self.parent(parent) == parent {
+        if parent == x || !self.0.contains(parent) || self.parent(parent) == parent {
             return parent;
         }
 
@@ -120,7 +120,7 @@ impl LocalEquivSet {
         for old_id in self.0.iter().map(|(x, _)| x) {
             let rep = self.rep(old_id);
 
-            if rep.index() < self.0.base() {
+            if global_map.contains(rep) {
                 map[old_id] = global_map[rep];
             } else if !map[rep].is_none() {
                 map[old_id] = map[rep];
@@ -128,7 +128,7 @@ impl LocalEquivSet {
                 let new_id = counter.next();
                 map[old_id] = new_id;
                 map[rep] = new_id;
-            };
+            }
         }
 
         let count = (counter.value() - base) as usize;

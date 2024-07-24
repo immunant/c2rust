@@ -1203,8 +1203,11 @@ fn run(tcx: TyCtxt) {
                 let mut has_dynamic_observations = false;
                 for ptr in ptrs {
                     let static_non_null: bool = asn.perms()[ptr].contains(PermissionSet::NON_NULL);
-                    let ptr_is_global = ptr.index() < acx.local_ptr_base();
-                    let parent = if ptr_is_global { None } else { Some(ldid) };
+                    let parent = if acx.ptr_is_global(ptr) {
+                        None
+                    } else {
+                        Some(ldid)
+                    };
                     let dynamic_non_null: Option<bool> = observations
                         .get(&(parent, ptr))
                         .map(|&(saw_null, saw_non_null)| saw_non_null && !saw_null);
@@ -2418,7 +2421,7 @@ fn pdg_update_permissions_with_callback<'tcx>(
                 }
             };
 
-            let ptr_is_global = ptr.index() < acx.local_ptr_base();
+            let ptr_is_global = acx.ptr_is_global(ptr);
             callback(&mut asn, &mut updates_forbidden, ldid, ptr, ptr_is_global, node_info, is_known_null);
 
             info.acx_data.set(acx.into_data());
