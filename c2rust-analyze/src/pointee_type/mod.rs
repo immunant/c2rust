@@ -23,12 +23,9 @@ pub fn generate_constraints<'tcx>(
 pub fn remap_pointers_global<'tcx>(
     pointee_types: &mut GlobalPointerTable<PointeeTypes<'tcx>>,
     map: &GlobalPointerTable<PointerId>,
-    counter: &NextGlobalPointerId,
+    count: usize,
 ) {
-    let mut old = mem::replace(
-        pointee_types,
-        GlobalPointerTable::new(counter.num_pointers()),
-    );
+    let mut old = mem::replace(pointee_types, GlobalPointerTable::new(count));
     let new = pointee_types;
     for (old_ptr, old_val) in old.iter_mut() {
         // If there are multiple old pointers that map to the same new pointer, merge their sets.
@@ -40,11 +37,12 @@ pub fn remap_pointers_local<'tcx>(
     global_pointee_types: &mut GlobalPointerTable<PointeeTypes<'tcx>>,
     local_pointee_types: &mut LocalPointerTable<PointeeTypes<'tcx>>,
     map: PointerTable<PointerId>,
-    counter: &NextLocalPointerId,
+    local_base: u32,
+    local_count: usize,
 ) {
     let mut old = mem::replace(
         local_pointee_types,
-        LocalPointerTable::new(0, counter.num_pointers()),
+        LocalPointerTable::new(local_base, local_count),
     );
     let mut new = global_pointee_types.and_mut(local_pointee_types);
     for (old_ptr, old_val) in old.iter_mut() {
