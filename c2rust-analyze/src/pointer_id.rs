@@ -175,6 +175,10 @@ impl<T> LocalPointerTable<T> {
     where
         T: Default,
     {
+        // `base + len` must not exceed `u32::MAX`.
+        let len_u32 = u32::try_from(len).unwrap();
+        assert!(base.checked_add(len_u32).is_some());
+
         LocalPointerTable {
             table: PointerTableInner::new(len),
             base,
@@ -182,6 +186,10 @@ impl<T> LocalPointerTable<T> {
     }
 
     pub fn from_raw(base: u32, raw: Vec<T>) -> LocalPointerTable<T> {
+        // `base + len` must not exceed `u32::MAX`.
+        let len = u32::try_from(raw.len()).unwrap();
+        assert!(base.checked_add(len).is_some());
+
         LocalPointerTable {
             table: PointerTableInner::from_raw(raw),
             base,
@@ -204,8 +212,9 @@ impl<T> LocalPointerTable<T> {
     }
 
     pub fn push(&mut self, x: T) -> PointerId {
+        assert!(self.base + (self.len() as u32) < u32::MAX);
         let raw = self.table.push(x);
-        PointerId::local(raw)
+        PointerId::local(raw + self.base)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
