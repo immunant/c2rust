@@ -29,6 +29,7 @@ use crate::hooks::Hooks;
 use crate::into_operand::IntoOperand;
 use crate::mir_utils::remove_outer_deref;
 use crate::point::InstrumentationApplier;
+use crate::point::ProjectionSet;
 use crate::point::{cast_ptr_to_usize, InstrumentationPriority};
 use crate::point::{
     CollectAddressTakenLocals, CollectInstrumentationPoints, RewriteAddressTakenLocals,
@@ -39,6 +40,7 @@ use crate::util::Convert;
 pub struct Instrumenter {
     mir_locs: Mutex<IndexSet<MirLoc>>,
     functions: Mutex<HashMap<FuncId, String>>,
+    projections: Mutex<IndexSet<Vec<usize>>>,
 }
 
 impl Instrumenter {
@@ -73,9 +75,14 @@ impl Instrumenter {
     pub fn finalize(&self, metadata_path: &Path) -> anyhow::Result<()> {
         let mut locs = self.mir_locs.lock().unwrap();
         let mut functions = self.functions.lock().unwrap();
+        let projections = std::mem::take(&mut *self.projections.lock().unwrap());
         let locs = locs.drain(..).collect::<Vec<_>>();
         let functions = functions.drain().collect::<HashMap<_, _>>();
-        let metadata = Metadata { locs, functions };
+        let metadata = Metadata {
+            locs,
+            functions,
+            projections,
+        };
         let bytes = bincode::serialize(&metadata).context("Location serialization failed")?;
         let mut file = OpenOptions::new()
             .append(true)
@@ -113,6 +120,12 @@ impl Instrumenter {
         };
         let (idx, _) = self.mir_locs.lock().unwrap().insert_full(mir_loc);
         idx.try_into().unwrap()
+    }
+}
+
+impl ProjectionSet for Instrumenter {
+    fn add_proj(&self, proj: Vec<usize>) -> usize {
+        self.projections.lock().unwrap().insert_full(proj).0
     }
 }
 
@@ -377,7 +390,14 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
 
         while let Some((inner_deref_base, PlaceElem::Deref)) = proj_iter.next() {
             // Find the next Deref or end of projections
+            // Meanwhile, collect all `Field`s into a vector that we
+            // can add to the `projections` IndexSet
+            let mut fields = vec![];
             let (outer_deref_base, have_outer_deref) = loop {
+                if let Some((_, PlaceElem::Field(idx, _))) = proj_iter.peek() {
+                    fields.push(idx.index());
+                }
+
                 match proj_iter.peek() {
                     Some((base, PlaceElem::Deref)) => break (base.clone(), true),
                     // Reached the end, we can use the full place
@@ -397,6 +417,8 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
             let have_other_projections =
                 outer_deref_base.projection.len() - inner_deref_base.projection.len() > 1;
             if have_other_projections {
+                let proj_idx = self.projections.add_proj(fields);
+
                 let dest = || {
                     if have_outer_deref {
                         // Only the last field projection gets a destination
@@ -430,6 +452,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                 self.loc(location, location, project_fn)
                     .arg_var(inner_deref_base)
                     .arg_addr_of(outer_deref_base.clone())
+                    .arg_var(proj_idx)
                     .source(&inner_deref_op)
                     .dest_from(dest)
                     .add_to(self);
@@ -800,7 +823,8 @@ fn instrument_body<'a, 'tcx>(
 
     // collect instrumentation points
     let points = {
-        let mut collector = CollectInstrumentationPoints::new(tcx, hooks, body, local_to_address);
+        let mut collector =
+            CollectInstrumentationPoints::new(tcx, hooks, body, local_to_address, state);
         collector.visit_body(body);
         collector.into_instrumentation_points()
     };

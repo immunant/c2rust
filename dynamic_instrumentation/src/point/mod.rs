@@ -112,6 +112,10 @@ impl<'tcx> RewriteAddressTakenLocals<'tcx> {
     }
 }
 
+pub trait ProjectionSet {
+    fn add_proj(&self, proj: Vec<usize>) -> usize;
+}
+
 pub struct CollectInstrumentationPoints<'a, 'tcx: 'a> {
     tcx: TyCtxt<'tcx>,
     hooks: Hooks<'tcx>,
@@ -119,6 +123,7 @@ pub struct CollectInstrumentationPoints<'a, 'tcx: 'a> {
     pub instrumentation_points: Vec<InstrumentationPoint<'tcx>>,
     assignment: Option<(Place<'tcx>, Rvalue<'tcx>)>,
     pub addr_taken_local_addresses: IndexMap<Local, Local>,
+    pub projections: &'a dyn ProjectionSet,
 }
 
 impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
@@ -127,6 +132,7 @@ impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
         hooks: Hooks<'tcx>,
         body: &'a Body<'tcx>,
         addr_taken_local_addresses: IndexMap<Local, Local>,
+        projections: &'a dyn ProjectionSet,
     ) -> Self {
         Self {
             tcx,
@@ -135,6 +141,7 @@ impl<'a, 'tcx: 'a> CollectInstrumentationPoints<'a, 'tcx> {
             instrumentation_points: Default::default(),
             assignment: Default::default(),
             addr_taken_local_addresses,
+            projections,
         }
     }
 
