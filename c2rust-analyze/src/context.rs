@@ -4,10 +4,7 @@ use crate::borrowck::{AdtMetadata, FieldMetadata, OriginArg, OriginParam};
 use crate::known_fn::{all_known_fns, KnownFn};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::panic_detail::PanicDetail;
-use crate::pointer_id::{
-    GlobalPointerTable, LocalPointerTable, NextGlobalPointerId, NextLocalPointerId, PointerTable,
-    PointerTableMut,
-};
+use crate::pointer_id::{GlobalPointerTable, LocalPointerTable, PointerTable, PointerTableMut};
 use crate::util::{self, describe_rvalue, PhantomLifetime, RvalueDesc};
 use assert_matches::assert_matches;
 use bitflags::bitflags;
@@ -865,11 +862,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     /// Update all [`PointerId`]s in `self`, replacing each `p` with `map[p]`.  Also sets the "next
     /// [`PointerId`]" counter to `counter`.  `map` and `counter` are usually computed together via
     /// [`GlobalEquivSet::renumber`][crate::equiv::GlobalEquivSet::renumber].
-    pub fn remap_pointers(
-        &mut self,
-        map: &GlobalPointerTable<PointerId>,
-        counter: NextGlobalPointerId,
-    ) {
+    pub fn remap_pointers(&mut self, map: &GlobalPointerTable<PointerId>, count: usize) {
         let GlobalAnalysisCtxt {
             tcx: _,
             lcx,
@@ -890,7 +883,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             foreign_mentioned_tys: _,
         } = *self;
 
-        *ptr_info = remap_global_ptr_info(ptr_info, map, counter.num_pointers());
+        *ptr_info = remap_global_ptr_info(ptr_info, map, count);
 
         for sig in fn_sigs.values_mut() {
             sig.inputs = lcx.mk_slice(
@@ -1230,7 +1223,8 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
         &mut self,
         gacx: &mut GlobalAnalysisCtxt<'tcx>,
         map: PointerTable<PointerId>,
-        counter: NextLocalPointerId,
+        local_base: u32,
+        local_count: usize,
     ) {
         let lcx = gacx.lcx;
 
@@ -1243,7 +1237,7 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
         } = self;
 
         *ptr_info =
-            remap_local_ptr_info(ptr_info, &mut gacx.ptr_info, &map, counter.num_pointers());
+            remap_local_ptr_info(ptr_info, &mut gacx.ptr_info, &map, local_base, local_count);
 
         for lty in local_tys {
             *lty = remap_lty_pointers(lcx, &map, lty);
@@ -1309,9 +1303,10 @@ fn remap_local_ptr_info(
     old_local_ptr_info: &LocalPointerTable<PointerInfo>,
     new_global_ptr_info: &mut GlobalPointerTable<PointerInfo>,
     map: &PointerTable<PointerId>,
-    num_pointers: usize,
+    base: u32,
+    count: usize,
 ) -> LocalPointerTable<PointerInfo> {
-    let mut new_local_ptr_info = LocalPointerTable::<PointerInfo>::new(0, num_pointers);
+    let mut new_local_ptr_info = LocalPointerTable::<PointerInfo>::new(base, count);
     let mut new_ptr_info = new_global_ptr_info.and_mut(&mut new_local_ptr_info);
     for (old, &new) in map.iter() {
         if old.is_global() {

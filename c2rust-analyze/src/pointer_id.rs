@@ -64,7 +64,7 @@ impl fmt::Debug for PointerId {
 pub struct NextLocalPointerId(u32);
 
 impl NextLocalPointerId {
-    pub fn new() -> NextLocalPointerId {
+    pub fn _new() -> NextLocalPointerId {
         NextLocalPointerId(0)
     }
 
@@ -74,7 +74,11 @@ impl NextLocalPointerId {
         PointerId::local(x)
     }
 
-    pub fn num_pointers(&self) -> usize {
+    pub fn value(&self) -> u32 {
+        self.0
+    }
+
+    pub fn _num_pointers(&self) -> usize {
         self.0 as usize
     }
 }
@@ -95,6 +99,10 @@ impl NextGlobalPointerId {
 
     pub fn num_pointers(&self) -> usize {
         self.0 as usize
+    }
+
+    pub fn into_local(self) -> NextLocalPointerId {
+        NextLocalPointerId(self.0)
     }
 }
 
