@@ -25,7 +25,7 @@ pub enum NodeKind {
     /// [`Field`] projection.
     ///
     /// Used for operations like `_2 = &(*_1).0`.
-    Project(usize),
+    Project(usize, usize),
 
     /// Pointer arithmetic.
     ///
@@ -119,7 +119,7 @@ impl Display for NodeKind {
         use NodeKind::*;
         match self {
             Copy => write!(f, "copy"),
-            Project(offset) => write!(f, "project.{offset}"),
+            Project(offset, idx) => write!(f, "project.{idx}@{offset}"),
             Offset(offset) => write!(f, "offset[{offset}]"),
             AddrOfLocal(local) => write!(f, "&{local:?}"),
             _AddrOfStatic(static_) => write!(f, "&'static {static_:?}"),
