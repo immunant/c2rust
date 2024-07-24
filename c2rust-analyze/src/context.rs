@@ -1318,7 +1318,7 @@ fn remap_local_ptr_info(
     let mut new_local_ptr_info = LocalPointerTable::<PointerInfo>::new(base, count);
     let mut new_ptr_info = new_global_ptr_info.and_mut(&mut new_local_ptr_info);
     for (old, &new) in map.iter() {
-        if old.is_global() {
+        if old.index() < old_local_ptr_info.base() {
             // If `old` is global then `new` is also global, and this remapping was handled already
             // by `remap_global_ptr_info`.
             continue;

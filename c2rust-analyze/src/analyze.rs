@@ -1153,8 +1153,8 @@ fn run(tcx: TyCtxt) {
             &mut gasn,
             &mut g_updates_forbidden,
             pdg_file_path,
-            |_asn, _updates_forbidden, ldid, ptr, _node_info, node_is_non_null| {
-                let parent = if ptr.is_global() { None } else { Some(ldid) };
+            |_asn, _updates_forbidden, ldid, ptr, ptr_is_global, _node_info, node_is_non_null| {
+                let parent = if ptr_is_global { None } else { Some(ldid) };
                 let obs = observations.entry((parent, ptr)).or_insert((false, false));
                 if node_is_non_null {
                     obs.1 = true;
@@ -1206,7 +1206,8 @@ fn run(tcx: TyCtxt) {
                 let mut has_dynamic_observations = false;
                 for ptr in ptrs {
                     let static_non_null: bool = asn.perms()[ptr].contains(PermissionSet::NON_NULL);
-                    let parent = if ptr.is_global() { None } else { Some(ldid) };
+                    let ptr_is_global = ptr.index() < acx.local_ptr_base();
+                    let parent = if ptr_is_global { None } else { Some(ldid) };
                     let dynamic_non_null: Option<bool> = observations
                         .get(&(parent, ptr))
                         .map(|&(saw_null, saw_non_null)| saw_non_null && !saw_null);
@@ -2263,7 +2264,7 @@ fn pdg_update_permissions<'tcx>(
         gasn,
         g_updates_forbidden,
         pdg_file_path,
-        |asn, updates_forbidden, _ldid, ptr, node_info, node_is_non_null| {
+        |asn, updates_forbidden, _ldid, ptr, _ptr_is_global, node_info, node_is_non_null| {
             let old_perms = asn.perms()[ptr];
             let mut perms = old_perms;
             if !node_is_non_null {
@@ -2326,6 +2327,7 @@ fn pdg_update_permissions_with_callback<'tcx>(
         &mut PointerTableMut<PermissionSet>,
         LocalDefId,
         PointerId,
+        bool,
         Option<&NodeInfo>,
         bool,
     ),
@@ -2417,11 +2419,13 @@ fn pdg_update_permissions_with_callback<'tcx>(
                 }
             };
 
+            let ptr_is_global = ptr.index() < acx.local_ptr_base();
             callback(
                 &mut asn,
                 &mut updates_forbidden,
                 ldid,
                 ptr,
+                ptr_is_global,
                 n.info.as_ref(),
                 !known_nulls.contains(&(n.function.id, dest)),
             );
