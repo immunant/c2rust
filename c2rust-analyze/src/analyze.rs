@@ -601,7 +601,7 @@ fn run(tcx: TyCtxt) {
             pointee_type::generate_constraints(&acx, &mir)
         }));
 
-        let local_pointee_types = LocalPointerTable::new(0, acx.num_pointers());
+        let local_pointee_types = LocalPointerTable::new(acx.local_ptr_base(), acx.num_pointers());
         info.acx_data.set(acx.into_data());
 
         match r {
@@ -683,7 +683,8 @@ fn run(tcx: TyCtxt) {
     let mut global_equiv = GlobalEquivSet::new(gacx.num_pointers());
     for &ldid in &all_fn_ldids {
         let info = func_info.get_mut(&ldid).unwrap();
-        let mut local_equiv = LocalEquivSet::new(0, info.acx_data.num_pointers());
+        let mut local_equiv =
+            LocalEquivSet::new(info.acx_data.local_ptr_base(), info.acx_data.num_pointers());
 
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             // Even on failure, we set a blank `local_equiv`.  This is necessary because we apply
@@ -1816,6 +1817,8 @@ fn assign_pointer_ids<'tcx>(
 
     // Local variables
 
+    let mut next_base = gacx.ptr_info().next_index();
+    eprintln!("global pointerid range: {} .. {}", 0, next_base);
     for &ldid in all_fn_ldids {
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
@@ -1826,7 +1829,7 @@ fn assign_pointer_ids<'tcx>(
         let mir = mir.borrow();
         let lsig = *gacx.fn_sigs.get(&ldid.to_def_id()).unwrap();
 
-        let mut acx = gacx.function_context(&mir);
+        let mut acx = gacx.function_context(&mir, next_base);
 
         let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
             // Assign PointerIds to local types
@@ -1861,6 +1864,13 @@ fn assign_pointer_ids<'tcx>(
             label_rvalue_tys(&mut acx, &mir);
             update_pointer_info(&mut acx, &mir);
         }));
+
+        next_base = acx.local_ptr_info().next_index();
+        eprintln!(
+            "local pointerid range: {} .. {}",
+            acx.local_ptr_base(),
+            next_base
+        );
 
         let mut info = FuncInfo::default();
         info.acx_data.set(acx.into_data());
