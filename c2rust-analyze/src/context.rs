@@ -834,8 +834,12 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         self.fn_origins = fn_origin_args_params(self.tcx, &self.adt_metadata);
     }
 
-    pub fn function_context<'a>(&'a mut self, mir: &'a Body<'tcx>) -> AnalysisCtxt<'a, 'tcx> {
-        AnalysisCtxt::new(self, mir)
+    pub fn function_context<'a>(
+        &'a mut self,
+        mir: &'a Body<'tcx>,
+        base: u32,
+    ) -> AnalysisCtxt<'a, 'tcx> {
+        AnalysisCtxt::new(self, mir, base)
     }
 
     pub fn function_context_with_data<'a>(
@@ -993,10 +997,11 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     pub fn new(
         gacx: &'a mut GlobalAnalysisCtxt<'tcx>,
         mir: &'a Body<'tcx>,
+        base: u32,
     ) -> AnalysisCtxt<'a, 'tcx> {
         AnalysisCtxt {
             gacx,
-            ptr_info: LocalPointerTable::empty(0),
+            ptr_info: LocalPointerTable::empty(base),
             local_decls: &mir.local_decls,
             local_tys: IndexVec::new(),
             addr_of_local: IndexVec::new(),
@@ -1062,8 +1067,12 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         self.gacx.ptr_info.and_mut(&mut self.ptr_info)
     }
 
-    pub fn _local_ptr_info(&self) -> &LocalPointerTable<PointerInfo> {
+    pub fn local_ptr_info(&self) -> &LocalPointerTable<PointerInfo> {
         &self.ptr_info
+    }
+
+    pub fn local_ptr_base(&self) -> u32 {
+        self.ptr_info.base()
     }
 
     pub fn type_of<T: TypeOf<'tcx>>(&self, x: T) -> LTy<'tcx> {
@@ -1263,6 +1272,10 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
 
     pub fn num_pointers(&self) -> usize {
         self.ptr_info.len()
+    }
+
+    pub fn local_ptr_base(&self) -> u32 {
+        self.ptr_info.base()
     }
 }
 

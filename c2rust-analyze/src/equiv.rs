@@ -114,7 +114,8 @@ impl LocalEquivSet {
         global_map: &GlobalPointerTable<PointerId>,
     ) -> (NextLocalPointerId, LocalPointerTable<PointerId>) {
         let mut counter = NextLocalPointerId::new();
-        let mut map = LocalPointerTable::from_raw(0, vec![PointerId::NONE; self.0.len()]);
+        let mut map =
+            LocalPointerTable::from_raw(self.0.base(), vec![PointerId::NONE; self.0.len()]);
 
         for old_id in self.0.iter().map(|(x, _)| x) {
             let rep = self.rep(old_id);
