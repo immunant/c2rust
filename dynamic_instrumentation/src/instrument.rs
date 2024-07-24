@@ -6,6 +6,7 @@ use fs2::FileExt;
 use fs_err::OpenOptions;
 use indexmap::IndexSet;
 use log::{debug, trace};
+use rand;
 use rustc_ast::Mutability;
 use rustc_index::vec::Idx;
 use rustc_middle::mir::visit::{
@@ -29,6 +30,7 @@ use crate::hooks::Hooks;
 use crate::into_operand::IntoOperand;
 use crate::mir_utils::remove_outer_deref;
 use crate::point::InstrumentationApplier;
+use crate::point::ProjectionSet;
 use crate::point::{cast_ptr_to_usize, InstrumentationPriority};
 use crate::point::{
     CollectAddressTakenLocals, CollectInstrumentationPoints, RewriteAddressTakenLocals,
@@ -39,6 +41,7 @@ use crate::util::Convert;
 pub struct Instrumenter {
     mir_locs: Mutex<IndexSet<MirLoc>>,
     functions: Mutex<HashMap<FuncId, String>>,
+    projections: Mutex<HashMap<Vec<usize>, u64>>,
 }
 
 impl Instrumenter {
@@ -75,7 +78,18 @@ impl Instrumenter {
         let mut functions = self.functions.lock().unwrap();
         let locs = locs.drain(..).collect::<Vec<_>>();
         let functions = functions.drain().collect::<HashMap<_, _>>();
-        let metadata = Metadata { locs, functions };
+
+        let projections = std::mem::take(&mut *self.projections.lock().unwrap());
+        let projections = projections
+            .into_iter()
+            .map(|(proj_vec, proj_key)| (proj_key, proj_vec))
+            .collect();
+
+        let metadata = Metadata {
+            locs,
+            functions,
+            projections,
+        };
         let bytes = bincode::serialize(&metadata).context("Location serialization failed")?;
         let mut file = OpenOptions::new()
             .append(true)
@@ -113,6 +127,21 @@ impl Instrumenter {
         };
         let (idx, _) = self.mir_locs.lock().unwrap().insert_full(mir_loc);
         idx.try_into().unwrap()
+    }
+}
+
+impl ProjectionSet for Instrumenter {
+    fn add_proj(&self, proj: Vec<usize>) -> u64 {
+        // If this projection isn't already in the map, generate
+        // a random 64-bit key for it; the probability of collision
+        // is 1/2^32 (because of the birthday paradox), which should
+        // be good enough for our use case.
+        self.projections
+            .lock()
+            .unwrap()
+            .entry(proj)
+            .or_insert_with(rand::random)
+            .clone()
     }
 }
 
@@ -377,7 +406,14 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
 
         while let Some((inner_deref_base, PlaceElem::Deref)) = proj_iter.next() {
             // Find the next Deref or end of projections
+            // Meanwhile, collect all `Field`s into a vector that we
+            // can add to the `projections` IndexSet
+            let mut fields = vec![];
             let (outer_deref_base, have_outer_deref) = loop {
+                if let Some((_, PlaceElem::Field(idx, _))) = proj_iter.peek() {
+                    fields.push(idx.index());
+                }
+
                 match proj_iter.peek() {
                     Some((base, PlaceElem::Deref)) => break (base.clone(), true),
                     // Reached the end, we can use the full place
@@ -397,6 +433,8 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
             let have_other_projections =
                 outer_deref_base.projection.len() - inner_deref_base.projection.len() > 1;
             if have_other_projections {
+                let proj_key = self.projections.add_proj(fields);
+
                 let dest = || {
                     if have_outer_deref {
                         // Only the last field projection gets a destination
@@ -430,6 +468,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                 self.loc(location, location, project_fn)
                     .arg_var(inner_deref_base)
                     .arg_addr_of(outer_deref_base.clone())
+                    .arg_var(proj_key)
                     .source(&inner_deref_op)
                     .dest_from(dest)
                     .add_to(self);
@@ -800,7 +839,8 @@ fn instrument_body<'a, 'tcx>(
 
     // collect instrumentation points
     let points = {
-        let mut collector = CollectInstrumentationPoints::new(tcx, hooks, body, local_to_address);
+        let mut collector =
+            CollectInstrumentationPoints::new(tcx, hooks, body, local_to_address, state);
         collector.visit_body(body);
         collector.into_instrumentation_points()
     };

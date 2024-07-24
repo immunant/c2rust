@@ -35,7 +35,12 @@ type AddressTaken = IndexSet<(FuncId, Local)>;
 
 pub trait EventKindExt {
     fn ptr(&self, metadata: &EventMetadata) -> Option<Pointer>;
-    fn to_node_kind(&self, func: FuncId, address_taken: &mut AddressTaken) -> Option<NodeKind>;
+    fn to_node_kind(
+        &self,
+        func: FuncId,
+        metadata: &Metadata,
+        address_taken: &mut AddressTaken,
+    ) -> Option<NodeKind>;
 }
 
 impl EventKindExt for EventKind {
@@ -63,14 +68,25 @@ impl EventKindExt for EventKind {
         })
     }
 
-    fn to_node_kind(&self, func: FuncId, address_taken: &mut AddressTaken) -> Option<NodeKind> {
+    fn to_node_kind(
+        &self,
+        func: FuncId,
+        metadata: &Metadata,
+        address_taken: &mut AddressTaken,
+    ) -> Option<NodeKind> {
         use EventKind::*;
         Some(match *self {
             Alloc { .. } => NodeKind::Alloc(1),
             Realloc { .. } => NodeKind::Alloc(1),
             Free { .. } => NodeKind::Free,
             CopyPtr(..) | CopyRef => NodeKind::Copy,
-            Project(base_ptr, new_ptr) => NodeKind::Project(new_ptr - base_ptr),
+            Project(base_ptr, new_ptr, key) => {
+                let proj = metadata
+                    .projections
+                    .get(&key)
+                    .expect("Invalid projection metadata");
+                NodeKind::Project(new_ptr - base_ptr, proj.clone())
+            }
             LoadAddr(..) => NodeKind::LoadAddr,
             StoreAddr(..) => NodeKind::StoreAddr,
             StoreAddrTaken(..) => NodeKind::StoreAddr,
@@ -149,7 +165,7 @@ pub fn add_node(
         metadata: event_metadata,
     } = metadata.get(event.mir_loc);
 
-    let node_kind = event.kind.to_node_kind(func.id, address_taken)?;
+    let node_kind = event.kind.to_node_kind(func.id, metadata, address_taken)?;
     let this_id = func.id;
     let (src_fn, dest_fn) = match event_metadata.transfer_kind {
         TransferKind::None => (this_id, this_id),
@@ -214,7 +230,7 @@ pub fn add_node(
         function,
         block: basic_block_idx.into(),
         statement_idx,
-        kind: node_kind,
+        kind: node_kind.clone(),
         source: source
             .and_then(|p| parent(&node_kind, p))
             .map(|(_, nid)| nid),
