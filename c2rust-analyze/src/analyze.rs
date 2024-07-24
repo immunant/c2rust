@@ -717,11 +717,16 @@ fn run(tcx: TyCtxt) {
     // computed during this the process is kept around for use in later passes.
     let mut global_equiv = GlobalEquivSet::new(gacx.num_pointers());
     for &ldid in &all_fn_ldids {
+        let info = func_info.get_mut(&ldid).unwrap();
+        let mut local_equiv = LocalEquivSet::new(0, info.acx_data.num_pointers());
+
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
+            // Even on failure, we set a blank `local_equiv`.  This is necessary because we apply
+            // renumbering to all functions, even those where analysis has failed.
+            info.local_equiv.set(local_equiv);
             continue;
         }
 
-        let info = func_info.get_mut(&ldid).unwrap();
         let ldid_const = WithOptConstParam::unknown(ldid);
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
@@ -730,28 +735,28 @@ fn run(tcx: TyCtxt) {
         let recent_writes = info.recent_writes.get();
         let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
 
+        // Compute local equivalence classes and dataflow constraints.
         let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
             dataflow::generate_constraints(&acx, &mir, recent_writes, pointee_types)
         }));
-
-        let (dataflow, equiv_constraints) = match r {
-            Ok(x) => x,
+        match r {
+            Ok((dataflow, equiv_constraints)) => {
+                let mut equiv = global_equiv.and_mut(&mut local_equiv);
+                for (a, b) in equiv_constraints {
+                    equiv.unify(a, b);
+                }
+                info.dataflow.set(dataflow);
+            }
             Err(pd) => {
-                info.acx_data.set(acx.into_data());
-                gacx.mark_fn_failed(ldid.to_def_id(), DontRewriteFnReason::DATAFLOW_INVALID, pd);
-                continue;
+                acx.gacx.mark_fn_failed(
+                    ldid.to_def_id(),
+                    DontRewriteFnReason::DATAFLOW_INVALID,
+                    pd,
+                );
             }
         };
 
-        // Compute local equivalence classes and dataflow constraints.
-        let mut local_equiv = LocalEquivSet::new(0, acx.num_pointers());
-        let mut equiv = global_equiv.and_mut(&mut local_equiv);
-        for (a, b) in equiv_constraints {
-            equiv.unify(a, b);
-        }
-
         info.acx_data.set(acx.into_data());
-        info.dataflow.set(dataflow);
         info.local_equiv.set(local_equiv);
     }
 
@@ -771,26 +776,28 @@ fn run(tcx: TyCtxt) {
     gacx.remap_pointers(&global_equiv_map, global_counter);
 
     for &ldid in &all_fn_ldids {
-        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
-            continue;
-        }
+        // Note that we apply this `PointerId` remapping even for failed functions.
 
         let info = func_info.get_mut(&ldid).unwrap();
         let (local_counter, local_equiv_map) = info.local_equiv.renumber(&global_equiv_map);
         eprintln!("local_equiv_map = {local_equiv_map:?}");
-        pointee_type::remap_pointers_local(
-            &mut global_pointee_types,
-            &mut info.local_pointee_types,
-            global_equiv_map.and(&local_equiv_map),
-            &local_counter,
-        );
+        if info.local_pointee_types.is_set() {
+            pointee_type::remap_pointers_local(
+                &mut global_pointee_types,
+                &mut info.local_pointee_types,
+                global_equiv_map.and(&local_equiv_map),
+                &local_counter,
+            );
+        }
         info.acx_data.remap_pointers(
             &mut gacx,
             global_equiv_map.and(&local_equiv_map),
             local_counter,
         );
-        info.dataflow
-            .remap_pointers(global_equiv_map.and(&local_equiv_map));
+        if info.dataflow.is_set() {
+            info.dataflow
+                .remap_pointers(global_equiv_map.and(&local_equiv_map));
+        }
         info.local_equiv.clear();
     }
 
