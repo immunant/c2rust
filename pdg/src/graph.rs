@@ -14,7 +14,7 @@ use crate::info::NodeInfo;
 use crate::util::pad_columns;
 use crate::util::ShortOption;
 
-#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
 pub enum NodeKind {
     /// A copy from one [`Local`] to another.
     ///
@@ -25,7 +25,7 @@ pub enum NodeKind {
     /// [`Field`] projection.
     ///
     /// Used for operations like `_2 = &(*_1).0`.
-    Project(usize),
+    Project(usize, Vec<usize>),
 
     /// Pointer arithmetic.
     ///
@@ -119,7 +119,7 @@ impl Display for NodeKind {
         use NodeKind::*;
         match self {
             Copy => write!(f, "copy"),
-            Project(offset) => write!(f, "project.{offset}"),
+            Project(offset, proj) => write!(f, "project{proj:?}@{offset}"),
             Offset(offset) => write!(f, "offset[{offset}]"),
             AddrOfLocal(local) => write!(f, "&{local:?}"),
             _AddrOfStatic(static_) => write!(f, "&'static {static_:?}"),
