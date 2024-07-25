@@ -130,25 +130,42 @@ pub fn propagate_types<'tcx>(
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct PointeeTypes<'tcx> {
     /// The possible pointee types for this pointer.
-    pub ltys: HashSet<LTy<'tcx>>,
-    /// If set, `ltys` is incomplete - the analysis identified pointee types that couldn't be
-    /// exported into global scope.
-    pub incomplete: bool,
+    pub tys: HashSet<CTy<'tcx>>,
 }
 
 impl<'tcx> PointeeTypes<'tcx> {
     /// Get the sole `LTy` in this set, if there is exactly one.
     pub fn get_sole_lty(&self) -> Option<LTy<'tcx>> {
-        if self.incomplete || self.ltys.len() != 1 {
+        if self.tys.len() != 1 {
             return None;
         }
-        let lty = *self.ltys.iter().next().unwrap();
-        Some(lty)
+        match self.tys.iter().copied().next()? {
+            CTy::Var(_) => None,
+            CTy::Ty(lty) => Some(lty),
+        }
     }
 
     pub fn merge(&mut self, other: PointeeTypes<'tcx>) {
-        self.ltys.extend(other.ltys);
-        self.incomplete |= other.incomplete;
+        self.tys.extend(other.tys);
+    }
+
+    pub fn simplify(&mut self, vars: &VarTable<'tcx>) {
+        let mut add = Vec::new();
+        let mut remove = Vec::new();
+        for &cty in &self.tys {
+            let rep = vars.cty_rep(cty);
+            if rep != cty {
+                remove.push(cty);
+                add.push(rep);
+            }
+        }
+
+        for cty in remove {
+            self.tys.remove(&cty);
+        }
+        for cty in add {
+            self.tys.insert(cty);
+        }
     }
 }
 
@@ -159,9 +176,7 @@ fn import<'tcx>(
 ) {
     for (ptr, tys) in pointee_tys.iter() {
         let ty_set = &mut ty_sets[ptr];
-        for &lty in &tys.ltys {
-            ty_set.insert(CTy::Ty(lty));
-        }
+        ty_set.extend(tys.tys.iter().copied());
     }
 }
 
@@ -174,22 +189,8 @@ fn export<'tcx>(
     let local_ptr_range = pointee_tys.local().range();
     for (ptr, ctys) in ty_sets.iter() {
         let out = &mut pointee_tys[ptr];
-        for &cty in ctys {
-            if let CTy::Ty(lty) = var_table.cty_rep(cty) {
-                let mut ok = true;
-                lty.for_each_label(&mut |p| {
-                    if local_ptr_range.contains(p) {
-                        ok = false;
-                    }
-                });
-                if ok {
-                    out.ltys.insert(lty);
-                    continue;
-                }
-            }
-            // If we failed to export this `CTy`, mark the `PointeeTypes` incomplete.
-            out.incomplete = true;
-        }
+        out.tys.extend(ctys.iter().copied());
+        out.simplify(var_table);
     }
 }
 
@@ -198,12 +199,6 @@ pub fn solve_constraints<'tcx>(
     vars: &VarTable<'tcx>,
     mut pointee_tys: PointerTableMut<PointeeTypes<'tcx>>,
 ) {
-    // Clear the `incomplete` flags for all local pointers.  If there are still non-exportable
-    // types for those pointers, the flag will be set again in `export()`.
-    for (_, tys) in pointee_tys.local_mut().iter_mut() {
-        tys.incomplete = false;
-    }
-
     let mut ty_sets = OwnedPointerTable::with_len_of(&pointee_tys.borrow());
     import(pointee_tys.borrow(), ty_sets.borrow_mut());
     init_type_sets(cset, ty_sets.borrow_mut());
