@@ -654,7 +654,8 @@ fn run(tcx: TyCtxt) {
     }
 
     // Iterate pointee constraints to a fixpoint.
-    let mut global_pointee_types = GlobalPointerTable::<PointeeTypes>::new(gacx.num_pointers());
+    let mut global_pointee_types =
+        GlobalPointerTable::<PointeeTypes>::new(gacx.num_global_pointers());
     let mut loop_count = 0;
     loop {
         // Loop until the global assignment reaches a fixpoint.  The inner loop also runs until a
@@ -715,7 +716,7 @@ fn run(tcx: TyCtxt) {
     // Initial pass to assign local `PointerId`s and gather equivalence constraints, which state
     // that two pointer types must be converted to the same reference type.  Some additional data
     // computed during this the process is kept around for use in later passes.
-    let mut global_equiv = GlobalEquivSet::new(gacx.num_pointers());
+    let mut global_equiv = GlobalEquivSet::new(gacx.num_global_pointers());
     for &ldid in &all_fn_ldids {
         let info = func_info.get_mut(&ldid).unwrap();
         let mut local_equiv =
@@ -839,8 +840,8 @@ fn run(tcx: TyCtxt) {
     ]);
     const INITIAL_FLAGS: FlagSet = FlagSet::empty();
 
-    let mut gasn = GlobalAssignment::new(gacx.num_pointers(), INITIAL_PERMS, INITIAL_FLAGS);
-    let mut g_updates_forbidden = GlobalPointerTable::new(gacx.num_pointers());
+    let mut gasn = GlobalAssignment::new(gacx.num_global_pointers(), INITIAL_PERMS, INITIAL_FLAGS);
+    let mut g_updates_forbidden = GlobalPointerTable::new(gacx.num_global_pointers());
 
     for (ptr, &info) in gacx.ptr_info().iter() {
         if should_make_fixed(info) {
