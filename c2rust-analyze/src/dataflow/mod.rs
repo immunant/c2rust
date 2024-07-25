@@ -2,7 +2,7 @@ use std::mem;
 
 use crate::context::{AnalysisCtxt, Assignment, FlagSet, PermissionSet, PointerId};
 use crate::pointee_type::PointeeTypes;
-use crate::pointer_id::{OwnedPointerTable, PointerTable, PointerTableMut};
+use crate::pointer_id::{GlobalPointerTable, PointerTable};
 use crate::recent_writes::RecentWrites;
 use log::debug;
 use rustc_middle::mir::Body;
@@ -63,8 +63,8 @@ impl DataflowConstraints {
     /// `hypothesis[ptr]`.
     pub fn propagate(
         &self,
-        hypothesis: &mut PointerTableMut<PermissionSet>,
-        updates_forbidden: &PointerTable<PermissionSet>,
+        hypothesis: &mut GlobalPointerTable<PermissionSet>,
+        updates_forbidden: &GlobalPointerTable<PermissionSet>,
     ) -> bool {
         debug!("=== propagating ===");
         debug!("constraints:");
@@ -184,15 +184,15 @@ impl DataflowConstraints {
     /// `PropagateRules::restrict_updates`.)
     fn propagate_inner<T, R>(
         &self,
-        xs: &mut PointerTableMut<T>,
+        xs: &mut GlobalPointerTable<T>,
         rules: &mut R,
-        updates_forbidden: Option<&PointerTable<T>>,
+        updates_forbidden: Option<&GlobalPointerTable<T>>,
     ) -> Result<bool, String>
     where
         T: PartialEq,
         R: PropagateRules<T>,
     {
-        let mut xs = TrackedPointerTable::new(xs.borrow_mut());
+        let mut xs = TrackedPointerTable::new(xs);
 
         let restrict_updates = |rules: &mut R, ptr, old: &T, new: T| {
             if let Some(updates_forbidden) = updates_forbidden {
@@ -276,8 +276,8 @@ impl DataflowConstraints {
 
     /// Update the pointer permissions in `hypothesis` to satisfy these constraints.
     pub fn propagate_cell(&self, asn: &mut Assignment) {
-        let (perms, mut flags) = asn.all_mut();
-        let perms = perms.borrow();
+        let perms = &asn.perms;
+        let flags = &mut asn.flags;
 
         // All pointers that are WRITE and not UNIQUE must have a type like `&Cell<_>`.
         for ((_, p), (_, f)) in perms.iter().zip(flags.iter_mut()) {
@@ -287,7 +287,7 @@ impl DataflowConstraints {
         }
 
         struct Rules<'a> {
-            perms: PointerTable<'a, PermissionSet>,
+            perms: &'a GlobalPointerTable<PermissionSet>,
         }
         impl PropagateRules<FlagSet> for Rules<'_> {
             fn subset(
@@ -358,7 +358,7 @@ impl DataflowConstraints {
             }
         }
 
-        match self.propagate_inner(&mut flags, &mut Rules { perms }, None) {
+        match self.propagate_inner(flags, &mut Rules { perms }, None) {
             Ok(_changed) => {}
             Err(msg) => {
                 panic!("{}", msg);
@@ -389,16 +389,16 @@ impl DataflowConstraints {
 }
 
 struct TrackedPointerTable<'a, T> {
-    xs: PointerTableMut<'a, T>,
-    dirty: OwnedPointerTable<bool>,
-    new_dirty: OwnedPointerTable<bool>,
+    xs: &'a mut GlobalPointerTable<T>,
+    dirty: GlobalPointerTable<bool>,
+    new_dirty: GlobalPointerTable<bool>,
     any_new_dirty: bool,
 }
 
 impl<'a, T: PartialEq> TrackedPointerTable<'a, T> {
-    pub fn new(xs: PointerTableMut<'a, T>) -> TrackedPointerTable<'a, T> {
-        let mut dirty = OwnedPointerTable::with_len_of(&xs.borrow());
-        let mut new_dirty = OwnedPointerTable::with_len_of(&xs.borrow());
+    pub fn new(xs: &'a mut GlobalPointerTable<T>) -> TrackedPointerTable<'a, T> {
+        let mut dirty = GlobalPointerTable::with_len_of(xs);
+        let mut new_dirty = GlobalPointerTable::with_len_of(xs);
         dirty.fill(true);
         new_dirty.fill(false);
         TrackedPointerTable {

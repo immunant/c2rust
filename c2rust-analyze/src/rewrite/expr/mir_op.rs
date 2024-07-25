@@ -10,7 +10,7 @@
 use crate::context::{AnalysisCtxt, Assignment, DontRewriteFnReason, FlagSet, LTy, PermissionSet};
 use crate::panic_detail;
 use crate::pointee_type::PointeeTypes;
-use crate::pointer_id::{PointerId, PointerTable};
+use crate::pointer_id::{GlobalPointerTable, PointerId, PointerTable};
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{self, ty_callee, Callee};
 use log::{debug, error, trace};
@@ -219,8 +219,8 @@ impl PlaceAccess {
 
 struct ExprRewriteVisitor<'a, 'tcx> {
     acx: &'a AnalysisCtxt<'a, 'tcx>,
-    perms: PointerTable<'a, PermissionSet>,
-    flags: PointerTable<'a, FlagSet>,
+    perms: &'a GlobalPointerTable<PermissionSet>,
+    flags: &'a GlobalPointerTable<FlagSet>,
     pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
     rewrites: &'a mut HashMap<Location, Vec<MirRewrite>>,
     mir: &'a Body<'tcx>,
@@ -689,7 +689,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
 
                             let opt_zero_ty =
-                                ZeroizeType::from_lty(&v.acx, &v.perms, &v.flags, pointee_lty);
+                                ZeroizeType::from_lty(&v.acx, v.perms, v.flags, pointee_lty);
                             let zero_ty = match opt_zero_ty {
                                 Some(x) => x,
                                 // TODO: emit void* cast before bailing out
@@ -1194,14 +1194,14 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn emit_cast_desc_desc(&mut self, from: TypeDesc<'tcx>, to: TypeDesc<'tcx>) {
         let perms = self.perms;
         let flags = self.flags;
-        let mut builder = CastBuilder::new(self.acx.tcx(), &perms, &flags, |rk| self.emit(rk));
+        let mut builder = CastBuilder::new(self.acx.tcx(), perms, flags, |rk| self.emit(rk));
         builder.build_cast_desc_desc(from, to);
     }
 
     fn emit_cast_lty_desc(&mut self, from_lty: LTy<'tcx>, to: TypeDesc<'tcx>) {
         let perms = self.perms;
         let flags = self.flags;
-        let mut builder = CastBuilder::new(self.acx.tcx(), &perms, &flags, |rk| self.emit(rk));
+        let mut builder = CastBuilder::new(self.acx.tcx(), perms, flags, |rk| self.emit(rk));
         builder.build_cast_lty_desc(from_lty, to);
     }
 
@@ -1209,14 +1209,14 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn emit_cast_desc_lty(&mut self, from: TypeDesc<'tcx>, to_lty: LTy<'tcx>) {
         let perms = self.perms;
         let flags = self.flags;
-        let mut builder = CastBuilder::new(self.acx.tcx(), &perms, &flags, |rk| self.emit(rk));
+        let mut builder = CastBuilder::new(self.acx.tcx(), perms, flags, |rk| self.emit(rk));
         builder.build_cast_desc_lty(from, to_lty);
     }
 
     fn emit_cast_lty_lty(&mut self, from_lty: LTy<'tcx>, to_lty: LTy<'tcx>) {
         let perms = self.perms;
         let flags = self.flags;
-        let mut builder = CastBuilder::new(self.acx.tcx(), &perms, &flags, |rk| self.emit(rk));
+        let mut builder = CastBuilder::new(self.acx.tcx(), perms, flags, |rk| self.emit(rk));
         builder.build_cast_lty_lty(from_lty, to_lty);
     }
 
@@ -1229,7 +1229,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     ) {
         let perms = self.perms;
         let flags = self.flags;
-        let mut builder = CastBuilder::new(self.acx.tcx(), &perms, &flags, |rk| self.emit(rk));
+        let mut builder = CastBuilder::new(self.acx.tcx(), perms, flags, |rk| self.emit(rk));
         builder.build_cast_lty_adjust(from_lty, to_adjust);
     }
 
@@ -1242,7 +1242,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     ) {
         let perms = self.perms;
         let flags = self.flags;
-        let mut builder = CastBuilder::new(self.acx.tcx(), &perms, &flags, |rk| self.emit(rk));
+        let mut builder = CastBuilder::new(self.acx.tcx(), perms, flags, |rk| self.emit(rk));
         builder.build_cast_adjust_lty(from_adjust, to_lty);
     }
 }
@@ -1283,8 +1283,8 @@ impl ZeroizeType {
 
     fn from_lty<'tcx>(
         acx: &AnalysisCtxt<'_, 'tcx>,
-        perms: &PointerTable<'_, PermissionSet>,
-        flags: &PointerTable<'_, FlagSet>,
+        perms: &GlobalPointerTable<PermissionSet>,
+        flags: &GlobalPointerTable<FlagSet>,
         lty: LTy<'tcx>,
     ) -> Option<ZeroizeType> {
         Some(match *lty.kind() {

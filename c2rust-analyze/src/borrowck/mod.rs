@@ -4,7 +4,7 @@ use crate::context::AdtMetadataTable;
 use crate::context::{AnalysisCtxt, PermissionSet};
 use crate::dataflow::DataflowConstraints;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
-use crate::pointer_id::{PointerTable, PointerTableMut};
+use crate::pointer_id::GlobalPointerTable;
 use crate::util::{describe_rvalue, RvalueDesc};
 use indexmap::{IndexMap, IndexSet};
 use log::{debug, info, warn};
@@ -121,8 +121,8 @@ impl std::fmt::Debug for OriginParam {
 pub fn borrowck_mir<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     dataflow: &DataflowConstraints,
-    hypothesis: &mut PointerTableMut<PermissionSet>,
-    updates_forbidden: &PointerTable<PermissionSet>,
+    hypothesis: &mut GlobalPointerTable<PermissionSet>,
+    updates_forbidden: &GlobalPointerTable<PermissionSet>,
     name: &str,
     mir: &Body<'tcx>,
     field_ltys: HashMap<DefId, context::LTy<'tcx>>,
@@ -201,7 +201,7 @@ pub fn borrowck_mir<'tcx>(
 
 fn run_polonius<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
-    hypothesis: &PointerTableMut<PermissionSet>,
+    hypothesis: &GlobalPointerTable<PermissionSet>,
     name: &str,
     mir: &Body<'tcx>,
     field_ltys: &HashMap<DefId, context::LTy<'tcx>>,
@@ -617,7 +617,7 @@ fn construct_adt_origins<'tcx>(
 
 fn assign_origins<'tcx>(
     ltcx: LTyCtxt<'tcx>,
-    hypothesis: &PointerTableMut<PermissionSet>,
+    hypothesis: &GlobalPointerTable<PermissionSet>,
     _facts: &mut AllFacts,
     maps: &mut AtomMaps<'tcx>,
     adt_metadata: &AdtMetadataTable<'tcx>,

@@ -2,8 +2,8 @@ use crate::annotate::AnnotationBuffer;
 use crate::borrowck;
 use crate::context::{
     self, AnalysisCtxt, AnalysisCtxtData, Assignment, DontRewriteFieldReason, DontRewriteFnReason,
-    DontRewriteStaticReason, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy, LTyCtxt,
-    LocalAssignment, PermissionSet, PointerId, PointerInfo,
+    DontRewriteStaticReason, FlagSet, GlobalAnalysisCtxt, LFnSig, LTy, LTyCtxt, PermissionSet,
+    PointerId, PointerInfo,
 };
 use crate::dataflow;
 use crate::dataflow::DataflowConstraints;
@@ -17,7 +17,6 @@ use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::GlobalPointerTable;
 use crate::pointer_id::LocalPointerTable;
 use crate::pointer_id::PointerTable;
-use crate::pointer_id::PointerTableMut;
 use crate::recent_writes::RecentWrites;
 use crate::rewrite;
 use crate::type_desc;
@@ -331,24 +330,24 @@ where
 
 fn mark_foreign_fixed<'tcx>(
     gacx: &mut GlobalAnalysisCtxt<'tcx>,
-    gasn: &mut GlobalAssignment,
+    asn: &mut Assignment,
     tcx: TyCtxt<'tcx>,
 ) {
     // FIX the inputs and outputs of function declarations in extern blocks
     for (did, lsig) in gacx.fn_sigs.iter() {
         if tcx.is_foreign_item(did) {
-            make_sig_fixed(gasn, lsig);
+            make_sig_fixed(asn, lsig);
         }
     }
 
     // FIX the types of static declarations in extern blocks
     for (did, lty) in gacx.static_tys.iter() {
         if tcx.is_foreign_item(did) {
-            make_ty_fixed(gasn, lty);
+            make_ty_fixed(asn, lty);
 
             // Also fix the `addr_of_static` permissions.
             let ptr = gacx.addr_of_static[did];
-            gasn.flags[ptr].insert(FlagSet::FIXED);
+            asn.flags[ptr].insert(FlagSet::FIXED);
         }
     }
 
@@ -363,25 +362,25 @@ fn mark_foreign_fixed<'tcx>(
                     "adding FIXED permission for {adt_did:?} field {:?}",
                     field.did
                 );
-                make_ty_fixed(gasn, field_lty);
+                make_ty_fixed(asn, field_lty);
             }
         }
     }
 }
 
-fn mark_all_statics_fixed<'tcx>(gacx: &mut GlobalAnalysisCtxt<'tcx>, gasn: &mut GlobalAssignment) {
+fn mark_all_statics_fixed<'tcx>(gacx: &mut GlobalAnalysisCtxt<'tcx>, asn: &mut Assignment) {
     for (did, lty) in gacx.static_tys.iter() {
-        make_ty_fixed(gasn, lty);
+        make_ty_fixed(asn, lty);
 
         // Also fix the `addr_of_static` permissions.
         let ptr = gacx.addr_of_static[did];
-        gasn.flags[ptr].insert(FlagSet::FIXED);
+        asn.flags[ptr].insert(FlagSet::FIXED);
     }
 }
 
 fn mark_all_structs_fixed<'tcx>(
     gacx: &mut GlobalAnalysisCtxt<'tcx>,
-    gasn: &mut GlobalAssignment,
+    asn: &mut Assignment,
     tcx: TyCtxt<'tcx>,
 ) {
     for adt_did in &gacx.adt_metadata.struct_dids {
@@ -389,7 +388,7 @@ fn mark_all_structs_fixed<'tcx>(
         let fields = adt_def.all_fields();
         for field in fields {
             let field_lty = gacx.field_ltys[&field.did];
-            make_ty_fixed(gasn, field_lty);
+            make_ty_fixed(asn, field_lty);
         }
     }
 }
@@ -532,12 +531,6 @@ struct FuncInfo<'tcx> {
     /// complete [`EquivSet`], which assigns an equivalence class to each [`PointerId`] that
     /// appears in the function.  Used for renumbering [`PointerId`]s.
     local_equiv: MaybeUnset<LocalEquivSet>,
-    /// Local part of the permission/flag assignment.  Combine with the [`GlobalAssignment`] to
-    /// get a complete [`Assignment`] for this function, which maps every [`PointerId`] in this
-    /// function to a [`PermissionSet`] and [`FlagSet`].
-    lasn: MaybeUnset<LocalAssignment>,
-    /// Local part of the `updates_forbidden` mask.
-    l_updates_forbidden: MaybeUnset<LocalPointerTable<PermissionSet>>,
     /// Constraints on pointee types gathered from the body of this function.
     pointee_constraints: MaybeUnset<pointee_type::ConstraintSet<'tcx>>,
     /// Local part of pointee type sets.
@@ -805,55 +798,47 @@ fn run(tcx: TyCtxt) {
     ]);
     const INITIAL_FLAGS: FlagSet = FlagSet::empty();
 
-    let mut gasn = GlobalAssignment::new(gacx.num_global_pointers(), INITIAL_PERMS, INITIAL_FLAGS);
-    let mut g_updates_forbidden = GlobalPointerTable::new(gacx.num_global_pointers());
+    let mut asn = Assignment::new(gacx.num_total_pointers(), INITIAL_PERMS, INITIAL_FLAGS);
+    let mut updates_forbidden = GlobalPointerTable::new(gacx.num_total_pointers());
 
     for (ptr, &info) in gacx.ptr_info().iter() {
         if should_make_fixed(info) {
-            gasn.flags[ptr].insert(FlagSet::FIXED);
+            asn.flags[ptr].insert(FlagSet::FIXED);
         }
         if info.contains(PointerInfo::ADDR_OF_LOCAL) {
             // `addr_of_local` is always a stack pointer, though it should be rare for the
             // `ADDR_OF_LOCAL` flag to appear on a global `PointerId`.
-            gasn.perms[ptr].remove(PermissionSet::HEAP);
+            asn.perms[ptr].remove(PermissionSet::HEAP);
         }
     }
 
-    mark_foreign_fixed(&mut gacx, &mut gasn, tcx);
+    mark_foreign_fixed(&mut gacx, &mut asn, tcx);
 
     if rewrite_pointwise {
         // In pointwise mode, we restrict rewriting to a single fn at a time.  All statics and
         // struct fields are marked `FIXED` so they won't be rewritten.
-        mark_all_statics_fixed(&mut gacx, &mut gasn);
-        mark_all_structs_fixed(&mut gacx, &mut gasn, tcx);
+        mark_all_statics_fixed(&mut gacx, &mut asn);
+        mark_all_structs_fixed(&mut gacx, &mut asn, tcx);
     }
 
     for (ptr, perms) in gacx.known_fn_ptr_perms() {
-        let existing_perms = &mut gasn.perms[ptr];
+        let existing_perms = &mut asn.perms[ptr];
         existing_perms.remove(INITIAL_PERMS);
         assert_eq!(*existing_perms, PermissionSet::empty());
         *existing_perms = perms;
     }
 
     for info in func_info.values_mut() {
-        let num_pointers = info.acx_data.num_pointers();
-        let base = info.acx_data.local_ptr_base();
-        let mut lasn = LocalAssignment::new(base, num_pointers, INITIAL_PERMS, INITIAL_FLAGS);
-        let l_updates_forbidden = LocalPointerTable::new(base, num_pointers);
-
         for (ptr, &info) in info.acx_data.local_ptr_info().iter() {
             if should_make_fixed(info) {
-                lasn.flags[ptr].insert(FlagSet::FIXED);
+                asn.flags[ptr].insert(FlagSet::FIXED);
             }
             if info.contains(PointerInfo::ADDR_OF_LOCAL) {
                 // `addr_of_local` is always a stack pointer.  This will be propagated
                 // automatically through dataflow whenever the address of the local is taken.
-                lasn.perms[ptr].remove(PermissionSet::HEAP);
+                asn.perms[ptr].remove(PermissionSet::HEAP);
             }
         }
-
-        info.lasn.set(lasn);
-        info.l_updates_forbidden.set(l_updates_forbidden);
     }
 
     // Load permission info from PDG
@@ -865,8 +850,8 @@ fn run(tcx: TyCtxt) {
                 &mut gacx,
                 &all_fn_ldids,
                 &mut func_info,
-                &mut gasn,
-                &mut g_updates_forbidden,
+                &mut asn,
+                &mut updates_forbidden,
                 pdg_file_path,
             );
         }
@@ -888,7 +873,7 @@ fn run(tcx: TyCtxt) {
                     Some(x) => x,
                     None => panic!("missing fn_sig for {:?}", ldid),
                 };
-                make_sig_fixed(&mut gasn, lsig);
+                make_sig_fixed(&mut asn, lsig);
                 gacx.dont_rewrite_fns
                     .add(ldid.to_def_id(), DontRewriteFnReason::USER_REQUEST);
             }
@@ -909,7 +894,7 @@ fn run(tcx: TyCtxt) {
                             Some(&x) => x,
                             None => panic!("missing field_lty for {:?}", ldid),
                         };
-                        make_ty_fixed(&mut gasn, lty);
+                        make_ty_fixed(&mut asn, lty);
                         gacx.dont_rewrite_fields
                             .add(field.did, DontRewriteFieldReason::USER_REQUEST);
                     }
@@ -921,14 +906,14 @@ fn run(tcx: TyCtxt) {
                     Some(&x) => x,
                     None => panic!("missing static_ty for {:?}", ldid),
                 };
-                make_ty_fixed(&mut gasn, lty);
+                make_ty_fixed(&mut asn, lty);
 
                 let ptr = match gacx.addr_of_static.get(&ldid.to_def_id()) {
                     Some(&x) => x,
                     None => panic!("missing addr_of_static for {:?}", ldid),
                 };
                 if !ptr.is_none() {
-                    gasn.flags[ptr].insert(FlagSet::FIXED);
+                    asn.flags[ptr].insert(FlagSet::FIXED);
                 }
                 gacx.dont_rewrite_statics
                     .add(ldid.to_def_id(), DontRewriteStaticReason::USER_REQUEST);
@@ -943,13 +928,7 @@ fn run(tcx: TyCtxt) {
     // ----------------------------------
 
     apply_test_attr_fail_before_analysis(&mut gacx, &all_fn_ldids);
-    apply_test_attr_force_non_null_args(
-        &mut gacx,
-        &all_fn_ldids,
-        &mut func_info,
-        &mut gasn,
-        &mut g_updates_forbidden,
-    );
+    apply_test_attr_force_non_null_args(&mut gacx, &all_fn_ldids, &mut asn, &mut updates_forbidden);
 
     debug!("=== ADT Metadata ===");
     debug!("{:?}", gacx.adt_metadata);
@@ -958,10 +937,10 @@ fn run(tcx: TyCtxt) {
     loop {
         // Loop until the global assignment reaches a fixpoint.  The inner loop also runs until a
         // fixpoint, but it only considers a single function at a time.  The inner loop for one
-        // function can affect other functions by updating the `GlobalAssignment`, so we also need
-        // the outer loop, which runs until the `GlobalAssignment` converges as well.
+        // function can affect other functions by updating the `Assignment`, so we also need the
+        // outer loop, which runs until the `Assignment` converges as well.
         loop_count += 1;
-        let old_gasn = gasn.clone();
+        let old_gasn = asn.perms.as_slice()[..gacx.num_global_pointers()].to_owned();
 
         for &ldid in &all_fn_ldids {
             if gacx.fn_analysis_invalid(ldid.to_def_id()) {
@@ -976,14 +955,11 @@ fn run(tcx: TyCtxt) {
 
             let field_ltys = gacx.field_ltys.clone();
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-            let mut asn = gasn.and(&mut info.lasn);
-            let updates_forbidden = g_updates_forbidden.and(&info.l_updates_forbidden);
 
             let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
                 // `dataflow.propagate` and `borrowck_mir` both run until the assignment converges
                 // on a fixpoint, so there's no need to do multiple iterations here.
-                info.dataflow
-                    .propagate(&mut asn.perms_mut(), &updates_forbidden);
+                info.dataflow.propagate(&mut asn.perms, &updates_forbidden);
 
                 borrowck::borrowck_mir(
                     &acx,
@@ -1012,8 +988,9 @@ fn run(tcx: TyCtxt) {
         }
 
         let mut num_changed = 0;
-        for (ptr, &old) in old_gasn.perms.iter() {
-            let new = gasn.perms[ptr];
+        for (i, &old) in old_gasn.iter().enumerate() {
+            let ptr = PointerId::global(i as u32);
+            let new = asn.perms[ptr];
             if old != new {
                 let added = new & !old;
                 let removed = old & !new;
@@ -1030,7 +1007,7 @@ fn run(tcx: TyCtxt) {
             loop_count, num_changed
         );
 
-        if gasn == old_gasn {
+        if &asn.perms.as_slice()[..gacx.num_global_pointers()] == &old_gasn {
             break;
         }
     }
@@ -1047,7 +1024,6 @@ fn run(tcx: TyCtxt) {
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-        let mut asn = gasn.and(&mut info.lasn);
 
         let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
             // Add the CELL permission to pointers that need it.
@@ -1074,11 +1050,11 @@ fn run(tcx: TyCtxt) {
     // Check that these perms haven't changed.
     let mut known_perm_error_ptrs = HashSet::new();
     for (ptr, perms) in gacx.known_fn_ptr_perms() {
-        if gasn.perms[ptr] != perms {
+        if asn.perms[ptr] != perms {
             known_perm_error_ptrs.insert(ptr);
             warn!(
                 "known permissions changed for PointerId {ptr:?}: {perms:?} -> {:?}",
-                gasn.perms[ptr]
+                asn.perms[ptr]
             );
         }
     }
@@ -1112,8 +1088,8 @@ fn run(tcx: TyCtxt) {
             &mut gacx,
             &all_fn_ldids,
             &mut func_info,
-            &mut gasn,
-            &mut g_updates_forbidden,
+            &mut asn,
+            &mut updates_forbidden,
             pdg_file_path,
             |_asn, _updates_forbidden, ldid, ptr, ptr_is_global, _node_info, node_is_non_null| {
                 let parent = if ptr_is_global { None } else { Some(ldid) };
@@ -1144,7 +1120,6 @@ fn run(tcx: TyCtxt) {
             let mir = tcx.mir_built(ldid_const);
             let mir = mir.borrow();
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-            let asn = gasn.and(&mut info.lasn);
 
             // Generate inline annotations for pointer-typed locals
             for (local, decl) in mir.local_decls.iter_enumerated() {
@@ -1212,7 +1187,7 @@ fn run(tcx: TyCtxt) {
             None,
             tcx,
             gacx,
-            gasn,
+            asn,
             &global_pointee_types,
             func_info,
             &all_fn_ldids,
@@ -1225,7 +1200,7 @@ fn run(tcx: TyCtxt) {
                 Some(ldid),
                 tcx,
                 gacx.clone(),
-                gasn.clone(),
+                asn.clone(),
                 &global_pointee_types,
                 func_info.clone(),
                 &all_fn_ldids,
@@ -1240,7 +1215,7 @@ fn run2<'tcx>(
     pointwise_fn_ldid: Option<LocalDefId>,
     tcx: TyCtxt<'tcx>,
     mut gacx: GlobalAnalysisCtxt<'tcx>,
-    mut gasn: GlobalAssignment,
+    mut asn: Assignment,
     global_pointee_types: &GlobalPointerTable<PointeeTypes<'tcx>>,
     mut func_info: HashMap<LocalDefId, FuncInfo<'tcx>>,
     all_fn_ldids: &Vec<LocalDefId>,
@@ -1258,11 +1233,11 @@ fn run2<'tcx>(
         if ptr.is_none() {
             return false;
         }
-        let flags = gasn.flags[ptr];
+        let flags = asn.flags[ptr];
         if flags.contains(FlagSet::FIXED) {
             return false;
         }
-        let perms = gasn.perms[ptr];
+        let perms = asn.perms[ptr];
         let desc = type_desc::perms_to_desc(lty.ty, perms, flags);
         match desc.own {
             Ownership::Imm | Ownership::Cell | Ownership::Mut => true,
@@ -1322,7 +1297,7 @@ fn run2<'tcx>(
         // `new_keys()` lists, which we check at the end of the loop to see whether we've reached a
         // fixpoint.  Second, doing this adds the `FIXED` flag to pointers that we shouldn't
         // rewrite, such as pointers in the signatures of non-rewritten functions.
-        process_new_dont_rewrite_items(&mut gacx, &mut gasn);
+        process_new_dont_rewrite_items(&mut gacx, &mut asn);
 
         for &ldid in all_fn_ldids {
             if gacx.dont_rewrite_fn(ldid.to_def_id()) {
@@ -1335,7 +1310,6 @@ fn run2<'tcx>(
             let mir = tcx.mir_built(ldid_const);
             let mir = mir.borrow();
             let mut acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-            let asn = gasn.and(&mut info.lasn);
             let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
 
             let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
@@ -1387,7 +1361,7 @@ fn run2<'tcx>(
 
         // This call never panics, which is important because this is the fallback if the more
         // sophisticated analysis and rewriting above did panic.
-        let (shim_call_rewrites, shim_fn_def_ids) = rewrite::gen_shim_call_rewrites(&gacx, &gasn);
+        let (shim_call_rewrites, shim_fn_def_ids) = rewrite::gen_shim_call_rewrites(&gacx, &asn);
         all_rewrites.extend(shim_call_rewrites);
 
         // Generate shims for functions that need them.
@@ -1395,7 +1369,7 @@ fn run2<'tcx>(
             let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
                 all_rewrites.push(rewrite::gen_shim_definition_rewrite(
                     &gacx,
-                    &gasn,
+                    &asn,
                     def_id,
                     manual_shim_casts,
                 ));
@@ -1424,7 +1398,7 @@ fn run2<'tcx>(
         if fixed_defs.contains(&def_id) {
             continue;
         }
-        static_rewrites.extend(rewrite::gen_static_rewrites(tcx, &gasn, def_id, ptr));
+        static_rewrites.extend(rewrite::gen_static_rewrites(tcx, &asn, def_id, ptr));
     }
     let mut statics_report = String::new();
     writeln!(
@@ -1455,7 +1429,7 @@ fn run2<'tcx>(
             continue;
         }
 
-        let adt_rewrites = rewrite::gen_adt_ty_rewrites(&gacx, &gasn, global_pointee_types, def_id);
+        let adt_rewrites = rewrite::gen_adt_ty_rewrites(&gacx, &asn, global_pointee_types, def_id);
         let report = adt_reports.entry(def_id).or_default();
         writeln!(
             report,
@@ -1494,7 +1468,6 @@ fn run2<'tcx>(
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-        let asn = gasn.and(&mut info.lasn);
         let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
 
         // Print labeling and rewrites for the current function.
@@ -1509,8 +1482,8 @@ fn run2<'tcx>(
                 format_args!("{:?} ({})", local, describe_local(tcx, decl)),
                 acx.addr_of_local[local],
                 acx.local_tys[local],
-                &asn.perms(),
-                &asn.flags(),
+                asn.perms(),
+                asn.flags(),
             );
         }
 
@@ -1540,7 +1513,6 @@ fn run2<'tcx>(
         let mir = tcx.mir_built(ldid_const);
         let mir = mir.borrow();
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-        let asn = gasn.and(&mut info.lasn);
 
         let mut emit_lty_annotations = |span, lty: LTy, desc: &str| {
             let mut ptrs = Vec::new();
@@ -1598,8 +1570,8 @@ fn run2<'tcx>(
             format_args!("{name:?}"),
             gacx.addr_of_static[&did],
             lty,
-            &gasn.perms,
-            &gasn.flags,
+            &asn.perms,
+            &asn.flags,
         );
     }
     debug!("\n{statics_report}");
@@ -1613,8 +1585,8 @@ fn run2<'tcx>(
         let name = tcx.item_name(did);
         let pid = field_lty.label;
         if pid != PointerId::NONE {
-            let ty_perms = gasn.perms[pid];
-            let ty_flags = gasn.flags[pid];
+            let ty_perms = asn.perms[pid];
+            let ty_flags = asn.flags[pid];
             debug!("{name:}: ({pid}) perms = {ty_perms:?}, flags = {ty_flags:?}");
         }
 
@@ -1641,7 +1613,7 @@ fn run2<'tcx>(
         for ptr in ptrs {
             ann.emit(
                 span,
-                format_args!("  {} = {:?}, {:?}", ptr, gasn.perms[ptr], gasn.flags[ptr]),
+                format_args!("  {} = {:?}, {:?}", ptr, asn.perms[ptr], asn.flags[ptr]),
             );
         }
     }
@@ -1899,6 +1871,8 @@ fn assign_pointer_ids<'tcx>(
             }
         }
     }
+
+    gacx.set_num_total_pointers(next_base as usize);
 }
 
 pub trait AssignPointerIds<'tcx> {
@@ -1943,18 +1917,18 @@ impl<'tcx> AssignPointerIds<'tcx> for AnalysisCtxt<'_, 'tcx> {
     }
 }
 
-fn make_ty_fixed(gasn: &mut GlobalAssignment, lty: LTy) {
+fn make_ty_fixed(asn: &mut Assignment, lty: LTy) {
     for lty in lty.iter() {
         let ptr = lty.label;
         if !ptr.is_none() {
-            gasn.flags[ptr].insert(FlagSet::FIXED);
+            asn.flags[ptr].insert(FlagSet::FIXED);
         }
     }
 }
 
-fn make_sig_fixed(gasn: &mut GlobalAssignment, lsig: &LFnSig) {
+fn make_sig_fixed(asn: &mut Assignment, lsig: &LFnSig) {
     for lty in lsig.inputs.iter().copied().chain(iter::once(lsig.output)) {
-        make_ty_fixed(gasn, lty);
+        make_ty_fixed(asn, lty);
     }
 }
 
@@ -1982,19 +1956,14 @@ fn apply_test_attr_fail_before_analysis(
 fn apply_test_attr_force_non_null_args(
     gacx: &mut GlobalAnalysisCtxt,
     all_fn_ldids: &[LocalDefId],
-    func_info: &mut HashMap<LocalDefId, FuncInfo>,
-    gasn: &mut GlobalAssignment,
-    g_updates_forbidden: &mut GlobalPointerTable<PermissionSet>,
+    asn: &mut Assignment,
+    updates_forbidden: &mut GlobalPointerTable<PermissionSet>,
 ) {
     let tcx = gacx.tcx;
     for &ldid in all_fn_ldids {
         if !util::has_test_attr(tcx, ldid, TestAttr::ForceNonNullArgs) {
             continue;
         }
-
-        let info = func_info.get_mut(&ldid).unwrap();
-        let mut asn = gasn.and(&mut info.lasn);
-        let mut updates_forbidden = g_updates_forbidden.and_mut(&mut info.l_updates_forbidden);
 
         let lsig = &gacx.fn_sigs[&ldid.to_def_id()];
         for arg_lty in lsig.inputs {
@@ -2013,8 +1982,8 @@ fn pdg_update_permissions<'tcx>(
     gacx: &mut GlobalAnalysisCtxt<'tcx>,
     all_fn_ldids: &[LocalDefId],
     func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
-    gasn: &mut GlobalAssignment,
-    g_updates_forbidden: &mut GlobalPointerTable<PermissionSet>,
+    asn: &mut Assignment,
+    updates_forbidden: &mut GlobalPointerTable<PermissionSet>,
     pdg_file_path: impl AsRef<Path>,
 ) {
     let allow_unsound =
@@ -2024,8 +1993,8 @@ fn pdg_update_permissions<'tcx>(
         gacx,
         all_fn_ldids,
         func_info,
-        gasn,
-        g_updates_forbidden,
+        asn,
+        updates_forbidden,
         pdg_file_path,
         |asn, updates_forbidden, _ldid, ptr, _ptr_is_global, node_info, node_is_non_null| {
             let old_perms = asn.perms()[ptr];
@@ -2082,12 +2051,12 @@ fn pdg_update_permissions_with_callback<'tcx>(
     gacx: &mut GlobalAnalysisCtxt<'tcx>,
     all_fn_ldids: &[LocalDefId],
     func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
-    gasn: &mut GlobalAssignment,
-    g_updates_forbidden: &mut GlobalPointerTable<PermissionSet>,
+    asn: &mut Assignment,
+    updates_forbidden: &mut GlobalPointerTable<PermissionSet>,
     pdg_file_path: impl AsRef<Path>,
     mut callback: impl FnMut(
         &mut Assignment,
-        &mut PointerTableMut<PermissionSet>,
+        &mut GlobalPointerTable<PermissionSet>,
         LocalDefId,
         PointerId,
         bool,
@@ -2145,8 +2114,6 @@ fn pdg_update_permissions_with_callback<'tcx>(
             let mir = tcx.mir_built(ldid_const);
             let mir = mir.borrow();
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-            let mut asn = gasn.and(&mut info.lasn);
-            let mut updates_forbidden = g_updates_forbidden.and_mut(&mut info.l_updates_forbidden);
 
             let dest_pl = match n.dest.as_ref() {
                 Some(x) => x,
@@ -2184,8 +2151,8 @@ fn pdg_update_permissions_with_callback<'tcx>(
 
             let ptr_is_global = acx.ptr_is_global(ptr);
             callback(
-                &mut asn,
-                &mut updates_forbidden,
+                asn,
+                updates_forbidden,
                 ldid,
                 ptr,
                 ptr_is_global,
@@ -2517,7 +2484,7 @@ fn populate_field_users(gacx: &mut GlobalAnalysisCtxt, fn_ldids: &[LocalDefId]) 
 /// Call `take_new_keys()` on `gacx.dont_rewrite_{fns,statics,fields}` and process the results.
 /// This involves adding `FIXED` to some pointers and maybe propagating `DontRewrite` flags to
 /// other items.
-fn process_new_dont_rewrite_items(gacx: &mut GlobalAnalysisCtxt, gasn: &mut GlobalAssignment) {
+fn process_new_dont_rewrite_items(gacx: &mut GlobalAnalysisCtxt, asn: &mut Assignment) {
     for i in 0.. {
         assert!(i < 20);
         let mut found_any = false;
@@ -2525,7 +2492,7 @@ fn process_new_dont_rewrite_items(gacx: &mut GlobalAnalysisCtxt, gasn: &mut Glob
         for did in gacx.dont_rewrite_fns.take_new_keys() {
             found_any = true;
             let lsig = &gacx.fn_sigs[&did];
-            make_sig_fixed(gasn, lsig);
+            make_sig_fixed(asn, lsig);
 
             let ldid = match did.as_local() {
                 Some(x) => x,
@@ -2545,13 +2512,13 @@ fn process_new_dont_rewrite_items(gacx: &mut GlobalAnalysisCtxt, gasn: &mut Glob
         for did in gacx.dont_rewrite_statics.take_new_keys() {
             found_any = true;
             let lty = gacx.static_tys[&did];
-            make_ty_fixed(gasn, lty);
+            make_ty_fixed(asn, lty);
         }
 
         for did in gacx.dont_rewrite_fields.take_new_keys() {
             found_any = true;
             let lty = gacx.field_ltys[&did];
-            make_ty_fixed(gasn, lty);
+            make_ty_fixed(asn, lty);
         }
 
         // The previous steps can cause more items to become non-rewritten.  Keep going until
