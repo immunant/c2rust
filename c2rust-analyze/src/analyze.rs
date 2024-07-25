@@ -627,12 +627,6 @@ fn run(tcx: TyCtxt) {
         assert!(loop_count <= 1000);
         let old_global_pointee_types = global_pointee_types.clone();
 
-        // Clear the `incomplete` flags for all global pointers.  See comment in
-        // `pointee_types::solve::solve_constraints`.
-        for (_, tys) in global_pointee_types.iter_mut() {
-            tys.incomplete = false;
-        }
-
         for &ldid in &all_fn_ldids {
             if gacx.fn_analysis_invalid(ldid.to_def_id()) {
                 continue;
@@ -2276,15 +2270,10 @@ fn print_function_pointee_types<'tcx>(
 
         for ptr in all_pointer_ids {
             let tys = &pointee_types[ptr];
-            if tys.ltys.is_empty() && !tys.incomplete {
+            if tys.tys.is_empty() {
                 continue;
             }
-            debug!(
-                "  pointer {:?}: {:?}{}",
-                ptr,
-                tys.ltys,
-                if tys.incomplete { " (INCOMPLETE)" } else { "" }
-            );
+            debug!("  pointer {:?}: {:?}", ptr, tys.tys,);
         }
     }
 }
