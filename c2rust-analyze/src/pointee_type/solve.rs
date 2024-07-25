@@ -38,6 +38,7 @@ fn index_both<'a, T>(
 /// can contain local `CTy::Var`s and refer to local `PointerId`s.
 pub fn propagate_types<'tcx>(
     cset: &ConstraintSet<'tcx>,
+    vars: &VarTable<'tcx>,
     mut ty_sets: PointerTableMut<HashSet<CTy<'tcx>>>,
 ) {
     // Map from each `PointerId` to the `PointerId`s whose `ty_sets` should be supersets.
@@ -108,12 +109,12 @@ pub fn propagate_types<'tcx>(
     // example.
     for constraint in &cset.constraints {
         if let Constraint::AllTypesCompatibleWith(ptr, cty) = *constraint {
-            unify_types(&cset.var_table, &ty_sets[ptr], Some(cty));
+            unify_types(vars, &ty_sets[ptr], Some(cty));
         }
     }
 
     for (_, ctys) in ty_sets.iter() {
-        unify_types(&cset.var_table, ctys, None);
+        unify_types(vars, ctys, None);
     }
 
     #[cfg(debug_assertions)]
@@ -194,6 +195,7 @@ fn export<'tcx>(
 
 pub fn solve_constraints<'tcx>(
     cset: &ConstraintSet<'tcx>,
+    vars: &VarTable<'tcx>,
     mut pointee_tys: PointerTableMut<PointeeTypes<'tcx>>,
 ) {
     // Clear the `incomplete` flags for all local pointers.  If there are still non-exportable
@@ -205,6 +207,6 @@ pub fn solve_constraints<'tcx>(
     let mut ty_sets = OwnedPointerTable::with_len_of(&pointee_tys.borrow());
     import(pointee_tys.borrow(), ty_sets.borrow_mut());
     init_type_sets(cset, ty_sets.borrow_mut());
-    propagate_types(cset, ty_sets.borrow_mut());
-    export(&cset.var_table, ty_sets.borrow(), pointee_tys.borrow_mut());
+    propagate_types(cset, vars, ty_sets.borrow_mut());
+    export(vars, ty_sets.borrow(), pointee_tys.borrow_mut());
 }
