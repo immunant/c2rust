@@ -851,7 +851,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         self.ptr_info.push(info)
     }
 
-    pub fn num_pointers(&self) -> usize {
+    pub fn num_global_pointers(&self) -> usize {
         self.ptr_info.len()
     }
 
