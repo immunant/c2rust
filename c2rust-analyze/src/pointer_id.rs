@@ -321,12 +321,23 @@ impl<T> GlobalPointerTable<T> {
         GlobalPointerTable(PointerTableInner::new(len))
     }
 
+    pub fn with_len_of<U>(table: &GlobalPointerTable<U>) -> GlobalPointerTable<T>
+    where
+        T: Default,
+    {
+        GlobalPointerTable::new(table.len())
+    }
+
     pub fn from_raw(raw: Vec<T>) -> GlobalPointerTable<T> {
         GlobalPointerTable(PointerTableInner::from_raw(raw))
     }
 
     pub fn into_raw(self) -> Vec<T> {
         self.0.into_raw()
+    }
+
+    pub fn as_slice(&self) -> &[T] {
+        &self.0 .0
     }
 
     pub fn len(&self) -> usize {
