@@ -3,7 +3,7 @@ use crate::borrowck::{assign_origins, construct_adt_origins, LTy, LTyCtxt, Label
 use crate::context::{const_alloc_id, find_static_for_alloc};
 use crate::context::{AnalysisCtxt, PermissionSet};
 use crate::panic_detail;
-use crate::pointer_id::PointerTableMut;
+use crate::pointer_id::{GlobalPointerTable, PointerTableMut};
 use crate::util::{self, ty_callee, Callee};
 use assert_matches::assert_matches;
 use indexmap::IndexMap;
@@ -27,7 +27,7 @@ struct TypeChecker<'tcx, 'a> {
     loans: &'a mut HashMap<Local, Vec<(Path, Loan, BorrowKind)>>,
     local_ltys: &'a [LTy<'tcx>],
     field_permissions: &'a HashMap<DefId, PermissionSet>,
-    hypothesis: &'a PointerTableMut<'a, PermissionSet>,
+    hypothesis: &'a GlobalPointerTable<PermissionSet>,
     local_decls: &'a IndexVec<Local, LocalDecl<'tcx>>,
     current_location: Location,
     static_origin: Origin,
@@ -628,7 +628,7 @@ pub fn visit_body<'tcx>(
     loans: &mut HashMap<Local, Vec<(Path, Loan, BorrowKind)>>,
     local_ltys: &[LTy<'tcx>],
     field_permissions: &HashMap<DefId, PermissionSet>,
-    hypothesis: &PointerTableMut<PermissionSet>,
+    hypothesis: &GlobalPointerTable<PermissionSet>,
     mir: &Body<'tcx>,
     static_origin: Origin,
 ) {

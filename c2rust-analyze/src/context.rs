@@ -409,6 +409,8 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     pub lcx: LTyCtxt<'tcx>,
 
     ptr_info: GlobalPointerTable<PointerInfo>,
+    /// Total number of global and local pointers across all functions.
+    num_total_pointers: usize,
 
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
     pub fn_fields_used: MultiMap<LocalDefId, LocalDefId>,
@@ -801,6 +803,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             tcx,
             lcx: LabeledTyCtxt::new(tcx),
             ptr_info: GlobalPointerTable::empty(),
+            num_total_pointers: 0,
             fn_sigs: HashMap::new(),
             fn_fields_used: MultiMap::new(),
             known_fns: all_known_fns()
@@ -858,6 +861,18 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         self.ptr_info.len()
     }
 
+    pub fn num_total_pointers(&self) -> usize {
+        self.num_total_pointers
+    }
+
+    pub fn set_num_total_pointers(&mut self, n: usize) {
+        assert_eq!(
+            self.num_total_pointers, 0,
+            "num_total_pointers has already been set"
+        );
+        self.num_total_pointers = n;
+    }
+
     pub fn ptr_info(&self) -> &GlobalPointerTable<PointerInfo> {
         &self.ptr_info
     }
@@ -870,6 +885,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             tcx: _,
             lcx,
             ref mut ptr_info,
+            num_total_pointers: _,
             ref mut fn_sigs,
             fn_fields_used: _,
             known_fns: _,
@@ -1460,79 +1476,43 @@ pub fn label_no_pointers<'tcx>(acx: &AnalysisCtxt<'_, 'tcx>, ty: Ty<'tcx>) -> LT
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct GlobalAssignment {
+pub struct Assignment {
     pub perms: GlobalPointerTable<PermissionSet>,
     pub flags: GlobalPointerTable<FlagSet>,
 }
 
-impl GlobalAssignment {
-    pub fn new(
-        len: usize,
-        default_perms: PermissionSet,
-        default_flags: FlagSet,
-    ) -> GlobalAssignment {
-        GlobalAssignment {
+impl Assignment {
+    pub fn new(len: usize, default_perms: PermissionSet, default_flags: FlagSet) -> Assignment {
+        Assignment {
             perms: GlobalPointerTable::from_raw(vec![default_perms; len]),
             flags: GlobalPointerTable::from_raw(vec![default_flags; len]),
         }
     }
 
-    pub fn and<'a>(&'a mut self, local: &'a mut LocalAssignment) -> Assignment<'a> {
-        Assignment {
-            global: self,
-            local,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct LocalAssignment {
-    pub perms: LocalPointerTable<PermissionSet>,
-    pub flags: LocalPointerTable<FlagSet>,
-}
-
-impl LocalAssignment {
-    pub fn new(
-        base: u32,
-        len: usize,
-        default_perms: PermissionSet,
-        default_flags: FlagSet,
-    ) -> LocalAssignment {
-        LocalAssignment {
-            perms: LocalPointerTable::from_raw(base, vec![default_perms; len]),
-            flags: LocalPointerTable::from_raw(base, vec![default_flags; len]),
-        }
-    }
-}
-
-pub struct Assignment<'a> {
-    pub global: &'a mut GlobalAssignment,
-    local: &'a mut LocalAssignment,
-}
-
-impl Assignment<'_> {
-    pub fn perms(&self) -> PointerTable<PermissionSet> {
-        self.global.perms.and(&self.local.perms)
+    pub fn perms(&self) -> &GlobalPointerTable<PermissionSet> {
+        &self.perms
     }
 
-    pub fn perms_mut(&mut self) -> PointerTableMut<PermissionSet> {
-        self.global.perms.and_mut(&mut self.local.perms)
+    pub fn perms_mut(&mut self) -> &mut GlobalPointerTable<PermissionSet> {
+        &mut self.perms
     }
 
-    pub fn flags(&self) -> PointerTable<FlagSet> {
-        self.global.flags.and(&self.local.flags)
+    pub fn flags(&self) -> &GlobalPointerTable<FlagSet> {
+        &self.flags
     }
 
     #[allow(dead_code)]
-    pub fn _flags_mut(&mut self) -> PointerTableMut<FlagSet> {
-        self.global.flags.and_mut(&mut self.local.flags)
+    pub fn _flags_mut(&mut self) -> &mut GlobalPointerTable<FlagSet> {
+        &mut self.flags
     }
 
-    pub fn all_mut(&mut self) -> (PointerTableMut<PermissionSet>, PointerTableMut<FlagSet>) {
-        (
-            self.global.perms.and_mut(&mut self.local.perms),
-            self.global.flags.and_mut(&mut self.local.flags),
-        )
+    pub fn all_mut(
+        &mut self,
+    ) -> (
+        &mut GlobalPointerTable<PermissionSet>,
+        &mut GlobalPointerTable<FlagSet>,
+    ) {
+        (&mut self.perms, &mut self.flags)
     }
 }
 
