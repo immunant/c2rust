@@ -35,6 +35,7 @@ impl<'tcx> ArgKind<'tcx> {
 #[derive(Clone, Debug)]
 pub enum InstrumentationArg<'tcx> {
     AddrOf(Operand<'tcx>),
+    Pointer(Operand<'tcx>),
     Op(ArgKind<'tcx>),
 }
 
@@ -42,7 +43,7 @@ impl<'tcx> InstrumentationArg<'tcx> {
     pub fn inner(&self) -> &Operand<'tcx> {
         use InstrumentationArg::*;
         match self {
-            AddrOf(x) => x,
+            AddrOf(x) | Pointer(x) => x,
             Op(x) => x.inner(),
         }
     }

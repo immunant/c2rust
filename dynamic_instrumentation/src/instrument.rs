@@ -16,7 +16,7 @@ use rustc_middle::mir::{
     Location, Operand, Place, PlaceElem, ProjectionElem, Rvalue, Safety, SourceInfo, SourceScope,
     SourceScopeData, Statement, StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
-use rustc_middle::ty::{self, Ty, TyCtxt, TyKind, TypeAndMut};
+use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::def_id::{DefId, DefPathHash};
 use rustc_span::DUMMY_SP;
 use std::collections::HashMap;
@@ -914,12 +914,14 @@ pub fn insert_call<'tcx>(
         is_cleanup: blocks[block].is_cleanup,
     });
 
+    let mut ty_substs: Vec<ty::GenericArg> = vec![];
     for arg in &mut args {
-        if let Some((cast_stmts, cast_local)) = cast_ptr_to_usize(tcx, locals, arg) {
+        if let Some((cast_stmts, cast_local, ty_subst)) = cast_ptr_to_usize(tcx, locals, arg) {
             *arg = InstrumentationArg::Op(ArgKind::AddressUsize(cast_local));
             blocks[block]
                 .statements
                 .splice(statement_index..statement_index, cast_stmts);
+            ty_substs.extend(ty_subst.into_iter().map(ty::GenericArg::from));
         }
     }
 
@@ -927,7 +929,7 @@ pub fn insert_call<'tcx>(
     let fn_sig = tcx.liberate_late_bound_regions(func, fn_sig);
 
     let ret_local = locals.push(LocalDecl::new(fn_sig.output(), DUMMY_SP));
-    let func = Operand::function_handle(tcx, func, ty::List::empty(), DUMMY_SP);
+    let func = Operand::function_handle(tcx, func, tcx.mk_substs(ty_substs.into_iter()), DUMMY_SP);
 
     let call = Terminator {
         kind: TerminatorKind::Call {
