@@ -136,6 +136,13 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
         self
     }
 
+    /// Add an argument to this [`InstrumentationPoint`] that copies the pointer as is.
+    pub fn arg_ptr(mut self, arg: impl IntoOperand<'tcx>) -> Self {
+        let op = arg.op(self.tcx);
+        self.point.args.push(InstrumentationArg::Pointer(op));
+        self
+    }
+
     pub fn after_call(mut self) -> Self {
         self.point.after_call = true;
         self

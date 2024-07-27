@@ -4,7 +4,7 @@ use rustc_middle::{
         CastKind, Local, LocalDecl, Mutability, Operand, ProjectionElem, Rvalue, SourceInfo,
         Statement, StatementKind,
     },
-    ty::{self, TyCtxt, TypeAndMut},
+    ty::{self, adjustment::PointerCast, Ty, TyCtxt, TypeAndMut},
 };
 use rustc_span::DUMMY_SP;
 
@@ -21,7 +21,7 @@ pub fn cast_ptr_to_usize<'tcx>(
     tcx: TyCtxt<'tcx>,
     locals: &mut IndexVec<Local, LocalDecl<'tcx>>,
     arg: &InstrumentationArg<'tcx>,
-) -> Option<(Vec<Statement<'tcx>>, Operand<'tcx>)> {
+) -> Option<(Vec<Statement<'tcx>>, Operand<'tcx>, Option<Ty<'tcx>>)> {
     let mut new_stmts = vec![];
 
     let arg_ty = arg.inner().ty(locals, tcx);
@@ -93,6 +93,53 @@ pub fn cast_ptr_to_usize<'tcx>(
             new_stmts.push(addr_of_stmt);
             Operand::Move(raw_ptr_local.into())
         }
+        // We want to preserve the operand as a pointer, e.g., for `AddrOfConst`.
+        // The argument might be a reference, so we need to do a double cast, e.g.
+        // `&x` => `&x as *const T` and `&mut x` => `&mut x as *mut T as *const T`
+        InstrumentationArg::Pointer(arg) => {
+            let inner_ty = arg_ty
+                .builtin_deref(true)
+                .expect("Expected pointer or reference");
+
+            let mut new_arg = arg.clone();
+            if !arg_ty.is_unsafe_ptr() {
+                // First cast: from non-pointer to pointer
+                let arg_place = arg.place().expect("Can't get the address of a constant");
+                let arg_deref = tcx.mk_place_deref(arg_place);
+                let raw_ptr_ty = tcx.mk_ptr(inner_ty);
+                let raw_ptr_local = locals.push(LocalDecl::new(raw_ptr_ty, DUMMY_SP));
+                let cast_stmt = Statement {
+                    source_info: SourceInfo::outermost(DUMMY_SP),
+                    kind: StatementKind::Assign(Box::new((
+                        raw_ptr_local.into(),
+                        Rvalue::AddressOf(inner_ty.mutbl, arg_deref),
+                    ))),
+                };
+                new_stmts.push(cast_stmt);
+                new_arg = Operand::Move(raw_ptr_local.into());
+            }
+
+            if arg_ty.is_mutable_ptr() {
+                // Second cast: cast away the mutability
+                let raw_ptr_ty = tcx.mk_imm_ptr(inner_ty.ty);
+                let raw_ptr_local = locals.push(LocalDecl::new(raw_ptr_ty, DUMMY_SP));
+                let cast_stmt = Statement {
+                    source_info: SourceInfo::outermost(DUMMY_SP),
+                    kind: StatementKind::Assign(Box::new((
+                        raw_ptr_local.into(),
+                        Rvalue::Cast(
+                            CastKind::Pointer(PointerCast::MutToConstPointer),
+                            new_arg,
+                            raw_ptr_ty,
+                        ),
+                    ))),
+                };
+                new_stmts.push(cast_stmt);
+                new_arg = Operand::Move(raw_ptr_local.into());
+            }
+
+            return Some((new_stmts, new_arg, Some(inner_ty.ty)));
+        }
     };
 
     let ptr = {
@@ -126,5 +173,5 @@ pub fn cast_ptr_to_usize<'tcx>(
         ))),
     };
     new_stmts.push(cast_stmt);
-    Some((new_stmts, casted_arg))
+    Some((new_stmts, casted_arg, None))
 }
