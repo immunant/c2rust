@@ -1,5 +1,5 @@
 use crate::context::LTy;
-use crate::context::{FlagSet, GlobalAnalysisCtxt, GlobalAssignment};
+use crate::context::{Assignment, FlagSet, GlobalAnalysisCtxt};
 use crate::rewrite::expr::{self, CastBuilder};
 use crate::rewrite::ty;
 use crate::rewrite::Rewrite;
@@ -16,7 +16,7 @@ use std::mem;
 
 struct ShimCallVisitor<'a, 'tcx> {
     gacx: &'a GlobalAnalysisCtxt<'tcx>,
-    gasn: &'a GlobalAssignment,
+    asn: &'a Assignment,
     typeck_results: &'tcx TypeckResults<'tcx>,
     rewrites: Vec<(Span, Rewrite)>,
     mentioned_fns: HashSet<DefId>,
@@ -57,7 +57,7 @@ impl<'a, 'tcx> ShimCallVisitor<'a, 'tcx> {
             .flat_map(|lty| lty.iter())
             .any(|lty| {
                 let ptr = lty.label;
-                !ptr.is_none() && !self.gasn.flags[ptr].contains(FlagSet::FIXED)
+                !ptr.is_none() && !self.asn.flags[ptr].contains(FlagSet::FIXED)
             });
         if !has_non_fixed_ptr {
             return;
@@ -115,7 +115,7 @@ impl<'a, 'tcx> Visitor<'tcx> for ShimCallVisitor<'a, 'tcx> {
 ///   handling free functions or inherent methods.
 pub fn gen_shim_call_rewrites<'tcx>(
     gacx: &GlobalAnalysisCtxt<'tcx>,
-    gasn: &GlobalAssignment,
+    asn: &Assignment,
 ) -> (Vec<(Span, Rewrite)>, HashSet<DefId>) {
     let tcx = gacx.tcx;
 
@@ -137,7 +137,7 @@ pub fn gen_shim_call_rewrites<'tcx>(
         let typeck_results = tcx.typeck_body(hir_body_id);
         let mut v = ShimCallVisitor {
             gacx,
-            gasn,
+            asn,
             typeck_results,
             rewrites,
             mentioned_fns,
@@ -155,21 +155,21 @@ pub fn gen_shim_call_rewrites<'tcx>(
 /// Returns `None` if the input `LTy` already has `FIXED` set.
 fn lty_to_desc_pair<'tcx>(
     tcx: TyCtxt<'tcx>,
-    gasn: &GlobalAssignment,
+    asn: &Assignment,
     lty: LTy<'tcx>,
 ) -> Option<(TypeDesc<'tcx>, TypeDesc<'tcx>)> {
     let ptr = lty.label;
-    if ptr.is_none() || gasn.flags[ptr].contains(FlagSet::FIXED) {
+    if ptr.is_none() || asn.flags[ptr].contains(FlagSet::FIXED) {
         return None;
     }
 
-    let desc = type_desc::perms_to_desc(lty.ty, gasn.perms[ptr], gasn.flags[ptr]);
+    let desc = type_desc::perms_to_desc(lty.ty, asn.perms[ptr], asn.flags[ptr]);
     let fixed_desc = type_desc::perms_to_desc_with_pointee(
         tcx,
         desc.pointee_ty,
         lty.ty,
-        gasn.perms[ptr],
-        gasn.flags[ptr] | FlagSet::FIXED,
+        asn.perms[ptr],
+        asn.flags[ptr] | FlagSet::FIXED,
     );
     Some((desc, fixed_desc))
 }
@@ -184,7 +184,7 @@ pub enum ManualShimCasts {
 
 pub fn gen_shim_definition_rewrite<'tcx>(
     gacx: &GlobalAnalysisCtxt<'tcx>,
-    gasn: &GlobalAssignment,
+    asn: &Assignment,
     def_id: DefId,
     manual_casts: ManualShimCasts,
 ) -> (Span, Rewrite) {
@@ -217,8 +217,8 @@ pub fn gen_shim_definition_rewrite<'tcx>(
     for (i, arg_lty) in lsig.inputs.iter().enumerate() {
         let mut hir_rw = Rewrite::FnArg(i);
 
-        if let Some((arg_desc, fixed_desc)) = lty_to_desc_pair(tcx, gasn, arg_lty) {
-            let mut cast_builder = CastBuilder::new(tcx, &gasn.perms, &gasn.flags, |rk| {
+        if let Some((arg_desc, fixed_desc)) = lty_to_desc_pair(tcx, asn, arg_lty) {
+            let mut cast_builder = CastBuilder::new(tcx, &asn.perms, &asn.flags, |rk| {
                 hir_rw = expr::convert_cast_rewrite(&rk, mem::take(&mut hir_rw));
             });
             match cast_builder.try_build_cast_desc_desc(fixed_desc, arg_desc) {
@@ -251,8 +251,8 @@ pub fn gen_shim_definition_rewrite<'tcx>(
 
     // Generate `let result = safe_result as ...;`
     let mut result_rw = Rewrite::Print("safe_result".into());
-    if let Some((return_desc, fixed_desc)) = lty_to_desc_pair(tcx, gasn, lsig.output) {
-        let mut cast_builder = CastBuilder::new(tcx, &gasn.perms, &gasn.flags, |rk| {
+    if let Some((return_desc, fixed_desc)) = lty_to_desc_pair(tcx, asn, lsig.output) {
+        let mut cast_builder = CastBuilder::new(tcx, &asn.perms, &asn.flags, |rk| {
             result_rw = expr::convert_cast_rewrite(&rk, mem::take(&mut result_rw));
         });
         match cast_builder.try_build_cast_desc_desc(return_desc, fixed_desc) {

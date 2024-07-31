@@ -409,6 +409,8 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     pub lcx: LTyCtxt<'tcx>,
 
     ptr_info: GlobalPointerTable<PointerInfo>,
+    /// Total number of global and local pointers across all functions.
+    num_total_pointers: usize,
 
     pub fn_sigs: HashMap<DefId, LFnSig<'tcx>>,
     pub fn_fields_used: MultiMap<LocalDefId, LocalDefId>,
@@ -801,6 +803,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             tcx,
             lcx: LabeledTyCtxt::new(tcx),
             ptr_info: GlobalPointerTable::empty(),
+            num_total_pointers: 0,
             fn_sigs: HashMap::new(),
             fn_fields_used: MultiMap::new(),
             known_fns: all_known_fns()
@@ -834,8 +837,12 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         self.fn_origins = fn_origin_args_params(self.tcx, &self.adt_metadata);
     }
 
-    pub fn function_context<'a>(&'a mut self, mir: &'a Body<'tcx>) -> AnalysisCtxt<'a, 'tcx> {
-        AnalysisCtxt::new(self, mir)
+    pub fn function_context<'a>(
+        &'a mut self,
+        mir: &'a Body<'tcx>,
+        base: u32,
+    ) -> AnalysisCtxt<'a, 'tcx> {
+        AnalysisCtxt::new(self, mir, base)
     }
 
     pub fn function_context_with_data<'a>(
@@ -850,8 +857,20 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         self.ptr_info.push(info)
     }
 
-    pub fn num_pointers(&self) -> usize {
+    pub fn num_global_pointers(&self) -> usize {
         self.ptr_info.len()
+    }
+
+    pub fn num_total_pointers(&self) -> usize {
+        self.num_total_pointers
+    }
+
+    pub fn set_num_total_pointers(&mut self, n: usize) {
+        assert_eq!(
+            self.num_total_pointers, 0,
+            "num_total_pointers has already been set"
+        );
+        self.num_total_pointers = n;
     }
 
     pub fn ptr_info(&self) -> &GlobalPointerTable<PointerInfo> {
@@ -861,15 +880,12 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     /// Update all [`PointerId`]s in `self`, replacing each `p` with `map[p]`.  Also sets the "next
     /// [`PointerId`]" counter to `counter`.  `map` and `counter` are usually computed together via
     /// [`GlobalEquivSet::renumber`][crate::equiv::GlobalEquivSet::renumber].
-    pub fn remap_pointers(
-        &mut self,
-        map: &GlobalPointerTable<PointerId>,
-        counter: NextGlobalPointerId,
-    ) {
+    pub fn remap_pointers(&mut self, map: &GlobalPointerTable<PointerId>, count: usize) {
         let GlobalAnalysisCtxt {
             tcx: _,
             lcx,
             ref mut ptr_info,
+            num_total_pointers: _,
             ref mut fn_sigs,
             fn_fields_used: _,
             known_fns: _,
@@ -886,7 +902,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             foreign_mentioned_tys: _,
         } = *self;
 
-        *ptr_info = remap_global_ptr_info(ptr_info, map, counter.num_pointers());
+        *ptr_info = remap_global_ptr_info(ptr_info, map, count);
 
         for sig in fn_sigs.values_mut() {
             sig.inputs = lcx.mk_slice(
@@ -987,16 +1003,21 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             .get(def_id)
             .intersects(DontRewriteFnReason::ANALYSIS_INVALID_MASK)
     }
+
+    pub fn ptr_is_global(&self, ptr: PointerId) -> bool {
+        self.ptr_info.contains(ptr)
+    }
 }
 
 impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     pub fn new(
         gacx: &'a mut GlobalAnalysisCtxt<'tcx>,
         mir: &'a Body<'tcx>,
+        base: u32,
     ) -> AnalysisCtxt<'a, 'tcx> {
         AnalysisCtxt {
             gacx,
-            ptr_info: LocalPointerTable::empty(),
+            ptr_info: LocalPointerTable::empty(base),
             local_decls: &mir.local_decls,
             local_tys: IndexVec::new(),
             addr_of_local: IndexVec::new(),
@@ -1062,8 +1083,20 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         self.gacx.ptr_info.and_mut(&mut self.ptr_info)
     }
 
-    pub fn _local_ptr_info(&self) -> &LocalPointerTable<PointerInfo> {
+    pub fn local_ptr_info(&self) -> &LocalPointerTable<PointerInfo> {
         &self.ptr_info
+    }
+
+    pub fn local_ptr_base(&self) -> u32 {
+        self.ptr_info.base()
+    }
+
+    pub fn ptr_is_global(&self, ptr: PointerId) -> bool {
+        self.gacx.ptr_is_global(ptr)
+    }
+
+    pub fn ptr_is_local(&self, ptr: PointerId) -> bool {
+        self.ptr_info.contains(ptr)
     }
 
     pub fn type_of<T: TypeOf<'tcx>>(&self, x: T) -> LTy<'tcx> {
@@ -1227,7 +1260,8 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
         &mut self,
         gacx: &mut GlobalAnalysisCtxt<'tcx>,
         map: PointerTable<PointerId>,
-        counter: NextLocalPointerId,
+        local_base: u32,
+        local_count: usize,
     ) {
         let lcx = gacx.lcx;
 
@@ -1240,7 +1274,7 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
         } = self;
 
         *ptr_info =
-            remap_local_ptr_info(ptr_info, &mut gacx.ptr_info, &map, counter.num_pointers());
+            remap_local_ptr_info(ptr_info, &mut gacx.ptr_info, &map, local_base, local_count);
 
         for lty in local_tys {
             *lty = remap_lty_pointers(lcx, &map, lty);
@@ -1263,6 +1297,14 @@ impl<'tcx> AnalysisCtxtData<'tcx> {
 
     pub fn num_pointers(&self) -> usize {
         self.ptr_info.len()
+    }
+
+    pub fn local_ptr_base(&self) -> u32 {
+        self.ptr_info.base()
+    }
+
+    pub fn ptr_is_local(&self, ptr: PointerId) -> bool {
+        self.ptr_info.contains(ptr)
     }
 }
 
@@ -1302,12 +1344,13 @@ fn remap_local_ptr_info(
     old_local_ptr_info: &LocalPointerTable<PointerInfo>,
     new_global_ptr_info: &mut GlobalPointerTable<PointerInfo>,
     map: &PointerTable<PointerId>,
-    num_pointers: usize,
+    base: u32,
+    count: usize,
 ) -> LocalPointerTable<PointerInfo> {
-    let mut new_local_ptr_info = LocalPointerTable::<PointerInfo>::new(num_pointers);
+    let mut new_local_ptr_info = LocalPointerTable::<PointerInfo>::new(base, count);
     let mut new_ptr_info = new_global_ptr_info.and_mut(&mut new_local_ptr_info);
     for (old, &new) in map.iter() {
-        if old.is_global() {
+        if !old_local_ptr_info.contains(old) {
             // If `old` is global then `new` is also global, and this remapping was handled already
             // by `remap_global_ptr_info`.
             continue;
@@ -1433,78 +1476,43 @@ pub fn label_no_pointers<'tcx>(acx: &AnalysisCtxt<'_, 'tcx>, ty: Ty<'tcx>) -> LT
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct GlobalAssignment {
+pub struct Assignment {
     pub perms: GlobalPointerTable<PermissionSet>,
     pub flags: GlobalPointerTable<FlagSet>,
 }
 
-impl GlobalAssignment {
-    pub fn new(
-        len: usize,
-        default_perms: PermissionSet,
-        default_flags: FlagSet,
-    ) -> GlobalAssignment {
-        GlobalAssignment {
+impl Assignment {
+    pub fn new(len: usize, default_perms: PermissionSet, default_flags: FlagSet) -> Assignment {
+        Assignment {
             perms: GlobalPointerTable::from_raw(vec![default_perms; len]),
             flags: GlobalPointerTable::from_raw(vec![default_flags; len]),
         }
     }
 
-    pub fn and<'a>(&'a mut self, local: &'a mut LocalAssignment) -> Assignment<'a> {
-        Assignment {
-            global: self,
-            local,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct LocalAssignment {
-    pub perms: LocalPointerTable<PermissionSet>,
-    pub flags: LocalPointerTable<FlagSet>,
-}
-
-impl LocalAssignment {
-    pub fn new(
-        len: usize,
-        default_perms: PermissionSet,
-        default_flags: FlagSet,
-    ) -> LocalAssignment {
-        LocalAssignment {
-            perms: LocalPointerTable::from_raw(vec![default_perms; len]),
-            flags: LocalPointerTable::from_raw(vec![default_flags; len]),
-        }
-    }
-}
-
-pub struct Assignment<'a> {
-    pub global: &'a mut GlobalAssignment,
-    local: &'a mut LocalAssignment,
-}
-
-impl Assignment<'_> {
-    pub fn perms(&self) -> PointerTable<PermissionSet> {
-        self.global.perms.and(&self.local.perms)
+    pub fn perms(&self) -> &GlobalPointerTable<PermissionSet> {
+        &self.perms
     }
 
-    pub fn perms_mut(&mut self) -> PointerTableMut<PermissionSet> {
-        self.global.perms.and_mut(&mut self.local.perms)
+    pub fn perms_mut(&mut self) -> &mut GlobalPointerTable<PermissionSet> {
+        &mut self.perms
     }
 
-    pub fn flags(&self) -> PointerTable<FlagSet> {
-        self.global.flags.and(&self.local.flags)
+    pub fn flags(&self) -> &GlobalPointerTable<FlagSet> {
+        &self.flags
     }
 
     #[allow(dead_code)]
-    pub fn _flags_mut(&mut self) -> PointerTableMut<FlagSet> {
-        self.global.flags.and_mut(&mut self.local.flags)
+    pub fn _flags_mut(&mut self) -> &mut GlobalPointerTable<FlagSet> {
+        &mut self.flags
     }
 
-    pub fn all_mut(&mut self) -> (PointerTableMut<PermissionSet>, PointerTableMut<FlagSet>) {
-        (
-            self.global.perms.and_mut(&mut self.local.perms),
-            self.global.flags.and_mut(&mut self.local.flags),
-        )
+    pub fn all_mut(
+        &mut self,
+    ) -> (
+        &mut GlobalPointerTable<PermissionSet>,
+        &mut GlobalPointerTable<FlagSet>,
+    ) {
+        (&mut self.perms, &mut self.flags)
     }
 }
 
