@@ -23,7 +23,11 @@ pub struct buffer {
 
 #[no_mangle]
 #[c2rust_analyze_test::skip_borrowck]
+// CHECK-LABEL: fn buffer_new
 pub unsafe extern "C" fn buffer_new(mut cap: size_t) -> *mut buffer {
+    // The string "malloc" appears in some annotation, but no longer appears outside comments.
+    // CHECK-NOT: {{^[^/]*}}malloc
+    // CHECK: Box::new(buffer {
     let mut buf: *mut buffer = malloc(::std::mem::size_of::<buffer>() as libc::c_ulong)
         as *mut buffer;
     if cap == 0 as libc::c_int as libc::c_ulong {
@@ -31,6 +35,8 @@ pub unsafe extern "C" fn buffer_new(mut cap: size_t) -> *mut buffer {
         *fresh0 = 0 as *mut uint8_t;
     } else {
         let fresh1 = &mut (*buf).data;
+        // CHECK-NOT: {{^[^/]*}}malloc
+        // CHECK: Vec::with_capacity
         let mut p = malloc(cap) as *mut uint8_t;
         *p.offset(0) = 1;
         *fresh1 = p;
@@ -38,10 +44,13 @@ pub unsafe extern "C" fn buffer_new(mut cap: size_t) -> *mut buffer {
     (*buf).len = 0 as libc::c_int as size_t;
     (*buf).cap = cap;
     return buf;
+    // CHECK-NOT: {{^[^/]*}}malloc
 }
 
 #[no_mangle]
+// CHECK-LABEL: fn buffer_delete
 pub unsafe extern "C" fn buffer_delete(mut buf: *mut buffer) {
+    // CHECK-NOT: {{^[^/]*}}free
     if !((*buf).data).is_null() {
         free((*buf).data as *mut libc::c_void);
     }
@@ -50,20 +59,26 @@ pub unsafe extern "C" fn buffer_delete(mut buf: *mut buffer) {
 
 #[no_mangle]
 #[c2rust_analyze_test::skip_borrowck]
+// CHECK-LABEL: fn buffer_realloc
 pub unsafe extern "C" fn buffer_realloc(mut buf: *mut buffer, mut new_cap: size_t) {
     if new_cap == (*buf).cap {
         return;
     }
     if (*buf).cap == 0 as libc::c_int as libc::c_ulong {
         let fresh2 = &mut (*buf).data;
+        // CHECK-NOT: {{^[^/]*}}malloc
+        // CHECK: Vec::with_capacity
         let mut p = malloc(new_cap) as *mut uint8_t;
         *p.offset(0) = 1;
         *fresh2 = p;
     } else if new_cap == 0 as libc::c_int as libc::c_ulong {
+        // CHECK-NOT: {{^[^/]*}}free
         free((*buf).data as *mut libc::c_void);
         let fresh3 = &mut (*buf).data;
         *fresh3 = 0 as *mut uint8_t;
     } else {
+        // CHECK-NOT: {{^[^/]*}}realloc
+        // CHECK: Vec::from
         let mut p = realloc((*buf).data as *mut libc::c_void, new_cap) as *mut uint8_t;
         *p.offset(0) = 1;
         let fresh4 = &mut (*buf).data;
@@ -73,9 +88,12 @@ pub unsafe extern "C" fn buffer_realloc(mut buf: *mut buffer, mut new_cap: size_
     if (*buf).len > new_cap {
         (*buf).len = new_cap;
     }
+    // CHECK-NOT: {{^[^/]*}}{{malloc|realloc|free}}
 }
 
 #[no_mangle]
+// CHECK-LABEL: fn buffer_push
+// CHECK-NOT: {{^[^/]*}}{{malloc|[^_]realloc|free}}
 pub unsafe extern "C" fn buffer_push(mut buf: *mut buffer, mut byte: uint8_t) {
     if (*buf).len == (*buf).cap {
         if (*buf).cap == 0 as libc::c_int as libc::c_ulong {
@@ -94,6 +112,7 @@ pub unsafe extern "C" fn buffer_push(mut buf: *mut buffer, mut byte: uint8_t) {
 }
 
 #[no_mangle]
+// CHECK-LABEL: fn test_buffer
 pub unsafe extern "C" fn test_buffer() {
     let mut buf: *mut buffer = buffer_new(3 as libc::c_int as size_t);
     let mut i: libc::c_int = 0 as libc::c_int;
