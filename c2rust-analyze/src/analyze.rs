@@ -617,6 +617,12 @@ fn run(tcx: TyCtxt) {
     gacx.construct_region_metadata();
 
     // ----------------------------------
+    // Run early analyses
+    // ----------------------------------
+
+    do_recent_writes(&gacx, &mut func_info, &all_fn_ldids);
+
+    // ----------------------------------
     // Infer pointee types
     // ----------------------------------
 
@@ -651,7 +657,6 @@ fn run(tcx: TyCtxt) {
         }
 
         info.local_pointee_types.set(local_pointee_types);
-        info.recent_writes.set(RecentWrites::new(&mir));
     }
 
     // Iterate pointee constraints to a fixpoint.
@@ -2165,6 +2170,31 @@ impl<'tcx> AssignPointerIds<'tcx> for AnalysisCtxt<'_, 'tcx> {
 
     fn new_pointer(&mut self, info: PointerInfo) -> PointerId {
         self.new_pointer(info)
+    }
+}
+
+/// Run the `recent_writes` analysis, which computes the most recent write to each MIR local at
+/// each program point.  This can then be used to reconstruct the expression that's currently
+/// stored in the local.  For example, we use this to detect whether the size argument of `memcpy`
+/// is `mem::size_of::<T>()` for some `T`.
+fn do_recent_writes<'tcx>(
+    gacx: &GlobalAnalysisCtxt<'tcx>,
+    func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
+    all_fn_ldids: &[LocalDefId],
+) {
+    let tcx = gacx.tcx;
+    for &ldid in all_fn_ldids {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
+            continue;
+        }
+
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let info = func_info.get_mut(&ldid).unwrap();
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+
+        // This is very straightforward because it doesn't need an `AnalysisCtxt` and never fails.
+        info.recent_writes.set(RecentWrites::new(&mir));
     }
 }
 
