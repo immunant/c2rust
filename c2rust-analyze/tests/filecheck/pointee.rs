@@ -1,4 +1,10 @@
+#![feature(rustc_private)]
 use std::ptr;
+
+extern crate libc;
+extern "C" {
+    fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
+}
 
 // CHECK-LABEL: fn memcpy1
 unsafe fn memcpy1(dest: *mut (), src: *const ()) {
@@ -21,4 +27,20 @@ unsafe fn remove_cast() {
     // CHECK: let dest_ptr = ((&mut *(&mut dest)));
     let dest_ptr = &mut dest as *mut u8 as *mut ();
     memcpy1(dest_ptr, src_ptr);
+}
+
+
+unsafe fn malloc_fresh() {
+    let mut p = 0 as *mut libc::c_void;
+    let fresh = &mut p;
+    let q = malloc(4);
+    *fresh = q;
+    *(p as *mut i32) = 1;
+}
+
+unsafe fn malloc_no_fresh() {
+    let mut p = 0 as *mut libc::c_void;
+    let q = malloc(4);
+    p = q;
+    *(p as *mut i32) = 1;
 }
