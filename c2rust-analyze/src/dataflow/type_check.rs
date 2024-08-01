@@ -68,6 +68,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         self.equiv_constraints.push((a, b));
     }
 
+    fn pointee_type(&self, ptr: PointerId) -> Option<LTy<'tcx>> {
+        self.pointee_types[ptr].get_sole_lty()
+    }
+
     fn record_access(&mut self, ptr: PointerId, mutbl: Mutability) {
         debug!("record_access({:?}, {:?})", ptr, mutbl);
         if ptr == PointerId::NONE {
@@ -545,7 +549,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // Figure out whether we're copying one element or (possibly) several.
                 let mut maybe_offset_perm = PermissionSet::OFFSET_ADD;
                 let rv_ptr = rv_lty.label;
-                if let Some(pointee_lty) = self.pointee_types[rv_ptr].get_sole_lty() {
+                if let Some(pointee_lty) = self.pointee_type(rv_ptr) {
                     if self.operand_is_size_of_t(loc, &args[2], pointee_lty.ty) {
                         // The size is exactly the (original) size of the pointee type, so this
                         // `memset` is operating on a single element only.
@@ -589,7 +593,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // Figure out whether we're writing to one element or (possibly) several.
                 let mut maybe_offset_perm = PermissionSet::OFFSET_ADD;
                 let rv_ptr = rv_lty.label;
-                if let Some(pointee_lty) = self.pointee_types[rv_ptr].get_sole_lty() {
+                if let Some(pointee_lty) = self.pointee_type(rv_ptr) {
                     if self.operand_is_size_of_t(loc, &args[2], pointee_lty.ty) {
                         // The size is exactly the (original) size of the pointee type, so this
                         // `memset` is operating on a single element only.
