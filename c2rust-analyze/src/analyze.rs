@@ -75,6 +75,7 @@ impl<T> Default for MaybeUnset<T> {
 }
 
 impl<T> MaybeUnset<T> {
+    #[track_caller]
     pub fn set(&mut self, x: T) {
         if self.0.is_some() {
             panic!("value is already set");
@@ -82,6 +83,7 @@ impl<T> MaybeUnset<T> {
         self.0 = Some(x);
     }
 
+    #[track_caller]
     pub fn clear(&mut self) {
         if self.0.is_none() {
             panic!("value is already cleared");
@@ -89,14 +91,17 @@ impl<T> MaybeUnset<T> {
         self.0 = None;
     }
 
+    #[track_caller]
     pub fn get(&self) -> &T {
         self.0.as_ref().expect("value is not set")
     }
 
+    #[track_caller]
     pub fn get_mut(&mut self) -> &mut T {
         self.0.as_mut().expect("value is not set")
     }
 
+    #[track_caller]
     pub fn take(&mut self) -> T {
         self.0.take().expect("value is not set")
     }
