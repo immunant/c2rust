@@ -623,8 +623,48 @@ fn run(tcx: TyCtxt) {
     do_recent_writes(&gacx, &mut func_info, &all_fn_ldids);
 
     // ----------------------------------
+    // Remap `PointerId`s by equivalence class
+    // ----------------------------------
+
+    // Initial pass to gather equivalence constraints, which state that two pointer types must be
+    // converted to the same reference type.  Some additional data computed during this the process
+    // is kept around for use in later passes.
+    let mut global_equiv = build_equiv_constraints(&mut gacx, &mut func_info, &all_fn_ldids);
+
+    // Remap pointers based on equivalence classes, so all members of an equivalence class now use
+    // the same `PointerId`.
+    let (global_counter, global_equiv_map) = global_equiv.renumber();
+    eprintln!("global_equiv_map = {global_equiv_map:?}");
+    gacx.remap_pointers(&global_equiv_map, global_counter.num_pointers());
+
+    let mut local_counter = global_counter.into_local();
+    for &ldid in &all_fn_ldids {
+        // Note that we apply this `PointerId` remapping even for failed functions.
+
+        let info = func_info.get_mut(&ldid).unwrap();
+        let (local_base, local_count, local_equiv_map) = info
+            .local_equiv
+            .renumber(&global_equiv_map, &mut local_counter);
+        eprintln!("local_equiv_map = {local_equiv_map:?}");
+        info.acx_data.remap_pointers(
+            &mut gacx,
+            global_equiv_map.and(&local_equiv_map),
+            local_base,
+            local_count,
+        );
+        if info.dataflow.is_set() {
+            info.dataflow
+                .remap_pointers(global_equiv_map.and(&local_equiv_map));
+        }
+        info.local_equiv.clear();
+    }
+
+    // ----------------------------------
     // Infer pointee types
     // ----------------------------------
+
+    // This runs after equivalence class remapping because it lets us get better pointee results in
+    // pointer-to-pointer cases without implementing full type unification.
 
     let mut global_pointee_types = do_pointee_type(&mut gacx, &mut func_info, &all_fn_ldids);
     debug_print_pointee_types(
@@ -638,62 +678,12 @@ fn run(tcx: TyCtxt) {
     // Compute dataflow constraints
     // ----------------------------------
 
-    // Initial pass to assign local `PointerId`s and gather equivalence constraints, which state
-    // that two pointer types must be converted to the same reference type.  Some additional data
-    // computed during this the process is kept around for use in later passes.
-    let mut global_equiv = build_equiv_constraints(&mut gacx, &mut func_info, &all_fn_ldids);
     build_dataflow_constraints(
         &mut gacx,
         &mut func_info,
         &all_fn_ldids,
         &global_pointee_types,
     );
-
-    // ----------------------------------
-    // Remap `PointerId`s by equivalence class
-    // ----------------------------------
-
-    // Remap pointers based on equivalence classes, so all members of an equivalence class now use
-    // the same `PointerId`.
-    let (global_counter, global_equiv_map) = global_equiv.renumber();
-    eprintln!("global_equiv_map = {global_equiv_map:?}");
-    pointee_type::remap_pointers_global(
-        &mut global_pointee_types,
-        &global_equiv_map,
-        global_counter.num_pointers(),
-    );
-    gacx.remap_pointers(&global_equiv_map, global_counter.num_pointers());
-
-    let mut local_counter = global_counter.into_local();
-    for &ldid in &all_fn_ldids {
-        // Note that we apply this `PointerId` remapping even for failed functions.
-
-        let info = func_info.get_mut(&ldid).unwrap();
-        let (local_base, local_count, local_equiv_map) = info
-            .local_equiv
-            .renumber(&global_equiv_map, &mut local_counter);
-        eprintln!("local_equiv_map = {local_equiv_map:?}");
-        if info.local_pointee_types.is_set() {
-            pointee_type::remap_pointers_local(
-                &mut global_pointee_types,
-                &mut info.local_pointee_types,
-                global_equiv_map.and(&local_equiv_map),
-                local_base,
-                local_count,
-            );
-        }
-        info.acx_data.remap_pointers(
-            &mut gacx,
-            global_equiv_map.and(&local_equiv_map),
-            local_base,
-            local_count,
-        );
-        if info.dataflow.is_set() {
-            info.dataflow
-                .remap_pointers(global_equiv_map.and(&local_equiv_map));
-        }
-        info.local_equiv.clear();
-    }
 
     // ----------------------------------
     // Build initial assignment
