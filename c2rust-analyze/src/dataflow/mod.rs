@@ -461,6 +461,14 @@ pub fn generate_constraints<'tcx>(
     mir: &Body<'tcx>,
     recent_writes: &RecentWrites,
     pointee_types: PointerTable<PointeeTypes<'tcx>>,
-) -> (DataflowConstraints, Vec<(PointerId, PointerId)>) {
+) -> DataflowConstraints {
     self::type_check::visit(acx, mir, recent_writes, pointee_types)
+}
+
+pub fn generate_equiv_constraints<'tcx>(
+    acx: &AnalysisCtxt<'_, 'tcx>,
+    mir: &Body<'tcx>,
+    recent_writes: &RecentWrites,
+) -> Vec<(PointerId, PointerId)> {
+    self::type_check::visit_equiv(acx, mir, recent_writes)
 }
