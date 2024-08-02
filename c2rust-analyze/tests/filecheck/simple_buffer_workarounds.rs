@@ -34,12 +34,11 @@ pub unsafe extern "C" fn buffer_new(mut cap: size_t) -> *mut buffer {
         let fresh0 = &mut (*buf).data;
         *fresh0 = 0 as *mut uint8_t;
     } else {
-        //let fresh1 = &mut (*buf).data;
+        let fresh1 = &mut (*buf).data;
         // CHECK-NOT: {{^[^/]*}}malloc
         // CHECK: Vec::with_capacity
         let mut p = malloc(cap) as *mut uint8_t;
-        //*fresh1 = p;
-        (*buf).data = p;
+        *fresh1 = p;
     }
     (*buf).len = 0 as libc::c_int as size_t;
     (*buf).cap = cap;
@@ -65,12 +64,11 @@ pub unsafe extern "C" fn buffer_realloc(mut buf: *mut buffer, mut new_cap: size_
         return;
     }
     if (*buf).cap == 0 as libc::c_int as libc::c_ulong {
-        //let fresh2 = &mut (*buf).data;
+        let fresh2 = &mut (*buf).data;
         // CHECK-NOT: {{^[^/]*}}malloc
         // CHECK: Vec::with_capacity
         let mut p = malloc(new_cap) as *mut uint8_t;
-        //*fresh2 = p;
-        (*buf).data = p;
+        *fresh2 = p;
     } else if new_cap == 0 as libc::c_int as libc::c_ulong {
         // CHECK-NOT: {{^[^/]*}}free
         free((*buf).data as *mut libc::c_void);
@@ -80,9 +78,8 @@ pub unsafe extern "C" fn buffer_realloc(mut buf: *mut buffer, mut new_cap: size_
         // CHECK-NOT: {{^[^/]*}}realloc
         // CHECK: Vec::from
         let mut p = realloc((*buf).data as *mut libc::c_void, new_cap) as *mut uint8_t;
-        //let fresh4 = &mut (*buf).data;
-        //*fresh4 = p;
-        (*buf).data = p;
+        let fresh4 = &mut (*buf).data;
+        *fresh4 = p;
     }
     (*buf).cap = new_cap;
     if (*buf).len > new_cap {
