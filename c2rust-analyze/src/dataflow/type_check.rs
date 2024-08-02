@@ -31,16 +31,27 @@ use rustc_middle::ty::{SubstsRef, Ty, TyKind};
 ///   and destination.  This is necessary because we generally can't change the inner pointer type
 ///   when performing a cast (for example, it's possible to convert `&[&[T]]` to `&&[T]` - take the
 ///   address of the first element - but not to `&[&T]]`).
+///
+///
+/// # Optional fields
+///
+/// Several fields of this visitor are wrapped in `Option`.  These are accessed using helper
+/// methods that do nothing when the field is `None`.  We use this to run the visitor in two
+/// different modes, one for computing equivalence constraints and the other for computing all
+/// other dataflow constraints.  The two kinds of constraints are closely related, and it's easiest
+/// to implement them both in a single visitor.  But we compute them in two separate passes because
+/// equivalence constraints can be used to improve the quality of the `pointee_type` analysis, and
+/// pointee results are needed to compute the dataflow constraints.
 struct TypeChecker<'tcx, 'a> {
     acx: &'a AnalysisCtxt<'a, 'tcx>,
     mir: &'a Body<'tcx>,
     recent_writes: &'a RecentWrites,
-    pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
+    pointee_types: Option<PointerTable<'a, PointeeTypes<'tcx>>>,
     /// Subset constraints on pointer permissions.  For example, this contains constraints like
     /// "the `PermissionSet` assigned to `PointerId` `l1` must be a subset of the `PermissionSet`
     /// assigned to `l2`".  See `dataflow::Constraint` for a full description of supported
     /// constraints.
-    constraints: DataflowConstraints,
+    constraints: Option<DataflowConstraints>,
     /// Equivalence constraints on pointer permissions and flags.  An entry `(l1, l2)` in this list
     /// means that `PointerId`s `l1` and `l2` should be assigned exactly the same permissions and
     /// flags.  This ensures that the two pointers will be rewritten to the same safe type.
@@ -48,39 +59,51 @@ struct TypeChecker<'tcx, 'a> {
     /// Higher-level code eventually feeds the constraints recorded here into the union-find data
     /// structure defined in `crate::equiv`, so adding a constraint here has the effect of unifying
     /// the equivalence classes of the two `PointerId`s.
-    equiv_constraints: Vec<(PointerId, PointerId)>,
+    equiv_constraints: Option<Vec<(PointerId, PointerId)>>,
 }
 
 impl<'tcx> TypeChecker<'tcx, '_> {
     fn add_edge(&mut self, src: PointerId, dest: PointerId) {
         // Copying `src` to `dest` can discard permissions, but can't add new ones.
-        self.constraints.add_subset(dest, src);
+        if let Some(ref mut constraints) = self.constraints {
+            constraints.add_subset(dest, src);
+        }
     }
 
     fn add_edge_except(&mut self, src: PointerId, dest: PointerId, except: PermissionSet) {
         // Copying `src` to `dest` can discard permissions, but can't add new ones,
         // except for the specified exceptions.
-        self.constraints.add_subset_except(dest, src, except);
+        if let Some(ref mut constraints) = self.constraints {
+            constraints.add_subset_except(dest, src, except);
+        }
     }
 
     /// Add `Constraint::AllPerms`, which requires `ptr` to have all of the permissions listed in
     /// `perms`.
     fn add_all_perms(&mut self, ptr: PointerId, perms: PermissionSet) {
-        self.constraints.add_all_perms(ptr, perms);
+        if let Some(ref mut constraints) = self.constraints {
+            constraints.add_all_perms(ptr, perms);
+        }
     }
 
     /// Add `Constraint::NoPerms`, which requires `ptr` to have none of the permissions listed in
     /// `perms`.
     fn add_no_perms(&mut self, ptr: PointerId, perms: PermissionSet) {
-        self.constraints.add_no_perms(ptr, perms);
+        if let Some(ref mut constraints) = self.constraints {
+            constraints.add_no_perms(ptr, perms);
+        }
     }
 
     fn add_equiv(&mut self, a: PointerId, b: PointerId) {
-        self.equiv_constraints.push((a, b));
+        if let Some(ref mut equiv_constraints) = self.equiv_constraints {
+            equiv_constraints.push((a, b));
+        }
     }
 
     fn pointee_type(&self, ptr: PointerId) -> Option<LTy<'tcx>> {
-        self.pointee_types[ptr].get_sole_lty()
+        self.pointee_types
+            .as_ref()
+            .and_then(|pointee_types| pointee_types[ptr].get_sole_lty())
     }
 
     fn record_access(&mut self, ptr: PointerId, mutbl: Mutability) {
@@ -727,26 +750,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 }
 
-pub fn visit<'tcx>(
-    acx: &AnalysisCtxt<'_, 'tcx>,
-    mir: &Body<'tcx>,
-    recent_writes: &RecentWrites,
-    pointee_types: PointerTable<PointeeTypes<'tcx>>,
-) -> (DataflowConstraints, Vec<(PointerId, PointerId)>) {
-    let mut tc = TypeChecker {
-        acx,
-        mir,
-        recent_writes,
-        pointee_types,
-        constraints: DataflowConstraints::default(),
-        equiv_constraints: Vec::new(),
-    };
-
-    for (ptr, perms, neg_perms) in acx.string_literal_perms() {
-        tc.constraints.add_all_perms(ptr, perms);
-        tc.constraints.add_no_perms(ptr, neg_perms);
-    }
-
+fn visit_common<'tcx>(tc: &mut TypeChecker<'tcx, '_>, mir: &Body<'tcx>) {
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb_data.statements.iter().enumerate() {
             tc.visit_statement(
@@ -765,6 +769,48 @@ pub fn visit<'tcx>(
             },
         );
     }
+}
 
-    (tc.constraints, tc.equiv_constraints)
+/// Process a MIR body to compute dataflow constraints.
+pub fn visit<'tcx>(
+    acx: &AnalysisCtxt<'_, 'tcx>,
+    mir: &Body<'tcx>,
+    recent_writes: &RecentWrites,
+    pointee_types: PointerTable<PointeeTypes<'tcx>>,
+) -> DataflowConstraints {
+    let mut tc = TypeChecker {
+        acx,
+        mir,
+        recent_writes,
+        pointee_types: Some(pointee_types),
+        constraints: Some(DataflowConstraints::default()),
+        equiv_constraints: None,
+    };
+
+    for (ptr, perms, neg_perms) in acx.string_literal_perms() {
+        tc.add_all_perms(ptr, perms);
+        tc.add_no_perms(ptr, neg_perms);
+    }
+
+    visit_common(&mut tc, mir);
+    tc.constraints.unwrap()
+}
+
+/// Process a MIR body to compute equivalence constraints.
+pub fn visit_equiv<'tcx>(
+    acx: &AnalysisCtxt<'_, 'tcx>,
+    mir: &Body<'tcx>,
+    recent_writes: &RecentWrites,
+) -> Vec<(PointerId, PointerId)> {
+    let mut tc = TypeChecker {
+        acx,
+        mir,
+        recent_writes,
+        pointee_types: None,
+        constraints: None,
+        equiv_constraints: Some(Vec::new()),
+    };
+
+    visit_common(&mut tc, mir);
+    tc.equiv_constraints.unwrap()
 }

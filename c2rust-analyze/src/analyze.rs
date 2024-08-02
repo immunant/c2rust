@@ -2222,7 +2222,10 @@ fn build_dataflow_constraints<'tcx>(
 
         // Compute local equivalence classes and dataflow constraints.
         let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
-            dataflow::generate_constraints(&acx, &mir, recent_writes, pointee_types)
+            (
+                dataflow::generate_constraints(&acx, &mir, recent_writes, pointee_types),
+                dataflow::generate_equiv_constraints(&acx, &mir, recent_writes),
+            )
         }));
         match r {
             Ok((dataflow, equiv_constraints)) => {
