@@ -6,10 +6,9 @@
 [github]: https://github.com/immunant/c2rust/actions
 [Azure Build Status]: https://dev.azure.com/immunant/c2rust/_apis/build/status/immunant.c2rust?branchName=master
 [azure]: https://dev.azure.com/immunant/c2rust/_build/latest?definitionId=1&branchName=master
-
 [Latest Version]: https://img.shields.io/crates/v/c2rust.svg
 [crates.io]: https://crates.io/crates/c2rust
-[Rustc Version]: https://img.shields.io/badge/rustc-nightly--2022--02--14-lightgrey.svg "Rustc nightly-2022-02-14"
+[Rustc Version]: https://img.shields.io/badge/rustc-nightly--2022--02--14-lightgrey.svg 'Rustc nightly-2022-02-14'
 
 C2Rust helps you migrate C99-compliant code to Rust.
 The translator (or transpiler), [`c2rust transpile`](./c2rust-transpile/),
@@ -27,7 +26,7 @@ so that we can move forward with a recent Rust toolchain.
 
 Here's the big picture:
 
-![C2Rust overview](docs/c2rust-overview.png "C2Rust overview")
+![C2Rust overview](docs/c2rust-overview.png 'C2Rust overview')
 
 To learn more, check out our [RustConf'18](https://www.youtube.com/watch?v=WEsR0Vv7jhg) talk on YouTube
 and try the C2Rust translator online at [c2rust.com](https://www.c2rust.com).
@@ -46,33 +45,39 @@ The manual is still a work-in-progress, so if you can't find something please le
 C2Rust requires LLVM 7 or later with its corresponding clang compiler and libraries.
 Python 3.6 or later, CMake 3.4.3 or later, and openssl (1.0) are also required. These prerequisites may be installed with the following commands, depending on your platform:
 
+- **Ubuntu 22.04:**
+
+  ```sh
+  apt install libstdc++-12-dev
+  ```
+
 - **Ubuntu 18.04, Debian 10, and later:**
 
-    ```sh
-    apt install build-essential llvm clang libclang-dev cmake libssl-dev pkg-config python3 git
-    ```
+  ```sh
+  apt install build-essential llvm clang libclang-dev cmake libssl-dev pkg-config python3 git
+  ```
 
 Depending on the LLVM distribution, the `llvm-dev` package may also be required.
 For example, the official LLVM packages from [apt.llvm.org](https://apt.llvm.org/) require `llvm-dev` to be installed.
 
 - **Arch Linux:**
 
-    ```sh
-    pacman -S base-devel llvm clang cmake openssl python
-    ```
+  ```sh
+  pacman -S base-devel llvm clang cmake openssl python
+  ```
 
 - **NixOS / nix:**
 
-    ```sh
-    nix-shell
-    ```
+  ```sh
+  nix-shell
+  ```
 
 - **macOS:** Xcode command-line tools and recent LLVM (we recommend the Homebrew version) are required.
 
-    ```sh
-    xcode-select --install
-    brew install llvm python3 cmake openssl
-    ```
+  ```sh
+  xcode-select --install
+  brew install llvm python3 cmake openssl
+  ```
 
 The C2Rust transpiler now builds using a stable Rust compiler.
 If you are developing other features,
@@ -95,16 +100,15 @@ On macOS with Homebrew LLVM, you need to point the build system at the LLVM inst
 
 - **Intel Macs:**
 
-    ```sh
-    LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo install c2rust
-    ```
-
+  ```sh
+  LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo install c2rust
+  ```
 
 - **Apple Silicon Macs:**
 
-    ```sh
-    LLVM_CONFIG_PATH=/opt/homebrew/opt/llvm/bin/llvm-config cargo install c2rust
-    ```
+  ```sh
+  LLVM_CONFIG_PATH=/opt/homebrew/opt/llvm/bin/llvm-config cargo install c2rust
+  ```
 
 On Linux with Linuxbrew LLVM, you need to point the build system at the LLVM installation as follows:
 
@@ -243,7 +247,7 @@ intercept-build <build command>
 ```
 
 You can also use `intercept-build` to generate a compilation database
-for compiling a single C file.  For example:
+for compiling a single C file. For example:
 
 ```sh
 intercept-build sh -c "cc program.c"
@@ -310,8 +314,8 @@ We rely on [Emscripten](https://github.com/kripken/emscripten)'s
 Relooper algorithm to translate arbitrary C control flows.
 
 This material is based upon work supported by the United States Air Force and
-DARPA under Contract No. FA8750-15-C-0124.  Any opinions, findings and
-conclusions or recommendations  expressed in this material are those of the
+DARPA under Contract No. FA8750-15-C-0124. Any opinions, findings and
+conclusions or recommendations expressed in this material are those of the
 author(s) and do not necessarily reflect the views of the United States Air
-Force and DARPA.  Distribution Statement A, "Approved for Public Release,
+Force and DARPA. Distribution Statement A, "Approved for Public Release,
 Distribution Unlimited."
