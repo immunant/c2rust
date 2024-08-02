@@ -64,6 +64,18 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         self.constraints.add_subset_except(dest, src, except);
     }
 
+    /// Add `Constraint::AllPerms`, which requires `ptr` to have all of the permissions listed in
+    /// `perms`.
+    fn add_all_perms(&mut self, ptr: PointerId, perms: PermissionSet) {
+        self.constraints.add_all_perms(ptr, perms);
+    }
+
+    /// Add `Constraint::NoPerms`, which requires `ptr` to have none of the permissions listed in
+    /// `perms`.
+    fn add_no_perms(&mut self, ptr: PointerId, perms: PermissionSet) {
+        self.constraints.add_no_perms(ptr, perms);
+    }
+
     fn add_equiv(&mut self, a: PointerId, b: PointerId) {
         self.equiv_constraints.push((a, b));
     }
@@ -79,11 +91,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
         match mutbl {
             Mutability::Mut => {
-                self.constraints
-                    .add_all_perms(ptr, PermissionSet::READ | PermissionSet::WRITE);
+                self.add_all_perms(ptr, PermissionSet::READ | PermissionSet::WRITE);
             }
             Mutability::Not => {
-                self.constraints.add_all_perms(ptr, PermissionSet::READ);
+                self.add_all_perms(ptr, PermissionSet::READ);
             }
         }
     }
@@ -129,8 +140,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     panic!("Creating non-null pointers from exposed addresses not supported");
                 }
                 // The target type of the cast must not have `NON_NULL` permission.
-                self.constraints
-                    .add_no_perms(to_lty.label, PermissionSet::NON_NULL);
+                self.add_no_perms(to_lty.label, PermissionSet::NON_NULL);
             }
             CastKind::PointerExposeAddress => {
                 // Allow, as [`CastKind::PointerFromExposedAddress`] is the dangerous one,
@@ -467,7 +477,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let rv_lty = self.acx.type_of(&args[0]);
                 self.do_assign(pl_lty, rv_lty);
                 let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
-                self.constraints.add_all_perms(rv_lty.label, perms);
+                self.add_all_perms(rv_lty.label, perms);
             }
 
             Callee::SliceAsPtr { elem_ty, .. } => {
@@ -499,8 +509,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                 // The output of `malloc` is known not to be a stack pointer.
                 let pl_lty = self.acx.type_of(destination);
-                self.constraints
-                    .add_no_perms(pl_lty.label, PermissionSet::STACK);
+                self.add_no_perms(pl_lty.label, PermissionSet::STACK);
             }
             Callee::Realloc => {
                 let out_ptr = destination;
@@ -515,11 +524,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                 // input needs FREE permission
                 let perms = PermissionSet::FREE;
-                self.constraints.add_all_perms(rv_lty.label, perms);
+                self.add_all_perms(rv_lty.label, perms);
 
                 // Output loses the STACK permission.
-                self.constraints
-                    .add_no_perms(pl_lty.label, PermissionSet::STACK);
+                self.add_no_perms(pl_lty.label, PermissionSet::STACK);
 
                 // unify inner-most pointer types
                 self.do_equivalence_nested(pl_lty, rv_lty);
@@ -533,7 +541,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                 let rv_lty = self.acx.type_of(in_ptr);
                 let perms = PermissionSet::FREE;
-                self.constraints.add_all_perms(rv_lty.label, perms);
+                self.add_all_perms(rv_lty.label, perms);
             }
             Callee::Memcpy => {
                 let out_ptr = destination;
@@ -560,7 +568,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                 // input needs WRITE permission
                 let perms = PermissionSet::WRITE | maybe_offset_perm;
-                self.constraints.add_all_perms(rv_lty.label, perms);
+                self.add_all_perms(rv_lty.label, perms);
 
                 let src_ptr = args[1]
                     .place()
@@ -574,8 +582,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                 // input needs READ permission
                 let perms = PermissionSet::READ | maybe_offset_perm;
-                self.constraints
-                    .add_all_perms(src_ptr_casted_lty.label, perms);
+                self.add_all_perms(src_ptr_casted_lty.label, perms);
 
                 // Perform a pseudo-assignment for *dest = *src.
                 let src_ptr_lty = self.acx.type_of(src_ptr);
@@ -603,7 +610,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 debug!("memset at {:?} needs offset? {:?}", loc, maybe_offset_perm);
 
                 let perms = PermissionSet::WRITE | maybe_offset_perm;
-                self.constraints.add_all_perms(rv_lty.label, perms);
+                self.add_all_perms(rv_lty.label, perms);
 
                 // TODO: the return values of `memcpy` are rarely used
                 // and may not always be casted to a non-void-pointer,
@@ -622,8 +629,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let pl_lty = self.acx.type_of(destination);
                 // We are assigning a null pointer to `destination`, so it must not have the
                 // `NON_NULL` flag.
-                self.constraints
-                    .add_no_perms(pl_lty.label, PermissionSet::NON_NULL);
+                self.add_no_perms(pl_lty.label, PermissionSet::NON_NULL);
             }
         }
     }
