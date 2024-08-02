@@ -145,10 +145,6 @@ impl<'tcx> PointeeTypes<'tcx> {
         }
     }
 
-    pub fn merge(&mut self, other: PointeeTypes<'tcx>) {
-        self.tys.extend(other.tys);
-    }
-
     pub fn simplify(&mut self, vars: &VarTable<'tcx>) {
         let mut add = Vec::new();
         let mut remove = Vec::new();

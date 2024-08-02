@@ -34,7 +34,9 @@ unsafe fn remove_cast() {
 unsafe fn malloc_fresh() {
     let mut p = 0 as *mut libc::c_void;
     let fresh = &mut p;
-    // CHECK: malloc(4)
+    // CHECK-NOT: malloc(4)
+    // CHECK: Box::new
+    // CHECK-NOT: malloc(4)
     let q = malloc(4);
     *fresh = q;
     *(p as *mut i32) = 1;
