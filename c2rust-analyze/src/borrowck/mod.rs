@@ -331,6 +331,23 @@ fn run_polonius<'tcx>(
         local_ltys.push(lty);
     }
 
+    // Assign origins to `rvalue_tys`.  We sort the keys first to ensure that we assign origins in
+    // a deterministic order.
+    let mut keys = acx.rvalue_tys.keys().collect::<Vec<_>>();
+    keys.sort();
+    let rvalue_ltys = keys.into_iter().map(|&loc| {
+        let lty = acx.rvalue_tys[&loc];
+        let new_lty = assign_origins(
+            ltcx,
+            hypothesis,
+            &mut facts,
+            &mut maps,
+            &acx.gacx.adt_metadata,
+            lty,
+        );
+        (loc, new_lty)
+    }).collect::<HashMap<_, _>>();
+
     // Gather field permissions
     let field_permissions = field_ltys
         .iter()
@@ -353,6 +370,7 @@ fn run_polonius<'tcx>(
         &mut maps,
         &mut loans,
         &local_ltys,
+        &rvalue_ltys,
         &field_permissions,
         hypothesis,
         mir,
