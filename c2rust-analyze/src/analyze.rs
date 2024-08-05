@@ -977,6 +977,14 @@ fn run(tcx: TyCtxt) {
                 let dest = dest_pl.local;
                 let dest = Local::from_u32(dest.index);
 
+                if acx.local_tys.get(dest).is_none() {
+                    eprintln!(
+                        "pdg: {}: local {:?} appears as dest, but is out of bounds",
+                        n.function.name, dest
+                    );
+                    info.acx_data.set(acx.into_data());
+                    continue;
+                }
                 let ptr = match acx.ptr_of(dest) {
                     Some(x) => x,
                     None => {
