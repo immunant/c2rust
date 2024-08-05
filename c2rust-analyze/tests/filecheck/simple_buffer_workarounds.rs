@@ -22,7 +22,6 @@ pub struct buffer {
 }
 
 #[no_mangle]
-#[c2rust_analyze_test::skip_borrowck]
 // CHECK-LABEL: fn buffer_new
 pub unsafe extern "C" fn buffer_new(mut cap: size_t) -> *mut buffer {
     // The string "malloc" appears in some annotation, but no longer appears outside comments.
@@ -57,7 +56,6 @@ pub unsafe extern "C" fn buffer_delete(mut buf: *mut buffer) {
 }
 
 #[no_mangle]
-#[c2rust_analyze_test::skip_borrowck]
 // CHECK-LABEL: fn buffer_realloc
 pub unsafe extern "C" fn buffer_realloc(mut buf: *mut buffer, mut new_cap: size_t) {
     if new_cap == (*buf).cap {
