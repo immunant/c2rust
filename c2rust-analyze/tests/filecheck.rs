@@ -55,6 +55,7 @@ define_tests! {
     insertion_sort_driver,
     insertion_sort_rewrites,
     known_fn,
+    move_mut,
     non_null,
     non_null_force,
     non_null_rewrites,
