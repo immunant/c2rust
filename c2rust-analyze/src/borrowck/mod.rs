@@ -330,6 +330,22 @@ fn run_polonius<'tcx>(
         local_ltys.push(lty);
     }
 
+    let rvalue_ltys = acx
+        .rvalue_tys
+        .iter()
+        .map(|(&loc, &lty)| {
+            let new_lty = assign_origins(
+                ltcx,
+                hypothesis,
+                &mut facts,
+                &mut maps,
+                &acx.gacx.adt_metadata,
+                lty,
+            );
+            (loc, new_lty)
+        })
+        .collect::<HashMap<_, _>>();
+
     // Gather field permissions
     let field_permissions = field_ltys
         .iter()
@@ -352,6 +368,7 @@ fn run_polonius<'tcx>(
         &mut maps,
         &mut loans,
         &local_ltys,
+        &rvalue_ltys,
         &field_permissions,
         hypothesis,
         mir,
