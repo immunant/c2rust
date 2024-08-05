@@ -943,6 +943,29 @@ fn run(tcx: TyCtxt) {
         let f = std::fs::File::open(pdg_file_path).unwrap();
         let graphs: Graphs = bincode::deserialize_from(f).unwrap();
 
+        let mut known_nulls = HashSet::new();
+        for g in &graphs.graphs {
+            for n in &g.nodes {
+                let dest_pl = match n.dest.as_ref() {
+                    Some(x) => x,
+                    None => {
+                        continue;
+                    }
+                };
+                if !dest_pl.projection.is_empty() {
+                    continue;
+                }
+                let dest = dest_pl.local;
+                let dest = Local::from_u32(dest.index);
+                if g.is_null {
+                    known_nulls.insert((n.function.id, dest));
+                }
+            }
+        }
+
+        let allow_unsound =
+            env::var("C2RUST_ANALYZE_PDG_ALLOW_UNSOUND").map_or(false, |val| &val == "1");
+
         for g in &graphs.graphs {
             for n in &g.nodes {
                 let def_path_hash: (u64, u64) = n.function.id.0.into();
@@ -962,6 +985,8 @@ fn run(tcx: TyCtxt) {
                 let mir = mir.borrow();
                 let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
                 let mut asn = gasn.and(&mut info.lasn);
+                let mut updates_forbidden =
+                    g_updates_forbidden.and_mut(&mut info.l_updates_forbidden);
 
                 let dest_pl = match n.dest.as_ref() {
                     Some(x) => x,
@@ -999,8 +1024,14 @@ fn run(tcx: TyCtxt) {
 
                 let old_perms = asn.perms()[ptr];
                 let mut perms = old_perms;
-                if g.is_null {
+                if known_nulls.contains(&(n.function.id, dest)) {
                     perms.remove(PermissionSet::NON_NULL);
+                } else if allow_unsound {
+                    perms.insert(PermissionSet::NON_NULL);
+                    // Unsound update: if we have never seen a NULL for
+                    // this local in the PDG, prevent the static analysis
+                    // from changing that permission.
+                    updates_forbidden[ptr].insert(PermissionSet::NON_NULL);
                 }
 
                 if let Some(node_info) = n.info.as_ref() {
