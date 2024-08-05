@@ -33,12 +33,31 @@ pub fn categorize(context: PlaceContext) -> Option<DefUse> {
         // path and not the unwind path. -nmatsakis
         PlaceContext::MutatingUse(MutatingUseContext::Call) |
         PlaceContext::MutatingUse(MutatingUseContext::AsmOutput) |
-        PlaceContext::MutatingUse(MutatingUseContext::Yield) |
+        PlaceContext::MutatingUse(MutatingUseContext::Yield) => Some(DefUse::Def),
 
         // Storage live and storage dead aren't proper defines, but we can ignore
         // values that come before them.
+        //
+        // C2Rust: For borrowchecking purposes, we ignore `StorageLive` and `StorageDead`.  In the
+        // original version of this function, they're considered to be `DefUse::Def`s, but this
+        // approach creates a problem for code like this:
+        //
+        // ```
+        // let q = {
+        //   let p = &mut ...;
+        //   p
+        // };
+        // *q = 1;
+        // ```
+        //
+        // The MIR for this has an assignment like `q = p`, followed by `StorageDead(p)`.  We
+        // interpret the assignment as a reborrow of `p`, and if `StorageDead(p)` was considered a
+        // `Def`, we would invalidate the loan at the end of the block when `StorageDead` "writes"
+        // to `p`.  However, this code is perfectly valid, and omitting `loan_invalidated_at` for
+        // `StorageLive` and `StorageDead` appears to be consistent with `rustc -Z nll-facts`
+        // output (tested on `tests/filecheck/move_mut.rs`).
         PlaceContext::NonUse(NonUseContext::StorageLive) |
-        PlaceContext::NonUse(NonUseContext::StorageDead) => Some(DefUse::Def),
+        PlaceContext::NonUse(NonUseContext::StorageDead) => None,
 
         ///////////////////////////////////////////////////////////////////////////
         // REGULAR USES
