@@ -949,10 +949,11 @@ fn run(tcx: TyCtxt) {
                 let ldid = match func_def_path_hash_to_ldid.get(&def_path_hash) {
                     Some(&x) => x,
                     None => {
-                        panic!(
+                        eprintln!(
                             "pdg: unknown DefPathHash {:?} for function {:?}",
                             n.function.id, n.function.name
                         );
+                        continue;
                     }
                 };
                 let info = func_info.get_mut(&ldid).unwrap();
