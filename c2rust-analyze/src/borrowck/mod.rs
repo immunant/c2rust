@@ -21,6 +21,7 @@ use std::fmt::{Debug, Formatter, Write as _};
 use std::fs::{self, File};
 use std::hash::{Hash, Hasher};
 use std::io::{BufReader, BufWriter};
+use std::time::Instant;
 
 mod atoms;
 mod def_use;
@@ -211,6 +212,7 @@ fn run_polonius<'tcx>(
     field_ltys: &HashMap<DefId, context::LTy<'tcx>>,
 ) -> (AllFacts, AtomMaps<'tcx>, Output) {
     let tcx = acx.tcx();
+    let start = Instant::now();
     let mut facts = AllFacts::default();
     let mut maps = AtomMaps::default();
 
@@ -385,21 +387,28 @@ fn run_polonius<'tcx>(
 
     dump::dump_facts_to_dir(&facts, &maps, format!("inspect/{}", name)).unwrap();
 
+    eprintln!("time: run_polonius, build facts ({name}): {:?}", start.elapsed());
+
+    let start = Instant::now();
     eprintln!("running polonius analysis on {name}");
     let facts_hash = bytes_to_hex_string(&hash_facts(&facts));
     let output = match try_load_cached_output(&facts_hash) {
         Some(output) => output,
         None => {
+            let engine_start = Instant::now();
             let output = polonius_engine::Output::compute(
                 &facts,
                 polonius_engine::Algorithm::DatafrogOpt,
                 true,
             );
+            eprintln!("time: run_polonius, engine ({name}): {:?}", engine_start.elapsed());
             save_cached_output(&facts_hash, &output).unwrap();
             output
         }
     };
     dump::dump_output_to_dir(&output, &maps, format!("inspect/{}", name)).unwrap();
+
+    eprintln!("time: run_polonius, get result ({name}): {:?}", start.elapsed());
 
     (facts, maps, output)
 }

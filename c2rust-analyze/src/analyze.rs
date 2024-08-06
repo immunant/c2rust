@@ -63,6 +63,7 @@ use std::ops::Index;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::str::FromStr;
+use std::time::Instant;
 
 /// A wrapper around `T` that dynamically tracks whether it's initialized or not.
 /// [`RefCell`][std::cell::RefCell] dynamically tracks borrowing and panics if the rules are
@@ -861,8 +862,11 @@ fn run(tcx: TyCtxt) {
     eprintln!("=== ADT Metadata ===");
     eprintln!("{:?}", gacx.adt_metadata);
 
+    let start = Instant::now();
+
     let mut loop_count = 0;
     loop {
+        let iter_start = Instant::now();
         // Loop until the global assignment reaches a fixpoint.  The inner loop also runs until a
         // fixpoint, but it only considers a single function at a time.  The inner loop for one
         // function can affect other functions by updating the `Assignment`, so we also need the
@@ -874,6 +878,7 @@ fn run(tcx: TyCtxt) {
             if gacx.fn_analysis_invalid(ldid.to_def_id()) {
                 continue;
             }
+            let fn_start = Instant::now();
 
             let skip_borrowck = util::has_test_attr(tcx, ldid, TestAttr::SkipBorrowck);
 
@@ -917,6 +922,7 @@ fn run(tcx: TyCtxt) {
                     continue;
                 }
             }
+            eprintln!("time: solve ({ldid:?}): {:?}", fn_start.elapsed());
         }
 
         let mut num_changed = 0;
@@ -939,11 +945,14 @@ fn run(tcx: TyCtxt) {
             loop_count, num_changed
         );
 
+        eprintln!("time: solve (iteration {loop_count}): {:?}", iter_start.elapsed());
+
         if &asn.perms.as_slice()[..gacx.num_global_pointers()] == &old_gasn {
             break;
         }
     }
     eprintln!("reached fixpoint in {} iterations", loop_count);
+    eprintln!("time: solve: {:?}", start.elapsed());
 
     // Do final processing on each function.
     for &ldid in &all_fn_ldids {
@@ -2060,10 +2069,12 @@ fn do_recent_writes<'tcx>(
     all_fn_ldids: &[LocalDefId],
 ) {
     let tcx = gacx.tcx;
+    let start = Instant::now();
     for &ldid in all_fn_ldids {
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
+        let fn_start = Instant::now();
 
         let ldid_const = WithOptConstParam::unknown(ldid);
         let info = func_info.get_mut(&ldid).unwrap();
@@ -2072,7 +2083,10 @@ fn do_recent_writes<'tcx>(
 
         // This is very straightforward because it doesn't need an `AnalysisCtxt` and never fails.
         info.recent_writes.set(RecentWrites::new(&mir));
+
+        eprintln!("time: do_recent_writes({ldid:?}): {:?}", fn_start.elapsed());
     }
+    eprintln!("time: do_recent_writes: {:?}", start.elapsed());
 }
 
 /// Run the `pointee_type` analysis, which tries to determine the actual type of data that each
@@ -2084,6 +2098,7 @@ fn do_pointee_type<'tcx>(
     all_fn_ldids: &[LocalDefId],
 ) -> GlobalPointerTable<PointeeTypes<'tcx>> {
     let tcx = gacx.tcx;
+    let start = Instant::now();
     let mut global_pointee_types =
         GlobalPointerTable::<PointeeTypes>::new(gacx.num_global_pointers());
     let mut pointee_vars = pointee_type::VarTable::default();
@@ -2092,6 +2107,7 @@ fn do_pointee_type<'tcx>(
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
+        let fn_start = Instant::now();
 
         let ldid_const = WithOptConstParam::unknown(ldid);
         let info = func_info.get_mut(&ldid).unwrap();
@@ -2117,11 +2133,16 @@ fn do_pointee_type<'tcx>(
         }
 
         info.local_pointee_types.set(local_pointee_types);
+
+        eprintln!("time: do_pointee_type({ldid:?}): {:?}", fn_start.elapsed());
     }
+    eprintln!("time: do_pointee_type, generate constraints: {:?}", start.elapsed());
 
     // Iterate pointee constraints to a fixpoint.
+    let start = Instant::now();
     let mut loop_count = 0;
     loop {
+        let iter_start = Instant::now();
         // Loop until the global assignment reaches a fixpoint.  The inner loop also runs until a
         // fixpoint, but it only considers a single function at a time.  The inner loop for one
         // function can affect other functions by updating `global_pointee_types`, so we also need
@@ -2135,18 +2156,22 @@ fn do_pointee_type<'tcx>(
             if gacx.fn_analysis_invalid(ldid.to_def_id()) {
                 continue;
             }
+            let fn_start = Instant::now();
 
             let info = func_info.get_mut(&ldid).unwrap();
 
             let pointee_constraints = info.pointee_constraints.get();
             let pointee_types = global_pointee_types.and_mut(info.local_pointee_types.get_mut());
             pointee_type::solve_constraints(pointee_constraints, &pointee_vars, pointee_types);
+            eprintln!("time: do_pointee_type, solve ({ldid:?}): {:?}", fn_start.elapsed());
         }
 
+        eprintln!("time: do_pointee_type, solve (iteration {loop_count}): {:?}", iter_start.elapsed());
         if global_pointee_types == old_global_pointee_types {
             break;
         }
     }
+    eprintln!("time: do_pointee_type, solve constraints: {:?}", start.elapsed());
 
     global_pointee_types
 }
@@ -2186,9 +2211,11 @@ fn build_equiv_constraints<'tcx>(
     all_fn_ldids: &[LocalDefId],
 ) -> GlobalEquivSet {
     let tcx = gacx.tcx;
+    let start = Instant::now();
 
     let mut global_equiv = GlobalEquivSet::new(gacx.num_global_pointers());
     for &ldid in all_fn_ldids {
+        let fn_start = Instant::now();
         let info = func_info.get_mut(&ldid).unwrap();
         let mut local_equiv =
             LocalEquivSet::new(info.acx_data.local_ptr_base(), info.acx_data.num_pointers());
@@ -2229,7 +2256,9 @@ fn build_equiv_constraints<'tcx>(
 
         info.acx_data.set(acx.into_data());
         info.local_equiv.set(local_equiv);
+        eprintln!("time: build_equiv_constraints({ldid:?}): {:?}", fn_start.elapsed());
     }
+    eprintln!("time: build_equiv_constraints: {:?}", start.elapsed());
 
     global_equiv
 }
@@ -2244,11 +2273,13 @@ fn build_dataflow_constraints<'tcx>(
     global_pointee_types: &GlobalPointerTable<PointeeTypes<'tcx>>,
 ) {
     let tcx = gacx.tcx;
+    let start = Instant::now();
 
     for &ldid in all_fn_ldids {
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
+        let fn_start = Instant::now();
 
         let ldid_const = WithOptConstParam::unknown(ldid);
         let info = func_info.get_mut(&ldid).unwrap();
@@ -2277,7 +2308,9 @@ fn build_dataflow_constraints<'tcx>(
         };
 
         info.acx_data.set(acx.into_data());
+        eprintln!("time: build_dataflow_constraints({ldid:?}): {:?}", fn_start.elapsed());
     }
+    eprintln!("time: build_dataflow_constraints: {:?}", start.elapsed());
 }
 
 fn make_ty_fixed(asn: &mut Assignment, lty: LTy) {
