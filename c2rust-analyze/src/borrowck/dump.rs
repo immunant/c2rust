@@ -1,7 +1,7 @@
+//! Copied partly from rustc `compiler/rustc_borrowck/src/facts.rs`, which is dual-licensed MIT and
+//! Apache 2.0.
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Output, Path, Point, Variable};
 use rustc_hash::{FxHashMap, FxHashSet};
-/// Copied partly from rustc `compiler/rustc_borrowck/src/facts.rs`, which is dual-licensed MIT and
-/// Apache 2.0.
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt::Write as _;
