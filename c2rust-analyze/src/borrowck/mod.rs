@@ -391,7 +391,9 @@ fn run_polonius<'tcx>(
 
     let start = Instant::now();
     eprintln!("running polonius analysis on {name}");
+    let hash_start = Instant::now();
     let facts_hash = bytes_to_hex_string(&hash_facts(&facts));
+    eprintln!("time: run_polonius, hash facts ({name}): {:?}", hash_start.elapsed());
     let output = match try_load_cached_output(&facts_hash) {
         Some(output) => output,
         None => {
@@ -402,11 +404,15 @@ fn run_polonius<'tcx>(
                 true,
             );
             eprintln!("time: run_polonius, engine ({name}): {:?}", engine_start.elapsed());
+            let save_start = Instant::now();
             save_cached_output(&facts_hash, &output).unwrap();
+            eprintln!("time: run_polonius, save_cached_output ({name}): {:?}", save_start.elapsed());
             output
         }
     };
+    let dump_start = Instant::now();
     dump::dump_output_to_dir(&output, &maps, format!("inspect/{}", name)).unwrap();
+    eprintln!("time: run_polonius, dump_outputs ({name}): {:?}", dump_start.elapsed());
 
     eprintln!("time: run_polonius, get result ({name}): {:?}", start.elapsed());
 
