@@ -4,7 +4,7 @@ use crate::context::{AnalysisCtxt, Assignment, FlagSet, PermissionSet, PointerId
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{GlobalPointerTable, PointerTable};
 use crate::recent_writes::RecentWrites;
-use log::debug;
+use log::{debug, trace};
 use rustc_middle::mir::Body;
 
 mod type_check;
@@ -71,9 +71,9 @@ impl DataflowConstraints {
         for c in &self.constraints {
             debug!("  {:?}", c);
         }
-        debug!("hypothesis:");
+        trace!("hypothesis:");
         for (id, p) in hypothesis.iter() {
-            debug!("  {}: {:?}", id, p);
+            trace!("  {}: {:?}", id, p);
         }
 
         struct PropagatePerms;
