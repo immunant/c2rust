@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Formatter, Write as _};
 use std::fs::{self, File};
 use std::hash::{Hash, Hasher};
+use std::io::{BufReader, BufWriter};
 
 mod atoms;
 mod def_use;
@@ -383,7 +384,7 @@ fn run_polonius<'tcx>(
 fn try_load_cached_output(facts_hash: &str) -> Option<Output> {
     let path = format!("polonius_cache/{}.output", facts_hash);
 
-    let f = File::open(&path).ok()?;
+    let f = BufReader::new(File::open(&path).ok()?);
     let raw = match bincode::deserialize_from(f) {
         Ok(x) => x,
         Err(e) => {
@@ -492,7 +493,7 @@ fn save_cached_output(facts_hash: &str, output: &Output) -> Result<(), bincode::
         ),
     );
 
-    let f = File::create(path)?;
+    let f = BufWriter::new(File::create(path)?);
     bincode::serialize_into(f, &raw)
 }
 

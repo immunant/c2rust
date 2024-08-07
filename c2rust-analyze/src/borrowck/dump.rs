@@ -1,8 +1,9 @@
+//! Copied partly from rustc `compiler/rustc_borrowck/src/facts.rs`, which is dual-licensed MIT and
+//! Apache 2.0.
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Loan, Origin, Output, Path, Point, Variable};
 use rustc_hash::{FxHashMap, FxHashSet};
-/// Copied partly from rustc `compiler/rustc_borrowck/src/facts.rs`, which is dual-licensed MIT and
-/// Apache 2.0.
 use std::collections::{BTreeMap, BTreeSet};
+use std::env;
 use std::error::Error;
 use std::fmt::Write as _;
 use std::fs::{self, File};
@@ -10,11 +11,20 @@ use std::hash::Hash;
 use std::io::{BufWriter, Write};
 use std::path;
 
+thread_local! {
+    static DUMP_FACTS: bool = {
+        env::var("C2RUST_ANALYZE_DUMP_POLONIUS_FACTS").map_or(false, |val| &val == "1")
+    };
+}
+
 pub fn dump_facts_to_dir(
     facts: &AllFacts,
     maps: &AtomMaps,
     dir: impl AsRef<path::Path>,
 ) -> Result<(), Box<dyn Error>> {
+    if !DUMP_FACTS.with(|&flag| flag) {
+        return Ok(());
+    }
     let dir: &path::Path = dir.as_ref();
     fs::create_dir_all(dir)?;
     let wr = FactWriter { maps, dir };
@@ -60,6 +70,9 @@ pub fn dump_output_to_dir(
     maps: &AtomMaps,
     dir: impl AsRef<path::Path>,
 ) -> Result<(), Box<dyn Error>> {
+    if !DUMP_FACTS.with(|&flag| flag) {
+        return Ok(());
+    }
     let dir: &path::Path = dir.as_ref();
     fs::create_dir_all(dir)?;
     let wr = FactWriter { maps, dir };
