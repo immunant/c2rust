@@ -2,7 +2,7 @@ use c2rust_analysis_rt::mir_loc::{self, DefPathHash, Func};
 use c2rust_analysis_rt::mir_loc::{FuncId, MirPlace};
 use rustc_index::newtype_index;
 use rustc_index::vec::IndexVec;
-use rustc_middle::mir::{BasicBlock, Field, Local};
+use rustc_middle::mir::{BasicBlock, Local};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::Display;
 use std::{
@@ -25,9 +25,7 @@ pub enum NodeKind {
     /// [`Field`] projection.
     ///
     /// Used for operations like `_2 = &(*_1).0`.
-    /// Nested field accesses like `_4 = &(*_1).x.y.z`
-    /// are broken into multiple [`Node`]s, each covering one level.
-    Field(#[serde(with = "crate::util::serde::FieldDef")] Field),
+    Project(usize, usize),
 
     /// Pointer arithmetic.
     ///
@@ -58,6 +56,9 @@ pub enum NodeKind {
     ///
     /// Can't have a [`Node::source`].
     _AddrOfStatic(DefPathHash),
+
+    /// Get the address of a constant.
+    AddrOfConst(usize),
 
     /// Heap allocation.
     ///
@@ -121,10 +122,11 @@ impl Display for NodeKind {
         use NodeKind::*;
         match self {
             Copy => write!(f, "copy"),
-            Field(field) => write!(f, "field.{}", field.as_usize()),
+            Project(offset, idx) => write!(f, "project.{idx}@{offset}"),
             Offset(offset) => write!(f, "offset[{offset}]"),
             AddrOfLocal(local) => write!(f, "&{local:?}"),
             _AddrOfStatic(static_) => write!(f, "&'static {static_:?}"),
+            AddrOfConst(size) => write!(f, "&const[{}]", size),
             Alloc(n) => {
                 // Right now we only create `Alloc(1)`, so special case it,
                 // as the increased readability helps.
@@ -281,18 +283,24 @@ impl Display for DisplayNode<'_> {
 }
 
 /// A pointer derivation graph, which tracks the handling of one object throughout its lifetime.
-#[derive(Debug, Default, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
 pub struct Graph {
     /// The nodes in the graph.  Nodes are stored in increasing order by timestamp.  The first
     /// node, called the "root node", creates the object described by this graph, and all other
     /// nodes are derived from it.
     #[serde(with = "crate::util::serde::index_vec")]
     pub nodes: IndexVec<NodeId, Node>,
+
+    /// Whether this graph was built from a null pointer.
+    pub is_null: bool,
 }
 
 impl Graph {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(is_null: bool) -> Self {
+        Self {
+            nodes: Default::default(),
+            is_null,
+        }
     }
 }
 
@@ -311,7 +319,7 @@ impl Display for Graph {
                 .to_string()
             })
             .collect::<Vec<_>>();
-        writeln!(f, "g {{")?;
+        writeln!(f, "g is_null={} {{", self.is_null)?;
         for line in pad_columns(&lines, sep, " ") {
             let line = line.trim_end();
             writeln!(f, "\t{line}")?;

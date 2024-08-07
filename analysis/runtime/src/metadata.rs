@@ -1,3 +1,4 @@
+use indexmap::IndexSet;
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Formatter},
@@ -13,6 +14,7 @@ use crate::mir_loc::{Func, FuncId, MirLoc, MirLocId};
 pub struct Metadata {
     pub locs: Vec<MirLoc>,
     pub functions: HashMap<FuncId, String>,
+    pub projections: IndexSet<Vec<usize>>,
 }
 
 impl Metadata {
@@ -46,11 +48,17 @@ impl FromIterator<Metadata> for Metadata {
     fn from_iter<I: IntoIterator<Item = Metadata>>(iter: I) -> Self {
         let mut locs = Vec::new();
         let mut functions = HashMap::new();
+        let mut projections = IndexSet::new();
         for metadata in iter {
             locs.extend(metadata.locs);
             functions.extend(metadata.functions);
+            projections.extend(metadata.projections);
         }
-        Self { locs, functions }
+        Self {
+            locs,
+            functions,
+            projections,
+        }
     }
 }
 
