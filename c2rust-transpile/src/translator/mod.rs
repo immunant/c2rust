@@ -4766,6 +4766,14 @@ impl<'c> Translation<'c> {
                         }
                         _ => {}
                     }
+                // Another simplification we can make is mapping {0, 1} => {true, false}
+                } else if let ExprKind::Lit(ref l) = arg.kind {
+                    if let LitKind::Int(val, _typ) = l.kind {
+                        match val {
+                            0 | 1 => return mk().lit_expr(mk().bool_lit(val == 1)),
+                            _ => {}
+                        }
+                    }
                 }
             }
 
