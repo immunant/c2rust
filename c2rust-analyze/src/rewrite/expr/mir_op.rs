@@ -589,6 +589,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 && v.perms[pl_ty.label].intersects(PermissionSet::USED)
                             {
                                 let dest_lty = v.acx.type_of(&args[0]);
+                                // TODO: The result of `MemcpySafe` is always a slice, so this cast
+                                // may be using an incorrect input type.  See the comment on the
+                                // `MemcpySafe` case of `rewrite::expr::convert` for details.
                                 v.emit_cast_lty_lty(dest_lty, pl_ty);
                             }
                         });
