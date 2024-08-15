@@ -230,27 +230,37 @@ impl<'tcx> ConvertVisitor<'tcx> {
             } => {
                 // `memcpy(dest, src, n)` to a `copy_from_slice` call
                 assert!(matches!(hir_rw, Rewrite::Identity));
-                assert!(!dest_single, "&T -> &[T] conversion for memcpy dest NYI");
-                assert!(!src_single, "&T -> &[T] conversion for memcpy src NYI");
-                Rewrite::Block(
-                    vec![
-                        Rewrite::Let(vec![
-                            ("dest".into(), self.get_subexpr(ex, 0)),
-                            ("src".into(), self.get_subexpr(ex, 1)),
-                            ("byte_len".into(), self.get_subexpr(ex, 2)),
-                        ]),
-                        Rewrite::Let(vec![(
-                            "n".into(),
-                            format_rewrite!("byte_len as usize / {elem_size}"),
-                        )]),
-                        Rewrite::MethodCall(
-                            "copy_from_slice".into(),
-                            Box::new(format_rewrite!("dest[..n]")),
-                            vec![format_rewrite!("&src[..n]")],
-                        ),
-                    ],
-                    Some(Box::new(format_rewrite!("dest"))),
-                )
+                let mut stmts = Vec::with_capacity(5);
+
+                stmts.push(Rewrite::Let(vec![
+                    ("dest".into(), self.get_subexpr(ex, 0)),
+                    ("src".into(), self.get_subexpr(ex, 1)),
+                    ("byte_len".into(), self.get_subexpr(ex, 2)),
+                ]));
+                stmts.push(Rewrite::Let(vec![(
+                    "n".into(),
+                    format_rewrite!("byte_len as usize / {elem_size}"),
+                )]));
+                if dest_single {
+                    stmts.push(Rewrite::Let(vec![(
+                        "dest".into(),
+                        format_rewrite!("std::slice::from_ref(dest)"),
+                    )]));
+                }
+                if src_single {
+                    stmts.push(Rewrite::Let(vec![(
+                        "src".into(),
+                        format_rewrite!("std::slice::from_ref(src)"),
+                    )]));
+                }
+                stmts.push(Rewrite::MethodCall(
+                    "copy_from_slice".into(),
+                    Box::new(format_rewrite!("dest[..n]")),
+                    vec![format_rewrite!("&src[..n]")],
+                ));
+
+                // FIXME: is it correct to return a slice here when dest_single is set?
+                Rewrite::Block(stmts, Some(Box::new(format_rewrite!("dest"))))
             }
 
             mir_op::RewriteKind::MemsetZeroize {
