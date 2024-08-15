@@ -681,6 +681,7 @@ impl<'tcx, 'a> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
             }
             _ => (),
         }
+        intravisit::walk_stmt(self, s);
     }
 }
 
