@@ -23,6 +23,7 @@ mod dataflow;
 mod equiv;
 mod known_fn;
 mod labeled_ty;
+mod last_use;
 mod log;
 mod panic_detail;
 mod pointee_type;

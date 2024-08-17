@@ -10,6 +10,7 @@ use crate::dataflow::DataflowConstraints;
 use crate::equiv::GlobalEquivSet;
 use crate::equiv::LocalEquivSet;
 use crate::labeled_ty::LabeledTyCtxt;
+use crate::last_use::{self, LastUse};
 use crate::panic_detail;
 use crate::panic_detail::PanicDetail;
 use crate::pointee_type;
@@ -569,6 +570,9 @@ struct FuncInfo<'tcx> {
     local_pointee_types: MaybeUnset<LocalPointerTable<PointeeTypes<'tcx>>>,
     /// Table for looking up the most recent write to a given local.
     recent_writes: MaybeUnset<RecentWrites>,
+    /// Analysis result indicating which uses of each local are actually the last use of that
+    /// local.
+    last_use: MaybeUnset<LastUse>,
 }
 
 fn run(tcx: TyCtxt) {
@@ -622,6 +626,7 @@ fn run(tcx: TyCtxt) {
     // ----------------------------------
 
     do_recent_writes(&gacx, &mut func_info, &all_fn_ldids);
+    do_last_use(&gacx, &mut func_info, &all_fn_ldids);
 
     // ----------------------------------
     // Remap `PointerId`s by equivalence class
@@ -1340,6 +1345,17 @@ fn run(tcx: TyCtxt) {
         rewrite::apply_rewrites(tcx, Vec::new(), annotations, update_files);
         eprintln!("finished writing json_compare annotations - exiting");
 
+        return;
+    }
+
+    if env::var("C2RUST_ANALYZE_DEBUG_LAST_USE").is_ok() {
+        let mut ann = AnnotationBuffer::new(tcx);
+        debug_annotate_last_use(&gacx, &func_info, &all_fn_ldids, &mut ann);
+        let annotations = ann.finish();
+        let update_files = get_rewrite_mode(tcx, None);
+        eprintln!("update mode = {:?}", update_files);
+        rewrite::apply_rewrites(tcx, Vec::new(), annotations, update_files);
+        eprintln!("finished writing last_use annotations - exiting");
         return;
     }
 
@@ -2087,6 +2103,68 @@ fn do_recent_writes<'tcx>(
         eprintln!("time: do_recent_writes({ldid:?}): {:?}", fn_start.elapsed());
     }
     eprintln!("time: do_recent_writes: {:?}", start.elapsed());
+}
+
+fn do_last_use<'tcx>(
+    gacx: &GlobalAnalysisCtxt<'tcx>,
+    func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
+    all_fn_ldids: &[LocalDefId],
+) {
+    let tcx = gacx.tcx;
+    let start = Instant::now();
+    for &ldid in all_fn_ldids {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
+            continue;
+        }
+        let fn_start = Instant::now();
+
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let info = func_info.get_mut(&ldid).unwrap();
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+
+        // This is very straightforward because it doesn't need an `AnalysisCtxt` and never fails.
+        info.last_use.set(last_use::calc_last_use(&mir));
+
+        eprintln!("time: do_last_use({ldid:?}): {:?}", fn_start.elapsed());
+    }
+    eprintln!("time: do_last_use: {:?}", start.elapsed());
+}
+
+fn debug_annotate_last_use<'tcx>(
+    gacx: &GlobalAnalysisCtxt<'tcx>,
+    func_info: &HashMap<LocalDefId, FuncInfo<'tcx>>,
+    all_fn_ldids: &[LocalDefId],
+    ann: &mut AnnotationBuffer,
+) {
+    let tcx = gacx.tcx;
+    for &ldid in all_fn_ldids {
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let info = match func_info.get(&ldid) {
+            Some(x) => x,
+            None => continue,
+        };
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+
+        if !info.last_use.is_set() {
+            continue;
+        }
+        let last_use = info.last_use.get();
+        let mut last_use = last_use.iter().collect::<Vec<_>>();
+        last_use.sort();
+        for (loc, which, local) in last_use {
+            let span = mir.stmt_at(loc).either(
+                |stmt| stmt.source_info.span,
+                |term| term.source_info.span,
+            );
+            ann.emit(span, format!(
+                "{which:?}: last use of {} {local:?} ({})",
+                if mir.local_kind(local) == LocalKind::Temp { "temporary" } else { "local" },
+                describe_local(tcx, &mir.local_decls[local]),
+            ));
+        }
+    }
 }
 
 /// Run the `pointee_type` analysis, which tries to determine the actual type of data that each
