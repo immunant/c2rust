@@ -28,8 +28,6 @@ pub enum EventKind {
     /// the pointer.
     CopyPtr(Pointer),
 
-    CopyRef,
-
     /// Projection. Used for operations like `_2 = &(*_1).0`.
     /// The third value is a "projection key" that points to an element
     /// of the projections data structure in the metadata. It is used to
@@ -110,7 +108,6 @@ impl Debug for EventKind {
             LoadAddr(ptr) => write!(f, "load(0x{:x})", ptr),
             StoreAddr(ptr) => write!(f, "store(0x{:x})", ptr),
             StoreAddrTaken(ptr) => write!(f, "store(0x{:x})", ptr),
-            CopyRef => write!(f, "copy_ref"),
             AddrOfLocal(ptr, _) => write!(f, "addr_of_local = 0x{:x}", ptr),
             ToInt(ptr) => write!(f, "to_int(0x{:x})", ptr),
             FromInt(ptr) => write!(f, "from_int(0x{:x})", ptr),

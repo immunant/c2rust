@@ -57,7 +57,6 @@ impl EventKindExt for EventKind {
             StoreAddrTaken(ptr) => ptr,
             LoadValue(ptr) => ptr,
             StoreValue(ptr) => ptr,
-            CopyRef => return None, // FIXME
             ToInt(ptr) => ptr,
             Realloc { old_ptr, .. } => old_ptr,
             FromInt(lhs) => lhs,
@@ -79,7 +78,7 @@ impl EventKindExt for EventKind {
             Alloc { .. } => NodeKind::Alloc(1),
             Realloc { .. } => NodeKind::Alloc(1),
             Free { .. } => NodeKind::Free,
-            CopyPtr(..) | CopyRef => NodeKind::Copy,
+            CopyPtr(..) => NodeKind::Copy,
             Project(base_ptr, new_ptr, key) => {
                 let proj = metadata
                     .projections
@@ -121,7 +120,6 @@ impl EventKindExt for EventKind {
 fn update_provenance(
     provenances: &mut HashMap<Pointer, (GraphId, NodeId)>,
     event_kind: &EventKind,
-    metadata: &EventMetadata,
     mapping: (GraphId, NodeId),
 ) {
     use EventKind::*;
@@ -140,9 +138,6 @@ fn update_provenance(
         }
         Offset(_, _, new_ptr) | Project(_, new_ptr, _) => {
             provenances.insert(new_ptr, mapping);
-        }
-        CopyRef => {
-            provenances.insert(metadata.destination.clone().unwrap().local.into(), mapping);
         }
         AddrOfLocal(ptr, _) => {
             provenances.insert(ptr, mapping);
@@ -233,7 +228,6 @@ pub fn add_node(
     update_provenance(
         provenances,
         &event.kind,
-        event_metadata,
         (graph_id, node_id),
     );
 
