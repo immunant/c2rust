@@ -815,20 +815,34 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
             )
         }
 
-        mir_op::RewriteKind::OptionDowngrade { mutbl, deref } => {
+        mir_op::RewriteKind::OptionDowngrade { mutbl, kind } => {
             // `p` -> `Some(p)`
-            let ref_method = if deref {
-                if mutbl {
-                    "as_deref_mut".into()
-                } else {
-                    "as_deref".into()
-                }
-            } else if mutbl {
-                "as_mut".into()
-            } else {
-                "as_ref".into()
-            };
-            Rewrite::MethodCall(ref_method, Box::new(hir_rw), vec![])
+            match kind {
+                mir_op::OptionDowngradeKind::Borrow => {
+                    let ref_method = if mutbl {
+                        "as_mut".into()
+                    } else {
+                        "as_ref".into()
+                    };
+                    Rewrite::MethodCall(ref_method, Box::new(hir_rw), vec![])
+                },
+                mir_op::OptionDowngradeKind::Deref => {
+                    let ref_method = if mutbl {
+                        "as_deref_mut".into()
+                    } else {
+                        "as_deref".into()
+                    };
+                    Rewrite::MethodCall(ref_method, Box::new(hir_rw), vec![])
+                },
+                mir_op::OptionDowngradeKind::MoveAndDeref => {
+                    let closure = if mutbl {
+                        format_rewrite!("|ptr| &mut *ptr")
+                    } else {
+                        format_rewrite!("|ptr| &*ptr")
+                    };
+                    Rewrite::MethodCall("map".into(), Box::new(hir_rw), vec![closure])
+                },
+            }
         }
 
         mir_op::RewriteKind::DynOwnedUnwrap => {
