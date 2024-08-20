@@ -1,6 +1,7 @@
 use self::mir_op::MirRewrite;
 use self::unlower::{MirOrigin, PreciseLoc};
 use crate::context::{AnalysisCtxt, Assignment};
+use crate::last_use::LastUse;
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::PointerTable;
 use crate::rewrite::Rewrite;
@@ -25,11 +26,12 @@ pub fn gen_expr_rewrites<'tcx>(
     acx: &mut AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,
     pointee_types: PointerTable<PointeeTypes<'tcx>>,
+    last_use: &LastUse,
     def_id: DefId,
     mir: &Body<'tcx>,
     hir_body_id: BodyId,
 ) -> Vec<(Span, Rewrite)> {
-    let (mir_rewrites, errors) = mir_op::gen_mir_rewrites(acx, asn, pointee_types, mir);
+    let (mir_rewrites, errors) = mir_op::gen_mir_rewrites(acx, asn, pointee_types, last_use, mir);
     if !errors.is_empty() {
         acx.gacx.dont_rewrite_fns.add(def_id, errors);
     }

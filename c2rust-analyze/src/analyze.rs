@@ -1502,6 +1502,7 @@ fn run2<'tcx>(
                     &mut acx,
                     &asn,
                     pointee_types,
+                    &info.last_use,
                     ldid.to_def_id(),
                     &mir,
                     hir_body_id,
