@@ -138,7 +138,10 @@ pub enum RewriteKind {
     OptionMapEnd,
     /// Downgrade ownership of an `Option` to `Option<&_>` or `Option<&mut _>` by calling
     /// `as_ref()`/`as_mut()` or `as_deref()`/`as_deref_mut()`.
-    OptionDowngrade { mutbl: bool, deref: bool },
+    OptionDowngrade {
+        mutbl: bool,
+        kind: OptionDowngradeKind,
+    },
 
     /// Extract the `T` from `DynOwned<T>`.
     DynOwnedUnwrap,
@@ -171,6 +174,16 @@ pub enum RewriteKind {
     CellFromMut,
     /// `x` to `x.as_ptr()`
     AsPtr,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum OptionDowngradeKind {
+    /// E.g. `Option<T>` to `Option<&mut T>` via `p.as_mut()`
+    Borrow,
+    /// E.g. `Option<Box<T>>` to `Option<&mut T>` via `p.as_deref_mut()`
+    Deref,
+    /// E.g. `Option<&mut T>` to `Option<&T>` via `p.map(|ptr| &*ptr)`
+    MoveAndDeref,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -498,7 +511,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         if v.is_nullable(rv_lty.label) {
                             v.emit(RewriteKind::OptionDowngrade {
                                 mutbl: true,
-                                deref: false,
+                                kind: OptionDowngradeKind::Borrow,
                             });
                             v.emit(RewriteKind::OptionMapBegin);
                             v.emit(RewriteKind::Deref);
@@ -1140,7 +1153,11 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             if !desc.own.is_copy() {
                                 v.emit(RewriteKind::OptionDowngrade {
                                     mutbl: access == PlaceAccess::Mut,
-                                    deref: !desc.dyn_owned,
+                                    kind: if desc.dyn_owned {
+                                        OptionDowngradeKind::Borrow
+                                    } else {
+                                        OptionDowngradeKind::Deref
+                                    },
                                 });
                             }
                             v.emit(RewriteKind::OptionUnwrap);
@@ -1478,7 +1495,11 @@ where
                     Ownership::Raw | Ownership::Imm => {
                         (self.emit)(RewriteKind::OptionDowngrade {
                             mutbl: false,
-                            deref: !from.dyn_owned,
+                            kind: if from.dyn_owned {
+                                OptionDowngradeKind::Borrow
+                            } else {
+                                OptionDowngradeKind::Deref
+                            },
                         });
                         deref_after_unwrap = from.dyn_owned;
                         from.own = Ownership::Imm;
@@ -1486,7 +1507,11 @@ where
                     Ownership::RawMut | Ownership::Cell | Ownership::Mut => {
                         (self.emit)(RewriteKind::OptionDowngrade {
                             mutbl: true,
-                            deref: !from.dyn_owned,
+                            kind: if from.dyn_owned {
+                                OptionDowngradeKind::Borrow
+                            } else {
+                                OptionDowngradeKind::Deref
+                            },
                         });
                         deref_after_unwrap = from.dyn_owned;
                         from.own = Ownership::Mut;
