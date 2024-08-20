@@ -8,6 +8,7 @@
 //! materialize adjustments only on code that's subject to some rewrite.
 
 use crate::context::{AnalysisCtxt, Assignment, DontRewriteFnReason, FlagSet, LTy, PermissionSet};
+use crate::last_use::{self, LastUse};
 use crate::panic_detail;
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{GlobalPointerTable, PointerId, PointerTable};
@@ -253,6 +254,7 @@ struct ExprRewriteVisitor<'a, 'tcx> {
     perms: &'a GlobalPointerTable<PermissionSet>,
     flags: &'a GlobalPointerTable<FlagSet>,
     pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
+    last_use: &'a LastUse,
     rewrites: &'a mut HashMap<Location, Vec<MirRewrite>>,
     mir: &'a Body<'tcx>,
     loc: Location,
@@ -265,6 +267,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         acx: &'a AnalysisCtxt<'a, 'tcx>,
         asn: &'a Assignment,
         pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
+        last_use: &'a LastUse,
         rewrites: &'a mut HashMap<Location, Vec<MirRewrite>>,
         mir: &'a Body<'tcx>,
     ) -> ExprRewriteVisitor<'a, 'tcx> {
@@ -275,6 +278,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             perms,
             flags,
             pointee_types,
+            last_use,
             rewrites,
             mir,
             loc: Location {
@@ -376,6 +380,12 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         desc.dyn_owned
     }
 
+    /// Check whether the `Place` identified by `which` within the current statement or terminator
+    /// is the last use of a local.
+    fn is_last_use(&self, which: last_use::WhichPlace) -> bool {
+        self.last_use.is_last_use(self.loc, which)
+    }
+
     fn rewrite_lty(&self, lty: LTy<'tcx>) -> Ty<'tcx> {
         let tcx = self.acx.tcx();
         rewrite::ty::rewrite_lty(
@@ -394,6 +404,44 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         let printer = FmtPrinter::new(tcx, Namespace::TypeNS);
         let s = rewritten_ty.print(printer).unwrap().into_buffer();
         (rewritten_ty, s)
+    }
+
+    fn current_sub_loc_as_which_place(&self) -> Option<last_use::WhichPlace> {
+        // This logic is a bit imprecise, but should be correct in the cases where we actually call
+        // it (namely, when the `Place`/`Rvalue` is simply a `Local`).
+        let mut which = None;
+        for sl in &self.sub_loc {
+            match *sl {
+                SubLoc::Dest => {
+                    which = Some(last_use::WhichPlace::Lvalue);
+                }
+                SubLoc::Rvalue => {
+                    which = Some(last_use::WhichPlace::Operand(0));
+                }
+                SubLoc::CallArg(i) => {
+                    // In a call, `WhichPlace::Operand(0)` refers to the callee function.
+                    which = Some(last_use::WhichPlace::Operand(i + 1));
+                }
+                SubLoc::RvalueOperand(i) => {
+                    which = Some(last_use::WhichPlace::Operand(i));
+                }
+                SubLoc::RvaluePlace(_) => {}
+                SubLoc::OperandPlace => {}
+                SubLoc::PlaceDerefPointer => {}
+                SubLoc::PlaceFieldBase => {}
+                SubLoc::PlaceIndexArray => {}
+            }
+        }
+        which
+    }
+
+    /// Like `is_last_use`, but infers `WhichPlace` based on `self.sub_loc`.
+    fn current_sub_loc_is_last_use(&self) -> bool {
+        if let Some(which) = self.current_sub_loc_as_which_place() {
+            self.is_last_use(which)
+        } else {
+            false
+        }
     }
 
     fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
@@ -479,6 +527,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     // place, visit the RHS place mutably and `mem::take` out of it to avoid a
                     // static ownership transfer.
 
+                    // Determine whether it's okay for the cast emitted below to move the
+                    // expression that it's casting.  This is the case if the rvalue is not a
+                    // place, which means it produces a temporary value that can be moved as
+                    // needed, or if the rvalue is a place but is the last use of a local.
+                    let cast_can_move =
+                        !rv.is_place() || (rv.is_local() && v.current_sub_loc_is_last_use());
+
                     // Check whether this assignment transfers ownership of its RHS.  If so, return
                     // the RHS `Place`.
                     let assignment_transfers_ownership = || {
@@ -521,13 +576,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         if v.is_nullable(rv_lty.label) {
                             v.emit(RewriteKind::OptionMapEnd);
                         }
-                        v.emit_cast_lty_lty(rv_lty, pl_lty);
+                        v.emit_cast_lty_lty(rv_lty, pl_lty, cast_can_move);
                         return;
                     }
 
                     // Normal case: just `visit_rvalue` and emit a cast if needed.
                     v.visit_rvalue(rv, Some(rv_lty));
-                    v.emit_cast_lty_lty(rv_lty, pl_lty)
+                    v.emit_cast_lty_lty(rv_lty, pl_lty, cast_can_move)
                 });
                 self.enter_dest(|v| v.visit_place(pl, PlaceAccess::Mut, RequireSinglePointer::Yes));
             }
@@ -596,7 +651,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 }
 
                                 if !pl_ty.label.is_none() {
-                                    v.emit_cast_lty_lty(lsig.output, pl_ty);
+                                    // Emit a cast.  The call returns a temporary, which the cast
+                                    // is always allowed to move.
+                                    v.emit_cast_lty_lty(lsig.output, pl_ty, true);
                                 }
                             });
                         }
@@ -645,7 +702,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 // TODO: The result of `MemcpySafe` is always a slice, so this cast
                                 // may be using an incorrect input type.  See the comment on the
                                 // `MemcpySafe` case of `rewrite::expr::convert` for details.
-                                v.emit_cast_lty_lty(dest_lty, pl_ty);
+                                v.emit_cast_lty_lty(dest_lty, pl_ty, true);
                             }
                         });
                     }
@@ -685,7 +742,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 && v.perms[pl_ty.label].intersects(PermissionSet::USED)
                             {
                                 let dest_lty = v.acx.type_of(&args[0]);
-                                v.emit_cast_lty_lty(dest_lty, pl_ty);
+                                v.emit_cast_lty_lty(dest_lty, pl_ty, true);
                             }
                         });
                     }
@@ -1067,7 +1124,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 if let Some(expect_ty) = expect_ty {
                     let ptr_lty = self.acx.type_of(pl);
                     if !ptr_lty.label.is_none() {
-                        self.emit_cast_lty_lty(ptr_lty, expect_ty);
+                        let cast_can_move = pl.is_local() && self.current_sub_loc_is_last_use();
+                        self.emit_cast_lty_lty(ptr_lty, expect_ty, cast_can_move);
                     }
                 }
             }
@@ -1135,6 +1193,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         };
         match last_proj {
             PlaceElem::Deref => {
+                let cast_can_move = base_pl.is_local() && self.current_sub_loc_is_last_use();
                 self.enter_place_deref_pointer(|v| {
                     v.visit_place_ref(base_pl, proj_ltys, access, RequireSinglePointer::Yes);
                     if !v.flags[base_lty.label].contains(FlagSet::FIXED) {
@@ -1155,6 +1214,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                     mutbl: access == PlaceAccess::Mut,
                                     kind: if desc.dyn_owned {
                                         OptionDowngradeKind::Borrow
+                                    } else if cast_can_move {
+                                        OptionDowngradeKind::MoveAndDeref
                                     } else {
                                         OptionDowngradeKind::Deref
                                     },
@@ -1166,6 +1227,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             }
                         }
                         if desc.dyn_owned {
+                            // TODO: do we need a `MoveAndDeref` equivalent for `DynOwned`?
                             v.emit(RewriteKind::DynOwnedDowngrade {
                                 mutbl: access == PlaceAccess::Mut,
                             });
@@ -1289,10 +1351,14 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         builder.build_cast_desc_lty(from, to_lty);
     }
 
-    fn emit_cast_lty_lty(&mut self, from_lty: LTy<'tcx>, to_lty: LTy<'tcx>) {
+    /// Emit a cast from `from_lty` to `to_lty` at the current `(loc, sub_loc)`.  `is_local` should
+    /// be set when the thing being cast is a plain local with no projections; in that case, we may
+    /// apply special handling if this is the last use of the local.
+    fn emit_cast_lty_lty(&mut self, from_lty: LTy<'tcx>, to_lty: LTy<'tcx>, cast_can_move: bool) {
         let perms = self.perms;
         let flags = self.flags;
-        let mut builder = CastBuilder::new(self.acx.tcx(), perms, flags, |rk| self.emit(rk));
+        let mut builder = CastBuilder::new(self.acx.tcx(), perms, flags, |rk| self.emit(rk))
+            .can_move(cast_can_move);
         builder.build_cast_lty_lty(from_lty, to_lty);
     }
 
@@ -1421,6 +1487,11 @@ pub struct CastBuilder<'a, 'tcx, PT1, PT2, F> {
     perms: &'a PT1,
     flags: &'a PT2,
     emit: F,
+    /// If set, the cast builder is allowed to move the expression being cast.  For example, we
+    /// might emit `ptr.map(|p| &mut *p).unwrap()` instead of `ptr.as_deref_mut().unwrap()` when
+    /// `can_move` is set; the former moves out of `ptr` but avoids an additional borrow, making it
+    /// suitable to be used as the result expression of a function.
+    can_move: bool,
 }
 
 impl<'a, 'tcx, PT1, PT2, F> CastBuilder<'a, 'tcx, PT1, PT2, F>
@@ -1440,7 +1511,13 @@ where
             perms,
             flags,
             emit,
+            can_move: false,
         }
+    }
+
+    pub fn can_move(mut self, can_move: bool) -> Self {
+        self.can_move = can_move;
+        self
     }
 
     pub fn build_cast_desc_desc(&mut self, from: TypeDesc<'tcx>, to: TypeDesc<'tcx>) {
@@ -1497,6 +1574,8 @@ where
                             mutbl: false,
                             kind: if from.dyn_owned {
                                 OptionDowngradeKind::Borrow
+                            } else if self.can_move {
+                                OptionDowngradeKind::MoveAndDeref
                             } else {
                                 OptionDowngradeKind::Deref
                             },
@@ -1509,6 +1588,8 @@ where
                             mutbl: true,
                             kind: if from.dyn_owned {
                                 OptionDowngradeKind::Borrow
+                            } else if self.can_move {
+                                OptionDowngradeKind::MoveAndDeref
                             } else {
                                 OptionDowngradeKind::Deref
                             },
@@ -1874,15 +1955,66 @@ where
     }
 }
 
+trait IsLocal {
+    fn is_local(&self) -> bool;
+}
+
+impl IsLocal for Place<'_> {
+    fn is_local(&self) -> bool {
+        self.projection.is_empty()
+    }
+}
+
+impl IsLocal for PlaceRef<'_> {
+    fn is_local(&self) -> bool {
+        self.projection.is_empty()
+    }
+}
+
+impl IsLocal for Operand<'_> {
+    fn is_local(&self) -> bool {
+        self.place().map_or(false, |pl| pl.is_local())
+    }
+}
+
+impl IsLocal for Rvalue<'_> {
+    fn is_local(&self) -> bool {
+        match *self {
+            Rvalue::Use(ref op) => op.is_local(),
+            _ => false,
+        }
+    }
+}
+
+trait IsPlace {
+    fn is_place(&self) -> bool;
+}
+
+impl IsPlace for Operand<'_> {
+    fn is_place(&self) -> bool {
+        self.place().is_some()
+    }
+}
+
+impl IsPlace for Rvalue<'_> {
+    fn is_place(&self) -> bool {
+        match *self {
+            Rvalue::Use(ref op) => op.is_place(),
+            _ => false,
+        }
+    }
+}
+
 pub fn gen_mir_rewrites<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,
     pointee_types: PointerTable<PointeeTypes<'tcx>>,
+    last_use: &LastUse,
     mir: &Body<'tcx>,
 ) -> (HashMap<Location, Vec<MirRewrite>>, DontRewriteFnReason) {
     let mut out = HashMap::new();
 
-    let mut v = ExprRewriteVisitor::new(acx, asn, pointee_types, &mut out, mir);
+    let mut v = ExprRewriteVisitor::new(acx, asn, pointee_types, last_use, &mut out, mir);
 
     for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb.statements.iter().enumerate() {
