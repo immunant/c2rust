@@ -215,7 +215,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
         if let Some(desc) = rv_desc {
             match desc {
-                RvalueDesc::Project { base, proj: _ } => {
+                RvalueDesc::Project { base, proj: _, mutbl: _ } => {
                     // TODO: mutability should probably depend on mutability of the output ref/ptr
                     self.visit_place_ref(base, Mutability::Not);
                 }

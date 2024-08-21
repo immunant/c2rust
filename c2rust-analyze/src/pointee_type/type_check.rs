@@ -87,7 +87,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, lty: LTy<'tcx>) {
         trace!("visit_rvalue({rv:?}, {lty:?})");
 
-        if let Some(RvalueDesc::Project { base, proj: &[] }) = describe_rvalue(rv) {
+        if let Some(RvalueDesc::Project { base, proj: &[], .. }) = describe_rvalue(rv) {
             // Special case for no-op projections like `&*p`.  Since the pointer is passed through
             // unchanged, we don't require the pointee type to actually match the type used for the
             // paired deref and address-of operations.
