@@ -1,12 +1,12 @@
 use crate::rewrite::expr::mir_op::{self, MirRewrite};
-use crate::rewrite::expr::unlower::{MirOrigin, MirOriginDesc, PreciseLoc};
+use crate::rewrite::expr::unlower::{MirOriginDesc, PreciseLoc, UnlowerMap};
 use itertools::Itertools;
 use log::*;
 use rustc_hir::HirId;
 use rustc_middle::mir::Location;
 use rustc_middle::ty::TyCtxt;
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 struct RewriteInfo {
     rw: mir_op::RewriteKind,
@@ -120,7 +120,7 @@ impl From<RewriteInfo> for DistRewrite {
 /// afterward.
 pub fn distribute(
     tcx: TyCtxt,
-    unlower_map: BTreeMap<PreciseLoc, MirOrigin>,
+    unlower_map: UnlowerMap,
     mir_rewrites: HashMap<Location, Vec<MirRewrite>>,
 ) -> HashMap<HirId, Vec<DistRewrite>> {
     let mut info_map = HashMap::<HirId, Vec<RewriteInfo>>::new();
