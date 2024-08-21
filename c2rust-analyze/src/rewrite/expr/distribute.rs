@@ -126,6 +126,11 @@ pub fn distribute(
     let mut info_map = HashMap::<HirId, Vec<RewriteInfo>>::new();
 
     for (loc, mir_rws) in mir_rewrites {
+        if unlower_map.discard_rewrites_for(loc) {
+            trace!("discarding {} rewrites for {loc:?}", mir_rws.len());
+            continue;
+        }
+
         for mir_rw in mir_rws {
             let key = PreciseLoc {
                 loc,
