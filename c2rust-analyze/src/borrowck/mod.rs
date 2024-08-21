@@ -165,10 +165,10 @@ pub fn borrowck_mir<'tcx>(
                 });
                 let ptr = match stmt.kind {
                     StatementKind::Assign(ref x) => match describe_rvalue(&x.1) {
-                        Some(RvalueDesc::Project { base, proj: _ }) => acx
+                        Some(RvalueDesc::Project { base, proj: _, mutbl: _ }) => acx
                             .ptr_of(base)
                             .unwrap_or_else(|| panic!("missing pointer ID for {:?}", base)),
-                        Some(RvalueDesc::AddrOfLocal { local, proj: _ }) => {
+                        Some(RvalueDesc::AddrOfLocal { local, proj: _, mutbl: _ }) => {
                             acx.addr_of_local[local]
                         }
                         None => panic!("loan {:?} was issued by unknown rvalue {:?}?", loan, x.1),
