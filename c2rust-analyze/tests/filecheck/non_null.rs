@@ -23,7 +23,7 @@ fn g(cond: bool) {
 // CHECK-LABEL: final labeling for "h"
 fn h(cond: bool) {
     let x = 1_i32;
-    // CHECK: ([[@LINE+1]]: y): {{.*}}, type = UNIQUE | NON_NULL | STACK#
+    // CHECK: ([[@LINE+1]]: y): {{.*}}, type = READ | UNIQUE | NON_NULL | STACK#
     let y = ptr::addr_of!(x);
     // CHECK: ([[@LINE+1]]: z): {{.*}}, type = UNIQUE | STACK#
     let z = if cond {
