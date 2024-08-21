@@ -1,5 +1,5 @@
 use self::mir_op::MirRewrite;
-use self::unlower::{MirOrigin, PreciseLoc};
+use self::unlower::{PreciseLoc, UnlowerMap};
 use crate::context::{AnalysisCtxt, Assignment};
 use crate::last_use::LastUse;
 use crate::pointee_type::PointeeTypes;
@@ -10,7 +10,7 @@ use rustc_hir::BodyId;
 use rustc_middle::mir::{Body, Location};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 mod convert;
 mod distribute;
@@ -59,7 +59,7 @@ pub fn gen_expr_rewrites<'tcx>(
 fn debug_print_unlower_map<'tcx>(
     tcx: TyCtxt<'tcx>,
     mir: &Body<'tcx>,
-    unlower_map: &BTreeMap<PreciseLoc, MirOrigin>,
+    unlower_map: &UnlowerMap,
     mir_rewrites: &HashMap<Location, Vec<MirRewrite>>,
 ) {
     let print_for_loc = |loc| {
@@ -71,7 +71,7 @@ fn debug_print_unlower_map<'tcx>(
                 .push(&rw.kind);
         }
 
-        for (k, v) in unlower_map.range(&PreciseLoc { loc, sub: vec![] }..) {
+        for (k, v) in unlower_map.origins_map().range(&PreciseLoc { loc, sub: vec![] }..) {
             if k.loc != loc {
                 break;
             }

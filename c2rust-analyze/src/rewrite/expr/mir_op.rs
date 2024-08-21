@@ -1146,37 +1146,38 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 let cast_can_move = base_pl.is_local() && self.current_sub_loc_is_last_use();
                 self.enter_place_deref_pointer(|v| {
                     v.visit_place_ref(base_pl, proj_ltys, access);
-                    let dyn_owned = v.is_dyn_owned(base_lty);
-                    if v.is_nullable(base_lty.label) {
-                        // If the pointer type is non-copy, downgrade (borrow) before calling
-                        // `unwrap()`.
+                    if !v.flags[base_lty.label].contains(FlagSet::FIXED) {
                         let desc = type_desc::perms_to_desc(
                             base_lty.ty,
                             v.perms[base_lty.label],
                             v.flags[base_lty.label],
                         );
-                        if !desc.own.is_copy() {
-                            v.emit(RewriteKind::OptionDowngrade {
+                        if v.is_nullable(base_lty.label) {
+                            // If the pointer type is non-copy, downgrade (borrow) before calling
+                            // `unwrap()`.
+                            if !desc.own.is_copy() {
+                                v.emit(RewriteKind::OptionDowngrade {
+                                    mutbl: access == PlaceAccess::Mut,
+                                    kind: if desc.dyn_owned {
+                                        OptionDowngradeKind::Borrow
+                                    } else if cast_can_move {
+                                        OptionDowngradeKind::MoveAndDeref
+                                    } else {
+                                        OptionDowngradeKind::Deref
+                                    },
+                                });
+                            }
+                            v.emit(RewriteKind::OptionUnwrap);
+                            if desc.dyn_owned {
+                                v.emit(RewriteKind::Deref);
+                            }
+                        }
+                        if desc.dyn_owned {
+                            // TODO: do we need a `MoveAndDeref` equivalent for `DynOwned`?
+                            v.emit(RewriteKind::DynOwnedDowngrade {
                                 mutbl: access == PlaceAccess::Mut,
-                                kind: if dyn_owned {
-                                    OptionDowngradeKind::Borrow
-                                } else if cast_can_move {
-                                    OptionDowngradeKind::MoveAndDeref
-                                } else {
-                                    OptionDowngradeKind::Deref
-                                },
                             });
                         }
-                        v.emit(RewriteKind::OptionUnwrap);
-                        if dyn_owned {
-                            v.emit(RewriteKind::Deref);
-                        }
-                    }
-                    if dyn_owned {
-                        // TODO: do we need a `MoveAndDeref` equivalent for `DynOwned`?
-                        v.emit(RewriteKind::DynOwnedDowngrade {
-                            mutbl: access == PlaceAccess::Mut,
-                        });
                     }
                 });
             }

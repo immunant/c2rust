@@ -66,13 +66,30 @@ pub enum MirOriginDesc {
     LoadFromTempForAdjustment(usize),
 }
 
+
+#[derive(Clone, Debug, Default)]
+pub struct UnlowerMap {
+    /// Maps MIR (sub)locations to the HIR node that produced each one, if known.
+    origins: BTreeMap<PreciseLoc, MirOrigin>,
+}
+
+impl UnlowerMap {
+    pub fn get(&self, key: &PreciseLoc) -> Option<&MirOrigin> {
+        self.origins.get(key)
+    }
+
+    pub fn origins_map(&self) -> &BTreeMap<PreciseLoc, MirOrigin> {
+        &self.origins
+    }
+}
+
+
 struct UnlowerVisitor<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
     mir: &'a Body<'tcx>,
     typeck_results: &'tcx TypeckResults<'tcx>,
     span_index: SpanIndex<Location>,
-    /// Maps MIR (sub)locations to the HIR node that produced each one, if known.
-    unlower_map: BTreeMap<PreciseLoc, MirOrigin>,
+    unlower_map: UnlowerMap,
 
     /// When processing the `hir::Expr` identified by the `HirId`, append some locations to the
     /// list retrieved from the `SpanIndex`.  This is used in cases where some MIR statements have
@@ -113,7 +130,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             loc,
             sub: sub_loc.to_owned(),
         };
-        match self.unlower_map.entry(key) {
+        match self.unlower_map.origins.entry(key) {
             Entry::Vacant(e) => {
                 e.insert(origin);
             }
@@ -1037,10 +1054,10 @@ pub fn unlower<'tcx>(
     tcx: TyCtxt<'tcx>,
     mir: &Body<'tcx>,
     hir_body_id: hir::BodyId,
-) -> BTreeMap<PreciseLoc, MirOrigin> {
+) -> UnlowerMap {
     // If this MIR body came from a `#[derive]`, ignore it.
     if util::is_automatically_derived(tcx, mir) {
-        return BTreeMap::new();
+        return UnlowerMap::default();
     }
 
     let typeck_results = tcx.typeck_body(hir_body_id);
@@ -1056,7 +1073,7 @@ pub fn unlower<'tcx>(
         mir,
         typeck_results,
         span_index,
-        unlower_map: BTreeMap::new(),
+        unlower_map: UnlowerMap::default(),
         append_extra_locations: HashMap::new(),
     };
     visitor.visit_body(hir);
