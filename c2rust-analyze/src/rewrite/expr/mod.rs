@@ -69,6 +69,11 @@ fn debug_print_unlower_map<'tcx>(
                 .push(&rw.kind);
         }
 
+        if unlower_map.discard_rewrites_for(loc) {
+            eprintln!("      DISCARD all rewrites for this location");
+        }
+
+        let mut found_at_least_one_origin = false;
         for (k, v) in unlower_map
             .origins_map()
             .range(&PreciseLoc { loc, sub: vec![] }..)
@@ -82,6 +87,14 @@ fn debug_print_unlower_map<'tcx>(
             for rw_kind in rewrites_by_subloc.remove(&sublocs).unwrap_or_default() {
                 eprintln!("        {rw_kind:?}");
             }
+            found_at_least_one_origin = true;
+        }
+
+        if !found_at_least_one_origin {
+            let span = mir
+                .stmt_at(loc)
+                .either(|s| s.source_info.span, |t| t.source_info.span);
+            eprintln!("      {span:?} (no unlowering entries found)");
         }
 
         for (sublocs, rw_kinds) in rewrites_by_subloc {
