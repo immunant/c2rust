@@ -215,9 +215,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
         if let Some(desc) = rv_desc {
             match desc {
-                RvalueDesc::Project { base, proj: _, mutbl: _ } => {
-                    // TODO: mutability should probably depend on mutability of the output ref/ptr
-                    self.visit_place_ref(base, Mutability::Not);
+                RvalueDesc::Project { base, proj: _, mutbl } => {
+                    self.visit_place_ref(base, mutbl);
+                    let base_ptr = self.acx.type_of(base).label;
+                    // Note that even non-ptr copy operations are treated as no-op `Project`s.
+                    if !base_ptr.is_none() {
+                        self.record_access(base_ptr, mutbl);
+                    }
                 }
                 RvalueDesc::AddrOfLocal { .. } => {}
             }
