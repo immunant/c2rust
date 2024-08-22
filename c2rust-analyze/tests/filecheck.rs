@@ -61,6 +61,7 @@ define_tests! {
     non_null_rewrites,
     offset1,
     offset2,
+    offset_rewrites,
     pointee,
     ptrptr1,
     regions_fixed,
