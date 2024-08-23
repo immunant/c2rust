@@ -1091,14 +1091,20 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn visit_operand(&mut self, op: &Operand<'tcx>, expect_ty: Option<LTy<'tcx>>) {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
-                // TODO: should this be Move, Imm, or dependent on the type?
-                self.enter_operand_place(|v| v.visit_place(pl, PlaceAccess::Move, RequireSinglePointer::Yes));
+                let pl_lty = self.acx.type_of(pl);
+                // Moving out of a `DynOwned` pointer requires `Mut` access rather than `Move`.
+                // TODO: this should probably check `desc.dyn_owned` rather than perms directly
+                let access = if !pl_lty.label.is_none() && self.perms[pl_lty.label].contains(PermissionSet::FREE) {
+                    PlaceAccess::Mut
+                } else {
+                    PlaceAccess::Move
+                };
+                self.enter_operand_place(|v| v.visit_place(pl, access, RequireSinglePointer::Yes));
 
                 if let Some(expect_ty) = expect_ty {
-                    let ptr_lty = self.acx.type_of(pl);
-                    if !ptr_lty.label.is_none() {
+                    if !pl_lty.label.is_none() {
                         let cast_can_move = pl.is_local() && self.current_sub_loc_is_last_use();
-                        self.emit_cast_lty_lty(ptr_lty, expect_ty, cast_can_move);
+                        self.emit_cast_lty_lty(pl_lty, expect_ty, cast_can_move);
                     }
                 }
             }
@@ -1110,12 +1116,18 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn visit_operand_desc(&mut self, op: &Operand<'tcx>, expect_desc: TypeDesc<'tcx>) {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
-                // TODO: should this be Move, Imm, or dependent on the type?
-                self.visit_place(pl, PlaceAccess::Move, RequireSinglePointer::Yes);
+                let pl_lty = self.acx.type_of(pl);
+                // Moving out of a `DynOwned` pointer requires `Mut` access rather than `Move`.
+                // TODO: this should probably check `desc.dyn_owned` rather than perms directly
+                let access = if !pl_lty.label.is_none() && self.perms[pl_lty.label].contains(PermissionSet::FREE) {
+                    PlaceAccess::Mut
+                } else {
+                    PlaceAccess::Move
+                };
+                self.enter_operand_place(|v| v.visit_place(pl, access, RequireSinglePointer::Yes));
 
-                let ptr_lty = self.acx.type_of(pl);
-                if !ptr_lty.label.is_none() {
-                    self.emit_cast_lty_desc(ptr_lty, expect_desc);
+                if !pl_lty.label.is_none() {
+                    self.emit_cast_lty_desc(pl_lty, expect_desc);
                 }
             }
             Operand::Constant(..) => {}
