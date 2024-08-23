@@ -582,7 +582,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
                     // Normal case: just `visit_rvalue` and emit a cast if needed.
                     v.visit_rvalue(rv, Some(rv_lty));
-                    v.emit_cast_lty_lty(rv_lty, pl_lty, cast_can_move)
+                    v.emit_cast_lty_lty_or_borrow(rv_lty, pl_lty, cast_can_move)
                 });
                 self.enter_dest(|v| v.visit_place(pl, PlaceAccess::Mut, RequireSinglePointer::Yes));
             }
@@ -1376,6 +1376,20 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         builder.build_cast_lty_lty(from_lty, to_lty);
     }
 
+    fn emit_cast_lty_lty_or_borrow(
+        &mut self,
+        from_lty: LTy<'tcx>,
+        to_lty: LTy<'tcx>,
+        cast_can_move: bool,
+    ) {
+        let perms = self.perms;
+        let flags = self.flags;
+        let mut builder = CastBuilder::new(self.acx.tcx(), perms, flags, |rk| self.emit(rk))
+            .can_move(cast_can_move)
+            .borrow(true);
+        builder.build_cast_lty_lty(from_lty, to_lty);
+    }
+
     /// Cast `from_lty` to an adjusted version of itself.  If `from_desc` is the `TypeDesc`
     /// corresponding to `from_lty`, this emits a cast from `from_desc` to `to_adjust(from_desc)`.
     fn emit_cast_lty_adjust(
@@ -1506,6 +1520,9 @@ pub struct CastBuilder<'a, 'tcx, PT1, PT2, F> {
     /// `can_move` is set; the former moves out of `ptr` but avoids an additional borrow, making it
     /// suitable to be used as the result expression of a function.
     can_move: bool,
+    /// If set, the cast builder will emit a downgrade/borrow operation even for no-op casts, if
+    /// the thing being cast can't be moved (`!can_move`) and also can't be copied.
+    borrow: bool,
 }
 
 impl<'a, 'tcx, PT1, PT2, F> CastBuilder<'a, 'tcx, PT1, PT2, F>
@@ -1526,11 +1543,17 @@ where
             flags,
             emit,
             can_move: false,
+            borrow: false,
         }
     }
 
     pub fn can_move(mut self, can_move: bool) -> Self {
         self.can_move = can_move;
+        self
+    }
+
+    pub fn borrow(mut self, borrow: bool) -> Self {
+        self.borrow = borrow;
         self
     }
 
@@ -1565,6 +1588,39 @@ where
         from.pointee_ty = to.pointee_ty;
 
         if from == to {
+            // We normally do nothing if the `from` and `to` types are the same.  However, in some
+            // cases we need to introduce a downgrade to avoid moving the operand inappropriately.
+            let can_reborrow = !from.option && !from.dyn_owned;
+            let need_downgrade = !self.can_move && !from.own.is_copy() && !can_reborrow;
+            if self.borrow && need_downgrade {
+                let mutbl = match from.own {
+                    Ownership::Raw | Ownership::Imm | Ownership::Cell => false,
+                    Ownership::RawMut | Ownership::Mut => true,
+                    // Can't downgrade in these cases.
+                    Ownership::Rc | Ownership::Box => return Ok(()),
+                };
+                if from.option {
+                    (self.emit)(RewriteKind::OptionDowngrade {
+                        mutbl,
+                        kind: if from.dyn_owned {
+                            OptionDowngradeKind::Borrow
+                        } else {
+                            OptionDowngradeKind::Deref
+                        },
+                    });
+                }
+                if from.dyn_owned {
+                    if from.option {
+                        (self.emit)(RewriteKind::OptionMapBegin);
+                        (self.emit)(RewriteKind::Deref);
+                    }
+                    (self.emit)(RewriteKind::DynOwnedDowngrade { mutbl });
+                    if from.option {
+                        (self.emit)(RewriteKind::OptionMapEnd);
+                    }
+                }
+            }
+
             return Ok(());
         }
 
