@@ -214,8 +214,8 @@ fn immediate_stmt_children(kind: &CStmtKind) -> Vec<SomeId> {
             false_variant: opt_s,
         } => {
             let mut res = intos![e, s];
-            for &x in &opt_s {
-                res.push(x.into())
+            if let Some(x) = opt_s {
+                res.push(x.into());
             }
             res
         }
@@ -239,14 +239,14 @@ fn immediate_stmt_children(kind: &CStmtKind) -> Vec<SomeId> {
             body: d,
         } => {
             let mut res = vec![];
-            for &x in &a {
-                res.push(x.into())
+            if let Some(x) = a {
+                res.push(x.into());
             }
-            for &x in &b {
-                res.push(x.into())
+            if let Some(x) = b {
+                res.push(x.into());
             }
-            for &x in &c {
-                res.push(x.into())
+            if let Some(x) = c {
+                res.push(x.into());
             }
             res.push(d.into());
             res
