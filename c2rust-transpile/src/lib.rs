@@ -263,7 +263,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
 
     let build_dir = get_build_dir(&tcfg, cc_db);
 
-    let lcmds = get_compile_commands(&cc_db, &tcfg.filter).unwrap_or_else(|_| {
+    let lcmds = get_compile_commands(cc_db, &tcfg.filter).unwrap_or_else(|_| {
         panic!(
             "Could not parse compile commands from {}",
             cc_db.to_string_lossy()
@@ -330,7 +330,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
                     cmd.abs_file(),
                     &ancestor_path,
                     &build_dir,
-                    &cc_db,
+                    cc_db,
                     &clang_args,
                 )
             })

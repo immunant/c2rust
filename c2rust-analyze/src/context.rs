@@ -1503,7 +1503,7 @@ pub fn print_ty_with_pointer_labels_into<L: Copy>(
         // Types with arguments
         Adt(adt_def, _substs) => {
             write!(dest, "{:?}", adt_def.did()).unwrap();
-            if lty.args.len() != 0 {
+            if !lty.args.is_empty() {
                 dest.push('<');
                 // TODO: region args
                 for (i, &arg_lty) in lty.args.iter().enumerate() {
@@ -1532,31 +1532,31 @@ pub fn print_ty_with_pointer_labels_into<L: Copy>(
                 dest.push_str("*mut ");
             }
             let s = f(lty.label);
-            if s.len() > 0 {
+            if !s.is_empty() {
                 dest.push_str(&s);
-                dest.push_str(" ");
+                dest.push(' ');
             }
             print_ty_with_pointer_labels_into(dest, lty.args[0], f);
         }
         &Ref(_rg, _ty, mutbl) => {
             let s = f(lty.label);
             if mutbl == Mutability::Not {
-                dest.push_str("&");
-                if s.len() > 0 {
+                dest.push('&');
+                if !s.is_empty() {
                     dest.push(' ');
                 }
             } else {
                 dest.push_str("&mut ");
             }
-            if s.len() > 0 {
+            if !s.is_empty() {
                 dest.push_str(&s);
-                dest.push_str(" ");
+                dest.push(' ');
             }
             print_ty_with_pointer_labels_into(dest, lty.args[0], f);
         }
         FnDef(def_id, _substs) => {
             write!(dest, "{:?}", def_id).unwrap();
-            if lty.args.len() != 0 {
+            if !lty.args.is_empty() {
                 dest.push('<');
                 // TODO: region args
                 for (i, &arg_lty) in lty.args.iter().enumerate() {
@@ -1581,14 +1581,14 @@ pub fn print_ty_with_pointer_labels_into<L: Copy>(
             print_ty_with_pointer_labels_into(dest, ret_lty, f);
         }
         Tuple(_) => {
-            dest.push_str("(");
+            dest.push('(');
             for (i, &arg_lty) in lty.args.iter().enumerate() {
                 if i > 0 {
                     dest.push_str(", ");
                 }
                 print_ty_with_pointer_labels_into(dest, arg_lty, f);
             }
-            dest.push_str(")");
+            dest.push(')');
         }
 
         // Types that aren't actually supported by this code yet

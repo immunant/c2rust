@@ -453,11 +453,11 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 dest_single,
                             });
 
-                            if !pl_ty.label.is_none() {
-                                if v.perms[pl_ty.label].intersects(PermissionSet::USED) {
-                                    let dest_lty = v.acx.type_of(&args[0]);
-                                    v.emit_cast_lty_lty(dest_lty, pl_ty);
-                                }
+                            if !pl_ty.label.is_none()
+                                && v.perms[pl_ty.label].intersects(PermissionSet::USED)
+                            {
+                                let dest_lty = v.acx.type_of(&args[0]);
+                                v.emit_cast_lty_lty(dest_lty, pl_ty);
                             }
                         });
                     }
@@ -499,11 +499,11 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 dest_single,
                             });
 
-                            if !pl_ty.label.is_none() {
-                                if v.perms[pl_ty.label].intersects(PermissionSet::USED) {
-                                    let dest_lty = v.acx.type_of(&args[0]);
-                                    v.emit_cast_lty_lty(dest_lty, pl_ty);
-                                }
+                            if !pl_ty.label.is_none()
+                                && v.perms[pl_ty.label].intersects(PermissionSet::USED)
+                            {
+                                let dest_lty = v.acx.type_of(&args[0]);
+                                v.emit_cast_lty_lty(dest_lty, pl_ty);
                             }
                         });
                     }
@@ -731,7 +731,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             None => return,
         };
 
-        debug_assert!(pl.projection.len() >= 1);
+        debug_assert!(!pl.projection.is_empty());
         // `LTy` of the base place, before the last projection.
         let base_lty = proj_ltys[pl.projection.len() - 1];
         // `LTy` resulting from applying `last_proj` to `base_lty`.
@@ -1136,18 +1136,18 @@ where
         Ok(match from.own {
             Ownership::Box => match to.own {
                 Ownership::Raw | Ownership::Imm => {
-                    return Err(format!("TODO: cast Box to Imm"));
+                    return Err("TODO: cast Box to Imm".to_string());
                     //Some(Ownership::Imm)
                 }
                 Ownership::RawMut | Ownership::Mut => {
-                    return Err(format!("TODO: cast Box to Mut"));
+                    return Err("TODO: cast Box to Mut".to_string());
                     //Some(Ownership::Mut)
                 }
                 _ => None,
             },
             Ownership::Rc => match to.own {
                 Ownership::Imm | Ownership::Raw | Ownership::RawMut => {
-                    return Err(format!("TODO: cast Rc to Imm"));
+                    return Err("TODO: cast Rc to Imm".to_string());
                     //Some(Ownership::Imm)
                 }
                 _ => None,
