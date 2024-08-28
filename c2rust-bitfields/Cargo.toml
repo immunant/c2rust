@@ -12,7 +12,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-c2rust-bitfields-derive = { version = "0.18.0", path = "../c2rust-bitfields-derive" }
+c2rust-bitfields-derive = { version = "0.19.0", path = "../c2rust-bitfields-derive" }
 
 [dev-dependencies]
 libc = "0.2"

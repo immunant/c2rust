@@ -14,7 +14,7 @@ categories.workspace = true
 [dependencies]
 anyhow = "1.0"
 bincode = "1.0.1"
-c2rust-analysis-rt = { path = "../analysis/runtime", version = "0.18.0" }
+c2rust-analysis-rt = { path = "../analysis/runtime", version = "0.19.0" }
 indexmap = "1.9"
 itertools = "0.10"
 once_cell = "1.13"
@@ -29,7 +29,7 @@ env_logger = "0.10"
 tempfile = "3.3"
 
 [build-dependencies]
-c2rust-build-paths = { path = "../c2rust-build-paths", version = "0.18.0" }
+c2rust-build-paths = { path = "../c2rust-build-paths", version = "0.19.0" }
 
 [package.metadata.rust-analyzer] 
 rustc_private = true
