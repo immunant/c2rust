@@ -1,6 +1,5 @@
 use anyhow::anyhow;
 use clap::{crate_authors, App, AppSettings, Arg};
-use git_testament::{git_testament, render_testament};
 use is_executable::IsExecutable;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -10,8 +9,6 @@ use std::path::PathBuf;
 use std::process;
 use std::process::Command;
 use std::str;
-
-git_testament!(TESTAMENT);
 
 /// A `c2rust` sub-command.
 struct SubCommand {
@@ -124,7 +121,7 @@ fn main() -> anyhow::Result<()> {
 
     // If we didn't get a subcommand, then use `clap` for parsing and error/help messages.
     let matches = App::new("C2Rust")
-        .version(&*render_testament!(TESTAMENT))
+        .version(env!("CARGO_PKG_VERSION"))
         .author(crate_authors!(", "))
         .settings(&[AppSettings::SubcommandRequiredElseHelp])
         .subcommands(sub_commands.keys().map(|name| {
