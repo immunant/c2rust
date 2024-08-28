@@ -127,7 +127,7 @@ struct SpanRepr {
 /// But hopefully if such circumstances do befall us, we'll at least know what went wrong.
 ///
 /// On the plus side, the `fallback::Span` payload is a POD pair of two u32s, so that case is trivial.
-#[cfg_attr(tests, test)]
+#[cfg_attr(test, test)]
 fn validate_repr() {
     let repr: SpanRepr = unsafe { std::mem::transmute(Span::call_site()) };
     assert!(repr.compiler_or_fallback == 1);
