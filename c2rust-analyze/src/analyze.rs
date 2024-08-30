@@ -877,6 +877,8 @@ fn run(tcx: TyCtxt) {
     debug!("=== ADT Metadata ===");
     debug!("{:?}", gacx.adt_metadata);
 
+    let skip_borrowck_everywhere = env::var("C2RUST_ANALYZE_SKIP_BORROWCK").as_deref() == Ok("1");
+
     let mut loop_count = 0;
     loop {
         // Loop until the global assignment reaches a fixpoint.  The inner loop also runs until a
@@ -891,7 +893,8 @@ fn run(tcx: TyCtxt) {
                 continue;
             }
 
-            let skip_borrowck = util::has_test_attr(tcx, ldid, TestAttr::SkipBorrowck);
+            let skip_borrowck =
+                skip_borrowck_everywhere || util::has_test_attr(tcx, ldid, TestAttr::SkipBorrowck);
 
             let info = func_info.get_mut(&ldid).unwrap();
             let ldid_const = WithOptConstParam::unknown(ldid);
