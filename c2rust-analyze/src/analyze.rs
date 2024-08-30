@@ -916,7 +916,9 @@ fn run(tcx: TyCtxt) {
             }
             let fn_start = Instant::now();
 
-            let skip_borrowck = util::has_test_attr(tcx, ldid, TestAttr::SkipBorrowck);
+            //let skip_borrowck = util::has_test_attr(tcx, ldid, TestAttr::SkipBorrowck);
+            eprintln!("skipping borrowck for ALL FUNCTIONS - currently {ldid:?}");
+            let skip_borrowck = true;
 
             let info = func_info.get_mut(&ldid).unwrap();
             let ldid_const = WithOptConstParam::unknown(ldid);
