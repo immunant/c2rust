@@ -87,6 +87,7 @@ pub fn propagate_types<'tcx>(
 
     fn unify_types<'tcx>(
         var_table: &VarTable<'tcx>,
+        ptr: PointerId,
         ctys: &HashSet<CTy<'tcx>>,
         extra_cty: Option<CTy<'tcx>>,
     ) {
@@ -96,7 +97,7 @@ pub fn propagate_types<'tcx>(
                 match var_table.unify(prev, cty) {
                     Ok(()) => {}
                     Err((ty1, ty2)) => {
-                        warn!("unification failed: {ty1:?} != {ty2:?}");
+                        warn!("unification failed for {ptr:?}: {ty1:?} != {ty2:?}");
                     }
                 }
             }
@@ -109,12 +110,12 @@ pub fn propagate_types<'tcx>(
     // example.
     for constraint in &cset.constraints {
         if let Constraint::AllTypesCompatibleWith(ptr, cty) = *constraint {
-            unify_types(vars, &ty_sets[ptr], Some(cty));
+            unify_types(vars, ptr, &ty_sets[ptr], Some(cty));
         }
     }
 
-    for (_, ctys) in ty_sets.iter() {
-        unify_types(vars, ctys, None);
+    for (ptr, ctys) in ty_sets.iter() {
+        unify_types(vars, ptr, ctys, None);
     }
 
     #[cfg(debug_assertions)]

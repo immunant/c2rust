@@ -4,7 +4,7 @@ use crate::context::{AnalysisCtxt, Assignment, FlagSet, PermissionSet, PointerId
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{GlobalPointerTable, OwnedPointerTable, PointerTable, PointerTableMut};
 use crate::recent_writes::RecentWrites;
-use log::trace;
+use log::{debug, trace};
 use rustc_middle::mir::Body;
 
 mod type_check;
@@ -90,9 +90,9 @@ impl DataflowConstraints {
 
             fn subset_except(
                 &mut self,
-                _a_ptr: PointerId,
+                a_ptr: PointerId,
                 a_val: &PermissionSet,
-                _b_ptr: PointerId,
+                b_ptr: PointerId,
                 b_val: &PermissionSet,
                 except: PermissionSet,
             ) -> (PermissionSet, PermissionSet) {
@@ -136,7 +136,15 @@ impl DataflowConstraints {
                 };
                 debug_assert_eq!(add_a & remove_a, PermissionSet::empty());
 
-                ((old_a | add_a) & !remove_a, old_b | add_b)
+                let new_a = (old_a | add_a) & !remove_a;
+                let new_b = old_b | add_b;
+                if new_a != old_a {
+                    debug!("subset_except: {a_ptr:?} (A) = {old_a:?} -> {new_a:?}");
+                }
+                if new_b != old_b {
+                    debug!("subset_except: {b_ptr:?} (B) = {old_b:?} -> {new_b:?}");
+                }
+                (new_a, new_b)
             }
 
             fn all_perms(
