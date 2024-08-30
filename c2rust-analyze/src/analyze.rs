@@ -591,7 +591,14 @@ fn run(tcx: TyCtxt) {
 
     eprintln!("all defs:");
     for ldid in tcx.hir_crate_items(()).definitions() {
+        //eprintln!("{:?} @ {:?}", ldid, tcx.source_span(ldid));
         eprintln!("{:?}", ldid);
+        if tcx.def_kind(ldid) == DefKind::Struct {
+            let adt_def = tcx.adt_def(ldid);
+            for field in &adt_def.non_enum_variant().fields {
+                eprintln!("{:?}", field.did);
+            }
+        }
     }
 
     eprintln!("\nall defpathhashes:");
