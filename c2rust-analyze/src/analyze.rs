@@ -555,7 +555,14 @@ struct FuncInfo<'tcx> {
 fn run(tcx: TyCtxt) {
     debug!("all defs:");
     for ldid in tcx.hir_crate_items(()).definitions() {
+        //debug!("{:?} @ {:?}", ldid, tcx.source_span(ldid));
         debug!("{:?}", ldid);
+        if tcx.def_kind(ldid) == DefKind::Struct {
+            let adt_def = tcx.adt_def(ldid);
+            for field in &adt_def.non_enum_variant().fields {
+                debug!("{:?}", field.did);
+            }
+        }
     }
 
     // Load the list of fixed defs early, so any errors are reported immediately.
