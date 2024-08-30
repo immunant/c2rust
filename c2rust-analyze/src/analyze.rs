@@ -425,7 +425,7 @@ fn parse_def_id(s: &str) -> Result<DefId, String> {
     };
 
     let rendered = format!("{:?}", def_id);
-    if &rendered != s {
+    if &rendered != orig_s {
         return Err(format!(
             "path mismatch: after parsing input {}, obtained a different path {:?}",
             orig_s, def_id
