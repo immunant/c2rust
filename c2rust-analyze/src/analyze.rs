@@ -531,6 +531,14 @@ fn get_force_rewrite_defs(tcx: TyCtxt) -> io::Result<HashSet<DefId>> {
     Ok(force_rewrite)
 }
 
+fn get_skip_pointee_defs(tcx: TyCtxt) -> io::Result<HashSet<DefId>> {
+    let mut skip_pointee = HashSet::new();
+    if let Ok(path) = env::var("C2RUST_ANALYZE_SKIP_POINTEE_LIST") {
+        read_defs_list(&mut skip_pointee, &path)?;
+    }
+    Ok(skip_pointee)
+}
+
 fn get_rewrite_mode(tcx: TyCtxt, pointwise_fn_ldid: Option<LocalDefId>) -> rewrite::UpdateFiles {
     let mut update_files = rewrite::UpdateFiles::No;
     if let Ok(val) = env::var("C2RUST_ANALYZE_REWRITE_MODE") {
@@ -2205,6 +2213,8 @@ fn do_pointee_type<'tcx>(
         GlobalPointerTable::<PointeeTypes>::new(gacx.num_global_pointers());
     let mut pointee_vars = pointee_type::VarTable::default();
 
+    let skip_pointee = get_skip_pointee_defs(tcx).unwrap();
+
     for &ldid in all_fn_ldids {
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
@@ -2217,9 +2227,14 @@ fn do_pointee_type<'tcx>(
         let mir = mir.borrow();
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
 
-        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
-            pointee_type::generate_constraints(&acx, &mir, &mut pointee_vars)
-        }));
+        let r = if !skip_pointee.contains(&ldid.to_def_id()) {
+            panic_detail::catch_unwind(AssertUnwindSafe(|| {
+                pointee_type::generate_constraints(&acx, &mir, &mut pointee_vars)
+            }))
+        } else {
+            // For defs in the skip_pointee set, build an empty constraint set.
+            Ok(pointee_type::ConstraintSet::default())
+        };
 
         let local_pointee_types = LocalPointerTable::new(acx.local_ptr_base(), acx.num_pointers());
         info.acx_data.set(acx.into_data());

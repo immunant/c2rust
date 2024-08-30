@@ -111,6 +111,10 @@ struct Args {
     #[clap(long)]
     force_rewrite_defs_list: Option<PathBuf>,
 
+    /// Read a list of defs on which the pointee type analysis should be skipped.
+    #[clap(long)]
+    skip_pointee_defs_list: Option<PathBuf>,
+
     /// `cargo` args.
     cargo_args: Vec<OsString>,
 }
@@ -399,6 +403,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         use_manual_shims,
         fixed_defs_list,
         force_rewrite_defs_list,
+        skip_pointee_defs_list,
         cargo_args,
     } = Args::parse();
 
@@ -448,6 +453,10 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
 
         if let Some(ref force_rewrite_defs_list) = force_rewrite_defs_list {
             cmd.env("C2RUST_ANALYZE_FORCE_REWRITE_LIST", force_rewrite_defs_list);
+        }
+
+        if let Some(ref skip_pointee_defs_list) = skip_pointee_defs_list {
+            cmd.env("C2RUST_ANALYZE_SKIP_POINTEE_LIST", skip_pointee_defs_list);
         }
 
         if !rewrite_paths.is_empty() {
