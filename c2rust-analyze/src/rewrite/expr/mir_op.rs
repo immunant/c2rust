@@ -87,7 +87,9 @@ pub enum RewriteKind {
     MemcpySafe {
         elem_size: u64,
         dest_single: bool,
+        dest_option: bool,
         src_single: bool,
+        src_option: bool,
     },
     /// Replace a call to `memset(ptr, 0, n)` with a safe zeroize operation.  `elem_size` is the
     /// size of the type being zeroized, which is used to convert the byte length `n` to an element
@@ -659,10 +661,16 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
                             let src_single = !v.perms[src_lty.label]
                                 .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+                            let dest_option = !v.perms[dest_lty.label]
+                                .contains(PermissionSet::NON_NULL);
+                            let src_option = !v.perms[src_lty.label]
+                                .contains(PermissionSet::NON_NULL);
                             v.emit(RewriteKind::MemcpySafe {
                                 elem_size,
                                 src_single,
+                                src_option,
                                 dest_single,
+                                dest_option,
                             });
 
                             if !pl_ty.label.is_none()

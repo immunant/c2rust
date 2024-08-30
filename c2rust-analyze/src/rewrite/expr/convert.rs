@@ -226,7 +226,9 @@ impl<'tcx> ConvertVisitor<'tcx> {
             mir_op::RewriteKind::MemcpySafe {
                 elem_size,
                 dest_single,
+                dest_option,
                 src_single,
+                src_option,
             } => {
                 // `memcpy(dest, src, n)` to a `copy_from_slice` call
                 assert!(matches!(hir_rw, Rewrite::Identity));
@@ -241,18 +243,34 @@ impl<'tcx> ConvertVisitor<'tcx> {
                     "n".into(),
                     format_rewrite!("byte_len as usize / {elem_size}"),
                 )]));
-                if dest_single {
-                    stmts.push(Rewrite::Let(vec![(
-                        "dest".into(),
-                        format_rewrite!("std::slice::from_ref(dest)"),
-                    )]));
-                }
-                if src_single {
-                    stmts.push(Rewrite::Let(vec![(
-                        "src".into(),
-                        format_rewrite!("std::slice::from_ref(src)"),
-                    )]));
-                }
+                let mut convert = |var: &str, is_mut, is_single, is_option| {
+                    let single_to_slice = if is_single {
+                        format_rewrite!("std::slice::from_ref({var})")
+                    } else {
+                        Rewrite::Text(var.into())
+                    };
+                    let rhs = if is_option {
+                        let empty_slice = if is_mut {
+                            format_rewrite!("&mut []")
+                        } else {
+                            format_rewrite!("&[]")
+                        };
+                        Rewrite::Match(
+                            Box::new(Rewrite::Text(var.into())),
+                            vec![
+                                (format!("Some({var})"), single_to_slice),
+                                ("None".into(), Rewrite::Block(vec![
+                                    format_rewrite!("assert_eq!(n, 0)"),
+                                ], Some(Box::new(empty_slice)))),
+                            ],
+                        )
+                    } else {
+                        single_to_slice
+                    };
+                    stmts.push(Rewrite::Let1(var.into(), Box::new(rhs)));
+                };
+                convert("dest", true, dest_single, dest_option);
+                convert("src", false, src_single, src_option);
                 stmts.push(Rewrite::MethodCall(
                     "copy_from_slice".into(),
                     Box::new(format_rewrite!("dest[..n]")),
