@@ -435,7 +435,7 @@ fn parse_def_id(s: &str) -> Result<DefId, String> {
     Ok(def_id)
 }
 
-fn read_fixed_defs_list(fixed_defs: &mut HashSet<DefId>, path: &str) -> io::Result<()> {
+fn read_defs_list(defs: &mut HashSet<DefId>, path: &str) -> io::Result<()> {
     let f = BufReader::new(File::open(path)?);
     for (i, line) in f.lines().enumerate() {
         let line = line?;
@@ -447,7 +447,7 @@ fn read_fixed_defs_list(fixed_defs: &mut HashSet<DefId>, path: &str) -> io::Resu
         let def_id = parse_def_id(line).unwrap_or_else(|e| {
             panic!("failed to parse {} line {}: {}", path, i + 1, e);
         });
-        fixed_defs.insert(def_id);
+        defs.insert(def_id);
     }
     Ok(())
 }
@@ -512,7 +512,7 @@ fn check_rewrite_path_prefixes(tcx: TyCtxt, fixed_defs: &mut HashSet<DefId>, pre
 fn get_fixed_defs(tcx: TyCtxt) -> io::Result<HashSet<DefId>> {
     let mut fixed_defs = HashSet::new();
     if let Ok(path) = env::var("C2RUST_ANALYZE_FIXED_DEFS_LIST") {
-        read_fixed_defs_list(&mut fixed_defs, &path)?;
+        read_defs_list(&mut fixed_defs, &path)?;
     }
     if let Ok(prefixes) = env::var("C2RUST_ANALYZE_REWRITE_PATHS") {
         check_rewrite_path_prefixes(tcx, &mut fixed_defs, &prefixes);
