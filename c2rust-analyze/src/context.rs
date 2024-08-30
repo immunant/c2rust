@@ -423,6 +423,9 @@ pub struct GlobalAnalysisCtxt<'tcx> {
     pub dont_rewrite_fns: FlagMap<DefId, DontRewriteFnReason>,
     pub dont_rewrite_statics: FlagMap<DefId, DontRewriteStaticReason>,
     pub dont_rewrite_fields: FlagMap<DefId, DontRewriteFieldReason>,
+    /// Never mark these defs as `FIXED`, regardless of what `DontRewriteReason`s they might
+    /// acquire.
+    pub force_rewrite: HashSet<DefId>,
 
     /// `DefId`s of functions where analysis failed, and a [`PanicDetail`] explaining the reason
     /// for each failure.
@@ -810,6 +813,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             dont_rewrite_fns: FlagMap::new(),
             dont_rewrite_statics: FlagMap::new(),
             dont_rewrite_fields: FlagMap::new(),
+            force_rewrite: HashSet::new(),
             fns_failed: HashMap::new(),
             field_ltys: HashMap::new(),
             field_users: MultiMap::new(),
@@ -889,6 +893,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
             dont_rewrite_fns: _,
             dont_rewrite_statics: _,
             dont_rewrite_fields: _,
+            force_rewrite: _,
             fns_failed: _,
             ref mut field_ltys,
             field_users: _,
