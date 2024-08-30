@@ -295,7 +295,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                     self.visit_expr_operand(arg, loc, sub_loc, mir_arg, &[]);
                 }
 
-                if extra_locs.len() > 0 {
+                if !extra_locs.is_empty() {
                     // Special case: if the receiver of a `MethodCall` has adjustments, they are
                     // emitted with the same span as the `MethodCall` itself, and thus show up as
                     // leftover `extra_locs` here.  We associate them with the child instead so all
@@ -528,7 +528,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             ExprMir::Place(pl.as_ref()),
             extra_locs,
             loc,
-            sub_loc.to_owned(),
+            sub_loc,
         );
         self.walk_expr(ex, &mut cursor);
 
@@ -898,7 +898,7 @@ fn is_var(pl: mir::Place) -> bool {
 }
 
 fn is_temp_var(mir: &Body, pl: mir::PlaceRef) -> bool {
-    pl.projection.len() == 0 && mir.local_kind(pl.local) == mir::LocalKind::Temp
+    pl.projection.is_empty() && mir.local_kind(pl.local) == mir::LocalKind::Temp
 }
 
 fn is_temp_var_operand(mir: &Body, op: &mir::Operand) -> bool {
@@ -941,10 +941,8 @@ fn filter_stmt(stmt: &mir::Statement) -> bool {
 }
 
 /// Indicate whether a given MIR terminator should be considered when building the unlowering map.
-fn filter_term(term: &mir::Terminator) -> bool {
-    match term.kind {
-        _ => true,
-    }
+fn filter_term(_term: &mir::Terminator) -> bool {
+    true
 }
 
 fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {
@@ -1063,7 +1061,7 @@ pub fn unlower<'tcx>(
     };
     visitor.visit_body(hir);
 
-    if visitor.append_extra_locations.len() > 0 {
+    if !visitor.append_extra_locations.is_empty() {
         for (&hir_id, locs) in &visitor.append_extra_locations {
             error!(
                 "leftover locations for {hir_id:?} = {:?}: locs = {locs:?}",

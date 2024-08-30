@@ -603,7 +603,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.visit_operand(&args[0]);
             }
             Callee::Null { .. } => {
-                assert!(args.len() == 0);
+                assert!(args.is_empty());
                 self.visit_place(destination, Mutability::Mut);
                 let pl_lty = self.acx.type_of(destination);
                 // We are assigning a null pointer to `destination`, so it must not have the

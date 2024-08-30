@@ -332,11 +332,11 @@ impl<'a, T> PointerTable<'a, T> {
     }
 
     pub fn global(&self) -> &'a GlobalPointerTable<T> {
-        &self.global
+        self.global
     }
 
     pub fn local(&self) -> &'a LocalPointerTable<T> {
-        &self.local
+        self.local
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
@@ -386,19 +386,19 @@ impl<'a, T> PointerTableMut<'a, T> {
     }
 
     pub fn global(&self) -> &GlobalPointerTable<T> {
-        &self.global
+        self.global
     }
 
     pub fn global_mut(&mut self) -> &mut GlobalPointerTable<T> {
-        &mut self.global
+        self.global
     }
 
     pub fn local(&self) -> &LocalPointerTable<T> {
-        &self.local
+        self.local
     }
 
     pub fn local_mut(&mut self) -> &mut LocalPointerTable<T> {
-        &mut self.local
+        self.local
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {

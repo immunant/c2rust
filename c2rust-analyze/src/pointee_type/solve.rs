@@ -56,7 +56,7 @@ pub fn propagate_types<'tcx>(
             if new && !ty_sets[ptr1].is_subset(&ty_sets[ptr2]) {
                 let (tys1, tys2) = index_both(&mut ty_sets, ptr1, ptr2);
                 for cty in tys1.iter() {
-                    tys2.insert(cty.clone());
+                    tys2.insert(*cty);
                 }
                 // Since `ty_sets[ptr2]` was not a subset of `ty_sets[ptr1]`, we must have added at
                 // least one element to `ty_sets[ptr2]`.
@@ -75,7 +75,7 @@ pub fn propagate_types<'tcx>(
             if !ty_sets[ptr1].is_subset(&ty_sets[ptr2]) {
                 let (tys1, tys2) = index_both(&mut ty_sets, ptr1, ptr2);
                 for cty in tys1.iter() {
-                    tys2.insert(cty.clone());
+                    tys2.insert(*cty);
                 }
                 // Since `ty_sets[ptr2]` was not a subset of `ty_sets[ptr1]`, we must have added at
                 // least one element to `ty_sets[ptr2]`.

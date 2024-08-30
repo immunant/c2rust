@@ -438,7 +438,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
             cmd.env("C2RUST_ANALYZE_FIXED_DEFS_LIST", fixed_defs_list);
         }
 
-        if rewrite_paths.len() > 0 {
+        if !rewrite_paths.is_empty() {
             let rewrite_paths = rewrite_paths.join(OsStr::new(","));
             cmd.env("C2RUST_ANALYZE_REWRITE_PATHS", rewrite_paths);
         }

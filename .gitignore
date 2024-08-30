@@ -50,3 +50,4 @@ marks.*.json
 inspect/
 *.analysis.txt
 analysis.txt
+polonius_cache/

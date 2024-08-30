@@ -370,7 +370,7 @@ fn mark_foreign_fixed<'tcx>(
             make_ty_fixed(gasn, lty);
 
             // Also fix the `addr_of_static` permissions.
-            let ptr = gacx.addr_of_static[&did];
+            let ptr = gacx.addr_of_static[did];
             gasn.flags[ptr].insert(FlagSet::FIXED);
         }
     }
@@ -397,7 +397,7 @@ fn mark_all_statics_fixed<'tcx>(gacx: &mut GlobalAnalysisCtxt<'tcx>, gasn: &mut 
         make_ty_fixed(gasn, lty);
 
         // Also fix the `addr_of_static` permissions.
-        let ptr = gacx.addr_of_static[&did];
+        let ptr = gacx.addr_of_static[did];
         gasn.flags[ptr].insert(FlagSet::FIXED);
     }
 }
@@ -425,7 +425,7 @@ fn parse_def_id(s: &str) -> Result<DefId, String> {
     let s = s
         .strip_prefix("DefId(")
         .ok_or("does not start with `DefId(`")?;
-    let s = s.strip_suffix(")").ok_or("does not end with `)`")?;
+    let s = s.strip_suffix(')').ok_or("does not end with `)`")?;
     let s = match s.find(" ~ ") {
         Some(i) => &s[..i],
         None => s,
@@ -459,11 +459,11 @@ fn read_fixed_defs_list(fixed_defs: &mut HashSet<DefId>, path: &str) -> io::Resu
     for (i, line) in f.lines().enumerate() {
         let line = line?;
         let line = line.trim();
-        if line.len() == 0 || line.starts_with('#') {
+        if line.is_empty() || line.starts_with('#') {
             continue;
         }
 
-        let def_id = parse_def_id(&line).unwrap_or_else(|e| {
+        let def_id = parse_def_id(line).unwrap_or_else(|e| {
             panic!("failed to parse {} line {}: {}", path, i + 1, e);
         });
         fixed_defs.insert(def_id);
@@ -481,7 +481,7 @@ fn check_rewrite_path_prefixes(tcx: TyCtxt, fixed_defs: &mut HashSet<DefId>, pre
         .split(',')
         // Exclude empty paths.  This allows for leading/trailing commas or double commas within
         // the list, which may result when building the list programmatically.
-        .filter(|prefix| prefix.len() > 0)
+        .filter(|prefix| !prefix.is_empty())
         .map(|prefix| prefix.split("::").map(Symbol::intern).collect::<Vec<_>>())
         .collect();
     let sym_impl = Symbol::intern("{impl}");
@@ -1510,8 +1510,7 @@ fn run2<'tcx>(
             continue;
         }
 
-        let adt_rewrites =
-            rewrite::gen_adt_ty_rewrites(&gacx, &gasn, &global_pointee_types, def_id);
+        let adt_rewrites = rewrite::gen_adt_ty_rewrites(&gacx, &gasn, global_pointee_types, def_id);
         let report = adt_reports.entry(def_id).or_default();
         writeln!(
             report,
@@ -1691,7 +1690,7 @@ fn run2<'tcx>(
             ptrs.push(ptr);
             format!("{{{}}}", ptr)
         });
-        if ptrs.len() == 0 {
+        if ptrs.is_empty() {
             continue;
         }
         ann.emit(span, format_args!("typeof({}) = {}", name, ty_str));
@@ -1789,7 +1788,7 @@ fn run2<'tcx>(
         all_fn_ldids.len()
     );
 
-    if known_perm_error_fns.len() > 0 {
+    if !known_perm_error_fns.is_empty() {
         eprintln!(
             "saw permission errors in {} known fns",
             known_perm_error_fns.len()
@@ -1893,7 +1892,7 @@ fn apply_test_attr_force_non_null_args(
         let mut updates_forbidden = g_updates_forbidden.and_mut(&mut info.l_updates_forbidden);
 
         let lsig = &gacx.fn_sigs[&ldid.to_def_id()];
-        for arg_lty in lsig.inputs.iter().copied() {
+        for arg_lty in lsig.inputs {
             for lty in arg_lty.iter() {
                 let ptr = lty.label;
                 if !ptr.is_none() {
@@ -2014,7 +2013,7 @@ fn print_function_pointee_types<'tcx>(
 
         for ptr in all_pointer_ids {
             let tys = &pointee_types[ptr];
-            if tys.ltys.len() == 0 && !tys.incomplete {
+            if tys.ltys.is_empty() && !tys.incomplete {
                 continue;
             }
             eprintln!(

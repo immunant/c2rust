@@ -76,7 +76,7 @@ fn debug_print_unlower_map<'tcx>(
             let sublocs = &k.sub;
             let ex = tcx.hir().expect_expr(v.hir_id);
             eprintln!("      {sublocs:?}: {:?}, {:?}", v.desc, ex.span);
-            for rw_kind in rewrites_by_subloc.remove(&sublocs).unwrap_or(Vec::new()) {
+            for rw_kind in rewrites_by_subloc.remove(&sublocs).unwrap_or_default() {
                 eprintln!("        {rw_kind:?}");
             }
         }

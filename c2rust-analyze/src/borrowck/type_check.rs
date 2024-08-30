@@ -177,7 +177,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                                 self.facts,
                                 self.maps,
                                 &self.acx.gacx.adt_metadata,
-                                &self.acx.gacx.static_tys[&did],
+                                self.acx.gacx.static_tys[&did],
                             );
 
                             for l in lty.iter() {
@@ -585,7 +585,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     }
                     Callee::Memcpy => {
                         let _pl_lty = self.visit_place(destination);
-                        let _rv_lty = assert_matches!(&args[..], [dest, src, _] => {
+                        assert_matches!(&args[..], [dest, src, _] => {
                             self.visit_operand(dest);
                             self.visit_operand(src);
                         });

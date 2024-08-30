@@ -76,7 +76,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 }
                 _ => {}
             }
-            lty = self.acx.projection_lty(lty, &proj);
+            lty = self.acx.projection_lty(lty, proj);
         }
         debug_assert_eq!(lty, self.acx.type_of(pl));
         lty

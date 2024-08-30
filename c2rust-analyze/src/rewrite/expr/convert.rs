@@ -372,7 +372,7 @@ impl<'tcx> ConvertVisitor<'tcx> {
             let closure = Rewrite::Closure1("__ptr".into(), Box::new(body));
             hir_rw = Rewrite::MethodCall("map".into(), Box::new(hir_rw), vec![closure]);
         }
-        return Ok((hir_rw, mir_rws));
+        Ok((hir_rw, mir_rws))
     }
 
     fn rewrite_from_mir_rws(
@@ -423,7 +423,7 @@ impl<'tcx> Visitor<'tcx> for ConvertVisitor<'tcx> {
         let mut mir_rws = &mir_rws as &[_];
 
         // Emit rewrites on subexpressions up front so we can access them in `get_subexpr`.
-        self.with_materialize_adjustments(mir_rws.len() > 0, |this| {
+        self.with_materialize_adjustments(!mir_rws.is_empty(), |this| {
             intravisit::walk_expr(this, ex);
         });
 
@@ -579,16 +579,16 @@ fn generate_zeroize_code(zero_ty: &ZeroizeType, lv: &str) -> String {
         ZeroizeType::Struct(ref fields) => {
             eprintln!("zeroize: {} fields on {lv}: {fields:?}", fields.len());
             let mut s = String::new();
-            write!(s, "{{\n").unwrap();
+            writeln!(s, "{{").unwrap();
             for (name, field_zero_ty) in fields {
-                write!(
+                writeln!(
                     s,
-                    "{};\n",
+                    "{};",
                     generate_zeroize_code(field_zero_ty, &format!("{lv}.{name}"))
                 )
                 .unwrap();
             }
-            write!(s, "}}\n").unwrap();
+            writeln!(s, "}}").unwrap();
             s
         }
     }
@@ -653,12 +653,10 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
                 } else {
                     "as_deref".into()
                 }
+            } else if mutbl {
+                "as_mut".into()
             } else {
-                if mutbl {
-                    "as_mut".into()
-                } else {
-                    "as_ref".into()
-                }
+                "as_ref".into()
             };
             Rewrite::MethodCall(ref_method, Box::new(hir_rw), vec![])
         }
@@ -696,7 +694,7 @@ pub fn convert_cast_rewrite(kind: &mir_op::RewriteKind, hir_rw: Rewrite) -> Rewr
             Box::new(Rewrite::TyPtr(
                 Box::new(Rewrite::TyCtor(
                     "std::cell::Cell".into(),
-                    vec![Rewrite::Print(format!("{}", ty))],
+                    vec![Rewrite::Print(ty.to_string())],
                 )),
                 hir::Mutability::Not,
             )),

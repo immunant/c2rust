@@ -118,7 +118,7 @@ fn create_rewrite_label<'tcx>(
     if !pointer_lty.label.is_none() && !flags[pointer_lty.label].contains(FlagSet::FIXED) {
         if let Some(lty) = pointee_types[pointer_lty.label].get_sole_lty() {
             let ty = lty.ty;
-            if lty.args.len() == 0 && !ty_has_adt_lifetime(ty, adt_metadata) {
+            if lty.args.is_empty() && !ty_has_adt_lifetime(ty, adt_metadata) {
                 // Don't rewrite if the old and new types are the same.
                 if ty != args[0].ty {
                     pointee_ty = Some(ty);
@@ -248,10 +248,9 @@ fn deconstruct_hir_ty<'a, 'tcx>(
             }
         }
 
-        (
-            &ty::TyKind::Adt(adt_def, substs),
-            &hir::TyKind::Path(hir::QPath::Resolved(_, ref path)),
-        ) if path.res.def_id() == adt_def.did() => {
+        (&ty::TyKind::Adt(adt_def, substs), &hir::TyKind::Path(hir::QPath::Resolved(_, path)))
+            if path.res.def_id() == adt_def.did() =>
+        {
             hir_generic_ty_args(hir_ty).map(|type_args| {
                 if type_args.len() < substs.types().count() {
                     // this situation occurs when there are hidden type arguments
@@ -635,7 +634,7 @@ impl<'tcx, 'a> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
                         &self.pointee_types,
                         self.rw_lcx,
                         lty,
-                        &self.acx.gacx,
+                        self.acx.gacx,
                     );
                     let hir_ty = hir_local.ty.unwrap();
                     self.handle_ty(rw_lty, hir_ty);
@@ -696,7 +695,7 @@ pub fn gen_ty_rewrites<'tcx>(
         .zip(input_origin_args.iter())
     {
         let rw_lty =
-            rw_lcx.zip_labels_with(lty, &origin_args, &mut |pointer_lty, lifetime_lty, args| {
+            rw_lcx.zip_labels_with(lty, origin_args, &mut |pointer_lty, lifetime_lty, args| {
                 create_rewrite_label(
                     pointer_lty,
                     args,
@@ -714,7 +713,7 @@ pub fn gen_ty_rewrites<'tcx>(
     if let hir::FnRetTy::Return(hir_ty) = hir_sig.decl.output {
         let output_rw_lty = rw_lcx.zip_labels_with(
             lty_sig.output,
-            &output_origin_args,
+            output_origin_args,
             &mut |pointer_lty, lifetime_lty, args| {
                 create_rewrite_label(
                     pointer_lty,
@@ -904,7 +903,7 @@ pub fn dump_rewritten_local_tys<'tcx>(
             &pointee_types,
             rw_lcx,
             acx.local_tys[local],
-            &acx.gacx,
+            acx.gacx,
         );
         let ty = mk_rewritten_ty(rw_lcx, rw_lty);
         eprintln!(
