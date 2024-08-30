@@ -418,6 +418,20 @@ impl<S: Sink> Emitter<'_, S> {
                 self.emit(rw, 0)
             }
 
+            Rewrite::Match(ref expr, ref cases) => {
+                self.emit_str("match ")?;
+                self.emit(expr, 0)?;
+                self.emit_str(" {\n")?;
+                for &(ref pat, ref body) in cases {
+                    self.emit_str("    ")?;
+                    self.emit_str(pat)?;
+                    self.emit_str(" => ")?;
+                    self.emit(body, 0)?;
+                    self.emit_str(",\n")?;
+                }
+                self.emit_str("}")
+            }
+
             Rewrite::TyPtr(ref rw, mutbl) => {
                 match mutbl {
                     Mutability::Not => self.emit_str("*const ")?,
