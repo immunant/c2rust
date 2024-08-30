@@ -523,6 +523,14 @@ fn get_fixed_defs(tcx: TyCtxt) -> io::Result<HashSet<DefId>> {
     Ok(fixed_defs)
 }
 
+fn get_force_rewrite_defs(tcx: TyCtxt) -> io::Result<HashSet<DefId>> {
+    let mut force_rewrite = HashSet::new();
+    if let Ok(path) = env::var("C2RUST_ANALYZE_FORCE_REWRITE_LIST") {
+        read_defs_list(&mut force_rewrite, &path)?;
+    }
+    Ok(force_rewrite)
+}
+
 fn get_rewrite_mode(tcx: TyCtxt, pointwise_fn_ldid: Option<LocalDefId>) -> rewrite::UpdateFiles {
     let mut update_files = rewrite::UpdateFiles::No;
     if let Ok(val) = env::var("C2RUST_ANALYZE_REWRITE_MODE") {
@@ -607,6 +615,14 @@ fn run(tcx: TyCtxt) {
     eprintln!("callgraph traversal order:");
     for &ldid in &all_fn_ldids {
         eprintln!("  {:?}", ldid);
+    }
+
+    gacx.force_rewrite = get_force_rewrite_defs(tcx).unwrap();
+    eprintln!("{} force_rewrite defs", gacx.force_rewrite.len());
+    let mut xs = gacx.force_rewrite.iter().copied().collect::<Vec<_>>();
+    xs.sort();
+    for x in xs {
+        eprintln!("{:?}", x);
     }
 
     populate_field_users(&mut gacx, &all_fn_ldids);
@@ -2963,7 +2979,12 @@ fn process_new_dont_rewrite_items(gacx: &mut GlobalAnalysisCtxt, asn: &mut Assig
         let mut found_any = false;
 
         for did in gacx.dont_rewrite_fns.take_new_keys() {
+            if gacx.force_rewrite.contains(&did) {
+                eprintln!("process_new_dont_rewrite_items: mark sig of {did:?} fixed: {:?} - IGNORED due to force_rewrite", gacx.dont_rewrite_fns.get(did));
+                continue;
+            }
             found_any = true;
+            eprintln!("process_new_dont_rewrite_items: mark sig of {did:?} fixed: {:?}", gacx.dont_rewrite_fns.get(did));
             let lsig = &gacx.fn_sigs[&did];
             make_sig_fixed(asn, lsig);
 
@@ -2973,6 +2994,11 @@ fn process_new_dont_rewrite_items(gacx: &mut GlobalAnalysisCtxt, asn: &mut Assig
             };
 
             for &field_ldid in gacx.fn_fields_used.get(ldid) {
+                if gacx.force_rewrite.contains(&field_ldid.to_def_id()) {
+                    eprintln!("process_new_dont_rewrite_items: mark field {field_ldid:?} fixed: user {did:?} is not rewritten - IGNORED due to force_rewrite");
+                    continue;
+                }
+                eprintln!("process_new_dont_rewrite_items: mark field {field_ldid:?} fixed: user {did:?} is not rewritten");
                 gacx.dont_rewrite_fields.add(
                     field_ldid.to_def_id(),
                     DontRewriteFieldReason::NON_REWRITTEN_USE,
@@ -2983,13 +3009,23 @@ fn process_new_dont_rewrite_items(gacx: &mut GlobalAnalysisCtxt, asn: &mut Assig
         }
 
         for did in gacx.dont_rewrite_statics.take_new_keys() {
+            if gacx.force_rewrite.contains(&did) {
+                eprintln!("process_new_dont_rewrite_items: mark static {did:?} fixed: {:?} - IGNORED due to force_rewrite", gacx.dont_rewrite_statics.get(did));
+                continue;
+            }
             found_any = true;
+            eprintln!("process_new_dont_rewrite_items: mark static {did:?} fixed: {:?}", gacx.dont_rewrite_statics.get(did));
             let lty = gacx.static_tys[&did];
             make_ty_fixed(asn, lty);
         }
 
         for did in gacx.dont_rewrite_fields.take_new_keys() {
+            if gacx.force_rewrite.contains(&did) {
+                eprintln!("process_new_dont_rewrite_items: mark field {did:?} fixed: {:?} - IGNORED due to force_rewrite", gacx.dont_rewrite_fields.get(did));
+                continue;
+            }
             found_any = true;
+            eprintln!("process_new_dont_rewrite_items: mark field {did:?} fixed: {:?}", gacx.dont_rewrite_fields.get(did));
             let lty = gacx.field_ltys[&did];
             make_ty_fixed(asn, lty);
         }

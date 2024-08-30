@@ -105,6 +105,12 @@ struct Args {
     #[clap(long)]
     fixed_defs_list: Option<PathBuf>,
 
+    /// Read a list of defs that should always be rewritable (not `FIXED`) from this file path.
+    /// This suppresses the rewriter's default behavior of skipping over defs that encounter
+    /// analysis or rewriting errors.
+    #[clap(long)]
+    force_rewrite_defs_list: Option<PathBuf>,
+
     /// `cargo` args.
     cargo_args: Vec<OsString>,
 }
@@ -392,6 +398,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         rewrite_in_place,
         use_manual_shims,
         fixed_defs_list,
+        force_rewrite_defs_list,
         cargo_args,
     } = Args::parse();
 
@@ -437,6 +444,10 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
 
         if let Some(ref fixed_defs_list) = fixed_defs_list {
             cmd.env("C2RUST_ANALYZE_FIXED_DEFS_LIST", fixed_defs_list);
+        }
+
+        if let Some(ref force_rewrite_defs_list) = force_rewrite_defs_list {
+            cmd.env("C2RUST_ANALYZE_FORCE_REWRITE_LIST", force_rewrite_defs_list);
         }
 
         if !rewrite_paths.is_empty() {
