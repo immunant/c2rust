@@ -1771,6 +1771,12 @@ fn run2<'tcx>(
         info.acx_data.set(acx.into_data());
     }
 
+    for ldid in tcx.hir_crate_items(()).definitions() {
+        let span = tcx.source_span(ldid);
+        ann.emit(span.shrink_to_lo(), format_args!("start of def {ldid:?}"));
+        ann.emit(span.shrink_to_hi(), format_args!("end of def {ldid:?}"));
+    }
+
     // Print results for `static` items.
     eprintln!("\nfinal labeling for static items:");
     let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
