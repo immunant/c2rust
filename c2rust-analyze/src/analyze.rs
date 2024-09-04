@@ -941,6 +941,11 @@ fn run(tcx: TyCtxt) {
         let mut num_changed = 0;
         for (i, &old) in old_gasn.iter().enumerate() {
             let ptr = PointerId::global(i as u32);
+
+            if skip_borrowck_everywhere {
+                asn.perms[ptr].insert(PermissionSet::UNIQUE);
+            }
+
             let new = asn.perms[ptr];
             if old != new {
                 let added = new & !old;
@@ -2276,7 +2281,7 @@ fn pdg_update_permissions<'tcx>(
                     perms.insert(PermissionSet::OFFSET_SUB);
                 }
                 if !node_info.unique {
-                    perms.remove(PermissionSet::UNIQUE);
+                    //perms.remove(PermissionSet::UNIQUE);
                 }
             }
 
