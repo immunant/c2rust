@@ -4012,7 +4012,7 @@ impl<'c> Translation<'c> {
         text: &str,
     ) -> Option<WithStmts<Box<Expr>>> {
         let mut split = text.splitn(2, '(');
-        let ident = split.next()?;
+        let ident = split.next()?.trim();
         let args = split.next()?.trim_end_matches(')');
 
         let ts: TokenStream = syn::parse_str(args).ok()?;
