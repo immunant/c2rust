@@ -215,7 +215,8 @@ impl TypedAstContext {
         let path_b = self.include_map[self.file_map[b.fileid as usize]].clone();
         for (include_a, include_b) in path_a.iter().zip(path_b.iter()) {
             if include_a.fileid != include_b.fileid {
-                return cmp_pos(include_a, include_b);
+                return include_a.cmp(include_b);
+                // return cmp_pos(include_a, include_b);
             }
         }
         use Ordering::*;
