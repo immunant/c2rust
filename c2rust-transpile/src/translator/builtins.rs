@@ -406,6 +406,9 @@ impl<'c> Translation<'c> {
             "__builtin_ia32_vec_ext_v2di" => {
                 self.convert_simd_builtin(ctx, "_mm_extract_epi64", args)
             }
+            "__builtin_ia32_vperm2f128_pd256" => {
+                self.convert_simd_builtin(ctx, "_mm256_permute2f128_pd", args)
+            }
             "__builtin_ia32_roundps" => self.convert_simd_builtin(ctx, "_mm_round_ps", args),
             "__builtin_ia32_roundss" => self.convert_simd_builtin(ctx, "_mm_round_ss", args),
             "__builtin_ia32_roundpd" => self.convert_simd_builtin(ctx, "_mm_round_pd", args),
