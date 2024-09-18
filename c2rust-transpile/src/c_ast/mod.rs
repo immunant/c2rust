@@ -206,30 +206,35 @@ impl TypedAstContext {
         self.files[id].path.as_deref()
     }
 
+    /// Compare two [`SrcLoc`]s based on their import path
     pub fn compare_src_locs(&self, a: &SrcLoc, b: &SrcLoc) -> Ordering {
-        /// Compare `self` with `other`, without regard to file id
-        fn cmp_pos(a: &SrcLoc, b: &SrcLoc) -> Ordering {
-            (a.line, a.column).cmp(&(b.line, b.column))
-        }
-        let path_a = self.include_map[self.file_map[a.fileid as usize]].clone();
-        let path_b = self.include_map[self.file_map[b.fileid as usize]].clone();
+        use Ordering::*;
+        let path_a = &self.include_map[self.file_map[a.fileid as usize]];
+        let path_b = &self.include_map[self.file_map[b.fileid as usize]];
+
+        // Find the first include that does not match between the two
         for (include_a, include_b) in path_a.iter().zip(path_b.iter()) {
-            if include_a.fileid != include_b.fileid {
-                return cmp_pos(include_a, include_b);
+            let order = include_a.cmp(include_b);
+            if order != Equal {
+                return order;
             }
         }
-        use Ordering::*;
+
+        // Either all parent includes are the same, or the include paths are of different lengths
+        // because .zip() stops when one of the iterators is empty.
         match path_a.len().cmp(&path_b.len()) {
             Less => {
-                // compare the place b was included in a'a file with a
+                // a has the shorter path, which means b was included in a's file
+                // so extract that include and compare the position to a
                 let b = path_b.get(path_a.len()).unwrap();
-                cmp_pos(a, b)
+                a.cmp(b)
             }
-            Equal => cmp_pos(a, b),
+            Equal => a.cmp(b), // a and b have the same include path and are thus in the same file
             Greater => {
-                // compare the place a was included in b's file with b
+                // b has the shorter path, which means a was included in b's file
+                // so extract that include and compare the position to b
                 let a = path_a.get(path_b.len()).unwrap();
-                cmp_pos(a, b)
+                a.cmp(b)
             }
         }
     }
