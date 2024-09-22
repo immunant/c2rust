@@ -4282,6 +4282,13 @@ impl<'c> Translation<'c> {
                             target_ty,
                         )))
                     })
+                } else if target_ty_ctype.is_pointer() && source_ty_kind.is_bool() {
+                    val.and_then(|x| {
+                        Ok(WithStmts::new_val(mk().cast_expr(
+                            mk().cast_expr(x, mk().path_ty(vec!["libc", "size_t"])),
+                            target_ty,
+                        )))
+                    })
                 } else {
                     // Other numeric casts translate to Rust `as` casts,
                     // unless the cast is to a function pointer then use `transmute`.

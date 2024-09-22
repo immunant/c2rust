@@ -30,4 +30,5 @@ void cast_stuff(void) {
 
         bool b = true;
         float x15 = b;
+        void* x16 = (void*)b;
 }
