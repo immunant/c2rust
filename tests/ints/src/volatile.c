@@ -44,4 +44,23 @@ void entry3(const unsigned buffer_size, int buffer[])
     buffer[8] = s.buffer[3];
 }
 
+void volatile_stuff(void)
+{
+    // Non-volatile
+    int x1 = 0;
+    int x2 = x1++;
+    x2;
 
+    // https://github.com/immunant/c2rust/issues/1049
+    volatile int x3 = 0;
+    int x4 = x3++;
+    x4;
+
+    // https://github.com/immunant/c2rust/issues/1064
+    volatile int x5 = 0;
+    while (x5 < 5)
+    {
+        int x6 = x5++;
+        x6;
+    }
+}
