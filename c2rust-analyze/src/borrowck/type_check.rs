@@ -26,6 +26,7 @@ struct TypeChecker<'tcx, 'a> {
     maps: &'a mut AtomMaps<'tcx>,
     loans: &'a mut HashMap<Local, Vec<(Path, Loan, BorrowKind)>>,
     local_ltys: &'a [LTy<'tcx>],
+    rvalue_ltys: &'a HashMap<Location, LTy<'tcx>>,
     field_permissions: &'a HashMap<DefId, PermissionSet>,
     hypothesis: &'a PointerTableMut<'a, PermissionSet>,
     local_decls: &'a IndexVec<Local, LocalDecl<'tcx>>,
@@ -389,7 +390,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.do_assign(result_lty, op_lty);
                 result_lty
             }
-            Rvalue::Cast(_, _, ty) => self.ltcx.label(ty, &mut |_ty| {
+            Rvalue::Cast(_, _, _ty) => {
                 // TODO: handle Unsize casts at minimum
                 /*
                 assert!(
@@ -397,8 +398,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     "pointer Cast NYI"
                 );
                 */
-                Label::default()
-            }),
+                // TODO: connect this type to the type of the operand
+                self.rvalue_ltys[&self.current_location]
+            }
             Rvalue::Aggregate(ref kind, ref ops) => match **kind {
                 AggregateKind::Array(..) => {
                     let ty = rv.ty(self.local_decls, *self.ltcx);
@@ -623,6 +625,7 @@ pub fn visit_body<'tcx>(
     maps: &mut AtomMaps<'tcx>,
     loans: &mut HashMap<Local, Vec<(Path, Loan, BorrowKind)>>,
     local_ltys: &[LTy<'tcx>],
+    rvalue_ltys: &HashMap<Location, LTy<'tcx>>,
     field_permissions: &HashMap<DefId, PermissionSet>,
     hypothesis: &PointerTableMut<PermissionSet>,
     mir: &Body<'tcx>,
@@ -635,6 +638,7 @@ pub fn visit_body<'tcx>(
         maps,
         loans,
         local_ltys,
+        rvalue_ltys,
         field_permissions,
         hypothesis,
         local_decls: &mir.local_decls,
