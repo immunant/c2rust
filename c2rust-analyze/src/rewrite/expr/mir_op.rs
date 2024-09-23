@@ -1091,30 +1091,31 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             PlaceElem::Deref => {
                 self.enter_place_deref_pointer(|v| {
                     v.visit_place_ref(base_pl, proj_ltys, access);
-                    let dyn_owned = v.is_dyn_owned(base_lty);
-                    if v.is_nullable(base_lty.label) {
-                        // If the pointer type is non-copy, downgrade (borrow) before calling
-                        // `unwrap()`.
+                    if !v.flags[base_lty.label].contains(FlagSet::FIXED) {
                         let desc = type_desc::perms_to_desc(
                             base_lty.ty,
                             v.perms[base_lty.label],
                             v.flags[base_lty.label],
                         );
-                        if !desc.own.is_copy() {
-                            v.emit(RewriteKind::OptionDowngrade {
+                        if v.is_nullable(base_lty.label) {
+                            // If the pointer type is non-copy, downgrade (borrow) before calling
+                            // `unwrap()`.
+                            if !desc.own.is_copy() {
+                                v.emit(RewriteKind::OptionDowngrade {
+                                    mutbl: access == PlaceAccess::Mut,
+                                    deref: !desc.dyn_owned,
+                                });
+                            }
+                            v.emit(RewriteKind::OptionUnwrap);
+                            if desc.dyn_owned {
+                                v.emit(RewriteKind::Deref);
+                            }
+                        }
+                        if desc.dyn_owned {
+                            v.emit(RewriteKind::DynOwnedDowngrade {
                                 mutbl: access == PlaceAccess::Mut,
-                                deref: !dyn_owned,
                             });
                         }
-                        v.emit(RewriteKind::OptionUnwrap);
-                        if dyn_owned {
-                            v.emit(RewriteKind::Deref);
-                        }
-                    }
-                    if dyn_owned {
-                        v.emit(RewriteKind::DynOwnedDowngrade {
-                            mutbl: access == PlaceAccess::Mut,
-                        });
                     }
                 });
             }
