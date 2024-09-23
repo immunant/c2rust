@@ -10,8 +10,7 @@ use std::ops::Index;
 use crate::borrowck::{OriginArg, OriginParam};
 use crate::context::AdtMetadataTable;
 use crate::context::{
-    AnalysisCtxt, Assignment, FlagSet, FnSigOrigins, GlobalAnalysisCtxt, GlobalAssignment, LTy,
-    PermissionSet,
+    AnalysisCtxt, Assignment, FlagSet, FnSigOrigins, GlobalAnalysisCtxt, LTy, PermissionSet,
 };
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::pointee_type::PointeeTypes;
@@ -480,7 +479,7 @@ pub fn desc_to_ty<'tcx>(tcx: TyCtxt<'tcx>, desc: TypeDesc<'tcx>) -> Ty<'tcx> {
 }
 
 struct HirTyVisitor<'a, 'tcx> {
-    asn: &'a Assignment<'a>,
+    asn: &'a Assignment,
     pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
     acx: &'a AnalysisCtxt<'a, 'tcx>,
     rw_lcx: LabeledTyCtxt<'tcx, RewriteLabel<'tcx>>,
@@ -663,8 +662,8 @@ impl<'tcx, 'a> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
                     assert_eq!(mir_local_decl.source_info.span, hir_local.pat.span);
                     let lty = self.acx.local_tys[*mir_local];
                     let rw_lty = relabel_rewrites(
-                        &self.asn.perms(),
-                        &self.asn.flags(),
+                        self.asn.perms(),
+                        self.asn.flags(),
                         &self.pointee_types,
                         self.rw_lcx,
                         lty,
@@ -733,8 +732,8 @@ pub fn gen_ty_rewrites<'tcx>(
                 create_rewrite_label(
                     pointer_lty,
                     args,
-                    &asn.perms(),
-                    &asn.flags(),
+                    asn.perms(),
+                    asn.flags(),
                     &pointee_types,
                     lifetime_lty.label,
                     &acx.gacx.adt_metadata,
@@ -752,8 +751,8 @@ pub fn gen_ty_rewrites<'tcx>(
                 create_rewrite_label(
                     pointer_lty,
                     args,
-                    &asn.perms(),
-                    &asn.flags(),
+                    asn.perms(),
+                    asn.flags(),
                     &pointee_types,
                     lifetime_lty.label,
                     &acx.gacx.adt_metadata,
@@ -853,7 +852,7 @@ pub fn gen_generics_rws<'p, 'tcx>(
 
 pub fn gen_adt_ty_rewrites<'tcx>(
     gacx: &GlobalAnalysisCtxt<'tcx>,
-    gasn: &GlobalAssignment,
+    asn: &Assignment,
     pointee_types: &GlobalPointerTable<PointeeTypes<'tcx>>,
     did: DefId,
 ) -> Vec<(Span, Rewrite)> {
@@ -897,8 +896,8 @@ pub fn gen_adt_ty_rewrites<'tcx>(
                 create_rewrite_label(
                     pointer_lty,
                     args,
-                    &gasn.perms,
-                    &gasn.flags,
+                    &asn.perms,
+                    &asn.flags,
                     pointee_types,
                     lifetime_lty.label,
                     &gacx.adt_metadata,
@@ -932,8 +931,8 @@ pub fn dump_rewritten_local_tys<'tcx>(
     for (local, decl) in mir.local_decls.iter_enumerated() {
         // TODO: apply `Cell` if `addr_of_local` indicates it's needed
         let rw_lty = relabel_rewrites(
-            &asn.perms(),
-            &asn.flags(),
+            asn.perms(),
+            asn.flags(),
             &pointee_types,
             rw_lcx,
             acx.local_tys[local],
