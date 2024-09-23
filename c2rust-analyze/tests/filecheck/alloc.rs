@@ -96,6 +96,24 @@ unsafe extern "C" fn realloc1(n: libc::c_ulong) {
     free(buf as *mut libc::c_void);
 }
 
+
+// CHECK-LABEL: final labeling for "malloc_return"
+pub unsafe extern "C" fn malloc_return(mut cnt: libc::c_int) -> *mut i32 {
+    // CHECK-DAG: ([[@LINE+1]]: mut i): addr_of = UNIQUE | NON_NULL | STACK, type = READ | WRITE | UNIQUE | FREE | NON_NULL | HEAP#
+    let mut i: *mut i32 = malloc(::std::mem::size_of::<i32>() as libc::c_ulong) as *mut i32;
+    i
+}
+
+// CHECK-LABEL: final labeling for "malloc_return_free1"
+pub unsafe extern "C" fn malloc_return_free1(mut cnt: libc::c_int) {
+    // CHECK-DAG: ([[@LINE+1]]: mut i): addr_of = UNIQUE | NON_NULL | STACK, type = READ | WRITE | UNIQUE | FREE | NON_NULL | HEAP#
+    let mut i: *mut i32 = malloc_return(cnt);
+    *i = 2;
+    // CHECK-DAG: ([[@LINE+1]]: i{{.*}}): {{.*}}type = UNIQUE | FREE | NON_NULL | HEAP#
+    free(i as *mut libc::c_void);
+}
+
+
 // Rewrites of malloc/calloc/realloc/memset should use `mem::size_of` to convert byte counts to
 // element counts.
 // CHECK: let n = byte_len as usize / std::mem::size_of::<i32>();
