@@ -245,7 +245,6 @@ bitflags! {
             | Self::DATAFLOW_INVALID.bits
             | Self::BORROWCK_INVALID.bits
             | Self::MISC_ANALYSIS_INVALID.bits
-            | Self::REWRITE_INVALID.bits
             | Self::FAKE_INVALID_FOR_TESTING.bits;
     }
 }
@@ -1158,7 +1157,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             let ty = rv.ty(self, self.tcx());
             if matches!(ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)) {
                 let (pointee_lty, proj, ptr) = match desc {
-                    RvalueDesc::Project { base, proj } => {
+                    RvalueDesc::Project { base, proj, mutbl: _ } => {
                         let base_lty = self.type_of(base);
                         eprintln!(
                             "rvalue = {:?}, desc = {:?}, base_lty = {:?}",
@@ -1170,7 +1169,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                             base_lty.label,
                         )
                     }
-                    RvalueDesc::AddrOfLocal { local, proj } => {
+                    RvalueDesc::AddrOfLocal { local, proj, mutbl: _ } => {
                         (self.type_of(local), proj, self.addr_of_local[local])
                     }
                 };

@@ -29,6 +29,8 @@ pub enum RvalueDesc<'tcx> {
         base: PlaceRef<'tcx>,
         /// The projection applied to the pointer.  This contains no `Deref` projections.
         proj: &'tcx [PlaceElem<'tcx>],
+        /// Mutability of the resulting reference.
+        mutbl: Mutability,
     },
     /// The address of a local or one of its fields, such as `&x.y`.  The rvalue is split into a
     /// base local (in this case `x`) and a projection (`.y`).  The `&` is implicit.
@@ -36,6 +38,8 @@ pub enum RvalueDesc<'tcx> {
         local: Local,
         /// The projection applied to the local.  This contains no `Deref` projections.
         proj: &'tcx [PlaceElem<'tcx>],
+        /// Mutability of the resulting reference.
+        mutbl: Mutability,
     },
 }
 
@@ -45,10 +49,18 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
             Operand::Move(pl) | Operand::Copy(pl) => RvalueDesc::Project {
                 base: pl.as_ref(),
                 proj: &[],
+                // This is an rvalue of an `Assign` statement, so it's always in a non-mutable
+                // position.
+                mutbl: Mutability::Not,
             },
             Operand::Constant(_) => return None,
         },
         Rvalue::Ref(_, _, pl) | Rvalue::AddressOf(_, pl) => {
+            let mutbl = match *rv {
+                Rvalue::Ref(_, kind, _) => kind.to_mutbl_lossy(),
+                Rvalue::AddressOf(mutbl, _) => mutbl,
+                _ => unreachable!(),
+            };
             let projection = &pl.projection[..];
             match projection
                 .iter()
@@ -62,6 +74,7 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
                             projection: &projection[..i],
                         },
                         proj: &projection[i + 1..],
+                        mutbl,
                     }
                 }
                 None => {
@@ -69,6 +82,7 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
                     RvalueDesc::AddrOfLocal {
                         local: pl.local,
                         proj: projection,
+                        mutbl,
                     }
                 }
             }
