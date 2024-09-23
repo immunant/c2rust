@@ -220,6 +220,21 @@ impl PlaceAccess {
     }
 }
 
+/// Named boolean for use with `visit_place`.  `RequireSinglePointer::Yes` means that if the
+/// `Place` ends with a `Deref` projection, the pointer being dereferenced must have
+/// `Quantity::Single`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+enum RequireSinglePointer {
+    No,
+    Yes,
+}
+
+impl RequireSinglePointer {
+    pub fn as_bool(self) -> bool {
+        self == RequireSinglePointer::Yes
+    }
+}
+
 struct ExprRewriteVisitor<'a, 'tcx> {
     acx: &'a AnalysisCtxt<'a, 'tcx>,
     perms: &'a GlobalPointerTable<PermissionSet>,
@@ -475,7 +490,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         v.enter_rvalue_operand(0, |v| {
                             v.enter_operand_place(|v| {
                                 eprintln!("BEGIN visit_place for ownership transfer");
-                                v.visit_place(rv_pl, PlaceAccess::Mut);
+                                v.visit_place(rv_pl, PlaceAccess::Mut, RequireSinglePointer::No);
                                 eprintln!("END visit_place for ownership transfer");
                             });
                         });
@@ -501,7 +516,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     v.visit_rvalue(rv, Some(rv_lty));
                     v.emit_cast_lty_lty(rv_lty, pl_lty)
                 });
-                self.enter_dest(|v| v.visit_place(pl, PlaceAccess::Mut));
+                self.enter_dest(|v| v.visit_place(pl, PlaceAccess::Mut, RequireSinglePointer::Yes));
             }
             StatementKind::FakeRead(..) => {}
             StatementKind::SetDiscriminant { .. } => todo!("statement {:?}", stmt),
@@ -905,7 +920,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     BorrowKind::Mut { .. } => true,
                     BorrowKind::Shared | BorrowKind::Shallow | BorrowKind::Unique => false,
                 };
-                self.enter_rvalue_place(0, |v| v.visit_place(pl, PlaceAccess::from_bool(mutbl)));
+                self.enter_rvalue_place(0, |v| {
+                    v.visit_place(pl, PlaceAccess::from_bool(mutbl), RequireSinglePointer::No)
+                });
 
                 if let Some(expect_ty) = expect_ty {
                     if self.is_nullable(expect_ty.label) {
@@ -919,7 +936,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 // TODO
             }
             Rvalue::AddressOf(mutbl, pl) => {
-                self.enter_rvalue_place(0, |v| v.visit_place(pl, PlaceAccess::from_mutbl(mutbl)));
+                self.enter_rvalue_place(0, |v| {
+                    v.visit_place(pl, PlaceAccess::from_mutbl(mutbl), RequireSinglePointer::No)
+                });
                 if let Some(expect_ty) = expect_ty {
                     let desc = type_desc::perms_to_desc_with_pointee(
                         self.acx.tcx(),
@@ -941,7 +960,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 }
             }
             Rvalue::Len(pl) => {
-                self.enter_rvalue_place(0, |v| v.visit_place(pl, PlaceAccess::Imm));
+                self.enter_rvalue_place(0, |v| {
+                    v.visit_place(pl, PlaceAccess::Imm, RequireSinglePointer::No)
+                });
             }
             Rvalue::Cast(_kind, ref op, ty) => {
                 if util::is_null_const_operand(op) && ty.is_unsafe_ptr() {
@@ -1000,7 +1021,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
             }
             Rvalue::Discriminant(pl) => {
-                self.enter_rvalue_place(0, |v| v.visit_place(pl, PlaceAccess::Imm));
+                self.enter_rvalue_place(0, |v| {
+                    v.visit_place(pl, PlaceAccess::Imm, RequireSinglePointer::No)
+                });
             }
             Rvalue::Aggregate(ref _kind, ref ops) => {
                 for (i, op) in ops.iter().enumerate() {
@@ -1011,7 +1034,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
             }
             Rvalue::CopyForDeref(pl) => {
-                self.enter_rvalue_place(0, |v| v.visit_place(pl, PlaceAccess::Imm));
+                self.enter_rvalue_place(0, |v| {
+                    v.visit_place(pl, PlaceAccess::Imm, RequireSinglePointer::No)
+                });
             }
         }
     }
@@ -1022,7 +1047,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
                 // TODO: should this be Move, Imm, or dependent on the type?
-                self.enter_operand_place(|v| v.visit_place(pl, PlaceAccess::Move));
+                self.enter_operand_place(|v| {
+                    v.visit_place(pl, PlaceAccess::Move, RequireSinglePointer::Yes)
+                });
 
                 if let Some(expect_ty) = expect_ty {
                     let ptr_lty = self.acx.type_of(pl);
@@ -1040,7 +1067,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
                 // TODO: should this be Move, Imm, or dependent on the type?
-                self.visit_place(pl, PlaceAccess::Move);
+                self.visit_place(pl, PlaceAccess::Move, RequireSinglePointer::Yes);
 
                 let ptr_lty = self.acx.type_of(pl);
                 if !ptr_lty.label.is_none() {
@@ -1051,14 +1078,19 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         }
     }
 
-    fn visit_place(&mut self, pl: Place<'tcx>, access: PlaceAccess) {
+    fn visit_place(
+        &mut self,
+        pl: Place<'tcx>,
+        access: PlaceAccess,
+        require_single_ptr: RequireSinglePointer,
+    ) {
         let mut ltys = Vec::with_capacity(1 + pl.projection.len());
         ltys.push(self.acx.type_of(pl.local));
         for proj in pl.projection {
             let prev_lty = ltys.last().copied().unwrap();
             ltys.push(self.acx.projection_lty(prev_lty, &proj));
         }
-        self.visit_place_ref(pl.as_ref(), &ltys, access);
+        self.visit_place_ref(pl.as_ref(), &ltys, access, require_single_ptr);
     }
 
     /// Generate rewrites for a `Place` represented as a `PlaceRef`.  `proj_ltys` gives the `LTy`
@@ -1069,6 +1101,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         pl: PlaceRef<'tcx>,
         proj_ltys: &[LTy<'tcx>],
         access: PlaceAccess,
+        require_single_ptr: RequireSinglePointer,
     ) {
         let (&last_proj, rest) = match pl.projection.split_last() {
             Some(x) => x,
@@ -1090,39 +1123,53 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         match last_proj {
             PlaceElem::Deref => {
                 self.enter_place_deref_pointer(|v| {
-                    v.visit_place_ref(base_pl, proj_ltys, access);
-                    let dyn_owned = v.is_dyn_owned(base_lty);
-                    if v.is_nullable(base_lty.label) {
-                        // If the pointer type is non-copy, downgrade (borrow) before calling
-                        // `unwrap()`.
+                    v.visit_place_ref(base_pl, proj_ltys, access, RequireSinglePointer::Yes);
+                    if !v.flags[base_lty.label].contains(FlagSet::FIXED) {
                         let desc = type_desc::perms_to_desc(
                             base_lty.ty,
                             v.perms[base_lty.label],
                             v.flags[base_lty.label],
                         );
-                        if !desc.own.is_copy() {
-                            v.emit(RewriteKind::OptionDowngrade {
+                        // TODO: This logic is quite similar to the cast builder code and could
+                        // probably be replaced with a call to `emit_cast_lty_adjust`.  But
+                        // currently this tries to introduce casts on the borrow projection in
+                        // `array.as_mut_ptr()`, which causes rewriting to fail.
+                        if v.is_nullable(base_lty.label) {
+                            // If the pointer type is non-copy, downgrade (borrow) before calling
+                            // `unwrap()`.
+                            if !desc.own.is_copy() {
+                                v.emit(RewriteKind::OptionDowngrade {
+                                    mutbl: access == PlaceAccess::Mut,
+                                    deref: !desc.dyn_owned,
+                                });
+                            }
+                            v.emit(RewriteKind::OptionUnwrap);
+                            if desc.dyn_owned {
+                                v.emit(RewriteKind::Deref);
+                            }
+                        }
+                        if desc.dyn_owned {
+                            v.emit(RewriteKind::DynOwnedDowngrade {
                                 mutbl: access == PlaceAccess::Mut,
-                                deref: !dyn_owned,
                             });
                         }
-                        v.emit(RewriteKind::OptionUnwrap);
-                        if dyn_owned {
-                            v.emit(RewriteKind::Deref);
+                        if require_single_ptr.as_bool() && desc.qty != Quantity::Single {
+                            v.emit(RewriteKind::SliceFirst {
+                                mutbl: access == PlaceAccess::Mut,
+                            });
                         }
-                    }
-                    if dyn_owned {
-                        v.emit(RewriteKind::DynOwnedDowngrade {
-                            mutbl: access == PlaceAccess::Mut,
-                        });
                     }
                 });
             }
             PlaceElem::Field(_idx, _ty) => {
-                self.enter_place_field_base(|v| v.visit_place_ref(base_pl, proj_ltys, access));
+                self.enter_place_field_base(|v| {
+                    v.visit_place_ref(base_pl, proj_ltys, access, RequireSinglePointer::Yes)
+                });
             }
             PlaceElem::Index(_) | PlaceElem::ConstantIndex { .. } | PlaceElem::Subslice { .. } => {
-                self.enter_place_index_array(|v| v.visit_place_ref(base_pl, proj_ltys, access));
+                self.enter_place_index_array(|v| {
+                    v.visit_place_ref(base_pl, proj_ltys, access, RequireSinglePointer::Yes)
+                });
             }
             PlaceElem::Downcast(_, _) => {}
         }
