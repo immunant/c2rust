@@ -102,6 +102,9 @@ pub enum Rewrite<S = Span> {
     /// Single-argument closure.  As with `Let` and `Let1`, the body must be carefully constructed
     /// to avoid potential shadowing.
     Closure1(String, Box<Rewrite>),
+    /// Match expression.  The `Vec` is a list of cases, each consisting of a pattern and an
+    /// expression.
+    Match(Box<Rewrite>, Vec<(String, Rewrite)>),
 
     // Type builders
     /// Emit a complete pretty-printed type, discarding the original annotation.
@@ -201,6 +204,13 @@ impl Rewrite {
             }
             Let1(ref name, ref rw) => Let1(String::clone(name), try_subst(rw)?),
             Closure1(ref name, ref rw) => Closure1(String::clone(name), try_subst(rw)?),
+            Match(ref expr, ref cases) => {
+                let mut new_cases = Vec::with_capacity(cases.len());
+                for &(ref pat, ref body) in cases {
+                    new_cases.push((String::clone(pat), body.try_subst(subst)?));
+                }
+                Match(try_subst(expr)?, new_cases)
+            }
 
             Print(ref s) => Print(String::clone(s)),
             TyPtr(ref rw, mutbl) => TyPtr(try_subst(rw)?, mutbl),
