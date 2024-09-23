@@ -13,7 +13,7 @@ use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability, Poi
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::Span;
 use std::collections::btree_map::{BTreeMap, Entry};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct PreciseLoc {
@@ -66,13 +66,37 @@ pub enum MirOriginDesc {
     LoadFromTempForAdjustment(usize),
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct UnlowerMap {
+    /// Maps MIR (sub)locations to the HIR node that produced each one, if known.
+    origins: BTreeMap<PreciseLoc, MirOrigin>,
+    /// MIR locations for which we discard all rewrites.  This is used for "derived" statements,
+    /// such as the `Len` + `Lt` + `Assert` operations that make up an array bounds check, where
+    /// rewrites applied to the main statement will automatically affect the derived statements
+    /// when the rewritten code is compiled.
+    discard: HashSet<Location>,
+}
+
+impl UnlowerMap {
+    pub fn get(&self, key: &PreciseLoc) -> Option<&MirOrigin> {
+        self.origins.get(key)
+    }
+
+    pub fn origins_map(&self) -> &BTreeMap<PreciseLoc, MirOrigin> {
+        &self.origins
+    }
+
+    pub fn discard_rewrites_for(&self, loc: Location) -> bool {
+        self.discard.contains(&loc)
+    }
+}
+
 struct UnlowerVisitor<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
     mir: &'a Body<'tcx>,
     typeck_results: &'tcx TypeckResults<'tcx>,
     span_index: SpanIndex<Location>,
-    /// Maps MIR (sub)locations to the HIR node that produced each one, if known.
-    unlower_map: BTreeMap<PreciseLoc, MirOrigin>,
+    unlower_map: UnlowerMap,
 
     /// When processing the `hir::Expr` identified by the `HirId`, append some locations to the
     /// list retrieved from the `SpanIndex`.  This is used in cases where some MIR statements have
@@ -113,7 +137,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             loc,
             sub: sub_loc.to_owned(),
         };
-        match self.unlower_map.entry(key) {
+        match self.unlower_map.origins.entry(key) {
             Entry::Vacant(e) => {
                 e.insert(origin);
             }
@@ -212,15 +236,14 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                     .filter(|&loc| !self.should_ignore_statement(loc)),
             );
         }
-        let locs = locs;
         if locs.is_empty() {
             return;
         }
 
-        let warn = |desc| {
+        let warn = |locs: &[_], desc| {
             warn!("{}", desc);
             info!("locs:");
-            for &loc in &locs {
+            for &loc in locs {
                 self.mir.stmt_at(loc).either(
                     |stmt| info!("  {:?}: {:?}", locs, stmt),
                     |term| info!("  {:?}: {:?}", locs, term),
@@ -237,13 +260,14 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 let (loc, mir_pl, mir_rv) = match self.get_sole_assign(&locs) {
                     Some(x) => x,
                     None => {
-                        warn("expected exactly one StatementKind::Assign");
+                        warn(&locs, "expected exactly one StatementKind::Assign");
                         return;
                     }
                 };
                 self.record(loc, &[], ex);
                 self.visit_expr_place(pl, loc, vec![SubLoc::Dest], mir_pl, &[]);
                 self.visit_expr_rvalue(rv, loc, vec![SubLoc::Rvalue], mir_rv, &[]);
+                return;
             }
 
             hir::ExprKind::Call(_, args) | hir::ExprKind::MethodCall(_, args, _) => {
@@ -251,7 +275,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 let (_mir_pl, mut cursor) = match self.make_visit_expr_cursor(&locs) {
                     Some(x @ (pl, _)) if is_var(pl) => x,
                     _ => {
-                        warn("expected final Assign to store into var");
+                        warn(&locs, "expected final Assign to store into var");
                         debug!(
                             "visit_expr_inner: bail out: expr at {:?} isn't assigned to a var",
                             ex.span
@@ -272,7 +296,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                             ..
                         } => {
                             if !is_var(destination) {
-                                warn("expected final Call to store into var");
+                                warn(&locs, "expected final Call to store into var");
                                 return;
                             }
                             args
@@ -280,7 +304,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                         _ => unreachable!("ExprMir::Call should always contain Call terminator"),
                     },
                     _ => {
-                        warn("expected MIR Call for HIR Call/MethodCall");
+                        warn(&locs, "expected MIR Call for HIR Call/MethodCall");
                         return;
                     }
                 };
@@ -309,23 +333,121 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                         warn!("NYI: extra locations {:?} in Call", &locs[..locs.len() - 1]);
                     }
                 }
+                return;
             }
 
-            _ => {
-                // For all other `ExprKind`s, we expect the last `loc` to be an assignment storing
-                // the final result into a temporary.
-                let (_mir_pl, mut cursor) = match self.make_visit_expr_cursor(&locs) {
-                    Some(x @ (pl, _)) if is_var(pl) => x,
-                    _ => {
-                        warn("expected final Assign to store into var");
-                        return;
+            // Remaining cases fall through to the default behavior below.
+            hir::ExprKind::Index(_arr_ex, _idx_ex) => {
+                // Look for the following pattern:
+                //      _3 = Len(((*_1).0: [u32; 4]))
+                //      _4 = Lt(_2, _3)
+                //      assert(
+                //          move _4,
+                //          "index out of bounds: the length is {} but the index is {}",
+                //          move _3,
+                //          _2,
+                //      ) -> [success: bb1, unwind: bb2];
+                let mut match_pattern = || -> Option<()> {
+                    let mut iter = locs.iter().enumerate();
+                    // This pattern of `iter.by_ref().filter_map(..).next()` advances `iter` until
+                    // it produces an item matching the `filter_map` predicate.  The next call with
+                    // this pattern will continue searching from the following item.
+                    let (len_idx, len_var) = iter
+                        .by_ref()
+                        .filter_map(|(i, &loc)| {
+                            // Look for `_len = Len(_)`
+                            let stmt = self.mir.stmt_at(loc).left()?;
+                            if let mir::StatementKind::Assign(ref x) = stmt.kind {
+                                let (ref pl, ref rv) = **x;
+                                let pl_var = pl.as_local()?;
+                                if matches!(rv, mir::Rvalue::Len(_)) {
+                                    return Some((i, pl_var));
+                                }
+                            }
+                            None
+                        })
+                        .next()?;
+                    let (lt_idx, lt_var) = iter
+                        .by_ref()
+                        .filter_map(|(i, &loc)| {
+                            // Look for `_ok = Lt(_, _len)`
+                            let stmt = self.mir.stmt_at(loc).left()?;
+                            if let mir::StatementKind::Assign(ref x) = stmt.kind {
+                                let (ref pl, ref rv) = **x;
+                                let pl_var = pl.as_local()?;
+                                if let mir::Rvalue::BinaryOp(mir::BinOp::Lt, ref ops) = *rv {
+                                    let (_, ref op2) = **ops;
+                                    let op2_var = op2.place()?.as_local()?;
+                                    if op2_var == len_var {
+                                        return Some((i, pl_var));
+                                    }
+                                }
+                            }
+                            None
+                        })
+                        .next()?;
+                    let assert_idx = iter
+                        .by_ref()
+                        .filter_map(|(i, &loc)| {
+                            // Look for `Assert(_ok, ..)`
+                            let term = self.mir.stmt_at(loc).right()?;
+                            if let mir::TerminatorKind::Assert { ref cond, .. } = term.kind {
+                                let cond_var = cond.place()?.as_local()?;
+                                if cond_var == lt_var {
+                                    return Some(i);
+                                }
+                            }
+                            None
+                        })
+                        .next()?;
+
+                    // All three parts were found.  Mark them as `discard`, then remove them from
+                    // `locs`.
+                    self.unlower_map.discard.insert(locs[len_idx]);
+                    self.unlower_map.discard.insert(locs[lt_idx]);
+                    self.unlower_map.discard.insert(locs[assert_idx]);
+
+                    if lt_idx == len_idx + 1 && assert_idx == len_idx + 2 {
+                        // All three locations are consecutive.  Remove them with `drain`.
+                        locs.drain(lt_idx..=assert_idx);
+                    } else {
+                        // Remove the three locations separately.  Remove in reverse order to avoid
+                        // perturbing the other indices.
+                        debug_assert!(assert_idx > lt_idx);
+                        debug_assert!(lt_idx > len_idx);
+                        locs.remove(assert_idx);
+                        locs.remove(lt_idx);
+                        locs.remove(len_idx);
                     }
+
+                    Some(())
                 };
-                self.record_desc(cursor.loc, &[], ex, MirOriginDesc::StoreIntoLocal);
-                self.walk_expr(ex, &mut cursor);
-                self.finish_visit_expr_cursor(ex, cursor);
+                // `match_pattern` returns `Option` only so we can bail out with `?`.  The result
+                // is unused.
+                let _ = match_pattern();
             }
+
+            _ => {}
         }
+
+        // `locs` can become empty if some locations were found, but all of them were consumed by
+        // earlier processing.
+        if locs.is_empty() {
+            return;
+        }
+
+        // For all other `ExprKind`s, we expect the last `loc` to be an assignment storing the
+        // final result into a temporary.
+        let (_mir_pl, mut cursor) = match self.make_visit_expr_cursor(&locs) {
+            Some(x @ (pl, _)) if is_var(pl) => x,
+            _ => {
+                warn(&locs, "expected final Assign to store into var");
+                return;
+            }
+        };
+        self.record_desc(cursor.loc, &[], ex, MirOriginDesc::StoreIntoLocal);
+        self.walk_expr(ex, &mut cursor);
+        self.finish_visit_expr_cursor(ex, cursor);
     }
 
     /// Try to create a `VisitExprCursor` from the RHS of statement `locs.last()`.  Returns the LHS
@@ -1033,14 +1155,10 @@ fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {
 /// This function returns a `BTreeMap`, which supports iterating in sorted order.  This allows
 /// looking up entries by a prefix of their key (for example, finding all entries on a given
 /// `Location` regardless of their `SubLoc`s) using the `BTreeMap::range` method.
-pub fn unlower<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    mir: &Body<'tcx>,
-    hir_body_id: hir::BodyId,
-) -> BTreeMap<PreciseLoc, MirOrigin> {
+pub fn unlower<'tcx>(tcx: TyCtxt<'tcx>, mir: &Body<'tcx>, hir_body_id: hir::BodyId) -> UnlowerMap {
     // If this MIR body came from a `#[derive]`, ignore it.
     if util::is_automatically_derived(tcx, mir) {
-        return BTreeMap::new();
+        return UnlowerMap::default();
     }
 
     let typeck_results = tcx.typeck_body(hir_body_id);
@@ -1056,7 +1174,7 @@ pub fn unlower<'tcx>(
         mir,
         typeck_results,
         span_index,
-        unlower_map: BTreeMap::new(),
+        unlower_map: UnlowerMap::default(),
         append_extra_locations: HashMap::new(),
     };
     visitor.visit_body(hir);
