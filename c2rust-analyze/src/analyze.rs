@@ -536,6 +536,31 @@ fn get_skip_pointee_defs() -> io::Result<HashSet<DefId>> {
     Ok(skip_pointee)
 }
 
+fn get_rewrite_mode(tcx: TyCtxt, pointwise_fn_ldid: Option<LocalDefId>) -> rewrite::UpdateFiles {
+    let mut update_files = rewrite::UpdateFiles::No;
+    if let Ok(val) = env::var("C2RUST_ANALYZE_REWRITE_MODE") {
+        match val.as_str() {
+            "none" => {}
+            "inplace" => {
+                update_files = rewrite::UpdateFiles::InPlace;
+            }
+            "alongside" => {
+                update_files = rewrite::UpdateFiles::Alongside;
+            }
+            "pointwise" => {
+                let pointwise_fn_ldid = pointwise_fn_ldid.expect(
+                    "C2RUST_ANALYZE_REWRITE_MODE=pointwise, \
+                            but pointwise_fn_ldid is unset?",
+                );
+                let pointwise_fn_name = tcx.item_name(pointwise_fn_ldid.to_def_id());
+                update_files = rewrite::UpdateFiles::AlongsidePointwise(pointwise_fn_name);
+            }
+            _ => panic!("bad value {:?} for C2RUST_ANALYZE_REWRITE_MODE", val),
+        }
+    }
+    update_files
+}
+
 /// Local information, specific to a single function.  Many of the data structures we use for
 /// the pointer analysis have a "global" part that's shared between all functions and a "local"
 /// part that's specific to the function being analyzed; this struct contains only the local
@@ -1547,27 +1572,7 @@ fn run2<'tcx>(
     let annotations = ann.finish();
 
     // Apply rewrite to all functions at once.
-    let mut update_files = rewrite::UpdateFiles::No;
-    if let Ok(val) = env::var("C2RUST_ANALYZE_REWRITE_MODE") {
-        match val.as_str() {
-            "none" => {}
-            "inplace" => {
-                update_files = rewrite::UpdateFiles::InPlace;
-            }
-            "alongside" => {
-                update_files = rewrite::UpdateFiles::Alongside;
-            }
-            "pointwise" => {
-                let pointwise_fn_ldid = pointwise_fn_ldid.expect(
-                    "C2RUST_ANALYZE_REWRITE_MODE=pointwise, \
-                            but pointwise_fn_ldid is unset?",
-                );
-                let pointwise_fn_name = tcx.item_name(pointwise_fn_ldid.to_def_id());
-                update_files = rewrite::UpdateFiles::AlongsidePointwise(pointwise_fn_name);
-            }
-            _ => panic!("bad value {:?} for C2RUST_ANALYZE_REWRITE_MODE", val),
-        }
-    }
+    let update_files = get_rewrite_mode(tcx, pointwise_fn_ldid);
     rewrite::apply_rewrites(tcx, all_rewrites, annotations, update_files);
 
     // ----------------------------------
