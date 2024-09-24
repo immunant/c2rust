@@ -50,17 +50,23 @@ def read_func_errors(f):
         func_errors[func] = errors
     return func_errors
 
+def calc_pct(n, d):
+    if d == 0:
+        return 0
+    else:
+        return n / d * 100
+
 pointwise_func_errors = read_func_errors(open(pointwise_log_path))
 pointwise_ok = set(func for func, errors in pointwise_func_errors.items() if errors == 0)
 print('pointwise:  %5d/%d functions passed (%.1f%%)' % (
     len(pointwise_ok), len(pointwise_func_errors),
-    len(pointwise_ok) / len(pointwise_func_errors) * 100))
+    calc_pct(len(pointwise_ok), len(pointwise_func_errors))))
 
 unmodified_func_errors = read_func_errors(open(unmodified_log_path))
 unmodified_ok = set(func for func, errors in unmodified_func_errors.items() if errors == 0)
 print('unmodified: %5d/%d functions passed (%.1f%%)' % (
     len(unmodified_ok), len(unmodified_func_errors),
-    len(unmodified_ok) / len(unmodified_func_errors) * 100))
+    calc_pct(len(unmodified_ok), len(unmodified_func_errors))))
 
 assert len(pointwise_func_errors) == len(unmodified_func_errors)
 num_total = len(pointwise_func_errors)
@@ -69,7 +75,7 @@ num_unmodified_bad = num_total - num_unmodified_ok
 
 improved = pointwise_ok - unmodified_ok
 print('improved:   %5d/%d functions (%.1f%%)' % (
-    len(improved), num_unmodified_bad, len(improved) / num_unmodified_bad * 100))
+    len(improved), num_unmodified_bad, calc_pct(len(improved), num_unmodified_bad)))
 broke = unmodified_ok - pointwise_ok
 print('broke:      %5d/%d functions (%.1f%%)' % (
-    len(broke), num_unmodified_ok, len(broke) / num_unmodified_ok * 100))
+    len(broke), num_unmodified_ok, calc_pct(len(broke), num_unmodified_ok)))
