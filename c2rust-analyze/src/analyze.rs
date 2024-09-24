@@ -1517,6 +1517,16 @@ fn run2<'tcx>(
         info.acx_data.set(acx.into_data());
     }
 
+    // Annotate begin/end of each def.  This is used by extract_working_defs.py to locate defs that
+    // were rewritten successfully.
+    if env::var("C2RUST_ANALYZE_ANNOTATE_DEF_SPANS").as_deref() == Ok("1") {
+        for ldid in tcx.hir_crate_items(()).definitions() {
+            let span = tcx.source_span(ldid);
+            ann.emit(span.shrink_to_lo(), format_args!("start of def {ldid:?}"));
+            ann.emit(span.shrink_to_hi(), format_args!("end of def {ldid:?}"));
+        }
+    }
+
     // Print results for `static` items.
     eprintln!("\nfinal labeling for static items:");
     let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
