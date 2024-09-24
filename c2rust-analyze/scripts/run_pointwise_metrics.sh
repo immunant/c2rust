@@ -33,6 +33,10 @@ now=$(date +%Y%m%d-%H%M%S)
 project="$(basename "$MODULE_DIR")"
 case "$project" in
     lighttpd_*)
+        # Make sure the project has been built first.  This ensures that the
+        # `extern` function can find the libraries it needs.
+        cargo build --manifest-path "$MODULE_DIR/Cargo.toml"
+
         rustc_flags=(
             --edition 2021
             --crate-type rlib
