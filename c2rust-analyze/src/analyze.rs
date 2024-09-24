@@ -882,6 +882,8 @@ fn run(tcx: TyCtxt) {
     eprintln!("=== ADT Metadata ===");
     eprintln!("{:?}", gacx.adt_metadata);
 
+    let skip_borrowck_everywhere = env::var("C2RUST_ANALYZE_SKIP_BORROWCK").as_deref() == Ok("1");
+
     let mut loop_count = 0;
     loop {
         // Loop until the global assignment reaches a fixpoint.  The inner loop also runs until a
@@ -895,6 +897,9 @@ fn run(tcx: TyCtxt) {
             if gacx.fn_analysis_invalid(ldid.to_def_id()) {
                 continue;
             }
+
+            let skip_borrowck = skip_borrowck_everywhere
+                || util::has_test_attr(tcx, ldid, TestAttr::SkipBorrowck);
 
             let info = func_info.get_mut(&ldid).unwrap();
             let ldid_const = WithOptConstParam::unknown(ldid);
@@ -910,15 +915,17 @@ fn run(tcx: TyCtxt) {
                 // on a fixpoint, so there's no need to do multiple iterations here.
                 info.dataflow.propagate(&mut asn.perms, &updates_forbidden);
 
-                borrowck::borrowck_mir(
-                    &acx,
-                    &info.dataflow,
-                    &mut asn.perms_mut(),
-                    &updates_forbidden,
-                    name.as_str(),
-                    &mir,
-                    field_ltys,
-                );
+                if !skip_borrowck {
+                    borrowck::borrowck_mir(
+                        &acx,
+                        &info.dataflow,
+                        &mut asn.perms_mut(),
+                        &updates_forbidden,
+                        name.as_str(),
+                        &mir,
+                        field_ltys,
+                    );
+                }
             }));
 
             info.acx_data.set(acx.into_data());
@@ -939,6 +946,11 @@ fn run(tcx: TyCtxt) {
         let mut num_changed = 0;
         for (i, &old) in old_gasn.iter().enumerate() {
             let ptr = PointerId::global(i as u32);
+
+            if skip_borrowck_everywhere {
+                asn.perms[ptr].insert(PermissionSet::UNIQUE);
+            }
+
             let new = asn.perms[ptr];
             if old != new {
                 let added = new & !old;
@@ -2269,7 +2281,7 @@ fn pdg_update_permissions<'tcx>(
                     perms.insert(PermissionSet::OFFSET_SUB);
                 }
                 if !node_info.unique {
-                    perms.remove(PermissionSet::UNIQUE);
+                    //perms.remove(PermissionSet::UNIQUE);
                 }
             }
 
