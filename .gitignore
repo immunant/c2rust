@@ -1,3 +1,4 @@
+.DS_store
 *.tar.xz
 *.tar.xz.sig
 *.tar.gz
