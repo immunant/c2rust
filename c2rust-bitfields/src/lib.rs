@@ -12,7 +12,7 @@ pub trait FieldType: Sized {
 
     fn get_bit(&self, bit: usize) -> bool;
 
-    fn set_field(&self, field: &mut [u8], bit_range: (usize, usize)) {
+    fn set_field(&self, field: &mut [u8], bit_range: (usize, usize), big_endian: bool) {
         fn zero_bit(byte: &mut u8, n_bit: u64) {
             let bit = 1 << n_bit;
 
@@ -28,7 +28,11 @@ pub trait FieldType: Sized {
         let (lhs_bit, rhs_bit) = bit_range;
 
         for (i, bit_index) in (lhs_bit..=rhs_bit).enumerate() {
-            let byte_index = bit_index / 8;
+            let byte_index = if big_endian {
+                field.len() - 1 - (bit_index / 8)
+            } else {
+                bit_index / 8
+            };
             let byte = &mut field[byte_index];
 
             if self.get_bit(i) {
@@ -39,7 +43,7 @@ pub trait FieldType: Sized {
         }
     }
 
-    fn get_field(field: &[u8], bit_range: (usize, usize)) -> Self;
+    fn get_field(field: &[u8], bit_range: (usize, usize), big_endian: bool) -> Self;
 }
 
 macro_rules! impl_int {
@@ -52,12 +56,16 @@ macro_rules! impl_int {
                     ((*self >> bit) & 1) == 1
                 }
 
-                fn get_field(field: &[u8], bit_range: (usize, usize)) -> Self {
+                fn get_field(field: &[u8], bit_range: (usize, usize), big_endian: bool) -> Self {
                     let (lhs_bit, rhs_bit) = bit_range;
                     let mut val = 0;
 
                     for (i, bit_index) in (lhs_bit..=rhs_bit).enumerate() {
-                        let byte_index = bit_index / 8;
+                        let byte_index = if big_endian {
+                            field.len() - 1 - (bit_index / 8)
+                        } else {
+                            bit_index / 8
+                        };
                         let byte = field[byte_index];
                         let bit = 1 << (bit_index % 8);
                         let read_bit = byte & bit;
@@ -94,12 +102,16 @@ impl FieldType for bool {
         *self
     }
 
-    fn get_field(field: &[u8], bit_range: (usize, usize)) -> Self {
+    fn get_field(field: &[u8], bit_range: (usize, usize), big_endian: bool) -> Self {
         let (lhs_bit, rhs_bit) = bit_range;
         let mut val = false;
 
         for bit_index in lhs_bit..=rhs_bit {
-            let byte_index = bit_index / 8;
+            let byte_index = if big_endian {
+                field.len() - 1 - (bit_index / 8)
+            } else {
+                bit_index / 8
+            };
             let byte = field[byte_index];
             let bit = 1 << (bit_index % 8);
             let read_bit = byte & bit;
