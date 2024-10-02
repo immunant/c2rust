@@ -93,6 +93,9 @@ pub unsafe extern "C" fn malloc_wrapper(mut size: size_t) -> *mut libc::c_void {
 #[no_mangle]
 pub unsafe extern "C" fn recur(x: libc::c_int, s: *mut S) {
     if x == 0 {
+        if s.is_null() {
+            return;
+        }
         return free(s as *mut libc::c_void);
     }
 
@@ -122,6 +125,7 @@ pub unsafe extern "C" fn simple() {
     let s = *y;
     *x = s;
     recur(3, x);
+    recur(3, std::ptr::null_mut());
     free(x2 as *mut libc::c_void);
 }
 

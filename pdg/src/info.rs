@@ -1,5 +1,4 @@
 use crate::graph::{Graph, Graphs, Node, NodeId, NodeKind};
-use rustc_middle::mir::Field;
 use serde::{Deserialize, Serialize};
 use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
@@ -7,6 +6,9 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 /// Force an import of [`Node`] just for docs.
 const _: Option<Node> = None;
+
+/// The identity of a field of a structure is its offset and projection index vector.
+type Field = Vec<usize>;
 
 /// Information generated from the PDG proper that is queried by static analysis.
 ///
@@ -57,7 +59,7 @@ fn set_flow_info(g: &mut Graph) {
     let mut flow_map: HashMap<NodeId, FlowInfo> = HashMap::from_iter(
         g.nodes
             .iter_enumerated()
-            .map(|(idx, node)| (idx, FlowInfo::new(idx, node.kind))),
+            .map(|(idx, node)| (idx, FlowInfo::new(idx, node.kind.clone()))),
     );
     for (n_id, mut node) in g.nodes.iter_enumerated_mut().rev() {
         let cur_node_flow_info: FlowInfo = flow_map.remove(&n_id).unwrap();
@@ -111,7 +113,7 @@ fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<(NodeId, Vec<Field>)>> {
         .rev()
         .filter_map(|(child, child_node)| Some((child_node.source?, child, child_node)))
     {
-        if let NodeKind::Field(f) = child_node.kind {
+        if let NodeKind::Project(_, f) = &child_node.kind {
             let my_children =
                 children
                     .remove(&child)
@@ -121,7 +123,7 @@ fn collect_children(g: &Graph) -> HashMap<NodeId, Vec<(NodeId, Vec<Field>)>> {
                         (
                             gchild,
                             ({
-                                gchildf.push(f);
+                                gchildf.push(f.clone());
                                 gchildf
                             }),
                         )
@@ -224,7 +226,6 @@ mod test {
     use super::*;
     use c2rust_analysis_rt::mir_loc::Func;
     use c2rust_analysis_rt::mir_loc::FuncId;
-    use rustc_middle::mir::Field;
     use rustc_middle::mir::Local;
 
     fn mk_node(g: &mut Graph, kind: NodeKind, source: Option<NodeId>) -> NodeId {
@@ -255,8 +256,9 @@ mod test {
         mk_node(g, NodeKind::StoreAddr, Some(source))
     }
 
-    fn mk_field(g: &mut Graph, source: NodeId, field: impl Into<Field>) -> NodeId {
-        mk_node(g, NodeKind::Field(field.into()), Some(source))
+    fn mk_project(g: &mut Graph, source: NodeId, field: impl Into<Field>) -> NodeId {
+        let f = field.into();
+        mk_node(g, NodeKind::Project(f.iter().sum(), f), Some(source))
     }
 
     fn mk_offset(g: &mut Graph, source: NodeId, i: isize) -> NodeId {
@@ -296,7 +298,7 @@ mod test {
     /// ```
     #[test]
     fn unique_interleave() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = 0;
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -344,7 +346,7 @@ mod test {
     /// ```
     #[test]
     fn unique_interleave_onesided() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = 0;   // A
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -388,7 +390,7 @@ mod test {
     /// ```
     #[test]
     fn unique_sub_borrow() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = 0;
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -434,7 +436,7 @@ mod test {
     /// ```
     #[test]
     fn unique_sub_borrow_bad() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = 0;
         let a = mk_addr_of_local(&mut g, 0_u32);
@@ -480,15 +482,15 @@ mod test {
     /// ```
     #[test]
     fn okay_use_different_fields() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = Point { x: 0, y: 0 };
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a.x;
-        let b11 = mk_field(&mut g, a, 0_u32);
+        let b11 = mk_project(&mut g, a, vec![0_usize]);
         let b1 = mk_copy(&mut g, b11);
         // let c = &mut a.y;
-        let c11 = mk_field(&mut g, a, 1_u32);
+        let c11 = mk_project(&mut g, a, vec![1_usize]);
         let c1 = mk_copy(&mut g, c11);
         // *b = 1;
         let b2 = mk_store_addr(&mut g, b1);
@@ -528,24 +530,24 @@ mod test {
     /// ```
     #[test]
     fn same_fields_cousins() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = Point { x: 0, y: 0 };
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let j = &mut a;
         let j = mk_copy(&mut g, a);
         // let b = &mut j.x;
-        let b11 = mk_field(&mut g, j, 0_u32);
+        let b11 = mk_project(&mut g, j, vec![0_usize]);
         let b1 = mk_copy(&mut g, b11);
         // let c = &mut j.x;
-        let c11 = mk_field(&mut g, j, 0_u32);
+        let c11 = mk_project(&mut g, j, vec![0_usize]);
         let c1 = mk_copy(&mut g, c11);
         // *b = 1;
         let b2 = mk_store_addr(&mut g, b1);
         // *c = 2;
         let c2 = mk_store_addr(&mut g, c1);
         // *(a.y) = 3;
-        let d1 = mk_field(&mut g, a, 1_u32);
+        let d1 = mk_project(&mut g, a, vec![1_usize]);
         let d2 = mk_store_addr(&mut g, d1);
 
         let pdg = build_pdg(g);
@@ -577,14 +579,14 @@ mod test {
     /// ```
     #[test]
     fn field_vs_raw() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = Point { x: 0, y: 0 };
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a;
         let b1 = mk_copy(&mut g, a);
         // let c = &mut a.y;
-        let c11 = mk_field(&mut g, a, 1_u32);
+        let c11 = mk_project(&mut g, a, vec![1_usize]);
         let c1 = mk_copy(&mut g, c11);
         // *c = 2;
         let c2 = mk_store_addr(&mut g, c1);
@@ -623,17 +625,17 @@ mod test {
     /// ```
     #[test]
     fn fields_different_levels() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = Point { x: 0, y: 0 };
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a;
         let b1 = mk_copy(&mut g, a);
         // let c = &mut b.y;
-        let c1 = mk_field(&mut g, a, 1_u32);
+        let c1 = mk_project(&mut g, a, vec![1_usize]);
         let c2 = mk_copy(&mut g, c1);
         // let bb = &mut b.y;
-        let bb = mk_field(&mut g, b1, 1_u32);
+        let bb = mk_project(&mut g, b1, vec![1_usize]);
         let bb1 = mk_copy(&mut g, bb);
         // *c = 2;
         let c3 = mk_store_addr(&mut g, c2);
@@ -667,22 +669,22 @@ mod test {
     /// ```
     #[test]
     fn lots_of_siblings() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
-        let (x, y, z) = (0_u32, 1_u32, 2_u32);
-        let (red, green, _blue) = (0_u32, 1_u32, 2_u32);
+        let (x, y, z) = (vec![0_usize], vec![1_usize], vec![2_usize]);
+        let (red, green, _blue) = (vec![0_usize], vec![1_usize], vec![2_usize]);
 
         // let mut a = ColorPoint { x: 0, y: 0, z: Color { r: 100, g: 100, b: 100 } };
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let b = &mut a.x;
-        let bb1 = mk_field(&mut g, a, x);
+        let bb1 = mk_project(&mut g, a, x);
         let b1 = mk_copy(&mut g, bb1);
         // let c = &mut a.y;
-        let cc1 = mk_field(&mut g, a, y);
+        let cc1 = mk_project(&mut g, a, y);
         let c1 = mk_copy(&mut g, cc1);
         // a.z.r = 200;
-        let x1 = mk_field(&mut g, a, z);
-        let x2 = mk_field(&mut g, x1, red);
+        let x1 = mk_project(&mut g, a, z.clone());
+        let x2 = mk_project(&mut g, x1, red);
         let x3 = mk_store_addr(&mut g, x2);
         // *b = 4;
         let b2 = mk_store_addr(&mut g, b1);
@@ -693,19 +695,19 @@ mod test {
         // *d = ColorPoint { x: 0, y: 0, z: Color { r: 20, g: 200, b: 20 } };
         let d2 = mk_store_addr(&mut g, d1);
         // let e = &mut a.z;
-        let ee = mk_field(&mut g, a, z);
+        let ee = mk_project(&mut g, a, z.clone());
         let e = mk_copy(&mut g, ee);
         // let f = &mut e.g;
-        let ff1 = mk_field(&mut g, e, green);
+        let ff1 = mk_project(&mut g, e, green.clone());
         let f1 = mk_copy(&mut g, ff1);
         // let g = &mut e.g;
-        let ggg = mk_field(&mut g, e, green);
+        let ggg = mk_project(&mut g, e, green.clone());
         let gg = mk_copy(&mut g, ggg);
         // *f = 3;
         let f2 = mk_store_addr(&mut g, f1);
         // a.z.r = 100;
-        let x4 = mk_field(&mut g, a, z);
-        let x5 = mk_field(&mut g, x4, green);
+        let x4 = mk_project(&mut g, a, z);
+        let x5 = mk_project(&mut g, x4, green);
         let x6 = mk_store_addr(&mut g, x5);
 
         let pdg = build_pdg(g);
@@ -753,15 +755,15 @@ mod test {
     /// ```
     #[test]
     fn field_no_conflict() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = (1, (2, 3));
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let x = &mut a.0;
-        let x1 = mk_field(&mut g, a, 0_u32);
+        let x1 = mk_project(&mut g, a, vec![0_usize]);
         let x2 = mk_copy(&mut g, x1);
         // let y = &mut a.1;
-        let y1 = mk_field(&mut g, a, 1_u32);
+        let y1 = mk_project(&mut g, a, vec![1_usize]);
         let y2 = mk_copy(&mut g, y1);
         // *x = 1;
         let x3 = mk_store_addr(&mut g, x2);
@@ -811,17 +813,17 @@ mod test {
     /// ```
     #[test]
     fn nested_field_no_conflict() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = (1, (2, 3));
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let x = &mut a.1.0;
-        let x1 = mk_field(&mut g, a, 1_u32);
-        let x2 = mk_field(&mut g, x1, 0_u32);
+        let x1 = mk_project(&mut g, a, vec![1_usize]);
+        let x2 = mk_project(&mut g, x1, vec![0_usize]);
         let x3 = mk_copy(&mut g, x2);
         // let y = &mut a.1.1;
-        let y1 = mk_field(&mut g, a, 1_u32);
-        let y2 = mk_field(&mut g, y1, 1_u32);
+        let y1 = mk_project(&mut g, a, vec![1_usize]);
+        let y2 = mk_project(&mut g, y1, vec![1_usize]);
         let y3 = mk_copy(&mut g, y2);
         // *x = 1;
         let x4 = mk_store_addr(&mut g, x3);
@@ -865,21 +867,21 @@ mod test {
     /// ```
     #[test]
     fn diff_field_conflict() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         //let mut a = (1, (2, 3));
         let a = mk_addr_of_local(&mut g, 0_u32);
         //let mut x = &mut a.1;
-        let x1 = mk_field(&mut g, a, 1_u32);
+        let x1 = mk_project(&mut g, a, vec![1_usize]);
         let x2 = mk_copy(&mut g, x1);
         //let mut y = &mut a.1;
-        let y1 = mk_field(&mut g, a, 1_u32);
+        let y1 = mk_project(&mut g, a, vec![1_usize]);
         let y2 = mk_copy(&mut g, y1);
         // *(x.0) = 4;
-        let x3 = mk_field(&mut g, x2, 0_u32);
+        let x3 = mk_project(&mut g, x2, vec![0_usize]);
         let x4 = mk_store_addr(&mut g, x3);
         // *(y.1) = 2;
-        let y3 = mk_field(&mut g, y2, 1_u32);
+        let y3 = mk_project(&mut g, y2, vec![1_usize]);
         let y4 = mk_store_addr(&mut g, y3);
 
         let pdg = build_pdg(g);
@@ -919,17 +921,17 @@ mod test {
     /// ```
     #[test]
     fn nested_field_conflict() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = (1, (2, 3));
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let x = &mut a.1.0;
-        let x1 = mk_field(&mut g, a, 1_u32);
-        let x2 = mk_field(&mut g, x1, 0_u32);
+        let x1 = mk_project(&mut g, a, vec![1_usize]);
+        let x2 = mk_project(&mut g, x1, vec![0_usize]);
         let x3 = mk_copy(&mut g, x2);
         // let y = &mut a.1.0;
-        let y1 = mk_field(&mut g, a, 1_u32);
-        let y2 = mk_field(&mut g, y1, 0_u32);
+        let y1 = mk_project(&mut g, a, vec![1_usize]);
+        let y2 = mk_project(&mut g, y1, vec![0_usize]);
         let y3 = mk_copy(&mut g, y2);
         // *x = 1;
         let x4 = mk_store_addr(&mut g, x3);
@@ -981,16 +983,16 @@ mod test {
     /// ```
     #[test]
     fn field_offset_conflict() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = ([1, 2], [3, 4]);
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let x = &mut a.0[0];
-        let x1 = mk_field(&mut g, a, 1_u32);
+        let x1 = mk_project(&mut g, a, vec![1_usize]);
         let x2 = mk_offset(&mut g, x1, 0);
         let x3 = mk_copy(&mut g, x2);
         // let y = &mut a.0[1];
-        let y1 = mk_field(&mut g, a, 1_u32);
+        let y1 = mk_project(&mut g, a, vec![1_usize]);
         let y2 = mk_offset(&mut g, y1, 1);
         let y3 = mk_copy(&mut g, y2);
         // *x = 1;
@@ -1043,16 +1045,16 @@ mod test {
     /// ```
     #[test]
     fn field_offset_no_conflict() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = ([1, 2], [3, 4]);
         let a = mk_addr_of_local(&mut g, 0_u32);
         // let x = &mut a.0[0];
-        let x1 = mk_field(&mut g, a, 0_u32);
+        let x1 = mk_project(&mut g, a, vec![0_usize]);
         let x2 = mk_offset(&mut g, x1, 0);
         let x3 = mk_copy(&mut g, x2);
         // let y = &mut a.1[0];
-        let y1 = mk_field(&mut g, a, 1_u32);
+        let y1 = mk_project(&mut g, a, vec![1_usize]);
         let y2 = mk_offset(&mut g, y1, 0);
         let y3 = mk_copy(&mut g, y2);
         // *x = 1;
@@ -1113,18 +1115,18 @@ mod test {
     /// `rustc` would reject the modified code.
     #[test]
     fn offset_field_conflict() {
-        let mut g = Graph::default();
+        let mut g = Graph::new(false);
 
         // let mut a = ([1, 2], [3, 4]);
         // let p = &mut a;
         let p = mk_addr_of_local(&mut g, 0_u32);
         // let x = &mut (*p)[0].0;
         let x1 = mk_offset(&mut g, p, 0);
-        let x2 = mk_field(&mut g, x1, 0_u32);
+        let x2 = mk_project(&mut g, x1, vec![0_usize]);
         let x3 = mk_copy(&mut g, x2);
         // let y = &mut (*p)[0].1;
         let y1 = mk_offset(&mut g, p, 0);
-        let y2 = mk_field(&mut g, y1, 1_u32);
+        let y2 = mk_project(&mut g, y1, vec![1_usize]);
         let y3 = mk_copy(&mut g, y2);
         // *x = 1;
         let x4 = mk_store_addr(&mut g, x3);

@@ -13,6 +13,7 @@ use crate::mir_loc::{Func, FuncId, MirLoc, MirLocId};
 pub struct Metadata {
     pub locs: Vec<MirLoc>,
     pub functions: HashMap<FuncId, String>,
+    pub projections: HashMap<u64, Vec<usize>>,
 }
 
 impl Metadata {
@@ -46,11 +47,27 @@ impl FromIterator<Metadata> for Metadata {
     fn from_iter<I: IntoIterator<Item = Metadata>>(iter: I) -> Self {
         let mut locs = Vec::new();
         let mut functions = HashMap::new();
+        let mut projections = HashMap::new();
         for metadata in iter {
             locs.extend(metadata.locs);
             functions.extend(metadata.functions);
+
+            for (key, proj) in metadata.projections.into_iter() {
+                projections
+                    .entry(key)
+                    .and_modify(|old_proj| {
+                        panic!(
+                            "Projection key collision at {key:x} between {old_proj:?} and {proj:?}"
+                        )
+                    })
+                    .or_insert(proj);
+            }
         }
-        Self { locs, functions }
+        Self {
+            locs,
+            functions,
+            projections,
+        }
     }
 }
 
