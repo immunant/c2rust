@@ -206,32 +206,37 @@ impl TypedAstContext {
         self.files[id].path.as_deref()
     }
 
+    /// Compare two [`SrcLoc`]s based on their import path
     pub fn compare_src_locs(&self, a: &SrcLoc, b: &SrcLoc) -> Ordering {
-        /// Compare `self` with `other`, without regard to file id
-        fn cmp_pos(a: &SrcLoc, b: &SrcLoc) -> Ordering {
-            (a.line, a.column).cmp(&(b.line, b.column))
-        }
-        let path_a = self.include_map[self.file_map[a.fileid as usize]].clone();
-        let path_b = self.include_map[self.file_map[b.fileid as usize]].clone();
-        for (include_a, include_b) in path_a.iter().zip(path_b.iter()) {
-            if include_a.fileid != include_b.fileid {
-                return cmp_pos(include_a, include_b);
-            }
-        }
         use Ordering::*;
-        match path_a.len().cmp(&path_b.len()) {
-            Less => {
-                // compare the place b was included in a'a file with a
-                let b = path_b.get(path_a.len()).unwrap();
-                cmp_pos(a, b)
-            }
-            Equal => cmp_pos(a, b),
-            Greater => {
-                // compare the place a was included in b's file with b
-                let a = path_a.get(path_b.len()).unwrap();
-                cmp_pos(a, b)
-            }
+        let path_a = &self.include_map[self.file_map[a.fileid as usize]];
+        let path_b = &self.include_map[self.file_map[b.fileid as usize]];
+
+        // Find the first include that does not match between the two
+        let common_len = path_a.len().min(path_b.len());
+        let order = path_a[..common_len].cmp(&path_b[..common_len]);
+        if order != Equal {
+            return order;
         }
+
+        // Either all parent includes are the same, or the include paths are of different lengths
+        // because .zip() stops when one of the iterators is empty.
+        let (a, b) = match path_a.len().cmp(&path_b.len()) {
+            Less => {
+                // a has the shorter path, which means b was included in a's file
+                // so extract that include and compare the position to a
+                let b = &path_b[path_a.len()];
+                (a, b)
+            }
+            Equal => (a, b), // a and b have the same include path and are thus in the same file
+            Greater => {
+                // b has the shorter path, which means a was included in b's file
+                // so extract that include and compare the position to b
+                let a = &path_a[path_b.len()];
+                (a, b)
+            }
+        };
+        a.cmp(b)
     }
 
     pub fn get_file_include_line_number(&self, file: FileId) -> Option<u64> {
@@ -1863,5 +1868,246 @@ impl CTypeKind {
             _ => return None,
         };
         Some(ty)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compare_src_locs_ord() {
+        let ctx = TypedAstContext {
+            c_types: Default::default(),
+            c_exprs: Default::default(),
+            c_stmts: Default::default(),
+            c_decls: Default::default(),
+            c_decls_top: vec![],
+            c_main: None,
+            parents: Default::default(),
+            files: vec![],
+            file_map: vec![0, 1, 2, 3, 4, 5, 4, 5],
+            include_map: vec![
+                vec![],
+                vec![],
+                vec![SrcLoc {
+                    fileid: 2,
+                    line: 6,
+                    column: 10,
+                }],
+                vec![],
+                vec![],
+                vec![SrcLoc {
+                    fileid: 5,
+                    line: 6,
+                    column: 10,
+                }],
+            ],
+            label_names: Default::default(),
+            macro_invocations: Default::default(),
+            macro_expansions: Default::default(),
+            macro_expansion_text: Default::default(),
+            comments: vec![],
+            prenamed_decls: Default::default(),
+            va_list_kind: BuiltinVaListKind::CharPtrBuiltinVaList,
+            target: "".to_string(),
+        };
+        let locs = &mut [
+            SrcLoc {
+                fileid: 5,
+                line: 5,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 5,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 1,
+                line: 5,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 1,
+                line: 5,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 1,
+                line: 10,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 1,
+                line: 5,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 2,
+                line: 4,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 3,
+                column: 7,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 3,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 3,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 5,
+                column: 7,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 5,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 5,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 5,
+                column: 7,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 7,
+                column: 7,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 7,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 7,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 9,
+                column: 7,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 9,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 9,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 5,
+                column: 7,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 5,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 5,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 8,
+                column: 3,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 8,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 7,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 0,
+                column: 4,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 0,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 2,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 98,
+                column: 3,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 98,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 202,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 5,
+                line: 202,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 7,
+                line: 1,
+                column: 1,
+            },
+            SrcLoc {
+                fileid: 7,
+                line: 3,
+                column: 1,
+            },
+        ];
+
+        let n = locs.len();
+        for i in 0..n {
+            let a = locs[i];
+            for j in 0..n {
+                let b = locs[j];
+                for k in 0..n {
+                    let c = locs[k];
+                    let ab = ctx.compare_src_locs(&a, &b);
+                    let bc = ctx.compare_src_locs(&b, &c);
+                    let ac = ctx.compare_src_locs(&a, &c);
+                    if ab == bc {
+                        assert_eq!(ab, ac, "Total order (transitivity) has been violated");
+                    }
+                }
+            }
+        }
+
+        // This should not panic
+        locs.sort_unstable_by(|a, b| ctx.compare_src_locs(a, b));
     }
 }
