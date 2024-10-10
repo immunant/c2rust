@@ -140,7 +140,7 @@ fn relabel_rewrites<'tcx, P, F, PT>(
     pointee_types: &PT,
     lcx: LabeledTyCtxt<'tcx, RewriteLabel<'tcx>>,
     lty: LTy<'tcx>,
-    gacx: &GlobalAnalysisCtxt<'tcx>,
+    adt_metadata: &AdtMetadataTable,
 ) -> RwLTy<'tcx>
 where
     P: Index<PointerId, Output = PermissionSet>,
@@ -156,7 +156,7 @@ where
             flags,
             pointee_types,
             &[],
-            &gacx.adt_metadata,
+            adt_metadata,
         )
     })
 }
@@ -667,7 +667,7 @@ impl<'tcx, 'a> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
                         &self.pointee_types,
                         self.rw_lcx,
                         lty,
-                        self.acx.gacx,
+                        &self.acx.gacx.adt_metadata,
                     );
                     let hir_ty = hir_local.ty.unwrap();
                     self.handle_ty(rw_lty, hir_ty);
@@ -917,6 +917,28 @@ pub fn gen_adt_ty_rewrites<'tcx>(
     hir_rewrites
 }
 
+/// Compute the new, rewritten version of `lty`.
+pub fn rewrite_lty<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    lty: LTy<'tcx>,
+    perms: &GlobalPointerTable<PermissionSet>,
+    flags: &GlobalPointerTable<FlagSet>,
+    pointee_types: &PointerTable<PointeeTypes<'tcx>>,
+    adt_metadata: &AdtMetadataTable,
+) -> Ty<'tcx> {
+    let rw_lcx = LabeledTyCtxt::<RewriteLabel>::new(tcx);
+    let rw_lty = relabel_rewrites(
+        perms,
+        flags,
+        pointee_types,
+        rw_lcx,
+        lty,
+        adt_metadata,
+    );
+    mk_rewritten_ty(rw_lcx, rw_lty)
+}
+
+
 /// Print the rewritten types for all locals in `mir`.  This is used for tests and debugging, as it
 /// reveals the inference results even for temporaries and other locals with no type annotation in
 /// the HIR.
@@ -936,7 +958,7 @@ pub fn dump_rewritten_local_tys<'tcx>(
             &pointee_types,
             rw_lcx,
             acx.local_tys[local],
-            acx.gacx,
+            &acx.gacx.adt_metadata,
         );
         let ty = mk_rewritten_ty(rw_lcx, rw_lty);
         eprintln!(
