@@ -11,6 +11,7 @@ use crate::context::{AnalysisCtxt, Assignment, DontRewriteFnReason, FlagSet, LTy
 use crate::panic_detail;
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{GlobalPointerTable, PointerId, PointerTable};
+use crate::rewrite;
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{self, ty_callee, Callee};
 use log::{debug, error, trace};
@@ -20,7 +21,7 @@ use rustc_middle::mir::{
     StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::print::{FmtPrinter, PrettyPrinter, Print};
-use rustc_middle::ty::{ParamEnv, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use std::ops::Index;
 
@@ -80,22 +81,22 @@ pub enum RewriteKind {
     ZeroAsPtrToNone,
 
     /// Replace a call to `memcpy(dest, src, n)` with a safe copy operation that works on slices
-    /// instead of raw pointers.  `elem_size` is the size of the original, unrewritten pointee
-    /// type, which is used to convert the byte length `n` to an element count.  `dest_single` and
-    /// `src_single` are set when `dest`/`src` is a pointer to a single item rather than a slice.
+    /// instead of raw pointers.  `elem_ty` is the pointee type type, whose size is used to convert
+    /// the byte length `n` to an element count.  `dest_single` and `src_single` are set when
+    /// `dest`/`src` is a pointer to a single item rather than a slice.
     MemcpySafe {
-        elem_size: u64,
+        elem_ty: String,
         dest_single: bool,
         dest_option: bool,
         src_single: bool,
         src_option: bool,
     },
-    /// Replace a call to `memset(ptr, 0, n)` with a safe zeroize operation.  `elem_size` is the
-    /// size of the type being zeroized, which is used to convert the byte length `n` to an element
-    /// count.  `dest_single` is set when `dest` is a pointer to a single item rather than a slice.
+    /// Replace a call to `memset(ptr, 0, n)` with a safe zeroize operation.  `elem_ty` is the type
+    /// being zeroized, whose size is used to convert the byte length `n` to an element count.
+    /// `dest_single` is set when `dest` is a pointer to a single item rather than a slice.
     MemsetZeroize {
         zero_ty: ZeroizeType,
-        elem_size: u64,
+        elem_ty: String,
         dest_single: bool,
     },
 
@@ -103,21 +104,21 @@ pub enum RewriteKind {
     /// zero-initialized.
     MallocSafe {
         zero_ty: ZeroizeType,
-        elem_size: u64,
+        elem_ty: String,
         single: bool,
     },
     /// Replace a call to `free(p)` with a safe `drop` operation.
     FreeSafe { single: bool },
     ReallocSafe {
         zero_ty: ZeroizeType,
-        elem_size: u64,
+        elem_ty: String,
         src_single: bool,
         dest_single: bool,
         option: bool,
     },
     CallocSafe {
         zero_ty: ZeroizeType,
-        elem_size: u64,
+        elem_ty: String,
         single: bool,
     },
 
@@ -347,6 +348,26 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         desc.dyn_owned
     }
 
+    fn rewrite_lty(&self, lty: LTy<'tcx>) -> Ty<'tcx> {
+        let tcx = self.acx.tcx();
+        rewrite::ty::rewrite_lty(
+            tcx,
+            lty,
+            &self.perms,
+            &self.flags,
+            &self.pointee_types,
+            &self.acx.gacx.adt_metadata,
+        )
+    }
+
+    fn lty_to_rewritten_str(&self, lty: LTy<'tcx>) -> (Ty<'tcx>, String) {
+        let rewritten_ty = self.rewrite_lty(lty);
+        let tcx = self.acx.tcx();
+        let printer = FmtPrinter::new(tcx, Namespace::TypeNS);
+        let s = rewritten_ty.print(printer).unwrap().into_buffer();
+        (rewritten_ty, s)
+    }
+
     fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         let _g = panic_detail::set_current_span(stmt.source_info.span);
         debug!(
@@ -572,11 +593,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 None => return,
                             };
 
-                            let orig_pointee_ty = pointee_lty.ty;
-                            let ty_layout = tcx
-                                .layout_of(ParamEnv::reveal_all().and(orig_pointee_ty))
-                                .unwrap();
-                            let elem_size = ty_layout.layout.size().bytes();
+                            let (_, elem_ty) = v.lty_to_rewritten_str(pointee_lty);
                             let dest_single = !v.perms[dest_lty.label]
                                 .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
                             let src_single = !v.perms[src_lty.label]
@@ -586,7 +603,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             let src_option =
                                 !v.perms[src_lty.label].contains(PermissionSet::NON_NULL);
                             v.emit(RewriteKind::MemcpySafe {
-                                elem_size,
+                                elem_ty,
                                 src_single,
                                 src_option,
                                 dest_single,
@@ -620,17 +637,11 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 None => return,
                             };
 
-                            let orig_pointee_ty = pointee_lty.ty;
-                            let ty_layout = tcx
-                                .layout_of(ParamEnv::reveal_all().and(orig_pointee_ty))
-                                .unwrap();
-                            let elem_size = ty_layout.layout.size().bytes();
+                            let (elem_ty, elem_ty_str) = v.lty_to_rewritten_str(pointee_lty);
                             let dest_single = !v.perms[dest_lty.label]
                                 .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
 
-                            // TODO: use rewritten types here, so that the `ZeroizeType` will
-                            // reflect the actual types and fields after rewriting.
-                            let zero_ty = match ZeroizeType::from_ty(tcx, orig_pointee_ty) {
+                            let zero_ty = match ZeroizeType::from_ty(tcx, elem_ty) {
                                 Some(x) => x,
                                 // TODO: emit void* cast before bailing out, as described above
                                 None => return,
@@ -638,7 +649,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
                             v.emit(RewriteKind::MemsetZeroize {
                                 zero_ty,
-                                elem_size,
+                                elem_ty: elem_ty_str,
                                 dest_single,
                             });
 
@@ -691,11 +702,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 }
                             };
 
-                            let orig_pointee_ty = pointee_lty.ty;
-                            let ty_layout = tcx
-                                .layout_of(ParamEnv::reveal_all().and(orig_pointee_ty))
-                                .unwrap();
-                            let elem_size = ty_layout.layout.size().bytes();
+                            let (_, elem_ty) = v.lty_to_rewritten_str(pointee_lty);
                             let single = !v.perms[dest_lty.label]
                                 .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
 
@@ -716,12 +723,12 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             let rw = match *callee {
                                 Callee::Malloc => RewriteKind::MallocSafe {
                                     zero_ty,
-                                    elem_size,
+                                    elem_ty,
                                     single,
                                 },
                                 Callee::Calloc => RewriteKind::CallocSafe {
                                     zero_ty,
-                                    elem_size,
+                                    elem_ty,
                                     single,
                                 },
                                 _ => unreachable!(),
@@ -799,25 +806,19 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 }
                             };
 
-                            let orig_pointee_ty = pointee_lty.ty;
-                            let ty_layout = tcx
-                                .layout_of(ParamEnv::reveal_all().and(orig_pointee_ty))
-                                .unwrap();
-                            let elem_size = ty_layout.layout.size().bytes();
+                            let (elem_ty, elem_ty_str) = v.lty_to_rewritten_str(pointee_lty);
                             let dest_single = !v.perms[dest_lty.label]
                                 .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
                             let src_single = !v.perms[src_lty.label]
                                 .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
 
-                            // TODO: use rewritten types here, so that the `ZeroizeType` will
-                            // reflect the actual types and fields after rewriting.
-                            let zero_ty = match ZeroizeType::from_ty(tcx, orig_pointee_ty) {
+                            let zero_ty = match ZeroizeType::from_ty(tcx, elem_ty) {
                                 Some(x) => x,
                                 // TODO: emit void* cast before bailing out
                                 None => {
                                     trace!(
                                         "{callee:?}: failed to compute ZeroizeType \
-                                        for {orig_pointee_ty:?}"
+                                        for {elem_ty:?}"
                                     );
                                     return;
                                 }
@@ -848,7 +849,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
                             v.emit(RewriteKind::ReallocSafe {
                                 zero_ty,
-                                elem_size,
+                                elem_ty: elem_ty_str,
                                 src_single,
                                 dest_single,
                                 option,
