@@ -224,7 +224,7 @@ impl<'tcx> ConvertVisitor<'tcx> {
             }
 
             mir_op::RewriteKind::MemcpySafe {
-                elem_size,
+                ref elem_ty,
                 dest_single,
                 dest_option,
                 src_single,
@@ -241,7 +241,7 @@ impl<'tcx> ConvertVisitor<'tcx> {
                 ]));
                 stmts.push(Rewrite::Let(vec![(
                     "n".into(),
-                    format_rewrite!("byte_len as usize / {elem_size}"),
+                    format_rewrite!("byte_len as usize / std::mem::size_of::<{elem_ty}>()"),
                 )]));
                 let mut convert = |var: &str, is_mut, is_single, is_option| {
                     let single_to_slice = if is_single {
@@ -294,7 +294,7 @@ impl<'tcx> ConvertVisitor<'tcx> {
 
             mir_op::RewriteKind::MemsetZeroize {
                 ref zero_ty,
-                elem_size,
+                ref elem_ty,
                 dest_single,
             } => {
                 // `memset(dest, 0, n)` to assignments that zero out each field of `*dest`
@@ -316,7 +316,7 @@ impl<'tcx> ConvertVisitor<'tcx> {
                         ]),
                         Rewrite::Let(vec![(
                             "n".into(),
-                            format_rewrite!("byte_len as usize / {elem_size}"),
+                            format_rewrite!("byte_len as usize / std::mem::size_of::<{elem_ty}>()"),
                         )]),
                         format_rewrite!("assert_eq!(val, 0, \"non-zero memset NYI\")"),
                         zeroize_body,
@@ -327,12 +327,12 @@ impl<'tcx> ConvertVisitor<'tcx> {
 
             mir_op::RewriteKind::MallocSafe {
                 ref zero_ty,
-                elem_size,
+                ref elem_ty,
                 single,
             }
             | mir_op::RewriteKind::CallocSafe {
                 ref zero_ty,
-                elem_size,
+                ref elem_ty,
                 single,
             } => {
                 // `malloc(n)` -> `Box::new(z)` or similar
@@ -343,7 +343,7 @@ impl<'tcx> ConvertVisitor<'tcx> {
                         Rewrite::Let(vec![("byte_len".into(), self.get_subexpr(ex, 0))]),
                         Rewrite::Let1(
                             "n".into(),
-                            Box::new(format_rewrite!("byte_len as usize / {elem_size}")),
+                            Box::new(format_rewrite!("byte_len as usize / std::mem::size_of::<{elem_ty}>()")),
                         ),
                     ],
                     mir_op::RewriteKind::CallocSafe { .. } => vec![
@@ -351,7 +351,7 @@ impl<'tcx> ConvertVisitor<'tcx> {
                             ("count".into(), self.get_subexpr(ex, 0)),
                             ("size".into(), self.get_subexpr(ex, 1)),
                         ]),
-                        format_rewrite!("assert_eq!(size, {elem_size})"),
+                        format_rewrite!("assert_eq!(size as usize, std::mem::size_of::<{elem_ty}>())"),
                         Rewrite::Let1("n".into(), Box::new(format_rewrite!("count as usize"))),
                     ],
                     _ => unreachable!(),
@@ -381,7 +381,7 @@ impl<'tcx> ConvertVisitor<'tcx> {
 
             mir_op::RewriteKind::ReallocSafe {
                 ref zero_ty,
-                elem_size,
+                ref elem_ty,
                 src_single,
                 dest_single,
                 option,
@@ -396,7 +396,7 @@ impl<'tcx> ConvertVisitor<'tcx> {
                     ]),
                     Rewrite::Let1(
                         "dest_n".into(),
-                        Box::new(format_rewrite!("dest_byte_len as usize / {elem_size}")),
+                        Box::new(format_rewrite!("dest_byte_len as usize / std::mem::size_of::<{elem_ty}>()")),
                     ),
                 ];
                 if dest_single {
