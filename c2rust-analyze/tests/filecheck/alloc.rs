@@ -95,3 +95,7 @@ unsafe extern "C" fn realloc1(n: libc::c_ulong) {
 
     free(buf as *mut libc::c_void);
 }
+
+// Rewrites of malloc/calloc/realloc/memset should use `mem::size_of` to convert byte counts to
+// element counts.
+// CHECK: let n = byte_len as usize / std::mem::size_of::<i32>();
