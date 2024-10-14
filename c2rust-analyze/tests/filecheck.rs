@@ -55,6 +55,7 @@ define_tests! {
     insertion_sort_driver,
     insertion_sort_rewrites,
     known_fn,
+    lighttpd_buffer,
     move_mut,
     non_null,
     non_null_force,
