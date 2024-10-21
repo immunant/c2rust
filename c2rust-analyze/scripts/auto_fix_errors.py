@@ -35,9 +35,22 @@ class LifetimeBound:
     # `bound_lifetime` is the string `"'b"`.
     bound_lifetime: str
 
+@dataclass(frozen=True)
+class RemoveDeriveCopy:
+    file_path: str
+    line_number: int
+    # Byte offset of the start of the token `Copy`.
+    start_byte: int
+    # Byte offset of the end of the token `Copy`.
+    end_byte: int
+
+MSG_LIFETIME_BOUND = 'lifetime may not live long enough'
+MSG_DERIVE_COPY = 'the trait `Copy` may not be implemented for this type'
+
 LIFETIME_DEFINED_RE = re.compile(r'^lifetime `([^`]*)` defined here$')
 CONSIDER_ADDING_BOUND_RE = re.compile(r'^consider adding the following bound: `([^`:]*): ([^`]*)`$')
 SPACE_COLON_RE = re.compile(rb'\s*:')
+SPACE_COMMA_RE = re.compile(rb'\s*,')
 
 def main():
     args = parse_args()
@@ -104,6 +117,25 @@ def main():
                 bound_lifetime=lifetime_b,
             ))
 
+    remove_derive_copies = []
+    def handle_derive_copy(j):
+        # Find the "primary span", which covers the `Copy` token.
+        primary_span = None
+        for span in j['spans']:
+            if span.get('is_primary'):
+                primary_span = span
+                break
+
+        if primary_span is None:
+            return
+
+        remove_derive_copies.append(RemoveDeriveCopy(
+            file_path=primary_span['file_name'],
+            line_number=primary_span['line_start'],
+            start_byte=primary_span['byte_start'],
+            end_byte=primary_span['byte_end'],
+        ))
+
     with open(args.path, 'r') as f:
         for line in f:
             j = json.loads(line)
@@ -120,8 +152,10 @@ def main():
 
             gather_fixes(j, j['message'])
 
-            if j['message'] == 'lifetime may not live long enough':
+            if j['message'] == MSG_LIFETIME_BOUND:
                 gather_lifetime_bounds(j)
+            elif j['message'] == MSG_DERIVE_COPY:
+                handle_derive_copy(j)
 
     # Convert suggested lifetime bounds to fixes.  We have to group the bounds
     # first because there may be multiple suggested bounds for a single
@@ -162,9 +196,34 @@ def main():
             start_byte=start_byte,
             end_byte=fix_end_byte,
             new_text=fix_new_text,
-            message='lifetime may not live long enough',
+            message=MSG_LIFETIME_BOUND,
         ))
 
+    # Convert errors about `#[derive(Copy)]` to fixes.
+    for rm in remove_derive_copies:
+        # The error span points to the `Copy` token, but we actually want to
+        # remove both `Copy` and the following comma, if one is present.
+        #
+        #       #[derive(Foo, Copy, Bar)]  ->  #[derive(Foo, Bar)]
+        #       #[derive(Foo, Copy)]       ->  #[derive(Foo,)]
+        #       #[derive(Copy, Bar)]       ->  #[derive(Bar)]
+        #       #[derive(Copy)]            ->  #[derive()]
+        #
+        # Note that `#[derive()]` is legal, though ideally it should be removed
+        # by a later cleanup pass.
+        content = read_file(rm.file_path)
+        m = SPACE_COMMA_RE.match(content, rm.end_byte)
+        fix_end_byte = m.end() if m is not None else rm.end_byte
+        fixes.append(Fix(
+            file_path=rm.file_path,
+            line_number=rm.line_number,
+            start_byte=rm.start_byte,
+            end_byte=fix_end_byte,
+            new_text='',
+            message=MSG_DERIVE_COPY,
+        ))
+
+    # Group fixes by file
     fixes_by_file = {}
     for fix in fixes:
         file_fixes = fixes_by_file.get(fix.file_path)

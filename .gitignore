@@ -49,5 +49,6 @@ marks.*.json
 # Outputs of `c2rust-analyze`
 inspect/
 *.analysis.txt
+*.rs.fixed
 analysis.txt
 polonius_cache/
