@@ -1,16 +1,16 @@
 
 static int gssi = 17;
 extern int gesi;
-static __thread gsti = 37;
-extern __thread geti;
+static __thread int gsti = 37;
+extern __thread int geti;
 
 void thread_entry(const unsigned buffer_size, int buffer[]) {
     if (buffer_size < 16) return;
 
     static int fssi = 53;
     extern int fesi;
-    static __thread fsti = 59;
-    extern __thread feti;
+    static __thread int fsti = 59;
+    extern __thread int feti;
 
     int i = 0;
 #define ADD_VAR(x)  do { buffer[i++] = (x); (x) += 1337; buffer[i++] = (x); } while (0)
