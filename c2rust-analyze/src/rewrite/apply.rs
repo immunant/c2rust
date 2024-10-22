@@ -361,7 +361,7 @@ impl<S: Sink> Emitter<'_, S> {
                 })
             }
             Rewrite::MethodCall(ref method, ref receiver_rw, ref arg_rws) => {
-                self.emit(receiver_rw, 0)?;
+                self.emit(receiver_rw, 3)?;
                 self.emit_str(".")?;
                 self.emit_str(method)?;
                 self.emit_parenthesized(true, |slf| {
