@@ -4,10 +4,10 @@ extern "C" {
 
 type Alias = Bar;
 
-// CHECK-DAG: br: ({{.*}}) perms = UNIQUE | NON_NULL, flags = FIXED
-// CHECK-DAG: bz: ({{.*}}) perms = UNIQUE | NON_NULL, flags = FIXED
-// CHECK-DAG: x: ({{.*}}) perms = UNIQUE | NON_NULL, flags = FIXED
-// CHECK-DAG: y: ({{.*}}) perms = UNIQUE | NON_NULL, flags = FIXED
+// CHECK-DAG: br: ({{.*}}) perms = UNIQUE | NON_NULL | HEAP | STACK, flags = FIXED
+// CHECK-DAG: bz: ({{.*}}) perms = UNIQUE | NON_NULL | HEAP | STACK, flags = FIXED
+// CHECK-DAG: x: ({{.*}}) perms = UNIQUE | NON_NULL | HEAP | STACK, flags = FIXED
+// CHECK-DAG: y: ({{.*}}) perms = UNIQUE | NON_NULL | HEAP | STACK, flags = FIXED
 // CHECK-DAG: "s": addr_of flags = FIXED
 // CHECK-DAG: "STATIC_PTR": addr_of flags = FIXED, type flags = FIXED#{{.*}}
 
