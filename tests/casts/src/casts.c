@@ -7,8 +7,8 @@ void cast_stuff(void) {
         const int *cintp = 0;
         char *x1 = (char*) intp;
         int *x2 = (int*) intp;
-        void(*f)(unsigned, int*) = cast_stuff;
-        void(*g)(unsigned, int*) = &cast_stuff;
+        void(*f)(unsigned, int*) = (void(*)(unsigned, int*))cast_stuff;
+        void(*g)(unsigned, int*) = (void(*)(unsigned, int*))&cast_stuff;
         //(union intfloat)1;
         int *x3 = (int*)inta;
         int *x4 = (int*)0;

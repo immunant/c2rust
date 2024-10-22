@@ -75,16 +75,16 @@ void entry3(const unsigned sz, int buffer[const])
 
         // Test valid casts between function pointers
         // with additional parameters
-        char_int_to_int_fp p9 = &intval, p10 = p7;
+        char_int_to_int_fp p9 = (char_int_to_int_fp)&intval, p10 = (char_int_to_int_fp)p7;
         buffer[i++] = p9('D', 42);
         buffer[i++] = p10('E', 1337);
 
         // Test K&R style function pointers
-        knr *p11 = 1;
-        knr *p12 = intval;
-        knr *p13 = &intval;
+        knr *p11 = (knr *)1;
+        knr *p12 = (knr *)intval;
+        knr *p13 = (knr *)&intval;
         struct pointer_st s;
-        s.fn = intval;
+        s.fn = (int (*)())intval;
         buffer[i++] = p12('a');
         buffer[i++] = p13('a');
         buffer[i++] = (*(s).fn)(('a'));
