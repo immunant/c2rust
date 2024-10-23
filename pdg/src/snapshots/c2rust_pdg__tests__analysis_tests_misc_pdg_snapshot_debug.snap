@@ -36,10 +36,8 @@ g is_null=true {
 	n[15]: copy        n[10] => _18    @ bb16[4]: fn recur;                _18 = _2;
 	n[16]: value.store n[0]  => _20.*  @ bb4[7]:  fn invalid;              (*_20) = const 0_usize as *mut pointers::S (PointerFromExposedAddress);
 	n[17]: value.store n[0]  => _17.*  @ bb8[4]:  fn fdevent_unregister;   (*_17) = const 0_usize as *mut pointers::fdnode_st (PointerFromExposedAddress);
-	n[18]: int_to_ptr  n[0]  => _2     @ bb0[2]:  fn test_ref_field;       _2 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
-	n[19]: int_to_ptr  n[0]  => _5     @ bb0[8]:  fn test_ref_field;       _5 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
-	n[20]: int_to_ptr  n[0]  => _51    @ bb36[3]: fn main_0;               _51 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
-	n[21]: value.store n[0]  => _3.*.2 @ bb0[1]:  fn test_addr_taken_arg;  ((*_3).2: *const pointers::S) = const 0_usize as *const pointers::S (PointerFromExposedAddress);
+	n[18]: int_to_ptr  n[0]  => _50    @ bb35[3]: fn main_0;               _50 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
+	n[19]: value.store n[0]  => _3.*.2 @ bb0[1]:  fn test_addr_taken_arg;  ((*_3).2: *const pointers::S) = const 0_usize as *const pointers::S (PointerFromExposedAddress);
 }
 nodes_that_need_write = []
 
@@ -933,9 +931,9 @@ g is_null=false {
 nodes_that_need_write = [3, 1, 0]
 
 g is_null=false {
-	n[0]:  &_40       _     => _   @ bb32[4]:  fn main_0;          _59 = &raw mut _40;
+	n[0]:  &_40       _     => _   @ bb32[4]:  fn main_0;          _58 = &raw mut _40;
 	n[1]:  addr.store n[0]  => _   @ bb32[3]:  fn main_0;          _40 = [const 2_i32, const 5_i32, const 3_i32, const 1_i32, const 6_i32];
-	n[2]:  copy       n[0]  => _39 @ bb32[5]:  fn main_0;          _39 = &mut (*_59);
+	n[2]:  copy       n[0]  => _39 @ bb32[5]:  fn main_0;          _39 = &mut (*_58);
 	n[3]:  copy       n[2]  => _45 @ bb32[12]: fn main_0;          _45 = &(*_39);
 	n[4]:  copy       n[3]  => _44 @ bb32[13]: fn main_0;          _44 = move _45 as &[i32] (Pointer(Unsize));
 	n[5]:  copy       n[4]  => _1  @ bb0[0]:   fn len;             _43 = len(move _44);
@@ -1015,25 +1013,6 @@ g is_null=false {
 nodes_that_need_write = [77, 76, 75, 68, 67, 66, 65, 64, 63, 56, 55, 54, 47, 46, 45, 35, 34, 33, 29, 28, 27, 17, 16, 15, 8, 7, 6, 2, 1, 0]
 
 g is_null=false {
-	n[0]: &_4              _    => _  @ bb0[12]: fn test_ref_field;  _8 = &raw mut _4;
-	n[1]: addr.store       n[0] => _  @ bb0[11]: fn test_ref_field;  _4 = pointers::S { field: const 0_i32, field2: const 0_u64, field3: move _5, field4: move _6 };
-	n[2]: copy             n[0] => _3 @ bb0[16]: fn test_ref_field;  _3 = &mut (*_8);
-	n[3]: project[3, 3]@48 n[2] => _  @ bb0[18]: fn test_ref_field;  _7 = (((*_3).3: pointers::T).3: i32);
-	n[4]: project[3, 3]@48 n[2] => _  @ bb0[19]: fn test_ref_field;  (((*_3).3: pointers::T).3: i32) = move _7;
-}
-nodes_that_need_write = [1, 0]
-
-g is_null=false {
-	n[0]: addr.load _ => _ @ bb0[18]: fn test_ref_field;  _7 = (((*_3).3: pointers::T).3: i32);
-}
-nodes_that_need_write = []
-
-g is_null=false {
-	n[0]: addr.store _ => _ @ bb0[19]: fn test_ref_field;  (((*_3).3: pointers::T).3: i32) = move _7;
-}
-nodes_that_need_write = [0]
-
-g is_null=false {
 	n[0]: &_1        _    => _  @ bb0[2]: fn test_addr_taken;  _10 = &raw mut _1;
 	n[1]: addr.store n[0] => _  @ bb0[1]: fn test_addr_taken;  _1 = const 2_i32;
 	n[2]: addr.load  n[0] => _  @ bb0[6]: fn test_addr_taken;  _3 = (*_10);
@@ -1099,6 +1078,6 @@ g is_null=false {
 }
 nodes_that_need_write = [1, 0]
 
-num_graphs = 83
-num_nodes = 764
+num_graphs = 80
+num_nodes = 755
 
