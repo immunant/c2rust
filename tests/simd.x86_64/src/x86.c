@@ -14,6 +14,7 @@ typedef struct {
     __m128d c;
     __m256 d;
     __m256d e;
+    __m256d ep;
     __m128i f, g, h, o;
 #ifdef __AVX2__
     __m256i i, j, k;
@@ -48,6 +49,7 @@ void zero_init_all(void) {
     __m256 b;
     __m128d c;
     __m128i d;
+    __m256d ep;
     __m256d e;
     __m256i f;
 #ifdef MMX
@@ -65,6 +67,7 @@ ShuffleVectors call_all(void) {
     __m256d e = _mm256_set_pd(1.1, 2.2, 3.3, 4.4);
     __m128i f = _mm_set1_epi8(123);
     __m256i g = _mm256_set_epi32(14, 18, 22, 33, -11, -3, 8, 300);
+    __m256d h = _mm256_set_pd(5.5, 6.6, 7.7, 8.8);
 
     ShuffleVectors sv = {
 #ifdef MMX
@@ -76,6 +79,7 @@ ShuffleVectors call_all(void) {
         _mm_shuffle_ps(a, a, _MM_SHUFFLE(3, 2, 1, 0)),
         _mm_shuffle_pd(b, b, (1 << 1 | 1 << 0)),
         _mm256_shuffle_ps(d, d, _MM_SHUFFLE(1, 2, 2, 1)),
+        _mm256_permute2f128_pd(e, h, 0x31),
         _mm256_shuffle_pd(e, e, (1 << 3 | 1 << 2 | 0 << 1 | 0 << 0)),
         _mm_shuffle_epi32(f, _MM_SHUFFLE(1, 0, 0, 1)),
         _mm_shufflehi_epi16(f, _MM_SHUFFLE(0, 1, 2, 3)),
@@ -112,6 +116,7 @@ ShuffleVectors call_all_used(void) {
     __m256d ee = _mm256_set_pd(4.4, 3.3, 2.2, 1.1);
     __m128i ff = _mm_set1_epi8(13);
     __m256i gg = _mm256_set_epi32(-12, 33, 44, 100, -44, 42, -33, -100);
+    __m256d hh = _mm256_set_pd(5.5, 6.6, 7.7, 8.8);
 
 #ifdef MMX
     __m64 a;
@@ -120,6 +125,7 @@ ShuffleVectors call_all_used(void) {
     __m128d c;
     __m256 d;
     __m256d e;
+    __m256d ep;
     __m128i f, g, h, o;
     __m256i i, j, k;
 #ifdef MMX
@@ -140,6 +146,7 @@ ShuffleVectors call_all_used(void) {
     b = _mm_shuffle_ps(aa, aa, _MM_SHUFFLE(3, 2, 1, 0));
     c = _mm_shuffle_pd(bb, bb, (1 << 1 | 1 << 0));
     d = _mm256_shuffle_ps(dd, dd, _MM_SHUFFLE(1, 2, 2, 1));
+    ep = _mm256_permute2f128_pd(ee, hh, 0x31),
     e = _mm256_shuffle_pd(ee, ee, (1 << 3 | 1 << 2 | 0 << 1 | 0 << 0));
     f = _mm_shuffle_epi32(ff, _MM_SHUFFLE(1, 0, 0, 1));
     g = _mm_shufflehi_epi16(f, _MM_SHUFFLE(0, 1, 2, 3));
@@ -167,7 +174,7 @@ ShuffleVectors call_all_used(void) {
 #ifdef MMX
         a,
 #endif
-        b, c, d, e, f, g, h, o,
+        b, c, d, e, ep, f, g, h, o,
 
 #ifdef __AVX2__
         i, j, k,
