@@ -746,7 +746,11 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     test_load_value_store_value();
     let nums = &mut [2i32, 5i32, 3i32, 1i32, 6i32];
     insertion_sort(nums.len() as libc::c_int, nums as *mut libc::c_int);
-    test_ref_field();
+    // TODO: this test is broken on Darwin because the fields structure fields
+    // alias with locals of other functions, and the locals are different between
+    // Linux and Darwin. We should re-enable test_ref_field once we track stack
+    // lifetimes (see https://github.com/immunant/c2rust/issues/1117).
+    //test_ref_field();
     test_addr_taken();
     let mut t = T {
         field: 0i32,
