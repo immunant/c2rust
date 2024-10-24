@@ -592,6 +592,12 @@ fn rewrite_ty<'tcx>(
             };
 
             if dyn_owned {
+                // Ideally, we would use a custom `DynOwned<T>` type here to make the meaning
+                // clear.  However, we don't currently have a run-time support library for
+                // c2rust-analyze where we could define such a type.  As an alternative, for now we
+                // use `Result<T, ()>`, which has roughly the same semantics (equivalent to
+                // `Option<T>`).  We don't use `Option<T>` because it would result in confusing
+                // `Option<Option<T>>` types for pointers that are both owned and nullable.
                 rw = Rewrite::TyCtor(
                     "core::result::Result".into(),
                     vec![rw, Rewrite::Print("()".into())],
