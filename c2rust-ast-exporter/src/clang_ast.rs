@@ -1,9 +1,10 @@
 use serde_bytes::ByteBuf;
 use serde_cbor::error;
-use std;
 use std::collections::{HashMap, VecDeque};
 use std::convert::TryInto;
+use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
+use std::{self, fmt};
 
 pub use serde_cbor::value::{from_value, Value};
 
@@ -31,6 +32,17 @@ pub struct SrcLoc {
     pub column: u64,
 }
 
+impl Display for SrcLoc {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let Self {
+            fileid,
+            line,
+            column,
+        } = *self;
+        write!(f, "file_{fileid}:{line}:{column}")
+    }
+}
+
 #[derive(Copy, Debug, Clone, PartialOrd, PartialEq, Ord, Eq)]
 pub struct SrcSpan {
     pub fileid: u64,
@@ -38,6 +50,22 @@ pub struct SrcSpan {
     pub begin_column: u64,
     pub end_line: u64,
     pub end_column: u64,
+}
+
+impl Display for SrcSpan {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let Self {
+            fileid,
+            begin_line,
+            begin_column,
+            end_line,
+            end_column,
+        } = *self;
+        write!(
+            f,
+            "file_{fileid}:{begin_line}:{begin_column}-{end_line}:{end_column}"
+        )
+    }
 }
 
 impl From<SrcLoc> for SrcSpan {

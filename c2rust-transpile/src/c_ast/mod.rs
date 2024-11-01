@@ -2101,7 +2101,12 @@ mod tests {
                     let bc = ctx.compare_src_locs(&b, &c);
                     let ac = ctx.compare_src_locs(&a, &c);
                     if ab == bc {
-                        assert_eq!(ab, ac, "Total order (transitivity) has been violated");
+                        let [ab, bc, ac] = [ab, bc, ac].map(|ord| match ord {
+                            Ordering::Less => "<",
+                            Ordering::Equal => "==",
+                            Ordering::Greater => ">",
+                        });
+                        assert_eq!(ab, ac, "Total order (transitivity) has been violated: {a} {ab} {b} and {b} {bc} {c}, but {a} {ac} {c}");
                     }
                 }
             }
