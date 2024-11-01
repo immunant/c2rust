@@ -20,37 +20,37 @@ permission also includes the ability to free the pointed-to data, which amounts
 to "moving to nowhere".
 
 Here is a simple example to illustrate the major features of the analysis:
+```rust
+struct Array {
+    data: *mut i32,
+}
 
-    struct Array {
-        data: *mut i32,
-    }
+unsafe fn new_array(len: usize) -> *mut Array {
+    let data = malloc(size_of::<i32>() * len);
+    let arr = malloc(size_of::<Array>());
+    (*arr).data = data;
+    arr
+}
 
-    unsafe fn new_array(len: usize) -> *mut Array {
-        let data = malloc(size_of::<i32>() * len);
-        let arr = malloc(size_of::<Array>());
-        (*arr).data = data;
-        arr
-    }
+unsafe fn delete_array(arr: *mut Array) {
+    free((*arr).data);
+    free(arr);
+}
 
-    unsafe fn delete_array(arr: *mut Array) {
-        free((*arr).data);
-        free(arr);
-    }
+unsafe fn element_ptr(arr: *mut Array, idx: usize) -> *mut i32 {
+    (*arr).data.offset(idx)
+}
 
-    unsafe fn element_ptr(arr: *mut Array, idx: usize) -> *mut i32 {
-        (*arr).data.offset(idx)
-    }
+unsafe fn get(arr: *mut Array, idx: usize) -> i32 {
+    let elt: *mut i32 = element_ptr(arr, idx);
+    *elt
+}
 
-    unsafe fn get(arr: *mut Array, idx: usize) -> i32 {
-        let elt: *mut i32 = element_ptr(arr, idx);
-        *elt
-    }
-
-    unsafe fn set(arr: *mut Array, idx: usize, val: i32) {
-        let elt: *mut i32 = element_ptr(arr, idx);
-        *elt = val;
-    }
-
+unsafe fn set(arr: *mut Array, idx: usize, val: i32) {
+    let elt: *mut i32 = element_ptr(arr, idx);
+    *elt = val;
+}
+```
 
 The analysis infers pointer permissions by observing how pointers are used, and
 applying the rules of the Rust reference model.  For instance, the `set`
@@ -78,10 +78,12 @@ subject to a set of constraints.  For example, here is the inferred polymorphic
 signature of `element_ptr`, with permission annotations written in comments
 (since there is no Rust syntax for them):
 
-    fn element_ptr /* <s0, s1> */ (arr: /* s0 */ *mut Array,
-                                   idx: usize)
-                                   -> /* s1 */ *mut i32
-        /* where s1 <= s0 */;
+```rust
+fn element_ptr /* <s0, s1> */ (arr: /* s0 */ *mut Array,
+                               idx: usize)
+                               -> /* s1 */ *mut i32
+    /* where s1 <= s0 */;
+```
 
 The function has two permission parameters, `s0` and `s1`, which are the
 permissions of the argument and return pointers respectively.  The signature
@@ -216,10 +218,12 @@ combination of outputs, it finds the least-restrictive valid assignment of
 permissions to the remaining (input) variables.  For example, given this
 function:
 
-    fn element_ptr /* <s0, s1> */ (arr: /* s0 */ *mut Array,
-                                   idx: usize)
-                                   -> /* s1 */ *mut i32
-        /* where s1 <= s0 */;
+```rust
+fn element_ptr /* <s0, s1> */ (arr: /* s0 */ *mut Array,
+                               idx: usize)
+                               -> /* s1 */ *mut i32
+    /* where s1 <= s0 */;
+```
 
 The only output variable is `s1`, which appears in the return type.  The
 monomorphization step will try each assignment to `s1` that is allowed by the
@@ -237,15 +241,17 @@ and by similar logic records `READ, READ` as the final one.
 The next step of monomorphization is to select a monomorphic variant to call at
 each callsite of each monomorphized function.  Given a pair of functions:
 
-    fn f /* <s0, s1> */ (arr: /* s0 */ *mut Array) -> /* s1 */ *mut i32
-            /* where s1 <= s0 */ {
-        g(arr)
-    }
+```rust
+fn f /* <s0, s1> */ (arr: /* s0 */ *mut Array) -> /* s1 */ *mut i32
+      /* where s1 <= s0 */ {
+  g(arr)
+}
 
-    fn g /* <s0, s1> */ (arr: /* s0 */ *mut Array) -> /* s1 */ *mut i32
-            /* where s1 <= s0 */ {
-        ...
-    }
+fn g /* <s0, s1> */ (arr: /* s0 */ *mut Array) -> /* s1 */ *mut i32
+      /* where s1 <= s0 */ {
+  ...
+}
+```
 
 For pointer  permissions to line up properly, a monomorphic variant of `f`
 specialized to `READ, READ` will need to call a variant of `g` also specialized
@@ -284,11 +290,12 @@ There are four annotation types currently supported by the ownership system.
   `MOVE`).  The given permission values will be applied to the pointers in the
   static or field type, following a preorder traversal of the type.  For
   example:
-
-      struct S {
-          #[ownership_static(READ, WRITE, MOVE)]
-          f: *mut (*mut u8, *mut u16)
-      }
+    ```rust
+    struct S {
+        #[ownership_static(READ, WRITE, MOVE)]
+        f: *mut (*mut u8, *mut u16)
+    }
+    ```
 
   Here the outermost pointer will be given permission `READ`, the pointer to
   `u8` will be given permission WRITE, and the pointer to `u16` will be given
@@ -310,10 +317,11 @@ There are four annotation types currently supported by the ownership system.
   numbered according to a preorder traversal of each node in the argument and
   return types of the function.  This example shows location of each variable
   in a simple signature:
-
-      fn get_err(arr: /* _0 */ *mut Array,
-                 element_out: /* _1 */ *mut /* _2 */ *mut i32)
-                 -> /* _3 */ *const c_char;
+    ```rust
+    fn get_err(arr: /* _0 */ *mut Array,
+               element_out: /* _1 */ *mut /* _2 */ *mut i32)
+               -> /* _3 */ *const c_char;
+    ```
 
 * `#[ownership_mono(<suffix>, <perms>)]` supplies a monomorphic signature to be
   used for the annotated function.  The `suffix` argument is a quoted string,
@@ -330,10 +338,11 @@ There are four annotation types currently supported by the ownership system.
   argument inference and later transformations.
 
   Example:
-
-      #[ownership_mono("mut", WRITE, WRITE)]
-      #[ownership_mono("", READ, READ)]
-      fn first(arr: *mut Array) -> *mut i32;
+    ```rust
+    #[ownership_mono("mut", WRITE, WRITE)]
+    #[ownership_mono("", READ, READ)]
+    fn first(arr: *mut Array) -> *mut i32;
+    ```
 
   This function will have two monomorphic variants, one where both pointers'
   permission values are `WRITE` and one where both are `READ`.  When the
@@ -357,18 +366,22 @@ another.
 
 As a concrete example of the purpose of this feature, consider the following
 code:
+  
+  ```rust
+  fn f(arr: *mut Array) -> *mut i32 { ... g(arr) ... }
 
-    fn f(arr: *mut Array) -> *mut i32 { ... g(arr) ... }
-
-    fn g(arr: *mut Array) -> *mut i32 { ... }
+  fn g(arr: *mut Array) -> *mut i32 { ... }
+  ```
 
 The user works first on (the module containing) `g`, resulting in splitting `g`
 into two variants:
 
-    fn f(arr: *mut Array) -> *mut i32 { ... g_mut(arr) ... }
+  ```rust
+  fn f(arr: *mut Array) -> *mut i32 { ... g_mut(arr) ... }
 
-    fn g(arr: *mut Array) -> *mut i32 { ... }
-    fn g_mut(arr: *mut Array) -> *mut i32 { ... }
+  fn g(arr: *mut Array) -> *mut i32 { ... }
+  fn g_mut(arr: *mut Array) -> *mut i32 { ... }
+  ``` 
 
 Note that, because there is still only one variant of `f`, the transformation
 must choose a single `g` variant for `f` to call.  In this case, it chose the
@@ -385,11 +398,13 @@ Treating `g` and `g_mut` as two variants of a single function allows the
 analysis to switch between `g` variants in the different variants of `f`,
 resulting in correct code like the following:
 
-    fn f(arr: *mut Array) -> *mut i32 { ... g(arr) ... }
-    fn f_mut(arr: *mut Array) -> *mut i32 { ... g_mut(arr) ... }
+  ```rust
+  fn f(arr: *mut Array) -> *mut i32 { ... g(arr) ... }
+  fn f_mut(arr: *mut Array) -> *mut i32 { ... g_mut(arr) ... }
 
-    fn g(arr: *mut Array) -> *mut i32 { ... }
-    fn g_mut(arr: *mut Array) -> *mut i32 { ... }
+  fn g(arr: *mut Array) -> *mut i32 { ... }
+  fn g_mut(arr: *mut Array) -> *mut i32 { ... }
+  ```
 
 The `ownership_split_variants` automatically annotates the split functions so
 they will be combined into a variant group during further analysis.  Variant
@@ -413,17 +428,21 @@ The analysis as described so far tries to mimic the Rust ownership model as
 implemented in the Rust compiler.  However, collection data structures in Rust
 often use unsafe code to bypass parts of the ownership model.  A particularly
 common case is in removal methods, such as `Vec::pop`:
-
-    impl<T> Vec<T> {
-        fn pop(&mut self) -> Option<T> { ... }
-    }
+  
+  ```rust
+  impl<T> Vec<T> {
+      fn pop(&mut self) -> Option<T> { ... }
+  }
+  ```
 
 This method moves a `T` out of `self`'s internal storage, but only takes `self`
 by mutable reference.  Under the "normal" rules, this is impossible, and the
 analysis described above will infer a stricter signature for the raw pointer
 equivalent:
-
-    fn pop(this: /* MOVE */ *mut Vec) -> /* MOVE */ *mut c_void { ... }
+  
+  ```rust
+  fn pop(this: /* MOVE */ *mut Vec) -> /* MOVE */ *mut c_void { ... }
+  ```
 
 The analysis as implemented includes a small adjustment (the "collection hack")
 to let it infer the correct signature for such methods.
@@ -434,5 +453,7 @@ the LHS, we constraint it to be at least `min(lhs_perm, WRITE)`.  The result is
 that it becomes possible to move a `MOVE` pointer out of a struct when only
 `WRITE` permission is available for the pointer to that struct.  Then the
 analysis will infer the correct type for `pop`:
-
-    fn pop(this: /* WRITE */ *mut Vec) -> /* MOVE */ *mut c_void { ... }
+  
+  ```rust
+  fn pop(this: /* WRITE */ *mut Vec) -> /* MOVE */ *mut c_void { ... }
+  ```
