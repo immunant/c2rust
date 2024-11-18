@@ -208,9 +208,14 @@ impl TypedAstContext {
 
     /// Compare two [`SrcLoc`]s based on their import path
     pub fn compare_src_locs(&self, a: &SrcLoc, b: &SrcLoc) -> Ordering {
+        /// Compare without regard to `fileid`.
+        fn cmp_pos(a: &SrcLoc, b: &SrcLoc) -> Ordering {
+            (a.line, a.column).cmp(&(b.line, b.column))
+        }
+
         use Ordering::*;
-        let path_a = &self.include_map[self.file_map[a.fileid as usize]];
-        let path_b = &self.include_map[self.file_map[b.fileid as usize]];
+        let path_a = &self.include_map[self.file_map[a.fileid as usize]][..];
+        let path_b = &self.include_map[self.file_map[b.fileid as usize]][..];
 
         // Find the first include that does not match between the two
         let common_len = path_a.len().min(path_b.len());
@@ -221,22 +226,21 @@ impl TypedAstContext {
 
         // Either all parent includes are the same, or the include paths are of different lengths
         // because .zip() stops when one of the iterators is empty.
-        let (a, b) = match path_a.len().cmp(&path_b.len()) {
+        match path_a.len().cmp(&path_b.len()) {
             Less => {
                 // a has the shorter path, which means b was included in a's file
                 // so extract that include and compare the position to a
                 let b = &path_b[path_a.len()];
-                (a, b)
+                cmp_pos(a, b)
             }
-            Equal => (a, b), // a and b have the same include path and are thus in the same file
+            Equal => a.cmp(b), // a and b have the same include path and are thus in the same file
             Greater => {
                 // b has the shorter path, which means a was included in b's file
                 // so extract that include and compare the position to b
                 let a = &path_a[path_b.len()];
-                (a, b)
+                cmp_pos(a, b)
             }
-        };
-        a.cmp(b)
+        }
     }
 
     pub fn get_file_include_line_number(&self, file: FileId) -> Option<u64> {
@@ -2101,7 +2105,12 @@ mod tests {
                     let bc = ctx.compare_src_locs(&b, &c);
                     let ac = ctx.compare_src_locs(&a, &c);
                     if ab == bc {
-                        assert_eq!(ab, ac, "Total order (transitivity) has been violated");
+                        let [ab, bc, ac] = [ab, bc, ac].map(|ord| match ord {
+                            Ordering::Less => "<",
+                            Ordering::Equal => "==",
+                            Ordering::Greater => ">",
+                        });
+                        assert_eq!(ab, ac, "Total order (transitivity) has been violated: {a} {ab} {b} and {b} {bc} {c}, but {a} {ac} {c}");
                     }
                 }
             }
