@@ -1,7 +1,7 @@
 use crate::annotate::AnnotationBuffer;
 use crate::borrowck;
 use crate::context::{
-    self, AnalysisCtxt, AnalysisCtxtData, DontRewriteFieldReason, DontRewriteFnReason,
+    self, AnalysisCtxt, AnalysisCtxtData, Assignment, DontRewriteFieldReason, DontRewriteFnReason,
     DontRewriteStaticReason, FlagSet, GlobalAnalysisCtxt, GlobalAssignment, LFnSig, LTy, LTyCtxt,
     LocalAssignment, PermissionSet, PointerId, PointerInfo,
 };
@@ -17,6 +17,7 @@ use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::GlobalPointerTable;
 use crate::pointer_id::LocalPointerTable;
 use crate::pointer_id::PointerTable;
+use crate::pointer_id::PointerTableMut;
 use crate::recent_writes::RecentWrites;
 use crate::rewrite;
 use crate::type_desc;
@@ -26,6 +27,7 @@ use crate::util::Callee;
 use crate::util::TestAttr;
 use ::log::warn;
 use c2rust_pdg::graph::Graphs;
+use c2rust_pdg::info::NodeInfo;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::CrateNum;
 use rustc_hir::def_id::DefId;
@@ -59,6 +61,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ops::Index;
 use std::panic::AssertUnwindSafe;
+use std::path::Path;
 use std::str::FromStr;
 
 /// A wrapper around `T` that dynamically tracks whether it's initialized or not.
@@ -932,140 +935,18 @@ fn run(tcx: TyCtxt) {
     }
 
     // Load permission info from PDG
-    let mut func_def_path_hash_to_ldid = HashMap::new();
-    for &ldid in &all_fn_ldids {
-        let def_path_hash: (u64, u64) = tcx.def_path_hash(ldid.to_def_id()).0.as_value();
-        eprintln!("def_path_hash {:?} = {:?}", def_path_hash, ldid);
-        func_def_path_hash_to_ldid.insert(def_path_hash, ldid);
-    }
-
-    if let Some(pdg_file_path) = std::env::var_os("PDG_FILE") {
-        let f = std::fs::File::open(pdg_file_path).unwrap();
-        let graphs: Graphs = bincode::deserialize_from(f).unwrap();
-
-        let mut known_nulls = HashSet::new();
-        for g in &graphs.graphs {
-            for n in &g.nodes {
-                let dest_pl = match n.dest.as_ref() {
-                    Some(x) => x,
-                    None => {
-                        continue;
-                    }
-                };
-                if !dest_pl.projection.is_empty() {
-                    continue;
-                }
-                let dest = dest_pl.local;
-                let dest = Local::from_u32(dest.index);
-                if g.is_null {
-                    known_nulls.insert((n.function.id, dest));
-                }
-            }
-        }
-
-        let allow_unsound =
-            env::var("C2RUST_ANALYZE_PDG_ALLOW_UNSOUND").map_or(false, |val| &val == "1");
-
-        for g in &graphs.graphs {
-            for n in &g.nodes {
-                let def_path_hash: (u64, u64) = n.function.id.0.into();
-                let ldid = match func_def_path_hash_to_ldid.get(&def_path_hash) {
-                    Some(&x) => x,
-                    None => {
-                        eprintln!(
-                            "pdg: unknown DefPathHash {:?} for function {:?}",
-                            n.function.id, n.function.name
-                        );
-                        continue;
-                    }
-                };
-                let info = func_info.get_mut(&ldid).unwrap();
-                let ldid_const = WithOptConstParam::unknown(ldid);
-                let mir = tcx.mir_built(ldid_const);
-                let mir = mir.borrow();
-                let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-                let mut asn = gasn.and(&mut info.lasn);
-                let mut updates_forbidden =
-                    g_updates_forbidden.and_mut(&mut info.l_updates_forbidden);
-
-                let dest_pl = match n.dest.as_ref() {
-                    Some(x) => x,
-                    None => {
-                        info.acx_data.set(acx.into_data());
-                        continue;
-                    }
-                };
-                if !dest_pl.projection.is_empty() {
-                    info.acx_data.set(acx.into_data());
-                    continue;
-                }
-                let dest = dest_pl.local;
-                let dest = Local::from_u32(dest.index);
-
-                if acx.local_tys.get(dest).is_none() {
-                    eprintln!(
-                        "pdg: {}: local {:?} appears as dest, but is out of bounds",
-                        n.function.name, dest
-                    );
-                    info.acx_data.set(acx.into_data());
-                    continue;
-                }
-                let ptr = match acx.ptr_of(dest) {
-                    Some(x) => x,
-                    None => {
-                        eprintln!(
-                            "pdg: {}: local {:?} appears as dest, but has no PointerId",
-                            n.function.name, dest
-                        );
-                        info.acx_data.set(acx.into_data());
-                        continue;
-                    }
-                };
-
-                let old_perms = asn.perms()[ptr];
-                let mut perms = old_perms;
-                if known_nulls.contains(&(n.function.id, dest)) {
-                    perms.remove(PermissionSet::NON_NULL);
-                } else if allow_unsound {
-                    perms.insert(PermissionSet::NON_NULL);
-                    // Unsound update: if we have never seen a NULL for
-                    // this local in the PDG, prevent the static analysis
-                    // from changing that permission.
-                    updates_forbidden[ptr].insert(PermissionSet::NON_NULL);
-                }
-
-                if let Some(node_info) = n.info.as_ref() {
-                    if node_info.flows_to.load.is_some() {
-                        perms.insert(PermissionSet::READ);
-                    }
-                    if node_info.flows_to.store.is_some() {
-                        perms.insert(PermissionSet::WRITE);
-                    }
-                    if node_info.flows_to.pos_offset.is_some() {
-                        perms.insert(PermissionSet::OFFSET_ADD);
-                    }
-                    if node_info.flows_to.neg_offset.is_some() {
-                        perms.insert(PermissionSet::OFFSET_SUB);
-                    }
-                    if !node_info.unique {
-                        perms.remove(PermissionSet::UNIQUE);
-                    }
-                }
-
-                if perms != old_perms {
-                    let added = perms & !old_perms;
-                    let removed = old_perms & !perms;
-                    let kept = old_perms & perms;
-                    eprintln!(
-                        "pdg: changed {:?}: added {:?}, removed {:?}, kept {:?}",
-                        ptr, added, removed, kept
-                    );
-
-                    asn.perms_mut()[ptr] = perms;
-                }
-
-                info.acx_data.set(acx.into_data());
-            }
+    let pdg_compare = env::var("C2RUST_ANALYZE_COMPARE_PDG").as_deref() == Ok("1");
+    // In compare mode, we load the PDG for comparison after analysis, not before.
+    if !pdg_compare {
+        if let Some(pdg_file_path) = std::env::var_os("PDG_FILE") {
+            pdg_update_permissions(
+                &mut gacx,
+                &all_fn_ldids,
+                &mut func_info,
+                &mut gasn,
+                &mut g_updates_forbidden,
+                pdg_file_path,
+            );
         }
     }
 
@@ -1293,6 +1174,111 @@ fn run(tcx: TyCtxt) {
                 break;
             }
         }
+    }
+
+    // PDG comparison mode: skip all normal rewriting, and instead add annotations describing
+    // places where the static analysis and PDG differ.
+    if pdg_compare {
+        // For each `PointerId`, this records whether we saw a null pointer stored in a location
+        // annotated with that `PointerId` and whether we saw at least one non-null pointer stored
+        // in such a location.
+        let mut observations = HashMap::<(Option<LocalDefId>, PointerId), (bool, bool)>::new();
+
+        let pdg_file_path = std::env::var_os("PDG_FILE")
+            .unwrap_or_else(|| panic!("must set PDG_FILE for PDG comparison mode"));
+        pdg_update_permissions_with_callback(
+            &mut gacx,
+            &all_fn_ldids,
+            &mut func_info,
+            &mut gasn,
+            &mut g_updates_forbidden,
+            pdg_file_path,
+            |_asn, _updates_forbidden, ldid, ptr, _node_info, node_is_non_null| {
+                let parent = if ptr.is_global() { None } else { Some(ldid) };
+                let obs = observations.entry((parent, ptr)).or_insert((false, false));
+                if node_is_non_null {
+                    obs.1 = true;
+                } else {
+                    obs.0 = true;
+                }
+            },
+        );
+
+        let mut ann = AnnotationBuffer::new(tcx);
+        // Generate comparison annotations for all functions.
+        for ldid in tcx.hir().body_owners() {
+            // Skip any body owners that aren't present in `func_info`, and also get the info
+            // itself.
+            let info = match func_info.get_mut(&ldid) {
+                Some(x) => x,
+                None => continue,
+            };
+
+            if !info.acx_data.is_set() {
+                continue;
+            }
+
+            let ldid_const = WithOptConstParam::unknown(ldid);
+            let mir = tcx.mir_built(ldid_const);
+            let mir = mir.borrow();
+            let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+            let asn = gasn.and(&mut info.lasn);
+
+            // Generate inline annotations for pointer-typed locals
+            for (local, decl) in mir.local_decls.iter_enumerated() {
+                let span = local_span(decl);
+                let mut ptrs = Vec::new();
+                let ty_str = context::print_ty_with_pointer_labels(acx.local_tys[local], |ptr| {
+                    if ptr.is_none() {
+                        return String::new();
+                    }
+                    ptrs.push(ptr);
+                    format!("{{{}}}", ptr)
+                });
+                // Pointers where static analysis reports `NON_NULL` but dynamic reports nullable.
+                let mut static_non_null_ptrs = Vec::new();
+                // Pointers where dynamic analysis reports `NON_NULL` but static reports nullable.
+                let mut dynamic_non_null_ptrs = Vec::new();
+                for ptr in ptrs {
+                    let static_non_null: bool = asn.perms()[ptr].contains(PermissionSet::NON_NULL);
+                    let parent = if ptr.is_global() { None } else { Some(ldid) };
+                    let dynamic_non_null: Option<bool> = observations
+                        .get(&(parent, ptr))
+                        .map(|&(saw_null, saw_non_null)| saw_non_null && !saw_null);
+                    if dynamic_non_null.is_none() || dynamic_non_null == Some(static_non_null) {
+                        // No conflict between static and dynamic results.
+                        continue;
+                    }
+                    if static_non_null {
+                        static_non_null_ptrs.push(ptr);
+                    } else {
+                        dynamic_non_null_ptrs.push(ptr);
+                    }
+                }
+                if static_non_null_ptrs.is_empty() && dynamic_non_null_ptrs.is_empty() {
+                    continue;
+                }
+                ann.emit(span, format_args!("typeof({:?}) = {}", local, ty_str));
+                if static_non_null_ptrs.len() > 0 {
+                    ann.emit(
+                        span,
+                        format_args!("  static NON_NULL: {:?}", static_non_null_ptrs),
+                    );
+                }
+                if dynamic_non_null_ptrs.len() > 0 {
+                    ann.emit(
+                        span,
+                        format_args!("  dynamic NON_NULL: {:?}", dynamic_non_null_ptrs),
+                    );
+                }
+            }
+
+            info.acx_data.set(acx.into_data());
+        }
+
+        let annotations = ann.finish();
+        rewrite::apply_rewrites(tcx, Vec::new(), annotations, rewrite::UpdateFiles::No);
+        return;
     }
 
     if !rewrite_pointwise {
@@ -1933,6 +1919,192 @@ fn apply_test_attr_force_non_null_args(
                     updates_forbidden[ptr].insert(PermissionSet::NON_NULL);
                 }
             }
+        }
+    }
+}
+
+fn pdg_update_permissions<'tcx>(
+    gacx: &mut GlobalAnalysisCtxt<'tcx>,
+    all_fn_ldids: &[LocalDefId],
+    func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
+    gasn: &mut GlobalAssignment,
+    g_updates_forbidden: &mut GlobalPointerTable<PermissionSet>,
+    pdg_file_path: impl AsRef<Path>,
+) {
+    let allow_unsound =
+        env::var("C2RUST_ANALYZE_PDG_ALLOW_UNSOUND").map_or(false, |val| &val == "1");
+
+    pdg_update_permissions_with_callback(
+        gacx,
+        all_fn_ldids,
+        func_info,
+        gasn,
+        g_updates_forbidden,
+        pdg_file_path,
+        |asn, updates_forbidden, _ldid, ptr, node_info, node_is_non_null| {
+            let old_perms = asn.perms()[ptr];
+            let mut perms = old_perms;
+            if !node_is_non_null {
+                perms.remove(PermissionSet::NON_NULL);
+            } else if allow_unsound {
+                perms.insert(PermissionSet::NON_NULL);
+                // Unsound update: if we have never seen a NULL for
+                // this local in the PDG, prevent the static analysis
+                // from changing that permission.
+                updates_forbidden[ptr].insert(PermissionSet::NON_NULL);
+            }
+
+            if let Some(node_info) = node_info {
+                if node_info.flows_to.load.is_some() {
+                    perms.insert(PermissionSet::READ);
+                }
+                if node_info.flows_to.store.is_some() {
+                    perms.insert(PermissionSet::WRITE);
+                }
+                if node_info.flows_to.pos_offset.is_some() {
+                    perms.insert(PermissionSet::OFFSET_ADD);
+                }
+                if node_info.flows_to.neg_offset.is_some() {
+                    perms.insert(PermissionSet::OFFSET_SUB);
+                }
+                if !node_info.unique {
+                    perms.remove(PermissionSet::UNIQUE);
+                }
+            }
+
+            if perms != old_perms {
+                let added = perms & !old_perms;
+                let removed = old_perms & !perms;
+                let kept = old_perms & perms;
+                eprintln!(
+                    "pdg: changed {:?}: added {:?}, removed {:?}, kept {:?}",
+                    ptr, added, removed, kept
+                );
+
+                asn.perms_mut()[ptr] = perms;
+            }
+        },
+    );
+}
+
+/// Load PDG from `pdg_file_path` and update permissions.
+///
+/// Each time a pointer's permissions are changed, this function calls `callback(ptr, old, new)`
+/// where `ptr` is the `PointerId` in question, `old` is the old `PermissionSet`, and `new` is the
+/// new one.
+fn pdg_update_permissions_with_callback<'tcx>(
+    gacx: &mut GlobalAnalysisCtxt<'tcx>,
+    all_fn_ldids: &[LocalDefId],
+    func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
+    gasn: &mut GlobalAssignment,
+    g_updates_forbidden: &mut GlobalPointerTable<PermissionSet>,
+    pdg_file_path: impl AsRef<Path>,
+    mut callback: impl FnMut(
+        &mut Assignment,
+        &mut PointerTableMut<PermissionSet>,
+        LocalDefId,
+        PointerId,
+        Option<&NodeInfo>,
+        bool,
+    ),
+) {
+    let tcx = gacx.tcx;
+
+    let f = std::fs::File::open(pdg_file_path).unwrap();
+    let graphs: Graphs = bincode::deserialize_from(f).unwrap();
+
+    let mut known_nulls = HashSet::new();
+    for g in &graphs.graphs {
+        for n in &g.nodes {
+            let dest_pl = match n.dest.as_ref() {
+                Some(x) => x,
+                None => {
+                    continue;
+                }
+            };
+            if !dest_pl.projection.is_empty() {
+                continue;
+            }
+            let dest = dest_pl.local;
+            let dest = Local::from_u32(dest.index);
+            if g.is_null {
+                known_nulls.insert((n.function.id, dest));
+            }
+        }
+    }
+
+    let mut func_def_path_hash_to_ldid = HashMap::new();
+    for &ldid in all_fn_ldids {
+        let def_path_hash: (u64, u64) = tcx.def_path_hash(ldid.to_def_id()).0.as_value();
+        eprintln!("def_path_hash {:?} = {:?}", def_path_hash, ldid);
+        func_def_path_hash_to_ldid.insert(def_path_hash, ldid);
+    }
+
+    for g in &graphs.graphs {
+        for n in &g.nodes {
+            let def_path_hash: (u64, u64) = n.function.id.0.into();
+            let ldid = match func_def_path_hash_to_ldid.get(&def_path_hash) {
+                Some(&x) => x,
+                None => {
+                    eprintln!(
+                        "pdg: unknown DefPathHash {:?} for function {:?}",
+                        n.function.id, n.function.name
+                    );
+                    continue;
+                }
+            };
+            let info = func_info.get_mut(&ldid).unwrap();
+            let ldid_const = WithOptConstParam::unknown(ldid);
+            let mir = tcx.mir_built(ldid_const);
+            let mir = mir.borrow();
+            let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+            let mut asn = gasn.and(&mut info.lasn);
+            let mut updates_forbidden = g_updates_forbidden.and_mut(&mut info.l_updates_forbidden);
+
+            let dest_pl = match n.dest.as_ref() {
+                Some(x) => x,
+                None => {
+                    info.acx_data.set(acx.into_data());
+                    continue;
+                }
+            };
+            if !dest_pl.projection.is_empty() {
+                info.acx_data.set(acx.into_data());
+                continue;
+            }
+            let dest = dest_pl.local;
+            let dest = Local::from_u32(dest.index);
+
+            if acx.local_tys.get(dest).is_none() {
+                eprintln!(
+                    "pdg: {}: local {:?} appears as dest, but is out of bounds",
+                    n.function.name, dest
+                );
+                info.acx_data.set(acx.into_data());
+                continue;
+            }
+            let ptr = match acx.ptr_of(dest) {
+                Some(x) => x,
+                None => {
+                    eprintln!(
+                        "pdg: {}: local {:?} appears as dest, but has no PointerId",
+                        n.function.name, dest
+                    );
+                    info.acx_data.set(acx.into_data());
+                    continue;
+                }
+            };
+
+            callback(
+                &mut asn,
+                &mut updates_forbidden,
+                ldid,
+                ptr,
+                n.info.as_ref(),
+                !known_nulls.contains(&(n.function.id, dest)),
+            );
+
+            info.acx_data.set(acx.into_data());
         }
     }
 }
