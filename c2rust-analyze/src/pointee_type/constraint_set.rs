@@ -28,7 +28,6 @@ pub enum Constraint<'tcx> {
 pub struct ConstraintSet<'tcx> {
     pub constraints: Vec<Constraint<'tcx>>,
     constraint_dedup: HashSet<Constraint<'tcx>>,
-    pub var_table: VarTable<'tcx>,
 }
 
 impl<'tcx> ConstraintSet<'tcx> {
@@ -52,10 +51,6 @@ impl<'tcx> ConstraintSet<'tcx> {
 
     pub fn subset(&mut self, p: PointerId, q: PointerId) {
         self.add(Constraint::Subset(p, q));
-    }
-
-    pub fn fresh_var(&mut self) -> CTy<'tcx> {
-        self.var_table.fresh()
     }
 }
 
