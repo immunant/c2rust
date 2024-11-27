@@ -190,6 +190,14 @@ impl<'c> Translation<'c> {
                 if is_string {
                     let v = ids.first().unwrap();
                     self.convert_expr(ctx.used(), *v)
+                } else if ids.len() == 0 {
+                    // this was likely a C array of the form `int x[16] = {}`,
+                    // we'll emit that as [0; 16].
+                    let len = mk().lit_expr(mk().int_unsuffixed_lit(n as u128));
+                    self.implicit_default_expr(ty, ctx.is_static)?
+                        .and_then(|default_value| {
+                            Ok(WithStmts::new_val(mk().repeat_expr(default_value, len)))
+                        })
                 } else {
                     Ok(ids
                         .iter()
