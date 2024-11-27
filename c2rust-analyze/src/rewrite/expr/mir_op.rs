@@ -2028,7 +2028,7 @@ where
     }
 }
 
-pub trait IsLocal {
+trait IsLocal {
     fn is_local(&self) -> bool;
 }
 
