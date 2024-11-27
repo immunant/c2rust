@@ -6,8 +6,13 @@ static char *foo = "mystring";
 void entry(const unsigned buffer_size, int buffer[const])
 {
     int arr[1][1] = { 1 };
-
     arr[0][0] += 9;
+
+    int arr2[16] = {};
+    arr2[15] += 9;
+
+    struct {char* x; int y;} arr3[1] = {};
+    arr3[0].y += 9;
 
     int i = 0;
 
