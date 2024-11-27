@@ -1,22 +1,17 @@
-use crate::context::{AnalysisCtxt, Assignment, DontRewriteFnReason, FlagSet, LTy, PermissionSet};
+use crate::context::{AnalysisCtxt, Assignment, FlagSet, LTy, PermissionSet};
 use crate::last_use::{self, LastUse};
 use crate::panic_detail;
 use crate::pointee_type::PointeeTypes;
-use crate::pointer_id::{GlobalPointerTable, PointerId, PointerTable};
-use crate::rewrite;
+use crate::pointer_id::{GlobalPointerTable, PointerTable};
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
-use crate::util::{self, ty_callee, Callee};
-use log::{error, trace};
-use rustc_ast::Mutability;
+use crate::util::{ty_callee, Callee};
 use rustc_middle::mir::{
     BasicBlock, Body, BorrowKind, Location, Operand, Place, PlaceElem, PlaceRef, Rvalue, Statement,
     StatementKind, Terminator, TerminatorKind,
 };
-use rustc_middle::ty::print::{FmtPrinter, PrettyPrinter, Print};
-use rustc_middle::ty::{AdtDef, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{Ty, TyKind};
 use std::collections::HashMap;
-use std::ops::Index;
-use super::mir_op::{SubLoc, PlaceAccess, IsLocal};
+use super::mir_op::{SubLoc, PlaceAccess};
 
 #[derive(Clone, Debug)]
 pub struct SublocInfo<'tcx> {
@@ -61,7 +56,6 @@ struct CollectInfoVisitor<'a, 'tcx> {
     mir: &'a Body<'tcx>,
     loc: Location,
     sub_loc: Vec<SubLoc>,
-    errors: DontRewriteFnReason,
     info_map: HashMap<(Location, Vec<SubLoc>), SublocInfo<'tcx>>,
 }
 
@@ -87,14 +81,9 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
                 statement_index: 0,
             },
             sub_loc: Vec::new(),
-            errors: DontRewriteFnReason::empty(),
 
             info_map: HashMap::new(),
         }
-    }
-
-    fn err(&mut self, reason: DontRewriteFnReason) {
-        self.errors.insert(reason);
     }
 
     fn enter<F: FnOnce(&mut Self) -> R, R>(&mut self, sub: SubLoc, f: F) -> R {
@@ -143,7 +132,6 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
 
     fn lty_to_subloc_types(&self, lty: LTy<'tcx>) -> (SublocType<'tcx>, SublocType<'tcx>) {
         let tcx = self.acx.tcx();
-        let ty = lty.ty;
         let ptr = lty.label;
 
         if ptr.is_none() {
@@ -167,6 +155,7 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
             self.flags[ptr],
         );
         // FIXME: new_desc needs to reflect pointee_type analysis results
+        // FIXME: new_desc should respect the FIXED flag
         (SublocType::Ptr(old_desc), SublocType::Ptr(new_desc))
     }
 
@@ -220,49 +209,6 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
         self.emit_adjust(lty, true, true, PlaceAccess::Move, adjust_new_ty)
     }
 
-
-    /// Get the pointee type of `lty`.  Returns the inferred pointee type from `self.pointee_types`
-    /// if one is available, or the pointee type as represented in `lty` itself otherwise.  Returns
-    /// `None` if `lty` is not a `RawPtr` or `Ref` type.
-    ///
-    /// TODO: This does not yet have any pointer-to-pointer support.  For example, if `lty` is
-    /// `*mut *mut c_void` where the inner pointer is known to point to `u8`, this method will
-    /// still return `*mut c_void` instead of `*mut u8`.
-    fn pointee_lty(&self, lty: LTy<'tcx>) -> Option<LTy<'tcx>> {
-        if !matches!(lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)) {
-            return None;
-        }
-        debug_assert_eq!(lty.args.len(), 1);
-        let ptr = lty.label;
-        if !ptr.is_none() {
-            if let Some(pointee_lty) = self.pointee_types[ptr].get_sole_lty() {
-                return Some(pointee_lty);
-            }
-        }
-        Some(lty.args[0])
-    }
-
-    fn is_nullable(&self, ptr: PointerId) -> bool {
-        !ptr.is_none()
-            && !self.perms[ptr].contains(PermissionSet::NON_NULL)
-            && !self.flags[ptr].contains(FlagSet::FIXED)
-    }
-
-    fn is_dyn_owned(&self, lty: LTy) -> bool {
-        if !matches!(lty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)) {
-            return false;
-        }
-        if lty.label.is_none() {
-            return false;
-        }
-        let perms = self.perms[lty.label];
-        let flags = self.flags[lty.label];
-        if flags.contains(FlagSet::FIXED) {
-            return false;
-        }
-        let desc = type_desc::perms_to_desc(lty.ty, perms, flags);
-        desc.dyn_owned
-    }
 
     /// Check whether the `Place` identified by `which` within the current statement or terminator
     /// is the last use of a local.
@@ -490,7 +436,7 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
             Rvalue::Len(pl) => {
                 self.enter_rvalue_place(0, |v| v.visit_place(pl, PlaceAccess::Imm));
             }
-            Rvalue::Cast(_kind, ref op, ty) => {
+            Rvalue::Cast(_kind, ref op, _ty) => {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op));
             }
             Rvalue::BinaryOp(_bop, ref ops) => {
@@ -612,7 +558,6 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
         };
         match last_proj {
             PlaceElem::Deref => {
-                let cast_can_move = base_pl.is_local() && self.current_sub_loc_is_last_use();
                 self.enter_place_deref_pointer(|v| {
                     v.visit_place_ref(base_pl, proj_ltys, access);
                 });
@@ -625,78 +570,6 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
             }
             PlaceElem::Downcast(_, _) => todo!("PlaceElem::Downcast"),
         }
-    }
-
-    /// Visit a `Callee::PtrOffset` call, and emit the `SublocInfo` for the call/RHS.
-    fn visit_ptr_offset(&mut self, op: &Operand<'tcx>, result_ty: LTy<'tcx>) {
-        todo!("visit_ptr_offset")
-            /*
-        // Compute the expected type for the argument, and emit a cast if needed.
-        let result_ptr = result_ty.label;
-        let result_desc =
-            type_desc::perms_to_desc(result_ty.ty, self.perms[result_ptr], self.flags[result_ptr]);
-
-        let arg_expect_desc = TypeDesc {
-            own: result_desc.own,
-            qty: match result_desc.qty {
-                Quantity::Single => Quantity::Slice,
-                Quantity::Slice => Quantity::Slice,
-                Quantity::OffsetPtr => Quantity::OffsetPtr,
-                Quantity::Array => unreachable!("perms_to_desc should not return Quantity::Array"),
-            },
-            dyn_owned: result_desc.dyn_owned,
-            option: result_desc.option,
-            pointee_ty: result_desc.pointee_ty,
-        };
-
-        self.enter_rvalue(|v| {
-            v.enter_call_arg(0, |v| v.visit_operand_desc(op, arg_expect_desc));
-
-            // Emit `OffsetSlice` for the offset itself.
-            let mutbl = matches!(result_desc.own, Ownership::Mut);
-            if !result_desc.option {
-                v.emit(RewriteKind::OffsetSlice { mutbl });
-            } else {
-                v.emit(RewriteKind::OptionMapOffsetSlice { mutbl });
-            }
-
-            // The `OffsetSlice` operation returns something of the same type as its input.
-            // Afterward, we must cast the result to the `result_ty`/`result_desc`.
-            v.emit_cast_desc_desc(arg_expect_desc, result_desc);
-        });
-        */
-    }
-
-    fn visit_slice_as_ptr(&mut self, elem_ty: Ty<'tcx>, op: &Operand<'tcx>, result_lty: LTy<'tcx>) {
-        todo!("visit_slice_as_ptr")
-        /*
-        let op_lty = self.acx.type_of(op);
-        let op_ptr = op_lty.label;
-        let result_ptr = result_lty.label;
-
-        let op_desc = type_desc::perms_to_desc_with_pointee(
-            self.acx.tcx(),
-            elem_ty,
-            op_lty.ty,
-            self.perms[op_ptr],
-            self.flags[op_ptr],
-        );
-
-        let result_desc = type_desc::perms_to_desc_with_pointee(
-            self.acx.tcx(),
-            elem_ty,
-            result_lty.ty,
-            self.perms[result_ptr],
-            self.flags[result_ptr],
-        );
-
-        self.enter_rvalue(|v| {
-            // Generate a cast of our own, replacing the `as_ptr` call.
-            // TODO: leave the `as_ptr` in place if we can't produce a working cast
-            v.emit(RewriteKind::RemoveAsPtr);
-            v.emit_cast_desc_desc(op_desc, result_desc);
-        });
-        */
     }
 }
 
