@@ -138,7 +138,7 @@ fn perms_to_ptr_desc(perms: PermissionSet, flags: FlagSet) -> PtrDesc {
 
 /// Obtain the `TypeDesc` for a pointer.  `ptr_ty` should be the `Ty` of the pointer, and `perms`
 /// and `flags` should be taken from its outermost `PointerId`.
-pub fn perms_to_desc(ptr_ty: Ty, perms: PermissionSet, flags: FlagSet) -> TypeDesc {
+pub fn perms_to_desc<'tcx>(ptr_ty: Ty<'tcx>, perms: PermissionSet, flags: FlagSet) -> TypeDesc<'tcx> {
     // The FIXED case should be handled by calling `perm_to_desc_with_pointee` instead.
     assert!(
         !flags.contains(FlagSet::FIXED),
@@ -160,7 +160,7 @@ pub fn perms_to_desc(ptr_ty: Ty, perms: PermissionSet, flags: FlagSet) -> TypeDe
 
 /// Obtain the `TypeDesc` for a pointer to a local.  `local_ty` should be the `Ty` of the local
 /// itself, and `perms` and `flags` should be taken from its `addr_of_local` `PointerId`.
-pub fn local_perms_to_desc(local_ty: Ty, perms: PermissionSet, flags: FlagSet) -> TypeDesc {
+pub fn local_perms_to_desc(local_ty: Ty<'tcx>, perms: PermissionSet, flags: FlagSet) -> TypeDesc<'tcx> {
     let ptr_desc = perms_to_ptr_desc(perms, flags);
     let pointee_ty = local_ty;
     ptr_desc.to_type_desc(pointee_ty)
