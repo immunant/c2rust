@@ -42,6 +42,8 @@ pub struct SublocInfo<'tcx> {
 
 #[derive(Clone, Copy, Debug)]
 pub enum SublocType<'tcx> {
+    // TODO: modify to allow arbitrary nesting of `SublocType`s, maybe using `LabeledTy` or
+    // `rustc_type_ir`.
     Ptr(TypeDesc<'tcx>),
     Other(Ty<'tcx>),
 }
@@ -131,6 +133,14 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
 
 
     fn lty_to_subloc_types(&self, lty: LTy<'tcx>) -> (SublocType<'tcx>, SublocType<'tcx>) {
+        // TODO: Doing this correctly is potentially quite complex.  This function needs to handle
+        // (1) FIXED, (2) `pointee_types`, (3) pointer-to-pointer, and (4) existing references in
+        // partially-safe code.  Furthermore, the old and new `SublocType`s should be arranged to
+        // have the same or similar pointee types when possible.
+        //
+        // All `LTy` to `SublocType` conversions go through this function, so once it supports a
+        // feature, that feature should work throughout the visitor.
+
         let tcx = self.acx.tcx();
         let ptr = lty.label;
 
@@ -147,15 +157,18 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
         };
         let old_ptr_desc = type_desc::unpack_pointer_type(tcx, lty.ty, old_pointee_ty);
         let old_desc = old_ptr_desc.to_type_desc(old_pointee_ty);
-        let new_desc = type_desc::perms_to_desc_with_pointee(
+        let mut new_desc = type_desc::perms_to_desc_with_pointee(
             tcx,
             old_pointee_ty,
             lty.ty,
             self.perms[ptr],
             self.flags[ptr],
         );
-        // FIXME: new_desc needs to reflect pointee_type analysis results
-        // FIXME: new_desc should respect the FIXED flag
+
+        if let Some(pointee_lty) = self.pointee_types[ptr].get_sole_lty() {
+            new_desc.pointee_ty = pointee_lty.ty;
+        }
+
         (SublocType::Ptr(old_desc), SublocType::Ptr(new_desc))
     }
 

@@ -59,13 +59,19 @@ pub struct PtrDesc {
 
 impl<'tcx> From<TypeDesc<'tcx>> for PtrDesc {
     fn from(x: TypeDesc<'tcx>) -> PtrDesc {
+        x.to_ptr_desc()
+    }
+}
+
+impl TypeDesc<'_> {
+    pub fn to_ptr_desc(self) -> PtrDesc {
         let TypeDesc {
             own,
             qty,
             dyn_owned,
             option,
             pointee_ty: _,
-        } = x;
+        } = self;
         PtrDesc {
             own,
             qty,
