@@ -32,7 +32,6 @@ impl GlobalEquivSet {
     }
 
     fn set_parent(&self, x: PointerId, parent: PointerId) {
-        debug_assert!(parent.is_global());
         self.0[x].set(parent);
     }
 
@@ -71,11 +70,11 @@ impl GlobalEquivSet {
 }
 
 impl LocalEquivSet {
-    pub fn new(len: usize) -> LocalEquivSet {
+    pub fn new(base: u32, len: usize) -> LocalEquivSet {
         let raw = (0..len as u32)
-            .map(|x| Cell::new(PointerId::local(x)))
+            .map(|x| Cell::new(PointerId::local(base + x)))
             .collect();
-        LocalEquivSet(LocalPointerTable::from_raw(raw))
+        LocalEquivSet(LocalPointerTable::from_raw(base, raw))
     }
 
     fn parent(&self, x: PointerId) -> PointerId {
@@ -84,7 +83,7 @@ impl LocalEquivSet {
 
     fn set_parent(&self, x: PointerId, parent: PointerId) {
         // `x` must be a local ID; its parent can be either local or global.
-        debug_assert!(!x.is_global());
+        debug_assert!(self.0.contains(x));
         self.0[x].set(parent);
     }
 
@@ -97,7 +96,7 @@ impl LocalEquivSet {
     /// method.
     fn rep(&self, x: PointerId) -> PointerId {
         let parent = self.parent(x);
-        if parent == x || parent.is_global() || self.parent(parent) == parent {
+        if parent == x || !self.0.contains(parent) || self.parent(parent) == parent {
             return parent;
         }
 
@@ -107,19 +106,21 @@ impl LocalEquivSet {
     }
 
     /// Assign new `PointerId`s for the pointers in this set, with one ID per equivalence class.
-    /// Returns the next-ID counter for the new numbering and a map from old `PointerId`s to new
-    /// ones.
+    /// Returns the base, the number of pointers after remapping, and a map from old `PointerId`s
+    /// to new ones.
     pub fn renumber(
         &self,
         global_map: &GlobalPointerTable<PointerId>,
-    ) -> (NextLocalPointerId, LocalPointerTable<PointerId>) {
-        let mut counter = NextLocalPointerId::new();
-        let mut map = LocalPointerTable::from_raw(vec![PointerId::NONE; self.0.len()]);
+        counter: &mut NextLocalPointerId,
+    ) -> (u32, usize, LocalPointerTable<PointerId>) {
+        let base = counter.value();
+        let mut map =
+            LocalPointerTable::from_raw(self.0.base(), vec![PointerId::NONE; self.0.len()]);
 
         for old_id in self.0.iter().map(|(x, _)| x) {
             let rep = self.rep(old_id);
 
-            if rep.is_global() {
+            if global_map.contains(rep) {
                 map[old_id] = global_map[rep];
             } else if !map[rep].is_none() {
                 map[old_id] = map[rep];
@@ -127,10 +128,11 @@ impl LocalEquivSet {
                 let new_id = counter.next();
                 map[old_id] = new_id;
                 map[rep] = new_id;
-            };
+            }
         }
 
-        (counter, map)
+        let count = (counter.value() - base) as usize;
+        (base, count, map)
     }
 }
 
@@ -141,8 +143,8 @@ impl<'g> EquivSet<'g> {
 
     fn set_parent(&self, x: PointerId, parent: PointerId) {
         // Local items can point to global ones, but not vice versa.
-        if x.is_global() {
-            debug_assert!(parent.is_global());
+        if self.0.ptr_is_global(x) {
+            debug_assert!(self.0.ptr_is_global(parent));
         }
 
         self.0[x].set(parent);
@@ -170,7 +172,9 @@ impl<'g> EquivSet<'g> {
             return;
         }
 
-        if x_rep.is_global() {
+        // Prefer lower-numbered reps over higher-numbered ones.  This ensures that we always pick
+        // a global `PointerId` as the rep if the equivalence class contains one.
+        if x_rep.index() < y_rep.index() {
             self.set_parent(y_rep, x_rep);
             self.set_parent(y, x_rep);
         } else {

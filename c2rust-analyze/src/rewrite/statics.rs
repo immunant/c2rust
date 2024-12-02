@@ -1,4 +1,4 @@
-use crate::context::GlobalAssignment;
+use crate::context::Assignment;
 use crate::context::{FlagSet, PermissionSet};
 use crate::pointer_id::PointerId;
 use crate::rewrite::Rewrite;
@@ -11,13 +11,13 @@ use rustc_span::Span;
 /// changing the declaration to match observed/analyzed usage.
 pub fn gen_static_rewrites<'tcx>(
     tcx: TyCtxt<'tcx>,
-    gasn: &GlobalAssignment,
+    asn: &Assignment,
     def_id: DefId,
     ptr: PointerId,
 ) -> Option<(Span, Rewrite)> {
     // If the `addr_of_static` `PointerId` is `FIXED`, then we're forbidden from emitting this
     // rewrite.
-    let flags = gasn.flags[ptr];
+    let flags = asn.flags[ptr];
     if flags.contains(FlagSet::FIXED) {
         return None;
     }
@@ -33,7 +33,7 @@ pub fn gen_static_rewrites<'tcx>(
         ItemKind::Static(_ty, mutbl, _body_id) => mutbl == Mutability::Mut,
         _ => panic!("expected item {:?} to be a `static`", item),
     };
-    let perms = gasn.perms[ptr];
+    let perms = asn.perms[ptr];
     let written_to = perms.contains(PermissionSet::WRITE);
     if written_to != is_mutable {
         let ident = tcx
