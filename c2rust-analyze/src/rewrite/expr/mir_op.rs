@@ -208,7 +208,7 @@ pub struct MirRewrite {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-enum PlaceAccess {
+pub enum PlaceAccess {
     /// Enclosing context intends to read from the place.
     Imm,
     /// Enclosing context intends to write to the place.

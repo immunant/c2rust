@@ -16,6 +16,7 @@ mod convert;
 mod distribute;
 mod hir_only_casts;
 mod mir_op;
+mod subloc_info;
 mod unlower;
 
 // Helpers used by the shim builder.
@@ -31,6 +32,9 @@ pub fn gen_expr_rewrites<'tcx>(
     mir: &Body<'tcx>,
     hir_body_id: BodyId,
 ) -> Vec<(Span, Rewrite)> {
+    let subloc_info = subloc_info::collect_subloc_info(acx, asn, pointee_types, last_use, mir);
+    debug_print_subloc_info_map(acx.tcx(), mir, &subloc_info);
+
     let (mir_rewrites, errors) = mir_op::gen_mir_rewrites(acx, asn, pointee_types, last_use, mir);
     if !errors.is_empty() {
         acx.gacx.dont_rewrite_fns.add(def_id, errors);
@@ -54,6 +58,52 @@ pub fn gen_expr_rewrites<'tcx>(
     let mut hir_rewrites = convert::convert_rewrites(acx.tcx(), hir_body_id, rewrites_by_expr);
     hir_rewrites.extend(address_of_rewrites);
     hir_rewrites
+}
+
+fn debug_print_subloc_info_map<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    mir: &Body<'tcx>,
+    subloc_info: &HashMap<(Location, Vec<mir_op::SubLoc>), subloc_info::SublocInfo<'tcx>>,
+) {
+    let mut by_loc = HashMap::new();
+    for (&(loc, ref sub_loc), info) in subloc_info {
+        by_loc.entry(loc).or_insert(Vec::new()).push((sub_loc, info));
+    }
+
+    for v in by_loc.values_mut() {
+        v.sort_by_key(|&(sub_loc, _info)| sub_loc);
+    }
+
+    let print_for_loc = |loc| {
+        for &(sub_loc, info) in by_loc.get(&loc).map_or(&[] as &[_], |x| x) {
+            eprintln!("      {sub_loc:?}: {info:?}");
+        }
+    };
+
+    eprintln!("subloc_info for {:?}:", mir.source);
+    for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
+        eprintln!("  block {bb_id:?}:");
+        for (i, stmt) in bb.statements.iter().enumerate() {
+            let loc = Location {
+                block: bb_id,
+                statement_index: i,
+            };
+
+            eprintln!("    {loc:?}: {stmt:?}");
+            print_for_loc(loc);
+        }
+
+        {
+            let term = bb.terminator();
+            let loc = Location {
+                block: bb_id,
+                statement_index: bb.statements.len(),
+            };
+
+            eprintln!("    {loc:?}: {term:?}");
+            print_for_loc(loc);
+        }
+    }
 }
 
 fn debug_print_unlower_map<'tcx>(
