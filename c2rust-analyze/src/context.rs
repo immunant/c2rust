@@ -837,9 +837,9 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     pub fn function_context<'a>(
         &'a mut self,
         mir: &'a Body<'tcx>,
-        base: u32,
+        local_ptr_base: u32,
     ) -> AnalysisCtxt<'a, 'tcx> {
-        AnalysisCtxt::new(self, mir, base)
+        AnalysisCtxt::new(self, mir, local_ptr_base)
     }
 
     pub fn function_context_with_data<'a>(
@@ -1004,11 +1004,11 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     pub fn new(
         gacx: &'a mut GlobalAnalysisCtxt<'tcx>,
         mir: &'a Body<'tcx>,
-        base: u32,
+        local_ptr_base: u32,
     ) -> AnalysisCtxt<'a, 'tcx> {
         AnalysisCtxt {
             gacx,
-            ptr_info: LocalPointerTable::empty(base),
+            ptr_info: LocalPointerTable::empty(local_ptr_base),
             local_decls: &mir.local_decls,
             local_tys: IndexVec::new(),
             addr_of_local: IndexVec::new(),

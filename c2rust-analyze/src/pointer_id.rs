@@ -420,6 +420,9 @@ impl PointerRange {
     pub fn contains(&self, ptr: PointerId) -> bool {
         // If `ptr.index() < self.base`, the subtraction will wrap to a large number in excess of
         // `self.len()`.
+        //
+        // Note that `base + len` can't overflow `u32::MAX` due to checks in `LocalPointerTable`
+        // above.
         ptr.index().wrapping_sub(self.base) < self.len
     }
 }

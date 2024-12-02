@@ -143,9 +143,9 @@ impl<'g> EquivSet<'g> {
 
     fn set_parent(&self, x: PointerId, parent: PointerId) {
         // Local items can point to global ones, but not vice versa.
-        //if x.is_global() {
-        //    debug_assert!(parent.is_global());
-        //}
+        if self.0.ptr_is_global(x) {
+            debug_assert!(self.0.ptr_is_global(parent));
+        }
 
         self.0[x].set(parent);
     }
