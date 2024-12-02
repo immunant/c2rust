@@ -1,5 +1,5 @@
 import argparse
-from dataclasses import dataclass
+from collections import namedtuple
 import json
 import re
 import sys
@@ -13,36 +13,43 @@ def parse_args() -> argparse.Namespace:
         help='output of `rustc --error-format json`')
     return parser.parse_args()
 
-@dataclass(frozen=True)
-class Fix:
-    file_path: str
-    line_number: int
-    start_byte: int
-    end_byte: int
-    new_text: str
-    message: str
+Fix = namedtuple('Fix', (
+    # Path to the file to modify.
+    'file_path',
+    # Line number where the fix will be applied.  This is used for debug output
+    # only.
+    'line_number',
+    # Start of the byte range to replace.
+    'start_byte',
+    # End (exclusive) of the byte range to replace.
+    'end_byte',
+    # Replacement text (as a `str`, not `bytes`).
+    'new_text',
+    # The original error message.  This is used for debug output only.
+    'message',
+))
 
-@dataclass(frozen=True)
-class LifetimeBound:
-    file_path: str
-    line_number: int
+LifetimeBound = namedtuple('LifetimeBound', (
+    'file_path',
+    'line_number',
     # Byte offset of the start of the lifetime parameter declaration.
-    start_byte: int
+    'start_byte',
     # Byte offset of the end of the lifetime parameter declaration.
-    end_byte: int
+    'end_byte',
     # The lifetime to use in the new bound.  If `'a: 'b` is the suggested
     # bound, then `start/end_byte` points to the declaration of `'a`, and
     # `bound_lifetime` is the string `"'b"`.
-    bound_lifetime: str
+    'bound_lifetime',
+))
 
-@dataclass(frozen=True)
-class RemoveDeriveCopy:
-    file_path: str
-    line_number: int
+RemoveDeriveCopy = namedtuple('RemoveDeriveCopy', (
+    'file_path',
+    'line_number',
     # Byte offset of the start of the token `Copy`.
-    start_byte: int
+    'start_byte',
     # Byte offset of the end of the token `Copy`.
-    end_byte: int
+    'end_byte',
+))
 
 MSG_LIFETIME_BOUND = 'lifetime may not live long enough'
 MSG_DERIVE_COPY = 'the trait `Copy` may not be implemented for this type'
