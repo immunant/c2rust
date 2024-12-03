@@ -102,6 +102,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     }
 
     fn pointee_type(&self, ptr: PointerId) -> Option<LTy<'tcx>> {
+        assert!(!ptr.is_none());
         self.pointee_types
             .as_ref()
             .and_then(|pointee_types| pointee_types[ptr].get_sole_lty())
