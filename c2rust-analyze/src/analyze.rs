@@ -2273,7 +2273,7 @@ fn print_function_pointee_types<'tcx>(
             if tys.tys.is_empty() {
                 continue;
             }
-            debug!("  pointer {:?}: {:?}", ptr, tys.tys,);
+            debug!("  pointer {:?}: {:?}", ptr, tys.tys);
         }
     }
 }
