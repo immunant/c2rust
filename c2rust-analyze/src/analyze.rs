@@ -77,6 +77,7 @@ impl<T> Default for MaybeUnset<T> {
 }
 
 impl<T> MaybeUnset<T> {
+    #[track_caller]
     pub fn set(&mut self, x: T) {
         if self.0.is_some() {
             panic!("value is already set");
@@ -84,6 +85,7 @@ impl<T> MaybeUnset<T> {
         self.0 = Some(x);
     }
 
+    #[track_caller]
     pub fn clear(&mut self) {
         if self.0.is_none() {
             panic!("value is already cleared");
@@ -91,14 +93,17 @@ impl<T> MaybeUnset<T> {
         self.0 = None;
     }
 
+    #[track_caller]
     pub fn get(&self) -> &T {
         self.0.as_ref().expect("value is not set")
     }
 
+    #[track_caller]
     pub fn get_mut(&mut self) -> &mut T {
         self.0.as_mut().expect("value is not set")
     }
 
+    #[track_caller]
     pub fn take(&mut self) -> T {
         self.0.take().expect("value is not set")
     }
@@ -576,159 +581,24 @@ fn run(tcx: TyCtxt) {
     gacx.construct_region_metadata();
 
     // ----------------------------------
-    // Infer pointee types
+    // Run early analyses
     // ----------------------------------
 
-    let mut pointee_vars = pointee_type::VarTable::default();
-
-    for &ldid in &all_fn_ldids {
-        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
-            continue;
-        }
-
-        let ldid_const = WithOptConstParam::unknown(ldid);
-        let info = func_info.get_mut(&ldid).unwrap();
-        let mir = tcx.mir_built(ldid_const);
-        let mir = mir.borrow();
-        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-
-        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
-            pointee_type::generate_constraints(&acx, &mir, &mut pointee_vars)
-        }));
-
-        let local_pointee_types = LocalPointerTable::new(acx.local_ptr_base(), acx.num_pointers());
-        info.acx_data.set(acx.into_data());
-
-        match r {
-            Ok(pointee_constraints) => {
-                info.pointee_constraints.set(pointee_constraints);
-            }
-            Err(pd) => {
-                gacx.mark_fn_failed(ldid.to_def_id(), DontRewriteFnReason::POINTEE_INVALID, pd);
-                assert!(gacx.fn_analysis_invalid(ldid.to_def_id()));
-            }
-        }
-
-        info.local_pointee_types.set(local_pointee_types);
-        info.recent_writes.set(RecentWrites::new(&mir));
-    }
-
-    // Iterate pointee constraints to a fixpoint.
-    let mut global_pointee_types =
-        GlobalPointerTable::<PointeeTypes>::new(gacx.num_global_pointers());
-    let mut loop_count = 0;
-    loop {
-        // Loop until the global assignment reaches a fixpoint.  The inner loop also runs until a
-        // fixpoint, but it only considers a single function at a time.  The inner loop for one
-        // function can affect other functions by updating `global_pointee_types`, so we also need
-        // the outer loop, which runs until the global type sets converge as well.
-        loop_count += 1;
-        // We shouldn't need more iterations than the longest acyclic path through the callgraph.
-        assert!(loop_count <= 1000);
-        let old_global_pointee_types = global_pointee_types.clone();
-
-        for &ldid in &all_fn_ldids {
-            if gacx.fn_analysis_invalid(ldid.to_def_id()) {
-                continue;
-            }
-
-            let info = func_info.get_mut(&ldid).unwrap();
-
-            let pointee_constraints = info.pointee_constraints.get();
-            let pointee_types = global_pointee_types.and_mut(info.local_pointee_types.get_mut());
-            pointee_type::solve_constraints(pointee_constraints, &pointee_vars, pointee_types);
-        }
-
-        if global_pointee_types == old_global_pointee_types {
-            break;
-        }
-    }
-
-    // Print results for debugging
-    for &ldid in &all_fn_ldids {
-        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
-            continue;
-        }
-
-        let ldid_const = WithOptConstParam::unknown(ldid);
-        let info = func_info.get_mut(&ldid).unwrap();
-        let mir = tcx.mir_built(ldid_const);
-        let mir = mir.borrow();
-
-        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-        let name = tcx.item_name(ldid.to_def_id());
-        let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
-        print_function_pointee_types(&acx, name, &mir, pointee_types);
-
-        info.acx_data.set(acx.into_data());
-    }
-
-    // ----------------------------------
-    // Compute dataflow constraints
-    // ----------------------------------
-
-    // Initial pass to assign local `PointerId`s and gather equivalence constraints, which state
-    // that two pointer types must be converted to the same reference type.  Some additional data
-    // computed during this the process is kept around for use in later passes.
-    let mut global_equiv = GlobalEquivSet::new(gacx.num_global_pointers());
-    for &ldid in &all_fn_ldids {
-        let info = func_info.get_mut(&ldid).unwrap();
-        let mut local_equiv =
-            LocalEquivSet::new(info.acx_data.local_ptr_base(), info.acx_data.num_pointers());
-
-        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
-            // Even on failure, we set a blank `local_equiv`.  This is necessary because we apply
-            // renumbering to all functions, even those where analysis has failed.
-            info.local_equiv.set(local_equiv);
-            continue;
-        }
-
-        let ldid_const = WithOptConstParam::unknown(ldid);
-        let mir = tcx.mir_built(ldid_const);
-        let mir = mir.borrow();
-
-        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
-        let recent_writes = info.recent_writes.get();
-        let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
-
-        // Compute local equivalence classes and dataflow constraints.
-        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
-            dataflow::generate_constraints(&acx, &mir, recent_writes, pointee_types)
-        }));
-        match r {
-            Ok((dataflow, equiv_constraints)) => {
-                let mut equiv = global_equiv.and_mut(&mut local_equiv);
-                for (a, b) in equiv_constraints {
-                    equiv.unify(a, b);
-                }
-                info.dataflow.set(dataflow);
-            }
-            Err(pd) => {
-                acx.gacx.mark_fn_failed(
-                    ldid.to_def_id(),
-                    DontRewriteFnReason::DATAFLOW_INVALID,
-                    pd,
-                );
-            }
-        };
-
-        info.acx_data.set(acx.into_data());
-        info.local_equiv.set(local_equiv);
-    }
+    do_recent_writes(&gacx, &mut func_info, &all_fn_ldids);
 
     // ----------------------------------
     // Remap `PointerId`s by equivalence class
     // ----------------------------------
 
+    // Initial pass to gather equivalence constraints, which state that two pointer types must be
+    // converted to the same reference type.  Some additional data computed during this the process
+    // is kept around for use in later passes.
+    let global_equiv = build_equiv_constraints(&mut gacx, &mut func_info, &all_fn_ldids);
+
     // Remap pointers based on equivalence classes, so all members of an equivalence class now use
     // the same `PointerId`.
     let (global_counter, global_equiv_map) = global_equiv.renumber();
     debug!("global_equiv_map = {global_equiv_map:?}");
-    pointee_type::remap_pointers_global(
-        &mut global_pointee_types,
-        &global_equiv_map,
-        global_counter.num_pointers(),
-    );
     gacx.remap_pointers(&global_equiv_map, global_counter.num_pointers());
 
     let mut local_counter = global_counter.into_local();
@@ -740,15 +610,6 @@ fn run(tcx: TyCtxt) {
             .local_equiv
             .renumber(&global_equiv_map, &mut local_counter);
         debug!("local_equiv_map = {local_equiv_map:?}");
-        if info.local_pointee_types.is_set() {
-            pointee_type::remap_pointers_local(
-                &mut global_pointee_types,
-                &mut info.local_pointee_types,
-                global_equiv_map.and(&local_equiv_map),
-                local_base,
-                local_count,
-            );
-        }
         info.acx_data.remap_pointers(
             &mut gacx,
             global_equiv_map.and(&local_equiv_map),
@@ -761,6 +622,32 @@ fn run(tcx: TyCtxt) {
         }
         info.local_equiv.clear();
     }
+
+    // ----------------------------------
+    // Infer pointee types
+    // ----------------------------------
+
+    // This runs after equivalence class remapping because it lets us get better pointee results in
+    // pointer-to-pointer cases without implementing full type unification.
+
+    let global_pointee_types = do_pointee_type(&mut gacx, &mut func_info, &all_fn_ldids);
+    debug_print_pointee_types(
+        &mut gacx,
+        &mut func_info,
+        &all_fn_ldids,
+        &global_pointee_types,
+    );
+
+    // ----------------------------------
+    // Compute dataflow constraints
+    // ----------------------------------
+
+    build_dataflow_constraints(
+        &mut gacx,
+        &mut func_info,
+        &all_fn_ldids,
+        &global_pointee_types,
+    );
 
     // ----------------------------------
     // Build initial assignment
@@ -1910,6 +1797,236 @@ impl<'tcx> AssignPointerIds<'tcx> for AnalysisCtxt<'_, 'tcx> {
 
     fn new_pointer(&mut self, info: PointerInfo) -> PointerId {
         self.new_pointer(info)
+    }
+}
+
+/// Run the `recent_writes` analysis, which computes the most recent write to each MIR local at
+/// each program point.  This can then be used to reconstruct the expression that's currently
+/// stored in the local.  For example, we use this to detect whether the size argument of `memcpy`
+/// is `mem::size_of::<T>()` for some `T`.
+fn do_recent_writes<'tcx>(
+    gacx: &GlobalAnalysisCtxt<'tcx>,
+    func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
+    all_fn_ldids: &[LocalDefId],
+) {
+    let tcx = gacx.tcx;
+    for &ldid in all_fn_ldids {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
+            continue;
+        }
+
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let info = func_info.get_mut(&ldid).unwrap();
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+
+        // This is very straightforward because it doesn't need an `AnalysisCtxt` and never fails.
+        info.recent_writes.set(RecentWrites::new(&mir));
+    }
+}
+
+/// Run the `pointee_type` analysis, which tries to determine the actual type of data that each
+/// pointer can point to.  This is particularly important for `void*` pointers, which are typically
+/// cast to a different type before use.
+fn do_pointee_type<'tcx>(
+    gacx: &mut GlobalAnalysisCtxt<'tcx>,
+    func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
+    all_fn_ldids: &[LocalDefId],
+) -> GlobalPointerTable<PointeeTypes<'tcx>> {
+    let tcx = gacx.tcx;
+    let mut global_pointee_types =
+        GlobalPointerTable::<PointeeTypes>::new(gacx.num_global_pointers());
+    let mut pointee_vars = pointee_type::VarTable::default();
+
+    for &ldid in all_fn_ldids {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
+            continue;
+        }
+
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let info = func_info.get_mut(&ldid).unwrap();
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+            pointee_type::generate_constraints(&acx, &mir, &mut pointee_vars)
+        }));
+
+        let local_pointee_types = LocalPointerTable::new(acx.local_ptr_base(), acx.num_pointers());
+        info.acx_data.set(acx.into_data());
+
+        match r {
+            Ok(pointee_constraints) => {
+                info.pointee_constraints.set(pointee_constraints);
+            }
+            Err(pd) => {
+                gacx.mark_fn_failed(ldid.to_def_id(), DontRewriteFnReason::POINTEE_INVALID, pd);
+                assert!(gacx.fn_analysis_invalid(ldid.to_def_id()));
+            }
+        }
+
+        info.local_pointee_types.set(local_pointee_types);
+    }
+
+    // Iterate pointee constraints to a fixpoint.
+    let mut loop_count = 0;
+    loop {
+        // Loop until the global assignment reaches a fixpoint.  The inner loop also runs until a
+        // fixpoint, but it only considers a single function at a time.  The inner loop for one
+        // function can affect other functions by updating `global_pointee_types`, so we also need
+        // the outer loop, which runs until the global type sets converge as well.
+        loop_count += 1;
+        // We shouldn't need more iterations than the longest acyclic path through the callgraph.
+        assert!(loop_count <= 1000);
+        let old_global_pointee_types = global_pointee_types.clone();
+
+        for &ldid in all_fn_ldids {
+            if gacx.fn_analysis_invalid(ldid.to_def_id()) {
+                continue;
+            }
+
+            let info = func_info.get_mut(&ldid).unwrap();
+
+            let pointee_constraints = info.pointee_constraints.get();
+            let pointee_types = global_pointee_types.and_mut(info.local_pointee_types.get_mut());
+            pointee_type::solve_constraints(pointee_constraints, &pointee_vars, pointee_types);
+        }
+
+        if global_pointee_types == old_global_pointee_types {
+            break;
+        }
+    }
+
+    global_pointee_types
+}
+
+fn debug_print_pointee_types<'tcx>(
+    gacx: &mut GlobalAnalysisCtxt<'tcx>,
+    func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
+    all_fn_ldids: &[LocalDefId],
+    global_pointee_types: &GlobalPointerTable<PointeeTypes<'tcx>>,
+) {
+    let tcx = gacx.tcx;
+    // Print results for debugging
+    for &ldid in all_fn_ldids {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
+            continue;
+        }
+
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let info = func_info.get_mut(&ldid).unwrap();
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+
+        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+        let name = tcx.item_name(ldid.to_def_id());
+        let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
+        print_function_pointee_types(&acx, name, &mir, pointee_types);
+
+        info.acx_data.set(acx.into_data());
+    }
+}
+
+/// Compute equivalence constraints.  This builds local and global equivalence sets, which map each
+/// pointer to an equivalence-class representative.
+fn build_equiv_constraints<'tcx>(
+    gacx: &mut GlobalAnalysisCtxt<'tcx>,
+    func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
+    all_fn_ldids: &[LocalDefId],
+) -> GlobalEquivSet {
+    let tcx = gacx.tcx;
+
+    let mut global_equiv = GlobalEquivSet::new(gacx.num_global_pointers());
+    for &ldid in all_fn_ldids {
+        let info = func_info.get_mut(&ldid).unwrap();
+        let mut local_equiv =
+            LocalEquivSet::new(info.acx_data.local_ptr_base(), info.acx_data.num_pointers());
+
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
+            // Even on failure, we set a blank `local_equiv`.  This is necessary because we apply
+            // renumbering to all functions, even those where analysis has failed.
+            info.local_equiv.set(local_equiv);
+            continue;
+        }
+
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+
+        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+        let recent_writes = info.recent_writes.get();
+
+        // Compute local equivalence classes and dataflow constraints.
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+            dataflow::generate_equiv_constraints(&acx, &mir, recent_writes)
+        }));
+        match r {
+            Ok(equiv_constraints) => {
+                let mut equiv = global_equiv.and_mut(&mut local_equiv);
+                for (a, b) in equiv_constraints {
+                    equiv.unify(a, b);
+                }
+            }
+            Err(pd) => {
+                acx.gacx.mark_fn_failed(
+                    ldid.to_def_id(),
+                    DontRewriteFnReason::DATAFLOW_INVALID,
+                    pd,
+                );
+            }
+        };
+
+        info.acx_data.set(acx.into_data());
+        info.local_equiv.set(local_equiv);
+    }
+
+    global_equiv
+}
+
+/// Compute dataflow constraints.  This doesn't try to solve the dataflow constraints yet.  This
+/// function doesn't return anything because there are no global dataflow constraints; all dataflow
+/// constraints are function-local and are stored in that function's `FuncInfo`.
+fn build_dataflow_constraints<'tcx>(
+    gacx: &mut GlobalAnalysisCtxt<'tcx>,
+    func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
+    all_fn_ldids: &[LocalDefId],
+    global_pointee_types: &GlobalPointerTable<PointeeTypes<'tcx>>,
+) {
+    let tcx = gacx.tcx;
+
+    for &ldid in all_fn_ldids {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
+            continue;
+        }
+
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let info = func_info.get_mut(&ldid).unwrap();
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+
+        let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
+        let recent_writes = info.recent_writes.get();
+        let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
+
+        // Compute local equivalence classes and dataflow constraints.
+        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
+            dataflow::generate_constraints(&acx, &mir, recent_writes, pointee_types)
+        }));
+        match r {
+            Ok(dataflow) => {
+                info.dataflow.set(dataflow);
+            }
+            Err(pd) => {
+                acx.gacx.mark_fn_failed(
+                    ldid.to_def_id(),
+                    DontRewriteFnReason::DATAFLOW_INVALID,
+                    pd,
+                );
+            }
+        };
+
+        info.acx_data.set(acx.into_data());
     }
 }
 
