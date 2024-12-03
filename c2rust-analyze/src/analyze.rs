@@ -785,6 +785,8 @@ fn run(tcx: TyCtxt) {
         }
     }
 
+    let skip_borrowck_everywhere = env::var("C2RUST_ANALYZE_SKIP_BORROWCK").as_deref() == Ok("1");
+
     // Load permission info from PDG
     let pdg_compare = env::var("C2RUST_ANALYZE_COMPARE_PDG").as_deref() == Ok("1");
     // In compare mode, we load the PDG for comparison after analysis, not before.
@@ -796,6 +798,7 @@ fn run(tcx: TyCtxt) {
                 &mut func_info,
                 &mut asn,
                 &mut updates_forbidden,
+                skip_borrowck_everywhere,
                 pdg_file_path,
             );
         }
@@ -876,8 +879,6 @@ fn run(tcx: TyCtxt) {
 
     debug!("=== ADT Metadata ===");
     debug!("{:?}", gacx.adt_metadata);
-
-    let skip_borrowck_everywhere = env::var("C2RUST_ANALYZE_SKIP_BORROWCK").as_deref() == Ok("1");
 
     let mut loop_count = 0;
     loop {
@@ -2242,6 +2243,7 @@ fn pdg_update_permissions<'tcx>(
     func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
     asn: &mut Assignment,
     updates_forbidden: &mut GlobalPointerTable<PermissionSet>,
+    skip_borrowck_everywhere: bool,
     pdg_file_path: impl AsRef<Path>,
 ) {
     let allow_unsound =
@@ -2280,8 +2282,8 @@ fn pdg_update_permissions<'tcx>(
                 if node_info.flows_to.neg_offset.is_some() {
                     perms.insert(PermissionSet::OFFSET_SUB);
                 }
-                if !node_info.unique {
-                    //perms.remove(PermissionSet::UNIQUE);
+                if !node_info.unique && !skip_borrowck_everywhere {
+                    perms.remove(PermissionSet::UNIQUE);
                 }
             }
 
