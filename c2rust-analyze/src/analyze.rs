@@ -425,7 +425,7 @@ fn parse_def_id(s: &str) -> Result<DefId, String> {
     };
 
     let rendered = format!("{:?}", def_id);
-    if &rendered != s {
+    if &rendered != orig_s {
         return Err(format!(
             "path mismatch: after parsing input {}, obtained a different path {:?}",
             orig_s, def_id
@@ -435,7 +435,7 @@ fn parse_def_id(s: &str) -> Result<DefId, String> {
     Ok(def_id)
 }
 
-fn read_fixed_defs_list(fixed_defs: &mut HashSet<DefId>, path: &str) -> io::Result<()> {
+fn read_defs_list(defs: &mut HashSet<DefId>, path: &str) -> io::Result<()> {
     let f = BufReader::new(File::open(path)?);
     for (i, line) in f.lines().enumerate() {
         let line = line?;
@@ -447,7 +447,7 @@ fn read_fixed_defs_list(fixed_defs: &mut HashSet<DefId>, path: &str) -> io::Resu
         let def_id = parse_def_id(line).unwrap_or_else(|e| {
             panic!("failed to parse {} line {}: {}", path, i + 1, e);
         });
-        fixed_defs.insert(def_id);
+        defs.insert(def_id);
     }
     Ok(())
 }
@@ -512,12 +512,28 @@ fn check_rewrite_path_prefixes(tcx: TyCtxt, fixed_defs: &mut HashSet<DefId>, pre
 fn get_fixed_defs(tcx: TyCtxt) -> io::Result<HashSet<DefId>> {
     let mut fixed_defs = HashSet::new();
     if let Ok(path) = env::var("C2RUST_ANALYZE_FIXED_DEFS_LIST") {
-        read_fixed_defs_list(&mut fixed_defs, &path)?;
+        read_defs_list(&mut fixed_defs, &path)?;
     }
     if let Ok(prefixes) = env::var("C2RUST_ANALYZE_REWRITE_PATHS") {
         check_rewrite_path_prefixes(tcx, &mut fixed_defs, &prefixes);
     }
     Ok(fixed_defs)
+}
+
+fn get_force_rewrite_defs() -> io::Result<HashSet<DefId>> {
+    let mut force_rewrite = HashSet::new();
+    if let Ok(path) = env::var("C2RUST_ANALYZE_FORCE_REWRITE_LIST") {
+        read_defs_list(&mut force_rewrite, &path)?;
+    }
+    Ok(force_rewrite)
+}
+
+fn get_skip_pointee_defs() -> io::Result<HashSet<DefId>> {
+    let mut skip_pointee = HashSet::new();
+    if let Ok(path) = env::var("C2RUST_ANALYZE_SKIP_POINTEE_LIST") {
+        read_defs_list(&mut skip_pointee, &path)?;
+    }
+    Ok(skip_pointee)
 }
 
 /// Local information, specific to a single function.  Many of the data structures we use for
@@ -547,7 +563,14 @@ struct FuncInfo<'tcx> {
 fn run(tcx: TyCtxt) {
     debug!("all defs:");
     for ldid in tcx.hir_crate_items(()).definitions() {
+        //debug!("{:?} @ {:?}", ldid, tcx.source_span(ldid));
         debug!("{:?}", ldid);
+        if tcx.def_kind(ldid) == DefKind::Struct {
+            let adt_def = tcx.adt_def(ldid);
+            for field in &adt_def.non_enum_variant().fields {
+                debug!("{:?}", field.did);
+            }
+        }
     }
 
     // Load the list of fixed defs early, so any errors are reported immediately.
@@ -566,6 +589,14 @@ fn run(tcx: TyCtxt) {
     debug!("callgraph traversal order:");
     for &ldid in &all_fn_ldids {
         debug!("  {:?}", ldid);
+    }
+
+    gacx.force_rewrite = get_force_rewrite_defs().unwrap();
+    eprintln!("{} force_rewrite defs", gacx.force_rewrite.len());
+    let mut xs = gacx.force_rewrite.iter().copied().collect::<Vec<_>>();
+    xs.sort();
+    for x in xs {
+        eprintln!("{:?}", x);
     }
 
     populate_field_users(&mut gacx, &all_fn_ldids);
@@ -1838,6 +1869,8 @@ fn do_pointee_type<'tcx>(
         GlobalPointerTable::<PointeeTypes>::new(gacx.num_global_pointers());
     let mut pointee_vars = pointee_type::VarTable::default();
 
+    let skip_pointee = get_skip_pointee_defs().unwrap();
+
     for &ldid in all_fn_ldids {
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
@@ -1849,9 +1882,14 @@ fn do_pointee_type<'tcx>(
         let mir = mir.borrow();
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
 
-        let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
-            pointee_type::generate_constraints(&acx, &mir, &mut pointee_vars)
-        }));
+        let r = if !skip_pointee.contains(&ldid.to_def_id()) {
+            panic_detail::catch_unwind(AssertUnwindSafe(|| {
+                pointee_type::generate_constraints(&acx, &mir, &mut pointee_vars)
+            }))
+        } else {
+            // For defs in the skip_pointee set, build an empty constraint set.
+            Ok(pointee_type::ConstraintSet::default())
+        };
 
         let local_pointee_types = LocalPointerTable::new(acx.local_ptr_base(), acx.num_pointers());
         info.acx_data.set(acx.into_data());
@@ -2598,7 +2636,15 @@ fn process_new_dont_rewrite_items(gacx: &mut GlobalAnalysisCtxt, asn: &mut Assig
         let mut found_any = false;
 
         for did in gacx.dont_rewrite_fns.take_new_keys() {
+            if gacx.force_rewrite.contains(&did) {
+                eprintln!("process_new_dont_rewrite_items: mark sig of {did:?} fixed: {:?} - IGNORED due to force_rewrite", gacx.dont_rewrite_fns.get(did));
+                continue;
+            }
             found_any = true;
+            eprintln!(
+                "process_new_dont_rewrite_items: mark sig of {did:?} fixed: {:?}",
+                gacx.dont_rewrite_fns.get(did)
+            );
             let lsig = &gacx.fn_sigs[&did];
             make_sig_fixed(asn, lsig);
 
@@ -2608,6 +2654,11 @@ fn process_new_dont_rewrite_items(gacx: &mut GlobalAnalysisCtxt, asn: &mut Assig
             };
 
             for &field_ldid in gacx.fn_fields_used.get(ldid) {
+                if gacx.force_rewrite.contains(&field_ldid.to_def_id()) {
+                    eprintln!("process_new_dont_rewrite_items: mark field {field_ldid:?} fixed: user {did:?} is not rewritten - IGNORED due to force_rewrite");
+                    continue;
+                }
+                eprintln!("process_new_dont_rewrite_items: mark field {field_ldid:?} fixed: user {did:?} is not rewritten");
                 gacx.dont_rewrite_fields.add(
                     field_ldid.to_def_id(),
                     DontRewriteFieldReason::NON_REWRITTEN_USE,
@@ -2618,13 +2669,29 @@ fn process_new_dont_rewrite_items(gacx: &mut GlobalAnalysisCtxt, asn: &mut Assig
         }
 
         for did in gacx.dont_rewrite_statics.take_new_keys() {
+            if gacx.force_rewrite.contains(&did) {
+                eprintln!("process_new_dont_rewrite_items: mark static {did:?} fixed: {:?} - IGNORED due to force_rewrite", gacx.dont_rewrite_statics.get(did));
+                continue;
+            }
             found_any = true;
+            eprintln!(
+                "process_new_dont_rewrite_items: mark static {did:?} fixed: {:?}",
+                gacx.dont_rewrite_statics.get(did)
+            );
             let lty = gacx.static_tys[&did];
             make_ty_fixed(asn, lty);
         }
 
         for did in gacx.dont_rewrite_fields.take_new_keys() {
+            if gacx.force_rewrite.contains(&did) {
+                eprintln!("process_new_dont_rewrite_items: mark field {did:?} fixed: {:?} - IGNORED due to force_rewrite", gacx.dont_rewrite_fields.get(did));
+                continue;
+            }
             found_any = true;
+            eprintln!(
+                "process_new_dont_rewrite_items: mark field {did:?} fixed: {:?}",
+                gacx.dont_rewrite_fields.get(did)
+            );
             let lty = gacx.field_ltys[&did];
             make_ty_fixed(asn, lty);
         }
