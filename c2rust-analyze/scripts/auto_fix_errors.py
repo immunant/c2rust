@@ -1,5 +1,5 @@
 import argparse
-from collections import namedtuple
+from collections import defaultdict, namedtuple
 import json
 import re
 import sys
@@ -231,13 +231,10 @@ def main():
         ))
 
     # Group fixes by file
-    fixes_by_file = {}
+    fixes_by_file = defaultdict(list)
     for fix in fixes:
-        file_fixes = fixes_by_file.get(fix.file_path)
-        if file_fixes is None:
-            fixes_by_file[fix.file_path] = [fix]
-        else:
-            file_fixes.append(fix)
+        fixes_by_file[fix.file_path].append(fix)
+    fixes_by_file = dict(fixes_by_file)
     for file_fixes in fixes_by_file.values():
         file_fixes.sort(key=lambda fix: fix.start_byte)
 
