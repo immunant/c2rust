@@ -232,13 +232,21 @@ impl<'tcx> ConvertVisitor<'tcx> {
             } => {
                 // `memcpy(dest, src, n)` to a `copy_from_slice` call
                 assert!(matches!(hir_rw, Rewrite::Identity));
-                let mut stmts = Vec::with_capacity(5);
+                let mut stmts = Vec::with_capacity(6);
 
                 stmts.push(Rewrite::Let(vec![
                     ("dest".into(), self.get_subexpr(ex, 0)),
                     ("src".into(), self.get_subexpr(ex, 1)),
                     ("byte_len".into(), self.get_subexpr(ex, 2)),
                 ]));
+                // Best-effort check to detect size mismatches.  This can happen if we infer the
+                // wrong pointee type, or if the C code used a hardcoded size for `elem_ty` but we
+                // changed its size during rewriting, or possibly other cases.  These errors could
+                // potentially cause too few items to be copied, introducing a subtle logic error;
+                // this assertion tries to catch this situation early so it's easier to diagnose.
+                stmts.push(format_rewrite!(
+                    "assert_eq!(byte_len as usize % std::mem::size_of::<{elem_ty}>(), 0)"
+                ));
                 stmts.push(Rewrite::Let(vec![(
                     "n".into(),
                     format_rewrite!("byte_len as usize / std::mem::size_of::<{elem_ty}>()"),
@@ -318,6 +326,10 @@ impl<'tcx> ConvertVisitor<'tcx> {
                             ("val".into(), self.get_subexpr(ex, 1)),
                             ("byte_len".into(), self.get_subexpr(ex, 2)),
                         ]),
+                        // Best-effort check to detect size mismatches, as in `MemcpySafe`.
+                        format_rewrite!(
+                            "assert_eq!(byte_len as usize % std::mem::size_of::<{elem_ty}>(), 0)"
+                        ),
                         Rewrite::Let(vec![(
                             "n".into(),
                             format_rewrite!("byte_len as usize / std::mem::size_of::<{elem_ty}>()"),
@@ -345,6 +357,10 @@ impl<'tcx> ConvertVisitor<'tcx> {
                 let mut stmts = match *rw {
                     mir_op::RewriteKind::MallocSafe { .. } => vec![
                         Rewrite::Let(vec![("byte_len".into(), self.get_subexpr(ex, 0))]),
+                        // Best-effort check to detect size mismatches, as in `MemcpySafe`.
+                        format_rewrite!(
+                            "assert_eq!(byte_len as usize % std::mem::size_of::<{elem_ty}>(), 0)"
+                        ),
                         Rewrite::Let1(
                             "n".into(),
                             Box::new(format_rewrite!(
@@ -402,6 +418,10 @@ impl<'tcx> ConvertVisitor<'tcx> {
                         ("src_ptr".into(), self.get_subexpr(ex, 0)),
                         ("dest_byte_len".into(), self.get_subexpr(ex, 1)),
                     ]),
+                    // Best-effort check to detect size mismatches, as in `MemcpySafe`.
+                    format_rewrite!(
+                        "assert_eq!(dest_byte_len as usize % std::mem::size_of::<{elem_ty}>(), 0)"
+                    ),
                     Rewrite::Let1(
                         "dest_n".into(),
                         Box::new(format_rewrite!(
