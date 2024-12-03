@@ -579,6 +579,8 @@ fn run(tcx: TyCtxt) {
     // Infer pointee types
     // ----------------------------------
 
+    let mut pointee_vars = pointee_type::VarTable::default();
+
     for &ldid in &all_fn_ldids {
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
@@ -591,7 +593,7 @@ fn run(tcx: TyCtxt) {
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
 
         let r = panic_detail::catch_unwind(AssertUnwindSafe(|| {
-            pointee_type::generate_constraints(&acx, &mir)
+            pointee_type::generate_constraints(&acx, &mir, &mut pointee_vars)
         }));
 
         let local_pointee_types = LocalPointerTable::new(acx.local_ptr_base(), acx.num_pointers());
@@ -625,12 +627,6 @@ fn run(tcx: TyCtxt) {
         assert!(loop_count <= 1000);
         let old_global_pointee_types = global_pointee_types.clone();
 
-        // Clear the `incomplete` flags for all global pointers.  See comment in
-        // `pointee_types::solve::solve_constraints`.
-        for (_, tys) in global_pointee_types.iter_mut() {
-            tys.incomplete = false;
-        }
-
         for &ldid in &all_fn_ldids {
             if gacx.fn_analysis_invalid(ldid.to_def_id()) {
                 continue;
@@ -640,7 +636,7 @@ fn run(tcx: TyCtxt) {
 
             let pointee_constraints = info.pointee_constraints.get();
             let pointee_types = global_pointee_types.and_mut(info.local_pointee_types.get_mut());
-            pointee_type::solve_constraints(pointee_constraints, pointee_types);
+            pointee_type::solve_constraints(pointee_constraints, &pointee_vars, pointee_types);
         }
 
         if global_pointee_types == old_global_pointee_types {
@@ -2274,15 +2270,10 @@ fn print_function_pointee_types<'tcx>(
 
         for ptr in all_pointer_ids {
             let tys = &pointee_types[ptr];
-            if tys.ltys.is_empty() && !tys.incomplete {
+            if tys.tys.is_empty() {
                 continue;
             }
-            debug!(
-                "  pointer {:?}: {:?}{}",
-                ptr,
-                tys.ltys,
-                if tys.incomplete { " (INCOMPLETE)" } else { "" }
-            );
+            debug!("  pointer {:?}: {:?}", ptr, tys.tys);
         }
     }
 }

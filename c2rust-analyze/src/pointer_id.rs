@@ -268,14 +268,6 @@ impl<T> LocalPointerTable<T> {
         ptr.index().wrapping_sub(self.base) < self.len() as u32
     }
 
-    /// Helper for performing `contains` checks while `self` is mutably borrowed.
-    pub fn range(&self) -> PointerRange {
-        PointerRange {
-            base: self.base,
-            len: self.len() as u32,
-        }
-    }
-
     pub fn iter(&self) -> impl Iterator<Item = (PointerId, &T)> {
         let base = self.base;
         self.table
@@ -408,22 +400,6 @@ impl<T> Index<PointerId> for GlobalPointerTable<T> {
 impl<T> IndexMut<PointerId> for GlobalPointerTable<T> {
     fn index_mut(&mut self, id: PointerId) -> &mut T {
         &mut self.0[id.index()]
-    }
-}
-
-pub struct PointerRange {
-    base: u32,
-    len: u32,
-}
-
-impl PointerRange {
-    pub fn contains(&self, ptr: PointerId) -> bool {
-        // If `ptr.index() < self.base`, the subtraction will wrap to a large number in excess of
-        // `self.len()`.
-        //
-        // Note that `base + len` can't overflow `u32::MAX` due to checks in `LocalPointerTable`
-        // above.
-        ptr.index().wrapping_sub(self.base) < self.len
     }
 }
 
