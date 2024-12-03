@@ -230,7 +230,7 @@ impl<'tcx> ConvertVisitor<'tcx> {
                 src_single,
                 src_option,
             } => {
-                // `memcpy(dest, src, n)` to a `copy_from_slice` call
+                // `memcpy(dest, src, byte_len)` to a `copy_from_slice` call
                 assert!(matches!(hir_rw, Rewrite::Identity));
                 let mut stmts = Vec::with_capacity(6);
 
@@ -262,6 +262,12 @@ impl<'tcx> ConvertVisitor<'tcx> {
                         Rewrite::Text(var.into())
                     };
                     let rhs = if is_option {
+                        // ```
+                        // match var {
+                        //     Some(x) => x,  // or slice::from_ref(x), etc
+                        //     None => { assert_eq!(n, 0); &[] },
+                        // }
+                        // ```
                         let empty_slice = if is_mut {
                             format_rewrite!("&mut []")
                         } else {
@@ -287,6 +293,7 @@ impl<'tcx> ConvertVisitor<'tcx> {
                 };
                 convert("dest", true, dest_single, dest_option);
                 convert("src", false, src_single, src_option);
+                // `dest[..n].copy_from_slice(&src[..n]);`
                 stmts.push(Rewrite::MethodCall(
                     "copy_from_slice".into(),
                     Box::new(format_rewrite!("dest[..n]")),
