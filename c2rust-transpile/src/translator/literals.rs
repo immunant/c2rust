@@ -254,6 +254,10 @@ impl<'c> Translation<'c> {
                 let id = ids.first().unwrap();
                 self.convert_expr(ctx.used(), *id)
             }
+            CTypeKind::Enum(_) => {
+                let id = ids.first().unwrap();
+                self.convert_expr(ctx.used(), *id)
+            }
             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                 self.vector_list_initializer(ctx, ids, ctype, len)
             }
