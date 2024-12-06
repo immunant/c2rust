@@ -386,7 +386,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn analysis_tests_misc_miri() -> eyre::Result<()> {
         init();
         let mut cmd = Command::new("cargo");
