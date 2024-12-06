@@ -22,6 +22,8 @@ extern "C" {
     fn entry4(_: c_uint, _: *mut c_int);
 
     fn entry5(_: c_uint, _: *mut c_int);
+
+    fn entry6(_: c_uint, _: *mut c_int);
 }
 
 const BUFFER_SIZE: usize = 10;
