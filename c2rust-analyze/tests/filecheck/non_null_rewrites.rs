@@ -42,9 +42,15 @@ unsafe fn use_mut(mut p: *mut i32) -> i32 {
         // CHECK: *(p).as_deref_mut().unwrap() = 1;
         *p = 1;
     }
+    // The first use of `p` must borrow; the second and final use can move.
     // CHECK: use_const
     // CHECK-SAME: (p).as_deref()
-    use_const(p)
+    let x = use_const(p);
+    // CHECK: use_const
+    // CHECK-SAME: (p).map(|ptr| &*ptr)
+    // CHECK-NOT: as_deref
+    let y = use_const(p);
+    x + y
 }
 
 // CHECK-LABEL: unsafe fn use_const{{[<(]}}
