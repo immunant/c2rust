@@ -245,7 +245,6 @@ bitflags! {
             | Self::DATAFLOW_INVALID.bits
             | Self::BORROWCK_INVALID.bits
             | Self::MISC_ANALYSIS_INVALID.bits
-            | Self::REWRITE_INVALID.bits
             | Self::FAKE_INVALID_FOR_TESTING.bits;
     }
 }
