@@ -1,6 +1,13 @@
 //! Analysis to find the last use of a MIR local.  For non-`Copy` types, the last use can be made
 //! into a move instead of a clone or borrow.
 //!
+//! In terms of liveness analysis, a "last use" is a statement where a variable transitions from
+//! live to dead as a result of its use in the statement.  A variable can also become dead due to
+//! control flow: in `if f(p) { g(p); }`, the variable `p` is still live after evaluating `f(p)`,
+//! but becomes dead upon taking the `else` branch, which contains no more uses of `p`.  In this
+//! example, `g(p)` is a last use, but `f(p)` is not (and in the `else` case, no last use of `p`
+//! will be encountered during execution).
+//!
 //! We specifically use this when handling borrows of non-`Copy` pointers like `Option<&mut T>`.
 //! At most use sites, we produce `ptr.as_deref_mut().unwrap() ...`, which borrows `ptr` instead of
 //! moving it.  However, this construction produces a reference with a shorter lifetime, matching
