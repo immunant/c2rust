@@ -30,10 +30,18 @@ pub enum WhichPlace {
 #[derive(Clone, Debug, Default)]
 pub struct LastUse {
     /// `(location, which_place)` is present in this map if the indicated `Place` is the last use
-    /// of that `Place`'s `Local`.
+    /// of the value currently in that `Place`'s `Local`.
     ///
-    /// Note that there may be more than one "last use" of a given local, if it is used, written,
-    /// and then used again.
+    /// Note that there may be more than one "last use" for a given local.  If a variable `p` is
+    /// used, overwritten, and used again, then both uses may be marked as last uses: the first
+    /// value stored in `p` is used for the last time, then a new value is stored in `p`, and the
+    /// second value is also used (possibly for the last time).  When there is branching control
+    /// flow, such as `if cond { f(p); } else { g(p); }`, then there may be a last use in each
+    /// branch.
+    ///
+    /// Also, there may be zero last uses for a given local.  In `while f(p) { g(p); }`, the use
+    /// `g(p)` can't be a last use because `f(p)` will be called afterward, and `f(p)` can't be a
+    /// last use because `g(p)` might be called afterward.
     ///
     /// The `Local` value is used only for debugging; it isn't needed for generating rewrites.
     set: HashMap<(Location, WhichPlace), Local>,
