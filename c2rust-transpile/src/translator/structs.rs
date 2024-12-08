@@ -544,12 +544,6 @@ impl<'a> Translation<'a> {
                 Both(field_id, (field_name, _, bitfield_width, use_inner_type)) => {
                     let mut expr = self.convert_expr(ctx.used(), *field_id)?;
 
-                    if !expr.is_pure() {
-                        return Err(TranslationError::generic(
-                            "Expected no statements in field expression",
-                        ));
-                    }
-
                     if use_inner_type {
                         // See comment above
                         expr = expr.map(|fi| mk().anon_field_expr(fi, 0));
