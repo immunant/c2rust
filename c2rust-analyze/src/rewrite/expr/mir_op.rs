@@ -417,6 +417,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 }
                 SubLoc::Rvalue => {
                     which = Some(last_use::WhichPlace::Operand(0));
+                    // Note there may be more entries in `self.sub_loc` giving a more precise
+                    // position, as in `[SubLoc::Rvalue, SubLoc::CallArg(0)]`.  We keep looping
+                    // over `self.sub_loc` and take the last (most precise) entry.
                 }
                 SubLoc::CallArg(i) => {
                     // In a call, `WhichPlace::Operand(0)` refers to the callee function.
