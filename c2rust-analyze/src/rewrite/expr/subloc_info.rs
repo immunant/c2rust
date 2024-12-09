@@ -9,7 +9,7 @@ use rustc_middle::mir::{
     BasicBlock, Body, BorrowKind, Location, Operand, Place, PlaceElem, PlaceRef, Rvalue, Statement,
     StatementKind, Terminator, TerminatorKind,
 };
-use rustc_middle::ty::{Ty, TyKind};
+use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
 use super::mir_op::{SubLoc, PlaceAccess};
 
@@ -46,6 +46,56 @@ pub enum SublocType<'tcx> {
     // `rustc_type_ir`.
     Ptr(TypeDesc<'tcx>),
     Other(Ty<'tcx>),
+}
+
+
+struct TypeConversionContext<'a, 'tcx> {
+    tcx: TyCtxt<'tcx>,
+    perms: &'a GlobalPointerTable<PermissionSet>,
+    flags: &'a GlobalPointerTable<FlagSet>,
+    pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
+}
+
+impl<'a, 'tcx> TypeConversionContext<'a, 'tcx> {
+    fn lty_to_subloc_types(&self, lty: LTy<'tcx>) -> (SublocType<'tcx>, SublocType<'tcx>) {
+        // TODO: Doing this correctly is potentially quite complex.  This function needs to handle
+        // (1) FIXED, (2) `pointee_types`, (3) pointer-to-pointer, and (4) existing references in
+        // partially-safe code.  Furthermore, the old and new `SublocType`s should be arranged to
+        // have the same or similar pointee types when possible.
+        //
+        // All `LTy` to `SublocType` conversions go through this function, so once it supports a
+        // feature, that feature should work throughout the visitor.
+
+        let tcx = self.tcx;
+        let ptr = lty.label;
+
+        if ptr.is_none() {
+            // Non-pointer case.
+            return (SublocType::Other(lty.ty), SublocType::Other(lty.ty));
+        }
+
+        let old_pointee_ty = match *lty.ty.kind() {
+            TyKind::Ref(_, ty, _) => ty,
+            TyKind::RawPtr(mt) => mt.ty,
+            TyKind::Adt(adt_def, substs) if adt_def.is_box() => substs.type_at(0),
+            _ => unreachable!("type {lty:?} has PointerId but has non-pointer TyKind?"),
+        };
+        let old_ptr_desc = type_desc::unpack_pointer_type(tcx, lty.ty, old_pointee_ty);
+        let old_desc = old_ptr_desc.to_type_desc(old_pointee_ty);
+        let mut new_desc = type_desc::perms_to_desc_with_pointee(
+            tcx,
+            old_pointee_ty,
+            lty.ty,
+            self.perms[ptr],
+            self.flags[ptr],
+        );
+
+        if let Some(pointee_lty) = self.pointee_types[ptr].get_sole_lty() {
+            new_desc.pointee_ty = pointee_lty.ty;
+        }
+
+        (SublocType::Ptr(old_desc), SublocType::Ptr(new_desc))
+    }
 }
 
 
@@ -133,44 +183,15 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
 
 
     fn lty_to_subloc_types(&self, lty: LTy<'tcx>) -> (SublocType<'tcx>, SublocType<'tcx>) {
-        // TODO: Doing this correctly is potentially quite complex.  This function needs to handle
-        // (1) FIXED, (2) `pointee_types`, (3) pointer-to-pointer, and (4) existing references in
-        // partially-safe code.  Furthermore, the old and new `SublocType`s should be arranged to
-        // have the same or similar pointee types when possible.
-        //
-        // All `LTy` to `SublocType` conversions go through this function, so once it supports a
-        // feature, that feature should work throughout the visitor.
-
-        let tcx = self.acx.tcx();
-        let ptr = lty.label;
-
-        if ptr.is_none() {
-            // Non-pointer case.
-            return (SublocType::Other(lty.ty), SublocType::Other(lty.ty));
-        }
-
-        let old_pointee_ty = match *lty.ty.kind() {
-            TyKind::Ref(_, ty, _) => ty,
-            TyKind::RawPtr(mt) => mt.ty,
-            TyKind::Adt(adt_def, substs) if adt_def.is_box() => substs.type_at(0),
-            _ => unreachable!("type {lty:?} has PointerId but has non-pointer TyKind?"),
+        let conv_cx = TypeConversionContext {
+            tcx: self.acx.tcx(),
+            perms: self.perms,
+            flags: self.flags,
+            pointee_types: self.pointee_types,
         };
-        let old_ptr_desc = type_desc::unpack_pointer_type(tcx, lty.ty, old_pointee_ty);
-        let old_desc = old_ptr_desc.to_type_desc(old_pointee_ty);
-        let mut new_desc = type_desc::perms_to_desc_with_pointee(
-            tcx,
-            old_pointee_ty,
-            lty.ty,
-            self.perms[ptr],
-            self.flags[ptr],
-        );
-
-        if let Some(pointee_lty) = self.pointee_types[ptr].get_sole_lty() {
-            new_desc.pointee_ty = pointee_lty.ty;
-        }
-
-        (SublocType::Ptr(old_desc), SublocType::Ptr(new_desc))
+        conv_cx.lty_to_subloc_types(lty)
     }
+
 
     fn emit_info(&mut self, info: SublocInfo<'tcx>) {
         let key = (self.loc, self.sub_loc.clone());
