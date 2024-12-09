@@ -10,6 +10,7 @@ use crate::dataflow::DataflowConstraints;
 use crate::equiv::GlobalEquivSet;
 use crate::equiv::LocalEquivSet;
 use crate::labeled_ty::LabeledTyCtxt;
+use crate::last_use::{self, LastUse};
 use crate::panic_detail;
 use crate::panic_detail::PanicDetail;
 use crate::pointee_type;
@@ -536,6 +537,31 @@ fn get_skip_pointee_defs() -> io::Result<HashSet<DefId>> {
     Ok(skip_pointee)
 }
 
+fn get_rewrite_mode(tcx: TyCtxt, pointwise_fn_ldid: Option<LocalDefId>) -> rewrite::UpdateFiles {
+    let mut update_files = rewrite::UpdateFiles::No;
+    if let Ok(val) = env::var("C2RUST_ANALYZE_REWRITE_MODE") {
+        match val.as_str() {
+            "none" => {}
+            "inplace" => {
+                update_files = rewrite::UpdateFiles::InPlace;
+            }
+            "alongside" => {
+                update_files = rewrite::UpdateFiles::Alongside;
+            }
+            "pointwise" => {
+                let pointwise_fn_ldid = pointwise_fn_ldid.expect(
+                    "C2RUST_ANALYZE_REWRITE_MODE=pointwise, \
+                            but pointwise_fn_ldid is unset?",
+                );
+                let pointwise_fn_name = tcx.item_name(pointwise_fn_ldid.to_def_id());
+                update_files = rewrite::UpdateFiles::AlongsidePointwise(pointwise_fn_name);
+            }
+            _ => panic!("bad value {:?} for C2RUST_ANALYZE_REWRITE_MODE", val),
+        }
+    }
+    update_files
+}
+
 /// Local information, specific to a single function.  Many of the data structures we use for
 /// the pointer analysis have a "global" part that's shared between all functions and a "local"
 /// part that's specific to the function being analyzed; this struct contains only the local
@@ -558,6 +584,9 @@ struct FuncInfo<'tcx> {
     local_pointee_types: MaybeUnset<LocalPointerTable<PointeeTypes<'tcx>>>,
     /// Table for looking up the most recent write to a given local.
     recent_writes: MaybeUnset<RecentWrites>,
+    /// Analysis result indicating which uses of each local are actually the last use of that
+    /// local.
+    last_use: MaybeUnset<LastUse>,
 }
 
 fn run(tcx: TyCtxt) {
@@ -616,6 +645,7 @@ fn run(tcx: TyCtxt) {
     // ----------------------------------
 
     do_recent_writes(&gacx, &mut func_info, &all_fn_ldids);
+    do_last_use(&gacx, &mut func_info, &all_fn_ldids);
 
     // ----------------------------------
     // Remap `PointerId`s by equivalence class
@@ -1096,6 +1126,17 @@ fn run(tcx: TyCtxt) {
         return;
     }
 
+    if env::var("C2RUST_ANALYZE_DEBUG_LAST_USE").is_ok() {
+        let mut ann = AnnotationBuffer::new(tcx);
+        debug_annotate_last_use(&gacx, &func_info, &all_fn_ldids, &mut ann);
+        let annotations = ann.finish();
+        let update_files = get_rewrite_mode(tcx, None);
+        eprintln!("update mode = {:?}", update_files);
+        rewrite::apply_rewrites(tcx, Vec::new(), annotations, update_files);
+        eprintln!("finished writing last_use annotations - exiting");
+        return;
+    }
+
     if !rewrite_pointwise {
         run2(
             None,
@@ -1239,6 +1280,7 @@ fn run2<'tcx>(
                     &mut acx,
                     &asn,
                     pointee_types,
+                    &info.last_use,
                     ldid.to_def_id(),
                     &mir,
                     hir_body_id,
@@ -1547,27 +1589,7 @@ fn run2<'tcx>(
     let annotations = ann.finish();
 
     // Apply rewrite to all functions at once.
-    let mut update_files = rewrite::UpdateFiles::No;
-    if let Ok(val) = env::var("C2RUST_ANALYZE_REWRITE_MODE") {
-        match val.as_str() {
-            "none" => {}
-            "inplace" => {
-                update_files = rewrite::UpdateFiles::InPlace;
-            }
-            "alongside" => {
-                update_files = rewrite::UpdateFiles::Alongside;
-            }
-            "pointwise" => {
-                let pointwise_fn_ldid = pointwise_fn_ldid.expect(
-                    "C2RUST_ANALYZE_REWRITE_MODE=pointwise, \
-                            but pointwise_fn_ldid is unset?",
-                );
-                let pointwise_fn_name = tcx.item_name(pointwise_fn_ldid.to_def_id());
-                update_files = rewrite::UpdateFiles::AlongsidePointwise(pointwise_fn_name);
-            }
-            _ => panic!("bad value {:?} for C2RUST_ANALYZE_REWRITE_MODE", val),
-        }
-    }
+    let update_files = get_rewrite_mode(tcx, pointwise_fn_ldid);
     rewrite::apply_rewrites(tcx, all_rewrites, annotations, update_files);
 
     // ----------------------------------
@@ -1853,6 +1875,69 @@ fn do_recent_writes<'tcx>(
 
         // This is very straightforward because it doesn't need an `AnalysisCtxt` and never fails.
         info.recent_writes.set(RecentWrites::new(&mir));
+    }
+}
+
+fn do_last_use<'tcx>(
+    gacx: &GlobalAnalysisCtxt<'tcx>,
+    func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
+    all_fn_ldids: &[LocalDefId],
+) {
+    let tcx = gacx.tcx;
+    for &ldid in all_fn_ldids {
+        if gacx.fn_analysis_invalid(ldid.to_def_id()) {
+            continue;
+        }
+
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let info = func_info.get_mut(&ldid).unwrap();
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+
+        // This is very straightforward because it doesn't need an `AnalysisCtxt` and never fails.
+        info.last_use.set(last_use::calc_last_use(&mir));
+    }
+}
+
+fn debug_annotate_last_use<'tcx>(
+    gacx: &GlobalAnalysisCtxt<'tcx>,
+    func_info: &HashMap<LocalDefId, FuncInfo<'tcx>>,
+    all_fn_ldids: &[LocalDefId],
+    ann: &mut AnnotationBuffer,
+) {
+    let tcx = gacx.tcx;
+    for &ldid in all_fn_ldids {
+        let ldid_const = WithOptConstParam::unknown(ldid);
+        let info = match func_info.get(&ldid) {
+            Some(x) => x,
+            None => continue,
+        };
+        let mir = tcx.mir_built(ldid_const);
+        let mir = mir.borrow();
+
+        if !info.last_use.is_set() {
+            continue;
+        }
+        let last_use = info.last_use.get();
+        let mut last_use = last_use.iter().collect::<Vec<_>>();
+        last_use.sort();
+        for (loc, which, local) in last_use {
+            let span = mir
+                .stmt_at(loc)
+                .either(|stmt| stmt.source_info.span, |term| term.source_info.span);
+            ann.emit(
+                span,
+                format!(
+                    "{which:?}: last use of {} {local:?} ({})",
+                    if mir.local_kind(local) == LocalKind::Temp {
+                        "temporary"
+                    } else {
+                        "local"
+                    },
+                    describe_local(tcx, &mir.local_decls[local]),
+                ),
+            );
+        }
     }
 }
 

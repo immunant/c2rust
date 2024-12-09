@@ -8,6 +8,7 @@
 //! materialize adjustments only on code that's subject to some rewrite.
 
 use crate::context::{AnalysisCtxt, Assignment, DontRewriteFnReason, FlagSet, LTy, PermissionSet};
+use crate::last_use::{self, LastUse};
 use crate::panic_detail;
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{GlobalPointerTable, PointerId, PointerTable};
@@ -138,7 +139,10 @@ pub enum RewriteKind {
     OptionMapEnd,
     /// Downgrade ownership of an `Option` to `Option<&_>` or `Option<&mut _>` by calling
     /// `as_ref()`/`as_mut()` or `as_deref()`/`as_deref_mut()`.
-    OptionDowngrade { mutbl: bool, deref: bool },
+    OptionDowngrade {
+        mutbl: bool,
+        kind: OptionDowngradeKind,
+    },
 
     /// Extract the `T` from `DynOwned<T>`.
     DynOwnedUnwrap,
@@ -171,6 +175,16 @@ pub enum RewriteKind {
     CellFromMut,
     /// `x` to `x.as_ptr()`
     AsPtr,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum OptionDowngradeKind {
+    /// E.g. `Option<T>` to `Option<&mut T>` via `p.as_mut()`
+    Borrow,
+    /// E.g. `Option<Box<T>>` to `Option<&mut T>` via `p.as_deref_mut()`
+    Deref,
+    /// E.g. `Option<&mut T>` to `Option<&T>` via `p.map(|ptr| &*ptr)`
+    MoveAndDeref,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -240,6 +254,7 @@ struct ExprRewriteVisitor<'a, 'tcx> {
     perms: &'a GlobalPointerTable<PermissionSet>,
     flags: &'a GlobalPointerTable<FlagSet>,
     pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
+    last_use: &'a LastUse,
     rewrites: &'a mut HashMap<Location, Vec<MirRewrite>>,
     mir: &'a Body<'tcx>,
     loc: Location,
@@ -252,6 +267,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         acx: &'a AnalysisCtxt<'a, 'tcx>,
         asn: &'a Assignment,
         pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
+        last_use: &'a LastUse,
         rewrites: &'a mut HashMap<Location, Vec<MirRewrite>>,
         mir: &'a Body<'tcx>,
     ) -> ExprRewriteVisitor<'a, 'tcx> {
@@ -262,6 +278,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             perms,
             flags,
             pointee_types,
+            last_use,
             rewrites,
             mir,
             loc: Location {
@@ -363,6 +380,12 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         desc.dyn_owned
     }
 
+    /// Check whether the `Place` identified by `which` within the current statement or terminator
+    /// is the last use of a local.
+    fn is_last_use(&self, which: last_use::WhichPlace) -> bool {
+        self.last_use.is_last_use(self.loc, which)
+    }
+
     fn rewrite_lty(&self, lty: LTy<'tcx>) -> Ty<'tcx> {
         let tcx = self.acx.tcx();
         rewrite::ty::rewrite_lty(
@@ -381,6 +404,47 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         let printer = FmtPrinter::new(tcx, Namespace::TypeNS);
         let s = rewritten_ty.print(printer).unwrap().into_buffer();
         (rewritten_ty, s)
+    }
+
+    fn current_sub_loc_as_which_place(&self) -> Option<last_use::WhichPlace> {
+        // This logic is a bit imprecise, but should be correct in the cases where we actually call
+        // it (namely, when the `Place`/`Rvalue` is simply a `Local`).
+        let mut which = None;
+        for sl in &self.sub_loc {
+            match *sl {
+                SubLoc::Dest => {
+                    which = Some(last_use::WhichPlace::Lvalue);
+                }
+                SubLoc::Rvalue => {
+                    which = Some(last_use::WhichPlace::Operand(0));
+                    // Note there may be more entries in `self.sub_loc` giving a more precise
+                    // position, as in `[SubLoc::Rvalue, SubLoc::CallArg(0)]`.  We keep looping
+                    // over `self.sub_loc` and take the last (most precise) entry.
+                }
+                SubLoc::CallArg(i) => {
+                    // In a call, `WhichPlace::Operand(0)` refers to the callee function.
+                    which = Some(last_use::WhichPlace::Operand(i + 1));
+                }
+                SubLoc::RvalueOperand(i) => {
+                    which = Some(last_use::WhichPlace::Operand(i));
+                }
+                SubLoc::RvaluePlace(_) => {}
+                SubLoc::OperandPlace => {}
+                SubLoc::PlaceDerefPointer => {}
+                SubLoc::PlaceFieldBase => {}
+                SubLoc::PlaceIndexArray => {}
+            }
+        }
+        which
+    }
+
+    /// Like `is_last_use`, but infers `WhichPlace` based on `self.sub_loc`.
+    fn current_sub_loc_is_last_use(&self) -> bool {
+        if let Some(which) = self.current_sub_loc_as_which_place() {
+            self.is_last_use(which)
+        } else {
+            false
+        }
     }
 
     fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
@@ -466,6 +530,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     // place, visit the RHS place mutably and `mem::take` out of it to avoid a
                     // static ownership transfer.
 
+                    // Determine whether it's okay for the cast emitted below to move the
+                    // expression that it's casting.  This is the case if the rvalue is not a
+                    // place, which means it produces a temporary value that can be moved as
+                    // needed, or if the rvalue is a place but is the last use of a local.
+                    let cast_can_move =
+                        !rv.is_place() || (rv.is_local() && v.current_sub_loc_is_last_use());
+
                     // Check whether this assignment transfers ownership of its RHS.  If so, return
                     // the RHS `Place`.
                     let assignment_transfers_ownership = || {
@@ -498,7 +569,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         if v.is_nullable(rv_lty.label) {
                             v.emit(RewriteKind::OptionDowngrade {
                                 mutbl: true,
-                                deref: false,
+                                kind: OptionDowngradeKind::Borrow,
                             });
                             v.emit(RewriteKind::OptionMapBegin);
                             v.emit(RewriteKind::Deref);
@@ -508,13 +579,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         if v.is_nullable(rv_lty.label) {
                             v.emit(RewriteKind::OptionMapEnd);
                         }
-                        v.emit_cast_lty_lty(rv_lty, pl_lty);
+                        v.emit_cast_lty_lty(rv_lty, pl_lty, cast_can_move);
                         return;
                     }
 
                     // Normal case: just `visit_rvalue` and emit a cast if needed.
                     v.visit_rvalue(rv, Some(rv_lty));
-                    v.emit_cast_lty_lty(rv_lty, pl_lty)
+                    v.emit_cast_lty_lty_or_borrow(rv_lty, pl_lty, cast_can_move)
                 });
                 self.enter_dest(|v| v.visit_place(pl, PlaceAccess::Mut, RequireSinglePointer::Yes));
             }
@@ -583,7 +654,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 }
 
                                 if !pl_ty.label.is_none() {
-                                    v.emit_cast_lty_lty(lsig.output, pl_ty);
+                                    // Emit a cast.  The call returns a temporary, which the cast
+                                    // is always allowed to move.
+                                    v.emit_cast_lty_lty(lsig.output, pl_ty, true);
                                 }
                             });
                         }
@@ -632,7 +705,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 // TODO: The result of `MemcpySafe` is always a slice, so this cast
                                 // may be using an incorrect input type.  See the comment on the
                                 // `MemcpySafe` case of `rewrite::expr::convert` for details.
-                                v.emit_cast_lty_lty(dest_lty, pl_ty);
+                                v.emit_cast_lty_lty(dest_lty, pl_ty, true);
                             }
                         });
                     }
@@ -672,7 +745,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 && v.perms[pl_ty.label].intersects(PermissionSet::USED)
                             {
                                 let dest_lty = v.acx.type_of(&args[0]);
-                                v.emit_cast_lty_lty(dest_lty, pl_ty);
+                                v.emit_cast_lty_lty(dest_lty, pl_ty, true);
                             }
                         });
                     }
@@ -1046,15 +1119,22 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn visit_operand(&mut self, op: &Operand<'tcx>, expect_ty: Option<LTy<'tcx>>) {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
-                // TODO: should this be Move, Imm, or dependent on the type?
-                self.enter_operand_place(|v| {
-                    v.visit_place(pl, PlaceAccess::Move, RequireSinglePointer::Yes)
-                });
+                let pl_lty = self.acx.type_of(pl);
+                // Moving out of a `DynOwned` pointer requires `Mut` access rather than `Move`.
+                // TODO: this should probably check `desc.dyn_owned` rather than perms directly
+                let access = if !pl_lty.label.is_none()
+                    && self.perms[pl_lty.label].contains(PermissionSet::FREE)
+                {
+                    PlaceAccess::Mut
+                } else {
+                    PlaceAccess::Move
+                };
+                self.enter_operand_place(|v| v.visit_place(pl, access, RequireSinglePointer::Yes));
 
                 if let Some(expect_ty) = expect_ty {
-                    let ptr_lty = self.acx.type_of(pl);
-                    if !ptr_lty.label.is_none() {
-                        self.emit_cast_lty_lty(ptr_lty, expect_ty);
+                    if !pl_lty.label.is_none() {
+                        let cast_can_move = pl.is_local() && self.current_sub_loc_is_last_use();
+                        self.emit_cast_lty_lty(pl_lty, expect_ty, cast_can_move);
                     }
                 }
             }
@@ -1066,12 +1146,20 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn visit_operand_desc(&mut self, op: &Operand<'tcx>, expect_desc: TypeDesc<'tcx>) {
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
-                // TODO: should this be Move, Imm, or dependent on the type?
-                self.visit_place(pl, PlaceAccess::Move, RequireSinglePointer::Yes);
+                let pl_lty = self.acx.type_of(pl);
+                // Moving out of a `DynOwned` pointer requires `Mut` access rather than `Move`.
+                // TODO: this should probably check `desc.dyn_owned` rather than perms directly
+                let access = if !pl_lty.label.is_none()
+                    && self.perms[pl_lty.label].contains(PermissionSet::FREE)
+                {
+                    PlaceAccess::Mut
+                } else {
+                    PlaceAccess::Move
+                };
+                self.enter_operand_place(|v| v.visit_place(pl, access, RequireSinglePointer::Yes));
 
-                let ptr_lty = self.acx.type_of(pl);
-                if !ptr_lty.label.is_none() {
-                    self.emit_cast_lty_desc(ptr_lty, expect_desc);
+                if !pl_lty.label.is_none() {
+                    self.emit_cast_lty_desc(pl_lty, expect_desc);
                 }
             }
             Operand::Constant(..) => {}
@@ -1122,6 +1210,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         };
         match last_proj {
             PlaceElem::Deref => {
+                let cast_can_move = base_pl.is_local() && self.current_sub_loc_is_last_use();
                 self.enter_place_deref_pointer(|v| {
                     v.visit_place_ref(base_pl, proj_ltys, access, RequireSinglePointer::Yes);
                     if !v.flags[base_lty.label].contains(FlagSet::FIXED) {
@@ -1140,7 +1229,13 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             if !desc.own.is_copy() {
                                 v.emit(RewriteKind::OptionDowngrade {
                                     mutbl: access == PlaceAccess::Mut,
-                                    deref: !desc.dyn_owned,
+                                    kind: if desc.dyn_owned {
+                                        OptionDowngradeKind::Borrow
+                                    } else if cast_can_move {
+                                        OptionDowngradeKind::MoveAndDeref
+                                    } else {
+                                        OptionDowngradeKind::Deref
+                                    },
                                 });
                             }
                             v.emit(RewriteKind::OptionUnwrap);
@@ -1149,6 +1244,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             }
                         }
                         if desc.dyn_owned {
+                            // TODO: do we need a `MoveAndDeref` equivalent for `DynOwned`?
                             v.emit(RewriteKind::DynOwnedDowngrade {
                                 mutbl: access == PlaceAccess::Mut,
                             });
@@ -1272,10 +1368,28 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         builder.build_cast_desc_lty(from, to_lty);
     }
 
-    fn emit_cast_lty_lty(&mut self, from_lty: LTy<'tcx>, to_lty: LTy<'tcx>) {
+    /// Emit a cast from `from_lty` to `to_lty` at the current `(loc, sub_loc)`.  `is_local` should
+    /// be set when the thing being cast is a plain local with no projections; in that case, we may
+    /// apply special handling if this is the last use of the local.
+    fn emit_cast_lty_lty(&mut self, from_lty: LTy<'tcx>, to_lty: LTy<'tcx>, cast_can_move: bool) {
         let perms = self.perms;
         let flags = self.flags;
-        let mut builder = CastBuilder::new(self.acx.tcx(), perms, flags, |rk| self.emit(rk));
+        let mut builder = CastBuilder::new(self.acx.tcx(), perms, flags, |rk| self.emit(rk))
+            .can_move(cast_can_move);
+        builder.build_cast_lty_lty(from_lty, to_lty);
+    }
+
+    fn emit_cast_lty_lty_or_borrow(
+        &mut self,
+        from_lty: LTy<'tcx>,
+        to_lty: LTy<'tcx>,
+        cast_can_move: bool,
+    ) {
+        let perms = self.perms;
+        let flags = self.flags;
+        let mut builder = CastBuilder::new(self.acx.tcx(), perms, flags, |rk| self.emit(rk))
+            .can_move(cast_can_move)
+            .borrow(true);
         builder.build_cast_lty_lty(from_lty, to_lty);
     }
 
@@ -1404,6 +1518,14 @@ pub struct CastBuilder<'a, 'tcx, PT1, PT2, F> {
     perms: &'a PT1,
     flags: &'a PT2,
     emit: F,
+    /// If set, the cast builder is allowed to move the expression being cast.  For example, we
+    /// might emit `ptr.map(|p| &mut *p).unwrap()` instead of `ptr.as_deref_mut().unwrap()` when
+    /// `can_move` is set; the former moves out of `ptr` but avoids an additional borrow, making it
+    /// suitable to be used as the result expression of a function.
+    can_move: bool,
+    /// If set, the cast builder will emit a downgrade/borrow operation even for no-op casts, if
+    /// the thing being cast can't be moved (`!can_move`) and also can't be copied.
+    borrow: bool,
 }
 
 impl<'a, 'tcx, PT1, PT2, F> CastBuilder<'a, 'tcx, PT1, PT2, F>
@@ -1423,7 +1545,19 @@ where
             perms,
             flags,
             emit,
+            can_move: false,
+            borrow: false,
         }
+    }
+
+    pub fn can_move(mut self, can_move: bool) -> Self {
+        self.can_move = can_move;
+        self
+    }
+
+    pub fn borrow(mut self, borrow: bool) -> Self {
+        self.borrow = borrow;
+        self
     }
 
     pub fn build_cast_desc_desc(&mut self, from: TypeDesc<'tcx>, to: TypeDesc<'tcx>) {
@@ -1457,6 +1591,39 @@ where
         from.pointee_ty = to.pointee_ty;
 
         if from == to {
+            // We normally do nothing if the `from` and `to` types are the same.  However, in some
+            // cases we need to introduce a downgrade to avoid moving the operand inappropriately.
+            let can_reborrow = !from.option && !from.dyn_owned;
+            let need_downgrade = !self.can_move && !from.own.is_copy() && !can_reborrow;
+            if self.borrow && need_downgrade {
+                let mutbl = match from.own {
+                    Ownership::Raw | Ownership::Imm | Ownership::Cell => false,
+                    Ownership::RawMut | Ownership::Mut => true,
+                    // Can't downgrade in these cases.
+                    Ownership::Rc | Ownership::Box => return Ok(()),
+                };
+                if from.option {
+                    (self.emit)(RewriteKind::OptionDowngrade {
+                        mutbl,
+                        kind: if from.dyn_owned {
+                            OptionDowngradeKind::Borrow
+                        } else {
+                            OptionDowngradeKind::Deref
+                        },
+                    });
+                }
+                if from.dyn_owned {
+                    if from.option {
+                        (self.emit)(RewriteKind::OptionMapBegin);
+                        (self.emit)(RewriteKind::Deref);
+                    }
+                    (self.emit)(RewriteKind::DynOwnedDowngrade { mutbl });
+                    if from.option {
+                        (self.emit)(RewriteKind::OptionMapEnd);
+                    }
+                }
+            }
+
             return Ok(());
         }
 
@@ -1478,7 +1645,13 @@ where
                     Ownership::Raw | Ownership::Imm => {
                         (self.emit)(RewriteKind::OptionDowngrade {
                             mutbl: false,
-                            deref: !from.dyn_owned,
+                            kind: if from.dyn_owned {
+                                OptionDowngradeKind::Borrow
+                            } else if self.can_move {
+                                OptionDowngradeKind::MoveAndDeref
+                            } else {
+                                OptionDowngradeKind::Deref
+                            },
                         });
                         deref_after_unwrap = from.dyn_owned;
                         from.own = Ownership::Imm;
@@ -1486,7 +1659,13 @@ where
                     Ownership::RawMut | Ownership::Cell | Ownership::Mut => {
                         (self.emit)(RewriteKind::OptionDowngrade {
                             mutbl: true,
-                            deref: !from.dyn_owned,
+                            kind: if from.dyn_owned {
+                                OptionDowngradeKind::Borrow
+                            } else if self.can_move {
+                                OptionDowngradeKind::MoveAndDeref
+                            } else {
+                                OptionDowngradeKind::Deref
+                            },
                         });
                         deref_after_unwrap = from.dyn_owned;
                         from.own = Ownership::Mut;
@@ -1849,15 +2028,66 @@ where
     }
 }
 
+trait IsLocal {
+    fn is_local(&self) -> bool;
+}
+
+impl IsLocal for Place<'_> {
+    fn is_local(&self) -> bool {
+        self.projection.is_empty()
+    }
+}
+
+impl IsLocal for PlaceRef<'_> {
+    fn is_local(&self) -> bool {
+        self.projection.is_empty()
+    }
+}
+
+impl IsLocal for Operand<'_> {
+    fn is_local(&self) -> bool {
+        self.place().map_or(false, |pl| pl.is_local())
+    }
+}
+
+impl IsLocal for Rvalue<'_> {
+    fn is_local(&self) -> bool {
+        match *self {
+            Rvalue::Use(ref op) => op.is_local(),
+            _ => false,
+        }
+    }
+}
+
+trait IsPlace {
+    fn is_place(&self) -> bool;
+}
+
+impl IsPlace for Operand<'_> {
+    fn is_place(&self) -> bool {
+        self.place().is_some()
+    }
+}
+
+impl IsPlace for Rvalue<'_> {
+    fn is_place(&self) -> bool {
+        match *self {
+            Rvalue::Use(ref op) => op.is_place(),
+            _ => false,
+        }
+    }
+}
+
 pub fn gen_mir_rewrites<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,
     pointee_types: PointerTable<PointeeTypes<'tcx>>,
+    last_use: &LastUse,
     mir: &Body<'tcx>,
 ) -> (HashMap<Location, Vec<MirRewrite>>, DontRewriteFnReason) {
     let mut out = HashMap::new();
 
-    let mut v = ExprRewriteVisitor::new(acx, asn, pointee_types, &mut out, mir);
+    let mut v = ExprRewriteVisitor::new(acx, asn, pointee_types, last_use, &mut out, mir);
 
     for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb.statements.iter().enumerate() {
