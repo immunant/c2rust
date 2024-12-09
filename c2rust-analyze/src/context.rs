@@ -1157,7 +1157,11 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             let ty = rv.ty(self, self.tcx());
             if matches!(ty.kind(), TyKind::Ref(..) | TyKind::RawPtr(..)) {
                 let (pointee_lty, proj, ptr) = match desc {
-                    RvalueDesc::Project { base, proj } => {
+                    RvalueDesc::Project {
+                        base,
+                        proj,
+                        mutbl: _,
+                    } => {
                         let base_lty = self.type_of(base);
                         debug!(
                             "rvalue = {:?}, desc = {:?}, base_lty = {:?}",
@@ -1169,9 +1173,11 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                             base_lty.label,
                         )
                     }
-                    RvalueDesc::AddrOfLocal { local, proj } => {
-                        (self.type_of(local), proj, self.addr_of_local[local])
-                    }
+                    RvalueDesc::AddrOfLocal {
+                        local,
+                        proj,
+                        mutbl: _,
+                    } => (self.type_of(local), proj, self.addr_of_local[local]),
                 };
 
                 let mut pointee_lty = pointee_lty;

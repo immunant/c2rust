@@ -98,6 +98,12 @@ struct Args {
     #[clap(long)]
     use_manual_shims: bool,
 
+    /// Add "start/end of def" annotations as comments around each definition.  These annotations
+    /// are used by `scripts/extract_working_defs.py` to locate specific defs in the rewritten
+    /// code.
+    #[clap(long)]
+    annotate_def_spans: bool,
+
     /// Read a list of defs that should be marked non-rewritable (`FIXED`) from this file path.
     /// Run `c2rust-analyze` without this option and check the debug output for a full list of defs
     /// in the crate being analyzed; the file passed to this option should list a subset of those
@@ -401,6 +407,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         mut rewrite_mode,
         rewrite_in_place,
         use_manual_shims,
+        annotate_def_spans,
         fixed_defs_list,
         force_rewrite_defs_list,
         skip_pointee_defs_list,
@@ -476,6 +483,10 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
 
         if use_manual_shims {
             cmd.env("C2RUST_ANALYZE_USE_MANUAL_SHIMS", "1");
+        }
+
+        if annotate_def_spans {
+            cmd.env("C2RUST_ANALYZE_ANNOTATE_DEF_SPANS", "1");
         }
 
         Ok(())
