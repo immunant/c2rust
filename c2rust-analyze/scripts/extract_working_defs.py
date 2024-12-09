@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Script for extracting defs on which rewriting succeeded.  Currently, this is
 specific to lighttpd_rust_amalgamated, but it could be generalized to work on
