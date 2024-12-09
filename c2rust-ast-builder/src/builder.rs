@@ -985,13 +985,13 @@ impl Builder {
     }
 
     pub fn addr_of_expr(self, e: Box<Expr>) -> Box<Expr> {
-        Box::new(Expr::Reference(ExprReference {
+        Box::new(parenthesize_if_necessary(Expr::Reference(ExprReference {
             attrs: self.attrs,
             and_token: Token![&](self.span),
             raw: Default::default(),
             mutability: self.mutbl.to_token(),
             expr: e,
-        }))
+        })))
     }
 
     pub fn mac_expr(self, mac: Macro) -> Box<Expr> {
@@ -2280,7 +2280,7 @@ fn expr_precedence(e: &Expr) -> u8 {
         Expr::Field(_ef) => 16,
         Expr::Call(_) | Expr::Index(_) => 15,
         Expr::Try(_et) => 14,
-        Expr::Unary(_eu) => 13,
+        Expr::Unary(_) | Expr::Reference(_) => 13,
         Expr::Cast(_ec) => 12,
         Expr::Binary(eb) => 2 + binop_precedence(&eb.op),
         Expr::Assign(_) | Expr::AssignOp(_) => 1,
@@ -2375,6 +2375,9 @@ fn parenthesize_if_necessary(mut outer: Expr) -> Expr {
         }
         Expr::Unary(ref mut eu) => {
             parenthesize_if_gt(&mut eu.expr);
+        }
+        Expr::Reference(ref mut er) => {
+            parenthesize_if_gt(&mut er.expr);
         }
         Expr::Binary(ref mut eb) => {
             parenthesize_if_gt(&mut eb.left);
