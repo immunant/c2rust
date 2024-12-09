@@ -785,6 +785,8 @@ fn run(tcx: TyCtxt) {
         }
     }
 
+    let skip_borrowck_everywhere = env::var("C2RUST_ANALYZE_SKIP_BORROWCK").as_deref() == Ok("1");
+
     // Load permission info from PDG
     let pdg_compare = env::var("C2RUST_ANALYZE_COMPARE_PDG").as_deref() == Ok("1");
     // In compare mode, we load the PDG for comparison after analysis, not before.
@@ -796,6 +798,7 @@ fn run(tcx: TyCtxt) {
                 &mut func_info,
                 &mut asn,
                 &mut updates_forbidden,
+                skip_borrowck_everywhere,
                 pdg_file_path,
             );
         }
@@ -891,6 +894,9 @@ fn run(tcx: TyCtxt) {
                 continue;
             }
 
+            let skip_borrowck =
+                skip_borrowck_everywhere || util::has_test_attr(tcx, ldid, TestAttr::SkipBorrowck);
+
             let info = func_info.get_mut(&ldid).unwrap();
             let ldid_const = WithOptConstParam::unknown(ldid);
             let name = tcx.item_name(ldid.to_def_id());
@@ -905,15 +911,17 @@ fn run(tcx: TyCtxt) {
                 // on a fixpoint, so there's no need to do multiple iterations here.
                 info.dataflow.propagate(&mut asn.perms, &updates_forbidden);
 
-                borrowck::borrowck_mir(
-                    &acx,
-                    &info.dataflow,
-                    &mut asn.perms_mut(),
-                    &updates_forbidden,
-                    name.as_str(),
-                    &mir,
-                    field_ltys,
-                );
+                if !skip_borrowck {
+                    borrowck::borrowck_mir(
+                        &acx,
+                        &info.dataflow,
+                        &mut asn.perms_mut(),
+                        &updates_forbidden,
+                        name.as_str(),
+                        &mir,
+                        field_ltys,
+                    );
+                }
             }));
 
             info.acx_data.set(acx.into_data());
@@ -934,6 +942,11 @@ fn run(tcx: TyCtxt) {
         let mut num_changed = 0;
         for (i, &old) in old_gasn.iter().enumerate() {
             let ptr = PointerId::global(i as u32);
+
+            if skip_borrowck_everywhere {
+                asn.perms[ptr].insert(PermissionSet::UNIQUE);
+            }
+
             let new = asn.perms[ptr];
             if old != new {
                 let added = new & !old;
@@ -2230,6 +2243,7 @@ fn pdg_update_permissions<'tcx>(
     func_info: &mut HashMap<LocalDefId, FuncInfo<'tcx>>,
     asn: &mut Assignment,
     updates_forbidden: &mut GlobalPointerTable<PermissionSet>,
+    skip_borrowck_everywhere: bool,
     pdg_file_path: impl AsRef<Path>,
 ) {
     let allow_unsound =
@@ -2268,7 +2282,7 @@ fn pdg_update_permissions<'tcx>(
                 if node_info.flows_to.neg_offset.is_some() {
                     perms.insert(PermissionSet::OFFSET_SUB);
                 }
-                if !node_info.unique {
+                if !node_info.unique && !skip_borrowck_everywhere {
                     perms.remove(PermissionSet::UNIQUE);
                 }
             }

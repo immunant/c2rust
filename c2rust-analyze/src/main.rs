@@ -104,6 +104,11 @@ struct Args {
     #[clap(long)]
     annotate_def_spans: bool,
 
+    /// Completely disable the `borrowck` pass.  All pointers will be given the `UNIQUE`
+    /// permission; none will be wrapped in `Cell`.
+    #[clap(long)]
+    skip_borrowck: bool,
+
     /// Read a list of defs that should be marked non-rewritable (`FIXED`) from this file path.
     /// Run `c2rust-analyze` without this option and check the debug output for a full list of defs
     /// in the crate being analyzed; the file passed to this option should list a subset of those
@@ -408,6 +413,7 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
         rewrite_in_place,
         use_manual_shims,
         annotate_def_spans,
+        skip_borrowck,
         fixed_defs_list,
         force_rewrite_defs_list,
         skip_pointee_defs_list,
@@ -487,6 +493,10 @@ fn cargo_wrapper(rustc_wrapper: &Path) -> anyhow::Result<()> {
 
         if annotate_def_spans {
             cmd.env("C2RUST_ANALYZE_ANNOTATE_DEF_SPANS", "1");
+        }
+
+        if skip_borrowck {
+            cmd.env("C2RUST_ANALYZE_SKIP_BORROWCK", "1");
         }
 
         Ok(())
