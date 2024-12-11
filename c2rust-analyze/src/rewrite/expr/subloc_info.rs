@@ -5,6 +5,7 @@ use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{GlobalPointerTable, PointerTable};
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{ty_callee, Callee};
+use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
     BasicBlock, Body, BorrowKind, Location, Operand, Place, PlaceElem, PlaceRef, Rvalue, Statement,
     StatementKind, Terminator, TerminatorKind,
@@ -46,6 +47,19 @@ pub enum SublocType<'tcx> {
     // `rustc_type_ir`.
     Ptr(TypeDesc<'tcx>),
     Other(Ty<'tcx>),
+}
+
+
+pub struct SublocFnSig<'tcx> {
+    pub inputs: Box<[SublocType<'tcx>]>,
+    pub output: SublocType<'tcx>,
+    pub c_variadic: bool,
+}
+
+pub struct SublocGlobalTypes<'tcx> {
+    pub fn_sigs: HashMap<DefId, SublocFnSig<'tcx>>,
+    pub field_tys: HashMap<DefId, SublocType<'tcx>>,
+    pub static_tys: HashMap<DefId, SublocType<'tcx>>,
 }
 
 
@@ -95,6 +109,10 @@ impl<'a, 'tcx> TypeConversionContext<'a, 'tcx> {
         }
 
         (SublocType::Ptr(old_desc), SublocType::Ptr(new_desc))
+    }
+
+    fn lty_to_new_subloc_type(&self, lty: LTy<'tcx>) -> SublocType<'tcx> {
+        self.lty_to_subloc_types(lty).1
     }
 }
 
@@ -635,4 +653,36 @@ pub fn collect_subloc_info<'tcx>(
     }
 
     v.info_map
+}
+
+pub fn collect_global_subloc_info<'tcx>(
+    acx: &AnalysisCtxt<'_, 'tcx>,
+    asn: &Assignment,
+    pointee_types: PointerTable<PointeeTypes<'tcx>>,
+) -> SublocGlobalTypes<'tcx> {
+    let conv_cx = TypeConversionContext {
+        tcx: acx.tcx(),
+        perms: &asn.perms,
+        flags: &asn.flags,
+        pointee_types,
+    };
+
+    let fn_sigs = acx.gacx.fn_sigs.iter().map(|(&def_id, sig)| {
+        let inputs = sig.inputs.iter().map(|lty| conv_cx.lty_to_new_subloc_type(lty)).collect();
+        let output = conv_cx.lty_to_new_subloc_type(sig.output);
+        (def_id, SublocFnSig {
+            inputs, output,
+            c_variadic: sig.c_variadic,
+        })
+    }).collect::<HashMap<_, _>>();
+
+    let field_tys = acx.gacx.field_ltys.iter().map(|(&def_id, &lty)| {
+        (def_id, conv_cx.lty_to_new_subloc_type(lty))
+    }).collect::<HashMap<_, _>>();
+
+    let static_tys = acx.gacx.static_tys.iter().map(|(&def_id, &lty)| {
+        (def_id, conv_cx.lty_to_new_subloc_type(lty))
+    }).collect::<HashMap<_, _>>();
+
+    SublocGlobalTypes { fn_sigs, field_tys, static_tys }
 }
