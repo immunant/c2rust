@@ -23,7 +23,7 @@
 //! require us to update the `Span`s mentioned in the later rewrites to account for the changes in
 //! the source code produced by the earlier ones).
 
-use log::{debug, info, warn};
+use log::{debug, warn};
 use rustc_hir::Mutability;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::{FileName, Span};
@@ -338,18 +338,18 @@ pub fn apply_rewrites(
     update_files: UpdateFiles,
 ) {
     let emit = |filename, src: String| {
-        info!("\n\n ===== BEGIN {:?} =====", filename);
+        println!("\n\n ===== BEGIN {:?} =====", filename);
         for line in src.lines() {
             // Omit filecheck directives from the debug output, as filecheck can get confused due
             // to directives matching themselves (e.g. `// CHECK: foo` will match the `foo` in the
             // line `// CHECK: foo`).
             if let Some((pre, _post)) = line.split_once("// CHECK") {
-                info!("{}// (FileCheck directive omitted)", pre);
+                println!("{}// (FileCheck directive omitted)", pre);
             } else {
-                info!("{}", line);
+                println!("{}", line);
             }
         }
-        info!(" ===== END {:?} =====", filename);
+        println!(" ===== END {:?} =====", filename);
 
         if !matches!(update_files, UpdateFiles::No) {
             let mut path_ok = false;
