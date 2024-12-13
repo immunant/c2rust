@@ -28,7 +28,7 @@ use std::ops::Index;
 
 use rustc_hir::def::Namespace;
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum SubLoc {
     /// The LHS of an assignment or call.  `StatementKind::Assign/TerminatorKind::Call -> Place`
     Dest,

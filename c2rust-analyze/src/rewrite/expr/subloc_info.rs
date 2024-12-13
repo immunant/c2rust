@@ -4,13 +4,15 @@ use crate::panic_detail;
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{GlobalPointerTable, PointerTable};
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
-use crate::util::{ty_callee, Callee};
+use crate::util::{ty_callee, Callee, UnknownDefCallee};
+use log::info;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
     BasicBlock, Body, BorrowKind, Location, Operand, Place, PlaceElem, PlaceRef, Rvalue, Statement,
     StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
+use std::cell::Cell;
 use std::collections::HashMap;
 use super::mir_op::{SubLoc, PlaceAccess};
 
@@ -41,7 +43,7 @@ pub struct SublocInfo<'tcx> {
     pub access: PlaceAccess,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SublocType<'tcx> {
     // TODO: modify to allow arbitrary nesting of `SublocType`s, maybe using `LabeledTy` or
     // `rustc_type_ir`.
@@ -363,16 +365,34 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
                 let func_ty = func.ty(self.mir, tcx);
                 let pl_ty = self.acx.type_of(destination);
 
+                self.enter_dest(|v| {
+                    v.visit_place(destination, PlaceAccess::Mut);
+                });
+
                 self.enter_rvalue(|v| {
                     for (i, arg) in args.iter().enumerate() {
                         v.enter_call_arg(i, |v| v.visit_operand(arg));
                     }
                 });
 
+                info!("loc {loc:?}, callee {:?}", ty_callee(tcx, func_ty));
                 // Special cases for particular functions.
                 match ty_callee(tcx, func_ty) {
                     // Normal call to a local function.
                     Callee::LocalDef { def_id, substs: _ } => {
+                        if let Some(lsig) = self.acx.gacx.fn_sigs.get(&def_id) {
+                            self.enter_rvalue(|v| v.emit_temp(lsig.output));
+                        }
+                    }
+
+                    Callee::UnknownDef(UnknownDefCallee::Direct {
+                        ty: _,
+                        def_id,
+                        substs: _,
+                        is_foreign: true,
+                    }) if self.acx.gacx.known_fn(def_id).is_some() => {
+                        // As this is actually a known `fn`, we can treat it as a normal local
+                        // call.  It should have a signature in `gacx.fn_sigs`.
                         if let Some(lsig) = self.acx.gacx.fn_sigs.get(&def_id) {
                             self.enter_rvalue(|v| v.emit_temp(lsig.output));
                         }
@@ -413,11 +433,6 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
                         self.enter_rvalue(|v| v.emit_temp(arg_lty));
                     }
 
-                    Callee::IsNull => {
-                        // Result type is simply `bool`, which should be the same as the dest type.
-                        self.enter_rvalue(|v| v.emit_temp(pl_ty));
-                    }
-
                     Callee::Null { .. } => {
                         // Match the destination type, but `null()` always outputs a nullable
                         // pointer.
@@ -440,8 +455,12 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
                         }));
                     }
 
-                    Callee::Free => {
-                        // Result type is simply `()`, which should be the same as the dest type.
+                    Callee::Trivial |
+                    Callee::IsNull |
+                    Callee::Free |
+                    Callee::SizeOf { .. } => {
+                        // These return non-pointers, so the result type should be identical to the
+                        // dest type.
                         self.enter_rvalue(|v| v.emit_temp(pl_ty));
                     }
 
@@ -467,7 +486,9 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
 
         match *rv {
             Rvalue::Use(ref op) => {
-                self.enter_rvalue_operand(0, |v| v.visit_operand(op));
+                self.enter_rvalue_operand(0, |v| {
+                    v.visit_operand_with_rvalue_lty(op, Some(rv_lty));
+                });
             }
             Rvalue::Repeat(ref op, _) => {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(op));
@@ -520,7 +541,40 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
         }
     }
 
-    fn visit_operand(&mut self, op: &Operand<'tcx>) {
+    fn visit_operand(
+        &mut self,
+        op: &Operand<'tcx>,
+    ) {
+        self.visit_operand_with_rvalue_lty(op, None)
+    }
+
+    fn visit_operand_with_rvalue_lty(
+        &mut self,
+        op: &Operand<'tcx>,
+        // Used for a workaround related to string literals
+        rvalue_lty: Option<LTy<'tcx>>,
+    ) {
+        // Currently, `type_of(op)` fails for constant pointers to non-`static`s, such as string
+        // literals.  As a workaround, we handle string literals in `Rvalue::Use` by using the
+        // `type_of_rvalue` instead.
+        let op_is_constant_pointer =
+            op.constant().is_some() &&
+            op.ty(self.mir, self.acx.tcx()).is_any_ptr();
+        if !op_is_constant_pointer {
+            let op_lty = self.acx.type_of(op);
+            let can_move = false;   // TODO
+            let can_mutate = false; // TODO
+            self.emit(op_lty, can_move, can_mutate, PlaceAccess::Move);
+        } else {
+            // Special case for constant pointers
+            // TODO: fix `type_of(op)` and remove this workaround
+            if let Some(rvalue_lty) = rvalue_lty {
+                let can_move = false;   // TODO
+                let can_mutate = false; // TODO
+                self.emit(rvalue_lty, can_move, can_mutate, PlaceAccess::Move);
+            }
+        }
+
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
                 let pl_lty = self.acx.type_of(pl);
@@ -536,30 +590,6 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
             Operand::Constant(..) => {}
         }
     }
-
-    /*
-    /// Like [`Self::visit_operand`], but takes an expected `TypeDesc` instead of an expected `LTy`.
-    fn visit_operand_desc(&mut self, op: &Operand<'tcx>) {
-        match *op {
-            Operand::Copy(pl) | Operand::Move(pl) => {
-                let pl_lty = self.acx.type_of(pl);
-                // Moving out of a `DynOwned` pointer requires `Mut` access rather than `Move`.
-                // TODO: this should probably check `desc.dyn_owned` rather than perms directly
-                let access = if !pl_lty.label.is_none() && self.perms[pl_lty.label].contains(PermissionSet::FREE) {
-                    PlaceAccess::Mut
-                } else {
-                    PlaceAccess::Move
-                };
-                self.enter_operand_place(|v| v.visit_place(pl, access, RequireSinglePointer::Yes));
-
-                if !pl_lty.label.is_none() {
-                    self.emit_cast_lty_desc(pl_lty, expect_desc);
-                }
-            }
-            Operand::Constant(..) => {}
-        }
-    }
-    */
 
     fn visit_place(
         &mut self,
@@ -625,6 +655,363 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
     }
 }
 
+
+/// This struct is identical to [`SublocInfo`], but `new_ty` and `expect_ty` (the fields that are
+/// potentially modified by the `TypeChecker` pass) are wrapped in `Cell`.
+///
+/// We use `Cell` instead of `&mut` for mutating `SublocInfo`s to make it easy to hold references
+/// to multiple different `SublocInfo`s at the same and across other method calls.
+struct TypeCheckerSublocInfo<'tcx> {
+    pub old_ty: SublocType<'tcx>,
+    pub new_ty: Cell<SublocType<'tcx>>,
+    pub expect_ty: Cell<SublocType<'tcx>>,
+    pub can_move: bool,
+    pub can_mutate: bool,
+    pub access: PlaceAccess,
+}
+
+impl<'tcx> From<SublocInfo<'tcx>> for TypeCheckerSublocInfo<'tcx> {
+    fn from(x: SublocInfo<'tcx>) -> TypeCheckerSublocInfo<'tcx> {
+        let SublocInfo { old_ty, new_ty, expect_ty, can_move, can_mutate, access } = x;
+        let new_ty = Cell::new(new_ty);
+        let expect_ty = Cell::new(expect_ty);
+        TypeCheckerSublocInfo { old_ty, new_ty, expect_ty, can_move, can_mutate, access }
+    }
+}
+
+impl<'tcx> From<TypeCheckerSublocInfo<'tcx>> for SublocInfo<'tcx> {
+    fn from(x: TypeCheckerSublocInfo<'tcx>) -> SublocInfo<'tcx> {
+        let TypeCheckerSublocInfo { old_ty, new_ty, expect_ty, can_move, can_mutate, access } = x;
+        let new_ty = new_ty.into_inner();
+        let expect_ty = expect_ty.into_inner();
+        SublocInfo { old_ty, new_ty, expect_ty, can_move, can_mutate, access }
+    }
+}
+
+struct TypeCheckerInfoMap<'tcx>(
+    HashMap<(Location, Vec<SubLoc>), TypeCheckerSublocInfo<'tcx>>
+);
+
+impl<'tcx> From<HashMap<(Location, Vec<SubLoc>), SublocInfo<'tcx>>> for TypeCheckerInfoMap<'tcx> {
+    fn from(x: HashMap<(Location, Vec<SubLoc>), SublocInfo<'tcx>>) -> TypeCheckerInfoMap<'tcx> {
+        let y = x.into_iter().map(|(k, v)| (k, v.into())).collect();
+        TypeCheckerInfoMap(y)
+    }
+}
+
+impl<'tcx> From<TypeCheckerInfoMap<'tcx>> for HashMap<(Location, Vec<SubLoc>), SublocInfo<'tcx>> {
+    fn from(x: TypeCheckerInfoMap<'tcx>) -> HashMap<(Location, Vec<SubLoc>), SublocInfo<'tcx>> {
+        x.0.into_iter().map(|(k, v)| (k, v.into())).collect()
+    }
+}
+
+/// `SublocInfo` type checker.  The goal of this pass is to ensure that the code is well-typed
+/// after applying type rewrites and casts.  Specifically, for each operation in the MIR,
+/// performing that operation on inputs whose types match the child nodes' `expect_ty`s should
+/// produce an output that matches the operation's `new_ty`.  This can be achieved by modifying the
+/// children's `expect_ty`s, the operation's `new_ty`, or both, though it should be done such that
+/// each node's `new_ty` can be converted to its `expect_ty` through some valid cast.
+struct TypeChecker<'a, 'tcx> {
+    acx: &'a AnalysisCtxt<'a, 'tcx>,
+    globals: &'a SublocGlobalTypes<'tcx>,
+    info_map: &'a TypeCheckerInfoMap<'tcx>,
+    mir: &'a Body<'tcx>,
+    precise_loc: (Location, Vec<SubLoc>),
+}
+
+impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
+    pub fn new(
+        acx: &'a AnalysisCtxt<'a, 'tcx>,
+        globals: &'a SublocGlobalTypes<'tcx>,
+        info_map: &'a TypeCheckerInfoMap<'tcx>,
+        mir: &'a Body<'tcx>,
+    ) -> TypeChecker<'a, 'tcx> {
+        TypeChecker {
+            acx, globals, info_map, mir,
+            precise_loc: (
+                Location {
+                    block: BasicBlock::from_usize(0),
+                    statement_index: 0,
+                },
+                Vec::new(),
+            ),
+        }
+    }
+
+    fn loc(&self) -> Location {
+        self.precise_loc.0
+    }
+
+    fn loc_mut(&mut self) -> &mut Location {
+        &mut self.precise_loc.0
+    }
+
+    fn sub_loc(&self) -> &[SubLoc] {
+        &self.precise_loc.1
+    }
+
+    fn sub_loc_mut(&mut self) -> &mut Vec<SubLoc> {
+        &mut self.precise_loc.1
+    }
+
+
+    fn info(&mut self, path: &[SubLoc]) -> &'a TypeCheckerSublocInfo<'tcx> {
+        let old_len = self.sub_loc().len();
+        self.sub_loc_mut().extend_from_slice(&path);
+        let r = self.info_map.0.get(&self.precise_loc).unwrap_or_else(|| panic!(
+            "no subloc_info for {:?}, {:?} + {:?}", self.loc(), self.sub_loc(), path
+        ));
+        self.sub_loc_mut().truncate(old_len);
+        r
+    }
+
+
+    fn enter<F: FnOnce(&mut Self) -> R, R>(&mut self, sub: SubLoc, f: F) -> R {
+        self.sub_loc_mut().push(sub);
+        let r = f(self);
+        self.sub_loc_mut().pop();
+        r
+    }
+
+    fn enter_dest<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+        self.enter(SubLoc::Dest, f)
+    }
+
+    fn enter_rvalue<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+        self.enter(SubLoc::Rvalue, f)
+    }
+
+    fn enter_call_arg<F: FnOnce(&mut Self) -> R, R>(&mut self, i: usize, f: F) -> R {
+        self.enter(SubLoc::CallArg(i), f)
+    }
+
+    fn enter_rvalue_operand<F: FnOnce(&mut Self) -> R, R>(&mut self, i: usize, f: F) -> R {
+        self.enter(SubLoc::RvalueOperand(i), f)
+    }
+
+    fn enter_rvalue_place<F: FnOnce(&mut Self) -> R, R>(&mut self, i: usize, f: F) -> R {
+        self.enter(SubLoc::RvaluePlace(i), f)
+    }
+
+    fn enter_operand_place<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+        self.enter(SubLoc::OperandPlace, f)
+    }
+
+    fn enter_place_deref_pointer<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+        self.enter(SubLoc::PlaceDerefPointer, f)
+    }
+
+    fn enter_place_field_base<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+        self.enter(SubLoc::PlaceFieldBase, f)
+    }
+
+    fn enter_place_index_array<F: FnOnce(&mut Self) -> R, R>(&mut self, f: F) -> R {
+        self.enter(SubLoc::PlaceIndexArray, f)
+    }
+
+
+    fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
+        let _g = panic_detail::set_current_span(stmt.source_info.span);
+        eprintln!(
+            "subloc_info::TypeChecker::visit_statement: {:?} @ {:?}: {:?}",
+            loc, stmt.source_info.span, stmt
+        );
+        *self.loc_mut() = loc;
+        debug_assert!(self.sub_loc().is_empty());
+
+        match stmt.kind {
+            StatementKind::Assign(ref x) => {
+                let (pl, ref rv) = **x;
+
+                let pl_info = self.enter_dest(|v| v.visit_place(pl));
+                let rv_info = self.enter_rvalue(|v| v.visit_rvalue(rv));
+                // Cast RHS to match LHS.
+                rv_info.expect_ty.set(pl_info.new_ty.get());
+            }
+            StatementKind::FakeRead(..) => {}
+            StatementKind::SetDiscriminant { .. } => todo!("statement {:?}", stmt),
+            StatementKind::Deinit(..) => {}
+            StatementKind::StorageLive(..) => {}
+            StatementKind::StorageDead(..) => {}
+            StatementKind::Retag(..) => {}
+            StatementKind::AscribeUserType(..) => {}
+            StatementKind::Coverage(..) => {}
+            StatementKind::CopyNonOverlapping(..) => todo!("statement {:?}", stmt),
+            StatementKind::Nop => {}
+        }
+    }
+
+    fn visit_terminator(&mut self, term: &Terminator<'tcx>, loc: Location) {
+        let _g = panic_detail::set_current_span(term.source_info.span);
+        eprintln!(
+            "subloc_info::TypeChecker::visit_terminator: {:?} @ {:?}: {:?}",
+            loc, term.source_info.span, term
+        );
+        *self.loc_mut() = loc;
+        debug_assert!(self.sub_loc().is_empty());
+
+        let tcx = self.acx.tcx();
+
+        match term.kind {
+            TerminatorKind::Goto { .. } => {}
+            TerminatorKind::SwitchInt { .. } => {}
+            TerminatorKind::Resume => {}
+            TerminatorKind::Abort => {}
+            TerminatorKind::Return => {}
+            TerminatorKind::Unreachable => {}
+            TerminatorKind::Drop { .. } => {}
+            TerminatorKind::DropAndReplace { .. } => {}
+            TerminatorKind::Call {
+                ref func,
+                ref args,
+                destination,
+                target: _,
+                ..
+            } => {
+                let pl_info = self.enter_dest(|v| v.visit_place(destination));
+                let rv_info = self.enter_rvalue(|v| {
+                    let func_ty = func.ty(self.mir, tcx);
+                    let callee = ty_callee(tcx, func_ty);
+                    v.visit_call(callee, args)
+                });
+                // Cast RHS to match LHS.
+                rv_info.expect_ty.set(pl_info.new_ty.get());
+
+
+                // TODO: visit the call, args, etc
+
+                /*
+                let pl_ty = self.acx.type_of(destination);
+
+                    for (i, arg) in args.iter().enumerate() {
+                        v.enter_call_arg(i, |v| v.visit_operand(arg));
+                    }
+                });
+
+                // Special cases for particular functions.
+                */
+            }
+            TerminatorKind::Assert { .. } => {}
+            TerminatorKind::Yield { .. } => {}
+            TerminatorKind::GeneratorDrop => {}
+            TerminatorKind::FalseEdge { .. } => {}
+            TerminatorKind::FalseUnwind { .. } => {}
+            TerminatorKind::InlineAsm { .. } => todo!("terminator {:?}", term),
+        }
+    }
+
+    fn visit_place(&mut self, pl: Place<'tcx>) -> &'a TypeCheckerSublocInfo<'tcx> {
+        let info = self.info(&[]);
+
+        // TODO
+
+        info
+    }
+
+    fn visit_operand(&mut self, op: &Operand<'tcx>) -> &'a TypeCheckerSublocInfo<'tcx> {
+        let info = self.info(&[]);
+
+        // TODO
+
+        info
+    }
+
+    fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>) -> &'a TypeCheckerSublocInfo<'tcx> {
+        let info = self.info(&[]);
+
+        // TODO
+
+        info
+    }
+
+    fn visit_call(
+        &mut self,
+        callee: Callee<'tcx>,
+        args: &[Operand<'tcx>],
+    ) -> &'a TypeCheckerSublocInfo<'tcx> {
+        let info = self.info(&[]);
+
+        match callee {
+            // Normal call to a local function.
+            Callee::LocalDef { def_id, substs: _ } => {
+                let sig = self.globals.fn_sigs.get(&def_id)
+                    .unwrap_or_else(|| panic!("missing sig for {def_id:?}"));
+                for (i, (arg, &ty)) in args.iter().zip(sig.inputs.iter()).enumerate() {
+                    let arg_info = self.enter_call_arg(i, |v| v.visit_operand(arg));
+                    // Cast argument to function parameter type.
+                    arg_info.expect_ty.set(ty);
+                }
+            }
+
+            Callee::PtrOffset { .. } => {
+                assert_eq!(args.len(), 2);
+                let arg0_info = self.enter_call_arg(0, |v| v.visit_operand(&args[0]));
+                self.enter_call_arg(1, |v| v.visit_operand(&args[1]));
+                // Result type is always the same as the input type.  The collection pass
+                // constrains the input type to be either `Slice` or `OffsetPtr`.
+                info.new_ty.set(arg0_info.expect_ty.get());
+            }
+
+            Callee::SliceAsPtr { .. } => {
+                assert_eq!(args.len(), 1);
+                let arg0_info = self.enter_call_arg(0, |v| v.visit_operand(&args[0]));
+                // Result type is always the same as the input type.
+                info.new_ty.set(arg0_info.expect_ty.get());
+            }
+
+            /*
+            Callee::Memcpy | Callee::Memset => {
+                // Match the type of the first (`dest`) argument exactly.  The rewrite is
+                // responsible for preserving any combination of `Ownership` and
+                // `Quantity`.
+                assert_eq!(args.len(), 3);
+                let arg_lty = self.acx.type_of(&args[0]);
+                self.enter_rvalue(|v| v.emit_temp(arg_lty));
+            }
+
+            Callee::IsNull => {
+                // Result type is simply `bool`, which should be the same as the dest type.
+                self.enter_rvalue(|v| v.emit_temp(pl_ty));
+            }
+
+            Callee::Null { .. } => {
+                // Match the destination type, but `null()` always outputs a nullable
+                // pointer.
+                self.enter_rvalue(|v| v.emit_temp_adjust(pl_ty, |mut slty| {
+                    if let SublocType::Ptr(ref mut desc) = slty {
+                        desc.option = true;
+                    }
+                    slty
+                }));
+            }
+
+            Callee::Malloc | Callee::Calloc | Callee::Realloc => {
+                // Match the destination type, but always produce a non-optional `Box`.
+                self.enter_rvalue(|v| v.emit_temp_adjust(pl_ty, |mut slty| {
+                    if let SublocType::Ptr(ref mut desc) = slty {
+                        desc.option = false;
+                        desc.own = Ownership::Box;
+                    }
+                    slty
+                }));
+            }
+
+            Callee::Free => {
+                // Result type is simply `()`, which should be the same as the dest type.
+                self.enter_rvalue(|v| v.emit_temp(pl_ty));
+            }
+            */
+
+            //_ => todo!("visit_call {callee:?}"),
+            _ => info!("TODO: visit_call {callee:?}"),
+
+        }
+
+        info
+    }
+}
+
+
 pub fn collect_subloc_info<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
     asn: &Assignment,
@@ -685,4 +1072,34 @@ pub fn collect_global_subloc_info<'tcx>(
     }).collect::<HashMap<_, _>>();
 
     SublocGlobalTypes { fn_sigs, field_tys, static_tys }
+}
+
+pub fn typecheck_subloc_info<'tcx>(
+    acx: &AnalysisCtxt<'_, 'tcx>,
+    globals: &SublocGlobalTypes<'tcx>,
+    info_map: HashMap<(Location, Vec<SubLoc>), SublocInfo<'tcx>>,
+    mir: &Body<'tcx>,
+) -> HashMap<(Location, Vec<SubLoc>), SublocInfo<'tcx>> {
+    let info_map = TypeCheckerInfoMap::from(info_map);
+    let mut v = TypeChecker::new(acx, globals, &info_map, mir);
+
+    for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
+        for (i, stmt) in bb.statements.iter().enumerate() {
+            let loc = Location {
+                block: bb_id,
+                statement_index: i,
+            };
+            v.visit_statement(stmt, loc);
+        }
+
+        if let Some(ref term) = bb.terminator {
+            let loc = Location {
+                block: bb_id,
+                statement_index: bb.statements.len(),
+            };
+            v.visit_terminator(term, loc);
+        }
+    }
+
+    info_map.into()
 }

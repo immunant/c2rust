@@ -32,7 +32,10 @@ pub fn gen_expr_rewrites<'tcx>(
     mir: &Body<'tcx>,
     hir_body_id: BodyId,
 ) -> Vec<(Span, Rewrite)> {
+    let subloc_globals = subloc_info::collect_global_subloc_info(acx, asn, pointee_types);
     let subloc_info = subloc_info::collect_subloc_info(acx, asn, pointee_types, last_use, mir);
+    debug_print_subloc_info_map(acx.tcx(), mir, &subloc_info);
+    let subloc_info = subloc_info::typecheck_subloc_info(acx, &subloc_globals, subloc_info, mir);
     debug_print_subloc_info_map(acx.tcx(), mir, &subloc_info);
 
     let (mir_rewrites, errors) = mir_op::gen_mir_rewrites(acx, asn, pointee_types, last_use, mir);
@@ -76,7 +79,12 @@ fn debug_print_subloc_info_map<'tcx>(
 
     let print_for_loc = |loc| {
         for &(sub_loc, info) in by_loc.get(&loc).map_or(&[] as &[_], |x| x) {
-            eprintln!("      {sub_loc:?}: {info:?}");
+            //eprintln!("      {sub_loc:?}: {info:?}");
+            if info.new_ty == info.expect_ty {
+                eprintln!("      {sub_loc:?}: {:?}", info.new_ty);
+            } else {
+                eprintln!("      {sub_loc:?}: {:?} -> {:?}", info.new_ty, info.expect_ty);
+            }
         }
     };
 
