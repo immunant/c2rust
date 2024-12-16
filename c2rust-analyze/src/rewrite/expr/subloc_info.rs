@@ -449,6 +449,7 @@ impl<'a, 'tcx> CollectInfoVisitor<'a, 'tcx> {
                         self.enter_rvalue(|v| v.emit_temp_adjust(pl_ty, |mut slty| {
                             if let SublocType::Ptr(ref mut desc) = slty {
                                 desc.option = false;
+                                desc.dyn_owned = false;
                                 desc.own = Ownership::Box;
                             }
                             slty
@@ -959,48 +960,58 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
                 info.new_ty.set(arg0_info.expect_ty.get());
             }
 
-            /*
-            Callee::Memcpy | Callee::Memset => {
-                // Match the type of the first (`dest`) argument exactly.  The rewrite is
-                // responsible for preserving any combination of `Ownership` and
-                // `Quantity`.
+            Callee::Memcpy => {
                 assert_eq!(args.len(), 3);
-                let arg_lty = self.acx.type_of(&args[0]);
-                self.enter_rvalue(|v| v.emit_temp(arg_lty));
+                let arg0_info = self.enter_call_arg(0, |v| v.visit_operand(&args[0]));
+                let arg1_info = self.enter_call_arg(1, |v| v.visit_operand(&args[0]));
+                self.enter_call_arg(2, |v| v.visit_operand(&args[0]));
+                // Output type is exactly equal to the dest type.
+                info.new_ty.set(arg0_info.expect_ty.get());
+                // Source type has no special constraints.  The rewrite for `memcpy` will handle
+                // any combination of ownership and quantity.
+            }
+
+            Callee::Memset => {
+                assert_eq!(args.len(), 3);
+                let arg0_info = self.enter_call_arg(0, |v| v.visit_operand(&args[0]));
+                let arg1_info = self.enter_call_arg(1, |v| v.visit_operand(&args[0]));
+                self.enter_call_arg(2, |v| v.visit_operand(&args[0]));
+                // Output type is exactly equal to the dest type.
+                info.new_ty.set(arg0_info.expect_ty.get());
             }
 
             Callee::IsNull => {
-                // Result type is simply `bool`, which should be the same as the dest type.
-                self.enter_rvalue(|v| v.emit_temp(pl_ty));
+                assert_eq!(args.len(), 1);
+                self.enter_call_arg(0, |v| v.visit_operand(&args[0]));
+                // Input and output types are not related.
             }
 
             Callee::Null { .. } => {
-                // Match the destination type, but `null()` always outputs a nullable
-                // pointer.
-                self.enter_rvalue(|v| v.emit_temp_adjust(pl_ty, |mut slty| {
-                    if let SublocType::Ptr(ref mut desc) = slty {
-                        desc.option = true;
-                    }
-                    slty
-                }));
+                assert_eq!(args.len(), 0);
+                // No inputs to adjust.
             }
 
-            Callee::Malloc | Callee::Calloc | Callee::Realloc => {
-                // Match the destination type, but always produce a non-optional `Box`.
-                self.enter_rvalue(|v| v.emit_temp_adjust(pl_ty, |mut slty| {
-                    if let SublocType::Ptr(ref mut desc) = slty {
-                        desc.option = false;
-                        desc.own = Ownership::Box;
-                    }
-                    slty
-                }));
+            Callee::Malloc | Callee::Calloc => {
+                assert!(args.len() == 1 || args.len() == 2);
+                for (i, arg) in args.iter().enumerate() {
+                    self.enter_call_arg(i, |v| v.visit_operand(arg));
+                }
+                // Input and output types are not related.
+            }
+
+            Callee::Realloc => {
+                assert_eq!(args.len(), 2);
+                self.enter_call_arg(0, |v| v.visit_operand(&args[0]));
+                self.enter_call_arg(1, |v| v.visit_operand(&args[1]));
+                // No special requirements.  The input pointer will always be some kind of `Box`
+                // due to dataflow constraints.
             }
 
             Callee::Free => {
-                // Result type is simply `()`, which should be the same as the dest type.
-                self.enter_rvalue(|v| v.emit_temp(pl_ty));
+                assert_eq!(args.len(), 1);
+                self.enter_call_arg(0, |v| v.visit_operand(&args[0]));
+                // Input and output types are not related.
             }
-            */
 
             //_ => todo!("visit_call {callee:?}"),
             _ => info!("TODO: visit_call {callee:?}"),
