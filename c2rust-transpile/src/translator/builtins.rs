@@ -613,6 +613,9 @@ impl<'c> Translation<'c> {
                     )
                 })
             }
+
+            // TODO: provide proper implementation, this is just to get stuff building
+            "__builtin_assume" =>  Ok(self.convert_expr(ctx.used(), args[0])?),
             // There's currently no way to replicate this functionality in Rust, so we just
             // pass the ptr input param in its place.
             "__builtin_assume_aligned" => Ok(self.convert_expr(ctx.used(), args[0])?),
