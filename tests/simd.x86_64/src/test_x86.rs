@@ -75,6 +75,7 @@ impl PartialEq for ShuffleVectors {
             b: u128,
             c: u128,
             d: (u128, u128),
+            ep: (u128, u128),
             e: (u128, u128),
             f: u128,
             g: u128,
