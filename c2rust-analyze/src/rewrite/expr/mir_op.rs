@@ -13,9 +13,10 @@ use crate::panic_detail;
 use crate::pointee_type::PointeeTypes;
 use crate::pointer_id::{GlobalPointerTable, PointerId, PointerTable};
 use crate::rewrite;
+use crate::rewrite::expr::subloc_info::{SublocInfo, SublocType};
 use crate::type_desc::{self, Ownership, Quantity, TypeDesc};
 use crate::util::{self, ty_callee, Callee};
-use log::{debug, error, trace};
+use log::{debug, error, info, trace};
 use rustc_ast::Mutability;
 use rustc_middle::mir::{
     BasicBlock, Body, BorrowKind, Location, Operand, Place, PlaceElem, PlaceRef, Rvalue, Statement,
@@ -24,6 +25,7 @@ use rustc_middle::mir::{
 use rustc_middle::ty::print::{FmtPrinter, PrettyPrinter, Print};
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::ops::Index;
 
 use rustc_hir::def::Namespace;
@@ -251,53 +253,72 @@ impl RequireSinglePointer {
 
 struct ExprRewriteVisitor<'a, 'tcx> {
     acx: &'a AnalysisCtxt<'a, 'tcx>,
-    perms: &'a GlobalPointerTable<PermissionSet>,
-    flags: &'a GlobalPointerTable<FlagSet>,
-    pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
-    last_use: &'a LastUse,
+    info_map: &'a HashMap<(Location, Vec<SubLoc>), SublocInfo<'tcx>>,
     rewrites: &'a mut HashMap<Location, Vec<MirRewrite>>,
     mir: &'a Body<'tcx>,
-    loc: Location,
-    sub_loc: Vec<SubLoc>,
+    precise_loc: (Location, Vec<SubLoc>),
     errors: DontRewriteFnReason,
 }
 
 impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     pub fn new(
         acx: &'a AnalysisCtxt<'a, 'tcx>,
-        asn: &'a Assignment,
-        pointee_types: PointerTable<'a, PointeeTypes<'tcx>>,
-        last_use: &'a LastUse,
+        info_map: &'a HashMap<(Location, Vec<SubLoc>), SublocInfo<'tcx>>,
         rewrites: &'a mut HashMap<Location, Vec<MirRewrite>>,
         mir: &'a Body<'tcx>,
     ) -> ExprRewriteVisitor<'a, 'tcx> {
-        let perms = asn.perms();
-        let flags = asn.flags();
         ExprRewriteVisitor {
             acx,
-            perms,
-            flags,
-            pointee_types,
-            last_use,
+            info_map,
             rewrites,
             mir,
-            loc: Location {
-                block: BasicBlock::from_usize(0),
-                statement_index: 0,
-            },
-            sub_loc: Vec::new(),
+            precise_loc: (
+                Location {
+                    block: BasicBlock::from_usize(0),
+                    statement_index: 0,
+                },
+                Vec::new(),
+            ),
             errors: DontRewriteFnReason::empty(),
         }
     }
+
+    fn loc(&self) -> Location {
+        self.precise_loc.0
+    }
+
+    fn loc_mut(&mut self) -> &mut Location {
+        &mut self.precise_loc.0
+    }
+
+    fn sub_loc(&self) -> &[SubLoc] {
+        &self.precise_loc.1
+    }
+
+    fn sub_loc_mut(&mut self) -> &mut Vec<SubLoc> {
+        &mut self.precise_loc.1
+    }
+
+
+    fn info(&mut self, path: &[SubLoc]) -> &'a SublocInfo<'tcx> {
+        let old_len = self.sub_loc().len();
+        self.sub_loc_mut().extend_from_slice(&path);
+        let r = self.info_map.get(&self.precise_loc).unwrap_or_else(|| panic!(
+            "no subloc_info for {:?}, {:?} + {:?}", self.loc(), self.sub_loc(), path
+        ));
+        self.sub_loc_mut().truncate(old_len);
+        r
+    }
+
 
     fn err(&mut self, reason: DontRewriteFnReason) {
         self.errors.insert(reason);
     }
 
     fn enter<F: FnOnce(&mut Self) -> R, R>(&mut self, sub: SubLoc, f: F) -> R {
-        self.sub_loc.push(sub);
+        self.sub_loc_mut().push(sub);
         let r = f(self);
-        self.sub_loc.pop();
+        self.sub_loc_mut().pop();
         r
     }
 
@@ -337,6 +358,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         self.enter(SubLoc::PlaceIndexArray, f)
     }
 
+
+    /*
     /// Get the pointee type of `lty`.  Returns the inferred pointee type from `self.pointee_types`
     /// if one is available, or the pointee type as represented in `lty` itself otherwise.  Returns
     /// `None` if `lty` is not a `RawPtr` or `Ref` type.
@@ -446,6 +469,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             false
         }
     }
+    */
 
     fn visit_statement(&mut self, stmt: &Statement<'tcx>, loc: Location) {
         let _g = panic_detail::set_current_span(stmt.source_info.span);
@@ -453,13 +477,16 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             "mir_op::visit_statement: {:?} @ {:?}: {:?}",
             loc, stmt.source_info.span, stmt
         );
-        self.loc = loc;
-        debug_assert!(self.sub_loc.is_empty());
+        *self.loc_mut() = loc;
+        debug_assert!(self.sub_loc().is_empty());
 
         match stmt.kind {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
+                self.enter_dest(|v| v.visit_place(pl));
+                self.enter_rvalue(|v| v.visit_rvalue(rv));
 
+                /*
                 let pl_lty = self.acx.type_of(pl);
 
                 // FIXME: Needs changes to handle CELL pointers in struct fields.  Suppose `pl` is
@@ -588,6 +615,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                     v.emit_cast_lty_lty_or_borrow(rv_lty, pl_lty, cast_can_move)
                 });
                 self.enter_dest(|v| v.visit_place(pl, PlaceAccess::Mut, RequireSinglePointer::Yes));
+                */
             }
             StatementKind::FakeRead(..) => {}
             StatementKind::SetDiscriminant { .. } => todo!("statement {:?}", stmt),
@@ -605,8 +633,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn visit_terminator(&mut self, term: &Terminator<'tcx>, loc: Location) {
         let tcx = self.acx.tcx();
         let _g = panic_detail::set_current_span(term.source_info.span);
-        self.loc = loc;
-        debug_assert!(self.sub_loc.is_empty());
+        *self.loc_mut() = loc;
+        debug_assert!(self.sub_loc().is_empty());
 
         match term.kind {
             TerminatorKind::Goto { .. } => {}
@@ -624,349 +652,18 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 target: _,
                 ..
             } => {
-                let func_ty = func.ty(self.mir, tcx);
-                let pl_ty = self.acx.type_of(destination);
+                self.enter_dest(|v| v.visit_place(destination));
+                self.enter_rvalue(|v| {
+                    let func_ty = func.ty(self.mir, tcx);
+                    let callee = ty_callee(tcx, func_ty);
+                    v.visit_call(callee, args)
+                });
 
+                /*
                 // Special cases for particular functions.
                 match ty_callee(tcx, func_ty) {
-                    Callee::PtrOffset { .. } => {
-                        self.visit_ptr_offset(&args[0], pl_ty);
-                    }
-                    Callee::SliceAsPtr { elem_ty, .. } => {
-                        self.visit_slice_as_ptr(elem_ty, &args[0], pl_ty);
-                    }
-
-                    Callee::LocalDef { def_id, substs: _ } => {
-                        // TODO: handle substs (if nonempty)
-                        if let Some(lsig) = self.acx.gacx.fn_sigs.get(&def_id) {
-                            self.enter_rvalue(|v| {
-                                for (i, op) in args.iter().enumerate() {
-                                    if let Some(&lty) = lsig.inputs.get(i) {
-                                        v.enter_call_arg(i, |v| v.visit_operand(op, Some(lty)));
-                                    } else {
-                                        // This is a call to a variadic function, and we've gone
-                                        // past the end of the declared arguments.
-                                        // TODO: insert a cast to turn `op` back into its original
-                                        // declared type (i.e. upcast the chosen reference type
-                                        // back to a raw pointer)
-                                        continue;
-                                    }
-                                }
-
-                                if !pl_ty.label.is_none() {
-                                    // Emit a cast.  The call returns a temporary, which the cast
-                                    // is always allowed to move.
-                                    v.emit_cast_lty_lty(lsig.output, pl_ty, true);
-                                }
-                            });
-                        }
-                    }
-
-                    Callee::Memcpy => {
-                        self.enter_rvalue(|v| {
-                            // TODO: Only emit `MemcpySafe` if the rewritten argument types and
-                            // pointees are suitable.  Specifically, the `src` and `dest` arguments
-                            // must both be rewritten to safe references, their pointee types must
-                            // be the same, and the pointee type must implement `Copy`.  If these
-                            // conditions don't hold, leave the `memcpy` call intact and emit casts
-                            // back to `void*` on the `dest` and `src` arguments.
-                            let dest_lty = v.acx.type_of(&args[0]);
-                            let dest_pointee = v.pointee_lty(dest_lty);
-                            let src_lty = v.acx.type_of(&args[1]);
-                            let src_pointee = v.pointee_lty(src_lty);
-                            let common_pointee = dest_pointee.filter(|&x| Some(x) == src_pointee);
-                            let pointee_lty = match common_pointee {
-                                Some(x) => x,
-                                // TODO: emit void* casts before bailing out, as described above
-                                None => return,
-                            };
-
-                            let (_, elem_ty) = v.lty_to_rewritten_str(pointee_lty);
-                            let dest_single = !v.perms[dest_lty.label]
-                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
-                            let src_single = !v.perms[src_lty.label]
-                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
-                            let dest_option =
-                                !v.perms[dest_lty.label].contains(PermissionSet::NON_NULL);
-                            let src_option =
-                                !v.perms[src_lty.label].contains(PermissionSet::NON_NULL);
-                            v.emit(RewriteKind::MemcpySafe {
-                                elem_ty,
-                                src_single,
-                                src_option,
-                                dest_single,
-                                dest_option,
-                            });
-
-                            if !pl_ty.label.is_none()
-                                && v.perms[pl_ty.label].intersects(PermissionSet::USED)
-                            {
-                                let dest_lty = v.acx.type_of(&args[0]);
-                                // TODO: The result of `MemcpySafe` is always a slice, so this cast
-                                // may be using an incorrect input type.  See the comment on the
-                                // `MemcpySafe` case of `rewrite::expr::convert` for details.
-                                v.emit_cast_lty_lty(dest_lty, pl_ty, true);
-                            }
-                        });
-                    }
-
-                    Callee::Memset => {
-                        self.enter_rvalue(|v| {
-                            // TODO: Only emit `MemsetSafe` if the rewritten argument type and
-                            // pointee are suitable.  Specifically, the `dest` arguments must be
-                            // rewritten to a safe reference type.  If these conditions don't hold,
-                            // leave the `memset` call intact and emit casts back to `void*` on the
-                            // `dest` argument.
-                            let dest_lty = v.acx.type_of(&args[0]);
-                            let dest_pointee = v.pointee_lty(dest_lty);
-                            let pointee_lty = match dest_pointee {
-                                Some(x) => x,
-                                // TODO: emit void* cast before bailing out, as described above
-                                None => return,
-                            };
-
-                            let (elem_ty, elem_ty_str) = v.lty_to_rewritten_str(pointee_lty);
-                            let dest_single = !v.perms[dest_lty.label]
-                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
-
-                            let zero_ty = match ZeroizeType::from_ty(tcx, elem_ty) {
-                                Some(x) => x,
-                                // TODO: emit void* cast before bailing out, as described above
-                                None => return,
-                            };
-
-                            v.emit(RewriteKind::MemsetZeroize {
-                                zero_ty,
-                                elem_ty: elem_ty_str,
-                                dest_single,
-                            });
-
-                            if !pl_ty.label.is_none()
-                                && v.perms[pl_ty.label].intersects(PermissionSet::USED)
-                            {
-                                let dest_lty = v.acx.type_of(&args[0]);
-                                v.emit_cast_lty_lty(dest_lty, pl_ty, true);
-                            }
-                        });
-                    }
-
-                    Callee::IsNull => {
-                        self.enter_rvalue(|v| {
-                            let arg_lty = v.acx.type_of(&args[0]);
-                            if !v.flags[arg_lty.label].contains(FlagSet::FIXED) {
-                                let arg_non_null =
-                                    v.perms[arg_lty.label].contains(PermissionSet::NON_NULL);
-                                if arg_non_null {
-                                    v.emit(RewriteKind::IsNullToConstFalse);
-                                } else {
-                                    v.emit(RewriteKind::IsNullToIsNone);
-                                }
-                            }
-                        });
-                    }
-
-                    Callee::Null { .. } => {
-                        self.enter_rvalue(|v| {
-                            if !v.flags[pl_ty.label].contains(FlagSet::FIXED) {
-                                assert!(
-                                    !v.perms[pl_ty.label].contains(PermissionSet::NON_NULL),
-                                    "impossible: result of null() is a NON_NULL pointer?"
-                                );
-                                v.emit(RewriteKind::PtrNullToNone);
-                            }
-                        });
-                    }
-
-                    ref callee @ (Callee::Malloc | Callee::Calloc) => {
-                        self.enter_rvalue(|v| {
-                            let dest_lty = v.acx.type_of(destination);
-                            let dest_pointee = v.pointee_lty(dest_lty);
-                            let pointee_lty = match dest_pointee {
-                                Some(x) => x,
-                                // TODO: emit void* cast before bailing out
-                                None => {
-                                    trace!("{callee:?}: no pointee type for dest");
-                                    return;
-                                }
-                            };
-
-                            let (_, elem_ty) = v.lty_to_rewritten_str(pointee_lty);
-                            let single = !v.perms[dest_lty.label]
-                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
-
-                            let opt_zero_ty =
-                                ZeroizeType::from_lty(&v.acx, v.perms, v.flags, pointee_lty);
-                            let zero_ty = match opt_zero_ty {
-                                Some(x) => x,
-                                // TODO: emit void* cast before bailing out
-                                None => {
-                                    trace!(
-                                        "{callee:?}: failed to compute ZeroizeType \
-                                        for {pointee_lty:?}"
-                                    );
-                                    return;
-                                }
-                            };
-
-                            let rw = match *callee {
-                                Callee::Malloc => RewriteKind::MallocSafe {
-                                    zero_ty,
-                                    elem_ty,
-                                    single,
-                                },
-                                Callee::Calloc => RewriteKind::CallocSafe {
-                                    zero_ty,
-                                    elem_ty,
-                                    single,
-                                },
-                                _ => unreachable!(),
-                            };
-                            v.emit(rw);
-
-                            // `MallocSafe` produces either `Box<T>` or `Box<[T]>`.  Emit a cast
-                            // from that type to the required output type.
-                            v.emit_cast_adjust_lty(
-                                |desc| TypeDesc {
-                                    own: Ownership::Box,
-                                    qty: if single {
-                                        Quantity::Single
-                                    } else {
-                                        Quantity::Slice
-                                    },
-                                    dyn_owned: false,
-                                    option: false,
-                                    pointee_ty: desc.pointee_ty,
-                                },
-                                dest_lty,
-                            );
-                        });
-                    }
-
-                    Callee::Free => {
-                        self.enter_rvalue(|v| {
-                            let src_lty = v.acx.type_of(&args[0]);
-                            let src_pointee = v.pointee_lty(src_lty);
-                            if src_pointee.is_none() {
-                                // TODO: emit void* cast before bailing out
-                                return;
-                            }
-
-                            let single = !v.perms[src_lty.label]
-                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
-
-                            // Cast to either `Box<T>` or `Box<[T]>` (depending on `single`).  This
-                            // ensures a panic occurs when `free`ing a pointer that no longer has
-                            // ownership.
-                            v.enter_call_arg(0, |v| {
-                                v.emit_cast_lty_adjust(src_lty, |desc| TypeDesc {
-                                    own: Ownership::Box,
-                                    qty: if single {
-                                        Quantity::Single
-                                    } else {
-                                        Quantity::Slice
-                                    },
-                                    dyn_owned: false,
-                                    option: desc.option,
-                                    pointee_ty: desc.pointee_ty,
-                                });
-                            });
-
-                            v.emit(RewriteKind::FreeSafe { single });
-                        });
-                    }
-
-                    ref callee @ Callee::Realloc => {
-                        self.enter_rvalue(|v| {
-                            let src_lty = v.acx.type_of(&args[0]);
-                            let src_pointee = v.pointee_lty(src_lty);
-                            let dest_lty = v.acx.type_of(destination);
-                            let dest_pointee = v.pointee_lty(dest_lty);
-                            let common_pointee = dest_pointee.filter(|&x| Some(x) == src_pointee);
-                            let pointee_lty = match common_pointee {
-                                Some(x) => x,
-                                // TODO: emit void* cast before bailing out
-                                None => {
-                                    trace!(
-                                        "{callee:?}: no common pointee type \
-                                        between {src_pointee:?} and {dest_pointee:?}"
-                                    );
-                                    return;
-                                }
-                            };
-
-                            let (elem_ty, elem_ty_str) = v.lty_to_rewritten_str(pointee_lty);
-                            let dest_single = !v.perms[dest_lty.label]
-                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
-                            let src_single = !v.perms[src_lty.label]
-                                .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
-
-                            let zero_ty = match ZeroizeType::from_ty(tcx, elem_ty) {
-                                Some(x) => x,
-                                // TODO: emit void* cast before bailing out
-                                None => {
-                                    trace!(
-                                        "{callee:?}: failed to compute ZeroizeType \
-                                        for {elem_ty:?}"
-                                    );
-                                    return;
-                                }
-                            };
-
-                            // Cast input to either `Box<T>` or `Box<[T]>`, as in `free`.
-                            let mut option = false;
-                            v.enter_call_arg(0, |v| {
-                                v.emit_cast_lty_adjust(src_lty, |desc| {
-                                    // `realloc(NULL, ...)` is explicitly allowed by the spec, so
-                                    // we can't force an unwrap here by returning `option: false`.
-                                    // Instead, we record the `option` flag as part of the rewrite
-                                    // so the nullable case can be handled appropriately.
-                                    option = desc.option;
-                                    TypeDesc {
-                                        own: Ownership::Box,
-                                        qty: if src_single {
-                                            Quantity::Single
-                                        } else {
-                                            Quantity::Slice
-                                        },
-                                        dyn_owned: false,
-                                        option: desc.option,
-                                        pointee_ty: desc.pointee_ty,
-                                    }
-                                });
-                            });
-
-                            v.emit(RewriteKind::ReallocSafe {
-                                zero_ty,
-                                elem_ty: elem_ty_str,
-                                src_single,
-                                dest_single,
-                                option,
-                            });
-
-                            // Cast output from `Box<T>`/`Box<[T]>` to the target type, as in
-                            // `malloc`.
-                            v.emit_cast_adjust_lty(
-                                |desc| {
-                                    TypeDesc {
-                                        own: Ownership::Box,
-                                        qty: if dest_single {
-                                            Quantity::Single
-                                        } else {
-                                            Quantity::Slice
-                                        },
-                                        dyn_owned: false,
-                                        // We always return non-null from `realloc`.
-                                        option: false,
-                                        pointee_ty: desc.pointee_ty,
-                                    }
-                                },
-                                dest_lty,
-                            );
-                        });
-                    }
-
-                    _ => {}
                 }
+                */
             }
             TerminatorKind::Assert { .. } => {}
             TerminatorKind::Yield { .. } => {}
@@ -977,41 +674,378 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         }
     }
 
-    /// Visit an `Rvalue`.  If `expect_ty` is `Some`, also emit whatever casts are necessary to
-    /// make the `Rvalue` produce a value of type `expect_ty`.
-    fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, expect_ty: Option<LTy<'tcx>>) {
-        debug!("mir_op::visit_rvalue: {:?}, expect {:?}", rv, expect_ty);
+    fn visit_call(
+        &mut self,
+        callee: Callee<'tcx>,
+        args: &[Operand<'tcx>],
+    ) -> &'a SublocInfo<'tcx> {
+        let info = self.info(&[]);
+
+        match callee {
+            Callee::LocalDef { def_id, substs: _ } => {
+                // TODO: handle substs (if nonempty)
+                for (i, arg) in args.iter().enumerate() {
+                    self.enter_call_arg(i, |v| v.visit_operand(arg));
+                }
+                // TODO: handle variadics?
+            }
+
+            Callee::PtrOffset { .. } => {
+                self.enter_call_arg(0, |v| v.visit_operand(&args[0]));
+
+                let desc = match info.new_ty {
+                    SublocType::Ptr(desc) => desc,
+                    SublocType::Other(_) =>
+                        panic!("expected SublocType::Ptr for Callee::PtrOffset"),
+                };
+
+                let mutbl = matches!(desc.own, Ownership::Mut);
+                if !desc.option {
+                    self.emit(RewriteKind::OffsetSlice { mutbl });
+                } else {
+                    self.emit(RewriteKind::OptionMapOffsetSlice { mutbl });
+                }
+            }
+            /*
+            Callee::SliceAsPtr { elem_ty, .. } => {
+                self.visit_slice_as_ptr(elem_ty, &args[0], pl_ty);
+            }
+
+            Callee::Memcpy => {
+                self.enter_rvalue(|v| {
+                    // TODO: Only emit `MemcpySafe` if the rewritten argument types and
+                    // pointees are suitable.  Specifically, the `src` and `dest` arguments
+                    // must both be rewritten to safe references, their pointee types must
+                    // be the same, and the pointee type must implement `Copy`.  If these
+                    // conditions don't hold, leave the `memcpy` call intact and emit casts
+                    // back to `void*` on the `dest` and `src` arguments.
+                    let dest_lty = v.acx.type_of(&args[0]);
+                    let dest_pointee = v.pointee_lty(dest_lty);
+                    let src_lty = v.acx.type_of(&args[1]);
+                    let src_pointee = v.pointee_lty(src_lty);
+                    let common_pointee = dest_pointee.filter(|&x| Some(x) == src_pointee);
+                    let pointee_lty = match common_pointee {
+                        Some(x) => x,
+                        // TODO: emit void* casts before bailing out, as described above
+                        None => return,
+                    };
+
+                    let (_, elem_ty) = v.lty_to_rewritten_str(pointee_lty);
+                    let dest_single = !v.perms[dest_lty.label]
+                        .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+                    let src_single = !v.perms[src_lty.label]
+                        .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+                    let dest_option =
+                        !v.perms[dest_lty.label].contains(PermissionSet::NON_NULL);
+                    let src_option =
+                        !v.perms[src_lty.label].contains(PermissionSet::NON_NULL);
+                    v.emit(RewriteKind::MemcpySafe {
+                        elem_ty,
+                        src_single,
+                        src_option,
+                        dest_single,
+                        dest_option,
+                    });
+
+                    if !pl_ty.label.is_none()
+                        && v.perms[pl_ty.label].intersects(PermissionSet::USED)
+                    {
+                        let dest_lty = v.acx.type_of(&args[0]);
+                        // TODO: The result of `MemcpySafe` is always a slice, so this cast
+                        // may be using an incorrect input type.  See the comment on the
+                        // `MemcpySafe` case of `rewrite::expr::convert` for details.
+                        v.emit_cast_lty_lty(dest_lty, pl_ty, true);
+                    }
+                });
+            }
+
+            Callee::Memset => {
+                self.enter_rvalue(|v| {
+                    // TODO: Only emit `MemsetSafe` if the rewritten argument type and
+                    // pointee are suitable.  Specifically, the `dest` arguments must be
+                    // rewritten to a safe reference type.  If these conditions don't hold,
+                    // leave the `memset` call intact and emit casts back to `void*` on the
+                    // `dest` argument.
+                    let dest_lty = v.acx.type_of(&args[0]);
+                    let dest_pointee = v.pointee_lty(dest_lty);
+                    let pointee_lty = match dest_pointee {
+                        Some(x) => x,
+                        // TODO: emit void* cast before bailing out, as described above
+                        None => return,
+                    };
+
+                    let (elem_ty, elem_ty_str) = v.lty_to_rewritten_str(pointee_lty);
+                    let dest_single = !v.perms[dest_lty.label]
+                        .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+
+                    let zero_ty = match ZeroizeType::from_ty(tcx, elem_ty) {
+                        Some(x) => x,
+                        // TODO: emit void* cast before bailing out, as described above
+                        None => return,
+                    };
+
+                    v.emit(RewriteKind::MemsetZeroize {
+                        zero_ty,
+                        elem_ty: elem_ty_str,
+                        dest_single,
+                    });
+
+                    if !pl_ty.label.is_none()
+                        && v.perms[pl_ty.label].intersects(PermissionSet::USED)
+                    {
+                        let dest_lty = v.acx.type_of(&args[0]);
+                        v.emit_cast_lty_lty(dest_lty, pl_ty, true);
+                    }
+                });
+            }
+
+            Callee::IsNull => {
+                self.enter_rvalue(|v| {
+                    let arg_lty = v.acx.type_of(&args[0]);
+                    if !v.flags[arg_lty.label].contains(FlagSet::FIXED) {
+                        let arg_non_null =
+                            v.perms[arg_lty.label].contains(PermissionSet::NON_NULL);
+                        if arg_non_null {
+                            v.emit(RewriteKind::IsNullToConstFalse);
+                        } else {
+                            v.emit(RewriteKind::IsNullToIsNone);
+                        }
+                    }
+                });
+            }
+
+            Callee::Null { .. } => {
+                self.enter_rvalue(|v| {
+                    if !v.flags[pl_ty.label].contains(FlagSet::FIXED) {
+                        assert!(
+                            !v.perms[pl_ty.label].contains(PermissionSet::NON_NULL),
+                            "impossible: result of null() is a NON_NULL pointer?"
+                        );
+                        v.emit(RewriteKind::PtrNullToNone);
+                    }
+                });
+            }
+
+            ref callee @ (Callee::Malloc | Callee::Calloc) => {
+                self.enter_rvalue(|v| {
+                    let dest_lty = v.acx.type_of(destination);
+                    let dest_pointee = v.pointee_lty(dest_lty);
+                    let pointee_lty = match dest_pointee {
+                        Some(x) => x,
+                        // TODO: emit void* cast before bailing out
+                        None => {
+                            trace!("{callee:?}: no pointee type for dest");
+                            return;
+                        }
+                    };
+
+                    let (_, elem_ty) = v.lty_to_rewritten_str(pointee_lty);
+                    let single = !v.perms[dest_lty.label]
+                        .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+
+                    let opt_zero_ty =
+                        ZeroizeType::from_lty(&v.acx, v.perms, v.flags, pointee_lty);
+                    let zero_ty = match opt_zero_ty {
+                        Some(x) => x,
+                        // TODO: emit void* cast before bailing out
+                        None => {
+                            trace!(
+                                "{callee:?}: failed to compute ZeroizeType \
+                                for {pointee_lty:?}"
+                            );
+                            return;
+                        }
+                    };
+
+                    let rw = match *callee {
+                        Callee::Malloc => RewriteKind::MallocSafe {
+                            zero_ty,
+                            elem_ty,
+                            single,
+                        },
+                        Callee::Calloc => RewriteKind::CallocSafe {
+                            zero_ty,
+                            elem_ty,
+                            single,
+                        },
+                        _ => unreachable!(),
+                    };
+                    v.emit(rw);
+
+                    // `MallocSafe` produces either `Box<T>` or `Box<[T]>`.  Emit a cast
+                    // from that type to the required output type.
+                    v.emit_cast_adjust_lty(
+                        |desc| TypeDesc {
+                            own: Ownership::Box,
+                            qty: if single {
+                                Quantity::Single
+                            } else {
+                                Quantity::Slice
+                            },
+                            dyn_owned: false,
+                            option: false,
+                            pointee_ty: desc.pointee_ty,
+                        },
+                        dest_lty,
+                    );
+                });
+            }
+
+            Callee::Free => {
+                self.enter_rvalue(|v| {
+                    let src_lty = v.acx.type_of(&args[0]);
+                    let src_pointee = v.pointee_lty(src_lty);
+                    if src_pointee.is_none() {
+                        // TODO: emit void* cast before bailing out
+                        return;
+                    }
+
+                    let single = !v.perms[src_lty.label]
+                        .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+
+                    // Cast to either `Box<T>` or `Box<[T]>` (depending on `single`).  This
+                    // ensures a panic occurs when `free`ing a pointer that no longer has
+                    // ownership.
+                    v.enter_call_arg(0, |v| {
+                        v.emit_cast_lty_adjust(src_lty, |desc| TypeDesc {
+                            own: Ownership::Box,
+                            qty: if single {
+                                Quantity::Single
+                            } else {
+                                Quantity::Slice
+                            },
+                            dyn_owned: false,
+                            option: desc.option,
+                            pointee_ty: desc.pointee_ty,
+                        });
+                    });
+
+                    v.emit(RewriteKind::FreeSafe { single });
+                });
+            }
+
+            ref callee @ Callee::Realloc => {
+                self.enter_rvalue(|v| {
+                    let src_lty = v.acx.type_of(&args[0]);
+                    let src_pointee = v.pointee_lty(src_lty);
+                    let dest_lty = v.acx.type_of(destination);
+                    let dest_pointee = v.pointee_lty(dest_lty);
+                    let common_pointee = dest_pointee.filter(|&x| Some(x) == src_pointee);
+                    let pointee_lty = match common_pointee {
+                        Some(x) => x,
+                        // TODO: emit void* cast before bailing out
+                        None => {
+                            trace!(
+                                "{callee:?}: no common pointee type \
+                                between {src_pointee:?} and {dest_pointee:?}"
+                            );
+                            return;
+                        }
+                    };
+
+                    let (elem_ty, elem_ty_str) = v.lty_to_rewritten_str(pointee_lty);
+                    let dest_single = !v.perms[dest_lty.label]
+                        .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+                    let src_single = !v.perms[src_lty.label]
+                        .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
+
+                    let zero_ty = match ZeroizeType::from_ty(tcx, elem_ty) {
+                        Some(x) => x,
+                        // TODO: emit void* cast before bailing out
+                        None => {
+                            trace!(
+                                "{callee:?}: failed to compute ZeroizeType \
+                                for {elem_ty:?}"
+                            );
+                            return;
+                        }
+                    };
+
+                    // Cast input to either `Box<T>` or `Box<[T]>`, as in `free`.
+                    let mut option = false;
+                    v.enter_call_arg(0, |v| {
+                        v.emit_cast_lty_adjust(src_lty, |desc| {
+                            // `realloc(NULL, ...)` is explicitly allowed by the spec, so
+                            // we can't force an unwrap here by returning `option: false`.
+                            // Instead, we record the `option` flag as part of the rewrite
+                            // so the nullable case can be handled appropriately.
+                            option = desc.option;
+                            TypeDesc {
+                                own: Ownership::Box,
+                                qty: if src_single {
+                                    Quantity::Single
+                                } else {
+                                    Quantity::Slice
+                                },
+                                dyn_owned: false,
+                                option: desc.option,
+                                pointee_ty: desc.pointee_ty,
+                            }
+                        });
+                    });
+
+                    v.emit(RewriteKind::ReallocSafe {
+                        zero_ty,
+                        elem_ty: elem_ty_str,
+                        src_single,
+                        dest_single,
+                        option,
+                    });
+
+                    // Cast output from `Box<T>`/`Box<[T]>` to the target type, as in
+                    // `malloc`.
+                    v.emit_cast_adjust_lty(
+                        |desc| {
+                            TypeDesc {
+                                own: Ownership::Box,
+                                qty: if dest_single {
+                                    Quantity::Single
+                                } else {
+                                    Quantity::Slice
+                                },
+                                dyn_owned: false,
+                                // We always return non-null from `realloc`.
+                                option: false,
+                                pointee_ty: desc.pointee_ty,
+                            }
+                        },
+                        dest_lty,
+                    );
+                });
+            }
+            */
+
+            //_ => todo!("visit_call {callee:?}"),
+            _ => info!("TODO: visit_call {callee:?}"),
+        }
+
+        self.emit_cast_for_subloc(info);
+        info
+    }
+
+    fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>) -> &'a SublocInfo<'tcx> {
+        debug!("mir_op::visit_rvalue: {:?}", rv);
+        let info = self.info(&[]);
         match *rv {
             Rvalue::Use(ref op) => {
-                self.enter_rvalue_operand(0, |v| v.visit_operand(op, expect_ty));
+                self.enter_rvalue_operand(0, |v| v.visit_operand(op));
             }
             Rvalue::Repeat(ref op, _) => {
-                self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
+                self.enter_rvalue_operand(0, |v| v.visit_operand(op));
             }
             Rvalue::Ref(_rg, kind, pl) => {
-                let mutbl = match kind {
-                    BorrowKind::Mut { .. } => true,
-                    BorrowKind::Shared | BorrowKind::Shallow | BorrowKind::Unique => false,
-                };
                 self.enter_rvalue_place(0, |v| {
-                    v.visit_place(pl, PlaceAccess::from_bool(mutbl), RequireSinglePointer::No)
+                    v.visit_place(pl)
                 });
-
-                if let Some(expect_ty) = expect_ty {
-                    if self.is_nullable(expect_ty.label) {
-                        // Nullable (`Option`) output is expected, but `Ref` always produces a
-                        // `NON_NULL` pointer.  Cast rvalue from `&T` to `Option<&T>` or similar.
-                        self.emit(RewriteKind::OptionSome);
-                    }
-                }
             }
             Rvalue::ThreadLocalRef(_def_id) => {
                 // TODO
             }
             Rvalue::AddressOf(mutbl, pl) => {
                 self.enter_rvalue_place(0, |v| {
-                    v.visit_place(pl, PlaceAccess::from_mutbl(mutbl), RequireSinglePointer::No)
+                    v.visit_place(pl)
                 });
+                /*
                 if let Some(expect_ty) = expect_ty {
                     let desc = type_desc::perms_to_desc_with_pointee(
                         self.acx.tcx(),
@@ -1031,94 +1065,73 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         self.emit(RewriteKind::OptionSome);
                     }
                 }
+                */
             }
             Rvalue::Len(pl) => {
                 self.enter_rvalue_place(0, |v| {
-                    v.visit_place(pl, PlaceAccess::Imm, RequireSinglePointer::No)
+                    v.visit_place(pl)
                 });
             }
             Rvalue::Cast(_kind, ref op, ty) => {
                 if util::is_null_const_operand(op) && ty.is_unsafe_ptr() {
                     // Special case: convert `0 as *const T` to `None`.
+                    self.emit(RewriteKind::ZeroAsPtrToNone);
+                    /*
                     if let Some(rv_lty) = expect_ty {
                         if self.is_nullable(rv_lty.label) {
-                            self.emit(RewriteKind::ZeroAsPtrToNone);
                         }
                     }
+                    */
                 }
 
-                self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
-                if let Some(rv_lty) = expect_ty {
-                    let op_lty = self.acx.type_of(op);
-                    let op_pointee = self.pointee_lty(op_lty);
-                    let rv_pointee = self.pointee_lty(rv_lty);
-                    // TODO: Check `pointee_types` recursively to handle pointer-to-pointer cases.
-                    // For example `op_pointee = *mut /*p1*/ c_void` and `rv_pointee = *mut /*p2*/
-                    // c_void`, where `p1` and `p2` both have `pointee_types` entries of `u8`.
-                    let common_pointee = op_pointee.filter(|&x| Some(x) == rv_pointee);
-                    if let Some(pointee_lty) = common_pointee {
-                        let op_desc = type_desc::perms_to_desc_with_pointee(
-                            self.acx.tcx(),
-                            pointee_lty.ty,
-                            op_lty.ty,
-                            self.perms[op_lty.label],
-                            self.flags[op_lty.label],
-                        );
-                        let rv_desc = type_desc::perms_to_desc_with_pointee(
-                            self.acx.tcx(),
-                            pointee_lty.ty,
-                            rv_lty.ty,
-                            self.perms[rv_lty.label],
-                            self.flags[rv_lty.label],
-                        );
-                        debug!("Cast with common pointee {:?}:\n  op_desc = {:?}\n  rv_desc = {:?}\n  matches? {}",
-                            pointee_lty, op_desc, rv_desc, op_desc == rv_desc);
-                        if op_desc == rv_desc {
-                            // After rewriting, the input and output types of the cast will be
-                            // identical.  This means we can delete the cast.
-                            self.emit(RewriteKind::RemoveCast);
-                        }
-                    }
+                let op_info = self.enter_rvalue_operand(0, |v| v.visit_operand(op));
+                if op_info.expect_ty == info.new_ty {
+                    // After rewriting, the input and output types of the cast will be identical.
+                    // This means we can delete the cast.
+                    self.emit(RewriteKind::RemoveCast);
                 }
             }
             Rvalue::BinaryOp(_bop, ref ops) => {
-                self.enter_rvalue_operand(0, |v| v.visit_operand(&ops.0, None));
-                self.enter_rvalue_operand(1, |v| v.visit_operand(&ops.1, None));
+                self.enter_rvalue_operand(0, |v| v.visit_operand(&ops.0));
+                self.enter_rvalue_operand(1, |v| v.visit_operand(&ops.1));
             }
             Rvalue::CheckedBinaryOp(_bop, ref ops) => {
-                self.enter_rvalue_operand(0, |v| v.visit_operand(&ops.0, None));
-                self.enter_rvalue_operand(1, |v| v.visit_operand(&ops.1, None));
+                self.enter_rvalue_operand(0, |v| v.visit_operand(&ops.0));
+                self.enter_rvalue_operand(1, |v| v.visit_operand(&ops.1));
             }
             Rvalue::NullaryOp(..) => {}
             Rvalue::UnaryOp(_uop, ref op) => {
-                self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
+                self.enter_rvalue_operand(0, |v| v.visit_operand(op));
             }
             Rvalue::Discriminant(pl) => {
                 self.enter_rvalue_place(0, |v| {
-                    v.visit_place(pl, PlaceAccess::Imm, RequireSinglePointer::No)
+                    v.visit_place(pl)
                 });
             }
             Rvalue::Aggregate(ref _kind, ref ops) => {
                 for (i, op) in ops.iter().enumerate() {
-                    self.enter_rvalue_operand(i, |v| v.visit_operand(op, None));
+                    self.enter_rvalue_operand(i, |v| v.visit_operand(op));
                 }
             }
             Rvalue::ShallowInitBox(ref op, _ty) => {
-                self.enter_rvalue_operand(0, |v| v.visit_operand(op, None));
+                self.enter_rvalue_operand(0, |v| v.visit_operand(op));
             }
             Rvalue::CopyForDeref(pl) => {
                 self.enter_rvalue_place(0, |v| {
-                    v.visit_place(pl, PlaceAccess::Imm, RequireSinglePointer::No)
+                    v.visit_place(pl)
                 });
             }
         }
+
+        self.emit_cast_for_subloc(info);
+        info
     }
 
-    /// Visit an `Operand`.  If `expect_ty` is `Some`, also emit whatever casts are necessary to
-    /// make the `Operand` produce a value of type `expect_ty`.
-    fn visit_operand(&mut self, op: &Operand<'tcx>, expect_ty: Option<LTy<'tcx>>) {
+    fn visit_operand(&mut self, op: &Operand<'tcx>) -> &'a SublocInfo<'tcx> {
+        let info = self.info(&[]);
         match *op {
             Operand::Copy(pl) | Operand::Move(pl) => {
+                /*
                 let pl_lty = self.acx.type_of(pl);
                 // Moving out of a `DynOwned` pointer requires `Mut` access rather than `Move`.
                 // TODO: this should probably check `desc.dyn_owned` rather than perms directly
@@ -1129,19 +1142,26 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 } else {
                     PlaceAccess::Move
                 };
-                self.enter_operand_place(|v| v.visit_place(pl, access, RequireSinglePointer::Yes));
+                */
+                self.enter_operand_place(|v| v.visit_place(pl));
 
+                /*
                 if let Some(expect_ty) = expect_ty {
                     if !pl_lty.label.is_none() {
                         let cast_can_move = pl.is_local() && self.current_sub_loc_is_last_use();
                         self.emit_cast_lty_lty(pl_lty, expect_ty, cast_can_move);
                     }
                 }
+                */
             }
             Operand::Constant(..) => {}
         }
+
+        self.emit_cast_for_subloc(info);
+        info
     }
 
+    /*
     /// Like [`Self::visit_operand`], but takes an expected `TypeDesc` instead of an expected `LTy`.
     fn visit_operand_desc(&mut self, op: &Operand<'tcx>, expect_desc: TypeDesc<'tcx>) {
         match *op {
@@ -1165,12 +1185,11 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             Operand::Constant(..) => {}
         }
     }
+    */
 
     fn visit_place(
         &mut self,
         pl: Place<'tcx>,
-        access: PlaceAccess,
-        require_single_ptr: RequireSinglePointer,
     ) {
         let mut ltys = Vec::with_capacity(1 + pl.projection.len());
         ltys.push(self.acx.type_of(pl.local));
@@ -1178,18 +1197,15 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             let prev_lty = ltys.last().copied().unwrap();
             ltys.push(self.acx.projection_lty(prev_lty, &proj));
         }
-        self.visit_place_ref(pl.as_ref(), &ltys, access, require_single_ptr);
+        self.visit_place_ref(pl.as_ref(), &ltys);
     }
 
     /// Generate rewrites for a `Place` represented as a `PlaceRef`.  `proj_ltys` gives the `LTy`
-    /// for the `Local` and after each projection.  `access` describes how the place is being used:
-    /// immutably, mutably, or being moved out of.
+    /// for the `Local` and after each projection.
     fn visit_place_ref(
         &mut self,
         pl: PlaceRef<'tcx>,
         proj_ltys: &[LTy<'tcx>],
-        access: PlaceAccess,
-        require_single_ptr: RequireSinglePointer,
     ) {
         let (&last_proj, rest) = match pl.projection.split_last() {
             Some(x) => x,
@@ -1210,8 +1226,10 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         };
         match last_proj {
             PlaceElem::Deref => {
-                let cast_can_move = base_pl.is_local() && self.current_sub_loc_is_last_use();
+                //let cast_can_move = base_pl.is_local() && self.current_sub_loc_is_last_use();
                 self.enter_place_deref_pointer(|v| {
+                    // FIXME
+                    /*
                     v.visit_place_ref(base_pl, proj_ltys, access, RequireSinglePointer::Yes);
                     if !v.flags[base_lty.label].contains(FlagSet::FIXED) {
                         let desc = type_desc::perms_to_desc(
@@ -1255,22 +1273,24 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             });
                         }
                     }
+                    */
                 });
             }
             PlaceElem::Field(_idx, _ty) => {
                 self.enter_place_field_base(|v| {
-                    v.visit_place_ref(base_pl, proj_ltys, access, RequireSinglePointer::Yes)
+                    v.visit_place_ref(base_pl, proj_ltys)
                 });
             }
             PlaceElem::Index(_) | PlaceElem::ConstantIndex { .. } | PlaceElem::Subslice { .. } => {
                 self.enter_place_index_array(|v| {
-                    v.visit_place_ref(base_pl, proj_ltys, access, RequireSinglePointer::Yes)
+                    v.visit_place_ref(base_pl, proj_ltys)
                 });
             }
             PlaceElem::Downcast(_, _) => {}
         }
     }
 
+    /*
     fn visit_ptr_offset(&mut self, op: &Operand<'tcx>, result_ty: LTy<'tcx>) {
         // Compute the expected type for the argument, and emit a cast if needed.
         let result_ptr = result_ty.label;
@@ -1335,17 +1355,53 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             v.emit_cast_desc_desc(op_desc, result_desc);
         });
     }
+    */
+
+    fn emit_cast_for_subloc(&mut self, info: &'a SublocInfo<'tcx>) {
+        if info.expect_ty == info.new_ty {
+            // No cast is needed here.
+            return;
+        }
+
+        struct DummyPointerTable<T>(PhantomData<Vec<T>>);
+        impl<T> Index<PointerId> for DummyPointerTable<T> {
+            type Output = T;
+            fn index(&self, _idx: PointerId) -> &T {
+                panic!("tried to access DummyPointerTable");
+            }
+        }
+
+        let perms = &DummyPointerTable(PhantomData);
+        let flags = &DummyPointerTable(PhantomData);
+        let mut builder = CastBuilder::new(self.acx.tcx(), perms, flags, |rk| self.emit(rk));
+
+        let from = match info.new_ty {
+            SublocType::Ptr(desc) => desc,
+            SublocType::Other(_) => panic!("can't cast SublocTypes {:?} -> {:?}",
+                info.new_ty, info.expect_ty),
+        };
+        let to = match info.expect_ty {
+            SublocType::Ptr(desc) => desc,
+            SublocType::Other(_) => panic!("can't cast SublocTypes {:?} -> {:?}",
+                info.new_ty, info.expect_ty),
+        };
+        builder.build_cast_desc_desc(from, to);
+    }
 
     fn emit(&mut self, rw: RewriteKind) {
+        let loc = self.loc();
+        let sub_loc = self.sub_loc().to_owned();
+
         self.rewrites
-            .entry(self.loc)
+            .entry(loc)
             .or_insert_with(Vec::new)
             .push(MirRewrite {
                 kind: rw,
-                sub_loc: self.sub_loc.clone(),
+                sub_loc,
             });
     }
 
+    /*
     fn emit_cast_desc_desc(&mut self, from: TypeDesc<'tcx>, to: TypeDesc<'tcx>) {
         let perms = self.perms;
         let flags = self.flags;
@@ -1418,6 +1474,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         let mut builder = CastBuilder::new(self.acx.tcx(), perms, flags, |rk| self.emit(rk));
         builder.build_cast_adjust_lty(from_adjust, to_lty);
     }
+    */
 }
 
 impl ZeroizeType {
@@ -2080,14 +2137,12 @@ impl IsPlace for Rvalue<'_> {
 
 pub fn gen_mir_rewrites<'tcx>(
     acx: &AnalysisCtxt<'_, 'tcx>,
-    asn: &Assignment,
-    pointee_types: PointerTable<PointeeTypes<'tcx>>,
-    last_use: &LastUse,
+    info_map: &HashMap<(Location, Vec<SubLoc>), SublocInfo<'tcx>>,
     mir: &Body<'tcx>,
 ) -> (HashMap<Location, Vec<MirRewrite>>, DontRewriteFnReason) {
     let mut out = HashMap::new();
 
-    let mut v = ExprRewriteVisitor::new(acx, asn, pointee_types, last_use, &mut out, mir);
+    let mut v = ExprRewriteVisitor::new(acx, info_map, &mut out, mir);
 
     for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
         for (i, stmt) in bb.statements.iter().enumerate() {

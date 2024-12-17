@@ -110,6 +110,20 @@ impl<'a, 'tcx> TypeConversionContext<'a, 'tcx> {
             new_desc.pointee_ty = pointee_lty.ty;
         }
 
+        // FIXME (hack): currently we sometimes get a desc with `pointee_ty = [u32]` etc, instead
+        // of `pointee_ty = u32` + `qty = Slice`.  This causes confusion in later passes, so here
+        // we hack around it.
+        // TODO: investigate why this happens and fix the underlying issue
+        if new_desc.qty == Quantity::Single {
+            if let &TyKind::Slice(elem_ty) = new_desc.pointee_ty.kind() {
+                new_desc.qty = Quantity::Slice;
+                new_desc.pointee_ty = elem_ty;
+            //} else if let &TyKind::Array(elem_ty, _) = new_desc.pointee_ty.kind() {
+            //    new_desc.qty = Quantity::Array;
+            //    new_desc.pointee_ty = elem_ty;
+            }
+        }
+
         (SublocType::Ptr(old_desc), SublocType::Ptr(new_desc))
     }
 

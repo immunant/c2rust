@@ -38,7 +38,8 @@ pub fn gen_expr_rewrites<'tcx>(
     let subloc_info = subloc_info::typecheck_subloc_info(acx, &subloc_globals, subloc_info, mir);
     debug_print_subloc_info_map(acx.tcx(), mir, &subloc_info);
 
-    let (mir_rewrites, errors) = mir_op::gen_mir_rewrites(acx, asn, pointee_types, last_use, mir);
+    //let (mir_rewrites, errors) = mir_op::gen_mir_rewrites(acx, asn, pointee_types, last_use, mir);
+    let (mir_rewrites, errors) = mir_op::gen_mir_rewrites(acx, &subloc_info, mir);
     if !errors.is_empty() {
         acx.gacx.dont_rewrite_fns.add(def_id, errors);
     }
