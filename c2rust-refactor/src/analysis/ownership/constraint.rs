@@ -618,7 +618,7 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
             for (i, &pi) in ps.iter().enumerate() {
                 // This check handles cycles.  Suppose `a <= b <= c <= a` and `d <= e`.  We'd
                 // like to replace `min(a, b, c, d, e)` with `min(a, d)`.  Without this check,
-                // we would end up with `min()`, becuase `a` eliminates `b` and `c`, `b` and
+                // we would end up with `min()`, because `a` eliminates `b` and `c`, `b` and
                 // `c` eliminate `a`, and `d` and `e` remove each other.  This check doesn't
                 // cause us to miss any valid removals because if `a <= b` and `b <= x` then
                 // also `a <= x`.
