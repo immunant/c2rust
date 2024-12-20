@@ -1118,7 +1118,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     /// - let r1 = std::ptr::addr_of!(x.field);
     /// - let r2 = &x.field;
     /// - let r3 = &(*p).field;
-    /// The following will NOT satisfy that critera:
+    /// The following will NOT satisfy that criteria:
     /// - let r1 = x.field;
     /// - let r2 = x.field + y;
     pub fn has_field_projection(&self, rv: &Rvalue<'tcx>) -> bool {

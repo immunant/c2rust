@@ -75,20 +75,20 @@ fn do_printf() {
     }
 }
 
-struct Clonable1 {
+struct Cloneable1 {
     x: i32,
     y: i32,
 }
 
-impl Clonable1 {
+impl Cloneable1 {
     fn get_x(&self) -> i32 {
         self.x
     }
 }
 
-impl Clone for Clonable1 {
+impl Clone for Cloneable1 {
     fn clone(&self) -> Self {
-        Clonable1 {
+        Cloneable1 {
             x: self.x,
             y: self.y,
         }
@@ -96,7 +96,7 @@ impl Clone for Clonable1 {
 }
 
 #[derive(Clone)]
-struct Clonable2 {
+struct Cloneable2 {
     x: i32,
     y: i32,
 }

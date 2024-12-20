@@ -308,18 +308,18 @@ def do_rewrite_impl(d):
     yield '  fn rewrite(old: &Self, new: &Self, mut rcx: RewriteCtxtRef) -> bool {'
     if has_field(d, 'id'):
         yield '    trace!("{:?}: rewrite: begin (%s)", new.id);' % d.name
-    for strat in get_rewrite_strategies(d):
+    for strategy in get_rewrite_strategies(d):
         yield '    let mark = rcx.mark();'
         if has_field(d, 'id'):
-            yield '    trace!("{:?}: rewrite: try %s", new.id);' % strat
-        yield '    let ok = strategy::%s::rewrite(old, new, rcx.borrow());' % strat
+            yield '    trace!("{:?}: rewrite: try %s", new.id);' % strategy
+        yield '    let ok = strategy::%s::rewrite(old, new, rcx.borrow());' % strategy
         yield '    if ok {'
         if has_field(d, 'id'):
-            yield '      trace!("{:?}: rewrite: %s succeeded", new.id);' % strat
+            yield '      trace!("{:?}: rewrite: %s succeeded", new.id);' % strategy
         yield '      return true;'
         yield '    } else {'
         if has_field(d, 'id'):
-            yield '      trace!("{:?}: rewrite: %s FAILED", new.id);' % strat
+            yield '      trace!("{:?}: rewrite: %s FAILED", new.id);' % strategy
         yield '      rcx.rewind(mark);'
         yield '    }'
         yield ''
