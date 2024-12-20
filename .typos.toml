@@ -1,0 +1,25 @@
+# See https://github.com/crate-ci/typos/blob/master/docs/reference.md to configure typos
+
+[default]
+extend-ignore-re = [
+  "__fpr",
+  "(?i)TYPDEF_DECL",
+  "ParmVarDecl",
+  "CharLits",
+  "hpe_",
+  "reachable_froms",
+  "(\\$ot|ot =|ot\\.| ot\\)|ot_ty)",
+]
+
+[default.extend-identifiers]
+mapp = "mapp"
+inouts = "inouts"
+
+[default.extend-words]
+clen = "clen"
+
+[files]
+extend-exclude = [
+  "examples/*",
+  "*.asc",
+]

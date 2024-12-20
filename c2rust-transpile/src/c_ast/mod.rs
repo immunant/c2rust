@@ -324,9 +324,11 @@ impl TypedAstContext {
         match self.index(typ).kind {
             CTypeKind::Typedef(decl) => match &self.index(decl).kind {
                 CDeclKind::Typedef {
-                    name: nam, typ: ty, ..
+                    name: name_,
+                    typ: ty,
+                    ..
                 } => {
-                    if nam == "__builtin_va_list" {
+                    if name_ == "__builtin_va_list" {
                         true
                     } else {
                         self.is_builtin_va_list(ty.ctype)
@@ -352,11 +354,11 @@ impl TypedAstContext {
         match resolved_ctype.kind {
             Struct(record_id) => {
                 if let CDeclKind::Struct {
-                    name: Some(ref nam),
+                    name: Some(ref name_),
                     ..
                 } = &self[record_id].kind
                 {
-                    nam == "__va_list_tag" || nam == "__va_list"
+                    name_ == "__va_list_tag" || name_ == "__va_list"
                 } else {
                     false
                 }
@@ -1682,7 +1684,7 @@ pub enum CTypeKind {
     Half,
     BFloat16,
 
-    // ARM Scalable Vector Extention types
+    // ARM Scalable Vector Extension types
     // TODO: represent all the individual types in AArch64SVEACLETypes.def
     UnhandledSveType,
 }
