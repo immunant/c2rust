@@ -537,13 +537,6 @@ impl Builder {
         let mut tokens = TokenStream::new();
         let comma_token = Token![,](self.span);
         let mut it = list.nested.into_iter();
-        tokens.extend(
-            Some(proc_macro2::TokenTree::Punct(proc_macro2::Punct::new(
-                '(',
-                proc_macro2::Spacing::Alone,
-            )))
-            .into_iter(),
-        );
         if let Some(value) = it.next() {
             value.to_tokens(&mut tokens);
         }
@@ -551,13 +544,12 @@ impl Builder {
             comma_token.to_tokens(&mut tokens);
             value.to_tokens(&mut tokens);
         }
-        tokens.extend(
-            Some(proc_macro2::TokenTree::Punct(proc_macro2::Punct::new(
-                ')',
-                proc_macro2::Spacing::Alone,
-            )))
-            .into_iter(),
-        );
+        let tokens = proc_macro2::TokenTree::Group(proc_macro2::Group::new(
+            proc_macro2::Delimiter::Parenthesis,
+            tokens,
+        ))
+        .into();
+
         PreparedMetaItem {
             path: list.path,
             tokens,
