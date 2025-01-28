@@ -31,4 +31,7 @@ void cast_stuff(void) {
         bool b = true;
         float x15 = b;
         void* x16 = (void*)b;
+
+        // reference applied to a cast requires parens on Rust side
+        int * x = &(int){0};
 }
