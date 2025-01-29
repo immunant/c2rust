@@ -161,8 +161,10 @@ pub fn addr_of_local(mir_loc: MirLocId, ptr: usize, local: u32, size: u32) {
     });
 }
 
+/// # Safety
+/// `ptr` must be dereferenceable.
 pub unsafe fn addr_of_sized<T: ?Sized>(mir_loc: MirLocId, ptr: *const T) {
-    let size = core::mem::size_of_val(&*ptr);
+    let size = core::mem::size_of_val(unsafe { &*ptr });
     RUNTIME.send_event(Event {
         mir_loc,
         kind: EventKind::AddrOfSized {
