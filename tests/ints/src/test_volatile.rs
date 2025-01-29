@@ -1,12 +1,21 @@
-use crate::volatile::rust_entry3;
+use crate::volatile::{rust_entry3, rust_volatile_stuff};
 use libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {
+    fn volatile_stuff();
+
     fn entry3(_: c_uint, _: *mut c_int);
 }
 
 const BUFFER_SIZE: usize = 9;
+
+pub fn test_compiles() {
+    unsafe {
+        volatile_stuff();
+        rust_volatile_stuff();
+    }
+}
 
 pub fn test_buffer() {
     let mut buffer = [0; BUFFER_SIZE];
