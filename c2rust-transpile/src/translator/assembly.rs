@@ -913,6 +913,7 @@ impl<'c> Translation<'c> {
             // Emit input and/or output expressions, separated by "=>" if both
             push_expr(&mut tokens, mk().paren_expr(constraints_ident));
             if let Some(in_expr) = in_expr {
+                let in_expr_span = in_expr.span();
                 push_expr(&mut tokens, in_expr);
                 if out_expr.is_some() {
                     tokens.push(TokenTree::Punct(Punct::new('=', Joint)));
@@ -923,7 +924,7 @@ impl<'c> Translation<'c> {
                         tokens.push(TokenTree::Punct(Punct::new('=', Joint)));
                         tokens.push(TokenTree::Punct(Punct::new('>', Alone)));
 
-                        tokens.push(TokenTree::Punct(Punct::new('_', Alone)));
+                        tokens.push(TokenTree::Ident(Ident::new("_", in_expr_span)));
                     }
                 }
             }
