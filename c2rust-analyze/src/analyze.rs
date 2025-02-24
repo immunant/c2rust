@@ -426,7 +426,7 @@ fn parse_def_id(s: &str) -> Result<DefId, String> {
     };
 
     let rendered = format!("{:?}", def_id);
-    if &rendered != orig_s {
+    if rendered != orig_s {
         return Err(format!(
             "path mismatch: after parsing input {}, obtained a different path {:?}",
             orig_s, def_id
@@ -964,7 +964,7 @@ fn run(tcx: TyCtxt) {
             loop_count, num_changed
         );
 
-        if &asn.perms.as_slice()[..gacx.num_global_pointers()] == &old_gasn {
+        if asn.perms.as_slice()[..gacx.num_global_pointers()] == old_gasn {
             break;
         }
     }
