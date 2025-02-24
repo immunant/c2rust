@@ -123,7 +123,7 @@ impl BlockWrites {
 }
 
 impl RecentWrites {
-    pub fn new<'tcx>(mir: &Body<'tcx>) -> RecentWrites {
+    pub fn new(mir: &Body) -> RecentWrites {
         calc_recent_writes(mir)
     }
 

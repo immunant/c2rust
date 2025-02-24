@@ -958,7 +958,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     }
 
     /// Iterate over the `DefId`s of all functions that should skip rewriting.
-    pub fn iter_fns_skip_rewrite<'a>(&'a self) -> impl Iterator<Item = DefId> + 'a {
+    pub fn iter_fns_skip_rewrite(&self) -> impl Iterator<Item = DefId> + '_ {
         self.dont_rewrite_fns.keys()
     }
 
@@ -1675,7 +1675,7 @@ where
         mem::take(&mut self.new)
     }
 
-    pub fn keys<'a>(&'a self) -> impl Iterator<Item = K> + 'a {
+    pub fn keys(&self) -> impl Iterator<Item = K> + '_ {
         self.m.keys().copied()
     }
 }

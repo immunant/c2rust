@@ -76,7 +76,7 @@ impl<'tcx> From<TypeDesc<'tcx>> for PtrDesc {
 }
 
 impl PtrDesc {
-    pub fn to_type_desc<'tcx>(self, pointee_ty: Ty<'tcx>) -> TypeDesc<'tcx> {
+    pub fn to_type_desc(self, pointee_ty: Ty) -> TypeDesc {
         let PtrDesc {
             own,
             qty,

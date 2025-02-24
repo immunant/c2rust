@@ -136,7 +136,8 @@ impl ProjectionSet for Instrumenter {
         // a random 64-bit key for it; the probability of collision
         // is 1/2^32 (because of the birthday paradox), which should
         // be good enough for our use case.
-        *self.projections
+        *self
+            .projections
             .lock()
             .unwrap()
             .entry(proj)
