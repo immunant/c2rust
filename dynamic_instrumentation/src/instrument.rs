@@ -6,7 +6,7 @@ use fs2::FileExt;
 use fs_err::OpenOptions;
 use indexmap::IndexSet;
 use log::{debug, trace};
-use rand;
+
 use rustc_ast::Mutability;
 use rustc_index::vec::Idx;
 use rustc_middle::mir::visit::{
@@ -136,12 +136,11 @@ impl ProjectionSet for Instrumenter {
         // a random 64-bit key for it; the probability of collision
         // is 1/2^32 (because of the birthday paradox), which should
         // be good enough for our use case.
-        self.projections
+        *self.projections
             .lock()
             .unwrap()
             .entry(proj)
             .or_insert_with(rand::random)
-            .clone()
     }
 }
 
@@ -415,7 +414,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                 }
 
                 match proj_iter.peek() {
-                    Some((base, PlaceElem::Deref)) => break (base.clone(), true),
+                    Some((base, PlaceElem::Deref)) => break (*base, true),
                     // Reached the end, we can use the full place
                     None => break (place.as_ref(), false),
                     _ => {
@@ -467,7 +466,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                 // The event we emit is `Project(p, &(p.*.x.y))`.
                 self.loc(location, location, project_fn)
                     .arg_var(inner_deref_base)
-                    .arg_addr_of(outer_deref_base.clone())
+                    .arg_addr_of(outer_deref_base)
                     .arg_var(proj_key)
                     .source(&inner_deref_op)
                     .dest_from(dest)
@@ -547,7 +546,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                 // E.g. for `p.*.x.y.*` the outer base is `p.*.x.y`
                 // and we emit `LoadValue(p.*.x.y)`.
                 self.loc(location, location, load_value_fn)
-                    .arg_var(outer_deref_base.clone())
+                    .arg_var(outer_deref_base)
                     .add_to(self);
             }
         }

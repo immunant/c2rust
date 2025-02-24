@@ -391,8 +391,8 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         rewrite::ty::rewrite_lty(
             tcx,
             lty,
-            &self.perms,
-            &self.flags,
+            self.perms,
+            self.flags,
             &self.pointee_types,
             &self.acx.gacx.adt_metadata,
         )
@@ -795,7 +795,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                                 .intersects(PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB);
 
                             let opt_zero_ty =
-                                ZeroizeType::from_lty(&v.acx, v.perms, v.flags, pointee_lty);
+                                ZeroizeType::from_lty(v.acx, v.perms, v.flags, pointee_lty);
                             let zero_ty = match opt_zero_ty {
                                 Some(x) => x,
                                 // TODO: emit void* cast before bailing out
@@ -1198,7 +1198,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
         // TODO: downgrade Move to Imm if the new type is Copy
 
-        debug_assert!(pl.projection.len() >= 1);
+        debug_assert!(!pl.projection.is_empty());
         // `LTy` of the base place, before the last projection.
         let base_lty = proj_ltys[pl.projection.len() - 1];
         // `LTy` resulting from applying `last_proj` to `base_lty`.
