@@ -59,7 +59,7 @@ impl LastUse {
         self.set.contains_key(&(loc, which))
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (Location, WhichPlace, Local)> + 'a {
+    pub fn iter(&self) -> impl Iterator<Item = (Location, WhichPlace, Local)> + '_ {
         self.set
             .iter()
             .map(|(&(loc, which), &local)| (loc, which, local))

@@ -63,10 +63,6 @@ impl PartialEq for PointerId {
     fn eq(&self, other: &PointerId) -> bool {
         self.index() == other.index()
     }
-
-    fn ne(&self, other: &PointerId) -> bool {
-        self.index() != other.index()
-    }
 }
 
 impl Eq for PointerId {}

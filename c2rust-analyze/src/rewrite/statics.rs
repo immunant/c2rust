@@ -9,8 +9,8 @@ use rustc_span::Span;
 
 /// For every static, if its write permission does not match its declared mutability, emit a rewrite
 /// changing the declaration to match observed/analyzed usage.
-pub fn gen_static_rewrites<'tcx>(
-    tcx: TyCtxt<'tcx>,
+pub fn gen_static_rewrites(
+    tcx: TyCtxt,
     asn: &Assignment,
     def_id: DefId,
     ptr: PointerId,

@@ -302,7 +302,7 @@ pub fn add_node(
             })
             .map(|nid| pi.with_node(NodeId::from(nid)))
     });
-    let source = direct_source.or(provenance.cloned());
+    let source = direct_source.or_else(|| provenance.cloned());
 
     let function = Func {
         id: dest_fn,

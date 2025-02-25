@@ -426,7 +426,7 @@ fn parse_def_id(s: &str) -> Result<DefId, String> {
     };
 
     let rendered = format!("{:?}", def_id);
-    if &rendered != orig_s {
+    if rendered != orig_s {
         return Err(format!(
             "path mismatch: after parsing input {}, obtained a different path {:?}",
             orig_s, def_id
@@ -915,7 +915,7 @@ fn run(tcx: TyCtxt) {
                     borrowck::borrowck_mir(
                         &acx,
                         &info.dataflow,
-                        &mut asn.perms_mut(),
+                        asn.perms_mut(),
                         &updates_forbidden,
                         name.as_str(),
                         &mir,
@@ -964,7 +964,7 @@ fn run(tcx: TyCtxt) {
             loop_count, num_changed
         );
 
-        if &asn.perms.as_slice()[..gacx.num_global_pointers()] == &old_gasn {
+        if asn.perms.as_slice()[..gacx.num_global_pointers()] == old_gasn {
             break;
         }
     }
@@ -1117,13 +1117,13 @@ fn run(tcx: TyCtxt) {
                     continue;
                 }
                 ann.emit(span, format_args!("typeof({:?}) = {}", local, ty_str));
-                if static_non_null_ptrs.len() > 0 {
+                if !static_non_null_ptrs.is_empty() {
                     ann.emit(
                         span,
                         format_args!("  static NON_NULL: {:?}", static_non_null_ptrs),
                     );
                 }
-                if dynamic_non_null_ptrs.len() > 0 {
+                if !dynamic_non_null_ptrs.is_empty() {
                     ann.emit(
                         span,
                         format_args!("  dynamic NON_NULL: {:?}", dynamic_non_null_ptrs),

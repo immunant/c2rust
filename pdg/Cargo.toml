@@ -10,10 +10,11 @@ repository.workspace = true
 license.workspace = true
 keywords.workspace = true
 categories.workspace = true
+publish = false
 
 [dependencies]
 bincode = "1.0"
-c2rust-analysis-rt = { path = "../analysis/runtime", version = "0.19.0" }
+c2rust-analysis-rt = { path = "../analysis/runtime", version = "0.20.0" }
 indexed_vec = "1.2"
 indexmap = "1.8"
 serde = { version = "1.0", features = ["derive"] }
@@ -26,7 +27,7 @@ linked_hash_set = "0.1"
 clap = { version = "3.2", features = ["derive"] }
 
 [build-dependencies]
-c2rust-build-paths = { path = "../c2rust-build-paths", version = "0.19.0" }
+c2rust-build-paths = { path = "../c2rust-build-paths", version = "0.20.0" }
 
 [dev-dependencies]
 insta = "1.15"
