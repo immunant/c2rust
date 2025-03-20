@@ -22,18 +22,18 @@ jobs:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     # Working dir is /home/runner/work/c2rust/c2rust
     - name: Checkout c2rust
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
     # Working dir is /home/runner/work/c2rust/c2rust/testsuite
     - name: Checkout c2rust-testsuite
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
         repository: immunant/c2rust-testsuite
         path: testsuite
         submodules: true
 
     - name: Cache Rust toolchain
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: |
           ~/.rustup/toolchains
@@ -42,7 +42,7 @@ jobs:
         key: ${{ runner.os }}-rust-toolchain-${{ hashFiles('rust-toolchain') }}
 
     - name: Cache Rust artifacts
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -52,7 +52,7 @@ jobs:
         key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '**/c2rust-ast-exporter/**/CMakeLists.txt', '**/examples/**/CMakeLists.txt') }}
 
     - name: Cache Python - pip
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
