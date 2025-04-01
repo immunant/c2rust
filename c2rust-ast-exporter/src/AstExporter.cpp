@@ -24,6 +24,7 @@
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/Version.h"
+#include "clang/Basic/SourceLocation.h"
 #include "clang/Frontend/CompilerInstance.h"
 #if CLANG_VERSION_MAJOR < 10
 #include "clang/Frontend/LangStandard.h"
@@ -816,7 +817,25 @@ class TranslateASTVisitor final
                                  Preprocessor &PP)
         : Context(Context), typeEncoder(Context, encoder, sugared, this),
           encoder(encoder), PP(PP),
-          files{{"", {}}} {}
+          files{{"", {}}} {
+            // Include
+            if (const char* src_dir = std::getenv("PROJ_SRC")) {
+                std::cout << "Adding extra include path: " << src_dir << std::endl;
+                llvm::StringRef path(src_dir);
+                llvm::ErrorOr<const clang::DirectoryEntry*> *dirEntry = PP.getFileManager().getDirectory(path);
+                if (dirEntry) {
+                    clang::DirectoryEntryRef dRef(*dirEntry);
+                // PP.getHeaderSearchInfo().AddSearchPath(
+                //     DirectoryLookup(new DirectoryEntryRef(src_dir), SrcMgr::C_User, false),
+                //     true);
+                PP.getHeaderSearchInfo().AddSearchPath(
+                    clang::DirectoryLookup(dRef, clang::SrcMgr::C_User, false),
+                    true);
+                } else {
+                    std::cerr << "Error: could not find directory: " << src_dir << std::endl;
+                }
+            }
+          }
 
     // Override the default behavior of the RecursiveASTVisitor
     bool shouldVisitImplicitCode() const { return true; }
@@ -833,7 +852,8 @@ class TranslateASTVisitor final
              * for (auto const &file : files) here. */
             for (size_t idx = 0; idx < size; idx++) {
                 auto const &file = files[idx];
-                getExporterFileId(manager.getFileID(file.second), false);
+                auto s = getExporterFileId(manager.getFileID(file.second), false);
+                // std::cout << file.first << std::endl;
             }
         } while (size != files.size());
         return files;
@@ -931,7 +951,17 @@ class TranslateASTVisitor final
         if (filename == "?" && isVaList)
             filename = "vararg";
 
+        for (auto it = PP.getHeaderSearchInfo().search_dir_begin();
+            it != PP.getHeaderSearchInfo().search_dir_end(); ++it) {
+            std::cout << "Include search path: " << it->getDir()->getName().str() << std::endl;
+        }
+
+
         auto new_id = files.size();
+        std::cout << std::endl << "NEW!!!!!!!" << std::endl;
+        std::cout << "Filename: " << filename << std::endl;
+        std::cout << manager.getIncludeLoc(id).printToString(manager) << std::endl;
+        // std::cout << manager.getPresumedLoc(manager.getIncludeLoc(id)).getFilename() << std::endl;
         files.push_back(std::make_pair(filename, manager.getIncludeLoc(id)));
         file_id_mapping[id] = new_id;
         return new_id;
