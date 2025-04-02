@@ -1,4 +1,18 @@
-# C2Rust
+# FlexC2Rust
+
+A version of C2Rust for the FlexC dialect
+
+## Changes
+
+If the file(s) to be translated does not have its header file in the same folder as the .c file, specify the project root in the PROJ_SRC environment variable:
+
+```
+export PROJ_SRC=/path/to/proj/root
+```
+
+The program will then look for include files in that folder and all subfolders.
+
+## C2Rust README
 
 [![GitHub Actions Status]][github] [![Azure Build Status]][azure] [![Latest Version]][crates.io] [![Rustc Version]](#)
 
