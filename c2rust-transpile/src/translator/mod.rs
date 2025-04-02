@@ -389,7 +389,8 @@ fn mk_linkage(in_extern_block: bool, new_name: &str, old_name: &str) -> Builder 
         if in_extern_block {
             mk() // There is no mangling by default in extern blocks anymore
         } else {
-            mk().single_attr("no_mangle") // Don't touch my name Rust!
+            mk().call_attr("unsafe", vec!["no_mangle"])
+            // mk().single_attr("unsafe(no_mangle)") // Don't touch my name Rust!
         }
     } else if in_extern_block {
         mk().str_attr("link_name", old_name) // Look for this name

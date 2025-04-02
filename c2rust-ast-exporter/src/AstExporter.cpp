@@ -820,23 +820,23 @@ class TranslateASTVisitor final
           encoder(encoder), PP(PP),
           files{{"", {}}} {
             // Include
-            if (const char* src_dir = std::getenv("PROJ_SRC")) {
-                // std::cout << "Adding extra include path: " << src_dir << std::endl;
-                for (auto &p: std::filesystem::recursive_directory_iterator(src_dir)) {
+            // if (const char* src_dir = std::getenv("PROJ_SRC")) {
+            //     // std::cout << "Adding extra include path: " << src_dir << std::endl;
+            //     for (auto &p: std::filesystem::recursive_directory_iterator(src_dir)) {
                     
-                    if (p.is_directory() && !(p.path().string().find("\\.") != std::string::npos || p.path().string().find("/.") != std::string::npos)) { 
-                        llvm::StringRef path(p.path().c_str());
-                        llvm::Expected<clang::DirectoryEntryRef> dirEntry = PP.getFileManager().getDirectoryRef(path);
-                        if (dirEntry) {
-                            PP.getHeaderSearchInfo().AddSearchPath(
-                                clang::DirectoryLookup(dirEntry.get(), clang::SrcMgr::C_User, false),
-                                true);
-                        } else {
-                            std::cerr << "Error: could not find directory: " << p.path().string() << std::endl;
-                        }
-                    }
-                }
-            }
+            //         if (p.is_directory() && !(p.path().string().find("\\.") != std::string::npos || p.path().string().find("/.") != std::string::npos)) { 
+            //             llvm::StringRef path(p.path().c_str());
+            //             llvm::Expected<clang::DirectoryEntryRef> dirEntry = PP.getFileManager().getDirectoryRef(path);
+            //             if (dirEntry) {
+            //                 PP.getHeaderSearchInfo().AddSearchPath(
+            //                     clang::DirectoryLookup(dirEntry.get(), clang::SrcMgr::C_User, false),
+            //                     true);
+            //             } else {
+            //                 std::cerr << "Error: could not find directory: " << p.path().string() << std::endl;
+            //             }
+            //         }
+            //     }
+            // }
           }
 
     // Override the default behavior of the RecursiveASTVisitor
