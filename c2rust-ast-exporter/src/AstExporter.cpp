@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <filesystem>
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -820,19 +821,20 @@ class TranslateASTVisitor final
           files{{"", {}}} {
             // Include
             if (const char* src_dir = std::getenv("PROJ_SRC")) {
-                std::cout << "Adding extra include path: " << src_dir << std::endl;
-                llvm::StringRef path(src_dir);
-                llvm::ErrorOr<const clang::DirectoryEntry*> *dirEntry = PP.getFileManager().getDirectory(path);
-                if (dirEntry) {
-                    clang::DirectoryEntryRef dRef(*dirEntry);
-                // PP.getHeaderSearchInfo().AddSearchPath(
-                //     DirectoryLookup(new DirectoryEntryRef(src_dir), SrcMgr::C_User, false),
-                //     true);
-                PP.getHeaderSearchInfo().AddSearchPath(
-                    clang::DirectoryLookup(dRef, clang::SrcMgr::C_User, false),
-                    true);
-                } else {
-                    std::cerr << "Error: could not find directory: " << src_dir << std::endl;
+                // std::cout << "Adding extra include path: " << src_dir << std::endl;
+                for (auto &p: std::filesystem::recursive_directory_iterator(src_dir)) {
+                    
+                    if (p.is_directory() && !(p.path().string().find("\\.") != std::string::npos || p.path().string().find("/.") != std::string::npos)) { 
+                        llvm::StringRef path(p.path().c_str());
+                        llvm::Expected<clang::DirectoryEntryRef> dirEntry = PP.getFileManager().getDirectoryRef(path);
+                        if (dirEntry) {
+                            PP.getHeaderSearchInfo().AddSearchPath(
+                                clang::DirectoryLookup(dirEntry.get(), clang::SrcMgr::C_User, false),
+                                true);
+                        } else {
+                            std::cerr << "Error: could not find directory: " << p.path().string() << std::endl;
+                        }
+                    }
                 }
             }
           }
@@ -853,7 +855,7 @@ class TranslateASTVisitor final
             for (size_t idx = 0; idx < size; idx++) {
                 auto const &file = files[idx];
                 auto s = getExporterFileId(manager.getFileID(file.second), false);
-                // std::cout << file.first << std::endl;
+                // std::cout << "GETTING FILE: " << file.first << std::endl;
             }
         } while (size != files.size());
         return files;
@@ -898,6 +900,7 @@ class TranslateASTVisitor final
             manager.isMacroBodyExpansion(loc))
             loc = manager.getFileLoc(loc);
 
+        // std::cout << "In encode source POS, loc " << loc.printToString(manager) << std::endl;
         auto fileid = getExporterFileId(manager.getFileID(loc), isVaList);
         auto line = manager.getPresumedLineNumber(loc);
         auto col = manager.getPresumedColumnNumber(loc);
@@ -920,6 +923,7 @@ class TranslateASTVisitor final
             manager.isMacroBodyExpansion(end))
             end = manager.getFileLoc(end);
 
+        // std::cout << "In encode source SPAN, BEGIN " << begin.printToString(manager) << " END " << end.printToString(manager) << std::endl;
         auto fileid = getExporterFileId(manager.getFileID(begin), isVaList);
         auto begin_line = manager.getPresumedLineNumber(begin);
         auto begin_col = manager.getPresumedColumnNumber(begin);
@@ -951,16 +955,17 @@ class TranslateASTVisitor final
         if (filename == "?" && isVaList)
             filename = "vararg";
 
-        for (auto it = PP.getHeaderSearchInfo().search_dir_begin();
-            it != PP.getHeaderSearchInfo().search_dir_end(); ++it) {
-            std::cout << "Include search path: " << it->getDir()->getName().str() << std::endl;
-        }
+        // for (auto it = PP.getHeaderSearchInfo().search_dir_begin();
+        //     it != PP.getHeaderSearchInfo().search_dir_end(); ++it) {
+        //     std::cout << "Include search path: " << it->getDir()->getName().str() << std::endl;
+        // }
 
 
         auto new_id = files.size();
-        std::cout << std::endl << "NEW!!!!!!!" << std::endl;
-        std::cout << "Filename: " << filename << std::endl;
-        std::cout << manager.getIncludeLoc(id).printToString(manager) << std::endl;
+        // std::cout << std::endl << "NEW!!!!!!!" << std::endl;
+        // std::cout << "Filename: " << filename << std::endl;
+        // std::cout << "File directory: " << entry->getDir() << std::endl;
+        // std::cout << "Includeloc: " << manager.getIncludeLoc(id).printToString(manager) << std::endl;
         // std::cout << manager.getPresumedLoc(manager.getIncludeLoc(id)).getFilename() << std::endl;
         files.push_back(std::make_pair(filename, manager.getIncludeLoc(id)));
         file_id_mapping[id] = new_id;
@@ -2571,7 +2576,25 @@ class TranslateConsumer : public clang::ASTConsumer {
 
   public:
     explicit TranslateConsumer(Outputs *outputs, llvm::StringRef InFile, Preprocessor &PP)
-        : outputs(outputs), outfile(InFile.str()), PP(PP) {}
+        : outputs(outputs), outfile(InFile.str()), PP(PP) {
+            if (const char* src_dir = std::getenv("PROJ_SRC")) {
+                std::cout << "Adding extra include path: " << src_dir << std::endl;
+                for (auto &p: std::filesystem::recursive_directory_iterator(src_dir)) {
+                    // Exclude all /. directories
+                    if (p.is_directory() && !(p.path().string().find("\\.") != std::string::npos || p.path().string().find("/.") != std::string::npos)) {
+                        llvm::StringRef path(p.path().c_str());
+                        llvm::Expected<clang::DirectoryEntryRef> dirEntry = PP.getFileManager().getDirectoryRef(path);
+                        if (dirEntry) {
+                            PP.getHeaderSearchInfo().AddSearchPath(
+                                clang::DirectoryLookup(dirEntry.get(), clang::SrcMgr::C_User, false),
+                                true);
+                        } else {
+                            std::cerr << "Error: could not find directory: " << p.path().string() << std::endl;
+                        }
+                    }
+                }
+            }
+        }
 
     virtual void HandleTranslationUnit(clang::ASTContext &Context) {
 
