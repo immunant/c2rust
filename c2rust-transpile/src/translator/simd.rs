@@ -11,20 +11,18 @@ use crate::c_ast::CastKind::{BitCast, IntegralCast};
 
 /// As of rustc 1.29, rust is known to be missing some SIMD functions.
 /// See <https://github.com/rust-lang-nursery/stdsimd/issues/579>
-static MISSING_SIMD_FUNCTIONS: [&str; 36] = [
+static MISSING_SIMD_FUNCTIONS: &[&str] = &[
     "_mm_and_si64",
     "_mm_andnot_si64",
     "_mm_cmpeq_pi16",
     "_mm_cmpeq_pi32",
     "_mm_cmpeq_pi8",
     "_mm_cvtm64_si64",
-    "_mm_cvtph_ps",
     "_mm_cvtsi32_si64",
     "_mm_cvtsi64_m64",
     "_mm_cvtsi64_si32",
     "_mm_empty",
     "_mm_free",
-    "_mm_loadu_si64",
     "_mm_madd_pi16",
     "_mm_malloc",
     "_mm_mulhi_pi16",
@@ -51,20 +49,54 @@ static MISSING_SIMD_FUNCTIONS: [&str; 36] = [
 ];
 
 static SIMD_X86_64_ONLY: &[&str] = &[
+    "_mm_crc32_u64",
+    "_mm_cvti64_sd",
+    "_mm_cvti64_ss",
+    "_mm_cvt_roundi64_sd",
+    "_mm_cvt_roundi64_ss",
+    "_mm_cvt_roundsd_i64",
+    "_mm_cvt_roundsd_si64",
+    "_mm_cvt_roundsd_u64",
+    "_mm_cvt_roundsi64_sd",
+    "_mm_cvt_roundsi64_ss",
+    "_mm_cvt_roundss_i64",
+    "_mm_cvt_roundss_si64",
+    "_mm_cvt_roundss_u64",
+    "_mm_cvt_roundu64_sd",
+    "_mm_cvt_roundu64_ss",
+    "_mm_cvtsd_i64",
     "_mm_cvtsd_si64",
+    "_mm_cvtsd_si64x",
+    "_mm_cvtsd_u64",
     "_mm_cvtsi128_si64",
     "_mm_cvtsi128_si64x",
     "_mm_cvtsi64_sd",
     "_mm_cvtsi64_si128",
     "_mm_cvtsi64_ss",
+    "_mm_cvtsi64x_sd",
+    "_mm_cvtsi64x_si128",
+    "_mm_cvtss_i64",
     "_mm_cvtss_si64",
+    "_mm_cvtss_u64",
+    "_mm_cvtt_roundsd_i64",
+    "_mm_cvtt_roundsd_si64",
+    "_mm_cvtt_roundsd_u64",
+    "_mm_cvtt_roundss_i64",
+    "_mm_cvtt_roundss_si64",
+    "_mm_cvtt_roundss_u64",
+    "_mm_cvttsd_i64",
     "_mm_cvttsd_si64",
     "_mm_cvttsd_si64x",
+    "_mm_cvttsd_u64",
+    "_mm_cvttss_i64",
     "_mm_cvttss_si64",
-    "_mm_stream_si64",
+    "_mm_cvttss_u64",
+    "_mm_cvtu64_sd",
+    "_mm_cvtu64_ss",
     "_mm_extract_epi64",
     "_mm_insert_epi64",
-    "_mm_crc32_u64",
+    "_mm_stream_si64",
+    "_mm_tzcnt_64",
 ];
 
 fn add_arch_use(store: &mut ItemStore, arch_name: &str, item_name: &str) {
@@ -81,6 +113,24 @@ fn add_arch_use(store: &mut ItemStore, arch_name: &str, item_name: &str) {
             ),
         )
         .pub_(),
+    );
+}
+
+fn add_arch_use_rename(store: &mut ItemStore, arch_name: &str, item_name: &str, rename: &str) {
+    store.add_use_with_attr_rename(
+        vec!["core".into(), "arch".into(), arch_name.into()],
+        item_name,
+        mk().meta_item_attr(
+            AttrStyle::Outer,
+            mk().meta_list(
+                "cfg",
+                vec![NestedMeta::Meta(
+                    mk().meta_namevalue("target_arch", arch_name),
+                )],
+            ),
+        )
+        .pub_(),
+        rename,
     );
 }
 
@@ -103,6 +153,22 @@ impl<'c> Translation<'c> {
                 self.with_cur_file_item_store(|item_store| {
                     add_arch_use(item_store, "x86", name);
                     add_arch_use(item_store, "x86_64", name);
+                });
+
+                true
+            }
+            "__m128_u" | "__m128i_u" | "__m128d_u" | "__m256_u" | "__m256i_u" | "__m256d_u" => {
+                // Rust doesn't have unaligned SIMD types, but it's not incorrect to use an unaligned
+                // type instead, it's just slightly less efficient. We'll just use the aligned type
+                // and rename it to the unaligned type.
+                self.with_cur_file_item_store(|item_store| {
+                    add_arch_use_rename(item_store, "x86", &name.replace("_u", ""), name);
+                    add_arch_use_rename(item_store, "x86_64", &name.replace("_u", ""), name);
+                });
+
+                self.with_cur_file_item_store(|item_store| {
+                    add_arch_use(item_store, "x86", &name.replace("_u", ""));
+                    add_arch_use(item_store, "x86_64", &name.replace("_u", ""));
                 });
 
                 true
@@ -142,9 +208,55 @@ impl<'c> Translation<'c> {
             | "__v8su"
             | "__v16hu"
             | "__mm_loadh_pi_v2f32"
-            | "__mm_loadl_pi_v2f32" => true,
+            | "__mm_loadl_pi_v2f32" => self.generate_simd_type(name)?,
             _ => false,
         })
+    }
+
+    /// Given the name of a SIMD typedef that is valid but not a built in core Rust type, attempt
+    /// to generate a Rust type for it.
+    /// https://internals.rust-lang.org/t/getting-explicit-simd-on-stable-rust/4380?page=6
+    pub fn generate_simd_type(&self, name: &str) -> TranslationResult<bool> {
+        let prefix = name
+            .chars()
+            .take_while(|c| !c.is_numeric())
+            .collect::<String>();
+        let width = name
+            .split_at(prefix.len())
+            .1
+            .chars()
+            .take_while(|c| c.is_numeric())
+            .collect::<String>()
+            .parse::<usize>()
+            .unwrap();
+        let elem_ty = name.split_at(prefix.len() + width.to_string().len()).1;
+        // Prefixes: q (8), h (16), s (32), d (64)
+        // Signedness: i (signed), u (unsigned), f (float)
+        let elem_width = match elem_ty {
+            "qi" | "qu" => 8,
+            "hi" | "hu" => 16,
+            "si" | "su" | "sf" => 32,
+            "di" | "du" | "df" => 64,
+            _ => return Err(format_err!("Unknown SIMD type: {}", name).into()),
+        };
+
+        // Suffix is either 'd' (for 64-bit fp), 'i' (for integral types) or '' (for 32-bit fp)
+        let suffix = match elem_ty {
+            "df" => "d",
+            "sf" => "",
+            _ => "i",
+        };
+
+        let conversion_ty_name = format!("__m{}{}", width * elem_width, suffix,);
+
+        self.with_cur_file_item_store(|item_store| {
+            add_arch_use_rename(item_store, "x86", &conversion_ty_name, name);
+            add_arch_use_rename(item_store, "x86_64", &conversion_ty_name, name);
+            add_arch_use(item_store, "x86", &conversion_ty_name);
+            add_arch_use(item_store, "x86_64", &conversion_ty_name);
+        });
+
+        Ok(true)
     }
 
     /// Determine if a particular function name is an SIMD primitive. If so an appropriate
@@ -185,7 +297,7 @@ impl<'c> Translation<'c> {
         match self.ast_context[expr_id].kind {
             // For some reason there seems to be an incorrect implicit cast here to char
             // it's possible the builtin takes a char even though the function takes an int
-            ImplicitCast(_, expr_id, IntegralCast, _, _) => expr_id,
+            ImplicitCast(_, _, IntegralCast, _, _) => expr_id,
             // (internal)(external)(vector input)
             ExplicitCast(qty, _, BitCast, _, _) => {
                 if let CTypeKind::Vector(..) = self.ast_context.resolve_type(qty.ctype).kind {
@@ -224,6 +336,7 @@ impl<'c> Translation<'c> {
             let call = mk().call_expr(mk().ident_expr(fn_name), call_params);
 
             if ctx.is_used() {
+                // Get the ty of the return value of the call
                 Ok(WithStmts::new_val(call))
             } else {
                 Ok(WithStmts::new(
@@ -249,9 +362,9 @@ impl<'c> Translation<'c> {
             (Float, 8) => ("_mm256_setzero_ps", 32),
             (Double, 2) => ("_mm_setzero_pd", 16),
             (Double, 4) => ("_mm256_setzero_pd", 32),
-            (Char, 16) | (Int, 4) | (LongLong, 2) => ("_mm_setzero_si128", 16),
-            (Char, 32) | (Int, 8) | (LongLong, 4) => ("_mm256_setzero_si256", 32),
-            (Char, 8) | (Int, 2) | (LongLong, 1) => {
+            (Char, 16) | (Short, 8) | (Int, 4) | (LongLong, 2) => ("_mm_setzero_si128", 16),
+            (Char, 32) | (Short, 16) | (Int, 8) | (LongLong, 4) => ("_mm256_setzero_si256", 32),
+            (Char, 8) | (Short, 4) | (Int, 2) | (LongLong, 1) => {
                 // __m64 is still unstable as of rust 1.29
                 self.use_feature("stdsimd");
 
