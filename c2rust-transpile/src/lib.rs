@@ -89,6 +89,9 @@ pub struct TranspilerConfig {
     /// Names of translation units containing main functions that we should make
     /// into binaries
     pub binaries: Vec<String>,
+
+    pub proj_root: Option<String>,
+    pub hw_target: Option<String>,
 }
 
 impl TranspilerConfig {
@@ -303,14 +306,18 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
 
         // Compute the common ancestor of all input files
         // FIXME: this is quadratic-time in the length of the ancestor path
-        let mut ancestor_path = cmds
-            .first()
-            .map(|cmd| {
-                let mut dir = cmd.abs_file();
-                dir.pop(); // discard the file part
-                dir
-            })
-            .unwrap_or_else(PathBuf::new);
+        let mut ancestor_path = if tcfg.proj_root.is_some() {
+            PathBuf::from(&tcfg.proj_root.as_ref().unwrap())
+        } else {
+            cmds
+                .first()
+                .map(|cmd| {
+                    let mut dir = cmd.abs_file();
+                    dir.pop(); // discard the file part
+                    dir
+                })
+                .unwrap_or_else(PathBuf::new)
+        };
         if cmds.len() > 1 {
             for cmd in &cmds[1..] {
                 let cmd_path = cmd.abs_file();

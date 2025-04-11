@@ -873,7 +873,7 @@ pub fn translate(
             all_items.extend(new_uses.into_items());
 
             if !foreign_items.is_empty() {
-                all_items.push(mk().extern_("C").foreign_items(foreign_items));
+                all_items.push(mk().unsafe_().extern_("C").foreign_items(foreign_items));
             }
 
             // Add the items accumulated
@@ -1017,10 +1017,10 @@ fn make_submodule(
     }
 
     if !foreign_items.is_empty() {
-        items.push(mk().extern_("C").foreign_items(foreign_items));
+        items.push(mk().unsafe_().extern_("C").foreign_items(foreign_items));
     }
 
-    let module_builder = mk().vis("pub");
+    let module_builder = mk().unsafe_().vis("pub");
     let module_builder = if reorganize_definitions {
         let file_path_str = file_path.map_or(mod_name.as_str(), |path| {
             path.to_str().expect("Found invalid unicode")
@@ -1228,6 +1228,7 @@ impl<'c> Translation<'c> {
                 "async", "try", "yield", // Prevent use for other reasons
                 "main",  // prelude names
                 "drop", "Some", "None", "Ok", "Err",
+                "await",
             ])),
             zero_inits: RefCell::new(IndexMap::new()),
             function_context: RefCell::new(FuncContext::new()),
@@ -1959,7 +1960,7 @@ impl<'c> Translation<'c> {
                 self.type_converter.borrow_mut().translate_valist = translate_valist;
 
                 Ok(ConvertedDecl::Item(
-                    mk().span(span).pub_().type_item(new_name, ty),
+                    mk().span(span).unsafe_().pub_().type_item(new_name, ty),
                 ))
             }
 
@@ -2091,7 +2092,7 @@ impl<'c> Translation<'c> {
                 };
 
                 let static_def = if is_externally_visible {
-                    mk_linkage(false, new_name, ident).pub_().extern_("C")
+                    mk_linkage(false, new_name, ident).pub_().unsafe_().extern_("C")
                 } else if self.cur_file.borrow().is_some() {
                     mk().pub_()
                 } else {
@@ -2365,11 +2366,11 @@ impl<'c> Translation<'c> {
                 let mut mk_ = if is_main {
                     mk()
                 } else if (is_global && !is_inline) || is_extern_inline {
-                    mk_linkage(false, new_name, name).extern_("C").pub_()
+                    mk_linkage(false, new_name, name).unsafe_().extern_("C").pub_()
                 } else if self.cur_file.borrow().is_some() {
-                    mk().extern_("C").pub_()
+                    mk().unsafe_().extern_("C").pub_()
                 } else {
-                    mk().extern_("C")
+                    mk().unsafe_().extern_("C")
                 };
 
                 for attr in attrs {
@@ -2806,7 +2807,7 @@ impl<'c> Translation<'c> {
                     let items = match self.convert_decl(ctx, decl_id)? {
                         Item(item) => vec![item],
                         ForeignItem(item) => {
-                            vec![mk().extern_("C").foreign_items(vec![*item])]
+                            vec![mk().unsafe_().extern_("C").foreign_items(vec![*item])]
                         }
                         Items(items) => items,
                         NoItem => return Ok(cfg::DeclStmtInfo::empty()),

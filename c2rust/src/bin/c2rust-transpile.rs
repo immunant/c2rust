@@ -155,6 +155,12 @@ struct Args {
     /// Fail when the control-flow graph generates branching constructs
     #[clap(long)]
     fail_on_multiple: bool,
+
+    #[clap(long)]
+    proj_root: Option<String>,
+
+    #[clap(long)]
+    hw_target: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, ValueEnum, Clone)]
@@ -185,6 +191,9 @@ fn main() {
         filter: args.filter,
         debug_relooper_labels: args.debug_labels,
         prefix_function_names: args.prefix_function_names,
+
+        proj_root: args.proj_root,
+        hw_target: args.hw_target,
 
         // We used to guard asm translation with a command-line
         // option. Defaulting to enabled now, can add an option to disable if
