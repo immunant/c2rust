@@ -55,24 +55,7 @@ pub unsafe extern "C" fn entry(
         y: 0,
     }; 1];
     arr3[0 as std::ffi::c_int as usize].y += 9 as std::ffi::c_int;
-    let mut arr4: [std::ffi::c_int; 16] = [
-        0 as std::ffi::c_int,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-    ];
+    let mut arr4: [std::ffi::c_int; 16] = [0 as std::ffi::c_int; 16];
     arr4[15 as std::ffi::c_int as usize] += 9 as std::ffi::c_int;
     let mut arr5: [C2RustUnnamed; 1] = [
         {
@@ -292,24 +275,7 @@ pub unsafe extern "C" fn entry(
 #[no_mangle]
 pub unsafe extern "C" fn short_initializer() {
     let mut empty_brackets: [std::ffi::c_int; 16] = [0; 16];
-    let mut brackets_with_zero: [std::ffi::c_int; 16] = [
-        0 as std::ffi::c_int,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-    ];
+    let mut brackets_with_zero: [std::ffi::c_int; 16] = [0 as std::ffi::c_int; 16];
     let mut brackets_with_one: [std::ffi::c_int; 4] = [1 as std::ffi::c_int, 0, 0, 0];
     let mut excess_elements_1: [std::ffi::c_int; 2] = [
         1 as std::ffi::c_int,
