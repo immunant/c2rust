@@ -79,7 +79,7 @@ jobs:
         sudo apt-get -qq update
         sudo apt-get -qq install    \
             libbrotli-dev           \
-            libclang-12-dev         \
+            libclang-15-dev         \
             libgcrypt20             \
             libreadline-dev         \
             libidn2-dev             \
@@ -102,7 +102,7 @@ jobs:
     # Working dir is /home/runner/work/c2rust/c2rust
     - name: Build c2rust
       run: |
-        export LLVM_CONFIG_PATH=/usr/bin/llvm-config-12
+        export LLVM_CONFIG_PATH=/usr/bin/llvm-config-15
         cargo build --release
 
     # TODO(pl): figure out why compile_commands.json may cause json-c to fail
