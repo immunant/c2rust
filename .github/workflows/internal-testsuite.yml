@@ -33,7 +33,7 @@ jobs:
         submodules: true
 
     - name: Cache Rust toolchain
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: |
           ~/.rustup/toolchains
@@ -42,7 +42,7 @@ jobs:
         key: ${{ runner.os }}-rust-toolchain-${{ hashFiles('rust-toolchain') }}
 
     - name: Cache Rust artifacts
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -52,7 +52,7 @@ jobs:
         key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '**/c2rust-ast-exporter/**/CMakeLists.txt', '**/examples/**/CMakeLists.txt') }}
 
     - name: Cache Python - pip
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
@@ -65,7 +65,7 @@ jobs:
     #   shell: bash
 
     # - name: Cache testsuite compile_commands
-    #   uses: actions/cache@v2
+    #   uses: actions/cache@v4
     #   with:
     #     path: |
     #       ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
