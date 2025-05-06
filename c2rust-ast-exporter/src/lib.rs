@@ -1,6 +1,6 @@
 use serde_cbor::{from_slice, Value};
 use std::collections::HashMap;
-use std::ffi::{CStr, CString};
+use std::ffi::{c_char, c_int, CStr, CString};
 use std::io::{Error, ErrorKind};
 use std::path::Path;
 use std::slice;
@@ -60,12 +60,12 @@ fn get_ast_cbors(
         args_owned.push(CString::new(["-extra-arg=", arg].join("")).unwrap())
     }
 
-    let args_ptrs: Vec<*const libc::c_char> = args_owned.iter().map(|x| x.as_ptr()).collect();
+    let args_ptrs: Vec<*const c_char> = args_owned.iter().map(|x| x.as_ptr()).collect();
 
     let hashmap;
     unsafe {
         let ptr = ast_exporter(
-            args_ptrs.len() as libc::c_int,
+            args_ptrs.len() as c_int,
             args_ptrs.as_ptr(),
             debug.into(),
             &mut res,
@@ -86,16 +86,16 @@ mod ffi {
 extern "C" {
     // ExportResult *ast_exporter(int argc, char *argv[]);
     fn ast_exporter(
-        argc: libc::c_int,
-        argv: *const *const libc::c_char,
-        debug: libc::c_int,
-        res: *mut libc::c_int,
+        argc: c_int,
+        argv: *const *const c_char,
+        debug: c_int,
+        res: *mut c_int,
     ) -> *mut ffi::ExportResult;
 
     // void drop_export_result(ExportResult *result);
     fn drop_export_result(ptr: *mut ffi::ExportResult);
 
-    fn clang_version() -> *const libc::c_char;
+    fn clang_version() -> *const c_char;
 }
 
 unsafe fn marshal_result(result: *const ffi::ExportResult) -> HashMap<String, Vec<u8>> {
