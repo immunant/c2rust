@@ -103,6 +103,7 @@ jobs:
           # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
           # which we don't want to test here (see https://github.com/immunant/c2rust/issues/500).
           cargo build --release
+          (cd unstable && cargo build --release)
       - name: cargo test --release --workspace
         run: |
           export RUSTFLAGS="-D warnings"
@@ -114,6 +115,7 @@ jobs:
           export RUSTFLAGS="$RUSTFLAGS -Clink-arg=-L/opt/homebrew/lib -Clink-arg=-Wl,-rpath,/opt/homebrew/lib"
           export RUSTDOCFLAGS="-D warnings"
           cargo test --release --workspace
+          (cd unstable && cargo test --release --workspace)
       - name: Test translator
         run: |
           # `test_translator.py` compiles translated code,

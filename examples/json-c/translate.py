@@ -63,10 +63,10 @@ def run_refactor(args, mode='inplace'):
             '--', 'src/lib.rs', '--crate-type=dylib',
             '--crate-name=json_c',
             '-L{rust_libdir}/rustlib/{triple}/lib/'.format(
-                rust_libdir=get_rust_toolchain_libpath(),
+                rust_libdir=get_nightly_rust_toolchain_libpath(),
                 triple=get_host_triplet())]
 
-    ld_lib_path = get_rust_toolchain_libpath()
+    ld_lib_path = get_nightly_rust_toolchain_libpath()
 
     # don't overwrite existing ld lib path if any...
     if 'LD_LIBRARY_PATH' in local.env:

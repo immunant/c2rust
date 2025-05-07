@@ -39,7 +39,7 @@ class Config:
     ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
     ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
     BUILD_DIR = os.path.join(ROOT_DIR, 'build' + BUILD_SUFFIX)
-    RREF_DIR = os.path.join(ROOT_DIR, 'c2rust-refactor')
+    RREF_DIR = os.path.join(ROOT_DIR, 'unstable/c2rust-refactor')
     C2RUST_DIR = os.path.join(ROOT_DIR, 'c2rust')
     CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")
     REMON_SUBMOD_DIR = os.path.join(CROSS_CHECKS_DIR, 'ReMon')
@@ -52,7 +52,7 @@ class Config:
     RUST_CHECKS_DIR = os.path.join(CROSS_CHECKS_DIR, 'rust-checks')
 
     TRANSPILE_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-transpile')
-    REFACTOR_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-refactor')
+    REFACTOR_CRATE_DIR = os.path.join(ROOT_DIR, 'unstable/c2rust-refactor')
     AST_BUILDER_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-builder')
     AST_EXPORTER_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-exporter')
     BITFIELDS_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-bitfields')
@@ -61,7 +61,7 @@ class Config:
     XCHECK_DERIVE_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'derive-macros')
     XCHECK_BACKEND_DYNAMIC_DLSYM_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'backends', 'dynamic-dlsym')
     XCHECK_CONFIG_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'config')
-    MACROS_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-macros')
+    MACROS_CRATE_DIR = os.path.join(ROOT_DIR, 'unstable/c2rust-macros')
     AST_PRINTER_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-printer')
 
     CBOR_PREFIX = os.path.join(BUILD_DIR, "tinycbor")
@@ -99,7 +99,7 @@ class Config:
 
     CC_DB_JSON = "compile_commands.json"
 
-    CUSTOM_RUST_NAME = query_toml(path=Path(ROOT_DIR).joinpath("rust-toolchain.toml"), query=("toolchain", "channel"))
+    CUSTOM_RUST_NAME = query_toml(path=Path(ROOT_DIR).joinpath("unstable/rust-toolchain.toml"), query=("toolchain", "channel"))
 
     LLVM_SKIP_SIGNATURE_CHECKS  = False
 
@@ -213,15 +213,15 @@ def update_or_init_submodule(submodule_path: str) -> None:
     logging.debug("updated submodule %s", submodule_path)
 
 
-def get_rust_toolchain_libpath() -> str:
-    return _get_rust_toolchain_path("lib")
+def get_nightly_rust_toolchain_libpath() -> str:
+    return _get_nightly_rust_toolchain_path("lib")
 
 
-def get_rust_toolchain_binpath() -> str:
-    return _get_rust_toolchain_path("bin")
+def get_nightly_rust_toolchain_binpath() -> str:
+    return _get_nightly_rust_toolchain_path("bin")
 
 
-def _get_rust_toolchain_path(dirtype: str) -> str:
+def _get_nightly_rust_toolchain_path(dirtype: str) -> str:
     """
     Ask rustc for the correct path to its {lib,bin} directory.
     """
