@@ -1,4 +1,4 @@
-From the repository root:
+From the `unstable` directory in the repository root:
 
 ```sh
 cargo build

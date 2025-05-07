@@ -10,7 +10,7 @@ Then, in the directory of a cargo project you wish to rewrite, run
 `c2rust-analyze` on the project:
 
 ```sh
-.../path/to/c2rust/target/release/c2rust-analyze build |& tee c2rust-analyze.log
+.../path/to/c2rust/unstable/target/release/c2rust-analyze build |& tee c2rust-analyze.log
 ```
 
 `c2rust-analyze` is currently at a prototype stage and produces verbose debug
