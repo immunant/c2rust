@@ -38,7 +38,7 @@ _c2rust_prepare_vars() {
     metadata="${test_dir}/metadata.bc"
     pdg="${test_dir}/pdg.bc"
     event_log="${test_dir}/log.bc"
-    runtime="${C2RUST_DIR}/analysis/runtime"
+    runtime="${C2RUST_DIR}/unstable/analysis/runtime"
 }
 
 c2rust-set-instrument-vars() {
@@ -60,7 +60,7 @@ c2rust-instrument() (
     unset RUSTFLAGS # transpiled code has tons of warnings; don't allow `-D warnings`
     export RUST_BACKTRACE=full
 
-    cd "${C2RUST_DIR}"
+    cd "${C2RUST_DIR}/unstable"
     cargo run \
         --bin c2rust-instrument \
         "${profile_args[@]}" \
@@ -80,7 +80,7 @@ c2rust-pdg() (
     export RUST_BACKTRACE=full # print sources w/ color-eyre
     export RUST_LOG=error
 
-    cd "${C2RUST_DIR}"
+    cd "${C2RUST_DIR}/unstable"
     cargo run \
         --bin c2rust-pdg \
         "${profile_args[@]}" \
@@ -104,7 +104,7 @@ c2rust-analyze-with-pdg() (
         export PDG_FILE="${pdg}"
     fi
 
-    cd "${C2RUST_DIR}"
+    cd "${C2RUST_DIR}/unstable"
     cargo run \
         --bin c2rust-analyze \
         "${profile_args[@]}" \

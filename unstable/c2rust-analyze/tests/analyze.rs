@@ -46,6 +46,7 @@ define_tests! {
 #[test]
 fn lighttpd_minimal() {
     let analyze = Analyze::resolve();
+    println!("analyze.path(): {}", analyze.path().display());
     let mut cmd = Command::new(analyze.path());
 
     cmd.arg("--");
