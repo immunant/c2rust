@@ -10,8 +10,8 @@ from common import (
     config as c,
     Colors,
     get_cmd_or_die,
-    get_rust_toolchain_libpath,
     get_host_triplet,
+    get_nightly_rust_toolchain_libpath,
     setup_logging,
     die,
 )
@@ -37,13 +37,13 @@ def get_testcases(directory: str) -> List[str]:
 
 
 def run_tests(testcases: List[str]) -> None:
-    ipath = os.path.join(c.ROOT_DIR, "target/debug/c2rust-refactor")
+    ipath = os.path.join(c.ROOT_DIR, "unstable/target/debug/c2rust-refactor")
     # refactor = '{ip} -P ../.. -p plugin_stub -r alongside'.format(ip=ipath)
     # NOTE:PL: I removed the plugin options (-P, -p) to get the tests to run.
     refactor = '{ip} -r alongside'.format(ip=ipath)
 
     # help plumbum find rust
-    ld_lib_path = get_rust_toolchain_libpath()
+    ld_lib_path = get_nightly_rust_toolchain_libpath()
     if 'LD_LIBRARY_PATH' in pb.local.env:
         ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
 
@@ -97,7 +97,7 @@ def main() -> None:
     # ensure_rustfmt_version()
     test_dir = os.path.join(c.RREF_DIR, "tests")
     assert os.path.isdir(test_dir), "test dir missing: " + test_dir
-    refactor_binary = os.path.join(c.ROOT_DIR, "target/debug/c2rust-refactor")
+    refactor_binary = os.path.join(c.ROOT_DIR, "unstable/target/debug/c2rust-refactor")
     if not os.path.isfile(refactor_binary):
         die("build refactor binary first. expected: " + refactor_binary)
 

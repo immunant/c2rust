@@ -383,7 +383,7 @@ def refactor_crate(crate: AnyCrate, cmds: List[RefactorCommand],
 
     refactor = get_cmd_or_die(config.C2RUST_BIN)['refactor']
 
-    ld_lib_path = get_rust_toolchain_libpath()
+    ld_lib_path = get_nightly_rust_toolchain_libpath()
     # don't overwrite existing ld lib path if any...
     if 'LD_LIBRARY_PATH' in local.env:
         ld_lib_path += ':' + local.env['LD_LIBRARY_PATH']

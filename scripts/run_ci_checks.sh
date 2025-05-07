@@ -12,16 +12,19 @@ fi
 
 fmt() {
     cargo fmt --check
+    (cd unstable && cargo fmt --check)
 }
 
 # Differs from `cargo build` since we can use `--all-features` here.
 # We plan to eventually replace `cargo check` with `cargo clippy`.
 check() {
     cargo check --tests --all-features
+    (cd unstable && cargo check --tests --all-features)
 }
 
 doc() {
     cargo doc --all-features --document-private-items --no-deps
+    (cd unstable && cargo doc --all-features --document-private-items --no-deps)
 }
 
 # At this point, we could unset `RUSTFLAGS` and `RUSTDOCFLAGS`,
@@ -34,10 +37,12 @@ doc() {
 # see https://github.com/immunant/c2rust/issues/500).
 build() {
     cargo build --release
+    (cd unstable && cargo build --release)
 }
 
 test() {
     cargo test --release --workspace
+    (cd unstable && cargo test --release --workspace)
 }
 
 # `test_translator.py` compiles translated code,
