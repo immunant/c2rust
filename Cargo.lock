@@ -349,7 +349,6 @@ dependencies = [
  "handlebars",
  "indexmap",
  "itertools",
- "libc",
  "log",
  "log-reroute",
  "pathdiff",

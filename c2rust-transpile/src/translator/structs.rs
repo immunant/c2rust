@@ -284,8 +284,8 @@ impl<'a> Translation<'a> {
     /// #[derive(BitfieldStruct, Clone, Copy)]
     /// #[repr(C, align(2))]
     /// struct Foo {
-    ///     #[bitfield(name = "bf1", ty = "libc::c_char", bits = "0..=9")]
-    ///     #[bitfield(name = "bf2", ty = "libc::c_uchar",bits = "10..=15")]
+    ///     #[bitfield(name = "bf1", ty = "std::ffi::c_char", bits = "0..=9")]
+    ///     #[bitfield(name = "bf2", ty = "std::ffi::c_uchar",bits = "10..=15")]
     ///     bf1_bf2: [u8; 2],
     ///     non_bf: u64,
     ///     _pad: [u8; 2],
@@ -392,8 +392,8 @@ impl<'a> Translation<'a> {
     /// # #[derive(BitfieldStruct, Clone, Copy)]
     /// # #[repr(C, align(2))]
     /// # struct Foo {
-    /// #     #[bitfield(name = "bf1", ty = "libc::c_char", bits = "0..=9")]
-    /// #     #[bitfield(name = "bf2", ty = "libc::c_uchar",bits = "10..=15")]
+    /// #     #[bitfield(name = "bf1", ty = "std::ffi::c_char", bits = "0..=9")]
+    /// #     #[bitfield(name = "bf2", ty = "std::ffi::c_uchar",bits = "10..=15")]
     /// #     bf1_bf2: [u8; 2],
     /// #     non_bf: u64,
     /// #     _pad: [u8; 2],

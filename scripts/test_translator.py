@@ -392,7 +392,6 @@ class TestDirectory:
 
         rust_file_builder = RustFileBuilder()
         rust_file_builder.add_features([
-            "libc",
             "extern_types",
             "simd_ffi",
             "stdsimd",

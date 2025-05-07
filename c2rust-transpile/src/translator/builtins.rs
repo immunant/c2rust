@@ -83,7 +83,7 @@ impl<'c> Translation<'c> {
                 Ok(val.map(|v| {
                     let val = mk().method_call_expr(v, "is_sign_negative", vec![]);
 
-                    mk().cast_expr(val, mk().path_ty(vec!["libc", "c_int"]))
+                    mk().cast_expr(val, mk().path_ty(vec!["std", "ffi", "c_int"]))
                 }))
             }
             "__builtin_ffs" | "__builtin_ffsl" | "__builtin_ffsll" => {
