@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-extern uint32_t SOME_INTS[];
+extern unsigned SOME_INTS[];
 
 bool check_some_ints(void) {
         return SOME_INTS[0] == 2

@@ -19,9 +19,9 @@ extern "C" {
 }
 
 #[no_mangle]
-pub static SOME_INTS: [u32; 4] = [2, 0, 1, 8];
+pub static SOME_INTS: [c_uint; 4] = [2, 0, 1, 8];
 #[no_mangle]
-pub static rust_SOME_INTS: [u32; 4] = [2, 0, 1, 8];
+pub static rust_SOME_INTS: [c_uint; 4] = [2, 0, 1, 8];
 
 const BUFFER_SIZE: usize = 49;
 const BUFFER_SIZE2: usize = 2;
