@@ -39,7 +39,7 @@ jobs:
           ~/.rustup/toolchains
           ~/.rustup/update-hashes
           ~/.rustup/settings.toml
-        key: ${{ runner.os }}-rust-toolchain-${{ hashFiles('rust-toolchain') }}
+        key: ${{ runner.os }}-rust-toolchain-${{ hashFiles('**/*rust-toolchain.toml') }}
 
     - name: Cache Rust artifacts
       uses: actions/cache@v4
