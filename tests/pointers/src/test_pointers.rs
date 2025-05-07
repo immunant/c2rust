@@ -6,7 +6,7 @@ use crate::pointer_init::rust_entry;
 use crate::ref_decay::{
     rust_address_cast, rust_bar, rust_bitcast, rust_calls_all, rust_f, rust_foobar,
 };
-use libc::{c_int, c_uint};
+use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

@@ -1,5 +1,5 @@
 use crate::modules::rust_modules;
-use libc::c_uint;
+use std::ffi::c_uint;
 
 #[link(name = "test")]
 extern "C" {

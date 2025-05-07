@@ -1,7 +1,7 @@
 use crate::arrays::rust_entry;
 use crate::incomplete_arrays::{rust_check_some_ints, rust_entry2, rust_test_sized_array};
 use crate::variable_arrays::{rust_alloca_arrays, rust_variable_arrays};
-use libc::{c_int, c_uint};
+use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

@@ -1,7 +1,7 @@
 use crate::cast_funptr::{rust_entry, rust_get_identity, rust_identity};
 use crate::casts::rust_cast_stuff;
 
-use libc::{c_int, c_uint, c_void};
+use std::ffi::{c_int, c_uint, c_void};
 
 use std::mem::transmute;
 
@@ -46,9 +46,9 @@ pub fn test_identity() {
         assert_eq!(rust_id, i);
     }
 
-    let transmuted_rust_identity: unsafe extern "C" fn(_: libc::c_int) -> libc::c_int =
+    let transmuted_rust_identity: unsafe extern "C" fn(_: c_int) -> c_int =
         unsafe { transmute(rust_get_identity()) };
-    let transmuted_identity: unsafe extern "C" fn(_: libc::c_int) -> libc::c_int =
+    let transmuted_identity: unsafe extern "C" fn(_: c_int) -> c_int =
         unsafe { transmute(get_identity()) };
 
     for i in 0..10 {

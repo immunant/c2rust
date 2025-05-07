@@ -1,5 +1,5 @@
 use crate::sub::rust_sub;
-use libc::c_uint;
+use std::ffi::c_uint;
 
 #[link(name = "test")]
 extern "C" {

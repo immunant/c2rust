@@ -1,5 +1,5 @@
 use crate::sieve_of_eratosthenes::rust_sieve_of_eratosthenes;
-use libc::c_int;
+use std::ffi::c_int;
 
 #[link(name = "test")]
 extern "C" {

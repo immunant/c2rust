@@ -1,7 +1,7 @@
 #[cfg(not(target_os = "macos"))]
 use crate::attributes::{rust_no_attrs, rust_used_static, rust_used_static2, rust_used_static3};
 use crate::sections::*;
-use libc::c_uint;
+use std::ffi::c_uint;
 
 pub fn test_sectioned_statics() {
     unsafe {

@@ -5,7 +5,7 @@ use crate::varargs::{
     rust_simple_vacopy, rust_valist_struct_member, rust_valist_struct_pointer_member,
 };
 
-use libc::c_char;
+use std::ffi::c_char;
 use std::ffi::CString;
 
 #[link(name = "test")]

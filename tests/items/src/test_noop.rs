@@ -1,7 +1,7 @@
 use crate::nofnargs::rust_nofnargs;
 use crate::noop::rust_noop;
 
-use libc::c_int;
+use std::ffi::c_int;
 
 #[link(name = "test")]
 extern "C" {

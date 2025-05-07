@@ -1,5 +1,5 @@
 use crate::no_float_wrapping_neg::{rust_double_inc_dec, rust_float_inc_dec, rust_no_wrapping_neg};
-use libc::{c_double, c_float};
+use std::ffi::{c_double, c_float};
 
 #[link(name = "test")]
 extern "C" {
