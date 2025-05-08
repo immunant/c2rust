@@ -1,6 +1,5 @@
 use crate::exprs::rust_exprs;
-use libc::c_int;
-use libc::c_uint;
+use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

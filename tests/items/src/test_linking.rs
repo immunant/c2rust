@@ -1,5 +1,5 @@
 use crate::linking::{rust_l, rust_w};
-use libc::c_int;
+use std::ffi::c_int;
 
 #[link(name = "test")]
 extern "C" {

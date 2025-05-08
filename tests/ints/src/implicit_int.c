@@ -13,8 +13,8 @@ int identity(x)
 void implicit_int(void)
 {
     // assign to t using the address-of operator
-    my_fn *t = &identity;                    // 't: my_fn: fn(libc::c_int) -> libc::c_int'
+    my_fn *t = &identity;                    // 't: my_fn: fn(std::ffi::c_int) -> std::ffi::c_int'
     // assign to u using function to pointer decay
-    my_fn *u = identity;                    // 't: my_fn: fn(libc::c_int) -> libc::c_int'
+    my_fn *u = identity;                    // 't: my_fn: fn(std::ffi::c_int) -> std::ffi::c_int'
 }
 

@@ -1,7 +1,7 @@
 //! feature_thread_local
 
 use crate::thread_locals::rust_thread_entry;
-use libc::{c_int, c_uint};
+use std::ffi::{c_int, c_uint};
 use std::thread;
 
 #[link(name = "test")]

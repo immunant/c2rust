@@ -9,7 +9,7 @@ use crate::non_canonical_enum_def::{
 use crate::top_enum::{rust_entry4, E as otherE};
 use crate::enum_compound::rust_entry6;
 
-use libc::{c_int, c_uint};
+use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

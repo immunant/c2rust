@@ -1,7 +1,7 @@
 use crate::define::{rust_fns, rust_stmt_expr_inc};
 use crate::define::{rust_reference_define, TEST_CONST1, TEST_CONST2, TEST_PARENS};
 use crate::define::{rust_test_zstd, ZSTD_WINDOWLOG_MAX_32, ZSTD_WINDOWLOG_MAX_64};
-use libc::{c_int, c_uint, c_ulong};
+use std::ffi::{c_int, c_uint, c_ulong};
 
 #[link(name = "test")]
 extern "C" {

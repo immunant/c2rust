@@ -1,5 +1,6 @@
 use crate::structs::{rust_alignment_entry, rust_entry, Aligned8Struct};
-use libc::{c_int, c_uint, size_t};
+use libc::size_t;
+use std::ffi::{c_int, c_uint};
 use std::mem::align_of;
 
 #[link(name = "test")]

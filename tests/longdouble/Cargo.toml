@@ -6,4 +6,3 @@ edition = "2021"
 [dependencies]
 f128 = "0.2"
 num-traits = "0.2.6"
-libc = "0.2"

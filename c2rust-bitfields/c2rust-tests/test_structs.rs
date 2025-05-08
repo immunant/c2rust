@@ -1,5 +1,5 @@
 use c2rust_bitfields::BitfieldStruct;
-use libc::{c_double, c_short, c_uchar, c_uint, c_ulong, c_ushort};
+use std::ffi::{c_double, c_short, c_uchar, c_uint, c_ulong, c_ushort};
 use std::mem::{size_of, transmute};
 
 #[link(name = "test")]
@@ -46,8 +46,8 @@ struct CompactDate {
     // Compact combination of d + m
     // which can't be accessed via ptr in C anyway
     // so we combine the fields into one:
-    #[bitfield(name = "d", ty = "libc::c_uchar", bits = "0..=4")]
-    #[bitfield(name = "m", ty = "libc::c_uchar", bits = "8..=11")]
+    #[bitfield(name = "d", ty = "std::ffi::c_uchar", bits = "0..=4")]
+    #[bitfield(name = "m", ty = "std::ffi::c_uchar", bits = "8..=11")]
     d_m: [u8; 2],
     y: u16,
 }
@@ -190,8 +190,8 @@ fn test_overflow() {
 struct OverlappingByteDate {
     // This is also compact, however, the first byte is shared between the two
     // bitfields and the month also has a bit in the second byte
-    #[bitfield(name = "d", ty = "libc::c_ulong", bits = "0..=4")]
-    #[bitfield(name = "m", ty = "libc::c_ushort", bits = "5..=8")]
+    #[bitfield(name = "d", ty = "std::ffi::c_ulong", bits = "0..=4")]
+    #[bitfield(name = "m", ty = "std::ffi::c_ushort", bits = "5..=8")]
     d_m: [u8; 2],
     y: u16,
     #[bitfield(padding)]
@@ -261,11 +261,11 @@ fn test_overlapping_byte_date2() {
 #[derive(BitfieldStruct, Copy, Clone)]
 struct UnnamedBitfield {
     z: f64,
-    #[bitfield(name = "x", ty = "libc::c_ushort", bits = "0..=4")]
+    #[bitfield(name = "x", ty = "std::ffi::c_ushort", bits = "0..=4")]
     x: [u8; 1],
     #[bitfield(padding)]
     _pad: [u8; 1],
-    #[bitfield(name = "y", ty = "libc::c_ushort", bits = "0..=8")]
+    #[bitfield(name = "y", ty = "std::ffi::c_ushort", bits = "0..=8")]
     y: [u8; 2],
 }
 
@@ -301,9 +301,9 @@ fn test_unnamed_bitfield() {
 #[repr(C, align(2))]
 #[derive(BitfieldStruct, Copy, Clone)]
 struct SignedBitfields {
-    #[bitfield(name = "x", ty = "libc::c_short", bits = "0..=3")]
-    #[bitfield(name = "y", ty = "libc::c_ushort", bits = "4..=8")]
-    #[bitfield(name = "z", ty = "libc::c_short", bits = "9..=13")]
+    #[bitfield(name = "x", ty = "std::ffi::c_short", bits = "0..=3")]
+    #[bitfield(name = "y", ty = "std::ffi::c_ushort", bits = "4..=8")]
+    #[bitfield(name = "z", ty = "std::ffi::c_short", bits = "9..=13")]
     x_y_z: [u8; 2],
 }
 
@@ -478,8 +478,8 @@ fn test_signed_underflow_overflow() {
 #[repr(C, align(2))]
 #[derive(BitfieldStruct, Copy, Clone)]
 struct SingleBits {
-    #[bitfield(name = "x", ty = "libc::c_ushort", bits = "0..=0")]
-    #[bitfield(name = "y", ty = "libc::c_short", bits = "1..=1")]
+    #[bitfield(name = "x", ty = "std::ffi::c_ushort", bits = "0..=0")]
+    #[bitfield(name = "y", ty = "std::ffi::c_short", bits = "1..=1")]
     x_y: [u8; 1],
     #[bitfield(padding)]
     _pad: [u8; 1],
@@ -532,9 +532,9 @@ fn test_single_bits() {
 #[repr(C, align(1))]
 #[derive(BitfieldStruct)]
 struct ThreeByteDate {
-    #[bitfield(name = "day", ty = "libc::c_uchar", bits = "0..=4")]
-    #[bitfield(name = "month", ty = "libc::c_uchar", bits = "5..=8")]
-    #[bitfield(name = "year", ty = "libc::c_ushort", bits = "9..=23")]
+    #[bitfield(name = "day", ty = "std::ffi::c_uchar", bits = "0..=4")]
+    #[bitfield(name = "month", ty = "std::ffi::c_uchar", bits = "5..=8")]
+    #[bitfield(name = "year", ty = "std::ffi::c_ushort", bits = "9..=23")]
     day_month_year: [u8; 3],
 }
 

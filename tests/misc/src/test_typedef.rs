@@ -1,6 +1,6 @@
 use crate::typedef::{int_ptr, my_int, rust_entry};
 
-use libc::c_int;
+use std::ffi::c_int;
 
 #[link(name = "test")]
 extern "C" {

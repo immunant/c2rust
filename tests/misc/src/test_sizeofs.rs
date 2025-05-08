@@ -1,8 +1,7 @@
 //! feature_core_intrinsics, feature_label_break_value
 
 use crate::sizeofs::rust_sizeofs;
-use libc::c_int;
-use libc::c_uint;
+use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

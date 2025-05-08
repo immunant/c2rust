@@ -3,7 +3,7 @@
 use crate::atomics::{rust_atomics_entry, rust_new_atomics};
 use crate::math::{rust_ffs, rust_ffsl, rust_ffsll, rust_isfinite, rust_isinf_sign, rust_isnan};
 use crate::mem_x_fns::{rust_assume_aligned, rust_mem_x};
-use libc::{c_char, c_double, c_int, c_long, c_longlong, c_uint};
+use std::ffi::{c_char, c_double, c_int, c_long, c_longlong, c_uint};
 
 #[link(name = "test")]
 extern "C" {

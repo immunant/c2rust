@@ -13,7 +13,7 @@ Then create a new `.rs` file with the following skeleton (_does not need to be a
 ```rust
 use crate::c_file::rust_example;
 
-use libc::c_int;
+use std::ffi::c_int;
 
 #[link(name = "test")]
 extern "C" {

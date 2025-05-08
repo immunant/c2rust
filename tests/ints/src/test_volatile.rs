@@ -1,5 +1,5 @@
 use crate::volatile::rust_entry3;
-use libc::{c_int, c_uint};
+use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {

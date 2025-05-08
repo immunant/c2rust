@@ -43,9 +43,9 @@ And this is enough to build our rust struct:
 #[repr(C, align(1))]
 #[derive(BitfieldStruct)]
 struct Date {
-    #[bitfield(name = "day", ty = "libc::c_uchar", bits = "0..=4")]
-    #[bitfield(name = "month", ty = "libc::c_uchar", bits = "5..=8")]
-    #[bitfield(name = "year", ty = "libc::c_ushort", bits = "9..=23")]
+    #[bitfield(name = "day", ty = "std::ffi::c_uchar", bits = "0..=4")]
+    #[bitfield(name = "month", ty = "std::ffi::c_uchar", bits = "5..=8")]
+    #[bitfield(name = "year", ty = "std::ffi::c_ushort", bits = "9..=23")]
     day_month_year: [u8; 3]
 }
 

@@ -274,7 +274,6 @@ name = "c2rust-bitfields"
 version = "0.20.0"
 dependencies = [
  "c2rust-bitfields-derive",
- "libc",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 use crate::arithmetic::rust_entry2;
-use libc::{c_int, c_uint};
+use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {
