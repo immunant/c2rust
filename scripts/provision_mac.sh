@@ -23,8 +23,8 @@ export HOMEBREW_NO_AUTO_UPDATE=1
 brew install -q python cmake ninja gpg llvm@17 bash
 
 # Python 3 packages
-python3 -m pip install --user --upgrade pip
-python3 -m pip install --user -r "$SCRIPT_DIR/requirements.txt"
+python3 -m pip install --break-system-packages --user --upgrade pip
+python3 -m pip install --break-system-packages --user -r "$SCRIPT_DIR/requirements.txt"
 
 # Rust and dependencies
 RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain.toml"
