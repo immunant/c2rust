@@ -1772,7 +1772,11 @@ class TranslateASTVisitor final
                              case AtomicExpr::AO ## ID:                 \
                                  cbor_encode_string(array, #ID);       \
                                  break;
+#if CLANG_VERSION_MAJOR >= 19
+#include "clang/Basic/Builtins.inc"
+#else
 #include "clang/Basic/Builtins.def"
+#endif
                          default: printError("Unknown atomic builtin: " +
                                              std::to_string(E->getOp()), E);
                          };

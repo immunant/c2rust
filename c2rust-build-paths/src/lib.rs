@@ -91,6 +91,7 @@ pub fn find_llvm_config() -> Option<PathBuf> {
         .or_else(|| {
             // In PATH
             [
+                "llvm-config-19",
                 "llvm-config-18",
                 "llvm-config-17",
                 "llvm-config-16",
@@ -106,6 +107,7 @@ pub fn find_llvm_config() -> Option<PathBuf> {
                 "llvm-config-7.0",
                 "llvm-config",
                 // Homebrew install locations on Intel macOS
+                "/usr/local/opt/llvm@19/bin/llvm-config",
                 "/usr/local/opt/llvm@18/bin/llvm-config",
                 "/usr/local/opt/llvm@17/bin/llvm-config",
                 "/usr/local/opt/llvm@16/bin/llvm-config",
@@ -119,6 +121,7 @@ pub fn find_llvm_config() -> Option<PathBuf> {
                 "/usr/local/opt/llvm@8/bin/llvm-config",
                 "/usr/local/opt/llvm/bin/llvm-config",
                 // Homebrew install locations on Apple Silicon macOS
+                "/opt/homebrew/opt/llvm@19/bin/llvm-config",
                 "/opt/homebrew/opt/llvm@18/bin/llvm-config",
                 "/opt/homebrew/opt/llvm@17/bin/llvm-config",
                 "/opt/homebrew/opt/llvm@16/bin/llvm-config",
