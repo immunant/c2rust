@@ -325,7 +325,9 @@ impl TypeConverter {
             CTypeKind::UChar => Ok(mk().path_ty(mk().path(vec!["std", "ffi", "c_uchar"]))),
             CTypeKind::Char => Ok(mk().path_ty(mk().path(vec!["std", "ffi", "c_char"]))),
             CTypeKind::Double => Ok(mk().path_ty(mk().path(vec!["std", "ffi", "c_double"]))),
-            CTypeKind::LongDouble => Ok(mk().path_ty(mk().path(vec!["f128", "f128"]))),
+            CTypeKind::LongDouble | CTypeKind::Float128 => {
+                Ok(mk().path_ty(mk().path(vec!["f128", "f128"])))
+            }
             CTypeKind::Float => Ok(mk().path_ty(mk().path(vec!["std", "ffi", "c_float"]))),
             CTypeKind::Int128 => Ok(mk().path_ty(mk().path(vec!["i128"]))),
             CTypeKind::UInt128 => Ok(mk().path_ty(mk().path(vec!["u128"]))),
