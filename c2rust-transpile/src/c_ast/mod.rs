@@ -1687,6 +1687,8 @@ pub enum CTypeKind {
     // ARM Scalable Vector Extension types
     // TODO: represent all the individual types in AArch64SVEACLETypes.def
     UnhandledSveType,
+
+    Float128,
 }
 
 impl CTypeKind {
@@ -1713,6 +1715,7 @@ impl CTypeKind {
             UInt128 => "unsigned __int128",
             Half => "half",
             BFloat16 => "bfloat16",
+            Float128 => "__float128",
             _ => unimplemented!("Printer::print_type({:?})", self),
         }
     }

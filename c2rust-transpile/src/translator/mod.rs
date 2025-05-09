@@ -4888,7 +4888,8 @@ impl<'c> Translation<'c> {
         match type_kind {
             // libc can be accessed from anywhere as of Rust 2019 by full path
             Void | Char | SChar | UChar | Short | UShort | Int | UInt | Long | ULong | LongLong
-            | ULongLong | Int128 | UInt128 | Half | BFloat16 | Float | Double | LongDouble => {}
+            | ULongLong | Int128 | UInt128 | Half | BFloat16 | Float | Double | LongDouble
+            | Float128 => {}
             // Bool uses the bool type, so no dependency on libc
             Bool => {}
             Paren(ctype)

@@ -285,7 +285,7 @@ fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
         TypeOfExpr(e) => intos![e],
         Void | Bool | Short | Int | Long | LongLong | UShort | UInt | ULong | ULongLong | SChar
         | UChar | Char | Double | LongDouble | Float | Int128 | UInt128 | BuiltinFn | Half
-        | BFloat16 | UnhandledSveType => {
+        | BFloat16 | UnhandledSveType | Float128 => {
             vec![]
         }
 

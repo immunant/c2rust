@@ -147,6 +147,8 @@ enum TypeTag {
     TagSveBool,
     TagSveBoolx2,
     TagSveBoolx4,
+
+    TagFloat128,
 };
 
 enum StringTypeTag {

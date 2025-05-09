@@ -423,6 +423,7 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             case BuiltinType::SveBool: return TagSveBool;
             case BuiltinType::SveBoolx2: return TagSveBoolx2;
             case BuiltinType::SveBoolx4: return TagSveBoolx4;
+            case BuiltinType::Float128: return TagFloat128;
 #endif
             default:
                 auto pol = clang::PrintingPolicy(Context->getLangOpts());
