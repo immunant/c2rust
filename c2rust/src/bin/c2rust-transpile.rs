@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use log::LevelFilter;
 use regex::Regex;
-use std::{fs, path::PathBuf};
+use std::{ffi::OsStr, fs, path::PathBuf};
 
 use c2rust_transpile::{Diagnostic, ReplaceMode, TranspilerConfig};
 
@@ -226,28 +226,29 @@ fn main() {
         tcfg.emit_modules = true
     };
 
-    let mut created_temp_compile_commands = false;
+    let mut temp_compile_commands_dir = None;
 
-    let compile_commands = if args.compile_commands.len() == 1
-        && args.compile_commands[0].extension() == Some(std::ffi::OsStr::new("json"))
+    let compile_commands = if args
+        .compile_commands
+        .iter()
+        .any(|path| path.extension() == Some(OsStr::new("json")))
     {
+        if args.compile_commands.len() != 1 {
+            // More than one file provided and at least one is a JSON file
+            panic!("Compile commands JSON and multiple sources provided.
+                Exactly one compile_commands.json file should be provided, or a list of source files, but not both.");
+        }
         // Only one file provided and it's a JSON file
         match fs::canonicalize(&args.compile_commands[0]) {
             Ok(canonical_path) => canonical_path,
             Err(e) => panic!("Failed to canonicalize path: {:?}", e),
         }
-    } else if args
-        .compile_commands
-        .iter()
-        .any(|path| path.extension() == Some(std::ffi::OsStr::new("json")))
-    {
-        // More than one file provided and at least one is a JSON file
-        panic!("Compile commands JSON and multiple sources provided.
-                Exactly one compile_commands.json file should be provided, or a list of source files, but not both.");
     } else {
         // Handle as a list of source files
-        created_temp_compile_commands = true;
-        c2rust_transpile::create_temp_compile_commands(&args.compile_commands)
+        let (temp_dir, temp_path) =
+            c2rust_transpile::create_temp_compile_commands(&args.compile_commands);
+        temp_compile_commands_dir = Some(temp_dir);
+        temp_path
     };
 
     let extra_args = args
@@ -259,8 +260,8 @@ fn main() {
     c2rust_transpile::transpile(tcfg, &compile_commands, &extra_args);
 
     // Remove the temporary compile_commands.json if it was created
-    if created_temp_compile_commands {
-        std::fs::remove_file(&compile_commands)
+    if let Some(temp) = temp_compile_commands_dir {
+        temp.close()
             .expect("Failed to remove temporary compile_commands.json");
     }
 }
