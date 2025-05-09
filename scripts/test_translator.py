@@ -73,6 +73,12 @@ class CFile:
         self.reorganize_definitions = "reorganize_definitions" in flags
         self.emit_build_files = "emit_build_files" in flags
 
+        derive_flag_prefix = "derive:"
+        derives = set()
+        for derive_flag in filter(lambda f: f.startswith(derive_flag_prefix), flags):
+            derives.add(derive_flag[len(derive_flag_prefix):])
+        self.derives = derives
+
     def translate(self, cc_db: str, ld_lib_path: str, extra_args: List[str] = []) -> RustFile:
         extensionless_file, _ = os.path.splitext(self.path)
 
@@ -96,6 +102,9 @@ class CFile:
             args.append("--reorganize-definitions")
         if self.emit_build_files:
             args.append("--emit-build-files")
+
+        for derive in self.derives:
+            args.extend(["--derive", derive])
 
         if self.log_level == 'DEBUG':
             args.append("--log-level=debug")

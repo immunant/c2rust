@@ -1,9 +1,11 @@
 use clap::{Parser, ValueEnum};
 use log::LevelFilter;
 use regex::Regex;
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, collections::HashSet};
 
-use c2rust_transpile::{Diagnostic, ReplaceMode, TranspilerConfig};
+use c2rust_transpile::{Derive, Diagnostic, ReplaceMode, TranspilerConfig};
+
+const DEFAULT_DERIVES: &[Derive] = &[Derive::Clone, Derive::Copy, Derive::BitfieldStruct];
 
 #[derive(Debug, Parser)]
 #[clap(
@@ -155,6 +157,17 @@ struct Args {
     /// Fail when the control-flow graph generates branching constructs
     #[clap(long)]
     fail_on_multiple: bool,
+
+    /// Add extra derived traits to generated structs in addition to the default
+    /// set of derives (Copy, Clone, BitfieldStruct). Specify multiple times to
+    /// add more than one derive. A struct will derive all traits in the set for
+    /// which it is eligible.
+    ///
+    /// For example, a struct containing a union cannot derive Debug, so
+    /// `#[derive(Debug)]` will not be added to that struct regardless of
+    /// whether `--derive Debug` is specified.
+    #[clap(long = "derive", value_enum, value_name = "TRAIT")]
+    extra_derives: Vec<ExtraDerive>,
 }
 
 #[derive(Debug, PartialEq, Eq, ValueEnum, Clone)]
@@ -162,6 +175,20 @@ struct Args {
 enum InvalidCodes {
     Panic,
     CompileError,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+#[clap(rename_all = "PascalCase")]
+enum ExtraDerive {
+    Debug,
+}
+
+impl ExtraDerive {
+    fn to_transpiler_derive(&self) -> Derive {
+        match self {
+            Self::Debug => Derive::Debug,
+        }
+    }
 }
 
 fn main() {
@@ -216,6 +243,7 @@ fn main() {
         emit_no_std: args.emit_no_std,
         enabled_warnings: args.warn.into_iter().collect(),
         log_level: args.log_level,
+        derives: get_derives(&args.extra_derives),
     };
     // binaries imply emit-build-files
     if !tcfg.binaries.is_empty() {
@@ -263,4 +291,16 @@ fn main() {
         std::fs::remove_file(&compile_commands)
             .expect("Failed to remove temporary compile_commands.json");
     }
+}
+
+fn get_derives(extra_derives: &[ExtraDerive]) -> Vec<Derive> {
+    // Make sure there are no dupes and sort so the derives are always in the same order
+    let derives_set: HashSet<_> = DEFAULT_DERIVES
+        .iter()
+        .cloned()
+        .chain(extra_derives.iter().map(|d| d.to_transpiler_derive()))
+        .collect();
+    let mut derives: Vec<Derive> = derives_set.into_iter().collect();
+    derives.sort();
+    derives
 }
