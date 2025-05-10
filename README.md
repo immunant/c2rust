@@ -23,7 +23,9 @@ required to lift unsafe Rust into safe Rust types.
 This work is still in the early stages; please get in touch if you're interested!
 We previously maintained a scriptable refactoring tool, [`c2rust refactor`](./c2rust-refactor/),
 that reduces the tedium of refactoring, but this tool is now deprecated
-so that we can move forward with a recent Rust toolchain.
+so that we can move forward with a recent Rust toolchain. The `unstable`
+subdirectory contains some additional tools for working with Rust code, which
+depend on a previous nightly Rust toolchain and its internal rustc libraries.
 
 Here's the big picture:
 

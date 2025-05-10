@@ -58,6 +58,7 @@ jobs:
       # which we don't want to test here (it doesn't work out of the box on Arch and Fedora;
       # see https://github.com/immunant/c2rust/issues/500).
       cargo build --release
+      (cd unstable && cargo build --release)
     displayName: 'cargo build against host clang/LLVM (fast build)'
 
   - script: |
@@ -67,6 +68,7 @@ jobs:
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
       cargo test --release --workspace
+      (cd unstable && cargo test --release --workspace)
     displayName: 'cargo test'
 
   - script: |
@@ -105,6 +107,7 @@ jobs:
       export RUSTDOCFLAGS="-D warnings"
       # Don't build with `--all-features` (see analogous step for Linux).
       cargo build --release
+      (cd unstable && cargo build --release)
     displayName: 'cargo build against host clang/LLVM (fast build)'
 
   - script: |
@@ -112,6 +115,7 @@ jobs:
       export RUSTFLAGS="-D warnings"
       export RUSTDOCFLAGS="-D warnings"
       cargo test --release --workspace
+      (cd unstable && cargo test --release --workspace)
     displayName: 'cargo test'
 
   - script: |

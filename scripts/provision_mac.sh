@@ -27,6 +27,6 @@ python3 -m pip install --user --upgrade pip
 python3 -m pip install --user -r "$SCRIPT_DIR/requirements.txt"
 
 # Rust and dependencies
-RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain.toml"
-export RUST_VER=$($SCRIPT_DIR/query_toml.py toolchain.channel $RUST_TOOLCHAIN_FILE)
+RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../unstable/rust-toolchain.toml"
+export NIGHTLY_RUST_VER=$($SCRIPT_DIR/query_toml.py toolchain.channel $RUST_TOOLCHAIN_FILE)
 "$SCRIPT_DIR/provision_rust.sh"
