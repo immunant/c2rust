@@ -17,14 +17,12 @@ done
 SCRIPT_DIR="$(dirname "$0")"
 export HOMEBREW_NO_AUTO_UPDATE=1
 
-# NOTE: Pin LLVM to a known good version since new releases
-# tend not to be backwards compatible
 # `bash` needed b/c macOS ships with bash 3, which doesn't support arrays properly
-brew install -q python cmake ninja gpg llvm@17 bash
+brew install -q python cmake ninja gpg llvm@19 bash
 
 # Python 3 packages
-python3 -m pip install --user --upgrade pip
-python3 -m pip install --user -r "$SCRIPT_DIR/requirements.txt"
+python3 -m pip install --break-system-packages --user --upgrade pip
+python3 -m pip install --break-system-packages --user -r "$SCRIPT_DIR/requirements.txt"
 
 # Rust and dependencies
 RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain.toml"
