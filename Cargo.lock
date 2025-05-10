@@ -362,6 +362,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "syn 1.0.109",
+ "tempfile",
 ]
 
 [[package]]
