@@ -330,13 +330,21 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
         auto kind = T->getKind();
 
 #if CLANG_VERSION_MAJOR >= 10
-        // Handle built-in vector types as if they're normal vector types
-        if (kind >= BuiltinType::SveInt8 && kind <= BuiltinType::SveBool
+        // Recognize ARM vector types
+        const bool is_sve = kind >= BuiltinType::SveInt8 && kind <= BuiltinType::SveBool;
+#else
+        const bool is_sve = false;
+#endif // CLANG_VERSION_MAJOR >= 10
+
 #if CLANG_VERSION_MAJOR >= 13
-            /* RISC-V vector types */
-            || kind >= BuiltinType::RvvInt8mf8 && kind <= BuiltinType::RvvBool64
+        // Recognize RISC-V vector types
+        const bool is_rvv = kind >= BuiltinType::RvvInt8mf8 && kind <= BuiltinType::RvvBool64;
+#else
+        const bool is_rvv = false;
 #endif // CLANG_VERSION_MAJOR >= 13
-            ) {
+
+        // Handle built-in vector types as if they're normal vector types
+        if (is_sve || is_rvv) {
 // Declare ElemType and ElemCount as needed by various Clang versions
 #if CLANG_VERSION_MAJOR >= 11
             auto Info = Context->getBuiltinVectorTypeInfo(T);
@@ -353,6 +361,7 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             // Copy-pasted from Type::getSveEltType introduced after Clang 10:
             // (Not extended for RISCV types
             // as they are not available in that version anyway).
+#if CLANG_VERSION_MAJOR >= 10
             auto ElemType = [&] {
                 switch (kind) {
                 default: llvm_unreachable("Unknown builtin SVE type!");
@@ -374,6 +383,9 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             // (see `AArch64SVEACLETypes.def`), so we can divide 128
             // by their element size to get element count.
             auto ElemCount = 128 / Context->getTypeSize(ElemType);
+#else
+            llvm_unreachable("LLVM version does not have any vector types");
+#endif // CLANG_VERSION_MAJOR >= 10
 #endif // CLANG_VERSION_MAJOR >= 11
             auto ElemTypeTag = encodeQualType(ElemType);
             encodeType(T, TagVectorType,
@@ -385,7 +397,6 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             VisitQualType(ElemType);
             return;
         }
-#endif // CLANG_VERSION_MAJOR >= 10
 
         const TypeTag tag = [&] {
             switch (kind) {
