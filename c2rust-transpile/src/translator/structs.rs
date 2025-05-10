@@ -377,7 +377,33 @@ impl<'a> Translation<'a> {
 
                     field_entries.push(field);
                 }
-                FieldType::Regular { field, .. } => field_entries.push(*field),
+                FieldType::Regular {
+                    mut field, name, ..
+                } => {
+                    if let crate::translator::Type::Path(segments, ..) = &field.ty {
+                        for seg in &segments.path.segments {
+                            let tynam = seg.ident.to_string();
+                            match tynam.as_str() {
+                                "__m128i_u" | "__m128_u" | "__m256i_u" | "__m256_u"
+                                | "__m512_u" | "__m512i_u" => {
+                                    // TODO: We might already have emitted a warning in `import_simd_typedef`,
+                                    // is it always safe to skip the warning here?
+                                    log::warn!("Unaligned SIMD type {} in field {} has no equivalent in Rust. \
+                                          Emitting {} instead. This likely means the potential \
+                                          for miscompilation has been introduced.",
+                                          tynam,
+                                          name,
+                                          &tynam[..tynam.len() - 2],
+                                    );
+                                    field.ty = *mk().ident_ty(&tynam[..tynam.len() - 2]);
+                                    break;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    field_entries.push(*field)
+                }
             }
         }
         Ok((field_entries, contains_va_list))
