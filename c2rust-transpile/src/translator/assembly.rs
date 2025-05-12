@@ -966,7 +966,6 @@ impl<'c> Translation<'c> {
             tokens.push(TokenTree::Punct(Punct::new(',', Alone)));
             let result = mk().call_expr(mk().ident_expr("out"), vec![mk().lit_expr(clobber)]);
             push_expr(&mut tokens, result);
-            tokens.push(TokenTree::Punct(Punct::new(' ', Alone)));
             push_expr(&mut tokens, mk().ident_expr("_"));
         }
 
