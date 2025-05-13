@@ -1,0 +1,81 @@
+name: ci
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+jobs:
+  test-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup component add rustfmt rustc-dev
+      # rust-cache very carefully caches toolchains and target directories,
+      # based on the job and toolchain and other factors. See
+      # https://github.com/Swatinem/rust-cache#cache-details for what gets
+      # cached, what gets used as part of the key, and what additional handling
+      # happens to make the cache reliable and smaller.
+      - uses: Swatinem/rust-cache@v2
+      - run: |
+          sudo apt-get update
+          sudo apt-get install \
+            clang \
+            clang-tools \
+            cmake \
+            curl \
+            git \
+            gperf \
+            libbrotli-dev \
+            libclang-dev \
+            libgcrypt20 \
+            libreadline-dev \
+            libidn2-dev \
+            libldap2-dev \
+            libncurses5-dev \
+            libnghttp2-dev \
+            libpcre3-dev \
+            libpsl-dev \
+            librtmp-dev \
+            libssl-dev \
+            libtool \
+            llvm \
+            llvm-dev \
+            luarocks \
+            ninja-build \
+            pkg-config \
+            python3-pip \
+            python3-setuptools \
+            python3-wheel \
+            rcs \
+            strace \
+            unzip \
+            zlib1g-dev
+      - name: Provision Python Packages
+        run: python3 -m pip install -r $GITHUB_WORKSPACE/scripts/requirements.txt
+      - name: cargo fmt --check
+        run: |
+          export RUSTFLAGS="-D warnings"
+          export RUSTDOCFLAGS="-D warnings"
+          cargo fmt --check
+      - name: cargo build --release
+        run: |
+          export RUSTFLAGS="-D warnings"
+          export RUSTDOCFLAGS="-D warnings"
+          # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
+          # which we don't want to test here (see https://github.com/immunant/c2rust/issues/500).
+          cargo build --release
+      - name: cargo test --release --workspace
+        run: |
+          export RUSTFLAGS="-D warnings"
+          export RUSTDOCFLAGS="-D warnings"
+          cargo test --release --workspace
+      - name: Test translator
+        run: |
+          # `test_translator.py` compiles translated code,
+          # which has tons of warnings.
+          # `RUSTFLAGS="-D warnings"` would be inherited by that,
+          # causing tons of errors, so don't set that.
+          # `test_translator.py` does not rebuild,
+          # so changing `RUSTFLAGS` will not trigger a full rebuild.
+          ./scripts/test_translator.py tests/
