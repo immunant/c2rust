@@ -42,3 +42,6 @@ tempfile = "3.5.0"
 [features]
 # Force static linking of LLVM
 llvm-static = ["c2rust-ast-exporter/llvm-static"]
+
+[dev-dependencies]
+insta = { version = "1.15", features = ["glob"] }
