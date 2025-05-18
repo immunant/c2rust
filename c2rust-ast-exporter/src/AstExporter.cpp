@@ -2213,8 +2213,12 @@ class TranslateASTVisitor final
 
                          // 2. Encode bitfield width if any
                          if (D->isBitField()) {
+#if LLVM_VERSION_MAJOR >= 20
+                             cbor_encode_uint(array, D->getBitWidthValue());
+#else
                              cbor_encode_uint(
                                  array, D->getBitWidthValue(*this->Context));
+#endif
                          } else {
                              cbor_encode_null(array);
                          };
