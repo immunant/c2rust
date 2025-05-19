@@ -9,18 +9,15 @@ if [[ "$EUID" -eq 0 ]]
   exit
 fi
 
-# $RUST_VER must be set.
-if [[ -z "$RUST_VER" ]]; then
-  echo "RUST_VER must be set to the desired rust version"
+# $NIGHTLY_RUST_VER must be set.
+if [[ -z "$NIGHTLY_RUST_VER" ]]; then
+  echo "NIGHTLY_RUST_VER must be set to the desired nightly rust version"
   exit
 fi
 
-if hash rustup 2>/dev/null; then # rustup is installed
-  rustup toolchain install $RUST_VER
-  rustup default $RUST_VER
-else # rustup is not installed  
-  curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain $RUST_VER
-fi 
+if ! hash rustup 2>/dev/null; then # rustup is not installed
+  curl https://sh.rustup.rs -sSf | sh -s -- -y
+fi
 
 # make rust environment available on next login 
 if ! grep "source ~/.cargo/env" ~/.bashrc >/dev/null; then 
@@ -29,9 +26,12 @@ fi
 # make rust environment available for commands below 
 source ~/.cargo/env
 
+rustup toolchain install $NIGHTLY_RUST_VER
+rustup toolchain install stable
+
 # rustfmt is required for c2rust-refactor tests
 # rustc-dev was added make sure it is installed on Azure/macOS-10.15
-rustup component add rustfmt-preview rustc-dev rust-src
+rustup component add rustfmt rustc-dev rust-src
 
 # Make rustup directory world-writable so other test users can install new rust
 # versions
