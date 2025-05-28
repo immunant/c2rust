@@ -441,6 +441,19 @@ impl<'c> Translation<'c> {
             "__builtin_ia32_pcmpestris128" => self.convert_simd_builtin(ctx, "_mm_cmpestrs", args),
             "__builtin_ia32_pcmpestriz128" => self.convert_simd_builtin(ctx, "_mm_cmpestrz", args),
 
+            "__builtin_ia32_vcvtph2ps" => self.convert_simd_builtin(ctx, "_mm_cvtph_ps", args),
+            "__builtin_ia32_vcvtps2ph256" => {
+                self.convert_simd_builtin(ctx, "_mm256_cvtps_ph", args)
+            }
+            "__builtin_ia32_vextractf128_ps256" => {
+                self.convert_simd_builtin(ctx, "_mm256_extractf128_ps", args)
+            }
+            "__builtin_ia32_vextractf128_si256" => {
+                self.convert_simd_builtin(ctx, "_mm256_extractf128_ps", args)
+            }
+            "__builtin_ia32_roundps256" => self.convert_simd_builtin(ctx, "_mm256_round_ps", args),
+            "__builtin_ia32_vcvtps2ph" => self.convert_simd_builtin(ctx, "_mm_cvtps_ph", args),
+
             "__sync_val_compare_and_swap_1"
             | "__sync_val_compare_and_swap_2"
             | "__sync_val_compare_and_swap_4"
