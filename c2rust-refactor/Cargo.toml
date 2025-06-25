@@ -27,7 +27,7 @@ env_logger = "0.10"
 log = "0.4"
 rlua = "0.17"
 slotmap = {version = "1.0.7", features = ["unstable"]}
-derive_more = "0.99"
+derive_more = "=0.99.17"
 c2rust-macros = { version = "0.20.0", path = "../c2rust-macros" }
 flame = { version = "0.2.2", optional = true }
 flamer = { version = "0.4", optional = true }
