@@ -26,7 +26,7 @@ c2rust-analysis-rt = { path = "../analysis/runtime", version = "0.21.0" }
 env_logger = "0.10"
 log = "0.4"
 rlua = "0.17"
-slotmap = {version = "0.4", features = ["unstable"]}
+slotmap = {version = "1.0.7", features = ["unstable"]}
 derive_more = "0.99"
 c2rust-macros = { version = "0.21.0", path = "../c2rust-macros" }
 flame = { version = "0.2.2", optional = true }
