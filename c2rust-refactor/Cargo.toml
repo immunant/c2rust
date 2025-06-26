@@ -34,6 +34,8 @@ flamer = { version = "0.4", optional = true }
 failure = "0.1"
 bincode = "1.0.1"
 petgraph = "0.4"
+thin-vec = "0.2.14"
+smallvec = "1.15.1"
 
 [dev-dependencies]
 z3 = "0.4.0"
