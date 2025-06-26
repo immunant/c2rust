@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.5...4.0)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 project(ASTExporter)
 
 #################################################
@@ -89,7 +90,7 @@ add_library(clangAstExporter STATIC ${AST_EXPORTER_SRCS})
 add_definitions(-DCLANG_LIBDIR_SUFFIX="${LLVM_LIBDIR_SUFFIX}")
 
 set_target_properties(c2rust-ast-exporter PROPERTIES
-  CXX_STANDARD 14
+  CXX_STANDARD 17
   CXX_EXTENSIONS OFF
   )
 # PRIVATE was added to make c2rust-ast-exporter build with LLVM 6.0. Keyword
