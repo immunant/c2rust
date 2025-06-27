@@ -234,7 +234,8 @@ pub fn process(items: Value) -> error::Result<AstContext> {
         let entry_id: u64 = from_value(entry.pop_front().unwrap()).unwrap();
         let tag = from_value(entry.pop_front().unwrap()).unwrap();
 
-        if tag < 400 {
+        // Tags before the first type tag indicate AST nodes, after indicate type nodes.
+        if tag < TypeTag::TagTypeUnknown as _ {
             let children = from_value::<Vec<Value>>(entry.pop_front().unwrap())
                 .unwrap()
                 .iter()
