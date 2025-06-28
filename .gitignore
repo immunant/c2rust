@@ -14,6 +14,8 @@
 **/compile_commands.json
 .python-version
 .clangd
+# ignore python virtual envs everywhere
+**/.venv/
 # ignore Clion build dirs
 **/cmake-build-debug
 **/cmake-build-release
