@@ -464,6 +464,12 @@ impl TypedAstContext {
         ty.map(|ty| (expr_id, ty))
     }
 
+    pub fn type_for_kind(&self, kind: &CTypeKind) -> Option<CTypeId> {
+        self.c_types
+            .iter()
+            .find_map(|(id, k)| if kind == &k.kind { Some(*id) } else { None })
+    }
+
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
         use CTypeKind::*;
         let ty = match self.index(typ).kind {
@@ -972,6 +978,7 @@ pub enum CDeclKind {
         name: String,
         typ: CQualTypeId,
         is_implicit: bool,
+        target_dependent_macro: Option<String>,
     },
 
     // Struct
