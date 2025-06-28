@@ -1942,12 +1942,53 @@ impl ConversionContext {
                     let typ_old = node
                         .type_id
                         .expect("Expected to find type on typedef declaration");
-                    let typ = self.visit_qualified_type(typ_old);
+                    let mut typ = self.visit_qualified_type(typ_old);
+
+                    // Clang injects definitions of the form `#define __SIZE_TYPE__ unsigned int` into
+                    // compilation units based on the target. (See lib/Frontend/InitPreprocessor.cpp
+                    // in Clang).
+                    //
+                    // Later, headers contain defns like: `typedef __SIZE_TYPE__ size_t;`
+                    //
+                    // We detect these typedefs and alter them replacing the type to which the macro
+                    // expands with a synthetic, portable `CTypeKind` chosen from the macro's name.
+                    //
+                    // This allows us to generate platform-independent Rust types like u64 or usize
+                    // despite the C side internally working with a target-specific type.
+                    let target_dependent_macro: Option<String> = from_value(node.extras[2].clone())
+                        .expect("Expected to find optional target-dependent macro name");
+
+                    typ = target_dependent_macro
+                        .as_deref()
+                        .and_then(|macro_name| {
+                            let kind = match macro_name {
+                                // Match names in the order Clang defines them.
+                                "__INTMAX_TYPE__" => CTypeKind::IntMax,
+                                "__UINTMAX_TYPE__" => CTypeKind::UIntMax,
+                                "__PTRDIFF_TYPE__" => CTypeKind::PtrDiff,
+                                "__INTPTR_TYPE__" => CTypeKind::IntPtr,
+                                "__SIZE_TYPE__" => CTypeKind::Size,
+                                "__WCHAR_TYPE__" => CTypeKind::WChar,
+                                // __WINT_TYPE__ is defined by Clang but has no obvious translation
+                                // __CHARn_TYPE__ for n ∈ {8, 16, 32} also lack obvious translation
+                                "__UINTPTR_TYPE__" => CTypeKind::UIntPtr,
+                                _ => {
+                                    log::debug!("Unknown target-dependent macro {macro_name}!");
+                                    return None;
+                                }
+                            };
+                            log::trace!("Selected kind {kind} for typedef {name}");
+                            Some(CQualTypeId::new(
+                                self.typed_context.type_for_kind(&kind).unwrap(),
+                            ))
+                        })
+                        .unwrap_or(typ);
 
                     let typdef_decl = CDeclKind::Typedef {
                         name,
                         typ,
                         is_implicit,
+                        target_dependent_macro,
                     };
 
                     self.add_decl(new_id, located(node, typdef_decl));
