@@ -1,8 +1,10 @@
 #include <algorithm>
+#include <clang/AST/Type.h>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <optional>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
@@ -98,7 +100,6 @@ Optional<APSInt> getIntegerConstantExpr(const Expr &E, const ASTContext &Ctx) {
 #endif // CLANG_VERSION_MAJOR
 }
 #else
-#include <optional>
 std::optional<APSInt> getIntegerConstantExpr(const Expr &E,
                                              const ASTContext &Ctx) {
     return E.getIntegerConstantExpr(Ctx);
@@ -2225,6 +2226,36 @@ class TranslateASTVisitor final
 
     bool VisitTypedefNameDecl(TypedefNameDecl *D) {
         auto typeForDecl = D->getUnderlyingType();
+        // If this typedef is to a compiler-builtin macro with target-dependent definition, note the
+        // macro's name so we can map to the appropriate target-independent name (e.g. `size_t`).
+        auto targetDependentMacro = [&]() -> std::optional<std::string> {
+            TypeSourceInfo *TSI = D->getTypeSourceInfo();
+            if (!TSI)
+                return {};
+
+            TypeLoc typeLoc = TSI->getTypeLoc();
+            SourceLocation loc = typeLoc.getBeginLoc();
+
+            if (loc.isInvalid())
+                return {};
+
+            // Check if the location is from a macro expansion
+            if (!loc.isMacroID()) {
+                return {};
+            }
+
+            auto macroName = Lexer::getImmediateMacroName(loc, Context->getSourceManager(), Context->getLangOpts());
+            // Double-underscore indicates that name is reserved for the implementation,
+            // so this should not interfere with user code.
+#if CLANG_VERSION_MAJOR >= 18
+            if (!macroName.starts_with("__")) {
+#else
+            if (!macroName.startswith("__")) {
+#endif // CLANG_VERSION_MAJOR
+                return {};
+            }
+            return std::make_optional(std::string(macroName));
+        }();
         if (!D->isCanonicalDecl()) {
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {D->getCanonicalDecl()};
@@ -2235,11 +2266,17 @@ class TranslateASTVisitor final
 
         std::vector<void *> childIds;
         encode_entry(D, TagTypedefDecl, childIds, typeForDecl,
-                     [D](CborEncoder *array) {
+                     [D, targetDependentMacro](CborEncoder *array) {
                          auto name = D->getNameAsString();
                          cbor_encode_string(array, name);
 
                          cbor_encode_boolean(array, D->isImplicit());
+
+                         if (!targetDependentMacro) {
+                             cbor_encode_null(array);
+                         } else {
+                             cbor_encode_string(array, targetDependentMacro->data());
+                         }
                      });
 
         typeEncoder.VisitQualType(typeForDecl);
