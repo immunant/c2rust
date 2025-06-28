@@ -2,10 +2,10 @@
 
 ## Prerequisites
 
-- `c2rust` binary in path
-- python 3.6 or later.
-- `intercept-build` in path. installing:
-    - `pip3 install -r requirements.txt`
+- the following binaries in path
+  + `uv`: https://docs.astral.sh/uv/getting-started/installation/
+  + `c2rust`: https://github.com/immunant/c2rust?tab=readme-ov-file#installation
+  + `intercept-build`:  `pip3 install -r requirements.txt`
 - any other packages and binaries required by the tests themselves
     - captured in `**/requirements.yml`
 
@@ -15,15 +15,15 @@
     $ ./test.py --verbose             # show test output
     $ ./test.py lua                   # run specific project
     $ ./test.py lua --stage transpile # run specific stage of project
-    
+
 
 ## Adding new tests as git submodules
 
     $ cd path/to/tests/$PROJ
     $ git submodule add --depth 10  $PROJ_URL repo
-    
-To track a specific branch ($SUBMOD_NAME can be found in `.gitmodules`):    
-    
+
+To track a specific branch ($SUBMOD_NAME can be found in `.gitmodules`):
+
     $ git config -f .gitmodules submodule.$SUBMOD_NAME.branch $BRANCH_NAME
     $ git submodule update --remote repo
 
