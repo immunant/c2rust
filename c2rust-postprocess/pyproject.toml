@@ -1,0 +1,13 @@
+[project]
+name = "c2rust-postprocess"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "google-genai>=1.25.0",
+    "jq>=1.9.1",
+    "openai>=1.88.0",
+    "openai-agents>=0.1.0",
+    "pygments>=2.19.2",
+]
