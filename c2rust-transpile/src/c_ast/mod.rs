@@ -1230,20 +1230,20 @@ pub enum CastKind {
 /// Represents a unary operator in C (6.5.3 Unary operators) and GNU C extensions
 #[derive(Debug, Clone, Copy)]
 pub enum UnOp {
-    AddressOf,     // &x
-    Deref,         // *x
-    Plus,          // +x
-    PostIncrement, // x++
-    PreIncrement,  // ++x
-    Negate,        // -x
-    PostDecrement, // x--
-    PreDecrement,  // --x
-    Complement,    // ~x
-    Not,           // !x
-    Real,          // [GNU C] __real x
-    Imag,          // [GNU C] __imag x
-    Extension,     // [GNU C] __extension__ x
-    Coawait,       // [C++ Coroutines] co_await x
+    AddressOf,                 // &x
+    Deref { unaligned: bool }, // *x
+    Plus,                      // +x
+    PostIncrement,             // x++
+    PreIncrement,              // ++x
+    Negate,                    // -x
+    PostDecrement,             // x--
+    PreDecrement,              // --x
+    Complement,                // ~x
+    Not,                       // !x
+    Real,                      // [GNU C] __real x
+    Imag,                      // [GNU C] __imag x
+    Extension,                 // [GNU C] __extension__ x
+    Coawait,                   // [C++ Coroutines] co_await x
 }
 
 impl UnOp {
@@ -1251,7 +1251,7 @@ impl UnOp {
         use UnOp::*;
         match self {
             AddressOf => "&",
-            Deref => "*",
+            Deref { .. } => "*",
             Plus => "+",
             PreIncrement => "++",
             PostIncrement => "++",

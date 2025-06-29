@@ -3045,6 +3045,17 @@ impl<'c> Translation<'c> {
         Ok(mk().call_expr(read_volatile_expr, vec![addr_lhs]))
     }
 
+    /// Write to a `lhs` that may be unaligned
+    pub fn unaligned_write(
+        &self,
+        lhs: Box<Expr>,
+        lhs_type: CQualTypeId,
+        rhs: Box<Expr>,
+    ) -> TranslationResult<Box<Expr>> {
+        let addr_lhs = self.addr_lhs(lhs, lhs_type, true)?;
+        Ok(mk().method_call_expr(addr_lhs, "write_unaligned", vec![rhs]))
+    }
+
     // Compute the offset multiplier for variable length array indexing
     // Rust type: usize
     pub fn compute_size_of_expr(&self, type_id: CTypeId) -> Option<Box<Expr>> {

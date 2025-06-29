@@ -1250,7 +1250,14 @@ impl ConversionContext {
                         .as_str()
                     {
                         "&" => UnOp::AddressOf,
-                        "*" => UnOp::Deref,
+                        "*" => {
+                            let align: i32 = from_value(node.extras[2].clone())
+                                .expect("Expected prefix information");
+
+                            UnOp::Deref {
+                                unaligned: align != -1,
+                            }
+                        }
                         "+" => UnOp::Plus,
                         "-" => UnOp::Negate,
                         "~" => UnOp::Complement,
