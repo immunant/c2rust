@@ -1,3 +1,5 @@
+use std::fs;
+
 #[test]
 fn transpile() {
     let config = || c2rust_transpile::TranspilerConfig {
@@ -38,13 +40,13 @@ fn transpile() {
         emit_build_files: false,
         binaries: Vec::new(),
     };
-    insta::glob!("snapshots/*.c", |f: &std::path::Path| {
+    insta::glob!("snapshots/*.c", |f: &Path| {
         let (_temp_dir, temp_path) =
             c2rust_transpile::create_temp_compile_commands(&[f.to_owned()]);
-        c2rust_transpile::transpile(config.clone(), &temp_path, &[]);
+        c2rust_transpile::transpile(config(), &temp_path, &[]);
         let output_path = f.with_extension("rs");
-        let output = std::fs::read_to_string(&output_path).unwrap();
-        std::fs::remove_file(&output_path).unwrap();
+        let output = fs::read_to_string(&output_path).unwrap();
+        fs::remove_file(&output_path).unwrap();
         insta::assert_snapshot!(&output);
     });
 }
