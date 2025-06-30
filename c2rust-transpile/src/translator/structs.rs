@@ -406,7 +406,7 @@ impl<'a> Translation<'a> {
     ///         non_bf: 32,
     ///         _pad: [0; 2],
     ///     };
-    ///     init.set_bf1(-12);
+    ///     init.set_bf1(-12i8 as _);
     ///     init.set_bf2(34);
     ///     init
     /// }
