@@ -1,0 +1,21 @@
+#![allow(
+    dead_code,
+    mutable_transmutes,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#[no_mangle]
+pub unsafe extern "C" fn factorial(mut n: std::ffi::c_ushort) -> std::ffi::c_ushort {
+    let mut result: std::ffi::c_ushort = 1 as std::ffi::c_int as std::ffi::c_ushort;
+    let mut i: std::ffi::c_ushort = 1 as std::ffi::c_int as std::ffi::c_ushort;
+    while (i as std::ffi::c_int) < n as std::ffi::c_int {
+        result = (result as std::ffi::c_int * i as std::ffi::c_int)
+            as std::ffi::c_ushort;
+        i = i.wrapping_add(1);
+        i;
+    }
+    return result;
+}

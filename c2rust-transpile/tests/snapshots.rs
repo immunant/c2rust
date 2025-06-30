@@ -50,7 +50,6 @@ fn transpile(c_path: &Path) {
     c2rust_transpile::transpile(config(), &temp_path, &[]);
     let rs_path = c_path.with_extension("rs");
     let rust = fs::read_to_string(&rs_path).unwrap();
-    fs::remove_file(&rs_path).unwrap();
     insta::assert_snapshot!(&rust);
 }
 
