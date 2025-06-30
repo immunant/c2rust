@@ -1,8 +1,10 @@
 use std::fs;
+use std::path::Path;
 
-#[test]
-fn transpile() {
-    let config = || c2rust_transpile::TranspilerConfig {
+use c2rust_transpile::{ReplaceMode, TranspilerConfig};
+
+fn config() -> TranspilerConfig {
+    TranspilerConfig {
         dump_untyped_context: false,
         dump_typed_context: false,
         pretty_typed_context: false,
@@ -24,7 +26,7 @@ fn transpile() {
         panic_on_translator_failure: false,
         emit_modules: false,
         fail_on_error: false,
-        replace_unsupported_decls: c2rust_transpile::ReplaceMode::Extern,
+        replace_unsupported_decls: ReplaceMode::Extern,
         translate_valist: true,
         overwrite_existing: true,
         reduce_type_annotations: false,
@@ -39,14 +41,20 @@ fn transpile() {
         log_level: log::LevelFilter::Warn,
         emit_build_files: false,
         binaries: Vec::new(),
-    };
-    insta::glob!("snapshots/*.c", |c_path: &Path| {
-        let (_temp_dir, temp_path) =
-            c2rust_transpile::create_temp_compile_commands(&[c_path.to_owned()]);
-        c2rust_transpile::transpile(config(), &temp_path, &[]);
-        let rs_path = c_path.with_extension("rs");
-        let rust = fs::read_to_string(&rs_path).unwrap();
-        fs::remove_file(&rs_path).unwrap();
-        insta::assert_snapshot!(&rust);
-    });
+    }
+}
+
+fn transpile(c_path: &Path) {
+    let (_temp_dir, temp_path) =
+        c2rust_transpile::create_temp_compile_commands(&[c_path.to_owned()]);
+    c2rust_transpile::transpile(config(), &temp_path, &[]);
+    let rs_path = c_path.with_extension("rs");
+    let rust = fs::read_to_string(&rs_path).unwrap();
+    fs::remove_file(&rs_path).unwrap();
+    insta::assert_snapshot!(&rust);
+}
+
+#[test]
+fn transpile_all() {
+    insta::glob!("snapshots/*.c", transpile);
 }
