@@ -1,3 +1,4 @@
+use std::env::current_dir;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -50,9 +51,12 @@ fn transpile(c_path: &Path) {
     let (_temp_dir, temp_path) =
         c2rust_transpile::create_temp_compile_commands(&[c_path.to_owned()]);
     c2rust_transpile::transpile(config(), &temp_path, &[]);
+    let cwd = current_dir().unwrap();
+    let c_path = c_path.strip_prefix(&cwd).unwrap();
     let rs_path = c_path.with_extension("rs");
-    let rust = fs::read_to_string(&rs_path).unwrap();
-    insta::assert_snapshot!(&rust);
+    let rs = fs::read_to_string(&rs_path).unwrap();
+    let debug_expr = format!("cat {}", rs_path.display());
+    insta::assert_snapshot!("transpile", &rs, &debug_expr);
 
     let status = Command::new("rustc")
         .args(&["--crate-type", "lib", "--edition", "2021"])

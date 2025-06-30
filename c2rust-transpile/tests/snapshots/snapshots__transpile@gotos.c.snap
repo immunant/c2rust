@@ -1,6 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-expression: "&output"
+expression: cat tests/snapshots/gotos.rs
 input_file: c2rust-transpile/tests/snapshots/gotos.c
 ---
 #![allow(
