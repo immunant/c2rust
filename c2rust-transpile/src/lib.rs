@@ -44,7 +44,7 @@ type CrateSet = indexmap::IndexSet<ExternCrate>;
 type TranspileResult = Result<(PathBuf, PragmaVec, CrateSet), ()>;
 
 /// Configuration settings for the translation process
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct TranspilerConfig {
     // Debug output options
     pub dump_untyped_context: bool,

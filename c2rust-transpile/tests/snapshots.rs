@@ -1,6 +1,6 @@
 #[test]
 fn transpile() {
-    let config = c2rust_transpile::TranspilerConfig {
+    let config = || c2rust_transpile::TranspilerConfig {
         dump_untyped_context: false,
         dump_typed_context: false,
         pretty_typed_context: false,
