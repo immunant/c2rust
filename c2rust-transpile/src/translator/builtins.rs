@@ -636,9 +636,22 @@ impl<'c> Translation<'c> {
                     )
                 })
             }
-            // There's currently no way to replicate this functionality in Rust, so we just
-            // pass the ptr input param in its place.
-            "__builtin_assume_aligned" => Ok(self.convert_expr(ctx.used(), args[0])?),
+
+            "__builtin_assume_aligned" => {
+                // Emit `core::hint::assert_unchecked(ptr.is_aligned())`.
+                let assert_unchecked = mk().abs_path_expr(vec!["core", "hint", "assert_unchecked"]);
+                let arg0 = self.convert_expr(ctx.used(), args[0])?;
+                arg0.and_then(|arg0| {
+                    let is_aligned = mk().method_call_expr(arg0, "is_aligned", vec![]);
+                    let result = mk().call_expr(assert_unchecked, vec![is_aligned]);
+                    self.convert_side_effects_expr(
+                        ctx,
+                        WithStmts::new_val(result),
+                        "Builtin is not supposed to be used",
+                    )
+                })
+            }
+
             // Skip over, there's no way to implement it in Rust
             "__builtin_unwind_init" => Ok(WithStmts::new_val(self.panic_or_err("no value"))),
             "__builtin_unreachable" => Ok(WithStmts::new(
