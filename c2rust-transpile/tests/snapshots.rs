@@ -48,6 +48,12 @@ fn config() -> TranspilerConfig {
 }
 
 fn transpile(c_path: &Path) {
+    let status = Command::new("clang")
+        .args(&["-c", "-o", "/dev/null"])
+        .arg(c_path)
+        .status();
+    assert!(status.unwrap().success());
+
     let (_temp_dir, temp_path) =
         c2rust_transpile::create_temp_compile_commands(&[c_path.to_owned()]);
     c2rust_transpile::transpile(config(), &temp_path, &[]);
