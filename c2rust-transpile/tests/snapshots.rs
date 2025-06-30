@@ -40,13 +40,13 @@ fn transpile() {
         emit_build_files: false,
         binaries: Vec::new(),
     };
-    insta::glob!("snapshots/*.c", |f: &Path| {
+    insta::glob!("snapshots/*.c", |c_path: &Path| {
         let (_temp_dir, temp_path) =
-            c2rust_transpile::create_temp_compile_commands(&[f.to_owned()]);
+            c2rust_transpile::create_temp_compile_commands(&[c_path.to_owned()]);
         c2rust_transpile::transpile(config(), &temp_path, &[]);
-        let output_path = f.with_extension("rs");
-        let output = fs::read_to_string(&output_path).unwrap();
-        fs::remove_file(&output_path).unwrap();
-        insta::assert_snapshot!(&output);
+        let rs_path = c_path.with_extension("rs");
+        let rust = fs::read_to_string(&rs_path).unwrap();
+        fs::remove_file(&rs_path).unwrap();
+        insta::assert_snapshot!(&rust);
     });
 }
