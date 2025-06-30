@@ -17,3 +17,12 @@ pub unsafe extern "C" fn rotate_left_64(
         4 as std::ffi::c_int as std::ffi::c_ulong,
     ) as std::ffi::c_ulonglong;
 }
+#[no_mangle]
+pub unsafe extern "C" fn rotate_right_64(
+    mut x: std::ffi::c_ulonglong,
+) -> std::ffi::c_ulonglong {
+    return ::core::intrinsics::rotate_right(
+        x as std::ffi::c_ulong,
+        4 as std::ffi::c_int as std::ffi::c_ulong,
+    ) as std::ffi::c_ulonglong;
+}
