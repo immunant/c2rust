@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 use c2rust_transpile::{ReplaceMode, TranspilerConfig};
 
@@ -51,6 +52,12 @@ fn transpile(c_path: &Path) {
     let rs_path = c_path.with_extension("rs");
     let rust = fs::read_to_string(&rs_path).unwrap();
     insta::assert_snapshot!(&rust);
+
+    let status = Command::new("rustc")
+        .args(&["--crate-type", "lib", "--edition", "2021"])
+        .arg(&rs_path)
+        .status();
+    assert!(status.unwrap().success());
 }
 
 #[test]
