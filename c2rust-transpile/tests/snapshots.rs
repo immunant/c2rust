@@ -28,7 +28,7 @@ fn config() -> TranspilerConfig {
         simplify_structures: true,
         panic_on_translator_failure: false,
         emit_modules: false,
-        fail_on_error: false,
+        fail_on_error: true,
         replace_unsupported_decls: ReplaceMode::Extern,
         translate_valist: true,
         overwrite_existing: true,
