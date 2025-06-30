@@ -1,8 +1,3 @@
----
-source: c2rust-transpile/tests/snapshots.rs
-expression: cat tests/snapshots/gotos.rs
-input_file: c2rust-transpile/tests/snapshots/gotos.c
----
 #![allow(
     dead_code,
     mutable_transmutes,
