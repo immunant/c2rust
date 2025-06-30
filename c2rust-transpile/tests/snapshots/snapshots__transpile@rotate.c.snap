@@ -12,41 +12,31 @@ input_file: c2rust-transpile/tests/snapshots/rotate.c
     unused_assignments,
     unused_mut
 )]
-#![feature(core_intrinsics)]
 #[no_mangle]
 pub unsafe extern "C" fn rotate_left_8(mut x: std::ffi::c_uchar) -> std::ffi::c_uchar {
-    return ::core::intrinsics::rotate_left(x, 1 as std::ffi::c_int as std::ffi::c_uchar);
+    return x.rotate_left(1 as std::ffi::c_int as std::ffi::c_uchar as u32);
 }
 #[no_mangle]
 pub unsafe extern "C" fn rotate_left_16(
     mut x: std::ffi::c_ushort,
 ) -> std::ffi::c_ushort {
-    return ::core::intrinsics::rotate_left(
-        x,
-        2 as std::ffi::c_int as std::ffi::c_ushort,
-    );
+    return x.rotate_left(2 as std::ffi::c_int as std::ffi::c_ushort as u32);
 }
 #[no_mangle]
 pub unsafe extern "C" fn rotate_left_32(mut x: std::ffi::c_uint) -> std::ffi::c_uint {
-    return ::core::intrinsics::rotate_left(x, 3 as std::ffi::c_int as std::ffi::c_uint);
+    return x.rotate_left(3 as std::ffi::c_int as std::ffi::c_uint as u32);
 }
 #[no_mangle]
 pub unsafe extern "C" fn rotate_right_8(mut x: std::ffi::c_uchar) -> std::ffi::c_uchar {
-    return ::core::intrinsics::rotate_right(
-        x,
-        1 as std::ffi::c_int as std::ffi::c_uchar,
-    );
+    return x.rotate_right(1 as std::ffi::c_int as std::ffi::c_uchar as u32);
 }
 #[no_mangle]
 pub unsafe extern "C" fn rotate_right_16(
     mut x: std::ffi::c_ushort,
 ) -> std::ffi::c_ushort {
-    return ::core::intrinsics::rotate_right(
-        x,
-        2 as std::ffi::c_int as std::ffi::c_ushort,
-    );
+    return x.rotate_right(2 as std::ffi::c_int as std::ffi::c_ushort as u32);
 }
 #[no_mangle]
 pub unsafe extern "C" fn rotate_right_32(mut x: std::ffi::c_uint) -> std::ffi::c_uint {
-    return ::core::intrinsics::rotate_right(x, 3 as std::ffi::c_int as std::ffi::c_uint);
+    return x.rotate_right(3 as std::ffi::c_int as std::ffi::c_uint as u32);
 }

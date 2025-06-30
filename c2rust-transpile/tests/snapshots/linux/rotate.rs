@@ -7,22 +7,19 @@
     unused_assignments,
     unused_mut
 )]
-#![feature(core_intrinsics)]
 #[no_mangle]
 pub unsafe extern "C" fn rotate_left_64(
     mut x: std::ffi::c_ulonglong,
 ) -> std::ffi::c_ulonglong {
-    return ::core::intrinsics::rotate_left(
-        x as std::ffi::c_ulong,
-        4 as std::ffi::c_int as std::ffi::c_ulong,
-    ) as std::ffi::c_ulonglong;
+    return (x as std::ffi::c_ulong)
+        .rotate_left(4 as std::ffi::c_int as std::ffi::c_ulong as u32)
+        as std::ffi::c_ulonglong;
 }
 #[no_mangle]
 pub unsafe extern "C" fn rotate_right_64(
     mut x: std::ffi::c_ulonglong,
 ) -> std::ffi::c_ulonglong {
-    return ::core::intrinsics::rotate_right(
-        x as std::ffi::c_ulong,
-        4 as std::ffi::c_int as std::ffi::c_ulong,
-    ) as std::ffi::c_ulonglong;
+    return (x as std::ffi::c_ulong)
+        .rotate_right(4 as std::ffi::c_int as std::ffi::c_ulong as u32)
+        as std::ffi::c_ulonglong;
 }

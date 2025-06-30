@@ -631,18 +631,17 @@ impl<'c> Translation<'c> {
             | "__builtin_rotateleft16"
             | "__builtin_rotateleft32"
             | "__builtin_rotateleft64" => {
-                self.use_feature("core_intrinsics");
-
-                // Emit `rotate_left(arg0, arg1)`
-                let rotate_func = mk().abs_path_expr(vec!["core", "intrinsics", "rotate_left"]);
+                // Emit `arg0.rotate_left(arg1)`
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 arg0.and_then(|arg0| {
                     arg1.and_then(|arg1| {
-                        let call_expr = mk().call_expr(rotate_func, vec![arg0, arg1]);
+                        let arg1 = mk().cast_expr(arg1, mk().path_ty(vec!["u32"]));
+                        let method_call_expr =
+                            mk().method_call_expr(arg0, "rotate_left", vec![arg1]);
                         self.convert_side_effects_expr(
                             ctx,
-                            WithStmts::new_val(call_expr),
+                            WithStmts::new_val(method_call_expr),
                             "Builtin is not supposed to be used",
                         )
                     })
@@ -653,18 +652,17 @@ impl<'c> Translation<'c> {
             | "__builtin_rotateright16"
             | "__builtin_rotateright32"
             | "__builtin_rotateright64" => {
-                self.use_feature("core_intrinsics");
-
-                // Emit `rotate_right(arg0, arg1)`
-                let rotate_func = mk().abs_path_expr(vec!["core", "intrinsics", "rotate_right"]);
+                // Emit `arg0.rotate_right(arg1)`
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 arg0.and_then(|arg0| {
                     arg1.and_then(|arg1| {
-                        let call_expr = mk().call_expr(rotate_func, vec![arg0, arg1]);
+                        let arg1 = mk().cast_expr(arg1, mk().path_ty(vec!["u32"]));
+                        let method_call_expr =
+                            mk().method_call_expr(arg0, "rotate_right", vec![arg1]);
                         self.convert_side_effects_expr(
                             ctx,
-                            WithStmts::new_val(call_expr),
+                            WithStmts::new_val(method_call_expr),
                             "Builtin is not supposed to be used",
                         )
                     })
