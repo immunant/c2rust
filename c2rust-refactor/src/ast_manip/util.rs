@@ -258,16 +258,15 @@ pub fn namespace(res: &def::Res) -> Option<Namespace> {
 
 /// Select the wider of the two given visibilities
 pub fn join_visibility(vis1: &VisibilityKind, vis2: &VisibilityKind) -> VisibilityKind {
-    use rustc_ast::CrateSugar::PubCrate;
     use rustc_ast::VisibilityKind::*;
     match (vis1, vis2) {
         (Public, _) | (_, Public) => Public,
-        (Crate(_), _) | (_, Crate(_)) => Crate(PubCrate),
+        (Crate, _) | (_, Crate) => Crate,
         (Restricted { path: path1, .. }, Restricted { path: path2, .. }) => {
             if path1.ast_equiv(&path2) {
                 vis1.clone()
             } else {
-                Crate(PubCrate)
+                Crate
             }
         }
         (Restricted { .. }, Inherited) => vis1.clone(),
