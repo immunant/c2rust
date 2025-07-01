@@ -1,5 +1,6 @@
 //! Transformation passes used for testing parts of the system.
 
+use log::info;
 use std::collections::{HashSet, HashMap};
 use std::str::FromStr;
 use syntax::ast::*;

@@ -1,3 +1,4 @@
+use log::debug;
 use rustc::ty::{self, ParamEnv, TyKind};
 use syntax::ast::*;
 use syntax::token;

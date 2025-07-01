@@ -1,3 +1,4 @@
+use log::info;
 use rustc::hir;
 use rustc::hir::def::Res;
 use rustc::ty::{self, ParamEnv, TyCtxt};

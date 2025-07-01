@@ -10,6 +10,7 @@
 //! are absent from the original `Item`.
 //!
 //! Aside from the special handling of qualifiers, this strategy works the same as `recursive`.
+use log::info;
 use syntax::ast::*;
 use syntax::token::{DelimToken, Token, TokenKind};
 use syntax::source_map::{BytePos, Span};
