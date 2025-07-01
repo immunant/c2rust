@@ -1,4 +1,5 @@
 //! Debug command for printing the span of every major AST node.
+use log::info;
 use syntax;
 use syntax::ast::*;
 use syntax::print::pprust;

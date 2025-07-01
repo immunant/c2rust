@@ -4,7 +4,7 @@ use std::collections::hash_map::{Entry, HashMap};
 use std::collections::HashSet;
 use std::collections::VecDeque;
 
-use log::Level;
+use log::{debug, Level, log_enabled};
 use rustc::hir::def_id::DefId;
 
 use super::constraint::{ConstraintSet, Perm};

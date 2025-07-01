@@ -1,4 +1,5 @@
 //! Defines `Cursor`, a helper type for editing sequences.
+use log::info;
 
 /// A `Cursor` indicates a position within a sequence of `T`s.  The position can be anywhere within
 /// the sequence, including before the first item and after the last.

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use arena::SyncDroplessArena;
-use log::Level;
+use log::{debug, Level, log_enabled};
 use rustc::hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use syntax::ast;

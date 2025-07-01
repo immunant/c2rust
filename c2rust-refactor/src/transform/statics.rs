@@ -1,3 +1,4 @@
+use log::info;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 use rustc::hir::def_id::DefId;

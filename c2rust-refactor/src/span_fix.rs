@@ -6,6 +6,7 @@
 //!    reference to `std::fmt::Display::fmt` used to format `x`.  We'd like to detect all of these
 //!    bogus spans and reset them.
 
+use log::trace;
 use smallvec::SmallVec;
 use std::mem;
 use syntax::ast::*;
