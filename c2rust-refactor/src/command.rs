@@ -1,10 +1,10 @@
 //! Command management and overall refactoring state.
 
 use log::{info, warn};
-use rustc::hir;
-use rustc::hir::def_id::LOCAL_CRATE;
+use rustc_middle::hir;
+use rustc_hir::def_id::LOCAL_CRATE;
 use rustc::session::{self, DiagnosticOutput, Session};
-use rustc::ty::TyCtxt;
+use rustc_middle::ty::TyCtxt;
 use rustc_data_structures::sync::Lrc;
 use rustc_interface::interface;
 use rustc_interface::util;
@@ -17,12 +17,12 @@ use std::ops::Deref;
 use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use syntax::ast::{Crate, NodeId, CRATE_NODE_ID};
-use syntax::ast::{Expr, Item, Pat, Stmt, Ty};
-use syntax::ptr::P;
-use syntax::source_map::SourceMap;
-use syntax::symbol::Symbol;
-use syntax::visit::Visitor;
+use rustc_ast::{Crate, NodeId, CRATE_NODE_ID};
+use rustc_ast::{Expr, Item, Pat, Stmt, Ty};
+use rustc_ast::ptr::P;
+use rustc_span::source_map::SourceMap;
+use rustc_span::symbol::Symbol;
+use rustc_ast::visit::Visitor;
 
 use crate::ast_manip::map_ast_into;
 use crate::ast_manip::number_nodes::{

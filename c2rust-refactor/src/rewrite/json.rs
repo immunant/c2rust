@@ -1,9 +1,9 @@
 use json::{self, JsonValue};
 use std::collections::{HashMap, HashSet};
-use syntax::ast::*;
-use syntax::source_map::{SourceMap, Span};
-use syntax::symbol::Symbol;
-use syntax::visit::{self, FnKind, Visitor};
+use rustc_ast::*;
+use rustc_span::source_map::{SourceMap, Span};
+use rustc_span::symbol::Symbol;
+use rustc_ast::visit::{self, FnKind, Visitor};
 
 use crate::rewrite::{TextAdjust, TextRewrite};
 

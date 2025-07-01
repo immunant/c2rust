@@ -1,7 +1,7 @@
 //! AST transformation implementations.  Most `c2rust-refactor` commands are transforms implemented in the
 //! submodules of this module.
 
-use syntax::ast::Crate;
+use rustc_ast::Crate;
 
 use crate::command::{Command, CommandState, RefactorState, Registry};
 use crate::driver::Phase;

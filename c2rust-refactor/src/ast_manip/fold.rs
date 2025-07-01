@@ -1,11 +1,11 @@
 //! `MutVisit` trait for AST types that can be modified.
-use syntax::ast::*;
-use syntax::mut_visit::*;
-use syntax::token::{self, Token};
-use syntax::ptr::P;
-use syntax::source_map::Span;
-use syntax::tokenstream::{TokenStream, TokenTree};
-use syntax::util::map_in_place::MapInPlace;
+use rustc_ast::*;
+use rustc_ast::mut_visit::*;
+use rustc_ast::token::{self, Token};
+use rustc_ast::ptr::P;
+use rustc_span::source_map::Span;
+use rustc_ast::tokenstream::{TokenStream, TokenTree};
+use rustc_ast::util::map_in_place::MapInPlace;
 
 use smallvec::{smallvec, SmallVec};
 

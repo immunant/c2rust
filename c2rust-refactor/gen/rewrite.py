@@ -157,7 +157,7 @@ def prec_name_to_expr(name, inc):
     inc_str = '' if not inc else ' + 1'
     if name.isupper():
         # If all letters are uppercase, it's a precedence constant from
-        # syntax::util::parser
+        # rustc_ast::util::parser
         return 'parser::PREC_%s%s' % (name, inc_str)
     else:
         # If some letters are lowercase, it's an AssocOp variant name.

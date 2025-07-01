@@ -3,11 +3,11 @@
 use log::info;
 use std::collections::{HashSet, HashMap};
 use std::str::FromStr;
-use syntax::ast::*;
-use syntax::ptr::P;
-use rustc::hir;
-use rustc::ty::{self, TyCtxt, ParamEnv};
-use rustc::ty::subst::InternalSubsts;
+use rustc_ast::*;
+use rustc_ast::ptr::P;
+use rustc_middle::hir;
+use rustc_middle::ty::{self, TyCtxt, ParamEnv};
+use rustc_middle::ty::subst::InternalSubsts;
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::{visit_nodes};

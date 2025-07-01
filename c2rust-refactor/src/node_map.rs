@@ -5,8 +5,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::mem;
 use std::ops::Bound::Included;
 use std::ops::Deref;
-use syntax::ast::{AttrId, NodeId, DUMMY_NODE_ID};
-use syntax::source_map::symbol::Symbol;
+use rustc_ast::{AttrId, NodeId, DUMMY_NODE_ID};
+use rustc_span::source_map::symbol::Symbol;
 
 pub const DUMMY_ATTR_ID: AttrId = AttrId(!0);
 

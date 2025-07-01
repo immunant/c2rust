@@ -1,14 +1,14 @@
 use crate::expect;
-use rustc::hir::def::{DefKind, Res};
-use rustc::hir::def_id::{DefId, CRATE_DEF_INDEX, LOCAL_CRATE};
-use rustc::hir::Node;
-use rustc::hir::{ForeignMod, Mod};
-use rustc::ty::TyCtxt;
-use syntax::ast::Ident;
-use syntax_pos::symbol::Symbol;
+use rustc_hir::def::{DefKind, Res};
+use rustc_hir::def_id::{DefId, CRATE_DEF_INDEX, LOCAL_CRATE};
+use rustc_hir::Node;
+use rustc_hir::{ForeignMod, Mod};
+use rustc_middle::ty::TyCtxt;
+use rustc_ast::Ident;
+use rustc_span::symbol::Symbol;
 
 fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res)>) {
-    use rustc::hir::ItemKind::*;
+    use rustc_hir::ItemKind::*;
 
     for &iid in &m.item_ids {
         let node = tcx.hir().get(iid.id);
@@ -57,7 +57,7 @@ fn push_hir_foreign_mod_children(tcx: TyCtxt, fm: &ForeignMod, children: &mut Ve
 
 /// List the names and `Def`s of all children of the indicated module.
 pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Res)> {
-    use rustc::hir::ItemKind::*;
+    use rustc_hir::ItemKind::*;
 
     if did.krate == LOCAL_CRATE {
         if did.index == CRATE_DEF_INDEX {

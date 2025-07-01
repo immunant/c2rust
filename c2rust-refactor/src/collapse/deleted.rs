@@ -4,10 +4,10 @@ use smallvec::SmallVec;
 /// info later to re-insert those nodes during macro collapsing.
 use std::collections::{HashMap, HashSet};
 use std::mem;
-use syntax::ast::*;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
-use syntax::visit::{self, Visitor};
+use rustc_ast::*;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::visit::{self, Visitor};
 
 use crate::ast_manip::number_nodes::{number_nodes_with, NodeIdCounter};
 use crate::ast_manip::{GetNodeId, ListNodeIds, MutVisit, Visit};

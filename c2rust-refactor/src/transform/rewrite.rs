@@ -1,5 +1,5 @@
-use syntax::ast::Crate;
-use syntax::symbol::Symbol;
+use rustc_ast::Crate;
+use rustc_span::symbol::Symbol;
 
 use crate::command::{CommandState, Registry};
 use crate::contains_mark::contains_mark;
