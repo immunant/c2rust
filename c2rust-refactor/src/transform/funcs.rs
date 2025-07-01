@@ -14,6 +14,7 @@ use c2rust_ast_builder::{mk, IntoSymbol};
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, fold_modules, visit_nodes, MutVisit};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase, parse_expr};
+use crate::{expect, match_or, unpack};
 use crate::matcher::{BindingType, MatchCtxt, Subst, mut_visit_match_with};
 use crate::path_edit::{fold_resolved_paths, fold_resolved_paths_with_id};
 use crate::transform::Transform;
@@ -47,7 +48,7 @@ impl Transform for ToMethod {
         FlatMapNodes::visit(krate, |i: P<Item>| {
             // We're looking for an inherent impl (no `TraitRef`) marked with a cursor.
             if !st.marked(i.id, "dest") ||
-               !matches!([i.kind] ItemKind::Impl(_, _, _, _, None, _, _)) {
+               !crate::matches!([i.kind] ItemKind::Impl(_, _, _, _, None, _, _)) {
                 return smallvec![i];
             }
 
@@ -227,7 +228,7 @@ impl Transform for ToMethod {
         // (5) Find all uses of marked functions, and rewrite them into method calls.
 
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
-            if !matches!([e.kind] ExprKind::Call(..)) {
+            if !crate::matches!([e.kind] ExprKind::Call(..)) {
                 return;
             }
 
@@ -564,7 +565,7 @@ impl Transform for WrapApi {
                 return smallvec![i];
             }
 
-            if !matches!([i.kind] ItemKind::Fn(..)) {
+            if !crate::matches!([i.kind] ItemKind::Fn(..)) {
                 return smallvec![i];
             }
 

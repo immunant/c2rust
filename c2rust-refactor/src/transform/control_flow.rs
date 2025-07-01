@@ -8,6 +8,7 @@ use syntax::ptr::P;
 use crate::command::{CommandState, Registry};
 use crate::context::HirMap;
 use crate::driver::Phase;
+use crate::match_or;
 use crate::matcher::{MatchCtxt, Subst, replace_expr, mut_visit_match_with, find_first};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
