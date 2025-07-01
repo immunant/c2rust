@@ -1,5 +1,5 @@
 //! JSON backend, for communication with Vim 8.
-use json::{self, JsonValue};
+use json::{self, JsonValue, object};
 use log::info;
 use std::io::{self, BufRead, Write};
 use std::sync::mpsc::{self, SyncSender};
