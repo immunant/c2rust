@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 
-use rustc::hir::def_id::DefId;
+use rustc_hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 
 use super::{Var, ConcretePerm, Perm};

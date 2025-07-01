@@ -1,14 +1,14 @@
 use arena::SyncDroplessArena;
 use ena::unify as ut;
 use rustc::{hir, ty};
-use rustc::hir::def::Res;
+use rustc_hir::def::Res;
 use rustc_data_structures::sync::Lrc;
-use syntax::ast::*;
-use syntax::token;
-use syntax::ptr::P;
-use syntax::symbol::Symbol;
-use syntax::visit::{self, Visitor};
-use syntax_pos::Span;
+use rustc_ast::*;
+use rustc_ast::token;
+use rustc_ast::ptr::P;
+use rustc_span::symbol::Symbol;
+use rustc_ast::visit::{self, Visitor};
+use rustc_span::Span;
 
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};

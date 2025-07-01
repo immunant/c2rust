@@ -2,20 +2,20 @@ use log::{trace, warn};
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
-use rustc::hir::def::{DefKind, Namespace, Res};
-use rustc::hir::def_id::{CRATE_DEF_INDEX, DefId};
-use rustc::hir::map as hir_map;
-use rustc::hir::{self, Node, HirId};
+use rustc_hir::def::{DefKind, Namespace, Res};
+use rustc_hir::def_id::{CRATE_DEF_INDEX, DefId};
+use rustc_hir::map as hir_map;
+use rustc_hir::{self, Node, HirId};
 use rustc::session::Session;
 use rustc::session::config::CrateType;
-use rustc::ty::subst::InternalSubsts;
-use rustc::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::subst::InternalSubsts;
+use rustc_middle::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
 use rustc_errors::{DiagnosticBuilder, Level};
 use rustc_metadata::creader::CStore;
-use syntax::ast::{
+use rustc_ast::{
     self, Expr, ExprKind, ForeignItem, ForeignItemKind, FnDecl, FunctionRetTy, Item, ItemKind, NodeId, Path, QSelf, UseTreeKind, DUMMY_NODE_ID,
 };
-use syntax::ptr::P;
+use rustc_ast::ptr::P;
 
 use crate::ast_manip::AstEquiv;
 use crate::command::{GenerationalTyCtxt, TyCtxtGeneration};
@@ -676,7 +676,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
 
     /// Compare two items for type compatibility under the C definition
     pub fn compatible_types(&self, item1: &Item, item2: &Item) -> bool {
-        use syntax::ast::ItemKind::*;
+        use rustc_ast::ItemKind::*;
         match (&item1.kind, &item2.kind) {
             // * Assure that these two items are in fact of the same type, just to be safe.
             (TyAlias(ty1, g1), TyAlias(ty2, g2)) => {

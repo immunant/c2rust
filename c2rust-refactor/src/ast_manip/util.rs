@@ -1,11 +1,11 @@
 //! Miscellaneous utility functions.
-use rustc::hir::def::{self, Namespace, Res};
+use rustc_hir::def::{self, Namespace, Res};
 use smallvec::SmallVec;
-use syntax::ast::*;
-use syntax::ptr::P;
-use syntax::source_map::{SourceMap, Span, DUMMY_SP};
-use syntax::symbol::{kw, Symbol};
-use syntax_pos::sym;
+use rustc_ast::*;
+use rustc_ast::ptr::P;
+use rustc_span::source_map::{SourceMap, Span, DUMMY_SP};
+use rustc_span::symbol::{kw, Symbol};
+use rustc_span::sym;
 use smallvec::smallvec;
 
 use crate::expect;
@@ -233,7 +233,7 @@ pub fn is_relative_path(path: &Path) -> bool {
 /// Return the namespace the given Def is defined in. Does not yet handle the
 /// macro namespace.
 pub fn namespace(res: &def::Res) -> Option<Namespace> {
-    use rustc::hir::def::DefKind::*;
+    use rustc_hir::def::DefKind::*;
     match res {
         Res::Def(kind, _) => match kind {
             Mod | Struct | Union | Enum | Variant | Trait | OpaqueTy | TyAlias
@@ -258,8 +258,8 @@ pub fn namespace(res: &def::Res) -> Option<Namespace> {
 
 /// Select the wider of the two given visibilities
 pub fn join_visibility(vis1: &VisibilityKind, vis2: &VisibilityKind) -> VisibilityKind {
-    use syntax::ast::CrateSugar::PubCrate;
-    use syntax::ast::VisibilityKind::*;
+    use rustc_ast::CrateSugar::PubCrate;
+    use rustc_ast::VisibilityKind::*;
     match (vis1, vis2) {
         (Public, _) | (_, Public) => Public,
         (Crate(_), _) | (_, Crate(_)) => Crate(PubCrate),

@@ -1,9 +1,9 @@
 use log::debug;
-use rustc::ty::{self, ParamEnv, TyKind};
-use syntax::ast::*;
-use syntax::token;
-use syntax::ptr::P;
-use syntax_pos::Symbol;
+use rustc_middle::ty::{self, ParamEnv, TyKind};
+use rustc_ast::*;
+use rustc_ast::token;
+use rustc_ast::ptr::P;
+use rustc_span::Symbol;
 
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;

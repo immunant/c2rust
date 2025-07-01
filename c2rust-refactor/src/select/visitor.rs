@@ -2,9 +2,9 @@
 //! and inspect the currently selected nodes.
 
 use std::collections::HashSet;
-use syntax::ast::*;
-use syntax::source_map::Span;
-use syntax::visit::{self, FnKind, Visitor};
+use rustc_ast::*;
+use rustc_span::source_map::Span;
+use rustc_ast::visit::{self, FnKind, Visitor};
 
 use crate::command::CommandState;
 use crate::select::filter::{self, AnyNode};

@@ -24,10 +24,10 @@ use std::collections::hash_map::{self, Entry, HashMap};
 
 use arena::SyncDroplessArena;
 use log::{debug, Level, log_enabled};
-use rustc::hir::def_id::DefId;
-use rustc::ty::{Ty, TyCtxt, TyKind};
+use rustc_hir::def_id::DefId;
+use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use rustc_index::vec::IndexVec;
-use syntax::source_map::Span;
+use rustc_span::source_map::Span;
 
 use crate::analysis::labeled_ty::LabeledTyCtxt;
 

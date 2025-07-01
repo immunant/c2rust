@@ -8,16 +8,16 @@ use std::ops::{Bound, Deref, DerefMut};
 use std::path::Path;
 use std::u32;
 
-use rustc::hir::{self, HirId, DUMMY_HIR_ID};
+use rustc_hir::{self, HirId, DUMMY_HIR_ID};
 use rustc_errors::Level;
 use smallvec::SmallVec;
-use syntax::{ast, entry};
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
-use syntax::symbol::{kw, Ident, Symbol};
-use rustc::ty;
-use syntax_pos::{Span, FileName, BytePos, Pos, DUMMY_SP};
-use syntax_pos::hygiene::SyntaxContext;
+use rustc_ast::{ast, entry};
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_span::symbol::{kw, Ident, Symbol};
+use rustc_middle::ty;
+use rustc_span::{Span, FileName, BytePos, Pos, DUMMY_SP};
+use rustc_span::hygiene::SyntaxContext;
 
 use indexmap::IndexSet;
 use failure::{Error, ResultExt};

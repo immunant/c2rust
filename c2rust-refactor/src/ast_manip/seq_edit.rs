@@ -1,8 +1,8 @@
 //! Functions for rewriting sequences of stmts or items, using `Cursor<T>`.
 use std::mem;
-use syntax::ast::{Block, Item, Mod, Stmt};
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
+use rustc_ast::{Block, Item, Mod, Stmt};
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
 
 use crate::ast_manip::MutVisit;
 use crate::util::cursor::Cursor;

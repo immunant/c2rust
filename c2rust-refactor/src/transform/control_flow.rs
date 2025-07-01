@@ -1,9 +1,9 @@
 use log::debug;
-use rustc::hir::{self, HirId};
-use rustc::ty::{self, ParamEnv};
+use rustc_hir::{self, HirId};
+use rustc_middle::ty::{self, ParamEnv};
 use rustc_typeck::expr_use_visitor::*;
-use syntax::ast::{Crate, Expr, ExprKind, Lit, LitKind, Stmt, StmtKind};
-use syntax::ptr::P;
+use rustc_ast::{Crate, Expr, ExprKind, Lit, LitKind, Stmt, StmtKind};
+use rustc_ast::ptr::P;
 
 use crate::command::{CommandState, Registry};
 use crate::context::HirMap;
