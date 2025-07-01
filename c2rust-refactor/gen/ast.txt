@@ -142,14 +142,9 @@ enum TraitBoundModifier {
 #[match=ignore]
 enum VisibilityKind {
     Public,
-    Crate(crate_sugar),
+    Crate,
     Restricted { path, id },
     Inherited,
-}
-
-enum CrateSugar {
-    PubCrate,
-    JustCrate,
 }
 
 #[match=custom] #[rewrite_print_recover] #[mac_table_record] #[nonterminal]
