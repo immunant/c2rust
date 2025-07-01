@@ -14,6 +14,7 @@ use crate::ast_manip::{visit_nodes};
 use crate::ast_manip::fn_edit::mut_visit_fns;
 use crate::command::{RefactorState, CommandState, Command, Registry, TypeckLoopResult};
 use crate::driver::{Phase};
+use crate::match_or;
 use crate::matcher::{replace_expr, replace_stmts};
 use crate::transform::Transform;
 use crate::RefactorCtxt;

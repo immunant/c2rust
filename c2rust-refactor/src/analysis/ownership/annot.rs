@@ -15,6 +15,7 @@ use syntax::visit::{self, Visitor};
 
 use crate::ast_manip::Visit;
 use crate::command::CommandState;
+use crate::match_or;
 use crate::type_map::{self, TypeSource};
 use crate::RefactorCtxt;
 

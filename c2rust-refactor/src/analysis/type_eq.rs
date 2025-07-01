@@ -56,6 +56,7 @@ use syntax::symbol::Symbol;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::context::RefactorCtxt;
+use crate::match_or;
 use crate::type_map;
 
 /// Unification key for types.

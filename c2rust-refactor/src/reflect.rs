@@ -19,6 +19,7 @@ use crate::ast_manip::MutVisitNodes;
 use crate::command::{DriverCommand, Registry};
 use crate::context::RefactorCtxt;
 use crate::driver::Phase;
+use crate::expect;
 
 pub struct Reflector<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,

@@ -14,6 +14,7 @@ use c2rust_ast_builder::mk;
 use crate::ast_manip::{MutVisit, MutVisitNodes, fold_blocks, visit_nodes};
 use crate::command::{CommandState, DriverCommand, Registry};
 use crate::driver::{Phase};
+use crate::match_or;
 use crate::matcher::{MatchCtxt, Subst, mut_visit_match_with, replace_stmts};
 use crate::reflect::reflect_tcx_ty;
 use crate::transform::Transform;
