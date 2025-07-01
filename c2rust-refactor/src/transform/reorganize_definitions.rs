@@ -24,6 +24,7 @@ use crate::ast_manip::util::{is_relative_path, join_visibility, namespace, split
 use crate::ast_manip::{visit_nodes, AstEquiv, FlatMapNodes, MutVisitNodes};
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
+use crate::{expect, match_or};
 use crate::path_edit::fold_resolved_paths_with_id;
 use crate::RefactorCtxt;
 use crate::util::Lone;

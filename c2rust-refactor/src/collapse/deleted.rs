@@ -11,6 +11,7 @@ use syntax::visit::{self, Visitor};
 
 use crate::ast_manip::number_nodes::{number_nodes_with, NodeIdCounter};
 use crate::ast_manip::{GetNodeId, ListNodeIds, MutVisit, Visit};
+use crate::match_or;
 use crate::node_map::NodeMap;
 
 use super::mac_table::{AsMacNodeRef, MacNodeRef, MacTable};

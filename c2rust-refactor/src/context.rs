@@ -20,6 +20,7 @@ use syntax::ptr::P;
 use crate::ast_manip::AstEquiv;
 use crate::command::{GenerationalTyCtxt, TyCtxtGeneration};
 use crate::ast_manip::util::{namespace, is_export_attr};
+use crate::{expect, match_or};
 use crate::reflect;
 use c2rust_ast_builder::mk;
 
@@ -327,7 +328,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                 //
                 // We detect this case by the presence of a type-dependent def on the Call.
                 if let Some(Ok((kind, func_def_id))) = tables.type_dependent_defs().get(call_hir_id) {
-                    if !matches!([kind] DefKind::Fn, DefKind::Method) {
+                    if !crate::matches!([kind] DefKind::Fn, DefKind::Method) {
                         warn!(
                             "overloaded call dispatches to non-fnlike def {:?}",
                             kind
@@ -357,7 +358,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                     // (3) Type-dependent function (`S::f()`).  Unlike the next case, these don't
                     // get fully resolved until typeck, so the results are recorded differently.
                     } else if let Some(Ok((kind, func_def_id))) = tables.type_dependent_defs().get(func_hir_id) {
-                        if !matches!([kind] DefKind::Fn, DefKind::Method) {
+                        if !crate::matches!([kind] DefKind::Fn, DefKind::Method) {
                             warn!("type-dep call dispatches to non-fnlike def {:?}", kind);
                             return None;
                         }
@@ -383,7 +384,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                 // type_dependent_defs.
                 let hir_id = hir_map.node_to_hir_id(e.id);
                 if let Some(Ok((kind, func_def_id))) = tables.type_dependent_defs().get(hir_id) {
-                    if !matches!([kind] DefKind::Fn, DefKind::Method) {
+                    if !crate::matches!([kind] DefKind::Fn, DefKind::Method) {
                         warn!("type-dep call dispatches to non-fnlike def {:?}", kind);
                         return None;
                     }

@@ -1,3 +1,4 @@
+use crate::expect;
 use rustc::hir::def::{DefKind, Res};
 use rustc::hir::def_id::{DefId, CRATE_DEF_INDEX, LOCAL_CRATE};
 use rustc::hir::Node;

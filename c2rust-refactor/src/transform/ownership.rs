@@ -22,6 +22,7 @@ use crate::analysis::ownership::constraint::{ConstraintSet, Perm};
 use crate::command::{CommandState, Registry, DriverCommand};
 use crate::context::HirMap;
 use crate::driver::{Phase};
+use crate::match_or;
 use crate::RefactorCtxt;
 use crate::type_map;
 use c2rust_ast_builder::{mk, IntoSymbol};
