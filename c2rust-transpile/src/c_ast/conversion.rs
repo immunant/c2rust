@@ -1984,6 +1984,54 @@ impl ConversionContext {
                         })
                         .unwrap_or(typ);
 
+                    // Other fixed-size types are defined without special compiler involvement, by
+                    // standard headers and their transitive includes. In these contexts, we
+                    // recognize these typedefs by the name of the typedef type.
+                    let id_for_name = |name| -> Option<_> {
+                        let kind = match name {
+                            "intmax_t" => CTypeKind::IntMax,
+                            "uintmax_t" => CTypeKind::UIntMax,
+                            "intptr_t" => CTypeKind::IntPtr,
+                            "uintptr_t" => CTypeKind::UIntPtr,
+                            "__uint8_t" => CTypeKind::UInt8,
+                            "__uint16_t" => CTypeKind::UInt16,
+                            "__uint32_t" => CTypeKind::UInt32,
+                            "__uint64_t" => CTypeKind::UInt64,
+                            "__uint128_t" => CTypeKind::UInt128,
+                            "__int8_t" => CTypeKind::Int8,
+                            "__int16_t" => CTypeKind::Int16,
+                            "__int32_t" => CTypeKind::Int32,
+                            "__int64_t" => CTypeKind::Int64,
+                            "__int128_t" => CTypeKind::Int128,
+                            _ => {
+                                log::debug!("Unknown fixed-size type typedef {name}!");
+                                return None;
+                            }
+                        };
+                        log::trace!("Selected kind {kind} for typedef {name}");
+                        Some(CQualTypeId::new(
+                            self.typed_context.type_for_kind(&kind).unwrap(),
+                        ))
+                    };
+                    let file = self
+                        .typed_context
+                        .files
+                        .get(self.typed_context.file_map[node.loc.fileid as usize]);
+                    let file = file.unwrap();
+                    if let Some(path) = file.path.as_ref() {
+                        if let Some(filename) = path.file_name() {
+                            if filename == "stdint.h"
+                                || filename == "types.h"
+                                || filename
+                                    .to_str()
+                                    .map(|s| s.starts_with("__stddef_"))
+                                    .unwrap_or(false)
+                            {
+                                typ = id_for_name(&*name).unwrap_or(typ);
+                            }
+                        }
+                    }
+
                     let typdef_decl = CDeclKind::Typedef {
                         name,
                         typ,
