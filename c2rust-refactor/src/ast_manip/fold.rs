@@ -5,7 +5,7 @@ use rustc_ast::token::{self, Token};
 use rustc_ast::ptr::P;
 use rustc_span::source_map::Span;
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
-use rustc_ast::util::map_in_place::MapInPlace;
+use rustc_data_structures::map_in_place::MapInPlace;
 
 use smallvec::{smallvec, SmallVec};
 
