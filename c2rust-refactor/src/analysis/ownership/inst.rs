@@ -5,7 +5,7 @@ use std::usize;
 
 use log::{debug, Level, log_enabled, warn};
 
-use rustc::hir::def_id::DefId;
+use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 
 use super::constraint::ConstraintSet;

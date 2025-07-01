@@ -14,12 +14,12 @@
 //! specialized function, such as `rewrite_seq_comma_sep`) to get better results than the generic
 //! `[T]` implementation.
 use rustc_target::spec::abi::Abi;
-use syntax::ast::*;
-use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::source_map::{Span, SyntaxContext};
-use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
-use syntax::ThinVec;
+use rustc_ast::*;
+use rustc_ast::token::{BinOpToken, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_span::source_map::{Span, SyntaxContext};
+use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
+use thin_vec::ThinVec;
 
 use diff;
 use log::{debug, info, warn};
@@ -27,10 +27,10 @@ use rustc::session::Session;
 use std::fmt::Debug;
 use std::iter::Sum;
 use std::rc::Rc;
-use syntax::ptr::P;
-use syntax::source_map::{Spanned, DUMMY_SP};
-use syntax::util::parser::{AssocOp, Fixity};
-use syntax_pos::{BytePos, Pos};
+use rustc_ast::ptr::P;
+use rustc_span::source_map::{Spanned, DUMMY_SP};
+use rustc_ast::util::parser::{AssocOp, Fixity};
+use rustc_span::{BytePos, Pos};
 
 use crate::ast_manip::{AstDeref, CommentStyle, GetSpan};
 

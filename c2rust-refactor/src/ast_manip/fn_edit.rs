@@ -1,11 +1,11 @@
 //! Helpers for rewriting all `fn` itemlikes, regardless of item kind.
 use smallvec::SmallVec;
-use syntax::ast::*;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
-use syntax::util::map_in_place::MapInPlace;
-use syntax::visit::{self, Visitor};
-use syntax_pos::Span;
+use rustc_ast::*;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::util::map_in_place::MapInPlace;
+use rustc_ast::visit::{self, Visitor};
+use rustc_span::Span;
 use smallvec::smallvec;
 
 use crate::ast_manip::{AstName, GetNodeId, GetSpan, MutVisit, Visit};

@@ -1,8 +1,8 @@
 use std::convert::TryFrom;
 use derive_more::{From, TryInto};
 
-use syntax::ast;
-use syntax::ptr::P;
+use rustc_ast::ast;
+use rustc_ast::ptr::P;
 
 #[derive(Copy, Clone, Debug, From, TryInto)]
 pub enum AstNodeRef<'a> {

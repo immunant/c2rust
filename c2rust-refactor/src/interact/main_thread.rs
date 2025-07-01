@@ -12,12 +12,12 @@ use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use syntax::ast::*;
-use syntax::source_map::Span;
-use syntax::source_map::{FileLoader, RealFileLoader};
-use syntax::symbol::Symbol;
-use syntax::visit::{self, FnKind, Visitor};
-use syntax_pos::FileName;
+use rustc_ast::*;
+use rustc_span::source_map::Span;
+use rustc_span::source_map::{FileLoader, RealFileLoader};
+use rustc_span::symbol::Symbol;
+use rustc_ast::visit::{self, FnKind, Visitor};
+use rustc_span::FileName;
 
 use crate::ast_manip::{GetNodeId, GetSpan, Visit};
 use crate::command::{self, RefactorState};

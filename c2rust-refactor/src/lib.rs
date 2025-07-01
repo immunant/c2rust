@@ -79,7 +79,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::sync::Arc;
-use syntax::ast::NodeId;
+use rustc_ast::NodeId;
 
 use c2rust_ast_builder::IntoSymbol;
 

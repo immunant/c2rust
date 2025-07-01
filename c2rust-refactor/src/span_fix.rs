@@ -9,10 +9,10 @@
 use log::trace;
 use smallvec::SmallVec;
 use std::mem;
-use syntax::ast::*;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
-use syntax::source_map::{Span, DUMMY_SP};
+use rustc_ast::*;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_span::source_map::{Span, DUMMY_SP};
 
 use crate::ast_manip::util::extend_span_attrs;
 use crate::ast_manip::MutVisit;

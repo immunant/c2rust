@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use log::{Level, info, log_enabled, warn};
-use rustc::hir::def::DefKind;
-use rustc::hir::def_id::{DefId};
-use rustc::ty::{Instance, TyCtxt, TyKind, Ty};
-use syntax::ast::*;
-use syntax::ptr::P;
+use rustc_hir::def::DefKind;
+use rustc_hir::def_id::{DefId};
+use rustc_middle::ty::{Instance, TyCtxt, TyKind, Ty};
+use rustc_ast::*;
+use rustc_ast::ptr::P;
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::{MutVisitNodes, visit_nodes};

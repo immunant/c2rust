@@ -1,6 +1,6 @@
-use rustc::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability};
-use syntax::ast::{Crate, Expr, ExprKind, Mutability, UnOp};
-use syntax::ptr::P;
+use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability};
+use rustc_ast::{Crate, Expr, ExprKind, Mutability, UnOp};
+use rustc_ast::ptr::P;
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::MutVisitNodes;

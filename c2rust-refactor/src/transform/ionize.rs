@@ -1,10 +1,10 @@
-use rustc::hir::def_id::DefId;
-use rustc::ty::TyKind;
+use rustc_hir::def_id::DefId;
+use rustc_middle::ty::TyKind;
 use std::collections::HashSet;
 use std::fmt::Display;
-use syntax::ast::*;
-use syntax::mut_visit::MutVisitor;
-use syntax::ptr::P;
+use rustc_ast::*;
+use rustc_ast::mut_visit::MutVisitor;
+use rustc_ast::ptr::P;
 use smallvec::smallvec;
 
 use c2rust_ast_builder::mk;

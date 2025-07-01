@@ -7,9 +7,9 @@
 
 use regex::Regex;
 use std::collections::HashSet;
-use syntax::ast::*;
-use syntax::ptr::P;
-use syntax::symbol::Symbol;
+use rustc_ast::*;
+use rustc_ast::ptr::P;
+use rustc_span::symbol::Symbol;
 
 use crate::command::CommandState;
 use crate::command::{DriverCommand, Registry};
