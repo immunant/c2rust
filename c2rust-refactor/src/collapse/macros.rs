@@ -25,6 +25,8 @@ use super::nt_match::{self, NtMatch};
 use super::root_callsite_span;
 
 use crate::ast_manip::{AstEquiv, ListNodeIds, MutVisit};
+use crate::expect;
+use crate::unpack;
 
 #[derive(Clone, Debug)]
 struct RewriteItem {

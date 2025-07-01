@@ -34,6 +34,7 @@ use crate::collapse::CollapseInfo;
 use crate::driver::{self, Phase};
 use crate::file_io::FileIO;
 use crate::node_map::NodeMap;
+use crate::{profile_end, profile_start};
 use crate::rewrite;
 use crate::rewrite::files;
 use crate::span_fix;

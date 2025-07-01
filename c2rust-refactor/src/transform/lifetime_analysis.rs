@@ -34,6 +34,7 @@ use crate::ast_manip::fn_edit::{visit_fns, FnLike};
 use crate::context::RefactorCtxt;
 use crate::command::{Command, CommandState, RefactorState, Registry};
 use crate::driver::{parse_ty, Phase};
+use crate::expect;
 use crate::reflect;
 use crate::transform::Transform;
 use crate::util::Lone;

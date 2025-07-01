@@ -8,6 +8,8 @@ use syntax::symbol::{kw, Symbol};
 use syntax_pos::sym;
 use smallvec::smallvec;
 
+use crate::expect;
+
 use super::AstEquiv;
 
 /// Extract the symbol from a pattern-like AST.

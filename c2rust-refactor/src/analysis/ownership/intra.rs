@@ -9,6 +9,7 @@ use rustc_target::abi::VariantIdx;
 use syntax::source_map::{DUMMY_SP, Spanned};
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
+use crate::expect;
 
 use super::constraint::{ConstraintSet, Perm};
 use super::context::{Ctxt, Instantiation};

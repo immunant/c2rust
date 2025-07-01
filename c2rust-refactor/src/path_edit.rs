@@ -11,7 +11,9 @@ use smallvec::smallvec;
 
 use crate::ast_manip::util::split_uses;
 use crate::ast_manip::MutVisit;
+use crate::expect;
 use crate::RefactorCtxt;
+use crate::unpack;
 
 struct ResolvedPathFolder<'a, 'tcx: 'a, F>
 where
