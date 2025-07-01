@@ -1,4 +1,5 @@
 //! This module implements commands for manipulating the current set of marked nodes.
+use log::info;
 use rustc::hir;
 use rustc::hir::def::{DefKind, Res};
 use rustc::ty::TyKind;

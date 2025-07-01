@@ -1,3 +1,4 @@
+use log::debug;
 use regex::Regex;
 use rustc::session::Session;
 use std::mem;

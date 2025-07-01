@@ -1,5 +1,6 @@
 //! Analysis passes used to drive various transformations.
 
+use log::info;
 use std::collections::HashSet;
 
 use crate::command::{DriverCommand, Registry};

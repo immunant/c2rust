@@ -9,6 +9,7 @@
 //! pretty-printer output, since it likely has nicer formatting, comments, etc.  So there is some
 //! logic in this module for "recovering" from needing to use this strategy by splicing old AST
 //! text back into the new AST's pretty printer output.
+use log::{info, warn};
 use rustc::session::Session;
 use rustc_data_structures::sync::Lrc;
 use rustc_target::spec::abi::Abi;

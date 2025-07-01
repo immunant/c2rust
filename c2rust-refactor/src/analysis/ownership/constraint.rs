@@ -1,4 +1,5 @@
 //! `ConstraintSet` and related definitions.
+use log::debug;
 use std::cmp;
 use std::collections::btree_set::{self, BTreeSet};
 use std::collections::Bound;

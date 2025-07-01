@@ -23,7 +23,7 @@
 use std::collections::hash_map::{self, Entry, HashMap};
 
 use arena::SyncDroplessArena;
-use log::Level;
+use log::{debug, Level, log_enabled};
 use rustc::hir::def_id::DefId;
 use rustc::ty::{Ty, TyCtxt, TyKind};
 use rustc_index::vec::IndexVec;
@@ -172,7 +172,8 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
             Entry::Vacant(e) => {
                 assert!(
                     !variants.contains_key(&did),
-                    "tried to create func summ for {:?}, which is already a variant"
+                    "tried to create func summ for {:?}, which is already a variant",
+                    did
                 );
                 let sig = tcx.fn_sig(did);
                 let mut counter = 0;

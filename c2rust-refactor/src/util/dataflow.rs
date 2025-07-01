@@ -1,4 +1,5 @@
 //! Worklist algorithm for finding fixed points.
+use log::info;
 use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;

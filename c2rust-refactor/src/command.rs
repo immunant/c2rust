@@ -1,5 +1,6 @@
 //! Command management and overall refactoring state.
 
+use log::{info, warn};
 use rustc::hir;
 use rustc::hir::def_id::LOCAL_CRATE;
 use rustc::session::{self, DiagnosticOutput, Session};

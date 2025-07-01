@@ -2,6 +2,7 @@
 //! generating code for them if they aren't used.  This module examines the monomorphizations and
 //! their call sites, and generates the list of monomorphizations to skip.
 
+use log::debug;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;

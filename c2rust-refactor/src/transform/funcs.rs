@@ -1,3 +1,4 @@
+use log::{info, warn};
 use std::collections::{HashMap, HashSet};
 use rustc::hir::def_id::DefId;
 use rustc::ty::TyKind;

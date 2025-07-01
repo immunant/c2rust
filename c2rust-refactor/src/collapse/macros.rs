@@ -6,6 +6,7 @@
 //! added in different places: macro invocations in `CollapseMacros`, macro arguments in
 //! `token_rewrite_map`, and nodes outside of macros in `ReplaceTokens`.
 use c2rust_ast_builder::mk;
+use log::{debug, trace, warn};
 use rustc_data_structures::sync::Lrc;
 use smallvec::SmallVec;
 use std::collections::{BTreeMap, HashMap, HashSet};

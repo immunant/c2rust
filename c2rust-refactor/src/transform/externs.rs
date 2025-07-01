@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use log::Level;
+use log::{Level, info, log_enabled, warn};
 use rustc::hir::def::DefKind;
 use rustc::hir::def_id::{DefId};
 use rustc::ty::{Instance, TyCtxt, TyKind, Ty};
