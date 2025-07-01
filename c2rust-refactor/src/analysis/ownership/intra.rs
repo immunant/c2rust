@@ -1,6 +1,6 @@
 //! Intraprocedural step of the analysis.
 
-use log::Level;
+use log::{debug, Level, log_enabled};
 use rustc::hir::def_id::DefId;
 use rustc::mir::*;
 use rustc::ty::{Ty, TyKind};

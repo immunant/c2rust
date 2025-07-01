@@ -1,5 +1,6 @@
 use derive_more::From;
 use indexmap::IndexMap;
+use log::{debug, trace};
 use smallvec::SmallVec;
 use std::collections::{HashMap, HashSet, hash_map::Entry};
 use std::mem;

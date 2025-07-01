@@ -22,6 +22,7 @@ use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::ThinVec;
 
 use diff;
+use log::{debug, info, warn};
 use rustc::session::Session;
 use std::fmt::Debug;
 use std::iter::Sum;

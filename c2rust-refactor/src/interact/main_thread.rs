@@ -1,6 +1,7 @@
 //! The main thread for interactive mode.
 //!
 //! The main thread runs a loop receiving and processing client requests.
+use log::info;
 use rustc_interface::interface::{self, Config};
 use std::collections::{HashMap, HashSet};
 use std::fs;

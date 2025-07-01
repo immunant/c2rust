@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use json::{self, JsonValue};
+use log::info;
 use syntax::ast::*;
 use syntax::source_map::{FileLoader, SourceFile, SourceMap};
 use syntax::source_map::{Span, DUMMY_SP};

@@ -1,3 +1,4 @@
+use log::debug;
 use rustc::hir::{self, HirId};
 use rustc::ty::{self, ParamEnv};
 use rustc_typeck::expr_use_visitor::*;

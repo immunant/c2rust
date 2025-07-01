@@ -1,3 +1,4 @@
+use log::info;
 use std::collections::HashMap;
 use syntax::ast::*;
 use syntax::attr::HasAttrs;

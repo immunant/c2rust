@@ -19,7 +19,7 @@ use std::fmt;
 use std::u32;
 
 use arena::SyncDroplessArena;
-use log::Level;
+use log::{debug, Level, log_enabled};
 use rustc::hir;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::hir::{Mutability, Node};

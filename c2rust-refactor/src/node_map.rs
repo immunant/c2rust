@@ -1,4 +1,5 @@
 //! Mappings between old and new `NodeId`s.  Also has some support for `AttrId`s.
+use log::{trace, warn};
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::mem;

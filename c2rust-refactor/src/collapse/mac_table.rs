@@ -1,3 +1,4 @@
+use log::trace;
 use std::collections::HashMap;
 
 use rustc_target::spec::abi::Abi;

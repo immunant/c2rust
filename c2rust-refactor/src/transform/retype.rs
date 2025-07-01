@@ -1,3 +1,4 @@
+use log::{debug, info, trace};
 use std::collections::{HashMap, HashSet};
 use std::ops::DerefMut;
 use rustc::hir;
