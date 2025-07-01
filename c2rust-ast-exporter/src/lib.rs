@@ -37,10 +37,7 @@ pub fn get_untyped_ast(
 
     let items: Value = from_slice(&buffer[..]).unwrap();
 
-    match clang_ast::process(items) {
-        Ok(cxt) => Ok(cxt),
-        Err(e) => Err(Error::new(ErrorKind::InvalidData, format!("{:}", e))),
-    }
+    clang_ast::process(items).map_err(|e| Error::new(ErrorKind::InvalidData, format!("{}", e)))
 }
 
 fn get_ast_cbors(
