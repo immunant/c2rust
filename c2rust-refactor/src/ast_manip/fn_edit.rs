@@ -9,6 +9,7 @@ use syntax_pos::Span;
 use smallvec::smallvec;
 
 use crate::ast_manip::{AstName, GetNodeId, GetSpan, MutVisit, Visit};
+use crate::{expect, unpack};
 
 /// Enum indicating which kind of itemlike a `fn` is.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

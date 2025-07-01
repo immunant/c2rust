@@ -20,6 +20,7 @@ use crate::ast_manip::fn_edit::{mut_visit_fns, visit_fns};
 use crate::ast_manip::lr_expr::{self, fold_expr_with_context, fold_exprs_with_context};
 use crate::command::{Command, CommandState, RefactorState, Registry, TypeckLoopResult};
 use crate::driver::{self, Phase, parse_ty, parse_expr};
+use crate::{expect, match_or};
 use crate::illtyped::{IlltypedFolder, fold_illtyped};
 use crate::matcher::{Bindings, MatchCtxt, Subst, mut_visit_match};
 use crate::reflect::{self, reflect_tcx_ty};
@@ -278,7 +279,7 @@ impl Transform for RetypeStatic {
         let mut handled_ids: HashSet<NodeId> = HashSet::new();
 
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
-            if !matches!([e.kind] ExprKind::Assign(..), ExprKind::AssignOp(..)) {
+            if !crate::matches!([e.kind] ExprKind::Assign(..), ExprKind::AssignOp(..)) {
                 return;
             }
 
@@ -300,7 +301,7 @@ impl Transform for RetypeStatic {
         // (3) Rewrite use sites of modified statics.
 
         fold_exprs_with_context(krate, |e, ectx| {
-            if !matches!([e.kind] ExprKind::Path(..)) ||
+            if !crate::matches!([e.kind] ExprKind::Path(..)) ||
                handled_ids.contains(&e.id) ||
                !cx.try_resolve_expr(&e).map_or(false, |did| mod_statics.contains(&did)) {
                 return;
@@ -349,7 +350,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
     impl<F> MutVisitor for ChangeTypeFolder<F>
             where F: FnMut(&mut P<Ty>) -> bool {
         fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
-            let i = if matches!([i.kind] ItemKind::Fn(..)) {
+            let i = if crate::matches!([i.kind] ItemKind::Fn(..)) {
                 i.map(|mut i| {
                     let mut fd = expect!([i.kind]
                                          ItemKind::Fn(ref sig, _, _) =>
@@ -363,7 +364,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
                             self.changed_funcs.insert(i.id);
 
                             // Also record that the type of the variable declared here has changed.
-                            if matches!([arg.pat.kind] PatKind::Ident(..)) {
+                            if crate::matches!([arg.pat.kind] PatKind::Ident(..)) {
                                 // Note that `PatKind::Ident` doesn't guarantee that this is a
                                 // variable binding.  But if it's not, then no name will ever
                                 // resolve to `arg.pat`'s DefId, so it doesn't matter.
@@ -394,7 +395,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
                     i
                 })
 
-            } else if matches!([i.kind] ItemKind::Static(..)) {
+            } else if crate::matches!([i.kind] ItemKind::Static(..)) {
                 i.map(|mut i| {
                     {
                         let ty = expect!([i.kind] ItemKind::Static(ref mut ty, _, _) => ty);
@@ -406,7 +407,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
                     i
                 })
 
-            } else if matches!([i.kind] ItemKind::Const(..)) {
+            } else if crate::matches!([i.kind] ItemKind::Const(..)) {
                 i.map(|mut i| {
                     {
                         let ty = expect!([i.kind] ItemKind::Const(ref mut ty, _) => ty);

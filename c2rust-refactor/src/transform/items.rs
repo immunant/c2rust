@@ -301,7 +301,7 @@ impl Transform for SetVisibility {
                 }
 
                 let was_in_trait_impl = self.in_trait_impl;
-                self.in_trait_impl = matches!([i.kind]
+                self.in_trait_impl = crate::matches!([i.kind]
                         ItemKind::Impl(_, _, _, _, Some(_), _, _));
                 let r = mut_visit::noop_flat_map_item(i, self);
                 self.in_trait_impl = was_in_trait_impl;

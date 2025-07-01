@@ -7,6 +7,7 @@ use smallvec::smallvec;
 use crate::ast_manip::{fold_blocks, FlatMapNodes, AstEquiv};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase, parse_expr};
+use crate::{expect, match_or};
 use crate::matcher::{mut_visit_match, Subst};
 use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
