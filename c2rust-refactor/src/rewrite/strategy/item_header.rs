@@ -11,10 +11,10 @@
 //!
 //! Aside from the special handling of qualifiers, this strategy works the same as `recursive`.
 use log::info;
-use syntax::ast::*;
-use syntax::token::{DelimToken, Token, TokenKind};
-use syntax::source_map::{BytePos, Span};
-use syntax::tokenstream::{TokenStream, TokenTree};
+use rustc_ast::*;
+use rustc_ast::token::{Delimiter, Token, TokenKind};
+use rustc_span::source_map::{BytePos, Span};
+use rustc_ast::tokenstream::{TokenStream, TokenTree};
 
 use crate::ast_manip::AstEquiv;
 use crate::rewrite::base::{describe, rewrite_seq_comma_sep};

@@ -1,12 +1,11 @@
 use log::info;
 use std::collections::HashMap;
-use syntax::ast::*;
-use syntax::attr::HasAttrs;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
-use syntax::visit::{self, Visitor};
-use syntax_pos::sym;
-
+use rustc_ast::*;
+use rustc_ast::attr::HasAttrs;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::visit::{self, Visitor};
+use rustc_span::sym;
 use smallvec::SmallVec;
 
 use crate::ast_manip::{GetNodeId, MutVisit, Visit};
@@ -75,11 +74,11 @@ impl RestoreCfgAttrs {
                 "RESTORE ATTRS {:?} onto {:?}",
                 cfg_attrs
                     .iter()
-                    .map(|a| ::syntax::print::pprust::attribute_to_string(a))
+                    .map(|a| rustc_ast_pretty::pprust::attribute_to_string(a))
                     .collect::<Vec<_>>(),
                 x.attrs()
                     .iter()
-                    .map(|a| ::syntax::print::pprust::attribute_to_string(a))
+                    .map(|a| rustc_ast_pretty::pprust::attribute_to_string(a))
                     .collect::<Vec<_>>()
             );
             x.visit_attrs(|attrs| {
@@ -92,7 +91,7 @@ impl RestoreCfgAttrs {
                 "  attrs changed to {:?}",
                 x.attrs()
                     .iter()
-                    .map(|a| ::syntax::print::pprust::attribute_to_string(a))
+                    .map(|a| rustc_ast_pretty::pprust::attribute_to_string(a))
                     .collect::<Vec<_>>()
             );
         }

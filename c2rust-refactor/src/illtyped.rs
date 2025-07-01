@@ -1,11 +1,11 @@
 use log::info;
-use rustc::hir;
-use rustc::hir::def::Res;
-use rustc::ty::{self, ParamEnv, TyCtxt};
+use rustc_middle::hir;
+use rustc_hir::def::Res;
+use rustc_middle::ty::{self, ParamEnv, TyCtxt};
 use smallvec::SmallVec;
-use syntax::ast::*;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
+use rustc_ast::*;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
 
 use crate::ast_manip::MutVisit;
 use crate::{expect, match_or};
@@ -169,7 +169,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 }
             }
             ExprKind::Binary(binop, lhs, rhs) => {
-                use syntax::ast::BinOpKind::*;
+                use rustc_ast::BinOpKind::*;
                 // TODO: check for overloads
                 match binop.node {
                     Add | Sub | Mul | Div | Rem | BitXor | BitAnd | BitOr => {
@@ -194,7 +194,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
             }
             ExprKind::Unary(unop, ohs) => {
                 // TODO: need case for deref, and a check for overloads
-                use syntax::ast::UnOp::*;
+                use rustc_ast::UnOp::*;
                 match unop {
                     Not | Neg => {
                         illtyped |= self.ensure(ohs, ty);

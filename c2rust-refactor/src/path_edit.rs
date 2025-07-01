@@ -1,12 +1,12 @@
 //! `fold_resolved_paths` function, for rewriting paths based on their resolved `DefId`.
 use log::debug;
-use rustc::hir;
-use rustc::hir::def::Res;
+use rustc_middle::hir;
+use rustc_hir::def::Res;
 use smallvec::SmallVec;
-use syntax::ast::*;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
-use syntax::util::map_in_place::MapInPlace;
+use rustc_ast::*;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::util::map_in_place::MapInPlace;
 use smallvec::smallvec;
 
 use crate::ast_manip::util::split_uses;

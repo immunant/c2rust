@@ -20,13 +20,13 @@ use std::u32;
 
 use arena::SyncDroplessArena;
 use log::{debug, Level, log_enabled};
-use rustc::hir;
-use rustc::hir::def_id::{DefId, LOCAL_CRATE};
-use rustc::hir::{Mutability, Node};
-use rustc::ty::{TyCtxt, TyKind, TypeAndMut, TyS};
+use rustc_middle::hir;
+use rustc_hir::def_id::{DefId, LOCAL_CRATE};
+use rustc_hir::{Mutability, Node};
+use rustc_middle::ty::{TyCtxt, TyKind, TypeAndMut, TyS};
 use rustc_index::vec::{Idx, IndexVec};
-use syntax::ast::IntTy;
-use syntax::source_map::Span;
+use rustc_ast::IntTy;
+use rustc_span::source_map::Span;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::command::CommandState;

@@ -3,8 +3,8 @@ use diff;
 use log::{info, warn};
 use std::collections::{HashMap, VecDeque};
 use std::io;
-use syntax::source_map::{SourceFile, SourceMap};
-use syntax_pos::{BytePos, FileName};
+use rustc_span::source_map::{SourceFile, SourceMap};
+use rustc_span::{BytePos, FileName};
 
 use crate::file_io::FileIO;
 use crate::rewrite::cleanup::cleanup_rewrites;
