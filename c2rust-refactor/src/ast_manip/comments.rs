@@ -4,7 +4,7 @@ use std::ops::Index;
 use std::slice;
 use rustc_ast::*;
 // use rustc_ast::util::comments::Comment as LexComment;
-use rustc_ast::sess::ParseSess;
+use rustc_session::parse::ParseSess;
 use rustc_span::source_map::{SourceMap, Span};
 use rustc_ast::visit::*;
 use rustc_span::{BytePos, CharPos, Pos, FileName};
