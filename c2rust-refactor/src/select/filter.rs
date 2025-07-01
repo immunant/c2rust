@@ -1,9 +1,9 @@
 use std::str::FromStr;
-use syntax::ast::*;
-use syntax::attr;
-use syntax::source_map::Span;
-use syntax::symbol::Symbol;
-use syntax::visit::{self, FnKind, Visitor};
+use rustc_ast::*;
+use rustc_ast::attr;
+use rustc_span::source_map::Span;
+use rustc_span::symbol::Symbol;
+use rustc_ast::visit::{self, FnKind, Visitor};
 
 use crate::ast_manip::AstEquiv;
 use crate::command::CommandState;

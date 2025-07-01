@@ -41,18 +41,18 @@ use std::collections::HashMap;
 
 use arena::SyncDroplessArena;
 use ena::unify::{InPlace, UnificationTable, UnifyKey};
-use rustc::hir::def_id::DefId;
-use rustc::hir::intravisit::{self, NestedVisitorMap, Visitor};
-use rustc::hir::itemlikevisit::ItemLikeVisitor;
-use rustc::hir::*;
-use rustc::ty::adjustment::{Adjust, PointerCast};
-use rustc::ty::{self, TyCtxt, TypeckTables};
-// use syntax::abi::Abi;
+use rustc_hir::def_id::DefId;
+use rustc_hir::intravisit::{self, NestedVisitorMap, Visitor};
+use rustc_hir::itemlikevisit::ItemLikeVisitor;
+use rustc_hir::*;
+use rustc_middle::ty::adjustment::{Adjust, PointerCast};
+use rustc_middle::ty::{self, TyCtxt, TypeckTables};
+// use rustc_ast::abi::Abi;
 use rustc_target::spec::abi::Abi;
-use syntax::ast;
-use syntax::ast::NodeId;
-use syntax::source_map::Span;
-use syntax::symbol::Symbol;
+use rustc_ast::ast;
+use rustc_ast::NodeId;
+use rustc_span::source_map::Span;
+use rustc_span::symbol::Symbol;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::context::RefactorCtxt;
@@ -488,7 +488,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     // Helpers for extracting information from function types.
 
     fn fn_num_inputs(&self, lty: LTy<'lty, 'tcx>) -> usize {
-        use rustc::ty::TyKind::*;
+        use rustc_middle::ty::TyKind::*;
         match lty.ty.kind {
             FnDef(id, _) => self.def_sig(id).inputs.len(),
             FnPtr(_) => lty.args.len() - 1,
@@ -500,7 +500,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     /// Get the input types out of a `FnPtr` or `FnDef` `LTy`.
     fn fn_input(&self, lty: LTy<'lty, 'tcx>, idx: usize) -> LTy<'lty, 'tcx> {
-        use rustc::ty::TyKind::*;
+        use rustc_middle::ty::TyKind::*;
         match lty.ty.kind {
             FnDef(id, _) => {
                 // For a `FnDef`, retrieve the `LFnSig` for the given `DefId` and apply the
@@ -519,7 +519,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     /// Get the output type out of a `FnPtr` or `FnDef` `LTy`.
     fn fn_output(&self, lty: LTy<'lty, 'tcx>) -> LTy<'lty, 'tcx> {
-        use rustc::ty::TyKind::*;
+        use rustc_middle::ty::TyKind::*;
         match lty.ty.kind {
             FnDef(id, _) => {
                 let sig = self.def_sig(id);
@@ -532,7 +532,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     }
 
     fn fn_is_variadic(&self, lty: LTy<'lty, 'tcx>) -> bool {
-        use rustc::ty::TyKind::*;
+        use rustc_middle::ty::TyKind::*;
         match lty.ty.kind {
             FnDef(id, _) => self.def_sig(id).c_variadic,
             FnPtr(ty_sig) => ty_sig.skip_binder().c_variadic,
@@ -583,7 +583,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
     }
 
     fn visit_expr(&mut self, e: &'hir Expr) {
-        use rustc::hir::BinOpKind::*;
+        use rustc_hir::BinOpKind::*;
 
         let rty = match self.opt_unadjusted_expr_lty(e) {
             Some(x) => x,

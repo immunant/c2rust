@@ -2,14 +2,14 @@
 //! `rustc_driver::run_compiler`.
 
 use rustc::dep_graph::DepGraph;
-use rustc::hir::map as hir_map;
-use rustc::hir;
+use rustc_hir::map as hir_map;
+use rustc_middle::hir;
 use rustc::lint::{self, LintStore};
 use rustc::session::config::Options as SessionOptions;
 use rustc::session::config::{Input, OutputFilenames};
 use rustc::session::{self, DiagnosticOutput, Session};
-use rustc::ty::steal::Steal;
-use rustc::ty::{self, GlobalCtxt, ResolverOutputs};
+use rustc_middle::ty::steal::Steal;
+use rustc_middle::ty::{self, GlobalCtxt, ResolverOutputs};
 use rustc::util::common::ErrorReported;
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
 use rustc_data_structures::declare_box_region_type;
@@ -28,24 +28,24 @@ use std::mem;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
-use syntax::ast;
-use syntax::ast::DUMMY_NODE_ID;
-use syntax::ast::{
+use rustc_ast::ast;
+use rustc_ast::DUMMY_NODE_ID;
+use rustc_ast::{
     Block, BlockCheckMode, Expr, ForeignItem, ImplItem, Item, ItemKind, NodeId, Param, Pat, Stmt,
     Ty, UnsafeSource,
 };
-use syntax_pos::hygiene::SyntaxContext;
+use rustc_span::hygiene::SyntaxContext;
 use rustc_parse::parser::Parser;
-use syntax::token::{self, TokenKind};
+use rustc_ast::token::{self, TokenKind};
 use syntax;
 use rustc_errors::PResult;
-use syntax::ptr::P;
-use syntax::source_map::SourceMap;
-use syntax::source_map::{FileLoader, RealFileLoader};
-use syntax::symbol::{kw, Symbol};
-use syntax::tokenstream::TokenTree;
-use syntax_pos::{FileName, Span, DUMMY_SP};
-use syntax_pos::edition::Edition;
+use rustc_ast::ptr::P;
+use rustc_span::source_map::SourceMap;
+use rustc_span::source_map::{FileLoader, RealFileLoader};
+use rustc_span::symbol::{kw, Symbol};
+use rustc_ast::tokenstream::TokenTree;
+use rustc_span::{FileName, Span, DUMMY_SP};
+use rustc_span::edition::Edition;
 
 use crate::ast_manip::remove_paren;
 use crate::command::{GenerationalTyCtxt, RefactorState, Registry};
@@ -137,7 +137,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
 
 //         let mut control = CompileController::basic();
 //         control.provide = Box::new(move |providers| {
-//             use rustc::hir::def_id::CrateNum;
+//             use rustc_hir::def_id::CrateNum;
 //             use rustc::middle::privacy::AccessLevels;
 //             use rustc_data_structures::sync::Lrc;
 //             use rustc_privacy;

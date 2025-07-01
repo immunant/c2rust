@@ -5,11 +5,11 @@ use log::info;
 use rustc::session::Session;
 use std::path::PathBuf;
 use std::str::FromStr;
-use syntax::ast::*;
-use syntax_pos::hygiene::SyntaxContext;
-use syntax::source_map::{BytePos, Span};
-use syntax::visit::{self, FnKind, Visitor};
-use syntax_pos::FileName;
+use rustc_ast::*;
+use rustc_span::hygiene::SyntaxContext;
+use rustc_span::source_map::{BytePos, Span};
+use rustc_ast::visit::{self, FnKind, Visitor};
+use rustc_span::FileName;
 
 use crate::ast_manip::Visit;
 use crate::command::{DriverCommand, Registry};

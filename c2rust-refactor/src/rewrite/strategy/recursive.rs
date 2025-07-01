@@ -1,8 +1,8 @@
-use syntax::ast::*;
-use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::tokenstream::{DelimSpan, TokenTree};
-use syntax::util::parser;
+use rustc_ast::*;
+use rustc_ast::token::{BinOpToken, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::{DelimSpan, TokenTree};
+use rustc_ast::util::parser;
 
 use crate::ast_manip::{GetNodeId, GetSpan};
 use crate::rewrite::base::{binop_left_prec, binop_right_prec, calc_outer_span, rewrite_seq};

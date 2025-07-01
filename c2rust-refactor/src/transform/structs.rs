@@ -1,6 +1,6 @@
-use rustc::ty;
-use syntax::ast::*;
-use syntax::ptr::P;
+use rustc_middle::ty;
+use rustc_ast::*;
+use rustc_ast::ptr::P;
 
 use smallvec::smallvec;
 

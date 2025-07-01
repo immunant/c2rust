@@ -1,13 +1,13 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use regex::Regex;
-use rustc::hir::HirId;
+use rustc_hir::HirId;
 use rustc_parse::parser::FollowedByType;
-use syntax::ast::*;
-use syntax::source_map::DUMMY_SP;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
-use syntax::symbol::Symbol;
+use rustc_ast::*;
+use rustc_span::source_map::DUMMY_SP;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_span::symbol::Symbol;
 use smallvec::{smallvec, SmallVec};
 
 use c2rust_ast_builder::{mk, Make, IntoSymbol};

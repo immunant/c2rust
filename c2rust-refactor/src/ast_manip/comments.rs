@@ -2,17 +2,17 @@ use std::collections::HashMap;
 use std::iter::Peekable;
 use std::ops::Index;
 use std::slice;
-use syntax::ast::*;
-// use syntax::util::comments::Comment as LexComment;
-use syntax::util::comments::{is_block_doc_comment, is_doc_comment};
-use syntax::sess::ParseSess;
-use syntax::source_map::{SourceMap, Span};
-use syntax::visit::*;
-use syntax_pos::{BytePos, CharPos, Pos, FileName};
+use rustc_ast::*;
+// use rustc_ast::util::comments::Comment as LexComment;
+use rustc_ast::util::comments::{is_block_doc_comment, is_doc_comment};
+use rustc_ast::sess::ParseSess;
+use rustc_span::source_map::{SourceMap, Span};
+use rustc_ast::visit::*;
+use rustc_span::{BytePos, CharPos, Pos, FileName};
 
 use crate::ast_manip::Visit;
 
-pub use syntax::util::comments::{Comment, CommentStyle};
+pub use rustc_ast::util::comments::{Comment, CommentStyle};
 
 #[derive(Default)]
 pub struct CommentMap(HashMap<NodeId, Vec<Comment>>);
@@ -123,7 +123,7 @@ impl<'a> Visitor<'a> for CommentCollector<'a> {
     }
 }
 
-// From libsyntax::util::comments
+// From librustc_ast::util::comments
 /// Returns `None` if the first `col` chars of `s` contain a non-whitespace char.
 /// Otherwise returns `Some(k)` where `k` is first char offset after that leading
 /// whitespace. Note that `k` may be outside bounds of `s`.
@@ -138,7 +138,7 @@ fn all_whitespace(s: &str, col: CharPos) -> Option<usize> {
     Some(idx)
 }
 
-// From libsyntax::util::comments
+// From librustc_ast::util::comments
 fn trim_whitespace_prefix(s: &str, col: CharPos) -> &str {
     let len = s.len();
     match all_whitespace(&s, col) {
@@ -147,7 +147,7 @@ fn trim_whitespace_prefix(s: &str, col: CharPos) -> &str {
     }
 }
 
-// From libsyntax::util::comments
+// From librustc_ast::util::comments
 fn split_block_comment_into_lines(
     text: &str,
     col: CharPos,
@@ -163,9 +163,9 @@ fn split_block_comment_into_lines(
     res
 }
 
-// From libsyntax::util::comments
+// From librustc_ast::util::comments
 pub fn gather_comments(sess: &ParseSess, path: FileName, src: String) -> Vec<Comment> {
-    use syntax::util::comments::CommentStyle::*;
+    use rustc_ast::util::comments::CommentStyle::*;
 
     let cm = SourceMap::new(sess.source_map().path_mapping().clone());
     let source_file = cm.new_source_file(path, src);

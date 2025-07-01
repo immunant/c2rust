@@ -1,5 +1,5 @@
-use syntax::ast::*;
-use syntax::ptr::P;
+use rustc_ast::*;
+use rustc_ast::ptr::P;
 
 use c2rust_ast_builder::mk;
 use crate::command::{CommandState, Registry};

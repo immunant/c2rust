@@ -1,8 +1,8 @@
 //! `GetSpan` trait for obtaining the `Span` of a generic AST node.
-use syntax::ast::*;
-use syntax::token::Token;
-use syntax::ptr::P;
-use syntax::source_map::{Span, Spanned};
+use rustc_ast::*;
+use rustc_ast::token::Token;
+use rustc_ast::ptr::P;
+use rustc_span::source_map::{Span, Spanned};
 
 use crate::ast_manip::util::extend_span_attrs;
 

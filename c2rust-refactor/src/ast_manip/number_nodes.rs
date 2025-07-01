@@ -1,6 +1,6 @@
 use std::cell::Cell;
-use syntax::ast::{Mac, NodeId, DUMMY_NODE_ID};
-use syntax::mut_visit::{self, MutVisitor};
+use rustc_ast::{Mac, NodeId, DUMMY_NODE_ID};
+use rustc_ast::mut_visit::{self, MutVisitor};
 
 use crate::ast_manip::MutVisit;
 

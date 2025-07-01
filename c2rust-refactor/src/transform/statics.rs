@@ -1,10 +1,10 @@
 use log::info;
 use std::collections::{HashMap, HashSet};
 use std::mem;
-use rustc::hir::def_id::DefId;
-use syntax::ast::*;
-use syntax::ptr::P;
-use syntax::symbol::Symbol;
+use rustc_hir::def_id::DefId;
+use rustc_ast::*;
+use rustc_ast::ptr::P;
+use rustc_span::symbol::Symbol;
 use smallvec::smallvec;
 
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, fold_modules};

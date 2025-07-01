@@ -1,13 +1,13 @@
 use log::{info, warn};
 use std::collections::{HashMap, HashSet};
-use rustc::hir::def_id::DefId;
-use rustc::ty::TyKind;
-use syntax::ast;
-use syntax::ast::*;
-use syntax::attr;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
-use syntax_pos::sym;
+use rustc_hir::def_id::DefId;
+use rustc_middle::ty::TyKind;
+use rustc_ast::ast;
+use rustc_ast::*;
+use rustc_ast::attr;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_span::sym;
 use smallvec::{smallvec, SmallVec};
 
 use c2rust_ast_builder::{mk, IntoSymbol};

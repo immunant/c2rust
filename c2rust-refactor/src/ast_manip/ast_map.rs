@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::ops::{Deref, DerefMut};
-use syntax::ast::*;
-use syntax::visit::{self, Visitor};
+use rustc_ast::*;
+use rustc_ast::visit::{self, Visitor};
 
 use super::{AstNodeRef, Visit};
 

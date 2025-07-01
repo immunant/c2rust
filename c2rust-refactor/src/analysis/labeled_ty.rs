@@ -1,9 +1,9 @@
-//! Provides a wrapper around `rustc::ty::Ty` with a label attached to each type constructor.  This
+//! Provides a wrapper around `rustc_middle::ty::Ty` with a label attached to each type constructor.  This
 //!
 //! Labeled type data is manipulated by reference, the same as with `Ty`s, and the data is stored
 //! in the same arena as the underlying `Ty`s.
 use arena::SyncDroplessArena;
-use rustc::ty::{Ty, TyKind};
+use rustc_middle::ty::{Ty, TyKind};
 use std::fmt;
 use std::marker::PhantomData;
 
@@ -30,7 +30,7 @@ pub struct LabeledTyS<'lty, 'tcx: 'lty, L: 'lty> {
     pub label: L,
 }
 
-/// A labeled type.  Like `rustc::ty::Ty`, this is a reference to some arena-allocated data.
+/// A labeled type.  Like `rustc_middle::ty::Ty`, this is a reference to some arena-allocated data.
 pub type LabeledTy<'lty, 'tcx, L> = &'lty LabeledTyS<'lty, 'tcx, L>;
 
 impl<'lty, 'tcx, L: fmt::Debug> fmt::Debug for LabeledTyS<'lty, 'tcx, L> {
@@ -90,7 +90,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
         ty: Ty<'tcx>,
         f: &mut F,
     ) -> LabeledTy<'lty, 'tcx, L> {
-        use rustc::ty::TyKind::*;
+        use rustc_middle::ty::TyKind::*;
         let label = f(ty);
         match ty.kind {
             // Types with no arguments

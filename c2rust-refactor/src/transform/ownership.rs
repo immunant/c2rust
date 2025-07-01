@@ -3,15 +3,15 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use arena::SyncDroplessArena;
-use rustc::hir::def_id::DefId;
+use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
-use syntax::ast::*;
-use syntax::source_map::DUMMY_SP;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::token::{self, Token, TokenKind, DelimToken};
-use syntax::ptr::P;
-use syntax::symbol::Symbol;
-use syntax::tokenstream::{TokenTree, TokenStream, DelimSpan};
+use rustc_ast::*;
+use rustc_span::source_map::DUMMY_SP;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::token::{self, Token, TokenKind, Delimiter};
+use rustc_ast::ptr::P;
+use rustc_span::symbol::Symbol;
+use rustc_ast::tokenstream::{TokenTree, TokenStream, DelimSpan};
 use smallvec::{smallvec, SmallVec};
 
 use crate::ast_manip::{MutVisitNodes, MutVisit};

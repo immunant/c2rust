@@ -18,10 +18,10 @@
 //!    itemlike.  Use a zero-argument macro invocation `__x!()` instead.
 
 use smallvec::SmallVec;
-use syntax::ast::Mac;
-use syntax::ast::{Expr, ExprKind, Ident, ImplItem, Item, Label, Pat, Path, Stmt, Ty};
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
+use rustc_ast::Mac;
+use rustc_ast::{Expr, ExprKind, Ident, ImplItem, Item, Label, Pat, Path, Stmt, Ty};
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
 use smallvec::smallvec;
 
 use crate::ast_manip::util::PatternSymbol;

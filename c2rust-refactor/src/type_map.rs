@@ -3,11 +3,11 @@
 
 use std::fmt::Debug;
 
-use rustc::hir;
-use rustc::hir::def_id::DefId;
-use rustc::ty;
-use syntax::ast::*;
-use syntax::visit::{self, Visitor};
+use rustc_middle::hir;
+use rustc_hir::def_id::DefId;
+use rustc_middle::ty;
+use rustc_ast::*;
+use rustc_ast::visit::{self, Visitor};
 
 use crate::context::HirMap;
 
@@ -65,7 +65,7 @@ where
     /// (The structures may not match if the `ast::Ty` refers to a type alias which has been
     /// expanded, for example - then `ast_ty` looks like `Alias` while `ty` is `Foo<Bar, Baz>`.)
     fn record_ty(&mut self, ty: S::Type, ast_ty: &Ty) {
-        use rustc::ty::TyKind::*;
+        use rustc_middle::ty::TyKind::*;
 
         (self.callback)(&mut self.source, ast_ty, ty);
 

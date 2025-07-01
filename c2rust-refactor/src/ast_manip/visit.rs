@@ -1,7 +1,7 @@
 //! `Visit` trait for AST types that can be visited.
 use syntax;
-use syntax::ast::*;
-use syntax::visit::Visitor;
+use rustc_ast::*;
+use rustc_ast::visit::Visitor;
 
 /// A trait for AST nodes that can accept a `Visitor`.
 pub trait Visit {
@@ -11,11 +11,11 @@ pub trait Visit {
 // There's no `visit_crate` method in `Visitor`, for some reason.
 impl Visit for Crate {
     fn visit<'ast, V: Visitor<'ast>>(&'ast self, v: &mut V) {
-        syntax::visit::walk_crate(v, self);
+        rustc_ast::visit::walk_crate(v, self);
     }
 }
 
-// This macro takes as input the definition of `syntax::visit::Visitor` as it appears the libsyntax
+// This macro takes as input the definition of `rustc_ast::visit::Visitor` as it appears the libsyntax
 // docs, and emits a `Visit` impl for each method it finds.
 macro_rules! gen_visit_impls {
     (
@@ -36,7 +36,7 @@ macro_rules! gen_visit_impls {
 }
 
 gen_visit_impls! {
-    // Copy-pasted from the syntax::visit::Visitor docs.  Some methods take multiple arguments, so
+    // Copy-pasted from the rustc_ast::visit::Visitor docs.  Some methods take multiple arguments, so
     // they are commented out in this copy.
     pub trait Visitor<'ast>: Sized {
         //fn visit_name(&mut self, _span: Span, _name: Name) { ... }

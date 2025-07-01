@@ -1,9 +1,9 @@
 //! `fold_output_exprs` function, for visiting return-value expressions.
 use smallvec::SmallVec;
-use syntax::ast::*;
-use syntax::mut_visit::{self, visit_opt, MutVisitor};
-use syntax::ptr::P;
-use syntax::util::map_in_place::MapInPlace;
+use rustc_ast::*;
+use rustc_ast::mut_visit::{self, visit_opt, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::util::map_in_place::MapInPlace;
 
 use crate::ast_manip::MutVisit;
 use crate::util::Lone;
