@@ -4,7 +4,6 @@ use std::ops::Index;
 use std::slice;
 use rustc_ast::*;
 // use rustc_ast::util::comments::Comment as LexComment;
-use rustc_ast::util::comments::{is_block_doc_comment, is_doc_comment};
 use rustc_ast::sess::ParseSess;
 use rustc_span::source_map::{SourceMap, Span};
 use rustc_ast::visit::*;
@@ -202,8 +201,8 @@ pub fn gather_comments(sess: &ParseSess, path: FileName, src: String) -> Vec<Com
                     }
                 }
             }
-            rustc_lexer::TokenKind::BlockComment { terminated: _ } => {
-                if !is_block_doc_comment(token_text) {
+            rustc_lexer::TokenKind::BlockComment { doc_style, .. } => {
+                if doc_style.is_none() {
                     let code_to_the_right = match text[pos + token.len..].chars().next() {
                         Some('\r') | Some('\n') => false,
                         _ => true,
@@ -224,8 +223,8 @@ pub fn gather_comments(sess: &ParseSess, path: FileName, src: String) -> Vec<Com
                     comments.push(Comment { style, lines, pos: pos_in_file })
                 }
             }
-            rustc_lexer::TokenKind::LineComment => {
-                if !is_doc_comment(token_text) {
+            rustc_lexer::TokenKind::LineComment { doc_style } => {
+                if doc_style.is_none() {
                     comments.push(Comment {
                         style: if code_to_the_left { Trailing } else { Isolated },
                         lines: vec![token_text.to_string()],
