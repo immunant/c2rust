@@ -1751,9 +1751,35 @@ pub enum CTypeKind {
     Float128,
     // Atomic types (6.7.2.4)
     Atomic(CQualTypeId),
+
+    // Rust sized types, pullback'd into C so that we can treat uint16_t, etc. as real types.
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    IntPtr,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    UIntPtr,
+    IntMax,
+    UIntMax,
+    Size,
+    SSize,
+    PtrDiff,
+    WChar,
 }
 
 impl CTypeKind {
+    pub const PULLBACK_KINDS: [CTypeKind; 16] = {
+        use CTypeKind::*;
+        [
+            Int8, Int16, Int32, Int64, IntPtr, UInt8, UInt16, UInt32, UInt64, UIntPtr, IntMax,
+            UIntMax, Size, SSize, PtrDiff, WChar,
+        ]
+    };
+
     pub fn as_str(&self) -> &'static str {
         use CTypeKind::*;
         match self {
@@ -1778,6 +1804,24 @@ impl CTypeKind {
             Half => "half",
             BFloat16 => "bfloat16",
             Float128 => "__float128",
+
+            Int8 => "int8_t",
+            Int16 => "int16_t",
+            Int32 => "int32_t",
+            Int64 => "int64_t",
+            IntPtr => "intptr_t",
+            UInt8 => "uint8_t",
+            UInt16 => "uint16_t",
+            UInt32 => "uint32_t",
+            UInt64 => "uint64_t",
+            UIntPtr => "uintptr_t",
+            IntMax => "intmax_t",
+            UIntMax => "uintmax_t",
+            Size => "size_t",
+            SSize => "ssize_t",
+            PtrDiff => "ptrdiff_t",
+            WChar => "wchar_t",
+
             _ => unimplemented!("Printer::print_type({:?})", self),
         }
     }
@@ -1843,14 +1887,43 @@ impl CTypeKind {
         use CTypeKind::*;
         matches!(
             self,
-            Bool | UChar | UInt | UShort | ULong | ULongLong | UInt128
+            Bool | UChar
+                | UInt
+                | UShort
+                | ULong
+                | ULongLong
+                | UInt128
+                | UInt8
+                | UInt16
+                | UInt32
+                | UInt64
+                | UIntPtr
+                | UIntMax
+                | Size
+                | WChar
         )
     }
 
     pub fn is_signed_integral_type(&self) -> bool {
         use CTypeKind::*;
         // `Char` is true on the platforms we handle
-        matches!(self, Char | SChar | Int | Short | Long | LongLong | Int128)
+        matches!(
+            self,
+            Char | SChar
+                | Int
+                | Short
+                | Long
+                | LongLong
+                | Int128
+                | Int8
+                | Int16
+                | Int32
+                | Int64
+                | IntPtr
+                | IntMax
+                | SSize
+                | PtrDiff
+        )
     }
 
     pub fn is_floating_type(&self) -> bool {

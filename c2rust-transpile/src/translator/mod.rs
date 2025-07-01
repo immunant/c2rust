@@ -4960,6 +4960,11 @@ impl<'c> Translation<'c> {
             Void | Char | SChar | UChar | Short | UShort | Int | UInt | Long | ULong | LongLong
             | ULongLong | Int128 | UInt128 | Half | BFloat16 | Float | Double | LongDouble
             | Float128 => {}
+            // other libc types
+            WChar | IntMax | UIntMax => {}
+            // Built-in Rust sized types
+            Int8 | Int16 | Int32 | Int64 | IntPtr | UInt8 | UInt16 | UInt32 | UInt64 | UIntPtr
+            | Size | SSize | PtrDiff => {}
             // Bool uses the bool type, so no dependency on libc
             Bool => {}
             Paren(ctype)
