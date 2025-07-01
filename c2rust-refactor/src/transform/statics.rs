@@ -11,6 +11,7 @@ use crate::ast_manip::{FlatMapNodes, MutVisitNodes, fold_modules};
 use crate::ast_manip::fn_edit::mut_visit_fns;
 use crate::command::{CommandState, Registry};
 use crate::driver::{parse_expr};
+use crate::match_or;
 use crate::matcher::{Bindings, BindingType, MatchCtxt, Subst, mut_visit_match_with};
 use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;

@@ -17,6 +17,7 @@ use std::marker::PhantomData;
 use crate::ast_manip::MutVisitNodes;
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
+use crate::match_or;
 use crate::transform::Transform;
 use crate::transform::casts::sym_token_kind;
 use crate::RefactorCtxt;

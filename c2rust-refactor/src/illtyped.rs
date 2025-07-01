@@ -8,6 +8,7 @@ use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 
 use crate::ast_manip::MutVisit;
+use crate::{expect, match_or};
 use crate::RefactorCtxt;
 
 fn types_approx_equal<'tcx>(
