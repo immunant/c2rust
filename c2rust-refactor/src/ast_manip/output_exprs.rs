@@ -3,7 +3,7 @@ use smallvec::SmallVec;
 use rustc_ast::*;
 use rustc_ast::mut_visit::{self, visit_opt, MutVisitor};
 use rustc_ast::ptr::P;
-use rustc_ast::util::map_in_place::MapInPlace;
+use rustc_data_structures::map_in_place::MapInPlace;
 
 use crate::ast_manip::MutVisit;
 use crate::util::Lone;

@@ -6,7 +6,7 @@ use smallvec::SmallVec;
 use rustc_ast::*;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
-use rustc_ast::util::map_in_place::MapInPlace;
+use rustc_data_structures::map_in_place::MapInPlace;
 use smallvec::smallvec;
 
 use crate::ast_manip::util::split_uses;
