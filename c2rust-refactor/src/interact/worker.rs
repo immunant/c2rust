@@ -4,6 +4,7 @@
 //! The interactive mode's custom `FileLoader` has to provide file contents synchronously, but
 //! actually, obtaining file contents requires sending a request to the client and processing
 //! messages until we get a response.  That loop happens in the worker thread.
+use log::{info, warn};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;

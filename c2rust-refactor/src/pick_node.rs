@@ -1,6 +1,7 @@
 //! Helper functions for picking a node by source location.
 //!
 //! This is used in various parts of the frontend to set marks at specific locations.
+use log::info;
 use rustc::session::Session;
 use std::path::PathBuf;
 use std::str::FromStr;

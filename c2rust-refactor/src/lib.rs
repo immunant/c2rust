@@ -72,6 +72,7 @@ mod context;
 
 use cargo::core::manifest::TargetKind;
 use cargo::util::paths;
+use log::{info, warn};
 use rustc_interface::interface;
 use std::collections::HashSet;
 use std::env;

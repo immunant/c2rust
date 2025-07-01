@@ -1,4 +1,5 @@
 //! `fold_resolved_paths` function, for rewriting paths based on their resolved `DefId`.
+use log::debug;
 use rustc::hir;
 use rustc::hir::def::Res;
 use smallvec::SmallVec;

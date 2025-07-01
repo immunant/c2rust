@@ -1,5 +1,6 @@
 //! Code for applying `TextRewrite`s to the actual source files.
 use diff;
+use log::{info, warn};
 use std::collections::{HashMap, VecDeque};
 use std::io;
 use syntax::source_map::{SourceFile, SourceMap};
