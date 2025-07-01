@@ -2845,7 +2845,7 @@ impl<'c> Translation<'c> {
                             return true;
                         }
 
-                        // None assignments don't prove enough type information unless there are follow-up assignments
+                        // None assignments don't provide enough type information unless there are follow-up assignments
                         if let Some(CExprKind::ImplicitCast(_, _, CastKind::NullToPointer, _, _)) =
                             initializer_kind
                         {
