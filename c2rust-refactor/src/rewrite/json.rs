@@ -1,4 +1,4 @@
-use json::{self, JsonValue};
+use json::{self, JsonValue, object};
 use std::collections::{HashMap, HashSet};
 use rustc_ast::*;
 use rustc_span::source_map::{SourceMap, Span};
