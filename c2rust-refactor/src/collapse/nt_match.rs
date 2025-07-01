@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
 use rustc_target::spec::abi::Abi;
-use syntax::ast::*;
-use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::source_map::{Span, Spanned, SyntaxContext};
-use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
-use syntax::ThinVec;
+use rustc_ast::*;
+use rustc_ast::token::{BinOpToken, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_span::source_map::{Span, Spanned, SyntaxContext};
+use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
+use thin_vec::ThinVec;
 
 use c2rust_ast_builder::mk;
 use std::rc::Rc;
-use syntax::ptr::P;
+use rustc_ast::ptr::P;
 
 use crate::ast_manip::{GetSpan, MaybeGetNodeId};
 

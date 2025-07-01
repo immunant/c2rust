@@ -10,14 +10,14 @@ use log::{debug, trace, warn};
 use rustc_data_structures::sync::Lrc;
 use smallvec::SmallVec;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use syntax::ast::*;
-use syntax::attr;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::token::{Nonterminal, Token, TokenKind};
-use syntax::ptr::P;
-use syntax::source_map::{BytePos, Span};
-use syntax::tokenstream::{self, TokenStream, TokenTree};
-use syntax_pos::sym;
+use rustc_ast::*;
+use rustc_ast::attr;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::token::{Nonterminal, Token, TokenKind};
+use rustc_ast::ptr::P;
+use rustc_span::source_map::{BytePos, Span};
+use rustc_ast::tokenstream::{self, TokenStream, TokenTree};
+use rustc_span::sym;
 use smallvec::smallvec;
 
 use super::mac_table::{InvocId, InvocKind, MacTable};
@@ -68,7 +68,7 @@ impl<'a> CollapseMacros<'a> {
         for (span, nt) in nt_match::match_nonterminals(old, new) {
             trace!(
                 "  got {} at {:?}",
-                ::syntax::print::pprust::token_to_string(&Token {
+                rustc_ast_pretty::pprust::token_to_string(&Token {
                     kind: TokenKind::Interpolated(Lrc::new(nt.clone())),
                     span,
                 }),
@@ -669,7 +669,7 @@ pub fn collapse_macros(krate: &mut Crate, mac_table: &MacTable) -> Vec<(NodeId, 
         debug!(
             "new tokens for {:?} = {:?}",
             k,
-            ::syntax::print::pprust::tts_to_string(v.inner_tokens().clone())
+            rustc_ast_pretty::pprust::tts_to_string(v.inner_tokens().clone())
         );
     }
 

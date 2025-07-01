@@ -2,20 +2,20 @@ use log::trace;
 use std::collections::HashMap;
 
 use rustc_target::spec::abi::Abi;
-use syntax::ast::*;
-use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::source_map::{Span, SyntaxContext};
-use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
-use syntax::ThinVec;
+use rustc_ast::*;
+use rustc_ast::token::{BinOpToken, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_span::source_map::{Span, SyntaxContext};
+use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
+use thin_vec::ThinVec;
 
 use std::fmt::Debug;
 use std::rc::Rc;
-use syntax::attr;
-use syntax::ptr::P;
-use syntax::source_map::Spanned;
-use syntax::visit::Visitor;
-use syntax_pos::Symbol;
+use rustc_ast::attr;
+use rustc_ast::ptr::P;
+use rustc_span::source_map::Spanned;
+use rustc_ast::visit::Visitor;
+use rustc_span::Symbol;
 
 use crate::ast_manip::Visit;
 use crate::ast_manip::{GetNodeId, GetSpan};

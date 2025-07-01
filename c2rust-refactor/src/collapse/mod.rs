@@ -15,10 +15,10 @@
 //! processed during macro expansion, which includes regular macros, proc macros (`format!`, etc.),
 //! certain attributes (`#[derive]`, `#[cfg]`), and `std`/prelude injection.
 use std::collections::HashMap;
-use syntax::ast::*;
-use syntax::attr;
-use syntax::source_map::Span;
-use syntax_pos::sym;
+use rustc_ast::*;
+use rustc_ast::attr;
+use rustc_span::source_map::Span;
+use rustc_span::sym;
 
 mod cfg_attr;
 mod deleted;

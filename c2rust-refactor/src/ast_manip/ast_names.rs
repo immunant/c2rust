@@ -1,9 +1,9 @@
-use syntax::ast::*;
-use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::ptr::P;
-use syntax::source_map::Spanned;
-use syntax::tokenstream::{DelimSpan, TokenTree};
+use rustc_ast::*;
+use rustc_ast::token::{BinOpToken, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::ptr::P;
+use rustc_span::source_map::Spanned;
+use rustc_ast::tokenstream::{DelimSpan, TokenTree};
 
 pub trait AstName {
     fn ast_name(&self) -> String;

@@ -1,17 +1,17 @@
 //! Functions for building AST representations of higher-level values.
 use c2rust_ast_builder::mk;
-use rustc::hir;
-use rustc::hir::def::DefKind;
-use rustc::hir::def_id::{DefId, LOCAL_CRATE};
-use rustc::hir::map::definitions::DefPathData;
-use rustc::hir::map::Map as HirMap;
-use rustc::hir::Node;
-use rustc::ty::subst::Subst;
-use rustc::ty::{self, DefIdTree, GenericParamDefKind, TyCtxt};
-use syntax::ast::*;
-use syntax::ptr::P;
-use syntax::source_map::DUMMY_SP;
-use syntax::symbol::kw;
+use rustc_middle::hir;
+use rustc_hir::def::DefKind;
+use rustc_hir::def_id::{DefId, LOCAL_CRATE};
+use rustc_hir::map::definitions::DefPathData;
+use rustc_hir::map::Map as HirMap;
+use rustc_hir::Node;
+use rustc_middle::ty::subst::Subst;
+use rustc_middle::ty::{self, DefIdTree, GenericParamDefKind, TyCtxt};
+use rustc_ast::*;
+use rustc_ast::ptr::P;
+use rustc_span::source_map::DUMMY_SP;
+use rustc_span::symbol::kw;
 
 use std::collections::HashMap;
 
@@ -52,7 +52,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
     }
 
     fn reflect_ty_inner(&self, ty: ty::Ty<'tcx>, infer_args: bool) -> P<Ty> {
-        use rustc::ty::TyKind::*;
+        use rustc_middle::ty::TyKind::*;
         match ty.kind {
             Bool => mk().ident_ty("bool"),
             Char => mk().ident_ty("char"),
@@ -302,7 +302,7 @@ pub fn anon_const_to_expr(hir_map: &HirMap, def_id: DefId) -> P<Expr> {
 }
 
 fn hir_expr_to_expr(e: &hir::Expr) -> P<Expr> {
-    use rustc::hir::ExprKind::*;
+    use rustc_hir::ExprKind::*;
     match e.kind {
         Binary(op, ref a, ref b) => {
             let op: BinOpKind = op.node.into();
@@ -367,7 +367,7 @@ fn register_test_reflect(reg: &mut Registry) {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             let reflector = Reflector::new(cx.ty_ctxt());
             st.map_krate(|krate| {
-                use rustc::ty::TyKind;
+                use rustc_middle::ty::TyKind;
 
                 MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
                     let ty = cx.node_type(e.id);

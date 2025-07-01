@@ -2,13 +2,13 @@ use log::info;
 use std::collections::hash_map::{HashMap, Entry};
 use std::collections::HashSet;
 use std::mem;
-use rustc::hir::def_id::LOCAL_CRATE;
-use rustc::hir::HirId;
-use rustc::ty::{TyKind, ParamEnv};
-use syntax::ast::*;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
-use syntax::visit::{self, Visitor};
+use rustc_hir::def_id::LOCAL_CRATE;
+use rustc_hir::HirId;
+use rustc_middle::ty::{TyKind, ParamEnv};
+use rustc_ast::*;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::visit::{self, Visitor};
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::{MutVisit, MutVisitNodes, fold_blocks, visit_nodes};
@@ -536,7 +536,7 @@ fn expand_local_ptr_tys(st: &CommandState, cx: &RefactorCtxt) {
             let ty = reflect_tcx_ty(self.cx.ty_ctxt(), rty);
 
             // Assign ty if a raw ptr
-            if let syntax::ast::TyKind::Ptr(_) = ty.kind {
+            if let rustc_ast::ast::TyKind::Ptr(_) = ty.kind {
                 local.ty = Some(ty);
             }
 

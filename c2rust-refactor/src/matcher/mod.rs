@@ -36,20 +36,20 @@
 //!
 //!  * `cast!(x)`: Matches the `Expr`s `x`, `x as __t`, `x as __t as __u`, etc.
 
-use rustc::hir::def_id::DefId;
+use rustc_hir::def_id::DefId;
 use rustc::session::Session;
 use smallvec::SmallVec;
 use std::cmp;
 use std::result;
-use syntax::ast::{Block, Expr, ExprKind, Ident, Item, Label, Lit, MacArgs, Pat, Path, Stmt, Ty};
-use syntax::mut_visit::{self, MutVisitor};
+use rustc_ast::{Block, Expr, ExprKind, Ident, Item, Label, Lit, MacArgs, Pat, Path, Stmt, Ty};
+use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_parse::parser::{Parser, PathStyle};
-use syntax::token::{TokenKind};
+use rustc_ast::token::{TokenKind};
 use rustc_errors::PResult;
-use syntax::ptr::P;
-use syntax::symbol::Symbol;
-use syntax::tokenstream::TokenStream;
-use syntax_pos::FileName;
+use rustc_ast::ptr::P;
+use rustc_span::symbol::Symbol;
+use rustc_ast::tokenstream::TokenStream;
+use rustc_span::FileName;
 
 use crate::ast_manip::util::PatternSymbol;
 use crate::ast_manip::{remove_paren, GetNodeId, MutVisit};

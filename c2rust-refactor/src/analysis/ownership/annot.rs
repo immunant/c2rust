@@ -7,11 +7,11 @@ use std::str::FromStr;
 
 use arena::SyncDroplessArena;
 use log::{debug, Level, log_enabled};
-use rustc::hir::def_id::DefId;
+use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
-use syntax::ast;
-use syntax::symbol::Symbol;
-use syntax::visit::{self, Visitor};
+use rustc_ast::ast;
+use rustc_span::symbol::Symbol;
+use rustc_ast::visit::{self, Visitor};
 
 use crate::ast_manip::Visit;
 use crate::command::CommandState;

@@ -1,17 +1,17 @@
 use log::{debug, info, trace};
 use std::collections::{HashMap, HashSet};
 use std::ops::DerefMut;
-use rustc::hir;
-use rustc::hir::def_id::DefId;
-use rustc::ty::{self, TyKind, TyCtxt, ParamEnv};
-use syntax::ast::*;
-use syntax::mut_visit::{self, MutVisitor};
+use rustc_middle::hir;
+use rustc_hir::def_id::DefId;
+use rustc_middle::ty::{self, TyKind, TyCtxt, ParamEnv};
+use rustc_ast::*;
+use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_errors::PResult;
 use rustc_parse::parser::Parser;
-use syntax::token::{TokenKind, BinOpToken};
-use syntax::print::pprust;
-use syntax::ptr::P;
-use syntax_pos::Span;
+use rustc_ast::token::{TokenKind, BinOpToken};
+use rustc_ast::print::pprust;
+use rustc_ast::ptr::P;
+use rustc_span::Span;
 use smallvec::{smallvec, SmallVec};
 
 use c2rust_ast_builder::{mk, IntoSymbol};
@@ -1030,8 +1030,8 @@ impl<'tcx> TypeExpectation<'tcx> {
 impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
     /// Determine if `from` can cast be cast to `to` according to rust-rfc 0401.
     fn can_cast(&self, from: ty::Ty<'tcx>, to: ty::Ty<'tcx>, parent: DefId) -> bool {
-        use rustc::ty::TyKind::*;
-        use rustc::ty::TypeAndMut;
+        use rustc_middle::ty::TyKind::*;
+        use rustc_middle::ty::TypeAndMut;
 
         // coercion-cast
         if can_coerce(from, to, self.cx.ty_ctxt()) {
@@ -1358,7 +1358,7 @@ fn can_coerce<'a, 'tcx>(
     to_ty: ty::Ty<'tcx>,
     tcx: TyCtxt<'tcx>,
 ) -> bool {
-    use rustc::ty::TyKind::*;
+    use rustc_middle::ty::TyKind::*;
 
     // We won't necessarily have matching regions if we created new expressions
     // during retyping, so we should strip those. This also handles arrays with

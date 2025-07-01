@@ -7,11 +7,11 @@ use std::sync::{Arc, Mutex};
 
 use json::{self, JsonValue};
 use log::info;
-use syntax::ast::*;
-use syntax::source_map::{FileLoader, SourceFile, SourceMap};
-use syntax::source_map::{Span, DUMMY_SP};
-use syntax::symbol::Symbol;
-use syntax_pos::hygiene::SyntaxContext;
+use rustc_ast::*;
+use rustc_span::source_map::{FileLoader, SourceFile, SourceMap};
+use rustc_span::source_map::{Span, DUMMY_SP};
+use rustc_span::symbol::Symbol;
+use rustc_span::hygiene::SyntaxContext;
 
 use crate::rewrite::{self, TextRewrite};
 
