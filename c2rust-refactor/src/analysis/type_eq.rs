@@ -922,8 +922,8 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
 
         // Unify the return type annotation with the body expr type and the signature return type.
         let out_lty = match decl.output {
-            FunctionRetTy::Return(ref ty) => self.ty_lty(ty),
-            FunctionRetTy::DefaultReturn(_) => self.prim_lty("()"),
+            FnRetTy::Return(ref ty) => self.ty_lty(ty),
+            FnRetTy::DefaultReturn(_) => self.prim_lty("()"),
         };
         self.ltt.unify(out_lty, self.expr_lty(&body.value));
         self.ltt.unify(out_lty, sig.output);
@@ -950,8 +950,8 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 }
 
                 let out_lty = match decl.output {
-                    FunctionRetTy::Return(ref ty) => self.ty_lty(ty),
-                    FunctionRetTy::DefaultReturn(_) => self.prim_lty("()"),
+                    FnRetTy::Return(ref ty) => self.ty_lty(ty),
+                    FnRetTy::DefaultReturn(_) => self.prim_lty("()"),
                 };
                 self.ltt.unify(out_lty, sig.output);
             }
