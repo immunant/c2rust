@@ -65,7 +65,7 @@ where
     /// (The structures may not match if the `ast::Ty` refers to a type alias which has been
     /// expanded, for example - then `ast_ty` looks like `Alias` while `ty` is `Foo<Bar, Baz>`.)
     fn record_ty(&mut self, ty: S::Type, ast_ty: &Ty) {
-        use rustc_middle::ty::TyKind::*;
+        use rustc_type_ir::sty::TyKind::*;
 
         (self.callback)(&mut self.source, ast_ty, ty);
 

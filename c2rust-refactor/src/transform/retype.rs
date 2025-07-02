@@ -1030,7 +1030,7 @@ impl<'tcx> TypeExpectation<'tcx> {
 impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
     /// Determine if `from` can cast be cast to `to` according to rust-rfc 0401.
     fn can_cast(&self, from: ty::Ty<'tcx>, to: ty::Ty<'tcx>, parent: DefId) -> bool {
-        use rustc_middle::ty::TyKind::*;
+        use rustc_type_ir::sty::TyKind::*;
         use rustc_middle::ty::TypeAndMut;
 
         // coercion-cast
@@ -1358,7 +1358,7 @@ fn can_coerce<'a, 'tcx>(
     to_ty: ty::Ty<'tcx>,
     tcx: TyCtxt<'tcx>,
 ) -> bool {
-    use rustc_middle::ty::TyKind::*;
+    use rustc_type_ir::sty::TyKind::*;
 
     // We won't necessarily have matching regions if we created new expressions
     // during retyping, so we should strip those. This also handles arrays with
