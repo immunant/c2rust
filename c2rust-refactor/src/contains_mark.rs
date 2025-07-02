@@ -5,7 +5,7 @@ use rustc_ast::visit::{self, Visitor};
 
 use crate::ast_manip::Visit;
 use crate::command::CommandState;
-use c2rust_ast_builder::IntoSymbol;
+use crate::ast_builder::IntoSymbol;
 
 struct ContainsMarkVisitor<'a> {
     st: &'a CommandState,

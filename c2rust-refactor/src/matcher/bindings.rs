@@ -11,7 +11,7 @@ use rustc_span::symbol::Symbol;
 use rustc_ast::tokenstream::{Cursor, TokenStream, TokenStreamBuilder, TokenTree};
 
 use crate::ast_manip::AstEquiv;
-use c2rust_ast_builder::IntoSymbol;
+use crate::ast_builder::IntoSymbol;
 
 /// A set of binding types, mapping names to binding types.
 #[derive(Clone, Debug)]

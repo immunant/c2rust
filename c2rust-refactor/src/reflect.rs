@@ -1,5 +1,5 @@
 //! Functions for building AST representations of higher-level values.
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 use rustc_middle::hir;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LOCAL_CRATE};
