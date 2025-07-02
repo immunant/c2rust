@@ -10,7 +10,7 @@ use rustc_ast::ptr::P;
 use rustc_span::symbol::Symbol;
 use smallvec::{smallvec, SmallVec};
 
-use c2rust_ast_builder::{mk, Make, IntoSymbol};
+use crate::ast_builder::{mk, Make, IntoSymbol};
 use crate::ast_manip::{FlatMapNodes, MutVisit, AstEquiv};
 use crate::command::{CommandState, Registry};
 use crate::driver::{self, Phase};
