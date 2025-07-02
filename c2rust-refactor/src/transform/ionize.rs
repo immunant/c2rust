@@ -1,5 +1,5 @@
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::TyKind;
+use rustc_type_ir::sty::TyKind;
 use std::collections::HashSet;
 use std::fmt::Display;
 use rustc_ast::*;

@@ -2,7 +2,7 @@
 use log::info;
 use rustc_middle::hir;
 use rustc_hir::def::{DefKind, Res};
-use rustc_middle::ty::TyKind;
+use rustc_type_ir::sty::TyKind;
 use std::str::FromStr;
 use rustc_ast::ast;
 use rustc_ast::*;

@@ -4,6 +4,7 @@
 //! in the same arena as the underlying `Ty`s.
 use arena::SyncDroplessArena;
 use rustc_middle::ty::{Ty, TyKind};
+use rustc_type_ir::sty::TyKind as IrTyKind;
 use std::fmt;
 use std::marker::PhantomData;
 
@@ -90,43 +91,43 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
         ty: Ty<'tcx>,
         f: &mut F,
     ) -> LabeledTy<'lty, 'tcx, L> {
-        use rustc_middle::ty::TyKind::*;
         let label = f(ty);
         match ty.kind {
             // Types with no arguments
-            Bool | Char | Int(_) | Uint(_) | Float(_) | Str | Foreign(_) | Never => {
+            IrTyKind::Bool | IrTyKind::Char | IrTyKind::Int(_) | IrTyKind::Uint(_)
+            | IrTyKind::Float(_) | IrTyKind::Str | IrTyKind::Foreign(_) | IrTyKind::Never => {
                 self.mk(ty, &[], label)
             }
 
             // Types with arguments
-            Adt(_, substs) => {
+            IrTyKind::Adt(_, substs) => {
                 let args = substs.types().map(|t| self.label(t, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Array(elem, _) => {
+            IrTyKind::Array(elem, _) => {
                 let args = [self.label(elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Slice(elem) => {
+            IrTyKind::Slice(elem) => {
                 let args = [self.label(elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            RawPtr(mty) => {
+            IrTyKind::RawPtr(mty) => {
                 let args = [self.label(mty.ty, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Ref(_, mty, _) => {
+            IrTyKind::Ref(_, mty, _) => {
                 let args = [self.label(mty, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            FnDef(_, substs) => {
+            IrTyKind::FnDef(_, substs) => {
                 let args = substs
                     .types()
                     .map(|ty| self.label(ty, f))
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            FnPtr(ref sig) => {
+            IrTyKind::FnPtr(ref sig) => {
                 let args = sig
                     .skip_binder()
                     .inputs_and_output
@@ -135,7 +136,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Tuple(ref elems) => {
+            IrTyKind::Tuple(ref elems) => {
                 let args = elems
                     .types()
                     .map(|ty| self.label(ty, f))
@@ -144,18 +145,18 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
             }
 
             // Types that aren't actually supported by this code yet
-            Dynamic(..)
-            | Closure(..)
-            | Generator(..)
-            | GeneratorWitness(..)
-            | Projection(..)
-            | UnnormalizedProjection(..)
-            | Opaque(..)
-            | Param(..)
-            | Bound(..)
-            | Placeholder(..)
-            | Infer(..)
-            | Error => self.mk(ty, &[], label),
+            IrTyKind::Dynamic(..)
+            | IrTyKind::Closure(..)
+            | IrTyKind::Generator(..)
+            | IrTyKind::GeneratorWitness(..)
+            | IrTyKind::Projection(..)
+            | IrTyKind::UnnormalizedProjection(..)
+            | IrTyKind::Opaque(..)
+            | IrTyKind::Param(..)
+            | IrTyKind::Bound(..)
+            | IrTyKind::Placeholder(..)
+            | IrTyKind::Infer(..)
+            | IrTyKind::Error => self.mk(ty, &[], label),
         }
     }
 

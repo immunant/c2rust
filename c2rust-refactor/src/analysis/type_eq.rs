@@ -49,6 +49,7 @@ use rustc_middle::ty::adjustment::{Adjust, PointerCast};
 use rustc_middle::ty::{self, TyCtxt, TypeckTables};
 // use rustc_ast::abi::Abi;
 use rustc_target::spec::abi::Abi;
+use rustc_type_ir::sty::TyKind as IrTyKind;
 use rustc_ast::ast;
 use rustc_ast::NodeId;
 use rustc_span::source_map::Span;
@@ -488,10 +489,9 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     // Helpers for extracting information from function types.
 
     fn fn_num_inputs(&self, lty: LTy<'lty, 'tcx>) -> usize {
-        use rustc_middle::ty::TyKind::*;
         match lty.ty.kind {
-            FnDef(id, _) => self.def_sig(id).inputs.len(),
-            FnPtr(_) => lty.args.len() - 1,
+            IrTyKind::FnDef(id, _) => self.def_sig(id).inputs.len(),
+            IrTyKind::FnPtr(_) => lty.args.len() - 1,
             // TODO: Handle Closure.  This should be similar to FnDef, but the substs are a bit
             // more complicated.
             _ => panic!("fn_num_inputs: not a fn type"),
@@ -500,15 +500,14 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     /// Get the input types out of a `FnPtr` or `FnDef` `LTy`.
     fn fn_input(&self, lty: LTy<'lty, 'tcx>, idx: usize) -> LTy<'lty, 'tcx> {
-        use rustc_middle::ty::TyKind::*;
         match lty.ty.kind {
-            FnDef(id, _) => {
+            IrTyKind::FnDef(id, _) => {
                 // For a `FnDef`, retrieve the `LFnSig` for the given `DefId` and apply the
                 // labeled substs recorded in `LTy.args`.
                 let sig = self.def_sig(id);
                 self.ltt.subst(sig.inputs[idx], &lty.args)
             }
-            FnPtr(_) => {
+            IrTyKind::FnPtr(_) => {
                 // For a `FnPtr`, `lty.args` records the labeled input and output types.
                 &lty.args[idx]
             }
@@ -519,23 +518,21 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     /// Get the output type out of a `FnPtr` or `FnDef` `LTy`.
     fn fn_output(&self, lty: LTy<'lty, 'tcx>) -> LTy<'lty, 'tcx> {
-        use rustc_middle::ty::TyKind::*;
         match lty.ty.kind {
-            FnDef(id, _) => {
+            IrTyKind::FnDef(id, _) => {
                 let sig = self.def_sig(id);
                 self.ltt.subst(sig.output, &lty.args)
             }
-            FnPtr(_) => &lty.args[lty.args.len() - 1],
+            IrTyKind::FnPtr(_) => &lty.args[lty.args.len() - 1],
             // TODO: Closure
             _ => panic!("fn_output: not a fn type"),
         }
     }
 
     fn fn_is_variadic(&self, lty: LTy<'lty, 'tcx>) -> bool {
-        use rustc_middle::ty::TyKind::*;
         match lty.ty.kind {
-            FnDef(id, _) => self.def_sig(id).c_variadic,
-            FnPtr(ty_sig) => ty_sig.skip_binder().c_variadic,
+            IrTyKind::FnDef(id, _) => self.def_sig(id).c_variadic,
+            IrTyKind::FnPtr(ty_sig) => ty_sig.skip_binder().c_variadic,
             // TODO: Closure
             _ => panic!("fn_is_variadic: not a fn type"),
         }

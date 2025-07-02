@@ -1,6 +1,6 @@
 use arena::SyncDroplessArena;
 use ena::unify as ut;
-use rustc_middle::{hir, ty};
+use rustc_middle::hir;
 use rustc_hir::def::Res;
 use rustc_data_structures::sync::Lrc;
 use rustc_ast::*;
@@ -9,6 +9,7 @@ use rustc_ast::ptr::P;
 use rustc_span::symbol::Symbol;
 use rustc_ast::visit::{self, Visitor};
 use rustc_span::Span;
+use rustc_type_ir::sty;
 
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
@@ -190,8 +191,8 @@ impl Transform for RemoveLiteralSuffixes {
                             // then we can remove the suffix, since those
                             // are the default inference types
                             match (needs_suffix, &ty.kind) {
-                                (false, ty::TyKind::Int(IntTy::I32)) |
-                                (false, ty::TyKind::Float(FloatTy::F64)) => {
+                                (false, sty::TyKind::Int(IntTy::I32)) |
+                                (false, sty::TyKind::Float(FloatTy::F64)) => {
                                     if let Some(new_lit) = remove_suffix(&lit) {
                                         *lit = new_lit;
                                     }
@@ -427,9 +428,9 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         };
 
         match ty.kind {
-            ty::TyKind::Int(_) |
-            ty::TyKind::Uint(_) |
-            ty::TyKind::Float(_) => {
+            sty::TyKind::Int(_) |
+            sty::TyKind::Uint(_) |
+            sty::TyKind::Float(_) => {
                 let source = if mach_actual {
                     LitTySource::Actual(ty)
                 } else {
@@ -438,7 +439,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.replace_with_leaf(new_node, source);
             }
 
-            ty::TyKind::Adt(ref adt_ref, ref substs)
+            sty::TyKind::Adt(ref adt_ref, ref substs)
             if adt_ref.is_box() || adt_ref.is_rc() || adt_ref.is_arc() => {
                 // Ignore the actual structure for these types, and just
                 // use the inner type as the single child
@@ -447,40 +448,40 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.replace_with_node(new_node, &[ty_kt]);
             }
 
-            ty::TyKind::Adt(ref adt_def, ref substs) => {
+            sty::TyKind::Adt(ref adt_def, ref substs) => {
                 let ch = adt_def.all_fields()
                     .map(|field| self.ty_to_key_tree_internal(field.ty(tcx, substs), mach_actual, seen))
                     .collect::<Vec<_>>();
                 self.replace_with_node(new_node, &ch);
             }
 
-            ty::TyKind::Str => {
+            sty::TyKind::Str => {
                 let u8_ty = tcx.mk_mach_uint(UintTy::U8);
                 let u8_kt = self.ty_to_key_tree_internal(u8_ty, true, seen);
                 self.replace_with_node(new_node, &[u8_kt]);
             }
 
-            ty::TyKind::Array(ty, _) |
-            ty::TyKind::Slice(ty) |
-            ty::TyKind::RawPtr(ty::TypeAndMut { ty, .. }) |
-            ty::TyKind::Ref(_, ty, _) => {
+            sty::TyKind::Array(ty, _) |
+            sty::TyKind::Slice(ty) |
+            sty::TyKind::RawPtr(ty::TypeAndMut { ty, .. }) |
+            sty::TyKind::Ref(_, ty, _) => {
                 let ty_kt = self.ty_to_key_tree_internal(ty, mach_actual, seen);
                 self.replace_with_node(new_node, &[ty_kt]);
             }
 
-            ty::TyKind::FnDef(def_id, _) => {
+            sty::TyKind::FnDef(def_id, _) => {
                 // Since we're using the original signature
                 // and not performing any substitutions,
                 // it's safe to include the machine types
                 fn_sig_to_key_tree(tcx.fn_sig(def_id), true);
             }
-            ty::TyKind::FnPtr(fn_sig) => {
+            sty::TyKind::FnPtr(fn_sig) => {
                 fn_sig_to_key_tree(fn_sig, mach_actual);
             }
 
             // TODO: Closure
 
-            ty::TyKind::Tuple(ref elems) => {
+            sty::TyKind::Tuple(ref elems) => {
                 let ch = elems.types()
                     .map(|ty| self.ty_to_key_tree_internal(ty, mach_actual, seen))
                     .collect::<Vec<_>>();
@@ -493,7 +494,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             // could cause compilation errors (especially for `self`), e.g.,
             // `1u32.wrapping_add(2)` can't ever be rewritten to
             // `1.wrapping_add(2)` since the latter fails to compile
-            ty::TyKind::Param(_) => {}
+            sty::TyKind::Param(_) => {}
 
             // All the others are irrelevant
             _ => {}
@@ -755,13 +756,13 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                     let ch = inner_key_tree.get().children();
                     match (ch, &struct_ty.kind) {
                         (None, _) => {}
-                        (Some(ch), ty::TyKind::Adt(def, _)) => {
+                        (Some(ch), sty::TyKind::Adt(def, _)) => {
                             let v = &def.non_enum_variant();
                             assert!(ch.len() == v.fields.len());
                             let idx = tcx.find_field_index(ident, v).unwrap();
                             self.unify_key_trees(kt, ch[idx]);
                         }
-                        (Some(ch), ty::TyKind::Tuple(ref tys)) => {
+                        (Some(ch), sty::TyKind::Tuple(ref tys)) => {
                             assert!(ch.len() == tys.len());
                             if let Ok(idx) = ident.as_str().parse::<usize>() {
                                 self.unify_key_trees(kt, ch[idx]);
@@ -779,7 +780,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // If the lhs type is array/slice/`str`, we can unify the result
                 // of the `ExprKind::Index` with the inner type of the base
                 if let Some(e_ty) = self.cx.opt_node_type(e.id) {
-                    use ty::TyKind::*;
+                    use sty::TyKind::*;
                     if let Array(..) | Slice(_) | Str = e_ty.kind {
                         if let Some(ch) = e_key_tree.get().children() {
                             assert!(ch.len() == 1);
