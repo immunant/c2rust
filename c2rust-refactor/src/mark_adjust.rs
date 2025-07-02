@@ -15,7 +15,7 @@ use crate::command::{DriverCommand, FuncCommand, RefactorState, Registry};
 use crate::driver::Phase;
 use crate::{expect, match_or};
 use crate::RefactorCtxt;
-use c2rust_ast_builder::IntoSymbol;
+use crate::ast_builder::IntoSymbol;
 
 /// Find all nodes that refer to marked nodes.
 struct MarkUseVisitor<'a, 'tcx: 'a> {

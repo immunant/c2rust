@@ -2,7 +2,7 @@ use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability};
 use rustc_ast::{Crate, Expr, ExprKind, Mutability, UnOp};
 use rustc_ast::ptr::P;
 
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 use crate::ast_manip::MutVisitNodes;
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;

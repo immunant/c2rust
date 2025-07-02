@@ -17,7 +17,7 @@ use crate::driver::Phase;
 use crate::pick_node::NodeKind;
 use crate::resolve;
 use crate::RefactorCtxt;
-use c2rust_ast_builder::IntoSymbol;
+use crate::ast_builder::IntoSymbol;
 
 pub use self::filter::ItemLikeKind;
 

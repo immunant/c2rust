@@ -15,7 +15,7 @@ use crate::match_or;
 use crate::matcher::{Bindings, BindingType, MatchCtxt, Subst, mut_visit_match_with};
 use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
-use c2rust_ast_builder::{mk, IntoSymbol};
+use crate::ast_builder::{mk, IntoSymbol};
 use crate::util::dataflow;
 use crate::RefactorCtxt;
 

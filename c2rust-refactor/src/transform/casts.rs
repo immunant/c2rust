@@ -10,7 +10,7 @@ use crate::driver::Phase;
 use crate::matcher::{mut_visit_match_with, replace_expr, MatchCtxt};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 
 #[cfg(test)]
 mod tests;

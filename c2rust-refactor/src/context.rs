@@ -22,7 +22,7 @@ use crate::command::{GenerationalTyCtxt, TyCtxtGeneration};
 use crate::ast_manip::util::{namespace, is_export_attr};
 use crate::{expect, match_or};
 use crate::reflect;
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 
 /// Driver context.  Contains all available analysis results as of the current compiler phase.
 ///

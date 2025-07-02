@@ -9,7 +9,7 @@ use rustc_middle::hir;
 use rustc_middle::ty::{self, TyCtxt, ParamEnv};
 use rustc_middle::ty::subst::InternalSubsts;
 
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 use crate::ast_manip::{visit_nodes};
 use crate::ast_manip::fn_edit::mut_visit_fns;
 use crate::command::{RefactorState, CommandState, Command, Registry, TypeckLoopResult};

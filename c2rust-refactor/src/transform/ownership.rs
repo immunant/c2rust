@@ -25,7 +25,7 @@ use crate::driver::{Phase};
 use crate::match_or;
 use crate::RefactorCtxt;
 use crate::type_map;
-use c2rust_ast_builder::{mk, IntoSymbol};
+use crate::ast_builder::{mk, IntoSymbol};
 
 pub fn register_commands(reg: &mut Registry) {
     reg.register("ownership_annotate", |args| {

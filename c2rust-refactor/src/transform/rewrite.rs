@@ -6,7 +6,7 @@ use crate::contains_mark::contains_mark;
 use crate::driver::Phase;
 use crate::matcher::{MatchCtxt, Subst, mut_visit_match_with};
 use crate::transform::Transform;
-use c2rust_ast_builder::IntoSymbol;
+use crate::ast_builder::IntoSymbol;
 use crate::RefactorCtxt;
 
 

@@ -39,7 +39,7 @@ use crate::rewrite;
 use crate::rewrite::files;
 use crate::span_fix;
 use crate::RefactorCtxt;
-use c2rust_ast_builder::IntoSymbol;
+use crate::ast_builder::IntoSymbol;
 
 /// Extra nodes that were parsed from strings while running a transformation pass.  During
 /// rewriting, we'd like to reuse the original strings for these, rather than pretty-printing them.
