@@ -135,7 +135,7 @@ impl<'a, 's> Visitor<'s> for MapAstInto<'a, 's> {
         visit::walk_block(self, x);
     }
 
-    fn visit_mac(&mut self, mac: &'s Mac) {
+    fn visit_mac_call(&mut self, mac: &'s MacCall) {
         visit::walk_mac(self, mac);
     }
 }
@@ -214,7 +214,7 @@ impl<'a, 's> Visitor<'s> for MapAstIntoUnified<'a, 's> {
         visit::walk_block(self, x);
     }
 
-    fn visit_mac(&mut self, mac: &'s Mac) {
+    fn visit_mac_call(&mut self, mac: &'s MacCall) {
         visit::walk_mac(self, mac);
     }
 }

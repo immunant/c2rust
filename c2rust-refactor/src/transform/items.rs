@@ -562,7 +562,7 @@ impl Transform for CreateItem {
                 mut_visit::noop_visit_block(b, self)
             }
 
-            fn visit_mac(&mut self, mac: &mut Mac) {
+            fn visit_mac_call(&mut self, mac: &mut MacCall) {
                 mut_visit::noop_visit_mac(mac, self)
             }
         }

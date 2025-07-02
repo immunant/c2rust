@@ -96,7 +96,7 @@ impl<'a> Visitor<'a> for PrintSpanVisitor<'a> {
         rustc_ast::visit::walk_item(self, x);
     }
 
-    fn visit_mac(&mut self, mac: &'a Mac) {
+    fn visit_mac_call(&mut self, mac: &'a MacCall) {
         rustc_ast::visit::walk_mac(self, mac);
     }
 }

@@ -192,7 +192,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                             restore_attrs(&mut new_attrs, attrs);
                             e.attrs = new_attrs.into();
                         }
-                        StmtKind::Mac(..) => {}
+                        StmtKind::MacCall(..) => {}
                     }
                     self.record_matched_ids(s.id, s.id);
                 }
@@ -343,7 +343,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
         mut_visit::noop_flat_map_foreign_item(fi, self)
     }
 
-    fn visit_mac(&mut self, mac: &mut Mac) {
+    fn visit_mac_call(&mut self, mac: &mut MacCall) {
         mut_visit::noop_visit_mac(mac, self)
     }
 }
@@ -554,7 +554,7 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
             if let Some(new_args) = self.new_args.get(&invoc_id).cloned() {
                 // NB: Don't walk, so we never run `self.new_id` on `e.id`.  matched_ids entries
                 // for macro invocations get handled by the CollapseMacros pass.
-                expect!([e.kind] ExprKind::Mac(ref mut mac) => *mac.args = new_args);
+                expect!([e.kind] ExprKind::MacCall(ref mut mac) => *mac.args = new_args);
             }
         }
         mut_visit::noop_visit_expr(e, self)
@@ -563,7 +563,7 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
     fn visit_pat(&mut self, p: &mut P<Pat>) {
         if let Some(invoc_id) = self.mac_table.get(p.id).map(|m| m.id) {
             if let Some(new_args) = self.new_args.get(&invoc_id).cloned() {
-                expect!([p.kind] PatKind::Mac(ref mut mac) => *mac.args = new_args);
+                expect!([p.kind] PatKind::MacCall(ref mut mac) => *mac.args = new_args);
             }
         }
         mut_visit::noop_visit_pat(p, self)
@@ -572,7 +572,7 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
     fn visit_ty(&mut self, t: &mut P<Ty>) {
         if let Some(invoc_id) = self.mac_table.get(t.id).map(|m| m.id) {
             if let Some(new_args) = self.new_args.get(&invoc_id).cloned() {
-                expect!([t.kind] TyKind::Mac(ref mut mac) => *mac.args = new_args);
+                expect!([t.kind] TyKind::MacCall(ref mut mac) => *mac.args = new_args);
             }
         }
         mut_visit::noop_visit_ty(t, self)
@@ -581,13 +581,13 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
     fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
         if let Some(invoc_id) = self.mac_table.get(s.id).map(|m| m.id) {
             if let Some(new_args) = self.new_args.get(&invoc_id).cloned() {
-                unpack!([s.kind] StmtKind::Mac(mac));
+                unpack!([s.kind] StmtKind::MacCall(mac));
                 let mac = mac.map(|(mut mac, style, attrs)| {
                     *mac.args = new_args;
                     (mac, style, attrs)
                 });
                 return smallvec![Stmt {
-                    kind: StmtKind::Mac(mac),
+                    kind: StmtKind::MacCall(mac),
                     ..s
                 }];
             }
@@ -599,7 +599,7 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
         if let Some(invoc_id) = self.mac_table.get(i.id).map(|m| m.id) {
             if let Some(new_args) = self.new_args.get(&invoc_id).cloned() {
                 return smallvec![i.map(|mut i| {
-                    expect!([i.kind] ItemKind::Mac(ref mut mac) => *mac.args = new_args);
+                    expect!([i.kind] ItemKind::MacCall(ref mut mac) => *mac.args = new_args);
                     i
                 })];
             }
@@ -640,7 +640,7 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
         mut_visit::noop_flat_map_foreign_item(fi, self)
     }
 
-    fn visit_mac(&mut self, mac: &mut Mac) {
+    fn visit_mac_call(&mut self, mac: &mut MacCall) {
         mut_visit::noop_visit_mac(mac, self)
     }
 

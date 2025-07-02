@@ -98,7 +98,7 @@ gen_visit_impls! {
         //) { ... }
         fn visit_label(&mut self, label: &'ast Label) { ... }
         fn visit_lifetime(&mut self, lifetime: &'ast Lifetime) { ... }
-        fn visit_mac(&mut self, mac: &'ast Mac) { ... }
+        fn visit_mac_call(&mut self, mac: &'ast MacCall) { ... }
         //fn visit_mac_def(&mut self, _mac: &'ast MacroDef, _id: NodeId) { ... }
         //fn visit_path(&mut self, path: &'ast Path, _id: NodeId) { ... }
         //fn visit_use_tree(&mut self, use_tree: &'ast UseTree, id: NodeId, _nested: bool) { ... }

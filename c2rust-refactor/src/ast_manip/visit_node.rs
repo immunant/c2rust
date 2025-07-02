@@ -40,7 +40,7 @@ macro_rules! gen_visit_node_impl {
                 $walk;
             }
 
-            fn visit_mac(&mut self, mac: &'ast Mac) {
+            fn visit_mac_call(&mut self, mac: &'ast MacCall) {
                 visit::walk_mac(self, mac);
             }
         }
@@ -57,7 +57,7 @@ macro_rules! gen_visit_node_impl {
                 ($slf.callback)($arg);
             }
 
-            fn visit_mac(&mut self, mac: &'ast Mac) {
+            fn visit_mac_call(&mut self, mac: &'ast MacCall) {
                 visit::walk_mac(self, mac);
             }
         }
