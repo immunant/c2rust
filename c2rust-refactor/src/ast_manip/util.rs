@@ -90,7 +90,7 @@ impl PatternSymbol for Ty {
     }
 }
 
-impl PatternSymbol for Mac {
+impl PatternSymbol for MacCall {
     fn pattern_symbol(&self) -> Option<Symbol> {
         match &*self.args {
             MacArgs::Empty => self.path.pattern_symbol(),
@@ -102,7 +102,7 @@ impl PatternSymbol for Mac {
 impl PatternSymbol for Item {
     fn pattern_symbol(&self) -> Option<Symbol> {
         match self.kind {
-            ItemKind::Mac(ref m) => m.pattern_symbol(),
+            ItemKind::MacCall(ref m) => m.pattern_symbol(),
             _ => None,
         }
     }
@@ -164,7 +164,7 @@ pub fn extend_span_attrs(mut s: Span, attrs: &[Attribute]) -> Span {
 }
 
 /// Get the name of a macro invocation.
-pub fn macro_name(mac: &Mac) -> Name {
+pub fn macro_name(mac: &MacCall) -> Name {
     let p = &mac.path;
     p.segments.last().unwrap().ident.name
 }
