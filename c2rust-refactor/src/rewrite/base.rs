@@ -23,7 +23,7 @@ use thin_vec::ThinVec;
 
 use diff;
 use log::{debug, info, warn};
-use rustc::session::Session;
+use rustc_session::Session;
 use std::fmt::Debug;
 use std::iter::Sum;
 use std::rc::Rc;
