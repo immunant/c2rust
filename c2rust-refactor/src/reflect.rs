@@ -52,14 +52,14 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
     }
 
     fn reflect_ty_inner(&self, ty: ty::Ty<'tcx>, infer_args: bool) -> P<Ty> {
-        use rustc_middle::ty::TyKind::*;
+        use rustc_type_ir::sty::TyKind;
         match ty.kind {
-            Bool => mk().ident_ty("bool"),
-            Char => mk().ident_ty("char"),
-            Int(ity) => mk().ident_ty(ity.name()),
-            Uint(uty) => mk().ident_ty(uty.name()),
-            Float(fty) => mk().ident_ty(fty.name()),
-            Adt(def, substs) => {
+            TyKind::Bool => mk().ident_ty("bool"),
+            TyKind::Char => mk().ident_ty("char"),
+            TyKind::Int(ity) => mk().ident_ty(ity.name()),
+            TyKind::Uint(uty) => mk().ident_ty(uty.name()),
+            TyKind::Float(fty) => mk().ident_ty(fty.name()),
+            TyKind::Adt(def, substs) => {
                 if infer_args {
                     let (qself, path) = self.reflect_def_path_inner(def.did, None);
                     mk().qpath_ty(qself, path)
@@ -69,22 +69,22 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                     mk().qpath_ty(qself, path)
                 }
             }
-            Foreign(did) => {
+            TyKind::Foreign(did) => {
                 let (qself, path) = self.reflect_def_path_inner(did, None);
                 mk().qpath_ty(qself, path)
             }
-            Str => mk().ident_ty("str"),
-            Array(ty, len) => mk().array_ty(
+            TyKind::Str => mk().ident_ty("str"),
+            TyKind::Array(ty, len) => mk().array_ty(
                 self.reflect_ty(ty),
                 mk().lit_expr(mk().int_lit(len.eval_usize(self.tcx, ty::ParamEnv::empty()) as u128, "usize")),
             ),
-            Slice(ty) => mk().slice_ty(self.reflect_ty(ty)),
-            RawPtr(mty) => mk()
+            TyKind::Slice(ty) => mk().slice_ty(self.reflect_ty(ty)),
+            TyKind::RawPtr(mty) => mk()
                 .set_mutbl(mty.mutbl)
                 .ptr_ty(self.reflect_ty(mty.ty)),
-            Ref(_, ty, m) => mk().set_mutbl(m).ref_ty(self.reflect_ty(ty)),
-            FnDef(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
-            FnPtr(poly_fn_sig) => if let Some(fn_sig) = poly_fn_sig.no_bound_vars() {
+            TyKind::Ref(_, ty, m) => mk().set_mutbl(m).ref_ty(self.reflect_ty(ty)),
+            TyKind::FnDef(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
+            TyKind::FnPtr(poly_fn_sig) => if let Some(fn_sig) = poly_fn_sig.no_bound_vars() {
                 let inputs = fn_sig.inputs().iter().map(|input| {
                     mk().arg(self.reflect_ty(input), mk().wild_pat())
                 }).collect();
@@ -96,16 +96,16 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
             } else {
                 mk().infer_ty()    // TODO higher-rank lifetimes (for<'a> fn(...) -> ...)
             },
-            Dynamic(_, _) => mk().infer_ty(), // TODO (dyn Trait)
-            Closure(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
-            Generator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
-            GeneratorWitness(_) => mk().infer_ty(), // unsupported (type cannot be named)
-            Never => mk().never_ty(),
-            Tuple(tys) => mk().tuple_ty(tys.types().map(|ty| self.reflect_ty(&ty)).collect()),
-            Projection(..) => mk().infer_ty(),             // TODO
-            UnnormalizedProjection(..) => mk().infer_ty(), // TODO
-            Opaque(..) => mk().infer_ty(),                 // TODO (impl Trait)
-            Param(param) => {
+            TyKind::Dynamic(_, _) => mk().infer_ty(), // TODO (dyn Trait)
+            TyKind::Closure(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
+            TyKind::Generator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
+            TyKind::GeneratorWitness(_) => mk().infer_ty(), // unsupported (type cannot be named)
+            TyKind::Never => mk().never_ty(),
+            TyKind::Tuple(tys) => mk().tuple_ty(tys.types().map(|ty| self.reflect_ty(&ty)).collect()),
+            TyKind::Projection(..) => mk().infer_ty(),             // TODO
+            TyKind::UnnormalizedProjection(..) => mk().infer_ty(), // TODO
+            TyKind::Opaque(..) => mk().infer_ty(),                 // TODO (impl Trait)
+            TyKind::Param(param) => {
                 if infer_args {
                     mk().infer_ty()
                 } else {
@@ -114,11 +114,11 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
             }
             // `Bound` is "used only when preparing a trait query", so hopefully we never actually
             // encounter one.
-            Bound(..) => mk().infer_ty(),
+            TyKind::Bound(..) => mk().infer_ty(),
             // No idea what `Placeholder` is, but it sounds like something rustc-internal.
-            Placeholder(..) => mk().infer_ty(),
-            Infer(_) => mk().infer_ty(),
-            Error => mk().infer_ty(), // unsupported
+            TyKind::Placeholder(..) => mk().infer_ty(),
+            TyKind::Infer(_) => mk().infer_ty(),
+            TyKind::Error => mk().infer_ty(), // unsupported
         }
     }
 
@@ -367,7 +367,7 @@ fn register_test_reflect(reg: &mut Registry) {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             let reflector = Reflector::new(cx.ty_ctxt());
             st.map_krate(|krate| {
-                use rustc_middle::ty::TyKind;
+                use rustc_type_ir::sty::TyKind;
 
                 MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
                     let ty = cx.node_type(e.id);
