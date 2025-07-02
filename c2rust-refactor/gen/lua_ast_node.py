@@ -71,10 +71,10 @@ def do_enum_variants(s, match_pats, emit_ldoc):
         yield '        %s => {' % fpat
         if v.is_tuple:
             for i, f in enumerate(v.fields):
-                yield '          table.set(%d, %s.clone().to_lua_ext(lua_ctx)?)?;' % (i + 1, f.name)
+                yield '          table.set(%d, r#%s.clone().to_lua_ext(lua_ctx)?)?;' % (i + 1, f.name)
         else:
             for f in v.fields:
-                yield '          table.set("%s", %s.clone().to_lua_ext(lua_ctx)?)?;' % (f.name, f.name)
+                yield '          table.set("%s", r#%s.clone().to_lua_ext(lua_ctx)?)?;' % (f.name, f.name)
         yield '        }'
     yield '      };'
     yield '      Ok(Value::Table(table))'
@@ -88,7 +88,7 @@ def do_enum_variants(s, match_pats, emit_ldoc):
         yield '    // @treturn LuaAstNode the child'
     yield do_child_method(s, match_pats[0], 'child',
         [], 'Ok(Value::Nil)', 'ref ',
-        lambda field: '%s.clone().to_lua_ext(lua_ctx),' % field.name)
+        lambda field: 'r#%s.clone().to_lua_ext(lua_ctx),' % field.name)
 
     # Emit `replace_child`
     if emit_ldoc:
@@ -98,7 +98,7 @@ def do_enum_variants(s, match_pats, emit_ldoc):
         yield '    // @param value the replacement value. Can be a LuaAstNode or a direct Lua representation'
     yield do_child_method(s, match_pats[1], 'replace_child',
         [('value', 'Value')], 'Ok(())', 'ref mut ',
-        lambda field: '{ *%s = FromLuaExt::from_lua_ext(value, lua_ctx)?; Ok(()) }' % field.name)
+        lambda field: '{ *r#%s = FromLuaExt::from_lua_ext(value, lua_ctx)?; Ok(()) }' % field.name)
 
 @linewise
 def do_one_impl(s, kind_map, boxed, emit_ldoc):
@@ -117,14 +117,14 @@ def do_one_impl(s, kind_map, boxed, emit_ldoc):
                 yield '    // @function get_%s' % f.name
                 yield '    // @treturn LuaAstNode the field'
             yield '    methods.add_method("get_%s", |lua_ctx, this, ()| {' % f.name
-            yield '      this.borrow().%s.clone().to_lua_ext(lua_ctx)' % f.name
+            yield '      this.borrow().r#%s.clone().to_lua_ext(lua_ctx)' % f.name
             yield '    });'
             if emit_ldoc:
                 yield '    /// Set the "%s" field of the current node to a new value' % f.name
                 yield '    // @function set_%s' % f.name
                 yield '    // @param value the replacement value. Can be a LuaAstNode or a direct Lua representation'
             yield '    methods.add_method("set_%s", |lua_ctx, this, (value,)| {' % f.name
-            yield '      this.borrow_mut().%s = FromLuaExt::from_lua_ext(value, lua_ctx)?;' % f.name
+            yield '      this.borrow_mut().r#%s = FromLuaExt::from_lua_ext(value, lua_ctx)?;' % f.name
             yield '      Ok(())'
             yield '    });'
 
