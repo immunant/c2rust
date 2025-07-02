@@ -90,43 +90,43 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
         ty: Ty<'tcx>,
         f: &mut F,
     ) -> LabeledTy<'lty, 'tcx, L> {
-        use rustc_middle::ty::TyKind::*;
+        use rustc_type_ir::sty::TyKind;
         let label = f(ty);
         match ty.kind {
             // Types with no arguments
-            Bool | Char | Int(_) | Uint(_) | Float(_) | Str | Foreign(_) | Never => {
+            TyKind::Bool | TyKind::Char | TyKind::Int(_) | TyKind::Uint(_) | TyKind::Float(_) | TyKind::Str | TyKind::Foreign(_) | TyKind::Never => {
                 self.mk(ty, &[], label)
             }
 
             // Types with arguments
-            Adt(_, substs) => {
+            TyKind::Adt(_, substs) => {
                 let args = substs.types().map(|t| self.label(t, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Array(elem, _) => {
+            TyKind::Array(elem, _) => {
                 let args = [self.label(elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Slice(elem) => {
+            TyKind::Slice(elem) => {
                 let args = [self.label(elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            RawPtr(mty) => {
+            TyKind::RawPtr(mty) => {
                 let args = [self.label(mty.ty, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Ref(_, mty, _) => {
+            TyKind::Ref(_, mty, _) => {
                 let args = [self.label(mty, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            FnDef(_, substs) => {
+            TyKind::FnDef(_, substs) => {
                 let args = substs
                     .types()
                     .map(|ty| self.label(ty, f))
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            FnPtr(ref sig) => {
+            TyKind::FnPtr(ref sig) => {
                 let args = sig
                     .skip_binder()
                     .inputs_and_output
@@ -135,7 +135,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Tuple(ref elems) => {
+            TyKind::Tuple(ref elems) => {
                 let args = elems
                     .types()
                     .map(|ty| self.label(ty, f))
@@ -144,18 +144,18 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
             }
 
             // Types that aren't actually supported by this code yet
-            Dynamic(..)
-            | Closure(..)
-            | Generator(..)
-            | GeneratorWitness(..)
-            | Projection(..)
-            | UnnormalizedProjection(..)
-            | Opaque(..)
-            | Param(..)
-            | Bound(..)
-            | Placeholder(..)
-            | Infer(..)
-            | Error => self.mk(ty, &[], label),
+            TyKind::Dynamic(..)
+            | TyKind::Closure(..)
+            | TyKind::Generator(..)
+            | TyKind::GeneratorWitness(..)
+            | TyKind::Projection(..)
+            | TyKind::UnnormalizedProjection(..)
+            | TyKind::Opaque(..)
+            | TyKind::Param(..)
+            | TyKind::Bound(..)
+            | TyKind::Placeholder(..)
+            | TyKind::Infer(..)
+            | TyKind::Error => self.mk(ty, &[], label),
         }
     }
 

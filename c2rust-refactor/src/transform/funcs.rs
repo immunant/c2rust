@@ -1,7 +1,7 @@
 use log::{info, warn};
 use std::collections::{HashMap, HashSet};
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::TyKind;
+use rustc_type_ir::sty::TyKind;
 use rustc_ast::ast;
 use rustc_ast::*;
 use rustc_ast::attr;
