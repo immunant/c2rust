@@ -18,7 +18,7 @@
 //!    itemlike.  Use a zero-argument macro invocation `__x!()` instead.
 
 use smallvec::SmallVec;
-use rustc_ast::Mac;
+use rustc_ast::MacCall;
 use rustc_ast::{Expr, ExprKind, Ident, ImplItem, Item, Label, Pat, Path, Stmt, Ty};
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
@@ -170,7 +170,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
         }
     }
 
-    fn visit_mac(&mut self, mac: &mut Mac) {
+    fn visit_mac_call(&mut self, mac: &mut MacCall) {
         mut_visit::noop_visit_mac(mac, self)
     }
 }
