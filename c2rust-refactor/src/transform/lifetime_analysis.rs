@@ -437,7 +437,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
                     args.push({
                         let ret_expr = mk().path_expr(vec!["ret"]);
                         match &decl.output {
-                            ast::FunctionRetTy::Ty(ty) => self.add_ptr_cast(&ret_expr, ty),
+                            ast::FnRetTy::Ty(ty) => self.add_ptr_cast(&ret_expr, ty),
                             _ => ret_expr,
                         }
                     });

@@ -379,8 +379,8 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for ChildVisitor<F> {
             (self.func)(AnyNode::Param(arg));
         }
         match fd.output {
-            FunctionRetTy::Default(_) => {}
-            FunctionRetTy::Ty(ref t) => {
+            FnRetTy::Default(_) => {}
+            FnRetTy::Ty(ref t) => {
                 (self.func)(AnyNode::Ty(t));
             }
         }
