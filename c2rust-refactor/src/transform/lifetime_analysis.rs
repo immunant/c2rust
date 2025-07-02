@@ -27,7 +27,7 @@ use petgraph::visit::{IntoNodeIdentifiers};
 
 use c2rust_analysis_rt::{SourceSpan, SourcePos, SpanId};
 use c2rust_analysis_rt::events::{Pointer, Event, EventKind};
-use c2rust_ast_builder::{mk, Make};
+use crate::ast_builder::{mk, Make};
 
 use crate::ast_manip::{lr_expr, map_ast_unified, visit_nodes, AstEquiv, AstNodeRef, UnifiedAstMap};
 use crate::ast_manip::fn_edit::{visit_fns, FnLike};

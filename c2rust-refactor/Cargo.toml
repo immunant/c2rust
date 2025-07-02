@@ -17,7 +17,6 @@ json = "0.12"
 libc = "0.2"
 regex = "1.1"
 ena = "0.13"
-c2rust-ast-builder = { version = "0.20.0", path = "../c2rust-ast-builder" }
 c2rust-ast-printer = { version = "0.20.0", path = "../c2rust-ast-printer" }
 indexmap = { version = "1.0.1", features = ["serde-1"] }
 cargo = "0.62"
