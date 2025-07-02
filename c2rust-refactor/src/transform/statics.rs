@@ -4,7 +4,7 @@ use std::mem;
 use rustc_hir::def_id::DefId;
 use rustc_ast::*;
 use rustc_ast::ptr::P;
-use rustc_span::symbol::Symbol;
+use rustc_span::symbol::{Ident, Symbol};
 use smallvec::smallvec;
 
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, fold_modules};

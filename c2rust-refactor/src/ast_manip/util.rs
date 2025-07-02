@@ -4,7 +4,7 @@ use smallvec::SmallVec;
 use rustc_ast::*;
 use rustc_ast::ptr::P;
 use rustc_span::source_map::{SourceMap, Span, DUMMY_SP};
-use rustc_span::symbol::{kw, Symbol};
+use rustc_span::symbol::{Ident, kw, Symbol};
 use rustc_span::sym;
 use smallvec::smallvec;
 
