@@ -80,7 +80,7 @@
 <li><a href="#Class_FnDecl">Class FnDecl </a></li>
 <li><a href="#Class_FnHeader">Class FnHeader </a></li>
 <li><a href="#Class_Param">Class Param </a></li>
-<li><a href="#Class_FunctionRetTy">Class FunctionRetTy </a></li>
+<li><a href="#Class_FnRetTy">Class FnRetTy </a></li>
 <li><a href="#Class_Stmt">Class Stmt </a></li>
 <li><a href="#Class_StmtKind">Class StmtKind </a></li>
 <li><a href="#Class_Local">Class Local </a></li>
@@ -1668,22 +1668,22 @@
 	<td class="summary">Set the "is_placeholder" field of the current node to a new value</td>
 	</tr>
 </table>
-<h2><a href="#Class_FunctionRetTy">Class FunctionRetTy </a></h2>
+<h2><a href="#Class_FnRetTy">Class FnRetTy </a></h2>
 <table class="function_list">
 	<tr>
-	<td class="name" nowrap><a href="#FunctionRetTy:kind_name">FunctionRetTy:kind_name ()</a></td>
+	<td class="name" nowrap><a href="#FnRetTy:kind_name">FnRetTy:kind_name ()</a></td>
 	<td class="summary">Return the kind of the current node as a string</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#FunctionRetTy:children">FunctionRetTy:children ()</a></td>
+	<td class="name" nowrap><a href="#FnRetTy:children">FnRetTy:children ()</a></td>
 	<td class="summary">Return the children of the current node</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#FunctionRetTy:child">FunctionRetTy:child (idx)</a></td>
+	<td class="name" nowrap><a href="#FnRetTy:child">FnRetTy:child (idx)</a></td>
 	<td class="summary">Return a copy of the given child</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#FunctionRetTy:replace_child">FunctionRetTy:replace_child (idx, value)</a></td>
+	<td class="name" nowrap><a href="#FnRetTy:replace_child">FnRetTy:replace_child (idx, value)</a></td>
 	<td class="summary">Replace a child of the current node with a new value</td>
 	</tr>
 </table>
@@ -10995,17 +10995,17 @@
 
 </dd>
 </dl>
-    <h2 class="section-header has-description"><a name="Class_FunctionRetTy"></a>Class FunctionRetTy </h2>
+    <h2 class="section-header has-description"><a name="Class_FnRetTy"></a>Class FnRetTy </h2>
 
           <div class="section-description">
-          FunctionRetTy AST node handle
+          FnRetTy AST node handle
  This object is NOT thread-safe.  Do not use an object of this class from a
  thread that did not acquire it.
           </div>
     <dl class="function">
     <dt>
-    <a name = "FunctionRetTy:kind_name"></a>
-    <strong>FunctionRetTy:kind_name ()</strong>
+    <a name = "FnRetTy:kind_name"></a>
+    <strong>FnRetTy:kind_name ()</strong>
     </dt>
     <dd>
     Return the kind of the current node as a string
@@ -11024,8 +11024,8 @@
 
 </dd>
     <dt>
-    <a name = "FunctionRetTy:children"></a>
-    <strong>FunctionRetTy:children ()</strong>
+    <a name = "FnRetTy:children"></a>
+    <strong>FnRetTy:children ()</strong>
     </dt>
     <dd>
     Return the children of the current node
@@ -11044,8 +11044,8 @@
 
 </dd>
     <dt>
-    <a name = "FunctionRetTy:child"></a>
-    <strong>FunctionRetTy:child (idx)</strong>
+    <a name = "FnRetTy:child"></a>
+    <strong>FnRetTy:child (idx)</strong>
     </dt>
     <dd>
     Return a copy of the given child
@@ -11070,8 +11070,8 @@
 
 </dd>
     <dt>
-    <a name = "FunctionRetTy:replace_child"></a>
-    <strong>FunctionRetTy:replace_child (idx, value)</strong>
+    <a name = "FnRetTy:replace_child"></a>
+    <strong>FnRetTy:replace_child (idx, value)</strong>
     </dt>
     <dd>
     Replace a child of the current node with a new value
