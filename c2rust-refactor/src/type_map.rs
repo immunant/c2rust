@@ -102,7 +102,7 @@ where
             (&TyKind::CVarArgs, _) => {}
             (&TyKind::Infer, _) => {}
             (&TyKind::ImplicitSelf, _) => {}
-            (&TyKind::Mac(_), _) => {}
+            (&TyKind::MacCall(_), _) => {}
 
             (_, _) => {
                 panic!(
