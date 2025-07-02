@@ -15,7 +15,7 @@ use rustc_ast::*;
 use rustc_ast::attr::HasAttrs;
 use rustc_ast::util::comments::{Comment, CommentStyle};
 use rustc_ast::ptr::P;
-use rustc_span::symbol::kw;
+use rustc_span::symbol::{Ident, kw};
 use rustc_data_structures::map_in_place::MapInPlace;
 use rustc_span::{BytePos, DUMMY_SP};
 use smallvec::smallvec;

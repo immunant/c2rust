@@ -3,6 +3,7 @@ use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, T
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use rustc_ast::tokenstream::{DelimSpan, TokenTree};
 use rustc_ast::util::parser;
+use rustc_span::symbol::Ident;
 
 use crate::ast_manip::{GetNodeId, GetSpan};
 use crate::rewrite::base::{binop_left_prec, binop_right_prec, calc_outer_span, rewrite_seq};

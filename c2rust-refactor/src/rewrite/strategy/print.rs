@@ -26,7 +26,7 @@ use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use rustc_ast::ptr::P;
 use rustc_ast_pretty::pprust::{self, PrintState};
 use rustc_span::source_map::{BytePos, FileName, SourceFile, Span, Spanned};
-use rustc_span::symbol::Symbol;
+use rustc_span::symbol::{Ident, Symbol};
 use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use rustc_ast::util::parser;
 use thin_vec::ThinVec;

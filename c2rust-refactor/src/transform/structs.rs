@@ -1,6 +1,7 @@
 use rustc_middle::ty;
 use rustc_ast::*;
 use rustc_ast::ptr::P;
+use rustc_span::symbol::Ident;
 
 use smallvec::smallvec;
 
