@@ -391,8 +391,8 @@ pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
 
     visit_nodes(&*st.krate(), |i: &Item| {
         if st.marked(i.id, label) {
-            if let ItemKind::Mod(ref m) = i.kind {
-                for i in &m.items {
+            if let ItemKind::Mod(_, ModKind::Loaded(ref m_items, _, _)) = i.kind {
+                for i in &m_items {
                     if let VisibilityKind::Public = i.vis.node {
                         st.add_mark(i.id, label);
                     }
