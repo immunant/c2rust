@@ -1,5 +1,4 @@
 //! `Visit` trait for AST types that can be visited.
-use syntax;
 use rustc_ast::*;
 use rustc_ast::visit::Visitor;
 
