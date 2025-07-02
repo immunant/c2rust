@@ -3,11 +3,11 @@ use std::collections::hash_map::{Entry, HashMap};
 use std::convert::{TryFrom, TryInto};
 
 use derive_more::{From, TryInto};
-use rustc_ast::{Expr, Ident, Item, Lit, Pat, Path, Stmt, Ty};
+use rustc_ast::{Expr, Item, Lit, Pat, Path, Stmt, Ty};
 use rustc_ast::token::{Token, TokenKind, LitKind as TokenLitKind};
 use rustc_ast::ptr::P;
 use rustc_span::source_map::DUMMY_SP;
-use rustc_span::symbol::Symbol;
+use rustc_span::symbol::{Ident, Symbol};
 use rustc_ast::tokenstream::{Cursor, TokenStream, TokenStreamBuilder, TokenTree};
 
 use crate::ast_manip::AstEquiv;
