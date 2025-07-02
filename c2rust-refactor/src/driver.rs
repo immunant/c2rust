@@ -3,8 +3,8 @@
 
 use rustc_middle::dep_graph::DepGraph;
 use rustc_hir::map as hir_map;
+use rustc_lint::LintStore;
 use rustc_middle::hir;
-use rustc_middle::lint::{self, LintStore};
 use rustc_session::config::Options as SessionOptions;
 use rustc_session::config::{Input, OutputFilenames};
 use rustc_session::{self, DiagnosticOutput, Session};
@@ -328,7 +328,7 @@ pub struct Compiler {
     output_dir: Option<PathBuf>,
     output_file: Option<PathBuf>,
     crate_name: Option<String>,
-    register_lints: Option<Box<dyn Fn(&Session, &mut lint::LintStore) + Send + Sync>>,
+    register_lints: Option<Box<dyn Fn(&Session, &mut LintStore) + Send + Sync>>,
     override_queries:
         Option<fn(&Session, &mut ty::query::Providers<'_>, &mut ty::query::Providers<'_>)>,
 }
