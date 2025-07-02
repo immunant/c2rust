@@ -13,7 +13,7 @@ use rustc_middle::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
 use rustc_errors::{DiagnosticBuilder, Level};
 use rustc_metadata::creader::CStore;
 use rustc_ast::{
-    self, Expr, ExprKind, ForeignItem, ForeignItemKind, FnDecl, FunctionRetTy, Item, ItemKind, NodeId, Path, QSelf, UseTreeKind, DUMMY_NODE_ID,
+    self, Expr, ExprKind, ForeignItem, ForeignItemKind, FnDecl, FnRetTy, Item, ItemKind, NodeId, Path, QSelf, UseTreeKind, DUMMY_NODE_ID,
 };
 use rustc_ast::ptr::P;
 
@@ -782,12 +782,12 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
         // closures, so the default return type is ()
         let unit_ty = mk().tuple_ty::<P<ast::Ty>>(vec![]);
         let ty1 = match &decl1.output {
-            FunctionRetTy::Default(..) => &unit_ty,
-            FunctionRetTy::Ty(ty) => &ty,
+            FnRetTy::Default(..) => &unit_ty,
+            FnRetTy::Ty(ty) => &ty,
         };
         let ty2 = match &decl2.output {
-            FunctionRetTy::Default(..) => &unit_ty,
-            FunctionRetTy::Ty(ty) => &ty,
+            FnRetTy::Default(..) => &unit_ty,
+            FnRetTy::Ty(ty) => &ty,
         };
 
         self.structural_eq_ast_tys(ty1, ty2)
