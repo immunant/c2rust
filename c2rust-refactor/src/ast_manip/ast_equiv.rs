@@ -6,6 +6,7 @@ use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, T
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use rustc_ast::ptr::P;
 use rustc_span::source_map::{Span, Spanned};
+use rustc_span::symbol::Ident;
 use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use thin_vec::ThinVec;
 use rustc_span::hygiene::SyntaxContext;

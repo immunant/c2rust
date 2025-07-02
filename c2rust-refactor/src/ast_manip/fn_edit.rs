@@ -6,6 +6,7 @@ use rustc_ast::ptr::P;
 use rustc_data_structures::map_in_place::MapInPlace;
 use rustc_ast::visit::{self, Visitor};
 use rustc_span::Span;
+use rustc_span::symbol::Ident;
 use smallvec::smallvec;
 
 use crate::ast_manip::{AstName, GetNodeId, GetSpan, MutVisit, Visit};

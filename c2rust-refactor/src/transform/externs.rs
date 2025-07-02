@@ -5,6 +5,7 @@ use rustc_hir::def_id::{DefId};
 use rustc_middle::ty::{Instance, TyCtxt, TyKind, Ty};
 use rustc_ast::*;
 use rustc_ast::ptr::P;
+use rustc_span::symbol::Ident;
 
 use crate::ast_builder::mk;
 use crate::ast_manip::{MutVisitNodes, visit_nodes};

@@ -5,6 +5,7 @@ use std::fmt::Display;
 use rustc_ast::*;
 use rustc_ast::mut_visit::MutVisitor;
 use rustc_ast::ptr::P;
+use rustc_span::symbol::Ident;
 use smallvec::smallvec;
 
 use crate::ast_builder::mk;
