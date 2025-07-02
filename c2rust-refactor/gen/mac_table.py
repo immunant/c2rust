@@ -2,8 +2,8 @@
 collapser's `MacTable`.  This is a basic recursive traversal on two ASTs
 (unexpanded and expanded), with a few special behaviors:
 
- * When the unexpanded AST is `Mac`, we call `record_one_macro` with the
-   unexpanded `Mac` node and the corresponding expanded node's `NodeId`.  This
+ * When the unexpanded AST is `MacCall`, we call `record_one_macro` with the
+   unexpanded `MacCall` node and the corresponding expanded node's `NodeId`.  This
    check happens at nodes marked `#[mac_table_record]`, which should be the
    node with the ID (`Expr`, not `ExprKind`) and should implement `MaybeInvoc`.
 

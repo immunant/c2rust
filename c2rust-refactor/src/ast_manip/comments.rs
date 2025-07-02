@@ -117,7 +117,7 @@ impl<'a> Visitor<'a> for CommentCollector<'a> {
     check_comment!(visit_stmt, Stmt, walk_stmt);
     check_comment!(visit_expr, Expr, walk_expr);
     check_comment!(visit_foreign_item, ForeignItem, walk_foreign_item);
-    fn visit_mac(&mut self, mac: &'a Mac) {
+    fn visit_mac_call(&mut self, mac: &'a MacCall) {
         walk_mac(self, mac);
     }
 }
