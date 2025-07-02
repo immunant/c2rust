@@ -197,7 +197,7 @@ impl<'s> RewriteCtxt<'s> {
             text_span_cache: HashMap::new(),
 
             fresh_start: DUMMY_SP,
-            expr_prec: ExprPrec::Normal(parser::PREC_RESET),
+            expr_prec: ExprPrec::Normal(i8::MIN),
             node_id_map,
         }
     }
