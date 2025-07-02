@@ -41,13 +41,13 @@ use rustc_session::Session;
 use smallvec::SmallVec;
 use std::cmp;
 use std::result;
-use rustc_ast::{Block, Expr, ExprKind, Ident, Item, Label, Lit, MacArgs, Pat, Path, Stmt, Ty};
+use rustc_ast::{Block, Expr, ExprKind, Item, Label, Lit, MacArgs, Pat, Path, Stmt, Ty};
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_parse::parser::{Parser, PathStyle};
 use rustc_ast::token::{TokenKind};
 use rustc_errors::PResult;
 use rustc_ast::ptr::P;
-use rustc_span::symbol::Symbol;
+use rustc_span::symbol::{Ident, Symbol};
 use rustc_ast::tokenstream::TokenStream;
 use rustc_span::FileName;
 
