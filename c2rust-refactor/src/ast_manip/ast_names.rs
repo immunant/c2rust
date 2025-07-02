@@ -1,5 +1,5 @@
 use rustc_ast::*;
-use rustc_ast::token::{BinOpToken, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use rustc_ast::ptr::P;
 use rustc_span::source_map::Spanned;
