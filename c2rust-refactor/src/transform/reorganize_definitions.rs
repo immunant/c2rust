@@ -147,10 +147,10 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
     /// Iterate through the Crate and enumerate potentential destination modules.
     fn find_destination_modules(&mut self, krate: &Crate) {
         visit_nodes(krate, |i: &Item| {
-            if let ItemKind::Mod(m) = &i.kind {
+            if let ItemKind::Mod(_, ModKind::Loaded(mod_items, _, _)) = &i.kind {
                 if !has_source_header(&i.attrs)
-                    && m.items.iter().any(|child| {
-                        if let ItemKind::Mod(_) = child.kind {
+                    && mod_items.iter().any(|child| {
+                        if let ItemKind::Mod(_, _) = child.kind {
                             false
                         } else {
                             true
@@ -240,10 +240,10 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
         // Decide which items we should keep in the header. This is currently
         // all functions, static globals, and any uses they reference.
-        fn keep_items(module: &Mod) -> HashSet<NodeId> {
+        fn keep_items(items: &[P<Item>]) -> HashSet<NodeId> {
             let mut keep_items = HashSet::new();
             let mut used_idents = HashSet::new();
-            for item in &module.items {
+            for item in &items {
                 match &item.kind {
                     ItemKind::Fn(_, _, body) => {
                         keep_items.insert(item.id);
@@ -268,7 +268,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             }
 
             // This assume the complex uses have been split apart already
-            for item in &module.items {
+            for item in &items {
                 if let ItemKind::Use(tree) = &item.kind {
                     if used_idents.contains(&tree.ident()) {
                         keep_items.insert(item.id);
@@ -283,18 +283,19 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
             if let Some((path, include_line)) = parse_source_header(&item.attrs) {
                 let header_item = item.clone();
-                if let ItemKind::Mod(module) = &mut item.kind {
+                // TODO: handle use's at the top of the crate
+                if let ItemKind::Mod(_, ModKind::Loaded(ref mut mod_items, _, _)) = &mut item.kind {
                     // Split complex uses before iterating over the items
-                    module.items.flat_map_in_place(|item| {
+                    mod_items.flat_map_in_place(|item| {
                         match &item.kind {
                             ItemKind::Use(tree) if is_nested(tree) => split_uses(item),
                             _ => smallvec![item],
                         }
                     });
 
-                    let needed_items = keep_items(&module);
+                    let needed_items = keep_items(&mod_items);
 
-                    module.items.retain(|item| {
+                    mod_items.retain(|item| {
                         if needed_items.contains(&item.id) {
                             return true;
                         }
@@ -323,7 +324,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         !inserted
                     });
 
-                    if module.items.is_empty() {
+                    if mod_items.is_empty() {
                         // Delete the header module
                         smallvec![]
                     } else {
@@ -520,9 +521,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
     /// module so that we don't override an existing item
     fn update_module_info_items(&mut self, krate: &Crate) {
         visit_nodes(krate, |item: &Item| {
-            if let ItemKind::Mod(module) = &item.kind {
+            if let ItemKind::Mod(_, ModKind::Loaded(mod_items, _, _)) = &item.kind {
                 if let Some(info) = self.modules.get_mut(&item.id) {
-                    for item in &module.items {
+                    for item in &mod_items {
                         if let ItemKind::ForeignMod(m) = &item.kind {
                             for item in &m.items {
                                 let ns = match &item.kind {
@@ -612,7 +613,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
         // Convert the module_items vector into a HeaderDeclarations struct for
         // each module
-        let mut module_items: IndexMap<NodeId, HeaderDeclarations> = module_items
+        let mut module_item_decls: IndexMap<NodeId, HeaderDeclarations> = module_items
             .into_iter()
             .map(|(module_id, items)| {
                 let mut decls = HeaderDeclarations::new(self.cx);
@@ -626,13 +627,13 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         // foreign item.
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
             let id = item.id;
-            if let ItemKind::Mod(module) = &mut item.kind {
-                if let Some(mut declarations) = module_items.remove(&id) {
+            if let ItemKind::Mod(_, ModKind::Loaded(mod_items, _, _)) = &mut item.kind {
+                if let Some(mut declarations) = module_item_decls.remove(&id) {
                     let module_info = &self.modules[&id];
 
                     // Remove extern declarations or imports of new items we are
                     // injecting
-                    module.items
+                    mod_items
                         .drain_filter(|item| {
                             if let ItemKind::ForeignMod(m) = &mut item.kind {
                                 let abi = m
@@ -664,8 +665,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         });
 
                     let new_items: Vec<P<Item>> = declarations.into_items(self.st, module_info);
-                    let old_items = mem::replace(&mut module.items, new_items);
-                    module.items.extend(old_items);
+                    let old_items = mem::replace(mod_items, new_items);
+                    mod_items.extend(old_items);
                 }
 
             }
@@ -677,14 +678,14 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         // will conflict.
         let inline = self.cx.is_executable();
         for mod_info in self.modules.values() {
-            if let Some(declarations) = module_items.remove(&mod_info.id) {
+            if let Some(declarations) = module_item_decls.remove(&mod_info.id) {
                 let new_items = declarations.into_items(self.st, mod_info);
                 if !new_items.is_empty() {
                     #[inline]
-                    fn match_mod_item(item: &mut P<Item>, ident: Ident) -> Option<&mut Mod> {
+                    fn match_mod_item(item: &mut P<Item>, ident: Ident) -> Option<&mut ModKind> {
                         if item.ident == ident {
                             match item.kind {
-                                ItemKind::Mod(ref mut m) => Some(m),
+                                ItemKind::Mod(_, ref mut m) => Some(m),
                                 _ => None
                             }
                         } else {
@@ -692,14 +693,14 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         }
                     }
 
-                    if let Some(existing_mod) = krate
+                    if let Some(ModKind::Loaded(ref mut mod_items, _, _)) = krate
                         .module
                         .items
                         .iter_mut()
                         .find_map(|item| match_mod_item(item, mod_info.unique_ident))
                     {
                         // FIXME: we should also check if items overlap
-                        existing_mod.items.extend(new_items.into_iter());
+                        mod_items.extend(new_items.into_iter());
                     } else {
                         let mut new_mod = mk().mod_(new_items);
                         new_mod.inline = inline;
@@ -829,9 +830,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         // Remove use statements that now refer to their self module.
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
             let mod_id = item.id;
-            if let ItemKind::Mod(m) = &mut item.kind {
+            if let ItemKind::Mod(_, ModKind::Loaded(mod_items, _, _)) = &mut item.kind {
                 // Add use statements for split namespace imports
-                m.items.flat_map_in_place(|item: P<Item>| -> SmallVec<[P<Item>; 1]> {
+                mod_items.flat_map_in_place(|item: P<Item>| -> SmallVec<[P<Item>; 1]> {
                     let mut items = smallvec![];
                     if let ItemKind::Use(_) = &item.kind {
                         if let Some((path, def_ids)) = multi_namespace_uses.get(&item.id) {
@@ -871,7 +872,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
                 // Mapping from ident to the module we are importing that ident from
                 let mut uses: PerNS<HashMap<Ident, NodeId>> = PerNS::default();
-                m.items.retain(|item| {
+                mod_items.retain(|item| {
                     if let ItemKind::Use(u) = &item.kind {
                         match u.kind {
                             // uses that rename need to be retained
@@ -991,13 +992,14 @@ impl ModuleInfo {
 
     /// Create a ModuleInfo from a module `Item`
     fn from_item(item: &Item, cx: &RefactorCtxt) -> Self {
-        let module = expect!([&item.kind] ItemKind::Mod(m) => m);
+        let module = expect!([&item.kind] ItemKind::Mod(_, m) => m);
+        let mod_items = expect!([&module] ModKind::Loaded(ref items, _, _) => items);
         let mut has_main = false;
         let mut header_lines: HashMap<Ident, usize> = HashMap::new();
         let mut headers = HashSet::new();
         let def_id = cx.node_def_id(item.id);
         let path = cx.def_path(def_id);
-        for i in &module.items {
+        for i in &mod_items {
             match &i.kind {
                 ItemKind::Fn(..) => {
                     if i.ident.as_str() == "main" {
