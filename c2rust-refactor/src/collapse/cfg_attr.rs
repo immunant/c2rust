@@ -38,7 +38,7 @@ macro_rules! collect_cfg_attrs {
                 }
             )*
 
-            fn visit_mac(&mut self, mac: &'ast Mac) {
+            fn visit_mac_call(&mut self, mac: &'ast MacCall) {
                 visit::walk_mac(self, mac)
             }
         }
@@ -129,7 +129,7 @@ impl MutVisitor for RestoreCfgAttrs {
         mut_visit::noop_visit_expr(e, self)
     }
 
-    fn visit_mac(&mut self, mac: &mut Mac) {
+    fn visit_mac_call(&mut self, mac: &mut MacCall) {
         mut_visit::noop_visit_mac(mac, self)
     }
 
