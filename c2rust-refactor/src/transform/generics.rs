@@ -10,7 +10,7 @@ use crate::driver::{parse_ty};
 use crate::path_edit::fold_resolved_paths_with_id;
 use crate::transform::Transform;
 use crate::RefactorCtxt;
-use c2rust_ast_builder::{mk, IntoSymbol};
+use crate::ast_builder::{mk, IntoSymbol};
 
 
 /// # `generalize_items` Command
