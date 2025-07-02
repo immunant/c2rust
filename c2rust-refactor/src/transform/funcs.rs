@@ -8,6 +8,7 @@ use rustc_ast::attr;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_span::sym;
+use rustc_span::symbol::Ident;
 use smallvec::{smallvec, SmallVec};
 
 use crate::ast_builder::{mk, IntoSymbol};

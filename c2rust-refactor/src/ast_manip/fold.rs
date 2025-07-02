@@ -4,6 +4,7 @@ use rustc_ast::mut_visit::*;
 use rustc_ast::token::{self, Token};
 use rustc_ast::ptr::P;
 use rustc_span::source_map::Span;
+use rustc_span::symbol::Ident;
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_data_structures::map_in_place::MapInPlace;
 
