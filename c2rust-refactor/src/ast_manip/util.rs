@@ -236,7 +236,7 @@ pub fn namespace(res: &def::Res) -> Option<Namespace> {
     use rustc_hir::def::DefKind::*;
     match res {
         Res::Def(kind, _) => match kind {
-            Mod | Struct | Union | Enum | Variant | Trait | OpaqueTy | TyAlias
+            Struct | Union | Enum | Variant | Trait | OpaqueTy | TyAlias
             | ForeignTy | TraitAlias | AssocTy | AssocOpaqueTy | TyParam => {
                 Some(Namespace::TypeNS)
             }

@@ -490,13 +490,13 @@ impl Transform for CreateItem {
         }
 
         impl<'a> CreateFolder<'a> {
-            fn handle_mod(&mut self, parent_id: NodeId, m: &mut Mod, skip_dummy: bool) {
-                let mut items = Vec::with_capacity(m.items.len());
+            fn handle_mod(&mut self, parent_id: NodeId, m_items: &mut Vec<Item>, skip_dummy: bool) {
+                let mut items = Vec::with_capacity(m_items.len());
 
                 // When true, insert before the next item that satisfies `skip_dummy`
                 let mut insert_inside = self.inside && self.st.marked(parent_id, self.mark);
 
-                for i in &m.items {
+                for i in &m_items {
                     if insert_inside {
                         // Special case for `inside` mode with the Crate marked.  We want to insert
                         // after the injected std and prelude items, because inserting before an
@@ -519,26 +519,20 @@ impl Transform for CreateItem {
                     items.extend(self.items.iter().cloned());
                 }
 
-                m.items = items;
+                *m_items = items;
             }
         }
 
         impl<'a> MutVisitor for CreateFolder<'a> {
             fn visit_crate(&mut self, c: &mut Crate) {
-                self.handle_mod(CRATE_NODE_ID, &mut c.module, true);
-
-                // We do this instead of noop_visit_crate, because
-                // noop_visit_crate makes up a dummy Item for the crate, causing
-                // us to try and insert into c.module a second time.  (We don't
-                // just omit fold_crate and rely on this dummy item because the
-                // dummy item has DUMMY_NODE_ID instead of CRATE_NODE_ID.)
-                mut_visit::noop_visit_mod(&mut c.module, self);
+                self.handle_mod(CRATE_NODE_ID, &mut c.items, true);
+                mut_visit::noop_visit_crate(c, self);
             }
 
             fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
                 let id = i.id;
-                if let ItemKind::Mod(m) = &mut i.kind {
-                    self.handle_mod(id, m, false);
+                if let ItemKind::Mod(_, ModKind::Loaded(items, ..)) = &mut i.kind {
+                    self.handle_mod(id, items, false);
                 }
                 mut_visit::noop_flat_map_item(i, self)
             }
@@ -592,9 +586,16 @@ impl Transform for DeleteItems {
         }
 
         impl<'a> MutVisitor for DeleteFolder<'a> {
-            fn visit_mod(&mut self, m: &mut Mod) {
-                m.items.retain(|i| !self.st.marked(i.id, self.mark));
-                mut_visit::noop_visit_mod(m, self)
+            fn visit_crate(&mut self, c: &mut Crate) {
+                c.items.retain(|i| !self.st.marked(i.id, self.mark));
+                mut_visit::noop_visit_crate(c, self);
+            }
+
+            fn visit_item_kind(&mut self, i: &mut ItemKind) {
+                if let ItemKind::Mod(_, ModKind::Loaded(items, ..)) = i {
+                    items.retain(|i| !self.st.marked(i.id, self.mark));
+                }
+                mut_visit::noop_visit_item_kind(i, self)
             }
 
             fn visit_block(&mut self, b: &mut P<Block>) {

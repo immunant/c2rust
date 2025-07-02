@@ -461,8 +461,9 @@ impl Transform for WrapExtern {
             dest_path = Some(cx.def_path(cx.node_def_id(i.id)));
 
             smallvec![i.map(|i| {
-                unpack!([i.kind] ItemKind::Mod(m));
-                let mut m = m;
+                unpack!([i.kind] ItemKind::Mod(unsafety, m_kind));
+                unpack!([m_kind] ModKind::Loaded(m_items, m_inline, m_spans));
+                let mut m_items = m_items;
 
                 for f in &fns {
                     let func_path = cx.def_path(cx.node_def_id(f.id));
@@ -498,12 +499,13 @@ impl Transform for WrapExtern {
                             mk().expr_stmt(mk().call_expr(
                                     mk().path_expr(func_path),
                                     arg_exprs))]);
-                    m.items.push(mk().pub_().unsafe_().fn_item(&f.ident, decl, body));
+                    m_items.push(mk().pub_().unsafe_().fn_item(&f.ident, decl, body));
 
                 }
 
+                let m_kind = ModKind::Loaded(m_items, m_inline, m_spans);
                 Item {
-                    kind: ItemKind::Mod(m),
+                    kind: ItemKind::Mod(unsafety, m_kind),
                     .. i
                 }
             })]
