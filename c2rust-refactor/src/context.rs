@@ -6,7 +6,7 @@ use rustc_hir::def::{DefKind, Namespace, Res};
 use rustc_hir::def_id::{CRATE_DEF_INDEX, DefId};
 use rustc_hir::map as hir_map;
 use rustc_hir::{self, Node, HirId};
-use rustc::session::Session;
+use rustc_session::Session;
 use rustc::session::config::CrateType;
 use rustc_middle::ty::subst::InternalSubsts;
 use rustc_middle::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};

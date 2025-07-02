@@ -1,6 +1,6 @@
 use log::debug;
 use regex::Regex;
-use rustc::session::Session;
+use rustc_session::Session;
 use std::mem;
 use std::str::FromStr;
 use std::vec;
