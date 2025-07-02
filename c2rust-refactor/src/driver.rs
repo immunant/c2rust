@@ -2,7 +2,7 @@
 //! `rustc_driver::run_compiler`.
 
 use rustc_middle::dep_graph::DepGraph;
-use rustc_hir::map as hir_map;
+use rustc_middle::hir::map as hir_map;
 use rustc_lint::LintStore;
 use rustc_middle::hir;
 use rustc_session::config::Options as SessionOptions;
