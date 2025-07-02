@@ -88,7 +88,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                 let inputs = fn_sig.inputs().iter().map(|input| {
                     mk().arg(self.reflect_ty(input), mk().wild_pat())
                 }).collect();
-                let output = FunctionRetTy::Ty(self.reflect_ty(fn_sig.output()));
+                let output = FnRetTy::Ty(self.reflect_ty(fn_sig.output()));
                 mk()
                     .unsafety(fn_sig.unsafety)
                     .extern_(fn_sig.abi)

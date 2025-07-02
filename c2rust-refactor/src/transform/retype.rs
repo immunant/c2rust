@@ -159,7 +159,7 @@ impl Transform for RetypeReturn {
             }
 
             // Change the return type annotation
-            fl.decl.output = FunctionRetTy::Ty(new_ty.clone());
+            fl.decl.output = FnRetTy::Ty(new_ty.clone());
 
             // Rewrite output expressions using `wrap`.
             fl.block.as_mut().map(|b| fold_output_exprs(b, true, |e| {
@@ -377,7 +377,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
                         }
                     }
 
-                    if let FunctionRetTy::Ty(ref mut ty) = fd.output {
+                    if let FnRetTy::Ty(ref mut ty) = fd.output {
                         let old_ty = ty.clone();
                         if (self.retype)(ty) {
                             self.changed_outputs.insert(i.id, (old_ty, ty.clone()));
@@ -856,7 +856,7 @@ impl<'a> MutVisitor for RetypePrepFolder<'a> {
             self.map_type(&mut arg.ty);
         }
         match output {
-            FunctionRetTy::Ty(ty) => self.map_type(ty),
+            FnRetTy::Ty(ty) => self.map_type(ty),
             _ => {}
         }
     }
