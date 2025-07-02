@@ -3,7 +3,7 @@
 use log::{info, warn};
 use rustc_middle::hir;
 use rustc_hir::def_id::LOCAL_CRATE;
-use rustc::session::{self, DiagnosticOutput, Session};
+use rustc_session::{self, DiagnosticOutput, Session};
 use rustc_middle::ty::TyCtxt;
 use rustc_data_structures::sync::Lrc;
 use rustc_interface::interface;
