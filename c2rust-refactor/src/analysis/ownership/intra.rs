@@ -2,7 +2,7 @@
 
 use log::{debug, Level, log_enabled};
 use rustc_hir::def_id::DefId;
-use rustc::mir::*;
+use rustc_middle::mir::*;
 use rustc_middle::ty::{Ty, TyKind};
 use rustc_index::vec::IndexVec;
 use rustc_target::abi::VariantIdx;

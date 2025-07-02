@@ -1,16 +1,15 @@
 //! Frontend logic for parsing and expanding ASTs.  This code largely mimics the behavior of
 //! `rustc_driver::run_compiler`.
 
-use rustc::dep_graph::DepGraph;
+use rustc_middle::dep_graph::DepGraph;
 use rustc_hir::map as hir_map;
 use rustc_middle::hir;
-use rustc::lint::{self, LintStore};
-use rustc::session::config::Options as SessionOptions;
-use rustc::session::config::{Input, OutputFilenames};
-use rustc::session::{self, DiagnosticOutput, Session};
+use rustc_middle::lint::{self, LintStore};
+use rustc_session::config::Options as SessionOptions;
+use rustc_session::config::{Input, OutputFilenames};
+use rustc_session::{self, DiagnosticOutput, Session};
 use rustc_middle::ty::steal::Steal;
 use rustc_middle::ty::{self, GlobalCtxt, ResolverOutputs};
-use rustc::util::common::ErrorReported;
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
 use rustc_data_structures::declare_box_region_type;
 use rustc_data_structures::sync::{Lock, Lrc};
@@ -138,7 +137,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
 //         let mut control = CompileController::basic();
 //         control.provide = Box::new(move |providers| {
 //             use rustc_hir::def_id::CrateNum;
-//             use rustc::middle::privacy::AccessLevels;
+//             use rustc_middle::privacy::AccessLevels;
 //             use rustc_data_structures::sync::Lrc;
 //             use rustc_privacy;
 
@@ -353,7 +352,8 @@ struct Queries<'tcx> {
 
 #[allow(dead_code)]
 struct Query<T> {
-    result: RefCell<Option<Result<T, ErrorReported>>>,
+    // TODO: fix the Err type
+    result: RefCell<Option<Result<T, ()>>>,
 }
 
 impl<T> Default for Query<T> {
