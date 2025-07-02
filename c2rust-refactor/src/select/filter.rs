@@ -195,7 +195,7 @@ impl ItemLikeKind {
             ItemKind::Trait(..) => ItemLikeKind::Trait,
             ItemKind::TraitAlias(..) => ItemLikeKind::TraitAlias,
             ItemKind::Impl(..) => ItemLikeKind::Impl,
-            ItemKind::Mac(..) => ItemLikeKind::Mac,
+            ItemKind::MacCall(..) => ItemLikeKind::Mac,
             ItemKind::MacroDef(..) => ItemLikeKind::MacroDef,
         }
     }
