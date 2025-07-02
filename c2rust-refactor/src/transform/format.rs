@@ -13,7 +13,7 @@ use rustc_ast::tokenstream::TokenTree;
 use rustc_span::{sym, Span};
 use smallvec::smallvec;
 
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, visit_nodes};
 use crate::command::{CommandState, Registry};
 use crate::expect;

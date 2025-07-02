@@ -58,7 +58,7 @@ use crate::driver::{self, emit_and_panic};
 use crate::match_or;
 use crate::reflect;
 use crate::RefactorCtxt;
-use c2rust_ast_builder::IntoSymbol;
+use crate::ast_builder::IntoSymbol;
 
 mod bindings;
 mod impls;
