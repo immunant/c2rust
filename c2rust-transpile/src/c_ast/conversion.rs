@@ -833,9 +833,9 @@ impl ConversionContext {
                 }
 
                 TypeTag::TagAtomicType => {
-                    let qt = from_value(ty_node.extras[0].clone()).expect("Inner type not found");
-                    let qt_new = self.visit_qualified_type(qt);
-                    let atomic_ty = CTypeKind::Atomic(qt_new);
+                    let qty = from_value(ty_node.extras[0].clone()).expect("Inner type not found");
+                    let qty_new = self.visit_qualified_type(qty);
+                    let atomic_ty = CTypeKind::Atomic(qty_new);
                     self.add_type(new_id, not_located(atomic_ty));
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }

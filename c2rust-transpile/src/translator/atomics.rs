@@ -20,10 +20,7 @@ impl<'c> Translation<'c> {
                 let decl = self.ast_context.get_decl(&decl_id).unwrap();
                 match decl.kind {
                     CDeclKind::EnumConstant { name: _, value: v } => match v {
-                        ConstIntExpr::I(i) => {
-                            assert!(0 <= i);
-                            Some(i as u64)
-                        }
+                        ConstIntExpr::I(i) => Some(i.try_into().unwrap()),
                         ConstIntExpr::U(u) => Some(u),
                     },
                     _ => unimplemented!(),
@@ -146,7 +143,7 @@ impl<'c> Translation<'c> {
 
             // NOTE: there is no corresponding __atomic_init builtin in clang
             "__c11_atomic_init" => {
-                let val = val1.expect(&format!("__atomic_init must have a val argument"));
+                let val = val1.expect("__atomic_init must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
                         let assignment = mk().assign_expr(
