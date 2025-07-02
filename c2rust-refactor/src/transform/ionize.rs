@@ -7,7 +7,7 @@ use rustc_ast::mut_visit::MutVisitor;
 use rustc_ast::ptr::P;
 use smallvec::smallvec;
 
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 use crate::ast_manip::{FlatMapNodes, MutVisit, visit_nodes};
 use crate::ast_manip::lr_expr::{self, fold_expr_with_context};
 use crate::command::{CommandState, Registry};

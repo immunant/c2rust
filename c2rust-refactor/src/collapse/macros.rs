@@ -5,7 +5,7 @@
 //! interesting (see `token_rewrite_map` for details).  Edges for different categories of nodes get
 //! added in different places: macro invocations in `CollapseMacros`, macro arguments in
 //! `token_rewrite_map`, and nodes outside of macros in `ReplaceTokens`.
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 use log::{debug, trace, warn};
 use rustc_data_structures::sync::Lrc;
 use smallvec::SmallVec;

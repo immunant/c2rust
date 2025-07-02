@@ -28,7 +28,7 @@ use crate::{expect, match_or};
 use crate::path_edit::fold_resolved_paths_with_id;
 use crate::RefactorCtxt;
 use crate::util::Lone;
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 use c2rust_ast_printer::pprust::{item_to_string, foreign_item_to_string};
 
 use super::externs;

@@ -14,7 +14,7 @@ use rustc_ast::ptr::P;
 use rustc_span::Span;
 use smallvec::{smallvec, SmallVec};
 
-use c2rust_ast_builder::{mk, IntoSymbol};
+use crate::ast_builder::{mk, IntoSymbol};
 use crate::ast_manip::{FlatMapNodes, MutVisit, MutVisitNodes, fold_output_exprs};
 use crate::ast_manip::fn_edit::{mut_visit_fns, visit_fns};
 use crate::ast_manip::lr_expr::{self, fold_expr_with_context, fold_exprs_with_context};

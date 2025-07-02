@@ -32,6 +32,7 @@ extern crate rustc_target;
 extern crate rustc_typeck;
 extern crate rustc_type_ir;
 
+mod ast_builder;
 mod macros;
 
 pub mod ast_manip;
@@ -81,7 +82,7 @@ use std::str::{self, FromStr};
 use std::sync::Arc;
 use rustc_ast::NodeId;
 
-use c2rust_ast_builder::IntoSymbol;
+use crate::ast_builder::IntoSymbol;
 
 pub use crate::context::RefactorCtxt;
 

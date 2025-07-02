@@ -29,7 +29,7 @@ use crate::interact::{plain_backend, vim8_backend};
 use crate::interact::{ToClient, ToServer};
 use crate::pick_node;
 use crate::RefactorCtxt;
-use c2rust_ast_builder::IntoSymbol;
+use crate::ast_builder::IntoSymbol;
 
 use super::MarkInfo;
 
