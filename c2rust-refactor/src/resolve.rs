@@ -1,8 +1,7 @@
 use crate::expect;
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::{DefId, CRATE_DEF_INDEX, LOCAL_CRATE};
-use rustc_hir::Node;
-use rustc_hir::{ForeignMod, Mod};
+use rustc_hir::{ForeignItemRef, Mod, Node};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::{Ident, Symbol};
 
@@ -15,8 +14,8 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res)>
         let item_did = tcx.hir().local_def_id(item.hir_id);
 
         match item.kind {
-            ForeignMod(ref fm) => {
-                push_hir_foreign_mod_children(tcx, fm, children);
+            ForeignMod { ref items, .. } => {
+                push_hir_foreign_mod_children(tcx, items, children);
             }
 
             ExternCrate(..) => {
@@ -45,9 +44,9 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res)>
     }
 }
 
-fn push_hir_foreign_mod_children(tcx: TyCtxt, fm: &ForeignMod, children: &mut Vec<(Symbol, Res)>) {
-    for fi in &fm.items {
-        let did = tcx.hir().local_def_id(fi.hir_id);
+fn push_hir_foreign_mod_children(tcx: TyCtxt, items: &[ForeignItemRef], children: &mut Vec<(Symbol, Res)>) {
+    for fi in &items {
+        let did = tcx.hir().local_def_id(fi.id.hir_id());
         if let Some(def) = tcx.def_kind(did) {
             children.push((fi.ident.name, Res::Def(def, did)));
         }
@@ -96,9 +95,9 @@ pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Res)> {
                 children
             }
 
-            ForeignMod(ref fm) => {
-                let mut children = Vec::with_capacity(fm.items.len());
-                push_hir_foreign_mod_children(tcx, fm, &mut children);
+            ForeignMod { ref items, .. } => {
+                let mut children = Vec::with_capacity(items.len());
+                push_hir_foreign_mod_children(tcx, items, &mut children);
                 children
             }
 
