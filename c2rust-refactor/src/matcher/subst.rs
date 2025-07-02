@@ -19,9 +19,10 @@
 
 use smallvec::SmallVec;
 use rustc_ast::MacCall;
-use rustc_ast::{Expr, ExprKind, Ident, ImplItem, Item, Label, Pat, Path, Stmt, Ty};
+use rustc_ast::{Expr, ExprKind, ImplItem, Item, Label, Pat, Path, Stmt, Ty};
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
+use rustc_span::symbol::Ident;
 use smallvec::smallvec;
 
 use crate::ast_manip::util::PatternSymbol;
