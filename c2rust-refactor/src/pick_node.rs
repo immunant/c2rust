@@ -2,7 +2,7 @@
 //!
 //! This is used in various parts of the frontend to set marks at specific locations.
 use log::info;
-use rustc::session::Session;
+use rustc_session::Session;
 use std::path::PathBuf;
 use std::str::FromStr;
 use rustc_ast::*;
