@@ -36,7 +36,6 @@ use rustc_ast::{
 use rustc_span::hygiene::SyntaxContext;
 use rustc_parse::parser::Parser;
 use rustc_ast::token::{self, TokenKind};
-use syntax;
 use rustc_errors::PResult;
 use rustc_ast::ptr::P;
 use rustc_span::source_map::SourceMap;
