@@ -37,7 +37,7 @@
 //!  * `cast!(x)`: Matches the `Expr`s `x`, `x as __t`, `x as __t as __u`, etc.
 
 use rustc_hir::def_id::DefId;
-use rustc::session::Session;
+use rustc_session::Session;
 use smallvec::SmallVec;
 use std::cmp;
 use std::result;

@@ -54,7 +54,7 @@
 //! happens: when `recursive` fails, `Rewrite::rewrite` will try the next strategy (such as
 //! `print`), which can perform rewrites to correct the error at this higher level.
 
-use rustc::session::Session;
+use rustc_session::Session;
 use std::collections::HashMap;
 use std::mem;
 use std::ops::{Deref, DerefMut};
