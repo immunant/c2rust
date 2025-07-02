@@ -6,7 +6,7 @@ use rustc_middle::ty::{Instance, TyCtxt, TyKind, Ty};
 use rustc_ast::*;
 use rustc_ast::ptr::P;
 
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 use crate::ast_manip::{MutVisitNodes, visit_nodes};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase};
