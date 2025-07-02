@@ -760,13 +760,13 @@ fn create_file_for_module(
 
 impl RewriteAt for Item {
     fn rewrite_at(&self, old_span: Span, mut rcx: RewriteCtxtRef) -> bool {
-        if let ItemKind::Mod(module) = &self.kind {
-            if !module.inline {
+        if let ItemKind::Mod(_, ModKind::Loaded(m_items, m_inline, m_spans)) = &self.kind {
+            if *m_inline == Inline::No {
                 // We need to print the `mod name;` in the parent and the module
                 // contents in its own file. If there are no items, delete the
                 // `mod name;`.
 
-                if module.items.is_empty() {
+                if m_items.is_empty() {
                     info!("DELETE {}", describe(rcx.session(), old_span));
                     rcx.record(TextRewrite::new(old_span, DUMMY_SP));
                     return true;
@@ -777,7 +777,7 @@ impl RewriteAt for Item {
                 // let old_span = rewind_span_over_whitespace(old_span, &rcx);
 
                 // Where should the module contents be printed?
-                let inner_span = if !is_rewritable(module.inner) {
+                let inner_span = if !is_rewritable(m_spans.inner_span) {
                     // Need to create a new file
                     let (sf, path_attr) = create_file_for_module(self, old_span, rcx.session());
                     if let Some(attr) = path_attr {
@@ -785,7 +785,7 @@ impl RewriteAt for Item {
                     }
                     Span::new(sf.start_pos, sf.end_pos, SyntaxContext::root())
                 } else {
-                    module.inner
+                    m_spans.inner_span
                 };
 
                 // Print the module (mod foo;) in the parent
@@ -804,7 +804,7 @@ impl RewriteAt for Item {
 
                 // Print the module items in the external file
                 let mut printed = pprust::to_string(|s| s.print_inner_attributes(&self.attrs));
-                for item in &module.items {
+                for item in m_items {
                     printed.push_str(&add_comments(item.to_string(), item, &rcx));
                 }
                 let reparsed = driver::parse_items(rcx.session(), &printed);
@@ -822,7 +822,7 @@ impl RewriteAt for Item {
                     reparsed_span,
                     self.get_adjustment(&rcx),
                 );
-                RecoverChildren::recover_children(&reparsed, &module.items, rcx.enter(&mut rw));
+                RecoverChildren::recover_children(&reparsed, &m_items, rcx.enter(&mut rw));
                 rcx.record(rw);
 
                 return true;
