@@ -26,7 +26,7 @@ impl MutVisitor for RemoveParen {
     }
 
     // Need a no-op implementation to avoid "fold_mac disabled by default" error.
-    fn visit_mac(&mut self, mac: &mut Mac) {
+    fn visit_mac_call(&mut self, mac: &mut MacCall) {
         mut_visit::noop_visit_mac(mac, self)
     }
 }

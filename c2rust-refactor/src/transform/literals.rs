@@ -1006,7 +1006,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             PatKind::Paren(ref pat) => return self.visit_pat_unify(pat, kt),
 
-            // TODO: handle `Mac`? Do we need to?
+            // TODO: handle `MacCall`? Do we need to?
 
             _ => visit::walk_pat(self, p)
         };
