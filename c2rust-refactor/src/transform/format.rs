@@ -101,7 +101,7 @@ fn build_format_macro(
     old_fmt_str_expr: Option<P<Expr>>,
     fmt_args: &[P<Expr>],
     span: Option<Span>,
-) -> Mac {
+) -> MacCall {
     let old_fmt_str_expr = old_fmt_str_expr.unwrap_or_else(|| fmt_args[0].clone());
 
     info!("  found fmt str {:?}", old_fmt_str_expr);

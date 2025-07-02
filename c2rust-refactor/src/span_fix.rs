@@ -147,7 +147,7 @@ impl MutVisitor for FixFormat {
         }
     }
 
-    fn visit_mac(&mut self, mac: &mut Mac) {
+    fn visit_mac_call(&mut self, mac: &mut MacCall) {
         mut_visit::noop_visit_mac(mac, self)
     }
 }
@@ -183,7 +183,7 @@ impl MutVisitor for FixAttrs {
         mut_visit::noop_flat_map_foreign_item(fi, self)
     }
 
-    fn visit_mac(&mut self, mac: &mut Mac) {
+    fn visit_mac_call(&mut self, mac: &mut MacCall) {
         mut_visit::noop_visit_mac(mac, self)
     }
 }

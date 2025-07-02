@@ -147,7 +147,7 @@ pub struct InvocId(pub u32);
 
 #[derive(Clone, Copy, Debug)]
 pub enum InvocKind<'ast> {
-    Mac(&'ast Mac),
+    Mac(&'ast MacCall),
     Attrs(&'ast [Attribute]),
     /// This is the generated item part of a `#[derive]`'s output.  The `InvocId` points to the
     /// originating `Attrs`.
@@ -393,7 +393,7 @@ fn is_derived<'a>(
                         Some(&i.attrs[..])
                     }
                     StmtKind::Expr(e) | StmtKind::Semi(e) => Some(&e.attrs[..]),
-                    StmtKind::Mac(..) => None,
+                    StmtKind::MacCall(..) => None,
                 },
                 MacNodeRef::Expr(e) => Some(&e.attrs[..]),
                 MacNodeRef::ImplItem(i) => Some(&i.attrs[..]),
@@ -522,7 +522,7 @@ trait MaybeInvoc {
 impl MaybeInvoc for Expr {
     fn as_invoc(&self) -> Option<InvocKind> {
         match self.kind {
-            ExprKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
+            ExprKind::MacCall(ref mac) => Some(InvocKind::Mac(mac)),
             _ if has_macro_attr(&self.attrs) => {
                 Some(InvocKind::Attrs(&self.attrs))
             }
@@ -534,7 +534,7 @@ impl MaybeInvoc for Expr {
 impl MaybeInvoc for Pat {
     fn as_invoc(&self) -> Option<InvocKind> {
         match self.kind {
-            PatKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
+            PatKind::MacCall(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
     }
@@ -543,7 +543,7 @@ impl MaybeInvoc for Pat {
 impl MaybeInvoc for Ty {
     fn as_invoc(&self) -> Option<InvocKind> {
         match self.kind {
-            TyKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
+            TyKind::MacCall(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
     }
@@ -552,7 +552,7 @@ impl MaybeInvoc for Ty {
 impl MaybeInvoc for Item {
     fn as_invoc(&self) -> Option<InvocKind> {
         match self.kind {
-            ItemKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
+            ItemKind::MacCall(ref mac) => Some(InvocKind::Mac(mac)),
             _ => {
                 if has_macro_attr(&self.attrs) {
                     Some(InvocKind::Attrs(&self.attrs))
@@ -600,7 +600,7 @@ impl MaybeInvoc for ForeignItem {
 impl MaybeInvoc for Stmt {
     fn as_invoc(&self) -> Option<InvocKind> {
         match &self.kind {
-            StmtKind::Mac(mac) => Some(InvocKind::Mac(&mac.0)),
+            StmtKind::MacCall(mac) => Some(InvocKind::Mac(&mac.0)),
             StmtKind::Local(l) if has_macro_attr(&l.attrs) => {
                 Some(InvocKind::Attrs(&l.attrs))
             }

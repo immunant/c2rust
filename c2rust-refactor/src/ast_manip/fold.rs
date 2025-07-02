@@ -244,7 +244,7 @@ pub trait MutVisitor: Sized {
         noop_visit_local(l, self);
     }
 
-    // fn visit_mac(&mut self, _mac: &mut Mac) {
+    // fn visit_mac_call(&mut self, _mac: &mut MacCall) {
     //     panic!("visit_mac disabled by default");
     //     // N.B., see note about macros above. If you really want a visitor that
     //     // works on macros, use this definition in your trait impl:

@@ -165,7 +165,7 @@ impl<'a, 'ast> Visitor<'ast> for MarkVisitor<'a> {
         visit::walk_struct_field(self, x);
     }
 
-    fn visit_mac(&mut self, x: &'ast Mac) {
+    fn visit_mac_call(&mut self, x: &'ast MacCall) {
         visit::walk_mac(self, x);
     }
 }

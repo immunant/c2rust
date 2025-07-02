@@ -183,7 +183,7 @@ impl<'a> Visitor<'a> for PickVisitor {
         }
     }
 
-    fn visit_mac(&mut self, mac: &'a Mac) {
+    fn visit_mac_call(&mut self, mac: &'a MacCall) {
         visit::walk_mac(self, mac);
     }
 }
