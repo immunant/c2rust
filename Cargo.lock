@@ -426,7 +426,6 @@ version = "0.21.0"
 dependencies = [
  "bincode",
  "c2rust-analysis-rt",
- "c2rust-ast-printer",
  "c2rust-macros",
  "cargo",
  "clap 2.34.0",

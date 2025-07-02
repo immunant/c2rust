@@ -24,6 +24,7 @@ use rustc_ast::util::comments::CommentStyle;
 use rustc_ast::token::{BinOpToken, Delimiter, Nonterminal, Token, TokenKind};
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use rustc_ast::ptr::P;
+use rustc_ast_pretty::pprust::{self, PrintState};
 use rustc_span::source_map::{BytePos, FileName, SourceFile, Span, Spanned};
 use rustc_span::symbol::Symbol;
 use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
@@ -31,7 +32,6 @@ use rustc_ast::util::parser;
 use thin_vec::ThinVec;
 use rustc_span::DUMMY_SP;
 
-use c2rust_ast_printer::pprust::{self, PrintState};
 use crate::ast_manip::NodeTable;
 use crate::ast_manip::util::extend_span_attrs;
 use crate::ast_manip::{AstDeref, GetSpan, MaybeGetNodeId};
