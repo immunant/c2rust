@@ -1,0 +1,46 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/atomics.rs
+input_file: c2rust-transpile/tests/snapshots/atomics.c
+---
+#![allow(
+    dead_code,
+    mutable_transmutes,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#![feature(core_intrinsics)]
+#[no_mangle]
+pub unsafe extern "C" fn c11_atomics(mut x: std::ffi::c_int) -> std::ffi::c_int {
+    *&mut x = 0 as std::ffi::c_int;
+    ::core::intrinsics::atomic_store_seqcst(&mut x, 1 as std::ffi::c_int);
+    ::core::intrinsics::atomic_load_seqcst(&mut x);
+    ::core::intrinsics::atomic_xadd_seqcst(&mut x, 2 as std::ffi::c_int);
+    ::core::intrinsics::atomic_xsub_seqcst(&mut x, 1 as std::ffi::c_int);
+    ::core::intrinsics::atomic_and_seqcst(&mut x, 0xf as std::ffi::c_int);
+    ::core::intrinsics::atomic_or_seqcst(&mut x, 0x10 as std::ffi::c_int);
+    ::core::intrinsics::atomic_nand_seqcst(&mut x, 0xff as std::ffi::c_int);
+    ::core::intrinsics::atomic_xchg_seqcst(&mut x, 42 as std::ffi::c_int);
+    let mut expected: std::ffi::c_int = 42 as std::ffi::c_int;
+    let mut desired: std::ffi::c_int = 100 as std::ffi::c_int;
+    let fresh0 = ::core::intrinsics::atomic_cxchg_seqcst_seqcst(
+        &mut x,
+        *&mut expected,
+        desired,
+    );
+    *&mut expected = fresh0.0;
+    fresh0.1;
+    expected = 100 as std::ffi::c_int;
+    desired = 200 as std::ffi::c_int;
+    let fresh1 = ::core::intrinsics::atomic_cxchgweak_seqcst_seqcst(
+        &mut x,
+        *&mut expected,
+        desired,
+    );
+    *&mut expected = fresh1.0;
+    fresh1.1;
+    return x;
+}
