@@ -10,7 +10,7 @@ use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::visit::{self, Visitor};
 
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 use crate::ast_manip::{MutVisit, MutVisitNodes, fold_blocks, visit_nodes};
 use crate::command::{CommandState, DriverCommand, Registry};
 use crate::driver::{Phase};

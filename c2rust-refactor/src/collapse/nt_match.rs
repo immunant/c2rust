@@ -8,7 +8,7 @@ use rustc_span::source_map::{Span, Spanned, SyntaxContext};
 use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use thin_vec::ThinVec;
 
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 use std::rc::Rc;
 use rustc_ast::ptr::P;
 
