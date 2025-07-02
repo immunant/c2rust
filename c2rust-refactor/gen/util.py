@@ -24,12 +24,12 @@ def wordwise(f):
 @comma_sep
 def struct_fields(fields, suffix, bind_mode):
     for f in fields:
-        yield '%s: %s%s%s' % (f.name, bind_mode, f.name, suffix)
+        yield 'r#%s: %s%s%s' % (f.name, bind_mode, f.name, suffix)
 
 @comma_sep
 def tuple_fields(fields, suffix, bind_mode):
     for f in fields:
-        yield '%s%s%s' % (bind_mode, f.name, suffix)
+        yield '%sr#%s%s' % (bind_mode, f.name, suffix)
 
 def struct_pattern(s, path, suffix='', bind_mode='ref '):
     if not s.is_tuple:
