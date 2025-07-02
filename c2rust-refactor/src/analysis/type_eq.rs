@@ -488,7 +488,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     // Helpers for extracting information from function types.
 
     fn fn_num_inputs(&self, lty: LTy<'lty, 'tcx>) -> usize {
-        use rustc_middle::ty::TyKind::*;
+        use rustc_type_ir::sty::TyKind::*;
         match lty.ty.kind {
             FnDef(id, _) => self.def_sig(id).inputs.len(),
             FnPtr(_) => lty.args.len() - 1,
@@ -500,7 +500,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     /// Get the input types out of a `FnPtr` or `FnDef` `LTy`.
     fn fn_input(&self, lty: LTy<'lty, 'tcx>, idx: usize) -> LTy<'lty, 'tcx> {
-        use rustc_middle::ty::TyKind::*;
+        use rustc_type_ir::sty::TyKind::*;
         match lty.ty.kind {
             FnDef(id, _) => {
                 // For a `FnDef`, retrieve the `LFnSig` for the given `DefId` and apply the
@@ -519,7 +519,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     /// Get the output type out of a `FnPtr` or `FnDef` `LTy`.
     fn fn_output(&self, lty: LTy<'lty, 'tcx>) -> LTy<'lty, 'tcx> {
-        use rustc_middle::ty::TyKind::*;
+        use rustc_type_ir::sty::TyKind::*;
         match lty.ty.kind {
             FnDef(id, _) => {
                 let sig = self.def_sig(id);
@@ -532,7 +532,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     }
 
     fn fn_is_variadic(&self, lty: LTy<'lty, 'tcx>) -> bool {
-        use rustc_middle::ty::TyKind::*;
+        use rustc_type_ir::sty::TyKind::*;
         match lty.ty.kind {
             FnDef(id, _) => self.def_sig(id).c_variadic,
             FnPtr(ty_sig) => ty_sig.skip_binder().c_variadic,
