@@ -118,6 +118,6 @@ gen_visit_impls! {
         //fn visit_tts(&mut self, tts: TokenStream) { ... }
         //fn visit_token(&mut self, _t: Token) { ... }
         fn visit_vis(&mut self, vis: &'ast Visibility) { ... }
-        fn visit_fn_ret_ty(&mut self, ret_ty: &'ast FunctionRetTy) { ... }
+        fn visit_fn_ret_ty(&mut self, ret_ty: &'ast FnRetTy) { ... }
     }
 }

@@ -115,10 +115,10 @@ where
         }
     }
 
-    fn record_function_ret_ty(&mut self, ty: S::Type, output: &FunctionRetTy) {
+    fn record_function_ret_ty(&mut self, ty: S::Type, output: &FnRetTy) {
         match *output {
-            FunctionRetTy::Default(_) => {}
-            FunctionRetTy::Ty(ref ast_ty) => self.record_ty(ty, ast_ty),
+            FnRetTy::Default(_) => {}
+            FnRetTy::Ty(ref ast_ty) => self.record_ty(ty, ast_ty),
         }
     }
 
