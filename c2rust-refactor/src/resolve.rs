@@ -4,8 +4,7 @@ use rustc_hir::def_id::{DefId, CRATE_DEF_INDEX, LOCAL_CRATE};
 use rustc_hir::Node;
 use rustc_hir::{ForeignMod, Mod};
 use rustc_middle::ty::TyCtxt;
-use rustc_ast::Ident;
-use rustc_span::symbol::Symbol;
+use rustc_span::symbol::{Ident, Symbol};
 
 fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res)>) {
     use rustc_hir::ItemKind::*;
