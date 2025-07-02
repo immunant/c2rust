@@ -117,7 +117,7 @@ These affect the behavior of generated `Recursive` impls.
 These affect the behavior of generated `Recursive` and `RecoverChildren` impls.
 
 - `#[prec_contains_expr]`: When entering a child of this node type, by default
-  set expr precedence to `RESET` (don't parenthesize).  The expr precedence can
+  set expr precedence to `i8::MIN` (don't parenthesize).  The expr precedence can
   be overridden using other `prec` attributes on specific fields.
 
 - `#[prec=name]`: When entering this child node, set expr precedence to
@@ -165,7 +165,7 @@ def prec_name_to_expr(name, inc):
 
 def field_prec_expr(f, first, suffix='1'):
     # First, figure out the "normal" precedence expression.
-    prec_val = 'parser::PREC_RESET'
+    prec_val = 'i8::MIN'
 
     prec = f.attrs.get('prec')
     if prec:
