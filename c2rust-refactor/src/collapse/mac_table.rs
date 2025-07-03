@@ -15,7 +15,7 @@ use std::rc::Rc;
 use rustc_ast::attr;
 use rustc_ast::ptr::P;
 use rustc_span::source_map::Spanned;
-use rustc_ast::visit::Visitor;
+use rustc_ast::visit::{AssocCtxt, Visitor};
 use rustc_span::Symbol;
 
 use crate::ast_manip::Visit;
@@ -31,8 +31,7 @@ pub enum MacNodeRef<'a> {
     Ty(&'a Ty),
 
     Item(&'a Item),
-    ImplItem(&'a ImplItem),
-    TraitItem(&'a TraitItem),
+    AssocItem(&'a AssocItem),
     ForeignItem(&'a ForeignItem),
 
     Stmt(&'a Stmt),
@@ -45,8 +44,7 @@ impl<'a> MacNodeRef<'a> {
             MacNodeRef::Pat(x) => x.id,
             MacNodeRef::Ty(x) => x.id,
             MacNodeRef::Item(x) => x.id,
-            MacNodeRef::ImplItem(x) => x.id,
-            MacNodeRef::TraitItem(x) => x.id,
+            MacNodeRef::AssocItem(x) => x.id,
             MacNodeRef::ForeignItem(x) => x.id,
             MacNodeRef::Stmt(x) => x.id,
         }
@@ -73,8 +71,7 @@ mac_node_ref_getters! {
     as_pat(Pat),
     as_ty(Ty),
     as_item(Item),
-    as_impl_item(ImplItem),
-    as_trait_item(TraitItem),
+    as_assoc_item(AssocItem),
     as_foreign_item(ForeignItem),
     as_stmt(Stmt),
 }
@@ -109,7 +106,7 @@ macro_rules! as_mac_node_ref_impls {
 
 as_mac_node_ref_impls! {
     Expr, Pat, Ty,
-    Item, ImplItem, TraitItem, ForeignItem,
+    Item, AssocItem, ForeignItem,
     Stmt,
 }
 
@@ -134,8 +131,8 @@ impl<'a> Visit for MacNodeRef<'a> {
             MacNodeRef::Pat(x) => v.visit_pat(x),
             MacNodeRef::Ty(x) => v.visit_ty(x),
             MacNodeRef::Item(x) => v.visit_item(x),
-            MacNodeRef::ImplItem(x) => v.visit_impl_item(x),
-            MacNodeRef::TraitItem(x) => v.visit_trait_item(x),
+            // TODO: do callees care if this is actually an AssocCtxt::Trait?
+            MacNodeRef::AssocItem(x) => v.visit_assoc_item(x, AssocCtxt::Impl),
             MacNodeRef::ForeignItem(x) => v.visit_foreign_item(x),
             MacNodeRef::Stmt(x) => v.visit_stmt(x),
         }
@@ -397,8 +394,7 @@ fn is_derived<'a>(
                     StmtKind::MacCall(..) => None,
                 },
                 MacNodeRef::Expr(e) => Some(&e.attrs[..]),
-                MacNodeRef::ImplItem(i) => Some(&i.attrs[..]),
-                MacNodeRef::TraitItem(i) => Some(&i.attrs[..]),
+                MacNodeRef::AssocItem(i) => Some(&i.attrs[..]),
                 _ => None,
             };
             if let Some(attrs) = attrs {
@@ -565,10 +561,10 @@ impl MaybeInvoc for Item {
     }
 }
 
-impl MaybeInvoc for ImplItem {
+impl MaybeInvoc for AssocItem {
     fn as_invoc(&self) -> Option<InvocKind> {
         match self.kind {
-            ImplItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
+            AssocItemKind::MacCall(ref mac) => Some(InvocKind::Mac(mac)),
             _ => {
                 if has_macro_attr(&self.attrs) {
                     Some(InvocKind::Attrs(&self.attrs))
@@ -576,15 +572,6 @@ impl MaybeInvoc for ImplItem {
                     None
                 }
             }
-        }
-    }
-}
-
-impl MaybeInvoc for TraitItem {
-    fn as_invoc(&self) -> Option<InvocKind> {
-        match self.kind {
-            TraitItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
-            _ => None,
         }
     }
 }

@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 use rustc_ast::*;
 use rustc_span::source_map::Span;
-use rustc_ast::visit::{self, FnKind, Visitor};
+use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
 
 use crate::command::CommandState;
 use crate::select::filter::{self, AnyNode};
@@ -63,27 +63,15 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
         });
     }
 
-    fn visit_trait_item(&mut self, x: &'ast TraitItem) {
-        if self.in_old && self.matches(AnyNode::TraitItem(x)) {
+    fn visit_assoc_item(&mut self, x: &'ast AssocItem, ctxt: AssocCtxt) {
+        if self.in_old && self.matches(AnyNode::from_assoc_item(x, ctxt)) {
             self.new.insert(x.id);
         }
         self.maybe_enter_old(x.id, |v| {
-            if let TraitItemKind::Method(ref sig, ..) = x.kind {
+            if let AssocItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
                 v.walk_args(&sig.decl.inputs);
             }
-            visit::walk_trait_item(v, x)
-        });
-    }
-
-    fn visit_impl_item(&mut self, x: &'ast ImplItem) {
-        if self.in_old && self.matches(AnyNode::ImplItem(x)) {
-            self.new.insert(x.id);
-        }
-        self.maybe_enter_old(x.id, |v| {
-            if let ImplItemKind::Method(ref sig, ..) = x.kind {
-                v.walk_args(&sig.decl.inputs);
-            }
-            visit::walk_impl_item(v, x)
+            visit::walk_assoc_item(v, x, ctxt)
         });
     }
 
@@ -213,27 +201,15 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
         });
     }
 
-    fn visit_trait_item(&mut self, x: &'ast TraitItem) {
-        if self.in_old && self.matches(AnyNode::TraitItem(x)) {
+    fn visit_assoc_item(&mut self, x: &'ast AssocItem, ctxt: AssocCtxt) {
+        if self.in_old && self.matches(AnyNode::from_assoc_item(x, ctxt)) {
             self.new.insert(x.id);
         }
         self.maybe_enter_old(x.id, |v| {
-            if let TraitItemKind::Method(ref sig, ..) = x.kind {
+            if let AssocItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
                 v.walk_args(&sig.decl.inputs);
             }
-            visit::walk_trait_item(v, x)
-        });
-    }
-
-    fn visit_impl_item(&mut self, x: &'ast ImplItem) {
-        if self.in_old && self.matches(AnyNode::ImplItem(x)) {
-            self.new.insert(x.id);
-        }
-        self.maybe_enter_old(x.id, |v| {
-            if let ImplItemKind::Method(ref sig, ..) = x.kind {
-                v.walk_args(&sig.decl.inputs);
-            }
-            visit::walk_impl_item(v, x)
+            visit::walk_assoc_item(v, x, ctxt)
         });
     }
 
@@ -338,24 +314,14 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
         visit::walk_item(self, x);
     }
 
-    fn visit_trait_item(&mut self, x: &'ast TraitItem) {
-        if self.old.contains(&x.id) && self.matches(AnyNode::TraitItem(x)) {
+    fn visit_assoc_item(&mut self, x: &'ast AssocItem, ctxt: AssocCtxt) {
+        if self.old.contains(&x.id) && self.matches(AnyNode::from_assoc_item(x, ctxt)) {
             self.new.insert(x.id);
         }
-        if let TraitItemKind::Method(ref sig, ..) = x.kind {
+        if let AssocItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
             self.walk_args(&sig.decl.inputs);
         }
-        visit::walk_trait_item(self, x);
-    }
-
-    fn visit_impl_item(&mut self, x: &'ast ImplItem) {
-        if self.old.contains(&x.id) && self.matches(AnyNode::ImplItem(x)) {
-            self.new.insert(x.id);
-        }
-        if let ImplItemKind::Method(ref sig, ..) = x.kind {
-            self.walk_args(&sig.decl.inputs);
-        }
-        visit::walk_impl_item(self, x);
+        visit::walk_assoc_item(self, x, ctxt);
     }
 
     fn visit_foreign_item(&mut self, x: &'ast ForeignItem) {
