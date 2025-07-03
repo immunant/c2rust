@@ -1,7 +1,6 @@
 use log::info;
 use std::collections::HashMap;
 use rustc_ast::*;
-use rustc_ast::attr::HasAttrs;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::visit::{self, Visitor};
