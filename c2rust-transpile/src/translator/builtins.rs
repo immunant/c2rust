@@ -357,6 +357,17 @@ impl<'c> Translation<'c> {
                 })
             }
 
+            "__builtin_ia32_pause" => {
+                let fn_name = "_mm_pause";
+                self.import_simd_function(fn_name)?;
+                let ident = mk().ident_expr(fn_name);
+                let call = mk().call_expr(ident, vec![]);
+                Ok(WithStmts::new(
+                    vec![mk().semi_stmt(call)],
+                    self.panic_or_err("No value for _mm_pause"),
+                ))
+            }
+
             // SIMD builtins:
             "__builtin_ia32_aeskeygenassist128" => {
                 self.convert_simd_builtin(ctx, "_mm_aeskeygenassist_si128", args)
@@ -375,16 +386,6 @@ impl<'c> Translation<'c> {
             "__builtin_ia32_shufpd" => self.convert_simd_builtin(ctx, "_mm_shuffle_pd", args),
             "__builtin_ia32_shufps256" => self.convert_simd_builtin(ctx, "_mm256_shuffle_ps", args),
             "__builtin_ia32_shufpd256" => self.convert_simd_builtin(ctx, "_mm256_shuffle_pd", args),
-            "__builtin_ia32_pause" => {
-                let fn_name = "_mm_pause";
-                self.import_simd_function(fn_name)?;
-                let ident = mk().ident_expr(fn_name);
-                let call = mk().call_expr(ident, vec![]);
-                Ok(WithStmts::new(
-                    vec![mk().semi_stmt(call)],
-                    self.panic_or_err("No value for _mm_pause"),
-                ))
-            }
             "__builtin_ia32_pshufd" => self.convert_simd_builtin(ctx, "_mm_shuffle_epi32", args),
             "__builtin_ia32_pshufhw" => self.convert_simd_builtin(ctx, "_mm_shufflehi_epi16", args),
             "__builtin_ia32_pshuflw" => self.convert_simd_builtin(ctx, "_mm_shufflelo_epi16", args),
