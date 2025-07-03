@@ -357,6 +357,23 @@ impl<'c> Translation<'c> {
                 })
             }
 
+            "__builtin_ia32_pause" | "__builtin_arm_yield" => {
+                // `spin_loop()` is implemented as `_mm_pause()` (the `pause` instruction) on `x86`/`x86_64`,
+                // but it's the safe and cross-platform version of it, so prefer it.
+                // On `arm`, it's implemented as `yield`, although on `aarch64`,
+                // it's implemented as `isb` instead as this is more efficient.
+                // See <https://github.com/rust-lang/rust/commit/c064b6560b7ce0adeb9bbf5d7dcf12b1acb0c807>.
+                // `core::arch::aarch64::__yield()` could be used instead,
+                // but it's unstable (`#![feature(stdarch_arm_hints)]`), so it's not ideal.
+                let spin_loop = mk().abs_path_expr(vec!["core", "hint", "spin_loop"]);
+                let call = mk().call_expr(spin_loop, vec![]);
+                self.convert_side_effects_expr(
+                    ctx,
+                    WithStmts::new_val(call),
+                    "Builtin is not supposed to be used",
+                )
+            }
+
             // SIMD builtins:
             "__builtin_ia32_aeskeygenassist128" => {
                 self.convert_simd_builtin(ctx, "_mm_aeskeygenassist_si128", args)
