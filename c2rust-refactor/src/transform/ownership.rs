@@ -8,7 +8,7 @@ use rustc_index::vec::IndexVec;
 use rustc_ast::*;
 use rustc_span::source_map::DUMMY_SP;
 use rustc_ast::mut_visit::{self, MutVisitor};
-use rustc_ast::token::{self, Token, TokenKind, Delimiter};
+use rustc_ast::token::{self, Token, TokenKind};
 use rustc_ast::ptr::P;
 use rustc_span::symbol::Symbol;
 use rustc_ast::tokenstream::{TokenTree, TokenStream, DelimSpan};
