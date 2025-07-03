@@ -1,5 +1,5 @@
 use log::info;
-use rustc_middle::hir;
+use rustc_hir as hir;
 use rustc_hir::def::Res;
 use rustc_middle::ty::{self, ParamEnv, TyCtxt};
 use smallvec::SmallVec;
