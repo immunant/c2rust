@@ -24,7 +24,7 @@ pub enum AnyNode<'ast> {
     Pat(&'ast Pat),
     Ty(&'ast Ty),
     Param(&'ast Param),
-    Field(&'ast StructField),
+    Field(&'ast FieldDef),
 }
 
 impl<'ast> AnyNode<'ast> {
@@ -386,7 +386,7 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for ChildVisitor<F> {
         }
     }
 
-    fn visit_struct_field(&mut self, x: &'ast StructField) {
+    fn visit_field_def(&mut self, x: &'ast FieldDef) {
         (self.func)(AnyNode::Field(x));
     }
 }
@@ -406,7 +406,7 @@ pub fn iter_children<F: FnMut(AnyNode)>(node: AnyNode, func: F) {
             v.visit_pat(&x.pat);
             v.visit_ty(&x.ty);
         }
-        AnyNode::Field(x) => visit::walk_struct_field(&mut v, x),
+        AnyNode::Field(x) => visit::walk_field_def(&mut v, x),
     }
 }
 
@@ -469,9 +469,9 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
         visit::walk_fn(self, kind, fd, span);
     }
 
-    fn visit_struct_field(&mut self, x: &'ast StructField) {
+    fn visit_field_def(&mut self, x: &'ast FieldDef) {
         (self.func)(AnyNode::Field(x));
-        visit::walk_struct_field(self, x);
+        visit::walk_field_def(self, x);
     }
 }
 
@@ -490,6 +490,6 @@ pub fn iter_descendants<F: FnMut(AnyNode)>(node: AnyNode, func: F) {
             v.visit_pat(&x.pat);
             v.visit_ty(&x.ty);
         }
-        AnyNode::Field(x) => visit::walk_struct_field(&mut v, x),
+        AnyNode::Field(x) => visit::walk_field_def(&mut v, x),
     }
 }
