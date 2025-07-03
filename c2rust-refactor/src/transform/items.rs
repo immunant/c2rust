@@ -210,7 +210,7 @@ impl Transform for ReplaceItems {
 
         // (1b) Impl items
         // TODO: Only inherent impls are supported for now.  May not work on trait impls.
-        FlatMapNodes::visit(krate, |i: ImplItem| {
+        FlatMapNodes::visit(krate, |i: AssocItem| {
             if st.marked(i.id, "repl") {
                 if repl_id.is_none() {
                     repl_id = Some(cx.node_def_id(i.id));
@@ -287,7 +287,7 @@ impl Transform for SetVisibility {
             vis: Visibility,
 
             /// `true` when the closest enclosing item is a trait impl (not an inherent impl).
-            /// This matters for the ImplItem case because trait impl items don't have visibility.
+            /// This matters for the AssocItem case because trait impl items don't have visibility.
             in_trait_impl: bool,
         }
 
@@ -309,15 +309,15 @@ impl Transform for SetVisibility {
                 r
             }
 
-            fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+            fn flat_map_impl_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
                 if self.in_trait_impl {
-                    return mut_visit::noop_flat_map_impl_item(i, self);
+                    return mut_visit::noop_flat_map_assoc_item(i, self);
                 }
 
                 if self.st.marked(i.id, "target") {
                     i.vis = self.vis.clone();
                 }
-                mut_visit::noop_flat_map_impl_item(i, self)
+                mut_visit::noop_flat_map_assoc_item(i, self)
             }
 
             fn flat_map_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
@@ -420,26 +420,15 @@ impl Transform for SetUnsafety {
                 mut_visit::noop_flat_map_item(i, self)
             }
 
-            fn flat_map_trait_item(&mut self, mut i: TraitItem) -> SmallVec<[TraitItem; 1]> {
+            fn flat_map_trait_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
                 if self.st.marked(i.id, "target") {
                     match i.kind {
-                        TraitItemKind::Method(ref mut sig, _) =>
+                        AssocItemKind::Fn(box Fn { ref mut sig, .. }) =>
                             sig.header.unsafety = self.unsafety,
                         _ => {},
                     }
                 }
-                mut_visit::noop_flat_map_trait_item(i, self)
-            }
-
-            fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
-                if self.st.marked(i.id, "target") {
-                    match i.kind {
-                        ImplItemKind::Method(ref mut sig, _) =>
-                            sig.header.unsafety = self.unsafety,
-                        _ => {},
-                    }
-                }
-                mut_visit::noop_flat_map_impl_item(i, self)
+                mut_visit::noop_flat_map_assoc_item(i, self)
             }
         }
 
