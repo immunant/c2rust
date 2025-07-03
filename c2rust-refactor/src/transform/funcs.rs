@@ -207,14 +207,14 @@ impl Transform for ToMethod {
                 let mut items = items;
                 let fns = fns.take().unwrap();
                 items.extend(fns.into_iter().map(|f| {
-                    ImplItem {
+                    AssocItem {
                         id: DUMMY_NODE_ID,
                         ident: f.item.ident,
                         vis: f.item.vis.clone(),
                         defaultness: Defaultness::Final,
                         attrs: f.item.attrs.clone(),
                         generics: f.generics,
-                        kind: ImplItemKind::Method(f.sig, f.block),
+                        kind: AssocItemKind::Method(f.sig, f.block),
                         span: f.item.span,
                         tokens: None,
                     }
@@ -333,17 +333,17 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
         mut_visit::noop_flat_map_item(i, self)
     }
 
-    fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+    fn flat_map_impl_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         if self.st.marked(i.id, "target") {
             match i.kind {
-                ImplItemKind::Method(FnSig { ref mut header, .. }, ref mut block) => {
+                AssocItemKind::Method(FnSig { ref mut header, .. }, ref mut block) => {
                     sink_unsafe(&mut header.unsafety, block);
                 },
                 _ => {},
             }
         }
 
-        mut_visit::noop_flat_map_impl_item(i, self)
+        mut_visit::noop_flat_map_assoc_item(i, self)
     }
 }
 
