@@ -42,9 +42,10 @@ use std::collections::HashMap;
 use arena::SyncDroplessArena;
 use ena::unify::{InPlace, UnificationTable, UnifyKey};
 use rustc_hir::def_id::DefId;
-use rustc_hir::intravisit::{self, NestedVisitorMap, Visitor};
+use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::itemlikevisit::ItemLikeVisitor;
 use rustc_hir::*;
+use rustc_middle::hir::nested_filter;
 use rustc_middle::ty::adjustment::{Adjust, PointerCast};
 use rustc_middle::ty::{self, TyCtxt, TypeckTables};
 // use rustc_ast::abi::Abi;
@@ -575,8 +576,10 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 }
 
 impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
-    fn nested_visit_map<'this>(&'this mut self) -> NestedVisitorMap<'this, 'hir> {
-        NestedVisitorMap::OnlyBodies(self.tcx.hir())
+    type NestedFilter = nested_filter::OnlyBodies;
+
+    fn nested_visit_map(&mut self) -> Self::Map {
+        self.tcx.hir()
     }
 
     fn visit_expr(&mut self, e: &'hir Expr) {
