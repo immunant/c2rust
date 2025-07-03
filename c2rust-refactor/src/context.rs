@@ -4,7 +4,7 @@ use std::ops::Deref;
 
 use rustc_hir::def::{DefKind, Namespace, Res};
 use rustc_hir::def_id::{CRATE_DEF_INDEX, DefId};
-use rustc_hir::{self, Node, HirId};
+use rustc_hir::{self as hir, Node, HirId};
 use rustc_session::Session;
 use rustc_session::config::CrateType;
 use rustc_middle::hir::map as hir_map;
@@ -480,7 +480,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
     /// Attempt to resolve a `Use` item id to the `hir::Path` of the imported
     /// item. The given item _must_ be a `Use`.
-    pub fn resolve_use_id(&self, id: NodeId) -> &hir::ptr::P<hir::Path> {
+    pub fn resolve_use_id(&self, id: NodeId) -> &P<hir::Path> {
         let hir_node = self
             .hir_map()
             .find(id)
@@ -492,7 +492,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
     /// Attempt to resolve a `Use` item id to the `hir::Path` of the imported
     /// item. The given item _must_ be a `Use`.
-    pub fn try_resolve_use_id(&self, id: NodeId) -> Option<&hir::ptr::P<hir::Path>> {
+    pub fn try_resolve_use_id(&self, id: NodeId) -> Option<&P<hir::Path>> {
         let hir_node = self
             .hir_map()
             .find(id)?;

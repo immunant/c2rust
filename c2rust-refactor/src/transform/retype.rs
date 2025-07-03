@@ -1,7 +1,7 @@
 use log::{debug, info, trace};
 use std::collections::{HashMap, HashSet};
 use std::ops::DerefMut;
-use rustc_middle::hir;
+use rustc_hir as hir;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{self, TyKind, TyCtxt, ParamEnv};
 use rustc_ast::*;
