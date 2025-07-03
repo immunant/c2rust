@@ -394,11 +394,11 @@ pub struct SetUnsafety {
 
 impl Transform for SetUnsafety {
     fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
-        let unsafety = <&str as Make<Unsafety>>::make(&self.unsafe_str, &mk());
+        let unsafety = <&str as Make<Unsafe>>::make(&self.unsafe_str, &mk());
 
         struct SetUnsafetyFolder<'a> {
             st: &'a CommandState,
-            unsafety: Unsafety,
+            unsafety: Unsafe,
         }
 
         impl<'a> MutVisitor for SetUnsafetyFolder<'a> {
