@@ -119,7 +119,7 @@ fn decode_message(json: JsonValue) -> Result<ToServer, String> {
                 None => return Err(format!("missing key `{}`", $key)),
             }
         };
-    };
+    }
 
     macro_rules! get_conv_array {
         ($json:expr, $key:expr, $conv:ident) => {{
@@ -149,7 +149,7 @@ fn decode_message(json: JsonValue) -> Result<ToServer, String> {
 
             result
         }};
-    };
+    }
 
     let kind = get_conv!(obj, "msg", take_string);
 

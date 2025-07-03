@@ -9,7 +9,7 @@ use rustc_session::config::Options as SessionOptions;
 use rustc_session::config::{Input, OutputFilenames};
 use rustc_session::{self, DiagnosticOutput, Session};
 use rustc_middle::ty::steal::Steal;
-use rustc_middle::ty::{self, GlobalCtxt, ResolverOutputs};
+use rustc_middle::ty::{self, ResolverOutputs};
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
 use rustc_data_structures::declare_box_region_type;
 use rustc_data_structures::sync::{Lock, Lrc};
