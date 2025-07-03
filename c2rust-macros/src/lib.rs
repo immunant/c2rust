@@ -12,6 +12,13 @@ struct VisitorImpls {
     count: usize,
 }
 
+fn map_method_to_noop(method_name: &Ident) -> String {
+    match method_name.to_string().as_ref() {
+        "flat_map_trait_item" | "flat_map_impl_item" => "noop_flat_map_assoc_item".into(),
+        _ => format!("noop_{}", method_name)
+    }
+}
+
 impl VisitorImpls {
     fn generate_visit(&mut self, method_name: &Ident, arg_pat: &Pat, ty: &Type, walk: &Block) {
         self.tokens.extend(quote! {
@@ -26,12 +33,12 @@ impl VisitorImpls {
         let folder_ident = Ident::new(&folder_name, Span::call_site());
 
         if !walk.stmts.is_empty() {
-            let noop_fn_name = format!("noop_{}", method_name);
+            let noop_fn_name = map_method_to_noop(method_name);
             let noop_fn = Ident::new(&noop_fn_name, Span::call_site());
             self.tokens.extend(quote! {
                 impl WalkAst for #ty {
                     fn walk<T: MutVisitor>(&mut self, v: &mut T) {
-                        syntax::mut_visit::#noop_fn(self, v);
+                        rustc_ast::mut_visit::#noop_fn(self, v);
                     }
                 }
             });
@@ -84,12 +91,12 @@ impl VisitorImpls {
         let folder_ident = Ident::new(&folder_name, Span::call_site());
 
         if !walk.stmts.is_empty() {
-            let noop_fn_name = format!("noop_{}", method_name);
+            let noop_fn_name = map_method_to_noop(method_name);
             let noop_fn = Ident::new(&noop_fn_name, Span::call_site());
             self.tokens.extend(quote! {
                 impl WalkAst for #ty {
                     fn walk<T: MutVisitor>(&mut self, v: &mut T) {
-                        *self = syntax::mut_visit::#noop_fn(self.clone(), v).lone();
+                        *self = rustc_ast::mut_visit::#noop_fn(self.clone(), v).lone();
                     }
                 }
             })
