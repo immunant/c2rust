@@ -170,8 +170,8 @@ impl<'a> Visitor<'a> for PickVisitor {
         }
     }
 
-    fn visit_struct_field(&mut self, x: &'a StructField) {
-        visit::walk_struct_field(self, x);
+    fn visit_field_def(&mut self, x: &'a FieldDef) {
+        visit::walk_field_def(self, x);
         if self.node_info.is_none()
             && self.kind.contains(NodeKind::Field)
             && x.span.contains(self.target)

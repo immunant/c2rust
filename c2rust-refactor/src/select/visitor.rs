@@ -128,11 +128,11 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
         self.maybe_enter_old(x.id, |v| visit::walk_ty(v, x));
     }
 
-    fn visit_struct_field(&mut self, x: &'ast StructField) {
+    fn visit_field_def(&mut self, x: &'ast FieldDef) {
         if self.in_old && self.matches(AnyNode::Field(x)) {
             self.new.insert(x.id);
         }
-        self.maybe_enter_old(x.id, |v| visit::walk_struct_field(v, x));
+        self.maybe_enter_old(x.id, |v| visit::walk_field_def(v, x));
     }
 }
 
@@ -277,11 +277,11 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
         self.maybe_enter_old(x.id, |v| visit::walk_ty(v, x));
     }
 
-    fn visit_struct_field(&mut self, x: &'ast StructField) {
+    fn visit_field_def(&mut self, x: &'ast FieldDef) {
         if self.in_old && self.matches(AnyNode::Field(x)) {
             self.new.insert(x.id);
         }
-        self.maybe_enter_old(x.id, |v| visit::walk_struct_field(v, x));
+        self.maybe_enter_old(x.id, |v| visit::walk_field_def(v, x));
     }
 }
 
@@ -406,11 +406,11 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
         visit::walk_fn(self, kind, fd, span);
     }
 
-    fn visit_struct_field(&mut self, x: &'ast StructField) {
+    fn visit_field_def(&mut self, x: &'ast FieldDef) {
         if self.old.contains(&x.id) && self.matches(AnyNode::Field(x)) {
             self.new.insert(x.id);
         }
-        visit::walk_struct_field(self, x);
+        visit::walk_field_def(self, x);
     }
 }
 

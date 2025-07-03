@@ -1602,7 +1602,7 @@ impl Builder {
         })
     }
 
-    pub fn struct_item<I>(self, name: I, fields: Vec<StructField>, tuple: bool) -> P<Item>
+    pub fn struct_item<I>(self, name: I, fields: Vec<FieldDef>, tuple: bool) -> P<Item>
     where
         I: Make<Ident>,
     {
@@ -1622,7 +1622,7 @@ impl Builder {
         )
     }
 
-    pub fn union_item<I>(self, name: I, fields: Vec<StructField>) -> P<Item>
+    pub fn union_item<I>(self, name: I, fields: Vec<FieldDef>) -> P<Item>
     where
         I: Make<Ident>,
     {
@@ -2060,14 +2060,14 @@ impl Builder {
 
     // struct fields
 
-    pub fn struct_field<I, T>(self, ident: I, ty: T) -> StructField
+    pub fn field_def<I, T>(self, ident: I, ty: T) -> FieldDef
     where
         I: Make<Ident>,
         T: Make<P<Ty>>,
     {
         let ident = ident.make(&self);
         let ty = ty.make(&self);
-        StructField {
+        FieldDef {
             span: self.span,
             ident: Some(ident),
             vis: self.vis,
@@ -2078,12 +2078,12 @@ impl Builder {
         }
     }
 
-    pub fn enum_field<T>(self, ty: T) -> StructField
+    pub fn enum_field<T>(self, ty: T) -> FieldDef
     where
         T: Make<P<Ty>>,
     {
         let ty = ty.make(&self);
-        StructField {
+        FieldDef {
             span: self.span,
             ident: None,
             vis: self.vis,
