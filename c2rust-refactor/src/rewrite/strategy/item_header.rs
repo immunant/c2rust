@@ -12,7 +12,7 @@
 //! Aside from the special handling of qualifiers, this strategy works the same as `recursive`.
 use log::info;
 use rustc_ast::*;
-use rustc_ast::token::{Delimiter, Token, TokenKind};
+use rustc_ast::token::{Token, TokenKind};
 use rustc_span::source_map::{BytePos, Span};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 

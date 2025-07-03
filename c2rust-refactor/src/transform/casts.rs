@@ -444,7 +444,7 @@ impl ConstantValue {
                     _ => panic!("Unexpected SimpleTy: {:?}", ty)
                 }
             }
-        };
+        }
         match_ty! {
             SimpleTy::Int(8, false) => Uint[u8, u128],
             SimpleTy::Int(16, false) => Uint[u16, u128],
@@ -460,7 +460,7 @@ impl ConstantValue {
             SimpleTy::Size(true) => Int[isize, i128],
             SimpleTy::Float32 => Float32[f32],
             SimpleTy::Float64 => Float64[f64]
-        };
+        }
     }
 }
 
