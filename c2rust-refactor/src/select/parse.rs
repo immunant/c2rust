@@ -6,7 +6,7 @@ use std::str::FromStr;
 use std::vec;
 use rustc_ast::Path;
 use rustc_parse::parser::{Parser, PathStyle};
-use rustc_ast::token::{Delimiter, Lit, LitKind, Token, TokenKind};
+use rustc_ast::token::{Lit, LitKind, Token, TokenKind};
 use rustc_session::parse::ParseSess;
 use rustc_span::symbol::Symbol;
 use rustc_ast::tokenstream::{TokenStream, TokenTree};

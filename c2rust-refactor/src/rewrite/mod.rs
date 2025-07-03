@@ -60,7 +60,6 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 use rustc_ast::*;
 use rustc_span::source_map::{Span, DUMMY_SP};
-use rustc_ast::util::parser;
 
 use crate::ast_manip::{map_ast, AstMap};
 use crate::ast_manip::{GetSpan, Visit, CommentMap};
