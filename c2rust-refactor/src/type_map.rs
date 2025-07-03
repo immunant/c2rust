@@ -7,7 +7,7 @@ use rustc_hir as hir;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty;
 use rustc_ast::*;
-use rustc_ast::visit::{self, Visitor};
+use rustc_ast::visit::{self, AssocCtxt, Visitor};
 
 use crate::context::HirMap;
 
@@ -260,22 +260,22 @@ where
         visit::walk_field_def(self, f);
     }
 
-    fn visit_impl_item(&mut self, i: &'ast ImplItem) {
+    fn visit_assoc_item(&mut self, i: &'ast AssocItem, ctxt: AssocCtxt) {
         let def_id = self.hir_map.local_def_id_from_node_id(i.id);
         match i.kind {
-            ImplItemKind::Const(ref ast_ty, _) => {
+            AssocItemKind::Const(_, ref ast_ty, _) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
             }
 
-            ImplItemKind::Method(ref method_sig, _) => {
+            AssocItemKind::Fn(box Fn { sig: ref method_sig, .. }) => {
                 if let Some(sig) = self.source.fn_sig(def_id) {
                     self.record_fn_decl(sig, &method_sig.decl);
                 }
             }
 
-            ImplItemKind::TyAlias(ref ast_ty) => {
+            AssocItemKind::TyAlias(box TyAlias { ty: Some(ref ast_ty), .. }) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
@@ -284,36 +284,7 @@ where
             _ => {}
         }
 
-        visit::walk_impl_item(self, i);
-    }
-
-    fn visit_trait_item(&mut self, i: &'ast TraitItem) {
-        let def_id = self.hir_map.local_def_id_from_node_id(i.id);
-        match i.kind {
-            TraitItemKind::Const(ref ast_ty, _) => {
-                if let Some(ty) = self.source.def_type(def_id) {
-                    self.record_ty(ty, ast_ty);
-                }
-            }
-
-            TraitItemKind::Method(ref method_sig, _) => {
-                if let Some(sig) = self.source.fn_sig(def_id) {
-                    self.record_fn_decl(sig, &method_sig.decl);
-                }
-            }
-
-            TraitItemKind::Type(_, ref opt_ast_ty) => {
-                if let Some(ref ast_ty) = *opt_ast_ty {
-                    if let Some(ty) = self.source.def_type(def_id) {
-                        self.record_ty(ty, ast_ty);
-                    }
-                }
-            }
-
-            _ => {}
-        }
-
-        visit::walk_trait_item(self, i);
+        visit::walk_assoc_item(self, i, ctxt);
     }
 
     fn visit_foreign_item(&mut self, i: &'ast ForeignItem) {

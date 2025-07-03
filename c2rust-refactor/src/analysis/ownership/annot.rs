@@ -11,7 +11,7 @@ use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use rustc_ast::ast;
 use rustc_span::symbol::Symbol;
-use rustc_ast::visit::{self, Visitor};
+use rustc_ast::visit::{self, AssocCtxt, Visitor};
 
 use crate::ast_manip::Visit;
 use crate::command::CommandState;
@@ -136,9 +136,9 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
         visit::walk_item(self, i);
     }
 
-    fn visit_impl_item(&mut self, i: &'ast ast::ImplItem) {
+    fn visit_assoc_item(&mut self, i: &'ast ast::AssocItem, ctxt: AssocCtxt) {
         match i.kind {
-            ast::ImplItemKind::Method(..) | ast::ImplItemKind::Const(..) => {
+            ast::AssocItemKind::Fn(..) | ast::AssocItemKind::Const(..) => {
                 if !i.attrs.is_empty() {
                     self.def_attrs.push((i.id, &i.attrs));
                 }
@@ -146,7 +146,7 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
             _ => {}
         }
 
-        visit::walk_impl_item(self, i);
+        visit::walk_assoc_item(self, i, ctxt);
     }
 
     fn visit_foreign_item(&mut self, i: &'ast ast::ForeignItem) {

@@ -239,7 +239,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for ExprPatVisitor<'lty, 'hir> {
     fn visit_trait_item(&mut self, item: &'hir TraitItem) {
         let body_id = match item.kind {
             TraitItemKind::Const(_, Some(body_id)) => body_id,
-            TraitItemKind::Method(_, TraitMethod::Provided(body_id)) => body_id,
+            TraitItemKind::Method(_, TraitFn::Provided(body_id)) => body_id,
             _ => return,
         };
         self.handle_body(body_id);

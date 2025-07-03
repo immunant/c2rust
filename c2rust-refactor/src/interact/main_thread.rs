@@ -16,7 +16,7 @@ use rustc_ast::*;
 use rustc_span::source_map::Span;
 use rustc_span::source_map::{FileLoader, RealFileLoader};
 use rustc_span::symbol::Symbol;
-use rustc_ast::visit::{self, FnKind, Visitor};
+use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
 use rustc_span::FileName;
 
 use crate::ast_manip::{GetNodeId, GetSpan, Visit};
@@ -337,14 +337,9 @@ impl<'ast> Visitor<'ast> for CollectSpanVisitor {
         visit::walk_item(self, x)
     }
 
-    fn visit_trait_item(&mut self, x: &'ast TraitItem) {
+    fn visit_assoc_item(&mut self, x: &'ast AssocItem, ctxt: AssocCtxt) {
         self.record(x);
-        visit::walk_trait_item(self, x)
-    }
-
-    fn visit_impl_item(&mut self, x: &'ast ImplItem) {
-        self.record(x);
-        visit::walk_impl_item(self, x)
+        visit::walk_assoc_item(self, x, ctxt)
     }
 
     fn visit_foreign_item(&mut self, x: &'ast ForeignItem) {
