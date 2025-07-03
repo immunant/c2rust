@@ -12,7 +12,6 @@ use rustc_hir::{self, HirId, Node};
 use rustc_middle::ty::{self, ParamEnv};
 use rustc_target::spec::abi::{self, Abi};
 use rustc_ast::*;
-use rustc_ast::attr::HasAttrs;
 use rustc_ast::util::comments::{Comment, CommentStyle};
 use rustc_ast::ptr::P;
 use rustc_span::symbol::{Ident, kw};
