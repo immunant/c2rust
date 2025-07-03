@@ -208,9 +208,6 @@ impl<'c> Translation<'c> {
             | "__atomic_compare_exchange_n"
             | "__c11_atomic_compare_exchange_strong"
             | "__c11_atomic_compare_exchange_weak" => {
-                // TODO(perl): __c11_atomic_compare_exchange_strong does not
-                // seem to produce correct code. It produces a deref operation
-                // on the `src` argument to atomic_cxchg_seqcst_seqcst.
                 let expected =
                     val1.expect("__atomic_compare_exchange must have a expected argument");
                 let desired = val2.expect("__atomic_compare_exchange must have a desired argument");
