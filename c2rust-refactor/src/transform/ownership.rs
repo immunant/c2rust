@@ -156,17 +156,17 @@ fn do_annotate(st: &CommandState,
             mut_visit::noop_flat_map_impl_item(i, self)
         }
 
-        fn flat_map_struct_field(&mut self, mut sf: StructField) -> SmallVec<[StructField; 1]> {
-            if !self.st.marked(sf.id, self.label) {
-                return mut_visit::noop_flat_map_struct_field(sf, self);
+        fn flat_map_field_def(&mut self, mut fd: FieldDef) -> SmallVec<[FieldDef; 1]> {
+            if !self.st.marked(fd.id, self.label) {
+                return mut_visit::noop_flat_map_field_def(fd, self);
             }
 
-            self.clean_attrs(&mut sf.attrs);
-            if let Some(attr) = self.static_attr_for(sf.id) {
-                sf.attrs.push(attr);
+            self.clean_attrs(&mut fd.attrs);
+            if let Some(attr) = self.static_attr_for(fd.id) {
+                fd.attrs.push(attr);
             }
 
-            mut_visit::noop_flat_map_struct_field(sf, self)
+            mut_visit::noop_flat_map_field_def(fd, self)
         }
     }
 

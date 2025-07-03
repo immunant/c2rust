@@ -426,12 +426,12 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
             mut_visit::noop_flat_map_item(i, self)
         }
 
-        fn flat_map_struct_field(&mut self, mut sf: StructField) -> SmallVec<[StructField; 1]> {
-            let old_ty = sf.ty.clone();
-            if (self.retype)(&mut sf.ty) {
-                self.changed_defs.insert(sf.id, (old_ty, sf.ty.clone()));
+        fn flat_map_field_def(&mut self, mut fd: FieldDef) -> SmallVec<[FieldDef; 1]> {
+            let old_ty = fd.ty.clone();
+            if (self.retype)(&mut fd.ty) {
+                self.changed_defs.insert(fd.id, (old_ty, fd.ty.clone()));
             }
-            mut_visit::noop_flat_map_struct_field(sf, self)
+            mut_visit::noop_flat_map_field_def(fd, self)
         }
     }
 
@@ -862,9 +862,9 @@ impl<'a> MutVisitor for RetypePrepFolder<'a> {
     }
 
     /// Replace marked struct field types with their new types
-    fn flat_map_struct_field(&mut self, mut field: StructField) -> SmallVec<[StructField; 1]> {
+    fn flat_map_field_def(&mut self, mut field: FieldDef) -> SmallVec<[FieldDef; 1]> {
         self.map_type(&mut field.ty);
-        return mut_visit::noop_flat_map_struct_field(field, self)
+        return mut_visit::noop_flat_map_field_def(field, self)
     }
 
     /// Remove all local variable types forcing type inference to update their

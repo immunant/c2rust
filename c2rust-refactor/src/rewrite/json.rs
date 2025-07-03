@@ -160,9 +160,9 @@ impl<'a, 'ast> Visitor<'ast> for MarkVisitor<'a> {
         visit::walk_fn(self, kind, fd, span);
     }
 
-    fn visit_struct_field(&mut self, x: &'ast StructField) {
+    fn visit_field_def(&mut self, x: &'ast FieldDef) {
         self.encode_inner("field", x.id, x.ident.map(|i| i.name));
-        visit::walk_struct_field(self, x);
+        visit::walk_field_def(self, x);
     }
 
     fn visit_mac_call(&mut self, x: &'ast MacCall) {

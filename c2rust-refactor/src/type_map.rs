@@ -238,7 +238,7 @@ where
                 }
             }
 
-            // Enum/Struct/Union are handled by `visit_struct_field`.
+            // Enum/Struct/Union are handled by `visit_field_def`.
             ItemKind::Impl(_, _, _, _, _, ref ast_ty, _) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
@@ -251,13 +251,13 @@ where
         visit::walk_item(self, i);
     }
 
-    fn visit_struct_field(&mut self, f: &'ast StructField) {
+    fn visit_field_def(&mut self, f: &'ast FieldDef) {
         let def_id = self.hir_map.local_def_id_from_node_id(f.id);
         if let Some(ty) = self.source.def_type(def_id) {
             self.record_ty(ty, &f.ty);
         }
 
-        visit::walk_struct_field(self, f);
+        visit::walk_field_def(self, f);
     }
 
     fn visit_impl_item(&mut self, i: &'ast ImplItem) {

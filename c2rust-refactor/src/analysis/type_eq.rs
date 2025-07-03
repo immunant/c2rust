@@ -930,11 +930,11 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         intravisit::walk_fn(self, kind, decl, body_id, span, id);
     }
 
-    fn visit_struct_field(&mut self, field: &'hir StructField) {
+    fn visit_field_def(&mut self, field: &'hir FieldDef) {
         // Unify the field's type annotation with the definition type.
         let def_id = self.tcx.hir().local_def_id(field.hir_id);
         self.ltt.unify(self.ty_lty(&field.ty), self.def_lty(def_id));
-        intravisit::walk_struct_field(self, field);
+        intravisit::walk_field_def(self, field);
     }
 
     fn visit_foreign_item(&mut self, i: &'hir ForeignItem) {
