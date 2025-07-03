@@ -25,12 +25,3 @@ pub unsafe extern "C" fn rotate_left_16(
 pub unsafe extern "C" fn rotate_left_32(mut x: std::ffi::c_uint) -> std::ffi::c_uint {
     return ::core::intrinsics::rotate_left(x, 3 as std::ffi::c_int as std::ffi::c_uint);
 }
-#[no_mangle]
-pub unsafe extern "C" fn rotate_left_64(
-    mut x: std::ffi::c_ulonglong,
-) -> std::ffi::c_ulonglong {
-    return ::core::intrinsics::rotate_left(
-        x as std::ffi::c_ulong,
-        4 as std::ffi::c_int as std::ffi::c_ulong,
-    ) as std::ffi::c_ulonglong;
-}

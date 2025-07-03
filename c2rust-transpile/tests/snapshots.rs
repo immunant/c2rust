@@ -82,4 +82,14 @@ fn transpile(c_path: &Path) {
 #[test]
 fn transpile_all() {
     insta::glob!("snapshots/*.c", transpile);
+
+    // Some things transpile differently on Linux vs. macOS,
+    // as they use `unsigned long` and `unsigned long long` differently for builtins.
+    // This makes snapshot tests trickier, as the output will be OS-dependent.
+    // We only test Linux here, as that should be sufficient for these specific tests,
+    // and because cross-compiling with transpilation is not super straightforward,
+    // so generating the macOS snapshots locally on Linux is annoying.
+    if cfg!(target_os = "linux") {
+        insta::glob!("snapshots/linux/*.c", transpile);
+    }
 }
