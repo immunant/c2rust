@@ -345,9 +345,9 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
     }
 }
 
-fn sink_unsafe(unsafety: &mut Unsafety, block: &mut P<Block>) {
-    if *unsafety == Unsafety::Unsafe {
-        *unsafety = Unsafety::Normal;
+fn sink_unsafe(unsafety: &mut Unsafe, block: &mut P<Block>) {
+    if let Unsafe::Yes(_) = *unsafety {
+        *unsafety = Unsafe::No;
         *block = mk().block(vec![
             mk().expr_stmt(mk().block_expr(mk().unsafe_().block(
                         block.stmts.clone())))]);
