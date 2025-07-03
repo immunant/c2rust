@@ -522,7 +522,7 @@ impl Transform for RemoveRedundantLetTypes {
 fn expand_local_ptr_tys(st: &CommandState, cx: &RefactorCtxt) {
     struct LocalVisitor<'a, 'tctx: 'a> {
         cx: &'a RefactorCtxt<'a, 'tctx>,
-    };
+    }
 
     impl<'a, 'tctx> MutVisitor for LocalVisitor<'a, 'tctx> {
         fn visit_local(&mut self, local: &mut P<Local>) {
