@@ -9,7 +9,7 @@ use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_errors::PResult;
 use rustc_parse::parser::Parser;
 use rustc_ast::token::{TokenKind, BinOpToken};
-use rustc_ast::print::pprust;
+use rustc_ast_pretty::pprust;
 use rustc_ast::ptr::P;
 use rustc_span::Span;
 use smallvec::{smallvec, SmallVec};
