@@ -1418,7 +1418,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
         });
 
         let mut items: Vec<P<Item>> = Vec::new();
-        let mut foreign_items: HashMap<Abi, Vec<ForeignItem>> = HashMap::new();
+        let mut foreign_items: HashMap<Abi, Vec<P<ForeignItem>>> = HashMap::new();
         let mut last_item_mod = None;
         let mut last_foreign_item_mod = None;
         for item in all_items {
