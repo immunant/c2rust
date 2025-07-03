@@ -1225,6 +1225,8 @@ pub enum CastKind {
     BuiltinFnToFnPtr,
     ConstCast,
     VectorSplat,
+    AtomicToNonAtomic,
+    NonAtomicToAtomic,
 }
 
 /// Represents a unary operator in C (6.5.3 Unary operators) and GNU C extensions
@@ -1689,6 +1691,8 @@ pub enum CTypeKind {
     UnhandledSveType,
 
     Float128,
+    // Atomic types (6.7.2.4)
+    Atomic(CQualTypeId),
 }
 
 impl CTypeKind {

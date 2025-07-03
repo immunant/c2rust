@@ -16,6 +16,16 @@ impl<'c> Translation<'c> {
         let memorder = &self.ast_context[expr];
         let i = match memorder.kind {
             CExprKind::Literal(_, CLiteral::Integer(i, _)) => Some(i),
+            CExprKind::DeclRef(_, decl_id, LRValue::RValue) => {
+                let decl = self.ast_context.get_decl(&decl_id).unwrap();
+                match decl.kind {
+                    CDeclKind::EnumConstant { name: _, value: v } => match v {
+                        ConstIntExpr::I(i) => Some(i.try_into().unwrap()),
+                        ConstIntExpr::U(u) => Some(u),
+                    },
+                    _ => unimplemented!(),
+                }
+            }
             _ => None,
         }?;
         use Ordering::*;
@@ -76,7 +86,7 @@ impl<'c> Translation<'c> {
         }
 
         match name {
-            "__atomic_load" | "__atomic_load_n" => ptr.and_then(|ptr| {
+            "__atomic_load" | "__atomic_load_n" | "__c11_atomic_load" => ptr.and_then(|ptr| {
                 let intrinsic_name = format!("atomic_load_{}", order_name(static_order(order)));
 
                 self.use_feature("core_intrinsics");
@@ -105,7 +115,7 @@ impl<'c> Translation<'c> {
                 }
             }),
 
-            "__atomic_store" | "__atomic_store_n" => {
+            "__atomic_store" | "__atomic_store_n" | "__c11_atomic_store" => {
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
@@ -131,7 +141,25 @@ impl<'c> Translation<'c> {
                 })
             }
 
-            "__atomic_exchange" | "__atomic_exchange_n" => {
+            // NOTE: there is no corresponding __atomic_init builtin in clang
+            "__c11_atomic_init" => {
+                let val = val1.expect("__atomic_init must have a val argument");
+                ptr.and_then(|ptr| {
+                    val.and_then(|val| {
+                        let assignment = mk().assign_expr(
+                            mk().unary_expr(UnOp::Deref(Default::default()), ptr),
+                            val,
+                        );
+                        self.convert_side_effects_expr(
+                            ctx,
+                            WithStmts::new_val(assignment),
+                            "Builtin is not supposed to be used",
+                        )
+                    })
+                })
+            }
+
+            "__atomic_exchange" | "__atomic_exchange_n" | "__c11_atomic_exchange" => {
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
@@ -176,10 +204,20 @@ impl<'c> Translation<'c> {
                 })
             }
 
-            "__atomic_compare_exchange" | "__atomic_compare_exchange_n" => {
+            "__atomic_compare_exchange"
+            | "__atomic_compare_exchange_n"
+            | "__c11_atomic_compare_exchange_strong"
+            | "__c11_atomic_compare_exchange_weak" => {
                 let expected =
                     val1.expect("__atomic_compare_exchange must have a expected argument");
                 let desired = val2.expect("__atomic_compare_exchange must have a desired argument");
+                // Some C11 atomic operations encode the weak property in the name
+                let weak = match (name, weak) {
+                    ("__c11_atomic_compare_exchange_strong", None) => Some(false),
+                    ("__c11_atomic_compare_exchange_weak", None) => Some(true),
+                    _ => weak,
+                };
+
                 ptr.and_then(|ptr| {
                     expected.and_then(|expected| {
                         desired.and_then(|desired| {
@@ -216,10 +254,11 @@ impl<'c> Translation<'c> {
                             self.use_feature("core_intrinsics");
                             let expected =
                                 mk().unary_expr(UnOp::Deref(Default::default()), expected);
-                            let desired = if name == "__atomic_compare_exchange_n" {
-                                desired
-                            } else {
-                                mk().unary_expr(UnOp::Deref(Default::default()), desired)
+                            let desired = match name {
+                                "__atomic_compare_exchange_n"
+                                | "__c11_atomic_compare_exchange_strong"
+                                | "__c11_atomic_compare_exchange_weak" => desired,
+                                _ => mk().unary_expr(UnOp::Deref(Default::default()), desired),
                             };
 
                             let atomic_cxchg =
@@ -258,7 +297,13 @@ impl<'c> Translation<'c> {
             | "__atomic_fetch_and"
             | "__atomic_fetch_xor"
             | "__atomic_fetch_or"
-            | "__atomic_fetch_nand" => {
+            | "__atomic_fetch_nand"
+            | "__c11_atomic_fetch_add"
+            | "__c11_atomic_fetch_sub"
+            | "__c11_atomic_fetch_and"
+            | "__c11_atomic_fetch_xor"
+            | "__c11_atomic_fetch_or"
+            | "__c11_atomic_fetch_nand" => {
                 let intrinsic_name = if name.contains("_add") {
                     "atomic_xadd"
                 } else if name.contains("_sub") {
@@ -276,7 +321,8 @@ impl<'c> Translation<'c> {
                 let intrinsic_suffix = order_name(static_order(order));
                 let intrinsic_name = format!("{intrinsic_name}_{intrinsic_suffix}");
 
-                let fetch_first = name.starts_with("__atomic_fetch");
+                let fetch_first =
+                    name.starts_with("__atomic_fetch") || name.starts_with("__c11_atomic_fetch");
                 let val = val1.expect("__atomic arithmetic operations must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
@@ -285,7 +331,7 @@ impl<'c> Translation<'c> {
                 })
             }
 
-            _ => unimplemented!("atomic not implemented"),
+            _ => unimplemented!("atomic not implemented: {}", name),
         }
     }
 
