@@ -20,7 +20,7 @@ use std::u32;
 
 use arena::SyncDroplessArena;
 use log::{debug, Level, log_enabled};
-use rustc_middle::hir;
+use rustc_hir as hir;
 use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_hir::{Mutability, Node};
 use rustc_middle::ty::{TyCtxt, TyKind, TypeAndMut, TyS};

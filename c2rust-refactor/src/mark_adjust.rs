@@ -1,6 +1,6 @@
 //! This module implements commands for manipulating the current set of marked nodes.
 use log::info;
-use rustc_middle::hir;
+use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Res};
 use rustc_type_ir::sty::TyKind;
 use std::str::FromStr;
