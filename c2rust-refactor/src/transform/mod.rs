@@ -59,7 +59,8 @@ transform_modules! {
     generics,
     ionize,
     items,
-    lifetime_analysis,
+    // TODO: this is disabled for now because it depends on analysis/runtime
+    //lifetime_analysis,
     linkage,
     literals,
     reorganize_definitions,
