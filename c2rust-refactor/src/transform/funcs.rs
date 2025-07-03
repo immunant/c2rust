@@ -500,7 +500,7 @@ impl Transform for WrapExtern {
                             mk().expr_stmt(mk().call_expr(
                                     mk().path_expr(func_path),
                                     arg_exprs))]);
-                    m_items.push(mk().pub_().unsafe_().fn_item(&f.ident, decl, body));
+                    m_items.push(mk().pub_().unsafe_().fn_item(&f.ident, decl, Some(body)));
 
                 }
 
@@ -651,12 +651,12 @@ impl Transform for WrapApi {
                         .str_attr(vec![sym::export_name], symbol).fn_item(
                     &wrapper_name,
                     wrapper_decl,
-                    mk().block(vec![
+                    Some(mk().block(vec![
                         mk().expr_stmt(mk().call_expr(
                                 mk().path_expr(vec![i.ident.name]),
                                 wrapper_args,
                         ))
-                    ])
+                    ]))
                 );
 
 
