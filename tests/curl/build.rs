@@ -11,6 +11,7 @@ fn main() {
     println!("cargo:rustc-link-lib=lber");
     println!("cargo:rustc-link-lib=brotlidec");
     println!("cargo:rustc-link-lib=z");
+    println!("cargo:rustc-link-lib=zstd");
 }
 
 #[cfg(target_os = "macos")]

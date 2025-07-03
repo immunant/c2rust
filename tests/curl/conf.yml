@@ -1,18 +1,19 @@
 requirements:
-  ubuntu:
-    apt:
-      packages:
-        - libbrotli-dev
-        - libidn2-dev
-        - libldap2-dev
-        - libnghttp2-dev
-        - libpsl-dev
-        - librtmp-dev
+    ubuntu:
+        apt:
+            packages:
+                - libbrotli-dev
+                - libidn2-dev
+                - libldap2-dev
+                - libnghttp2-dev
+                - libpsl-dev
+                - librtmp-dev
+                - libzstd-dev
 
 transpile:
-  autogen: true
-  tflags: --reorganize-definitions
-  binary: tool_main
+    autogen: true
+    # tflags: --reorganize-definitions
+    binary: tool_main
 
 cargo:
-  autogen: true
+    autogen: true
