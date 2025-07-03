@@ -148,12 +148,12 @@ fn do_annotate(st: &CommandState,
             }), self)
         }
 
-        fn flat_map_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+        fn flat_map_impl_item(&mut self, i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
             if !self.st.marked(i.id, self.label) {
-                return mut_visit::noop_flat_map_impl_item(i, self);
+                return mut_visit::noop_flat_map_assoc_item(i, self);
             }
 
-            mut_visit::noop_flat_map_impl_item(i, self)
+            mut_visit::noop_flat_map_assoc_item(i, self)
         }
 
         fn flat_map_field_def(&mut self, mut fd: FieldDef) -> SmallVec<[FieldDef; 1]> {
