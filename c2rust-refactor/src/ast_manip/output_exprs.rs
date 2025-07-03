@@ -35,21 +35,21 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for OutputFolder<F> {
         }
     }
 
-    fn flat_map_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+    fn flat_map_impl_item(&mut self, i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         match i.kind {
-            ImplItemKind::Method(..) => {
-                self.with_trailing(true, |f| mut_visit::noop_flat_map_impl_item(i, f))
+            AssocItemKind::Fn(..) => {
+                self.with_trailing(true, |f| mut_visit::noop_flat_map_assoc_item(i, f))
             }
-            _ => mut_visit::noop_flat_map_impl_item(i, self),
+            _ => mut_visit::noop_flat_map_assoc_item(i, self),
         }
     }
 
-    fn flat_map_trait_item(&mut self, i: TraitItem) -> SmallVec<[TraitItem; 1]> {
+    fn flat_map_trait_item(&mut self, i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         match i.kind {
-            TraitItemKind::Method(..) => {
-                self.with_trailing(true, |f| mut_visit::noop_flat_map_trait_item(i, f))
+            AssocItemKind::Fn(..) => {
+                self.with_trailing(true, |f| mut_visit::noop_flat_map_assoc_item(i, f))
             }
-            _ => mut_visit::noop_flat_map_trait_item(i, self),
+            _ => mut_visit::noop_flat_map_assoc_item(i, self),
         }
     }
 

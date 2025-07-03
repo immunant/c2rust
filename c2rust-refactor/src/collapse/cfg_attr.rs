@@ -46,8 +46,7 @@ macro_rules! collect_cfg_attrs {
 
 collect_cfg_attrs! {
     visit_item(Item), walk_item;
-    visit_impl_item(ImplItem), walk_impl_item;
-    visit_trait_item(TraitItem), walk_trait_item;
+    visit_assoc_item(AssocItem), walk_assoc_item;
     visit_foreign_item(ForeignItem), walk_foreign_item;
     visit_stmt(Stmt), walk_stmt;
     visit_expr(Expr), walk_expr;
@@ -103,14 +102,14 @@ impl MutVisitor for RestoreCfgAttrs {
         mut_visit::noop_flat_map_item(i, self)
     }
 
-    fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+    fn flat_map_impl_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         self.restore(&mut i);
-        mut_visit::noop_flat_map_impl_item(i, self)
+        mut_visit::noop_flat_map_assoc_item(i, self)
     }
 
-    fn flat_map_trait_item(&mut self, mut i: TraitItem) -> SmallVec<[TraitItem; 1]> {
+    fn flat_map_trait_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         self.restore(&mut i);
-        mut_visit::noop_flat_map_trait_item(i, self)
+        mut_visit::noop_flat_map_assoc_item(i, self)
     }
 
     fn flat_map_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
