@@ -1,7 +1,7 @@
 //! Debug command for printing the span of every major AST node.
 use log::info;
 use rustc_ast::*;
-use rustc_ast::print::pprust;
+use rustc_ast_pretty::pprust;
 use rustc_span::source_map::{SourceMap, Span, DUMMY_SP};
 use rustc_ast::visit::Visitor;
 
