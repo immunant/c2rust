@@ -163,12 +163,12 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
         visit::walk_foreign_item(self, i);
     }
 
-    fn visit_struct_field(&mut self, sf: &'ast ast::StructField) {
-        if !sf.attrs.is_empty() {
-            self.def_attrs.push((sf.id, &sf.attrs));
+    fn visit_field_def(&mut self, fd: &'ast ast::FieldDef) {
+        if !fd.attrs.is_empty() {
+            self.def_attrs.push((fd.id, &fd.attrs));
         }
 
-        visit::walk_struct_field(self, sf);
+        visit::walk_field_def(self, fd);
     }
 }
 

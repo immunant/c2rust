@@ -81,7 +81,7 @@ gen_visit_impls! {
         //    _: NodeId,
         //    _: Span
         //) { ... }
-        fn visit_struct_field(&mut self, s: &'ast StructField) { ... }
+        fn visit_field_def(&mut self, s: &'ast FieldDef) { ... }
         //fn visit_enum_def(
         //    &mut self,
         //    enum_definition: &'ast EnumDef,
