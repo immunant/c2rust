@@ -43,7 +43,6 @@ use arena::SyncDroplessArena;
 use ena::unify::{InPlace, UnificationTable, UnifyKey};
 use rustc_hir::def_id::DefId;
 use rustc_hir::intravisit::{self, Visitor};
-use rustc_hir::itemlikevisit::ItemLikeVisitor;
 use rustc_hir::*;
 use rustc_middle::hir::nested_filter;
 use rustc_middle::ty::adjustment::{Adjust, PointerCast};
@@ -224,7 +223,7 @@ impl<'lty, 'tcx> ExprPatVisitor<'lty, 'tcx> {
     }
 }
 
-impl<'lty, 'a, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'lty, 'hir> {
+impl<'lty, 'a, 'hir> Visitor<'hir> for ExprPatVisitor<'lty, 'hir> {
     // Visit every itemlike with a BodyId, and call `handle_body` on each.
 
     fn visit_item(&mut self, item: &'hir Item) {
@@ -1015,7 +1014,7 @@ pub fn analyze<'a, 'tcx: 'a>(
     };
     cx.hir_map()
         .krate()
-        .visit_all_item_likes(&mut v.as_deep_visitor());
+        .visit_all_item_likes(&mut v);
 
     // For all `ast::Ty` nodes, build a map with the `NodeId` and the raw label of the root of its
     // equivalence class.
