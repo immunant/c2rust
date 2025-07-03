@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use rustc_ast::*;
 use rustc_span::source_map::{SourceMap, Span};
 use rustc_span::symbol::{Ident, Symbol};
-use rustc_ast::visit::{self, FnKind, Visitor};
+use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
 
 use crate::rewrite::{TextAdjust, TextRewrite};
 
@@ -114,14 +114,9 @@ impl<'a, 'ast> Visitor<'ast> for MarkVisitor<'a> {
         visit::walk_item(self, x);
     }
 
-    fn visit_impl_item(&mut self, x: &'ast ImplItem) {
-        self.encode_named("impl item", x.id, x.ident);
-        visit::walk_impl_item(self, x);
-    }
-
-    fn visit_trait_item(&mut self, x: &'ast TraitItem) {
-        self.encode_named("trait item", x.id, x.ident);
-        visit::walk_trait_item(self, x);
+    fn visit_assoc_item(&mut self, x: &'ast AssocItem, ctxt: AssocCtxt) {
+        self.encode_named("assoc item", x.id, x.ident);
+        visit::walk_assoc_item(self, x, ctxt);
     }
 
     fn visit_foreign_item(&mut self, x: &'ast ForeignItem) {

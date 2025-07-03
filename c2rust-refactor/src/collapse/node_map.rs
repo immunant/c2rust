@@ -54,9 +54,6 @@ fn nt_span(nt: &Nonterminal) -> Option<Span> {
         NtPat(ref p) => p.span,
         NtExpr(ref e) => e.span,
         NtTy(ref t) => t.span,
-        NtImplItem(ref ii) => ii.span,
-        NtTraitItem(ref ti) => ti.span,
-        NtForeignItem(ref fi) => fi.span,
         _ => return None,
     })
 }
@@ -113,7 +110,6 @@ define_nt_use_visitor! {
     visit_pat, walk_pat, NtPat, Pat;
     visit_expr, walk_expr, NtExpr, Expr;
     visit_ty, walk_ty, NtTy, Ty;
-    visit_impl_item, walk_impl_item, NtImplItem, ImplItem;
-    visit_trait_item, walk_trait_item, NtTraitItem, TraitItem;
+    visit_assoc_item, walk_assoc_item, NtItem, AssocItem;
     visit_foreign_item, walk_foreign_item, NtForeignItem, ForeignItem;
 }

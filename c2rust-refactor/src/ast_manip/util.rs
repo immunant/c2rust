@@ -108,19 +108,10 @@ impl PatternSymbol for Item {
     }
 }
 
-impl PatternSymbol for ImplItem {
+impl PatternSymbol for AssocItem {
     fn pattern_symbol(&self) -> Option<Symbol> {
         match self.kind {
-            ImplItemKind::Macro(ref m) => m.pattern_symbol(),
-            _ => None,
-        }
-    }
-}
-
-impl PatternSymbol for TraitItem {
-    fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.kind {
-            TraitItemKind::Macro(ref m) => m.pattern_symbol(),
+            AssocItemKind::MacCall(ref m) => m.pattern_symbol(),
             _ => None,
         }
     }

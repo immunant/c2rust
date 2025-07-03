@@ -64,8 +64,7 @@ gen_visit_impls! {
         //    s: Span,
         //    _: NodeId
         //) { ... }
-        fn visit_trait_item(&mut self, ti: &'ast TraitItem) { ... }
-        fn visit_impl_item(&mut self, ii: &'ast ImplItem) { ... }
+        fn visit_assoc_item(&mut self, ti: &'ast AssocItem, ctxt: AssocCtxt) { ... }
         fn visit_trait_ref(&mut self, t: &'ast TraitRef) { ... }
         fn visit_param_bound(&mut self, bounds: &'ast GenericBound) { ... }
         //fn visit_poly_trait_ref(
