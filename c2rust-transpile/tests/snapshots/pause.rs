@@ -7,12 +7,7 @@
     unused_assignments,
     unused_mut
 )]
-#![feature(stdsimd)]
-#[cfg(target_arch = "x86")]
-pub use core::arch::x86::_mm_pause;
-#[cfg(target_arch = "x86_64")]
-pub use core::arch::x86_64::_mm_pause;
 #[no_mangle]
 pub unsafe extern "C" fn pause() {
-    _mm_pause();
+    ::core::hint::spin_loop();
 }

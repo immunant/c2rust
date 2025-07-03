@@ -358,14 +358,15 @@ impl<'c> Translation<'c> {
             }
 
             "__builtin_ia32_pause" => {
-                let fn_name = "_mm_pause";
-                self.import_simd_function(fn_name)?;
-                let ident = mk().ident_expr(fn_name);
-                let call = mk().call_expr(ident, vec![]);
-                Ok(WithStmts::new(
-                    vec![mk().semi_stmt(call)],
-                    self.panic_or_err("No value for _mm_pause"),
-                ))
+                // `spin_loop()` is implemented as `_mm_pause()` (the `pause` instruction) on `x86`/`x86_64`,
+                // but it's the safe and cross-platform version of it, so prefer it.
+                let spin_loop = mk().abs_path_expr(vec!["core", "hint", "spin_loop"]);
+                let call = mk().call_expr(spin_loop, vec![]);
+                self.convert_side_effects_expr(
+                    ctx,
+                    WithStmts::new_val(call),
+                    "Builtin is not supposed to be used",
+                )
             }
 
             // SIMD builtins:
