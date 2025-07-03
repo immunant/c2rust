@@ -203,7 +203,7 @@ impl Transform for TestDebugCallees {
                         info!("      input tys: {:?}", sig2.inputs());
                     }
                 }
-            };
+            }
 
             let describe = |e: &Expr| {
                 info!("    expr: {:?}", e);
