@@ -8,6 +8,6 @@
     unused_mut
 )]
 #[no_mangle]
-pub unsafe extern "C" fn pause() {
+pub unsafe extern "C" fn spin() {
     ::core::hint::spin_loop();
 }

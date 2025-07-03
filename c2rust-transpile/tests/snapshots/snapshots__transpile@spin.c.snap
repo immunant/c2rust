@@ -1,7 +1,7 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-expression: cat tests/snapshots/pause.rs
-input_file: c2rust-transpile/tests/snapshots/pause.c
+expression: cat tests/snapshots/spin.rs
+input_file: c2rust-transpile/tests/snapshots/spin.c
 ---
 #![allow(
     dead_code,
@@ -13,6 +13,6 @@ input_file: c2rust-transpile/tests/snapshots/pause.c
     unused_mut
 )]
 #[no_mangle]
-pub unsafe extern "C" fn pause() {
+pub unsafe extern "C" fn spin() {
     ::core::hint::spin_loop();
 }
