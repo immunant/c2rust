@@ -1,6 +1,6 @@
 use arena::SyncDroplessArena;
 use ena::unify as ut;
-use rustc_middle::hir;
+use rustc_hir as hir;
 use rustc_hir::def::Res;
 use rustc_data_structures::sync::Lrc;
 use rustc_ast::*;

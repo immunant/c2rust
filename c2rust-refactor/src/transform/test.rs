@@ -5,7 +5,7 @@ use std::collections::{HashSet, HashMap};
 use std::str::FromStr;
 use rustc_ast::*;
 use rustc_ast::ptr::P;
-use rustc_middle::hir;
+use rustc_hir as hir;
 use rustc_middle::ty::{self, TyCtxt, ParamEnv};
 use rustc_middle::ty::subst::InternalSubsts;
 
