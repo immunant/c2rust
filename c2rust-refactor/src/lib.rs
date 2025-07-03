@@ -72,8 +72,8 @@ pub mod transform;
 
 mod context;
 
-use cargo::core::manifest::TargetKind;
-use cargo::util::paths;
+use cargo::core::TargetKind;
+use cargo_util::paths;
 use log::{info, warn};
 use rustc_interface::interface;
 use std::collections::HashSet;
@@ -233,7 +233,8 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     use cargo::ops;
     use cargo::ops::CompileOptions;
     use cargo::util::important_paths::find_root_manifest_for_wd;
-    use cargo::util::{CargoResult, ProcessBuilder};
+    use cargo::util::errors::CargoResult;
+    use cargo_util::ProcessBuilder;
     use cargo::Config;
     use std::sync::Mutex;
 
