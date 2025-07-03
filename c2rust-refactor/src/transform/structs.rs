@@ -126,14 +126,14 @@ fn is_struct_update_for(s: &Stmt, base1: &Expr) -> bool {
               return false)
 }
 
-fn unpack_struct_update(s: Stmt) -> (Path, Vec<Field>, P<Expr>) {
+fn unpack_struct_update(s: Stmt) -> (Path, Vec<ExprField>, P<Expr>) {
     let e = expect!([s.kind] StmtKind::Semi(e) => e);
     let rhs = expect!([e.into_inner().kind] ExprKind::Assign(_, rhs) => rhs);
     expect!([rhs.into_inner().kind]
             ExprKind::Struct(path, fields, Some(base)) => (path, fields, base))
 }
 
-fn build_struct_update(path: Path, fields: Vec<Field>, base: P<Expr>) -> Stmt {
+fn build_struct_update(path: Path, fields: Vec<ExprField>, base: P<Expr>) -> Stmt {
     mk().semi_stmt(
         mk().assign_expr(
             &base,
