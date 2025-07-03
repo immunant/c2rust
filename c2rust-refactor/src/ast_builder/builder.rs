@@ -1595,7 +1595,7 @@ impl Builder {
         )
     }
 
-    pub fn fn_decl(self, inputs: Vec<Param>, output: FunctionRetTy) -> P<FnDecl> {
+    pub fn fn_decl(self, inputs: Vec<Param>, output: FnRetTy) -> P<FnDecl> {
         P(FnDecl {
             inputs,
             output,
