@@ -46,7 +46,7 @@ use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::*;
 use rustc_middle::hir::nested_filter;
 use rustc_middle::ty::adjustment::{Adjust, PointerCast};
-use rustc_middle::ty::{self, TyCtxt, TypeckTables};
+use rustc_middle::ty::{self, TyCtxt, TypeckResults};
 // use rustc_ast::abi::Abi;
 use rustc_target::spec::abi::Abi;
 use rustc_type_ir::sty::TyKind as IrTyKind;
@@ -263,7 +263,7 @@ struct LabelTysSource<'lty, 'tcx: 'lty> {
 }
 
 impl<'lty, 'tcx> LabelTysSource<'lty, 'tcx> {
-    fn get_tables(&self, id: NodeId) -> &'tcx TypeckTables<'tcx> {
+    fn get_tables(&self, id: NodeId) -> &'tcx TypeckResults<'tcx> {
         let parent = self
             .tcx
             .hir()
@@ -538,7 +538,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
         }
     }
 
-    fn get_tables(&self, id: HirId) -> &'tcx TypeckTables<'tcx> {
+    fn get_tables(&self, id: HirId) -> &'tcx TypeckResults<'tcx> {
         let parent = self.tcx.hir().get_parent_item(id);
         let parent_body = self.tcx.hir().body_owned_by(parent);
         self.tcx.body_tables(parent_body)
@@ -977,7 +977,7 @@ pub fn analyze<'a, 'tcx: 'a>(
     let arena = SyncDroplessArena::default();
     let ltt = LTyTable::new(&arena);
 
-    // Collect labeled expr/pat types from the TypeckTables of each item.
+    // Collect labeled expr/pat types from the TypeckResults of each item.
     let mut v = ExprPatVisitor {
         tcx: cx.ty_ctxt(),
         ltt: &ltt,
