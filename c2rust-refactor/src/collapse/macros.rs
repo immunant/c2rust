@@ -244,18 +244,18 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
         mut_visit::noop_flat_map_item(i, self)
     }
 
-    fn flat_map_impl_item(&mut self, ii: ImplItem) -> SmallVec<[ImplItem; 1]> {
+    fn flat_map_impl_item(&mut self, ii: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         if let Some(info) = self.mac_table.get(ii.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info
                     .expanded
-                    .as_impl_item()
+                    .as_assoc_item()
                     .unwrap_or_else(|| panic!(
                         "replaced {:?} with {:?} which is a different type?",
                         ii,
                         info.expanded,
                     ));
-                self.collect_token_rewrites(info.id, old, &ii as &ImplItem);
+                self.collect_token_rewrites(info.id, old, &ii as &AssocItem);
 
                 if !self.seen_invocs.contains(&info.id) {
                     self.seen_invocs.insert(info.id);
@@ -271,24 +271,24 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                     return smallvec![];
                 }
             } else {
-                warn!("bad macro kind for impl item: {:?}", info.invoc);
+                warn!("bad macro kind for assoc item: {:?}", info.invoc);
             }
         }
-        mut_visit::noop_flat_map_impl_item(ii, self)
+        mut_visit::noop_flat_map_assoc_item(ii, self)
     }
 
-    fn flat_map_trait_item(&mut self, ti: TraitItem) -> SmallVec<[TraitItem; 1]> {
+    fn flat_map_trait_item(&mut self, ti: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         if let Some(info) = self.mac_table.get(ti.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info
                     .expanded
-                    .as_trait_item()
+                    .as_assoc_item()
                     .unwrap_or_else(|| panic!(
                         "replaced {:?} with {:?} which is a different type?",
                         ti,
                         info.expanded,
                     ));
-                self.collect_token_rewrites(info.id, old, &ti as &TraitItem);
+                self.collect_token_rewrites(info.id, old, &ti as &AssocItem);
 
                 if !self.seen_invocs.contains(&info.id) {
                     self.seen_invocs.insert(info.id);
@@ -307,7 +307,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 warn!("bad macro kind for trait item: {:?}", info.invoc);
             }
         }
-        mut_visit::noop_flat_map_trait_item(ti, self)
+        mut_visit::noop_flat_map_assoc_item(ti, self)
     }
 
     fn flat_map_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
@@ -607,26 +607,26 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
         mut_visit::noop_flat_map_item(i, self)
     }
 
-    fn flat_map_impl_item(&mut self, ii: ImplItem) -> SmallVec<[ImplItem; 1]> {
+    fn flat_map_impl_item(&mut self, ii: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         if let Some(invoc_id) = self.mac_table.get(ii.id).map(|m| m.id) {
             if let Some(new_args) = self.new_args.get(&invoc_id).cloned() {
                 let mut ii = ii;
-                expect!([ii.kind] ImplItemKind::Macro(ref mut mac) => *mac.args = new_args);
+                expect!([ii.kind] AssocItemKind::MacCall(ref mut mac) => *mac.args = new_args);
                 return smallvec![ii];
             }
         }
-        mut_visit::noop_flat_map_impl_item(ii, self)
+        mut_visit::noop_flat_map_assoc_item(ii, self)
     }
 
-    fn flat_map_trait_item(&mut self, ti: TraitItem) -> SmallVec<[TraitItem; 1]> {
+    fn flat_map_trait_item(&mut self, ti: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         if let Some(invoc_id) = self.mac_table.get(ti.id).map(|m| m.id) {
             if let Some(new_args) = self.new_args.get(&invoc_id).cloned() {
                 let mut ti = ti;
-                expect!([ti.kind] TraitItemKind::Macro(ref mut mac) => *mac.args = new_args);
+                expect!([ti.kind] AssocItemKind::MacCall(ref mut mac) => *mac.args = new_args);
                 return smallvec![ti];
             }
         }
-        mut_visit::noop_flat_map_trait_item(ti, self)
+        mut_visit::noop_flat_map_assoc_item(ti, self)
     }
 
     fn flat_map_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {

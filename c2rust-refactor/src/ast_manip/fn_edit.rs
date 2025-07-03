@@ -4,7 +4,7 @@ use rustc_ast::*;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_data_structures::map_in_place::MapInPlace;
-use rustc_ast::visit::{self, Visitor};
+use rustc_ast::visit::{self, AssocCtxt, Visitor};
 use rustc_span::Span;
 use rustc_span::symbol::Ident;
 use smallvec::smallvec;
@@ -118,16 +118,16 @@ where
             .collect()
     }
 
-    fn flat_map_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+    fn flat_map_impl_item(&mut self, i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         match i.kind {
-            ImplItemKind::Method(..) => {}
-            _ => return mut_visit::noop_flat_map_impl_item(i, self),
+            AssocItemKind::Fn(..) => {}
+            _ => return mut_visit::noop_flat_map_assoc_item(i, self),
         }
 
-        unpack!([i.kind] ImplItemKind::Method(sig, block));
+        let (defaultness, generics, sig, body) = expect!([i.kind]
+            AssocItemKind::Fn(box Fn { defaultness, generics, sig, body })
+            => (defaultness, generics, sig, body));
         let vis = i.vis;
-        let defaultness = i.defaultness;
-        let generics = i.generics;
         let FnSig { header, decl } = sig;
 
         let fl = FnLike {
@@ -136,7 +136,7 @@ where
             ident: i.ident,
             span: i.span,
             decl,
-            block: Some(block),
+            block: body,
             attrs: i.attrs,
         };
         let fls = (self.callback)(fl);
@@ -147,34 +147,38 @@ where
                     header,
                     decl: fl.decl,
                 };
-                let block = fl
+                let body = fl
                     .block
-                    .expect("can't remove Block from ImplItemKind::Method");
-                ImplItem {
+                    .expect("can't remove Block from AssocItemKind::Fn");
+                AssocItem {
                     id: fl.id,
                     ident: fl.ident,
                     span: fl.span,
-                    kind: ImplItemKind::Method(sig, block),
+                    kind: AssocItemKind::Fn(Box::new(Fn {
+                        defaultness,
+                        generics: generics.clone(),
+                        sig,
+                        body,
+                    })),
                     attrs: fl.attrs,
-                    generics: generics.clone(),
                     vis: vis.clone(),
-                    defaultness,
                     tokens: None,
                 }
             })
-            .flat_map(|i| mut_visit::noop_flat_map_impl_item(i, self))
+            .flat_map(|i| mut_visit::noop_flat_map_assoc_item(i, self))
             .collect()
     }
 
-    fn flat_map_trait_item(&mut self, i: TraitItem) -> SmallVec<[TraitItem; 1]> {
+    fn flat_map_trait_item(&mut self, i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         match i.kind {
-            TraitItemKind::Method(..) => {}
-            _ => return mut_visit::noop_flat_map_trait_item(i, self),
+            AssocItemKind::Fn(..) => {}
+            _ => return mut_visit::noop_flat_map_assoc_item(i, self),
         }
 
-        unpack!([i.kind] TraitItemKind::Method(sig, block));
+        let (defaultness, generics, sig, body) = expect!([i.kind]
+            AssocItemKind::Fn(box Fn { defaultness, generics, sig, body })
+            => (defaultness, generics, sig, body));
         let FnSig { header, decl } = sig;
-        let generics = i.generics;
         let vis = i.vis;
 
         let fl = FnLike {
@@ -183,7 +187,7 @@ where
             ident: i.ident,
             span: i.span,
             decl,
-            block,
+            block: body,
             attrs: i.attrs,
         };
         let fls = (self.callback)(fl);
@@ -194,18 +198,23 @@ where
                     header,
                     decl: fl.decl,
                 };
-                TraitItem {
+                AssocItem {
                     id: fl.id,
                     ident: fl.ident,
                     span: fl.span,
                     vis: vis.clone(),
-                    kind: TraitItemKind::Method(sig, fl.block),
+                    kind: AssocItemKind::Fn(Box::new(Fn {
+                        defaultness,
+                        generics: generics.clone(),
+                        sig,
+                        body: fl.block,
+                    })),
                     attrs: fl.attrs,
                     generics: generics.clone(),
                     tokens: None,
                 }
             })
-            .flat_map(|i| mut_visit::noop_flat_map_trait_item(i, self))
+            .flat_map(|i| mut_visit::noop_flat_map_assoc_item(i, self))
             .collect()
     }
 
@@ -248,8 +257,8 @@ where
     }
 }
 
-/// Fold over all item-like function definitions, including `ItemKind::Fn`, `ImplItemKind::Method`,
-/// `TraitItemKind::Method`, and `ForeignItemKind::Fn`.
+/// Fold over all item-like function definitions, including `ItemKind::Fn`,
+/// `AssocItemKind::Fn`, and `ForeignItemKind::Fn`.
 pub fn mut_visit_fns<T, F>(target: &mut T, mut callback: F)
 where
     T: MutVisit,
@@ -306,41 +315,19 @@ where
         });
     }
 
-    fn visit_impl_item(&mut self, i: &'ast ImplItem) {
-        visit::walk_impl_item(self, i);
+    fn visit_assoc_item(&mut self, i: &'ast AssocItem, ctxt: AssocCtxt) {
+        visit::walk_assoc_item(self, i, ctxt);
         match i.kind {
-            ImplItemKind::Method(..) => {}
+            AssocItemKind::Fn(..) => {}
             _ => return,
         }
 
         let (decl, block) = expect!([i.kind]
-                                    ImplItemKind::Method(ref sig, ref block) =>
-                                        (sig.decl.clone(), block.clone()));
+                                    AssocItemKind::Fn(box Fn { ref sig, ref body, .. }) =>
+                                        (sig.decl.clone(), body.clone()));
 
         (self.callback)(FnLike {
             kind: FnKind::ImplMethod,
-            id: i.id,
-            ident: i.ident,
-            span: i.span,
-            decl,
-            block: Some(block),
-            attrs: i.attrs.clone(),
-        });
-    }
-
-    fn visit_trait_item(&mut self, i: &'ast TraitItem) {
-        visit::walk_trait_item(self, i);
-        match i.kind {
-            TraitItemKind::Method(..) => {}
-            _ => return,
-        }
-
-        let (decl, block) = expect!([i.kind]
-                                    TraitItemKind::Method(ref sig, ref block) =>
-                                        (sig.decl.clone(), block.clone()));
-
-        (self.callback)(FnLike {
-            kind: FnKind::TraitMethod,
             id: i.id,
             ident: i.ident,
             span: i.span,
@@ -372,8 +359,8 @@ where
     }
 }
 
-/// Visit all item-like function definitions, including `ItemKind::Fn`, `ImplItemKind::Method`,
-/// `TraitItemKind::Method`, and `ForeignItemKind::Fn`.
+/// Visit all item-like function definitions, including `ItemKind::Fn`,
+/// `AssocItemKind::Fn`, and `ForeignItemKind::Fn`.
 pub fn visit_fns<T, F>(target: &T, callback: F)
 where
     T: Visit,

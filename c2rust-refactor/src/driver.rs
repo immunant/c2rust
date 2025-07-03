@@ -30,7 +30,7 @@ use std::sync::Arc;
 use rustc_ast::ast;
 use rustc_ast::DUMMY_NODE_ID;
 use rustc_ast::{
-    Block, BlockCheckMode, Expr, ForeignItem, ImplItem, Item, ItemKind, NodeId, Param, Pat, Stmt,
+    AssocItem, Block, BlockCheckMode, Expr, ForeignItem, Item, ItemKind, NodeId, Param, Pat, Stmt,
     Ty, UnsafeSource,
 };
 use rustc_span::hygiene::SyntaxContext;
@@ -590,7 +590,7 @@ pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
 }
 
 #[cfg_attr(feature = "profile", flame)]
-pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
+pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<AssocItem> {
     // TODO: rustc no longer exposes `parse_impl_item_`. `parse_item` is a hacky
     // workaround that may cause suboptimal error messages.
     let mut p = make_parser(sess, &format!("impl ! {{ {} }}", src));
