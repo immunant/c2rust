@@ -8,7 +8,7 @@ use std::mem;
 use crate::transform::Transform;
 use rustc_hir::def::{DefKind, Export, Namespace, PerNS, Res};
 use rustc_hir::def_id::DefId;
-use rustc_hir::{self, HirId, Node};
+use rustc_hir::{self as hir, HirId, Node};
 use rustc_middle::ty::{self, ParamEnv};
 use rustc_target::spec::abi::{self, Abi};
 use rustc_ast::*;
