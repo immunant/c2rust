@@ -8,7 +8,7 @@ use std::str::FromStr;
 use rustc_ast::*;
 use rustc_span::hygiene::SyntaxContext;
 use rustc_span::source_map::{BytePos, Span};
-use rustc_ast::visit::{self, FnKind, Visitor};
+use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
 use rustc_span::FileName;
 
 use crate::ast_manip::Visit;
@@ -59,23 +59,15 @@ impl<'a> Visitor<'a> for PickVisitor {
         }
     }
 
-    fn visit_trait_item(&mut self, x: &'a TraitItem) {
-        visit::walk_trait_item(self, x);
-        if self.node_info.is_none()
-            && self.kind.contains(NodeKind::TraitItem)
-            && x.span.contains(self.target)
-        {
-            self.node_info = Some(NodeInfo {
-                id: x.id,
-                span: x.span,
-            });
-        }
-    }
+    fn visit_assoc_item(&mut self, x: &'a AssocItem, ctxt: AssocCtxt) {
+        let kind = match ctxt {
+            AssocCtxt::Trait => NodeKind::TraitItem,
+            AssocCtxt::Impl => NodeKind::ImplItem,
+        };
 
-    fn visit_impl_item(&mut self, x: &'a ImplItem) {
-        visit::walk_impl_item(self, x);
+        visit::walk_assoc_item(self, x, ctxt);
         if self.node_info.is_none()
-            && self.kind.contains(NodeKind::ImplItem)
+            && self.kind.contains(kind)
             && x.span.contains(self.target)
         {
             self.node_info = Some(NodeInfo {
