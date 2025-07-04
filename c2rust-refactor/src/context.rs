@@ -213,7 +213,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             }
             Res::Local(id) => Some(*id),
 
-            Res::PrimTy(_) | Res::SelfTy(..) | Res::ToolMod | Res::NonMacroAttr(_) | Res::Err => {
+            Res::PrimTy(_) | Res::SelfTy { .. } | Res::ToolMod | Res::NonMacroAttr(_) | Res::Err => {
                 None
             }
         }

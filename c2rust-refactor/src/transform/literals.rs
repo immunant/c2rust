@@ -368,7 +368,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             }
 
             // We don't want to unify with `Self`
-            Res::SelfTy(..) => self.new_empty_node(),
+            Res::SelfTy { .. } => self.new_empty_node(),
 
             Res::Local(id) => {
                 // This is a local variable that may have a type,
