@@ -231,7 +231,7 @@ pub fn namespace(res: &def::Res) -> Option<Namespace> {
             | ForeignTy | TraitAlias | AssocTy | AssocOpaqueTy | TyParam => {
                 Some(Namespace::TypeNS)
             }
-            Fn | Const | ConstParam | Static | Ctor(..) | Method | AssocConst => {
+            Fn | Const | ConstParam | Static(_) | Ctor(..) | Method | AssocConst => {
                 Some(Namespace::ValueNS)
             }
             Macro(..) => Some(Namespace::MacroNS),

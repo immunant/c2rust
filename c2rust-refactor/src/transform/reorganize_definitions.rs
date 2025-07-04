@@ -423,7 +423,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             Res::Def(DefKind::Fn, def_id) => {
                 self.cx.ty_ctxt().fn_sig(def_id).abi() == Abi::C
             }
-            Res::Def(DefKind::Static, def_id) => {
+            Res::Def(DefKind::Static(_), def_id) => {
                 if let ty::TyKind::Adt(def, _) = self.cx.ty_ctxt().type_of(def_id).kind {
                     def.repr.c()
                 } else {
@@ -487,7 +487,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                 }
                             }
                             ForeignItemKind::Static(..) => {
-                                if let Res::Def(DefKind::Static, def_id) = item.res {
+                                if let Res::Def(DefKind::Static(_), def_id) = item.res {
                                     let export_static_ty = self.cx.ty_ctxt().type_of(def_id);
                                     let foreign_def_id = self.cx.node_def_id(foreign.id);
                                     let foreign_static_ty = self.cx.ty_ctxt().type_of(foreign_def_id);
