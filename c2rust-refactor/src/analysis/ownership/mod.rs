@@ -23,7 +23,7 @@ use log::{debug, Level, log_enabled};
 use rustc_hir as hir;
 use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_hir::{Mutability, Node};
-use rustc_middle::ty::{TyCtxt, TyKind, TypeAndMut, TyS};
+use rustc_middle::ty::{TyCtxt, TyKind, TypeAndMut, Ty};
 use rustc_index::vec::{Idx, IndexVec};
 use rustc_ast::IntTy;
 use rustc_span::source_map::Span;
@@ -237,7 +237,7 @@ fn analyze_inter<'lty, 'tcx>(cx: &mut Ctxt<'lty, 'tcx>) {
     inter_cx.finish();
 }
 
-fn is_mut_t(ty: &TyS) -> bool {
+fn is_mut_t(ty: &Ty) -> bool {
     if let TyKind::RawPtr(mut_ty) = ty.kind {
         if mut_ty.mutbl == Mutability::Mutable {
             if let TyKind::Param(param_ty) = mut_ty.ty.kind {
