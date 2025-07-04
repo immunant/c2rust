@@ -23,6 +23,7 @@ use log::{debug, Level, log_enabled};
 use rustc_hir as hir;
 use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_hir::{Mutability, Node};
+use rustc_middle::hir::map as hir_map;
 use rustc_middle::ty::{TyCtxt, TyKind, TypeAndMut, Ty};
 use rustc_index::vec::{Idx, IndexVec};
 use rustc_ast::IntTy;
@@ -143,7 +144,7 @@ impl<'lty, 'tcx, L: fmt::Debug> type_map::Signature<LabeledTy<'lty, 'tcx, L>>
 
 /// Check if a definition is a `fn` item of some sort.  Note that this does not return true on
 /// closures.
-fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
+fn is_fn(hir_map: &hir_map::Map, def_id: DefId) -> bool {
     let n = match hir_map.get_if_local(def_id) {
         None => return false,
         Some(n) => n,
