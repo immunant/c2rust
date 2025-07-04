@@ -6,6 +6,7 @@ use rustc_data_structures::sync::Lrc;
 use rustc_ast::*;
 use rustc_ast::token;
 use rustc_ast::ptr::P;
+use rustc_middle::ty;
 use rustc_span::symbol::Symbol;
 use rustc_ast::visit::{self, Visitor};
 use rustc_span::Span;
