@@ -237,7 +237,7 @@ pub fn namespace(res: &def::Res) -> Option<Namespace> {
             Macro(..) => Some(Namespace::MacroNS),
         }
 
-        Res::PrimTy(..) | Res::SelfTy(..) | Res::ToolMod => Some(Namespace::TypeNS),
+        Res::PrimTy(..) | Res::SelfTy { .. } | Res::ToolMod => Some(Namespace::TypeNS),
 
         Res::SelfCtor(..) | Res::Local(..) => Some(Namespace::ValueNS),
 
