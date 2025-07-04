@@ -4,7 +4,6 @@ use rustc_hir::def_id::DefId;
 use rustc_type_ir::sty::TyKind;
 use rustc_ast::ast;
 use rustc_ast::*;
-use rustc_ast::attr;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_span::sym;
@@ -580,9 +579,9 @@ impl Transform for WrapApi {
 
             // Get the exported symbol name of the function
             let symbol =
-                if let Some(sym) = attr::first_attr_value_str_by_name(&i.attrs, sym::export_name) {
+                if let Some(sym) = crate::util::first_attr_value_str_by_name(&i.attrs, sym::export_name) {
                     sym
-                } else if attr::contains_name(&i.attrs, sym::no_mangle) {
+                } else if crate::util::contains_name(&i.attrs, sym::no_mangle) {
                     i.ident.name
                 } else {
                     warn!("marked function `{:?}` does not have a stable symbol", i.ident.name);

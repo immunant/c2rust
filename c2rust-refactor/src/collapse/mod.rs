@@ -16,7 +16,6 @@
 //! certain attributes (`#[derive]`, `#[cfg]`), and `std`/prelude injection.
 use std::collections::HashMap;
 use rustc_ast::*;
-use rustc_ast::attr;
 use rustc_span::source_map::Span;
 use rustc_span::sym;
 
@@ -98,10 +97,10 @@ impl<'ast> CollapseInfo<'ast> {
 /// also injected.
 fn injected_items(krate: &Crate) -> (&'static [&'static str], bool) {
     // Mirrors the logic in syntax::std_inject
-    if attr::contains_name(&krate.attrs, sym::no_core) {
+    if crate::util::contains_name(&krate.attrs, sym::no_core) {
         (&[], false)
-    } else if attr::contains_name(&krate.attrs, sym::no_std) {
-        if attr::contains_name(&krate.attrs, sym::compiler_builtins) {
+    } else if crate::util::contains_name(&krate.attrs, sym::no_std) {
+        if crate::util::contains_name(&krate.attrs, sym::compiler_builtins) {
             (&["core"], true)
         } else {
             (&["core", "compiler_builtins"], true)
@@ -128,7 +127,7 @@ pub fn collapse_injected(krate: &mut Crate) {
                 }
             }
             ItemKind::Use(_) => {
-                if expect_prelude && attr::contains_name(&i.attrs, sym::prelude_import) {
+                if expect_prelude && crate::util::contains_name(&i.attrs, sym::prelude_import) {
                     expect_prelude = false;
                     false
                 } else {
