@@ -155,7 +155,7 @@ pub fn extend_span_attrs(mut s: Span, attrs: &[Attribute]) -> Span {
 }
 
 /// Get the name of a macro invocation.
-pub fn macro_name(mac: &MacCall) -> Name {
+pub fn macro_name(mac: &MacCall) -> Symbol {
     let p = &mac.path;
     p.segments.last().unwrap().ident.name
 }
