@@ -302,7 +302,7 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     }
 
     impl Executor for LoggingExecutor {
-        fn init<'a, 'cfg>(&self, cx: &Context<'a, 'cfg>, unit: &Unit<'a>) {
+        fn init<'a, 'cfg>(&self, cx: &Context<'a, 'cfg>, unit: &Unit) {
             self.default.init(cx, unit);
         }
 
