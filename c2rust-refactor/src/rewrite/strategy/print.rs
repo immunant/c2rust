@@ -712,7 +712,7 @@ fn create_file_for_module(
     let filename = match old_sf.name.clone() {
         FileName::Real(mut path) => {
             let mod_file_name = format!("{}.rs", module_item.ident.to_string());
-            if let Some(path_attr) = attr::first_attr_value_str_by_name(&module_item.attrs, Symbol::intern("path")) {
+            if let Some(path_attr) = crate::util::first_attr_value_str_by_name(&module_item.attrs, Symbol::intern("path")) {
                 path.pop();
                 path.push(path_attr.to_string());
             } else {
