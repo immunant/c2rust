@@ -421,7 +421,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         let possible_match = match item.res {
             Res::Def(DefKind::ForeignTy, _) => false,
             Res::Def(DefKind::Fn, def_id) => {
-                self.cx.ty_ctxt().fn_sig(def_id).abi() == Abi::C
+                matches!(self.cx.ty_ctxt().fn_sig(def_id).abi(), Abi::C { .. })
             }
             Res::Def(DefKind::Static(_), def_id) => {
                 if let ty::TyKind::Adt(def, _) = self.cx.ty_ctxt().type_of(def_id).kind {
