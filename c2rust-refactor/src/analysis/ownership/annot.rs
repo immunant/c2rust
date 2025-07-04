@@ -5,7 +5,7 @@ use std::cmp;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use arena::SyncDroplessArena;
+use rustc_arena::DroplessArena;
 use log::{debug, Level, log_enabled};
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
@@ -321,7 +321,7 @@ fn nested_str(nmeta: &ast::NestedMetaItem) -> Result<Symbol, &'static str> {
 
 fn parse_ownership_constraints<'lty>(
     meta: &ast::MetaItem,
-    arena: &'lty SyncDroplessArena,
+    arena: &'lty DroplessArena,
 ) -> Result<ConstraintSet<'lty>, &'static str> {
     let args = meta_item_list(meta)?;
 
@@ -347,7 +347,7 @@ fn parse_ownership_constraints<'lty>(
 
 fn parse_perm<'lty>(
     meta: &ast::MetaItem,
-    arena: &'lty SyncDroplessArena,
+    arena: &'lty DroplessArena,
 ) -> Result<Perm<'lty>, &'static str> {
     if meta.check_name(Symbol::intern("min")) {
         let args = meta_item_list(meta)?;
