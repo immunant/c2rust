@@ -6,7 +6,7 @@ use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use rustc_span::source_map::{Span, Spanned};
 use rustc_target::spec::abi::Abi;
 use rustc_span::hygiene::SyntaxContext;
-use rustc_span::symbol::Ident;
+use rustc_span::symbol::{Ident, Symbol};
 use thin_vec::ThinVec;
 
 pub trait AstDeref {
