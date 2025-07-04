@@ -231,7 +231,7 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<RustcArgs> {
 #[cfg_attr(feature = "profile", flame)]
 fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
-    use cargo::core::{maybe_allow_nightly_features, PackageId, Target, Workspace, Verbosity};
+    use cargo::core::{PackageId, Target, Workspace, Verbosity};
     use cargo::ops;
     use cargo::ops::CompileOptions;
     use cargo::util::important_paths::find_root_manifest_for_wd;
@@ -239,10 +239,6 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     use cargo_util::ProcessBuilder;
     use cargo::Config;
     use std::sync::Mutex;
-
-    // `cargo`-built `libcargo` is always on the `dev` channel, so `maybe_allow_nightly_features`
-    // really does allow nightly features.
-    maybe_allow_nightly_features();
 
     let config = Config::default().unwrap();
     config.shell().set_verbosity(Verbosity::Quiet);
