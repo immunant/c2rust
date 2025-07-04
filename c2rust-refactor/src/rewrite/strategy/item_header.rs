@@ -12,7 +12,7 @@
 //! Aside from the special handling of qualifiers, this strategy works the same as `recursive`.
 use log::info;
 use rustc_ast::*;
-use rustc_ast::token::{Token, TokenKind};
+use rustc_ast::token::{Delimiter, Token, TokenKind};
 use rustc_span::source_map::{BytePos, Span};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 
@@ -166,7 +166,7 @@ fn find_fn_header_arg_list(ts: TokenStream, generics_span: Span) -> Option<(Toke
     ts.trees()
         .filter_map(|tt| match tt {
             TokenTree::Delimited(sp, delim, tts) => {
-                if delim == DelimToken::Paren && sp.open.lo() >= generics_span.hi() {
+                if *delim == Delimiter::Parenthesis && sp.open.lo() >= generics_span.hi() {
                     Some((tts, sp.open.between(sp.close)))
                 } else {
                     None
