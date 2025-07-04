@@ -285,7 +285,7 @@ fn delimited(ts: Vec<TokenTree>) -> MacArgs {
 
 fn make_attr(name: &str, args: MacArgs) -> Attribute {
     Attribute {
-        id: AttrId(0),
+        id: AttrId::from_u32(0),
         style: AttrStyle::Outer,
         kind: AttrKind::Normal(AttrItem {
             path: mk().path(vec![name]),
