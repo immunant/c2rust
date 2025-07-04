@@ -228,7 +228,7 @@ pub fn namespace(res: &def::Res) -> Option<Namespace> {
     match res {
         Res::Def(kind, _) => match kind {
             Struct | Union | Enum | Variant | Trait | OpaqueTy | TyAlias
-            | ForeignTy | TraitAlias | AssocTy | AssocOpaqueTy | TyParam => {
+            | ForeignTy | TraitAlias | AssocTy | TyParam => {
                 Some(Namespace::TypeNS)
             }
             Fn | Const | ConstParam | Static(_) | Ctor(..) | Method | AssocConst => {
