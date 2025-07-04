@@ -112,8 +112,8 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     pub fn make_diagnostic(&self, level: Level, message: &str) -> DiagnosticBuilder<'a> {
         match level {
-            Level::Warning => self.sess.diagnostic().struct_warn(message),
-            Level::Error => self.sess.diagnostic().struct_err(message),
+            Level::Warning(..) => self.sess.diagnostic().struct_warn(message),
+            Level::Error { .. } => self.sess.diagnostic().struct_err(message),
             Level::Fatal => self.sess.diagnostic().struct_fatal(message),
             _ => panic!("Cannot construct diagnostic for level {:?}", level),
         }
