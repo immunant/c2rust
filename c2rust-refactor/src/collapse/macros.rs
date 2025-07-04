@@ -11,7 +11,6 @@ use rustc_data_structures::sync::Lrc;
 use smallvec::SmallVec;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use rustc_ast::*;
-use rustc_ast::attr;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::token::{Nonterminal, Token, TokenKind};
 use rustc_ast::ptr::P;
@@ -357,14 +356,14 @@ fn restore_attrs(new_attrs: &mut Vec<Attribute>, old_attrs: &[Attribute]) {
     // If the original item had a `#[derive]` attr, transfer it to the new one.
     // TODO: handle multiple instances of `#[derive]`
     // TODO: try to keep attrs in the same order
-    if let Some(attr) = attr::find_by_name(old_attrs, sym::derive) {
-        if !attr::contains_name(&new_attrs, sym::derive) {
+    if let Some(attr) = crate::util::find_by_name(old_attrs, sym::derive) {
+        if !crate::util::contains_name(&new_attrs, sym::derive) {
             new_attrs.push(attr.clone());
         }
     }
 
-    if let Some(attr) = attr::find_by_name(old_attrs, sym::cfg) {
-        if !attr::contains_name(&new_attrs, sym::cfg) {
+    if let Some(attr) = crate::util::find_by_name(old_attrs, sym::cfg) {
+        if !crate::util::contains_name(&new_attrs, sym::cfg) {
             new_attrs.push(attr.clone());
         }
     }
