@@ -252,12 +252,13 @@ pub fn join_visibility(vis1: &VisibilityKind, vis2: &VisibilityKind) -> Visibili
     use rustc_ast::VisibilityKind::*;
     match (vis1, vis2) {
         (Public, _) | (_, Public) => Public,
-        (Crate, _) | (_, Crate) => Crate,
+        (Restricted { path, .. }, _) if path.eq(kw::Crate) => vis1.clone(),
+        (_, Restricted { path, .. }) if path.eq(kw::Crate) => vis2.clone(),
         (Restricted { path: path1, .. }, Restricted { path: path2, .. }) => {
             if path1.ast_equiv(&path2) {
                 vis1.clone()
             } else {
-                Crate
+                Restricted { path: Path::from_ident(kw::Crate), id: DUMMY_NODE_ID }
             }
         }
         (Restricted { .. }, Inherited) => vis1.clone(),
