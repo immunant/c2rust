@@ -6,7 +6,7 @@ use std::str::FromStr;
 use std::vec;
 use rustc_ast::Path;
 use rustc_parse::parser::{Parser, PathStyle};
-use rustc_ast::token::{Lit, LitKind, Token, TokenKind};
+use rustc_ast::token::{Delimiter, Lit, LitKind, Token, TokenKind};
 use rustc_session::parse::ParseSess;
 use rustc_span::symbol::Symbol;
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
@@ -96,7 +96,7 @@ impl<'a> Stream<'a> {
     fn parens_raw(&mut self) -> PResult<TokenStream> {
         match self.take()? {
             TokenTree::Delimited(_, delim, tts) => {
-                if delim != DelimToken::Paren {
+                if delim != Delimiter::Parenthesis {
                     fail!("expected parens, but got {:?}", delim);
                 }
                 Ok(tts)
@@ -112,7 +112,7 @@ impl<'a> Stream<'a> {
 
     fn maybe_parens(&mut self) -> Option<Stream<'a>> {
         let has_parens = match self.peek() {
-            Some(&TokenTree::Delimited(_, delim, _)) => delim == DelimToken::Paren,
+            Some(&TokenTree::Delimited(_, Delimiter::Parenthesis, _)) => true,
             _ => false,
         };
 
