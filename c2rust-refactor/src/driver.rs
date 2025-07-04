@@ -330,7 +330,7 @@ pub struct Compiler {
     crate_name: Option<String>,
     register_lints: Option<Box<dyn Fn(&Session, &mut LintStore) + Send + Sync>>,
     override_queries:
-        Option<fn(&Session, &mut ty::query::Providers<'_>, &mut ty::query::Providers<'_>)>,
+        Option<fn(&Session, &mut ty::query::Providers, &mut ty::query::Providers)>,
 }
 
 #[allow(dead_code)]
