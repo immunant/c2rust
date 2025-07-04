@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::u32;
 
-use arena::SyncDroplessArena;
+use rustc_arena::DroplessArena;
 use log::{debug, Level, log_enabled};
 use rustc_hir as hir;
 use rustc_hir::def_id::{DefId, LOCAL_CRATE};
@@ -282,7 +282,7 @@ fn register_std_constraints<'a, 'tcx, 'lty>(
 pub fn analyze<'lty, 'a: 'lty, 'tcx: 'a>(
     st: &CommandState,
     dcx: &RefactorCtxt<'a, 'tcx>,
-    arena: &'lty SyncDroplessArena,
+    arena: &'lty DroplessArena,
 ) -> AnalysisResult<'lty, 'tcx> {
     let mut cx = Ctxt::new(dcx.ty_ctxt(), arena);
 
@@ -336,7 +336,7 @@ pub struct AnalysisResult<'lty, 'tcx> {
     pub monos: HashMap<(DefId, usize), MonoResult>,
 
     /// Arena used to allocate all type wrappers
-    arena: &'lty SyncDroplessArena,
+    arena: &'lty DroplessArena,
 }
 
 /// Results specific to an analysis-level function.
@@ -427,7 +427,7 @@ impl<'lty, 'tcx> AnalysisResult<'lty, 'tcx> {
         (fr, vr)
     }
 
-    pub fn arena(&self) -> &'lty SyncDroplessArena {
+    pub fn arena(&self) -> &'lty DroplessArena {
         self.arena
     }
 }
@@ -608,7 +608,7 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
 pub fn dump_results(dcx: &RefactorCtxt, results: &AnalysisResult) {
     debug!("\n === summary ===");
 
-    let arena = SyncDroplessArena::default();
+    let arena = DroplessArena::default();
     let new_lcx = LabeledTyCtxt::new(&arena);
     let format_sig = |sig: VFnSig, assign: &IndexVec<Var, ConcretePerm>| {
         let mut func = |p: &Option<_>| p.as_ref().map(|&v| assign[v]);
