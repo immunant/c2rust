@@ -4,7 +4,6 @@
 use rustc_middle::dep_graph::DepGraph;
 use rustc_middle::hir::map as hir_map;
 use rustc_lint::LintStore;
-use rustc_hir as hir;
 use rustc_session::config::Options as SessionOptions;
 use rustc_session::config::{Input, OutputFilenames};
 use rustc_session::{self, DiagnosticOutput, Session};
@@ -342,7 +341,7 @@ struct Queries<'tcx> {
     register_plugins: Query<(ast::Crate, Lrc<LintStore>)>,
     expansion: Query<(ast::Crate, Steal<Rc<RefCell<BoxedResolver>>>)>,
     dep_graph: Query<DepGraph>,
-    lower_to_hir: Query<(&'tcx hir::map::Forest, Steal<ResolverOutputs>)>,
+    lower_to_hir: Query<(&'tcx hir_map::Forest, Steal<ResolverOutputs>)>,
     prepare_outputs: Query<OutputFilenames>,
     global_ctxt: Query<BoxedGlobalCtxt>,
     ongoing_codegen: Query<Box<dyn Any>>,
