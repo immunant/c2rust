@@ -10,7 +10,7 @@ use rustc_session::config::CrateType;
 use rustc_middle::hir::map as hir_map;
 use rustc_middle::ty::subst::InternalSubsts;
 use rustc_middle::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
-use rustc_errors::{DiagnosticBuilder, Level};
+use rustc_errors::{DiagnosticBuilder, Level, ErrorGuaranteed};
 use rustc_metadata::creader::CStore;
 use rustc_ast::{
     self, Expr, ExprKind, ForeignItem, ForeignItemKind, FnDecl, FnRetTy, Item, ItemKind, NodeId, Path, QSelf, UseTreeKind, DUMMY_NODE_ID,
@@ -110,7 +110,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
 // Other context API methods
 impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
-    pub fn make_diagnostic(&self, level: Level, message: &str) -> DiagnosticBuilder<'a> {
+    pub fn make_diagnostic(&self, level: Level, message: &str) -> DiagnosticBuilder<'a, ErrorGuaranteed> {
         match level {
             Level::Warning(..) => self.sess.diagnostic().struct_warn(message),
             Level::Error { .. } => self.sess.diagnostic().struct_err(message),
