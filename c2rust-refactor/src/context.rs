@@ -13,7 +13,7 @@ use rustc_middle::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
 use rustc_errors::{DiagnosticBuilder, Level, ErrorGuaranteed};
 use rustc_metadata::creader::CStore;
 use rustc_ast::{
-    self, Expr, ExprKind, ForeignItem, ForeignItemKind, FnDecl, FnRetTy, Item, ItemKind, NodeId, Path, QSelf, UseTreeKind, DUMMY_NODE_ID,
+    Expr, ExprKind, ForeignItem, ForeignItemKind, FnDecl, FnRetTy, Item, ItemKind, NodeId, Path, QSelf, UseTreeKind, DUMMY_NODE_ID,
 };
 use rustc_ast::ptr::P;
 
@@ -264,13 +264,13 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             .unwrap_or_else(|| panic!("expr does not resolve to a def: {:?}", e))
     }
 
-    pub fn try_resolve_ty(&self, t: &ast::Ty) -> Option<DefId> {
+    pub fn try_resolve_ty(&self, t: &rustc_ast::Ty) -> Option<DefId> {
         if let Some(def) = self.try_resolve_ty_hir(t) {
             return def.opt_def_id();
         }
 
         if self.has_ty_ctxt() {
-            if let ast::TyKind::Path(..) = t.kind {
+            if let rustc_ast::TyKind::Path(..) = t.kind {
                 if let Some(def) = self.try_resolve_node_type_dep(t.id) {
                     return def.opt_def_id();
                 }
@@ -281,7 +281,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     }
 
     /// Get the target `DefId` of a path ty.
-    pub fn resolve_ty(&self, t: &ast::Ty) -> DefId {
+    pub fn resolve_ty(&self, t: &rustc_ast::Ty) -> DefId {
         self.try_resolve_ty(t)
             .unwrap_or_else(|| panic!("ty does not resolve to a def: {:?}", t))
     }
@@ -430,7 +430,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         Some(path.res)
     }
 
-    pub fn try_resolve_ty_hir(&self, t: &ast::Ty) -> Option<Res> {
+    pub fn try_resolve_ty_hir(&self, t: &rustc_ast::Ty) -> Option<Res> {
         let node = match_or!([self.hir_map().find(t.id)] Some(x) => x;
                              return None);
         let t = match_or!([node] hir::Node::Ty(t) => t;
@@ -442,7 +442,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         Some(path.res)
     }
 
-    pub fn try_resolve_pat_hir(&self, p: &ast::Pat) -> Option<Res> {
+    pub fn try_resolve_pat_hir(&self, p: &rustc_ast::Pat) -> Option<Res> {
         let node = match_or!([self.hir_map().find(p.id)] Some(x) => x;
                              return None);
         let p = match_or!([node] hir::Node::Pat(p) => p;
@@ -780,7 +780,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
 
         // We assume we're dealing with function declaration prototypes, not
         // closures, so the default return type is ()
-        let unit_ty = mk().tuple_ty::<P<ast::Ty>>(vec![]);
+        let unit_ty = mk().tuple_ty::<P<rustc_ast::Ty>>(vec![]);
         let ty1 = match &decl1.output {
             FnRetTy::Default(..) => &unit_ty,
             FnRetTy::Ty(ty) => &ty,
@@ -816,7 +816,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
     }
 
     /// Compare two AST types for structural equivalence, ignoring names.
-    pub fn structural_eq_ast_tys(&self, ty1: &ast::Ty, ty2: &ast::Ty) -> bool {
+    pub fn structural_eq_ast_tys(&self, ty1: &rustc_ast::Ty, ty2: &rustc_ast::Ty) -> bool {
         match (self.cx.opt_node_type(ty1.id), self.cx.opt_node_type(ty2.id)) {
             (Some(ty1), Some(ty2)) => return self.structural_eq_tys(ty1, ty2),
             _ => {}
