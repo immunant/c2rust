@@ -319,7 +319,7 @@ fn handle_struct<'tcx, F>(
     cx: &RefactorCtxt<'_, 'tcx>,
     expr_id: NodeId,
     ty: ty::Ty<'tcx>,
-    fields: &mut Vec<Field>,
+    fields: &mut Vec<FieldDef>,
     maybe_expr: &mut Option<P<Expr>>,
     mut ensure: F,
 ) where
