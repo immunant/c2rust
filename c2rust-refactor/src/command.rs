@@ -1,9 +1,9 @@
 //! Command management and overall refactoring state.
 
 use log::{info, warn};
-use rustc_hir as hir;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_session::{self, DiagnosticOutput, Session};
+use rustc_middle::hir::map as hir_map;
 use rustc_middle::ty::TyCtxt;
 use rustc_data_structures::sync::Lrc;
 use rustc_interface::interface;
@@ -393,7 +393,7 @@ impl RefactorState {
                     let hir = queries.lower_to_hir()?.take();
                     let (ref hir_forest, ref resolver) = hir;
                     let resolver = resolver.steal();
-                    let map = hir::map::map_crate(
+                    let map = hir_map::map_crate(
                         session,
                         &*resolver.cstore,
                         &hir_forest,
