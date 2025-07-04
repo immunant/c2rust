@@ -15,6 +15,7 @@ use rustc_target::spec::abi::{self, Abi};
 use rustc_ast::*;
 use rustc_ast::util::comments::{Comment, CommentStyle};
 use rustc_ast::ptr::P;
+use rustc_ast_pretty::pprust::{self, PrintState, item_to_string};
 use rustc_span::symbol::{Ident, kw};
 use rustc_data_structures::map_in_place::MapInPlace;
 use rustc_span::{BytePos, DUMMY_SP};
@@ -29,7 +30,6 @@ use crate::path_edit::fold_resolved_paths_with_id;
 use crate::RefactorCtxt;
 use crate::util::Lone;
 use crate::ast_builder::mk;
-use c2rust_ast_printer::pprust::{item_to_string, foreign_item_to_string};
 
 use super::externs;
 
@@ -1100,7 +1100,9 @@ impl MovedDecl {
 impl ToString for MovedDecl {
     fn to_string(&self) -> String {
         match &self.kind {
-            DeclKind::ForeignItem(item, _) => foreign_item_to_string(item),
+            DeclKind::ForeignItem(item, _) => pprust::to_string(|s| {
+                s.foreign_item_to_string(item);
+            }),
             DeclKind::Item(item) => item_to_string(item),
         }
     }
