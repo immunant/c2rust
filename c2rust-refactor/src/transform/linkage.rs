@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use rustc_hir::def_id::DefId;
 use rustc_ast::*;
-use rustc_ast::attr;
 use rustc_ast::ptr::P;
 use rustc_span::symbol::Symbol;
 use rustc_span::sym;
@@ -73,9 +72,9 @@ impl Transform for LinkFuncs {
         visit_fns(krate, |fl| {
             let def_id = cx.node_def_id(fl.id);
             if fl.kind != FnKind::Foreign {
-                if let Some(name) = attr::first_attr_value_str_by_name(&fl.attrs, sym::export_name) {
+                if let Some(name) = crate::util::first_attr_value_str_by_name(&fl.attrs, sym::export_name) {
                     symbol_to_def.insert(name, def_id);
-                } else if attr::contains_name(&fl.attrs, sym::no_mangle) {
+                } else if crate::util::contains_name(&fl.attrs, sym::no_mangle) {
                     symbol_to_def.insert(fl.ident.name, def_id);
                 }
             } else {

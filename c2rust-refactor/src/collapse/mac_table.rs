@@ -12,7 +12,6 @@ use thin_vec::ThinVec;
 
 use std::fmt::Debug;
 use std::rc::Rc;
-use rustc_ast::attr;
 use rustc_ast::ptr::P;
 use rustc_span::source_map::Spanned;
 use rustc_ast::visit::{AssocCtxt, Visitor};
@@ -398,7 +397,7 @@ fn is_derived<'a>(
                 _ => None,
             };
             if let Some(attrs) = attrs {
-                if attr::contains_name(attrs, Symbol::intern("automatically_derived")) {
+                if crate::util::contains_name(attrs, Symbol::intern("automatically_derived")) {
                     return true;
                 }
             }
@@ -507,9 +506,9 @@ impl CollectMacros for NodeId {
 }
 
 fn has_macro_attr(attrs: &[Attribute]) -> bool {
-    attr::contains_name(attrs, Symbol::intern("derive"))
-        || attr::contains_name(attrs, Symbol::intern("cfg"))
-        || attr::contains_name(attrs, Symbol::intern("test"))
+    crate::util::contains_name(attrs, Symbol::intern("derive"))
+        || crate::util::contains_name(attrs, Symbol::intern("cfg"))
+        || crate::util::contains_name(attrs, Symbol::intern("test"))
 }
 
 trait MaybeInvoc {
