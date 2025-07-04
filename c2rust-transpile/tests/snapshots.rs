@@ -48,6 +48,21 @@ fn config() -> TranspilerConfig {
 }
 
 fn transpile(c_path: &Path) {
+    let parent_dir_name = c_path
+        .parent()
+        .and_then(|dir| dir.file_name())
+        .and_then(|file_name| file_name.to_str())
+        .unwrap_or_default();
+    // Some things transpile differently on Linux vs. macOS,
+    // as they use `unsigned long` and `unsigned long long` differently for builtins.
+    // This makes snapshot tests trickier, as the output will be OS-dependent.
+    // We only test Linux here, as that should be sufficient for these specific tests,
+    // and because cross-compiling with transpilation is not super straightforward,
+    // so generating the macOS snapshots locally on Linux is annoying.
+    if parent_dir_name == "linux" && !cfg!(target_os = "linux") {
+        return;
+    }
+
     let status = Command::new("clang")
         .args(&["-c", "-o", "/dev/null"])
         .arg(c_path)
@@ -81,15 +96,9 @@ fn transpile(c_path: &Path) {
 
 #[test]
 fn transpile_all() {
-    insta::glob!("snapshots/*.c", transpile);
-
-    // Some things transpile differently on Linux vs. macOS,
-    // as they use `unsigned long` and `unsigned long long` differently for builtins.
-    // This makes snapshot tests trickier, as the output will be OS-dependent.
-    // We only test Linux here, as that should be sufficient for these specific tests,
-    // and because cross-compiling with transpilation is not super straightforward,
-    // so generating the macOS snapshots locally on Linux is annoying.
-    if cfg!(target_os = "linux") {
-        insta::glob!("snapshots/linux/*.c", transpile);
-    }
+    // We need to do this as a single glob,
+    // as `insta` removes the common prefix to all matches files,
+    // and if we do this as separate globs (for linux-only files),
+    // they'll overwrite each other.
+    insta::glob!("snapshots/**/*.c", transpile);
 }
