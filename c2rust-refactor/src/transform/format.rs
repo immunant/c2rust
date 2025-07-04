@@ -5,7 +5,6 @@ use std::str::FromStr;
 use rustc_data_structures::sync::Lrc;
 use rustc_hir::def_id::DefId;
 use rustc_ast::*;
-use rustc_ast::attr;
 use rustc_span::source_map::DUMMY_SP;
 use rustc_ast::ptr::P;
 use rustc_ast::token::{Token, TokenKind, Nonterminal};
@@ -229,7 +228,7 @@ impl Transform for ConvertPrintfs {
         let mut fprintf_defs = HashSet::<DefId>::new();
         let mut stderr_defs = HashSet::<DefId>::new();
         visit_nodes(krate, |fi: &ForeignItem| {
-            if attr::contains_name(&fi.attrs, sym::no_mangle) {
+            if crate::util::contains_name(&fi.attrs, sym::no_mangle) {
                 match (&*fi.ident.as_str(), &fi.kind) {
                     ("printf", ForeignItemKind::Fn(_, _)) => {
                         printf_defs.insert(cx.node_def_id(fi.id));
