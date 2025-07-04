@@ -1,5 +1,5 @@
 use log::debug;
-use rustc_hir::{self, HirId};
+use rustc_hir::HirId;
 use rustc_middle::ty::{self, ParamEnv};
 use rustc_typeck::expr_use_visitor::*;
 use rustc_ast::{Crate, Expr, ExprKind, Lit, LitKind, Stmt, StmtKind};
@@ -106,7 +106,7 @@ impl Transform for ReconstructForRange {
             let var_expr = mcx.bindings.get::<_, P<Expr>>("$i")
                 .unwrap().clone();
             let var_hir_id = match_or!([cx.try_resolve_expr_hir(&var_expr)]
-                                       Some(hir::def::Res::Local(x)) => x; return);
+                                       Some(rustc_hir::def::Res::Local(x)) => x; return);
             let mut delegate = ForRangeDelegate {
                 hir_map,
                 while_hir_id,
