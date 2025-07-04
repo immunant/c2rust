@@ -14,7 +14,7 @@ use rustc_codegen_ssa::traits::CodegenBackend;
 use rustc_data_structures::declare_box_region_type;
 use rustc_data_structures::sync::{Lock, Lrc};
 use rustc_driver;
-use rustc_errors::DiagnosticBuilder;
+use rustc_errors::{DiagnosticBuilder, ErrorGuaranteed};
 use rustc_incremental::DepGraphFuture;
 use rustc_interface::interface;
 use rustc_interface::interface::BoxedResolver;
@@ -511,7 +511,7 @@ fn make_parser<'a>(sess: &'a Session, src: &str) -> Parser<'a> {
     )
 }
 
-pub fn emit_and_panic(mut db: DiagnosticBuilder, what: &str) -> ! {
+pub fn emit_and_panic(mut db: DiagnosticBuilder<ErrorGuaranteed>, what: &str) -> ! {
     db.emit();
     panic!("error parsing {}", what);
 }
