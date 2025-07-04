@@ -571,7 +571,7 @@ impl Command for AnalysisCmd {
             // spans
             c2rust_analysis_rt::span::set_file(&self.span_filename);
 
-            // let arena = SyncDroplessArena::default();
+            // let arena = DroplessArena::default();
             // let ownership_analysis = ownership::analyze(&st, &cx, &arena);
 
             let mut analyzer = LifetimeAnalyzer::new(

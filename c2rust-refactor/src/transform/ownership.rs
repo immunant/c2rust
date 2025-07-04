@@ -2,7 +2,7 @@ use log::debug;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use arena::SyncDroplessArena;
+use rustc_arena::DroplessArena;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use rustc_ast::*;
@@ -64,7 +64,7 @@ pub fn register_commands(reg: &mut Registry) {
 fn do_annotate(st: &CommandState,
                cx: &RefactorCtxt,
                label: Symbol) {
-    let arena = SyncDroplessArena::default();
+    let arena = DroplessArena::default();
     let analysis = ownership::analyze(&st, &cx, &arena);
 
     struct AnnotateFolder<'a, 'tcx: 'a> {
@@ -314,7 +314,7 @@ fn build_variant_attr(group: &str) -> Attribute {
 fn do_split_variants(st: &CommandState,
                      cx: &RefactorCtxt,
                      label: Symbol) {
-    let arena = SyncDroplessArena::default();
+    let arena = DroplessArena::default();
     let ana = ownership::analyze(&st, &cx, &arena);
 
     // Map from ExprPath/ExprMethodCall span to function ref idx within the caller.
@@ -508,7 +508,7 @@ fn callee_new_name(cx: &RefactorCtxt,
 /// of the ownership analysis.
 /// See `analysis/ownership/README.md` for details on ownership inference.
 fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
-    let arena = SyncDroplessArena::default();
+    let arena = DroplessArena::default();
     let ana = ownership::analyze(&st, &cx, &arena);
 
     struct AnalysisTypeSource<'lty, 'tcx: 'lty> {
