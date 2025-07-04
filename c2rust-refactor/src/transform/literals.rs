@@ -1,4 +1,4 @@
-use arena::SyncDroplessArena;
+use rustc_arena::DroplessArena;
 use ena::unify as ut;
 use rustc_hir as hir;
 use rustc_hir::def::Res;
@@ -150,7 +150,7 @@ fn remove_suffix(lit: &Lit) -> Option<Lit> {
 
 impl Transform for RemoveLiteralSuffixes {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        let arena = SyncDroplessArena::default();
+        let arena = DroplessArena::default();
         let mut uv = UnifyVisitor {
             cx,
             arena: &arena,
@@ -219,7 +219,7 @@ impl Transform for RemoveLiteralSuffixes {
 
 struct UnifyVisitor<'a, 'kt, 'tcx: 'a + 'kt> {
     cx: &'a RefactorCtxt<'a, 'tcx>,
-    arena: &'kt SyncDroplessArena,
+    arena: &'kt DroplessArena,
     unif: ut::UnificationTable<ut::InPlace<LitTyKey<'tcx>>>,
     lit_nodes: HashMap<NodeId, LitTyKey<'tcx>>,
 }

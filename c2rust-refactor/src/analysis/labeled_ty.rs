@@ -2,7 +2,7 @@
 //!
 //! Labeled type data is manipulated by reference, the same as with `Ty`s, and the data is stored
 //! in the same arena as the underlying `Ty`s.
-use arena::SyncDroplessArena;
+use rustc_arena::DroplessArena;
 use rustc_middle::ty::{Ty, TyKind};
 use rustc_type_ir::sty::TyKind as IrTyKind;
 use std::fmt;
@@ -51,14 +51,14 @@ impl<'lty, 'tcx, L> LabeledTyS<'lty, 'tcx, L> {
 
 /// Context for constructing `LabeledTy`s.
 pub struct LabeledTyCtxt<'lty, L: 'lty> {
-    arena: &'lty SyncDroplessArena,
+    arena: &'lty DroplessArena,
     _marker: PhantomData<L>,
 }
 
 impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
     /// Build a new `LabeledTyCtxt`.  The `arena` must be the same one used by the `TyCtxt` that
     /// built the underlying `Ty`s to be labeled.
-    pub fn new(arena: &'lty SyncDroplessArena) -> LabeledTyCtxt<'lty, L> {
+    pub fn new(arena: &'lty DroplessArena) -> LabeledTyCtxt<'lty, L> {
         LabeledTyCtxt {
             arena,
             _marker: PhantomData,
