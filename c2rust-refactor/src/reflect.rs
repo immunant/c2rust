@@ -242,7 +242,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                 Some(DefKind::Struct) | Some(DefKind::Union) | Some(DefKind::Enum)
                     | Some(DefKind::Variant) | Some(DefKind::Trait) | Some(DefKind::OpaqueTy)
                     | Some(DefKind::TyAlias) | Some(DefKind::ForeignTy) | Some(DefKind::TraitAlias)
-                    | Some(DefKind::AssocTy) | Some(DefKind::AssocOpaqueTy)
+                    | Some(DefKind::AssocTy)
                     | Some(DefKind::TyParam) | Some(DefKind::Fn) | Some(DefKind::Method)
                     | Some(DefKind::Ctor(..)) => {
                         let gen = self.tcx.generics_of(id);
