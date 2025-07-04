@@ -1194,7 +1194,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
     ) -> Vec<DefId>
         where P: FnMut(&DeclKind) -> bool
     {
-        assert!(ident.name != kw::Invalid);
+        assert!(ident.name != kw::Empty);
         let mut matches = vec![];
         if let Some(items) = self.idents[namespace].get_mut(&ident) {
             items.retain(|decl| {
@@ -1458,7 +1458,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
         } else {
             item.ident
         };
-        assert!(ident.name != kw::Invalid);
+        assert!(ident.name != kw::Empty);
 
         if ident.as_str().contains("C2RustUnnamed") {
             for existing_decl in self.unnamed_items[namespace].iter_mut() {
@@ -1550,7 +1550,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
             ForeignItemKind::Macro(..) => unimplemented!(),
         };
         let ident = item.ident;
-        assert!(ident.name != kw::Invalid);
+        assert!(ident.name != kw::Empty);
 
         if let Some(existing_decls) = self.idents[ns].get_mut(&ident) {
             for existing_decl in existing_decls {
