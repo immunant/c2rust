@@ -1,6 +1,5 @@
 use std::str::FromStr;
 use rustc_ast::*;
-use rustc_ast::attr;
 use rustc_span::source_map::Span;
 use rustc_span::symbol::Symbol;
 use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
@@ -260,7 +259,7 @@ pub fn matches_filter(
         }
         Filter::HasAttr(name) => node
             .attrs()
-            .map_or(false, |attrs| attr::contains_name(attrs, name)),
+            .map_or(false, |attrs| crate::util::contains_name(attrs, name)),
         Filter::Matches(ref pat) => match (node, pat) {
             (AnyNode::Expr(target), &AnyPattern::Expr(ref pattern)) => {
                 MatchCtxt::from_match(st, cx, &**pattern, target).is_ok()
