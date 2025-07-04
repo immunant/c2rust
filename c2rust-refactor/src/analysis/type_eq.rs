@@ -39,7 +39,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use arena::SyncDroplessArena;
+use rustc_arena::DroplessArena;
 use ena::unify::{InPlace, UnificationTable, UnifyKey};
 use rustc_hir::def_id::DefId;
 use rustc_hir::intravisit::{self, Visitor};
@@ -102,7 +102,7 @@ struct LTyTable<'lty> {
 }
 
 impl<'lty, 'tcx> LTyTable<'lty> {
-    fn new(arena: &'lty SyncDroplessArena) -> LTyTable<'lty> {
+    fn new(arena: &'lty DroplessArena) -> LTyTable<'lty> {
         LTyTable {
             unif: RefCell::new(UnificationTable::new()),
             lcx: LabeledTyCtxt::new(arena),
@@ -974,7 +974,7 @@ pub fn analyze<'a, 'tcx: 'a>(
     cx: &RefactorCtxt<'a, 'tcx>,
     krate: &ast::Crate,
 ) -> HashMap<HirId, u32> {
-    let arena = SyncDroplessArena::default();
+    let arena = DroplessArena::default();
     let ltt = LTyTable::new(&arena);
 
     // Collect labeled expr/pat types from the TypeckResults of each item.
