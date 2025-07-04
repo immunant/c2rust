@@ -6,9 +6,10 @@ use std::collections::{HashMap, HashSet, hash_map::Entry};
 use std::mem;
 
 use crate::transform::Transform;
-use rustc_hir::def::{DefKind, Export, Namespace, PerNS, Res};
+use rustc_hir::def::{DefKind, Namespace, PerNS, Res};
 use rustc_hir::def_id::DefId;
 use rustc_hir::{self as hir, HirId, Node};
+use rustc_middle::metadata::ModChild;
 use rustc_middle::ty::{self, ParamEnv};
 use rustc_target::spec::abi::{self, Abi};
 use rustc_ast::*;
@@ -394,7 +395,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 Some(extern_crate) if extern_crate.is_direct() => {}
                 _ => continue,
             }
-            for item in self.cx.ty_ctxt().item_children(*crate_def).iter() {
+            for item in self.cx.ty_ctxt().module_children(*crate_def).iter() {
                 let crate_name = self.cx.ty_ctxt().crate_name(crate_def.krate);
                 let path = Path {
                     span: DUMMY_SP,
@@ -412,7 +413,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         &mut self,
         declarations: &mut HeaderDeclarations,
         mut path: Path,
-        item: &Export<HirId>,
+        item: &ModChild,
     ) {
         path.segments.push(PathSegment::from_ident(item.ident));
         if item.vis != ty::Visibility::Public {
@@ -431,7 +432,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 }
             }
             Res::Def(DefKind::Mod, def_id) => {
-                for item in self.cx.ty_ctxt().item_children(def_id).iter() {
+                for item in self.cx.ty_ctxt().module_children(def_id).iter() {
                     self.match_exports(declarations, path.clone(), item);
                 }
                 false
