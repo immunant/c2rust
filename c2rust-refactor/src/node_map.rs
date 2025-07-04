@@ -8,7 +8,7 @@ use std::ops::Deref;
 use rustc_ast::{AttrId, NodeId, DUMMY_NODE_ID};
 use rustc_span::source_map::symbol::Symbol;
 
-pub const DUMMY_ATTR_ID: AttrId = AttrId(!0);
+pub const DUMMY_ATTR_ID: AttrId = AttrId::from_u32(!0);
 
 #[derive(Clone, Debug)]
 pub struct NodeMap {
