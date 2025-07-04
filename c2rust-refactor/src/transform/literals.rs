@@ -359,9 +359,9 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             Res::PrimTy(prim_ty) => {
                 let source = match prim_ty {
                     // TODO: check generics
-                    hir::Int(it) => LitTySource::Actual(tcx.mk_mach_int(it)),
-                    hir::Uint(uit) => LitTySource::Actual(tcx.mk_mach_uint(uit)),
-                    hir::Float(ft) => LitTySource::Actual(tcx.mk_mach_float(ft)),
+                    hir::PrimTy::Int(it) => LitTySource::Actual(tcx.mk_mach_int(it)),
+                    hir::PrimTy::Uint(uit) => LitTySource::Actual(tcx.mk_mach_uint(uit)),
+                    hir::PrimTy::Float(ft) => LitTySource::Actual(tcx.mk_mach_float(ft)),
                     _ => LitTySource::Unknown(false)
                 };
                 self.new_leaf(source)
