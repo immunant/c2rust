@@ -221,7 +221,7 @@ impl<'c> Translation<'c> {
                 .map(|arg| self.clean_int_or_vector_param(*arg)),
         );
 
-        let param_translation = self.convert_exprs(ctx.used(), &processed_args)?;
+        let param_translation = self.convert_exprs(ctx.used(), &processed_args, None)?;
         param_translation.and_then(|call_params| {
             let call = mk().call_expr(mk().ident_expr(fn_name), call_params);
 
@@ -297,7 +297,7 @@ impl<'c> Translation<'c> {
         ctype: CTypeId,
         len: usize,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let param_translation = self.convert_exprs(ctx, ids)?;
+        let param_translation = self.convert_exprs(ctx, ids, None)?;
         param_translation.and_then(|mut params| {
             // When used in a static, we cannot call the standard functions since they
             // are not const and so we are forced to transmute
@@ -384,8 +384,11 @@ impl<'c> Translation<'c> {
         }
 
         let mask_expr_id = self.get_shuffle_vector_mask(&child_expr_ids[2..])?;
-        let param_translation =
-            self.convert_exprs(ctx.used(), &[first_expr_id, second_expr_id, mask_expr_id])?;
+        let param_translation = self.convert_exprs(
+            ctx.used(),
+            &[first_expr_id, second_expr_id, mask_expr_id],
+            None,
+        )?;
         param_translation.and_then(|params| {
             let [first, second, third]: [_; 3] = params
                 .try_into()

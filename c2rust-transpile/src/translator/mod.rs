@@ -3169,10 +3169,13 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         exprs: &[CExprId],
+        arg_tys: Option<&[CQualTypeId]>,
     ) -> TranslationResult<WithStmts<Vec<Box<Expr>>>> {
+        assert!(arg_tys.map(|tys| tys.len() == exprs.len()).unwrap_or(true));
         exprs
             .iter()
-            .map(|arg| self.convert_expr(ctx, *arg, None))
+            .enumerate()
+            .map(|(n, arg)| self.convert_expr(ctx, *arg, arg_tys.map(|tys| tys[n])))
             .collect()
     }
 
@@ -3768,7 +3771,7 @@ impl<'c> Translation<'c> {
                     // We want to decay refs only when function is variadic
                     ctx.decay_ref = DecayRef::from(is_variadic);
 
-                    let args = self.convert_exprs(ctx.used(), args)?;
+                    let args = self.convert_exprs(ctx.used(), args, None)?;
 
                     let res: TranslationResult<_> = Ok(args.map(|args| mk().call_expr(func, args)));
                     res
