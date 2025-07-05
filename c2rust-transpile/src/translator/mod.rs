@@ -2330,7 +2330,13 @@ impl<'c> Translation<'c> {
                     CStmtKind::Compound(ref stmts) => stmts,
                     _ => panic!("function body expects to be a compound statement"),
                 };
-                body_stmts.append(&mut self.convert_function_body(ctx, name, body_ids, ret)?);
+                body_stmts.append(&mut self.convert_function_body(
+                    ctx,
+                    name,
+                    body_ids,
+                    return_type,
+                    ret,
+                )?);
                 let mut block = stmts_block(body_stmts);
                 if let Some(span) = self.get_span(SomeId::Stmt(body)) {
                     block.set_span(span);
@@ -2494,11 +2500,12 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         name: &str,
         body_ids: &[CStmtId],
+        ret_ty: Option<CQualTypeId>,
         ret: cfg::ImplicitReturnType,
     ) -> TranslationResult<Vec<Stmt>> {
         // Function body scope
         self.with_scope(|| {
-            let (graph, store) = cfg::Cfg::from_stmts(self, ctx, body_ids, ret, None)?;
+            let (graph, store) = cfg::Cfg::from_stmts(self, ctx, body_ids, ret, ret_ty)?;
             self.convert_cfg(name, graph, store, IndexSet::new(), true)
         })
     }
@@ -4075,13 +4082,14 @@ impl<'c> Translation<'c> {
                 let mut stmts = match self.ast_context[result_id].kind {
                     CStmtKind::Expr(expr_id) => {
                         let ret = cfg::ImplicitReturnType::StmtExpr(ctx, expr_id, lbl.clone());
-                        self.convert_function_body(ctx, &name, &substmt_ids[0..(n - 1)], ret)?
+                        self.convert_function_body(ctx, &name, &substmt_ids[0..(n - 1)], None, ret)?
                     }
 
                     _ => self.convert_function_body(
                         ctx,
                         &name,
                         substmt_ids,
+                        None,
                         cfg::ImplicitReturnType::Void,
                     )?,
                 };
