@@ -3495,10 +3495,17 @@ impl<'c> Translation<'c> {
                 if self.casting_simd_builtin_call(expr, is_explicit, kind) {
                     return Ok(val);
                 }
+
+                let target_ty = if kind == CastKind::ArrayToPointerDecay {
+                    ty
+                } else {
+                    override_ty.unwrap_or(ty)
+                };
+
                 self.convert_cast(
                     ctx,
                     source_ty,
-                    ty,
+                    target_ty,
                     val,
                     Some(expr),
                     Some(kind),
@@ -3587,7 +3594,15 @@ impl<'c> Translation<'c> {
             }
 
             Binary(type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id) => self
-                .convert_binary_expr(ctx, type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id)
+                .convert_binary_expr(
+                    ctx,
+                    override_ty.unwrap_or(type_id),
+                    op,
+                    lhs,
+                    rhs,
+                    opt_lhs_type_id,
+                    opt_res_type_id,
+                )
                 .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
             ArraySubscript(_, ref lhs, ref rhs, _) => {
