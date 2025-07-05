@@ -1396,6 +1396,24 @@ impl BinOp {
             Comma => ", ",
         }
     }
+
+    /// Does the rust equivalent of this operator have type (T, T) -> T?
+    /// This ignores cases where one argument is a pointer and we translate to `.offset()`.
+    pub fn all_types_same(&self) -> bool {
+        use BinOp::*;
+        match self {
+            Multiply => true,
+            Divide => true,
+            Modulus => true,
+            Add => true,
+            Subtract => true,
+
+            BitAnd => true,
+            BitXor => true,
+            BitOr => true,
+            _ => false,
+        }
+    }
 }
 
 impl Display for BinOp {
