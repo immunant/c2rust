@@ -3182,8 +3182,7 @@ impl<'c> Translation<'c> {
         Ok(WithStmts::new_val(call))
     }
 
-    // Fixing this would require major refactors for marginal benefit.
-    #[allow(clippy::vec_box)]
+    #[allow(clippy::vec_box/*, reason = "not worth a substantial refactor"*/)]
     fn convert_exprs(
         &self,
         ctx: ExprContext,
