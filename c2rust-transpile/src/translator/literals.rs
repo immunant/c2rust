@@ -173,24 +173,7 @@ impl<'c> Translation<'c> {
             CTypeKind::ConstantArray(ty, n) => {
                 // Convert all of the provided initializer values
 
-                // Need to check to see if the next item is a string literal,
-                // if it is need to treat it as a declaration, rather than
-                // an init list. https://github.com/GaloisInc/C2Rust/issues/40
-                let mut is_string = false;
-
-                if ids.len() == 1 {
-                    let v = ids.first().unwrap();
-                    if let CExprKind::Literal(_, CLiteral::String { .. }) =
-                        self.ast_context.index(*v).kind
-                    {
-                        is_string = true;
-                    }
-                }
-
-                if is_string {
-                    let v = ids.first().unwrap();
-                    self.convert_expr(ctx.used(), *v)
-                } else if ids.is_empty() {
+                if ids.is_empty() {
                     // this was likely a C array of the form `int x[16] = {}`,
                     // we'll emit that as [0; 16].
                     let len = mk().lit_expr(mk().int_unsuffixed_lit(n as u128));

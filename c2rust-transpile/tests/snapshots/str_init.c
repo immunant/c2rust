@@ -18,8 +18,6 @@ void f4(void) {
     const char* _s[3] = {"hello"};
 }
 
-#if 0
-
 void f5(void) {
     char _s[3][10] = {"hello"};
 }
@@ -55,5 +53,3 @@ void f8(void) {
         { ALPN_HTTP_1_1 }, 1
     };
 }
-
-#endif
