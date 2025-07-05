@@ -486,6 +486,33 @@ impl TypedAstContext {
         self.index(resolved_typ_id)
     }
 
+    /// Extract decl of referenced function.
+    /// Looks for ImplicitCast(FunctionToPointerDecay, DeclRef(function_decl))
+    pub fn function_declref_decl(&self, func_expr: CExprId) -> Option<&CDeclKind> {
+        use CastKind::FunctionToPointerDecay;
+        if let CExprKind::ImplicitCast(_, fexp, FunctionToPointerDecay, _, _) = self[func_expr].kind
+        {
+            if let CExprKind::DeclRef(_ty, decl_id, _rv) = &self[fexp].kind {
+                let decl = &self.index(*decl_id).kind;
+                assert!(matches!(decl, CDeclKind::Function { .. }));
+                return Some(decl);
+            }
+        }
+        None
+    }
+
+    /// Return the list of types for a list of declared function parameters.
+    pub fn tys_of_params(&self, parameters: &[CDeclId]) -> Option<Vec<CQualTypeId>> {
+        let mut param_tys = vec![];
+        for p in parameters {
+            match self.index(*p).kind {
+                CDeclKind::Variable { typ, .. } => param_tys.push(CQualTypeId::new(typ.ctype)),
+                _ => return None,
+            }
+        }
+        return Some(param_tys);
+    }
+
     /// Pessimistically try to check if an expression has side effects. If it does, or we can't tell
     /// that it doesn't, return `false`.
     pub fn is_expr_pure(&self, expr: CExprId) -> bool {
