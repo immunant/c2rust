@@ -714,7 +714,7 @@ impl<'c> Translation<'c> {
         method_name: &str,
         args: &[CExprId],
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let args = self.convert_exprs(ctx.used(), args)?;
+        let args = self.convert_exprs(ctx.used(), args, None)?;
         args.and_then(|args| {
             let [a, b, c]: [_; 3] = args
                 .try_into()
@@ -753,7 +753,7 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let name = &builtin_name[10..];
         let mem = mk().path_expr(vec!["libc", name]);
-        let args = self.convert_exprs(ctx.used(), args)?;
+        let args = self.convert_exprs(ctx.used(), args, None)?;
         args.and_then(|args| {
             if args.len() != arg_types.len() {
                 // This should not generally happen, as the C frontend checks these first
