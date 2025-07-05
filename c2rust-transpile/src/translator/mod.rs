@@ -3747,6 +3747,15 @@ impl<'c> Translation<'c> {
                     Some(CTypeKind::Function(_, _, is_variadic, _, _)) => *is_variadic,
                     _ => false,
                 };
+
+                let arg_tys = if let Some(CDeclKind::Function { parameters, .. }) =
+                    self.ast_context.function_declref_decl(func)
+                {
+                    self.ast_context.tys_of_params(parameters)
+                } else {
+                    None
+                };
+
                 let func = match self.ast_context[func].kind {
                     // Direct function call
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _, _)
@@ -3807,7 +3816,13 @@ impl<'c> Translation<'c> {
                     // We want to decay refs only when function is variadic
                     ctx.decay_ref = DecayRef::from(is_variadic);
 
-                    let args = self.convert_exprs(ctx.used(), args, None)?;
+                    let arg_tys = if let (false, Some(arg_tys)) = (is_variadic, &arg_tys) {
+                        assert!(arg_tys.len() == args.len());
+                        Some(arg_tys.as_slice())
+                    } else {
+                        None
+                    };
+                    let args = self.convert_exprs(ctx.used(), args, arg_tys)?;
 
                     let res: TranslationResult<_> = Ok(args.map(|args| mk().call_expr(func, args)));
                     res
