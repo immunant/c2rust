@@ -3396,7 +3396,7 @@ impl<'c> Translation<'c> {
 
             OffsetOf(ty, ref kind) => match kind {
                 OffsetOfKind::Constant(val) => Ok(WithStmts::new_val(self.mk_int_lit(
-                    ty,
+                    override_ty.unwrap_or(ty),
                     *val,
                     IntBase::Dec,
                 )?)),
@@ -3453,7 +3453,7 @@ impl<'c> Translation<'c> {
                     ));
 
                     // Cast type
-                    let cast_ty = self.convert_type(ty.ctype)?;
+                    let cast_ty = self.convert_type(override_ty.unwrap_or(ty).ctype)?;
                     let cast_expr = mk().cast_expr(mac, cast_ty);
 
                     Ok(WithStmts::new_val(cast_expr))
