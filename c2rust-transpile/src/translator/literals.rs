@@ -72,14 +72,28 @@ impl<'c> Translation<'c> {
         mk().cast_expr(value, target_ty)
     }
 
+    /// Return whether the literal can be directly translated as this type. This does not check
+    /// that the literal fits into the type's range of values (as doing so is in general dependent
+    /// on the target platform), just that it is the appropriate kind for the type.
+    pub fn literal_kind_matches_ty(&self, lit: &CLiteral, ty: CQualTypeId) -> bool {
+        let ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
+        match *lit {
+            CLiteral::Integer(..) if ty_kind.is_integral_type() && !ty_kind.is_bool() => true,
+            // `convert_literal` always casts these to i32.
+            CLiteral::Character(..) => matches!(ty_kind, CTypeKind::Int32),
+            CLiteral::Floating(..) if ty_kind.is_floating_type() => true,
+            _ => false,
+        }
+    }
+
     /// Convert a C literal expression to a Rust expression
     pub fn convert_literal(
         &self,
         ctx: ExprContext,
         ty: CQualTypeId,
-        kind: &CLiteral,
+        lit: &CLiteral,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        match *kind {
+        match *lit {
             CLiteral::Integer(val, base) => Ok(WithStmts::new_val(self.mk_int_lit(ty, val, base)?)),
 
             CLiteral::Character(val) => {

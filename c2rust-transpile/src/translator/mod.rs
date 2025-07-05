@@ -3460,7 +3460,7 @@ impl<'c> Translation<'c> {
                 }
             },
 
-            Literal(ty, ref kind) => self.convert_literal(ctx, ty, kind),
+            Literal(ty, ref kind) => self.convert_literal(ctx, override_ty.unwrap_or(ty), kind),
 
             ImplicitCast(ty, expr, kind, opt_field_id, _)
             | ExplicitCast(ty, expr, kind, opt_field_id, _) => {
@@ -3488,6 +3488,18 @@ impl<'c> Translation<'c> {
                     val.prepend_stmts(stmts);
                     val
                 } else {
+                    // In general, if we are casting the result of an expression, then the inner
+                    // expression should be translated to whatever type it normally would.
+                    // But for literals, if we don't absolutely have to cast, we would rather the
+                    // literal is translated according to the type we're expecting, and then we can
+                    // skip the cast entirely.
+                    if let (Some(ty), CExprKind::Literal(_ty, lit)) =
+                        (override_ty, &self.ast_context[expr].kind)
+                    {
+                        if self.literal_kind_matches_ty(lit, ty) {
+                            return self.convert_expr(ctx, expr, override_ty);
+                        }
+                    }
                     self.convert_expr(ctx, expr, None)?
                 };
                 // Shuffle Vector "function" builtins will add a cast to the output of the
