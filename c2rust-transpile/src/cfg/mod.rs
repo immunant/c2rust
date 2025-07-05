@@ -568,6 +568,7 @@ impl Cfg<Label, StmtOrDecl> {
         ctx: ExprContext,
         stmt_ids: &[CStmtId],
         ret: ImplicitReturnType,
+        ret_ty: Option<CQualTypeId>,
     ) -> TranslationResult<(Self, DeclStmtStore)> {
         let mut c_label_to_goto: IndexMap<CLabelId, IndexSet<CStmtId>> = IndexMap::new();
         for (target, x) in stmt_ids
@@ -600,6 +601,7 @@ impl Cfg<Label, StmtOrDecl> {
                 stmt_ids,
                 Some(ret.clone()),
                 entry,
+                ret_ty,
             )?;
 
             if let Some(body_exit) = body_exit {
@@ -1354,6 +1356,7 @@ impl CfgBuilder {
         stmt_ids: &[CStmtId],                // C statements to translate
         in_tail: Option<ImplicitReturnType>, // Are we in tail position (is there anything to fallthrough to)?
         entry: Label,                        // Current WIP block
+        ret_ty: Option<CQualTypeId>,
     ) -> TranslationResult<Option<Label>> {
         self.with_scope(translator, |slf| -> TranslationResult<Option<Label>> {
             let mut lbl = Some(entry);
@@ -1363,7 +1366,8 @@ impl CfgBuilder {
             for stmt in stmt_ids {
                 let new_label: Label = lbl.unwrap_or_else(|| slf.fresh_label());
                 let sub_in_tail = in_tail.clone().filter(|_| Some(stmt) == last);
-                lbl = slf.convert_stmt_help(translator, ctx, *stmt, sub_in_tail, new_label)?;
+                lbl =
+                    slf.convert_stmt_help(translator, ctx, *stmt, sub_in_tail, new_label, ret_ty)?;
             }
 
             Ok(lbl)
@@ -1391,6 +1395,10 @@ impl CfgBuilder {
 
         // Entry label
         entry: Label,
+
+        // The type this statement should return. May differ from the type the C AST is returning,
+        // in which case we must cast.
+        ret_ty: Option<CQualTypeId>,
     ) -> TranslationResult<Option<Label>> {
         // Add to the per_stmt_stack
         let live_in: IndexSet<CDeclId> = self.currently_live.last().unwrap().clone();
@@ -1425,7 +1433,7 @@ impl CfgBuilder {
             }
 
             CStmtKind::Return(expr) => {
-                let val = match expr.map(|i| translator.convert_expr(ctx.used(), i, None)) {
+                let val = match expr.map(|i| translator.convert_expr(ctx.used(), i, ret_ty)) {
                     Some(r) => Some(r?),
                     None => None,
                 };
@@ -1476,6 +1484,7 @@ impl CfgBuilder {
                     true_variant,
                     in_tail.clone(),
                     then_entry,
+                    ret_ty,
                 )?;
                 if let Some(then_end) = then_stuff {
                     let wip_then = self.new_wip_block(then_end);
@@ -1492,6 +1501,7 @@ impl CfgBuilder {
                         false_var,
                         in_tail.clone(),
                         else_entry,
+                        ret_ty,
                     )?;
                     if let Some(else_end) = else_stuff {
                         let wip_else = self.new_wip_block(else_end);
@@ -1543,7 +1553,7 @@ impl CfgBuilder {
                 self.continue_labels.push(cond_entry.clone());
 
                 let body_stuff =
-                    self.convert_stmt_help(translator, ctx, body_stmt, None, body_entry)?;
+                    self.convert_stmt_help(translator, ctx, body_stmt, None, body_entry, ret_ty)?;
                 if let Some(body_end) = body_stuff {
                     let wip_body = self.new_wip_block(body_end);
                     self.add_wip_block(wip_body, Jump(cond_entry));
@@ -1576,8 +1586,14 @@ impl CfgBuilder {
                 self.break_labels.push(next_entry.clone());
                 self.continue_labels.push(cond_entry.clone());
 
-                let body_stuff =
-                    self.convert_stmt_help(translator, ctx, body_stmt, None, body_entry.clone())?;
+                let body_stuff = self.convert_stmt_help(
+                    translator,
+                    ctx,
+                    body_stmt,
+                    None,
+                    body_entry.clone(),
+                    ret_ty,
+                )?;
                 if let Some(body_end) = body_stuff {
                     let wip_body = self.new_wip_block(body_end);
                     self.add_wip_block(wip_body, Jump(cond_entry.clone()));
@@ -1628,7 +1644,7 @@ impl CfgBuilder {
                     let init_stuff: Option<Label> = match init {
                         None => Some(init_entry),
                         Some(init) => {
-                            slf.convert_stmt_help(translator, ctx, init, None, init_entry)?
+                            slf.convert_stmt_help(translator, ctx, init, None, init_entry, ret_ty)?
                         }
                     };
                     if let Some(init_end) = init_stuff {
@@ -1665,7 +1681,7 @@ impl CfgBuilder {
                     slf.continue_labels.push(incr_entry.clone());
 
                     let body_stuff =
-                        slf.convert_stmt_help(translator, ctx, body, None, body_entry)?;
+                        slf.convert_stmt_help(translator, ctx, body, None, body_entry, ret_ty)?;
 
                     if let Some(body_end) = body_stuff {
                         let wip_body = slf.new_wip_block(body_end);
@@ -1711,8 +1727,14 @@ impl CfgBuilder {
                 self.last_per_stmt_mut().c_labels_defined.insert(stmt_id);
 
                 // Sub stmt
-                let sub_stmt_next =
-                    self.convert_stmt_help(translator, ctx, sub_stmt, in_tail.clone(), this_label)?;
+                let sub_stmt_next = self.convert_stmt_help(
+                    translator,
+                    ctx,
+                    sub_stmt,
+                    in_tail.clone(),
+                    this_label,
+                    ret_ty,
+                )?;
                 Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
             }
 
@@ -1752,6 +1774,7 @@ impl CfgBuilder {
                     comp_stmts.as_slice(),
                     in_tail.clone(),
                     comp_entry,
+                    ret_ty,
                 )?;
 
                 Ok(next_lbl.map(|l| self.new_wip_block(l)))
@@ -1773,6 +1796,7 @@ impl CfgBuilder {
                             stmtid,
                             in_tail.clone(),
                             comp_entry,
+                            ret_ty,
                         )?;
 
                         Ok(next_lbl.map(|l| self.new_wip_block(l)))
@@ -1884,8 +1908,14 @@ impl CfgBuilder {
                     .push((pat, this_label.clone()));
 
                 // Sub stmt
-                let sub_stmt_next =
-                    self.convert_stmt_help(translator, ctx, sub_stmt, in_tail.clone(), this_label)?;
+                let sub_stmt_next = self.convert_stmt_help(
+                    translator,
+                    ctx,
+                    sub_stmt,
+                    in_tail.clone(),
+                    this_label,
+                    ret_ty,
+                )?;
                 Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
             }
 
@@ -1902,8 +1932,14 @@ impl CfgBuilder {
                     .get_or_insert(this_label.clone());
 
                 // Sub stmt
-                let sub_stmt_next =
-                    self.convert_stmt_help(translator, ctx, sub_stmt, in_tail.clone(), this_label)?;
+                let sub_stmt_next = self.convert_stmt_help(
+                    translator,
+                    ctx,
+                    sub_stmt,
+                    in_tail.clone(),
+                    this_label,
+                    ret_ty,
+                )?;
                 Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
             }
 
@@ -1936,6 +1972,7 @@ impl CfgBuilder {
                     switch_body,
                     in_tail.clone(),
                     body_label,
+                    ret_ty,
                 )?;
                 if let Some(body_end) = body_stuff {
                     let body_wip = self.new_wip_block(body_end);
