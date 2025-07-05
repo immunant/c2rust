@@ -3119,13 +3119,14 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         type_id: CTypeId,
+        override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if let CTypeKind::VariableArray(elts, len) = self.ast_context.resolve_type(type_id).kind {
             let len = len.expect("Sizeof a VLA type with count expression omitted");
 
-            let elts = self.compute_size_of_type(ctx, elts)?;
+            let elts = self.compute_size_of_type(ctx, elts, override_ty)?;
             return elts.and_then(|lhs| {
-                let len = self.convert_expr(ctx.used().not_static(), len, None)?;
+                let len = self.convert_expr(ctx.used().not_static(), len, override_ty)?;
                 Ok(len.map(|len| {
                     let rhs = cast_int(len, "usize", true);
                     mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs)
@@ -3133,7 +3134,17 @@ impl<'c> Translation<'c> {
             });
         }
         let ty = self.convert_type(type_id)?;
-        self.mk_size_of_ty_expr(ty)
+        let mut result = self.mk_size_of_ty_expr(ty);
+        // cast to expected ty if one is known
+        if let Some(expected_ty) = override_ty {
+            trace!(
+                "Converting result of sizeof to {:?}",
+                self.ast_context.resolve_type(expected_ty.ctype)
+            );
+            let result_ty = self.convert_type(expected_ty.ctype)?;
+            result = result.map(|x| x.map(|x| mk().cast_expr(x, result_ty)));
+        }
+        result
     }
 
     fn mk_size_of_ty_expr(&self, ty: Box<Type>) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -3248,10 +3259,10 @@ impl<'c> Translation<'c> {
             UnaryType(_ty, kind, opt_expr, arg_ty) => {
                 let result = match kind {
                     UnTypeOp::SizeOf => match opt_expr {
-                        None => self.compute_size_of_type(ctx, arg_ty.ctype)?,
+                        None => self.compute_size_of_type(ctx, arg_ty.ctype, override_ty)?,
                         Some(_) => {
                             let inner = self.variable_array_base_type(arg_ty.ctype);
-                            let inner_size = self.compute_size_of_type(ctx, inner)?;
+                            let inner_size = self.compute_size_of_type(ctx, inner, override_ty)?;
 
                             if let Some(sz) = self.compute_size_of_expr(arg_ty.ctype) {
                                 inner_size.map(|x| {
@@ -3267,7 +3278,7 @@ impl<'c> Translation<'c> {
                     UnTypeOp::PreferredAlignOf => self.compute_align_of_type(arg_ty.ctype, true)?,
                 };
 
-                Ok(result.map(|x| mk().cast_expr(x, mk().path_ty(vec!["std", "ffi", "c_ulong"]))))
+                Ok(result)
             }
 
             ConstantExpr(_ty, child, value) => {
