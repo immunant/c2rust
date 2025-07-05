@@ -52,14 +52,14 @@ impl<'c> Translation<'c> {
         val2_id: Option<CExprId>,
         weak_id: Option<CExprId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let ptr = self.convert_expr(ctx.used(), ptr_id)?;
+        let ptr = self.convert_expr(ctx.used(), ptr_id, None)?;
         let order = self.convert_memordering(order_id);
         let val1 = val1_id
-            .map(|x| self.convert_expr(ctx.used(), x))
+            .map(|x| self.convert_expr(ctx.used(), x, None))
             .transpose()?;
         let order_fail = order_fail_id.and_then(|x| self.convert_memordering(x));
         let val2 = val2_id
-            .map(|x| self.convert_expr(ctx.used(), x))
+            .map(|x| self.convert_expr(ctx.used(), x, None))
             .transpose()?;
         let weak = weak_id.and_then(|x| self.convert_constant_bool(x));
 
@@ -179,7 +179,7 @@ impl<'c> Translation<'c> {
                         if name == "__atomic_exchange" {
                             // LLVM stores the ret pointer in the order_fail slot
                             order_fail_id
-                                .map(|x| self.convert_expr(ctx.used(), x))
+                                .map(|x| self.convert_expr(ctx.used(), x, None))
                                 .transpose()?
                                 .expect("__atomic_exchange must have a ret pointer argument")
                                 .and_then(|ret| {
