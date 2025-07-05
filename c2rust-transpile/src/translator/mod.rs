@@ -2498,7 +2498,7 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<Vec<Stmt>> {
         // Function body scope
         self.with_scope(|| {
-            let (graph, store) = cfg::Cfg::from_stmts(self, ctx, body_ids, ret)?;
+            let (graph, store) = cfg::Cfg::from_stmts(self, ctx, body_ids, ret, None)?;
             self.convert_cfg(name, graph, store, IndexSet::new(), true)
         })
     }
