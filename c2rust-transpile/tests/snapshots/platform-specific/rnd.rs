@@ -8,7 +8,7 @@
     unused_mut
 )]
 extern "C" {
-    fn abs(_: std::ffi::c_int) -> std::ffi::c_int;
+    fn abs(__x: std::ffi::c_int) -> std::ffi::c_int;
 }
 pub type __int32_t = i32;
 pub type __uint32_t = u32;
