@@ -81,7 +81,7 @@ pub unsafe extern "C" fn entry() {
     >(b"abc\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
     let mut past_end: *mut std::ffi::c_char = &mut *simple
         .as_mut_ptr()
-        .offset(::core::mem::size_of::<[std::ffi::c_char; 9]>() as std::ffi::c_ulong as isize)
+        .offset(::core::mem::size_of::<[std::ffi::c_char; 9]>() as isize)
         as *mut std::ffi::c_char;
     past_end = &mut *foo.offset(8 as std::ffi::c_int as isize) as *mut std::ffi::c_char;
 }
