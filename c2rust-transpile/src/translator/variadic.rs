@@ -144,7 +144,7 @@ impl<'c> Translation<'c> {
         val_id: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if self.tcfg.translate_valist {
-            let val = self.convert_expr(ctx.expect_valistimpl().used(), val_id)?;
+            let val = self.convert_expr(ctx.expect_valistimpl().used(), val_id, None)?;
 
             // The current implementation of the C-variadics feature doesn't allow us to
             // return `Option<fn(...) -> _>` from `VaList::arg`, so we detect function pointers
