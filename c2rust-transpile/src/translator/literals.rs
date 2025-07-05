@@ -173,24 +173,32 @@ impl<'c> Translation<'c> {
             CTypeKind::ConstantArray(ty, n) => {
                 // Convert all of the provided initializer values
 
-                // Need to check to see if the next item is a string literal,
-                // if it is need to treat it as a declaration, rather than
-                // an init list. https://github.com/GaloisInc/C2Rust/issues/40
-                let mut is_string = false;
-
-                if ids.len() == 1 {
-                    let v = ids.first().unwrap();
-                    if let CExprKind::Literal(_, CLiteral::String { .. }) =
-                        self.ast_context.index(*v).kind
-                    {
-                        is_string = true;
+                // We need to handle the 4 cases in `str_init.c` with identical initializers:
+                // * `ptr_extra_braces`
+                // * `array_extra_braces`
+                // * `array_of_ptrs`
+                // * `array_of_arrays`
+                // All 4 have different types, but the same initializer,
+                // which is possible because C allows extra braces around any initializer element.
+                // For non-string literal elements, the clang AST already fixes this up,
+                // but doesn't for string literals, so we need to handle them specially.
+                // The existing logic below this special cases handles all except `array_extra_braces`.
+                // `array_extra_braces` is uniquely identified by:
+                // * there being only one element in the initializer list
+                // * the element type of the array being `CTypeKind::Char` (w/o this, `array_of_arrays` is included)
+                // * the expr kind being a string literal (`CExprKind::Literal` of a `CLiteral::String`).
+                if let &[id] = ids {
+                    let ty_kind = &self.ast_context.resolve_type(ty).kind;
+                    let expr_kind = &self.ast_context.index(id).kind;
+                    let is_char_array = matches!(*ty_kind, CTypeKind::Char);
+                    let is_str_literal =
+                        matches!(*expr_kind, CExprKind::Literal(_, CLiteral::String { .. }));
+                    if is_char_array && is_str_literal {
+                        return self.convert_expr(ctx.used(), id);
                     }
                 }
 
-                if is_string {
-                    let v = ids.first().unwrap();
-                    self.convert_expr(ctx.used(), *v)
-                } else if ids.is_empty() {
+                if ids.is_empty() {
                     // this was likely a C array of the form `int x[16] = {}`,
                     // we'll emit that as [0; 16].
                     let len = mk().lit_expr(mk().int_unsuffixed_lit(n as u128));

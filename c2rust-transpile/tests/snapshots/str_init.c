@@ -26,8 +26,6 @@ void array_of_ptrs(void) {
     const char* _s[3] = {"hello"};
 }
 
-#if 0
-
 void array_of_arrays(void) {
     char _s[3][10] = {"hello"};
 }
@@ -63,5 +61,3 @@ void curl_alpn_spec(void) {
         { ALPN_HTTP_1_1 }, 1
     };
 }
-
-#endif

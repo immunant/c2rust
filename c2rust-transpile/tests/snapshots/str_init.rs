@@ -7,6 +7,17 @@
     unused_assignments,
     unused_mut
 )]
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct s {
+    pub entries: [[std::ffi::c_char; 10]; 3],
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct alpn_spec {
+    pub entries: [[std::ffi::c_char; 10]; 3],
+    pub count: std::ffi::c_uint,
+}
 #[no_mangle]
 pub unsafe extern "C" fn ptr() {
     let mut _s: *const std::ffi::c_char = b"hello\0" as *const u8
@@ -64,4 +75,65 @@ pub unsafe extern "C" fn array_of_ptrs() {
         0 as *const std::ffi::c_char,
         0 as *const std::ffi::c_char,
     ];
+}
+#[no_mangle]
+pub unsafe extern "C" fn array_of_arrays() {
+    let mut _s: [[std::ffi::c_char; 10]; 3] = [
+        *::core::mem::transmute::<
+            &[u8; 10],
+            &mut [std::ffi::c_char; 10],
+        >(b"hello\0\0\0\0\0"),
+        [0; 10],
+        [0; 10],
+    ];
+}
+#[no_mangle]
+pub unsafe extern "C" fn array_of_arrays_static() {
+    static mut _S: [[std::ffi::c_char; 10]; 3] = unsafe {
+        [
+            *::core::mem::transmute::<
+                &[u8; 10],
+                &[std::ffi::c_char; 10],
+            >(b"hello\0\0\0\0\0"),
+            [0; 10],
+            [0; 10],
+        ]
+    };
+}
+#[no_mangle]
+pub unsafe extern "C" fn array_of_arrays_static_struct() {
+    static mut _S: s = unsafe {
+        {
+            let mut init = s {
+                entries: [
+                    *::core::mem::transmute::<
+                        &[u8; 10],
+                        &mut [std::ffi::c_char; 10],
+                    >(b"hello\0\0\0\0\0"),
+                    [0; 10],
+                    [0; 10],
+                ],
+            };
+            init
+        }
+    };
+}
+#[no_mangle]
+pub unsafe extern "C" fn curl_alpn_spec() {
+    static mut _ALPN_SPEC_H11: alpn_spec = unsafe {
+        {
+            let mut init = alpn_spec {
+                entries: [
+                    *::core::mem::transmute::<
+                        &[u8; 10],
+                        &mut [std::ffi::c_char; 10],
+                    >(b"http/1.1\0\0"),
+                    [0; 10],
+                    [0; 10],
+                ],
+                count: 1 as std::ffi::c_int as std::ffi::c_uint,
+            };
+            init
+        }
+    };
 }
