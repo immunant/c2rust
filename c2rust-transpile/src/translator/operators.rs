@@ -60,8 +60,8 @@ impl<'c> Translation<'c> {
         match op {
             Comma => {
                 // The value of the LHS of a comma expression is always discarded
-                self.convert_expr(ctx.unused(), lhs)?
-                    .and_then(|_| self.convert_expr(ctx, rhs))
+                self.convert_expr(ctx.unused(), lhs, None)?
+                    .and_then(|_| self.convert_expr(ctx, rhs, Some(type_id)))
             }
 
             And | Or => {
@@ -125,8 +125,8 @@ impl<'c> Translation<'c> {
 
                 if ctx.is_unused() {
                     Ok(self
-                        .convert_expr(ctx, lhs)?
-                        .and_then(|_| self.convert_expr(ctx, rhs))?
+                        .convert_expr(ctx, lhs, Some(lhs_type_id))?
+                        .and_then(|_| self.convert_expr(ctx, rhs, Some(rhs_type_id)))?
                         .map(|_| self.panic_or_err("Binary expression is not supposed to be used")))
                 } else {
                     let rhs_ctx = ctx;
@@ -142,21 +142,23 @@ impl<'c> Translation<'c> {
                         }
                     }
 
-                    self.convert_expr(ctx, lhs)?.and_then(|lhs_val| {
-                        self.convert_expr(rhs_ctx, rhs)?.result_map(|rhs_val| {
-                            let expr_ids = Some((lhs, rhs));
-                            self.convert_binary_operator(
-                                op,
-                                ty,
-                                type_id.ctype,
-                                lhs_type_id,
-                                rhs_type_id,
-                                lhs_val,
-                                rhs_val,
-                                expr_ids,
-                            )
+                    self.convert_expr(ctx, lhs, Some(lhs_type_id))?
+                        .and_then(|lhs_val| {
+                            self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?
+                                .result_map(|rhs_val| {
+                                    let expr_ids = Some((lhs, rhs));
+                                    self.convert_binary_operator(
+                                        op,
+                                        ty,
+                                        type_id.ctype,
+                                        lhs_type_id,
+                                        rhs_type_id,
+                                        lhs_val,
+                                        rhs_val,
+                                        expr_ids,
+                                    )
+                                })
                         })
-                    })
                 }
             }
         }
@@ -250,7 +252,7 @@ impl<'c> Translation<'c> {
             .kind
             .get_qual_type()
             .ok_or_else(|| format_err!("bad assignment rhs type"))?;
-        let rhs_translation = self.convert_expr(ctx.used(), rhs)?;
+        let rhs_translation = self.convert_expr(ctx.used(), rhs, compute_type)?; // TODO(fw): verify
         self.convert_assignment_operator_with_rhs(
             ctx,
             op,
@@ -824,7 +826,7 @@ impl<'c> Translation<'c> {
                 match arg_kind {
                     // C99 6.5.3.2 para 4
                     CExprKind::Unary(_, c_ast::UnOp::Deref, target, _) => {
-                        return self.convert_expr(ctx, *target)
+                        return self.convert_expr(ctx, *target, None)
                     }
                     // An AddrOf DeclRef/Member is safe to not decay if the translator isn't already giving a hard
                     // yes to decaying (ie, BitCasts). So we only convert default to no decay.
@@ -837,7 +839,7 @@ impl<'c> Translation<'c> {
                 // In this translation, there are only pointers to functions and
                 // & becomes a no-op when applied to a function.
 
-                let arg = self.convert_expr(ctx.used().set_needs_address(true), arg)?;
+                let arg = self.convert_expr(ctx.used().set_needs_address(true), arg, None)?;
 
                 if self.ast_context.is_function_pointer(ctype) {
                     Ok(arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
@@ -893,10 +895,10 @@ impl<'c> Translation<'c> {
             c_ast::UnOp::Deref => {
                 match self.ast_context[arg].kind {
                     CExprKind::Unary(_, c_ast::UnOp::AddressOf, arg_, _) => {
-                        self.convert_expr(ctx.used(), arg_)
+                        self.convert_expr(ctx.used(), arg_, None)
                     }
                     _ => {
-                        self.convert_expr(ctx.used(), arg)?
+                        self.convert_expr(ctx.used(), arg, None)?
                             .result_map(|val: Box<Expr>| {
                                 if let CTypeKind::Function(..) =
                                     self.ast_context.resolve_type(ctype).kind
@@ -919,10 +921,10 @@ impl<'c> Translation<'c> {
                     }
                 }
             }
-            c_ast::UnOp::Plus => self.convert_expr(ctx.used(), arg), // promotion is explicit in the clang AST
+            c_ast::UnOp::Plus => self.convert_expr(ctx.used(), arg, Some(cqual_type)), // promotion is explicit in the clang AST
 
             c_ast::UnOp::Negate => {
-                let val = self.convert_expr(ctx.used(), arg)?;
+                let val = self.convert_expr(ctx.used(), arg, Some(cqual_type))?;
 
                 if resolved_ctype.kind.is_unsigned_integral_type() {
                     Ok(val.map(wrapping_neg_expr))
@@ -931,7 +933,7 @@ impl<'c> Translation<'c> {
                 }
             }
             c_ast::UnOp::Complement => Ok(self
-                .convert_expr(ctx.used(), arg)?
+                .convert_expr(ctx.used(), arg, Some(cqual_type))?
                 .map(|a| mk().unary_expr(UnOp::Not(Default::default()), a))),
 
             c_ast::UnOp::Not => {
@@ -939,7 +941,7 @@ impl<'c> Translation<'c> {
                 Ok(val.map(|x| mk().cast_expr(x, mk().path_ty(vec!["std", "ffi", "c_int"]))))
             }
             c_ast::UnOp::Extension => {
-                let arg = self.convert_expr(ctx, arg)?;
+                let arg = self.convert_expr(ctx, arg, Some(cqual_type))?;
                 Ok(arg)
             }
             c_ast::UnOp::Real | c_ast::UnOp::Imag | c_ast::UnOp::Coawait => {

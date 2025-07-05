@@ -612,7 +612,9 @@ impl Cfg<Label, StmtOrDecl> {
                         wip.body.push(StmtOrDecl::Stmt(mk().semi_stmt(ret_expr)));
                     }
                     ImplicitReturnType::StmtExpr(ctx, expr_id, brk_label) => {
-                        let (stmts, val) = translator.convert_expr(ctx, expr_id)?.discard_unsafe();
+                        let (stmts, val) = translator
+                            .convert_expr(ctx, expr_id, None)?
+                            .discard_unsafe();
 
                         wip.body.extend(stmts.into_iter().map(StmtOrDecl::Stmt));
                         wip.body.push(StmtOrDecl::Stmt(mk().semi_stmt(
@@ -1411,7 +1413,7 @@ impl CfgBuilder {
             }
 
             CStmtKind::Return(expr) => {
-                let val = match expr.map(|i| translator.convert_expr(ctx.used(), i)) {
+                let val = match expr.map(|i| translator.convert_expr(ctx.used(), i, ret_ty)) {
                     Some(r) => Some(r?),
                     None => None,
                 };
@@ -1667,8 +1669,9 @@ impl CfgBuilder {
                     match increment {
                         None => slf.add_block(incr_entry, BasicBlock::new_jump(cond_entry)),
                         Some(incr) => {
-                            let incr_stmts =
-                                translator.convert_expr(ctx.unused(), incr)?.into_stmts();
+                            let incr_stmts = translator
+                                .convert_expr(ctx.unused(), incr, None)?
+                                .into_stmts();
                             let mut incr_wip = slf.new_wip_block(incr_entry);
                             incr_wip.extend(incr_stmts);
                             slf.add_wip_block(incr_wip, Jump(cond_entry));
@@ -1771,7 +1774,11 @@ impl CfgBuilder {
                 match blk_or_wip {
                     Ok(blk) => Ok(blk),
                     Err(mut wip) => {
-                        wip.extend(translator.convert_expr(ctx.unused(), expr)?.into_stmts());
+                        wip.extend(
+                            translator
+                                .convert_expr(ctx.unused(), expr, None)?
+                                .into_stmts(),
+                        );
 
                         // If we can tell the expression is going to diverge, there is no falling through to
                         // the next block.
@@ -1831,7 +1838,7 @@ impl CfgBuilder {
                 let branch = match resolved.1 {
                     CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_)) => {
                         match translator
-                            .convert_expr(ctx.used(), resolved.0)?
+                            .convert_expr(ctx.used(), resolved.0, None)?
                             .to_pure_expr()
                         {
                             Some(expr) => match *expr {
@@ -1891,7 +1898,7 @@ impl CfgBuilder {
 
                 // Convert the condition
                 let (stmts, val) = translator
-                    .convert_expr(ctx.used(), scrutinee)?
+                    .convert_expr(ctx.used(), scrutinee, None)?
                     .discard_unsafe();
                 wip.extend(stmts);
 
