@@ -3382,6 +3382,13 @@ impl<'c> Translation<'c> {
                     val = mk().method_call_expr(val, "as_mut_ptr", vec![]);
                 }
 
+                // if the context wants a different type, add a cast
+                if let Some(expected_ty) = override_ty {
+                    if expected_ty != qual_ty {
+                        val = mk().cast_expr(val, self.convert_type(expected_ty.ctype)?);
+                    }
+                }
+
                 let mut res = WithStmts::new_val(val);
                 res.merge_unsafe(set_unsafe);
                 Ok(res)
