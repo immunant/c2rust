@@ -1870,6 +1870,15 @@ class TranslateASTVisitor final
         auto body =
             FD->getBody(paramsFD); // replaces its argument if body exists
 
+        // Avoid getting params from an implicit decl if a subsequent non-implicit decl exists.
+        // Implicit decls will not have names for params, but more importantly, they will never
+        // reference header-declared typedefs, so we would miss the fact that e.g. malloc is
+        // declared to accept `size_t` in its stdlib.h declaration, while its implicit declaration
+        // accepts the built-in `unsigned long`.
+        if (FD->isImplicit()) {
+            paramsFD = FD->getMostRecentDecl();
+        }
+
         std::vector<void *> childIds;
         for (auto x : paramsFD->parameters()) {
             auto cd = x->getCanonicalDecl();
@@ -1879,7 +1888,8 @@ class TranslateASTVisitor final
 
         childIds.push_back(body);
 
-        auto functionType = FD->getType();
+        // We prefer non-implicit decls for their type information.
+        auto functionType = paramsFD->getType();
         auto span = paramsFD->getSourceRange();
         encode_entry(
             FD, TagFunctionDecl, span, childIds, functionType,
