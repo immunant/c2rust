@@ -104,24 +104,31 @@ impl<'c> Translation<'c> {
 
                 let ty = self.convert_type(type_id.ctype)?;
 
-                let lhs_type_id = self
-                    .ast_context
-                    .index(lhs)
-                    .kind
-                    .get_qual_type()
-                    .ok_or_else(|| {
-                        format_translation_err!(
-                            self.ast_context.display_loc(lhs_loc),
-                            "bad lhs type for assignment"
-                        )
-                    })?;
+                let lhs_kind = &self.ast_context.index(lhs).kind;
+                let mut lhs_type_id = lhs_kind.get_qual_type().ok_or_else(|| {
+                    format_translation_err!(
+                        self.ast_context.display_loc(lhs_loc),
+                        "bad lhs type for assignment"
+                    )
+                })?;
                 let rhs_kind = &self.ast_context.index(rhs).kind;
-                let rhs_type_id = rhs_kind.get_qual_type().ok_or_else(|| {
+                let mut rhs_type_id = rhs_kind.get_qual_type().ok_or_else(|| {
                     format_translation_err!(
                         self.ast_context.display_loc(rhs_loc),
                         "bad rhs type for assignment"
                     )
                 })?;
+
+                // If this is an operation like addition or bitxor that (for rust built-ins) accepts
+                // and produces values all of the same type, then propagate our expected type down
+                // to the translation of our argument expressions.
+                if op.all_types_same()
+                    && !self.ast_context.index(lhs_type_id.ctype).kind.is_pointer()
+                    && !self.ast_context.index(rhs_type_id.ctype).kind.is_pointer()
+                {
+                    lhs_type_id = type_id;
+                    rhs_type_id = type_id;
+                }
 
                 if ctx.is_unused() {
                     Ok(self
