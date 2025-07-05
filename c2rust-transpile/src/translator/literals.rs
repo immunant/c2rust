@@ -201,7 +201,7 @@ impl<'c> Translation<'c> {
                     let is_str_literal =
                         matches!(*expr_kind, CExprKind::Literal(_, CLiteral::String { .. }));
                     if is_char_array && is_str_literal {
-                        return self.convert_expr(ctx.used(), id);
+                        return self.convert_expr(ctx.used(), id, None);
                     }
                 }
 
@@ -217,7 +217,7 @@ impl<'c> Translation<'c> {
                     Ok(ids
                         .iter()
                         .map(|id| {
-                            self.convert_expr(ctx.used(), *id)?.result_map(|x| {
+                            self.convert_expr(ctx.used(), *id, None)?.result_map(|x| {
                                 // Array literals require all of their elements to be
                                 // the correct type; they will not use implicit casts to
                                 // change mut to const. This becomes a problem when an
@@ -267,18 +267,18 @@ impl<'c> Translation<'c> {
             }
             CTypeKind::Pointer(_) => {
                 let id = ids.first().unwrap();
-                self.convert_expr(ctx.used(), *id)
+                self.convert_expr(ctx.used(), *id, None)
             }
             CTypeKind::Enum(_) => {
                 let id = ids.first().unwrap();
-                self.convert_expr(ctx.used(), *id)
+                self.convert_expr(ctx.used(), *id, None)
             }
             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                 self.vector_list_initializer(ctx, ids, ctype, len)
             }
             ref kind if kind.is_integral_type() => {
                 let id = ids.first().unwrap();
-                self.convert_expr(ctx.used(), *id)
+                self.convert_expr(ctx.used(), *id, None)
             }
             ref t => Err(format_err!("Init list not implemented for {:?}", t).into()),
         }
@@ -306,7 +306,7 @@ impl<'c> Translation<'c> {
                         let val = if ids.is_empty() {
                             self.implicit_default_expr(field_ty.ctype, ctx.is_static)?
                         } else {
-                            self.convert_expr(ctx.used(), ids[0])?
+                            self.convert_expr(ctx.used(), ids[0], None)?
                         };
 
                         Ok(val.map(|v| {

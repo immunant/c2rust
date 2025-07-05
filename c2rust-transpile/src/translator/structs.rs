@@ -526,7 +526,7 @@ impl<'a> Translation<'a> {
                     fields.push(field);
                 }
                 Both(field_id, (field_name, _, bitfield_width, use_inner_type)) => {
-                    let mut expr = self.convert_expr(ctx.used(), *field_id)?;
+                    let mut expr = self.convert_expr(ctx.used(), *field_id, None)?;
 
                     if use_inner_type {
                         // See comment above
