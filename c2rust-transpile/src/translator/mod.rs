@@ -100,6 +100,7 @@ pub enum ReplaceMode {
     Extern,
 }
 
+/// Options that impact an expression and all of its subexpressions.
 #[derive(Copy, Clone, Debug)]
 pub struct ExprContext {
     used: bool,
