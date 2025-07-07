@@ -77,7 +77,8 @@ impl<'c> Translation<'c> {
         let ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
         match *kind {
             CLiteral::Integer(..) if ty_kind.is_integral_type() && !ty_kind.is_bool() => true,
-            CLiteral::Character(..) if ty_kind.is_integral_type() && !ty_kind.is_bool() => true,
+            // `convert_literal` always casts these to i32.
+            CLiteral::Character(..) => matches!(ty_kind, CTypeKind::Int32),
             CLiteral::Floating(..) if ty_kind.is_floating_type() => true,
             _ => false,
         }
