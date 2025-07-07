@@ -119,15 +119,38 @@ impl<'c> Translation<'c> {
                     )
                 })?;
 
-                // If this is an operation like addition or bitxor that (for rust built-ins) accepts
-                // and produces values all of the same type, then propagate our expected type down
-                // to the translation of our argument expressions.
-                if op.all_types_same()
-                    && !self.ast_context.index(lhs_type_id.ctype).kind.is_pointer()
-                    && !self.ast_context.index(rhs_type_id.ctype).kind.is_pointer()
+                // If this operation will (in Rust) take args of the same type, then propagate our
+                // expected type down to the translation of our argument expressions.
+                let lhs_resolved = self.ast_context.resolve_type_id(lhs_type_id.ctype);
+                let rhs_resolved = self.ast_context.resolve_type_id(rhs_type_id.ctype);
+                // Addition and subtraction can accept one pointer argument for .offset(), in which
+                // case we don't want to homogenize arg types.
+                if !self.ast_context.index(lhs_resolved).kind.is_pointer()
+                    && !self.ast_context.index(rhs_resolved).kind.is_pointer()
                 {
-                    lhs_type_id = type_id;
-                    rhs_type_id = type_id;
+                    if op.all_types_same() {
+                        // Ops like division and bitxor accept inputs of their expected result type.
+                        lhs_type_id = type_id;
+                        rhs_type_id = type_id;
+                    } else if op.input_types_same() && lhs_resolved != rhs_resolved {
+                        // Ops like comparisons require argument types to match, but the result type
+                        // doesn't inform us what type to choose. Select a synthetic definition of a
+                        // portable rust type (e.g. u64 or usize) if either arg is one.
+                        trace!(
+                            "Binary operator arg types differ: {:?} vs {:?}",
+                            self.ast_context.index(lhs_resolved).kind,
+                            self.ast_context.index(rhs_resolved).kind
+                        );
+                        let ty = if CTypeKind::PULLBACK_KINDS
+                            .contains(&self.ast_context.index(lhs_resolved).kind)
+                        {
+                            lhs_type_id
+                        } else {
+                            rhs_type_id
+                        };
+                        lhs_type_id = ty;
+                        rhs_type_id = ty;
+                    }
                 }
 
                 if ctx.is_unused() {

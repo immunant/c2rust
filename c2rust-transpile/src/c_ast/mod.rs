@@ -1431,6 +1431,37 @@ impl BinOp {
         }
     }
 
+    /// Does the rust equivalent of this operator have type (T, T) -> U?
+    #[rustfmt::skip]
+    pub fn input_types_same(&self) -> bool {
+        use BinOp::*;
+        self.all_types_same() || match self {
+            Less => true,
+            Greater => true,
+            LessEqual => true,
+            GreaterEqual => true,
+            EqualEqual => true,
+            NotEqual => true,
+
+            And => true,
+            Or => true,
+
+            AssignAdd => true,
+            AssignSubtract => true,
+            AssignMultiply => true,
+            AssignDivide => true,
+            AssignModulus => true,
+            AssignBitXor => true,
+            AssignShiftLeft => true,
+            AssignShiftRight => true,
+            AssignBitOr => true,
+            AssignBitAnd => true,
+
+            Assign => true,
+            _ => false,
+        }
+    }
+
     /// Does the rust equivalent of this operator have type (T, T) -> T?
     /// This ignores cases where one argument is a pointer and we translate to `.offset()`.
     pub fn all_types_same(&self) -> bool {
