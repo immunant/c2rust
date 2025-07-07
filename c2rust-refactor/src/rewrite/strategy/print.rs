@@ -99,7 +99,9 @@ impl PrintParse for Stmt {
         // nodes.
         match self.kind {
             StmtKind::Expr(ref expr) => pprust::expr_to_string(expr),
-            _ => pprust::stmt_to_string(self),
+            _ => pprust::to_string(|s| {
+                s.stmt_to_string(self);
+            }),
         }
     }
 
@@ -135,7 +137,9 @@ impl PrintParse for ForeignItem {
 
 impl PrintParse for Block {
     fn to_string(&self) -> String {
-        pprust::block_to_string(self)
+        pprust::to_string(|s| {
+            s.block_to_string(self);
+        })
     }
 
     type Parsed = P<Block>;
@@ -146,7 +150,9 @@ impl PrintParse for Block {
 
 impl PrintParse for Param {
     fn to_string(&self) -> String {
-        pprust::param_to_string(self)
+        pprust::to_string(|s| {
+            s.param_to_string(self);
+        })
     }
 
     type Parsed = Param;
