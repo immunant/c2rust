@@ -2795,6 +2795,8 @@ constexpr size_t size(const _Tp (&)[_Sz]) noexcept {
 // parsed and string literals are always treated as constant.
 static std::vector<const char *> augment_argv(int argc, const char *argv[]) {
     const char *const extras[] = {
+        "-extra-arg=-fno-builtin-strlen",  // builtin strlen wrongly returns
+                                           // unsigned long despite declaration
         "-extra-arg=-fparse-all-comments", // always parse comments
         "-extra-arg=-Wwrite-strings",      // string literals are constant
         "-extra-arg=-D_FORTIFY_SOURCE=0",  // we don't want to use checked
