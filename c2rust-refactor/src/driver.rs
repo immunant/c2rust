@@ -685,7 +685,11 @@ pub fn run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> R
 where
     F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,
 {
-    let mut p = rustc_parse::new_parser_from_tts(&sess.parse_sess, tts);
+    let mut p = rustc_parse::stream_to_parser(
+        &sess.parse_sess,
+        tts.into_iter().collect(),
+        "c2rust-refactor parser",
+    );
     match f(&mut p) {
         Ok(x) => x,
         Err(db) => emit_and_panic(db, "tts"),
@@ -712,7 +716,11 @@ pub fn try_run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> Op
 where
     F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,
 {
-    let mut p = rustc_parse::new_parser_from_tts(&sess.parse_sess, tts);
+    let mut p = rustc_parse::stream_to_parser(
+        &sess.parse_sess,
+        tts.into_iter().collect(),
+        "c2rust-refactor parser",
+    );
     match f(&mut p) {
         Ok(x) => Some(x),
         Err(mut db) => {
