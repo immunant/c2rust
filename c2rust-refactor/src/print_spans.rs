@@ -1,7 +1,7 @@
 //! Debug command for printing the span of every major AST node.
 use log::info;
 use rustc_ast::*;
-use rustc_ast_pretty::pprust;
+use rustc_ast_pretty::pprust::{self, PrintState};
 use rustc_span::source_map::{SourceMap, Span, DUMMY_SP};
 use rustc_ast::visit::Visitor;
 
@@ -80,7 +80,9 @@ impl<'a> Visitor<'a> for PrintSpanVisitor<'a> {
             "[STMT {:?}] {}: {}",
             x.id,
             self.span_desc(x.span),
-            pprust::stmt_to_string(x)
+            pprust::to_string(|s| {
+                s.stmt_to_string(x);
+            })
         );
         rustc_ast::visit::walk_stmt(self, x);
     }
