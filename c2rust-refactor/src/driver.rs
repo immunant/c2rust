@@ -17,7 +17,7 @@ use rustc_errors::{DiagnosticBuilder, ErrorGuaranteed};
 use rustc_incremental::DepGraphFuture;
 use rustc_interface::interface;
 use rustc_interface::interface::BoxedResolver;
-use rustc_interface::util::get_codegen_backend;
+use rustc_interface::util::{get_codegen_backend, run_in_thread_pool_with_globals};
 use rustc_interface::{util, Config};
 use std::any::Any;
 use std::cell::RefCell;
@@ -282,14 +282,9 @@ where
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
     config.opts.incremental = None;
     config.file_loader = file_loader;
+    config.opts.edition = Edition::Edition2018;
 
-    syntax::with_globals(Edition::Edition2018, move || {
-        ty::tls::GCX_PTR.set(&Lock::new(0), || {
-            ty::tls::with_thread_locals(|| {
-                interface::run_compiler_in_existing_thread_pool(config, f)
-            })
-        })
-    })
+    interface::run_compiler(config, f)
 }
 
 #[cfg_attr(feature = "profile", flame)]
@@ -307,14 +302,13 @@ where
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
     config.opts.incremental = None;
 
-    syntax::with_globals(Edition::Edition2018, move || {
-        ty::tls::GCX_PTR.set(&Lock::new(0), || {
-            ty::tls::with_thread_locals(|| {
-                let state = RefactorState::new(config, cmd_reg, file_io, marks);
-                f(state)
-            })
+    run_in_thread_pool_with_globals(
+        Edition::Edition2018,
+        1,
+        move || {
+            let state = RefactorState::new(config, cmd_reg, file_io, marks);
+            f(state)
         })
-    })
 }
 
 #[allow(dead_code)]
