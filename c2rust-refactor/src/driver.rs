@@ -241,7 +241,7 @@ pub fn clone_config(config: &interface::Config) -> interface::Config {
 
 pub fn create_config(args: &[String]) -> interface::Config {
     let matches = rustc_driver::handle_options(args).expect("rustc arg parsing failed");
-    let sopts = session::config::build_session_options(&matches);
+    let sopts = rustc_session::config::build_session_options(&matches);
     let cfg = interface::parse_cfgspecs(matches.opt_strs("cfg"));
     let sopts = maybe_set_sysroot(sopts, args);
     let output_dir = matches.opt_str("out-dir").map(|o| PathBuf::from(&o));
@@ -460,7 +460,7 @@ pub fn build_session_from_args(
 ) -> Session {
     let matches = rustc_driver::handle_options(args).expect("rustc arg parsing failed");
 
-    let sopts = session::config::build_session_options(&matches);
+    let sopts = rustc_session::config::build_session_options(&matches);
     let sopts = maybe_set_sysroot(sopts, args);
 
     assert!(matches.free.len() == 1, "expected exactly one input file");
@@ -488,7 +488,7 @@ fn build_session(
     // collide with `DUMMY_SP` (which is `0 .. 0`).
     source_map.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
 
-    let sess = session::build_session_with_source_map(
+    let sess = rustc_session::build_session_with_source_map(
         sopts,
         in_path,
         descriptions,
