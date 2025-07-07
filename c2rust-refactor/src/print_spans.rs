@@ -80,7 +80,7 @@ impl<'a> Visitor<'a> for PrintSpanVisitor<'a> {
             "[STMT {:?}] {}: {}",
             x.id,
             self.span_desc(x.span),
-            pprust::stmt_to_string(x)
+            pprust::State::new().stmt_to_string(x)
         );
         rustc_ast::visit::walk_stmt(self, x);
     }
