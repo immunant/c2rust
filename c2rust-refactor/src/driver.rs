@@ -10,7 +10,6 @@ use rustc_session::{self, DiagnosticOutput, Session};
 use rustc_data_structures::steal::Steal;
 use rustc_middle::ty::{self, ResolverOutputs};
 use rustc_codegen_ssa::traits::CodegenBackend;
-use rustc_data_structures::declare_box_region_type;
 use rustc_data_structures::sync::{Lock, Lrc};
 use rustc_driver;
 use rustc_errors::{DiagnosticBuilder, ErrorGuaranteed};
