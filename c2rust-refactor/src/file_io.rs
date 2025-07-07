@@ -264,10 +264,6 @@ impl FileLoader for ArcFileIO {
         self.0.file_exists(path)
     }
 
-    fn abs_path(&self, path: &Path) -> Option<PathBuf> {
-        self.0.abs_path(path).ok()
-    }
-
     fn read_file(&self, path: &Path) -> io::Result<String> {
         self.0.read_file(path)
     }
