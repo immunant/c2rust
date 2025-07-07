@@ -474,7 +474,7 @@ impl RefactorState {
         let old_session = &compiler.sess;
 
         let descriptions = rustc_driver::diagnostics_registry();
-        let mut new_sess = session::build_session_with_source_map(
+        let mut new_sess = rustc_session::build_session_with_source_map(
             old_session.opts.clone(),
             old_session.local_crate_source_file.clone(),
             descriptions,
