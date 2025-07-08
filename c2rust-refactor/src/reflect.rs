@@ -118,7 +118,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
             // No idea what `Placeholder` is, but it sounds like something rustc-internal.
             TyKind::Placeholder(..) => mk().infer_ty(),
             TyKind::Infer(_) => mk().infer_ty(),
-            TyKind::Error => mk().infer_ty(), // unsupported
+            TyKind::Error(_) => mk().infer_ty(), // unsupported
         }
     }
 
