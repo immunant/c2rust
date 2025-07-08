@@ -42,7 +42,7 @@ gen_visit_impls! {
         //fn visit_ident(&mut self, span: Span, ident: Ident) { ... }
         //fn visit_mod(&mut self, m: &'ast Mod, _s: Span, _n: NodeId) { ... }
         fn visit_foreign_item(&mut self, i: &'ast ForeignItem) { ... }
-        fn visit_global_asm(&mut self, ga: &'ast GlobalAsm) { ... }
+        fn visit_inline_asm(&mut self, ga: &'ast InlineAsm) { ... }
         fn visit_item(&mut self, i: &'ast Item) { ... }
         fn visit_local(&mut self, l: &'ast Local) { ... }
         fn visit_block(&mut self, b: &'ast Block) { ... }
