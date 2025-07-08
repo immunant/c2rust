@@ -336,7 +336,6 @@ struct Queries<'tcx> {
     dep_graph: Query<DepGraph>,
     lower_to_hir: Query<(&'tcx hir_map::Forest, Steal<ResolverOutputs>)>,
     prepare_outputs: Query<OutputFilenames>,
-    global_ctxt: Query<BoxedGlobalCtxt>,
     ongoing_codegen: Query<Box<dyn Any>>,
     link: Query<()>,
 }
@@ -354,12 +353,6 @@ impl<T> Default for Query<T> {
         }
     }
 }
-
-declare_box_region_type!(
-    pub BoxedGlobalCtxt,
-    for('gcx),
-    (&'gcx GlobalCtxt<'gcx>) -> ((), ())
-);
 
 pub fn make_compiler(config: &Config, file_io: Arc<dyn FileIO + Sync + Send>) -> interface::Compiler {
     let mut config = clone_config(config);
