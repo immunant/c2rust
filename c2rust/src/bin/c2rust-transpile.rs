@@ -238,10 +238,15 @@ fn main() {
             panic!("Compile commands JSON and multiple sources provided.
                 Exactly one compile_commands.json file should be provided, or a list of source files, but not both.");
         }
+        let cc_json_path = &args.compile_commands[0];
         // Only one file provided and it's a JSON file
-        match fs::canonicalize(&args.compile_commands[0]) {
+        match fs::canonicalize(cc_json_path) {
             Ok(canonical_path) => canonical_path,
-            Err(e) => panic!("Failed to canonicalize path: {:?}", e),
+            Err(e) => panic!(
+                "Failed to canonicalize path {}: {:?}",
+                cc_json_path.display(),
+                e
+            ),
         }
     } else {
         // Handle as a list of source files
