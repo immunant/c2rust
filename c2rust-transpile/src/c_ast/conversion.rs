@@ -695,6 +695,14 @@ impl ConversionContext {
                         CTypeKind::Function(ret, arguments, is_variadic, is_noreturn, has_proto);
                     self.add_type(new_id, not_located(function_ty));
                     self.processed_nodes.insert(new_id, FUNC_TYPE);
+
+                    // In addition to creating the function type for this node, ensure that a
+                    // corresponding function pointer type is created. We may need to reference this
+                    // type depending on how uses of functions of this type are translated.
+                    let pointer_ty = CTypeKind::Pointer(CQualTypeId::new(CTypeId(new_id)));
+                    let new_id = self.id_mapper.fresh_id();
+                    self.add_type(new_id, not_located(pointer_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
                 TypeTag::TagTypeOfType if expected_ty & TYPE != 0 => {
