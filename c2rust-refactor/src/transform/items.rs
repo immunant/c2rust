@@ -581,9 +581,16 @@ impl Transform for DeleteItems {
         }
 
         impl<'a> MutVisitor for DeleteFolder<'a> {
-            fn visit_mod(&mut self, m: &mut Mod) {
-                m.items.retain(|i| !self.st.marked(i.id, self.mark));
-                mut_visit::noop_visit_mod(m, self)
+            fn visit_crate(&mut self, c: &mut Crate) {
+                c.items.retain(|i| !self.st.marked(i.id, self.mark));
+                mut_visit::noop_visit_crate(c, self);
+            }
+
+            fn visit_item_kind(&mut self, i: &mut ItemKind) {
+                if let ItemKind::Mod(ModKind::Loaded(ref mut items, ..)) = i {
+                    items.retain(|i| !self.st.marked(i.id, self.mark));
+                }
+                mut_visit::noop_visit_item_kind(i, self)
             }
 
             fn visit_block(&mut self, b: &mut P<Block>) {
