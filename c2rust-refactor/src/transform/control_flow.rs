@@ -220,7 +220,7 @@ impl<'a, 'hir: 'a> ForRangeDelegate<'a, 'hir> {
 }
 
 impl<'a, 'hir: 'a, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
-    fn consume(&mut self, cmt: &Place<'tcx>, _: ConsumeMode) {
+    fn consume(&mut self, cmt: &Place<'tcx>) {
         match cmt.base {
             PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {},
             _ => return
