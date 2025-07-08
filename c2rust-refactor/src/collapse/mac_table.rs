@@ -443,6 +443,12 @@ impl<T: CollectMacros> CollectMacros for P<T> {
     }
 }
 
+impl<T: CollectMacros> CollectMacros for Box<T> {
+    fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
+        <T as CollectMacros>::collect_macros(old, new, cx);
+    }
+}
+
 impl<T: CollectMacros> CollectMacros for Spanned<T> {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
         <T as CollectMacros>::collect_macros(&old.node, &new.node, cx);
