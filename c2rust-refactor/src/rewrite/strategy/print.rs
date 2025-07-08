@@ -365,6 +365,20 @@ impl<T: RecoverChildren> RecoverChildren for P<T> {
     }
 }
 
+impl<T: RecoverChildren> RecoverChildren for Box<T> {
+    fn recover_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        <T as RecoverChildren>::recover_children(reparsed, new, rcx)
+    }
+
+    fn recover_node_and_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        <T as RecoverChildren>::recover_node_and_children(reparsed, new, rcx)
+    }
+
+    fn recover_node_restricted(old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        <T as RecoverChildren>::recover_node_restricted(old_span, reparsed, new, rcx)
+    }
+}
+
 impl<T: RecoverChildren> RecoverChildren for Rc<T> {
     fn recover_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
         <T as RecoverChildren>::recover_children(reparsed, new, rcx)

@@ -33,6 +33,12 @@ impl<T: ListNodeIds> ListNodeIds for P<T> {
     }
 }
 
+impl<T: ListNodeIds> ListNodeIds for Box<T> {
+    fn add_node_ids(&self, ids: &mut Vec<NodeId>) {
+        <T as ListNodeIds>::add_node_ids(self, ids)
+    }
+}
+
 impl<T: ListNodeIds> ListNodeIds for Rc<T> {
     fn add_node_ids(&self, ids: &mut Vec<NodeId>) {
         <T as ListNodeIds>::add_node_ids(self, ids)

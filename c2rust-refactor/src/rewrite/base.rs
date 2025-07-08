@@ -56,6 +56,12 @@ impl<T: Rewrite> Rewrite for P<T> {
     }
 }
 
+impl<T: Rewrite> Rewrite for Box<T> {
+    fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
+        <T as Rewrite>::rewrite(old, new, rcx)
+    }
+}
+
 impl<T: Rewrite> Rewrite for Rc<T> {
     fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
         <T as Rewrite>::rewrite(old, new, rcx)
