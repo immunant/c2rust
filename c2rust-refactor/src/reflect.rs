@@ -252,7 +252,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                             .filter(|x| match x.kind {
                                 GenericParamDefKind::Lifetime { .. } => false,
                                 GenericParamDefKind::Type { .. } => true,
-                                GenericParamDefKind::Const => false,
+                                GenericParamDefKind::Const { .. } => false,
                             })
                             .count();
                         if let Some(substs) = opt_substs {
