@@ -304,7 +304,7 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
 
         fn exec(
             &self,
-            cmd: ProcessBuilder,
+            cmd: &ProcessBuilder,
             id: PackageId,
             target: &Target,
             mode: CompileMode,
