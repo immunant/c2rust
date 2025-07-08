@@ -34,6 +34,7 @@ extern crate rustc_span;
 extern crate rustc_target;
 extern crate rustc_typeck;
 extern crate rustc_type_ir;
+extern crate smallvec;
 
 mod ast_builder;
 mod macros;

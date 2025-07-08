@@ -446,7 +446,6 @@ dependencies = [
  "regex",
  "rlua",
  "slotmap",
- "smallvec",
  "thin-vec",
  "z3",
 ]
