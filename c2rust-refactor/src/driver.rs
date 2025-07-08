@@ -439,16 +439,22 @@ fn build_session(
     // collide with `DUMMY_SP` (which is `0 .. 0`).
     source_map.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
 
-    let sess = rustc_session::build_session_with_source_map(
+    let codegen_backend = get_codegen_backend(
+        &sopts.maybe_sysroot,
+        sopts.unstable_opts.codegen_backend.as_ref().map(|name| &name[..]),
+    );
+    let target_override = codegen_backend.target_override(&sopts);
+    let sess = rustc_session::build_session(
         sopts,
         in_path,
+        None,
         descriptions,
-        source_map,
         DiagnosticOutput::Default,
         Default::default(),
+        None,
+        target_override,
     );
-
-    let codegen_backend = get_codegen_backend(&sess);
+    codegen_backend.init(&sess);
 
     (sess, codegen_backend)
 }

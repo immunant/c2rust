@@ -473,16 +473,24 @@ impl RefactorState {
         let compiler: &mut driver::Compiler = unsafe { mem::transmute(&mut self.compiler) };
         let old_session = &compiler.sess;
 
+        let new_codegen_backend = util::get_codegen_backend(
+            &old_session.opts.maybe_sysroot,
+            old_session.opts.unstable_opts.codegen_backend.as_ref().map(|name| &name[..]),
+        );
+        let target_override = new_codegen_backend.target_override(&old_session.opts);
+
         let descriptions = rustc_driver::diagnostics_registry();
-        let mut new_sess = rustc_session::build_session_with_source_map(
+        let mut new_sess = rustc_session::build_session(
             old_session.opts.clone(),
             old_session.local_crate_source_file.clone(),
+            None,
             descriptions,
-            self.compiler.source_map().clone(),
             DiagnosticOutput::Default,
             Default::default(),
+            None,
+            target_override,
         );
-        let new_codegen_backend = util::get_codegen_backend(&new_sess);
+        new_codegen_backend.init(&new_sess);
 
         // rustc_lint::register_builtins(&mut new_sess.lint_store.borrow_mut(), Some(&new_sess));
         // if new_sess.unstable_options() {
