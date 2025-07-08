@@ -1,25 +1,19 @@
 //! Frontend logic for parsing and expanding ASTs.  This code largely mimics the behavior of
 //! `rustc_driver::run_compiler`.
 
-use rustc_middle::dep_graph::DepGraph;
 use rustc_middle::hir::map as hir_map;
 use rustc_lint::LintStore;
 use rustc_session::config::Options as SessionOptions;
-use rustc_session::config::{Input, OutputFilenames};
+use rustc_session::config::Input;
 use rustc_session::{self, DiagnosticOutput, Session};
-use rustc_data_structures::steal::Steal;
-use rustc_middle::ty::{self, ResolverOutputs};
+use rustc_middle::ty;
 use rustc_codegen_ssa::traits::CodegenBackend;
-use rustc_data_structures::sync::{Lock, Lrc};
+use rustc_data_structures::sync::Lrc;
 use rustc_driver;
 use rustc_errors::{DiagnosticBuilder, ErrorGuaranteed};
-use rustc_incremental::DepGraphFuture;
 use rustc_interface::interface;
-use rustc_interface::interface::BoxedResolver;
 use rustc_interface::util::{get_codegen_backend, run_in_thread_pool_with_globals};
 use rustc_interface::{util, Config};
-use std::any::Any;
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::mem;
 use std::path::{Path, PathBuf};
@@ -323,35 +317,6 @@ pub struct Compiler {
     register_lints: Option<Box<dyn Fn(&Session, &mut LintStore) + Send + Sync>>,
     override_queries:
         Option<fn(&Session, &mut ty::query::Providers, &mut ty::query::Providers)>,
-}
-
-#[allow(dead_code)]
-#[derive(Default)]
-struct Queries<'tcx> {
-    dep_graph_future: Query<Option<DepGraphFuture>>,
-    parse: Query<ast::Crate>,
-    crate_name: Query<String>,
-    register_plugins: Query<(ast::Crate, Lrc<LintStore>)>,
-    expansion: Query<(ast::Crate, Steal<Rc<RefCell<BoxedResolver>>>)>,
-    dep_graph: Query<DepGraph>,
-    lower_to_hir: Query<(&'tcx hir_map::Forest, Steal<ResolverOutputs>)>,
-    prepare_outputs: Query<OutputFilenames>,
-    ongoing_codegen: Query<Box<dyn Any>>,
-    link: Query<()>,
-}
-
-#[allow(dead_code)]
-struct Query<T> {
-    // TODO: fix the Err type
-    result: RefCell<Option<Result<T, ()>>>,
-}
-
-impl<T> Default for Query<T> {
-    fn default() -> Self {
-        Query {
-            result: RefCell::new(None),
-        }
-    }
 }
 
 pub fn make_compiler(config: &Config, file_io: Arc<dyn FileIO + Sync + Send>) -> interface::Compiler {
