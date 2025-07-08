@@ -351,7 +351,7 @@ pub fn can_reflect_path(cx: &RefactorCtxt, id: NodeId) -> bool {
         | Node::Block(_)
         | Node::Lifetime(_)
         | Node::Visibility(_)
-        | Node::Crate => false,
+        | Node::Crate(_) => false,
     }
 }
 
