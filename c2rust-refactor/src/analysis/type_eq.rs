@@ -898,7 +898,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         span: Span,
         id: HirId,
     ) {
-        if let intravisit::FnKind::Closure(..) = kind {
+        if let intravisit::FnKind::Closure = kind {
             return;
         }
 
