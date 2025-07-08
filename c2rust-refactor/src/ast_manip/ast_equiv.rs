@@ -40,6 +40,15 @@ impl<T: AstEquiv> AstEquiv for P<T> {
     }
 }
 
+impl<T: AstEquiv> AstEquiv for Box<T> {
+    fn ast_equiv(&self, other: &Box<T>) -> bool {
+        <T as AstEquiv>::ast_equiv(self, other)
+    }
+    fn unnamed_equiv(&self, other: &Box<T>) -> bool {
+        <T as AstEquiv>::unnamed_equiv(self, other)
+    }
+}
+
 impl<T: AstEquiv> AstEquiv for Rc<T> {
     fn ast_equiv(&self, other: &Rc<T>) -> bool {
         <T as AstEquiv>::ast_equiv(self, other)

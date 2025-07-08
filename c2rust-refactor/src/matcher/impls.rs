@@ -212,6 +212,12 @@ impl<T: TryMatch> TryMatch for P<T> {
     }
 }
 
+impl<T: TryMatch> TryMatch for Box<T> {
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
+        mcx.try_match(&**self, &**target)
+    }
+}
+
 impl<T: TryMatch> TryMatch for Rc<T> {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         mcx.try_match(&**self, &**target)
