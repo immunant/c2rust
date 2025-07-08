@@ -1652,7 +1652,7 @@ pub enum CTypeKind {
     // Function type (6.7.5.3)
     //
     // Note a function taking no arguments should have one `void` argument. Functions without any
-    // arguments and in K&R format.
+    // arguments are in K&R format.
     // Flags: is_variable_argument, is_noreturn, has prototype
     Function(CQualTypeId, Vec<CQualTypeId>, bool, bool, bool),
 
