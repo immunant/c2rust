@@ -428,7 +428,7 @@ dependencies = [
  "c2rust-analysis-rt",
  "c2rust-macros",
  "cargo",
- "cargo-util 0.2.3",
+ "cargo-util",
  "clap 2.34.0",
  "derive_more",
  "diff",
@@ -495,7 +495,7 @@ dependencies = [
  "atty",
  "bytesize",
  "cargo-platform",
- "cargo-util 0.1.2",
+ "cargo-util",
  "clap 3.2.25",
  "crates-io",
  "crossbeam-utils",
@@ -566,29 +566,7 @@ dependencies = [
  "jobserver",
  "libc",
  "log",
- "miow 0.3.7",
- "same-file",
- "shell-escape",
- "tempfile",
- "walkdir",
- "winapi",
-]
-
-[[package]]
-name = "cargo-util"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4e0cd00582e110eb8d99de768521d36fce9e24a286babf3cea68824ae09948f"
-dependencies = [
- "anyhow",
- "core-foundation",
- "crypto-hash",
- "filetime",
- "hex 0.4.3",
- "jobserver",
- "libc",
- "log",
- "miow 0.5.0",
+ "miow",
  "same-file",
  "shell-escape",
  "tempfile",
@@ -1761,15 +1739,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9f1c5b025cda876f66ef43a113f91ebc9f4ccef34843000e0adf6ebbab84e21"
 dependencies = [
  "winapi",
-]
-
-[[package]]
-name = "miow"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52ffbca2f655e33c08be35d87278e5b18b89550a37dbd598c20db92f6a471123"
-dependencies = [
- "windows-sys 0.42.0",
 ]
 
 [[package]]
