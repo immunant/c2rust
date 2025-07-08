@@ -156,7 +156,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
             | IrTyKind::Bound(..)
             | IrTyKind::Placeholder(..)
             | IrTyKind::Infer(..)
-            | IrTyKind::Error => self.mk(ty, &[], label),
+            | IrTyKind::Error(..) => self.mk(ty, &[], label),
         }
     }
 
