@@ -233,6 +233,7 @@ impl<'c> Translation<'c> {
         }
     }
 
+    /// Translate an assignment binary operator
     fn convert_assignment_operator(
         &self,
         ctx: ExprContext,
@@ -262,7 +263,7 @@ impl<'c> Translation<'c> {
         )
     }
 
-    /// Translate an assignment binary operator
+    /// Translate an assignment binary operator, provided a pre-translated RHS expression
     fn convert_assignment_operator_with_rhs(
         &self,
         ctx: ExprContext,
