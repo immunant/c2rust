@@ -230,9 +230,15 @@ pub struct ConversionContext {
     visit_as: Vec<(ClangId, NodeType)>,
 
     /// Typed context we are building up during the conversion
-    pub typed_context: TypedAstContext,
+    typed_context: TypedAstContext,
 
     pub invalid_clang_ast: bool,
+}
+
+impl ConversionContext {
+    pub fn into_typed_context(self) -> TypedAstContext {
+        self.typed_context
+    }
 }
 
 fn display_loc(ctx: &AstContext, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan> {

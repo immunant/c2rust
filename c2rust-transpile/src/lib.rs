@@ -528,7 +528,7 @@ fn transpile_single(
         if conv.invalid_clang_ast && tcfg.fail_on_error {
             panic!("Clang AST was invalid");
         }
-        conv.typed_context
+        conv.into_typed_context()
     };
 
     if tcfg.dump_typed_context {
