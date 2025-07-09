@@ -170,13 +170,13 @@ impl MutVisitor for FixAttrs {
         mut_visit::noop_flat_map_item(i, self)
     }
 
-    fn flat_map_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+    fn flat_map_foreign_item(&mut self, fi: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
         let new_span = extend_span_attrs(fi.span, &fi.attrs);
         let fi = if new_span != fi.span {
-            ForeignItem {
+            P(ForeignItem {
                 span: new_span,
                 ..fi
-            }
+            })
         } else {
             fi
         };
