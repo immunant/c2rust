@@ -50,7 +50,24 @@
                 llvmPackages_14.llvm
                 llvmPackages_14.libllvm
                 openssl
-                python3
+                (python3.withPackages
+                  (python-pkgs:
+                    with python-pkgs;
+                    [ "bencode-python3"
+                      cbor
+                      colorlog
+                      mako
+                      pip
+                      plumbum
+                      psutil
+                      pygments
+                      typing
+                      "scan-build"
+                      pyyaml
+                      toml
+                    ]
+                  )
+                )
                 zlib
                 (rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
               ];
