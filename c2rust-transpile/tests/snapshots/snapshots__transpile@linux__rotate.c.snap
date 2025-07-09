@@ -1,0 +1,33 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/linux/rotate.rs
+input_file: c2rust-transpile/tests/snapshots/linux/rotate.c
+---
+#![allow(
+    dead_code,
+    mutable_transmutes,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#![feature(core_intrinsics)]
+#[no_mangle]
+pub unsafe extern "C" fn rotate_left_64(
+    mut x: std::ffi::c_ulonglong,
+) -> std::ffi::c_ulonglong {
+    return ::core::intrinsics::rotate_left(
+        x as std::ffi::c_ulong,
+        4 as std::ffi::c_int as std::ffi::c_ulong,
+    ) as std::ffi::c_ulonglong;
+}
+#[no_mangle]
+pub unsafe extern "C" fn rotate_right_64(
+    mut x: std::ffi::c_ulonglong,
+) -> std::ffi::c_ulonglong {
+    return ::core::intrinsics::rotate_right(
+        x as std::ffi::c_ulong,
+        4 as std::ffi::c_int as std::ffi::c_ulong,
+    ) as std::ffi::c_ulonglong;
+}
