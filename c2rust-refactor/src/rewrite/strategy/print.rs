@@ -29,7 +29,7 @@ use rustc_span::source_map::{BytePos, FileName, SourceFile, Span, Spanned};
 use rustc_span::symbol::{Ident, Symbol};
 use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use rustc_ast::util::parser;
-use thin_vec::ThinVec;
+use rustc_data_structures::thin_vec::ThinVec;
 use rustc_span::DUMMY_SP;
 
 use crate::ast_manip::NodeTable;
