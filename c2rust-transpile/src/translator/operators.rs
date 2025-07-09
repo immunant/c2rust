@@ -283,7 +283,47 @@ impl<'c> Translation<'c> {
             .kind
             .get_qual_type()
             .ok_or_else(|| format_err!("bad assignment rhs type"))?;
-        let rhs_translation = self.convert_expr(ctx.used(), rhs, compute_type)?; // TODO(fw): verify
+        let lhs_kind = &self.ast_context.index(lhs).kind;
+        let lhs_type_id = lhs_kind
+            .get_qual_type()
+            .ok_or_else(|| format_err!("bad initial lhs type"))?;
+
+        // First, translate the rhs. Then, if it must match the lhs but doesn't, add a cast.
+        let mut rhs_translation = self.convert_expr(ctx.used(), rhs, None)?;
+        let lhs_rhs_types_must_match = {
+            let lhs_resolved = self.ast_context.resolve_type_id(lhs_type_id.ctype);
+            let rhs_resolved = self.ast_context.resolve_type_id(rhs_type_id.ctype);
+            // Addition and subtraction can accept one pointer argument for .offset(), in which
+            // case we don't want to homogenize arg types.
+            let neither_ptr = !self.ast_context.index(lhs_resolved).kind.is_pointer()
+                && !self.ast_context.index(rhs_resolved).kind.is_pointer();
+
+            use c_ast::BinOp::*;
+            match op.underlying_assignment() {
+                Some(Add) => neither_ptr,
+                Some(Subtract) => neither_ptr,
+                Some(Multiply) => true,
+                Some(Divide) => true,
+                Some(Modulus) => true,
+                Some(BitXor) => true,
+                Some(ShiftLeft) => false,
+                Some(ShiftRight) => false,
+                Some(BitOr) => true,
+                Some(BitAnd) => true,
+                None => true,
+                _ => unreachable!(),
+            }
+        };
+        if lhs_rhs_types_must_match {
+            // For compound assignment, use the compute type; for regular assignment, use lhs type
+            let effective_lhs_ty = compute_type.unwrap_or(lhs_type_id);
+            if effective_lhs_ty.ctype != rhs_type_id.ctype {
+                let new_rhs_ty = self.convert_type(compute_type.unwrap_or(lhs_type_id).ctype)?;
+                rhs_translation = rhs_translation.map(|val| mk().cast_expr(val, new_rhs_ty));
+            }
+        }
+
+        // Now that we've translated the rhs, finish translating the assignment operator.
         self.convert_assignment_operator_with_rhs(
             ctx,
             op,
