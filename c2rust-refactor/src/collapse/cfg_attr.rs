@@ -112,7 +112,7 @@ impl MutVisitor for RestoreCfgAttrs {
         mut_visit::noop_flat_map_assoc_item(i, self)
     }
 
-    fn flat_map_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+    fn flat_map_foreign_item(&mut self, mut i: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
         self.restore(&mut i);
         mut_visit::noop_flat_map_foreign_item(i, self)
     }
