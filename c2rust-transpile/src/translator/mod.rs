@@ -3389,7 +3389,20 @@ impl<'c> Translation<'c> {
                             val = transmute_expr(actual_ty, ty, val);
                             set_unsafe = true;
                         } else {
-                            val = mk().cast_expr(val, ty);
+                            let decl_kind = &self.ast_context[decl_id].kind;
+                            let kind_with_declared_args =
+                                self.ast_context.fn_decl_ty_with_declared_args(decl_kind);
+
+                            if let Some(ty) = self
+                                .ast_context
+                                .type_for_kind(&kind_with_declared_args)
+                                .map(CQualTypeId::new)
+                            {
+                                let ty = self.convert_type(ty.ctype)?;
+                                val = mk().cast_expr(val, ty);
+                            } else {
+                                val = mk().cast_expr(val, ty);
+                            }
                         }
                     }
                 }
@@ -3495,12 +3508,34 @@ impl<'c> Translation<'c> {
                     _ => {}
                 }
 
-                let source_ty = self.ast_context[expr]
+                let mut source_ty = self.ast_context[expr]
                     .kind
                     .get_qual_type()
                     .ok_or_else(|| format_err!("bad source type"))?;
 
                 let val = if is_explicit {
+                    // If we're casting a function, look for its declared ty to use as a more
+                    // precise source type. The AST node's type will not preserve typedef arg types
+                    // but the function's declaration will.
+                    if let Some(func_decl) = self.ast_context.function_declref_decl(expr) {
+                        let kind_with_declared_args =
+                            self.ast_context.fn_decl_ty_with_declared_args(func_decl);
+                        let func_ty = self
+                            .ast_context
+                            .type_for_kind(&kind_with_declared_args)
+                            .unwrap_or_else(|| {
+                                panic!("no type for kind {kind_with_declared_args:?}")
+                            });
+                        let func_ptr_ty = self
+                            .ast_context
+                            .type_for_kind(&CTypeKind::Pointer(CQualTypeId::new(func_ty)))
+                            .unwrap_or_else(|| {
+                                panic!("no type for kind {kind_with_declared_args:?}")
+                            });
+
+                        source_ty = CQualTypeId::new(func_ptr_ty);
+                    }
+
                     let stmts = self.compute_variable_array_sizes(ctx, ty.ctype)?;
                     let mut val = self.convert_expr(ctx, expr, None)?;
                     val.prepend_stmts(stmts);
@@ -3518,7 +3553,16 @@ impl<'c> Translation<'c> {
                             return self.convert_expr(ctx, expr, override_ty);
                         }
                     }
-                    self.convert_expr(ctx, expr, None)?
+                    // LValueToRValue casts don't actually change the type, so it still makes sense
+                    // to translate their inner expression with the expected type from outside the
+                    // cast.
+                    if kind == CastKind::LValueToRValue
+                        && Some(source_ty.ctype) != override_ty.map(|x| x.ctype)
+                    {
+                        self.convert_expr(ctx, expr, override_ty)?
+                    } else {
+                        self.convert_expr(ctx, expr, None)?
+                    }
                 };
                 // Shuffle Vector "function" builtins will add a cast to the output of the
                 // builtin call which is unnecessary for translation purposes
