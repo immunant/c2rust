@@ -13,7 +13,7 @@ use rustc_span::{Span, DUMMY_SP};
 use rustc_span::source_map::{dummy_spanned, Spanned};
 use rustc_span::symbol::Ident;
 use rustc_ast::tokenstream::{DelimSpan, Spacing, TokenStream, TokenStreamBuilder, TokenTree};
-use thin_vec::ThinVec;
+use rustc_data_structures::thin_vec::ThinVec;
 
 use super::IntoSymbol;
 
