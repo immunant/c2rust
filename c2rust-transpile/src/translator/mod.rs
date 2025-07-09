@@ -3778,7 +3778,7 @@ impl<'c> Translation<'c> {
                     _ => false,
                 };
 
-                let arg_tys = if let Some(CDeclKind::Function { parameters, .. }) =
+                let mut arg_tys = if let Some(CDeclKind::Function { parameters, .. }) =
                     self.ast_context.function_declref_decl(func)
                 {
                     self.ast_context.tys_of_params(parameters)
@@ -3834,10 +3834,12 @@ impl<'c> Translation<'c> {
                                     transmute_expr(mk().infer_ty(), target_ty, fn_ptr)
                                 })
                             }
-                            Some(_) => {
+                            Some(CTypeKind::Function(_, ty_arg_tys, ..)) => {
+                                arg_tys = Some(ty_arg_tys.clone());
                                 // Normal function pointer
                                 callee.map(unwrap_function_pointer)
                             }
+                            Some(_) => panic!("function pointer did not point to CTYpeKind::Function: {fn_ty:?}"),
                         }
                     }
                 };
