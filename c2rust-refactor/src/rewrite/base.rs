@@ -20,7 +20,7 @@ use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use rustc_span::source_map::{Span, SyntaxContext};
 use rustc_span::symbol::{Ident, Symbol};
 use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
-use thin_vec::ThinVec;
+use rustc_data_structures::thin_vec::ThinVec;
 
 use diff;
 use log::{debug, info, warn};
