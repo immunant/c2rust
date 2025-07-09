@@ -127,6 +127,7 @@ impl<'c> Translation<'c> {
                 // case we don't want to homogenize arg types.
                 if !self.ast_context.index(lhs_resolved).kind.is_pointer()
                     && !self.ast_context.index(rhs_resolved).kind.is_pointer()
+                    && !self.ast_context.index(type_id.ctype).kind.is_pointer()
                 {
                     if op.all_types_same() {
                         // Ops like division and bitxor accept inputs of their expected result type.
