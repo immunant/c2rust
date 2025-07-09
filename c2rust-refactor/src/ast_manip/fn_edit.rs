@@ -223,7 +223,7 @@ where
             .flat_map_in_place(|i| self.flat_map_foreign_item(i));
     }
 
-    fn flat_map_foreign_item(&mut self, i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+    fn flat_map_foreign_item(&mut self, i: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
         match i.kind {
             ForeignItemKind::Fn(..) => {}
             _ => return mut_visit::noop_flat_map_foreign_item(i, self),
@@ -244,14 +244,14 @@ where
         let fls = (self.callback)(fl);
 
         fls.into_iter()
-            .map(|fl| ForeignItem {
+            .map(|fl| P(ForeignItem {
                 id: fl.id,
                 ident: fl.ident,
                 span: fl.span,
                 kind: ForeignItemKind::Fn(fl.decl, generics.clone()),
                 attrs: fl.attrs,
                 vis: vis.clone(),
-            })
+            }))
             .flat_map(|i| mut_visit::noop_flat_map_foreign_item(i, self))
             .collect()
     }
