@@ -8,7 +8,7 @@ use rustc_ast::ptr::P;
 use rustc_span::source_map::{Span, Spanned};
 use rustc_span::symbol::{Ident, Symbol};
 use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
-use thin_vec::ThinVec;
+use rustc_data_structures::thin_vec::ThinVec;
 use rustc_span::hygiene::SyntaxContext;
 
 /// Trait for checking equivalence of AST nodes.  This is similar to `PartialEq`, but less strict,
