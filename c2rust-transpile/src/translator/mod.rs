@@ -3556,17 +3556,6 @@ impl<'c> Translation<'c> {
                     val.prepend_stmts(stmts);
                     val
                 } else {
-                    // Cast the return types of functions whose return types are synthetic.
-                    if let Some(func_decl) = self.ast_context.function_declref_decl(expr) {
-                        let kind_with_declared_args =
-                            self.ast_context.fn_decl_ty_with_declared_args(func_decl);
-                        let func_ty = self
-                            .ast_context
-                            .type_for_kind(&kind_with_declared_args)
-                            .expect(&format!("no type for kind {kind_with_declared_args:?}"));
-                        source_ty = CQualTypeId::new(func_ty);
-                    }
-
                     // In general, if we are casting the result of an expression, then the inner
                     // expression should be translated to whatever type it normally would.
                     // But for literals, if we don't absolutely have to cast, we would rather the
