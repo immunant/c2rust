@@ -443,6 +443,14 @@ impl ConversionContext {
             self.typed_context.comments.push(comment);
         }
 
+        // Add Rust fixed-size types.
+        for rust_type_kind in CTypeKind::PULLBACK_KINDS {
+            let new_id = self.id_mapper.fresh_id();
+            self.add_type(new_id, not_located(rust_type_kind));
+            self.processed_nodes
+                .insert(new_id, self::node_types::OTHER_TYPE);
+        }
+
         // Continue popping Clang nodes off of the stack of nodes we have promised to visit
         while let Some((node_id, expected_ty)) = self.visit_as.pop() {
             // Check if we've already processed this node. If so, ascertain that it has the right
