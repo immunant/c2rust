@@ -480,6 +480,30 @@ impl ConversionContext {
             self.visit_node(untyped_context, node_id, new_id, expected_ty)
         }
 
+        // Function declarations' types look through typedefs, but we want to use the types with
+        // typedefs intact in some cases during translation. To ensure that these types exist in the
+        // `TypedAstContext`, iterate over all function decls, compute their adjusted type using
+        // argument types from arg declarations, and then ensure the existence of both this type and
+        // the type of pointers to it.
+        for (_decl_id, located_kind) in self.typed_context.c_decls.iter() {
+            if let kind @ CDeclKind::Function { .. } = &located_kind.kind {
+                let new_kind = self.typed_context.fn_decl_ty_with_declared_args(kind);
+                if self.typed_context.type_for_kind(&new_kind).is_none() {
+                    // Create and insert fn type
+                    let new_id = CTypeId(self.id_mapper.fresh_id());
+                    self.typed_context
+                        .c_types
+                        .insert(new_id, not_located(new_kind));
+                    // Create and insert fn ptr type
+                    let ptr_kind = CTypeKind::Pointer(CQualTypeId::new(new_id));
+                    let ptr_id = CTypeId(self.id_mapper.fresh_id());
+                    self.typed_context
+                        .c_types
+                        .insert(ptr_id, not_located(ptr_kind));
+                }
+            }
+        }
+
         // Invert the macro invocations to get a list of macro expansion expressions
         for (expr_id, macro_ids) in &self.typed_context.macro_invocations {
             for mac_id in macro_ids {
