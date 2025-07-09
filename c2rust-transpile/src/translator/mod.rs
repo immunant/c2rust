@@ -3182,6 +3182,8 @@ impl<'c> Translation<'c> {
         Ok(WithStmts::new_val(call))
     }
 
+    /// Convert multiple expressions (while collecting a context of statements) given either all or
+    /// none of their expected types
     #[allow(clippy::vec_box/*, reason = "not worth a substantial refactor"*/)]
     fn convert_exprs(
         &self,
