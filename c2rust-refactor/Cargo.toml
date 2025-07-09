@@ -32,7 +32,6 @@ flamer = { version = "0.4", optional = true }
 failure = "0.1"
 bincode = "1.0.1"
 petgraph = "0.4"
-thin-vec = "0.2.14"
 cargo-util = "0.1.2"
 
 [dev-dependencies]
