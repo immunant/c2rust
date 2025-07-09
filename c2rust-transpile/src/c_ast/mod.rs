@@ -519,6 +519,44 @@ impl TypedAstContext {
         return Some(param_tys);
     }
 
+    /// Return the most precise possible CTypeKind for the given function declaration.
+    /// Specifically, ensures that arguments' types are not resolved to underlying types if they were
+    /// declared as typedefs, but returned as those typedefs.
+    ///
+    /// The passed CDeclId must refer to a function declaration.
+    pub fn fn_decl_ty_with_declared_args(&self, func_decl: &CDeclKind) -> CTypeKind {
+        if let CDeclKind::Function {
+            typ, parameters, ..
+        } = func_decl
+        {
+            let typ = self.resolve_type_id(*typ);
+            let decl_arg_tys = self.tys_of_params(parameters).unwrap();
+            let typ_kind = &self[typ].kind;
+            if let &CTypeKind::Function(ret, ref _arg_tys, a, b, c) = typ_kind {
+                return CTypeKind::Function(ret, decl_arg_tys, a, b, c);
+            }
+            panic!("expected {typ:?} to be CTypeKind::Function, but it was {typ_kind:?}")
+        }
+        panic!("expected a CDeclKind::Function, but passed {func_decl:?}")
+    }
+
+    /// Return the id of the most precise possible type for the function referenced by the given
+    /// expression, if any.
+    pub fn function_declref_ty_with_declared_args(
+        &self,
+        func_expr: CExprId,
+    ) -> Option<CQualTypeId> {
+        if let Some(func_decl @ CDeclKind::Function { .. }) = self.function_declref_decl(func_expr)
+        {
+            let kind_with_declared_args = self.fn_decl_ty_with_declared_args(func_decl);
+            let specific_typ = self
+                .type_for_kind(&kind_with_declared_args)
+                .unwrap_or_else(|| panic!("no type for kind {kind_with_declared_args:?}"));
+            return Some(CQualTypeId::new(specific_typ));
+        }
+        None
+    }
+
     /// Pessimistically try to check if an expression has side effects. If it does, or we can't tell
     /// that it doesn't, return `false`.
     pub fn is_expr_pure(&self, expr: CExprId) -> bool {
