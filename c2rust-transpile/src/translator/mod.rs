@@ -3199,6 +3199,22 @@ impl<'c> Translation<'c> {
             .collect()
     }
 
+    /// Variant of `convert_exprs` for when only a prefix of the expression types are known due to
+    /// the relevant signature being varargs
+    #[allow(clippy::vec_box/*, reason = "not worth a substantial refactor"*/)]
+    fn convert_exprs_partial(
+        &self,
+        ctx: ExprContext,
+        exprs: &[CExprId],
+        arg_tys: &[CQualTypeId],
+    ) -> TranslationResult<WithStmts<Vec<Box<Expr>>>> {
+        exprs
+            .iter()
+            .enumerate()
+            .map(|(n, arg)| self.convert_expr(ctx, *arg, arg_tys.get(n).copied()))
+            .collect()
+    }
+
     /// Translate a C expression into a Rust one, possibly collecting side-effecting statements
     /// to run before the expression.
     ///
@@ -3830,13 +3846,19 @@ impl<'c> Translation<'c> {
                     // We want to decay refs only when function is variadic
                     ctx.decay_ref = DecayRef::from(is_variadic);
 
-                    let arg_tys = if let (false, Some(arg_tys)) = (is_variadic, &arg_tys) {
-                        assert!(arg_tys.len() == args.len());
-                        Some(arg_tys.as_slice())
+                    let args = if is_variadic {
+                        let arg_tys = arg_tys.unwrap_or_default();
+                        self.convert_exprs_partial(ctx.used(), args, arg_tys.as_slice())?
                     } else {
-                        None
+                        let arg_tys = if let Some(ref arg_tys) = arg_tys {
+                            assert!(arg_tys.len() == args.len());
+                            Some(arg_tys.as_slice())
+                        } else {
+                            None
+                        };
+
+                        self.convert_exprs(ctx.used(), args, arg_tys)?
                     };
-                    let args = self.convert_exprs(ctx.used(), args, arg_tys)?;
 
                     let mut call_expr = args.map(|args| mk().call_expr(func, args));
                     if let Some(expected_ty) = override_ty {
