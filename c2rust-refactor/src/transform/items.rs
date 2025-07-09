@@ -320,7 +320,7 @@ impl Transform for SetVisibility {
                 mut_visit::noop_flat_map_assoc_item(i, self)
             }
 
-            fn flat_map_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+            fn flat_map_foreign_item(&mut self, mut i: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
                 if self.st.marked(i.id, "target") {
                     i.vis = self.vis.clone();
                 }
@@ -370,7 +370,7 @@ impl Transform for SetMutability {
                 mut_visit::noop_flat_map_item(i, self)
             }
 
-            fn flat_map_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+            fn flat_map_foreign_item(&mut self, mut i: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
                 if self.st.marked(i.id, "target") {
                     match i.kind {
                         ForeignItemKind::Static(_, ref mut is_mutbl) =>

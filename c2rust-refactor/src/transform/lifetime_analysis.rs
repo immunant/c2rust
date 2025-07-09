@@ -391,7 +391,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
-    // fn flat_map_foreign_item(&mut self, item: ast::ForeignItem) -> SmallVec<[ast::ForeignItem; 1]> {
+    // fn flat_map_foreign_item(&mut self, item: P<ast::ForeignItem>) -> SmallVec<[P<ast::ForeignItem>; 1]> {
     //     if let ast::ForeignItemKind::Fn(decl, _) = &item.node {
     //         if HOOK_FUNCTIONS.contains(&&*item.ident.name.as_str()) {
     //             self.hooked_functions.insert(item.ident.name, decl.clone());

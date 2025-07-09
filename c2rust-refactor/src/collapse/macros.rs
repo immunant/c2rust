@@ -309,7 +309,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
         mut_visit::noop_flat_map_assoc_item(ti, self)
     }
 
-    fn flat_map_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+    fn flat_map_foreign_item(&mut self, fi: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
         if let Some(info) = self.mac_table.get(fi.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info
@@ -628,7 +628,7 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
         mut_visit::noop_flat_map_assoc_item(ti, self)
     }
 
-    fn flat_map_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+    fn flat_map_foreign_item(&mut self, fi: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
         if let Some(invoc_id) = self.mac_table.get(fi.id).map(|m| m.id) {
             if let Some(new_args) = self.new_args.get(&invoc_id).cloned() {
                 let mut fi = fi;
