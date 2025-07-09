@@ -7,7 +7,7 @@ use rustc_span::source_map::{Span, Spanned};
 use rustc_target::spec::abi::Abi;
 use rustc_span::hygiene::SyntaxContext;
 use rustc_span::symbol::{Ident, Symbol};
-use thin_vec::ThinVec;
+use rustc_data_structures::thin_vec::ThinVec;
 
 pub trait AstDeref {
     type Target: ?Sized;
