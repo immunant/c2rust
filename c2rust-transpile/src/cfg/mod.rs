@@ -1860,8 +1860,8 @@ impl CfgBuilder {
                 let pat = match branch {
                     Some(pat) => pat,
                     None => match cie {
-                        ConstIntExpr::U(n) => mk().lit_pat(mk().int_unsuffixed_lit(n as u128)),
-                        ConstIntExpr::I(n) => mk().lit_pat(mk().int_unsuffixed_lit(n as u128)),
+                        ConstIntExpr::U(n) => mk().lit_pat(mk().int_unsuffixed_lit(n)),
+                        ConstIntExpr::I(n) => mk().lit_pat(mk().int_unsuffixed_lit(n)),
                     },
                 };
 

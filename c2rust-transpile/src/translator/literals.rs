@@ -16,7 +16,7 @@ impl<'c> Translation<'c> {
         base: IntBase,
     ) -> TranslationResult<Box<Expr>> {
         let lit = match base {
-            IntBase::Dec => mk().int_unsuffixed_lit(val.into()),
+            IntBase::Dec => mk().int_unsuffixed_lit(val),
             IntBase::Hex => mk().float_unsuffixed_lit(&format!("0x{:x}", val)),
             IntBase::Oct => mk().float_unsuffixed_lit(&format!("0o{:o}", val)),
         };

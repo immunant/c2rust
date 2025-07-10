@@ -500,6 +500,36 @@ impl Make<Signature> for Box<FnDecl> {
     }
 }
 
+impl Make<String> for i32 {
+    fn make(self, mk: &Builder) -> String {
+        (self as i128).make(mk)
+    }
+}
+
+impl Make<String> for i64 {
+    fn make(self, mk: &Builder) -> String {
+        (self as i128).make(mk)
+    }
+}
+
+impl Make<String> for u64 {
+    fn make(self, mk: &Builder) -> String {
+        (self as u128).make(mk)
+    }
+}
+
+impl Make<String> for i128 {
+    fn make(self, _mk: &Builder) -> String {
+        self.to_string()
+    }
+}
+
+impl Make<String> for u128 {
+    fn make(self, _mk: &Builder) -> String {
+        self.to_string()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Builder {
     // The builder holds a set of "modifiers", such as visibility and mutability.  Functions for
@@ -1067,8 +1097,12 @@ impl Builder {
         Lit::Int(LitInt::new(&format!("{}{}", i, ty), self.span))
     }
 
-    pub fn int_unsuffixed_lit(self, i: u128) -> Lit {
-        Lit::Int(LitInt::new(&format!("{}", i), self.span))
+    pub fn int_unsuffixed_lit<S>(self, s: S) -> Lit
+    where
+        S: Make<String>,
+    {
+        let s = s.make(&self);
+        Lit::Int(LitInt::new(&s, self.span))
     }
 
     pub fn float_lit(self, s: &str, ty: &str) -> Lit {
