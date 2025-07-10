@@ -234,8 +234,11 @@ class TestDirectory:
         self.target = None
 
         # include the compiler resource directory in compile_commands.json
-        _, stdout, _ = clang["-print-resource-dir"].run(retcode=None)
-        self.clang_resource_dir = " \"-I{}/include\",".format(stdout.strip())
+        if sys.platform == "darwin":
+            _, stdout, _ = clang["-print-resource-dir"].run(retcode=None)
+            self.clang_resource_dir = " \"-I{}/include\",".format(stdout.strip())
+        else:
+            self.clang_resource_dir = ""
 
         # parse target arch from directory name if it includes a dot
         split_by_dots = self.name.split('.')
