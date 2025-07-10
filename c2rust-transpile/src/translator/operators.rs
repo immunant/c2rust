@@ -456,16 +456,16 @@ impl<'c> Translation<'c> {
                                 }
 
                                 let (bin_op, bin_op_kind) = match op {
-                                    AssignAdd => (Add, eq(BinOp::AddEq)),
-                                    AssignSubtract => (Subtract, eq(BinOp::SubEq)),
-                                    AssignMultiply => (Multiply, eq(BinOp::MulEq)),
-                                    AssignDivide => (Divide, eq(BinOp::DivEq)),
-                                    AssignModulus => (Modulus, eq(BinOp::RemEq)),
-                                    AssignBitXor => (BitXor, eq(BinOp::BitXorEq)),
-                                    AssignShiftLeft => (ShiftLeft, eq(BinOp::ShlEq)),
-                                    AssignShiftRight => (ShiftRight, eq(BinOp::ShrEq)),
-                                    AssignBitOr => (BitOr, eq(BinOp::BitOrEq)),
-                                    AssignBitAnd => (BitAnd, eq(BinOp::BitAndEq)),
+                                    AssignAdd => (Add, eq(BinOp::AddAssign)),
+                                    AssignSubtract => (Subtract, eq(BinOp::SubAssign)),
+                                    AssignMultiply => (Multiply, eq(BinOp::MulAssign)),
+                                    AssignDivide => (Divide, eq(BinOp::DivAssign)),
+                                    AssignModulus => (Modulus, eq(BinOp::RemAssign)),
+                                    AssignBitXor => (BitXor, eq(BinOp::BitXorAssign)),
+                                    AssignShiftLeft => (ShiftLeft, eq(BinOp::ShlAssign)),
+                                    AssignShiftRight => (ShiftRight, eq(BinOp::ShrAssign)),
+                                    AssignBitOr => (BitOr, eq(BinOp::BitOrAssign)),
+                                    AssignBitAnd => (BitAnd, eq(BinOp::BitAndAssign)),
                                     _ => panic!("Cannot convert non-assignment operator"),
                                 };
                                 self.convert_assignment_operator_aux(
@@ -515,19 +515,19 @@ impl<'c> Translation<'c> {
             c_ast::BinOp::Subtract => self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs),
 
             c_ast::BinOp::Multiply if is_unsigned_integral_type => {
-                Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_mul"), vec![rhs]))
+                Ok(mk().method_call_expr(lhs, "wrapping_mul", vec![rhs]))
             }
             c_ast::BinOp::Multiply => {
                 Ok(mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs))
             }
 
             c_ast::BinOp::Divide if is_unsigned_integral_type => {
-                Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_div"), vec![rhs]))
+                Ok(mk().method_call_expr(lhs, "wrapping_div", vec![rhs]))
             }
             c_ast::BinOp::Divide => Ok(mk().binary_expr(BinOp::Div(Default::default()), lhs, rhs)),
 
             c_ast::BinOp::Modulus if is_unsigned_integral_type => {
-                Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_rem"), vec![rhs]))
+                Ok(mk().method_call_expr(lhs, "wrapping_rem", vec![rhs]))
             }
             c_ast::BinOp::Modulus => Ok(mk().binary_expr(BinOp::Rem(Default::default()), lhs, rhs)),
 
@@ -633,7 +633,7 @@ impl<'c> Translation<'c> {
             let mul = self.compute_size_of_expr(pointee.ctype);
             Ok(pointer_offset(rhs, lhs, mul, false, false))
         } else if lhs_type.is_unsigned_integral_type() {
-            Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_add"), vec![rhs]))
+            Ok(mk().method_call_expr(lhs, "wrapping_add", vec![rhs]))
         } else {
             Ok(mk().binary_expr(BinOp::Add(Default::default()), lhs, rhs))
         }
@@ -663,7 +663,7 @@ impl<'c> Translation<'c> {
             let mul = self.compute_size_of_expr(pointee.ctype);
             Ok(pointer_offset(lhs, rhs, mul, true, false))
         } else if lhs_type.is_unsigned_integral_type() {
-            Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_sub"), vec![rhs]))
+            Ok(mk().method_call_expr(lhs, "wrapping_sub", vec![rhs]))
         } else {
             Ok(mk().binary_expr(BinOp::Sub(Default::default()), lhs, rhs))
         }
@@ -951,7 +951,9 @@ impl<'c> Translation<'c> {
         // to add them to stmts.
         if ctx.is_unused() {
             let v = unary.clone().into_value();
-            unary.stmts_mut().push(Stmt::Semi(*v, Default::default()));
+            unary
+                .stmts_mut()
+                .push(Stmt::Expr(*v, Some(Default::default())));
         }
         Ok(unary)
     }

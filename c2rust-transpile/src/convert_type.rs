@@ -246,7 +246,7 @@ impl TypeConverter {
             Some(ret) => self.convert(ctxt, ret.ctype)?,
         };
 
-        let variadic = is_variadic.then(|| mk().variadic_arg(vec![]));
+        let variadic = is_variadic.then(|| mk().bare_variadic_arg());
 
         let fn_ty = (
             barefn_inputs,
