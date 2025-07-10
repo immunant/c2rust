@@ -73,12 +73,7 @@ fn add_arch_use(store: &mut ItemStore, arch_name: &str, item_name: &str) {
         item_name,
         mk().meta_item_attr(
             AttrStyle::Outer,
-            mk().meta_list(
-                "cfg",
-                vec![NestedMeta::Meta(
-                    mk().meta_namevalue("target_arch", arch_name),
-                )],
-            ),
+            mk().meta_list("cfg", vec![mk().meta_namevalue("target_arch", arch_name)]),
         )
         .pub_(),
     );

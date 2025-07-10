@@ -662,7 +662,7 @@ impl<'c> Translation<'c> {
             // Skip over, there's no way to implement it in Rust
             "__builtin_unwind_init" => Ok(WithStmts::new_val(self.panic_or_err("no value"))),
             "__builtin_unreachable" => Ok(WithStmts::new(
-                vec![mk().semi_stmt(mk().mac_expr(mk().mac(
+                vec![mk().semi_stmt(mk().mac_expr(mk().mac::<Vec<TokenTree>>(
                     mk().path(vec!["unreachable"]),
                     vec![],
                     MacroDelimiter::Paren(Default::default()),
