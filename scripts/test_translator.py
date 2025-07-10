@@ -233,9 +233,16 @@ class TestDirectory:
         # set self.target to a known-working target tuple for it
         self.target = None
 
-        # include the compiler resource directory in compile_commands.json
-        _, stdout, _ = clang["-print-resource-dir"].run(retcode=None)
-        self.clang_resource_dir = " \"-I{}/include\",".format(stdout.strip())
+        # include the compiler resource directory in compile_commands.json.
+        # we should never have to do this but for some reason SIMD includes
+        # are broken without it on macOS 12.
+        # limit this to macOS because if we do happen to have multiple versions of Clang around, we
+        # don't know which to use here, and using the wrong can one break things badly
+        if sys.platform == "darwin":
+            _, stdout, _ = clang["-print-resource-dir"].run(retcode=None)
+            self.clang_resource_dir = " \"-I{}/include\",".format(stdout.strip())
+        else:
+            self.clang_resource_dir = ""
 
         # parse target arch from directory name if it includes a dot
         split_by_dots = self.name.split('.')
