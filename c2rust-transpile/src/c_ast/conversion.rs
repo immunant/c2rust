@@ -2037,6 +2037,15 @@ impl ConversionContext {
                             "__int32_t" => CTypeKind::Int32,
                             "__int64_t" => CTypeKind::Int64,
                             "__int128_t" => CTypeKind::Int128,
+                            // macOS stdint.h typedefs [u]intN_t directly:
+                            "int8_t" => CTypeKind::Int8,
+                            "int16_t" => CTypeKind::Int16,
+                            "int32_t" => CTypeKind::Int32,
+                            "int64_t" => CTypeKind::Int64,
+                            "uint8_t" => CTypeKind::UInt8,
+                            "uint16_t" => CTypeKind::UInt16,
+                            "uint32_t" => CTypeKind::UInt32,
+                            "uint64_t" => CTypeKind::UInt64,
                             _ => {
                                 log::debug!("Unknown fixed-size type typedef {name}!");
                                 return None;
