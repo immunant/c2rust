@@ -302,8 +302,7 @@ pub fn insert_comment_attrs(attrs: &mut Vec<Attribute>, new_comments: SmallVec<[
             pound_token: Default::default(),
             style: AttrStyle::Inner(Default::default()),
             bracket_token: Default::default(),
-            path: make_comment_path(),
-            tokens,
+            meta: Meta::Path(make_comment_path()),
         };
         attrs.push(attr);
     }

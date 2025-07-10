@@ -33,7 +33,7 @@ impl IncCleanup {
 
         let mut removed_tail_expr = false;
 
-        if let Stmt::Expr(expr) = &mut stmt {
+        if let Stmt::Expr(expr, _) = &mut stmt {
             match expr {
                 Expr::If(ExprIf {
                     cond: _,
@@ -74,7 +74,7 @@ impl IncCleanup {
     }
 
     fn is_idempotent_tail_expr(&self, stmt: &Stmt) -> bool {
-        let tail_expr = if let Stmt::Semi(expr, _token) = stmt {
+        let tail_expr = if let Stmt::Expr(expr, _token) = stmt {
             expr
         } else {
             return false;
@@ -124,35 +124,44 @@ impl IncCleanup {
 /// Remove empty else clauses from if expressions that can arise from
 /// removing idempotent statements.
 fn cleanup_if(stmt: Stmt) -> Stmt {
-    if let Stmt::Expr(Expr::If(ExprIf {
-        cond,
-        then_branch,
-        else_branch: Some((token, else_)),
-        ..
-    })) = &stmt
+    if let Stmt::Expr(
+        Expr::If(ExprIf {
+            cond,
+            then_branch,
+            else_branch: Some((token, else_)),
+            ..
+        }),
+        _semi,
+    ) = &stmt
     {
         if let Expr::Block(ExprBlock {
             block, label: None, ..
         }) = &**else_
         {
             if block.stmts.is_empty() {
-                return Stmt::Expr(Expr::If(ExprIf {
-                    cond: cond.clone(),
-                    then_branch: then_branch.clone(),
-                    else_branch: Default::default(),
-                    attrs: Default::default(),
-                    if_token: Default::default(),
-                }));
-            } else if block.stmts.len() == 1 {
-                // flatten nested if expression to else if chain
-                if let Stmt::Expr(Expr::If(nested_if_expr)) = &block.stmts[0] {
-                    return Stmt::Expr(Expr::If(ExprIf {
+                return Stmt::Expr(
+                    Expr::If(ExprIf {
                         cond: cond.clone(),
                         then_branch: then_branch.clone(),
-                        else_branch: Some((*token, Box::new(Expr::If(nested_if_expr.clone())))),
+                        else_branch: Default::default(),
                         attrs: Default::default(),
                         if_token: Default::default(),
-                    }));
+                    }),
+                    None,
+                );
+            } else if block.stmts.len() == 1 {
+                // flatten nested if expression to else if chain
+                if let Stmt::Expr(Expr::If(nested_if_expr), _semi) = &block.stmts[0] {
+                    return Stmt::Expr(
+                        Expr::If(ExprIf {
+                            cond: cond.clone(),
+                            then_branch: then_branch.clone(),
+                            else_branch: Some((*token, Box::new(Expr::If(nested_if_expr.clone())))),
+                            attrs: Default::default(),
+                            if_token: Default::default(),
+                        }),
+                        None,
+                    );
                 }
             }
         }
