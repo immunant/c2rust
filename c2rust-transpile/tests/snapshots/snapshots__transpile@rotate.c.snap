@@ -1,5 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
+assertion_line: 67
 expression: cat tests/snapshots/rotate.rs
 input_file: c2rust-transpile/tests/snapshots/rotate.c
 ---
@@ -40,3 +41,4 @@ pub unsafe extern "C" fn rotate_right_16(
 pub unsafe extern "C" fn rotate_right_32(mut x: std::ffi::c_uint) -> std::ffi::c_uint {
     return x.rotate_right(3 as std::ffi::c_int as std::ffi::c_uint as u32);
 }
+

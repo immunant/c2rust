@@ -1,7 +1,8 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-expression: cat tests/snapshots/linux/rotate.rs
-input_file: c2rust-transpile/tests/snapshots/linux/rotate.c
+assertion_line: 67
+expression: cat tests/snapshots/platform-specific/rotate.rs
+input_file: c2rust-transpile/tests/snapshots/platform-specific/rotate.c
 ---
 #![allow(
     dead_code,
@@ -28,3 +29,4 @@ pub unsafe extern "C" fn rotate_right_64(
         .rotate_right(4 as std::ffi::c_int as std::ffi::c_ulong as u32)
         as std::ffi::c_ulonglong;
 }
+
