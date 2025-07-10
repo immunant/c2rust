@@ -2060,6 +2060,12 @@ impl ConversionContext {
                                     .to_str()
                                     .map(|s| s.starts_with("__stddef_"))
                                     .unwrap_or(false)
+                            // for macos
+                                || filename == "_types.h"
+                                || filename
+                                    .to_str()
+                                    .map(|s| s.starts_with("_int") || s.starts_with("_uint"))
+                                    .unwrap_or(false)
                             {
                                 typ = id_for_name(&*name).unwrap_or(typ);
                             }
