@@ -525,8 +525,8 @@ impl<'a> Translation<'a> {
                     let field = init.map(|init| mk().field(field_name, init));
                     fields.push(field);
                 }
-                Both(field_id, (field_name, _, bitfield_width, use_inner_type)) => {
-                    let mut expr = self.convert_expr(ctx.used(), *field_id, None)?;
+                Both(field_id, (field_name, ty, bitfield_width, use_inner_type)) => {
+                    let mut expr = self.convert_expr(ctx.used(), *field_id, Some(ty))?;
 
                     if use_inner_type {
                         // See comment above
