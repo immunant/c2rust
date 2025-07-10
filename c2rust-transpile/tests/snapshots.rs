@@ -94,6 +94,13 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
     };
     insta::assert_snapshot!(snapshot_name, &rs, &debug_expr);
 
+    // Using rustc itself to build snapshots that reference libc is difficult because we don't know
+    // the appropriate --extern libc=/path/to/liblibc-XXXXXXXXXXXXXXXX.rlib to pass. Skip for now,
+    // as we've already compared the literal text.
+    if rs.contains("libc::") {
+        return;
+    }
+
     // Don't need to worry about platform clashes here, as this is immediately deleted.
     let rlib_path = format!("lib{crate_name}.rlib");
     let status = Command::new("rustc")
