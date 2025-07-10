@@ -151,6 +151,8 @@ impl<'c> Translation<'c> {
                         };
                         lhs_type_id = ty;
                         rhs_type_id = ty;
+                    } else if matches!(op, ShiftLeft | ShiftRight) {
+                        lhs_type_id = type_id;
                     }
                 }
 
