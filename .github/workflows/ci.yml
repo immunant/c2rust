@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
   pull_request:
 
 jobs:
@@ -13,6 +13,11 @@ jobs:
           - runner: ubuntu-latest
             os: Linux
             arch: x86_64
+            clang-version: 18
+          - runner: ubuntu-22.04
+            os: Linux
+            arch: x86_64
+            clang-version: 15
           - runner: macos-13
             os: macOS
             arch: x86_64
@@ -39,7 +44,7 @@ jobs:
             git \
             gperf \
             libbrotli-dev \
-            libclang-dev \
+            libclang-${{ matrix.clang-version }}-dev \
             libgcrypt20 \
             libreadline-dev \
             libidn2-dev \
@@ -48,6 +53,7 @@ jobs:
             libnghttp2-dev \
             libpcre3-dev \
             libpsl-dev \
+            libreadline-dev \
             librtmp-dev \
             libssl-dev \
             libtool \
@@ -66,7 +72,7 @@ jobs:
         run: |
           # `bash` needed b/c macOS ships with bash 3, which doesn't support arrays properly
           brew install -q cmake ninja gpg llvm@17 bash
-      
+
       - uses: astral-sh/setup-uv@v6
 
       - name: Install Python Packages
