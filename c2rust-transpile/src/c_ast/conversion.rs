@@ -1993,6 +1993,8 @@ impl ConversionContext {
                             "uintmax_t" => CTypeKind::UIntMax,
                             "intptr_t" => CTypeKind::IntPtr,
                             "uintptr_t" => CTypeKind::UIntPtr,
+                            // unlike `size_t`, `ssize_t` does not have a clang-provided `#define`.
+                            "ssize_t" => CTypeKind::SSize,
                             "__uint8_t" => CTypeKind::UInt8,
                             "__uint16_t" => CTypeKind::UInt16,
                             "__uint32_t" => CTypeKind::UInt32,
