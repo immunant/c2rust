@@ -7,7 +7,7 @@ on:
 
 jobs:
   test-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - run: rustup component add rustfmt rustc-dev
@@ -27,7 +27,7 @@ jobs:
             git \
             gperf \
             libbrotli-dev \
-            libclang-dev \
+            libclang-15-dev \
             libgcrypt20 \
             libreadline-dev \
             libidn2-dev \
@@ -36,6 +36,7 @@ jobs:
             libnghttp2-dev \
             libpcre3-dev \
             libpsl-dev \
+            libreadline-dev \
             librtmp-dev \
             libssl-dev \
             libtool \
