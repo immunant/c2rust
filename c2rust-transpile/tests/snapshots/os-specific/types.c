@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdint.h>
-#include <stddef.h>
+#include <stddef.h> // for ptrdiff_t and ssize_t on Linux
+#include <sys/types.h> // for ssize_t on macOS
 
 int intvar = 0;
 
