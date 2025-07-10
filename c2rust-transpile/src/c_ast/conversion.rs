@@ -2027,6 +2027,9 @@ impl ConversionContext {
                             "uintptr_t" => CTypeKind::UIntPtr,
                             // unlike `size_t`, `ssize_t` does not have a clang-provided `#define`.
                             "ssize_t" => CTypeKind::SSize,
+                            // macOS defines `ssize_t` from `__darwin_ssize_t` in many headers,
+                            // so we should handle `__darwin_ssize_t` itself.
+                            "__darwin_ssize_t" => CTypeKind::SSize,
                             "__uint8_t" => CTypeKind::UInt8,
                             "__uint16_t" => CTypeKind::UInt16,
                             "__uint32_t" => CTypeKind::UInt32,
