@@ -3507,7 +3507,7 @@ impl<'c> Translation<'c> {
             }
 
             Unary(type_id, op, arg, lrvalue) => {
-                self.convert_unary_operator(ctx, op, type_id, arg, lrvalue)
+                self.convert_unary_operator(ctx, op, override_ty.unwrap_or(type_id), arg, lrvalue)
             }
 
             Conditional(ty, cond, lhs, rhs) => {
