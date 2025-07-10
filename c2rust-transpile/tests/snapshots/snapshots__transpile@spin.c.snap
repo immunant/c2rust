@@ -1,5 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
+assertion_line: 67
 expression: cat tests/snapshots/spin.rs
 input_file: c2rust-transpile/tests/snapshots/spin.c
 ---
@@ -16,3 +17,4 @@ input_file: c2rust-transpile/tests/snapshots/spin.c
 pub unsafe extern "C" fn spin() {
     ::core::hint::spin_loop();
 }
+

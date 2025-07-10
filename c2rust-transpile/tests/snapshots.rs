@@ -46,22 +46,7 @@ fn config() -> TranspilerConfig {
     }
 }
 
-fn transpile(c_path: &Path) {
-    let parent_dir_name = c_path
-        .parent()
-        .and_then(|dir| dir.file_name())
-        .and_then(|file_name| file_name.to_str())
-        .unwrap_or_default();
-    // Some things transpile differently on Linux vs. macOS,
-    // as they use `unsigned long` and `unsigned long long` differently for builtins.
-    // This makes snapshot tests trickier, as the output will be OS-dependent.
-    // We only test Linux here, as that should be sufficient for these specific tests,
-    // and because cross-compiling with transpilation is not super straightforward,
-    // so generating the macOS snapshots locally on Linux is annoying.
-    if parent_dir_name == "linux" && !cfg!(target_os = "linux") {
-        return;
-    }
-
+fn transpile(platform: Option<&str>, c_path: &Path) {
     let status = Command::new("clang")
         .args(&["-c", "-o", "/dev/null"])
         .arg(c_path)
@@ -76,7 +61,12 @@ fn transpile(c_path: &Path) {
     let rs_path = c_path.with_extension("rs");
     let rs = fs::read_to_string(&rs_path).unwrap();
     let debug_expr = format!("cat {}", rs_path.display());
-    insta::assert_snapshot!("transpile", &rs, &debug_expr);
+
+    let name = platform
+        .map(|platform| ["transpile", platform].join("-"))
+        .unwrap_or("transpile".into());
+
+    insta::assert_snapshot!(name, &rs, &debug_expr);
 
     let status = Command::new("rustc")
         .args(&["--crate-type", "lib", "--edition", "2021", "-o", "-"])
@@ -87,9 +77,21 @@ fn transpile(c_path: &Path) {
 
 #[test]
 fn transpile_all() {
-    // We need to do this as a single glob,
-    // as `insta` removes the common prefix to all matches files,
-    // and if we do this as separate globs (for linux-only files),
-    // they'll overwrite each other.
-    insta::glob!("snapshots/**/*.c", transpile);
+    insta::glob!("snapshots/*.c", |x| transpile(None, x));
+
+    // Some things transpile differently on Linux vs. macOS,
+    // as they use `unsigned long` and `unsigned long long` differently for builtins.
+    // This makes snapshot tests trickier, as the output will be OS-dependent.
+    // We handle this by adding OS name to the snapshot result filename.
+    #[allow(unused)]
+    let platform = "unknown";
+
+    #[cfg(target_os = "linux")]
+    let platform = "linux";
+    #[cfg(target_os = "macos")]
+    let platform = "macos";
+
+    insta::with_settings!({snapshot_suffix => platform}, {
+        insta::glob!("snapshots/platform-specific/*.c", |x| transpile(Some(platform), x));
+    });
 }

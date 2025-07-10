@@ -1,5 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
+assertion_line: 67
 expression: cat tests/snapshots/gotos.rs
 input_file: c2rust-transpile/tests/snapshots/gotos.c
 ---
@@ -22,3 +23,4 @@ pub unsafe extern "C" fn sum(mut count: std::ffi::c_int) -> std::ffi::c_int {
     }
     return x;
 }
+
