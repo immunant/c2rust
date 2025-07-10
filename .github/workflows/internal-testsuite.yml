@@ -83,6 +83,7 @@ jobs:
         sudo apt-get -qq update
         sudo apt-get -qq install    \
             libbrotli-dev           \
+            libc6-dev               \
             libclang-15-dev         \
             libgcrypt20             \
             libreadline-dev         \

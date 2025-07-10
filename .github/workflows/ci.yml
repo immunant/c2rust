@@ -27,6 +27,7 @@ jobs:
             git \
             gperf \
             libbrotli-dev \
+            libc6-dev \
             libclang-15-dev \
             libgcrypt20 \
             libreadline-dev \
