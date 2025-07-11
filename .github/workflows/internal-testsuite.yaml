@@ -1,0 +1,12 @@
+name: c2rust-testsuite
+
+# Run workflow on PRs to the master branch
+on:
+  pull_request:
+    branches:
+      - master
+
+# Forward to the testsuite workflow from the c2rust repo
+jobs:
+  call-workflow:
+    uses: immunant/c2rust/.github/workflows/internal-testsuite.yml@master
