@@ -9,7 +9,7 @@ use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use rustc_ast::ptr::P;
 use rustc_span::source_map::{Span, Spanned};
 use rustc_span::symbol::{Ident, Symbol};
-use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
+use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
 use rustc_data_structures::thin_vec::ThinVec;
 
 use crate::ast_manip::AstNode;
