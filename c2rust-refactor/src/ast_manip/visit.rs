@@ -60,7 +60,6 @@ gen_visit_impls! {
         //fn visit_fn(
         //    &mut self,
         //    fk: FnKind<'ast>,
-        //    fd: &'ast FnDecl,
         //    s: Span,
         //    _: NodeId
         //) { ... }
