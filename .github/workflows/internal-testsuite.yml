@@ -9,6 +9,8 @@ on:
     branches: [ master, feature/ci-dev ]
   pull_request:
     branches: [ master ]
+  # allow using from other repos (in particular, c2rust-testsuite)
+  workflow_call:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -23,6 +25,8 @@ jobs:
     # Working dir is /home/runner/work/c2rust/c2rust
     - name: Checkout c2rust
       uses: actions/checkout@v2
+      with:
+        repository: immunant/c2rust
 
     # Working dir is /home/runner/work/c2rust/c2rust/testsuite
     - name: Checkout c2rust-testsuite
