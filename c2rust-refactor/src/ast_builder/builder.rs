@@ -11,6 +11,7 @@ use rustc_span::source_map::{dummy_spanned, Spanned};
 use rustc_span::symbol::Ident;
 use rustc_ast::tokenstream::{DelimSpan, Spacing, TokenStream, TokenStreamBuilder, TokenTree};
 use rustc_data_structures::thin_vec::ThinVec;
+use rustc_middle::ty;
 
 use super::IntoSymbol;
 
@@ -174,6 +175,27 @@ impl<'a> Make<LitIntType> for IntTy {
 impl<'a> Make<LitIntType> for UintTy {
     fn make(self, _mk: &Builder) -> LitIntType {
         LitIntType::Unsigned(self)
+    }
+}
+
+impl Make<LitIntType> for ty::IntTy {
+    fn make(self, _mk: &Builder) -> LitIntType {
+        LitIntType::Signed(ty::ast_int_ty(self))
+    }
+}
+
+impl Make<LitIntType> for ty::UintTy {
+    fn make(self, _mk: &Builder) -> LitIntType {
+        LitIntType::Unsigned(ty::ast_uint_ty(self))
+    }
+}
+
+impl Make<FloatTy> for ty::FloatTy {
+    fn make(self, _mk: &Builder) -> FloatTy {
+        match self {
+            ty::FloatTy::F32 => FloatTy::F32,
+            ty::FloatTy::F64 => FloatTy::F64,
+        }
     }
 }
 
