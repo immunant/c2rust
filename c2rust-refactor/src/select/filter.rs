@@ -372,11 +372,11 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for ChildVisitor<F> {
         (self.func)(AnyNode::Ty(x));
     }
 
-    fn visit_fn(&mut self, _: FnKind<'ast>, fd: &'ast FnDecl, _: Span, _: NodeId) {
-        for arg in &fd.inputs {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, _: Span, _: NodeId) {
+        for arg in &kind.decl().inputs {
             (self.func)(AnyNode::Param(arg));
         }
-        match fd.output {
+        match kind.decl().output {
             FnRetTy::Default(_) => {}
             FnRetTy::Ty(ref t) => {
                 (self.func)(AnyNode::Ty(t));
@@ -458,12 +458,12 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
         visit::walk_ty(self, x);
     }
 
-    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, _id: NodeId) {
-        for arg in &fd.inputs {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, span: Span, _id: NodeId) {
+        for arg in &kind.decl().inputs {
             (self.func)(AnyNode::Param(arg));
         }
         // `walk` call handles the return type.
-        visit::walk_fn(self, kind, fd, span);
+        visit::walk_fn(self, kind, span);
     }
 
     fn visit_field_def(&mut self, x: &'ast FieldDef) {
