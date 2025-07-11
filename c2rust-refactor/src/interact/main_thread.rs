@@ -367,13 +367,13 @@ impl<'ast> Visitor<'ast> for CollectSpanVisitor {
         visit::walk_ty(self, x)
     }
 
-    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, _id: NodeId) {
-        for arg in &fd.inputs {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, span: Span, _id: NodeId) {
+        for arg in &kind.decl().inputs {
             if self.ids.contains(&arg.id) {
                 self.spans.insert(arg.id, arg.pat.span.to(arg.ty.span));
             }
         }
-        visit::walk_fn(self, kind, fd, span);
+        visit::walk_fn(self, kind, span);
     }
 }
 
