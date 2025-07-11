@@ -24,7 +24,7 @@ pub unsafe extern "C" fn set_rand_seed(mut s: uint32_t) {
 pub unsafe extern "C" fn get_rand_seed() -> uint32_t {
     let INCREMENT: uint32_t = 1 as std::ffi::c_int as uint32_t;
     let MULTIPLIER: uint32_t = 0x15a4e35 as std::ffi::c_int as uint32_t;
-    cur_rand_seed = (MULTIPLIER * cur_rand_seed).wrapping_add(INCREMENT);
+    cur_rand_seed = MULTIPLIER.wrapping_mul(cur_rand_seed).wrapping_add(INCREMENT);
     let mut ret: uint32_t = abs(cur_rand_seed as int32_t) as uint32_t;
     return ret;
 }
