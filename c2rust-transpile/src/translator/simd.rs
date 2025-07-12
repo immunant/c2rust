@@ -91,7 +91,9 @@ impl<'c> Translation<'c> {
     pub fn import_simd_typedef(&self, name: &str) -> TranslationResult<bool> {
         Ok(match name {
             // Public API SIMD typedefs:
-            "__m128i" | "__m128" | "__m128d" | "__m64" | "__m256" | "__m256d" | "__m256i" => {
+            "__m64" | "__m128i" | "__m128i_u" | "__m128" | "__m128d" | "__m128_u" | "__m256"
+            | "__m256d" | "__m256_u" | "__m256i" | "__m256i_u" | "__m512 " | "__m512d"
+            | "__m512i" | "__m512i_u" | "__m512_u" => {
                 // __m64 and MMX support were removed from upstream Rust.
                 // See https://github.com/immunant/c2rust/issues/369
                 if name == "__m64" {
@@ -99,6 +101,21 @@ impl<'c> Translation<'c> {
                         "__m64 and MMX are no longer supported, due to removed upstream support. See https://github.com/immunant/c2rust/issues/369"
                     ).into());
                 }
+
+                // Drop the `_u` suffix for unaligned SIMD types as they have
+                // no equivalents in Rust. Warn the user about possible probems.
+                let name = if name.ends_with("_u") {
+                    warn!(
+                        "Unaligned SIMD type {} has no equivalent in Rust. \
+                           Emitting {} instead. This likely means the potential \
+                           for miscompilation has been introduced.",
+                        name,
+                        &name[..name.len() - 2]
+                    );
+                    &name[..name.len() - 2]
+                } else {
+                    name
+                };
 
                 self.with_cur_file_item_store(|item_store| {
                     add_arch_use(item_store, "x86", name);
