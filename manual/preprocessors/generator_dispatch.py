@@ -18,7 +18,7 @@ def quote(args):
 
 def refactor_commands(args):
     assert len(args) == 0
-    sys.path.append(os.path.join(ROOT_DIR, 'c2rust-refactor/doc'))
+    sys.path.append(os.path.join(ROOT_DIR, 'unstable/c2rust-refactor/doc'))
     import gen_command_docs
     return gen_command_docs.generate_commands()
 
@@ -44,7 +44,7 @@ def literate(args):
     if 'C2RUST_MANUAL_LITERATE_ARGS' in os.environ:
         args = shlex.split(os.environ['C2RUST_MANUAL_LITERATE_ARGS']) + args
 
-    sys.path.append(os.path.join(ROOT_DIR, 'c2rust-refactor/doc'))
+    sys.path.append(os.path.join(ROOT_DIR, 'unstable/c2rust-refactor/doc'))
     with tempfile.TemporaryDirectory() as td:
         cmd_args = ['render'] + args + [os.path.join(td, 'out.md')]
         import literate

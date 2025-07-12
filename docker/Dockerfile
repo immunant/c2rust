@@ -1,8 +1,8 @@
 # Docker image for c2rust CI and containerized development.
 # Multi-distro via optional BASE_IMAGE argument.
-# RUST_VER argument should be set to the channel of the rust-toolchain.toml file in
-# the repo root (because dockerfiles can't access files above the location where
-# `docker build` is run).
+# `NIGHTLY_RUST_VER` argument should be set to the channel of the
+# unstable/rust-toolchain.toml file (because dockerfiles can't access files
+# above the location where `docker build` is run).
 
 ARG BASE_IMAGE=ubuntu:bionic
 FROM ${BASE_IMAGE}
@@ -29,8 +29,8 @@ RUN chmod +x /tmp/provision*.sh && /tmp/provision.sh
 
 USER $USER
 # Provision rust language and packages (should not run as root)
-ARG RUST_VER
-RUN RUST_VER=$RUST_VER /tmp/provision_rust.sh
+ARG NIGHTLY_RUST_VER
+RUN NIGHTLY_RUST_VER=$NIGHTLY_RUST_VER /tmp/provision_rust.sh
 
 ENV PATH="/home/${USER}/.cargo/bin:${PATH}"
 ENV CARGO_HOME="/tmp/.cargo"
