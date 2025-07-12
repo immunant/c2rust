@@ -1148,7 +1148,13 @@ class TranslateASTVisitor final
                     // into); clang does this conversion, but rustc doesn't
                     convertedConstraint += '*';
                 }
+
+#if CLANG_VERSION_MAJOR < 21
                 convertedConstraint += SimplifyConstraint(constraint.str());
+#else
+                convertedConstraint += SimplifyConstraint(constraint);
+#endif
+
                 outputs.push_back(convertedConstraint);
                 output_infos.push_back(std::move(info));
             }
@@ -1162,7 +1168,11 @@ class TranslateASTVisitor final
                     // See above
                     convertedConstraint += '*';
                 }
+#if CLANG_VERSION_MAJOR < 21
                 convertedConstraint += SimplifyConstraint(constraint.str());
+#else
+                convertedConstraint += SimplifyConstraint(constraint);
+#endif
                 inputs.emplace_back(convertedConstraint);
             }
             for (unsigned i = 0, num = E->getNumClobbers(); i < num; ++i) {
