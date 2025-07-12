@@ -464,6 +464,12 @@ impl TypedAstContext {
         ty.map(|ty| (expr_id, ty))
     }
 
+    pub fn type_for_kind(&self, kind: &CTypeKind) -> Option<CTypeId> {
+        self.c_types
+            .iter()
+            .find_map(|(id, k)| if kind == &k.kind { Some(*id) } else { None })
+    }
+
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
         use CTypeKind::*;
         let ty = match self.index(typ).kind {
@@ -484,6 +490,71 @@ impl TypedAstContext {
     pub fn resolve_type(&self, typ: CTypeId) -> &CType {
         let resolved_typ_id = self.resolve_type_id(typ);
         self.index(resolved_typ_id)
+    }
+
+    /// Extract decl of referenced function.
+    /// Looks for ImplicitCast(FunctionToPointerDecay, DeclRef(function_decl))
+    pub fn function_declref_decl(&self, func_expr: CExprId) -> Option<&CDeclKind> {
+        use CastKind::FunctionToPointerDecay;
+        if let CExprKind::ImplicitCast(_, fexp, FunctionToPointerDecay, _, _) = self[func_expr].kind
+        {
+            if let CExprKind::DeclRef(_ty, decl_id, _rv) = &self[fexp].kind {
+                let decl = &self.index(*decl_id).kind;
+                assert!(matches!(decl, CDeclKind::Function { .. }));
+                return Some(decl);
+            }
+        }
+        None
+    }
+
+    /// Return the list of types for a list of declared function parameters.
+    pub fn tys_of_params(&self, parameters: &[CDeclId]) -> Option<Vec<CQualTypeId>> {
+        let mut param_tys = vec![];
+        for p in parameters {
+            match self.index(*p).kind {
+                CDeclKind::Variable { typ, .. } => param_tys.push(CQualTypeId::new(typ.ctype)),
+                _ => return None,
+            }
+        }
+        return Some(param_tys);
+    }
+
+    /// Return the most precise possible CTypeKind for the given function declaration.
+    /// Specifically, ensures that arguments' types are not resolved to underlying types if they were
+    /// declared as typedefs, but returned as those typedefs.
+    ///
+    /// The passed CDeclId must refer to a function declaration.
+    pub fn fn_decl_ty_with_declared_args(&self, func_decl: &CDeclKind) -> CTypeKind {
+        if let CDeclKind::Function {
+            typ, parameters, ..
+        } = func_decl
+        {
+            let typ = self.resolve_type_id(*typ);
+            let decl_arg_tys = self.tys_of_params(parameters).unwrap();
+            let typ_kind = &self[typ].kind;
+            if let &CTypeKind::Function(ret, ref _arg_tys, a, b, c) = typ_kind {
+                return CTypeKind::Function(ret, decl_arg_tys, a, b, c);
+            }
+            panic!("expected {typ:?} to be CTypeKind::Function, but it was {typ_kind:?}")
+        }
+        panic!("expected a CDeclKind::Function, but passed {func_decl:?}")
+    }
+
+    /// Return the most id of the most precise possible type for the function referenced by the
+    /// given expression.
+    pub fn function_declref_ty_with_declared_args(
+        &self,
+        func_expr: CExprId,
+    ) -> Option<CQualTypeId> {
+        if let Some(func_decl @ CDeclKind::Function { .. }) = self.function_declref_decl(func_expr)
+        {
+            let kind_with_declared_args = self.fn_decl_ty_with_declared_args(func_decl);
+            let specific_typ = self
+                .type_for_kind(&kind_with_declared_args)
+                .expect(&format!("no type for kind {kind_with_declared_args:?}"));
+            return Some(CQualTypeId::new(specific_typ));
+        }
+        None
     }
 
     /// Pessimistically try to check if an expression has side effects. If it does, or we can't tell
@@ -945,6 +1016,7 @@ pub enum CDeclKind {
         name: String,
         typ: CQualTypeId,
         is_implicit: bool,
+        target_dependent_macro: Option<String>,
     },
 
     // Struct
@@ -1383,6 +1455,55 @@ impl BinOp {
             Comma => ", ",
         }
     }
+
+    /// Does the rust equivalent of this operator have type (T, T) -> U?
+    pub fn input_types_same(&self) -> bool {
+        use BinOp::*;
+        self.all_types_same()
+            || match self {
+                Less => true,
+                Greater => true,
+                LessEqual => true,
+                GreaterEqual => true,
+                EqualEqual => true,
+                NotEqual => true,
+
+                And => true,
+                Or => true,
+
+                AssignAdd => true,
+                AssignSubtract => true,
+                AssignMultiply => true,
+                AssignDivide => true,
+                AssignModulus => true,
+                AssignBitXor => true,
+                AssignShiftLeft => true,
+                AssignShiftRight => true,
+                AssignBitOr => true,
+                AssignBitAnd => true,
+
+                Assign => true,
+                _ => false,
+            }
+    }
+
+    /// Does the rust equivalent of this operator have type (T, T) -> T?
+    /// This ignores cases where one argument is a pointer and we translate to `.offset()`.
+    pub fn all_types_same(&self) -> bool {
+        use BinOp::*;
+        match self {
+            Multiply => true,
+            Divide => true,
+            Modulus => true,
+            Add => true,
+            Subtract => true,
+
+            BitAnd => true,
+            BitXor => true,
+            BitOr => true,
+            _ => false,
+        }
+    }
 }
 
 impl Display for BinOp {
@@ -1693,9 +1814,35 @@ pub enum CTypeKind {
     Float128,
     // Atomic types (6.7.2.4)
     Atomic(CQualTypeId),
+
+    // Rust sized types, pullback'd into C so that we can treat uint16_t, etc. as real types.
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    IntPtr,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    UIntPtr,
+    IntMax,
+    UIntMax,
+    Size,
+    SSize,
+    PtrDiff,
+    WChar,
 }
 
 impl CTypeKind {
+    pub const PULLBACK_KINDS: [CTypeKind; 16] = {
+        use CTypeKind::*;
+        [
+            Int8, Int16, Int32, Int64, IntPtr, UInt8, UInt16, UInt32, UInt64, UIntPtr, IntMax,
+            UIntMax, Size, SSize, PtrDiff, WChar,
+        ]
+    };
+
     pub fn as_str(&self) -> &'static str {
         use CTypeKind::*;
         match self {
@@ -1720,6 +1867,24 @@ impl CTypeKind {
             Half => "half",
             BFloat16 => "bfloat16",
             Float128 => "__float128",
+
+            Int8 => "int8_t",
+            Int16 => "int16_t",
+            Int32 => "int32_t",
+            Int64 => "int64_t",
+            IntPtr => "intptr_t",
+            UInt8 => "uint8_t",
+            UInt16 => "uint16_t",
+            UInt32 => "uint32_t",
+            UInt64 => "uint64_t",
+            UIntPtr => "uintptr_t",
+            IntMax => "intmax_t",
+            UIntMax => "uintmax_t",
+            Size => "size_t",
+            SSize => "ssize_t",
+            PtrDiff => "ptrdiff_t",
+            WChar => "wchar_t",
+
             _ => unimplemented!("Printer::print_type({:?})", self),
         }
     }
@@ -1785,14 +1950,43 @@ impl CTypeKind {
         use CTypeKind::*;
         matches!(
             self,
-            Bool | UChar | UInt | UShort | ULong | ULongLong | UInt128
+            Bool | UChar
+                | UInt
+                | UShort
+                | ULong
+                | ULongLong
+                | UInt128
+                | UInt8
+                | UInt16
+                | UInt32
+                | UInt64
+                | UIntPtr
+                | UIntMax
+                | Size
+                | WChar
         )
     }
 
     pub fn is_signed_integral_type(&self) -> bool {
         use CTypeKind::*;
         // `Char` is true on the platforms we handle
-        matches!(self, Char | SChar | Int | Short | Long | LongLong | Int128)
+        matches!(
+            self,
+            Char | SChar
+                | Int
+                | Short
+                | Long
+                | LongLong
+                | Int128
+                | Int8
+                | Int16
+                | Int32
+                | Int64
+                | IntPtr
+                | IntMax
+                | SSize
+                | PtrDiff
+        )
     }
 
     pub fn is_floating_type(&self) -> bool {

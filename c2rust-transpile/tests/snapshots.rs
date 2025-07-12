@@ -68,6 +68,13 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
 
     insta::assert_snapshot!(name, &rs, &debug_expr);
 
+    // Using rustc itself to build snapshots that reference libc is difficult because we don't know
+    // the appropriate --extern libc=/path/to/liblibc-XXXXXXXXXXXXXXXX.rlib to pass. Skip for now,
+    // as we've already compared the literal text.
+    if rs.contains("libc::") {
+        return;
+    }
+
     let status = Command::new("rustc")
         .args(&["--crate-type", "lib", "--edition", "2021", "-o", "-"])
         .arg(&rs_path)
