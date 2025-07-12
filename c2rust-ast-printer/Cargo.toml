@@ -13,6 +13,6 @@ categories.workspace = true
 
 [dependencies]
 log = "0.4"
-syn = { version = "1.0", features = ["full", "proc-macro", "printing", "clone-impls"] }
+syn = { version = "2.0", features = ["full", "proc-macro", "printing", "clone-impls"] }
 proc-macro2 = "1.0"
-prettyplease = "0.1.9"
+prettyplease = "0.2"

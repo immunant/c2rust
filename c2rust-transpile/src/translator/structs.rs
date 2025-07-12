@@ -14,8 +14,8 @@ use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
 use c2rust_ast_printer::pprust;
 use syn::{
-    self, AttrStyle, BinOp as RBinOp, Expr, ExprAssign, ExprAssignOp, ExprBinary, ExprBlock,
-    ExprCast, ExprMethodCall, ExprUnary, Field, Meta, NestedMeta, Stmt, Type,
+    self, AttrStyle, BinOp as RBinOp, Expr, ExprAssign, ExprBinary, ExprBlock, ExprCast,
+    ExprMethodCall, ExprUnary, Field, Stmt, Type,
 };
 
 use itertools::EitherOrBoth::{Both, Right};
@@ -50,27 +50,13 @@ fn contains_block(expr_kind: &Expr) -> bool {
     use Expr::*;
     match expr_kind {
         Block(..) => true,
-        Assign(ExprAssign { left, right, .. })
-        | AssignOp(ExprAssignOp { left, right, .. })
-        | Binary(ExprBinary { left, right, .. }) => {
+        Assign(ExprAssign { left, right, .. }) | Binary(ExprBinary { left, right, .. }) => {
             [left, right].iter().any(|expr| contains_block(expr))
         }
         Unary(ExprUnary { expr, .. }) | Cast(ExprCast { expr, .. }) => contains_block(expr),
         MethodCall(ExprMethodCall { args, .. }) => args.iter().any(contains_block),
         _ => false,
     }
-}
-
-fn assignment_metaitem(lhs: &str, rhs: &str) -> NestedMeta {
-    use c2rust_ast_builder::Make;
-    let token = rhs.make(&mk());
-    let meta_item = Meta::NameValue(syn::MetaNameValue {
-        path: mk().path(lhs),
-        eq_token: Default::default(),
-        lit: token,
-    });
-
-    NestedMeta::Meta(meta_item)
 }
 
 impl<'a> Translation<'a> {
@@ -327,7 +313,7 @@ impl<'a> Translation<'a> {
                 } => {
                     let ty = mk().array_ty(
                         mk().ident_ty("u8"),
-                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes)),
                     );
                     let mut field = mk();
                     let field_attrs = attrs.iter().map(|attr| {
@@ -336,9 +322,9 @@ impl<'a> Translation<'a> {
                             _ => unreachable!("Found type other than path"),
                         };
                         let field_attr_items = vec![
-                            assignment_metaitem("name", &attr.0),
-                            assignment_metaitem("ty", &ty_str),
-                            assignment_metaitem("bits", &attr.2),
+                            mk().meta_namevalue("name", &attr.0),
+                            mk().meta_namevalue("ty", &ty_str),
+                            mk().meta_namevalue("bits", &attr.2),
                         ];
 
                         mk().meta_list("bitfield", field_attr_items)
@@ -354,13 +340,11 @@ impl<'a> Translation<'a> {
                     let field_name = next_padding_field();
                     let ty = mk().array_ty(
                         mk().ident_ty("u8"),
-                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes)),
                     );
 
                     // Mark it with `#[bitfield(padding)]`
-                    let field_padding_inner = NestedMeta::Meta(mk().meta_path("padding"));
-                    let field_padding_inner = vec![mk().nested_meta_item(field_padding_inner)];
-                    let field_padding_outer = mk().meta_list("bitfield", field_padding_inner);
+                    let field_padding_outer = mk().meta_list("bitfield", vec!["padding"]);
                     let field = mk()
                         .meta_item_attr(AttrStyle::Outer, field_padding_outer)
                         .pub_()
@@ -458,7 +442,7 @@ impl<'a> Translation<'a> {
                 } => {
                     let array_expr = mk().repeat_expr(
                         mk().lit_expr(mk().int_unsuffixed_lit(0)),
-                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes)),
                     );
                     let field = mk().field(field_name, array_expr);
 
@@ -468,7 +452,7 @@ impl<'a> Translation<'a> {
                     let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
                         mk().lit_expr(mk().int_unsuffixed_lit(0)),
-                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes)),
                     );
                     let field = mk().field(field_name, array_expr);
 
@@ -628,7 +612,7 @@ impl<'a> Translation<'a> {
                 } => {
                     let array_expr = mk().repeat_expr(
                         mk().lit_expr(mk().int_unsuffixed_lit(0)),
-                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes)),
                     );
                     let field = mk().field(field_name, array_expr);
 
@@ -638,7 +622,7 @@ impl<'a> Translation<'a> {
                     let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
                         mk().lit_expr(mk().int_unsuffixed_lit(0)),
-                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes)),
                     );
                     let field = mk().field(field_name, array_expr);
 
@@ -771,7 +755,7 @@ impl<'a> Translation<'a> {
                         }
 
                         let last_expr = match block.stmts[last] {
-                            Stmt::Expr(ref expr) => expr.clone(),
+                            Stmt::Expr(ref expr, _semi) => expr.clone(),
                             _ => return Err(TranslationError::generic("Expected Expr Stmt")),
                         };
                         let method_call =
