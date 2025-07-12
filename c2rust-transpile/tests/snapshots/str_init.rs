@@ -1,0 +1,128 @@
+#![allow(
+    dead_code,
+    mutable_transmutes,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct s {
+    pub entries: [[std::ffi::c_char; 10]; 3],
+}
+pub type size_t = std::ffi::c_ulong;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct alpn_spec {
+    pub entries: [[std::ffi::c_char; 10]; 3],
+    pub count: size_t,
+}
+#[no_mangle]
+pub unsafe extern "C" fn f0() {
+    let mut _s: *const std::ffi::c_char = b"hello\0" as *const u8
+        as *const std::ffi::c_char;
+}
+#[no_mangle]
+pub unsafe extern "C" fn f1() {
+    let mut _s: [std::ffi::c_char; 6] = *::core::mem::transmute::<
+        &[u8; 6],
+        &mut [std::ffi::c_char; 6],
+    >(b"hello\0");
+}
+#[no_mangle]
+pub unsafe extern "C" fn f2() {
+    let mut _s: [std::ffi::c_char; 10] = *::core::mem::transmute::<
+        &[u8; 10],
+        &mut [std::ffi::c_char; 10],
+    >(b"hello\0\0\0\0\0");
+}
+#[no_mangle]
+pub unsafe extern "C" fn f3() {
+    let mut _a: [[std::ffi::c_int; 10]; 3] = [
+        [
+            1 as std::ffi::c_int,
+            2 as std::ffi::c_int,
+            3 as std::ffi::c_int,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ],
+        [0; 10],
+        [0; 10],
+    ];
+}
+#[no_mangle]
+pub unsafe extern "C" fn f4() {
+    let mut _s: [*const std::ffi::c_char; 3] = [
+        b"hello\0" as *const u8 as *const std::ffi::c_char,
+        0 as *const std::ffi::c_char,
+        0 as *const std::ffi::c_char,
+    ];
+}
+#[no_mangle]
+pub unsafe extern "C" fn f5() {
+    let mut _s: [[std::ffi::c_char; 10]; 3] = [
+        *::core::mem::transmute::<
+            &[u8; 10],
+            &mut [std::ffi::c_char; 10],
+        >(b"hello\0\0\0\0\0"),
+        [0; 10],
+        [0; 10],
+    ];
+}
+#[no_mangle]
+pub unsafe extern "C" fn f6() {
+    static mut _S: [[std::ffi::c_char; 10]; 3] = unsafe {
+        [
+            *::core::mem::transmute::<
+                &[u8; 10],
+                &[std::ffi::c_char; 10],
+            >(b"hello\0\0\0\0\0"),
+            [0; 10],
+            [0; 10],
+        ]
+    };
+}
+#[no_mangle]
+pub unsafe extern "C" fn f7() {
+    static mut _S: s = unsafe {
+        {
+            let mut init = s {
+                entries: [
+                    *::core::mem::transmute::<
+                        &[u8; 10],
+                        &mut [std::ffi::c_char; 10],
+                    >(b"hello\0\0\0\0\0"),
+                    [0; 10],
+                    [0; 10],
+                ],
+            };
+            init
+        }
+    };
+}
+#[no_mangle]
+pub unsafe extern "C" fn f8() {
+    static mut _ALPN_SPEC_H11: alpn_spec = unsafe {
+        {
+            let mut init = alpn_spec {
+                entries: [
+                    *::core::mem::transmute::<
+                        &[u8; 10],
+                        &mut [std::ffi::c_char; 10],
+                    >(b"http/1.1\0\0"),
+                    [0; 10],
+                    [0; 10],
+                ],
+                count: 1 as std::ffi::c_int as size_t,
+            };
+            init
+        }
+    };
+}
