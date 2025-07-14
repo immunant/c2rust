@@ -44,15 +44,18 @@ jobs:
             luarocks \
             ninja-build \
             pkg-config \
-            python3-pip \
-            python3-setuptools \
-            python3-wheel \
             rcs \
             strace \
             unzip \
             zlib1g-dev
-      - name: Provision Python Packages
-        run: python3 -m pip install -r $GITHUB_WORKSPACE/scripts/requirements.txt
+      
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install Python Packages
+        run: |
+          uv venv
+          uv pip install -r ./scripts/requirements.txt
+
       - name: cargo fmt --check
         run: |
           export RUSTFLAGS="-D warnings"
@@ -78,4 +81,4 @@ jobs:
           # causing tons of errors, so don't set that.
           # `test_translator.py` does not rebuild,
           # so changing `RUSTFLAGS` will not trigger a full rebuild.
-          ./scripts/test_translator.py tests/
+          uv run ./scripts/test_translator.py tests/
