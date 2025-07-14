@@ -6,8 +6,14 @@ on:
   pull_request:
 
 jobs:
-  test-linux:
-    runs-on: ubuntu-latest
+  test:
+    strategy:
+      matrix:
+        os: [
+          ubuntu-latest, # x86_64
+          macos-13, # x86_64
+        ]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - run: rustup component add rustfmt rustc-dev
@@ -17,7 +23,10 @@ jobs:
       # cached, what gets used as part of the key, and what additional handling
       # happens to make the cache reliable and smaller.
       - uses: Swatinem/rust-cache@v2
-      - run: |
+
+      - name: Install packages (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
           sudo apt-get update
           sudo apt-get install \
             clang \
@@ -48,6 +57,12 @@ jobs:
             strace \
             unzip \
             zlib1g-dev
+
+      - name: Install packages (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # `bash` needed b/c macOS ships with bash 3, which doesn't support arrays properly
+          brew install -q cmake ninja gpg llvm@17 bash
       
       - uses: astral-sh/setup-uv@v6
 
