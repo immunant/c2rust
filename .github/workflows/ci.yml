@@ -22,6 +22,10 @@ jobs:
             os: macOS
             arch: x86_64
             clang-version: 17
+          - runner: macos-15
+            os: macOS
+            arch: aarch64
+            clang-version: 17
       fail-fast: false
     name: "test (${{ matrix.runner }}: ${{ matrix.os }} ${{ matrix.arch}}, Clang ${{ matrix.clang-version }})"
     runs-on: ${{ matrix.runner }}
