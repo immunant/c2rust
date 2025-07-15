@@ -9,11 +9,14 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [
-          ubuntu-latest, # x86_64
-          macos-13, # x86_64
-        ]
-    runs-on: ${{ matrix.os }}
+        include:
+          - runner: ubuntu-latest
+            os: Linux
+            arch: x86_64
+          - runner: macos-13
+            os: macOS
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - run: rustup component add rustfmt rustc-dev
