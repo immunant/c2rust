@@ -78,7 +78,9 @@ where
         }
 
         let i = i.into_inner();
-        unpack!([i.kind] ItemKind::Fn(fn_sig, generics, block));
+        let (defaultness, generics, sig, body) = expect!([i.kind]
+            ItemKind::Fn(box Fn { defaultness, generics, sig, body })
+            => (defaultness, generics, sig, body));
         let vis = i.vis;
 
         let fl = FnLike {
@@ -86,27 +88,28 @@ where
             id: i.id,
             ident: i.ident,
             span: i.span,
-            decl: fn_sig.decl.clone(),
-            block: Some(block),
+            decl: sig.decl.clone(),
+            block: body,
             attrs: i.attrs,
         };
         let fls = (self.callback)(fl);
 
         fls.into_iter()
             .map(|fl| {
-                let block = fl.block.expect("can't remove Block from ItemKind::Fn");
+                let body = fl.block.expect("can't remove Block from ItemKind::Fn");
                 P(Item {
                     id: fl.id,
                     ident: fl.ident,
                     span: fl.span,
-                    kind: ItemKind::Fn(
-                        FnSig {
+                    kind: ItemKind::Fn(Box::new(Fn {
+                        defaultness,
+                        sig: FnSig {
                             decl: fl.decl,
-                            header: fn_sig.header,
+                            header: sig.header,
                         },
-                        generics.clone(),
-                        block,
-                    ),
+                        generics: generics.clone(),
+                        body,
+                    })),
                     attrs: fl.attrs,
                     vis: vis.clone(),
                     // Don't keep the old tokens.  The callback could have made arbitrary changes to
@@ -301,8 +304,8 @@ where
         }
 
         let (sig, block) = expect!([i.kind]
-                                    ItemKind::Fn(ref sig, _, ref block) =>
-                                        (sig.clone(), block.clone()));
+                                    ItemKind::Fn(box Fn { ref sig, ref body, .. }) =>
+                                        (sig.clone(), body.clone()));
 
         (self.callback)(FnLike {
             kind: FnKind::Normal,
@@ -310,7 +313,7 @@ where
             ident: i.ident,
             span: i.span,
             decl: sig.decl,
-            block: Some(block),
+            block,
             attrs: i.attrs.clone(),
         });
     }
