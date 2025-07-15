@@ -50,19 +50,19 @@ include!(concat!(env!("OUT_DIR"), "/rewrite_rewrite_gen.inc.rs"));
 
 // Generic Rewrite impls
 
-impl<T: Rewrite> Rewrite for P<T> {
+impl<T: Rewrite + ?Sized> Rewrite for P<T> {
     fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
         <T as Rewrite>::rewrite(old, new, rcx)
     }
 }
 
-impl<T: Rewrite> Rewrite for Box<T> {
+impl<T: Rewrite + ?Sized> Rewrite for Box<T> {
     fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
         <T as Rewrite>::rewrite(old, new, rcx)
     }
 }
 
-impl<T: Rewrite> Rewrite for Rc<T> {
+impl<T: Rewrite + ?Sized> Rewrite for Rc<T> {
     fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
         <T as Rewrite>::rewrite(old, new, rcx)
     }
@@ -142,7 +142,7 @@ impl SeqItem for Param {
     }
 }
 
-impl<T: SeqItem> SeqItem for P<T> {
+impl<T: SeqItem + ?Sized> SeqItem for P<T> {
     fn seq_item_id(&self) -> SeqItemId {
         <T as SeqItem>::seq_item_id(self)
     }
