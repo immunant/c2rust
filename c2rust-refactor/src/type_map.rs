@@ -226,7 +226,7 @@ where
                 }
             }
 
-            ItemKind::Fn(ref ast_sig, _, _) => {
+            ItemKind::Fn(box Fn { sig: ref ast_sig, .. }) => {
                 if let Some(sig) = self.source.fn_sig(def_id) {
                     self.record_fn_decl(sig, &ast_sig.decl);
                 }

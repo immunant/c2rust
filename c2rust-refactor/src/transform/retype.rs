@@ -353,7 +353,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
             let i = if crate::matches!([i.kind] ItemKind::Fn(..)) {
                 i.map(|mut i| {
                     let mut fd = expect!([i.kind]
-                                         ItemKind::Fn(ref sig, _, _) =>
+                                         ItemKind::Fn(box Fn { ref sig, .. }) =>
                                          sig.decl.clone().into_inner());
 
                     for (j, arg) in fd.inputs.iter_mut().enumerate() {
@@ -386,7 +386,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
                     }
 
                     match i.kind {
-                        ItemKind::Fn(ref mut sig, _, _) => {
+                        ItemKind::Fn(box Fn { ref mut sig, .. }) => {
                             *sig.decl = fd;
                         },
                         _ => panic!("expected ItemKind::Fn"),

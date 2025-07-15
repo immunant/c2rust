@@ -112,7 +112,7 @@ impl Transform for GeneralizeItems {
             smallvec![i.map(|mut i| {
                 {
                     let gen = match i.kind {
-                        ItemKind::Fn(_, ref mut gen, _) => gen,
+                        ItemKind::Fn(box Fn { generics: ref mut gen, .. }) => gen,
                         ItemKind::Enum(_, ref mut gen) => gen,
                         ItemKind::Struct(_, ref mut gen) => gen,
                         ItemKind::Union(_, ref mut gen) => gen,
