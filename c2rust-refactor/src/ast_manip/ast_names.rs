@@ -12,7 +12,7 @@ pub trait AstName {
 
 include!(concat!(env!("OUT_DIR"), "/ast_names_gen.inc.rs"));
 
-impl<T: AstName> AstName for P<T> {
+impl<T: AstName + ?Sized> AstName for P<T> {
     fn ast_name(&self) -> String {
         <T as AstName>::ast_name(self)
     }
