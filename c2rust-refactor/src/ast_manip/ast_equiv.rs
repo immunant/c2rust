@@ -31,7 +31,7 @@ impl<'a, T: AstEquiv> AstEquiv for &'a T {
     }
 }
 
-impl<T: AstEquiv> AstEquiv for P<T> {
+impl<T: AstEquiv + ?Sized> AstEquiv for P<T> {
     fn ast_equiv(&self, other: &P<T>) -> bool {
         <T as AstEquiv>::ast_equiv(self, other)
     }
@@ -40,7 +40,7 @@ impl<T: AstEquiv> AstEquiv for P<T> {
     }
 }
 
-impl<T: AstEquiv> AstEquiv for Box<T> {
+impl<T: AstEquiv + ?Sized> AstEquiv for Box<T> {
     fn ast_equiv(&self, other: &Box<T>) -> bool {
         <T as AstEquiv>::ast_equiv(self, other)
     }
@@ -49,7 +49,7 @@ impl<T: AstEquiv> AstEquiv for Box<T> {
     }
 }
 
-impl<T: AstEquiv> AstEquiv for Rc<T> {
+impl<T: AstEquiv + ?Sized> AstEquiv for Rc<T> {
     fn ast_equiv(&self, other: &Rc<T>) -> bool {
         <T as AstEquiv>::ast_equiv(self, other)
     }
