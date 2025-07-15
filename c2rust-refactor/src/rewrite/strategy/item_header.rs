@@ -20,7 +20,7 @@ use crate::ast_manip::AstEquiv;
 use crate::rewrite::base::{describe, rewrite_seq_comma_sep};
 use crate::rewrite::strategy::print::PrintParse;
 use crate::rewrite::{Rewrite, RewriteCtxtRef, TextRewrite};
-use crate::{expect, unpack};
+use crate::expect;
 
 // struct FnHeaderSpans {
 //     vis: Span,
@@ -306,8 +306,8 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
 
     match (kind1, kind2) {
         (
-            &ItemKind::Fn(ref sig1, ref generics1, ref block1),
-            &ItemKind::Fn(ref sig2, ref generics2, ref block2),
+            &ItemKind::Fn(box Fn { sig: ref sig1, generics: ref generics1, body: ref block1, .. }),
+            &ItemKind::Fn(box Fn { sig: ref sig2, generics: ref generics2, body: ref block2, .. }),
         ) => {
             let (old_args_tokens, old_args_span) =
                 find_fn_header_arg_list(tokens1.as_ref().unwrap().clone(), generics1.span)
@@ -338,7 +338,8 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             // parser to find spans for all the old stuff.
             let src2: String = <Item as PrintParse>::to_string(new);
             let reparsed = Item::parse(rcx.session(), &src2);
-            unpack!([&reparsed.kind] ItemKind::Fn(reparsed_sig, _generics, _block));
+            let reparsed_sig = expect!([&reparsed.kind]
+                ItemKind::Fn(box Fn { ref sig, .. }) => sig);
 
             // The first two go in a specific order.  If multiple qualifiers are added (for
             // example, both `unsafe` and `extern`), we need to add them in the right order.
