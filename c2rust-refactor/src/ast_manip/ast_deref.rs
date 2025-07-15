@@ -16,7 +16,7 @@ pub trait AstDeref {
 
 include!(concat!(env!("OUT_DIR"), "/ast_deref_gen.inc.rs"));
 
-impl<T: AstDeref> AstDeref for P<T> {
+impl<T: AstDeref + ?Sized> AstDeref for P<T> {
     type Target = <T as AstDeref>::Target;
     fn ast_deref(&self) -> &Self::Target {
         <T as AstDeref>::ast_deref(self)

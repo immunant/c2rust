@@ -206,21 +206,21 @@ impl<T: TryMatch> TryMatch for ThinVec<T> {
     }
 }
 
-impl<T: TryMatch> TryMatch for P<T> {
+impl<T: TryMatch + ?Sized> TryMatch for P<T> {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
-        mcx.try_match(&**self, &**target)
+        <T as TryMatch>::try_match(self, target, mcx)
     }
 }
 
-impl<T: TryMatch> TryMatch for Box<T> {
+impl<T: TryMatch + ?Sized> TryMatch for Box<T> {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
-        mcx.try_match(&**self, &**target)
+        <T as TryMatch>::try_match(self, target, mcx)
     }
 }
 
-impl<T: TryMatch> TryMatch for Rc<T> {
+impl<T: TryMatch + ?Sized> TryMatch for Rc<T> {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
-        mcx.try_match(&**self, &**target)
+        <T as TryMatch>::try_match(self, target, mcx)
     }
 }
 

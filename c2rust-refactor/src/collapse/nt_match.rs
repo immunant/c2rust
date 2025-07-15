@@ -41,19 +41,19 @@ pub trait NtMatch {
 
 include!(concat!(env!("OUT_DIR"), "/nt_match_gen.inc.rs"));
 
-impl<T: NtMatch> NtMatch for P<T> {
+impl<T: NtMatch + ?Sized> NtMatch for P<T> {
     fn nt_match(old: &Self, new: &Self, cx: &mut Ctxt) {
         <T as NtMatch>::nt_match(old, new, cx);
     }
 }
 
-impl<T: NtMatch> NtMatch for Box<T> {
+impl<T: NtMatch + ?Sized> NtMatch for Box<T> {
     fn nt_match(old: &Self, new: &Self, cx: &mut Ctxt) {
         <T as NtMatch>::nt_match(old, new, cx);
     }
 }
 
-impl<T: NtMatch> NtMatch for Rc<T> {
+impl<T: NtMatch + ?Sized> NtMatch for Rc<T> {
     fn nt_match(old: &Self, new: &Self, cx: &mut Ctxt) {
         <T as NtMatch>::nt_match(old, new, cx);
     }
