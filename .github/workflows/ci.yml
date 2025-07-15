@@ -21,6 +21,7 @@ jobs:
           - runner: macos-13
             os: macOS
             arch: x86_64
+      fail-fast: false
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
