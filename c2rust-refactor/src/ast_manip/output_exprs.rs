@@ -86,7 +86,7 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for OutputFolder<F> {
                 visit_opt(rest, |rest| self.visit_expr(rest));
             }
 
-            ExprKind::Let(pat, expr) => {
+            ExprKind::Let(pat, expr, _) => {
                 self.visit_pat(pat);
                 self.with_trailing(false, |f| f.visit_expr(expr));
             }
