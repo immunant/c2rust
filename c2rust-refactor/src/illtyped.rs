@@ -227,7 +227,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 // TODO: do something clever with tr + fl
                 illtyped |= self.ensure(cond, tcx.mk_bool());
             }
-            ExprKind::Let(pat, expr) => {
+            ExprKind::Let(pat, expr, _) => {
                 if let Some(pat_ty) = self.cx.opt_node_type(pat.id) {
                     illtyped |= self.ensure(expr, pat_ty);
                 }
