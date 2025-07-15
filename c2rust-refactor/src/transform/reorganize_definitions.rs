@@ -1113,6 +1113,8 @@ enum DeclKind {
 }
 
 impl HasAttrs for DeclKind {
+    const SUPPORTS_CUSTOM_INNER_ATTRS: bool = true;
+
     fn attrs(&self) -> &[Attribute] {
         match self {
             DeclKind::Item(i) => i.attrs(),
