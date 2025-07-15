@@ -73,13 +73,13 @@ impl<T: LRExpr> LRExpr for ThinVec<T> {
     });
 }
 
-impl<T: LRExpr + 'static> LRExpr for P<T> {
+impl<T: LRExpr + ?Sized + 'static> LRExpr for P<T> {
     lr_expr_fn!((self, next(T)) => {
         next(self);
     });
 }
 
-impl<T: LRExpr + Clone> LRExpr for Rc<T> {
+impl<T: LRExpr + ?Sized + Clone> LRExpr for Rc<T> {
     lr_expr_fn!((self, next(T)) => {
         next(Rc::make_mut(self));
     });
