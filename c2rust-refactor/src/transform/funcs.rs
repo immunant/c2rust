@@ -84,7 +84,7 @@ impl Transform for ToMethod {
         fold_modules(krate, |curs| {
             while let Some(arg_idx) = curs.advance_until_match(|i| {
                 // Find the argument under the cursor.
-                let sig = match_or!([i.kind] ItemKind::Fn(ref sig, ..) => sig; return None);
+                let sig = match_or!([i.kind] ItemKind::Fn(box Fn { ref sig, .. }) => sig; return None);
                 for (idx, arg) in sig.decl.inputs.iter().enumerate() {
                     if st.marked(arg.id, "target") {
                         return Some(Some(idx));
@@ -96,8 +96,8 @@ impl Transform for ToMethod {
                 None
             }) {
                 let i = curs.remove();
-                unpack!([i.kind.clone()]
-                        ItemKind::Fn(sig, generics, block));
+                let (sig, generics, block) = expect!([i.kind.clone()]
+                    ItemKind::Fn(box Fn { sig, generics, body, .. }) => (sig, generics, body));
                 fns.push(FnInfo {
                     item: i,
                     sig, generics, block,
@@ -318,8 +318,8 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
         let i = if self.st.marked(i.id, "target") {
             i.map(|mut i| {
                 match i.kind {
-                    ItemKind::Fn(ref mut sig, _, ref mut block) => {
-                        sink_unsafe(&mut sig.header.unsafety, block);
+                    ItemKind::Fn(box Fn { ref mut sig, ref mut body, .. }) => {
+                        sink_unsafe(&mut sig.header.unsafety, body);
                     },
                     _ => {},
                 }
@@ -575,7 +575,7 @@ impl Transform for WrapApi {
             }
 
             let (decl, old_ext) = expect!([i.kind]
-                ItemKind::Fn(ref sig, _, _) => (sig.decl.clone(), sig.header.ext));
+                ItemKind::Fn(box Fn { ref sig, .. }) => (sig.decl.clone(), sig.header.ext));
 
             // Get the exported symbol name of the function
             let symbol =
@@ -596,7 +596,7 @@ impl Transform for WrapApi {
                 });
 
                 match i.kind {
-                    ItemKind::Fn(ref mut sig, _, _) => sig.header.ext = Extern::None,
+                    ItemKind::Fn(box Fn { ref mut sig, .. }) => sig.header.ext = Extern::None,
                     _ => unreachable!(),
                 }
 
@@ -755,7 +755,7 @@ impl Transform for Abstract {
         let mut type_args = Vec::new();
         {
             let (decl, generics) = expect!([func.kind]
-                    ItemKind::Fn(ref sig, ref gen, _) => (&sig.decl, gen));
+                    ItemKind::Fn(box Fn { ref sig, ref generics, .. }) => (&sig.decl, generics));
             for arg in &decl.inputs {
                 let name = expect!([arg.pat.kind] PatKind::Ident(_, ident, _) => ident);
                 value_args.push(name);
