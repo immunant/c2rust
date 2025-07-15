@@ -406,7 +406,7 @@ impl Transform for SetUnsafety {
                 if self.st.marked(i.id, "target") {
                     i = i.map(|mut i| {
                         match i.kind {
-                            ItemKind::Fn(ref mut sig, _, _) =>
+                            ItemKind::Fn(box Fn { ref mut sig, .. }) =>
                                 sig.header.unsafety = self.unsafety,
                             ItemKind::Trait(_, ref mut unsafety, _, _, _) =>
                                 *unsafety = self.unsafety,
