@@ -24,7 +24,7 @@ impl<'a, T: GetSpan> GetSpan for &'a T {
     }
 }
 
-impl<T: GetSpan> GetSpan for P<T> {
+impl<T: GetSpan + ?Sized> GetSpan for P<T> {
     fn get_span(&self) -> Span {
         <T as GetSpan>::get_span(self)
     }
