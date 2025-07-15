@@ -109,7 +109,7 @@ as_mac_node_ref_impls! {
     Stmt,
 }
 
-impl<T: AsMacNodeRef + 'static> AsMacNodeRef for P<T> {
+impl<T: AsMacNodeRef + ?Sized + 'static> AsMacNodeRef for P<T> {
     fn as_mac_node_ref<'a>(&'a self) -> MacNodeRef<'a> {
         <T as AsMacNodeRef>::as_mac_node_ref(self)
     }
@@ -430,13 +430,13 @@ trait CollectMacros {
 
 include!(concat!(env!("OUT_DIR"), "/mac_table_gen.inc.rs"));
 
-impl<T: CollectMacros> CollectMacros for Rc<T> {
+impl<T: CollectMacros + ?Sized> CollectMacros for Rc<T> {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
         <T as CollectMacros>::collect_macros(old, new, cx);
     }
 }
 
-impl<T: CollectMacros> CollectMacros for P<T> {
+impl<T: CollectMacros + ?Sized> CollectMacros for P<T> {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
         <T as CollectMacros>::collect_macros(old, new, cx);
     }
@@ -607,7 +607,7 @@ impl MaybeInvoc for Stmt {
     }
 }
 
-impl<T: MaybeInvoc> MaybeInvoc for P<T> {
+impl<T: MaybeInvoc + ?Sized> MaybeInvoc for P<T> {
     fn as_invoc(&self) -> Option<InvocKind> {
         <T as MaybeInvoc>::as_invoc(self)
     }
