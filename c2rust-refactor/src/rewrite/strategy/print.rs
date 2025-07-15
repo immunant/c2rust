@@ -345,7 +345,7 @@ pub trait RecoverChildren: Debug {
     fn recover_node_restricted(old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef);
 }
 
-impl<T: RecoverChildren> RecoverChildren for P<T> {
+impl<T: RecoverChildren + ?Sized> RecoverChildren for P<T> {
     fn recover_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
         <T as RecoverChildren>::recover_children(reparsed, new, rcx)
     }
@@ -359,7 +359,7 @@ impl<T: RecoverChildren> RecoverChildren for P<T> {
     }
 }
 
-impl<T: RecoverChildren> RecoverChildren for Box<T> {
+impl<T: RecoverChildren + ?Sized> RecoverChildren for Box<T> {
     fn recover_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
         <T as RecoverChildren>::recover_children(reparsed, new, rcx)
     }
@@ -373,7 +373,7 @@ impl<T: RecoverChildren> RecoverChildren for Box<T> {
     }
 }
 
-impl<T: RecoverChildren> RecoverChildren for Rc<T> {
+impl<T: RecoverChildren + ?Sized> RecoverChildren for Rc<T> {
     fn recover_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
         <T as RecoverChildren>::recover_children(reparsed, new, rcx)
     }

@@ -16,7 +16,7 @@ pub trait GetNodeId {
     fn get_node_id(&self) -> NodeId;
 }
 
-impl<T: GetNodeId> GetNodeId for P<T> {
+impl<T: GetNodeId + ?Sized> GetNodeId for P<T> {
     fn get_node_id(&self) -> NodeId {
         <T as GetNodeId>::get_node_id(self)
     }
@@ -31,7 +31,7 @@ pub trait MaybeGetNodeId {
     }
 }
 
-impl<T: MaybeGetNodeId> MaybeGetNodeId for P<T> {
+impl<T: MaybeGetNodeId + ?Sized> MaybeGetNodeId for P<T> {
     fn supported() -> bool {
         <T as MaybeGetNodeId>::supported()
     }
@@ -40,7 +40,7 @@ impl<T: MaybeGetNodeId> MaybeGetNodeId for P<T> {
     }
 }
 
-impl<T: MaybeGetNodeId> MaybeGetNodeId for Rc<T> {
+impl<T: MaybeGetNodeId + ?Sized> MaybeGetNodeId for Rc<T> {
     fn supported() -> bool {
         <T as MaybeGetNodeId>::supported()
     }
