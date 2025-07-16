@@ -232,7 +232,10 @@ where
             _ => return mut_visit::noop_flat_map_foreign_item(i, self),
         }
 
-        unpack!([i.kind] ForeignItemKind::Fn(decl, generics));
+        let (defaultness, generics, sig, body) = expect!([i.kind]
+            ForeignItemKind::Fn(box Fn { defaultness, generics, sig, body })
+            => (defaultness, generics, sig, body));
+        let FnSig { header, decl } = sig;
         let vis = i.vis;
 
         let fl = FnLike {
@@ -241,7 +244,7 @@ where
             ident: i.ident,
             span: i.span,
             decl,
-            block: None,
+            block: body,
             attrs: i.attrs,
         };
         let fls = (self.callback)(fl);
@@ -251,7 +254,12 @@ where
                 id: fl.id,
                 ident: fl.ident,
                 span: fl.span,
-                kind: ForeignItemKind::Fn(fl.decl, generics.clone()),
+                kind: ForeignItemKind::Fn(Box::new(Fn {
+                    defaultness,
+                    generics: generics.clone(),
+                    sig: FnSig { header, decl: fl.decl },
+                    body: fl.block,
+                })),
                 attrs: fl.attrs,
                 vis: vis.clone(),
             }))
@@ -348,7 +356,7 @@ where
         }
 
         let decl = expect!([i.kind]
-                           ForeignItemKind::Fn(ref decl, _) => decl.clone());
+                           ForeignItemKind::Fn(box Fn { ref sig, .. }) => sig.decl.clone());
 
         (self.callback)(FnLike {
             kind: FnKind::Foreign,

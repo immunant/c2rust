@@ -290,19 +290,19 @@ where
     fn visit_foreign_item(&mut self, i: &'ast ForeignItem) {
         let def_id = self.hir_map.local_def_id_from_node_id(i.id);
         match i.kind {
-            ForeignItemKind::Fn(ref decl, _) => {
+            ForeignItemKind::Fn(box Fn { sig: ref ast_sig, .. }) => {
                 if let Some(sig) = self.source.fn_sig(def_id) {
-                    self.record_fn_decl(sig, &decl);
+                    self.record_fn_decl(sig, &ast_sig.decl);
                 }
             }
 
-            ForeignItemKind::Static(ref ast_ty, _) => {
+            ForeignItemKind::Static(ref ast_ty, _, _) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
             }
-            ForeignItemKind::Ty => {}
-            ForeignItemKind::Macro(..) => {}
+            ForeignItemKind::TyAlias(..) => {}
+            ForeignItemKind::MacCall(..) => {}
         }
 
         visit::walk_foreign_item(self, i);
