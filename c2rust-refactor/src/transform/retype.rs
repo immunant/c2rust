@@ -503,7 +503,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
                         TyKind::Adt(adt, _) => {
                             let did = adt.non_enum_variant().fields
                               .iter()
-                              .find(|f| f.ident == *name)
+                              .find(|f| f.ident(cx.ty_ctxt()) == *name)
                               .expect(&format!("Couldn't find struct field {}", name)).did;
                             if let Some(&(ref old_ty, ref new_ty)) = cx.hir_map()
                                     .as_local_node_id(did)

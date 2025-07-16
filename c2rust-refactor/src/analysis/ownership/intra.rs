@@ -324,7 +324,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
     fn field_lty(&mut self, base_ty: ITy<'lty, 'tcx>, v: VariantIdx, f: Field) -> ITy<'lty, 'tcx> {
         match base_ty.ty.kind() {
             TyKind::Adt(adt, _substs) => {
-                let field_def = &adt.variants[v].fields[f.index()];
+                let field_def = &adt.variants()[v].fields[f.index()];
                 let poly_ty = self.static_ty(field_def.did);
                 self.ilcx.subst(poly_ty, &base_ty.args)
             }
@@ -439,8 +439,8 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             Operand::Copy(ref lv) => self.place_lty(lv),
             Operand::Move(ref lv) => self.place_lty(lv),
             Operand::Constant(ref c) => {
-                debug!("CONSTANT {:?}: type = {:?}", c, c.literal.ty);
-                let lty = self.local_ty(c.literal.ty);
+                debug!("CONSTANT {:?}: type = {:?}", c, c.literal.ty());
+                let lty = self.local_ty(c.literal.ty());
                 if let Label::FnDef(inst_idx) = lty.label {
                     self.insts[inst_idx].span = Some(c.span);
                 }

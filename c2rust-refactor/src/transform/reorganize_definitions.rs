@@ -426,7 +426,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             }
             Res::Def(DefKind::Static(_), def_id) => {
                 if let ty::TyKind::Adt(def, _) = self.cx.ty_ctxt().type_of(def_id).kind() {
-                    def.repr.c()
+                    def.repr().c()
                 } else {
                     false
                 }

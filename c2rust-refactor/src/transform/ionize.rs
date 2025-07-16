@@ -117,9 +117,9 @@ impl Transform for Ionize {
 
             let ty0 = cx.adjusted_node_type(val.id);
             match ty0.kind() {
-                TyKind::Adt(ref adt, _) if targets.contains(&adt.did) => {
+                TyKind::Adt(ref adt, _) if targets.contains(&adt.did()) => {
 
-                    let (_qself, mut path) = reflect_def_path(cx.ty_ctxt(), adt.did);
+                    let (_qself, mut path) = reflect_def_path(cx.ty_ctxt(), adt.did());
                     path.segments.push(mk().path_segment(field));
                     let mut bnd1 = mcx.bindings.clone();
                     bnd1.add("__con", mk().path_expr(path));
