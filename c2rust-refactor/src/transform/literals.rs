@@ -191,7 +191,7 @@ impl Transform for RemoveLiteralSuffixes {
                             // Special case: if `ty` is `i32` or `f64`,
                             // then we can remove the suffix, since those
                             // are the default inference types
-                            match (needs_suffix, &ty.kind) {
+                            match (needs_suffix, &ty.kind()) {
                                 (false, sty::TyKind::Int(IntTy::I32)) |
                                 (false, sty::TyKind::Float(FloatTy::F64)) => {
                                     if let Some(new_lit) = remove_suffix(&lit) {
@@ -324,7 +324,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
     /// Directly convert a `hir::Ty` to a `LitTyKeyTree`
     fn hir_ty_to_key_tree(&mut self, ty: &hir::Ty) -> LitTyKeyTree<'kt, 'tcx> {
         // TODO: use the HirId cache???
-        match ty.kind {
+        match ty.kind() {
             hir::TyKind::Path(hir::QPath::Resolved(_, ref path)) => {
                 self.res_to_key_tree(path.res, path.span)
             }
@@ -428,7 +428,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             self.replace_with_node(new_node, &ch);
         };
 
-        match ty.kind {
+        match ty.kind() {
             sty::TyKind::Int(_) |
             sty::TyKind::Uint(_) |
             sty::TyKind::Float(_) => {
@@ -755,7 +755,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.visit_ident(ident);
                 if let Some(struct_ty) = self.cx.opt_adjusted_node_type(e.id) {
                     let ch = inner_key_tree.get().children();
-                    match (ch, &struct_ty.kind) {
+                    match (ch, &struct_ty.kind()) {
                         (None, _) => {}
                         (Some(ch), sty::TyKind::Adt(def, _)) => {
                             let v = &def.non_enum_variant();
@@ -782,7 +782,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // of the `ExprKind::Index` with the inner type of the base
                 if let Some(e_ty) = self.cx.opt_node_type(e.id) {
                     use sty::TyKind::*;
-                    if let Array(..) | Slice(_) | Str = e_ty.kind {
+                    if let Array(..) | Slice(_) | Str = e_ty.kind() {
                         if let Some(ch) = e_key_tree.get().children() {
                             assert!(ch.len() == 1);
                             self.unify_key_trees(kt, ch[0]);
