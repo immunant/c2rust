@@ -197,7 +197,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                     self.hir_map().get_parent_node(hir_id)
                 ))
             }
-            Some(Node::Item(item)) => self.hir_map().local_def_id(item.hir_id),
+            Some(Node::Item(item)) => self.hir_map().local_def_id(item.hir_id()),
             _ => self.hir_map().local_def_id_from_node_id(id),
         }
     }
@@ -863,20 +863,21 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 // warning: we're ignore lifetime and const generic params
 
                 if let Some(mapping) = self.def_mapping {
-                    if mapping.contains_key(&def1.did) || mapping.contains_key(&def2.did) {
+                    if mapping.contains_key(&def1.did()) ||
+                       mapping.contains_key(&def2.did()) {
                         // structural_eq_defs_impl will look up the defs in the
                         // mapping before calling us again.
-                        return self.structural_eq_defs_impl(def1.did, def2.did, seen);
+                        return self.structural_eq_defs_impl(def1.did(), def2.did(), seen);
                     }
                 }
 
-                if seen.contains(&(def1.did, def2.did)) {
+                if seen.contains(&(def1.did(), def2.did())) {
                     return true;
                 }
 
                 def1.all_fields().count() == def2.all_fields().count() &&
                     def1.all_fields().zip(def2.all_fields()).all(|(field1, field2)| {
-                        field1.ident.unnamed_equiv(&field2.ident) &&
+                        field1.ident(tcx).unnamed_equiv(&field2.ident(tcx)) &&
                             self.structural_eq_defs_impl(field1.did, field2.did, seen)
                     })
             }
@@ -965,7 +966,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             // name
             (TyKind::Foreign(foreign_did), TyKind::Adt(adt, _substs))
             | (TyKind::Adt(adt, _substs), TyKind::Foreign(foreign_did)) => {
-                let matching = tcx.item_name(*foreign_did) == tcx.item_name(adt.did);
+                let matching = tcx.item_name(*foreign_did) == tcx.item_name(adt.did());
                 if !matching { trace!("Foreign type did not match ADT: {:?} and {:?}", ty1, ty2); }
                 matching
             }
@@ -1012,13 +1013,13 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 // warning: we're ignore lifetime and const generic params
 
                 if let Some(mapping) = self.def_mapping {
-                    let did1 = mapping.get(&def1.did);
-                    let did2 = mapping.get(&def2.did);
+                    let did1 = mapping.get(&def1.did());
+                    let did2 = mapping.get(&def2.did());
                     if did1.is_some() || did2.is_some() {
                         // We need to look up the type of the replacement def
                         // and compare using that.
-                        let did1 = *mapping.get(&def1.did).unwrap_or(&def1.did);
-                        let did2 = *mapping.get(&def2.did).unwrap_or(&def2.did);
+                        let did1 = *mapping.get(&def1.did()).unwrap_or(&def1.did());
+                        let did2 = *mapping.get(&def2.did()).unwrap_or(&def2.did());
                         return self.eq_tys(self.cx.def_type(did1), self.cx.def_type(did2));
                     }
                 }
@@ -1031,7 +1032,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                         let def2 = self.def_mapping
                             .and_then(|m| m.get(&field2.did))
                             .unwrap_or(&field2.did);
-                        field1.ident.unnamed_equiv(&field2.ident) && def1 == def2
+                        field1.ident(tcx).unnamed_equiv(&field2.ident(tcx)) && def1 == def2
                     })
             }
 
@@ -1126,7 +1127,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             // name
             (TyKind::Foreign(foreign_did), TyKind::Adt(adt, _substs))
                 | (TyKind::Adt(adt, _substs), TyKind::Foreign(foreign_did)) => {
-                    let matching = tcx.item_name(*foreign_did) == tcx.item_name(adt.did);
+                    let matching = tcx.item_name(*foreign_did) == tcx.item_name(adt.did());
                     if !matching { trace!("Foreign type did not match ADT: {:?} and {:?}", ty1, ty2); }
                     matching
                 }
