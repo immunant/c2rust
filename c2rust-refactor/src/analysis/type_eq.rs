@@ -565,7 +565,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
         };
         let variant = adt.non_enum_variant();
         for field in &variant.fields {
-            if field.ident.name == name {
+            if field.ident(self.tcx).name == name {
                 let base = self.def_lty(field.did);
                 return self.ltt.subst(base, &struct_ty.args);
             }
@@ -938,7 +938,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
     }
 
     fn visit_foreign_item(&mut self, i: &'hir ForeignItem) {
-        let def_id = self.tcx.hir().local_def_id(i.hir_id);
+        let def_id = self.tcx.hir().local_def_id(i.hir_id());
         match i.kind {
             ForeignItemKind::Fn(ref decl, _, _) => {
                 let sig = self.def_sig(def_id);

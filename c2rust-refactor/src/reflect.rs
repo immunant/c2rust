@@ -60,11 +60,11 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
             IrTyKind::Float(fty) => mk().ident_ty(fty.name()),
             IrTyKind::Adt(def, substs) => {
                 if infer_args {
-                    let (qself, path) = self.reflect_def_path_inner(def.did, None);
+                    let (qself, path) = self.reflect_def_path_inner(def.did(), None);
                     mk().qpath_ty(qself, path)
                 } else {
                     let substs = substs.types().collect::<Vec<_>>();
-                    let (qself, path) = self.reflect_def_path_inner(def.did, Some(&substs));
+                    let (qself, path) = self.reflect_def_path_inner(def.did(), Some(&substs));
                     mk().qpath_ty(qself, path)
                 }
             }

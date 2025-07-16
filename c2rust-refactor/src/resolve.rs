@@ -11,7 +11,7 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res)>
     for &iid in &m.item_ids {
         let node = tcx.hir().get(iid.id);
         let item = expect!([node] Node::Item(i) => i);
-        let item_did = tcx.hir().local_def_id(item.hir_id);
+        let item_did = tcx.hir().local_def_id(item.hir_id());
 
         match item.kind {
             ForeignMod { ref items, .. } => {
