@@ -64,7 +64,7 @@ For example, the official LLVM packages from [apt.llvm.org](https://apt.llvm.org
 - **NixOS / nix:**
 
     ```sh
-    nix-shell
+    nix shell github:immunant/c2rust
     ```
 
 - **macOS:** Xcode command-line tools and recent LLVM (we recommend the Homebrew version) are required.
