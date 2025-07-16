@@ -461,7 +461,7 @@ impl Transform for UninitToDefault {
 
             let init = l.init.as_ref().unwrap().clone();
             let ty = cx.node_type(init.id);
-            l.init = Some(match ty.kind {
+            l.init = Some(match ty.kind() {
                 TyKind::Bool => mk().lit_expr(mk().bool_lit(false)),
                 TyKind::Char => mk().lit_expr('\0'),
                 TyKind::Int(ity) => mk().lit_expr(mk().int_lit(0, ity)),

@@ -499,7 +499,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
 
                 ExprKind::Field(ref obj, ref name) => {
                     let ty = cx.adjusted_node_type(obj.id);
-                    match ty.kind {
+                    match ty.kind() {
                         TyKind::Adt(adt, _) => {
                             let did = adt.non_enum_variant().fields
                               .iter()
@@ -951,7 +951,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
         let mut local_type_restored = false;
         MutVisitNodes::visit(krate, |local: &mut P<Local>| {
             let ty = self.cx.node_type(local.id);
-            if let TyKind::Error = ty.kind {
+            if let TyKind::Error = ty.kind() {
                 if let Some(old_ty) = self.type_annotations.get(&local.span) {
                     local_type_restored = true;
                     local.ty = Some(old_ty.clone());
@@ -996,7 +996,7 @@ impl<'a, 'b, 'tcx, 'c> IlltypedFolder<'tcx> for RetypeIterationFolder<'a, 'b, 't
         expected: ty::Ty<'tcx>
     ) {
         info!("Retyping {:?} into type {:?}", e, expected);
-        if let TyKind::Error = actual.kind {
+        if let TyKind::Error = actual.kind() {
             return;
         }
         if self.iteration.try_retype(e, TypeExpectation::new(expected)) {
@@ -1038,7 +1038,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             return true
         }
 
-        match (&from.kind, &to.kind) {
+        match (&from.kind(), &to.kind()) {
             (Ref(_, ref from, Mutability::Mutable), Ref(_, ref to, _))
             // We ignore regions here because references from command-line args
             // won't have a valid region.
@@ -1194,7 +1194,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             }
         }
 
-        match (&expected.ty.kind, &lit.kind) {
+        match (&expected.ty.kind(), &lit.kind) {
             (TyKind::Int(t), LitKind::Int(v, _)) => {
                 let int_type = t.normalize(self.cx.session().target.ptr_width);
                 let (_, max) = int_ty_range(int_type);
@@ -1225,7 +1225,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
     /// Attempt to remove transmutes, optionally with as_ptr and as_mut_ptr
     /// calls. This is exclusively for readability, not correctness.
     fn try_transmute_fix(&mut self, expr: &mut P<Expr>, expected: TypeExpectation<'tcx>) -> bool {
-        match (&mut expr.kind, &expected.ty.kind) {
+        match (&mut expr.kind, &expected.ty.kind()) {
             (ExprKind::Call(ref callee, ref arguments), _) => {
                 let callee_did = self.cx.try_resolve_expr(callee);
                 if let Some(callee_did) = callee_did {
@@ -1273,7 +1273,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             (ExprKind::Unary(UnOp::Deref, e), _) => {
                 let mut sub_expected = expected.clone();
                 let old_subtype = self.cx.node_type(e.id);
-                sub_expected.ty = match old_subtype.kind {
+                sub_expected.ty = match old_subtype.kind() {
                     TyKind::RawPtr(ty::TypeAndMut{mutbl: subtype_mutbl, ..}) => {
                         let mutbl = expected.mutability.unwrap_or(subtype_mutbl);
                         self.cx.ty_ctxt().mk_ptr(ty::TypeAndMut{
@@ -1370,7 +1370,7 @@ fn can_coerce<'a, 'tcx>(
     if from_ty == to_ty {
         return true;
     }
-    match (&from_ty.kind, &to_ty.kind) {
+    match (from_ty.kind(), to_ty.kind()) {
         // Unsize for Array
         (Array(ref from_ty, _), Slice(ref to_ty)) => can_coerce(from_ty, to_ty, tcx),
 

@@ -47,7 +47,7 @@ impl Transform for AssignToUpdate {
         mut_visit_match(st, cx, pat, krate, |orig, mut mcx| {
             let x = mcx.bindings.get::<_, P<Expr>>("__x").unwrap().clone();
 
-            let struct_def_id = match cx.node_type(x.id).kind {
+            let struct_def_id = match cx.node_type(x.id).kind() {
                 ty::TyKind::Adt(ref def, _) => def.did,
                 _ => return,
             };

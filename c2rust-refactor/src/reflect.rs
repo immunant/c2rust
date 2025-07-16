@@ -52,7 +52,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
     }
 
     fn reflect_ty_inner(&self, ty: ty::Ty<'tcx>, infer_args: bool) -> P<Ty> {
-        match ty.kind {
+        match ty.kind() {
             IrTyKind::Bool => mk().ident_ty("bool"),
             IrTyKind::Char => mk().ident_ty("char"),
             IrTyKind::Int(ity) => mk().ident_ty(ity.name()),
@@ -369,7 +369,7 @@ fn register_test_reflect(reg: &mut Registry) {
                 MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
                     let ty = cx.node_type(e.id);
 
-                    let new_expr = if let IrTyKind::FnDef(def_id, ref substs) = ty.kind {
+                    let new_expr = if let IrTyKind::FnDef(def_id, ref substs) = ty.kind() {
                         let substs = substs.types().collect::<Vec<_>>();
                         let (qself, path) = reflector
                             .reflect_def_path_inner(def_id, Some(&substs));

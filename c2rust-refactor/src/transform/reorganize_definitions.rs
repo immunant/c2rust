@@ -425,7 +425,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 matches!(self.cx.ty_ctxt().fn_sig(def_id).abi(), Abi::C { .. })
             }
             Res::Def(DefKind::Static(_), def_id) => {
-                if let ty::TyKind::Adt(def, _) = self.cx.ty_ctxt().type_of(def_id).kind {
+                if let ty::TyKind::Adt(def, _) = self.cx.ty_ctxt().type_of(def_id).kind() {
                     def.repr.c()
                 } else {
                     false
@@ -788,15 +788,15 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             let replacement = match_or!([self.path_mapping.get(&old_def_id)] Some(x) => x; return);
             let new_def_id = match_or!([replacement.def] Some(id) => id; return);
             let val_ty = self.cx.def_type(new_def_id);
-            let val_len = match_or!([val_ty.kind] ty::TyKind::Array(_ty, n) => n; return);
+            let val_len = match_or!([val_ty.kind()] ty::TyKind::Array(_ty, n) => n; return);
             let cast_ty = match_or!([self.cx.opt_node_type(cast_id)] Some(ty) => ty; return);
-            let cast_ty = match_or!([cast_ty.kind] ty::TyKind::RawPtr(ty) => ty; return);
+            let cast_ty = match_or!([cast_ty.kind()] ty::TyKind::RawPtr(ty) => ty; return);
             let cast_ty = cast_ty.ty;
-            let cast_len = match_or!([cast_ty.kind] ty::TyKind::Array(_ty, n) => n; return);
+            let cast_len = match_or!([cast_ty.kind()] ty::TyKind::Array(_ty, n) => n; return);
             if let Some(0) = cast_len.try_eval_usize(tcx, ParamEnv::empty()) {
                 if let Some(val_len) = val_len.try_eval_usize(tcx, ParamEnv::empty()) {
-                    let ty = match_or!([&mut ty.kind] TyKind::Ptr(ty) => ty; return);
-                    let cast_len = match_or!([&mut ty.ty.kind] TyKind::Array(_ty, n) => n; return);
+                    let ty = match_or!([&mut ty.kind()] TyKind::Ptr(ty) => ty; return);
+                    let cast_len = match_or!([&mut ty.ty.kind()] TyKind::Array(_ty, n) => n; return);
                     let lit = mk().lit_expr(mk().int_lit(val_len as u128, LitIntType::Unsuffixed));
                     *cast_len = mk().anon_const(lit);
                 }

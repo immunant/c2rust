@@ -851,7 +851,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
 
         let tcx = self.cx.ty_ctxt();
 
-        match (&ty1.kind, &ty2.kind) {
+        match (&ty1.kind(), &ty2.kind()) {
             (TyKind::Adt(def1, substs1), TyKind::Adt(def2, substs2)) => {
                 if substs1.types().count() != substs2.types().count() || 
                     !substs1.types().zip(substs2.types())
@@ -973,7 +973,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             // We don't handle anything else here, and hopefully won't need
             // to...
             _ => {
-                trace!("Unhandled types {:?} and {:?}", ty1.kind, ty2.kind);
+                trace!("Unhandled types {:?} and {:?}", ty1.kind(), ty2.kind());
                 false
             }
         }
@@ -1000,7 +1000,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
 
         let tcx = self.cx.ty_ctxt();
 
-        match (&ty1.kind, &ty2.kind) {
+        match (&ty1.kind(), &ty2.kind()) {
             (TyKind::Adt(def1, substs1), TyKind::Adt(def2, substs2)) => {
                 if substs1.types().count() != substs2.types().count() || 
                     !substs1.types().zip(substs2.types())
@@ -1134,7 +1134,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             // We don't handle anything else here, and hopefully won't need
             // to...
             _ => {
-                trace!("Unhandled types {:?} and {:?}", ty1.kind, ty2.kind);
+                trace!("Unhandled types {:?} and {:?}", ty1.kind(), ty2.kind());
                 false
             }
         }

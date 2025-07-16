@@ -51,7 +51,7 @@ pub fn fix_users(
         let old_ty = cx.def_type(old_did);
         let new_ty = cx.def_type(new_did);
 
-        if !crate::matches!([old_ty.kind] TyKind::FnDef(..)) {
+        if !crate::matches!([old_ty.kind()] TyKind::FnDef(..)) {
             // Non-fn items are easy to handle.
             if !ty_compare.structural_eq_tys(old_ty, new_ty) {
                 ty_replace_map.insert((old_did, TyLoc::Whole), (old_ty, new_ty));

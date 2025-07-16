@@ -301,7 +301,7 @@ impl SimpleTy {
 impl<'tcx> From<ty::Ty<'tcx>> for SimpleTy {
     fn from(ty: ty::Ty<'tcx>) -> Self {
         use SimpleTy::*;
-        match ty.kind {
+        match ty.kind() {
             TyKind::Int(IntTy::Isize) => Size(true),
             TyKind::Uint(UintTy::Usize) => Size(false),
 
@@ -311,7 +311,7 @@ impl<'tcx> From<ty::Ty<'tcx>> for SimpleTy {
             TyKind::Float(FloatTy::F32) => Float32,
             TyKind::Float(FloatTy::F64) => Float64,
 
-            TyKind::Ref(_, ty, _mutbl) => match ty.kind {
+            TyKind::Ref(_, ty, _mutbl) => match ty.kind() {
                 TyKind::Array(..) => Array,
                 _ => Ref,
             }
