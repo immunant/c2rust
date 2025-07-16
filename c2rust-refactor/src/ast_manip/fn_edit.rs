@@ -106,6 +106,7 @@ where
                         sig: FnSig {
                             decl: fl.decl,
                             header: sig.header,
+                            span: sig.span,
                         },
                         generics: generics.clone(),
                         body,
@@ -131,7 +132,7 @@ where
             AssocItemKind::Fn(box Fn { defaultness, generics, sig, body })
             => (defaultness, generics, sig, body));
         let vis = i.vis;
-        let FnSig { header, decl } = sig;
+        let FnSig { header, decl, span: sig_span } = sig;
 
         let fl = FnLike {
             kind: FnKind::ImplMethod,
@@ -149,6 +150,7 @@ where
                 let sig = FnSig {
                     header,
                     decl: fl.decl,
+                    span: sig_span,
                 };
                 let body = fl
                     .block
@@ -181,7 +183,7 @@ where
         let (defaultness, generics, sig, body) = expect!([i.kind]
             AssocItemKind::Fn(box Fn { defaultness, generics, sig, body })
             => (defaultness, generics, sig, body));
-        let FnSig { header, decl } = sig;
+        let FnSig { header, decl, span: sig_span } = sig;
         let vis = i.vis;
 
         let fl = FnLike {
@@ -200,6 +202,7 @@ where
                 let sig = FnSig {
                     header,
                     decl: fl.decl,
+                    span: sig_span,
                 };
                 AssocItem {
                     id: fl.id,
@@ -235,7 +238,7 @@ where
         let (defaultness, generics, sig, body) = expect!([i.kind]
             ForeignItemKind::Fn(box Fn { defaultness, generics, sig, body })
             => (defaultness, generics, sig, body));
-        let FnSig { header, decl } = sig;
+        let FnSig { header, decl, span: sig_span } = sig;
         let vis = i.vis;
 
         let fl = FnLike {
@@ -257,7 +260,7 @@ where
                 kind: ForeignItemKind::Fn(Box::new(Fn {
                     defaultness,
                     generics: generics.clone(),
-                    sig: FnSig { header, decl: fl.decl },
+                    sig: FnSig { header, decl: fl.decl, span: sig_span },
                     body: fl.block,
                 })),
                 attrs: fl.attrs,
