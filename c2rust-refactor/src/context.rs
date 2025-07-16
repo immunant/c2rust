@@ -894,10 +894,10 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                     trace!("Array lengths don't match: {:?} and {:?}", n1, n2);
                     return false;
                 }
-                self.structural_eq_tys_impl(ty1, ty2, seen)
+                self.structural_eq_tys_impl(*ty1, *ty2, seen)
             }
 
-            (TyKind::Slice(ty1), TyKind::Slice(ty2)) => self.structural_eq_tys_impl(ty1, ty2, seen),
+            (TyKind::Slice(ty1), TyKind::Slice(ty2)) => self.structural_eq_tys_impl(*ty1, *ty2, seen),
 
             (TyKind::RawPtr(ty1), TyKind::RawPtr(ty2)) => {
                 if ty1.mutbl != ty2.mutbl { trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2); }
@@ -907,7 +907,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             (TyKind::Ref(region1, ty1, mutbl1), TyKind::Ref(region2, ty2, mutbl2)) => {
                 if region1 != region2 { trace!("Regions don't match: {:?} and {:?}", ty1, ty2); }
                 if mutbl1 != mutbl2 { trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2); }
-                region1 == region2 && mutbl1 == mutbl2 && self.structural_eq_tys_impl(ty1, ty2, seen)
+                region1 == region2 && mutbl1 == mutbl2 && self.structural_eq_tys_impl(*ty1, *ty2, seen)
             }
 
             (TyKind::FnDef(fn1, substs1), TyKind::FnDef(fn2, substs2)) => {
@@ -946,12 +946,12 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 }
 
                 fn1.inputs().iter().zip(fn2.inputs().iter())
-                    .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
+                    .all(|(ty1, ty2)| self.structural_eq_tys_impl(*ty1, *ty2, seen))
             }
 
             (TyKind::Tuple(_), TyKind::Tuple(_)) => {
-                ty1.tuple_fields().count() == ty2.tuple_fields().count() &&
-                    ty1.tuple_fields().zip(ty2.tuple_fields())
+                ty1.tuple_fields().len() == ty2.tuple_fields().len() &&
+                    ty1.tuple_fields().iter().zip(ty2.tuple_fields().iter())
                        .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
             }
 
@@ -1048,10 +1048,10 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                     trace!("Array lengths don't match: {:?} and {:?}", n1, n2);
                     return false;
                 }
-                self.eq_tys(ty1, ty2)
+                self.eq_tys(*ty1, *ty2)
             }
 
-            (TyKind::Slice(ty1), TyKind::Slice(ty2)) => self.eq_tys(ty1, ty2),
+            (TyKind::Slice(ty1), TyKind::Slice(ty2)) => self.eq_tys(*ty1, *ty2),
 
             (TyKind::RawPtr(ty1), TyKind::RawPtr(ty2)) => {
                 if ty1.mutbl != ty2.mutbl { trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2); }
@@ -1062,7 +1062,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 if region1 != region2 { trace!("Regions don't match: {:?} and {:?}", ty1, ty2); }
                 if mutbl1 != mutbl2 { trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2); }
                 region1 == region2 && mutbl1 == mutbl2 &&
-                    self.eq_tys(ty1, ty2)
+                    self.eq_tys(*ty1, *ty2)
             }
 
             (TyKind::FnDef(fn1, substs1), TyKind::FnDef(fn2, substs2)) => {
@@ -1107,12 +1107,12 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 }
 
                 fn1.inputs().iter().zip(fn2.inputs().iter())
-                    .all(|(ty1, ty2)| self.eq_tys(ty1, ty2))
+                    .all(|(ty1, ty2)| self.eq_tys(*ty1, *ty2))
             }
 
             (TyKind::Tuple(_), TyKind::Tuple(_)) => {
-                ty1.tuple_fields().count() == ty2.tuple_fields().count() &&
-                    ty1.tuple_fields().zip(ty2.tuple_fields())
+                ty1.tuple_fields().len() == ty2.tuple_fields().len() &&
+                    ty1.tuple_fields().iter().zip(ty2.tuple_fields().iter())
                     .all(|(ty1, ty2)| self.eq_tys(ty1, ty2))
             }
 
