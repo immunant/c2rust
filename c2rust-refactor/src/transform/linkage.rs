@@ -179,7 +179,7 @@ impl Transform for LinkIncompleteTypes {
         // (2) Find incomplete type definitions (extern types), and index them by name.
         visit_nodes(krate, |i: &ForeignItem| {
             let incomplete = match i.kind {
-                ForeignItemKind::Ty => true,
+                ForeignItemKind::TyAlias(_) => true,
                 _ => false,
             };
 
