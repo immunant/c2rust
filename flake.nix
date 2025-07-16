@@ -22,31 +22,26 @@
           inherit system;
           overlays = [
             (import rust-overlay)
+            (import self)
           ];
         };
       in
       {
         packages = {
-          default = pkgs.callPackage ./nix { };
-          unwrapped = self.packages.${system}.default.unwrapped;
+          default = pkgs.c2rust;
+          unwrapped = pkgs.c2rust.unwrapped;
         };
-
-        overlays =
-          final: prev:
-          let
-            overlain = final.extend (import rust-overlay);
-          in
-          {
-            c2rust = overlain.callPackage ./nix { };
-          };
 
         devShells.default = pkgs.callPackage ./shell.nix { };
 
         formatter = pkgs.nixfmt-tree;
         checks = {
-          c2rust = self.packages.${system}.default;
+          inherit (pkgs) c2rust;
           devShell = self.devShells.${system}.default;
         };
       }
-    );
+    )
+    // {
+      overlays = import self;
+    };
 }
