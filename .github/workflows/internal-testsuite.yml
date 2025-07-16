@@ -15,9 +15,21 @@ on:
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   # This workflow contains a single job called "build"
-  build-on-ubuntu-2204:
+  run-testsuite:
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os: Linux
+            arch: x86_64
+            clang-version: 18
+          - runner: ubuntu-22.04
+            os: Linux
+            arch: x86_64
+            clang-version: 15
+      fail-fast: false
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.runner }}
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -82,8 +94,9 @@ jobs:
       run: |
         sudo apt-get -qq update
         sudo apt-get -qq install    \
+            build-essential         \
             libbrotli-dev           \
-            libclang-15-dev         \
+            libclang-${{ matrix.clang-version }}-dev \
             libgcrypt20             \
             libreadline-dev         \
             libidn2-dev             \
@@ -106,7 +119,7 @@ jobs:
     # Working dir is /home/runner/work/c2rust/c2rust
     - name: Build c2rust
       run: |
-        export LLVM_CONFIG_PATH=/usr/bin/llvm-config-15
+        export LLVM_CONFIG_PATH=/usr/bin/llvm-config-${{ matrix.clang-version }}
         cargo build --release
 
     # TODO(pl): figure out why compile_commands.json may cause json-c to fail
@@ -119,7 +132,7 @@ jobs:
 
     - uses: actions/upload-artifact@v4
       with:
-        name: testsuite-build-artifacts
+        name: testsuite-${{ matrix.runner }}-artifacts
         path: |
           ${{ github.workspace }}/testsuite/**/*.log
           ${{ github.workspace }}/testsuite/**/compile_commands.json
