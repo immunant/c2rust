@@ -39,6 +39,8 @@
           {
             c2rust = overlain.callPackage ./nix { };
           };
+
+        devShells.default = pkgs.callPackage ./shell.nix { };
       }
     );
 }
