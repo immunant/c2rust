@@ -48,7 +48,7 @@ impl Transform for AssignToUpdate {
             let x = mcx.bindings.get::<_, P<Expr>>("__x").unwrap().clone();
 
             let struct_def_id = match cx.node_type(x.id).kind() {
-                ty::TyKind::Adt(ref def, _) => def.did,
+                ty::TyKind::Adt(ref def, _) => def.did(),
                 _ => return,
             };
             let struct_path = cx.def_path(struct_def_id);
