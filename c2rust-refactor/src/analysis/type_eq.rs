@@ -489,7 +489,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     // Helpers for extracting information from function types.
 
     fn fn_num_inputs(&self, lty: LTy<'lty, 'tcx>) -> usize {
-        match lty.ty.kind {
+        match lty.ty.kind() {
             IrTyKind::FnDef(id, _) => self.def_sig(id).inputs.len(),
             IrTyKind::FnPtr(_) => lty.args.len() - 1,
             // TODO: Handle Closure.  This should be similar to FnDef, but the substs are a bit
@@ -500,7 +500,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     /// Get the input types out of a `FnPtr` or `FnDef` `LTy`.
     fn fn_input(&self, lty: LTy<'lty, 'tcx>, idx: usize) -> LTy<'lty, 'tcx> {
-        match lty.ty.kind {
+        match lty.ty.kind() {
             IrTyKind::FnDef(id, _) => {
                 // For a `FnDef`, retrieve the `LFnSig` for the given `DefId` and apply the
                 // labeled substs recorded in `LTy.args`.
@@ -518,7 +518,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     /// Get the output type out of a `FnPtr` or `FnDef` `LTy`.
     fn fn_output(&self, lty: LTy<'lty, 'tcx>) -> LTy<'lty, 'tcx> {
-        match lty.ty.kind {
+        match lty.ty.kind() {
             IrTyKind::FnDef(id, _) => {
                 let sig = self.def_sig(id);
                 self.ltt.subst(sig.output, &lty.args)
@@ -530,7 +530,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     }
 
     fn fn_is_variadic(&self, lty: LTy<'lty, 'tcx>) -> bool {
-        match lty.ty.kind {
+        match lty.ty.kind() {
             IrTyKind::FnDef(id, _) => self.def_sig(id).c_variadic,
             IrTyKind::FnPtr(ty_sig) => ty_sig.skip_binder().c_variadic,
             // TODO: Closure
@@ -559,7 +559,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     /// Get the labeled type of a field.  For generic structs, this returns the type after
     /// substitution, using the type arguments from `struct_ty`.
     fn field_lty(&self, struct_ty: LTy<'lty, 'tcx>, name: Symbol) -> LTy<'lty, 'tcx> {
-        let adt = match struct_ty.ty.kind {
+        let adt = match struct_ty.ty.kind() {
             ty::TyKind::Adt(ref adt, _) => adt,
             _ => panic!("field_lty: not a struct ty: {:?}", struct_ty),
         };
@@ -618,7 +618,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 let func_lty = self.expr_lty(func);
 
                 fn is_closure(ty: ty::Ty) -> bool {
-                    if let ty::TyKind::Closure(..) = ty.kind {
+                    if let ty::TyKind::Closure(..) = ty.kind() {
                         true
                     } else {
                         false
