@@ -584,7 +584,7 @@ impl MaybeInvoc for AssocItem {
 impl MaybeInvoc for ForeignItem {
     fn as_invoc(&self) -> Option<InvocKind> {
         match self.kind {
-            ForeignItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
+            ForeignItemKind::MacCall(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
     }
