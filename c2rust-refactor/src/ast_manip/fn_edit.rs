@@ -29,7 +29,7 @@ pub struct FnLike {
     pub ident: Ident,
     pub span: Span,
     pub decl: P<FnDecl>,
-    pub block: Option<P<Block>>,
+    pub body: Option<P<Block>>,
     pub attrs: Vec<Attribute>,
     // TODO: This should probably include `generics`, and maybe some kind of "parent generics" for
     // impl and trait items.
@@ -89,14 +89,13 @@ where
             ident: i.ident,
             span: i.span,
             decl: sig.decl.clone(),
-            block: body,
+            body,
             attrs: i.attrs,
         };
         let fls = (self.callback)(fl);
 
         fls.into_iter()
             .map(|fl| {
-                let body = fl.block.expect("can't remove Block from ItemKind::Fn");
                 P(Item {
                     id: fl.id,
                     ident: fl.ident,
@@ -109,7 +108,7 @@ where
                             span: sig.span,
                         },
                         generics: generics.clone(),
-                        body,
+                        body: fl.body,
                     })),
                     attrs: fl.attrs,
                     vis: vis.clone(),
@@ -140,7 +139,7 @@ where
             ident: i.ident,
             span: i.span,
             decl,
-            block: body,
+            body,
             attrs: i.attrs,
         };
         let fls = (self.callback)(fl);
@@ -152,9 +151,6 @@ where
                     decl: fl.decl,
                     span: sig_span,
                 };
-                let body = fl
-                    .block
-                    .expect("can't remove Block from AssocItemKind::Fn");
                 AssocItem {
                     id: fl.id,
                     ident: fl.ident,
@@ -163,7 +159,7 @@ where
                         defaultness,
                         generics: generics.clone(),
                         sig,
-                        body,
+                        body: fl.body,
                     })),
                     attrs: fl.attrs,
                     vis: vis.clone(),
@@ -192,7 +188,7 @@ where
             ident: i.ident,
             span: i.span,
             decl,
-            block: body,
+            body,
             attrs: i.attrs,
         };
         let fls = (self.callback)(fl);
@@ -213,7 +209,7 @@ where
                         defaultness,
                         generics: generics.clone(),
                         sig,
-                        body: fl.block,
+                        body: fl.body,
                     })),
                     attrs: fl.attrs,
                     generics: generics.clone(),
@@ -247,7 +243,7 @@ where
             ident: i.ident,
             span: i.span,
             decl,
-            block: body,
+            body,
             attrs: i.attrs,
         };
         let fls = (self.callback)(fl);
@@ -261,7 +257,7 @@ where
                     defaultness,
                     generics: generics.clone(),
                     sig: FnSig { header, decl: fl.decl, span: sig_span },
-                    body: fl.block,
+                    body: fl.body,
                 })),
                 attrs: fl.attrs,
                 vis: vis.clone(),
@@ -314,9 +310,9 @@ where
             _ => return,
         }
 
-        let (sig, block) = expect!([i.kind]
-                                    ItemKind::Fn(box Fn { ref sig, ref body, .. }) =>
-                                        (sig.clone(), body.clone()));
+        let (sig, body) = expect!([i.kind]
+                                  ItemKind::Fn(box Fn { ref sig, ref body, .. }) =>
+                                    (sig.clone(), body.clone()));
 
         (self.callback)(FnLike {
             kind: FnKind::Normal,
@@ -324,7 +320,7 @@ where
             ident: i.ident,
             span: i.span,
             decl: sig.decl,
-            block,
+            body,
             attrs: i.attrs.clone(),
         });
     }
@@ -336,9 +332,9 @@ where
             _ => return,
         }
 
-        let (decl, block) = expect!([i.kind]
-                                    AssocItemKind::Fn(box Fn { ref sig, ref body, .. }) =>
-                                        (sig.decl.clone(), body.clone()));
+        let (decl, body) = expect!([i.kind]
+                                   AssocItemKind::Fn(box Fn { ref sig, ref body, .. }) =>
+                                     (sig.decl.clone(), body.clone()));
 
         (self.callback)(FnLike {
             kind: FnKind::ImplMethod,
@@ -346,7 +342,7 @@ where
             ident: i.ident,
             span: i.span,
             decl,
-            block,
+            body,
             attrs: i.attrs.clone(),
         });
     }
@@ -367,7 +363,7 @@ where
             ident: i.ident,
             span: i.span,
             decl,
-            block: None,
+            body: None,
             attrs: i.attrs.clone(),
         });
     }
