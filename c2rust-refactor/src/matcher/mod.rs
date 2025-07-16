@@ -485,8 +485,6 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
             args.inner_tokens().clone(),
-            None,
-            false,
             false,
             None,
         );
@@ -518,8 +516,6 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
             args.inner_tokens(),
-            None,
-            false,
             false,
             None,
         );
@@ -565,8 +561,6 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
             args.inner_tokens(),
-            None,
-            false,
             false,
             None,
         );
