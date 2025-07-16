@@ -279,6 +279,14 @@ impl<'c> Translation<'c> {
         compute_type: Option<CQualTypeId>,
         result_type: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if op == c_ast::BinOp::Assign {
+            assert!(compute_type.is_none());
+            assert!(result_type.is_none());
+        } else {
+            assert!(compute_type.is_some());
+            assert!(result_type.is_some());
+        }
+
         let rhs_type_id = self
             .ast_context
             .index(rhs)
