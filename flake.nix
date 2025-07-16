@@ -41,6 +41,12 @@
           };
 
         devShells.default = pkgs.callPackage ./shell.nix { };
+
+        formatter = pkgs.nixfmt-tree;
+        checks = {
+          c2rust = self.packages.${system}.default;
+          devShell = self.devShells.${system}.default;
+        };
       }
     );
 }
