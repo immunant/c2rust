@@ -132,7 +132,7 @@ impl<'a> Stream<'a> {
 
     fn path(&mut self) -> PResult<Path> {
         let ts = mem::replace(&mut self.toks, Vec::new().into_iter());
-        let mut p = Parser::new(self.sess, ts.collect(), None, false, false, None);
+        let mut p = Parser::new(self.sess, ts.collect(), false, None);
         let path = p
             .parse_path(PathStyle::Mod)
             .map_err(|e| format!("error parsing path: {}", e.message()))?;
@@ -265,7 +265,7 @@ impl<'a> Stream<'a> {
                 "match_expr" => {
                     let ts = self.parens_raw()?;
 
-                    let mut p = Parser::new(self.sess, ts, None, false, false, None);
+                    let mut p = Parser::new(self.sess, ts, false, None);
                     let mut x = p
                         .parse_expr()
                         .map_err(|e| format!("error parsing expr: {}", e.message()))?;
@@ -279,7 +279,7 @@ impl<'a> Stream<'a> {
                 "match_pat" => {
                     let ts = self.parens_raw()?;
 
-                    let mut p = Parser::new(self.sess, ts, None, false, false, None);
+                    let mut p = Parser::new(self.sess, ts, false, None);
                     let mut x = p
                         .parse_pat(None)
                         .map_err(|e| format!("error parsing pat: {}", e.message()))?;
@@ -293,7 +293,7 @@ impl<'a> Stream<'a> {
                 "match_ty" => {
                     let ts = self.parens_raw()?;
 
-                    let mut p = Parser::new(self.sess, ts, None, false, false, None);
+                    let mut p = Parser::new(self.sess, ts, false, None);
                     let mut x = p
                         .parse_ty()
                         .map_err(|e| format!("error parsing ty: {}", e.message()))?;
@@ -307,7 +307,7 @@ impl<'a> Stream<'a> {
                 "match_stmt" => {
                     let ts = self.parens_raw()?;
 
-                    let mut p = Parser::new(self.sess, ts, None, false, false, None);
+                    let mut p = Parser::new(self.sess, ts, false, None);
                     let mut x = match p.parse_stmt() {
                         Ok(Some(x)) => x,
                         Ok(None) => fail!("expected stmt"),
