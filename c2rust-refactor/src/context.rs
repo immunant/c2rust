@@ -559,8 +559,8 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     pub fn foreign_item_namespace(&self, item: &ForeignItem) -> Option<Namespace> {
         match &item.kind {
             ForeignItemKind::Fn(..) | ForeignItemKind::Static(..) => Some(Namespace::ValueNS),
-            ForeignItemKind::Ty => Some(Namespace::TypeNS),
-            ForeignItemKind::Macro(..) => None,
+            ForeignItemKind::TyAlias(..) => Some(Namespace::TypeNS),
+            ForeignItemKind::MacCall(..) => None,
         }
     }
 
