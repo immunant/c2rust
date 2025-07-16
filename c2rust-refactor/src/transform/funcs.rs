@@ -174,7 +174,7 @@ impl Transform for ToMethod {
             // FIXME: rustc changed how locals args are represented, and we
             // don't have a Def for locals any more, and thus no def_id. We need
             // to fix this in path_edit.rs
-            fold_resolved_paths(&mut f.block, cx, |qself, path, def| {
+            fold_resolved_paths(&mut f.body, cx, |qself, path, def| {
                 match cx.res_to_hir_id(&def[0]) {
                     Some(hir_id) =>
                         if hir_id == arg_hir_id {
