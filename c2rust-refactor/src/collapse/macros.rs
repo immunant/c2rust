@@ -632,7 +632,7 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
         if let Some(invoc_id) = self.mac_table.get(fi.id).map(|m| m.id) {
             if let Some(new_args) = self.new_args.get(&invoc_id).cloned() {
                 let mut fi = fi;
-                expect!([fi.kind] ForeignItemKind::Macro(ref mut mac) => *mac.args = new_args);
+                expect!([fi.kind] ForeignItemKind::MacCall(ref mut mac) => *mac.args = new_args);
                 return smallvec![fi];
             }
         }
