@@ -119,7 +119,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
             Some(x) => x,
             None => return,
         };
-        if let ty::TyKind::Error = ty.kind {
+        if let ty::TyKind::Error = ty.kind() {
             return;
         }
 
@@ -145,7 +145,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 illtyped |= self.ensure(elem, expected_elem_ty);
             }
             ExprKind::Tup(elems) => {
-                let elem_tys = expect!([ty.kind] ty::TyKind::Tuple(elem_tys) => elem_tys);
+                let elem_tys = expect!([ty.kind()] ty::TyKind::Tuple(elem_tys) => elem_tys);
                 for (elem, elem_ty) in elems.iter_mut().zip(elem_tys.types()) {
                     illtyped |= self.ensure(elem, elem_ty);
                 }
@@ -325,7 +325,7 @@ fn handle_struct<'tcx, F>(
 ) where
     F: FnMut(&mut P<Expr>, ty::Ty<'tcx>),
 {
-    let (adt_def, substs) = match ty.kind {
+    let (adt_def, substs) = match ty.kind() {
         ty::TyKind::Adt(a, s) => (a, s),
         _ => return,
     };
