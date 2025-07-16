@@ -2,13 +2,10 @@
   pkgs ? (
     import <nixpkgs> {
       overlays = [
-        (import (
-          builtins.fetchTarball "https://github.com/oxalica/rust-overlay/archive/snapshot/2024-08-01.tar.gz"
-        ))
+        (import ./.)
       ];
     }
   ),
-  c2rust ? pkgs.callPackage ./nix { },
 }:
 pkgs.mkShell.override
   {
@@ -17,11 +14,11 @@ pkgs.mkShell.override
   {
     name = "c2rust-devshell";
     inputsFrom = [
-      c2rust.unwrapped
+      pkgs.c2rust.unwrapped
     ];
 
     packages = [
-      (c2rust.unwrapped.toolchain.override (old: {
+      (pkgs.c2rust.unwrapped.toolchain.override (old: {
         extensions = old.extensions ++ [
           "rustfmt"
           "miri"
