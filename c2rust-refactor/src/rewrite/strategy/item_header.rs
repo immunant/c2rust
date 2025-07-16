@@ -16,7 +16,6 @@ use rustc_ast::token::{Delimiter, Token, TokenKind};
 use rustc_span::source_map::{BytePos, Span};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 
-use crate::ast_manip::AstEquiv;
 use crate::rewrite::base::{describe, rewrite_seq_comma_sep};
 use crate::rewrite::strategy::print::PrintParse;
 use crate::rewrite::{Rewrite, RewriteCtxtRef, TextRewrite};
