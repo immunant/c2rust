@@ -81,8 +81,8 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
         }
         self.maybe_enter_old(x.id, |v| {
             // walk_foreign_item doesn't call visit_fn
-            if let ForeignItemKind::Fn(ref decl, _) = x.kind {
-                v.walk_args(&decl.inputs);
+            if let ForeignItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
+                v.walk_args(&sig.decl.inputs);
             }
             visit::walk_foreign_item(v, x)
         });
@@ -218,8 +218,8 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
             self.new.insert(x.id);
         }
         self.maybe_enter_old(x.id, |v| {
-            if let ForeignItemKind::Fn(ref decl, ..) = x.kind {
-                v.walk_args(&decl.inputs);
+            if let ForeignItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
+                v.walk_args(&sig.decl.inputs);
             }
             visit::walk_foreign_item(v, x)
         });
@@ -328,8 +328,8 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
         if self.old.contains(&x.id) && self.matches(AnyNode::ForeignItem(x)) {
             self.new.insert(x.id);
         }
-        if let ForeignItemKind::Fn(ref decl, ..) = x.kind {
-            self.walk_args(&decl.inputs);
+        if let ForeignItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
+            self.walk_args(&sig.decl.inputs);
         }
         visit::walk_foreign_item(self, x);
     }

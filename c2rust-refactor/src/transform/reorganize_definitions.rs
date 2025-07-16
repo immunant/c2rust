@@ -469,7 +469,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     // without an Item
                     DeclKind::ForeignItem(foreign, _abi) => {
                         match &foreign.kind {
-                            ForeignItemKind::Fn(..) => {
+                            ForeignItemKind::Fn { .. } => {
                                 if let Res::Def(DefKind::Fn, def_id) = item.res {
                                     let export_fn_sig = self.cx.ty_ctxt().fn_sig(def_id);
                                     let export_fn_sig = match export_fn_sig.no_bound_vars() {
@@ -497,8 +497,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                     false
                                 }
                             }
-                            ForeignItemKind::Ty => true,
-                            ForeignItemKind::Macro(..) => false,
+                            ForeignItemKind::TyAlias(..) => true,
+                            ForeignItemKind::MacCall(..) => false,
                         }
                     }
                 }
@@ -527,9 +527,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         if let ItemKind::ForeignMod(m) = &item.kind {
                             for item in &m.items {
                                 let ns = match &item.kind {
-                                    ForeignItemKind::Fn(..) | ForeignItemKind::Static(..) => Namespace::ValueNS,
-                                    ForeignItemKind::Ty => Namespace::TypeNS,
-                                    ForeignItemKind::Macro(..) => unimplemented!(),
+                                    ForeignItemKind::Fn { .. } | ForeignItemKind::Static(..) => Namespace::ValueNS,
+                                    ForeignItemKind::TyAlias(..) => Namespace::TypeNS,
+                                    ForeignItemKind::MacCall(..) => unimplemented!(),
                                 };
                                 info.items[ns].insert(item.ident);
                             }
@@ -1486,7 +1486,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                     },
 
                     DeclKind::ForeignItem(existing_foreign, _) => {
-                        if let ForeignItemKind::Ty = &existing_foreign.kind {
+                        if let ForeignItemKind::TyAlias(_) = &existing_foreign.kind {
                             if foreign_equiv(&existing_foreign, &item) {
                                 // This item is equivalent to an existing foreign item,
                                 // modulo visibility.
@@ -1551,9 +1551,9 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
 
     fn find_foreign_item<'b>(&'b mut self, item: &ForeignItem, abi: Abi) -> ContainsDecl<'b> {
         let ns = match &item.kind {
-            ForeignItemKind::Fn(..) | ForeignItemKind::Static(..) => Namespace::ValueNS,
-            ForeignItemKind::Ty => Namespace::TypeNS,
-            ForeignItemKind::Macro(..) => unimplemented!(),
+            ForeignItemKind::Fn { .. } | ForeignItemKind::Static(..) => Namespace::ValueNS,
+            ForeignItemKind::TyAlias(..) => Namespace::TypeNS,
+            ForeignItemKind::MacCall(..) => unimplemented!(),
         };
         let ident = item.ident;
         assert!(ident.name != kw::Empty);
@@ -1584,8 +1584,9 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                             continue;
                         }
                         let matches_existing = match (&existing_foreign.kind, &item.kind) {
-                            (ForeignItemKind::Fn(decl1, _), ForeignItemKind::Fn(decl2, _)) => {
-                                self.cx.compatible_fn_prototypes(decl1, decl2)
+                            (ForeignItemKind::Fn(box Fn { sig: sig1, .. }),
+                             ForeignItemKind::Fn(box Fn { sig: sig2, .. })) => {
+                                self.cx.compatible_fn_prototypes(sig1.decl, sig2.decl)
                             }
 
                             _ => existing_foreign.ast_equiv(&item),
@@ -1625,9 +1626,9 @@ fn foreign_equiv(foreign: &ForeignItem, item: &Item) -> bool {
         // slightly different (param name, mutability), so we can't do an
         // ast_equiv on the FnDecl. Might be worth writing a custom comparison
         // for a sanity check, but not doing that right now.
-        (ForeignItemKind::Fn(..), ItemKind::Fn(..)) => true,
+        (ForeignItemKind::Fn { .. }, ItemKind::Fn { .. }) => true,
 
-        (ForeignItemKind::Static(frn_ty, _frn_mutbl), ItemKind::Static(ty, _mutbl, _)) => {
+        (ForeignItemKind::Static(frn_ty, _frn_mutbl, _), ItemKind::Static(ty, _mutbl, _)) => {
             if frn_ty.ast_equiv(&ty) {
                 return true;
             }
@@ -1644,10 +1645,10 @@ fn foreign_equiv(foreign: &ForeignItem, item: &Item) -> bool {
 
         // If we have a definition for this type name we can assume it is
         // equivalent.
-        (ForeignItemKind::Ty, ItemKind::TyAlias(..))
-        | (ForeignItemKind::Ty, ItemKind::Enum(..))
-        | (ForeignItemKind::Ty, ItemKind::Struct(..))
-        | (ForeignItemKind::Ty, ItemKind::Union(..)) => true,
+        (ForeignItemKind::TyAlias(..), ItemKind::TyAlias(..))
+        | (ForeignItemKind::TyAlias(..), ItemKind::Enum(..))
+        | (ForeignItemKind::TyAlias(..), ItemKind::Struct(..))
+        | (ForeignItemKind::TyAlias(..), ItemKind::Union(..)) => true,
 
         _ => false,
     }

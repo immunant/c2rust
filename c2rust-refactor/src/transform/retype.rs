@@ -262,7 +262,7 @@ impl Transform for RetypeStatic {
             }
 
             match fi.kind {
-                ForeignItemKind::Static(ref mut ty, _) => {
+                ForeignItemKind::Static(ref mut ty, _, _) => {
                     *ty = new_ty.clone();
                     mod_statics.insert(cx.node_def_id(fi.id));
                 },

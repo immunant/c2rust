@@ -432,12 +432,12 @@ impl Transform for WrapExtern {
             }
 
             match fi.kind {
-                ForeignItemKind::Fn(ref decl, _) => {
+                ForeignItemKind::Fn(box Fn { ref sig, .. }) => {
                     fns.push(FuncInfo {
                         id: fi.id,
                         def_id: cx.node_def_id(fi.id),
                         ident: fi.ident,
-                        decl: decl.clone(),
+                        decl: sig.decl.clone(),
                     });
                 },
 

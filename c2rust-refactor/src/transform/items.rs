@@ -373,7 +373,7 @@ impl Transform for SetMutability {
             fn flat_map_foreign_item(&mut self, mut i: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
                 if self.st.marked(i.id, "target") {
                     match i.kind {
-                        ForeignItemKind::Static(_, ref mut is_mutbl) =>
+                        ForeignItemKind::Static(_, ref mut is_mutbl, _) =>
                             *is_mutbl = self.mutbl,
                         _ => {},
                     }
