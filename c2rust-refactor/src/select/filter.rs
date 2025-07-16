@@ -74,7 +74,7 @@ impl<'ast> AnyNode<'ast> {
                 _ => None,
             },
             AnyNode::ForeignItem(fi) => match fi.kind {
-                ForeignItemKind::Static(_, mutability) => Some(mutability),
+                ForeignItemKind::Static(_, mutability, _) => Some(mutability),
                 _ => None,
             },
             AnyNode::Pat(p) => match p.kind {
@@ -220,8 +220,8 @@ impl ItemLikeKind {
         match i.kind {
             ForeignItemKind::Fn(..) => ItemLikeKind::Fn,
             ForeignItemKind::Static(..) => ItemLikeKind::Static,
-            ForeignItemKind::Ty => ItemLikeKind::Ty,
-            ForeignItemKind::Macro(..) => ItemLikeKind::Mac,
+            ForeignItemKind::TyAlias(..) => ItemLikeKind::Ty,
+            ForeignItemKind::MacCall(..) => ItemLikeKind::Mac,
         }
     }
 }
@@ -429,8 +429,8 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
 
     fn visit_foreign_item(&mut self, x: &'ast ForeignItem) {
         // Make sure we visit foreign function args as Param
-        if let ForeignItemKind::Fn(ref decl, _) = x.kind {
-            for arg in &decl.inputs {
+        if let ForeignItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
+            for arg in &sig.decl.inputs {
                 (self.func)(AnyNode::Param(arg));
             }
         }

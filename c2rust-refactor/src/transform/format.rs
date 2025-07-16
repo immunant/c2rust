@@ -230,13 +230,13 @@ impl Transform for ConvertPrintfs {
         visit_nodes(krate, |fi: &ForeignItem| {
             if crate::util::contains_name(&fi.attrs, sym::no_mangle) {
                 match (&*fi.ident.as_str(), &fi.kind) {
-                    ("printf", ForeignItemKind::Fn(_, _)) => {
+                    ("printf", ForeignItemKind::Fn(_)) => {
                         printf_defs.insert(cx.node_def_id(fi.id));
                     }
-                    ("fprintf", ForeignItemKind::Fn(_, _)) => {
+                    ("fprintf", ForeignItemKind::Fn(_)) => {
                         fprintf_defs.insert(cx.node_def_id(fi.id));
                     }
-                    ("stderr", ForeignItemKind::Static(_, _)) => {
+                    ("stderr", ForeignItemKind::Static(_, _, _)) => {
                         stderr_defs.insert(cx.node_def_id(fi.id));
                     }
                     _ => {}
