@@ -6,7 +6,6 @@ use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_hir::definitions::DefPathData;
 use rustc_hir::Node;
 use rustc_middle::hir::map::Map as HirMap;
-use rustc_middle::ty::subst::Subst;
 use rustc_middle::ty::{self, DefIdTree, GenericParamDefKind, TyCtxt};
 use rustc_ast::*;
 use rustc_ast::ptr::P;
