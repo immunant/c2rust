@@ -28,6 +28,7 @@ jobs:
             arch: x86_64
             clang-version: 15
       fail-fast: false
+    name: "run-testsuite (${{ matrix.runner }}: ${{ matrix.os }} ${{ matrix.arch}}, Clang ${{ matrix.clang-version }})"
     # The type of runner that the job will run on
     runs-on: ${{ matrix.runner }}
 
