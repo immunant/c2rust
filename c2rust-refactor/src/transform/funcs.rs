@@ -318,7 +318,7 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
         let i = if self.st.marked(i.id, "target") {
             i.map(|mut i| {
                 match i.kind {
-                    ItemKind::Fn(box Fn { ref mut sig, ref mut body, .. }) => {
+                    ItemKind::Fn(box Fn { ref mut sig, body: Some(ref mut body), .. }) => {
                         sink_unsafe(&mut sig.header.unsafety, body);
                     },
                     _ => {},
@@ -336,7 +336,7 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
     fn flat_map_impl_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         if self.st.marked(i.id, "target") {
             match i.kind {
-                AssocItemKind::Fn(box Fn { sig: FnSig { ref mut header, .. }, ref mut body, .. }) => {
+                AssocItemKind::Fn(box Fn { sig: FnSig { ref mut header, .. }, body: Some(ref mut body), .. }) => {
                     sink_unsafe(&mut header.unsafety, body);
                 },
                 _ => {},
