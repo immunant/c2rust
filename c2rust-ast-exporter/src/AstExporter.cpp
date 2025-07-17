@@ -1749,6 +1749,28 @@ class TranslateASTVisitor final
         return true;
     }
 
+#if CLANG_VERSION_MAJOR >= 9
+    bool VisitBuiltinBitCastExpr(BuiltinBitCastExpr *E) {
+        auto children = E->children();
+        std::vector<void *> childIds(std::begin(children), std::end(children));
+        encode_entry(E, TagBuiltinBitCastExpr, childIds);
+        return true;
+    }
+#endif
+
+    bool VisitMaterializeTemporaryExpr(MaterializeTemporaryExpr *E) {
+        auto children = E->children();
+        std::vector<void *> childIds(std::begin(children), std::end(children));
+        encode_entry(E, TagMaterializeTemporaryExpr, childIds);
+        return true;
+    }
+    bool VisitExprWithCleanups(ExprWithCleanups *E) {
+        auto children = E->children();
+        std::vector<void *> childIds(std::begin(children), std::end(children));
+        encode_entry(E, TagExprWithCleanups, childIds);
+        return true;
+    }
+
 #if CLANG_VERSION_MAJOR >= 8
     bool VisitConstantExpr(ConstantExpr *E) {
         auto children = E->children();

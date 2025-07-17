@@ -75,6 +75,10 @@ enum ASTEntryTag {
     TagConvertVectorExpr,
     TagDesignatedInitExpr,
 
+    TagBuiltinBitCastExpr,
+    TagMaterializeTemporaryExpr,
+    TagExprWithCleanups,
+
     // Wrapper expressions
     TagFullExpr, // unused
     TagConstantExpr,
