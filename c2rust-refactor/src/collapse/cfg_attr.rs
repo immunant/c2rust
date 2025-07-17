@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use rustc_ast::*;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
-use rustc_ast::visit::{self, Visitor};
+use rustc_ast::visit::{self, AssocCtxt, Visitor};
 use rustc_span::sym;
 use smallvec::SmallVec;
 
@@ -37,6 +37,11 @@ macro_rules! collect_cfg_attrs {
                 }
             )*
 
+            fn visit_assoc_item(&mut self, i: &'ast AssocItem, ctxt: AssocCtxt) {
+                self.collect(i);
+                visit::walk_assoc_item(self, i, ctxt);
+            }
+
             fn visit_mac_call(&mut self, mac: &'ast MacCall) {
                 visit::walk_mac(self, mac)
             }
@@ -46,7 +51,6 @@ macro_rules! collect_cfg_attrs {
 
 collect_cfg_attrs! {
     visit_item(Item), walk_item;
-    visit_assoc_item(AssocItem), walk_assoc_item;
     visit_foreign_item(ForeignItem), walk_foreign_item;
     visit_stmt(Stmt), walk_stmt;
     visit_expr(Expr), walk_expr;
