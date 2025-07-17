@@ -1039,11 +1039,11 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
         }
 
         match (&from.kind(), &to.kind()) {
-            (Ref(_, ref from, Mutability::Mutable), Ref(_, ref to, _))
+            (Ref(_, from, Mutability::Mut), Ref(_, to, _))
             // We ignore regions here because references from command-line args
             // won't have a valid region.
                 => self.can_cast(from, to, parent),
-            (Ref(_, ref from, Mutability::Immutable), Ref(_, ref to, Mutability::Immutable))
+            (Ref(_, from, Mutability::Not), Ref(_, to, Mutability::Not))
             // We ignore regions here because references from command-line args
             // won't have a valid region.
                 => self.can_cast(from, to, parent),
@@ -1053,7 +1053,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
              &RawPtr(TypeAndMut{ty: ref _to_ty, mutbl: to_mut})) => match (from_mut, to_mut) {
                 // Immutable -> Mutable is an allowed cast, but we shouldn't
                 // introduce these as they may break semantics.
-                (Mutability::Immutable, Mutability::Mutable) => false,
+                (Mutability::Not, Mutability::Mut) => false,
 
                 _ => {
                     let param_env_ty = self.cx.ty_ctxt().param_env(parent).and(to);
@@ -1248,7 +1248,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 TyKind::RawPtr(ty::TypeAndMut{ty: ref inner_ty, ref mutbl}),
             ) if (path.ident.name.as_str() == "as_mut_ptr"
                   || path.ident.name.as_str() == "as_ptr") => {
-                let new_method_name = if *mutbl == hir::Mutability::Mutable {
+                let new_method_name = if *mutbl == hir::Mutability::Mut {
                     "as_mut_ptr"
                 } else {
                     "as_ptr"
@@ -1275,14 +1275,14 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 let old_subtype = self.cx.node_type(e.id);
                 sub_expected.ty = match old_subtype.kind() {
                     TyKind::RawPtr(ty::TypeAndMut{mutbl: subtype_mutbl, ..}) => {
-                        let mutbl = expected.mutability.unwrap_or(subtype_mutbl);
+                        let mutbl = expected.mutability.unwrap_or(*subtype_mutbl);
                         self.cx.ty_ctxt().mk_ptr(ty::TypeAndMut{
                             ty: expected.ty,
                             mutbl
                         })
                     }
                     TyKind::Ref(_, _, subtype_mutbl) => {
-                        let mutbl = expected.mutability.unwrap_or(subtype_mutbl);
+                        let mutbl = expected.mutability.unwrap_or(*subtype_mutbl);
                         self.cx.ty_ctxt().mk_ref(&ty::ReEmpty, ty::TypeAndMut{
                             ty: expected.ty,
                             mutbl
@@ -1294,8 +1294,8 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             }
             (ExprKind::AddrOf(_, expr_mut, e), TyKind::Ref(_, subty, expected_mut)) => {
                 let mutbl = match (&expr_mut, expected_mut) {
-                    (Mutability::Mutable, _) |
-                    (Mutability::Immutable, hir::Mutability::Immutable) => expected_mut,
+                    (Mutability::Mut, _) |
+                    (Mutability::Not, hir::Mutability::Not) => expected_mut,
                     _ => return false,
                 };
                 let mut sub_expected = expected;

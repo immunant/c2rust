@@ -73,7 +73,7 @@ impl PatternSymbol for Stmt {
 impl PatternSymbol for Pat {
     fn pattern_symbol(&self) -> Option<Symbol> {
         match self.kind {
-            PatKind::Ident(BindingMode::ByValue(Mutability::Immutable), ref i, None) => {
+            PatKind::Ident(BindingMode::ByValue(Mutability::Not), ref i, None) => {
                 i.pattern_symbol()
             }
             _ => None,
