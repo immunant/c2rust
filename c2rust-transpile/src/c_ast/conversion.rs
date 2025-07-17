@@ -1706,6 +1706,58 @@ impl ConversionContext {
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, e)
                 }
 
+                ASTEntryTag::TagBuiltinBitCastExpr => {
+                    let expression_old = node.children[0].expect("Expected expression for bitcast");
+                    let expression = self.visit_expr(expression_old);
+
+                    let ty_old = node.type_id.expect("Expected type for bitcast");
+                    let ty = self.visit_qualified_type(ty_old);
+
+                    let e = CExprKind::ExplicitCast(
+                        ty,
+                        expression,
+                        CastKind::BitCast,
+                        None,
+                        node.rvalue,
+                    );
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, e)
+                }
+
+                ASTEntryTag::TagMaterializeTemporaryExpr => {
+                    let expression_old = node.children[0]
+                        .expect("Expected expression for materialize-temporary expr");
+                    let expression = self.visit_expr(expression_old);
+
+                    let ty_old = node
+                        .type_id
+                        .expect("Expected type for materialize-temporary expr");
+                    let ty = self.visit_qualified_type(ty_old);
+
+                    // C does not use this expression type (it has to do with C++ references), but
+                    // it nonetheless shows up in some system SIMD intrinsic headers even when
+                    // parsing as C. For now, just treat it as a trivial wrapper, i.e. parentheses.
+                    let e = CExprKind::Paren(ty, expression);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, e)
+                }
+
+                ASTEntryTag::TagExprWithCleanups => {
+                    let expression_old =
+                        node.children[0].expect("Expected expression for expr with cleanups");
+                    let expression = self.visit_expr(expression_old);
+
+                    let ty_old = node.type_id.expect("Expected type for expr with cleanups");
+                    let ty = self.visit_qualified_type(ty_old);
+
+                    // C does not use this expression type, but it nonetheless shows up in some
+                    // system SIMD intrinsic headers even when parsing as C. For now, just treat it
+                    // as a trivial wrapper, i.e. parentheses.
+                    let e = CExprKind::Paren(ty, expression);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, e)
+                }
+
                 ASTEntryTag::TagConstantExpr => {
                     let expr = node.children[0].expect("Missing ConstantExpr subexpression");
                     let expr = self.visit_expr(expr);
