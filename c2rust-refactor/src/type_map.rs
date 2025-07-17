@@ -220,7 +220,7 @@ where
                 }
             }
 
-            ItemKind::Const(ref ast_ty, _) => {
+            ItemKind::Const(_, ref ast_ty, _) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
