@@ -327,7 +327,7 @@ fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
 fn immediate_children(context: &TypedAstContext, s_or_e: SomeId) -> Vec<SomeId> {
     match s_or_e {
         SomeId::Stmt(stmt_id) => immediate_stmt_children(&context[stmt_id].kind),
-        SomeId::Expr(expr_id) => immediate_expr_children(&context[expr_id].kind),
+        SomeId::Expr(expr_id) => immediate_expr_children(&context.c_exprs[&expr_id].kind),
         SomeId::Decl(decl_id) => immediate_decl_children(&context[decl_id].kind),
         SomeId::Type(type_id) => immediate_type_children(&context[type_id].kind),
     }
@@ -336,7 +336,7 @@ fn immediate_children(context: &TypedAstContext, s_or_e: SomeId) -> Vec<SomeId> 
 pub fn immediate_children_all_types(context: &TypedAstContext, s_or_e: SomeId) -> Vec<SomeId> {
     match s_or_e {
         SomeId::Stmt(stmt_id) => immediate_stmt_children(&context[stmt_id].kind),
-        SomeId::Expr(expr_id) => immediate_expr_children_all_types(&context[expr_id].kind),
+        SomeId::Expr(expr_id) => immediate_expr_children_all_types(&context.c_exprs[&expr_id].kind),
         SomeId::Decl(decl_id) => immediate_decl_children(&context[decl_id].kind),
         SomeId::Type(type_id) => immediate_type_children(&context[type_id].kind),
     }
