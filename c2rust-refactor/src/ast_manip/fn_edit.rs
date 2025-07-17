@@ -151,7 +151,7 @@ where
                     decl: fl.decl,
                     span: sig_span,
                 };
-                AssocItem {
+                P(AssocItem {
                     id: fl.id,
                     ident: fl.ident,
                     span: fl.span,
@@ -164,7 +164,7 @@ where
                     attrs: fl.attrs,
                     vis: vis.clone(),
                     tokens: None,
-                }
+                })
             })
             .flat_map(|i| mut_visit::noop_flat_map_assoc_item(i, self))
             .collect()
@@ -200,7 +200,7 @@ where
                     decl: fl.decl,
                     span: sig_span,
                 };
-                AssocItem {
+                P(AssocItem {
                     id: fl.id,
                     ident: fl.ident,
                     span: fl.span,
@@ -212,9 +212,8 @@ where
                         body: fl.body,
                     })),
                     attrs: fl.attrs,
-                    generics: generics.clone(),
                     tokens: None,
-                }
+                })
             })
             .flat_map(|i| mut_visit::noop_flat_map_assoc_item(i, self))
             .collect()
@@ -261,6 +260,7 @@ where
                 })),
                 attrs: fl.attrs,
                 vis: vis.clone(),
+                tokens: None,
             }))
             .flat_map(|i| mut_visit::noop_flat_map_foreign_item(i, self))
             .collect()
