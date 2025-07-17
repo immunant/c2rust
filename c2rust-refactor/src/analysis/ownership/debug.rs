@@ -106,14 +106,14 @@ where
             TyKind::Ref(_, _, m) => write!(
                 fmt,
                 "&{}{:?} {:?}",
-                if m == Mutability::Immutable { "" } else { "mut " },
+                if *m == Mutability::Not { "" } else { "mut " },
                 PrettyLabel(self.0.label),
                 Pretty(self.0.args[0])
             ),
             TyKind::RawPtr(mty) => write!(
                 fmt,
                 "*{} {:?} {:?}",
-                if mty.mutbl == Mutability::Immutable {
+                if mty.mutbl == Mutability::Not {
                     "const"
                 } else {
                     "mut"

@@ -473,7 +473,7 @@ impl Transform for WrapExtern {
                     let arg_names = f.decl.inputs.iter().enumerate().map(|(idx, arg)| {
                         // TODO: match_arg("__i: __t", arg).ident("__i")
                         match arg.pat.kind {
-                            PatKind::Ident(BindingMode::ByValue(Mutability::Immutable),
+                            PatKind::Ident(BindingMode::ByValue(Mutability::Not),
                                            ident,
                                            None) => {
                                 ident
