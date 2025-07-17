@@ -84,7 +84,7 @@ impl Transform for RetypeArgument {
             // see `x` again in the recursive call.  We keep track of which nodes have already been
             // rewritten so that we don't end up with a stack overflow.
             let mut rewritten_nodes = HashSet::new();
-            fl.block.as_mut().map(|b| MutVisitNodes::visit(b, |e: &mut P<Expr>| {
+            fl.body.as_mut().map(|b| MutVisitNodes::visit(b, |e: &mut P<Expr>| {
                 if let Some(hir_id) = cx.try_resolve_expr_to_hid(&e) {
                     if changed_args.contains(&hir_id) && !rewritten_nodes.contains(&e.id) {
                         rewritten_nodes.insert(e.id);
@@ -162,7 +162,7 @@ impl Transform for RetypeReturn {
             fl.decl.output = FnRetTy::Ty(new_ty.clone());
 
             // Rewrite output expressions using `wrap`.
-            fl.block.as_mut().map(|b| fold_output_exprs(b, true, |e| {
+            fl.body.as_mut().map(|b| fold_output_exprs(b, true, |e| {
                 let mut bnd = Bindings::new();
                 bnd.add("__old", e.clone());
                 *e = wrap.clone().subst(st, cx, &bnd);
@@ -553,7 +553,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
 
     mut_visit_fns(krate, |fl| {
         if let Some(&(ref old_ty, ref new_ty)) = changed_outputs.get(&fl.id) {
-            fl.block.as_mut().map(|b| fold_output_exprs(b, true, |e| {
+            fl.body.as_mut().map(|b| fold_output_exprs(b, true, |e| {
                 *e = transmute(e.clone(), lr_expr::Context::Rvalue, old_ty, new_ty);
             }));
         }
@@ -966,7 +966,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
         let mut errors = false;
 
         visit_fns(krate, |func| {
-            if func.block.is_some() {
+            if func.body.is_some() {
                 let def_id = self.cx.hir_map().local_def_id_from_node_id(func.id);
                 let tables = self.cx.ty_ctxt().typeck_tables_of(def_id);
                 if tables.tainted_by_errors {
