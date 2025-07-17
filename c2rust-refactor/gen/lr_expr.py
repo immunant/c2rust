@@ -33,9 +33,9 @@ def expr_kind_match(d, mode):
                 yield '    r#%s.fold_%s(lr);' % (f.name, mode)
             elif 'lvalue_kind' in f.attrs:
                 yield '    match %s {' % f.attrs['lvalue_kind']
-                yield '      Mutability::Mutable =>'
+                yield '      Mutability::Mut =>'
                 yield '        r#%s.fold_lvalue_mut(lr),' % f.name
-                yield '      Mutability::Immutable =>'
+                yield '      Mutability::Not =>'
                 yield '        r#%s.fold_lvalue(lr),' % f.name
                 yield '    }'
             else:
