@@ -693,12 +693,14 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 }
             }
 
-            (Const(ty1, expr1), Const(ty2, expr2)) => {
+            (Const(def1, ty1, expr1), Const(def2, ty2, expr2)) => {
                 match (self.cx.opt_node_type(item1.id), self.cx.opt_node_type(item2.id)) {
                     (Some(ty1), Some(ty2)) => {
-                        self.structural_eq_tys(ty1, ty2) && expr1.unnamed_equiv(expr2)
+                        self.structural_eq_tys(ty1, ty2) && expr1.unnamed_equiv(expr2) &&
+                            def1.unnamed_equiv(def2)
                     }
-                    _ => self.structural_eq_ast_tys(ty1, ty2) && expr1.unnamed_equiv(expr2),
+                    _ => self.structural_eq_ast_tys(ty1, ty2) && expr1.unnamed_equiv(expr2) &&
+                        def1.unnamed_equiv(def2),
                 }
             }
 

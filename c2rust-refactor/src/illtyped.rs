@@ -302,7 +302,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
 
                     self.ensure(expr, expected_ty);
                 }
-                ItemKind::Const(_ty, expr) => {
+                ItemKind::Const(_defaultness, _ty, expr) => {
                     let did = self.cx.node_def_id(id);
                     let expected_ty = self.cx.ty_ctxt().type_of(did);
                     self.ensure(expr, expected_ty);
