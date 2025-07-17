@@ -1124,7 +1124,7 @@ impl HasAttrs for DeclKind {
         }
     }
 
-    fn visit_attrs<F: FnOnce(&mut Vec<Attribute>)>(&mut self, f: F) {
+    fn visit_attrs(&mut self, f: impl FnOnce(&mut Vec<Attribute>)) {
         match self {
             DeclKind::Item(i) => i.visit_attrs(f),
             DeclKind::ForeignItem(i, _) => i.visit_attrs(f),
