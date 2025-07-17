@@ -428,14 +428,22 @@ impl VisitNode {
 }
 
 pub trait NodeVisitor {
-    /// Visit nodes in pre-order traversal. Returns true if we should traverse
+    /// Return the immediate child nodes of a given node.
+    ///
+    /// Generally implemented via `immediate_children[_all_types]`.
+    fn children(&mut self, _id: SomeId) -> Vec<SomeId>;
+    /// Visits nodes in pre-order traversal. Returns true if we should traverse
     /// children. If we are not traversing children, the node will still be
     /// visited by `post`.
     fn pre(&mut self, _id: SomeId) -> bool {
         true
     }
+    /// Visits nodes in post-order traversal.
     fn post(&mut self, _id: SomeId) {}
-    fn visit_tree(&mut self, context: &TypedAstContext, root: SomeId) {
+    /// Perform a traversal of the nodes in the AST starting at the given root node.
+    /// The `pre` method will be called on each node before visiting its children, and the `post`
+    /// method afterward.
+    fn visit_tree(&mut self, root: SomeId) {
         let mut stack = vec![VisitNode::new(root)];
         while let Some(mut node) = stack.pop() {
             if !node.seen {
@@ -444,9 +452,8 @@ pub trait NodeVisitor {
                 stack.push(node);
 
                 if self.pre(id) {
-                    let children = immediate_children_all_types(context, id);
                     // Add children in reverse order since we visit the end of the stack first
-                    stack.extend(children.into_iter().rev().map(VisitNode::new));
+                    stack.extend(self.children(id).into_iter().rev().map(VisitNode::new));
                 }
             } else {
                 self.post(node.id);
