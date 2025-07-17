@@ -73,7 +73,7 @@ impl Transform for ToMethod {
 
             sig: FnSig,
             generics: Generics,
-            block: P<Block>,
+            body: Option<P<Block>>,
 
             /// Index of the argument that will be replaced with `self`, or `None` if this function
             /// is being turned into a static method.
@@ -96,11 +96,11 @@ impl Transform for ToMethod {
                 None
             }) {
                 let i = curs.remove();
-                let (sig, generics, block) = expect!([i.kind.clone()]
+                let (sig, generics, body) = expect!([i.kind.clone()]
                     ItemKind::Fn(box Fn { sig, generics, body, .. }) => (sig, generics, body));
                 fns.push(FnInfo {
                     item: i,
-                    sig, generics, block,
+                    sig, generics, body,
                     arg_idx,
                 });
             }
@@ -213,7 +213,7 @@ impl Transform for ToMethod {
                             defaultness,
                             generics: f.generics,
                             sig: f.sig,
-                            body: f.block,
+                            body: f.body,
                         })),
                         span: f.item.span,
                         tokens: None,

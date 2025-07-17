@@ -269,7 +269,7 @@ impl Transform for Localize {
             let fn_def_id = cx.node_def_id(fl.id);
 
             let mut refs = HashSet::new();
-            fold_resolved_paths(&mut fl.block, cx, |qself, path, def| {
+            fold_resolved_paths(&mut fl.body, cx, |qself, path, def| {
                 if let Some(def_id) = def[0].opt_def_id() {
                     refs.insert(def_id);
                 }
@@ -337,7 +337,7 @@ impl Transform for Localize {
                 }
 
                 // Update uses of statics.
-                MutVisitNodes::visit(&mut fl.block, |e: &mut P<Expr>| {
+                MutVisitNodes::visit(&mut fl.body, |e: &mut P<Expr>| {
                     if let Some(def_id) = cx.try_resolve_expr(&e) {
                         if let Some(info) = statics.get(&def_id) {
                             *e = mk().unary_expr("*", mk().ident_expr(info.arg_name));
@@ -347,7 +347,7 @@ impl Transform for Localize {
                 });
 
                 // Update calls to other marked functions.
-                MutVisitNodes::visit(&mut fl.block, |e: &mut P<Expr>| {
+                MutVisitNodes::visit(&mut fl.body, |e: &mut P<Expr>| {
                     if let ExprKind::Call(func, args) = &mut e.kind {
                         if let Some(func_id) = cx.try_resolve_expr(&func) {
                             if let Some(func_static_ids) = fn_statics.get(&func_id) {
@@ -361,7 +361,7 @@ impl Transform for Localize {
 
             } else {
                 // Update calls only.
-                MutVisitNodes::visit(&mut fl.block, |e: &mut P<Expr>| {
+                MutVisitNodes::visit(&mut fl.body, |e: &mut P<Expr>| {
                     if let ExprKind::Call(func, args) = &mut e.kind {
                         if let Some(func_id) = cx.try_resolve_expr(&func) {
                             if let Some(func_static_ids) = fn_statics.get(&func_id) {
@@ -463,7 +463,7 @@ impl Transform for StaticToLocal {
             // Figure out which statics (if any) this function uses.
             let mut ref_ids = HashSet::new();
             let mut refs = Vec::new();
-            fold_resolved_paths(&mut fl.block, cx, |qself, path, def| {
+            fold_resolved_paths(&mut fl.body, cx, |qself, path, def| {
                 if let Some(def_id) = def[0].opt_def_id() {
                     if ref_ids.insert(def_id) {
                         if let Some(info) = statics.get(&def_id) {
@@ -480,7 +480,7 @@ impl Transform for StaticToLocal {
 
             refs.sort_by_key(|info| info.name.name);
 
-            if let Some(block) = &mut fl.block {
+            if let Some(block) = &mut fl.body {
                 let new_stmts = Vec::with_capacity(refs.len() + block.stmts.len());
                 let old_stmts = mem::replace(&mut block.stmts, new_stmts);
 
