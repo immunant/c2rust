@@ -808,7 +808,13 @@ impl TypedAstContext {
                                 && !self.ast_context[rhs_resolved].kind.is_pointer();
 
                             if op.all_types_same() && neither_ptr {
-                                Some(lhs_type_id)
+                                if CTypeKind::PULLBACK_KINDS
+                                    .contains(&self.ast_context[lhs_resolved].kind)
+                                {
+                                    Some(lhs_type_id)
+                                } else {
+                                    Some(rhs_type_id)
+                                }
                             } else if op == BinOp::ShiftLeft || op == BinOp::ShiftRight {
                                 Some(lhs_type_id)
                             } else {
