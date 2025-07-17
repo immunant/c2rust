@@ -410,7 +410,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
             } else if crate::matches!([i.kind] ItemKind::Const(..)) {
                 i.map(|mut i| {
                     {
-                        let ty = expect!([i.kind] ItemKind::Const(ref mut ty, _) => ty);
+                        let ty = expect!([i.kind] ItemKind::Const(_, ref mut ty, _) => ty);
                         let old_ty = ty.clone();
                         if (self.retype)(ty) {
                             self.changed_defs.insert(i.id, (old_ty, ty.clone()));
