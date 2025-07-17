@@ -679,12 +679,19 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
         use rustc_ast::ItemKind::*;
         match (&item1.kind, &item2.kind) {
             // * Assure that these two items are in fact of the same type, just to be safe.
-            (TyAlias(ty1, g1), TyAlias(ty2, g2)) => {
+            (TyAlias(box ref ta1), TyAlias(box ref ta2)) => {
                 match (self.cx.opt_node_type(item1.id), self.cx.opt_node_type(item2.id)) {
                     (Some(ty1), Some(ty2)) => self.structural_eq_tys(ty1, ty2),
                     _ => {
-                        if g1.params.is_empty() && g2.params.is_empty() {
-                            self.structural_eq_ast_tys(ty1, ty2)
+                        // TODO: handle type aliases in traits; for now we don't
+                        // care about them because C2Rust does not emit traits
+                        let ty1 = expect!([ta1.ty] Some(ref ty) => ty.deref());
+                        let ty2 = expect!([ta2.ty] Some(ref ty) => ty.deref());
+
+                        if ta1.generics.params.is_empty() && ta2.generics.params.is_empty() {
+                            // TODO: compare the other fields
+                            self.structural_eq_ast_tys(ty1, ty2) &&
+                                ta1.defaultness.unnamed_equiv(&ta2.defaultness)
                         } else {
                             // FIXME: handle generics (we don't need to for now)
                             false
