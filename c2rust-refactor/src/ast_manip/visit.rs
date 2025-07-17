@@ -65,7 +65,7 @@ gen_visit_impls! {
         //) { ... }
         //fn visit_assoc_item(&mut self, ti: &'ast AssocItem, ctxt: AssocCtxt) { ... }
         fn visit_trait_ref(&mut self, t: &'ast TraitRef) { ... }
-        fn visit_param_bound(&mut self, bounds: &'ast GenericBound) { ... }
+        //fn visit_param_bound(&mut self, bounds: &'ast GenericBound, ctxt: BoundKind) { ... }
         //fn visit_poly_trait_ref(
         //    &mut self,
         //    t: &'ast PolyTraitRef,
@@ -94,7 +94,7 @@ gen_visit_impls! {
         //    item_id: NodeId
         //) { ... }
         fn visit_label(&mut self, label: &'ast Label) { ... }
-        fn visit_lifetime(&mut self, lifetime: &'ast Lifetime) { ... }
+        //fn visit_lifetime(&mut self, lifetime: &'ast Lifetime, ctxt: LifetimeCtxt) { ... }
         fn visit_mac_call(&mut self, mac: &'ast MacCall) { ... }
         //fn visit_mac_def(&mut self, _mac: &'ast MacroDef, _id: NodeId) { ... }
         //fn visit_path(&mut self, path: &'ast Path, _id: NodeId) { ... }
