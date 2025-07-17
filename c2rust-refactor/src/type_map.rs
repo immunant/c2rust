@@ -232,7 +232,7 @@ where
                 }
             }
 
-            ItemKind::TyAlias(ref ast_ty, _) => {
+            ItemKind::TyAlias(box TyAlias { ty: Some(ref ast_ty), .. }) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
