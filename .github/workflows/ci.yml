@@ -23,6 +23,7 @@ jobs:
             arch: x86_64
             clang-version: 17
       fail-fast: false
+    name: "test (${{ matrix.runner }}: ${{ matrix.os }} ${{ matrix.arch}}, Clang ${{ matrix.clang-version }})"
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
