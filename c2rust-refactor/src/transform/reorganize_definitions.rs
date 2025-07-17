@@ -245,7 +245,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             let mut used_idents = HashSet::new();
             for item in &items {
                 match &item.kind {
-                    ItemKind::Fn(box Fn { body, .. }) => {
+                    ItemKind::Fn(box Fn { body: Some(ref body), .. }) => {
                         keep_items.insert(item.id);
                         visit_nodes(&**body, |path: &Path| {
                             if path.segments.len() == 1 {
