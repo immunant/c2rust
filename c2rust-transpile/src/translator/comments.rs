@@ -1,5 +1,5 @@
 use super::Translation;
-use crate::c_ast::iterators::{NodeVisitor, SomeId};
+use crate::c_ast::iterators::{immediate_children_all_types, NodeVisitor, SomeId};
 use crate::c_ast::{CDeclId, CDeclKind, CommentContext, SrcLoc, TypedAstContext};
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::{pos_to_span, SpanExt};
@@ -69,6 +69,9 @@ impl<'c> CommentLocator<'c> {
 }
 
 impl<'c> NodeVisitor for CommentLocator<'c> {
+    fn children(&mut self, id: SomeId) -> Vec<SomeId> {
+        immediate_children_all_types(self.ast_context, id)
+    }
     fn pre(&mut self, mut id: SomeId) -> bool {
         // Don't traverse into unvisited top-level decls, we should visit those
         // in sorted order.
@@ -171,7 +174,7 @@ impl<'c> Translation<'c> {
                 top_decls: &top_decls,
                 last_id: None,
             };
-            visitor.visit_tree(&self.ast_context, SomeId::Decl(*decl_id));
+            visitor.visit_tree(SomeId::Decl(*decl_id));
         }
         self.spans = spans;
     }
