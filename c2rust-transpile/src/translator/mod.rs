@@ -506,6 +506,11 @@ pub fn translate(
         t.ast_context
             .prune_unwanted_decls(tcfg.preserve_unused_functions);
 
+        // Normalize AST types between Clang < 16 and later versions. Ensures that
+        // binary and unary operators' expr types agree with their argument types
+        // in the presence of typedefs.
+        t.ast_context.bubble_expr_types();
+
         enum Name<'a> {
             Var(&'a str),
             Type(&'a str),
