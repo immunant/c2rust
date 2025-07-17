@@ -26,8 +26,8 @@ impl Transform for CanonicalizeRefs {
                     }
                     Adjust::Borrow(AutoBorrow::Ref(_, ref mutability)) => {
                         let mutability = match mutability {
-                            AutoBorrowMutability::Mutable{..} => Mutability::Mutable,
-                            AutoBorrowMutability::Immutable => Mutability::Immutable,
+                            AutoBorrowMutability::Mut { .. } => Mutability::Mut,
+                            AutoBorrowMutability::Not => Mutability::Not,
                         };
                         *expr = mk().set_mutbl(mutability).addr_of_expr(expr.clone());
                     }
