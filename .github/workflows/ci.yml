@@ -21,6 +21,7 @@ jobs:
           - runner: macos-13
             os: macOS
             arch: x86_64
+            clang-version: 17
       fail-fast: false
     runs-on: ${{ matrix.runner }}
     steps:
@@ -72,7 +73,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           # `bash` needed b/c macOS ships with bash 3, which doesn't support arrays properly
-          brew install -q cmake ninja gpg llvm@17 bash
+          brew install -q cmake ninja gpg llvm@${{ matrix.clang-version }} bash
 
       - uses: astral-sh/setup-uv@v6
 
