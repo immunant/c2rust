@@ -381,7 +381,7 @@ fn do_split_variants(st: &CommandState,
                 fl.attrs.push(build_mono_attr(&mr.suffix, &mr.assign));
                 fl.attrs.push(build_variant_attr(&path_str));
 
-                fl.block.as_mut().map(|b| MutVisitNodes::visit(b, |e: &mut P<Expr>| {
+                fl.body.as_mut().map(|b| MutVisitNodes::visit(b, |e: &mut P<Expr>| {
                     let fref_idx = match_or!([span_fref_idx.get(&e.span)]
                                              Some(&x) => x; return);
                     handled_spans.insert(e.span);
