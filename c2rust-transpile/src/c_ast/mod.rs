@@ -750,6 +750,97 @@ impl TypedAstContext {
         self.c_decls_top.retain(|x| wanted.contains(x));
     }
 
+    /// Bubble types of unary and binary operators up from their args into the expression type.
+    ///
+    /// In Clang 15 and below, the Clang AST resolves typedefs in the expression type of unary and
+    /// binary expressions. For example, a BinaryExpr node adding two `size_t` expressions will be
+    /// given an `unsigned long` type rather than the `size_t` typedef type. This behavior changed
+    /// in Clang 16. This method adjusts AST node types to match those produced by Clang 16 and
+    /// newer; on these later Clang versions, it should have no effect.
+    ///
+    /// This pass is necessary because we reify some typedef types (such as `size_t`) into their own
+    /// distinct Rust types. As such, we need to make sure we know the exact type to generate when
+    /// we translate an expr, not just its resolved type (looking through typedefs).
+    pub fn bubble_expr_types(&mut self) {
+        struct BubbleExprTypes<'a> {
+            ast_context: &'a mut TypedAstContext,
+        }
+
+        use iterators::{immediate_children_all_types, NodeVisitor};
+        impl<'a> NodeVisitor for BubbleExprTypes<'a> {
+            fn children(&mut self, id: SomeId) -> Vec<SomeId> {
+                immediate_children_all_types(self.ast_context, id)
+            }
+            fn post(&mut self, id: SomeId) {
+                if let SomeId::Expr(e) = id {
+                    let new_ty = match self.ast_context.c_exprs[&e].kind {
+                        CExprKind::Conditional(_ty, _cond, lhs, rhs) => {
+                            let lhs_type_id =
+                                self.ast_context.c_exprs[&lhs].kind.get_qual_type().unwrap();
+                            let rhs_type_id =
+                                self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
+
+                            let lhs_resolved = self.ast_context.resolve_type_id(lhs_type_id.ctype);
+                            let rhs_resolved = self.ast_context.resolve_type_id(rhs_type_id.ctype);
+
+                            if CTypeKind::PULLBACK_KINDS
+                                .contains(&self.ast_context[lhs_resolved].kind)
+                            {
+                                Some(lhs_type_id)
+                            } else if CTypeKind::PULLBACK_KINDS
+                                .contains(&self.ast_context[rhs_resolved].kind)
+                            {
+                                Some(rhs_type_id)
+                            } else {
+                                None
+                            }
+                        }
+                        CExprKind::Binary(_ty, op, lhs, rhs, _, _) => {
+                            let rhs_type_id =
+                                self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
+                            let lhs_kind = &self.ast_context.c_exprs[&lhs].kind;
+                            let lhs_type_id = lhs_kind.get_qual_type().unwrap();
+
+                            let lhs_resolved = self.ast_context.resolve_type_id(lhs_type_id.ctype);
+                            let rhs_resolved = self.ast_context.resolve_type_id(rhs_type_id.ctype);
+
+                            let neither_ptr = !self.ast_context[lhs_resolved].kind.is_pointer()
+                                && !self.ast_context[rhs_resolved].kind.is_pointer();
+
+                            if op.all_types_same() && neither_ptr {
+                                Some(lhs_type_id)
+                            } else if op == BinOp::ShiftLeft || op == BinOp::ShiftRight {
+                                Some(lhs_type_id)
+                            } else {
+                                return;
+                            }
+                        }
+                        CExprKind::Unary(_ty, op, e, _idk) => op.expected_result_type(
+                            self.ast_context,
+                            self.ast_context.c_exprs[&e].kind.get_qual_type().unwrap(),
+                        ),
+                        CExprKind::Paren(_ty, e) => {
+                            self.ast_context.c_exprs[&e].kind.get_qual_type()
+                        }
+                        _ => return,
+                    };
+                    if let (Some(ty), Some(new_ty)) = (
+                        self.ast_context
+                            .c_exprs
+                            .get_mut(&e)
+                            .and_then(|e| e.kind.get_qual_type_mut()),
+                        new_ty,
+                    ) {
+                        *ty = new_ty;
+                    };
+                }
+            }
+        }
+        for decl in self.c_decls_top.clone() {
+            BubbleExprTypes { ast_context: self }.visit_tree(SomeId::Decl(decl));
+        }
+    }
+
     pub fn sort_top_decls(&mut self) {
         // Group and sort declarations by file and by position
         let mut decls_top = mem::take(&mut self.c_decls_top);
@@ -1234,7 +1325,11 @@ impl CExprKind {
     }
 
     pub fn get_qual_type(&self) -> Option<CQualTypeId> {
-        match *self {
+        self.clone().get_qual_type_mut().copied()
+    }
+
+    pub fn get_qual_type_mut(&mut self) -> Option<&mut CQualTypeId> {
+        match self {
             CExprKind::BadExpr => None,
             CExprKind::Literal(ty, _)
             | CExprKind::OffsetOf(ty, _)
@@ -1352,6 +1447,42 @@ impl UnOp {
             Extension => "__extension__",
             Coawait => "co_await",
         }
+    }
+
+    /// Obtain the expected type of a unary expression based on the operator and its argument type
+    pub fn expected_result_type(
+        &self,
+        ast_context: &TypedAstContext,
+        arg_type: CQualTypeId,
+    ) -> Option<CQualTypeId> {
+        use UnOp::*;
+        let resolved = ast_context.resolve_type_id(arg_type.ctype);
+        Some(match self {
+            // We could construct CTypeKind::Pointer here, but it is not guaranteed to have a
+            // corresponding `CTypeId` in the `TypedAstContext`, so bail out instead
+            AddressOf => return None,
+            Deref => {
+                if let CTypeKind::Pointer(inner) = ast_context[resolved].kind {
+                    inner
+                } else {
+                    panic!("dereferencing non-pointer type!")
+                }
+            }
+            Not => {
+                return ast_context
+                    .type_for_kind(&CTypeKind::Int)
+                    .map(CQualTypeId::new)
+            }
+            Real | Imag => {
+                if let CTypeKind::Complex(inner) = ast_context[resolved].kind {
+                    CQualTypeId::new(inner)
+                } else {
+                    panic!("__real or __imag applied to non-complex type!")
+                }
+            }
+            Coawait => panic!("trying to propagate co_await type"),
+            _ => CQualTypeId::new(arg_type.ctype),
+        })
     }
 }
 
