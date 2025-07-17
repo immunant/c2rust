@@ -216,10 +216,10 @@ fn analyze_externs<'a, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'
         for &input in func_summ.sig.inputs {
             if let Some(p) = input.label {
                 match input.ty.kind() {
-                    TyKind::Ref(_, _, Mutability::Mutable) => {
+                    TyKind::Ref(_, _, Mutability::Mut) => {
                         func_summ.sig_cset.add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
                     }
-                    TyKind::RawPtr(TypeAndMut{mutbl: Mutability::Mutable, ..}) => {
+                    TyKind::RawPtr(TypeAndMut{mutbl: Mutability::Mut, ..}) => {
                         func_summ.sig_cset.add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
                     }
                     _ => {}
@@ -240,7 +240,7 @@ fn analyze_inter<'lty, 'tcx>(cx: &mut Ctxt<'lty, 'tcx>) {
 
 fn is_mut_t(ty: &Ty) -> bool {
     if let TyKind::RawPtr(mut_ty) = ty.kind() {
-        if mut_ty.mutbl == Mutability::Mutable {
+        if mut_ty.mutbl == Mutability::Mut {
             if let TyKind::Param(param_ty) = mut_ty.ty.kind() {
                 return param_ty.name.as_str() == "T";
             }
