@@ -38,6 +38,12 @@ jobs:
       # Run after `rust-cache` so that this is cached.
       - run: rustup component add rustfmt rustc-dev
 
+      - name: cargo fmt --check
+        run: |
+          export RUSTFLAGS="-D warnings"
+          export RUSTDOCFLAGS="-D warnings"
+          cargo fmt --check
+
       - name: Install packages (Ubuntu)
         if: runner.os == 'Linux'
         run: |
@@ -86,11 +92,6 @@ jobs:
           uv venv
           uv pip install -r ./scripts/requirements.txt
 
-      - name: cargo fmt --check
-        run: |
-          export RUSTFLAGS="-D warnings"
-          export RUSTDOCFLAGS="-D warnings"
-          cargo fmt --check
       - name: cargo build --release
         run: |
           export RUSTFLAGS="-D warnings"
