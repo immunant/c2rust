@@ -1,7 +1,6 @@
 //! Command management and overall refactoring state.
 
 use log::{info, warn};
-use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_session::{self, DiagnosticOutput, Session};
 use rustc_middle::hir::map as hir_map;
 use rustc_middle::ty::TyCtxt;
@@ -413,7 +412,7 @@ impl RefactorState {
                 Phase::Phase3 => {
                     profile_start!("Compiler Phase 3");
                     let r = queries.global_ctxt()?.take().enter(|tcx| {
-                        let _result = tcx.analysis(LOCAL_CRATE);
+                        let _result = tcx.analysis(());
                         let cx = RefactorCtxt::new_phase_3(
                             session,
                             max_crate_node_id.unwrap(),
