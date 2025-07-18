@@ -2,7 +2,6 @@
 
 use log::{info, warn};
 use rustc_session::{self, DiagnosticOutput, Session};
-use rustc_middle::hir::map as hir_map;
 use rustc_middle::ty::TyCtxt;
 use rustc_data_structures::sync::Lrc;
 use rustc_interface::interface;
@@ -15,7 +14,7 @@ use std::mem;
 use std::ops::Deref;
 use std::process;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use rustc_ast::{Crate, NodeId, CRATE_NODE_ID};
 use rustc_ast::{Expr, Item, Pat, Stmt, Ty};
 use rustc_ast::ptr::P;
@@ -389,31 +388,27 @@ impl RefactorState {
 
                 Phase::Phase2 => {
                     profile_start!("Lower to HIR");
-                    let hir = queries.lower_to_hir()?.take();
-                    let (ref hir_forest, ref resolver) = hir;
-                    let resolver = resolver.steal();
-                    let map = hir_map::map_crate(
-                        session,
-                        &*resolver.cstore,
-                        &hir_forest,
-                        resolver.definitions,
-                    );
-                    profile_end!("Lower to HIR");
+                    let r = queries.global_ctxt()?.take().enter(|tcx| {
+                        let cx = RefactorCtxt::new_phase_2_3(
+                            session,
+                            max_crate_node_id.unwrap(),
+                            tcx.hir(),
+                            GenerationalTyCtxt(tcx, tcx_gen.clone()),
+                        );
+                        profile_end!("Lower to HIR");
 
-                    let cx = RefactorCtxt::new_phase_2(
-                        session,
-                        max_crate_node_id.unwrap(),
-                        &map,
-                    );
+                        f(&cs, &cx)
+                    });
 
-                    f(&cs, &cx)
+                    r
                 }
 
                 Phase::Phase3 => {
                     profile_start!("Compiler Phase 3");
                     let r = queries.global_ctxt()?.take().enter(|tcx| {
+                        // One extra step for Phase 3: run the analysis passes
                         let _result = tcx.analysis(());
-                        let cx = RefactorCtxt::new_phase_3(
+                        let cx = RefactorCtxt::new_phase_2_3(
                             session,
                             max_crate_node_id.unwrap(),
                             tcx.hir(),
@@ -423,13 +418,6 @@ impl RefactorState {
 
                         f(&cs, &cx)
                     });
-
-                    // Increment the `TyCtxt` generation number, so all the
-                    // existing `LuaTy` values are invalidated
-                    tcx_gen.fetch_add(1, Ordering::Relaxed);
-
-                    // Ensure that we've dropped any copies of the session Lrc
-                    let _ = queries.lower_to_hir()?.take();
 
                     r
                 }
