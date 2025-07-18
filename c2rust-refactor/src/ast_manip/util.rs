@@ -184,10 +184,10 @@ fn split_uses_impl(
     match tree.kind {
         UseTreeKind::Simple(..) | UseTreeKind::Glob => {
             item.id = id;
-            item.kind = ItemKind::Use(P(UseTree {
+            item.kind = ItemKind::Use(UseTree {
                 prefix: path,
                 ..tree
-            }));
+            });
             out.push(item);
         }
         UseTreeKind::Nested(children) => {
@@ -201,9 +201,7 @@ fn split_uses_impl(
 /// Split a use statement which may have nesting into one or more simple use
 /// statements without nesting.
 pub fn split_uses(item: P<Item>) -> SmallVec<[P<Item>; 1]> {
-    let use_tree = expect!([&item.kind] ItemKind::Use(u) => u)
-        .clone()
-        .into_inner();
+    let use_tree = expect!([&item.kind] ItemKind::Use(u) => u.clone());
     let mut out = smallvec![];
     let initial_path = Path {
         span: use_tree.prefix.span,
