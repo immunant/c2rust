@@ -28,6 +28,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install Python Packages
+        run: |
+          uv venv
+          uv pip install -r ./scripts/requirements.txt
+
       # rust-cache very carefully caches toolchains and target directories,
       # based on the job and toolchain and other factors. See
       # https://github.com/Swatinem/rust-cache#cache-details for what gets
@@ -84,13 +91,6 @@ jobs:
         run: |
           # `bash` needed b/c macOS ships with bash 3, which doesn't support arrays properly
           brew install -q cmake ninja gpg llvm@${{ matrix.clang-version }} bash
-
-      - uses: astral-sh/setup-uv@v6
-
-      - name: Install Python Packages
-        run: |
-          uv venv
-          uv pip install -r ./scripts/requirements.txt
 
       - name: cargo build --release
         run: |
