@@ -64,18 +64,10 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         RefactorCtxt::new(sess, None, None, None)
     }
 
-    pub fn new_phase_2(
+    pub fn new_phase_2_3(
         sess: &'a Session,
         max_node_id: NodeId,
-        map: &'a hir_map::Map<'tcx>,
-    ) -> RefactorCtxt<'a, 'tcx> {
-        RefactorCtxt::new(sess, None, Some(HirMap::new(max_node_id, map)), None)
-    }
-
-    pub fn new_phase_3(
-        sess: &'a Session,
-        max_node_id: NodeId,
-        map: &'a hir_map::Map<'tcx>,
+        map: hir_map::Map<'tcx>,
         tcx: GenerationalTyCtxt<'tcx>,
     ) -> RefactorCtxt<'a, 'tcx> {
         RefactorCtxt::new(sess, None, Some(HirMap::new(max_node_id, map)), Some(tcx))
