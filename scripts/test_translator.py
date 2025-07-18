@@ -402,7 +402,6 @@ class TestDirectory:
             "extern_types",
             "simd_ffi",
             "stdsimd",
-            "nll",
             "linkage",
             "register_tool",
         ])
