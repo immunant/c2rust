@@ -579,7 +579,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     }
 
     pub fn crate_defs(&self) -> Vec<DefId> {
-        self.ty_ctxt().crates().iter().map(|crate_num| {
+        self.ty_ctxt().crates(()).iter().map(|crate_num| {
             DefId { krate: *crate_num, index: CRATE_DEF_INDEX }
         }).collect()
     }
