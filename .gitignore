@@ -52,3 +52,6 @@ inspect/
 *.rs.fixed
 analysis.txt
 polonius_cache/
+
+# Nix output symlinks
+result*
