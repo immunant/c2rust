@@ -118,7 +118,7 @@ impl PatternSymbol for AssocItem {
 }
 
 pub fn is_c2rust_attr(attr: &Attribute, name: &str) -> bool {
-    if let AttrKind::Normal(item) = &attr.kind {
+    if let AttrKind::Normal(item, _) = &attr.kind {
         item.path.segments.len() == 2
             && item.path.segments[0].ident.as_str() == "c2rust"
             && item.path.segments[1].ident.as_str() == name
