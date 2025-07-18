@@ -290,7 +290,8 @@ fn make_attr(name: &str, args: MacArgs) -> Attribute {
         kind: AttrKind::Normal(AttrItem {
             path: mk().path(vec![name]),
             args: args,
-        }),
+            tokens: None,
+        }, None),
         span: DUMMY_SP,
     }
 }
