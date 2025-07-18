@@ -1,6 +1,7 @@
 use std::env::current_dir;
+use std::ffi::OsString;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use c2rust_transpile::{ReplaceMode, TranspilerConfig};
@@ -69,10 +70,18 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
     insta::assert_snapshot!(name, &rs, &debug_expr);
 
     let status = Command::new("rustc")
-        .args(&["--crate-type", "lib", "--edition", "2021", "-o", "-"])
+        .args(&["--crate-type", "lib", "--edition", "2021"])
         .arg(&rs_path)
         .status();
     assert!(status.unwrap().success());
+    let rlib_path = {
+        let mut file_name = OsString::new();
+        file_name.push("lib");
+        file_name.push(rs_path.file_stem().unwrap());
+        file_name.push(".rlib");
+        PathBuf::from(file_name)
+    };
+    fs::remove_file(&rlib_path).unwrap();
 }
 
 #[test]
