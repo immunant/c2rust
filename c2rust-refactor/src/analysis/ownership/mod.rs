@@ -23,7 +23,6 @@ use log::{debug, Level, log_enabled};
 use rustc_hir as hir;
 use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_hir::{Mutability, Node};
-use rustc_middle::hir::map as hir_map;
 use rustc_middle::ty::{TyCtxt, TyKind, TypeAndMut, Ty};
 use rustc_index::vec::{Idx, IndexVec};
 use rustc_ast::IntTy;
@@ -144,7 +143,7 @@ impl<'lty, 'tcx, L: fmt::Debug> type_map::Signature<LabeledTy<'lty, 'tcx, L>>
 
 /// Check if a definition is a `fn` item of some sort.  Note that this does not return true on
 /// closures.
-fn is_fn(hir_map: &hir_map::Map, def_id: DefId) -> bool {
+fn is_fn(hir_map: &HirMap, def_id: DefId) -> bool {
     let n = match hir_map.get_if_local(def_id) {
         None => return false,
         Some(n) => n,
@@ -173,9 +172,9 @@ fn is_fn(hir_map: &hir_map::Map, def_id: DefId) -> bool {
 
 /// Run the intraprocedural step of polymorphic signature inference.  Results are written back into
 /// the `Ctxt`.
-fn analyze_intra<'a, 'tcx, 'lty>(
+fn analyze_intra<'tcx, 'lty>(
     cx: &mut Ctxt<'lty, 'tcx>,
-    hir_map: &HirMap<'a, 'tcx>,
+    hir_map: &HirMap<'tcx>,
     tcx: TyCtxt<'tcx>,
 ) {
     for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
@@ -200,7 +199,7 @@ fn analyze_intra<'a, 'tcx, 'lty>(
 /// Add conservative assignments for extern functions that we can't
 /// analyze. Results are written back into the first variant for each external
 /// function in the `Ctxt`.
-fn analyze_externs<'a, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'a, 'tcx>) {
+fn analyze_externs<'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'tcx>) {
     for (def_id, func_summ) in cx.funcs_mut() {
         if func_summ.cset_provided {
             continue;

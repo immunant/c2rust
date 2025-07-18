@@ -32,7 +32,7 @@ pub struct RefactorCtxt<'a, 'tcx: 'a> {
     sess: &'a Session,
 
     cstore: Option<&'a CStore>,
-    map: Option<HirMap<'a, 'tcx>>,
+    map: Option<HirMap<'tcx>>,
     tcx: Option<GenerationalTyCtxt<'tcx>>,
 }
 
@@ -40,7 +40,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     pub fn new(
         sess: &'a Session,
         cstore: Option<&'a CStore>,
-        map: Option<HirMap<'a, 'tcx>>,
+        map: Option<HirMap<'tcx>>,
         tcx: Option<GenerationalTyCtxt<'tcx>>,
     ) -> Self {
         Self {
@@ -53,16 +53,16 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 }
 
 #[derive(Copy, Clone)]
-pub struct HirMap<'a, 'hir: 'a> {
-    map: &'a hir_map::Map<'hir>,
+pub struct HirMap<'hir> {
+    map: hir_map::Map<'hir>,
 
     /// Next NodeId after the crate. Needed to validate NodeIds used with the
     /// map.
     max_node_id: NodeId,
 }
 
-impl<'a, 'hir> HirMap<'a, 'hir> {
-    pub fn new(max_node_id: NodeId, map: &'a hir_map::Map<'hir>) -> Self {
+impl<'hir> HirMap<'hir> {
+    pub fn new(max_node_id: NodeId, map: hir_map::Map<'hir>) -> Self {
         Self { map, max_node_id }
     }
 }
@@ -81,8 +81,9 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     // }
 
     #[inline]
-    pub fn hir_map(&self) -> HirMap<'a, 'tcx> {
+    pub fn hir_map(&self) -> &HirMap<'tcx> {
         self.map
+            .as_ref()
             .expect("hir map is not available in this context (requires phase 2)")
     }
 
@@ -587,7 +588,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 // Forwarding of HIR map queries so that we make sure to validate the NodeId, if
 // applicable, first. We only validate the NodeId if the method returns an
 // Option. If it can panic, it will just panic on an invalid NodeId.
-impl<'a, 'hir> HirMap<'a, 'hir> {
+impl<'hir> HirMap<'hir> {
     /// Map a crate NodeId to HirId, if possible. Only accepts NodeIds that were
     /// in the originally parsed crate.
     #[inline]
@@ -625,10 +626,10 @@ impl<'a, 'hir> HirMap<'a, 'hir> {
     }
 }
 
-impl<'a, 'hir> Deref for HirMap<'a, 'hir> {
+impl<'hir> Deref for HirMap<'hir> {
     type Target = hir_map::Map<'hir>;
     fn deref(&self) -> &Self::Target {
-        self.map
+        &self.map
     }
 }
 

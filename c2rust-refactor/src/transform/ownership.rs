@@ -70,7 +70,7 @@ fn do_annotate(st: &CommandState,
     struct AnnotateFolder<'a, 'tcx: 'a> {
         label: Symbol,
         ana: ownership::AnalysisResult<'tcx, 'tcx>,
-        hir_map: HirMap<'a, 'tcx>,
+        hir_map: HirMap<'tcx>,
         st: &'a CommandState,
     }
 
@@ -514,7 +514,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
 
     struct AnalysisTypeSource<'lty, 'tcx: 'lty> {
         ana: &'lty ownership::AnalysisResult<'lty, 'tcx>,
-        hir_map: HirMap<'lty, 'tcx>,
+        hir_map: HirMap<'tcx>,
     }
 
     impl<'lty, 'tcx> type_map::TypeSource for AnalysisTypeSource<'lty, 'tcx> {
