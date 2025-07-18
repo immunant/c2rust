@@ -27,13 +27,16 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-      - run: rustup component add rustfmt rustc-dev
+
       # rust-cache very carefully caches toolchains and target directories,
       # based on the job and toolchain and other factors. See
       # https://github.com/Swatinem/rust-cache#cache-details for what gets
       # cached, what gets used as part of the key, and what additional handling
       # happens to make the cache reliable and smaller.
       - uses: Swatinem/rust-cache@v2
+
+      # Run after `rust-cache` so that this is cached.
+      - run: rustup component add rustfmt rustc-dev
 
       - name: Install packages (Ubuntu)
         if: runner.os == 'Linux'
