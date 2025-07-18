@@ -357,7 +357,7 @@ impl RefactorState {
                     let expansion = queries.expansion()?.peek();
                     cs
                         .krate
-                        .replace(expansion.0.clone());
+                        .replace(Lrc::clone(&expansion.0));
                     max_crate_node_id = Some(
                         expansion.1.borrow().borrow_mut().access(|resolver| resolver.next_node_id())
                     );
@@ -561,7 +561,7 @@ pub struct CommandState {
     /// The current crate AST.  This is used as the "new" AST when rewriting.
     /// This is always starts "unexpanded" - meaning either actually unexpanded,
     /// or expanded and then subsequently macro-collapsed.
-    krate: RefCell<Crate>,
+    krate: RefCell<Lrc<Crate>>,
 
     /// The current compiler phase of the crate.
     phase: Phase,
@@ -601,12 +601,12 @@ impl CommandState {
     }
 
     pub fn krate(&self) -> cell::Ref<Crate> {
-        self.krate.borrow()
+        cell::Ref::map(self.krate.borrow(), Lrc::deref)
     }
 
     pub fn krate_mut(&self) -> cell::RefMut<Crate> {
         self.krate_changed.set(true);
-        self.krate.borrow_mut()
+        self.krate.borrow_mut().map(|lrc| lrc.make_mut())
     }
 
     pub fn map_krate<R, F: FnOnce(&mut Crate) -> R>(&self, func: F) -> R {
