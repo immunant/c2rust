@@ -668,7 +668,7 @@ pub fn collapse_macros(krate: &mut Crate, mac_table: &MacTable) -> Vec<(NodeId, 
         debug!(
             "new tokens for {:?} = {:?}",
             k,
-            rustc_ast_pretty::pprust::tts_to_string(v.inner_tokens().clone())
+            rustc_ast_pretty::pprust::tts_to_string(v.inner_tokens())
         );
     }
 

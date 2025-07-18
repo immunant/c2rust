@@ -263,13 +263,13 @@ fn register_std_constraints<'a, 'tcx, 'lty>(
         // #[ownership_constraints(le(WRITE, _0), le(WRITE, _1), le(_0, _1))]
         // fn offset<T>(self: *mut T, _: isize) -> *mut T;
         if func_summ.sig.inputs.len() == 2 && fn_name_path == "::ptr[0]::{{impl}}[1]::offset[0]" {
-            let param0_is_mut_t = is_mut_t(func_summ.sig.inputs[0].ty);
+            let param0_is_mut_t = is_mut_t(&func_summ.sig.inputs[0].ty);
             let param1_is_isize = if let TyKind::Int(int_ty) = func_summ.sig.inputs[1].ty.kind() {
                 int_ty == IntTy::Isize
             } else {
                 false
             };
-            let ret_is_mut_t = is_mut_t(func_summ.sig.output.ty);
+            let ret_is_mut_t = is_mut_t(&func_summ.sig.output.ty);
             if param0_is_mut_t && param1_is_isize && ret_is_mut_t {
                 func_summ.cset_provided = true;
                 func_summ.sig_cset.add(Perm::SigVar(Var(1)), Perm::SigVar(Var(0)));

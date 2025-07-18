@@ -1587,7 +1587,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         let matches_existing = match (&existing_foreign.kind, &item.kind) {
                             (ForeignItemKind::Fn(box Fn { sig: sig1, .. }),
                              ForeignItemKind::Fn(box Fn { sig: sig2, .. })) => {
-                                self.cx.compatible_fn_prototypes(sig1.decl, sig2.decl)
+                                self.cx.compatible_fn_prototypes(&sig1.decl, &sig2.decl)
                             }
 
                             _ => existing_foreign.ast_equiv(&item),
