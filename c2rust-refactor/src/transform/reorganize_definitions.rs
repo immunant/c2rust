@@ -403,6 +403,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         PathSegment::path_root(DUMMY_SP),
                         PathSegment::from_ident(Ident::with_dummy_span(crate_name)),
                     ],
+                    tokens: None,
                 };
                 self.match_exports(declarations, path, item);
             }

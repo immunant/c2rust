@@ -208,6 +208,7 @@ pub fn split_uses(item: P<Item>) -> SmallVec<[P<Item>; 1]> {
     let initial_path = Path {
         span: use_tree.prefix.span,
         segments: vec![],
+        tokens: None,
     };
     let id = item.id;
     split_uses_impl(item, initial_path, id, use_tree, &mut out);
