@@ -615,15 +615,6 @@ impl<'hir> HirMap<'hir> {
     pub fn find_by_hir_id(&self, id: HirId) -> Option<Node<'hir>> {
         self.map.find(id)
     }
-
-    /// Check if the node is an argument. An argument is a local variable whose
-    /// immediate parent is an item or a closure.
-    pub fn is_argument(&self, id: NodeId) -> bool {
-        match self.opt_node_to_hir_id(id) {
-            Some(id) => self.map.is_argument(id),
-            None => false,
-        }
-    }
 }
 
 impl<'hir> Deref for HirMap<'hir> {
