@@ -443,6 +443,14 @@ impl ConversionContext {
             self.typed_context.comments.push(comment);
         }
 
+        // Add Rust fixed-size types.
+        for rust_type_kind in CTypeKind::PULLBACK_KINDS {
+            let new_id = self.id_mapper.fresh_id();
+            self.add_type(new_id, not_located(rust_type_kind));
+            self.processed_nodes
+                .insert(new_id, self::node_types::OTHER_TYPE);
+        }
+
         // Continue popping Clang nodes off of the stack of nodes we have promised to visit
         while let Some((node_id, expected_ty)) = self.visit_as.pop() {
             // Check if we've already processed this node. If so, ascertain that it has the right
@@ -470,6 +478,30 @@ impl ConversionContext {
             }
 
             self.visit_node(untyped_context, node_id, new_id, expected_ty)
+        }
+
+        // Function declarations' types look through typedefs, but we want to use the types with
+        // typedefs intact in some cases during translation. To ensure that these types exist in the
+        // `TypedAstContext`, iterate over all function decls, compute their adjusted type using
+        // argument types from arg declarations, and then ensure the existence of both this type and
+        // the type of pointers to it.
+        for (_decl_id, located_kind) in self.typed_context.c_decls.iter() {
+            if let kind @ CDeclKind::Function { .. } = &located_kind.kind {
+                let new_kind = self.typed_context.fn_decl_ty_with_declared_args(kind);
+                if self.typed_context.type_for_kind(&new_kind).is_none() {
+                    // Create and insert fn type
+                    let new_id = CTypeId(self.id_mapper.fresh_id());
+                    self.typed_context
+                        .c_types
+                        .insert(new_id, not_located(new_kind));
+                    // Create and insert fn ptr type
+                    let ptr_kind = CTypeKind::Pointer(CQualTypeId::new(new_id));
+                    let ptr_id = CTypeId(self.id_mapper.fresh_id());
+                    self.typed_context
+                        .c_types
+                        .insert(ptr_id, not_located(ptr_kind));
+                }
+            }
         }
 
         // Invert the macro invocations to get a list of macro expansion expressions
@@ -687,6 +719,11 @@ impl ConversionContext {
                         CTypeKind::Function(ret, arguments, is_variadic, is_noreturn, has_proto);
                     self.add_type(new_id, not_located(function_ty));
                     self.processed_nodes.insert(new_id, FUNC_TYPE);
+
+                    let pointer_ty = CTypeKind::Pointer(CQualTypeId::new(CTypeId(new_id)));
+                    let new_id = self.id_mapper.fresh_id();
+                    self.add_type(new_id, not_located(pointer_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
                 TypeTag::TagTypeOfType if expected_ty & TYPE != 0 => {
@@ -1934,12 +1971,121 @@ impl ConversionContext {
                     let typ_old = node
                         .type_id
                         .expect("Expected to find type on typedef declaration");
-                    let typ = self.visit_qualified_type(typ_old);
+                    let mut typ = self.visit_qualified_type(typ_old);
+
+                    // Clang injects definitions of the form `#define SOME_MACRO unsigned int` into
+                    // compilation units based on the target. (See lib/Frontend/InitPreprocessor.cpp
+                    // in Clang).
+                    //
+                    // Later, headers contain defns like: `typedef SOME_MACRO standard_t;`
+                    //
+                    // We detect these typedefs and replace the type referred to by `SOME_MACRO`
+                    // with a synthetic, portable `CTypeKind` chosen based on the macro's name.
+                    //
+                    // This allows us to generate platform-independent Rust types like u64 or usize
+                    // despite the C side internally working with a target-specific type.
+                    let target_dependent_macro: Option<String> = from_value(node.extras[2].clone())
+                        .expect("Expected to find optional target-dependent macro name");
+
+                    typ = target_dependent_macro
+                        .as_deref()
+                        .and_then(|macro_name| {
+                            let kind = match macro_name {
+                                // Match names in the order Clang defines them.
+                                "__INTMAX_TYPE__" => CTypeKind::IntMax,
+                                "__UINTMAX_TYPE__" => CTypeKind::UIntMax,
+                                "__PTRDIFF_TYPE__" => CTypeKind::PtrDiff,
+                                "__INTPTR_TYPE__" => CTypeKind::IntPtr,
+                                "__SIZE_TYPE__" => CTypeKind::Size,
+                                "__WCHAR_TYPE__" => CTypeKind::WChar,
+                                // __WINT_TYPE__ is defined by Clang but has no obvious translation
+                                // __CHARn_TYPE__ for n ∈ {8, 16, 32} also lack obvious translation
+                                "__UINTPTR_TYPE__" => CTypeKind::UIntPtr,
+                                _ => {
+                                    log::debug!("Unknown target-dependent macro {macro_name}!");
+                                    return None;
+                                }
+                            };
+                            log::trace!("Selected kind {kind} for typedef {name}");
+                            Some(CQualTypeId::new(
+                                self.typed_context.type_for_kind(&kind).unwrap(),
+                            ))
+                        })
+                        .unwrap_or(typ);
+
+                    // Other fixed-size types are defined without special compiler involvement, by
+                    // standard headers and their transitive includes. In these contexts, we
+                    // recognize these typedefs by the name of the typedef type.
+                    let id_for_name = |name| -> Option<_> {
+                        let kind = match name {
+                            "intmax_t" => CTypeKind::IntMax,
+                            "uintmax_t" => CTypeKind::UIntMax,
+                            "intptr_t" => CTypeKind::IntPtr,
+                            "uintptr_t" => CTypeKind::UIntPtr,
+                            // unlike `size_t`, `ssize_t` does not have a clang-provided `#define`.
+                            "ssize_t" => CTypeKind::SSize,
+                            // macOS defines `ssize_t` from `__darwin_ssize_t` in many headers,
+                            // so we should handle `__darwin_ssize_t` itself.
+                            "__darwin_ssize_t" => CTypeKind::SSize,
+                            "__uint8_t" => CTypeKind::UInt8,
+                            "__uint16_t" => CTypeKind::UInt16,
+                            "__uint32_t" => CTypeKind::UInt32,
+                            "__uint64_t" => CTypeKind::UInt64,
+                            "__uint128_t" => CTypeKind::UInt128,
+                            "__int8_t" => CTypeKind::Int8,
+                            "__int16_t" => CTypeKind::Int16,
+                            "__int32_t" => CTypeKind::Int32,
+                            "__int64_t" => CTypeKind::Int64,
+                            "__int128_t" => CTypeKind::Int128,
+                            // macOS stdint.h typedefs [u]intN_t directly:
+                            "int8_t" => CTypeKind::Int8,
+                            "int16_t" => CTypeKind::Int16,
+                            "int32_t" => CTypeKind::Int32,
+                            "int64_t" => CTypeKind::Int64,
+                            "uint8_t" => CTypeKind::UInt8,
+                            "uint16_t" => CTypeKind::UInt16,
+                            "uint32_t" => CTypeKind::UInt32,
+                            "uint64_t" => CTypeKind::UInt64,
+                            _ => {
+                                log::debug!("Unknown fixed-size type typedef {name}!");
+                                return None;
+                            }
+                        };
+                        log::trace!("Selected kind {kind} for typedef {name}");
+                        Some(CQualTypeId::new(
+                            self.typed_context.type_for_kind(&kind).unwrap(),
+                        ))
+                    };
+                    let file = self
+                        .typed_context
+                        .files
+                        .get(self.typed_context.file_map[node.loc.fileid as usize]);
+                    let file = file.unwrap();
+                    if let Some(path) = file.path.as_ref() {
+                        if let Some(filename) = path.file_name() {
+                            if filename == "stdint.h"
+                                || filename == "types.h"
+                                || filename
+                                    .to_str()
+                                    .map(|s| s.starts_with("__stddef_"))
+                                    .unwrap_or(false)
+                            // for macos
+                                || filename == "_types.h"
+                                || filename
+                                    .to_str()
+                                    .map(|s| s.starts_with("_int") || s.starts_with("_uint"))
+                                    .unwrap_or(false)
+                            {
+                                typ = id_for_name(&*name).unwrap_or(typ);
+                            }
+                        }
+                    }
 
                     let typdef_decl = CDeclKind::Typedef {
                         name,
                         typ,
                         is_implicit,
+                        target_dependent_macro,
                     };
 
                     self.add_decl(new_id, located(node, typdef_decl));

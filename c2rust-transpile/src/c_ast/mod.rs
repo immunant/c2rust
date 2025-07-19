@@ -464,6 +464,12 @@ impl TypedAstContext {
         ty.map(|ty| (expr_id, ty))
     }
 
+    pub fn type_for_kind(&self, kind: &CTypeKind) -> Option<CTypeId> {
+        self.c_types
+            .iter()
+            .find_map(|(id, k)| if kind == &k.kind { Some(*id) } else { None })
+    }
+
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
         use CTypeKind::*;
         let ty = match self.index(typ).kind {
@@ -484,6 +490,71 @@ impl TypedAstContext {
     pub fn resolve_type(&self, typ: CTypeId) -> &CType {
         let resolved_typ_id = self.resolve_type_id(typ);
         self.index(resolved_typ_id)
+    }
+
+    /// Extract decl of referenced function.
+    /// Looks for ImplicitCast(FunctionToPointerDecay, DeclRef(function_decl))
+    pub fn function_declref_decl(&self, func_expr: CExprId) -> Option<&CDeclKind> {
+        use CastKind::FunctionToPointerDecay;
+        if let CExprKind::ImplicitCast(_, fexp, FunctionToPointerDecay, _, _) = self[func_expr].kind
+        {
+            if let CExprKind::DeclRef(_ty, decl_id, _rv) = &self[fexp].kind {
+                let decl = &self.index(*decl_id).kind;
+                assert!(matches!(decl, CDeclKind::Function { .. }));
+                return Some(decl);
+            }
+        }
+        None
+    }
+
+    /// Return the list of types for a list of declared function parameters.
+    pub fn tys_of_params(&self, parameters: &[CDeclId]) -> Option<Vec<CQualTypeId>> {
+        let mut param_tys = vec![];
+        for p in parameters {
+            match self.index(*p).kind {
+                CDeclKind::Variable { typ, .. } => param_tys.push(CQualTypeId::new(typ.ctype)),
+                _ => return None,
+            }
+        }
+        return Some(param_tys);
+    }
+
+    /// Return the most precise possible CTypeKind for the given function declaration.
+    /// Specifically, ensures that arguments' types are not resolved to underlying types if they were
+    /// declared as typedefs, but returned as those typedefs.
+    ///
+    /// The passed CDeclId must refer to a function declaration.
+    pub fn fn_decl_ty_with_declared_args(&self, func_decl: &CDeclKind) -> CTypeKind {
+        if let CDeclKind::Function {
+            typ, parameters, ..
+        } = func_decl
+        {
+            let typ = self.resolve_type_id(*typ);
+            let decl_arg_tys = self.tys_of_params(parameters).unwrap();
+            let typ_kind = &self[typ].kind;
+            if let &CTypeKind::Function(ret, ref _arg_tys, a, b, c) = typ_kind {
+                return CTypeKind::Function(ret, decl_arg_tys, a, b, c);
+            }
+            panic!("expected {typ:?} to be CTypeKind::Function, but it was {typ_kind:?}")
+        }
+        panic!("expected a CDeclKind::Function, but passed {func_decl:?}")
+    }
+
+    /// Return the most id of the most precise possible type for the function referenced by the
+    /// given expression.
+    pub fn function_declref_ty_with_declared_args(
+        &self,
+        func_expr: CExprId,
+    ) -> Option<CQualTypeId> {
+        if let Some(func_decl @ CDeclKind::Function { .. }) = self.function_declref_decl(func_expr)
+        {
+            let kind_with_declared_args = self.fn_decl_ty_with_declared_args(func_decl);
+            let specific_typ = self
+                .type_for_kind(&kind_with_declared_args)
+                .expect(&format!("no type for kind {kind_with_declared_args:?}"));
+            return Some(CQualTypeId::new(specific_typ));
+        }
+        None
     }
 
     /// Pessimistically try to check if an expression has side effects. If it does, or we can't tell
@@ -677,6 +748,103 @@ impl TypedAstContext {
 
         // Prune top declarations that are not considered live
         self.c_decls_top.retain(|x| wanted.contains(x));
+    }
+
+    /// Bubble types of unary and binary operators up from their args into the expression type.
+    ///
+    /// In Clang 15 and below, the Clang AST resolves typedefs in the expression type of unary and
+    /// binary expressions. For example, a BinaryExpr node adding two `size_t` expressions will be
+    /// given an `unsigned long` type rather than the `size_t` typedef type. This behavior changed
+    /// in Clang 16. This method adjusts AST node types to match those produced by Clang 16 and
+    /// newer; on these later Clang versions, it should have no effect.
+    ///
+    /// This pass is necessary because we reify some typedef types (such as `size_t`) into their own
+    /// distinct Rust types. As such, we need to make sure we know the exact type to generate when
+    /// we translate an expr, not just its resolved type (looking through typedefs).
+    pub fn bubble_expr_types(&mut self) {
+        struct BubbleExprTypes<'a> {
+            ast_context: &'a mut TypedAstContext,
+        }
+
+        use iterators::{immediate_children_all_types, NodeVisitor};
+        impl<'a> NodeVisitor for BubbleExprTypes<'a> {
+            fn children(&mut self, id: SomeId) -> Vec<SomeId> {
+                immediate_children_all_types(self.ast_context, id)
+            }
+            fn post(&mut self, id: SomeId) {
+                if let SomeId::Expr(e) = id {
+                    let new_ty = match self.ast_context.c_exprs[&e].kind {
+                        CExprKind::Conditional(_ty, _cond, lhs, rhs) => {
+                            let lhs_type_id =
+                                self.ast_context.c_exprs[&lhs].kind.get_qual_type().unwrap();
+                            let rhs_type_id =
+                                self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
+
+                            let lhs_resolved = self.ast_context.resolve_type_id(lhs_type_id.ctype);
+                            let rhs_resolved = self.ast_context.resolve_type_id(rhs_type_id.ctype);
+
+                            if CTypeKind::PULLBACK_KINDS
+                                .contains(&self.ast_context[lhs_resolved].kind)
+                            {
+                                Some(lhs_type_id)
+                            } else if CTypeKind::PULLBACK_KINDS
+                                .contains(&self.ast_context[rhs_resolved].kind)
+                            {
+                                Some(rhs_type_id)
+                            } else {
+                                None
+                            }
+                        }
+                        CExprKind::Binary(_ty, op, lhs, rhs, _, _) => {
+                            let rhs_type_id =
+                                self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
+                            let lhs_kind = &self.ast_context.c_exprs[&lhs].kind;
+                            let lhs_type_id = lhs_kind.get_qual_type().unwrap();
+
+                            let lhs_resolved = self.ast_context.resolve_type_id(lhs_type_id.ctype);
+                            let rhs_resolved = self.ast_context.resolve_type_id(rhs_type_id.ctype);
+
+                            let neither_ptr = !self.ast_context[lhs_resolved].kind.is_pointer()
+                                && !self.ast_context[rhs_resolved].kind.is_pointer();
+
+                            if op.all_types_same() && neither_ptr {
+                                if CTypeKind::PULLBACK_KINDS
+                                    .contains(&self.ast_context[lhs_resolved].kind)
+                                {
+                                    Some(lhs_type_id)
+                                } else {
+                                    Some(rhs_type_id)
+                                }
+                            } else if op == BinOp::ShiftLeft || op == BinOp::ShiftRight {
+                                Some(lhs_type_id)
+                            } else {
+                                return;
+                            }
+                        }
+                        CExprKind::Unary(_ty, op, e, _idk) => op.bubble_type(
+                            self.ast_context,
+                            self.ast_context.c_exprs[&e].kind.get_qual_type().unwrap(),
+                        ),
+                        CExprKind::Paren(_ty, e) => {
+                            self.ast_context.c_exprs[&e].kind.get_qual_type()
+                        }
+                        _ => return,
+                    };
+                    if let (Some(ty), Some(new_ty)) = (
+                        self.ast_context
+                            .c_exprs
+                            .get_mut(&e)
+                            .and_then(|e| e.kind.get_qual_type_mut()),
+                        new_ty,
+                    ) {
+                        *ty = new_ty;
+                    };
+                }
+            }
+        }
+        for decl in self.c_decls_top.clone() {
+            BubbleExprTypes { ast_context: self }.visit_tree(SomeId::Decl(decl));
+        }
     }
 
     pub fn sort_top_decls(&mut self) {
@@ -945,6 +1113,7 @@ pub enum CDeclKind {
         name: String,
         typ: CQualTypeId,
         is_implicit: bool,
+        target_dependent_macro: Option<String>,
     },
 
     // Struct
@@ -1149,7 +1318,11 @@ impl CExprKind {
     }
 
     pub fn get_qual_type(&self) -> Option<CQualTypeId> {
-        match *self {
+        self.clone().get_qual_type_mut().cloned()
+    }
+
+    pub fn get_qual_type_mut(&mut self) -> Option<&mut CQualTypeId> {
+        match self {
             CExprKind::BadExpr => None,
             CExprKind::Literal(ty, _)
             | CExprKind::OffsetOf(ty, _)
@@ -1268,6 +1441,42 @@ impl UnOp {
             Coawait => "co_await",
         }
     }
+
+    /// Obtain the expected type of a unary expression based on the operator and its argument type
+    pub fn bubble_type(
+        &self,
+        ast_context: &TypedAstContext,
+        arg_type: CQualTypeId,
+    ) -> Option<CQualTypeId> {
+        use UnOp::*;
+        let resolved = ast_context.resolve_type_id(arg_type.ctype);
+        Some(match self {
+            // We could construct CTypeKind::Pointer here, but it is not gauranteed to have a
+            // corresponding `CTypeId` in the `TypedAstContext`, so bail out instead
+            AddressOf => return None,
+            Deref => {
+                if let CTypeKind::Pointer(inner) = ast_context[resolved].kind {
+                    inner
+                } else {
+                    panic!("dereferencing non-pointer type!")
+                }
+            }
+            Not => {
+                return ast_context
+                    .type_for_kind(&CTypeKind::Int)
+                    .map(CQualTypeId::new)
+            }
+            Real | Imag => {
+                if let CTypeKind::Complex(inner) = ast_context[resolved].kind {
+                    CQualTypeId::new(inner)
+                } else {
+                    panic!("__real or __imag applied to non-complex type!")
+                }
+            }
+            Coawait => panic!("trying to propagate co_await type"),
+            _ => CQualTypeId::new(arg_type.ctype),
+        })
+    }
 }
 
 impl Display for UnOp {
@@ -1381,6 +1590,55 @@ impl BinOp {
 
             Assign => "=",
             Comma => ", ",
+        }
+    }
+
+    /// Does the rust equivalent of this operator have type (T, T) -> U?
+    pub fn input_types_same(&self) -> bool {
+        use BinOp::*;
+        self.all_types_same()
+            || match self {
+                Less => true,
+                Greater => true,
+                LessEqual => true,
+                GreaterEqual => true,
+                EqualEqual => true,
+                NotEqual => true,
+
+                And => true,
+                Or => true,
+
+                AssignAdd => true,
+                AssignSubtract => true,
+                AssignMultiply => true,
+                AssignDivide => true,
+                AssignModulus => true,
+                AssignBitXor => true,
+                AssignShiftLeft => true,
+                AssignShiftRight => true,
+                AssignBitOr => true,
+                AssignBitAnd => true,
+
+                Assign => true,
+                _ => false,
+            }
+    }
+
+    /// Does the rust equivalent of this operator have type (T, T) -> T?
+    /// This ignores cases where one argument is a pointer and we translate to `.offset()`.
+    pub fn all_types_same(&self) -> bool {
+        use BinOp::*;
+        match self {
+            Multiply => true,
+            Divide => true,
+            Modulus => true,
+            Add => true,
+            Subtract => true,
+
+            BitAnd => true,
+            BitXor => true,
+            BitOr => true,
+            _ => false,
         }
     }
 }
@@ -1693,9 +1951,35 @@ pub enum CTypeKind {
     Float128,
     // Atomic types (6.7.2.4)
     Atomic(CQualTypeId),
+
+    // Rust sized types, pullback'd into C so that we can treat uint16_t, etc. as real types.
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    IntPtr,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    UIntPtr,
+    IntMax,
+    UIntMax,
+    Size,
+    SSize,
+    PtrDiff,
+    WChar,
 }
 
 impl CTypeKind {
+    pub const PULLBACK_KINDS: [CTypeKind; 16] = {
+        use CTypeKind::*;
+        [
+            Int8, Int16, Int32, Int64, IntPtr, UInt8, UInt16, UInt32, UInt64, UIntPtr, IntMax,
+            UIntMax, Size, SSize, PtrDiff, WChar,
+        ]
+    };
+
     pub fn as_str(&self) -> &'static str {
         use CTypeKind::*;
         match self {
@@ -1720,6 +2004,24 @@ impl CTypeKind {
             Half => "half",
             BFloat16 => "bfloat16",
             Float128 => "__float128",
+
+            Int8 => "int8_t",
+            Int16 => "int16_t",
+            Int32 => "int32_t",
+            Int64 => "int64_t",
+            IntPtr => "intptr_t",
+            UInt8 => "uint8_t",
+            UInt16 => "uint16_t",
+            UInt32 => "uint32_t",
+            UInt64 => "uint64_t",
+            UIntPtr => "uintptr_t",
+            IntMax => "intmax_t",
+            UIntMax => "uintmax_t",
+            Size => "size_t",
+            SSize => "ssize_t",
+            PtrDiff => "ptrdiff_t",
+            WChar => "wchar_t",
+
             _ => unimplemented!("Printer::print_type({:?})", self),
         }
     }
@@ -1785,14 +2087,43 @@ impl CTypeKind {
         use CTypeKind::*;
         matches!(
             self,
-            Bool | UChar | UInt | UShort | ULong | ULongLong | UInt128
+            Bool | UChar
+                | UInt
+                | UShort
+                | ULong
+                | ULongLong
+                | UInt128
+                | UInt8
+                | UInt16
+                | UInt32
+                | UInt64
+                | UIntPtr
+                | UIntMax
+                | Size
+                | WChar
         )
     }
 
     pub fn is_signed_integral_type(&self) -> bool {
         use CTypeKind::*;
         // `Char` is true on the platforms we handle
-        matches!(self, Char | SChar | Int | Short | Long | LongLong | Int128)
+        matches!(
+            self,
+            Char | SChar
+                | Int
+                | Short
+                | Long
+                | LongLong
+                | Int128
+                | Int8
+                | Int16
+                | Int32
+                | Int64
+                | IntPtr
+                | IntMax
+                | SSize
+                | PtrDiff
+        )
     }
 
     pub fn is_floating_type(&self) -> bool {

@@ -1,0 +1,13 @@
+#![allow(
+    dead_code,
+    mutable_transmutes,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+pub type __uint32_t = u32;
+pub type uint32_t = __uint32_t;
+#[no_mangle]
+pub static mut var: uint32_t = 0;
