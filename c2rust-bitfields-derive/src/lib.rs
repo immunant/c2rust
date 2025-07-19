@@ -6,8 +6,8 @@ use syn::parse::Error;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{
-    parse_macro_input, Attribute, Field, Fields, Ident, ItemStruct, Lit, Meta, NestedMeta, Path,
-    PathArguments, PathSegment, Token,
+    parse_macro_input, Attribute, Field, Fields, Ident, ItemStruct, LitStr, Path, PathArguments,
+    PathSegment, Token,
 };
 
 #[cfg(target_endian = "big")]
@@ -31,44 +31,36 @@ fn parse_bitfield_attr(
     let mut ty = None;
     let mut bits = None;
     let mut bits_span = None;
+    let mut is_padding = false;
 
-    if let Meta::List(meta_list) = attr.parse_meta()? {
-        for nested_meta in meta_list.nested {
-            if let NestedMeta::Meta(Meta::NameValue(meta_name_value)) = nested_meta {
-                let rhs_string = match meta_name_value.lit {
-                    Lit::Str(lit_str) => lit_str.value(),
-                    _ => {
-                        let err_str = "Found bitfield attribute with non str literal assignment";
-                        let span = meta_name_value.path.span();
-
-                        return Err(Error::new(span, err_str));
-                    }
-                };
-
-                if let Some(lhs_ident) = meta_name_value.path.get_ident() {
-                    match lhs_ident.to_string().as_str() {
-                        "name" => name = Some(rhs_string),
-                        "ty" => ty = Some(rhs_string),
-                        "bits" => {
-                            bits = Some(rhs_string);
-                            bits_span = Some(meta_name_value.path.span());
-                        }
-                        // This one shouldn't ever occur here,
-                        // but we're handling it just to be safe
-                        "padding" => {
-                            return Ok(None);
-                        }
-                        _ => {}
-                    }
+    attr.parse_nested_meta(|meta| {
+        if meta.path.is_ident("padding") {
+            // If the attribute is just `#[bitfield(padding)]`, we can skip parsing further.
+            is_padding = true;
+        } else {
+            let value = match meta.value()?.parse::<LitStr>() {
+                Ok(lit_str) => lit_str.value(),
+                Err(_) => {
+                    let err_str = "Found bitfield attribute with non str literal assignment";
+                    return Err(meta.error(err_str));
                 }
-            } else if let NestedMeta::Meta(Meta::Path(ref path)) = nested_meta {
-                if let Some(ident) = path.get_ident() {
-                    if ident == "padding" {
-                        return Ok(None);
-                    }
-                }
+            };
+
+            if meta.path.is_ident("name") {
+                name = Some(value);
+            } else if meta.path.is_ident("ty") {
+                ty = Some(value);
+            } else if meta.path.is_ident("bits") {
+                bits = Some(value);
+                bits_span = Some(meta.path.span());
             }
         }
+
+        Ok(())
+    })?;
+
+    if is_padding {
+        return Ok(None);
     }
 
     if name.is_none() || ty.is_none() || bits.is_none() {
@@ -87,7 +79,7 @@ fn parse_bitfield_attr(
         }
 
         let err_str = format!("Missing bitfield params: {:?}", missing_fields);
-        let span = attr.path.segments.span();
+        let span = attr.span();
 
         return Err(Error::new(span, err_str));
     }
@@ -104,7 +96,7 @@ fn filter_and_parse_fields(field: &Field) -> Vec<Result<BFFieldAttr, Error>> {
     let attrs: Vec<_> = field
         .attrs
         .iter()
-        .filter(|attr| attr.path.segments.last().unwrap().ident == "bitfield")
+        .filter(|attr| attr.path().segments.last().unwrap().ident == "bitfield")
         .collect();
 
     if attrs.is_empty() {

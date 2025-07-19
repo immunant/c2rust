@@ -115,17 +115,13 @@ pub fn traverse_stmt_def<W: Traversal>(walk: &mut W, s: Stmt) -> Stmt {
     match s {
         Stmt::Local(p_local) => Stmt::Local(p_local.traverse(walk)),
         Stmt::Item(p_item) => Stmt::Item(p_item.traverse(walk)),
-        Stmt::Expr(p_expr) => Stmt::Expr(p_expr.traverse(walk)),
-        Stmt::Semi(p_expr, semi) => Stmt::Semi(p_expr.traverse(walk), semi),
+        Stmt::Expr(p_expr, semi) => Stmt::Expr(p_expr.traverse(walk), semi),
+        Stmt::Macro(p_macro) => Stmt::Macro(p_macro),
     }
 }
 
 pub fn traverse_expr_def<W: Traversal>(walk: &mut W, e: Expr) -> Expr {
     match e {
-        Expr::Box(e) => Expr::Box(ExprBox {
-            expr: Box::new(walk.traverse_expr(*e.expr)),
-            ..e
-        }),
         Expr::Array(e) => Expr::Array(ExprArray {
             elems: e.elems.traverse(walk),
             ..e
@@ -154,10 +150,6 @@ pub fn traverse_expr_def<W: Traversal>(walk: &mut W, e: Expr) -> Expr {
             ..e
         }),
         Expr::Cast(e) => Expr::Cast(ExprCast {
-            expr: e.expr.traverse(walk),
-            ..e
-        }),
-        Expr::Type(e) => Expr::Type(ExprType {
             expr: e.expr.traverse(walk),
             ..e
         }),
@@ -203,11 +195,6 @@ pub fn traverse_expr_def<W: Traversal>(walk: &mut W, e: Expr) -> Expr {
             right: e.right.traverse(walk),
             ..e
         }),
-        Expr::AssignOp(e) => Expr::AssignOp(ExprAssignOp {
-            left: e.left.traverse(walk),
-            right: e.right.traverse(walk),
-            ..e
-        }),
         Expr::Field(e) => Expr::Field(ExprField {
             base: e.base.traverse(walk),
             ..e
@@ -218,8 +205,8 @@ pub fn traverse_expr_def<W: Traversal>(walk: &mut W, e: Expr) -> Expr {
             ..e
         }),
         Expr::Range(e) => Expr::Range(ExprRange {
-            from: e.from.traverse(walk),
-            to: e.to.traverse(walk),
+            start: e.start.traverse(walk),
+            end: e.end.traverse(walk),
             ..e
         }),
         Expr::Path(e) => Expr::Path(ExprPath { ..e }),
@@ -288,7 +275,7 @@ pub fn traverse_trait_item_def<W: Traversal>(walk: &mut W, ti: TraitItem) -> Tra
             default: ti.default.traverse(walk),
             ..ti
         }),
-        TraitItem::Method(ti) => TraitItem::Method(TraitItemMethod {
+        TraitItem::Fn(ti) => TraitItem::Fn(TraitItemFn {
             default: ti.default.traverse(walk),
             ..ti
         }),
@@ -304,7 +291,7 @@ pub fn traverse_impl_item_def<W: Traversal>(walk: &mut W, ii: ImplItem) -> ImplI
             expr: ii.expr.traverse(walk),
             ..ii
         }),
-        ImplItem::Method(ii) => ImplItem::Method(ImplItemMethod {
+        ImplItem::Fn(ii) => ImplItem::Fn(ImplItemFn {
             block: ii.block.traverse(walk),
             ..ii
         }),
@@ -320,7 +307,15 @@ pub fn traverse_block_def<W: Traversal>(walk: &mut W, mut b: Block) -> Block {
 }
 
 pub fn traverse_local_def<W: Traversal>(walk: &mut W, mut l: Local) -> Local {
-    l.init = l.init.traverse(walk);
+    l.init = l.init.map(|x| LocalInit {
+        expr: x.expr.traverse(walk),
+        ..x
+    });
+    l
+}
+
+pub fn traverse_local_init_def<W: Traversal>(walk: &mut W, mut l: LocalInit) -> LocalInit {
+    l.expr = l.expr.traverse(walk);
     l
 }
 
@@ -387,7 +382,6 @@ pub fn traverse_item_def<W: Traversal>(walk: &mut W, i: Item) -> Item {
         Item::Union(item) => Item::Union(ItemUnion { ..item }),
         Item::TraitAlias(item) => Item::TraitAlias(ItemTraitAlias { ..item }),
         Item::Macro(item) => Item::Macro(ItemMacro { ..item }),
-        Item::Macro2(item) => Item::Macro2(ItemMacro2 { ..item }),
         _ => unimplemented!(),
     }
 }
