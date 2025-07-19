@@ -3,6 +3,7 @@ use crate::attributes::{rust_no_attrs, rust_used_static, rust_used_static2, rust
 use crate::sections::*;
 use std::ffi::c_uint;
 
+#[test]
 pub fn test_sectioned_statics() {
     unsafe {
         assert_eq!(rust_section_me, c_uint::max_value());
@@ -27,6 +28,7 @@ pub fn test_sectioned_statics() {
     }
 }
 
+#[test]
 pub fn test_sectioned_used_static() {
     if cfg!(not(target_os = "macos")) {
         // This static variable is private and unused (but with the used attribute)

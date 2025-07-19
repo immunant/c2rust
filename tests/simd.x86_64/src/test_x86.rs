@@ -109,6 +109,7 @@ impl Debug for ShuffleVectors {
     }
 }
 
+#[test]
 pub fn test_unpack_128_2x128() {
     assert!(is_x86_feature_detected!("sse2"), "{}", UNSAFETY_ERROR);
 
@@ -139,6 +140,7 @@ pub fn test_unpack_128_2x128() {
     }
 }
 
+#[test]
 pub fn test_zero_initializers() {
     assert!(is_x86_feature_detected!("sse"), "{}", UNSAFETY_ERROR);
     assert!(is_x86_feature_detected!("sse2"), "{}", UNSAFETY_ERROR);
@@ -150,6 +152,7 @@ pub fn test_zero_initializers() {
     }
 }
 
+#[test]
 pub fn test_shuffle_vectors() {
     assert!(is_x86_feature_detected!("sse4.2"), "{}", UNSAFETY_ERROR);
     assert!(is_x86_feature_detected!("ssse3"), "{}", UNSAFETY_ERROR);
@@ -184,6 +187,7 @@ impl Debug for VectorInitLists {
     }
 }
 
+#[test]
 pub fn test_vector_init_lists() {
     assert!(is_x86_feature_detected!("sse"), "{}", UNSAFETY_ERROR);
     assert!(is_x86_feature_detected!("sse2"), "{}", UNSAFETY_ERROR);
@@ -198,6 +202,7 @@ pub fn test_vector_init_lists() {
     assert_eq!(c2, r2);
 }
 
+#[test]
 pub fn test_static_init_lists() {
     assert!(is_x86_feature_detected!("sse"), "{}", UNSAFETY_ERROR);
     assert!(is_x86_feature_detected!("sse2"), "{}", UNSAFETY_ERROR);

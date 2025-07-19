@@ -6,4 +6,5 @@ extern "C" {
     fn modules();
 }
 
+#[test]
 pub fn test_modules() {}

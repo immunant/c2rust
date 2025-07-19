@@ -5,4 +5,5 @@ use crate::label_break_trigger::rust_triggers_label_break;
 
 // This test case just makes sure that the functions imported actually were
 // translated. Compilation suffices.
+#[test]
 pub fn test_nothing() {}

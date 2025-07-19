@@ -23,6 +23,7 @@ extern "C" {
 // The length can be any value
 const BUFFER_SIZE: usize = 1024;
 
+#[test]
 pub fn test_example() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
@@ -42,7 +43,8 @@ The C code can do one of two things: modify some sort of buffer or return a valu
 
 To completely skip the translation of a C file, you must add the comment `//! skip_translation` at the top of the file. That will prevent the case from showing up as red in the console output.
 
-You can also mark a Rust file as unexpected to compile, by adding `//! xfail` to the top of the file, or just expect an individual test function to fail to run by adding `// xfail` prior to the function definition.
+You can also mark a Rust file as unexpected to compile by adding `//! xfail` to the top of the file.
+For an individual test function, use the normal Rust `#[should_panic]` for `#[test]`s.
 
 Adding `//! extern_crate_X` to the top of a test file will ensure `extern crate X;` gets added to the main binary driver.
 

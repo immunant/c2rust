@@ -1,5 +1,6 @@
 use crate::fn_attrs::{rust_ensure_use, rust_inline_extern, rust_noinline_nonstatic};
 
+#[test]
 pub fn test_fn_attrs() {
     // There's no way to directly test that a function is inlined or not
     // so instead we're checking the source itself

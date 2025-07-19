@@ -8,6 +8,7 @@ extern "C" {
 
 const BUFFER_SIZE: usize = 6;
 
+#[test]
 pub fn test_lvalue() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
