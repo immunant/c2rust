@@ -1,8 +1,11 @@
 //! feature_c_variadic,
 
+use crate::varargs::rust_call_printf;
+// See #1281. Varargs don't yet work on aarch64.
+#[cfg(not(target_arch = "aarch64"))]
 use crate::varargs::{
-    rust_call_printf, rust_call_vprintf, rust_my_printf, rust_restart_valist, rust_sample_stddev,
-    rust_simple_vacopy, rust_valist_struct_member, rust_valist_struct_pointer_member,
+    rust_call_vprintf, rust_my_printf, rust_restart_valist, rust_sample_stddev, rust_simple_vacopy,
+    rust_valist_struct_member, rust_valist_struct_pointer_member,
 };
 
 use std::ffi::c_char;
@@ -11,7 +14,12 @@ use std::ffi::CString;
 #[link(name = "test")]
 extern "C" {
     fn call_printf();
+}
 
+// See #1281. Varargs don't yet work on aarch64.
+#[cfg(not(target_arch = "aarch64"))]
+#[link(name = "test")]
+extern "C" {
     fn call_vprintf(_: *const c_char, ...);
 
     fn my_printf(_: *const c_char, ...);
@@ -38,6 +46,7 @@ pub fn test_call_printf() {
 }
 
 // Make sure we can pass through va_list arguments
+#[cfg(not(target_arch = "aarch64"))]
 #[test]
 pub fn test_call_vprintf() {
     let fmt_str = CString::new("%d, %f\n").unwrap();
@@ -48,6 +57,7 @@ pub fn test_call_vprintf() {
 }
 
 // Test out a small varargs function definition
+#[cfg(not(target_arch = "aarch64"))]
 #[test]
 pub fn test_my_printf() {
     let fmt_str = CString::new("%d, %f, %s\n").unwrap();
@@ -58,6 +68,7 @@ pub fn test_my_printf() {
     }
 }
 
+#[cfg(not(target_arch = "aarch64"))]
 #[test]
 pub fn test_simple_vacopy() {
     let fmt_str = CString::new("%d, %f\n").unwrap();
@@ -67,6 +78,7 @@ pub fn test_simple_vacopy() {
     }
 }
 
+#[cfg(not(target_arch = "aarch64"))]
 #[test]
 pub fn test_valist_struct_member() {
     let fmt_str = CString::new("%d, %f\n").unwrap();
@@ -76,6 +88,7 @@ pub fn test_valist_struct_member() {
     }
 }
 
+#[cfg(not(target_arch = "aarch64"))]
 #[test]
 pub fn test_valist_struct_pointer_member() {
     let fmt_str = CString::new("%d, %f\n").unwrap();
@@ -85,6 +98,7 @@ pub fn test_valist_struct_pointer_member() {
     }
 }
 
+#[cfg(not(target_arch = "aarch64"))]
 #[test]
 pub fn test_restart_valist() {
     let fmt_str = CString::new("%d, %f\n").unwrap();
@@ -94,6 +108,7 @@ pub fn test_restart_valist() {
     }
 }
 
+#[cfg(not(target_arch = "aarch64"))]
 #[test]
 pub fn test_sample_stddev() {
     unsafe {
