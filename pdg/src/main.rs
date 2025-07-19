@@ -373,7 +373,7 @@ mod tests {
     fn analysis_tests_misc_pdg_snapshot_debug() -> eyre::Result<()> {
         init();
         let pdg = analysis_tests_misc_pdg_snapshot(Profile::Debug, Default::default())?;
-        insta::assert_display_snapshot!(pdg);
+        insta::assert_snapshot!(pdg);
         Ok(())
     }
 
@@ -381,7 +381,7 @@ mod tests {
     fn analysis_tests_misc_pdg_snapshot_release() -> eyre::Result<()> {
         init();
         let pdg = analysis_tests_misc_pdg_snapshot(Profile::Release, Default::default())?;
-        insta::assert_display_snapshot!(pdg);
+        insta::assert_snapshot!(pdg);
         Ok(())
     }
 
