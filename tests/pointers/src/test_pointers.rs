@@ -21,6 +21,7 @@ const BUFFER_SIZE: usize = 5;
 const BUFFER_SIZE2: usize = 31;
 const BUFFER_SIZE3: usize = 18;
 
+#[test]
 pub fn test_init() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
@@ -35,6 +36,7 @@ pub fn test_init() {
     assert_eq!(buffer, expected_buffer);
 }
 
+#[test]
 pub fn test_arith() {
     let mut buffer = [0; BUFFER_SIZE2];
     let mut rust_buffer = [0; BUFFER_SIZE2];
@@ -52,11 +54,16 @@ pub fn test_arith() {
     assert_eq!(buffer, expected_buffer);
 }
 
+#[test]
 pub fn test_fn_ptrs() {
     let mut buffer = [0; BUFFER_SIZE3];
     let mut rust_buffer = [0; BUFFER_SIZE3];
     let expected_buffer = [
         97, 97, 97, -98, 1, 0, 0, 1, 65, 66, 68, 69, 97, 97, 97, 1, 97, 98,
+    ];
+    #[cfg(target_arch = "aarch64")]
+    let expected_buffer = [
+        97, 97, 97, -98, 1, 0, 0, 1, 68, 69, 97, 97, 97, 1, 0, 0, 0, 0,
     ];
 
     unsafe {

@@ -7,6 +7,7 @@ extern "C" {
 
 const BUFFER_SIZE: usize = 1;
 
+#[test]
 pub fn test_buffer() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
@@ -21,6 +22,7 @@ pub fn test_buffer() {
     assert_eq!(buffer, expected_buffer);
 }
 
+#[test]
 pub fn test_types() {
     assert_eq!(foo as u32, 1);
     assert_eq!(bar as u32, 2);

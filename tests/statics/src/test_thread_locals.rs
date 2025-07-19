@@ -49,6 +49,7 @@ fn run_test() {
     }
 }
 
+#[test]
 pub fn test_thread_locals() {
     run_test();
     run_test();

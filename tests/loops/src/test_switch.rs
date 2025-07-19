@@ -6,6 +6,7 @@ extern "C" {
     fn switch_val(_: c_int) -> c_int;
 }
 
+#[test]
 pub fn test_switch() {
     let val = unsafe { switch_val(1) };
     let rust_val = unsafe { rust_switch_val(1) };

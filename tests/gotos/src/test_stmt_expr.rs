@@ -2,6 +2,7 @@ use crate::stmt_expr::rust_stmt_expr_func;
 
 use std::ffi::c_int;
 
+#[test]
 pub fn test_stmt_expr_relooper() {
     unsafe {
         assert_eq!(rust_stmt_expr_func(0), 14);

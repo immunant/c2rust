@@ -6,6 +6,8 @@ as well as things it probably won't ever handle.
 ## Partially implemented, experimental
 
 * variadic function definitions and macros that operate on `va_list`s
+  * generally working on x86_64
+  * not yet working on aarch64
 * preserving comments
 * GNU inline assembly
 * `long double` type (Linux only)

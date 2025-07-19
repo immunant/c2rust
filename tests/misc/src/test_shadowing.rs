@@ -10,6 +10,7 @@ extern "C" {
 
 const BUFFER_SIZE: usize = 10;
 
+#[test]
 pub fn test_twice() {
     for i in 0..20 {
         let double = unsafe { twice(i) };
@@ -19,6 +20,7 @@ pub fn test_twice() {
     }
 }
 
+#[test]
 pub fn test_shadowing() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
