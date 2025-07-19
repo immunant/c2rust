@@ -1,0 +1,39 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: "&rust"
+input_file: c2rust-transpile/tests/snapshots/aligned_read_write.c
+---
+#![allow(
+    dead_code,
+    mutable_transmutes,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+pub type __uint32_t = std::ffi::c_uint;
+pub type uint32_t = __uint32_t;
+pub type unaligned_uint32 = uint32_t;
+#[no_mangle]
+pub unsafe extern "C" fn unaligned_read(mut ptr: *const std::ffi::c_void) -> uint32_t {
+    return *(ptr as *const unaligned_uint32);
+}
+#[no_mangle]
+pub unsafe extern "C" fn aligned_read(mut ptr: *const std::ffi::c_void) -> uint32_t {
+    return *(ptr as *const uint32_t);
+}
+#[no_mangle]
+pub unsafe extern "C" fn unaligned_write(
+    mut ptr: *mut std::ffi::c_void,
+    mut value: uint32_t,
+) {
+    (ptr as *mut unaligned_uint32).write_unaligned(value);
+}
+#[no_mangle]
+pub unsafe extern "C" fn aligned_write(
+    mut ptr: *const std::ffi::c_void,
+    mut value: uint32_t,
+) {
+    *(ptr as *mut uint32_t) = value;
+}
