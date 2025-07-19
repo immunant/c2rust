@@ -61,6 +61,10 @@ pub fn test_fn_ptrs() {
     let expected_buffer = [
         97, 97, 97, -98, 1, 0, 0, 1, 65, 66, 68, 69, 97, 97, 97, 1, 97, 98,
     ];
+    #[cfg(target_arch = "aarch64")]
+    let expected_buffer = [
+        97, 97, 97, -98, 1, 0, 0, 1, 68, 69, 97, 97, 97, 1, 0, 0, 0, 0,
+    ];
 
     unsafe {
         entry3(BUFFER_SIZE3 as u32, buffer.as_mut_ptr());
