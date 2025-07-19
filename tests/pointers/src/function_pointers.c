@@ -16,12 +16,17 @@ int negintval(const char c) { return -c; }
 
 int varargs_intval(const char c, ...) { return c; }
 
+// See #1281. Varargs don't yet work on aarch64.
+#ifndef __aarch64__
+
 int varargs_fp(const int c, ...) {
   va_list arg;
   va_start(arg, c);
   char_to_int *fp = va_arg(arg, char_to_int *);
   return fp((char)c);
 }
+
+#endif
 
 void entry3(const unsigned sz, int buffer[const]) {
   int i = 0;
@@ -68,9 +73,11 @@ void entry3(const unsigned sz, int buffer[const]) {
   j = p4 != 0;
   j = 0 != p4;
 
+#ifndef __aarch64__
   va_char_to_int_fp p8 = varargs_intval;
   buffer[i++] = p8('A');
   buffer[i++] = (*p8)('B', 'C');
+#endif
 
   // Test valid casts between function pointers
   // with additional parameters
@@ -90,6 +97,8 @@ void entry3(const unsigned sz, int buffer[const]) {
   buffer[i++] = (*(s).fn)(('a'));
 
   buffer[i++] = p2 == intval;
+#ifndef __aarch64__
   buffer[i++] = varargs_fp('a', intval);
   buffer[i++] = varargs_fp('b', p2);
+#endif
 }
