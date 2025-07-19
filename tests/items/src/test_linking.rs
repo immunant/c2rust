@@ -8,6 +8,7 @@ extern "C" {
     fn w() -> c_int;
 }
 
+#[test]
 pub fn test_linking() {
     let mut ret = unsafe { l() };
 

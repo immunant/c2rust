@@ -2,6 +2,7 @@ use crate::dfa_binary_multiple_three::rust_multiple_three;
 
 use std::ffi::CString;
 
+#[test]
 pub fn test_multiple_three() {
     let n1 = CString::new(format!("{:b}", 4529465 * 3 + 0)).unwrap();
     let n2 = CString::new(format!("{:b}", 65424738 * 3 + 1)).unwrap();

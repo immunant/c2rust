@@ -7,6 +7,7 @@ extern "C" {
     fn entry() -> c_int;
 }
 
+#[test]
 pub fn test_typedef() {
     let ret = unsafe { entry() };
     let rust_ret = unsafe { rust_entry() };

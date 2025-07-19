@@ -10,6 +10,7 @@ extern "C" {
     fn nofnargs() -> c_int;
 }
 
+#[test]
 pub fn test_noop() {
     unsafe {
         noop();
@@ -17,6 +18,7 @@ pub fn test_noop() {
     }
 }
 
+#[test]
 pub fn test_nofnargs() {
     let ret = unsafe { nofnargs() };
     let rust_ret = unsafe { rust_nofnargs() };

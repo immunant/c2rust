@@ -27,18 +27,21 @@ const BUFFER_SIZE: usize = 49;
 const BUFFER_SIZE2: usize = 2;
 const BUFFER_SIZEV: usize = 88;
 
+#[test]
 pub fn test_sized_array_impls() {
     unsafe {
         assert_eq!(rust_test_sized_array(), test_sized_array());
     }
 }
 
+#[test]
 pub fn test_global_incomplete_array() {
     unsafe {
         assert_eq!(rust_check_some_ints(), check_some_ints());
     }
 }
 
+#[test]
 pub fn test_buffer() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
@@ -59,6 +62,7 @@ pub fn test_buffer() {
     }
 }
 
+#[test]
 pub fn test_buffer2() {
     let mut buffer = [0; BUFFER_SIZE2];
     let mut rust_buffer = [0; BUFFER_SIZE2];
@@ -73,6 +77,7 @@ pub fn test_buffer2() {
     assert_eq!(buffer, expected_buffer);
 }
 
+#[test]
 pub fn test_variable_arrays() {
     let mut buffer = [0; BUFFER_SIZEV];
     let mut rust_buffer = [0; BUFFER_SIZEV];
@@ -93,6 +98,7 @@ pub fn test_variable_arrays() {
     }
 }
 
+#[test]
 pub fn test_alloca_arrays() {
     let mut buffer = [0; BUFFER_SIZEV];
     let mut rust_buffer = [0; BUFFER_SIZEV];

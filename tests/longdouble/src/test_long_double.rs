@@ -5,6 +5,7 @@ use crate::long_double::{
 };
 use f128::f128;
 
+#[test]
 pub fn test_long_double_ops() {
     let input_result = f128::parse("-4.40000000000000013322676295501878485").unwrap();
     let ret_result = f128::parse("-5.40000000000000013322676295501878485").unwrap();
@@ -15,6 +16,7 @@ pub fn test_long_double_ops() {
     assert_eq!(rust_ret, ret_result);
 }
 
+#[test]
 pub fn test_long_double_casts() {
     let input = f128::parse("4.41234567890123413322676295501878485").unwrap();
 
@@ -31,6 +33,7 @@ pub fn test_long_double_casts() {
     assert_eq!(rust_ret, 4u32);
 }
 
+#[test]
 pub fn test_global_f128s() {
     unsafe {
         assert_eq!(rust_ld1, f128::new(1.0f64));

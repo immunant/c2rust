@@ -13,6 +13,7 @@ extern "C" {
 const BUFFER_SIZE: usize = 9;
 const ALIGNMENT_BUFFER_SIZE: usize = 276;
 
+#[test]
 pub fn test_buffer() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
@@ -27,12 +28,14 @@ pub fn test_buffer() {
     assert_eq!(buffer, expected_buffer);
 }
 
+#[test]
 pub fn test_alignment() {
     let c_alignment = unsafe { alignment_of_aligned8_struct() };
 
     assert_eq!(align_of::<Aligned8Struct>(), c_alignment);
 }
 
+#[test]
 pub fn test_alignments() {
     let mut buffer = [0; ALIGNMENT_BUFFER_SIZE];
     let mut rust_buffer = [0; ALIGNMENT_BUFFER_SIZE];
