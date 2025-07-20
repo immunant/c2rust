@@ -755,7 +755,7 @@ impl<'a> Translation<'a> {
                         }
 
                         let last_expr = match block.stmts[last] {
-                            Stmt::Expr(ref expr, _semi) => expr.clone(),
+                            Stmt::Expr(ref expr, None) => expr.clone(),
                             _ => return Err(TranslationError::generic("Expected Expr Stmt")),
                         };
                         let method_call =

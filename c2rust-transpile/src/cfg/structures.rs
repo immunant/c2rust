@@ -530,7 +530,7 @@ impl StructureState {
                     }
                     (false, false) => {
                         fn is_expr(kind: &Stmt) -> bool {
-                            matches!(kind, Stmt::Expr(Expr::If(..) | Expr::Block(..), _semi))
+                            matches!(kind, Stmt::Expr(Expr::If(..) | Expr::Block(..), None))
                         }
 
                         // Do the else statements contain a single If, IfLet or
@@ -542,7 +542,7 @@ impl StructureState {
                             let stmt_expr = els_stmts.swap_remove(0);
                             let stmt_expr_span = stmt_expr.span();
                             let mut els_expr = match stmt_expr {
-                                Stmt::Expr(e, _semi) => e,
+                                Stmt::Expr(e, None) => e,
                                 _ => panic!("is_els_expr out of sync"),
                             };
                             els_expr.set_span(stmt_expr_span);
@@ -605,7 +605,7 @@ impl StructureState {
                 let (body, body_span) = self.to_stmt(*body, comment_store);
 
                 // TODO: this is ugly but it needn't be. We are just pattern matching on particular ASTs.
-                if let Some(stmt @ &Stmt::Expr(ref expr, _semi)) = body.first() {
+                if let Some(stmt @ &Stmt::Expr(ref expr, None)) = body.first() {
                     let stmt_span = stmt.span();
                     let span = if !stmt_span.is_dummy() {
                         stmt_span
@@ -625,7 +625,7 @@ impl StructureState {
                                 expr: None,
                                 ..
                             }),
-                            _token,
+                            Some(_),
                         )] = then_branch.stmts.as_slice()
                         {
                             let e = mk().while_expr(

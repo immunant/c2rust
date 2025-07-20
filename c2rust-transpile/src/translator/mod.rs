@@ -357,11 +357,11 @@ pub fn stmts_block(mut stmts: Vec<Stmt>) -> Block {
             Expr::Block(ExprBlock {
                 block, label: None, ..
             }),
-            _semi,
+            None,
         )) if stmts.is_empty() => return block,
         Some(mut s) => {
-            if let Stmt::Expr(e, _semi) = s {
-                s = Stmt::Expr(e, _semi);
+            if let Stmt::Expr(e, None) = s {
+                s = Stmt::Expr(e, Some(Default::default()));
             }
             stmts.push(s);
         }
@@ -4025,7 +4025,7 @@ impl<'c> Translation<'c> {
                     expr: ret_val,
                     ..
                 }),
-                _,
+                Some(_),
             ) = stmt
             {
                 if blbl.ident == mk().label(lbl.pretty_print()).name.ident {
