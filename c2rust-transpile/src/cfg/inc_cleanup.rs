@@ -33,7 +33,7 @@ impl IncCleanup {
 
         let mut removed_tail_expr = false;
 
-        if let Stmt::Expr(expr, _) = &mut stmt {
+        if let Stmt::Expr(expr, None) = &mut stmt {
             match expr {
                 Expr::If(ExprIf {
                     cond: _,
@@ -74,7 +74,7 @@ impl IncCleanup {
     }
 
     fn is_idempotent_tail_expr(&self, stmt: &Stmt) -> bool {
-        let tail_expr = if let Stmt::Expr(expr, _token) = stmt {
+        let tail_expr = if let Stmt::Expr(expr, Some(_token)) = stmt {
             expr
         } else {
             return false;
@@ -151,7 +151,7 @@ fn cleanup_if(stmt: Stmt) -> Stmt {
                 );
             } else if block.stmts.len() == 1 {
                 // flatten nested if expression to else if chain
-                if let Stmt::Expr(Expr::If(nested_if_expr), _semi) = &block.stmts[0] {
+                if let Stmt::Expr(Expr::If(nested_if_expr), None) = &block.stmts[0] {
                     return Stmt::Expr(
                         Expr::If(ExprIf {
                             cond: cond.clone(),
