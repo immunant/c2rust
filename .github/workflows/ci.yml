@@ -41,6 +41,8 @@ jobs:
       # cached, what gets used as part of the key, and what additional handling
       # happens to make the cache reliable and smaller.
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-workspace-crates: true
 
       # Run after `rust-cache` so that this is cached.
       - run: rustup component add rustfmt rustc-dev
