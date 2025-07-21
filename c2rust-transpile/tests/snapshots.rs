@@ -69,11 +69,6 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
 
     insta::assert_snapshot!(name, &rs, &debug_expr);
 
-    let status = Command::new("rustc")
-        .args(&["--crate-type", "lib", "--edition", "2021"])
-        .arg(&rs_path)
-        .status();
-    assert!(status.unwrap().success());
     let rlib_path = {
         let mut file_name = OsString::new();
         file_name.push("lib");
@@ -81,6 +76,11 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
         file_name.push(".rlib");
         PathBuf::from(file_name)
     };
+    let status = Command::new("rustc")
+        .args(&["--crate-type", "lib", "--edition", "2021", "-o"])
+        .args(&[&rlib_path, &rs_path])
+        .status();
+    assert!(status.unwrap().success());
     fs::remove_file(&rlib_path).unwrap();
 }
 
