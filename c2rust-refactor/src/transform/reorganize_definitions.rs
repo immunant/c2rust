@@ -1081,8 +1081,8 @@ impl MovedDecl {
 
     fn join_visibility(&mut self, vis: &VisibilityKind) {
         match &mut self.kind {
-            DeclKind::ForeignItem(item, _) => item.vis.node = join_visibility(&item.vis.node, vis),
-            DeclKind::Item(item) => item.vis.node = join_visibility(&item.vis.node, vis),
+            DeclKind::ForeignItem(item, _) => item.vis.kind = join_visibility(&item.vis.kind, vis),
+            DeclKind::Item(item) => item.vis.kind = join_visibility(&item.vis.kind, vis),
         }
     }
 
@@ -1292,20 +1292,20 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                     }
 
                     ContainsDecl::Definition(existing) => {
-                        existing.join_visibility(&item.vis.node);
+                        existing.join_visibility(&item.vis.kind);
                         Some((new_def_id, existing.def_id))
                     }
 
                     ContainsDecl::Use(existing) => {
                         let existing_def_id = existing.def_id;
-                        existing.join_visibility(&item.vis.node);
+                        existing.join_visibility(&item.vis.kind);
                         *existing = MovedDecl::new(item, new_def_id, namespace.unwrap(), parent_header);
                         Some((existing_def_id, new_def_id))
                     }
 
                     ContainsDecl::Equivalent(existing) if existing.is_foreign() => {
                         let existing_def_id = existing.def_id;
-                        item.vis.node = join_visibility(&existing.visibility().node, &item.vis.node);
+                        item.vis.kind = join_visibility(&existing.visibility().kind, &item.vis.kind);
                         *existing = MovedDecl::new(item, new_def_id, namespace.unwrap(), parent_header);
                         Some((existing_def_id, new_def_id))
                     }
@@ -1363,7 +1363,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
             }
 
             ContainsDecl::Equivalent(existing) => {
-                existing.join_visibility(&item.vis.node);
+                existing.join_visibility(&item.vis.kind);
                 Some((new_def_id, existing.def_id))
             }
 
