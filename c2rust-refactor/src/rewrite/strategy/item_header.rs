@@ -52,7 +52,7 @@ fn span_empty(sp: Span) -> bool {
 //     }
 
 //     let spanned_vis = p.parse_visibility(FollowedByType::No)?;
-//     let vis = if !spanned_vis.node.ast_equiv(&VisibilityKind::Inherited) {
+//     let vis = if !spanned_vis.kind.ast_equiv(&VisibilityKind::Inherited) {
 //         spanned_vis.span
 //     } else {
 //         // `Inherited` visibility is implicit - there are no actual tokens.  Insert visibility just
@@ -122,7 +122,7 @@ fn span_empty(sp: Span) -> bool {
 //     }
 
 //     let spanned_vis = p.parse_visibility(false)?;
-//     let vis = if !spanned_vis.node.ast_equiv(&VisibilityKind::Inherited) {
+//     let vis = if !spanned_vis.kind.ast_equiv(&VisibilityKind::Inherited) {
 //         spanned_vis.span
 //     } else {
 //         // `Inherited` visibility is implicit - there are no actual tokens.  Insert visibility just
@@ -343,7 +343,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             // The first two go in a specific order.  If multiple qualifiers are added (for
             // example, both `unsafe` and `extern`), we need to add them in the right order.
 
-            if !vis1.node.ast_equiv(&vis2.node) {
+            if !vis1.kind.ast_equiv(&vis2.kind) {
                 record_qualifier_rewrite(vis1.span, reparsed.vis.span, rcx.borrow());
             }
 
@@ -372,7 +372,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             let src2: String = <Item as PrintParse>::to_string(new);
             let reparsed = Item::parse(rcx.session(), &src2);
 
-            if !vis1.node.ast_equiv(&vis2.node) {
+            if !vis1.kind.ast_equiv(&vis2.kind) {
                 record_qualifier_rewrite(vis1.span, reparsed.vis.span, rcx.borrow());
             }
 
