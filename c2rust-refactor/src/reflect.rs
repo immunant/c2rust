@@ -69,23 +69,23 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                 }
             }
             TyKind::Foreign(did) => {
-                let (qself, path) = self.reflect_def_path_inner(did, None);
+                let (qself, path) = self.reflect_def_path_inner(*did, None);
                 mk().qpath_ty(qself, path)
             }
             TyKind::Str => mk().ident_ty("str"),
             TyKind::Array(ty, len) => mk().array_ty(
-                self.reflect_ty(ty),
+                self.reflect_ty(*ty),
                 mk().lit_expr(mk().int_lit(len.eval_usize(self.tcx, ty::ParamEnv::empty()) as u128, "usize")),
             ),
-            TyKind::Slice(ty) => mk().slice_ty(self.reflect_ty(ty)),
+            TyKind::Slice(ty) => mk().slice_ty(self.reflect_ty(*ty)),
             TyKind::RawPtr(mty) => mk()
                 .set_mutbl(mty.mutbl)
                 .ptr_ty(self.reflect_ty(mty.ty)),
-            TyKind::Ref(_, ty, m) => mk().set_mutbl(m).ref_ty(self.reflect_ty(ty)),
+            TyKind::Ref(_, ty, m) => mk().set_mutbl(m).ref_ty(self.reflect_ty(*ty)),
             TyKind::FnDef(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
             TyKind::FnPtr(poly_fn_sig) => if let Some(fn_sig) = poly_fn_sig.no_bound_vars() {
                 let inputs = fn_sig.inputs().iter().map(|input| {
-                    mk().arg(self.reflect_ty(input), mk().wild_pat())
+                    mk().arg(self.reflect_ty(*input), mk().wild_pat())
                 }).collect();
                 let output = FnRetTy::Ty(self.reflect_ty(fn_sig.output()));
                 mk()
@@ -260,7 +260,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                                 let start = substs.len() - num_params;
                                 let tys = substs[start..]
                                     .iter()
-                                    .map(|ty| self.reflect_ty(ty))
+                                    .map(|ty| self.reflect_ty(*ty))
                                     .collect::<Vec<_>>();
                                 let abpd = mk().angle_bracketed_args(tys);
                                 segments.last_mut().unwrap().args = abpd.into();
@@ -374,7 +374,7 @@ fn register_test_reflect(reg: &mut Registry) {
                     let new_expr = if let TyKind::FnDef(def_id, ref substs) = ty.kind() {
                         let substs = substs.types().collect::<Vec<_>>();
                         let (qself, path) = reflector
-                            .reflect_def_path_inner(def_id, Some(&substs));
+                            .reflect_def_path_inner(*def_id, Some(&substs));
                         mk().qpath_expr(qself, path)
                     } else if let Some(def_id) = cx.try_resolve_expr(&e) {
                         let parent = cx
