@@ -193,12 +193,12 @@ impl Transform for TestDebugCallees {
                     info!("      fn sig: {:?}", sig);
                     info!("      input tys: {:?}", sig.inputs());
                     info!("      input tys (skip): {:?}", sig.skip_binder().inputs());
-                    info!("      anonymized: {:?}", tcx.anonymize_late_bound_regions(&sig));
-                    info!("      erased: {:?}", tcx.erase_late_bound_regions(&sig));
+                    info!("      anonymized: {:?}", tcx.anonymize_late_bound_regions(sig));
+                    info!("      erased: {:?}", tcx.erase_late_bound_regions(sig));
                     if let Some(substs) = substs {
                         let sig2 = tcx.subst_and_normalize_erasing_regions(
                             substs, ParamEnv::empty(),
-                            &tcx.erase_late_bound_regions(&sig));
+                            &tcx.erase_late_bound_regions(sig));
                         info!("      sig + erase + subst: {:?}", sig2);
                         info!("      input tys: {:?}", sig2.inputs());
                     }
