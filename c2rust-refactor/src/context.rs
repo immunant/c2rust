@@ -400,9 +400,9 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             _ => return None,
         }
 
-        let unsubst_fn_sig = tcx.erase_late_bound_regions(&poly_sig);
+        let unsubst_fn_sig = tcx.erase_late_bound_regions(poly_sig);
         let fn_sig = if let Some(substs) = substs {
-            tcx.subst_and_normalize_erasing_regions(substs, ParamEnv::empty(), &unsubst_fn_sig)
+            tcx.subst_and_normalize_erasing_regions(substs, ParamEnv::empty(), unsubst_fn_sig)
         } else {
             tcx.normalize_erasing_regions(ParamEnv::empty(), unsubst_fn_sig)
         };
