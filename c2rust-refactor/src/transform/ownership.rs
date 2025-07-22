@@ -371,12 +371,12 @@ fn do_split_variants(st: &CommandState,
                 fl.attrs.retain(|a| {
                     // If a `variant_of` annotation was present, then this fn should be part of a
                     // variant set, and we should have bailed out of the split logic already.
-                    assert!(!a.check_name("ownership_variant_of".into_symbol()));
+                    assert!(!a.has_name("ownership_variant_of".into_symbol()));
 
                     // Remove all `ownership_mono` (we add a new one below) and also remove
                     // `ownership_constraints` from all but the first split fn.
-                    !a.check_name("ownership_mono".into_symbol()) &&
-                    (!a.check_name("ownership_constraints".into_symbol()) || mono_idx == 0)
+                    !a.has_name("ownership_mono".into_symbol()) &&
+                    (!a.has_name("ownership_constraints".into_symbol()) || mono_idx == 0)
                 });
 
                 fl.attrs.push(build_mono_attr(&mr.suffix, &mr.assign));
