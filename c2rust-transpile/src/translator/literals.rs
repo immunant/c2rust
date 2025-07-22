@@ -75,7 +75,7 @@ impl<'c> Translation<'c> {
     /// Convert a C literal expression to a Rust expression
     pub fn convert_literal(
         &self,
-        _ctx: ExprContext,
+        ctx: ExprContext,
         ty: CQualTypeId,
         kind: &CLiteral,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -116,6 +116,13 @@ impl<'c> Translation<'c> {
                 };
                 let val = match self.ast_context.resolve_type(ty.ctype).kind {
                     CTypeKind::LongDouble => {
+                        if ctx.is_const {
+                            return Err(format_translation_err!(
+                                None,
+                                "f128 cannot be used in constants because `f128::f128::new` is not `const`",
+                            ));
+                        }
+
                         self.use_crate(ExternCrate::F128);
 
                         let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);

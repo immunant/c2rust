@@ -4264,6 +4264,13 @@ impl<'c> Translation<'c> {
 
                 let source_ty = self.convert_type(source_ty_ctype_id)?;
                 if let CTypeKind::LongDouble = target_ty_ctype {
+                    if ctx.is_const {
+                        return Err(format_translation_err!(
+                                None,
+                                "f128 cannot be used in constants because `f128::f128::new` is not `const`",
+                            ));
+                    }
+
                     self.use_crate(ExternCrate::F128);
 
                     let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
