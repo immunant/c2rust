@@ -279,7 +279,7 @@ pub fn is_exported(item: &Item) -> bool {
         }
 
         // Types are visible if pub
-        _ => item.vis.node.is_pub(),
+        _ => item.vis.kind.is_pub(),
     }
 }
 
