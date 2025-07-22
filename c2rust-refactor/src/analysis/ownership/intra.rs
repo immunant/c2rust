@@ -241,7 +241,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             }
 
             TyKind::FnDef(def_id, _) => {
-                let (func, var) = cx.variant_summ(def_id);
+                let (func, var) = cx.variant_summ(*def_id);
                 let num_vars = func.num_sig_vars;
 
                 let inst_idx = insts.len();
@@ -530,7 +530,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 let idx = expect!([ty.label] Label::FnDef(idx) => idx);
                 let var_base = self.insts[idx].first_inst_var;
 
-                let sig = self.cx.variant_func_sig(did);
+                let sig = self.cx.variant_func_sig(*did);
 
                 // First apply the permission substs.  Replace all `SigVar`s with `InstVar`s.
                 let mut f = |p: &Option<_>| {
