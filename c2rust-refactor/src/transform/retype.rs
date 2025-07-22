@@ -1042,11 +1042,11 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             (Ref(_, from, Mutability::Mut), Ref(_, to, _))
             // We ignore regions here because references from command-line args
             // won't have a valid region.
-                => self.can_cast(from, to, parent),
+                => self.can_cast(*from, *to, parent),
             (Ref(_, from, Mutability::Not), Ref(_, to, Mutability::Not))
             // We ignore regions here because references from command-line args
             // won't have a valid region.
-                => self.can_cast(from, to, parent),
+                => self.can_cast(*from, *to, parent),
 
             // ptr-ptr-cast
             (&RawPtr(TypeAndMut{ty: ref _from_ty, mutbl: from_mut}),
@@ -1254,7 +1254,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                     "as_ptr"
                 };
                 let mut sub_expected = expected;
-                sub_expected.ty = self.cx.ty_ctxt().mk_slice(inner_ty);
+                sub_expected.ty = self.cx.ty_ctxt().mk_slice(*inner_ty);
                 sub_expected.mutability = Some(*mutbl);
                 let mut e = arguments[0].clone();
                 if self.try_retype(&mut e, sub_expected.clone()) {
@@ -1299,7 +1299,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                     _ => return false,
                 };
                 let mut sub_expected = expected;
-                sub_expected.ty = subty;
+                sub_expected.ty = *subty;
                 sub_expected.mutability = Some(*mutbl);
                 if self.try_retype(e, sub_expected) {
                     *expr_mut = *mutbl;
@@ -1372,14 +1372,14 @@ fn can_coerce<'a, 'tcx>(
     }
     match (from_ty.kind(), to_ty.kind()) {
         // Unsize for Array
-        (Array(ref from_ty, _), Slice(ref to_ty)) => can_coerce(from_ty, to_ty, tcx),
+        (Array(from_ty, _), Slice(to_ty)) => can_coerce(*from_ty, *to_ty, tcx),
 
         // Lifetime coercion. This is more permissive than the language allows
         // (should only be longer -> shorter lifetimes). However, if we assume
         // that we aren't changing lifetimes then we can be overly permissive,
         // since we couldn't fix the lifetimes if they did not match.
-        (Ref(_, ref from_ty, mut1), Ref(_, ref to_ty, mut2)) => {
-            mut1 == mut2 && can_coerce(from_ty, to_ty, tcx)
+        (Ref(_, from_ty, mut1), Ref(_, to_ty, mut2)) => {
+            mut1 == mut2 && can_coerce(*from_ty, *to_ty, tcx)
         }
 
         // TODO other unsizing

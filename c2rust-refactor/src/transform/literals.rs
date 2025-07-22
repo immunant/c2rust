@@ -466,7 +466,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             sty::TyKind::Slice(ty) |
             sty::TyKind::RawPtr(ty::TypeAndMut { ty, .. }) |
             sty::TyKind::Ref(_, ty, _) => {
-                let ty_kt = self.ty_to_key_tree_internal(ty, mach_actual, seen);
+                let ty_kt = self.ty_to_key_tree_internal(*ty, mach_actual, seen);
                 self.replace_with_node(new_node, &[ty_kt]);
             }
 
@@ -477,7 +477,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 fn_sig_to_key_tree(tcx.fn_sig(def_id), true);
             }
             sty::TyKind::FnPtr(fn_sig) => {
-                fn_sig_to_key_tree(fn_sig, mach_actual);
+                fn_sig_to_key_tree(*fn_sig, mach_actual);
             }
 
             // TODO: Closure
@@ -1168,13 +1168,13 @@ impl<'tcx> ut::UnifyValue for LitTySource<'tcx> {
             (Actual(ty1), Actual(ty2)) |
             (Actual(ty1), Suffix(ty2, _)) |
             (Suffix(ty1, _), Actual(ty2)) |
-            (Suffix(ty1, _), Suffix(ty2, _)) if ty1 != ty2 => Err((ty1, ty2)),
+            (Suffix(ty1, _), Suffix(ty2, _)) if ty1 != ty2 => Err((*ty1, *ty2)),
 
             (Suffix(ty, n1), Suffix(_, n2)) |
             (Suffix(ty, n1), Unknown(n2)) |
-            (Unknown(n1), Suffix(ty, n2)) => Ok(Suffix(ty, *n1 || *n2)),
+            (Unknown(n1), Suffix(ty, n2)) => Ok(Suffix(*ty, *n1 || *n2)),
 
-            (Actual(ty), _) | (_, Actual(ty)) => Ok(Actual(ty)),
+            (Actual(ty), _) | (_, Actual(ty)) => Ok(Actual(*ty)),
             (Unknown(n1), Unknown(n2)) => Ok(Unknown(*n1 || *n2)),
         }
     }
