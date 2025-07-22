@@ -371,7 +371,7 @@ fn restore_attrs(new_attrs: &mut Vec<Attribute>, old_attrs: &[Attribute]) {
     new_attrs.retain(|attr| {
         // TODO: don't erase user-written #[structural_match] attrs
         // (It can be written explicitly, but is also inserted by #[derive(Eq)].)
-        !attr.check_name(sym::structural_match)
+        !attr.has_name(sym::structural_match)
     });
 }
 
