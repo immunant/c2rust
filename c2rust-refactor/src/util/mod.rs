@@ -34,13 +34,13 @@ impl<T> Lone<T> for SmallVec<[T; 1]> {
 // These were moved into Session as methods for some unknown reason
 // upstream, so duplicate them as functions so we can call them directly.
 pub fn contains_name(attrs: &[Attribute], name: Symbol) -> bool {
-    attrs.iter().any(|item| item.check_name(name))
+    attrs.iter().any(|item| item.has_name(name))
 }
 
 pub fn find_by_name(attrs: &[Attribute], name: Symbol) -> Option<&Attribute> {
-    attrs.iter().find(|attr| attr.check_name(name))
+    attrs.iter().find(|attr| attr.has_name(name))
 }
 
 pub fn first_attr_value_str_by_name(attrs: &[Attribute], name: Symbol) -> Option<Symbol> {
-    attrs.iter().find(|at| at.check_name(name)).and_then(|at| at.value_str())
+    attrs.iter().find(|at| at.has_name(name)).and_then(|at| at.value_str())
 }

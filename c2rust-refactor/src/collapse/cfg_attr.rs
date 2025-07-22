@@ -18,7 +18,7 @@ impl CollectCfgAttrs {
         let attrs = x
             .attrs()
             .iter()
-            .filter(|attr| attr.check_name(sym::cfg_attr))
+            .filter(|attr| attr.has_name(sym::cfg_attr))
             .cloned()
             .collect::<Vec<_>>();
         if !attrs.is_empty() {
