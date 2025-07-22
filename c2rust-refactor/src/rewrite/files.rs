@@ -140,7 +140,7 @@ fn emit_chunk<F: FnMut(&str)>(cm: &SourceMap, lo: BytePos, hi: BytePos, mut call
         .sf
         .src
         .as_ref()
-        .unwrap_or_else(|| panic!("source of file {} is not available", lo.sf.name));
+        .unwrap_or_else(|| panic!("source of file {:?} is not available", lo.sf.name));
     callback(&src[lo.pos.0 as usize..hi.pos.0 as usize]);
 }
 

@@ -27,7 +27,7 @@ pub fn span_desc(cm: &SourceMap, span: Span) -> String {
     let lo = cm.lookup_byte_offset(span.lo());
     let hi = cm.lookup_byte_offset(span.hi());
     let mut s = format!(
-        "{}: {} .. {} (raw = {:?} .. {:?})",
+        "{:?}: {} .. {} (raw = {:?} .. {:?})",
         lo.sf.name,
         lo.pos.0,
         hi.pos.0,
