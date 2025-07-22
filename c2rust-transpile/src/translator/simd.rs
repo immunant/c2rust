@@ -147,6 +147,13 @@ impl<'c> Translation<'c> {
         })
     }
 
+    /// Import a function from [`core::arch`] with a `#[cfg(target_arch = "{arch_name})]`.
+    pub fn import_arch_function(&self, arch_name: &str, name: &str) {
+        self.with_cur_file_item_store(|item_store| {
+            add_arch_use(item_store, arch_name, name);
+        });
+    }
+
     /// Determine if a particular function name is an SIMD primitive. If so an appropriate
     /// use statement is generated, `true` is returned, and no further processing will need to be done.
     pub fn import_simd_function(&self, name: &str) -> TranslationResult<bool> {
