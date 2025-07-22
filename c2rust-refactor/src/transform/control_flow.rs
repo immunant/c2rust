@@ -1,5 +1,7 @@
 use log::debug;
 use rustc_hir::HirId;
+use rustc_middle::hir::place::PlaceWithHirId;
+use rustc_middle::mir::FakeReadCause;
 use rustc_middle::ty::{self, ParamEnv};
 use rustc_typeck::expr_use_visitor::*;
 use rustc_ast::{Crate, Expr, ExprKind, Lit, LitKind, Stmt, StmtKind};
@@ -220,8 +222,8 @@ impl<'hir> ForRangeDelegate<'hir> {
 }
 
 impl<'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'hir> {
-    fn consume(&mut self, cmt: &Place<'tcx>) {
-        match cmt.base {
+    fn consume(&mut self, cmt: &PlaceWithHirId<'tcx>, _diag_expr_id: HirId) {
+        match cmt.place.base {
             PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {},
             _ => return
         }
@@ -231,8 +233,8 @@ impl<'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'hir> {
         }
     }
 
-    fn borrow(&mut self, cmt: &Place<'tcx>, bk: ty::BorrowKind) {
-        match cmt.base {
+    fn borrow(&mut self, cmt: &PlaceWithHirId<'tcx>, _diag_expr_id: HirId, bk: ty::BorrowKind) {
+        match cmt.place.base {
             PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {},
             _ => return
         }
@@ -252,8 +254,8 @@ impl<'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'hir> {
         }
     }
 
-    fn mutate(&mut self, cmt: &Place<'tcx>) {
-        match cmt.base {
+    fn mutate(&mut self, cmt: &PlaceWithHirId<'tcx>, _diag_expr_id: HirId) {
+        match cmt.place.base {
             PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {},
             _ => return
         }
@@ -262,6 +264,13 @@ impl<'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'hir> {
             self.writes_inside_loop += 1;
         }
     }
+
+    fn fake_read(
+        &mut self,
+        _cmt: &PlaceWithHirId<'tcx>,
+        _cause: FakeReadCause,
+        _diag_expr_id: HirId,
+    ) {}
 }
 
 /// # `remove_unused_labels` Command
