@@ -292,9 +292,9 @@ pub fn analyze<'lty, 'a: 'lty, 'tcx: 'a>(
     handle_marks(&mut cx, st, dcx);
 
     // Compute polymorphic signatures / constraint sets for each function
-    analyze_intra(&mut cx, &dcx.hir_map(), dcx.ty_ctxt());
+    analyze_intra(&mut cx, dcx.hir_map(), dcx.ty_ctxt());
     // Add constraints for extern functions
-    analyze_externs(&mut cx, &dcx.hir_map());
+    analyze_externs(&mut cx, dcx.hir_map());
     // Inject constraints for std functions
     register_std_constraints(&mut cx, dcx.ty_ctxt());
     analyze_inter(&mut cx);
