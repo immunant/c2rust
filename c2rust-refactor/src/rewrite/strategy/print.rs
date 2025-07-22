@@ -823,7 +823,9 @@ impl RewriteAt for Item {
                 rcx.record(rw);
 
                 // Print the module items in the external file
-                let mut printed = pprust::to_string(|s| s.print_inner_attributes(&self.attrs));
+                let mut printed = pprust::to_string(|s| {
+                    s.print_inner_attributes(&self.attrs);
+                });
                 for item in m_items {
                     printed.push_str(&add_comments(item.to_string(), item, &rcx));
                 }
