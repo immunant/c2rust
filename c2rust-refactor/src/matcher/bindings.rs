@@ -304,7 +304,7 @@ fn maybe_get_type(c: &mut Cursor) -> Type {
         };
         match c.look_ahead(c_idx) {
             Some(TokenTree::Token(Token{kind: TokenKind::Ident(ty_ident, _), ..})) => {
-                if let Some(ty) = Type::from_ast_ident(ty_ident) {
+                if let Some(ty) = Type::from_ast_ident(*ty_ident) {
                     c.nth(c_idx);
                     if is_optional {
                         return Type::Optional(ty.interned());
@@ -338,9 +338,9 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                             // inside a LitKind::Err
                             TokenKind::lit(TokenLitKind::Err, dollar_sym, None)
                         }
-                        _ => TokenKind::Ident(dollar_sym, is_raw)
+                        _ => TokenKind::Ident(dollar_sym, *is_raw)
                     };
-                    TokenTree::Token(Token{kind: token_kind, span})
+                    TokenTree::Token(Token{kind: token_kind, span: *span})
                 }
 
                 Some(TokenTree::Token(Token{kind: TokenKind::Lifetime(ident), span})) => {
@@ -355,7 +355,7 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                     let dollar_sym = Symbol::intern(&format!("'${}", label));
                     let label_ty = maybe_get_type(&mut c);
                     bt.set_type(dollar_sym, label_ty);
-                    TokenTree::Token(Token{kind: TokenKind::Lifetime(dollar_sym), span})
+                    TokenTree::Token(Token{kind: TokenKind::Lifetime(dollar_sym), span: *span})
                 }
 
                 _ => TokenTree::Token(Token{kind: TokenKind::Dollar, span: DUMMY_SP}),

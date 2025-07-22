@@ -105,11 +105,11 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
                 self.mk(ty, self.mk_slice(&args), label)
             }
             IrTyKind::Array(elem, _) => {
-                let args = [self.label(elem, f)];
+                let args = [self.label(*elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
             IrTyKind::Slice(elem) => {
-                let args = [self.label(elem, f)];
+                let args = [self.label(*elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
             IrTyKind::RawPtr(mty) => {
@@ -117,13 +117,13 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
                 self.mk(ty, self.mk_slice(&args), label)
             }
             IrTyKind::Ref(_, mty, _) => {
-                let args = [self.label(mty, f)];
+                let args = [self.label(*mty, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
             IrTyKind::FnDef(_, substs) => {
                 let args = substs
                     .types()
-                    .map(|ty| self.label(ty, f))
+                    .map(|ty| self.label(*ty, f))
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
@@ -132,14 +132,14 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
                     .skip_binder()
                     .inputs_and_output
                     .iter()
-                    .map(|ty| self.label(ty, f))
+                    .map(|ty| self.label(*ty, f))
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
             IrTyKind::Tuple(ref elems) => {
                 let args = elems
                     .types()
-                    .map(|ty| self.label(ty, f))
+                    .map(|ty| self.label(*ty, f))
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
@@ -165,7 +165,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
     where
         F: FnMut(Ty<'tcx>) -> L,
     {
-        self.mk_slice(&tys.iter().map(|ty| self.label(ty, f)).collect::<Vec<_>>())
+        self.mk_slice(&tys.iter().map(|ty| self.label(*ty, f)).collect::<Vec<_>>())
     }
 
     /// Substitute in arguments for any type parameter references (`Param`) in a labeled type.

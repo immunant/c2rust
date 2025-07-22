@@ -490,7 +490,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     fn fn_num_inputs(&self, lty: LTy<'lty, 'tcx>) -> usize {
         match lty.ty.kind() {
-            IrTyKind::FnDef(id, _) => self.def_sig(id).inputs.len(),
+            IrTyKind::FnDef(id, _) => self.def_sig(*id).inputs.len(),
             IrTyKind::FnPtr(_) => lty.args.len() - 1,
             // TODO: Handle Closure.  This should be similar to FnDef, but the substs are a bit
             // more complicated.
@@ -504,7 +504,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
             IrTyKind::FnDef(id, _) => {
                 // For a `FnDef`, retrieve the `LFnSig` for the given `DefId` and apply the
                 // labeled substs recorded in `LTy.args`.
-                let sig = self.def_sig(id);
+                let sig = self.def_sig(*id);
                 self.ltt.subst(sig.inputs[idx], &lty.args)
             }
             IrTyKind::FnPtr(_) => {
@@ -520,7 +520,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     fn fn_output(&self, lty: LTy<'lty, 'tcx>) -> LTy<'lty, 'tcx> {
         match lty.ty.kind() {
             IrTyKind::FnDef(id, _) => {
-                let sig = self.def_sig(id);
+                let sig = self.def_sig(*id);
                 self.ltt.subst(sig.output, &lty.args)
             }
             IrTyKind::FnPtr(_) => &lty.args[lty.args.len() - 1],
@@ -531,7 +531,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     fn fn_is_variadic(&self, lty: LTy<'lty, 'tcx>) -> bool {
         match lty.ty.kind() {
-            IrTyKind::FnDef(id, _) => self.def_sig(id).c_variadic,
+            IrTyKind::FnDef(id, _) => self.def_sig(*id).c_variadic,
             IrTyKind::FnPtr(ty_sig) => ty_sig.skip_binder().c_variadic,
             // TODO: Closure
             _ => panic!("fn_is_variadic: not a fn type"),
@@ -548,7 +548,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     /// in the type arguments, if the method is generic.
     fn method_sig(&self, e: &Expr) -> LFnSig<'lty, 'tcx> {
         let def_id = self.get_tables(e.hir_id).type_dependent_defs()[e.hir_id].unwrap().1;
-        let sig = self.def_sig(def_id);
+        let sig = self.def_sig(*def_id);
         let substs = self
             .node_substs
             .get(&e.hir_id)
