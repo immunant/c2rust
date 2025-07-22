@@ -195,7 +195,7 @@ pub fn handle_attrs<'a, 'tcx, 'lty>(
         let mut is_variant = false;
         if let Some(attr) = attrs
             .iter()
-            .filter(|a| a.check_name(Symbol::intern("ownership_variant_of")))
+            .filter(|a| a.has_name(Symbol::intern("ownership_variant_of")))
             .next()
         {
             let meta = match_or!([attr.meta()] Some(x) => x;
@@ -207,7 +207,7 @@ pub fn handle_attrs<'a, 'tcx, 'lty>(
 
             let num_mono = attrs
                 .iter()
-                .filter(|a| a.check_name(Symbol::intern("ownership_mono")))
+                .filter(|a| a.has_name(Symbol::intern("ownership_mono")))
                 .count();
             assert!(
                 num_mono == 1,
@@ -328,7 +328,7 @@ fn parse_ownership_constraints<'lty>(
     let mut cset = ConstraintSet::new();
     for arg in args {
         let arg = nested_meta_item(arg)?;
-        if !arg.check_name(Symbol::intern("le")) {
+        if !arg.has_name(Symbol::intern("le")) {
             return Err("expected `le(a, b)` in `ownership_constraints`");
         }
 
@@ -349,7 +349,7 @@ fn parse_perm<'lty>(
     meta: &ast::MetaItem,
     arena: &'lty DroplessArena,
 ) -> Result<Perm<'lty>, &'static str> {
-    if meta.check_name(Symbol::intern("min")) {
+    if meta.has_name(Symbol::intern("min")) {
         let args = meta_item_list(meta)?;
         if args.is_empty() {
             return Err("`min` requires at least one argument");
