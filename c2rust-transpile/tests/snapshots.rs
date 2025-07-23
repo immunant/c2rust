@@ -37,7 +37,7 @@ fn config() -> TranspilerConfig {
         enabled_warnings: Default::default(),
         emit_no_std: false,
         output_dir: None,
-        translate_const_macros: false,
+        translate_const_macros: true,
         translate_fn_macros: false,
         disable_refactoring: false,
         preserve_unused_functions: false,

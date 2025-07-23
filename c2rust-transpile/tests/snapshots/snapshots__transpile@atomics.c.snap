@@ -1,6 +1,5 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-assertion_line: 67
 expression: cat tests/snapshots/atomics.rs
 input_file: c2rust-transpile/tests/snapshots/atomics.c
 ---
@@ -45,4 +44,4 @@ pub unsafe extern "C" fn c11_atomics(mut x: std::ffi::c_int) -> std::ffi::c_int 
     fresh1.1;
     return x;
 }
-
+pub const __ATOMIC_SEQ_CST: std::ffi::c_int = 5 as std::ffi::c_int;
