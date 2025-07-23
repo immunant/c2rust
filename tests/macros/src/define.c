@@ -80,3 +80,19 @@ int test_switch(int x) {
 
   return 0;
 }
+
+#ifndef __APPLE__
+// `long double` translated as `f128` cannot be used in const macros because
+// `f128::f128::new` is not `const`; ensure we do not constify macros that
+// create long doubles via casts or literals.
+long double returns_longdouble() { return 0.0L; }
+int returns_int() { return 1; }
+
+#define LONGDOUBLE_LIT 0.5L
+#define GENERATES_CAST (returns_longdouble() + returns_int())
+
+void long_doubles(void) {
+    long double ld = LONGDOUBLE_LIT;
+    long double ld2 = GENERATES_CAST;
+}
+#endif

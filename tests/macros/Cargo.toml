@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 libc = "0.2"
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+f128 = "0.2"
