@@ -120,20 +120,14 @@ pub unsafe extern "C" fn array_of_arrays_static_struct() {
 }
 #[no_mangle]
 pub unsafe extern "C" fn curl_alpn_spec() {
-    static mut _ALPN_SPEC_H11: alpn_spec = unsafe {
-        {
-            let mut init = alpn_spec {
-                entries: [
-                    *::core::mem::transmute::<
-                        &[u8; 10],
-                        &mut [std::ffi::c_char; 10],
-                    >(b"http/1.1\0\0"),
-                    [0; 10],
-                    [0; 10],
-                ],
-                count: 1 as std::ffi::c_int as std::ffi::c_uint,
-            };
-            init
-        }
+    static mut _ALPN_SPEC_H11: alpn_spec = {
+        let mut init = alpn_spec {
+            entries: [ALPN_HTTP_1_1, [0; 10], [0; 10]],
+            count: 1 as std::ffi::c_int as std::ffi::c_uint,
+        };
+        init
     };
 }
+pub const ALPN_HTTP_1_1: [std::ffi::c_char; 10] = unsafe {
+    *::core::mem::transmute::<&[u8; 10], &mut [std::ffi::c_char; 10]>(b"http/1.1\0\0")
+};
