@@ -1,7 +1,6 @@
 use std::env::current_dir;
-use std::ffi::OsString;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use c2rust_transpile::{ReplaceMode, TranspilerConfig};
@@ -59,28 +58,47 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
     c2rust_transpile::transpile(config(), &temp_path, &[]);
     let cwd = current_dir().unwrap();
     let c_path = c_path.strip_prefix(&cwd).unwrap();
+    // The crate name can't have `.`s in it, so use the file stem.
+    // This is also why we set it explicitly with `--crate-name`,
+    // as once we add `.{platform}`, the crate name derived from
+    // the file name won't be valid anymore.
+    let crate_name = c_path.file_stem().unwrap().to_str().unwrap();
     let rs_path = c_path.with_extension("rs");
+    // We need to move the `.rs` file to a platform-specific name
+    // so that they don't overwrite each other.
+    let rs_path = match platform {
+        None => rs_path,
+        Some(platform) => {
+            let platform_rs_path = rs_path.with_extension(format!("{platform}.rs"));
+            fs::rename(&rs_path, &platform_rs_path).unwrap();
+            platform_rs_path
+        }
+    };
     let rs = fs::read_to_string(&rs_path).unwrap();
     let debug_expr = format!("cat {}", rs_path.display());
 
-    let name = platform
-        .map(|platform| ["transpile", platform].join("-"))
-        .unwrap_or("transpile".into());
+    let snapshot_name = match platform {
+        None => "transpile".into(),
+        Some(platform) => format!("transpile-{platform}"),
+    };
+    insta::assert_snapshot!(snapshot_name, &rs, &debug_expr);
 
-    insta::assert_snapshot!(name, &rs, &debug_expr);
-
+    // Don't need to worry about platform clashes here, as this is immediately deleted.
+    let rlib_path = format!("lib{crate_name}.rlib");
     let status = Command::new("rustc")
-        .args(&["--crate-type", "lib", "--edition", "2021"])
+        .args(&[
+            "--crate-type",
+            "lib",
+            "--edition",
+            "2021",
+            "--crate-name",
+            crate_name,
+            "-o",
+            &rlib_path,
+        ])
         .arg(&rs_path)
         .status();
     assert!(status.unwrap().success());
-    let rlib_path = {
-        let mut file_name = OsString::new();
-        file_name.push("lib");
-        file_name.push(rs_path.file_stem().unwrap());
-        file_name.push(".rlib");
-        PathBuf::from(file_name)
-    };
     fs::remove_file(&rlib_path).unwrap();
 }
 
