@@ -131,7 +131,7 @@ fn cleanup_if(stmt: Stmt) -> Stmt {
             else_branch: Some((token, else_)),
             ..
         }),
-        _semi,
+        None,
     ) = &stmt
     {
         if let Expr::Block(ExprBlock {
