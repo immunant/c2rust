@@ -46,6 +46,8 @@ fn config() -> TranspilerConfig {
     }
 }
 
+/// `platform` can be any platform-specific string.
+/// It could be the `target_arch`, `target_os`, some combination, or something else.
 fn transpile(platform: Option<&str>, c_path: &Path) {
     let status = Command::new("clang")
         .args(&["-c", "-o", "/dev/null"])
@@ -111,14 +113,31 @@ fn transpile_all() {
     // This makes snapshot tests trickier, as the output will be OS-dependent.
     // We handle this by adding OS name to the snapshot result filename.
     #[allow(unused)]
-    let platform = "unknown";
+    let os = "unknown";
 
     #[cfg(target_os = "linux")]
-    let platform = "linux";
+    let os = "linux";
     #[cfg(target_os = "macos")]
-    let platform = "macos";
+    let os = "macos";
 
-    insta::with_settings!({snapshot_suffix => platform}, {
-        insta::glob!("snapshots/platform-specific/*.c", |x| transpile(Some(platform), x));
+    // Similarly, some things transpile differently on different architectures.
+    #[allow(unused)]
+    let arch = "unknown";
+
+    #[cfg(target_arch = "x86")]
+    let arch = "x86";
+    #[cfg(target_arch = "x86_64")]
+    let arch = "x86_64";
+    #[cfg(target_arch = "arm")]
+    let arch = "arm";
+    #[cfg(target_arch = "aarch64")]
+    let arch = "aarch64";
+
+    insta::with_settings!({snapshot_suffix => os}, {
+        insta::glob!("snapshots/os-specific/*.c", |path| transpile(Some(os), path));
     });
+
+    insta::with_settings!({snapshot_suffix => arch}, {
+        insta::glob!("snapshots/arch-specific/*.c", |path| transpile(Some(arch), path));
+    })
 }
