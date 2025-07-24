@@ -1,8 +1,3 @@
----
-source: c2rust-transpile/tests/snapshots.rs
-expression: cat tests/snapshots/spin.rs
-input_file: c2rust-transpile/tests/snapshots/spin.c
----
 #![allow(
     dead_code,
     mutable_transmutes,
@@ -12,7 +7,12 @@ input_file: c2rust-transpile/tests/snapshots/spin.c
     unused_assignments,
     unused_mut
 )]
+#![feature(stdsimd)]
+#[cfg(target_arch = "arm")]
+pub use core::arch::arm::__yield;
+#[cfg(target_arch = "aarch64")]
+pub use core::arch::aarch64::__yield;
 #[no_mangle]
 pub unsafe extern "C" fn spin() {
-    ::core::hint::spin_loop();
+    __yield();
 }

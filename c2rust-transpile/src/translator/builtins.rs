@@ -380,16 +380,31 @@ impl<'c> Translation<'c> {
                 })
             }
 
-            "__builtin_ia32_pause" | "__builtin_arm_yield" => {
-                // `spin_loop()` is implemented as `_mm_pause()` (the `pause` instruction) on `x86`/`x86_64`,
-                // but it's the safe and cross-platform version of it, so prefer it.
-                // On `arm`, it's implemented as `yield`, although on `aarch64`,
-                // it's implemented as `isb` instead as this is more efficient.
-                // See <https://github.com/rust-lang/rust/commit/c064b6560b7ce0adeb9bbf5d7dcf12b1acb0c807>.
-                // `core::arch::aarch64::__yield()` could be used instead,
-                // but it's unstable (`#![feature(stdarch_arm_hints)]`), so it's not ideal.
-                let spin_loop = mk().abs_path_expr(vec!["core", "hint", "spin_loop"]);
-                let call = mk().call_expr(spin_loop, vec![]);
+            "__builtin_ia32_pause" => {
+                let fn_name = "_mm_pause";
+                self.import_simd_function(fn_name)?;
+                let ident = mk().ident_expr(fn_name);
+                let call = mk().call_expr(ident, vec![]);
+                self.convert_side_effects_expr(
+                    ctx,
+                    WithStmts::new_val(call),
+                    "Builtin is not supposed to be used",
+                )
+            }
+
+            "__builtin_arm_yield" => {
+                let fn_name = "__yield";
+                self.use_feature("stdsimd");
+                // TODO See #1298.
+                // In Rust 1.7, `#![feature(stdsimd)]` was removed and split into (at least):
+                // `#![feature("stdarch_arm_hints")]` and
+                // `#![cfg_attr(target_arch = "arm", feature(stdarch_arm_neon_intrinsics))]`.
+                // self.use_feature("stdarch_arm_hints");
+                // self.use_feature("stdarch_arm_neon_intrinsics"); // TODO need to add `cfg_attr` support.
+                self.import_arch_function("arm", fn_name);
+                self.import_arch_function("aarch64", fn_name);
+                let ident = mk().ident_expr(fn_name);
+                let call = mk().call_expr(ident, vec![]);
                 self.convert_side_effects_expr(
                     ctx,
                     WithStmts::new_val(call),
