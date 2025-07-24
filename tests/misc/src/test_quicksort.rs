@@ -10,6 +10,7 @@ extern "C" {
     fn quickSort(_: *mut c_int, _: c_int, _: c_int);
 }
 
+#[test]
 pub fn test_swap() {
     let (mut a, mut b) = (1, 2);
 
@@ -26,6 +27,7 @@ pub fn test_swap() {
     assert_eq!(b, 2);
 }
 
+#[test]
 pub fn test_partition() {
     let mut buffer = [6, 1, 5, 6, 2, 0, 9, 2, 0, 5];
     let mut rust_buffer = buffer.clone();
@@ -40,6 +42,7 @@ pub fn test_partition() {
     assert_eq!(buffer, expected_buffer);
 }
 
+#[test]
 pub fn test_quicksort() {
     let mut buffer = [6, 1, 5, 6, 2, 0, 9, 2, 0, 5];
     let mut rust_buffer = buffer.clone();

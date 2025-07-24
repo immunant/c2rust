@@ -8,6 +8,7 @@ extern "C" {
 
 const BUFFER_SIZE: usize = 1;
 
+#[test]
 pub fn test_struct_with_exp() {
   let mut buffer = [0; BUFFER_SIZE];
   let mut rust_buffer = [0; BUFFER_SIZE];

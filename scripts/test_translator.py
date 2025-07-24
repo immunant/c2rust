@@ -216,6 +216,8 @@ class TestFile(RustFile):
 
 
 class TestDirectory:
+    rs_test_files: list[TestFile]
+
     def __init__(self, full_path: str, files: 're.Pattern', keep: List[str], log_level: str) -> None:
         self.c_files = []
         self.rs_test_files = []
@@ -272,7 +274,6 @@ class TestDirectory:
                 elif (filename.startswith("test_") and ext == ".rs" and
                       files.search(filename)):
                     rs_test_file = self._read_rust_test_file(path)
-
                     self.rs_test_files.append(rs_test_file)
 
     def _read_c_file(self, path: str) -> Optional[CFile]:
@@ -453,7 +454,6 @@ class TestDirectory:
             rust_file_builder.add_mod(RustMod(extensionless_rust_file,
                                               RustVisibility.Public))
 
-        match_arms = []
         rustc_extra_args = ["-C", "target-cpu=native"]
 
         # Build one binary that can call all the tests
@@ -464,6 +464,8 @@ class TestDirectory:
 
             _, file_name = os.path.split(test_file.path)
             extensionless_file_name, _ = os.path.splitext(file_name)
+            if test_file.pass_expected:
+                rust_file_builder.add_mod(RustMod(extensionless_file_name, RustVisibility.Private))
 
             if not test_file.pass_expected:
                 try:
@@ -486,32 +488,11 @@ class TestDirectory:
 
                 continue
 
-            for test_function in test_file.test_functions:
-                rust_file_builder.add_mod(RustMod(extensionless_file_name,
-                                                  RustVisibility.Public))
-                left = "Some(\"{}::{}\")".format(extensionless_file_name,
-                                                 test_function.name)
-                right = "{}::{}()".format(extensionless_file_name,
-                                          test_function.name)
-                match_arms.append((left, right))
+        lib_file = rust_file_builder.build(self.full_path + "/src/lib.rs")
 
-        match_arms.append(("e",
-                           "panic!(\"Tried to run unknown test: {:?}\", e)"))
+        self.generated_files["rust_src"].append(lib_file)
 
-        test_main_body = [
-            RustMatch("std::env::args().nth(1).as_ref().map(AsRef::<str>::as_ref)", match_arms),
-        ]
-        test_main = RustFunction("main",
-                                 visibility=RustVisibility.Public,
-                                 body=[str(stmt) for stmt in test_main_body])
-
-        rust_file_builder.add_function(test_main)
-
-        main_file = rust_file_builder.build(self.full_path + "/src/main.rs")
-
-        self.generated_files["rust_src"].append(main_file)
-
-        # Try and build test binary
+        # Build
         with pb.local.cwd(self.full_path):
             args = ["build"]
 
@@ -524,9 +505,9 @@ class TestDirectory:
             retcode, stdout, stderr = cargo[args].run(retcode=None)
 
         if retcode != 0:
-            _, main_file_path_short = os.path.split(main_file.path)
+            _, lib_file_path_short = os.path.split(lib_file.path)
 
-            self.print_status(Colors.FAIL, "FAILED", "compile {}".format(main_file_path_short))
+            self.print_status(Colors.FAIL, "FAILED", "compile {}".format(lib_file_path_short))
             sys.stdout.write('\n')
             sys.stdout.write(stderr)
 
@@ -534,55 +515,35 @@ class TestDirectory:
 
             return outcomes
 
-        for test_file in self.rs_test_files:
-            if not test_file.pass_expected:
-                continue
+        # Test
+        with pb.local.cwd(self.full_path):
+            args = ["test"]
 
-            _, file_name = os.path.split(test_file.path)
-            extensionless_file_name, _ = os.path.splitext(file_name)
+            if c.BUILD_TYPE == 'release':
+                args.append('--release')
 
-            for test_function in test_file.test_functions:
-                args = ["run", "{}::{}".format(extensionless_file_name, test_function.name)]
+            if self.target:
+                args += ["--target", self.target]
 
-                if c.BUILD_TYPE == 'release':
-                    args.append('--release')
+            retcode, stdout, stderr = cargo[args].run(retcode=None)
+        
+        if retcode != 0:
+            _, lib_file_path_short = os.path.split(lib_file.path)
 
-                with pb.local.cwd(self.full_path):
-                    retcode, stdout, stderr = cargo[args].run(retcode=None)
+            self.print_status(Colors.FAIL, "FAILED", "test {}".format(lib_file_path_short))
+            sys.stdout.write('\n')
+            sys.stdout.write(stdout)
+        else:
+            sys.stdout.write("\n".join(line for line in stdout.split("\n") if "... ok" in line or "... FAILED" in line))
+        
+        # Don't distinguish between expected and unexpected failures.
+        # `#[should_panic]` is used for that instead of `// xfail` now.
+        # Also, `cargo test -- --format json` is unstable, so it's easier to just parse very simply.
+        for _ in range(stdout.count("... ok")):
+            outcomes.append(TestOutcome.Success)
+        for _ in range(stdout.count("... FAILED")):
+            outcomes.append(TestOutcome.UnexpectedFailure)
 
-                logging.debug("stdout:%s\n", stdout)
-
-                test_str = file_name + ' - ' + test_function.name
-
-                if retcode == 0:
-                    if test_function.pass_expected:
-                        self.print_status(Colors.OKGREEN, "OK", "    test " + test_str)
-                        sys.stdout.write('\n')
-
-                        outcomes.append(TestOutcome.Success)
-                    else:
-                        self.print_status(Colors.FAIL, "FAILED", "test " + test_str)
-                        sys.stdout.write('\n')
-
-                        outcomes.append(TestOutcome.UnexpectedSuccess)
-
-                elif retcode != 0:
-                    if test_function.pass_expected:
-                        self.print_status(Colors.FAIL, "FAILED", "test " + test_str)
-                        sys.stdout.write('\n')
-                        sys.stdout.write(stderr)
-
-                        outcomes.append(TestOutcome.UnexpectedFailure)
-                    else:
-                        self.print_status(Colors.OKBLUE, "FAILED", "test " + test_str)
-                        sys.stdout.write('\n')
-
-                        outcomes.append(TestOutcome.Failure)
-
-        if not outcomes:
-            display_text = "   No rust file(s) matching " + self.files.pattern
-            display_text += " within this folder\n"
-            self.print_status(Colors.OKBLUE, "N/A", display_text)
         return outcomes
 
     def cleanup(self) -> None:

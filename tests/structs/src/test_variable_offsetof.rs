@@ -8,6 +8,7 @@ extern "C" {
     fn get_offset2(_: size_t) -> size_t;
 }
 
+#[test]
 pub fn test_get_offset() {
     for idx in 0..3 {
         let rust_ret = unsafe { rust_get_offset(idx) };

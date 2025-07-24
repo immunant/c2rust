@@ -22,6 +22,10 @@ jobs:
             os: macOS
             arch: x86_64
             clang-version: 17
+          - runner: macos-15
+            os: macOS
+            arch: aarch64
+            clang-version: 17
       fail-fast: false
     name: "test (${{ matrix.runner }}: ${{ matrix.os }} ${{ matrix.arch}}, Clang ${{ matrix.clang-version }})"
     runs-on: ${{ matrix.runner }}
@@ -41,6 +45,8 @@ jobs:
       # cached, what gets used as part of the key, and what additional handling
       # happens to make the cache reliable and smaller.
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-workspace-crates: true
 
       # Run after `rust-cache` so that this is cached.
       - run: rustup component add rustfmt rustc-dev

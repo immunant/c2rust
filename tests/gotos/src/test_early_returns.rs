@@ -1,5 +1,6 @@
 use crate::early_returns::rust_early_returns;
 
+#[test]
 pub fn test_early_returns() {
     unsafe {
         assert_eq!(rust_early_returns(2), 2);

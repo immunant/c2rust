@@ -21,6 +21,7 @@ extern "C" {
 const BUFFER_SIZE: usize = 1024;
 const BUFFER_SIZE2: usize = 10;
 
+#[test]
 pub fn test_atomics() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
@@ -35,6 +36,7 @@ pub fn test_atomics() {
     }
 }
 
+#[test]
 pub fn test_new_atomics() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
@@ -50,6 +52,7 @@ pub fn test_new_atomics() {
     }
 }
 
+#[test]
 pub fn test_mem_fns() {
     let const_string = "I am ten!\0";
     let mut buffer = [0; BUFFER_SIZE2];
@@ -66,6 +69,7 @@ pub fn test_mem_fns() {
     }
 }
 
+#[test]
 pub fn test_ffs() {
     for i in 0..256 {
         let ffs_ret = unsafe { ffs(i) };
@@ -85,6 +89,7 @@ pub fn test_ffs() {
     }
 }
 
+#[test]
 pub fn test_clang9_intrinsics() {
     let pinf = 1.0 / 0.0;
     let ninf = -1.0 / 0.0;
@@ -121,6 +126,7 @@ pub fn test_clang9_intrinsics() {
     }
 }
 
+#[test]
 pub fn test_assume_aligned() {
     let null = std::ptr::null_mut();
 

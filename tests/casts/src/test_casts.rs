@@ -18,6 +18,7 @@ extern "C" {
 
 const BUFFER_SIZE: usize = 1;
 
+#[test]
 pub fn test_compiles() {
     unsafe {
         cast_stuff();
@@ -25,6 +26,7 @@ pub fn test_compiles() {
     }
 }
 
+#[test]
 pub fn test_buffer() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
@@ -37,6 +39,7 @@ pub fn test_buffer() {
     assert_eq!(buffer, rust_buffer);
 }
 
+#[test]
 pub fn test_identity() {
     for i in 0..10 {
         let id = unsafe { identity(i) };

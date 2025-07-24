@@ -5,4 +5,5 @@ extern "C" {
     fn whatever(np: *mut Node);
 }
 
+#[test]
 pub fn test_buffer2() {}

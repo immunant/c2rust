@@ -7,6 +7,9 @@ void call_printf(void) {
     printf("%d, %f\n", 10, 1.5);
 }
 
+// See #1281. Varargs don't yet work on aarch64.
+#ifndef __aarch64__
+
 void my_vprintf(const char *format, va_list ap) {
   vprintf(format, ap);
 }
@@ -134,3 +137,5 @@ double sample_stddev(int count, ...)
     va_end(args2);
     return sqrt(sum_sq_diff / count);
 }
+
+#endif

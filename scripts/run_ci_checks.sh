@@ -48,7 +48,9 @@ test() {
 # so changing `RUSTFLAGS` will not trigger a full rebuild.
 test-translator() {
     unset RUSTFLAGS
-    ./scripts/test_translator.py tests/
+    uv venv
+    uv pip install -r ./scripts/requirements.txt
+    uv run ./scripts/test_translator.py tests/
 }
 
 all() {

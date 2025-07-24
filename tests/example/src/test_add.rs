@@ -6,6 +6,7 @@ extern "C" {
     fn add(left: c_uint, right: c_uint) -> c_uint;
 }
 
+#[test]
 pub fn test_addition() {
     let sum = unsafe { add(1, 2) };
     let rust_sum = unsafe { rust_add(1, 2) };
@@ -14,6 +15,7 @@ pub fn test_addition() {
     assert_eq!(rust_sum, 3);
 }
 
+#[test]
 pub fn test_overflow() {
     let max_uint = c_uint::max_value();
     let sum = unsafe { add(max_uint, 3) };
