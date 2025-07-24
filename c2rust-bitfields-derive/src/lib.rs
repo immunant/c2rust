@@ -21,6 +21,7 @@ struct BFFieldAttr {
     name: String,
     ty: String,
     bits: (String, proc_macro2::Span),
+    endian: Option<String>,
 }
 
 fn parse_bitfield_attr(
@@ -31,6 +32,7 @@ fn parse_bitfield_attr(
     let mut ty = None;
     let mut bits = None;
     let mut bits_span = None;
+    let mut endian = None;
 
     if let Meta::List(meta_list) = attr.parse_meta()? {
         for nested_meta in meta_list.nested {
@@ -53,6 +55,7 @@ fn parse_bitfield_attr(
                             bits = Some(rhs_string);
                             bits_span = Some(meta_name_value.path.span());
                         }
+                        "endian" => endian = Some(rhs_string),
                         // This one shouldn't ever occur here,
                         // but we're handling it just to be safe
                         "padding" => {
@@ -97,6 +100,7 @@ fn parse_bitfield_attr(
         name: name.unwrap(),
         ty: ty.unwrap(),
         bits: (bits.unwrap(), bits_span.unwrap()),
+        endian: endian,
     }))
 }
 
@@ -228,6 +232,17 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
     let field_bit_info = field_bit_info?;
     let field_bit_info_setters = &field_bit_info;
     let field_bit_info_getters = &field_bit_info;
+    let field_endians: Vec<_> = bitfields
+        .iter()
+        .map(|field| {
+            field
+                .endian
+                .as_ref()
+                .map_or(false, |endian| endian == "big")
+        })
+        .collect();
+    let field_endians_setters = &field_endians;
+    let field_endians_getters = &field_endians;
 
     // TODO: Method visibility determined by struct field visibility?
     let q = quote! {
@@ -240,7 +255,7 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
 
                     let field = &mut self.#field_names_setters;
                     let (lhs_bit, rhs_bit) = #field_bit_info_setters;
-                    int.set_field(field, (lhs_bit, rhs_bit));
+                    int.set_field(field, (lhs_bit, rhs_bit), #field_endians_setters);
                 }
 
                 /// This method allows you to read from a bitfield to a value
@@ -251,7 +266,7 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
 
                     let field = &self.#field_names_getters;
                     let (lhs_bit, rhs_bit) = #field_bit_info_getters;
-                    <IntType as FieldType>::get_field(field, (lhs_bit, rhs_bit))
+                    <IntType as FieldType>::get_field(field, (lhs_bit, rhs_bit), #field_endians_getters)
                 }
             )*
         }
