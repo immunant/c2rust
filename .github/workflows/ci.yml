@@ -59,37 +59,36 @@ jobs:
 
       - name: Install packages (Ubuntu)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install \
-            clang \
-            clang-tools \
-            cmake \
-            curl \
-            git \
-            gperf \
-            libbrotli-dev \
-            libclang-${{ matrix.clang-version }}-dev \
-            libgcrypt20 \
-            libreadline-dev \
-            libidn2-dev \
-            libldap2-dev \
-            libncurses5-dev \
-            libnghttp2-dev \
-            libpcre3-dev \
-            libpsl-dev \
-            libreadline-dev \
-            librtmp-dev \
-            libssl-dev \
-            libtool \
-            llvm \
-            llvm-dev \
-            luarocks \
-            ninja-build \
-            pkg-config \
-            rcs \
-            strace \
-            unzip \
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: |
+            clang
+            clang-tools
+            cmake
+            curl
+            git
+            gperf
+            libbrotli-dev
+            libclang-${{ matrix.clang-version }}-dev
+            libgcrypt20
+            libreadline-dev
+            libidn2-dev
+            libldap2-dev
+            libncurses5-dev
+            libnghttp2-dev
+            libpcre3-dev
+            libpsl-dev
+            librtmp-dev
+            libssl-dev
+            libtool
+            llvm
+            llvm-dev
+            luarocks
+            ninja-build
+            pkg-config
+            rcs
+            strace
+            unzip
             zlib1g-dev
 
       - name: Install packages (macOS)
