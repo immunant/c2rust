@@ -780,16 +780,12 @@ impl TypedAstContext {
                             let rhs_type_id =
                                 self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
 
-                            let lhs_resolved = self.ast_context.resolve_type_id(lhs_type_id.ctype);
-                            let rhs_resolved = self.ast_context.resolve_type_id(rhs_type_id.ctype);
+                            let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
+                            let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
 
-                            if CTypeKind::PULLBACK_KINDS
-                                .contains(&self.ast_context[lhs_resolved].kind)
-                            {
+                            if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
                                 Some(lhs_type_id)
-                            } else if CTypeKind::PULLBACK_KINDS
-                                .contains(&self.ast_context[rhs_resolved].kind)
-                            {
+                            } else if CTypeKind::PULLBACK_KINDS.contains(&rhs_resolved_ty.kind) {
                                 Some(rhs_type_id)
                             } else {
                                 None
@@ -801,16 +797,14 @@ impl TypedAstContext {
                             let lhs_kind = &self.ast_context.c_exprs[&lhs].kind;
                             let lhs_type_id = lhs_kind.get_qual_type().unwrap();
 
-                            let lhs_resolved = self.ast_context.resolve_type_id(lhs_type_id.ctype);
-                            let rhs_resolved = self.ast_context.resolve_type_id(rhs_type_id.ctype);
+                            let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
+                            let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
 
-                            let neither_ptr = !self.ast_context[lhs_resolved].kind.is_pointer()
-                                && !self.ast_context[rhs_resolved].kind.is_pointer();
+                            let neither_ptr = !lhs_resolved_ty.kind.is_pointer()
+                                && !rhs_resolved_ty.kind.is_pointer();
 
                             if op.all_types_same() && neither_ptr {
-                                if CTypeKind::PULLBACK_KINDS
-                                    .contains(&self.ast_context[lhs_resolved].kind)
-                                {
+                                if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
                                     Some(lhs_type_id)
                                 } else {
                                     Some(rhs_type_id)
@@ -1462,13 +1456,13 @@ impl UnOp {
         arg_type: CQualTypeId,
     ) -> Option<CQualTypeId> {
         use UnOp::*;
-        let resolved = ast_context.resolve_type_id(arg_type.ctype);
+        let resolved_ty = ast_context.resolve_type(arg_type.ctype);
         Some(match self {
             // We could construct CTypeKind::Pointer here, but it is not guaranteed to have a
             // corresponding `CTypeId` in the `TypedAstContext`, so bail out instead
             AddressOf => return None,
             Deref => {
-                if let CTypeKind::Pointer(inner) = ast_context[resolved].kind {
+                if let CTypeKind::Pointer(inner) = resolved_ty.kind {
                     inner
                 } else {
                     panic!("dereferencing non-pointer type!")
@@ -1480,7 +1474,7 @@ impl UnOp {
                     .map(CQualTypeId::new)
             }
             Real | Imag => {
-                if let CTypeKind::Complex(inner) = ast_context[resolved].kind {
+                if let CTypeKind::Complex(inner) = resolved_ty.kind {
                     CQualTypeId::new(inner)
                 } else {
                     panic!("__real or __imag applied to non-complex type!")
