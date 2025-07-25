@@ -98,6 +98,10 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
     // the appropriate --extern libc=/path/to/liblibc-XXXXXXXXXXXXXXXX.rlib to pass. Skip for now,
     // as we've already compared the literal text.
     if rs.contains("libc::") {
+        eprintln!(
+            "warning: skipping compiling {} with rustc since it depends on libc",
+            rs_path.display()
+        );
         return;
     }
 
