@@ -210,7 +210,7 @@ impl<'c> Translation<'c> {
                 // which is possible because C allows extra braces around any initializer element.
                 // For non-string literal elements, the clang AST already fixes this up,
                 // but doesn't for string literals, so we need to handle them specially.
-                // The existing logic below this special cases handles all except `array_extra_braces`.
+                // The existing logic below this special case handles all except `array_extra_braces`.
                 // `array_extra_braces` is uniquely identified by:
                 // * there being only one element in the initializer list
                 // * the element type of the array being `CTypeKind::Char` (w/o this, `array_of_arrays` is included)
@@ -233,21 +233,23 @@ impl<'c> Translation<'c> {
 
                 match ids {
                     [] => {
-                        // this was likely a C array of the form `int x[16] = {}`,
-                        // we'll emit that as [0; 16].
+                        // This was likely a C array of the form `int x[16] = {}`.
+                        // We'll emit that as [0; 16].
                         let len = mk().lit_expr(mk().int_unsuffixed_lit(n as u128));
                         let zeroed = self.implicit_default_expr(ty, ctx.is_static)?;
                         Ok(zeroed.map(|default_value| mk().repeat_expr(default_value, len)))
                     }
                     &[single] if is_string_literal(single) => {
-                        // Need to check to see if the next item is a string literal,
-                        // if it is need to treat it as a declaration, rather than
-                        // an init list. https://github.com/GaloisInc/C2Rust/issues/40
+                        // See comment on `is_string_literal`.
+                        // This detects these cases from `str_init.c`:
+                        // * `ptr_extra_braces`
+                        // * `array_of_ptrs`
+                        // * `array_of_arrays`
                         self.convert_expr(ctx.used(), single)
                     }
                     &[single] if is_zero_literal(single) && n > 1 => {
-                        // this was likely a C array of the form `int x[16] = { 0 }`,
-                        // we'll emit that as [0; 16].
+                        // This was likely a C array of the form `int x[16] = { 0 }`.
+                        // We'll emit that as [0; 16].
                         let len = mk().lit_expr(mk().int_unsuffixed_lit(n as u128));
                         Ok(to_array_element(single)?
                             .map(|default_value| mk().repeat_expr(default_value, len)))
