@@ -1,0 +1,339 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/arrays.rs
+input_file: c2rust-transpile/tests/snapshots/arrays.c
+---
+#![allow(
+    dead_code,
+    mutable_transmutes,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2RustUnnamed {
+    pub y: std::ffi::c_int,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2RustUnnamed_0 {
+    pub x: *mut std::ffi::c_char,
+    pub y: std::ffi::c_int,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2RustUnnamed_1 {
+    pub x: std::ffi::c_short,
+    pub y: std::ffi::c_int,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2RustUnnamed_2 {
+    pub x: std::ffi::c_short,
+    pub y: std::ffi::c_int,
+}
+static mut simple: [std::ffi::c_char; 9] = unsafe {
+    *::core::mem::transmute::<&[u8; 9], &mut [std::ffi::c_char; 9]>(b"mystring\0")
+};
+static mut foo: *mut std::ffi::c_char = b"mystring\0" as *const u8
+    as *const std::ffi::c_char as *mut std::ffi::c_char;
+#[no_mangle]
+pub unsafe extern "C" fn entry(
+    buffer_size: std::ffi::c_uint,
+    buffer: *mut std::ffi::c_int,
+) {
+    let mut arr: [[std::ffi::c_int; 1]; 1] = [[1 as std::ffi::c_int]];
+    arr[0 as std::ffi::c_int as usize][0 as std::ffi::c_int as usize]
+        += 9 as std::ffi::c_int;
+    let mut arr2: [std::ffi::c_int; 16] = [0; 16];
+    arr2[15 as std::ffi::c_int as usize] += 9 as std::ffi::c_int;
+    let mut arr3: [C2RustUnnamed_0; 1] = [C2RustUnnamed_0 {
+        x: 0 as *mut std::ffi::c_char,
+        y: 0,
+    }; 1];
+    arr3[0 as std::ffi::c_int as usize].y += 9 as std::ffi::c_int;
+    let mut arr4: [std::ffi::c_int; 16] = [
+        0 as std::ffi::c_int,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    ];
+    arr4[15 as std::ffi::c_int as usize] += 9 as std::ffi::c_int;
+    let mut arr5: [C2RustUnnamed; 1] = [
+        {
+            let mut init = C2RustUnnamed {
+                y: 1 as std::ffi::c_int,
+            };
+            init
+        },
+    ];
+    arr5[0 as std::ffi::c_int as usize].y += 9 as std::ffi::c_int;
+    let mut arr6: [std::ffi::c_int; 2] = [1 as std::ffi::c_int, 2 as std::ffi::c_int];
+    let mut arr7: [std::ffi::c_int; 0] = [0; 0];
+    let mut i: std::ffi::c_int = 0 as std::ffi::c_int;
+    let mut abc: [std::ffi::c_char; 4] = *::core::mem::transmute::<
+        &[u8; 4],
+        &mut [std::ffi::c_char; 4],
+    >(b"abc\0");
+    let fresh0 = i;
+    i = i + 1;
+    *buffer.offset(fresh0 as isize) = abc[0 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh1 = i;
+    i = i + 1;
+    *buffer.offset(fresh1 as isize) = abc[1 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh2 = i;
+    i = i + 1;
+    *buffer.offset(fresh2 as isize) = abc[2 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh3 = i;
+    i = i + 1;
+    *buffer.offset(fresh3 as isize) = abc[3 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let mut def: [std::ffi::c_char; 3] = [
+        'd' as i32 as std::ffi::c_char,
+        'e' as i32 as std::ffi::c_char,
+        'f' as i32 as std::ffi::c_char,
+    ];
+    let fresh4 = i;
+    i = i + 1;
+    *buffer.offset(fresh4 as isize) = def[0 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh5 = i;
+    i = i + 1;
+    *buffer.offset(fresh5 as isize) = def[1 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh6 = i;
+    i = i + 1;
+    *buffer.offset(fresh6 as isize) = def[2 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let mut part: [std::ffi::c_char; 2] = [1 as std::ffi::c_int as std::ffi::c_char, 0];
+    let fresh7 = i;
+    i = i + 1;
+    *buffer.offset(fresh7 as isize) = part[0 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh8 = i;
+    i = i + 1;
+    *buffer.offset(fresh8 as isize) = part[1 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let mut abcptr: *mut std::ffi::c_char = b"abc\0" as *const u8
+        as *const std::ffi::c_char as *mut std::ffi::c_char;
+    let fresh9 = i;
+    i = i + 1;
+    *buffer.offset(fresh9 as isize) = *abcptr.offset(0 as std::ffi::c_int as isize)
+        as std::ffi::c_int;
+    let fresh10 = i;
+    i = i + 1;
+    *buffer.offset(fresh10 as isize) = *abcptr.offset(1 as std::ffi::c_int as isize)
+        as std::ffi::c_int;
+    let fresh11 = i;
+    i = i + 1;
+    *buffer.offset(fresh11 as isize) = *abcptr.offset(2 as std::ffi::c_int as isize)
+        as std::ffi::c_int;
+    let fresh12 = i;
+    i = i + 1;
+    *buffer.offset(fresh12 as isize) = *abcptr.offset(3 as std::ffi::c_int as isize)
+        as std::ffi::c_int;
+    let mut init: [std::ffi::c_char; 5] = *::core::mem::transmute::<
+        &[u8; 5],
+        &mut [std::ffi::c_char; 5],
+    >(b"abcd\0");
+    let fresh13 = i;
+    i = i + 1;
+    *buffer.offset(fresh13 as isize) = init[0 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh14 = i;
+    i = i + 1;
+    *buffer.offset(fresh14 as isize) = init[1 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh15 = i;
+    i = i + 1;
+    *buffer.offset(fresh15 as isize) = init[2 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh16 = i;
+    i = i + 1;
+    *buffer.offset(fresh16 as isize) = init[3 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let mut too_long: [std::ffi::c_char; 3] = *::core::mem::transmute::<
+        &[u8; 3],
+        &mut [std::ffi::c_char; 3],
+    >(b"abc");
+    let fresh17 = i;
+    i = i + 1;
+    *buffer.offset(fresh17 as isize) = too_long[0 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh18 = i;
+    i = i + 1;
+    *buffer.offset(fresh18 as isize) = too_long[1 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh19 = i;
+    i = i + 1;
+    *buffer.offset(fresh19 as isize) = too_long[2 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let mut too_short: [std::ffi::c_char; 20] = *::core::mem::transmute::<
+        &[u8; 20],
+        &mut [std::ffi::c_char; 20],
+    >(b"abc\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
+    let fresh20 = i;
+    i = i + 1;
+    *buffer.offset(fresh20 as isize) = too_short[0 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh21 = i;
+    i = i + 1;
+    *buffer.offset(fresh21 as isize) = too_short[1 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh22 = i;
+    i = i + 1;
+    *buffer.offset(fresh22 as isize) = too_short[2 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh23 = i;
+    i = i + 1;
+    *buffer.offset(fresh23 as isize) = too_short[3 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh24 = i;
+    i = i + 1;
+    *buffer.offset(fresh24 as isize) = too_short[4 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh25 = i;
+    i = i + 1;
+    *buffer.offset(fresh25 as isize) = too_short[5 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh26 = i;
+    i = i + 1;
+    *buffer.offset(fresh26 as isize) = too_short[6 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh27 = i;
+    i = i + 1;
+    *buffer.offset(fresh27 as isize) = simple[0 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh28 = i;
+    i = i + 1;
+    *buffer.offset(fresh28 as isize) = simple[1 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh29 = i;
+    i = i + 1;
+    *buffer.offset(fresh29 as isize) = simple[2 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh30 = i;
+    i = i + 1;
+    *buffer.offset(fresh30 as isize) = simple[3 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh31 = i;
+    i = i + 1;
+    *buffer.offset(fresh31 as isize) = simple[4 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh32 = i;
+    i = i + 1;
+    *buffer.offset(fresh32 as isize) = simple[5 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh33 = i;
+    i = i + 1;
+    *buffer.offset(fresh33 as isize) = simple[6 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh34 = i;
+    i = i + 1;
+    *buffer.offset(fresh34 as isize) = simple[7 as std::ffi::c_int as usize]
+        as std::ffi::c_int;
+    let fresh35 = i;
+    i = i + 1;
+    *buffer.offset(fresh35 as isize) = *foo.offset(0 as std::ffi::c_int as isize)
+        as std::ffi::c_int;
+    let fresh36 = i;
+    i = i + 1;
+    *buffer.offset(fresh36 as isize) = *foo.offset(1 as std::ffi::c_int as isize)
+        as std::ffi::c_int;
+    let fresh37 = i;
+    i = i + 1;
+    *buffer.offset(fresh37 as isize) = *foo.offset(2 as std::ffi::c_int as isize)
+        as std::ffi::c_int;
+    let fresh38 = i;
+    i = i + 1;
+    *buffer.offset(fresh38 as isize) = *foo.offset(3 as std::ffi::c_int as isize)
+        as std::ffi::c_int;
+    let fresh39 = i;
+    i = i + 1;
+    *buffer.offset(fresh39 as isize) = *foo.offset(4 as std::ffi::c_int as isize)
+        as std::ffi::c_int;
+    let fresh40 = i;
+    i = i + 1;
+    *buffer.offset(fresh40 as isize) = *foo.offset(5 as std::ffi::c_int as isize)
+        as std::ffi::c_int;
+    let fresh41 = i;
+    i = i + 1;
+    *buffer.offset(fresh41 as isize) = *foo.offset(6 as std::ffi::c_int as isize)
+        as std::ffi::c_int;
+    let fresh42 = i;
+    i = i + 1;
+    *buffer.offset(fresh42 as isize) = *foo.offset(7 as std::ffi::c_int as isize)
+        as std::ffi::c_int;
+    let mut past_end: *mut std::ffi::c_char = &mut *simple
+        .as_mut_ptr()
+        .offset(
+            ::core::mem::size_of::<[std::ffi::c_char; 9]>() as std::ffi::c_ulong as isize,
+        ) as *mut std::ffi::c_char;
+    past_end = &mut *foo.offset(8 as std::ffi::c_int as isize) as *mut std::ffi::c_char;
+}
+#[no_mangle]
+pub unsafe extern "C" fn short_initializer() {
+    let mut empty_brackets: [std::ffi::c_int; 16] = [0; 16];
+    let mut brackets_with_zero: [std::ffi::c_int; 16] = [
+        0 as std::ffi::c_int,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    ];
+    let mut brackets_with_one: [std::ffi::c_int; 4] = [1 as std::ffi::c_int, 0, 0, 0];
+    let mut excess_elements_1: [std::ffi::c_int; 2] = [
+        1 as std::ffi::c_int,
+        2 as std::ffi::c_int,
+    ];
+    let mut excess_elements_2: [std::ffi::c_int; 0] = [0; 0];
+    let mut single_struct: [C2RustUnnamed_2; 1] = [
+        {
+            let mut init = C2RustUnnamed_2 {
+                x: 1 as std::ffi::c_int as std::ffi::c_short,
+                y: 2 as std::ffi::c_int,
+            };
+            init
+        },
+    ];
+    let mut many_struct: [C2RustUnnamed_1; 3] = [
+        {
+            let mut init = C2RustUnnamed_1 {
+                x: 1 as std::ffi::c_int as std::ffi::c_short,
+                y: 2 as std::ffi::c_int,
+            };
+            init
+        },
+        C2RustUnnamed_1 { x: 0, y: 0 },
+        C2RustUnnamed_1 { x: 0, y: 0 },
+    ];
+}
