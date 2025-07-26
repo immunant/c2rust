@@ -50,7 +50,12 @@ fn config() -> TranspilerConfig {
 /// It could be the `target_arch`, `target_os`, some combination, or something else.
 fn transpile(platform: Option<&str>, c_path: &Path) {
     let status = Command::new("clang")
-        .args(&["-c", "-o", "/dev/null"])
+        .args(&[
+            "-c",
+            "-o",
+            "/dev/null",
+            "-w", // Disable warnings.
+        ])
         .arg(c_path)
         .status();
     assert!(status.unwrap().success());
@@ -97,6 +102,7 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
             crate_name,
             "-o",
             &rlib_path,
+            "-Awarnings", // Disable warnings.
         ])
         .arg(&rs_path)
         .status();
