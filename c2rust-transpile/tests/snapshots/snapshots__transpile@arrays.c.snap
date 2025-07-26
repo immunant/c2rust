@@ -35,16 +35,14 @@ pub struct C2RustUnnamed_2 {
     pub x: std::ffi::c_short,
     pub y: std::ffi::c_int,
 }
-static mut simple: [std::ffi::c_char; 9] = unsafe {
-    *::core::mem::transmute::<&[u8; 9], &mut [std::ffi::c_char; 9]>(b"mystring\0")
-};
-static mut foo: *mut std::ffi::c_char = b"mystring\0" as *const u8
-    as *const std::ffi::c_char as *mut std::ffi::c_char;
+static mut simple: [std::ffi::c_char; 9] =
+    unsafe { *::core::mem::transmute::<&[u8; 9], &mut [std::ffi::c_char; 9]>(b"mystring\0") };
+static mut foo: *mut std::ffi::c_char =
+    b"mystring\0" as *const u8 as *const std::ffi::c_char as *mut std::ffi::c_char;
 #[no_mangle]
 pub unsafe extern "C" fn entry() {
     let mut arr: [[std::ffi::c_int; 1]; 1] = [[1 as std::ffi::c_int]];
-    arr[0 as std::ffi::c_int as usize][0 as std::ffi::c_int as usize]
-        += 9 as std::ffi::c_int;
+    arr[0 as std::ffi::c_int as usize][0 as std::ffi::c_int as usize] += 9 as std::ffi::c_int;
     let mut arr2: [std::ffi::c_int; 16] = [0; 16];
     arr2[15 as std::ffi::c_int as usize] += 9 as std::ffi::c_int;
     let mut arr3: [C2RustUnnamed_0; 1] = [C2RustUnnamed_0 {
@@ -54,46 +52,37 @@ pub unsafe extern "C" fn entry() {
     arr3[0 as std::ffi::c_int as usize].y += 9 as std::ffi::c_int;
     let mut arr4: [std::ffi::c_int; 16] = [0 as std::ffi::c_int; 16];
     arr4[15 as std::ffi::c_int as usize] += 9 as std::ffi::c_int;
-    let mut arr5: [C2RustUnnamed; 1] = [
-        {
-            let mut init = C2RustUnnamed {
-                y: 1 as std::ffi::c_int,
-            };
-            init
-        },
-    ];
+    let mut arr5: [C2RustUnnamed; 1] = [{
+        let mut init = C2RustUnnamed {
+            y: 1 as std::ffi::c_int,
+        };
+        init
+    }];
     arr5[0 as std::ffi::c_int as usize].y += 9 as std::ffi::c_int;
     let mut arr6: [std::ffi::c_int; 2] = [1 as std::ffi::c_int, 2 as std::ffi::c_int];
     let mut arr7: [std::ffi::c_int; 0] = [0; 0];
-    let mut abc: [std::ffi::c_char; 4] = *::core::mem::transmute::<
-        &[u8; 4],
-        &mut [std::ffi::c_char; 4],
-    >(b"abc\0");
+    let mut abc: [std::ffi::c_char; 4] =
+        *::core::mem::transmute::<&[u8; 4], &mut [std::ffi::c_char; 4]>(b"abc\0");
     let mut def: [std::ffi::c_char; 3] = [
         'd' as i32 as std::ffi::c_char,
         'e' as i32 as std::ffi::c_char,
         'f' as i32 as std::ffi::c_char,
     ];
     let mut part: [std::ffi::c_char; 2] = [1 as std::ffi::c_int as std::ffi::c_char, 0];
-    let mut abcptr: *mut std::ffi::c_char = b"abc\0" as *const u8
-        as *const std::ffi::c_char as *mut std::ffi::c_char;
-    let mut init: [std::ffi::c_char; 5] = *::core::mem::transmute::<
-        &[u8; 5],
-        &mut [std::ffi::c_char; 5],
-    >(b"abcd\0");
-    let mut too_long: [std::ffi::c_char; 3] = *::core::mem::transmute::<
-        &[u8; 3],
-        &mut [std::ffi::c_char; 3],
-    >(b"abc");
+    let mut abcptr: *mut std::ffi::c_char =
+        b"abc\0" as *const u8 as *const std::ffi::c_char as *mut std::ffi::c_char;
+    let mut init: [std::ffi::c_char; 5] =
+        *::core::mem::transmute::<&[u8; 5], &mut [std::ffi::c_char; 5]>(b"abcd\0");
+    let mut too_long: [std::ffi::c_char; 3] =
+        *::core::mem::transmute::<&[u8; 3], &mut [std::ffi::c_char; 3]>(b"abc");
     let mut too_short: [std::ffi::c_char; 20] = *::core::mem::transmute::<
         &[u8; 20],
         &mut [std::ffi::c_char; 20],
     >(b"abc\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
     let mut past_end: *mut std::ffi::c_char = &mut *simple
         .as_mut_ptr()
-        .offset(
-            ::core::mem::size_of::<[std::ffi::c_char; 9]>() as std::ffi::c_ulong as isize,
-        ) as *mut std::ffi::c_char;
+        .offset(::core::mem::size_of::<[std::ffi::c_char; 9]>() as std::ffi::c_ulong as isize)
+        as *mut std::ffi::c_char;
     past_end = &mut *foo.offset(8 as std::ffi::c_int as isize) as *mut std::ffi::c_char;
 }
 #[no_mangle]
@@ -101,20 +90,15 @@ pub unsafe extern "C" fn short_initializer() {
     let mut empty_brackets: [std::ffi::c_int; 16] = [0; 16];
     let mut brackets_with_zero: [std::ffi::c_int; 16] = [0 as std::ffi::c_int; 16];
     let mut brackets_with_one: [std::ffi::c_int; 4] = [1 as std::ffi::c_int, 0, 0, 0];
-    let mut excess_elements_1: [std::ffi::c_int; 2] = [
-        1 as std::ffi::c_int,
-        2 as std::ffi::c_int,
-    ];
+    let mut excess_elements_1: [std::ffi::c_int; 2] = [1 as std::ffi::c_int, 2 as std::ffi::c_int];
     let mut excess_elements_2: [std::ffi::c_int; 0] = [0; 0];
-    let mut single_struct: [C2RustUnnamed_2; 1] = [
-        {
-            let mut init = C2RustUnnamed_2 {
-                x: 1 as std::ffi::c_int as std::ffi::c_short,
-                y: 2 as std::ffi::c_int,
-            };
-            init
-        },
-    ];
+    let mut single_struct: [C2RustUnnamed_2; 1] = [{
+        let mut init = C2RustUnnamed_2 {
+            x: 1 as std::ffi::c_int as std::ffi::c_short,
+            y: 2 as std::ffi::c_int,
+        };
+        init
+    }];
     let mut many_struct: [C2RustUnnamed_1; 3] = [
         {
             let mut init = C2RustUnnamed_1 {

@@ -1,8 +1,7 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-assertion_line: 67
-expression: cat tests/snapshots/platform-specific/rotate.rs
-input_file: c2rust-transpile/tests/snapshots/platform-specific/rotate.c
+expression: cat tests/snapshots/os-specific/rotate.linux.rs
+input_file: c2rust-transpile/tests/snapshots/os-specific/rotate.c
 ---
 #![allow(
     dead_code,
@@ -14,19 +13,12 @@ input_file: c2rust-transpile/tests/snapshots/platform-specific/rotate.c
     unused_mut
 )]
 #[no_mangle]
-pub unsafe extern "C" fn rotate_left_64(
-    mut x: std::ffi::c_ulonglong,
-) -> std::ffi::c_ulonglong {
-    return (x as std::ffi::c_ulong)
-        .rotate_left(4 as std::ffi::c_int as std::ffi::c_ulong as u32)
+pub unsafe extern "C" fn rotate_left_64(mut x: std::ffi::c_ulonglong) -> std::ffi::c_ulonglong {
+    return (x as std::ffi::c_ulong).rotate_left(4 as std::ffi::c_int as std::ffi::c_ulong as u32)
         as std::ffi::c_ulonglong;
 }
 #[no_mangle]
-pub unsafe extern "C" fn rotate_right_64(
-    mut x: std::ffi::c_ulonglong,
-) -> std::ffi::c_ulonglong {
-    return (x as std::ffi::c_ulong)
-        .rotate_right(4 as std::ffi::c_int as std::ffi::c_ulong as u32)
+pub unsafe extern "C" fn rotate_right_64(mut x: std::ffi::c_ulonglong) -> std::ffi::c_ulonglong {
+    return (x as std::ffi::c_ulong).rotate_right(4 as std::ffi::c_int as std::ffi::c_ulong as u32)
         as std::ffi::c_ulonglong;
 }
-

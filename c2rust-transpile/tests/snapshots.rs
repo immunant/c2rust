@@ -50,7 +50,12 @@ fn config() -> TranspilerConfig {
 /// It could be the `target_arch`, `target_os`, some combination, or something else.
 fn transpile(platform: Option<&str>, c_path: &Path) {
     let status = Command::new("clang")
-        .args(&["-c", "-o", "/dev/null"])
+        .args(&[
+            "-c",
+            "-o",
+            "/dev/null",
+            "-w", // Disable warnings.
+        ])
         .arg(c_path)
         .status();
     assert!(status.unwrap().success());
@@ -76,6 +81,10 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
             platform_rs_path
         }
     };
+
+    let status = Command::new("rustfmt").arg(&rs_path).status();
+    assert!(status.unwrap().success());
+
     let rs = fs::read_to_string(&rs_path).unwrap();
     let debug_expr = format!("cat {}", rs_path.display());
 
@@ -97,6 +106,7 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
             crate_name,
             "-o",
             &rlib_path,
+            "-Awarnings", // Disable warnings.
         ])
         .arg(&rs_path)
         .status();
