@@ -1,6 +1,5 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-assertion_line: 67
 expression: cat tests/snapshots/atomics.rs
 input_file: c2rust-transpile/tests/snapshots/atomics.c
 ---
@@ -27,22 +26,14 @@ pub unsafe extern "C" fn c11_atomics(mut x: std::ffi::c_int) -> std::ffi::c_int 
     ::core::intrinsics::atomic_xchg_seqcst(&mut x, 42 as std::ffi::c_int);
     let mut expected: std::ffi::c_int = 42 as std::ffi::c_int;
     let mut desired: std::ffi::c_int = 100 as std::ffi::c_int;
-    let fresh0 = ::core::intrinsics::atomic_cxchg_seqcst_seqcst(
-        &mut x,
-        *&mut expected,
-        desired,
-    );
+    let fresh0 = ::core::intrinsics::atomic_cxchg_seqcst_seqcst(&mut x, *&mut expected, desired);
     *&mut expected = fresh0.0;
     fresh0.1;
     expected = 100 as std::ffi::c_int;
     desired = 200 as std::ffi::c_int;
-    let fresh1 = ::core::intrinsics::atomic_cxchgweak_seqcst_seqcst(
-        &mut x,
-        *&mut expected,
-        desired,
-    );
+    let fresh1 =
+        ::core::intrinsics::atomic_cxchgweak_seqcst_seqcst(&mut x, *&mut expected, desired);
     *&mut expected = fresh1.0;
     fresh1.1;
     return x;
 }
-
