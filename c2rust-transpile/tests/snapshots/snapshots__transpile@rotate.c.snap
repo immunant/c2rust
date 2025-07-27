@@ -1,6 +1,5 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-assertion_line: 67
 expression: cat tests/snapshots/rotate.rs
 input_file: c2rust-transpile/tests/snapshots/rotate.c
 ---
@@ -18,9 +17,7 @@ pub unsafe extern "C" fn rotate_left_8(mut x: std::ffi::c_uchar) -> std::ffi::c_
     return x.rotate_left(1 as std::ffi::c_int as std::ffi::c_uchar as u32);
 }
 #[no_mangle]
-pub unsafe extern "C" fn rotate_left_16(
-    mut x: std::ffi::c_ushort,
-) -> std::ffi::c_ushort {
+pub unsafe extern "C" fn rotate_left_16(mut x: std::ffi::c_ushort) -> std::ffi::c_ushort {
     return x.rotate_left(2 as std::ffi::c_int as std::ffi::c_ushort as u32);
 }
 #[no_mangle]
@@ -32,13 +29,10 @@ pub unsafe extern "C" fn rotate_right_8(mut x: std::ffi::c_uchar) -> std::ffi::c
     return x.rotate_right(1 as std::ffi::c_int as std::ffi::c_uchar as u32);
 }
 #[no_mangle]
-pub unsafe extern "C" fn rotate_right_16(
-    mut x: std::ffi::c_ushort,
-) -> std::ffi::c_ushort {
+pub unsafe extern "C" fn rotate_right_16(mut x: std::ffi::c_ushort) -> std::ffi::c_ushort {
     return x.rotate_right(2 as std::ffi::c_int as std::ffi::c_ushort as u32);
 }
 #[no_mangle]
 pub unsafe extern "C" fn rotate_right_32(mut x: std::ffi::c_uint) -> std::ffi::c_uint {
     return x.rotate_right(3 as std::ffi::c_int as std::ffi::c_uint as u32);
 }
-
