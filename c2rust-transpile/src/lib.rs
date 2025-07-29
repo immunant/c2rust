@@ -43,6 +43,22 @@ type PragmaSet = indexmap::IndexSet<(&'static str, &'static str)>;
 type CrateSet = indexmap::IndexSet<ExternCrate>;
 type TranspileResult = Result<(PathBuf, PragmaVec, CrateSet), ()>;
 
+#[derive(Default, Debug)]
+pub enum TranslateMacros {
+    /// Don't translate any macros.
+    #[default]
+    None,
+
+    /// Translate the minimal subset of macros known to always work.
+    Minimal,
+
+    /// Try to translate more, but this is experimental and not guaranteed to work.
+    ///
+    /// For const-like macros, this works in some cases.
+    /// For function-like macros, this doesn't really work at all yet.
+    Experimental,
+}
+
 /// Configuration settings for the translation process
 #[derive(Debug)]
 pub struct TranspilerConfig {
@@ -78,8 +94,8 @@ pub struct TranspilerConfig {
     pub enabled_warnings: HashSet<Diagnostic>,
     pub emit_no_std: bool,
     pub output_dir: Option<PathBuf>,
-    pub translate_const_macros: bool,
-    pub translate_fn_macros: bool,
+    pub translate_const_macros: TranslateMacros,
+    pub translate_fn_macros: TranslateMacros,
     pub disable_refactoring: bool,
     pub preserve_unused_functions: bool,
     pub log_level: log::LevelFilter,

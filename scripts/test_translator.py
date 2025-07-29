@@ -95,6 +95,7 @@ class CFile:
             args.append("--fail-on-multiple")
         if self.translate_const_macros:
             args.append("--translate-const-macros")
+            args.append("experimental")
         if self.reorganize_definitions:
             args.append("--reorganize-definitions")
         if self.emit_build_files:

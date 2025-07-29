@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use c2rust_transpile::{ReplaceMode, TranspilerConfig};
+use c2rust_transpile::{ReplaceMode, TranslateMacros, TranspilerConfig};
 
 fn config() -> TranspilerConfig {
     TranspilerConfig {
@@ -36,8 +36,8 @@ fn config() -> TranspilerConfig {
         enabled_warnings: Default::default(),
         emit_no_std: false,
         output_dir: None,
-        translate_const_macros: false,
-        translate_fn_macros: false,
+        translate_const_macros: TranslateMacros::Minimal,
+        translate_fn_macros: TranslateMacros::Minimal,
         disable_refactoring: false,
         preserve_unused_functions: false,
         log_level: log::LevelFilter::Warn,
