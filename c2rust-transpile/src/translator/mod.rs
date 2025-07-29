@@ -3902,6 +3902,11 @@ impl<'c> Translation<'c> {
         Ok(expr)
     }
 
+    /// Convert the expansion of a const-like macro.
+    ///
+    /// See [`TranspilerConfig::translate_const_macros`].
+    ///
+    /// [`TranspilerConfig::translate_const_macros`]: crate::TranspilerConfig::translate_const_macros
     fn convert_macro_expansion(
         &self,
         ctx: ExprContext,
@@ -3975,6 +3980,11 @@ impl<'c> Translation<'c> {
         Ok(None)
     }
 
+    /// Convert the expansion of a function-like macro.
+    ///
+    /// See [`TranspilerConfig::translate_fn_macros`].
+    ///
+    /// [`TranspilerConfig::translate_fn_macros`]: crate::TranspilerConfig::translate_fn_macros
     fn convert_macro_invocation(
         &self,
         _ctx: ExprContext,
