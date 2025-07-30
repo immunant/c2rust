@@ -806,7 +806,7 @@ impl RewriteAt for Item {
                     if let Some(attr) = path_attr {
                         item.attrs.push(attr);
                     }
-                    Span::new(sf.start_pos, sf.end_pos, SyntaxContext::root())
+                    Span::new(sf.start_pos, sf.end_pos, SyntaxContext::root(), None)
                 } else {
                     m_spans.inner_span
                 };

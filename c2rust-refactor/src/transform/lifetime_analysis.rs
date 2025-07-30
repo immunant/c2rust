@@ -749,6 +749,7 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
                 source_file.start_pos + BytePos::from_u32(s.lo.to_u32()),
                 source_file.start_pos + BytePos::from_u32(s.hi.to_u32()),
                 SyntaxContext::root(),
+                None,
             )
         }).collect();
 
