@@ -573,12 +573,8 @@ where
         return false;
     }
 
-    let sf = rcx
-        .session()
-        .source_map()
-        .lookup_byte_offset(old_span.lo())
-        .sf;
-    if let FileName::Macros(..) = sf.name {
+    let sm = rcx.session().source_map();
+    if sm.is_imported(old_span) {
         return false;
     }
 
