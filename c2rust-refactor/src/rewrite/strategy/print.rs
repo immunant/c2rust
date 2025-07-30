@@ -26,7 +26,7 @@ use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use rustc_ast::ptr::P;
 use rustc_ast_pretty::pprust::{self, PrintState};
 use rustc_parse::parser::attr::InnerAttrPolicy;
-use rustc_span::source_map::{BytePos, FileName, SourceFile, Span, Spanned};
+use rustc_span::source_map::{BytePos, FileName, RealFileName, SourceFile, Span, Spanned};
 use rustc_span::symbol::{Ident, Symbol};
 use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
 use rustc_ast::util::parser;
@@ -729,8 +729,11 @@ fn create_file_for_module(
     let old_sf = source_map.lookup_byte_offset(old_span.lo()).sf;
     let mut path_attr = None;
     let filename = match old_sf.name.clone() {
-        FileName::Real(mut path) => {
+        FileName::Real(path) => {
             let mod_file_name = format!("{}.rs", module_item.ident.to_string());
+            let mut path = path
+                .into_local_path()
+                .expect("module file has no local path");
             if let Some(path_attr) = crate::util::first_attr_value_str_by_name(&module_item.attrs, Symbol::intern("path")) {
                 path.pop();
                 path.push(path_attr.to_string());
@@ -773,7 +776,8 @@ fn create_file_for_module(
         _ => panic!("Could not construct file path for external module {:?}", module_item.ident),
     };
 
-    let sf = source_map.new_source_file(FileName::Real(filename), String::new());
+    let rfn = RealFileName::LocalPath(filename);
+    let sf = source_map.new_source_file(FileName::Real(rfn), String::new());
     (sf, path_attr)
 }
 
