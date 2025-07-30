@@ -13,6 +13,7 @@
 use log::info;
 use rustc_ast::*;
 use rustc_ast::token::{Delimiter, Token, TokenKind};
+use rustc_span::DUMMY_SP;
 use rustc_span::source_map::{BytePos, Span};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 
@@ -353,8 +354,16 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
                 record_qualifier_rewrite(vis1.span, reparsed.vis.span, rcx.borrow());
             }
 
-            if sig1.header.constness.node != sig2.header.constness.node {
-                record_qualifier_rewrite(sig1.header.constness.span, reparsed_sig.header.constness.span, rcx.borrow());
+            if sig1.header.constness != sig2.header.constness {
+                let sig1_const_span = match sig1.header.constness {
+                    Const::Yes(sp) => sp,
+                    Const::No => DUMMY_SP,
+                };
+                let reparsed_sig_const_span = match reparsed_sig.header.constness {
+                    Const::Yes(sp) => sp,
+                    Const::No => DUMMY_SP,
+                };
+                record_qualifier_rewrite(sig1_const_span, reparsed_sig_const_span, rcx.borrow());
             }
 
             if ident1 != ident2 {
