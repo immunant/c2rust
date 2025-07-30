@@ -450,7 +450,7 @@ pub fn is_rewritable(sp: Span) -> bool {
 
 pub fn describe(sess: &Session, span: Span) -> String {
     let cm = sess.source_map();
-    let loc = cm.span_to_string(span);
+    let loc = cm.span_to_diagnostic_string(span);
     let src = cm.span_to_snippet(span);
 
     if let Ok(src) = src {
