@@ -62,7 +62,7 @@ impl<'a> Stream<'a> {
 
     fn token(&mut self) -> PResult<Token> {
         match self.take()? {
-            TokenTree::Token(tok) => Ok(tok),
+            TokenTree::Token(tok, _) => Ok(tok),
             TokenTree::Delimited(..) => fail!("expected token, but got delimited"),
         }
     }
@@ -77,7 +77,7 @@ impl<'a> Stream<'a> {
 
     fn maybe_expect(&mut self, expect: &TokenKind) -> bool {
         let found = match self.peek() {
-            Some(&TokenTree::Token(ref tok)) => &tok.kind == expect,
+            Some(&TokenTree::Token(ref tok, _)) => &tok.kind == expect,
             _ => false,
         };
         if found {
@@ -101,7 +101,7 @@ impl<'a> Stream<'a> {
                 }
                 Ok(tts)
             }
-            TokenTree::Token(tok) => fail!("expected parens, but got {:?}", tok),
+            TokenTree::Token(tok, _) => fail!("expected parens, but got {:?}", tok),
         }
     }
 
