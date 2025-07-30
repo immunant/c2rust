@@ -400,7 +400,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
                 panic!(
                     "expr_lty: no lty for {:?} @ {:?}",
                     e,
-                    self.tcx.sess.source_map().span_to_string(e.span)
+                    self.tcx.sess.source_map().span_to_diagnostic_string(e.span)
                 )
             })
     }
@@ -421,7 +421,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
             panic!(
                 "pat_lty: no lty for {:?} @ {:?}",
                 p,
-                self.tcx.sess.source_map().span_to_string(p.span)
+                self.tcx.sess.source_map().span_to_diagnostic_string(p.span)
             )
         })
     }
@@ -431,7 +431,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
             panic!(
                 "ty_lty: no lty for {:?} @ {:?}",
                 t,
-                self.tcx.sess.source_map().span_to_string(t.span)
+                self.tcx.sess.source_map().span_to_diagnostic_string(t.span)
             )
         })
     }
