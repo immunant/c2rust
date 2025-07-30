@@ -173,12 +173,12 @@ impl PrintParse for Attribute {
         driver::run_parser(sess, src, |p| {
             match p.token.kind {
                 // `parse_attribute` doesn't handle inner or outer doc comments.
-                TokenKind::DocComment(s) => {
+                TokenKind::DocComment(kind, style, s) => {
                     assert!(src.ends_with('\n'));
                     // Expand the `span` to include the trailing \n.  Otherwise multiple spliced
                     // doc comments will run together into a single line.
                     let span = p.token.span.with_hi(p.token.span.hi() + BytePos(1));
-                    let attr = attr::mk_doc_comment(AttrStyle::Outer, s, span);
+                    let attr = attr::mk_doc_comment(kind, style, s, span);
                     p.bump();
                     return Ok(attr);
                 }
