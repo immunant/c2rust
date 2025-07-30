@@ -690,5 +690,5 @@ where
 /// to the `SourceMap` on every call.
 pub fn make_span_for_text(cm: &SourceMap, s: &str) -> Span {
     let fm = cm.new_source_file(FileName::anon_source_code(s), s.to_string());
-    Span::new(fm.start_pos, fm.end_pos, SyntaxContext::root())
+    Span::new(fm.start_pos, fm.end_pos, SyntaxContext::root(), None)
 }
