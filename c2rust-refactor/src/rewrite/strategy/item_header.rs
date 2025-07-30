@@ -341,7 +341,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             // Now try to splice changes to vis, constness, unsafety, abi, and ident.  We use the
             // parser to find spans for all the old stuff.
             let src2: String = <Item as PrintParse>::to_string(new);
-            let reparsed = Item::parse(rcx.session(), &src2);
+            let reparsed = Item::<ItemKind>::parse(rcx.session(), &src2);
             let reparsed_sig = expect!([&reparsed.kind]
                 ItemKind::Fn(box Fn { ref sig, .. }) => sig);
 
@@ -375,7 +375,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             }
 
             let src2: String = <Item as PrintParse>::to_string(new);
-            let reparsed = Item::parse(rcx.session(), &src2);
+            let reparsed = Item::<ItemKind>::parse(rcx.session(), &src2);
 
             if !vis1.kind.ast_equiv(&vis2.kind) {
                 record_qualifier_rewrite(vis1.span, reparsed.vis.span, rcx.borrow());
