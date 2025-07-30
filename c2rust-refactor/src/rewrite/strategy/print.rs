@@ -25,6 +25,7 @@ use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, T
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use rustc_ast::ptr::P;
 use rustc_ast_pretty::pprust::{self, PrintState};
+use rustc_parse::parser::attr::InnerAttrPolicy;
 use rustc_span::source_map::{BytePos, FileName, SourceFile, Span, Spanned};
 use rustc_span::symbol::{Ident, Symbol};
 use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
@@ -182,7 +183,7 @@ impl PrintParse for Attribute {
                     p.bump();
                     return Ok(attr);
                 }
-                _ => p.parse_attribute(true),
+                _ => p.parse_attribute(InnerAttrPolicy::Permitted),
             }
         })
     }

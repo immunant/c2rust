@@ -27,6 +27,7 @@ use rustc_ast::{
 };
 use rustc_span::hygiene::SyntaxContext;
 use rustc_parse::parser::Parser;
+use rustc_parse::parser::attr::InnerAttrPolicy;
 use rustc_ast::token::{self, TokenKind};
 use rustc_errors::PResult;
 use rustc_ast::ptr::P;
@@ -588,9 +589,15 @@ pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
 fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Param> {
     // `parse_arg` is private, so we make do with `parse_attribute`,
     // `parse_pat`, & `parse_ty`.
+    const INNER_ATTR_FORBIDDEN: InnerAttrPolicy<'_> = InnerAttrPolicy::Forbidden {
+        reason: "inner attributes not allowed in function arguments",
+        saw_doc_comment: false,
+        prev_outer_attr_sp: None,
+    };
+
     let mut attrs: Vec<ast::Attribute> = Vec::new();
     while let token::Pound = p.token.kind {
-        attrs.push(p.parse_attribute(false).unwrap());
+        attrs.push(p.parse_attribute(INNER_ATTR_FORBIDDEN).unwrap());
     }
     let pat = p.parse_pat(None)?;
     p.expect(&TokenKind::Colon)?;
