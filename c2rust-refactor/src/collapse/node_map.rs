@@ -110,6 +110,5 @@ define_nt_use_visitor! {
     visit_pat, walk_pat, NtPat, Pat;
     visit_expr, walk_expr, NtExpr, Expr;
     visit_ty, walk_ty, NtTy, Ty;
-    visit_assoc_item, walk_assoc_item, NtItem, AssocItem;
     visit_foreign_item, walk_foreign_item, NtForeignItem, ForeignItem;
 }
