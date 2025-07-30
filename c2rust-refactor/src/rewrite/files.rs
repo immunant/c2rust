@@ -43,6 +43,10 @@ pub fn rewrite_files_with(cm: &SourceMap, rw: &TextRewrite, io: &dyn FileIO) -> 
                 continue;
             }
         };
+        let path = match path.local_path() {
+            Some(path) => path,
+            None => continue
+        };
 
         // TODO: do something with nodes
         io.save_rewrites(cm, &sf, &rewrites, &nodes)?;
