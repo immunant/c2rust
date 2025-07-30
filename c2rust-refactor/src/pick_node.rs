@@ -267,7 +267,7 @@ pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo
     let mut v = PickVisitor {
         node_info: None,
         kind,
-        target: Span::new(pos, pos, SyntaxContext::root()),
+        target: Span::new(pos, pos, SyntaxContext::root(), None),
     };
     krate.visit(&mut v);
 
