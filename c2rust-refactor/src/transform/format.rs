@@ -8,7 +8,7 @@ use rustc_ast::*;
 use rustc_span::source_map::DUMMY_SP;
 use rustc_ast::ptr::P;
 use rustc_ast::token::{Token, TokenKind, Nonterminal};
-use rustc_ast::tokenstream::TokenTree;
+use rustc_ast::tokenstream::{Spacing, TokenTree};
 use rustc_span::{sym, Span};
 use smallvec::smallvec;
 
@@ -178,13 +178,13 @@ fn build_format_macro(
         TokenTree::Token(Token {
             kind: TokenKind::Interpolated(Lrc::new(Nonterminal::NtExpr(e))),
             span,
-        })
+        }, Spacing::Alone)
     };
     macro_tts.push(expr_tt(new_fmt_str_expr));
     for (i, arg) in fmt_args[1..].iter().enumerate() {
         if let Some(cast) = casts.get(&i) {
             let tt = expr_tt(cast.apply(arg.clone()));
-            macro_tts.push(TokenTree::Token(Token {kind: TokenKind::Comma, span: DUMMY_SP}));
+            macro_tts.push(TokenTree::Token(Token {kind: TokenKind::Comma, span: DUMMY_SP}, Spacing::Alone));
             macro_tts.push(tt);
         }
     }

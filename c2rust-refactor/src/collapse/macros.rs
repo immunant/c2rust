@@ -15,7 +15,7 @@ use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::token::{Nonterminal, Token, TokenKind};
 use rustc_ast::ptr::P;
 use rustc_span::source_map::{BytePos, Span};
-use rustc_ast::tokenstream::{self, TokenStream, TokenTree};
+use rustc_ast::tokenstream::{self, Spacing, TokenStream, TokenTree};
 use rustc_span::sym;
 use smallvec::smallvec;
 
@@ -481,14 +481,14 @@ fn rewrite_tokens(
             new_tts.push(TokenTree::Token(Token {
                 kind: TokenKind::Interpolated(Lrc::new(item.nt)),
                 span: item.span,
-            }));
+            }, Spacing::Alone));
             ignore_until = Some(item.span.hi());
             continue;
         }
 
         match tt {
-            TokenTree::Token(t) => {
-                new_tts.push(TokenTree::Token(t));
+            TokenTree::Token(t, sp) => {
+                new_tts.push(TokenTree::Token(t, sp));
             }
             TokenTree::Delimited(sp, delim, tts) => {
                 new_tts.push(TokenTree::Delimited(

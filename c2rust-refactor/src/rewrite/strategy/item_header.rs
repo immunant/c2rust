@@ -232,7 +232,7 @@ fn rewrite_arg_list_with_tokens(
                     if past_arg && crate::matches!([tt] TokenTree::Token(Token {
                         kind: TokenKind::Comma,
                         ..
-                    })) {
+                    }, _)) {
                         // Found the comma following the current arg.
                         comma_spans.push(tt.span());
                         break;
