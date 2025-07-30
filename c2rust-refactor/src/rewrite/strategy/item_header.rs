@@ -308,8 +308,13 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             &ItemKind::Fn(box Fn { sig: ref sig1, generics: ref generics1, body: ref block1, .. }),
             &ItemKind::Fn(box Fn { sig: ref sig2, generics: ref generics2, body: ref block2, .. }),
         ) => {
+            let tokens1_stream = tokens1
+                .as_ref()
+                .unwrap()
+                .create_token_stream()
+                .to_tokenstream();
             let (old_args_tokens, old_args_span) =
-                find_fn_header_arg_list(tokens1.as_ref().unwrap().clone(), generics1.span)
+                find_fn_header_arg_list(tokens1_stream, generics1.span)
                     .expect("failed to find arg list in item tokens");
 
             // First, try rewriting all the things we don't have special handling for.  If any of
