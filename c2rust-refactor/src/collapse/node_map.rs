@@ -61,7 +61,7 @@ fn nt_span(nt: &Nonterminal) -> Option<Span> {
 fn collect_nonterminals(ts: TokenStream, span_map: &mut HashMap<Span, Lrc<Nonterminal>>) {
     for tt in ts.into_trees() {
         match tt {
-            TokenTree::Token(Token{kind: TokenKind::Interpolated(nt), ..}) => {
+            TokenTree::Token(Token{kind: TokenKind::Interpolated(nt), ..}, _) => {
                 if let Some(span) = nt_span(&nt) {
                     span_map.insert(span, nt.clone());
                 }
