@@ -11,7 +11,7 @@ use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::token::{self, Delimiter, Token, TokenKind};
 use rustc_ast::ptr::P;
 use rustc_span::symbol::Symbol;
-use rustc_ast::tokenstream::{TokenTree, TokenStream, DelimSpan};
+use rustc_ast::tokenstream::{Spacing, TokenTree, TokenStream, DelimSpan};
 use smallvec::{smallvec, SmallVec};
 
 use crate::ast_manip::{MutVisitNodes, MutVisit};
@@ -264,7 +264,7 @@ fn str_token(s: &str) -> TokenTree {
 }
 
 fn token(kind: TokenKind) -> TokenTree {
-    TokenTree::Token(Token{kind, span: DUMMY_SP})
+    TokenTree::Token(Token{kind, span: DUMMY_SP}, Spacing::Alone)
 }
 
 fn parens(ts: Vec<TokenTree>) -> TokenTree {
