@@ -481,7 +481,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
     /// Attempt to resolve a `Use` item id to the `hir::Path` of the imported
     /// item. The given item _must_ be a `Use`.
-    pub fn resolve_use_id(&self, id: NodeId) -> &P<hir::Path> {
+    pub fn resolve_use_id(&self, id: NodeId) -> &hir::Path {
         let hir_node = self
             .hir_map()
             .find(id)
@@ -493,7 +493,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
     /// Attempt to resolve a `Use` item id to the `hir::Path` of the imported
     /// item. The given item _must_ be a `Use`.
-    pub fn try_resolve_use_id(&self, id: NodeId) -> Option<&P<hir::Path>> {
+    pub fn try_resolve_use_id(&self, id: NodeId) -> Option<&hir::Path> {
         let hir_node = self
             .hir_map()
             .find(id)?;
