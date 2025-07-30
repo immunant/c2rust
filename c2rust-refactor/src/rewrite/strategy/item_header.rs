@@ -162,10 +162,10 @@ fn span_empty(sp: Span) -> bool {
 
 fn find_fn_header_arg_list(ts: TokenStream, generics_span: Span) -> Option<(TokenStream, Span)> {
     // Take the body of the first paren-delimited subtree that's strictly after `generics_span`.
-    ts.trees()
+    ts.into_trees()
         .filter_map(|tt| match tt {
             TokenTree::Delimited(sp, delim, tts) => {
-                if *delim == Delimiter::Parenthesis && sp.open.lo() >= generics_span.hi() {
+                if delim == Delimiter::Parenthesis && sp.open.lo() >= generics_span.hi() {
                     Some((tts, sp.open.between(sp.close)))
                 } else {
                     None
