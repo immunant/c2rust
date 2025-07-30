@@ -126,7 +126,9 @@ impl PrintParse for Item {
 
 impl PrintParse for ForeignItem {
     fn to_string(&self) -> String {
-        pprust::to_string(|s| s.print_foreign_item(self))
+        pprust::to_string(|s| {
+            s.foreign_item_to_string(self);
+        })
     }
 
     type Parsed = ForeignItem;
