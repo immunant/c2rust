@@ -13,7 +13,7 @@ fn encode_span(sm: &SourceMap, sp: Span) -> JsonValue {
     let src = &lo.sf.src.as_ref().unwrap()[lo.pos.0 as usize..hi.pos.0 as usize];
 
     object! {
-        "file" => lo.sf.name.to_string(),
+        "file" => lo.sf.name.prefer_local().to_string(),
         "lo" => lo.pos.0,
         "hi" => hi.pos.0,
         "src" => src,
