@@ -46,7 +46,7 @@ def find_id_field(s):
     marked_fields = []
     for f in s.fields:
         if 'node_id' in f.attrs:
-            marked_fields.append(f.name)
+            marked_fields.append(f.dot_name)
     if len(marked_fields) == 1:
         return marked_fields[0]
     elif len(marked_fields) > 1:
@@ -55,7 +55,7 @@ def find_id_field(s):
 
     for f in s.fields:
         if f.name == 'id':
-            return f.name
+            return f.dot_name
 
     return None
 
