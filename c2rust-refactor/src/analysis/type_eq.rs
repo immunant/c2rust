@@ -239,7 +239,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for ExprPatVisitor<'lty, 'hir> {
     fn visit_trait_item(&mut self, item: &'hir TraitItem) {
         let body_id = match item.kind {
             TraitItemKind::Const(_, Some(body_id)) => body_id,
-            TraitItemKind::Method(_, TraitFn::Provided(body_id)) => body_id,
+            TraitItemKind::Fn(_, TraitFn::Provided(body_id)) => body_id,
             _ => return,
         };
         self.handle_body(body_id);
@@ -248,7 +248,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for ExprPatVisitor<'lty, 'hir> {
     fn visit_impl_item(&mut self, item: &'hir ImplItem) {
         let body_id = match item.kind {
             ImplItemKind::Const(_, body_id) => body_id,
-            ImplItemKind::Method(_, body_id) => body_id,
+            ImplItemKind::Fn(_, body_id) => body_id,
             _ => return,
         };
         self.handle_body(body_id);
