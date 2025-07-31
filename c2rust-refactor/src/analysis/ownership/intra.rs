@@ -136,7 +136,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             };
 
             let span = match &decl.local_info {
-                LocalInfo::User(ClearCrossCrate::Set(binding)) => Some(binding),
+                Some(box LocalInfo::User(ClearCrossCrate::Set(binding))) => Some(binding),
                 _ => None,
             }.map(|binding| match binding {
                 BindingForm::Var(var) => var.pat_span,
