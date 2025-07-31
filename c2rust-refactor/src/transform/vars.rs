@@ -238,9 +238,16 @@ fn expr_has_side_effects(cx: &RefactorCtxt, e: &P<Expr>) -> bool {
         ExprKind::Cast(ref expr, _) => expr_has_side_effects(cx, expr),
         ExprKind::Type(ref expr, _) => expr_has_side_effects(cx, expr),
         // TODO: ExprKind::Path safe???
-        ExprKind::Struct(_, ref fields, ref base) => {
-            fields.iter().any(|f| expr_has_side_effects(cx, &f.expr)) ||
-                base.as_ref().map_or(false, |e| expr_has_side_effects(cx, e))
+        ExprKind::Struct(ref se) => {
+            if se.fields.iter().any(|f| expr_has_side_effects(cx, &f.expr)) {
+                return true;
+            }
+
+            if let StructRest::Base(ref e) = se.rest {
+                return expr_has_side_effects(cx, e);
+            }
+
+            false
         }
         ExprKind::Repeat(ref expr, _) => expr_has_side_effects(cx, expr),
         ExprKind::Paren(ref expr) => expr_has_side_effects(cx, expr),
@@ -372,7 +379,7 @@ impl Transform for FoldLetAssign {
                 let assign_info = match curs.next().kind {
                     StmtKind::Semi(ref e) => {
                         match e.kind {
-                            ExprKind::Assign(ref lhs, ref rhs) => {
+                            ExprKind::Assign(ref lhs, ref rhs, _) => {
                                 if let Some(hir_id) = cx.try_resolve_expr_to_hid(&lhs) {
                                     if local_pos.contains_key(&hir_id) {
                                         if is_self_ref(cx, hir_id, rhs) {
