@@ -609,15 +609,15 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             | TerminatorKind::Abort => {}
 
             TerminatorKind::DropAndReplace {
-                ref location,
+                ref place,
                 ref value,
                 ..
             } => {
-                let (loc_ty, loc_perm) = self.place_lty(location);
+                let (loc_ty, loc_perm) = self.place_lty(place);
                 let (val_ty, val_perm) = self.operand_lty(value);
                 self.propagate(loc_ty, val_ty, val_perm);
                 self.propagate_perm(Perm::write(), loc_perm);
-                debug!("    {:?}: {:?}", location, loc_ty);
+                debug!("    {:?}: {:?}", place, loc_ty);
                 debug!("    ^-- {:?}: {:?}", value, val_ty);
             }
 
@@ -625,6 +625,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 ref func,
                 ref args,
                 ref destination,
+                ref target,
                 ..
             } => {
                 debug!("    call {:?}", func);
@@ -639,12 +640,12 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                     debug!("    (arg): {:?}", sig_ty);
                     debug!("    ^-- {:?}: {:?}", arg, arg_ty);
                 }
-                if let Some((ref dest, _)) = *destination {
+                if target.is_some() {
                     let sig_ty = sig.output;
-                    let (dest_ty, dest_perm) = self.place_lty(dest);
+                    let (dest_ty, dest_perm) = self.place_lty(destination);
                     self.propagate(dest_ty, sig_ty, Perm::move_());
                     self.propagate_perm(Perm::write(), dest_perm);
-                    debug!("    {:?}: {:?}", dest, dest_ty);
+                    debug!("    {:?}: {:?}", destination, dest_ty);
                     debug!("    ^-- (return): {:?}", sig_ty);
                 }
             }
