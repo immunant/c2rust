@@ -593,7 +593,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
 
         match bb.terminator().kind {
             TerminatorKind::Goto { .. }
-            | TerminatorKind::FalseEdges { .. }
+            | TerminatorKind::FalseEdge { .. }
             | TerminatorKind::FalseUnwind { .. }
             | TerminatorKind::SwitchInt { .. }
             | TerminatorKind::Resume
