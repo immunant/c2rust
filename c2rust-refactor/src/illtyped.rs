@@ -225,7 +225,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
             ExprKind::AddrOf(_, _m, _ohs) => {} // TODO
             ExprKind::If(cond, _tr, _fl) => {
                 // TODO: do something clever with tr + fl
-                illtyped |= self.ensure(cond, tcx.mk_bool());
+                illtyped |= self.ensure(cond, tcx.types.bool);
             }
             ExprKind::Let(pat, expr, _) => {
                 if let Some(pat_ty) = self.cx.opt_node_type(pat.id) {
@@ -233,7 +233,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 }
             }
             ExprKind::While(cond, _body, _opt_label) => {
-                illtyped |= self.ensure(cond, tcx.mk_bool());
+                illtyped |= self.ensure(cond, tcx.types.bool);
             }
             ExprKind::Match(expr, arms) => {
                 if let Some(pat_ty) = arms
