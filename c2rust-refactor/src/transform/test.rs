@@ -242,7 +242,7 @@ impl Transform for TestDebugCallees {
                     describe(func);
                 },
 
-                ExprKind::MethodCall(_, _) => {
+                ExprKind::MethodCall(_, _, _) => {
                     info!("at method call {:?}", e);
                     info!("  call info:");
                     describe(e);
