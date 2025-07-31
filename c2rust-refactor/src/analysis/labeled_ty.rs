@@ -149,7 +149,6 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
             | TyKind::Generator(..)
             | TyKind::GeneratorWitness(..)
             | TyKind::Projection(..)
-            | TyKind::UnnormalizedProjection(..)
             | TyKind::Opaque(..)
             | TyKind::Param(..)
             | TyKind::Bound(..)
