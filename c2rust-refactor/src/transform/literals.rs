@@ -360,9 +360,9 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             Res::PrimTy(prim_ty) => {
                 let source = match prim_ty {
                     // TODO: check generics
-                    hir::PrimTy::Int(it) => LitTySource::Actual(tcx.mk_mach_int(it)),
-                    hir::PrimTy::Uint(uit) => LitTySource::Actual(tcx.mk_mach_uint(uit)),
-                    hir::PrimTy::Float(ft) => LitTySource::Actual(tcx.mk_mach_float(ft)),
+                    hir::PrimTy::Int(it) => LitTySource::Actual(tcx.mk_mach_int(ty::int_ty(it))),
+                    hir::PrimTy::Uint(uit) => LitTySource::Actual(tcx.mk_mach_uint(ty::uint_ty(uit))),
+                    hir::PrimTy::Float(ft) => LitTySource::Actual(tcx.mk_mach_float(ty::float_ty(ft))),
                     _ => LitTySource::Unknown(false)
                 };
                 self.new_leaf(source)
@@ -457,7 +457,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             }
 
             sty::TyKind::Str => {
-                let u8_ty = tcx.mk_mach_uint(UintTy::U8);
+                let u8_ty = tcx.types.u8;
                 let u8_kt = self.ty_to_key_tree_internal(u8_ty, true, seen);
                 self.replace_with_node(new_node, &[u8_kt]);
             }
@@ -1145,13 +1145,13 @@ impl<'tcx> LitTySource<'tcx> {
         };
         match lit.kind {
             LitKind::Int(_, LitIntType::Signed(int_ty)) =>
-                LitTySource::Suffix(tcx.mk_mach_int(int_ty), false),
+                LitTySource::Suffix(tcx.mk_mach_int(ty::int_ty(int_ty)), false),
 
             LitKind::Int(_, LitIntType::Unsigned(uint_ty)) =>
-                LitTySource::Suffix(tcx.mk_mach_uint(uint_ty), false),
+                LitTySource::Suffix(tcx.mk_mach_uint(ty::uint_ty(uint_ty)), false),
 
             LitKind::Float(_, LitFloatType::Suffixed(float_ty)) =>
-                LitTySource::Suffix(tcx.mk_mach_float(float_ty), false),
+                LitTySource::Suffix(tcx.mk_mach_float(ty::float_ty(float_ty)), false),
 
             _ => LitTySource::Unknown(false)
         }
