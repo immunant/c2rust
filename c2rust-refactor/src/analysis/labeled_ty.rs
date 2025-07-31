@@ -137,7 +137,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
             }
             TyKind::Tuple(ref elems) => {
                 let args = elems
-                    .types()
+                    .iter()
                     .map(|ty| self.label(ty, f))
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
