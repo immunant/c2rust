@@ -15,6 +15,11 @@ input_file: c2rust-transpile/tests/snapshots/macros.c
 extern "C" {
     fn extern_fn() -> std::ffi::c_int;
 }
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct S {
+    pub i: std::ffi::c_int,
+}
 pub type U64 = std::ffi::c_ulonglong;
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -24,6 +29,296 @@ pub struct fn_ptrs {
     pub fn2: Option<unsafe extern "C" fn(std::ffi::c_int) -> std::ffi::c_int>,
 }
 pub type zstd_platform_dependent_type = std::ffi::c_long;
+#[no_mangle]
+pub unsafe extern "C" fn local_muts() {
+    let mut literal_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
+    let mut literal_bool: bool = 1 as std::ffi::c_int != 0;
+    let mut literal_float: std::ffi::c_float = 3.14f32;
+    let mut literal_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
+    let mut literal_str_ptr: *const std::ffi::c_char =
+        b"hello\0" as *const u8 as *const std::ffi::c_char;
+    let mut literal_str: [std::ffi::c_char; 6] =
+        *::core::mem::transmute::<&[u8; 6], &mut [std::ffi::c_char; 6]>(b"hello\0");
+    let mut literal_array: [std::ffi::c_int; 3] = [
+        1 as std::ffi::c_int,
+        2 as std::ffi::c_int,
+        3 as std::ffi::c_int,
+    ];
+    let mut literal_struct: S = {
+        let mut init = S {
+            i: 5 as std::ffi::c_int,
+        };
+        init
+    };
+    let mut nested_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
+    let mut nested_bool: bool = 1 as std::ffi::c_int != 0;
+    let mut nested_float: std::ffi::c_float = 3.14f32;
+    let mut nested_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
+    let mut nested_str_ptr: *const std::ffi::c_char =
+        b"hello\0" as *const u8 as *const std::ffi::c_char;
+    let mut nested_str: [std::ffi::c_char; 6] =
+        *::core::mem::transmute::<&[u8; 6], &mut [std::ffi::c_char; 6]>(b"hello\0");
+    let mut nested_array: [std::ffi::c_int; 3] = [
+        1 as std::ffi::c_int,
+        2 as std::ffi::c_int,
+        3 as std::ffi::c_int,
+    ];
+    let mut nested_struct: S = {
+        let mut init = S {
+            i: 5 as std::ffi::c_int,
+        };
+        init
+    };
+    let mut int_arithmetic: std::ffi::c_int =
+        0xffff as std::ffi::c_int + 0xffff as std::ffi::c_int + 1 as std::ffi::c_int;
+    let mut mixed_arithmetic: std::ffi::c_float = (0xffff as std::ffi::c_int as std::ffi::c_double
+        + 3.14f64 * 'x' as i32 as std::ffi::c_double
+        - 1 as std::ffi::c_int as std::ffi::c_double)
+        as std::ffi::c_float;
+    let mut parens: std::ffi::c_int =
+        0xffff as std::ffi::c_int * ('x' as i32 + 1 as std::ffi::c_int);
+    let mut ptr_arithmetic: *const std::ffi::c_char = (b"hello\0" as *const u8
+        as *const std::ffi::c_char)
+        .offset(5 as std::ffi::c_int as isize)
+        .offset(-(3 as std::ffi::c_int as isize));
+    let mut widening_cast: std::ffi::c_ulonglong =
+        0xffff as std::ffi::c_int as std::ffi::c_ulonglong;
+    let mut narrowing_cast: std::ffi::c_char = 0xffff as std::ffi::c_int as std::ffi::c_char;
+    let mut conversion_cast: std::ffi::c_double = 0xffff as std::ffi::c_int as std::ffi::c_double;
+    let mut indexing: std::ffi::c_char =
+        (*::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0"))
+            [3.14f64 as std::ffi::c_int as usize];
+    let mut str_concatenation_ptr: *const std::ffi::c_char =
+        b"hello hello world\0" as *const u8 as *const std::ffi::c_char;
+    let mut str_concatenation: [std::ffi::c_char; 18] =
+        *::core::mem::transmute::<&[u8; 18], &mut [std::ffi::c_char; 18]>(b"hello hello world\0");
+    let mut ref_indexing: *const std::ffi::c_char =
+        &*(b"hello\0" as *const u8 as *const std::ffi::c_char)
+            .offset(3.14f64 as std::ffi::c_int as isize) as *const std::ffi::c_char;
+    let mut ref_struct: *const S = &mut {
+        let mut init = S {
+            i: 5 as std::ffi::c_int,
+        };
+        init
+    } as *mut S;
+    let mut ternary: std::ffi::c_int = if 1 as std::ffi::c_int != 0 {
+        1 as std::ffi::c_int
+    } else {
+        2 as std::ffi::c_int
+    };
+    let mut member: std::ffi::c_int = {
+        let mut init = S {
+            i: 5 as std::ffi::c_int,
+        };
+        init
+    }
+    .i;
+}
+#[no_mangle]
+pub unsafe extern "C" fn local_consts() {
+    let literal_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
+    let literal_bool: bool = 1 as std::ffi::c_int != 0;
+    let literal_float: std::ffi::c_float = 3.14f32;
+    let literal_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
+    let literal_str_ptr: *const std::ffi::c_char =
+        b"hello\0" as *const u8 as *const std::ffi::c_char;
+    let literal_str: [std::ffi::c_char; 6] =
+        *::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0");
+    let literal_array: [std::ffi::c_int; 3] = [
+        1 as std::ffi::c_int,
+        2 as std::ffi::c_int,
+        3 as std::ffi::c_int,
+    ];
+    let literal_struct: S = {
+        let mut init = S {
+            i: 5 as std::ffi::c_int,
+        };
+        init
+    };
+    let nested_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
+    let nested_bool: bool = 1 as std::ffi::c_int != 0;
+    let nested_float: std::ffi::c_float = 3.14f32;
+    let nested_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
+    let nested_str_ptr: *const std::ffi::c_char =
+        b"hello\0" as *const u8 as *const std::ffi::c_char;
+    let nested_str: [std::ffi::c_char; 6] =
+        *::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0");
+    let nested_array: [std::ffi::c_int; 3] = [
+        1 as std::ffi::c_int,
+        2 as std::ffi::c_int,
+        3 as std::ffi::c_int,
+    ];
+    let nested_struct: S = {
+        let mut init = S {
+            i: 5 as std::ffi::c_int,
+        };
+        init
+    };
+    let int_arithmetic: std::ffi::c_int =
+        0xffff as std::ffi::c_int + 0xffff as std::ffi::c_int + 1 as std::ffi::c_int;
+    let mixed_arithmetic: std::ffi::c_float = (0xffff as std::ffi::c_int as std::ffi::c_double
+        + 3.14f64 * 'x' as i32 as std::ffi::c_double
+        - 1 as std::ffi::c_int as std::ffi::c_double)
+        as std::ffi::c_float;
+    let parens: std::ffi::c_int = 0xffff as std::ffi::c_int * ('x' as i32 + 1 as std::ffi::c_int);
+    let ptr_arithmetic: *const std::ffi::c_char = (b"hello\0" as *const u8
+        as *const std::ffi::c_char)
+        .offset(5 as std::ffi::c_int as isize)
+        .offset(-(3 as std::ffi::c_int as isize));
+    let widening_cast: std::ffi::c_ulonglong = 0xffff as std::ffi::c_int as std::ffi::c_ulonglong;
+    let narrowing_cast: std::ffi::c_char = 0xffff as std::ffi::c_int as std::ffi::c_char;
+    let conversion_cast: std::ffi::c_double = 0xffff as std::ffi::c_int as std::ffi::c_double;
+    let indexing: std::ffi::c_char =
+        (*::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0"))
+            [3.14f64 as std::ffi::c_int as usize];
+    let str_concatenation_ptr: *const std::ffi::c_char =
+        b"hello hello world\0" as *const u8 as *const std::ffi::c_char;
+    let str_concatenation: [std::ffi::c_char; 18] =
+        *::core::mem::transmute::<&[u8; 18], &[std::ffi::c_char; 18]>(b"hello hello world\0");
+    let ref_indexing: *const std::ffi::c_char =
+        &*(b"hello\0" as *const u8 as *const std::ffi::c_char)
+            .offset(3.14f64 as std::ffi::c_int as isize) as *const std::ffi::c_char;
+    let ref_struct: *const S = &mut {
+        let mut init = S {
+            i: 5 as std::ffi::c_int,
+        };
+        init
+    } as *mut S;
+    let ternary: std::ffi::c_int = if 1 as std::ffi::c_int != 0 {
+        1 as std::ffi::c_int
+    } else {
+        2 as std::ffi::c_int
+    };
+    let member: std::ffi::c_int = {
+        let mut init = S {
+            i: 5 as std::ffi::c_int,
+        };
+        init
+    }
+    .i;
+}
+static mut global_static_const_literal_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
+static mut global_static_const_literal_bool: bool = 1 as std::ffi::c_int != 0;
+static mut global_static_const_literal_float: std::ffi::c_float = 3.14f32;
+static mut global_static_const_literal_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
+static mut global_static_const_literal_str_ptr: *const std::ffi::c_char =
+    b"hello\0" as *const u8 as *const std::ffi::c_char;
+static mut global_static_const_literal_str: [std::ffi::c_char; 6] =
+    unsafe { *::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0") };
+static mut global_static_const_literal_array: [std::ffi::c_int; 3] = [
+    1 as std::ffi::c_int,
+    2 as std::ffi::c_int,
+    3 as std::ffi::c_int,
+];
+static mut global_static_const_literal_struct: S = {
+    let mut init = S { i: 5 };
+    init
+};
+static mut global_static_const_nested_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
+static mut global_static_const_nested_bool: bool = 1 as std::ffi::c_int != 0;
+static mut global_static_const_nested_float: std::ffi::c_float = 3.14f32;
+static mut global_static_const_nested_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
+static mut global_static_const_nested_str_ptr: *const std::ffi::c_char =
+    b"hello\0" as *const u8 as *const std::ffi::c_char;
+static mut global_static_const_nested_str: [std::ffi::c_char; 6] =
+    unsafe { *::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0") };
+static mut global_static_const_nested_array: [std::ffi::c_int; 3] = [
+    1 as std::ffi::c_int,
+    2 as std::ffi::c_int,
+    3 as std::ffi::c_int,
+];
+static mut global_static_const_nested_struct: S = {
+    let mut init = S { i: 5 };
+    init
+};
+static mut global_static_const_int_arithmetic: std::ffi::c_int =
+    0xffff as std::ffi::c_int + 0xffff as std::ffi::c_int + 1 as std::ffi::c_int;
+static mut global_static_const_mixed_arithmetic: std::ffi::c_float =
+    (0xffff as std::ffi::c_int as std::ffi::c_double + 3.14f64 * 'x' as i32 as std::ffi::c_double
+        - 1 as std::ffi::c_int as std::ffi::c_double) as std::ffi::c_float;
+static mut global_static_const_parens: std::ffi::c_int =
+    0xffff as std::ffi::c_int * ('x' as i32 + 1 as std::ffi::c_int);
+static mut global_static_const_ptr_arithmetic: *const std::ffi::c_char =
+    0 as *const std::ffi::c_char;
+static mut global_static_const_widening_cast: std::ffi::c_ulonglong =
+    0xffff as std::ffi::c_int as std::ffi::c_ulonglong;
+static mut global_static_const_narrowing_cast: std::ffi::c_char =
+    0xffff as std::ffi::c_int as std::ffi::c_char;
+static mut global_static_const_conversion_cast: std::ffi::c_double =
+    0xffff as std::ffi::c_int as std::ffi::c_double;
+static mut global_static_const_indexing: std::ffi::c_char = 0;
+static mut global_static_const_str_concatenation_ptr: *const std::ffi::c_char =
+    b"hello hello world\0" as *const u8 as *const std::ffi::c_char;
+static mut global_static_const_str_concatenation: [std::ffi::c_char; 18] = unsafe {
+    *::core::mem::transmute::<&[u8; 18], &[std::ffi::c_char; 18]>(b"hello hello world\0")
+};
+static mut global_static_const_ref_indexing: *const std::ffi::c_char = 0 as *const std::ffi::c_char;
+static mut global_static_const_ref_struct: *const S = &{
+    let mut init = S { i: 5 };
+    init
+} as *const S as *mut S;
+static mut global_static_const_ternary: std::ffi::c_int = 0;
+static mut global_static_const_member: std::ffi::c_int = 0;
+#[no_mangle]
+pub unsafe extern "C" fn global_static_consts() {}
+#[no_mangle]
+pub static mut global_const_literal_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
+#[no_mangle]
+pub static mut global_const_literal_bool: bool = 1 as std::ffi::c_int != 0;
+#[no_mangle]
+pub static mut global_const_literal_float: std::ffi::c_float = 3.14f32;
+#[no_mangle]
+pub static mut global_const_literal_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
+#[no_mangle]
+pub static mut global_const_literal_str_ptr: *const std::ffi::c_char =
+    b"hello\0" as *const u8 as *const std::ffi::c_char;
+#[no_mangle]
+pub static mut global_const_literal_str: [std::ffi::c_char; 6] =
+    unsafe { *::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0") };
+#[no_mangle]
+pub static mut global_const_nested_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
+#[no_mangle]
+pub static mut global_const_nested_bool: bool = 1 as std::ffi::c_int != 0;
+#[no_mangle]
+pub static mut global_const_nested_float: std::ffi::c_float = 3.14f32;
+#[no_mangle]
+pub static mut global_const_nested_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
+#[no_mangle]
+pub static mut global_const_nested_str_ptr: *const std::ffi::c_char =
+    b"hello\0" as *const u8 as *const std::ffi::c_char;
+#[no_mangle]
+pub static mut global_const_nested_str: [std::ffi::c_char; 6] =
+    unsafe { *::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0") };
+#[no_mangle]
+pub static mut global_const_int_arithmetic: std::ffi::c_int =
+    0xffff as std::ffi::c_int + 0xffff as std::ffi::c_int + 1 as std::ffi::c_int;
+#[no_mangle]
+pub static mut global_const_mixed_arithmetic: std::ffi::c_float =
+    (0xffff as std::ffi::c_int as std::ffi::c_double + 3.14f64 * 'x' as i32 as std::ffi::c_double
+        - 1 as std::ffi::c_int as std::ffi::c_double) as std::ffi::c_float;
+#[no_mangle]
+pub static mut global_const_parens: std::ffi::c_int =
+    0xffff as std::ffi::c_int * ('x' as i32 + 1 as std::ffi::c_int);
+#[no_mangle]
+pub static mut global_const_ptr_arithmetic: *const std::ffi::c_char = 0 as *const std::ffi::c_char;
+#[no_mangle]
+pub static mut global_const_widening_cast: std::ffi::c_ulonglong =
+    0xffff as std::ffi::c_int as std::ffi::c_ulonglong;
+#[no_mangle]
+pub static mut global_const_narrowing_cast: std::ffi::c_char =
+    0xffff as std::ffi::c_int as std::ffi::c_char;
+#[no_mangle]
+pub static mut global_const_conversion_cast: std::ffi::c_double =
+    0xffff as std::ffi::c_int as std::ffi::c_double;
+#[no_mangle]
+pub static mut global_const_indexing: std::ffi::c_char = 0;
+#[no_mangle]
+pub static mut global_const_str_concatenation_ptr: *const std::ffi::c_char =
+    b"hello hello world\0" as *const u8 as *const std::ffi::c_char;
+#[no_mangle]
+pub static mut global_const_str_concatenation: [std::ffi::c_char; 18] = unsafe {
+    *::core::mem::transmute::<&[u8; 18], &[std::ffi::c_char; 18]>(b"hello hello world\0")
+};
 #[no_mangle]
 pub unsafe extern "C" fn test_fn_macro(mut x: std::ffi::c_int) -> std::ffi::c_int {
     return x * x;
@@ -107,3 +402,35 @@ pub unsafe extern "C" fn local_fn() -> std::ffi::c_int {
 pub unsafe extern "C" fn use_local_value() -> std::ffi::c_int {
     return local_fn();
 }
+unsafe extern "C" fn run_static_initializers() {
+    global_static_const_ptr_arithmetic = (b"hello\0" as *const u8 as *const std::ffi::c_char)
+        .offset(5 as std::ffi::c_int as isize)
+        .offset(-(3 as std::ffi::c_int as isize));
+    global_static_const_indexing =
+        (*::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0"))
+            [3.14f64 as std::ffi::c_int as usize];
+    global_static_const_ref_indexing = &*(b"hello\0" as *const u8 as *const std::ffi::c_char)
+        .offset(3.14f64 as std::ffi::c_int as isize)
+        as *const std::ffi::c_char;
+    global_static_const_ternary = if 1 as std::ffi::c_int != 0 {
+        1 as std::ffi::c_int
+    } else {
+        2 as std::ffi::c_int
+    };
+    global_static_const_member = {
+        let mut init = S { i: 5 };
+        init
+    }
+    .i;
+    global_const_ptr_arithmetic = (b"hello\0" as *const u8 as *const std::ffi::c_char)
+        .offset(5 as std::ffi::c_int as isize)
+        .offset(-(3 as std::ffi::c_int as isize));
+    global_const_indexing =
+        (*::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0"))
+            [3.14f64 as std::ffi::c_int as usize];
+}
+#[used]
+#[cfg_attr(target_os = "linux", link_section = ".init_array")]
+#[cfg_attr(target_os = "windows", link_section = ".CRT$XIB")]
+#[cfg_attr(target_os = "macos", link_section = "__DATA,__mod_init_func")]
+static INIT_ARRAY: [unsafe extern "C" fn(); 1] = [run_static_initializers];
