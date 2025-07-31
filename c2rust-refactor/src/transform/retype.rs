@@ -245,9 +245,11 @@ impl Transform for RetypeStatic {
                 match i.kind {
                     ItemKind::Static(ref mut ty, _, ref mut init) => {
                         *ty = new_ty.clone();
-                        let mut bnd = Bindings::new();
-                        bnd.add("__old", init.clone());
-                        *init = rev_conv_assign.clone().subst(st, cx, &bnd);
+                        if let Some(init) = init {
+                            let mut bnd = Bindings::new();
+                            bnd.add("__old", init.clone());
+                            *init = rev_conv_assign.clone().subst(st, cx, &bnd);
+                        }
                         mod_statics.insert(cx.node_def_id(i.id));
                     },
                     _ => {},
