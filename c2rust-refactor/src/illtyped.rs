@@ -146,7 +146,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
             }
             ExprKind::Tup(elems) => {
                 let elem_tys = expect!([ty.kind()] ty::TyKind::Tuple(elem_tys) => elem_tys);
-                for (elem, elem_ty) in elems.iter_mut().zip(elem_tys.types()) {
+                for (elem, elem_ty) in elems.iter_mut().zip(elem_tys.iter()) {
                     illtyped |= self.ensure(elem, elem_ty);
                 }
             }
