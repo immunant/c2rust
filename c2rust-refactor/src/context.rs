@@ -350,7 +350,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                     // We use the adjusted type here in case an `&fn()` got auto-derefed in order
                     // to make the call.
                     if let Some(&TyKind::FnPtr(sig)) =
-                        tables.expr_ty_adjusted_opt(func_hir).map(|ty| &ty.kind)
+                        tables.expr_ty_adjusted_opt(func_hir).map(|ty| ty.kind())
                     {
                         poly_sig = sig;
                     // No substs.  fn ptrs can't be generic over anything but late-bound
