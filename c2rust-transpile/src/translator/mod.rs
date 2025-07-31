@@ -2112,7 +2112,7 @@ impl<'c> Translation<'c> {
                     self.ast_context[decl_id]
                 );
 
-                let maybe_replacement = self.canonical_macro_replacement(
+                let maybe_replacement = self.recreate_const_macro_from_expansions(
                     ctx.set_const(true).set_expanding_macro(decl_id),
                     &self.ast_context.macro_expansions[&decl_id],
                 );
@@ -2156,22 +2156,33 @@ impl<'c> Translation<'c> {
         }
     }
 
-    fn canonical_macro_replacement(
+    /// Given all of the expansions of a const macro,
+    /// try to recreate a Rust `const` translation
+    /// that is equivalent to every expansion.
+    ///
+    /// This may fail, in which case we simply don't emit a `const`
+    /// and leave all of the expansions as fully inlined
+    /// instead of referencing this `const`.
+    ///
+    /// For example, if the types of the macro expansion have no common type,
+    /// which is required for a Rust `const` but not a C const macro,
+    /// this can fail.  Or there could just be a feature we don't yet support.
+    fn recreate_const_macro_from_expansions(
         &self,
         ctx: ExprContext,
-        replacements: &[CExprId],
+        expansions: &[CExprId],
     ) -> TranslationResult<(Box<Expr>, CTypeId)> {
-        let (val, ty) = replacements
+        let (val, ty) = expansions
             .iter()
-            .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, id| {
-                let ty = self.ast_context[*id]
+            .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, &id| {
+                let ty = self.ast_context[id]
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("Invalid expression type"))?;
                 let (expr_id, ty) = self
                     .ast_context
-                    .resolve_expr_type_id(*id)
-                    .unwrap_or((*id, ty));
+                    .resolve_expr_type_id(id)
+                    .unwrap_or((id, ty));
                 let expr = self.convert_expr(ctx, expr_id)?;
 
                 // Join ty and cur_ty to the smaller of the two types. If the
@@ -3189,14 +3200,15 @@ impl<'c> Translation<'c> {
         );
 
         if self.tcfg.translate_const_macros {
-            if let Some(converted) = self.convert_macro_expansion(ctx, expr_id)? {
+            if let Some(converted) = self.convert_const_macro_expansion(ctx, expr_id)? {
                 return Ok(converted);
             }
         }
 
         if self.tcfg.translate_fn_macros {
             let text = self.ast_context.macro_expansion_text.get(&expr_id);
-            if let Some(converted) = text.and_then(|text| self.convert_macro_invocation(ctx, text))
+            if let Some(converted) =
+                text.and_then(|text| self.convert_fn_macro_invocation(ctx, text))
             {
                 return Ok(converted);
             }
@@ -3902,80 +3914,90 @@ impl<'c> Translation<'c> {
         Ok(expr)
     }
 
-    fn convert_macro_expansion(
+    /// Convert the expansion of a const-like macro.
+    ///
+    /// See [`TranspilerConfig::translate_const_macros`].
+    ///
+    /// [`TranspilerConfig::translate_const_macros`]: crate::TranspilerConfig::translate_const_macros
+    fn convert_const_macro_expansion(
         &self,
         ctx: ExprContext,
         expr_id: CExprId,
     ) -> TranslationResult<Option<WithStmts<Box<Expr>>>> {
-        if let Some(macs) = self.ast_context.macro_invocations.get(&expr_id) {
-            // Find the first macro after the macro we're currently
-            // expanding, if any.
-            if let Some(macro_id) = macs
-                .splitn(2, |macro_id| ctx.expanding_macro(macro_id))
-                .last()
-                .unwrap()
-                .first()
-            {
-                trace!("  found macro expansion: {:?}", macro_id);
-                // Ensure that we've converted this macro and that it has a
-                // valid definition
-                let expansion = self.macro_expansions.borrow().get(macro_id).cloned();
-                let macro_ty = match expansion {
-                    // expansion exists
-                    Some(Some(expansion)) => expansion.ty,
+        let macros = match self.ast_context.macro_invocations.get(&expr_id) {
+            Some(macros) => macros.as_slice(),
+            None => return Ok(None),
+        };
 
-                    // expansion wasn't possible
-                    Some(None) => return Ok(None),
+        // Find the first macro after the macro we're currently expanding, if any.
+        let first_macro = macros
+            .splitn(2, |macro_id| ctx.expanding_macro(macro_id))
+            .last()
+            .unwrap()
+            .first();
+        let macro_id = match first_macro {
+            Some(macro_id) => macro_id,
+            None => return Ok(None),
+        };
 
-                    // We haven't tried to expand it yet
-                    None => {
-                        self.convert_decl(ctx, *macro_id)?;
-                        if let Some(Some(expansion)) = self.macro_expansions.borrow().get(macro_id)
-                        {
-                            expansion.ty
-                        } else {
-                            return Ok(None);
-                        }
-                    }
-                };
-                let rustname = self
-                    .renamer
-                    .borrow_mut()
-                    .get(macro_id)
-                    .ok_or_else(|| format_err!("Macro name not declared"))?;
+        trace!("  found macro expansion: {macro_id:?}");
+        // Ensure that we've converted this macro and that it has a valid definition.
+        let expansion = self.macro_expansions.borrow().get(macro_id).cloned();
+        let macro_ty = match expansion {
+            // Expansion exists.
+            Some(Some(expansion)) => expansion.ty,
 
-                if let Some(cur_file) = self.cur_file.borrow().as_ref() {
-                    self.add_import(*cur_file, *macro_id, &rustname);
-                }
+            // Expansion wasn't possible.
+            Some(None) => return Ok(None),
 
-                let val = WithStmts::new_val(mk().path_expr(vec![rustname]));
-
-                let expr_kind = &self.ast_context[expr_id].kind;
-                if let Some(expr_ty) = expr_kind.get_qual_type() {
-                    return self
-                        .convert_cast(
-                            ctx,
-                            CQualTypeId::new(macro_ty),
-                            expr_ty,
-                            val,
-                            None,
-                            None,
-                            None,
-                        )
-                        .map(Some);
+            // We haven't tried to expand it yet.
+            None => {
+                self.convert_decl(ctx, *macro_id)?;
+                if let Some(Some(expansion)) = self.macro_expansions.borrow().get(macro_id) {
+                    expansion.ty
                 } else {
-                    return Ok(Some(val));
+                    return Ok(None);
                 }
-
-                // TODO: May need to handle volatile reads here, see
-                // DeclRef below
             }
+        };
+        let rust_name = self
+            .renamer
+            .borrow_mut()
+            .get(macro_id)
+            .ok_or_else(|| format_err!("Macro name not declared"))?;
+
+        if let Some(cur_file) = self.cur_file.borrow().as_ref() {
+            self.add_import(*cur_file, *macro_id, &rust_name);
         }
 
-        Ok(None)
+        let val = WithStmts::new_val(mk().path_expr(vec![rust_name]));
+
+        let expr_kind = &self.ast_context[expr_id].kind;
+        if let Some(expr_ty) = expr_kind.get_qual_type() {
+            self.convert_cast(
+                ctx,
+                CQualTypeId::new(macro_ty),
+                expr_ty,
+                val,
+                None,
+                None,
+                None,
+            )
+            .map(Some)
+        } else {
+            Ok(Some(val))
+        }
+
+        // TODO: May need to handle volatile reads here.
+        // See `DeclRef` below.
     }
 
-    fn convert_macro_invocation(
+    /// Convert the expansion of a function-like macro.
+    ///
+    /// See [`TranspilerConfig::translate_fn_macros`].
+    ///
+    /// [`TranspilerConfig::translate_fn_macros`]: crate::TranspilerConfig::translate_fn_macros
+    fn convert_fn_macro_invocation(
         &self,
         _ctx: ExprContext,
         text: &str,
