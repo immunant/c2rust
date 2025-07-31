@@ -413,7 +413,7 @@ fn is_structural_derive(i: &Item) -> bool {
     // automatically_derived attribute. TODO: remove this when
     // StructuralPartialEq is labeled with the right attribute.
     match &i.kind {
-        ItemKind::Impl(_, _, _, _, Some(traitref), _, _) => {
+        ItemKind::Impl(box Impl { of_trait: Some(traitref), .. }) => {
             if path_eq(&traitref.path, &["$crate", "marker", "StructuralPartialEq"])
                 || path_eq(&traitref.path, &["$crate", "marker", "StructuralEq"])
             {
