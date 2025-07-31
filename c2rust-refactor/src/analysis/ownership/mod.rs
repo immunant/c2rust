@@ -160,11 +160,11 @@ fn is_fn(hir_map: hir_map::Map, def_id: DefId) -> bool {
             _ => false,
         },
         Node::TraitItem(i) => match i.kind {
-            hir::TraitItemKind::Method(..) => true,
+            hir::TraitItemKind::Fn(..) => true,
             _ => false,
         },
         Node::ImplItem(i) => match i.kind {
-            hir::ImplItemKind::Method(..) => true,
+            hir::ImplItemKind::Fn(..) => true,
             _ => false,
         },
         _ => false,
