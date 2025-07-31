@@ -285,7 +285,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
         for i in items.iter_mut() {
             let id = i.id;
             match &mut i.kind {
-                ItemKind::Static(_ty, _mutbl, expr) => {
+                ItemKind::Static(_ty, _mutbl, Some(expr)) => {
                     let did = self.cx.node_def_id(id);
                     let expected_ty = self.cx.ty_ctxt().type_of(did);
                     info!("STATIC: expected ty {:?}, expr {:?}", expected_ty, expr);
@@ -302,7 +302,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
 
                     self.ensure(expr, expected_ty);
                 }
-                ItemKind::Const(_defaultness, _ty, expr) => {
+                ItemKind::Const(_defaultness, _ty, Some(expr)) => {
                     let did = self.cx.node_def_id(id);
                     let expected_ty = self.cx.ty_ctxt().type_of(did);
                     self.ensure(expr, expected_ty);
