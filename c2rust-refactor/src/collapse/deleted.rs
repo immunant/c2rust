@@ -81,7 +81,7 @@ impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
     fn visit_expr(&mut self, x: &'ast Expr) {
         match &x.kind {
             ExprKind::Array(elements) | ExprKind::Call(_, elements)
-            | ExprKind::MethodCall(_, elements) | ExprKind::Tup(elements) => {
+            | ExprKind::MethodCall(_, elements, _) | ExprKind::Tup(elements) => {
                 self.handle_seq(x.id, elements);
             }
             _ => {}
@@ -93,8 +93,8 @@ impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
         match x.kind {
             ItemKind::Mod(_, ModKind::Loaded(ref m_items, _, _)) => self.handle_seq(x.id, m_items),
             ItemKind::ForeignMod(ref fm) => self.handle_seq(x.id, &fm.items),
-            ItemKind::Trait(_, _, _, _, ref items) => self.handle_seq(x.id, items),
-            ItemKind::Impl(_, _, _, _, _, _, ref items) => self.handle_seq(x.id, items),
+            ItemKind::Trait(box Trait { ref items, .. }) => self.handle_seq(x.id, items),
+            ItemKind::Impl(box Impl { ref items, .. }) => self.handle_seq(x.id, items),
             _ => {}
         }
         visit::walk_item(self, x);
@@ -239,8 +239,8 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
         match x.kind {
             ItemKind::Mod(_, ModKind::Loaded(ref mut m_items, _, _)) => self.restore_seq(id, m_items),
             ItemKind::ForeignMod(ref mut fm) => self.restore_seq(id, &mut fm.items),
-            ItemKind::Trait(_, _, _, _, ref mut items) => self.restore_seq(id, items),
-            ItemKind::Impl(_, _, _, _, _, _, ref mut items) => self.restore_seq(id, items),
+            ItemKind::Trait(box Trait { ref mut items, .. }) => self.restore_seq(id, items),
+            ItemKind::Impl(box Impl { ref mut items, .. }) => self.restore_seq(id, items),
             _ => {}
         }
         mut_visit::noop_flat_map_item(x, self)
@@ -250,7 +250,7 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
         let id = expr.id;
         match &mut expr.kind {
             ExprKind::Array(elements) | ExprKind::Call(_, elements)
-            | ExprKind::MethodCall(_, elements) | ExprKind::Tup(elements) => {
+            | ExprKind::MethodCall(_, elements, _) | ExprKind::Tup(elements) => {
                 self.restore_seq(id, elements);
             }
             _ => {}

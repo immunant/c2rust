@@ -159,7 +159,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                     }
                 }
             }
-            ExprKind::MethodCall(_seg, args) => {
+            ExprKind::MethodCall(_seg, args, _span) => {
                 if let Some(fn_sig) = opt_fn_sig {
                     for (i, arg) in args.iter_mut().enumerate() {
                         if let Some(&ty) = fn_sig.inputs().get(i) {
@@ -248,7 +248,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 // TODO: check returns from opt_label
                 illtyped |= self.ensure_block(blk, ty);
             }
-            ExprKind::Assign(el, er) => {
+            ExprKind::Assign(el, er, _span) => {
                 let lhs_ty = self.cx.node_type(el.id);
                 illtyped |= self.ensure(er, lhs_ty);
             }
@@ -264,8 +264,8 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
             ExprKind::Range(_e1, _e2, _lim) => {
                 // TODO: e1 & e2 should have the same type if both present
             }
-            ExprKind::Struct(_path, fields, maybe_expr) => {
-                handle_struct(self.cx, id, ty, fields, maybe_expr, |e, ty| {
+            ExprKind::Struct(se) => {
+                handle_struct(self.cx, id, ty, se, |e, ty| {
                     illtyped |= self.ensure(e, ty)
                 });
             }
@@ -319,8 +319,7 @@ fn handle_struct<'tcx, F>(
     cx: &RefactorCtxt<'_, 'tcx>,
     expr_id: NodeId,
     ty: ty::Ty<'tcx>,
-    fields: &mut Vec<FieldDef>,
-    maybe_expr: &mut Option<P<Expr>>,
+    se: &mut StructExpr,
     mut ensure: F,
 ) where
     F: FnMut(&mut P<Expr>, ty::Ty<'tcx>),
@@ -335,13 +334,15 @@ fn handle_struct<'tcx, F>(
                                     return);
     let vdef = adt_def.variant_of_res(variant_hir_res);
 
-    mut_visit::visit_vec(fields, |f| {
+    mut_visit::visit_vec(&mut se.fields, |f: &mut ExprField| {
         let idx = match_or!([cx.ty_ctxt().find_field_index(f.ident, vdef)] Some(x) => x; return);
         let fdef = &vdef.fields[idx];
         let field_ty = fdef.ty(cx.ty_ctxt(), substs);
         ensure(&mut f.expr, field_ty);
     });
-    mut_visit::visit_opt(maybe_expr, |e| ensure(e, ty));
+    if let StructRest::Base(ref mut e) = se.rest {
+        ensure(e, ty);
+    }
 }
 
 fn resolve_struct_path(cx: &RefactorCtxt, id: NodeId) -> Option<Res> {

@@ -168,7 +168,7 @@ where
                 }
             }
 
-            ExprKind::Closure(_, _, _, ref decl, _, _) => {
+            ExprKind::Closure(_, _, _, _, ref decl, _, _) => {
                 let def_id = self.hir_map.local_def_id_from_node_id(e.id);
                 if let Some(sig) = self.source.closure_sig(def_id) {
                     self.record_fn_decl(sig, decl);
@@ -186,7 +186,7 @@ where
                 // not obvious how many of the `substs` correspond to each position in the path.
             }
 
-            ExprKind::Struct(ref _path, _, _) => {
+            ExprKind::Struct(_) => {
                 // TODO: Another case like `ExprKind::Path` - the path in the `Struct` can have
                 // type parameters given explicitly.
             }
@@ -239,7 +239,7 @@ where
             }
 
             // Enum/Struct/Union are handled by `visit_field_def`.
-            ItemKind::Impl(_, _, _, _, _, ref ast_ty, _) => {
+            ItemKind::Impl(box Impl { self_ty: ref ast_ty, .. }) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }

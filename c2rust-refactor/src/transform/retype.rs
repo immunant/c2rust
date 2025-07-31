@@ -105,7 +105,7 @@ impl Transform for RetypeArgument {
             let mod_args = match_or!([mod_fns.get(&callee)] Some(x) => x; return);
             let args: &mut [P<Expr>] = match e.kind {
                 ExprKind::Call(_, ref mut args) => args,
-                ExprKind::MethodCall(_, ref mut args) => args,
+                ExprKind::MethodCall(_, ref mut args, _) => args,
                 _ => panic!("expected Call or MethodCall"),
             };
             for &idx in mod_args {
@@ -284,7 +284,7 @@ impl Transform for RetypeStatic {
             }
 
             match e.kind {
-                ExprKind::Assign(ref lhs, ref mut rhs) |
+                ExprKind::Assign(ref lhs, ref mut rhs, _) |
                 ExprKind::AssignOp(_, ref lhs, ref mut rhs) => {
                     if cx.try_resolve_expr(lhs)
                         .map_or(false, |did| mod_statics.contains(&did)) {
@@ -1244,7 +1244,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 }
             }
             (
-                ExprKind::MethodCall(ref path, ref arguments),
+                ExprKind::MethodCall(ref path, ref arguments, _),
                 TyKind::RawPtr(ty::TypeAndMut{ty: ref inner_ty, ref mutbl}),
             ) if (path.ident.name.as_str() == "as_mut_ptr"
                   || path.ident.name.as_str() == "as_ptr") => {

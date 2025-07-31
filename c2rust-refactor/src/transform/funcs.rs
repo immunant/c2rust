@@ -48,7 +48,7 @@ impl Transform for ToMethod {
         FlatMapNodes::visit(krate, |i: P<Item>| {
             // We're looking for an inherent impl (no `TraitRef`) marked with a cursor.
             if !st.marked(i.id, "dest") ||
-               !crate::matches!([i.kind] ItemKind::Impl(_, _, _, _, None, _, _)) {
+               !matches!(i.kind, ItemKind::Impl(box Impl { of_trait: None, .. })) {
                 return smallvec![i];
             }
 
@@ -199,9 +199,13 @@ impl Transform for ToMethod {
             }
 
             smallvec![i.map(|i| {
-                unpack!([i.kind] ItemKind::Impl(
-                        unsafety, polarity, generics, defaultness, trait_ref, ty, items));
-                let mut items = items;
+                let ItemKind::Impl(box Impl {
+                    unsafety, polarity, generics, constness,
+                    defaultness, of_trait, self_ty, mut items
+                }) = i.kind else {
+                    panic!("expected ItemKind::Impl, got {:?}", i.kind);
+                };
+
                 let fns = fns.take().unwrap();
                 items.extend(fns.into_iter().map(|f| {
                     AssocItem {
@@ -220,8 +224,10 @@ impl Transform for ToMethod {
                     }
                 }));
                 Item {
-                    kind: ItemKind::Impl(
-                              unsafety, polarity, generics, defaultness, trait_ref, ty, items),
+                    kind: ItemKind::Impl(Box::new(Impl {
+                          unsafety, polarity, generics, constness,
+                          defaultness, of_trait, self_ty, items,
+                    })),
                     .. i
                 }
             })]

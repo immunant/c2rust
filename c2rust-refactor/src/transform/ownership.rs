@@ -464,7 +464,7 @@ fn rename_callee(e: &mut P<Expr>, new_name: &str) {
             seg.ident = mk().ident(new_name);
         },
 
-        ExprKind::MethodCall(ref mut seg, _) => {
+        ExprKind::MethodCall(ref mut seg, _, _) => {
             seg.ident = mk().ident(new_name);
         },
 

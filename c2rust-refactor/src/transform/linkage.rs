@@ -298,8 +298,8 @@ impl Transform for CanonicalizeStructs {
 
         FlatMapNodes::visit(krate, |i: P<Item>| {
             let should_remove = match i.kind {
-                ItemKind::Impl(_, _, _, _, _, ref ty, _) => {
-                    if let Some(ty_def_id) = cx.try_resolve_ty(ty) {
+                ItemKind::Impl(box Impl { ref self_ty, .. }) => {
+                    if let Some(ty_def_id) = cx.try_resolve_ty(self_ty) {
                         removed_id_map.contains_key(&ty_def_id)
                     } else {
                         false
