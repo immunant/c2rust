@@ -796,8 +796,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             let cast_len = match_or!([cast_ty.kind()] ty::TyKind::Array(_ty, n) => n; return);
             if let Some(0) = cast_len.try_eval_usize(tcx, ParamEnv::empty()) {
                 if let Some(val_len) = val_len.try_eval_usize(tcx, ParamEnv::empty()) {
-                    let ty = match_or!([&mut ty.kind()] TyKind::Ptr(ty) => ty; return);
-                    let cast_len = match_or!([&mut ty.ty.kind()] TyKind::Array(_ty, n) => n; return);
+                    let ty = match_or!([&mut ty.kind] TyKind::Ptr(ty) => ty; return);
+                    let cast_len = match_or!([&mut ty.ty.kind] TyKind::Array(_ty, n) => n; return);
                     let lit = mk().lit_expr(mk().int_lit(val_len as u128, LitIntType::Unsuffixed));
                     *cast_len = mk().anon_const(lit);
                 }

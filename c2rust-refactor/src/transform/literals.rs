@@ -324,7 +324,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
     /// Directly convert a `hir::Ty` to a `LitTyKeyTree`
     fn hir_ty_to_key_tree(&mut self, ty: &hir::Ty) -> LitTyKeyTree<'kt, 'tcx> {
         // TODO: use the HirId cache???
-        match ty.kind() {
+        match ty.kind {
             hir::TyKind::Path(hir::QPath::Resolved(_, ref path)) => {
                 self.res_to_key_tree(path.res, path.span)
             }
