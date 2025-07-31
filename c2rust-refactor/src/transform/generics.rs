@@ -116,8 +116,8 @@ impl Transform for GeneralizeItems {
                         ItemKind::Enum(_, ref mut gen) => gen,
                         ItemKind::Struct(_, ref mut gen) => gen,
                         ItemKind::Union(_, ref mut gen) => gen,
-                        ItemKind::Trait(_, _, ref mut gen, _, _) => gen,
-                        ItemKind::Impl(_, _, _, ref mut gen, _, _, _) => gen,
+                        ItemKind::Trait(box Trait { ref mut generics, .. }) => generics,
+                        ItemKind::Impl(box Impl { ref mut generics, .. }) => generics,
                         _ => panic!("item has no room for generics"),
                     };
                     gen.params.push(mk().ty_param(self.ty_var_name));

@@ -50,7 +50,7 @@ impl Transform for RemoveUnnecessaryRefs {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, _cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |expr: &mut P<Expr>| {
             match &mut expr.kind {
-                ExprKind::MethodCall(_path, args) => {
+                ExprKind::MethodCall(_path, args, _span) => {
                     let (receiver, rest) = args.split_first_mut().unwrap();
                     remove_reborrow(receiver);
                     remove_ref(receiver);
