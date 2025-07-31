@@ -430,7 +430,7 @@ impl Transform for StaticToLocal {
             name: Ident,
             ty: P<Ty>,
             mutbl: Mutability,
-            expr: P<Expr>,
+            expr: Option<P<Expr>>,
         }
         let mut statics = HashMap::new();
 
@@ -486,7 +486,7 @@ impl Transform for StaticToLocal {
 
                 for &info in &refs {
                     let pat = mk().set_mutbl(info.mutbl).ident_pat(info.name);
-                    let local = mk().local(pat, Some(info.ty.clone()), Some(info.expr.clone()));
+                    let local = mk().local(pat, Some(info.ty.clone()), info.expr.clone());
                     let stmt = mk().local_stmt(P(local));
                     block.stmts.push(stmt);
                 }
