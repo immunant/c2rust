@@ -353,7 +353,7 @@ fn prim_tys<'lty, 'tcx>(
 
     map.insert("bool", ltt.label(tcx.types.bool));
     map.insert("()", ltt.label(tcx.mk_unit()));
-    map.insert("usize", ltt.label(tcx.mk_mach_uint(ast::UintTy::Usize)));
+    map.insert("usize", ltt.label(tcx.types.usize));
 
     map
 }
