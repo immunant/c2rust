@@ -1032,19 +1032,19 @@ pub enum OffsetOfKind {
 /// As per the C standard, qualifiers on types make sense only on lvalues.
 #[derive(Debug, Clone)]
 pub enum CExprKind {
-    // Literals
+    /// Literal.
     Literal(CQualTypeId, CLiteral),
 
-    // Unary operator.
+    /// Unary operator.
     Unary(CQualTypeId, UnOp, CExprId, LRValue),
 
-    // Unary type operator.
+    /// Unary type operator.
     UnaryType(CQualTypeId, UnTypeOp, Option<CExprId>, CQualTypeId),
 
-    // Offsetof expression.
+    /// `offsetof` expression.
     OffsetOf(CQualTypeId, OffsetOfKind),
 
-    // Binary operator
+    /// Binary operator.
     Binary(
         CQualTypeId,
         BinOp,
@@ -1054,67 +1054,80 @@ pub enum CExprKind {
         Option<CQualTypeId>,
     ),
 
-    // Implicit cast
+    /// Implicit cast.
     ImplicitCast(CQualTypeId, CExprId, CastKind, Option<CFieldId>, LRValue),
 
-    // Explicit cast
+    /// Explicit cast.
     ExplicitCast(CQualTypeId, CExprId, CastKind, Option<CFieldId>, LRValue),
 
-    // Constant context expression
+    /// Constant context expression.
     ConstantExpr(CQualTypeId, CExprId, Option<ConstIntExpr>),
 
-    // Reference to a decl (a variable, for instance)
+    /// Reference to a decl (a variable, for instance).
     // TODO: consider enforcing what types of declarations are allowed here
     DeclRef(CQualTypeId, CDeclId, LRValue),
 
-    // Function call
+    /// Function call.
     Call(CQualTypeId, CExprId, Vec<CExprId>),
 
-    // Member access
+    /// Member access.
     Member(CQualTypeId, CExprId, CDeclId, MemberKind, LRValue),
 
-    // Array subscript access
+    /// Array subscript access.
     ArraySubscript(CQualTypeId, CExprId, CExprId, LRValue),
 
-    // Ternary conditional operator
+    /// Ternary conditional operator.
     Conditional(CQualTypeId, CExprId, CExprId, CExprId),
 
-    // Binary conditional operator ?: GNU extension
+    /// Binary conditional operator `?:` (GNU extension).
     BinaryConditional(CQualTypeId, CExprId, CExprId),
 
-    // Initializer list - type, initializers, union field, syntactic form
+    /// Initializer list.
+    ///
+    /// * type
+    /// * initializers
+    /// * union field
+    /// * syntactic form
     InitList(CQualTypeId, Vec<CExprId>, Option<CFieldId>, Option<CExprId>),
 
-    // Designated initializer
+    /// Designated initializer.
     ImplicitValueInit(CQualTypeId),
 
-    // Parenthesized expression (ignored, but needed so we have a corresponding
-    // node)
+    /// Parenthesized expression.
+    ///
+    /// Ignored, but needed so we have a corresponding node.
     Paren(CQualTypeId, CExprId),
 
-    // Compound literal
+    /// Compound literal.
     CompoundLiteral(CQualTypeId, CExprId),
 
-    // Predefined expr
+    /// Predefined expression.
     Predefined(CQualTypeId, CExprId),
 
-    // Statement expression
+    /// Statement expression.
     Statements(CQualTypeId, CStmtId),
 
-    // Variable argument list
+    /// Variable argument list.
     VAArg(CQualTypeId, CExprId),
 
-    // Unsupported vector operations,
+    /// Unsupported shuffle vector operation.
     ShuffleVector(CQualTypeId, Vec<CExprId>),
+
+    /// Unsupported convert vector operation.
     ConvertVector(CQualTypeId, Vec<CExprId>),
 
-    // From syntactic form of initializer list expressions
+    /// From syntactic form of initializer list expressions.
     DesignatedInitExpr(CQualTypeId, Vec<Designator>, CExprId),
 
-    // GNU choose expr. Condition, true expr, false expr, was condition true?
+    /// GNU choose expression.
+    ///
+    /// * condition
+    /// * true expr
+    /// * false expr
+    /// * was condition true?
     Choose(CQualTypeId, CExprId, CExprId, CExprId, bool),
 
-    // GNU/C11 atomic expr
+    /// GNU/C11 atomic expression.
     Atomic {
         typ: CQualTypeId,
         name: String,
