@@ -259,7 +259,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
             }
             ExprKind::Index(_el, er) => {
                 // TODO: check for overloads
-                illtyped |= self.ensure(er, tcx.mk_mach_uint(UintTy::Usize));
+                illtyped |= self.ensure(er, tcx.types.usize);
             }
             ExprKind::Range(_e1, _e2, _lim) => {
                 // TODO: e1 & e2 should have the same type if both present
