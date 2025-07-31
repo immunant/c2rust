@@ -21,7 +21,7 @@ use std::u32;
 use rustc_arena::DroplessArena;
 use log::{debug, Level, log_enabled};
 use rustc_hir as hir;
-use rustc_hir::def_id::{DefId, LOCAL_CRATE};
+use rustc_hir::def_id::DefId;
 use rustc_hir::{Mutability, Node};
 use rustc_middle::ty::{TyCtxt, TyKind, TypeAndMut, Ty};
 use rustc_index::vec::{Idx, IndexVec};
@@ -177,7 +177,7 @@ fn analyze_intra<'tcx, 'lty>(
     hir_map: &HirMap<'tcx>,
     tcx: TyCtxt<'tcx>,
 ) {
-    for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
+    for &def_id in tcx.mir_keys(()).iter() {
         let def_id = def_id.to_def_id();
 
         // We currently don't process `static` bodies, even though they do have MIR.
