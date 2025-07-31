@@ -2112,7 +2112,7 @@ impl<'c> Translation<'c> {
                     self.ast_context[decl_id]
                 );
 
-                let maybe_replacement = self.canonical_macro_replacement(
+                let maybe_replacement = self.recreate_const_macro_from_expansions(
                     ctx.set_const(true).set_expanding_macro(decl_id),
                     &self.ast_context.macro_expansions[&decl_id],
                 );
@@ -2156,12 +2156,23 @@ impl<'c> Translation<'c> {
         }
     }
 
-    fn canonical_macro_replacement(
+    /// Given all of the expansions of a const macro,
+    /// try to recreate a Rust `const` translation
+    /// that is equivalent to every expansion.
+    ///
+    /// This may fail, in which case we simply don't emit a `const`
+    /// and leave all of the expansions as fully inlined
+    /// instead of referencing this `const`.
+    ///
+    /// For example, if the types of the macro expansion have no common type,
+    /// which is required for a Rust `const` but not a C const macro,
+    /// this can fail.  Or there could just be a feature we don't yet support.
+    fn recreate_const_macro_from_expansions(
         &self,
         ctx: ExprContext,
-        replacements: &[CExprId],
+        expansions: &[CExprId],
     ) -> TranslationResult<(Box<Expr>, CTypeId)> {
-        let (val, ty) = replacements
+        let (val, ty) = expansions
             .iter()
             .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, id| {
                 let ty = self.ast_context[*id]
