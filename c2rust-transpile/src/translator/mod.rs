@@ -2174,15 +2174,15 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<(Box<Expr>, CTypeId)> {
         let (val, ty) = expansions
             .iter()
-            .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, id| {
-                let ty = self.ast_context[*id]
+            .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, &id| {
+                let ty = self.ast_context[id]
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("Invalid expression type"))?;
                 let (expr_id, ty) = self
                     .ast_context
-                    .resolve_expr_type_id(*id)
-                    .unwrap_or((*id, ty));
+                    .resolve_expr_type_id(id)
+                    .unwrap_or((id, ty));
                 let expr = self.convert_expr(ctx, expr_id)?;
 
                 // Join ty and cur_ty to the smaller of the two types. If the
