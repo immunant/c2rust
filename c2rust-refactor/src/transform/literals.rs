@@ -483,7 +483,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             // TODO: Closure
 
             sty::TyKind::Tuple(ref elems) => {
-                let ch = elems.types()
+                let ch = elems.iter()
                     .map(|ty| self.ty_to_key_tree_internal(ty, mach_actual, seen))
                     .collect::<Vec<_>>();
                 self.replace_with_node(new_node, &ch);
