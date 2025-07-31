@@ -283,7 +283,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             let mut projection = lv.projection.to_vec();
             let last_elem = projection.pop().unwrap();
             let parent = Place {
-                base: lv.local.clone(),
+                local: lv.local.clone(),
                 projection: self.cx.tcx.intern_place_elems(&projection),
             };
             let (base_ty, base_perm, base_variant) = self.place_lty_downcast(&parent);
