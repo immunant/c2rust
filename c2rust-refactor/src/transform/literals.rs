@@ -565,7 +565,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 }
             }
 
-            ExprKind::MethodCall(ref segment, ref args) => {
+            ExprKind::MethodCall(ref segment, ref args, ref _span) => {
                 let hir_id = tcx.hir().node_to_hir_id(ex.id);
                 let parent = tcx.hir().get_parent_item(hir_id);
                 let body = tcx.hir().body_owned_by(parent);
@@ -726,7 +726,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             // TODO: handle `Async`/`Await`
 
-            ExprKind::Assign(ref lhs, ref rhs) => {
+            ExprKind::Assign(ref lhs, ref rhs, ref _span) => {
                 let inner_key_tree = self.expr_ty_to_key_tree(lhs);
                 self.visit_expr_unify(lhs, inner_key_tree);
                 self.visit_expr_unify(rhs, inner_key_tree);

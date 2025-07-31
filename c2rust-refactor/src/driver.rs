@@ -545,7 +545,7 @@ pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<AssocItem> {
     let mut p = make_parser(sess, &format!("impl ! {{ {} }}", src));
     match p.parse_item() {
         Ok(item) => match item.expect("expected to find an item").into_inner().kind {
-            ItemKind::Impl(_, _, _, _, _, _, items) => items,
+            ItemKind::Impl(box ast::Impl { items, .. }) => items,
             _ => panic!("expected to find an impl item"),
         },
         Err(db) => emit_and_panic(db, "impl items"),

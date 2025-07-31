@@ -712,7 +712,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 self.ltt.unify(rty, self.block_lty(b));
             }
 
-            ExprKind::Assign(ref lhs, ref rhs) => {
+            ExprKind::Assign(ref lhs, ref rhs, _) => {
                 self.ltt.unify(self.expr_lty(lhs), self.expr_lty(rhs));
                 self.ltt.unify(rty, self.prim_lty("()"));
             }

@@ -244,7 +244,7 @@ impl Transform for ReplaceItems {
 
         FlatMapNodes::visit(krate, |i: P<Item>| {
             let opt_def_id = match i.kind {
-                ItemKind::Impl(_, _, _, _, _, ref ty, _) => cx.try_resolve_ty(ty),
+                ItemKind::Impl(box Impl { ref self_ty, .. }) => cx.try_resolve_ty(self_ty),
                 _ => None,
             };
 
@@ -302,7 +302,7 @@ impl Transform for SetVisibility {
 
                 let was_in_trait_impl = self.in_trait_impl;
                 self.in_trait_impl = crate::matches!([i.kind]
-                        ItemKind::Impl(_, _, _, _, Some(_), _, _));
+                        ItemKind::Impl(box Impl { of_trait: Some(_), .. }));
                 let r = mut_visit::noop_flat_map_item(i, self);
                 self.in_trait_impl = was_in_trait_impl;
 
@@ -408,9 +408,9 @@ impl Transform for SetUnsafety {
                         match i.kind {
                             ItemKind::Fn(box Fn { ref mut sig, .. }) =>
                                 sig.header.unsafety = self.unsafety,
-                            ItemKind::Trait(_, ref mut unsafety, _, _, _) =>
+                            ItemKind::Trait(box Trait { ref mut unsafety, .. }) =>
                                 *unsafety = self.unsafety,
-                            ItemKind::Impl(ref mut unsafety, _, _, _, _, _, _) =>
+                            ItemKind::Impl(box Impl { ref mut unsafety, .. }) =>
                                 *unsafety = self.unsafety,
                             _ => {},
                         }
