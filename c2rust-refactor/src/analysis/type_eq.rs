@@ -299,7 +299,7 @@ impl<'lty, 'tcx> type_map::TypeSource for LabelTysSource<'lty, 'tcx> {
 
     fn fn_sig(&mut self, did: DefId) -> Option<LFnSig<'lty, 'tcx>> {
         let sig = self.tcx.fn_sig(did);
-        Some(self.ltt.label_sig(*sig.skip_binder()))
+        Some(self.ltt.label_sig(sig.skip_binder()))
     }
 
     fn closure_sig(&mut self, did: DefId) -> Option<LFnSig<'lty, 'tcx>> {
@@ -472,9 +472,9 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
         };
 
         if !is_extern {
-            self.ltt.label_sig(*sig.skip_binder())
+            self.ltt.label_sig(sig.skip_binder())
         } else {
-            self.ltt.non_unifiable_sig(*sig.skip_binder())
+            self.ltt.non_unifiable_sig(sig.skip_binder())
         }
     }
 
@@ -548,7 +548,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     /// in the type arguments, if the method is generic.
     fn method_sig(&self, e: &Expr) -> LFnSig<'lty, 'tcx> {
         let def_id = self.get_tables(e.hir_id).type_dependent_defs()[e.hir_id].unwrap().1;
-        let sig = self.def_sig(*def_id);
+        let sig = self.def_sig(def_id);
         let substs = self
             .node_substs
             .get(&e.hir_id)

@@ -123,7 +123,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
             IrTyKind::FnDef(_, substs) => {
                 let args = substs
                     .types()
-                    .map(|ty| self.label(*ty, f))
+                    .map(|ty| self.label(ty, f))
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
@@ -132,14 +132,14 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
                     .skip_binder()
                     .inputs_and_output
                     .iter()
-                    .map(|ty| self.label(*ty, f))
+                    .map(|ty| self.label(ty, f))
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
             IrTyKind::Tuple(ref elems) => {
                 let args = elems
                     .types()
-                    .map(|ty| self.label(*ty, f))
+                    .map(|ty| self.label(ty, f))
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
