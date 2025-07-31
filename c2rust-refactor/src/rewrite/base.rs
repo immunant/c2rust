@@ -170,6 +170,7 @@ include!(concat!(
 
 impl<T: Rewrite> MaybeRewriteSeq for Spanned<T> {}
 impl<A: Rewrite, B: Rewrite> MaybeRewriteSeq for (A, B) {}
+impl<A: Rewrite, B: Rewrite, C: Rewrite> MaybeRewriteSeq for (A, B, C) {}
 
 /// Fallback case for `rewrite_seq` on unsupported types.
 pub fn rewrite_seq_unsupported<T: Rewrite>(old: &[T], new: &[T], mut rcx: RewriteCtxtRef) -> bool {
