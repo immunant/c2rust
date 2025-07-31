@@ -92,3 +92,16 @@ int test_silk_int16_MIN() {
   char _null = ""[((int)silk_int16_MIN + 0x8000)];
   return silk_int16_MIN; // Should be -0x8000
 }
+
+// From #803.
+int extern_fn(void);
+
+#define EXTERN_VALUE (extern_fn())
+
+int use_extern_value(void) { return EXTERN_VALUE; }
+
+int local_fn(void) { return 1234; }
+
+#define LOCAL_VALUE (local_fn())
+
+int use_local_value(void) { return LOCAL_VALUE; }

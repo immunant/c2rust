@@ -12,6 +12,9 @@ input_file: c2rust-transpile/tests/snapshots/macros.c
     unused_assignments,
     unused_mut
 )]
+extern "C" {
+    fn extern_fn() -> std::ffi::c_int;
+}
 pub type U64 = std::ffi::c_ulonglong;
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -91,4 +94,16 @@ pub unsafe extern "C" fn test_silk_int16_MIN() -> std::ffi::c_int {
             + 0x8000 as std::ffi::c_int)
             as usize];
     return 0x8000 as std::ffi::c_int as std::ffi::c_short as std::ffi::c_int;
+}
+#[no_mangle]
+pub unsafe extern "C" fn use_extern_value() -> std::ffi::c_int {
+    return extern_fn();
+}
+#[no_mangle]
+pub unsafe extern "C" fn local_fn() -> std::ffi::c_int {
+    return 1234 as std::ffi::c_int;
+}
+#[no_mangle]
+pub unsafe extern "C" fn use_local_value() -> std::ffi::c_int {
+    return local_fn();
 }
