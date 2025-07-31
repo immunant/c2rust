@@ -2167,6 +2167,7 @@ impl<'c> Translation<'c> {
         match self.tcfg.translate_const_macros {
             TranslateMacros::None => Err(format_err!("translate_const_macros is None"))?,
             TranslateMacros::Minimal => match *kind {
+                CExprKind::Literal(..) => Ok(()), // Literals are leaf expressions, so they should always be const-compatible.
                 _ => Err(format_err!("minimal const macros don't yet allow {kind:?}"))?,
             },
             TranslateMacros::Experimental => Ok(()),
