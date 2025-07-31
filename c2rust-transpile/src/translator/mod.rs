@@ -2161,6 +2161,18 @@ impl<'c> Translation<'c> {
         }
     }
 
+    /// Determine if we're able to convert this const macro expansion.
+    fn can_convert_const_macro_expansion(&self, expr_id: CExprId) -> TranslationResult<()> {
+        let kind = &self.ast_context[expr_id].kind;
+        match self.tcfg.translate_const_macros {
+            TranslateMacros::None => Err(format_err!("translate_const_macros is None"))?,
+            TranslateMacros::Minimal => match *kind {
+                _ => Err(format_err!("minimal const macros don't yet allow {kind:?}"))?,
+            },
+            TranslateMacros::Experimental => Ok(()),
+        }
+    }
+
     /// Given all of the expansions of a const macro,
     /// try to recreate a Rust `const` translation
     /// that is equivalent to every expansion.
@@ -2177,19 +2189,11 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         expansions: &[CExprId],
     ) -> TranslationResult<(Box<Expr>, CTypeId)> {
-        match self.tcfg.translate_const_macros {
-            TranslateMacros::None => {
-                return Err(format_translation_err!(
-                    None,
-                    "translate_const_macros is None"
-                ))
-            }
-            TranslateMacros::Minimal => return Err(format_translation_err!(None, "TODO minimal")),
-            TranslateMacros::Experimental => {}
-        }
         let (val, ty) = expansions
             .iter()
             .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, &id| {
+                self.can_convert_const_macro_expansion(id)?;
+
                 let ty = self.ast_context[id]
                     .kind
                     .get_type()
@@ -4092,12 +4096,6 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         expr_id: CExprId,
     ) -> TranslationResult<Option<WithStmts<Box<Expr>>>> {
-        match self.tcfg.translate_const_macros {
-            TranslateMacros::None => return Ok(None),
-            TranslateMacros::Minimal => return Ok(None), // Nothing is supported for `Minimal` yet.
-            TranslateMacros::Experimental => {}
-        }
-
         let macros = match self.ast_context.macro_invocations.get(&expr_id) {
             Some(macros) => macros.as_slice(),
             None => return Ok(None),
