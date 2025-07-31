@@ -81,3 +81,14 @@ pub unsafe extern "C" fn test_switch(mut x: std::ffi::c_int) -> std::ffi::c_int 
     }
     return 0 as std::ffi::c_int;
 }
+#[no_mangle]
+pub unsafe extern "C" fn test_silk_int16_MIN() -> std::ffi::c_int {
+    let mut _null: std::ffi::c_char =
+        (*::core::mem::transmute::<&[u8; 1], &[std::ffi::c_char; 1]>(b"\0"))[(0x8000
+            as std::ffi::c_int
+            as std::ffi::c_short
+            as std::ffi::c_int
+            + 0x8000 as std::ffi::c_int)
+            as usize];
+    return 0x8000 as std::ffi::c_int as std::ffi::c_short as std::ffi::c_int;
+}
