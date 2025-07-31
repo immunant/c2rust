@@ -351,7 +351,7 @@ fn prim_tys<'lty, 'tcx>(
 ) -> HashMap<&'static str, LTy<'lty, 'tcx>> {
     let mut map = HashMap::new();
 
-    map.insert("bool", ltt.label(tcx.mk_bool()));
+    map.insert("bool", ltt.label(tcx.types.bool));
     map.insert("()", ltt.label(tcx.mk_unit()));
     map.insert("usize", ltt.label(tcx.mk_mach_uint(ast::UintTy::Usize)));
 
