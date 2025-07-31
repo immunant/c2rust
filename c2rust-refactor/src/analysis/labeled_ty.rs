@@ -150,7 +150,6 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
             | IrTyKind::Generator(..)
             | IrTyKind::GeneratorWitness(..)
             | IrTyKind::Projection(..)
-            | IrTyKind::UnnormalizedProjection(..)
             | IrTyKind::Opaque(..)
             | IrTyKind::Param(..)
             | IrTyKind::Bound(..)

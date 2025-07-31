@@ -102,7 +102,6 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
             IrTyKind::Never => mk().never_ty(),
             IrTyKind::Tuple(tys) => mk().tuple_ty(tys.types().map(|ty| self.reflect_ty(ty)).collect()),
             IrTyKind::Projection(..) => mk().infer_ty(),             // TODO
-            IrTyKind::UnnormalizedProjection(..) => mk().infer_ty(), // TODO
             IrTyKind::Opaque(..) => mk().infer_ty(),                 // TODO (impl Trait)
             IrTyKind::Param(param) => {
                 if infer_args {
