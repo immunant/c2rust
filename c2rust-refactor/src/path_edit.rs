@@ -32,7 +32,8 @@ where
         let id = p.id;
         match hir.kind {
             hir::PatKind::Struct(ref qpath, _, _) => {
-                unpack!([&mut p.kind] PatKind::Struct(path, _fields, _dotdot));
+                unpack!([&mut p.kind] PatKind::Struct(_qself, path, _fields, _dotdot));
+                // TODO: can we pass _qself to handle_qpath???
                 let (new_qself, new_path) = self.handle_qpath(id, None, path.clone(), qpath);
                 assert!(
                     new_qself.is_none(),
@@ -42,7 +43,8 @@ where
             }
 
             hir::PatKind::TupleStruct(ref qpath, _, _) => {
-                unpack!([&mut p.kind] PatKind::TupleStruct(path, _fields));
+                unpack!([&mut p.kind] PatKind::TupleStruct(_qself, path, _fields));
+                // TODO: can we pass _qself to handle_qpath???
                 let (new_qself, new_path) = self.handle_qpath(id, None, path.clone(), qpath);
                 assert!(
                     new_qself.is_none(),
@@ -98,7 +100,8 @@ where
                     _ => {}
                 }
 
-                unpack!([&mut e.kind] ExprKind::Struct(path, _fields, _base));
+                let path = expect!([&mut e.kind] ExprKind::Struct(se) => &mut se.path);
+                // TODO: can we pass _qself to handle_qpath???
                 let (new_qself, new_path) = self.handle_qpath(id, None, path.clone(), qpath);
                 assert!(
                     new_qself.is_none(),

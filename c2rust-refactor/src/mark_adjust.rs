@@ -70,7 +70,7 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
                 });
             }
 
-            ExprKind::Struct(_, _, _) => {
+            ExprKind::Struct(_) => {
                 expect!([hir.kind] hir::ExprKind::Struct(ref hp, _, _) => {
                     info!("looking at ExprKind::Struct {:?}", x);
                     self.handle_qpath(x.id, hp);
@@ -93,14 +93,14 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
         };
 
         match x.kind {
-            PatKind::Struct(_, _, _) => {
+            PatKind::Struct(_, _, _, _) => {
                 expect!([hir.kind] hir::PatKind::Struct(ref hp, _, _) => {
                     info!("looking at PatStruct {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
             }
 
-            PatKind::TupleStruct(_, _) => {
+            PatKind::TupleStruct(_, _, _) => {
                 expect!([hir.kind] hir::PatKind::TupleStruct(ref hp, _, _) => {
                     info!("looking at PatTupleStruct {:?}", x);
                     self.handle_qpath(x.id, hp);
@@ -259,7 +259,7 @@ pub fn find_arg_uses<T: Visit>(
                 if st.marked(node_id, label) {
                     let args = match e.kind {
                         ExprKind::Call(_, ref args) => args,
-                        ExprKind::MethodCall(_, ref args) => args,
+                        ExprKind::MethodCall(_, ref args, _) => args,
                         _ => panic!("expected Call or MethodCall"),
                     };
                     st.add_mark(args[arg_idx].id, label);

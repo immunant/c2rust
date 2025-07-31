@@ -362,7 +362,8 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 self.propagate(cast_ty, op_ty, Perm::move_());
                 (cast_ty, op_perm)
             }
-            Rvalue::BinaryOp(op, ref a, ref _b) | Rvalue::CheckedBinaryOp(op, ref a, ref _b) => {
+            Rvalue::BinaryOp(op, box (ref a, ref _b))
+            | Rvalue::CheckedBinaryOp(op, box (ref a, ref _b)) => {
                 match op {
                     BinOp::Add
                     | BinOp::Sub
