@@ -178,6 +178,8 @@ fn analyze_intra<'tcx, 'lty>(
     tcx: TyCtxt<'tcx>,
 ) {
     for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
+        let def_id = def_id.to_def_id();
+
         // We currently don't process `static` bodies, even though they do have MIR.
         if !is_fn(hir_map, def_id) {
             continue;
