@@ -295,7 +295,7 @@ pub fn pick_node_at_loc(
 ) -> Option<NodeInfo> {
     let fm = match session
         .source_map()
-        .get_source_file(&FileName::Real(PathBuf::from(file)))
+        .get_source_file(&FileName::from(PathBuf::from(file)))
     {
         Some(x) => x,
         None => {
