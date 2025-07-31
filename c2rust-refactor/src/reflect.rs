@@ -100,7 +100,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
             TyKind::Generator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
             TyKind::GeneratorWitness(_) => mk().infer_ty(), // unsupported (type cannot be named)
             TyKind::Never => mk().never_ty(),
-            TyKind::Tuple(tys) => mk().tuple_ty(tys.types().map(|ty| self.reflect_ty(ty)).collect()),
+            TyKind::Tuple(tys) => mk().tuple_ty(tys.iter().map(|ty| self.reflect_ty(ty)).collect()),
             TyKind::Projection(..) => mk().infer_ty(),             // TODO
             TyKind::Opaque(..) => mk().infer_ty(),                 // TODO (impl Trait)
             TyKind::Param(param) => {
