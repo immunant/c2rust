@@ -585,9 +585,6 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 StatementKind::SetDiscriminant { .. } |
                 StatementKind::StorageLive(_) |
                 StatementKind::StorageDead(_) |
-                // InlineAsm has some Lvalues and Operands, but we can't do anything useful
-                // with them without analysing the actual asm code.
-                StatementKind::InlineAsm { .. } |
                 StatementKind::Retag { .. } |
                 StatementKind::AscribeUserType(..) |
                 StatementKind::Nop => {},
@@ -606,6 +603,9 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             | TerminatorKind::Assert { .. }
             | TerminatorKind::Yield { .. }
             | TerminatorKind::GeneratorDrop
+            // InlineAsm has some Lvalues and Operands, but we can't do anything useful
+            // with them without analysing the actual asm code.
+            | TerminatorKind::InlineAsm { .. }
             | TerminatorKind::Abort => {}
 
             TerminatorKind::DropAndReplace {
