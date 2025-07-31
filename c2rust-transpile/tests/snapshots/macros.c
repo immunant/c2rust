@@ -83,3 +83,12 @@ int test_switch(int x) {
 
   return 0;
 }
+
+// From #853.
+#define silk_int16_MIN ((short)0x8000)
+
+int test_silk_int16_MIN() {
+  // _Static_assert((int)silk_int16_MIN == -0x8000, "mistranslated");
+  char _null = ""[((int)silk_int16_MIN + 0x8000)];
+  return silk_int16_MIN; // Should be -0x8000
+}
