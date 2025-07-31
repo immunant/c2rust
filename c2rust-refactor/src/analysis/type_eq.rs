@@ -903,7 +903,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         }
 
         let body = self.tcx.hir().body(body_id);
-        let def_id = self.tcx.hir().local_def_id(id);
+        let def_id = self.tcx.hir().local_def_id(id).to_def_id();
         let sig = self.def_sig(def_id);
         // The results of `def_sig` and `def_lty` are produced by calling `tcx.fn_sig` /
         // `tcx.type_of` and giving the results fresh labels, so they initially have no connection
@@ -932,13 +932,13 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
 
     fn visit_field_def(&mut self, field: &'hir FieldDef) {
         // Unify the field's type annotation with the definition type.
-        let def_id = self.tcx.hir().local_def_id(field.hir_id);
+        let def_id = self.tcx.hir().local_def_id(field.hir_id).to_def_id();
         self.ltt.unify(self.ty_lty(&field.ty), self.def_lty(def_id));
         intravisit::walk_field_def(self, field);
     }
 
     fn visit_foreign_item(&mut self, i: &'hir ForeignItem) {
-        let def_id = self.tcx.hir().local_def_id(i.hir_id());
+        let def_id = self.tcx.hir().local_def_id(i.hir_id()).to_def_id();
         match i.kind {
             ForeignItemKind::Fn(ref decl, _, _) => {
                 let sig = self.def_sig(def_id);

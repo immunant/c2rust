@@ -104,7 +104,7 @@ impl Transform for ReconstructForRange {
 
             let hir_map = cx.hir_map();
 			let while_hir_id = hir_map.node_to_hir_id(orig[1].id);
-			let parent_hir_id = hir_map.get_parent_item(while_hir_id);
+			let parent_hir_id = hir_map.get_parent_node(while_hir_id);
             let var_expr = mcx.bindings.get::<_, P<Expr>>("$i")
                 .unwrap().clone();
             let var_hir_id = match_or!([cx.try_resolve_expr_hir(&var_expr)]
