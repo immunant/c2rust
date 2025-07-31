@@ -135,10 +135,10 @@ impl<'a> Stream<'a> {
         let mut p = Parser::new(self.sess, ts.collect(), false, None);
         let path = p
             .parse_path(PathStyle::Mod)
-            .map_err(|e| format!("error parsing path: {}", e.message()))?;
+            .map_err(|e| format!("error parsing path: {:?}", e.message))?;
         self.toks = p
             .parse_all_token_trees()
-            .map_err(|e| format!("error parsing path: {}", e.message()))?
+            .map_err(|e| format!("error parsing path: {:?}", e.message))?
             .into_iter();
         Ok(path)
     }
@@ -268,9 +268,9 @@ impl<'a> Stream<'a> {
                     let mut p = Parser::new(self.sess, ts, false, None);
                     let mut x = p
                         .parse_expr()
-                        .map_err(|e| format!("error parsing expr: {}", e.message()))?;
+                        .map_err(|e| format!("error parsing expr: {:?}", e.message))?;
                     p.expect(&TokenKind::Eof)
-                        .map_err(|e| format!("error parsing expr: {}", e.message()))?;
+                        .map_err(|e| format!("error parsing expr: {:?}", e.message))?;
 
                     remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Expr(x)))
@@ -282,9 +282,9 @@ impl<'a> Stream<'a> {
                     let mut p = Parser::new(self.sess, ts, false, None);
                     let mut x = p
                         .parse_pat(None)
-                        .map_err(|e| format!("error parsing pat: {}", e.message()))?;
+                        .map_err(|e| format!("error parsing pat: {:?}", e.message))?;
                     p.expect(&TokenKind::Eof)
-                        .map_err(|e| format!("error parsing pat: {}", e.message()))?;
+                        .map_err(|e| format!("error parsing pat: {:?}", e.message))?;
 
                     remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Pat(x)))
@@ -296,9 +296,9 @@ impl<'a> Stream<'a> {
                     let mut p = Parser::new(self.sess, ts, false, None);
                     let mut x = p
                         .parse_ty()
-                        .map_err(|e| format!("error parsing ty: {}", e.message()))?;
+                        .map_err(|e| format!("error parsing ty: {:?}", e.message))?;
                     p.expect(&TokenKind::Eof)
-                        .map_err(|e| format!("error parsing ty: {}", e.message()))?;
+                        .map_err(|e| format!("error parsing ty: {:?}", e.message))?;
 
                     remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Ty(x)))
@@ -311,13 +311,13 @@ impl<'a> Stream<'a> {
                     let mut x = match p.parse_stmt() {
                         Ok(Some(x)) => x,
                         Ok(None) => fail!("expected stmt"),
-                        Err(e) => fail!("error parsing stmt: {}", e.message()),
+                        Err(e) => fail!("error parsing stmt: {:?}", e.message),
                     };
                     if let TokenKind::Semi = p.token.kind {
                         p.bump();
                     }
                     p.expect(&TokenKind::Eof)
-                        .map_err(|e| format!("error parsing stmt: {}", e.message()))?;
+                        .map_err(|e| format!("error parsing stmt: {:?}", e.message))?;
 
                     remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Stmt(x)))
