@@ -333,6 +333,23 @@ impl TypeConverter {
             CTypeKind::UInt128 => Ok(mk().path_ty(mk().path(vec!["u128"]))),
             CTypeKind::BFloat16 => Ok(mk().path_ty(mk().path(vec!["bf16"]))),
 
+            CTypeKind::Int8 => Ok(mk().path_ty(mk().path(vec!["i8"]))),
+            CTypeKind::Int16 => Ok(mk().path_ty(mk().path(vec!["i16"]))),
+            CTypeKind::Int32 => Ok(mk().path_ty(mk().path(vec!["i32"]))),
+            CTypeKind::Int64 => Ok(mk().path_ty(mk().path(vec!["i64"]))),
+            CTypeKind::IntPtr => Ok(mk().path_ty(mk().path(vec!["isize"]))),
+            CTypeKind::UInt8 => Ok(mk().path_ty(mk().path(vec!["u8"]))),
+            CTypeKind::UInt16 => Ok(mk().path_ty(mk().path(vec!["u16"]))),
+            CTypeKind::UInt32 => Ok(mk().path_ty(mk().path(vec!["u32"]))),
+            CTypeKind::UInt64 => Ok(mk().path_ty(mk().path(vec!["u64"]))),
+            CTypeKind::UIntPtr => Ok(mk().path_ty(mk().path(vec!["usize"]))),
+            CTypeKind::IntMax => Ok(mk().path_ty(mk().path(vec!["libc", "intmax_t"]))),
+            CTypeKind::UIntMax => Ok(mk().path_ty(mk().path(vec!["libc", "uintmax_t"]))),
+            CTypeKind::Size => Ok(mk().path_ty(mk().path(vec!["usize"]))),
+            CTypeKind::SSize => Ok(mk().path_ty(mk().path(vec!["isize"]))),
+            CTypeKind::PtrDiff => Ok(mk().path_ty(mk().path(vec!["isize"]))),
+            CTypeKind::WChar => Ok(mk().path_ty(mk().path(vec!["libc", "wchar_t"]))),
+
             CTypeKind::Pointer(qtype) => self.convert_pointer(ctxt, qtype),
 
             CTypeKind::Elaborated(ref ctype) => self.convert(ctxt, *ctype),

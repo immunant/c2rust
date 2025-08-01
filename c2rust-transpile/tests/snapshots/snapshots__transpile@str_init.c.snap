@@ -120,7 +120,7 @@ pub unsafe extern "C" fn curl_alpn_spec() {
                     [0; 10],
                     [0; 10],
                 ],
-                count: 1 as std::ffi::c_int as std::ffi::c_uint,
+                count: 1 as std::ffi::c_uint,
             };
             init
         }

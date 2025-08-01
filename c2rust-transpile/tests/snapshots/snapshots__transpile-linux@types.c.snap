@@ -1,0 +1,71 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+assertion_line: 69
+expression: cat tests/snapshots/platform-specific/types.rs
+input_file: c2rust-transpile/tests/snapshots/platform-specific/types.c
+---
+#![allow(
+    dead_code,
+    mutable_transmutes,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+pub type size_t = usize;
+pub type __int8_t = i8;
+pub type __uint8_t = u8;
+pub type __int16_t = i16;
+pub type __uint16_t = u16;
+pub type __int32_t = i32;
+pub type __uint32_t = u32;
+pub type __int64_t = i64;
+pub type __uint64_t = u64;
+pub type ssize_t = isize;
+pub type int8_t = __int8_t;
+pub type int16_t = __int16_t;
+pub type int32_t = __int32_t;
+pub type int64_t = __int64_t;
+pub type uint8_t = __uint8_t;
+pub type uint16_t = __uint16_t;
+pub type uint32_t = __uint32_t;
+pub type uint64_t = __uint64_t;
+pub type intptr_t = isize;
+pub type uintptr_t = usize;
+pub type intmax_t = libc::intmax_t;
+pub type uintmax_t = libc::uintmax_t;
+pub type ptrdiff_t = isize;
+#[no_mangle]
+pub static mut intvar: std::ffi::c_int = 0 as std::ffi::c_int;
+#[no_mangle]
+pub static mut sizevar: size_t = 0 as size_t;
+#[no_mangle]
+pub static mut ssizevar: ssize_t = 0 as ssize_t;
+#[no_mangle]
+pub static mut intptrvar: intptr_t = 0 as intptr_t;
+#[no_mangle]
+pub static mut uintptrvar: uintptr_t = 0 as uintptr_t;
+#[no_mangle]
+pub static mut ptrdiffvar: ptrdiff_t = 0 as ptrdiff_t;
+#[no_mangle]
+pub static mut uint8var: uint8_t = 0 as uint8_t;
+#[no_mangle]
+pub static mut uint16var: uint16_t = 0 as uint16_t;
+#[no_mangle]
+pub static mut uint32var: uint32_t = 0 as uint32_t;
+#[no_mangle]
+pub static mut uint64var: uint64_t = 0 as uint64_t;
+#[no_mangle]
+pub static mut int8var: int8_t = 0 as int8_t;
+#[no_mangle]
+pub static mut int16var: int16_t = 0 as int16_t;
+#[no_mangle]
+pub static mut int32var: int32_t = 0 as int32_t;
+#[no_mangle]
+pub static mut int64var: int64_t = 0 as int64_t;
+#[no_mangle]
+pub static mut maxvar: intmax_t = 0 as intmax_t;
+#[no_mangle]
+pub static mut umaxvar: uintmax_t = 0 as uintmax_t;
+
