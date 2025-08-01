@@ -45,7 +45,10 @@ jobs:
           cache-workspace-crates: true
 
       # Run after `rust-cache` so that this is cached.
-      - run: rustup component add rustfmt rustc-dev
+      - name: rustup component add
+        run: |
+          rustup component add rustfmt
+          (cd unstable && rustup component add rustfmt rustc-dev)
 
       - name: cargo fmt --check
         run: |
