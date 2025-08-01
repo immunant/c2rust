@@ -3522,7 +3522,7 @@ impl<'c> Translation<'c> {
                     // If we're casting a function, look for its declared ty to use as a more
                     // precise source type. The AST node's type will not preserve typedef arg types
                     // but the function's declaration will.
-                    if let Some(func_decl) = self.ast_context.function_declref_decl(expr) {
+                    if let Some(func_decl) = self.ast_context.fn_declref_decl(expr) {
                         let kind_with_declared_args =
                             self.ast_context.fn_decl_ty_with_declared_args(func_decl);
                         let func_ty = self
@@ -3828,7 +3828,7 @@ impl<'c> Translation<'c> {
                 };
 
                 let mut arg_tys = if let Some(CDeclKind::Function { parameters, .. }) =
-                    self.ast_context.function_declref_decl(func)
+                    self.ast_context.fn_declref_decl(func)
                 {
                     self.ast_context.tys_of_params(parameters)
                 } else {
