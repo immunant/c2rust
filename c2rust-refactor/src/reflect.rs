@@ -55,9 +55,9 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
         match ty.kind() {
             IrTyKind::Bool => mk().ident_ty("bool"),
             IrTyKind::Char => mk().ident_ty("char"),
-            IrTyKind::Int(ity) => mk().ident_ty(ity.name()),
-            IrTyKind::Uint(uty) => mk().ident_ty(uty.name()),
-            IrTyKind::Float(fty) => mk().ident_ty(fty.name()),
+            IrTyKind::Int(ity) => mk().ident_ty(ity.name_str()),
+            IrTyKind::Uint(uty) => mk().ident_ty(uty.name_str()),
+            IrTyKind::Float(fty) => mk().ident_ty(fty.name_str()),
             IrTyKind::Adt(def, substs) => {
                 if infer_args {
                     let (qself, path) = self.reflect_def_path_inner(def.did(), None);
