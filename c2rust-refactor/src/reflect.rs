@@ -332,7 +332,6 @@ pub fn can_reflect_path(cx: &RefactorCtxt, id: NodeId) -> bool {
         | Node::Variant(_)
         | Node::Field(_)
         | Node::Local(_)
-        | Node::MacroDef(_)
         | Node::Ctor(_)
         | Node::GenericParam(_) => true,
 
@@ -347,7 +346,6 @@ pub fn can_reflect_path(cx: &RefactorCtxt, id: NodeId) -> bool {
         | Node::Param(_)
         | Node::Block(_)
         | Node::Lifetime(_)
-        | Node::Visibility(_)
         | Node::Crate(_) => false,
     }
 }
