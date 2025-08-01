@@ -613,7 +613,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
             }
 
             ExprKind::Array(ref es) => {
-                for e in es {
+                for e in &es[..] {
                     self.ltt.unify(rty.args[0], self.expr_lty(e));
                 }
             }
@@ -767,7 +767,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
             ExprKind::InlineAsm(..) => {}
 
             ExprKind::Struct(_, ref fields, ref base) => {
-                for field in fields {
+                for field in &fields[..] {
                     self.ltt.unify(
                         self.field_lty(rty, field.ident.name),
                         self.expr_lty(&field.expr),
