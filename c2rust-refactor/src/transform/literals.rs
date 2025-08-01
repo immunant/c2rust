@@ -192,8 +192,8 @@ impl Transform for RemoveLiteralSuffixes {
                             // then we can remove the suffix, since those
                             // are the default inference types
                             match (needs_suffix, &ty.kind()) {
-                                (false, sty::TyKind::Int(IntTy::I32)) |
-                                (false, sty::TyKind::Float(FloatTy::F64)) => {
+                                (false, sty::TyKind::Int(ty::IntTy::I32)) |
+                                (false, sty::TyKind::Float(ty::FloatTy::F64)) => {
                                     if let Some(new_lit) = remove_suffix(&lit) {
                                         *lit = new_lit;
                                     }

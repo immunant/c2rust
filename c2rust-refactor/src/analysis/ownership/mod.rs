@@ -23,9 +23,8 @@ use log::{debug, Level, log_enabled};
 use rustc_hir as hir;
 use rustc_hir::def_id::DefId;
 use rustc_hir::{Mutability, Node};
-use rustc_middle::ty::{TyCtxt, TyKind, TypeAndMut, Ty};
+use rustc_middle::ty::{self, TyCtxt, TyKind, TypeAndMut, Ty};
 use rustc_index::vec::{Idx, IndexVec};
-use rustc_ast::IntTy;
 use rustc_span::source_map::Span;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
@@ -266,11 +265,7 @@ fn register_std_constraints<'a, 'tcx, 'lty>(
         // fn offset<T>(self: *mut T, _: isize) -> *mut T;
         if func_summ.sig.inputs.len() == 2 && fn_name_path == "::ptr[0]::{{impl}}[1]::offset[0]" {
             let param0_is_mut_t = is_mut_t(&func_summ.sig.inputs[0].ty);
-            let param1_is_isize = if let TyKind::Int(int_ty) = func_summ.sig.inputs[1].ty.kind() {
-                int_ty == IntTy::Isize
-            } else {
-                false
-            };
+            let param1_is_isize = TyKind::Int(ty::IntTy::Isize) == *func_summ.sig.inputs[1].ty.kind();
             let ret_is_mut_t = is_mut_t(&func_summ.sig.output.ty);
             if param0_is_mut_t && param1_is_isize && ret_is_mut_t {
                 func_summ.cset_provided = true;
