@@ -508,15 +508,17 @@ impl TypedAstContext {
     }
 
     /// Return the list of types for a list of declared function parameters.
+    ///
+    /// Returns `None` if one of the parameters is not a `CDeclKind::Variable`, e.g. if it was not a
+    /// function parameter but actually some other kind of declaration.
     pub fn tys_of_params(&self, parameters: &[CDeclId]) -> Option<Vec<CQualTypeId>> {
-        let mut param_tys = vec![];
-        for p in parameters {
-            match self.index(*p).kind {
-                CDeclKind::Variable { typ, .. } => param_tys.push(CQualTypeId::new(typ.ctype)),
-                _ => return None,
-            }
-        }
-        return Some(param_tys);
+        parameters
+            .iter()
+            .map(|p| match self.index(*p).kind {
+                CDeclKind::Variable { typ, .. } => Some(CQualTypeId::new(typ.ctype)),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Return the most precise possible CTypeKind for the given function declaration.
