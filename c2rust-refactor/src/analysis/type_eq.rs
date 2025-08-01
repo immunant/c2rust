@@ -447,7 +447,8 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     fn compute_def_lty(&self, id: DefId) -> LTy<'lty, 'tcx> {
         match self.tcx.hir().get_if_local(id) {
-            Some(Node::Binding(p)) => {
+            // TODO: is the switch from Binding to Pat correct?
+            Some(Node::Pat(p)) => {
                 return self.pat_lty(p);
             }
             _ => {}
