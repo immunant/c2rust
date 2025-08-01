@@ -128,13 +128,12 @@ jobs:
       run: |
         export LLVM_CONFIG_PATH=/usr/bin/llvm-config-${{ matrix.clang-version }}
         cargo build --release
-        (cd unstable && cargo build --release)
 
     # TODO(pl): figure out why compile_commands.json may cause json-c to fail
     - name: Run c2rust testsuite
       run: |
         find testsuite -type f -name compile_commands.json -delete
-        export PATH=$PWD/target/release:$PWD/unstable/target/release:$HOME/.local/bin:$PATH
+        export PATH=$PWD/target/release:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
         python3 testsuite/test.py curl json-c lua nginx zstd libxml2 python2
 
