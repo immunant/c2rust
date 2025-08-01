@@ -801,7 +801,7 @@ impl Transform for Abstract {
 
         // Add the function definition to the crate
 
-        krate.module.items.push(func);
+        krate.items.push(func);
     }
 
     fn min_phase(&self) -> Phase {
