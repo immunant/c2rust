@@ -192,7 +192,8 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     /// Obtain the `DefId` of a definition node, such as a `fn` item.
     pub fn node_def_id(&self, id: NodeId) -> DefId {
         match self.hir_map().find(id) {
-            Some(Node::Binding(_)) => {
+            // TODO: is the switch from Binding to Pat correct?
+            Some(Node::Pat(_)) => {
                 let hir_id = self.hir_map().node_to_hir_id(id);
                 self.node_def_id(self.hir_map().hir_to_node_id(
                     self.hir_map().get_parent_node(hir_id)
