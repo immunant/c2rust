@@ -494,7 +494,7 @@ impl TypedAstContext {
 
     /// Extract decl of referenced function.
     /// Looks for ImplicitCast(FunctionToPointerDecay, DeclRef(function_decl))
-    pub fn function_declref_decl(&self, func_expr: CExprId) -> Option<&CDeclKind> {
+    pub fn fn_declref_decl(&self, func_expr: CExprId) -> Option<&CDeclKind> {
         use CastKind::FunctionToPointerDecay;
         if let CExprKind::ImplicitCast(_, fexp, FunctionToPointerDecay, _, _) = self[func_expr].kind
         {
@@ -544,12 +544,8 @@ impl TypedAstContext {
 
     /// Return the id of the most precise possible type for the function referenced by the given
     /// expression, if any.
-    pub fn function_declref_ty_with_declared_args(
-        &self,
-        func_expr: CExprId,
-    ) -> Option<CQualTypeId> {
-        if let Some(func_decl @ CDeclKind::Function { .. }) = self.function_declref_decl(func_expr)
-        {
+    pub fn fn_declref_ty_with_declared_args(&self, func_expr: CExprId) -> Option<CQualTypeId> {
+        if let Some(func_decl @ CDeclKind::Function { .. }) = self.fn_declref_decl(func_expr) {
             let kind_with_declared_args = self.fn_decl_ty_with_declared_args(func_decl);
             let specific_typ = self
                 .type_for_kind(&kind_with_declared_args)
