@@ -243,7 +243,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         fn keep_items(items: &[P<Item>]) -> HashSet<NodeId> {
             let mut keep_items = HashSet::new();
             let mut used_idents = HashSet::new();
-            for item in &items {
+            for item in &items[..] {
                 match &item.kind {
                     ItemKind::Fn(box Fn { body: Some(ref body), .. }) => {
                         keep_items.insert(item.id);
@@ -268,7 +268,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             }
 
             // This assume the complex uses have been split apart already
-            for item in &items {
+            for item in &items[..] {
                 if let ItemKind::Use(tree) = &item.kind {
                     if used_idents.contains(&tree.ident()) {
                         keep_items.insert(item.id);
@@ -524,7 +524,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         visit_nodes(krate, |item: &Item| {
             if let ItemKind::Mod(_, ModKind::Loaded(mod_items, _, _)) = &item.kind {
                 if let Some(info) = self.modules.get_mut(&item.id) {
-                    for item in &mod_items {
+                    for item in &mod_items[..] {
                         if let ItemKind::ForeignMod(m) = &item.kind {
                             for item in &m.items {
                                 let ns = match &item.kind {
@@ -1000,7 +1000,7 @@ impl ModuleInfo {
         let mut headers = HashSet::new();
         let def_id = cx.node_def_id(item.id);
         let path = cx.def_path(def_id);
-        for i in &mod_items {
+        for i in &mod_items[..] {
             match &i.kind {
                 ItemKind::Fn(..) => {
                     if i.ident.as_str() == "main" {

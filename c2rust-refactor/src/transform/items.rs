@@ -485,7 +485,7 @@ impl Transform for CreateItem {
                 // When true, insert before the next item that satisfies `skip_dummy`
                 let mut insert_inside = self.inside && self.st.marked(parent_id, self.mark);
 
-                for i in &m_items {
+                for i in &m_items[..] {
                     if insert_inside {
                         // Special case for `inside` mode with the Crate marked.  We want to insert
                         // after the injected std and prelude items, because inserting before an
