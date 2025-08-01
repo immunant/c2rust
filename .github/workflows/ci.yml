@@ -95,27 +95,21 @@ jobs:
           brew install -q ninja gpg llvm@${{ matrix.clang-version }} bash z3
           echo "Z3_SYS_Z3_HEADER=/opt/homebrew/include/z3.h" >> $GITHUB_ENV
 
-      - name: cargo build --release
+      - name: cargo build (stable)
         run: |
           export RUSTFLAGS="-D warnings"
           export RUSTDOCFLAGS="-D warnings"
           # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
           # which we don't want to test here (see https://github.com/immunant/c2rust/issues/500).
           cargo build --release
-          (cd unstable && cargo build --release)
-      - name: cargo test --release --workspace
+
+      - name: cargo test (stable)
         run: |
           export RUSTFLAGS="-D warnings"
-          # add homebrew library path for z3; z3-sys 0.9.4 supports the
-          # Z3_LIBRARY_PATH_OVERRIDE environment variable that would let
-          # us override the library path, but that crate version is too new
-          # for nightly-2022-08-08 (requires 2024 edition). On our nightly rustc
-          # on Mac OS, we have to pass in the exact library path directly to RUSTFLAGS.
-          export RUSTFLAGS="$RUSTFLAGS -Clink-arg=-L/opt/homebrew/lib -Clink-arg=-Wl,-rpath,/opt/homebrew/lib"
           export RUSTDOCFLAGS="-D warnings"
           cargo test --release --workspace
-          (cd unstable && cargo test --release --workspace)
-      - name: Test translator
+
+      - name: Test translator (stable)
         run: |
           # `test_translator.py` compiles translated code,
           # which has tons of warnings.
@@ -124,3 +118,23 @@ jobs:
           # `test_translator.py` does not rebuild,
           # so changing `RUSTFLAGS` will not trigger a full rebuild.
           uv run ./scripts/test_translator.py tests/
+
+      - name: cargo build (unstable)
+        run: |
+          export RUSTFLAGS="-D warnings"
+          export RUSTDOCFLAGS="-D warnings"
+          # add homebrew library path for z3; z3-sys 0.9.4 supports the
+          # Z3_LIBRARY_PATH_OVERRIDE environment variable that would let
+          # us override the library path, but that crate version is too new
+          # for nightly-2022-08-08 (requires 2024 edition). On our nightly rustc
+          # on Mac OS, we have to pass in the exact library path directly to RUSTFLAGS.
+          export RUSTFLAGS="$RUSTFLAGS -Clink-arg=-L/opt/homebrew/lib -Clink-arg=-Wl,-rpath,/opt/homebrew/lib"
+          # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
+          # which we don't want to test here (see https://github.com/immunant/c2rust/issues/500).
+          (cd unstable && cargo build --release)
+
+      - name: cargo test (unstable)
+        run: |
+          export RUSTFLAGS="-D warnings"
+          export RUSTDOCFLAGS="-D warnings"
+          (cd unstable && cargo test --release --workspace)
