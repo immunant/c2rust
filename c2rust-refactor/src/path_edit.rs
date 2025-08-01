@@ -218,9 +218,7 @@ where
 
     fn visit_pat(&mut self, p: &mut P<Pat>) {
         if let Some(node) = self.cx.hir_map().find(p.id) {
-            let hir = expect!([node]
-                              hir::Node::Pat(pat) => pat,
-                              hir::Node::Binding(pat) => pat);
+            let hir = expect!([node] hir::Node::Pat(pat) => pat);
 
             self.alter_pat_path(p, hir);
         }
