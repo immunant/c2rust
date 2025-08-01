@@ -216,7 +216,6 @@ pub fn clone_config(config: &interface::Config) -> interface::Config {
         output_dir: config.output_dir.clone(),
         file_loader: None,
         diagnostic_output: DiagnosticOutput::Default,
-        crate_name: config.crate_name.clone(),
         lint_caps: config.lint_caps.clone(),
         register_lints: None,
         override_queries: None,
@@ -245,7 +244,6 @@ pub fn create_config(args: &[String]) -> interface::Config {
         output_dir,
         file_loader: None,
         diagnostic_output: DiagnosticOutput::Default,
-        crate_name: None,
         lint_caps: Default::default(),
         register_lints: None,
         override_queries: None,
@@ -304,7 +302,6 @@ pub struct Compiler {
     input_path: Option<PathBuf>,
     output_dir: Option<PathBuf>,
     output_file: Option<PathBuf>,
-    crate_name: Option<String>,
     register_lints: Option<Box<dyn Fn(&Session, &mut LintStore) + Send + Sync>>,
     override_queries:
         Option<fn(&Session, &mut ty::query::Providers, &mut ty::query::Providers)>,
@@ -335,7 +332,6 @@ pub fn make_compiler(config: &Config, file_io: Arc<dyn FileIO + Sync + Send>) ->
         input_path: config.input_path,
         output_dir: config.output_dir,
         output_file: config.output_file,
-        crate_name: config.crate_name,
         override_queries: config.override_queries,
         register_lints: config.register_lints,
     };
