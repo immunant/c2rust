@@ -331,7 +331,6 @@ pub fn can_reflect_path(cx: &RefactorCtxt, id: NodeId) -> bool {
         | Node::ImplItem(_)
         | Node::Variant(_)
         | Node::Field(_)
-        | Node::Binding(_)
         | Node::Local(_)
         | Node::MacroDef(_)
         | Node::Ctor(_)
