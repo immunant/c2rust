@@ -49,9 +49,8 @@ jobs:
 
       - name: cargo fmt --check
         run: |
-          export RUSTFLAGS="-D warnings"
-          export RUSTDOCFLAGS="-D warnings"
           cargo fmt --check
+          (cd unstable && cargo fmt --check)
 
       - name: Install packages (Ubuntu)
         if: runner.os == 'Linux'
