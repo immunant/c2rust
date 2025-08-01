@@ -270,7 +270,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                 _ => {}
             }
 
-            let visible_parent_map = self.tcx.visible_parent_map(LOCAL_CRATE);
+            let visible_parent_map = self.tcx.visible_parent_map(());
             if let Some(&parent_id) = visible_parent_map.get(&id) {
                 id = parent_id;
             } else if let Some(parent_id) = self.tcx.parent(id) {
