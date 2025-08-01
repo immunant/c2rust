@@ -695,7 +695,6 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     }
 
                     if let Some(ModKind::Loaded(ref mut mod_items, _, _)) = krate
-                        .module
                         .items
                         .iter_mut()
                         .find_map(|item| match_mod_item(item, mod_info.unique_ident))
@@ -710,7 +709,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                             .id(mod_info.id)
                             .mod_item(mod_info.unique_ident, new_mod);
 
-                        krate.module.items.insert(0, new_mod_item);
+                        krate.items.insert(0, new_mod_item);
                     }
                 }
             }

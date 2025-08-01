@@ -207,8 +207,8 @@ pub fn collect_macro_invocations<'ast>(
     let (crate_names, has_prelude) = super::injected_items(unexpanded);
     let inj_count = crate_names.len() + if has_prelude { 1 } else { 0 };
     collect_macros_seq(
-        &unexpanded.module.items[..],
-        &expanded.module.items[inj_count..],
+        &unexpanded.items[..],
+        &expanded.items[inj_count..],
         &mut ctxt,
     );
     (ctxt.table, ctxt.matched_node_ids)
