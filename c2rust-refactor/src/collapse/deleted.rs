@@ -73,7 +73,7 @@ impl<'a, 'ast> CollectDeletedNodes<'a, 'ast> {
     }
 
     fn handle_crate(&mut self, x: &'ast Crate) {
-        self.handle_seq(CRATE_NODE_ID, &x.module.items);
+        self.handle_seq(CRATE_NODE_ID, &x.items);
     }
 }
 
@@ -230,7 +230,7 @@ impl<'a, 'ast> RestoreDeletedNodes<'a, 'ast> {
 
 impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
     fn visit_crate(&mut self, x: &mut Crate) {
-        self.restore_seq(CRATE_NODE_ID, &mut x.module.items);
+        self.restore_seq(CRATE_NODE_ID, &mut x.items);
         mut_visit::noop_visit_crate(x, self)
     }
 

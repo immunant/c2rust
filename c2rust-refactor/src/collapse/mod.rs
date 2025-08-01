@@ -115,7 +115,7 @@ pub fn collapse_injected(krate: &mut Crate) {
     let (crate_names, mut expect_prelude) = injected_items(krate);
     let mut crate_names = crate_names.to_vec();
 
-    krate.module.items.retain(|i| {
+    krate.items.retain(|i| {
         match i.kind {
             ItemKind::ExternCrate(_) => {
                 // Remove the first `extern crate` matching each entry in `crate_names`.
