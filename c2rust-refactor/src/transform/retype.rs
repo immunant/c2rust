@@ -1157,7 +1157,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             (Char, Uint(_)) => true,
 
             // u8-char-cast
-            (Uint(UintTy::U8), Char) => true,
+            (Uint(ty::UintTy::U8), Char) => true,
 
             // TODO: enum-cast
             // TODO: array-ptr-cast? (might already be handled implicitly)
@@ -1174,25 +1174,25 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
         // from librust_lint::TypeLimits
         // for isize & usize, be conservative with the warnings, so that the
         // warnings are consistent between 32- and 64-bit platforms
-        fn int_ty_range(int_ty: IntTy) -> (i128, i128) {
+        fn int_ty_range(int_ty: ty::IntTy) -> (i128, i128) {
             match int_ty {
-                IntTy::Isize => (i64::min_value() as i128, i64::max_value() as i128),
-                IntTy::I8 => (i8::min_value() as i64 as i128, i8::max_value() as i128),
-                IntTy::I16 => (i16::min_value() as i64 as i128, i16::max_value() as i128),
-                IntTy::I32 => (i32::min_value() as i64 as i128, i32::max_value() as i128),
-                IntTy::I64 => (i64::min_value() as i128, i64::max_value() as i128),
-                IntTy::I128 =>(i128::min_value() as i128, i128::max_value()),
+                ty::IntTy::Isize => (i64::min_value() as i128, i64::max_value() as i128),
+                ty::IntTy::I8 => (i8::min_value() as i64 as i128, i8::max_value() as i128),
+                ty::IntTy::I16 => (i16::min_value() as i64 as i128, i16::max_value() as i128),
+                ty::IntTy::I32 => (i32::min_value() as i64 as i128, i32::max_value() as i128),
+                ty::IntTy::I64 => (i64::min_value() as i128, i64::max_value() as i128),
+                ty::IntTy::I128 =>(i128::min_value() as i128, i128::max_value()),
             }
         }
 
-        fn uint_ty_range(uint_ty: UintTy) -> (u128, u128) {
+        fn uint_ty_range(uint_ty: ty::UintTy) -> (u128, u128) {
             match uint_ty {
-                UintTy::Usize => (u64::min_value() as u128, u64::max_value() as u128),
-                UintTy::U8 => (u8::min_value() as u128, u8::max_value() as u128),
-                UintTy::U16 => (u16::min_value() as u128, u16::max_value() as u128),
-                UintTy::U32 => (u32::min_value() as u128, u32::max_value() as u128),
-                UintTy::U64 => (u64::min_value() as u128, u64::max_value() as u128),
-                UintTy::U128 => (u128::min_value(), u128::max_value()),
+                ty::UintTy::Usize => (u64::min_value() as u128, u64::max_value() as u128),
+                ty::UintTy::U8 => (u8::min_value() as u128, u8::max_value() as u128),
+                ty::UintTy::U16 => (u16::min_value() as u128, u16::max_value() as u128),
+                ty::UintTy::U32 => (u32::min_value() as u128, u32::max_value() as u128),
+                ty::UintTy::U64 => (u64::min_value() as u128, u64::max_value() as u128),
+                ty::UintTy::U128 => (u128::min_value(), u128::max_value()),
             }
         }
 
