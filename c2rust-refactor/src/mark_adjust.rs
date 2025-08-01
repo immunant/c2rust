@@ -381,7 +381,7 @@ pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
     // Use a preorder traversal.  This results in recursively marking public descendants of any
     // marked module or crate.
     if st.marked(CRATE_NODE_ID, label) {
-        for i in &st.krate().module.items {
+        for i in &st.krate().items {
             if let VisibilityKind::Public = i.vis.kind {
                 st.add_mark(i.id, label);
             }
