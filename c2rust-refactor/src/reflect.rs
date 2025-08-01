@@ -89,7 +89,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                 }).collect();
                 let output = FnRetTy::Ty(self.reflect_ty(fn_sig.output()));
                 mk()
-                    .unsafety(fn_sig.unsafety)
+                    .unsafety(fn_sig.unsafety.to_string().as_str())
                     .extern_(fn_sig.abi)
                     .barefn_ty(mk().fn_decl(inputs, output))
             } else {
