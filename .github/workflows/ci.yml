@@ -49,13 +49,15 @@ jobs:
           cache-workspace-crates: true
 
       # Run after `rust-cache` so that this is cached.
-      - run: rustup component add rustfmt rustc-dev
+      - name: rustup component add
+        run: |
+          rustup component add rustfmt
+          (cd unstable && rustup component add rustfmt rustc-dev)
 
       - name: cargo fmt --check
         run: |
-          export RUSTFLAGS="-D warnings"
-          export RUSTDOCFLAGS="-D warnings"
           cargo fmt --check
+          (cd unstable && cargo fmt --check)
 
       - name: Install packages (Ubuntu)
         if: runner.os == 'Linux'
@@ -97,19 +99,21 @@ jobs:
           # `bash` needed b/c macOS ships with bash 3, which doesn't support arrays properly
           brew install -q cmake ninja gpg llvm@${{ matrix.clang-version }} bash
 
-      - name: cargo build --release
+      - name: cargo build (stable)
         run: |
           export RUSTFLAGS="-D warnings"
           export RUSTDOCFLAGS="-D warnings"
           # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
           # which we don't want to test here (see https://github.com/immunant/c2rust/issues/500).
           cargo build --release
-      - name: cargo test --release --workspace
+
+      - name: cargo test (stable)
         run: |
           export RUSTFLAGS="-D warnings"
           export RUSTDOCFLAGS="-D warnings"
           cargo test --release --workspace
-      - name: Test translator
+
+      - name: Test translator (stable)
         run: |
           # `test_translator.py` compiles translated code,
           # which has tons of warnings.
@@ -118,3 +122,17 @@ jobs:
           # `test_translator.py` does not rebuild,
           # so changing `RUSTFLAGS` will not trigger a full rebuild.
           uv run ./scripts/test_translator.py tests/
+
+      - name: cargo build (unstable)
+        run: |
+          export RUSTFLAGS="-D warnings"
+          export RUSTDOCFLAGS="-D warnings"
+          # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
+          # which we don't want to test here (see https://github.com/immunant/c2rust/issues/500).
+          (cd unstable && cargo build --release)
+
+      - name: cargo test (unstable)
+        run: |
+          export RUSTFLAGS="-D warnings"
+          export RUSTDOCFLAGS="-D warnings"
+          (cd unstable && cargo test --release --workspace)

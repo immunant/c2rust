@@ -31,7 +31,7 @@ tempfile = "3.3"
 rand = "0.8.5"
 
 [build-dependencies]
-c2rust-build-paths = { path = "../c2rust-build-paths", version = "0.20.0" }
+c2rust-build-paths = { path = "../../c2rust-build-paths", version = "0.20.0" }
 
 [package.metadata.rust-analyzer] 
 rustc_private = true

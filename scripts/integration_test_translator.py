@@ -15,7 +15,6 @@ from common import (
     pb,
     get_cmd_or_die,
     invoke,
-    get_rust_toolchain_libpath,
     download_archive,
     invoke_quietly,
     die,
@@ -88,19 +87,12 @@ def _test_minimal(code_snippet: str) -> bool:
     with open(cc_json, 'w') as fh:
         fh.write(minimal_cc_db)
 
-    ld_lib_path = get_rust_toolchain_libpath()
-
-    # don't overwrite existing ld lib path if any...
-    if 'LD_LIBRARY_PATH' in pb.local.env:
-        ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
-
     args = []
     args += ['--ddump-untyped-clang-ast']
     args += [cfile]
 
     # import ast
-    with pb.local.env(RUST_BACKTRACE='1',
-                      LD_LIBRARY_PATH=ld_lib_path):
+    with pb.local.env(RUST_BACKTRACE='1'):
         invoke(transpiler, args)
 
     return True  # if we get this far, test passed
