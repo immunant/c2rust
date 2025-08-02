@@ -49,8 +49,8 @@ pub enum TranslateMacros {
     #[default]
     None,
 
-    /// Translate the minimal subset of macros known to always work.
-    Minimal,
+    /// Translate the conservative subset of macros known to always work.
+    Conservative,
 
     /// Try to translate more, but this is experimental and not guaranteed to work.
     ///
