@@ -132,7 +132,7 @@ impl PrintParse for ForeignItem {
         })
     }
 
-    type Parsed = ForeignItem;
+    type Parsed = P<ForeignItem>;
     fn parse(sess: &Session, src: &str) -> Self::Parsed {
         driver::parse_foreign_items(sess, src).lone()
     }
