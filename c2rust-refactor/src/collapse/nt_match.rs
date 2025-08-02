@@ -152,21 +152,16 @@ macro_rules! as_nonterminal_impl {
 
 as_nonterminal_impl!(Item, NtItem, P);
 as_nonterminal_impl!(Block, NtBlock, P);
-as_nonterminal_impl!(Stmt, NtStmt);
+as_nonterminal_impl!(Stmt, NtStmt, P);
 as_nonterminal_impl!(Pat, NtPat, P);
 as_nonterminal_impl!(Expr, NtExpr, P);
 as_nonterminal_impl!(Ty, NtTy, P);
 //as_nonterminal_impl!(Ident, NtIdent);
 //as_nonterminal_impl!(Lifetime, NtLifetime);
 //as_nonterminal_impl!(Expr??, NtLiteral, P);
-as_nonterminal_impl!(AttrItem, NtMeta);
-as_nonterminal_impl!(Path, NtPath);
-as_nonterminal_impl!(Visibility, NtVis);
-// as_nonterminal_impl!(Arm, NtArm);
-as_nonterminal_impl!(AssocItem, NtItem);
-// as_nonterminal_impl!(Generics, NtGenerics);
-// as_nonterminal_impl!(WhereClause, NtWhereClause);
-// as_nonterminal_impl!(Arg, NtArg);
+as_nonterminal_impl!(AttrItem, NtMeta, P);
+as_nonterminal_impl!(Path, NtPath, P);
+as_nonterminal_impl!(Visibility, NtVis, P);
 
 impl AsNonterminal for Ident {
     fn as_nonterminal(&self) -> Nonterminal {
