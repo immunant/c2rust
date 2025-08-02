@@ -983,9 +983,15 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             PatKind::Range(ref start, ref end, _) => {
                 // TODO: approximate???
-                let inner_key_tree = self.expr_ty_to_key_tree(start);
-                self.visit_expr_unify(start, inner_key_tree);
-                self.visit_expr_unify(end, inner_key_tree);
+                match (start, end) {
+                    (Some(start), Some(end)) => {
+                        let inner_key_tree = self.expr_ty_to_key_tree(start);
+                        self.visit_expr_unify(start, inner_key_tree);
+                        self.visit_expr_unify(end, inner_key_tree);
+                    }
+                    (Some(e), None) | (None, Some(e)) => self.visit_expr(e),
+                    (None, None) => {}
+                }
             }
 
             PatKind::Slice(ref pats) => {
