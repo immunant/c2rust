@@ -57,7 +57,7 @@ fn mut_accessor_name<T: Display>(fieldname: T) -> Ident {
     mk().ident(format!("as_{}_mut", fieldname))
 }
 
-fn generate_enum_accessors(cx: &RefactorCtxt) -> Vec<AssocItem> {
+fn generate_enum_accessors(cx: &RefactorCtxt) -> Vec<P<AssocItem>> {
     parse_impl_items(cx.session(), r#"
 
     fn __as_variant(&self) -> &__type {
