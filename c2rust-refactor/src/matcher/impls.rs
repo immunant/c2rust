@@ -113,17 +113,18 @@ impl TryMatch for Pat {
             return Ok(());
         }
 
+        // TODO: do we want to allow top-level or-patterns here?
         if let PatKind::MacCall(ref mac) = self.kind {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(
                     &mac.args,
-                    |p| p.parse_pat(None).map(|p| p.into_inner()),
+                    |p| p.parse_pat_no_top_alt(None).map(|p| p.into_inner()),
                     target,
                 ),
                 "typed" => mcx.do_typed(
                     &mac.args,
-                    |p| p.parse_pat(None).map(|p| p.into_inner()),
+                    |p| p.parse_pat_no_top_alt(None).map(|p| p.into_inner()),
                     target,
                 ),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
