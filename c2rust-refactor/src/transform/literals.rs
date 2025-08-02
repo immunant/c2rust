@@ -1052,8 +1052,8 @@ impl<'ast, 'a, 'kt, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'kt, 'tcx> {
 
     fn visit_item(&mut self, i: &'ast Item) {
         match i.kind {
-            ItemKind::Static(ref ty, _, ref init) |
-            ItemKind::Const(_, ref ty, ref init) => {
+            ItemKind::Static(ref ty, _, Some(ref init)) |
+            ItemKind::Const(_, ref ty, Some(ref init)) => {
                 let key_tree = self.ast_ty_to_key_tree(ty);
                 self.visit_ty(ty);
                 self.visit_expr_unify(init, key_tree);
