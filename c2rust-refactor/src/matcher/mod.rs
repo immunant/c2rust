@@ -43,8 +43,8 @@ use std::cmp;
 use std::result;
 use rustc_ast::{Block, Expr, ExprKind, Item, Label, Lit, MacArgs, Pat, Path, Stmt, Ty};
 use rustc_ast::mut_visit::{self, MutVisitor};
-use rustc_parse::parser::{Parser, PathStyle};
-use rustc_ast::token::{TokenKind};
+use rustc_parse::parser::{AttemptLocalParseRecovery, Parser, PathStyle};
+use rustc_ast::token::{self, TokenKind};
 use rustc_errors::PResult;
 use rustc_ast::ptr::P;
 use rustc_span::symbol::{Ident, Symbol};
@@ -159,20 +159,20 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 
     pub fn parse_stmts(&mut self, src: &str) -> Vec<Stmt> {
-        // TODO: rustc no longer exposes `parse_full_stmt`. `parse_block` is a hacky
-        // workaround that may cause suboptimal error messages.
-        let (mut p, bt) = make_bindings_parser(self.cx.session(), &format!("{{ {} }}", src));
-        match p.parse_block() {
-            Ok(blk) => {
-                self.types.merge(bt);
-                let mut stmts = blk.into_inner().stmts;
-                for s in stmts.iter_mut() {
-                    remove_paren(s);
+        let (mut p, bt) = make_bindings_parser(self.cx.session(), src);
+        let mut stmts = Vec::new();
+        while p.token != token::Eof {
+            match p.parse_full_stmt(AttemptLocalParseRecovery::Yes) {
+                Ok(Some(mut stmt)) => {
+                    remove_paren(&mut stmt);
+                    stmts.push(stmt);
                 }
-                stmts
+                Ok(None) => break,
+                Err(db) => emit_and_panic(db, "stmts"),
             }
-            Err(db) => emit_and_panic(db, "stmts"),
         }
+        self.types.merge(bt);
+        stmts
     }
 
     pub fn parse_items(&mut self, src: &str) -> Vec<P<Item>> {
