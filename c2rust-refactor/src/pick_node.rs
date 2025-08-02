@@ -306,9 +306,9 @@ pub fn pick_node_at_loc(
     if line == 0 || line as usize - 1 >= fm.lines.len() {
         panic!("line {} is outside the bounds of {}", line, file);
     };
-    let (lo, hi) = fm.line_bounds(line as usize - 1);
+    let line_range = fm.line_bounds(line as usize - 1);
 
-    let line_len = hi.0 - lo.0;
+    let line_len = line_range.end.0 - line_range.start.0;
     if col >= line_len {
         panic!(
             "column {} is outside the bounds of {} line {}",
@@ -318,7 +318,7 @@ pub fn pick_node_at_loc(
 
     // TODO: This math is probably off when the line contains multibyte characters.  The
     // information to properly handle multibyte chars should be accessible through the `SourceFile`.
-    let pos = lo + BytePos(col);
+    let pos = line_range.start + BytePos(col);
 
     pick_node(krate, kind, pos)
 }
