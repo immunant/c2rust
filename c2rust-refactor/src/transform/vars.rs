@@ -471,9 +471,9 @@ impl Transform for UninitToDefault {
             l.init = Some(match ty.kind() {
                 TyKind::Bool => mk().lit_expr(mk().bool_lit(false)),
                 TyKind::Char => mk().lit_expr('\0'),
-                TyKind::Int(ity) => mk().lit_expr(mk().int_lit(0, ity)),
-                TyKind::Uint(uty) => mk().lit_expr(mk().int_lit(0, uty)),
-                TyKind::Float(fty) => mk().lit_expr(mk().float_lit("0", fty)),
+                TyKind::Int(ity) => mk().lit_expr(mk().int_lit(0, *ity)),
+                TyKind::Uint(uty) => mk().lit_expr(mk().int_lit(0, *uty)),
+                TyKind::Float(fty) => mk().lit_expr(mk().float_lit("0", *fty)),
                 _ => return,
             });
         })
