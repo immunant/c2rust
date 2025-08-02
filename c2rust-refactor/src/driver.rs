@@ -210,6 +210,9 @@ pub fn clone_config(config: &interface::Config) -> interface::Config {
     interface::Config {
         opts: config.opts.clone(),
         crate_cfg: config.crate_cfg.clone(),
+        // TODO: do we need more than the defaults here?
+        // CheckCfg does not implement Default
+        crate_check_cfg: Default::default(),
         input,
         input_path: config.input_path.clone(),
         output_file: config.output_file.clone(),
@@ -217,8 +220,10 @@ pub fn clone_config(config: &interface::Config) -> interface::Config {
         file_loader: None,
         diagnostic_output: DiagnosticOutput::Default,
         lint_caps: config.lint_caps.clone(),
+        parse_sess_created: None,
         register_lints: None,
         override_queries: None,
+        make_codegen_backend: None,
         registry: config.registry.clone(),
     }
 }
@@ -227,6 +232,7 @@ pub fn create_config(args: &[String]) -> interface::Config {
     let matches = rustc_driver::handle_options(args).expect("rustc arg parsing failed");
     let sopts = rustc_session::config::build_session_options(&matches);
     let cfg = interface::parse_cfgspecs(matches.opt_strs("cfg"));
+    let check_cfg = interface::parse_check_cfg(matches.opt_strs("check-cfg"));
     let sopts = maybe_set_sysroot(sopts, args);
     let output_dir = matches.opt_str("out-dir").map(|o| PathBuf::from(&o));
     let output_file = matches.opt_str("o").map(|o| PathBuf::from(&o));
@@ -238,6 +244,7 @@ pub fn create_config(args: &[String]) -> interface::Config {
     interface::Config {
         opts: sopts,
         crate_cfg: cfg,
+        crate_check_cfg: check_cfg,
         input,
         input_path,
         output_file,
@@ -245,8 +252,10 @@ pub fn create_config(args: &[String]) -> interface::Config {
         file_loader: None,
         diagnostic_output: DiagnosticOutput::Default,
         lint_caps: Default::default(),
+        parse_sess_created: None,
         register_lints: None,
         override_queries: None,
+        make_codegen_backend: None,
         registry: rustc_driver::diagnostics_registry(),
     }
 }
