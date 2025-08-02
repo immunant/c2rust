@@ -593,7 +593,7 @@ impl MaybeInvoc for ForeignItem {
 impl MaybeInvoc for Stmt {
     fn as_invoc(&self) -> Option<InvocKind> {
         match &self.kind {
-            StmtKind::MacCall(mac) => Some(InvocKind::Mac(&mac.0)),
+            StmtKind::MacCall(mac) => Some(InvocKind::Mac(&mac.mac)),
             StmtKind::Local(l) if has_macro_attr(&l.attrs) => {
                 Some(InvocKind::Attrs(&l.attrs))
             }
