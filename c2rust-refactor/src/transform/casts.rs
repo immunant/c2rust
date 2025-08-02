@@ -234,7 +234,7 @@ fn cast_kind(from_ty: SimpleTy, to_ty: SimpleTy) -> CastKind {
 // because the unit tests have no way of creating new `TyS` values
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum SimpleTy {
-    Int(usize, bool),
+    Int(u64, bool),
     Size(bool),
     Float32,
     Float64,
