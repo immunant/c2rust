@@ -71,14 +71,14 @@ pub struct TypedAstContext {
     pub label_names: IndexMap<CLabelId, Rc<str>>,
 
     // map expressions to the stack of macros they were expanded from
-    pub macro_invocations: HashMap<CExprId, Vec<CDeclId>>,
+    pub macro_invocations: IndexMap<CExprId, Vec<CDeclId>>,
 
     // map macro decls to the expressions they expand to
-    pub macro_expansions: HashMap<CDeclId, Vec<CExprId>>,
+    pub macro_expansions: IndexMap<CDeclId, Vec<CExprId>>,
 
     // map expressions to the text of the macro invocation they expanded from,
     // if any
-    pub macro_expansion_text: HashMap<CExprId, String>,
+    pub macro_expansion_text: IndexMap<CExprId, String>,
 
     pub comments: Vec<Located<String>>,
 
@@ -178,9 +178,9 @@ impl TypedAstContext {
             file_map,
             include_map,
             parents: HashMap::new(),
-            macro_invocations: HashMap::new(),
-            macro_expansions: HashMap::new(),
-            macro_expansion_text: HashMap::new(),
+            macro_invocations: Default::default(),
+            macro_expansions: Default::default(),
+            macro_expansion_text: Default::default(),
             label_names: Default::default(),
 
             comments: Vec::new(),
