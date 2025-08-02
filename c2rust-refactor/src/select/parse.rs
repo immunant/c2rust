@@ -5,7 +5,7 @@ use std::mem;
 use std::str::FromStr;
 use std::vec;
 use rustc_ast::Path;
-use rustc_parse::parser::{Parser, PathStyle};
+use rustc_parse::parser::{AttemptLocalParseRecovery, Parser, PathStyle};
 use rustc_ast::token::{Delimiter, Lit, LitKind, Token, TokenKind};
 use rustc_session::parse::ParseSess;
 use rustc_span::symbol::Symbol;
@@ -308,7 +308,7 @@ impl<'a> Stream<'a> {
                     let ts = self.parens_raw()?;
 
                     let mut p = Parser::new(self.sess, ts, false, None);
-                    let mut x = match p.parse_stmt() {
+                    let mut x = match p.parse_full_stmt(AttemptLocalParseRecovery::Yes) {
                         Ok(Some(x)) => x,
                         Ok(None) => fail!("expected stmt"),
                         Err(e) => fail!("error parsing stmt: {:?}", e.message),

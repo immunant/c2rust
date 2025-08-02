@@ -26,7 +26,7 @@ use rustc_ast::{
     Ty, UnsafeSource,
 };
 use rustc_span::hygiene::SyntaxContext;
-use rustc_parse::parser::Parser;
+use rustc_parse::parser::{AttemptLocalParseRecovery, Parser};
 use rustc_parse::parser::attr::InnerAttrPolicy;
 use rustc_ast::token::{self, TokenKind};
 use rustc_errors::PResult;
@@ -508,21 +508,19 @@ pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
 
 #[cfg_attr(feature = "profile", flame)]
 pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
-    // TODO: rustc no longer exposes `parse_full_stmt`. `parse_block` is a hacky
-    // workaround that may cause suboptimal error messages.
-    let mut p = make_parser(sess, &format!("{{ {} }}", src));
-    match p.parse_block() {
-        Ok(blk) => blk
-            .into_inner()
-            .stmts
-            .into_iter()
-            .map(|mut s| {
-                remove_paren(&mut s);
-                s.lone()
-            })
-            .collect(),
-        Err(db) => emit_and_panic(db, "stmts"),
+    let mut p = make_parser(sess, src);
+    let mut stmts = Vec::new();
+    while p.token != token::Eof {
+        match p.parse_full_stmt(AttemptLocalParseRecovery::Yes) {
+            Ok(Some(mut stmt)) => {
+                remove_paren(&mut stmt);
+                stmts.push(stmt);
+            }
+            Ok(None) => break,
+            Err(db) => emit_and_panic(db, "stmts"),
+        }
     }
+    stmts
 }
 
 #[cfg_attr(feature = "profile", flame)]
