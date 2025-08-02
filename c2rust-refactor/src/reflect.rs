@@ -156,9 +156,6 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                     }
                 }
 
-                // No idea what this is, but it doesn't have a name, so let's ignore it.
-                DefPathData::Misc => {}
-
                 DefPathData::Impl => {
                     let ty = self.tcx.type_of(id);
                     let gen = self.tcx.generics_of(id);
@@ -216,6 +213,10 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
 
                 DefPathData::LifetimeNs(_)
                     | DefPathData::MacroNs(_)
+                    // TODO: do we need to handle ForeignMod and Use?
+                    | DefPathData::ForeignMod
+                    | DefPathData::Use
+                    | DefPathData::GlobalAsm
                     | DefPathData::ClosureExpr
                     | DefPathData::Ctor
                     | DefPathData::AnonConst
