@@ -303,7 +303,7 @@ pub fn pick_node_at_loc(
         }
     };
 
-    if line == 0 || line as usize - 1 >= fm.lines.len() {
+    if line == 0 || line as usize > fm.count_lines() {
         panic!("line {} is outside the bounds of {}", line, file);
     };
     let line_range = fm.line_bounds(line as usize - 1);
