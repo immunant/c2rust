@@ -2166,9 +2166,11 @@ impl<'c> Translation<'c> {
         let kind = &self.ast_context[expr_id].kind;
         match self.tcfg.translate_const_macros {
             TranslateMacros::None => Err(format_err!("translate_const_macros is None"))?,
-            TranslateMacros::Minimal => match *kind {
+            TranslateMacros::Conservative => match *kind {
                 CExprKind::Literal(..) => Ok(()), // Literals are leaf expressions, so they should always be const-compatible.
-                _ => Err(format_err!("minimal const macros don't yet allow {kind:?}"))?,
+                _ => Err(format_err!(
+                    "conservative const macros don't yet allow {kind:?}"
+                ))?,
             },
             TranslateMacros::Experimental => Ok(()),
         }
@@ -4177,7 +4179,7 @@ impl<'c> Translation<'c> {
     ) -> Option<WithStmts<Box<Expr>>> {
         match self.tcfg.translate_fn_macros {
             TranslateMacros::None => return None,
-            TranslateMacros::Minimal => return None, // Nothing is supported for `Minimal` yet.
+            TranslateMacros::Conservative => return None, // Nothing is supported for `Conservative` yet.
             TranslateMacros::Experimental => {}
         }
 

@@ -165,8 +165,8 @@ pub enum TranslateMacros {
     #[default]
     None,
 
-    /// Translate the minimal subset of macros known to always work.
-    Minimal,
+    /// Translate the conservative subset of macros known to always work.
+    Conservative,
 
     /// Try to translate more, but this is experimental and not guaranteed to work.
     ///
@@ -179,7 +179,7 @@ impl From<TranslateMacros> for c2rust_transpile::TranslateMacros {
     fn from(this: TranslateMacros) -> Self {
         match this {
             TranslateMacros::None => c2rust_transpile::TranslateMacros::None,
-            TranslateMacros::Minimal => c2rust_transpile::TranslateMacros::Minimal,
+            TranslateMacros::Conservative => c2rust_transpile::TranslateMacros::Conservative,
             TranslateMacros::Experimental => c2rust_transpile::TranslateMacros::Experimental,
         }
     }
