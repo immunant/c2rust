@@ -147,7 +147,7 @@ impl Transform for ToMethod {
                     }
                 } else {
                     match pat_ty.kind() {
-                        TyKind::Ref(_, ty, _) if ty == self_ty => {
+                        TyKind::Ref(_, ty, _) if *ty == self_ty => {
                             match arg.ty.kind {
                                 ast::TyKind::Rptr(ref lt, ref mty) =>
                                     Some(SelfKind::Region(*lt, mty.mutbl)),
