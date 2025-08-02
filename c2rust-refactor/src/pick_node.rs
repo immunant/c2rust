@@ -273,10 +273,10 @@ pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo
 
     // If the cursor falls inside the crate's module, then mark the crate itself.
     if v.node_info.is_none() {
-        if krate.module.inner.contains(v.target) {
+        if krate.spans.inner_span.contains(v.target) {
             v.node_info = Some(NodeInfo {
                 id: CRATE_NODE_ID,
-                span: krate.span,
+                span: krate.spans.inner_span,
             });
         }
     }
