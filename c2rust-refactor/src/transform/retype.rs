@@ -1198,7 +1198,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
 
         match (&expected.ty.kind(), &lit.kind) {
             (TyKind::Int(t), LitKind::Int(v, _)) => {
-                let int_type = t.normalize(self.cx.session().target.ptr_width);
+                let int_type = t.normalize(self.cx.session().target.pointer_width);
                 let (_, max) = int_ty_range(int_type);
                 let max = max as u128;
 
@@ -1211,7 +1211,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 }
             }
             (TyKind::Uint(t), LitKind::Int(v, _)) => {
-                let uint_type = t.normalize(self.cx.session().target.ptr_width);
+                let uint_type = t.normalize(self.cx.session().target.pointer_width);
                 let (min, max) = uint_ty_range(uint_type);
                 if *v >= min && *v <= max {
                     Some(mk().lit_expr(mk().int_lit(*v, uint_type)))
