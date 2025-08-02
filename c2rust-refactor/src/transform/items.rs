@@ -479,7 +479,7 @@ impl Transform for CreateItem {
         }
 
         impl<'a> CreateFolder<'a> {
-            fn handle_mod(&mut self, parent_id: NodeId, m_items: &mut Vec<Item>, skip_dummy: bool) {
+            fn handle_mod(&mut self, parent_id: NodeId, m_items: &mut Vec<P<Item>>, skip_dummy: bool) {
                 let mut items = Vec::with_capacity(m_items.len());
 
                 // When true, insert before the next item that satisfies `skip_dummy`
