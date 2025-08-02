@@ -1111,7 +1111,7 @@ impl ToString for MovedDecl {
 #[derive(Clone, Debug, From)]
 enum DeclKind {
     Item(P<Item>),
-    ForeignItem(ForeignItem, Abi),
+    ForeignItem(P<ForeignItem>, Abi),
 }
 
 impl HasAttrs for DeclKind {
@@ -1323,7 +1323,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
 
     fn insert_foreign_item(
         &mut self,
-        item: ForeignItem,
+        item: P<ForeignItem>,
         abi: Abi,
         parent_header: HeaderInfo,
     ) {
@@ -1549,7 +1549,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
         ContainsDecl::NotContained
     }
 
-    fn find_foreign_item<'b>(&'b mut self, item: &ForeignItem, abi: Abi) -> ContainsDecl<'b> {
+    fn find_foreign_item<'b>(&'b mut self, item: &P<ForeignItem>, abi: Abi) -> ContainsDecl<'b> {
         let ns = match &item.kind {
             ForeignItemKind::Fn { .. } | ForeignItemKind::Static(..) => Namespace::ValueNS,
             ForeignItemKind::TyAlias(..) => Namespace::TypeNS,
@@ -1589,7 +1589,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                                 self.cx.compatible_fn_prototypes(&sig1.decl, &sig2.decl)
                             }
 
-                            _ => existing_foreign.ast_equiv(&item),
+                            _ => existing_foreign.ast_equiv(item),
                         };
                         if matches_existing {
                             return ContainsDecl::Equivalent(existing_decl);
