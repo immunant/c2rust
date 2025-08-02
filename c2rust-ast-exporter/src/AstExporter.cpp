@@ -1653,10 +1653,29 @@ class TranslateASTVisitor final
 
     bool VisitUnaryOperator(UnaryOperator *UO) {
         std::vector<void *> childIds = {UO->getSubExpr()};
-        encode_entry(UO, TagUnaryOperator, childIds, [UO](CborEncoder *array) {
+
+        encode_entry(UO, TagUnaryOperator, childIds, [this, UO](CborEncoder *array) {
             cbor_encode_string(array, UO->getOpcodeStr(UO->getOpcode()).str());
             cbor_encode_boolean(array, UO->isPrefix());
+
+            if (UO->getOpcode() == UO_Deref) {
+                QualType eltTy = UO->getSubExpr()->getType()->getPointeeType();
+                CharUnits align = Context->getTypeAlignInChars(eltTy);
+
+                if (auto *TD = eltTy->getAs<TypedefType>()) {
+                    QualType naturalTy = TD->getDecl()->getUnderlyingType();
+                    CharUnits naturalAlign = Context->getPreferredTypeAlignInChars(naturalTy);
+
+                    if (align < naturalAlign) {
+                        cbor_encode_int(array, align.getQuantity());
+                    } else {
+                        cbor_encode_int(array, -1);
+                    }
+
+                }
+            }
         });
+
         return true;
     }
 

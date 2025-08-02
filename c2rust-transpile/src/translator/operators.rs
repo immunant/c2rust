@@ -284,6 +284,11 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad initial lhs type"))?;
 
+        let is_unaligned = matches!(
+            initial_lhs,
+            CExprKind::Unary(_, c_ast::UnOp::Deref { unaligned: true }, _, _)
+        );
+
         let bitfield_id = match initial_lhs {
             CExprKind::Member(_, _, decl_id, _, _) => {
                 let kind = &self.ast_context[*decl_id].kind;
@@ -358,7 +363,17 @@ impl<'c> Translation<'c> {
                     use c_ast::BinOp::*;
                     let assign_stmt = match op {
                         // Regular (possibly volatile) assignment
-                        Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(write, rhs)),
+                        Assign if !is_volatile => {
+                            if is_unaligned {
+                                WithStmts::new_val(self.unaligned_write(
+                                    write,
+                                    initial_lhs_type_id,
+                                    rhs,
+                                )?)
+                            } else {
+                                WithStmts::new_val(mk().assign_expr(write, rhs))
+                            }
+                        }
                         Assign => WithStmts::new_val(self.volatile_write(
                             write,
                             initial_lhs_type_id,
@@ -823,7 +838,7 @@ impl<'c> Translation<'c> {
 
                 match arg_kind {
                     // C99 6.5.3.2 para 4
-                    CExprKind::Unary(_, c_ast::UnOp::Deref, target, _) => {
+                    CExprKind::Unary(_, c_ast::UnOp::Deref { unaligned: _ }, target, _) => {
                         return self.convert_expr(ctx, *target)
                     }
                     // An AddrOf DeclRef/Member is safe to not decay if the translator isn't already giving a hard
@@ -890,7 +905,7 @@ impl<'c> Translation<'c> {
             c_ast::UnOp::PreDecrement => self.convert_pre_increment(ctx, cqual_type, false, arg),
             c_ast::UnOp::PostIncrement => self.convert_post_increment(ctx, cqual_type, true, arg),
             c_ast::UnOp::PostDecrement => self.convert_post_increment(ctx, cqual_type, false, arg),
-            c_ast::UnOp::Deref => {
+            c_ast::UnOp::Deref { unaligned } => {
                 match self.ast_context[arg].kind {
                     CExprKind::Unary(_, c_ast::UnOp::AddressOf, arg_, _) => {
                         self.convert_expr(ctx.used(), arg_)
@@ -904,7 +919,23 @@ impl<'c> Translation<'c> {
                                     Ok(unwrap_function_pointer(val))
                                 } else if let Some(_vla) = self.compute_size_of_expr(ctype) {
                                     Ok(val)
+                                } else if unaligned {
+                                    // We should use read_unaligned here:
+                                    // mk().method_call_expr(val, "read_unaligned", vec![]);
+                                    // but that interferes with `write_unaligned`
+
+                                    let mut val = 
+                                        mk().unary_expr(UnOp::Deref(Default::default()), val);
+
+                                    // If the type on the other side of the pointer we are dereferencing is volatile and
+                                    // this whole expression is not an LValue, we should make this a volatile read
+                                    if lrvalue.is_rvalue() && cqual_type.qualifiers.is_volatile
+                                    {
+                                        val = self.volatile_read(val, cqual_type)?
+                                    }
+                                    Ok(val)
                                 } else {
+                                    dbg!("otherwise");
                                     let mut val =
                                         mk().unary_expr(UnOp::Deref(Default::default()), val);
 
