@@ -208,7 +208,7 @@ impl Transform for ToMethod {
 
                 let fns = fns.take().unwrap();
                 items.extend(fns.into_iter().map(|f| {
-                    AssocItem {
+                    P(AssocItem {
                         id: DUMMY_NODE_ID,
                         ident: f.item.ident,
                         vis: f.item.vis.clone(),
@@ -221,7 +221,7 @@ impl Transform for ToMethod {
                         })),
                         span: f.item.span,
                         tokens: None,
-                    }
+                    })
                 }));
                 Item {
                     kind: ItemKind::Impl(Box::new(Impl {

@@ -542,7 +542,7 @@ pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
 }
 
 #[cfg_attr(feature = "profile", flame)]
-pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<AssocItem> {
+pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<P<AssocItem>> {
     // TODO: rustc no longer exposes `parse_impl_item_`. `parse_item` is a hacky
     // workaround that may cause suboptimal error messages.
     let mut p = make_parser(sess, &format!("impl ! {{ {} }}", src));
@@ -556,7 +556,7 @@ pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<AssocItem> {
 }
 
 #[cfg_attr(feature = "profile", flame)]
-pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
+pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<P<ForeignItem>> {
     // TODO: rustc no longer exposes a method for parsing ForeignItems. `parse_item` is a hacky
     // workaround that may cause suboptimal error messages.
     let mut p = make_parser(sess, &format!("extern {{ {} }}", src));
