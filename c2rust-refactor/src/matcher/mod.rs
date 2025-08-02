@@ -43,7 +43,7 @@ use std::cmp;
 use std::result;
 use rustc_ast::{Block, Expr, ExprKind, Item, Label, Lit, MacArgs, Pat, Path, Stmt, Ty};
 use rustc_ast::mut_visit::{self, MutVisitor};
-use rustc_parse::parser::{AttemptLocalParseRecovery, Parser, PathStyle};
+use rustc_parse::parser::{AttemptLocalParseRecovery, ForceCollect, Parser, PathStyle};
 use rustc_ast::token::{self, TokenKind};
 use rustc_errors::PResult;
 use rustc_ast::ptr::P;
@@ -179,7 +179,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         let (mut p, bt) = make_bindings_parser(self.cx.session(), src);
         let mut items = Vec::new();
         loop {
-            match p.parse_item() {
+            match p.parse_item(ForceCollect::No) {
                 Ok(Some(mut item)) => {
                     remove_paren(&mut item);
                     items.push(item);
