@@ -135,7 +135,8 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 
     pub fn parse_pat(&mut self, src: &str) -> P<Pat> {
         let (mut p, bt) = make_bindings_parser(self.cx.session(), src);
-        match p.parse_pat(None) {
+        // TODO: do we want to allow top-level or-patterns here?
+        match p.parse_pat_no_top_alt(None) {
             Ok(mut pat) => {
                 self.types.merge(bt);
                 remove_paren(&mut pat);
