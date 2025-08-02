@@ -876,7 +876,17 @@ impl<'a> MutVisitor for RetypePrepFolder<'a> {
             self.type_annotations.insert(local.span, ty.clone());
         }
         local.ty = None;
-        local.init.as_mut().map(|i| self.visit_expr(i));
+
+        match local.kind {
+            LocalKind::Decl => {}
+            LocalKind::Init(ref mut i) => {
+                self.visit_expr(i);
+            }
+            LocalKind::InitElse(ref mut i, ref mut els) => {
+                self.visit_expr(i);
+                self.visit_block(els);
+            }
+        }
     }
 }
 

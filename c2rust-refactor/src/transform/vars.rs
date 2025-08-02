@@ -67,7 +67,8 @@ impl Transform for SinkLets {
         let mut locals: HashMap<HirId, LocalInfo> = HashMap::new();
         visit_nodes(krate, |l: &Local| {
             if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.kind {
-                if l.init.is_none() || !expr_has_side_effects(cx, l.init.as_ref().unwrap()) {
+                let l_init = get_local_init(&l.kind);
+                if l_init.is_none() || !expr_has_side_effects(cx, l_init.unwrap()) {
                     let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
                     locals.insert(hir_id, LocalInfo {
                         local: P(Local {
@@ -223,6 +224,15 @@ impl Transform for SinkLets {
 }
 
 
+/// Helper function that returns the initializer expression
+/// as a `P<Expr>` in contrast to a `LocalKind::init()` which gives a `&Expr`.
+fn get_local_init(local: &LocalKind) -> Option<&P<Expr>> {
+    match local {
+        LocalKind::Decl => None,
+        LocalKind::Init(i) | LocalKind::InitElse(i, _) => Some(i),
+    }
+}
+
 fn expr_has_side_effects(cx: &RefactorCtxt, e: &P<Expr>) -> bool {
     match e.kind {
         // Literals never have side effects
@@ -290,7 +300,8 @@ impl Transform for FoldLetAssign {
         let mut locals: HashMap<HirId, P<Local>> = HashMap::new();
         visit_nodes(krate, |l: &Local| {
             if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.kind {
-                if l.init.is_none() || !expr_has_side_effects(cx, l.init.as_ref().unwrap()) {
+                let l_init = get_local_init(&l.kind);
+                if l_init.is_none() || !expr_has_side_effects(cx, l_init.unwrap()) {
                     let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
                     locals.insert(hir_id, P(l.clone()));
                 }
@@ -402,12 +413,8 @@ impl Transform for FoldLetAssign {
                 if let Some((hir_id, init)) = assign_info {
                     let local = &locals[&hir_id];
                     let local_mark = local_pos.remove(&hir_id).unwrap();
-                    let l = local.clone().map(|l| {
-                        Local {
-                            init: Some(init),
-                            .. l
-                        }
-                    });
+                    let mut l = local.clone();
+                    l.kind = LocalKind::Init(init);
                     curs.replace(|_| mk().local_stmt(l));
 
                     let here = curs.mark();
@@ -462,20 +469,26 @@ pub struct UninitToDefault;
 impl Transform for UninitToDefault {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |l: &mut P<Local>| {
-            if !l.init.as_ref().map_or(false, |e| is_uninit_call(cx, e)) {
+            if !l.kind.init().as_ref().map_or(false, |e| is_uninit_call(cx, e)) {
                 return;
             }
 
-            let init = l.init.as_ref().unwrap().clone();
+            let init = l.kind.init().unwrap();
             let ty = cx.node_type(init.id);
-            l.init = Some(match ty.kind() {
+            let new_init = match ty.kind() {
                 TyKind::Bool => mk().lit_expr(mk().bool_lit(false)),
                 TyKind::Char => mk().lit_expr('\0'),
                 TyKind::Int(ity) => mk().lit_expr(mk().int_lit(0, *ity)),
                 TyKind::Uint(uty) => mk().lit_expr(mk().int_lit(0, *uty)),
                 TyKind::Float(fty) => mk().lit_expr(mk().float_lit("0", *fty)),
                 _ => return,
-            });
+            };
+
+            match l.kind {
+                LocalKind::Decl => {},
+                LocalKind::Init(ref mut init) => *init = new_init,
+                LocalKind::InitElse(ref mut init, _) => *init = new_init,
+            };
         })
     }
 
