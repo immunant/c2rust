@@ -62,7 +62,7 @@ pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Res)> {
         if did.index == CRATE_DEF_INDEX {
             // Crate root needs some special handling.  Looking it up in the HIR map by DefId
             // fails, but we can grab its root `Mod` directly.
-            let m = &tcx.hir().krate().module;
+            let m = &tcx.hir().root_module();
             let mut children = Vec::with_capacity(m.item_ids.len());
             push_hir_mod_children(tcx, m, &mut children);
             return children;
