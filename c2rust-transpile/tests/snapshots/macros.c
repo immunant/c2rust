@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <errno.h>
 
 struct S {
   int i;
@@ -289,7 +290,9 @@ struct fn_ptrs {
 
 typedef int (*fn_ptr_ty)(char);
 
-const struct fn_ptrs fns = {NULL, NULL, NULL};
+// TODO Skip for now since it uses `libc`, which we don't test in snapshots.
+// const struct fn_ptrs fns = {NULL, NULL, NULL};
+const struct fn_ptrs fns = {};
 
 // Make sure we can't refer to globals in a const macro
 #define GLOBAL_REF &fns
@@ -369,3 +372,22 @@ int use_local_value(void) { return LOCAL_VALUE; }
 bool use_portable_type(uintptr_t len) {
   return len <= UINTPTR_MAX / 2;
 }
+
+bool errno_is_error() {
+  return errno != 0;
+}
+
+int size_of_const() {
+  int a[10];
+  #define SIZE sizeof(a)
+  return SIZE;
+}
+
+#if 0
+// TODO VLA error
+int size_of_dynamic(int n) {
+  int a[n];
+  #define SIZE sizeof(a)
+  return SIZE;
+}
+#endif
