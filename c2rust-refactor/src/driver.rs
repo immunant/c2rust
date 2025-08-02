@@ -26,7 +26,7 @@ use rustc_ast::{
     Ty, UnsafeSource,
 };
 use rustc_span::hygiene::SyntaxContext;
-use rustc_parse::parser::{AttemptLocalParseRecovery, Parser};
+use rustc_parse::parser::{AttemptLocalParseRecovery, ForceCollect, Parser};
 use rustc_parse::parser::attr::InnerAttrPolicy;
 use rustc_ast::token::{self, TokenKind};
 use rustc_errors::PResult;
@@ -528,7 +528,7 @@ pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
     let mut p = make_parser(sess, src);
     let mut items = Vec::new();
     loop {
-        match p.parse_item() {
+        match p.parse_item(ForceCollect::No) {
             Ok(Some(mut item)) => {
                 remove_paren(&mut item);
                 items.push(item.lone());
@@ -545,7 +545,7 @@ pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<P<AssocItem>> {
     // TODO: rustc no longer exposes `parse_impl_item_`. `parse_item` is a hacky
     // workaround that may cause suboptimal error messages.
     let mut p = make_parser(sess, &format!("impl ! {{ {} }}", src));
-    match p.parse_item() {
+    match p.parse_item(ForceCollect::No) {
         Ok(item) => match item.expect("expected to find an item").into_inner().kind {
             ItemKind::Impl(box ast::Impl { items, .. }) => items,
             _ => panic!("expected to find an impl item"),
@@ -559,7 +559,7 @@ pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<P<ForeignItem>> {
     // TODO: rustc no longer exposes a method for parsing ForeignItems. `parse_item` is a hacky
     // workaround that may cause suboptimal error messages.
     let mut p = make_parser(sess, &format!("extern {{ {} }}", src));
-    match p.parse_item() {
+    match p.parse_item(ForceCollect::No) {
         Ok(item) => match item.expect("expected to find an item").into_inner().kind {
             ItemKind::ForeignMod(fm) => fm.items,
             _ => panic!("expected to find a foreignmod item"),
