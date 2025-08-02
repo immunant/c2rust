@@ -484,7 +484,8 @@ pub fn parse_expr(sess: &Session, src: &str) -> P<Expr> {
 #[cfg_attr(feature = "profile", flame)]
 pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
     let mut p = make_parser(sess, src);
-    match p.parse_pat(None) {
+    // TODO: do we want to allow top-level or-patterns here?
+    match p.parse_pat_no_top_alt(None) {
         Ok(mut pat) => {
             remove_paren(&mut pat);
             pat
@@ -602,7 +603,7 @@ fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Param> {
     while let token::Pound = p.token.kind {
         attrs.push(p.parse_attribute(INNER_ATTR_FORBIDDEN).unwrap());
     }
-    let pat = p.parse_pat(None)?;
+    let pat = p.parse_pat_no_top_alt(None)?;
     p.expect(&TokenKind::Colon)?;
     let ty = p.parse_ty()?;
     Ok(Param {
