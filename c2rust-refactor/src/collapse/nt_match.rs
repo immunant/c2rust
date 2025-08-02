@@ -165,7 +165,6 @@ as_nonterminal_impl!(Visibility, NtVis);
 as_nonterminal_impl!(TokenTree, NtTT);
 // as_nonterminal_impl!(Arm, NtArm);
 as_nonterminal_impl!(AssocItem, NtItem);
-as_nonterminal_impl!(ForeignItem, NtForeignItem);
 // as_nonterminal_impl!(Generics, NtGenerics);
 // as_nonterminal_impl!(WhereClause, NtWhereClause);
 // as_nonterminal_impl!(Arg, NtArg);
