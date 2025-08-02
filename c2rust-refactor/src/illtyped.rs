@@ -119,7 +119,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
             Some(x) => x,
             None => return,
         };
-        if let ty::TyKind::Error = ty.kind() {
+        if let ty::TyKind::Error(_) = ty.kind() {
             return;
         }
 
