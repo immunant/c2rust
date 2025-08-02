@@ -644,7 +644,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 self.ltt.unify(rty, self.fn_output(func_lty));
             }
 
-            ExprKind::MethodCall(_, _, ref args) => {
+            ExprKind::MethodCall(_, ref args, _) => {
                 let sig = self.method_sig(e);
                 for (i, arg) in args.iter().enumerate() {
                     self.ltt.unify(sig.inputs[i], self.expr_lty(arg));

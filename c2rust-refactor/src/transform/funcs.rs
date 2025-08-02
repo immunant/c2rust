@@ -6,7 +6,7 @@ use rustc_ast::ast;
 use rustc_ast::*;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
-use rustc_span::sym;
+use rustc_span::{sym, DUMMY_SP};
 use rustc_span::symbol::Ident;
 use smallvec::{smallvec, SmallVec};
 
@@ -256,7 +256,8 @@ impl Transform for ToMethod {
 
                 e.kind = ExprKind::MethodCall(
                     mk().path_segment(&info.ident),
-                    args
+                    args,
+                    DUMMY_SP,
                 );
             } else {
                 // There is no `self` argument, but change the function reference to the new path.
