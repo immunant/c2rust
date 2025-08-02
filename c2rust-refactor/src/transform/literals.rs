@@ -1034,7 +1034,7 @@ impl<'ast, 'a, 'kt, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'kt, 'tcx> {
         if let Some(ref ty) = l.ty {
             self.visit_ty(ty);
         }
-        if let Some(ref init) = l.init {
+        if let Some(ref init) = l.kind.init() {
             let key_tree = if let Some(ref ty) = l.ty {
                 self.ast_ty_to_key_tree(ty)
             } else {
