@@ -16,7 +16,7 @@ extern "C" {
     fn entry(_: c_uint, _: *mut c_int);
 }
 
-const BUFFER_SIZE: usize = 1;
+const BUFFER_SIZE: usize = 2;
 
 #[test]
 pub fn test_compiles() {
@@ -36,7 +36,8 @@ pub fn test_buffer() {
         rust_entry(BUFFER_SIZE as u32, rust_buffer.as_mut_ptr());
     }
 
-    assert_eq!(buffer, rust_buffer);
+    // 2nd element is a fn ptr address, which won't be the same.
+    assert_eq!(buffer[..1], rust_buffer[..1]);
 }
 
 #[test]

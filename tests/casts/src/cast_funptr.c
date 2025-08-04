@@ -1,4 +1,6 @@
 #include <stdlib.h>
+#include <assert.h>
+
 int identity(int i) { return i; }
 
 // dlsym also returns void*, it's not generally safe
@@ -7,6 +9,7 @@ int identity(int i) { return i; }
 void *get_identity(void) { return identity; }
 
 void entry(const unsigned sz, int buffer[const]) {
+        assert(sz >= 2);
         typeof(identity) * f = get_identity();
         buffer[0] = f(10);
         buffer[1] = (size_t)f;
