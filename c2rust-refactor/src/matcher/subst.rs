@@ -19,7 +19,7 @@
 
 use smallvec::SmallVec;
 use rustc_ast::MacCall;
-use rustc_ast::{AssocItem, Expr, ExprKind, Item, Label, Pat, Path, Stmt, Ty};
+use rustc_ast::{Expr, ExprKind, Item, Label, Pat, Path, Stmt, Ty};
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_span::symbol::Ident;
@@ -235,8 +235,11 @@ subst_impl!(P<Pat>, fold_pat);
 subst_impl!(P<Ty>, fold_ty);
 subst_impl!(Stmt, fold_stmt);
 subst_impl!(P<Item>, fold_item);
-subst_impl!(AssocItem, fold_assoc_item);
+// The visit function for associated items has a third AssocCtxt parameter
+// which complicates things. We ignore these for now because the transpiler
+// doesn't emit them anyway.
+//subst_impl!(AssocItem, fold_assoc_item);
 
 multi_subst_impl!(Stmt, fold_stmt);
 multi_subst_impl!(P<Item>, fold_item);
-multi_subst_impl!(AssocItem, fold_assoc_item);
+//multi_subst_impl!(AssocItem, fold_assoc_item);
