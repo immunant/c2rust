@@ -4929,8 +4929,8 @@ impl<'c> Translation<'c> {
             // is already in the form `(x <op> y) as <ty>` where `<op>` is a Rust operator
             // that returns a boolean, we can simple output `x <op> y` or `!(x <op> y)`.
             if let Expr::Cast(ExprCast { expr: ref arg, .. }) = *unparen(&val) {
-                if let Expr::Binary(ExprBinary { op, .. }) = *unparen(arg) {
-                    match op {
+                if let Expr::Binary(ExprBinary {
+                    op:
                         BinOp::Or(_)
                         | BinOp::And(_)
                         | BinOp::Eq(_)
@@ -4938,19 +4938,19 @@ impl<'c> Translation<'c> {
                         | BinOp::Lt(_)
                         | BinOp::Le(_)
                         | BinOp::Gt(_)
-                        | BinOp::Ge(_) => {
-                            if target {
-                                // If target == true, just return the argument
-                                return Box::new(unparen(arg).clone());
-                            } else {
-                                // If target == false, return !arg
-                                return mk().unary_expr(
-                                    UnOp::Not(Default::default()),
-                                    Box::new(unparen(arg).clone()),
-                                );
-                            }
-                        }
-                        _ => {}
+                        | BinOp::Ge(_),
+                    ..
+                }) = *unparen(arg)
+                {
+                    if target {
+                        // If target == true, just return the argument
+                        return Box::new(unparen(arg).clone());
+                    } else {
+                        // If target == false, return !arg
+                        return mk().unary_expr(
+                            UnOp::Not(Default::default()),
+                            Box::new(unparen(arg).clone()),
+                        );
                     }
                 }
             }

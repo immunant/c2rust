@@ -1,6 +1,8 @@
 #![deny(missing_docs)]
 //! This module provides basic support for converting inline assembly statements.
 
+use std::fmt::{self as fmt, Display, Formatter};
+
 use crate::diagnostics::TranslationResult;
 
 use super::*;
@@ -17,17 +19,20 @@ enum ArgDirSpec {
     InLateOut,
 }
 
-impl ToString for ArgDirSpec {
-    fn to_string(&self) -> String {
+impl Display for ArgDirSpec {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         use ArgDirSpec::*;
-        match self {
-            In => "in",
-            Out => "out",
-            InOut => "inout",
-            LateOut => "lateout",
-            InLateOut => "inlateout",
-        }
-        .to_owned()
+        write!(
+            f,
+            "{}",
+            match self {
+                In => "in",
+                Out => "out",
+                InOut => "inout",
+                LateOut => "lateout",
+                InLateOut => "inlateout",
+            }
+        )
     }
 }
 
