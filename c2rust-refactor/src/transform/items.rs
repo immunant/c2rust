@@ -210,22 +210,23 @@ impl Transform for ReplaceItems {
 
         // (1b) Impl items
         // TODO: Only inherent impls are supported for now.  May not work on trait impls.
-        FlatMapNodes::visit(krate, |i: AssocItem| {
-            if st.marked(i.id, "repl") {
-                if repl_id.is_none() {
-                    repl_id = Some(cx.node_def_id(i.id));
-                } else {
-                    panic!("found multiple `repl` items");
-                }
-            }
+        // TODO: Re-enable this once MutVisit can distinguish between ItemImpl and TraitImpl.
+        //FlatMapNodes::visit(krate, |i: AssocItem| {
+        //    if st.marked(i.id, "repl") {
+        //        if repl_id.is_none() {
+        //            repl_id = Some(cx.node_def_id(i.id));
+        //        } else {
+        //            panic!("found multiple `repl` items");
+        //        }
+        //    }
 
-            if st.marked(i.id, "target") {
-                target_ids.insert(cx.node_def_id(i.id));
-                smallvec![]
-            } else {
-                smallvec![i]
-            }
-        });
+        //    if st.marked(i.id, "target") {
+        //        target_ids.insert(cx.node_def_id(i.id));
+        //        smallvec![]
+        //    } else {
+        //        smallvec![i]
+        //    }
+        //});
 
         let repl_id = repl_id.expect("found no `repl` item");
 
