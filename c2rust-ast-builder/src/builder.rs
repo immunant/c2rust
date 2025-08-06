@@ -342,7 +342,7 @@ impl Make<TokenStream> for Vec<String> {
         let mut first = true;
 
         for s in self {
-            if first == false {
+            if !first {
                 tokens.push(TokenTree::Punct(Punct::new(',', Spacing::Alone)));
             } else {
                 first = false;
@@ -361,7 +361,7 @@ impl Make<TokenStream> for Vec<&str> {
         let mut first = true;
 
         for s in self {
-            if first == false {
+            if !first {
                 tokens.push(TokenTree::Punct(Punct::new(',', Spacing::Alone)));
             } else {
                 first = false;
@@ -380,7 +380,7 @@ impl Make<TokenStream> for Vec<u64> {
         let mut first = true;
 
         for s in self {
-            if first == false {
+            if !first {
                 tokens.push(TokenTree::Punct(Punct::new(',', Spacing::Alone)));
             } else {
                 first = false;
@@ -400,7 +400,7 @@ impl Make<TokenStream> for Vec<Meta> {
         let mut first = true;
 
         for meta in self {
-            if first == false {
+            if !first {
                 let tt = TokenTree::Punct(Punct::new(',', Spacing::Alone));
 
                 tokens.extend(vec![tt]);
