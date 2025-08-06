@@ -3496,11 +3496,7 @@ impl<'c> Translation<'c> {
                     return Ok(val);
                 }
 
-                let target_ty = if kind == CastKind::ArrayToPointerDecay {
-                    ty
-                } else {
-                    override_ty.unwrap_or(ty)
-                };
+                let target_ty = override_ty.unwrap_or(ty);
 
                 self.convert_cast(
                     ctx,
