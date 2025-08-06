@@ -239,8 +239,12 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
         match x.kind {
             ItemKind::Mod(_, ModKind::Loaded(ref mut m_items, _, _)) => self.restore_seq(id, m_items),
             ItemKind::ForeignMod(ref mut fm) => self.restore_seq(id, &mut fm.items),
-            ItemKind::Trait(box Trait { ref mut items, .. }) => self.restore_seq(id, items),
-            ItemKind::Impl(box Impl { ref mut items, .. }) => self.restore_seq(id, items),
+
+            // Both of these contain vectors of P<AssocItem>,
+            // and MutVisit has no way to distinguish between them.
+            // TODO: when we figure out a way to do so, re-enable them.
+            //ItemKind::Trait(box Trait { ref mut items, .. }) => self.restore_seq(id, items),
+            //ItemKind::Impl(box Impl { ref mut items, .. }) => self.restore_seq(id, items),
             _ => {}
         }
         mut_visit::noop_flat_map_item(x, self)
