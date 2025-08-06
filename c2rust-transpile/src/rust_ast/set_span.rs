@@ -186,7 +186,7 @@ set_span_impl!(enum ImplItem, s via
 
 impl SetSpan for Block {
     fn set_span(&mut self, s: Span) {
-        if self.stmts.is_empty() == false {
+        if !self.stmts.is_empty() {
             self.stmts[0].set_span(s);
         }
     }
