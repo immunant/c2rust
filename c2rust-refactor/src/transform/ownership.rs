@@ -161,10 +161,13 @@ fn do_annotate(st: &CommandState,
                 return mut_visit::noop_flat_map_field_def(fd, self);
             }
 
-            self.clean_attrs(&mut fd.attrs);
+            // fd.attrs is a ThinVec<Attribute> so we need to convert it to a Vec
+            let mut attrs = std::mem::take(&mut fd.attrs).into();
+            self.clean_attrs(&mut attrs);
             if let Some(attr) = self.static_attr_for(fd.id) {
-                fd.attrs.push(attr);
+                attrs.push(attr);
             }
+            fd.attrs = attrs.into();
 
             mut_visit::noop_flat_map_field_def(fd, self)
         }
