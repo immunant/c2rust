@@ -154,7 +154,7 @@ fn use_tree_with_prefix(prefix: Path, leaf: UseTree) -> UseTree {
 }
 
 fn punct<T, P: Default>(x: Vec<T>) -> Punctuated<T, P> {
-    Punctuated::from_iter(x.into_iter())
+    Punctuated::from_iter(x)
 }
 
 fn punct_box<T, P: Default>(x: Vec<Box<T>>) -> Punctuated<T, P> {
