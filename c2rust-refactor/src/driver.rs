@@ -646,7 +646,7 @@ where
     let mut p = rustc_parse::stream_to_parser(
         &sess.parse_sess,
         tts.into_iter().collect(),
-        "c2rust-refactor parser",
+        Some("c2rust-refactor parser"),
     );
     match f(&mut p) {
         Ok(x) => x,
@@ -677,7 +677,7 @@ where
     let mut p = rustc_parse::stream_to_parser(
         &sess.parse_sess,
         tts.into_iter().collect(),
-        "c2rust-refactor parser",
+        Some("c2rust-refactor parser"),
     );
     match f(&mut p) {
         Ok(x) => Some(x),
