@@ -433,6 +433,19 @@ impl TypedAstContext {
         }
     }
 
+    /// Find underlying expression beneath any implicit casts.
+    pub fn beneath_implicit_casts(&self, expr_id: CExprId) -> CExprId {
+        let expr = &self.index(expr_id).kind;
+        use CExprKind::*;
+        match expr {
+            ImplicitCast(_, subexpr, _, _, _) => {
+                return self.beneath_implicit_casts(*subexpr);
+            }
+            _ => {}
+        }
+        expr_id
+    }
+
     /// Resolve true expression type, iterating through any casts and variable
     /// references.
     pub fn resolve_expr_type_id(&self, expr_id: CExprId) -> Option<(CExprId, CTypeId)> {

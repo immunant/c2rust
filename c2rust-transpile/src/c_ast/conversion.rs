@@ -504,6 +504,17 @@ impl ConversionContext {
             }
         }
 
+        // Adjust all macro expansions to skip any implicit casts added at the expansion site.
+        self.typed_context.macro_invocations = mem::take(&mut self.typed_context.macro_invocations)
+            .into_iter()
+            .map(|(expr_id, macro_ids)| {
+                (
+                    self.typed_context.beneath_implicit_casts(expr_id),
+                    macro_ids,
+                )
+            })
+            .collect();
+
         // Invert the macro invocations to get a list of macro expansion expressions
         for (expr_id, macro_ids) in &self.typed_context.macro_invocations {
             for mac_id in macro_ids {
