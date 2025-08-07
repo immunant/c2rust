@@ -19,6 +19,7 @@
 // attributes and their effects.
 
 
+#[no_span]
 struct Crate {
     #[seq_rewrite_outer_span='calc_outer_span(&self.attrs, self.spans.inner_span.shrink_to_lo())']
     attrs,

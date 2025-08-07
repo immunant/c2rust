@@ -30,4 +30,10 @@ impl<T: GetSpan + ?Sized> GetSpan for P<T> {
     }
 }
 
+impl GetSpan for Crate {
+    fn get_span(&self) -> Span {
+        self.spans.inner_span
+    }
+}
+
 include!(concat!(env!("OUT_DIR"), "/get_span_gen.inc.rs"));
