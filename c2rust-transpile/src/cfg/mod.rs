@@ -354,7 +354,7 @@ impl<L: Serialize> Serialize for GenTerminator<L> {
                 ref cases,
             } => {
                 let mut cases_sane: Vec<(String, &L)> = vec![];
-                for &(ref p, ref l) in cases {
+                for (p, l) in cases {
                     let pat: String = pprust::pat_to_string(p);
                     cases_sane.push((pat, l));
                 }
@@ -580,16 +580,13 @@ impl Cfg<Label, StmtOrDecl> {
                 _ => None,
             })
         {
-            c_label_to_goto
-                .entry(target)
-                .or_insert(IndexSet::new())
-                .insert(x);
+            c_label_to_goto.entry(target).or_default().insert(x);
         }
 
         let mut cfg_builder = CfgBuilder::new(c_label_to_goto);
         let entry = cfg_builder.entry.clone();
         cfg_builder.per_stmt_stack.push(PerStmt::new(
-            stmt_ids.get(0).cloned(),
+            stmt_ids.first().cloned(),
             entry.clone(),
             IndexSet::new(),
         ));
@@ -1105,9 +1102,8 @@ impl DeclStmtStore {
 
     /// Extract the Rust statements for the full declaration and initializers. DEBUGGING ONLY.
     pub fn peek_decl_and_assign(&self, decl_id: CDeclId) -> TranslationResult<Vec<Stmt>> {
-        let &DeclStmtInfo {
-            ref decl_and_assign,
-            ..
+        let DeclStmtInfo {
+            decl_and_assign, ..
         } = self
             .store
             .get(&decl_id)
@@ -1759,7 +1755,7 @@ impl CfgBuilder {
                 self.last_per_stmt_mut()
                     .c_labels_used
                     .entry(label_id)
-                    .or_insert(IndexSet::new())
+                    .or_default()
                     .insert(stmt_id);
 
                 Ok(None)

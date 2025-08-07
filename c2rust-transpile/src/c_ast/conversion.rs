@@ -2164,7 +2164,7 @@ impl ConversionContext {
 
                     let initializer = node
                         .children
-                        .get(0)
+                        .first()
                         .into_iter()
                         .flatten()
                         .map(|id| self.visit_expr(*id))

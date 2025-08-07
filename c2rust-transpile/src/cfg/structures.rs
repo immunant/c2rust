@@ -285,7 +285,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label,
                         Switch { expr, cases } => {
                             let branched_cases = cases
                                 .iter()
-                                .map(|&(ref pat, ref slbl)| Ok((pat.clone(), branch(slbl)?)))
+                                .map(|(pat, slbl)| Ok((pat.clone(), branch(slbl)?)))
                                 .collect::<TranslationResult<_>>()?;
 
                             S::mk_match(expr.clone(), branched_cases)

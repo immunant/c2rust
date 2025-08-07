@@ -2420,8 +2420,8 @@ mod tests {
                 let b = locs[j];
                 for c in locs.iter().take(n) {
                     let ab = ctx.compare_src_locs(&a, &b);
-                    let bc = ctx.compare_src_locs(&b, &c);
-                    let ac = ctx.compare_src_locs(&a, &c);
+                    let bc = ctx.compare_src_locs(&b, c);
+                    let ac = ctx.compare_src_locs(&a, c);
                     if ab == bc {
                         let [ab, bc, ac] = [ab, bc, ac].map(|ord| match ord {
                             Ordering::Less => "<",
