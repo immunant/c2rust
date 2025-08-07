@@ -11,13 +11,12 @@ input_file: c2rust-transpile/tests/snapshots/sigign.c
     unused_assignments,
     unused_mut
 )]
-pub const SIG_IGN: std::ffi::c_int = 1 as std::ffi::c_int;
 #[no_mangle]
 pub unsafe extern "C" fn foo() {
     let mut handler: Option<unsafe extern "C" fn(std::ffi::c_int) -> ()> = ::core::mem::transmute::<
         libc::intptr_t,
         Option<unsafe extern "C" fn(std::ffi::c_int) -> ()>,
     >(
-        SIG_IGN as libc::intptr_t,
+        1 as std::ffi::c_int as libc::intptr_t,
     );
 }

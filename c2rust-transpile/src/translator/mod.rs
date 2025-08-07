@@ -2169,11 +2169,7 @@ impl<'c> Translation<'c> {
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("Invalid expression type"))?;
-                let (expr_id, ty) = self
-                    .ast_context
-                    .resolve_expr_type_id(id)
-                    .unwrap_or((id, ty));
-                let expr = self.convert_expr(ctx, expr_id, None)?;
+                let expr = self.convert_expr(ctx, id, None)?;
 
                 // Join ty and cur_ty to the smaller of the two types. If the
                 // types are not cast-compatible, abort the fold.
