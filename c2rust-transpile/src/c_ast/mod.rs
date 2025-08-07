@@ -691,9 +691,52 @@ impl TypedAstContext {
         }
     }
 
-    pub fn is_const_stmt(&self, _stmt: CStmtId) -> bool {
-        // TODO
-        false
+    pub fn is_const_stmt(&self, stmt: CStmtId) -> bool {
+        let is_const = |stmt| self.is_const_stmt(stmt);
+        let is_const_expr = |expr| self.is_const_expr(expr);
+
+        use CStmtKind::*;
+        match self[stmt].kind {
+            Label(stmt) => is_const(stmt),
+            Case(expr, stmt, _const_expr) => is_const_expr(expr) && is_const(stmt),
+            Default(stmt) => is_const(stmt),
+            Compound(ref stmts) => stmts.iter().copied().all(is_const),
+            Expr(expr) => is_const_expr(expr),
+            Empty => true,
+            If {
+                scrutinee,
+                true_variant,
+                false_variant,
+            } => {
+                is_const_expr(scrutinee)
+                    && is_const(true_variant)
+                    && false_variant.map_or(true, is_const)
+            }
+            Switch { scrutinee, body } => is_const_expr(scrutinee) && is_const(body),
+            While { condition, body } => is_const_expr(condition) && is_const(body),
+            DoWhile { body, condition } => is_const(body) && is_const_expr(condition),
+            ForLoop {
+                init,
+                condition,
+                increment,
+                body,
+            } => {
+                init.map_or(true, is_const)
+                    && condition.map_or(true, is_const_expr)
+                    && increment.map_or(true, is_const_expr)
+                    && is_const(body)
+            }
+            Goto(label) => is_const(label),
+            Break => true,
+            Continue => true,
+            Return(expr) => expr.map_or(true, is_const_expr),
+            Decls(ref _decls) => true,
+            Asm { .. } => false,
+            Attributed {
+                attributes: _,
+                substatement,
+            } => is_const(substatement),
+        }
     }
 
     pub fn prune_unwanted_decls(&mut self, want_unused_functions: bool) {
