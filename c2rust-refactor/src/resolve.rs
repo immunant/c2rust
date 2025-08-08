@@ -37,9 +37,8 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res)>
             // default logic, which omits the `use` (there is no `Def::Use` variant).
             _ => {
                 let item_did = item_did.to_def_id();
-                if let Some(def) = tcx.def_kind(item_did) {
-                    children.push((item.ident.name, Res::Def(def, item_did)));
-                }
+                let def = tcx.def_kind(item_did);
+                children.push((item.ident.name, Res::Def(def, item_did)));
             }
         }
     }
@@ -48,9 +47,8 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res)>
 fn push_hir_foreign_mod_children(tcx: TyCtxt, items: &[ForeignItemRef], children: &mut Vec<(Symbol, Res)>) {
     for fi in &items[..] {
         let did = tcx.hir().local_def_id(fi.id.hir_id()).to_def_id();
-        if let Some(def) = tcx.def_kind(did) {
-            children.push((fi.ident.name, Res::Def(def, did)));
-        }
+        let def = tcx.def_kind(did);
+        children.push((fi.ident.name, Res::Def(def, did)));
     }
 }
 
