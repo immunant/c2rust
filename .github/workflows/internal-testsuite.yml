@@ -8,7 +8,6 @@ on:
   push:
     branches: [ master, feature/ci-dev ]
   pull_request:
-    branches: [ master ]
   # allow using from other repos (in particular, c2rust-testsuite)
   workflow_call:
 
