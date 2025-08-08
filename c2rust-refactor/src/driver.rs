@@ -312,7 +312,7 @@ pub struct Compiler {
     output_file: Option<PathBuf>,
     register_lints: Option<Box<dyn Fn(&Session, &mut LintStore) + Send + Sync>>,
     override_queries:
-        Option<fn(&Session, &mut ty::query::Providers, &mut ty::query::Providers)>,
+        Option<fn(&Session, &mut ty::query::Providers, &mut ty::query::ExternProviders)>,
 }
 
 pub fn make_compiler(config: &Config, file_io: Arc<dyn FileIO + Sync + Send>) -> interface::Compiler {
