@@ -201,7 +201,7 @@ struct ExprPatVisitor<'lty, 'tcx> {
 impl<'lty, 'tcx> ExprPatVisitor<'lty, 'tcx> {
     /// Process the type tables for a single body.
     fn handle_body(&mut self, body_id: BodyId) {
-        let tables = self.tcx.body_tables(body_id);
+        let tables = self.tcx.typeck_body(body_id);
         let def_id = match_or!([tables.local_id_root] Some(x) => x; return);
 
         for (&local_id, &ty) in tables.node_types().iter() {
@@ -269,7 +269,7 @@ impl<'lty, 'tcx> LabelTysSource<'lty, 'tcx> {
             .hir()
             .get_parent_item(self.tcx.hir().node_to_hir_id(id));
         let parent_body = self.tcx.hir().body_owned_by(parent);
-        self.tcx.body_tables(parent_body)
+        self.tcx.typeck_body(parent_body)
     }
 
     fn node_lty(&self, id: NodeId) -> LTy<'lty, 'tcx> {
@@ -542,7 +542,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     fn get_tables(&self, id: HirId) -> &'tcx TypeckResults<'tcx> {
         let parent = self.tcx.hir().get_parent_item(id);
         let parent_body = self.tcx.hir().body_owned_by(parent);
-        self.tcx.body_tables(parent_body)
+        self.tcx.typeck_body(parent_body)
     }
 
     /// Get the signature of the method being called by an expression.  This includes substituting

@@ -169,7 +169,7 @@ impl Transform for TestDebugCallees {
             let parent = hir_map.get_parent_item(hir_map.node_to_hir_id(e.id));
             let parent_body = match_or!([hir_map.maybe_body_owned_by(parent)]
                                         Some(x) => x; return);
-            let tables = tcx.body_tables(parent_body);
+            let tables = tcx.typeck_body(parent_body);
             let tdds = tables.type_dependent_defs();
 
             fn maybe_info<T: ::std::fmt::Debug>(desc: &str, x: Option<T>) {
