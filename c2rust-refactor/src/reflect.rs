@@ -376,7 +376,7 @@ fn register_test_reflect(reg: &mut Registry) {
                             .hir_map()
                             .get_parent_item(cx.hir_map().node_to_hir_id(e.id));
                         let parent_body = cx.hir_map().body_owned_by(parent);
-                        let tables = cx.ty_ctxt().body_tables(parent_body);
+                        let tables = cx.ty_ctxt().typeck_body(parent_body);
                         let hir_id = cx.hir_map().node_to_hir_id(e.id);
                         let substs = tables.node_substs(hir_id);
                         let substs = substs.types().collect::<Vec<_>>();

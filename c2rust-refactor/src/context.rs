@@ -308,7 +308,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         let parent = hir_map.get_parent_item(hir_id);
         let parent_body = match_or!([hir_map.maybe_body_owned_by(parent)]
                                     Some(x) => x; return None);
-        let tables = tcx.body_tables(parent_body);
+        let tables = tcx.typeck_body(parent_body);
 
         let mut def_id = None;
         let poly_sig;
@@ -473,7 +473,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         let parent = hir_map.get_parent_item(hir_id);
         let parent_body = match_or!([hir_map.maybe_body_owned_by(parent)]
                                     Some(x) => x; return None);
-        let tables = tcx.body_tables(parent_body);
+        let tables = tcx.typeck_body(parent_body);
 
         let tdd = tables.type_dependent_defs();
         let def = match_or!([tdd.get(hir_id)] Some(x) => x; return None);
