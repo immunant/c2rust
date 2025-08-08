@@ -1274,7 +1274,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                     return true;
                 }
                 sub_expected.ty = self.cx.ty_ctxt().mk_ref(
-                    &ty::ReEmpty,
+                    self.cx.ty_ctxt().lifetimes.re_root_empty,
                     ty::TypeAndMut{ty: sub_expected.ty, mutbl: *mutbl},
                 );
                 if self.try_retype(&mut e, sub_expected) {
@@ -1295,10 +1295,10 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                     }
                     TyKind::Ref(_, _, subtype_mutbl) => {
                         let mutbl = expected.mutability.unwrap_or(*subtype_mutbl);
-                        self.cx.ty_ctxt().mk_ref(&ty::ReEmpty, ty::TypeAndMut{
-                            ty: expected.ty,
-                            mutbl
-                        })
+                        self.cx.ty_ctxt().mk_ref(
+                            self.cx.ty_ctxt().lifetimes.re_root_empty,
+                            ty::TypeAndMut { ty: expected.ty, mutbl },
+                        )
                     }
                     _ => panic!("Unsupported type for dereference"),
                 };
