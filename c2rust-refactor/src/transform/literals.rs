@@ -569,7 +569,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 let hir_id = tcx.hir().node_to_hir_id(ex.id);
                 let parent = tcx.hir().get_parent_item(hir_id);
                 let body = tcx.hir().body_owned_by(parent);
-                let tables = tcx.body_tables(body);
+                let tables = tcx.typeck_body(body);
                 let did = tables.type_dependent_def_id(hir_id).unwrap();
                 let callee_key_tree = self.def_id_to_key_tree(did, ex.span);
 
