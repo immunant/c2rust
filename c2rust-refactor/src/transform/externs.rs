@@ -220,7 +220,7 @@ pub struct CanonicalizeExterns {
 
 fn is_foreign_symbol(tcx: TyCtxt, did: DefId) -> bool {
     tcx.is_foreign_item(did) &&
-    crate::matches!([tcx.def_kind(did)] Some(DefKind::Fn), Some(DefKind::Static(_)))
+    crate::matches!([tcx.def_kind(did)] DefKind::Fn, DefKind::Static(_))
 }
 
 impl Transform for CanonicalizeExterns {
