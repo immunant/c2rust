@@ -267,7 +267,7 @@ pub fn run_compiler<F, R>(
     f: F,
 ) -> R
 where
-    F: FnOnce(&interface::Compiler) -> R,
+    F: FnOnce(&interface::Compiler) -> R + Send,
     R: Send,
 {
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
@@ -287,7 +287,7 @@ pub fn run_refactoring<F, R>(
     f: F,
 ) -> R
 where
-    F: FnOnce(RefactorState) -> R,
+    F: FnOnce(RefactorState) -> R + Send,
     R: Send,
 {
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
