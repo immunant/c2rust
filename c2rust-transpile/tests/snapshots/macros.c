@@ -37,6 +37,17 @@ struct S {
 #define TERNARY LITERAL_BOOL ? 1 : 2
 #define MEMBER LITERAL_STRUCT.i
 
+#define STMT_EXPR                                                              \
+  ({                                                                           \
+    int builtin = BUILTIN;                                                     \
+    char indexing = INDEXING;                                                  \
+    float mixed = MIXED_ARITHMETIC;                                            \
+    for (int i = 0; i < builtin; i++) {                                        \
+      mixed += (float)indexing;                                                \
+    }                                                                          \
+    mixed;                                                                     \
+  })
+
 void local_muts() {
   int literal_int = LITERAL_INT;
   bool literal_bool = LITERAL_BOOL;
@@ -71,6 +82,7 @@ void local_muts() {
   const struct S *ref_struct = REF_LITERAL;
   int ternary = TERNARY;
   int member = MEMBER;
+  float stmt_expr = STMT_EXPR;
 }
 
 void local_consts() {
@@ -107,6 +119,7 @@ void local_consts() {
   const struct S *const ref_struct = REF_LITERAL;
   const int ternary = TERNARY;
   const int member = MEMBER;
+  const float stmt_expr = STMT_EXPR;
 }
 
 // TODO These are declared in the global scope and thus clash,
@@ -146,6 +159,7 @@ void local_static_consts() {
   static const struct S *const ref_struct = REF_LITERAL;
   static const int ternary = TERNARY;
   static const int member = MEMBER;
+  static const float stmt_expr = STMT_EXPR;
 }
 #endif
 
@@ -186,6 +200,7 @@ static const char *const global_static_const_ref_indexing = REF_MACRO;
 static const struct S *const global_static_const_ref_struct = REF_LITERAL;
 static const int global_static_const_ternary = TERNARY;
 static const int global_static_const_member = MEMBER;
+// static const float global_static_const_stmt_expr = STMT_EXPR; // Statement expression not allowed at file scope.
 
 void global_static_consts() {
   // Need to use `static`s or else they'll be removed when translated.
@@ -222,6 +237,7 @@ void global_static_consts() {
   (void)global_static_const_ref_struct;
   (void)global_static_const_ternary;
   (void)global_static_const_member;
+  // (void)global_static_const_stmt_expr;
 }
 
 // global consts
@@ -259,6 +275,7 @@ const char *const global_const_ref_indexing = REF_MACRO;
 const struct S *const global_const_ref_struct = REF_LITERAL;
 const int global_const_ternary = TERNARY;
 const int global_const_member = MEMBER;
+// const float global_const_stmt_expr = STMT_EXPR; // Statement expression not allowed at file scope.
 
 typedef unsigned long long U64;
 
