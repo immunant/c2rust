@@ -41,9 +41,9 @@ use rustc_session::Session;
 use smallvec::SmallVec;
 use std::cmp;
 use std::result;
-use rustc_ast::{Block, Expr, ExprKind, Item, Label, Lit, MacArgs, Pat, Path, Stmt, Ty};
+use rustc_ast::{Block, Expr, ExprKind, Item, Label, Lit, MacArgs, Pat, Path, QSelf, Stmt, Ty, TyKind};
 use rustc_ast::mut_visit::{self, MutVisitor};
-use rustc_parse::parser::{AttemptLocalParseRecovery, ForceCollect, Parser, PathStyle};
+use rustc_parse::parser::{AttemptLocalParseRecovery, ForceCollect, Parser};
 use rustc_ast::token::{self, TokenKind};
 use rustc_errors::PResult;
 use rustc_ast::ptr::P;
@@ -511,8 +511,8 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     fn do_def_impl(
         &mut self,
         args: &MacArgs,
-        style: PathStyle,
         opt_def_id: Option<DefId>,
+        parse_path: impl FnOnce(&mut Parser) -> Option<(Option<QSelf>, Path)>,
     ) -> Result<()> {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
@@ -520,13 +520,11 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             false,
             None,
         );
-        let path_pattern = p.parse_path(style).unwrap();
+        let (path_qself, path_pattern) = parse_path(&mut p).ok_or(Error::DefMismatch)?;
 
         let def_id = match_or!([opt_def_id] Some(x) => x;
                                return Err(Error::DefMismatch));
-        // TODO: We currently ignore the QSelf.  This means `<S as T>::f` gets matched as just
-        // `T::f`.  This would be a little annoying to fix, since `parse_qpath` is private.
-        let (_qself, def_path) = reflect::reflect_def_path(self.cx.ty_ctxt(), def_id);
+        let (def_qself, def_path) = reflect::reflect_def_path(self.cx.ty_ctxt(), def_id);
 
         if self.debug {
             eprintln!(
@@ -534,9 +532,8 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
                 path_pattern, def_path
             );
         }
-        if self.try_match(&path_pattern, &def_path).is_err() {
-            return Err(Error::DefMismatch);
-        }
+        self.try_match(&path_pattern, &def_path).or(Err(Error::DefMismatch))?;
+        self.try_match(&path_qself, &def_qself).or(Err(Error::DefMismatch))?;
 
         Ok(())
     }
@@ -544,13 +541,23 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     /// Handle the `def!(...)` matching form for exprs.
     pub fn do_def_expr(&mut self, args: &MacArgs, target: &Expr) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_expr(target);
-        self.do_def_impl(args, PathStyle::Expr, opt_def_id)
+        self.do_def_impl(args, opt_def_id, |p| {
+            match p.parse_expr().unwrap().into_inner().kind {
+                ExprKind::Path(qself, path) => Some((qself, path)),
+                _ => None
+            }
+        })
     }
 
     /// Handle the `def!(...)` matching form for exprs.
     pub fn do_def_ty(&mut self, args: &MacArgs, target: &Ty) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_ty(target);
-        self.do_def_impl(args, PathStyle::Type, opt_def_id)
+        self.do_def_impl(args, opt_def_id, |p| {
+            match p.parse_ty().unwrap().into_inner().kind {
+                TyKind::Path(qself, path) => Some((qself, path)),
+                _ => None
+            }
+        })
     }
 
     /// Handle the `typed!(...)` matching form.
