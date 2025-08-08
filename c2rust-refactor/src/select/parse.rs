@@ -4,8 +4,8 @@ use rustc_session::Session;
 use std::mem;
 use std::str::FromStr;
 use std::vec;
-use rustc_ast::Path;
-use rustc_parse::parser::{AttemptLocalParseRecovery, Parser, PathStyle};
+use rustc_ast::{ExprKind, Path};
+use rustc_parse::parser::{AttemptLocalParseRecovery, Parser};
 use rustc_ast::token::{Delimiter, Lit, LitKind, Token, TokenKind};
 use rustc_session::parse::ParseSess;
 use rustc_span::symbol::Symbol;
@@ -133,9 +133,12 @@ impl<'a> Stream<'a> {
     fn path(&mut self) -> PResult<Path> {
         let ts = mem::replace(&mut self.toks, Vec::new().into_iter());
         let mut p = Parser::new(self.sess, ts.collect(), false, None);
-        let path = p
-            .parse_path(PathStyle::Mod)
-            .map_err(|e| format!("error parsing path: {:?}", e.message))?;
+        let path_expr = p.parse_expr()
+            .map_err(|e| format!("error parsing path as expr: {:?}", e.message))?;
+        let path = match path_expr.into_inner().kind {
+            ExprKind::Path(None, p) => p,
+            kind @ _ => return Err(format!("error converting expr to path: {:?}", kind))
+        };
         self.toks = p
             .parse_all_token_trees()
             .map_err(|e| format!("error parsing path: {:?}", e.message))?
