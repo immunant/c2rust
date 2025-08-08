@@ -125,7 +125,7 @@ impl Transform for ReconstructForRange {
 			let parent_body_id = match_or!([hir_map.maybe_body_owned_by(parent_hir_id)]
                                            Some(x) => x; return);
             let parent_body = hir_map.body(parent_body_id);
-			let tables = tcx.body_tables(parent_body_id);
+            let tables = tcx.typeck_body(parent_body_id);
             tcx.infer_ctxt().enter(|infcx| {
                 ExprUseVisitor::new(&mut delegate, &infcx, parent_did,
                                     ParamEnv::empty(), tables)
