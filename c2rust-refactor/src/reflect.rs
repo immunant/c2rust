@@ -238,12 +238,12 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                 // If we query for generics_of non-local defs, we may get a
                 // panic if the def cannot be generic. This is a list of
                 // DefKinds that can have generic type params.
-                Some(DefKind::Struct) | Some(DefKind::Union) | Some(DefKind::Enum)
-                    | Some(DefKind::Variant) | Some(DefKind::Trait) | Some(DefKind::OpaqueTy)
-                    | Some(DefKind::TyAlias) | Some(DefKind::ForeignTy) | Some(DefKind::TraitAlias)
-                    | Some(DefKind::AssocTy)
-                    | Some(DefKind::TyParam) | Some(DefKind::Fn) | Some(DefKind::AssocFn)
-                    | Some(DefKind::Ctor(..)) => {
+                DefKind::Struct | DefKind::Union | DefKind::Enum
+                    | DefKind::Variant | DefKind::Trait | DefKind::OpaqueTy
+                    | DefKind::TyAlias | DefKind::ForeignTy | DefKind::TraitAlias
+                    | DefKind::AssocTy
+                    | DefKind::TyParam | DefKind::Fn | DefKind::AssocFn
+                    | DefKind::Ctor(..) => {
                         let gen = self.tcx.generics_of(id);
                         let num_params = gen
                             .params
