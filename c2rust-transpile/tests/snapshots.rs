@@ -109,6 +109,7 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
     let rlib_path = format!("lib{crate_name}.rlib");
     let status = Command::new("rustc")
         .args(&[
+            "+nightly-2022-08-08",
             "--crate-type",
             "lib",
             "--edition",
