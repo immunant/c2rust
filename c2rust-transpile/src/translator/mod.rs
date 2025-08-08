@@ -27,12 +27,12 @@ use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_printer::pprust::{self};
 
 use crate::c_ast::iterators::{DFExpr, SomeId};
-use crate::c_ast::*;
 use crate::cfg;
 use crate::convert_type::TypeConverter;
 use crate::renamer::Renamer;
 use crate::with_stmts::WithStmts;
 use crate::{c_ast, format_translation_err};
+use crate::{c_ast::*, TranslateMacros};
 use crate::{ExternCrate, ExternCrateDetails, TranspilerConfig};
 use c2rust_ast_exporter::clang_ast::LRValue;
 
@@ -694,8 +694,8 @@ pub fn translate(
             let needs_export = match t.ast_context[*top_id].kind {
                 Function { is_implicit, .. } => !is_implicit,
                 Variable { .. } => true,
-                MacroObject { .. } => tcfg.translate_const_macros,
-                MacroFunction { .. } => tcfg.translate_fn_macros,
+                MacroObject { .. } => true, // Depends on `tcfg.translate_const_macros`, but handled in `fn convert_const_macro_expansion`.
+                MacroFunction { .. } => true, // Depends on `tcfg.translate_fn_macros`, but handled in `fn convert_fn_macro_invocation`.
                 _ => false,
             };
             if needs_export {
@@ -2161,6 +2161,21 @@ impl<'c> Translation<'c> {
         }
     }
 
+    /// Determine if we're able to convert this const macro expansion.
+    fn can_convert_const_macro_expansion(&self, expr_id: CExprId) -> TranslationResult<()> {
+        let kind = &self.ast_context[expr_id].kind;
+        match self.tcfg.translate_const_macros {
+            TranslateMacros::None => Err(format_err!("translate_const_macros is None"))?,
+            TranslateMacros::Conservative => match *kind {
+                CExprKind::Literal(..) => Ok(()), // Literals are leaf expressions, so they should always be const-compatible.
+                _ => Err(format_err!(
+                    "conservative const macros don't yet allow {kind:?}"
+                ))?,
+            },
+            TranslateMacros::Experimental => Ok(()),
+        }
+    }
+
     /// Given all of the expansions of a const macro,
     /// try to recreate a Rust `const` translation
     /// that is equivalent to every expansion.
@@ -2180,6 +2195,8 @@ impl<'c> Translation<'c> {
         let (val, ty) = expansions
             .iter()
             .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, &id| {
+                self.can_convert_const_macro_expansion(id)?;
+
                 let ty = self.ast_context[id]
                     .kind
                     .get_type()
@@ -3246,13 +3263,11 @@ impl<'c> Translation<'c> {
             self.ast_context[expr_id]
         );
 
-        if self.tcfg.translate_const_macros {
-            if let Some(converted) = self.convert_const_macro_expansion(ctx, expr_id)? {
-                return Ok(converted);
-            }
+        if let Some(converted) = self.convert_const_macro_expansion(ctx, expr_id)? {
+            return Ok(converted);
         }
 
-        if self.tcfg.translate_fn_macros {
+        {
             let text = self.ast_context.macro_expansion_text.get(&expr_id);
             if let Some(converted) =
                 text.and_then(|text| self.convert_fn_macro_invocation(ctx, text))
@@ -4162,6 +4177,12 @@ impl<'c> Translation<'c> {
         _ctx: ExprContext,
         text: &str,
     ) -> Option<WithStmts<Box<Expr>>> {
+        match self.tcfg.translate_fn_macros {
+            TranslateMacros::None => return None,
+            TranslateMacros::Conservative => return None, // Nothing is supported for `Conservative` yet.
+            TranslateMacros::Experimental => {}
+        }
+
         let mut split = text.splitn(2, '(');
         let ident = split.next()?.trim();
         let args = split.next()?.trim_end_matches(')');

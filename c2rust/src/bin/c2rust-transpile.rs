@@ -40,13 +40,13 @@ struct Args {
     #[clap(short = 'v', long)]
     verbose: bool,
 
-    /// Enable translation of some C macros into consts
-    #[clap(long)]
-    translate_const_macros: bool,
+    /// Enable translation of some C macros into consts.
+    #[clap(long, value_enum, default_value_t)]
+    translate_const_macros: TranslateMacros,
 
-    /// Enable translation of some C function macros into invalid Rust code. WARNING: resulting code will not compile.
-    #[clap(long)]
-    translate_fn_macros: bool,
+    /// Enable translation of some C function macros.
+    #[clap(long, value_enum, default_value_t)]
+    translate_fn_macros: TranslateMacros,
 
     /// Disable relooping function bodies incrementally
     #[clap(long)]
@@ -157,6 +157,34 @@ struct Args {
     fail_on_multiple: bool,
 }
 
+// TODO Eventually move this code into `c2rust-transpile`
+// so that it doesn't have to be duplicated for the `clap` derives.
+#[derive(Default, Debug, PartialEq, Eq, ValueEnum, Clone)]
+pub enum TranslateMacros {
+    /// Don't translate any macros.
+    None,
+
+    /// Translate the conservative subset of macros known to always work.
+    #[default]
+    Conservative,
+
+    /// Try to translate more, but this is experimental and not guaranteed to work.
+    ///
+    /// For const-like macros, this works in some cases.
+    /// For function-like macros, this doesn't really work at all yet.
+    Experimental,
+}
+
+impl From<TranslateMacros> for c2rust_transpile::TranslateMacros {
+    fn from(this: TranslateMacros) -> Self {
+        match this {
+            TranslateMacros::None => c2rust_transpile::TranslateMacros::None,
+            TranslateMacros::Conservative => c2rust_transpile::TranslateMacros::Conservative,
+            TranslateMacros::Experimental => c2rust_transpile::TranslateMacros::Experimental,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, ValueEnum, Clone)]
 #[clap(rename_all = "snake_case")]
 enum InvalidCodes {
@@ -196,8 +224,8 @@ fn main() {
         // stable rust output.
         translate_valist: true,
 
-        translate_const_macros: args.translate_const_macros,
-        translate_fn_macros: args.translate_fn_macros,
+        translate_const_macros: args.translate_const_macros.into(),
+        translate_fn_macros: args.translate_fn_macros.into(),
         disable_refactoring: args.disable_refactoring,
         preserve_unused_functions: args.preserve_unused_functions,
 

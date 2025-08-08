@@ -29,6 +29,7 @@ pub struct fn_ptrs {
     pub fn2: Option<unsafe extern "C" fn(std::ffi::c_int) -> std::ffi::c_int>,
 }
 pub type zstd_platform_dependent_type = std::ffi::c_long;
+pub const NESTED_INT: std::ffi::c_int = 0xffff as std::ffi::c_int;
 #[no_mangle]
 pub unsafe extern "C" fn local_muts() {
     let mut literal_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
@@ -50,7 +51,7 @@ pub unsafe extern "C" fn local_muts() {
         };
         init
     };
-    let mut nested_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
+    let mut nested_int: std::ffi::c_int = NESTED_INT;
     let mut nested_bool: bool = 1 as std::ffi::c_int != 0;
     let mut nested_float: std::ffi::c_float = 3.14f32;
     let mut nested_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
@@ -70,13 +71,12 @@ pub unsafe extern "C" fn local_muts() {
         init
     };
     let mut int_arithmetic: std::ffi::c_int =
-        0xffff as std::ffi::c_int + 0xffff as std::ffi::c_int + 1 as std::ffi::c_int;
+        NESTED_INT + 0xffff as std::ffi::c_int + 1 as std::ffi::c_int;
     let mut mixed_arithmetic: std::ffi::c_float = (0xffff as std::ffi::c_int as std::ffi::c_double
         + 3.14f64 * 'x' as i32 as std::ffi::c_double
         - 1 as std::ffi::c_int as std::ffi::c_double)
         as std::ffi::c_float;
-    let mut parens: std::ffi::c_int =
-        0xffff as std::ffi::c_int * ('x' as i32 + 1 as std::ffi::c_int);
+    let mut parens: std::ffi::c_int = NESTED_INT * ('x' as i32 + 1 as std::ffi::c_int);
     let mut ptr_arithmetic: *const std::ffi::c_char = (b"hello\0" as *const u8
         as *const std::ffi::c_char)
         .offset(5 as std::ffi::c_int as isize)
@@ -135,7 +135,7 @@ pub unsafe extern "C" fn local_consts() {
         };
         init
     };
-    let nested_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
+    let nested_int: std::ffi::c_int = NESTED_INT;
     let nested_bool: bool = 1 as std::ffi::c_int != 0;
     let nested_float: std::ffi::c_float = 3.14f32;
     let nested_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
@@ -155,12 +155,12 @@ pub unsafe extern "C" fn local_consts() {
         init
     };
     let int_arithmetic: std::ffi::c_int =
-        0xffff as std::ffi::c_int + 0xffff as std::ffi::c_int + 1 as std::ffi::c_int;
+        NESTED_INT + 0xffff as std::ffi::c_int + 1 as std::ffi::c_int;
     let mixed_arithmetic: std::ffi::c_float = (0xffff as std::ffi::c_int as std::ffi::c_double
         + 3.14f64 * 'x' as i32 as std::ffi::c_double
         - 1 as std::ffi::c_int as std::ffi::c_double)
         as std::ffi::c_float;
-    let parens: std::ffi::c_int = 0xffff as std::ffi::c_int * ('x' as i32 + 1 as std::ffi::c_int);
+    let parens: std::ffi::c_int = NESTED_INT * ('x' as i32 + 1 as std::ffi::c_int);
     let ptr_arithmetic: *const std::ffi::c_char = (b"hello\0" as *const u8
         as *const std::ffi::c_char)
         .offset(5 as std::ffi::c_int as isize)
@@ -214,7 +214,7 @@ static mut global_static_const_literal_struct: S = {
     let mut init = S { i: 5 };
     init
 };
-static mut global_static_const_nested_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
+static mut global_static_const_nested_int: std::ffi::c_int = NESTED_INT;
 static mut global_static_const_nested_bool: bool = 1 as std::ffi::c_int != 0;
 static mut global_static_const_nested_float: std::ffi::c_float = 3.14f32;
 static mut global_static_const_nested_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
@@ -232,12 +232,12 @@ static mut global_static_const_nested_struct: S = {
     init
 };
 static mut global_static_const_int_arithmetic: std::ffi::c_int =
-    0xffff as std::ffi::c_int + 0xffff as std::ffi::c_int + 1 as std::ffi::c_int;
+    NESTED_INT + 0xffff as std::ffi::c_int + 1 as std::ffi::c_int;
 static mut global_static_const_mixed_arithmetic: std::ffi::c_float =
     (0xffff as std::ffi::c_int as std::ffi::c_double + 3.14f64 * 'x' as i32 as std::ffi::c_double
         - 1 as std::ffi::c_int as std::ffi::c_double) as std::ffi::c_float;
 static mut global_static_const_parens: std::ffi::c_int =
-    0xffff as std::ffi::c_int * ('x' as i32 + 1 as std::ffi::c_int);
+    NESTED_INT * ('x' as i32 + 1 as std::ffi::c_int);
 static mut global_static_const_ptr_arithmetic: *const std::ffi::c_char =
     0 as *const std::ffi::c_char;
 static mut global_static_const_widening_cast: std::ffi::c_ulonglong =
@@ -276,7 +276,7 @@ pub static mut global_const_literal_str_ptr: *const std::ffi::c_char =
 pub static mut global_const_literal_str: [std::ffi::c_char; 6] =
     unsafe { *::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0") };
 #[no_mangle]
-pub static mut global_const_nested_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
+pub static mut global_const_nested_int: std::ffi::c_int = NESTED_INT;
 #[no_mangle]
 pub static mut global_const_nested_bool: bool = 1 as std::ffi::c_int != 0;
 #[no_mangle]
@@ -291,14 +291,14 @@ pub static mut global_const_nested_str: [std::ffi::c_char; 6] =
     unsafe { *::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0") };
 #[no_mangle]
 pub static mut global_const_int_arithmetic: std::ffi::c_int =
-    0xffff as std::ffi::c_int + 0xffff as std::ffi::c_int + 1 as std::ffi::c_int;
+    NESTED_INT + 0xffff as std::ffi::c_int + 1 as std::ffi::c_int;
 #[no_mangle]
 pub static mut global_const_mixed_arithmetic: std::ffi::c_float =
     (0xffff as std::ffi::c_int as std::ffi::c_double + 3.14f64 * 'x' as i32 as std::ffi::c_double
         - 1 as std::ffi::c_int as std::ffi::c_double) as std::ffi::c_float;
 #[no_mangle]
 pub static mut global_const_parens: std::ffi::c_int =
-    0xffff as std::ffi::c_int * ('x' as i32 + 1 as std::ffi::c_int);
+    NESTED_INT * ('x' as i32 + 1 as std::ffi::c_int);
 #[no_mangle]
 pub static mut global_const_ptr_arithmetic: *const std::ffi::c_char = 0 as *const std::ffi::c_char;
 #[no_mangle]
@@ -323,13 +323,13 @@ pub static mut global_const_str_concatenation: [std::ffi::c_char; 18] = unsafe {
 pub unsafe extern "C" fn test_fn_macro(mut x: std::ffi::c_int) -> std::ffi::c_int {
     return x * x;
 }
+pub const TEST_CONST2: std::ffi::c_int = 2 as std::ffi::c_int;
 #[no_mangle]
 pub unsafe extern "C" fn reference_define() -> std::ffi::c_int {
     let mut x: std::ffi::c_int = 1 as std::ffi::c_int;
-    x += 2 as std::ffi::c_int;
-    if (3 as std::ffi::c_int) < (2 as std::ffi::c_int + 1 as std::ffi::c_int) * 3 as std::ffi::c_int
-    {
-        x += (2 as std::ffi::c_int + 1 as std::ffi::c_int) * 3 as std::ffi::c_int;
+    x += TEST_CONST2;
+    if (3 as std::ffi::c_int) < (TEST_CONST2 + 1 as std::ffi::c_int) * 3 as std::ffi::c_int {
+        x += (TEST_CONST2 + 1 as std::ffi::c_int) * 3 as std::ffi::c_int;
     }
     return x;
 }
@@ -344,14 +344,16 @@ pub static mut fns: fn_ptrs = {
 };
 #[no_mangle]
 pub static mut p: *const fn_ptrs = unsafe { &fns as *const fn_ptrs };
+pub const ZSTD_WINDOWLOG_MAX_32: std::ffi::c_int = 30 as std::ffi::c_int;
+pub const ZSTD_WINDOWLOG_MAX_64: std::ffi::c_int = 31 as std::ffi::c_int;
 #[no_mangle]
 pub unsafe extern "C" fn test_zstd() -> U64 {
     return (if ::core::mem::size_of::<zstd_platform_dependent_type>() as std::ffi::c_ulong
         == 4 as std::ffi::c_ulong
     {
-        30 as std::ffi::c_int
+        ZSTD_WINDOWLOG_MAX_32
     } else {
-        31 as std::ffi::c_int
+        ZSTD_WINDOWLOG_MAX_64
     }) as U64;
 }
 #[no_mangle]
