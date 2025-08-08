@@ -65,6 +65,7 @@ void local_muts() {
   char indexing = INDEXING;
   const char *str_concatenation_ptr = STR_CONCATENATION;
   char str_concatenation[] = STR_CONCATENATION;
+  int builtin = BUILTIN;
   const char *ref_indexing = REF_MACRO;
   const struct S *ref_struct = REF_LITERAL;
   int ternary = TERNARY;
@@ -100,6 +101,7 @@ void local_consts() {
   const char indexing = INDEXING;
   const char *const str_concatenation_ptr = STR_CONCATENATION;
   const char str_concatenation[] = STR_CONCATENATION;
+  const int builtin = BUILTIN;
   const char *const ref_indexing = REF_MACRO;
   const struct S *const ref_struct = REF_LITERAL;
   const int ternary = TERNARY;
@@ -138,6 +140,7 @@ void local_static_consts() {
   static const char indexing = INDEXING;
   static const char *const str_concatenation_ptr = STR_CONCATENATION;
   static const char str_concatenation[] = STR_CONCATENATION;
+  static const int builtin = BUILTIN;
   static const char *const ref_indexing = REF_MACRO;
   static const struct S *const ref_struct = REF_LITERAL;
   static const int ternary = TERNARY;
@@ -177,6 +180,7 @@ static const char global_static_const_indexing = INDEXING;
 static const char *const global_static_const_str_concatenation_ptr =
     STR_CONCATENATION;
 static const char global_static_const_str_concatenation[] = STR_CONCATENATION;
+static const int global_static_const_builtin = BUILTIN;
 static const char *const global_static_const_ref_indexing = REF_MACRO;
 static const struct S *const global_static_const_ref_struct = REF_LITERAL;
 static const int global_static_const_ternary = TERNARY;
@@ -212,6 +216,7 @@ void global_static_consts() {
   (void)global_static_const_indexing;
   (void)global_static_const_str_concatenation_ptr;
   (void)global_static_const_str_concatenation;
+  (void)global_static_const_builtin;
   (void)global_static_const_ref_indexing;
   (void)global_static_const_ref_struct;
   (void)global_static_const_ternary;
@@ -248,6 +253,7 @@ const double global_const_conversion_cast = CONVERSION_CAST;
 const char global_const_indexing = INDEXING;
 const char *const global_const_str_concatenation_ptr = STR_CONCATENATION;
 const char global_const_str_concatenation[] = STR_CONCATENATION;
+const int global_const_builtin = BUILTIN;
 static const char *const global_const_ref_indexing = REF_MACRO;
 static const struct S *const global_const_ref_struct = REF_LITERAL;
 static const int global_const_ternary = TERNARY;

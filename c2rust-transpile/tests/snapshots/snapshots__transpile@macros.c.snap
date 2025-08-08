@@ -92,6 +92,8 @@ pub unsafe extern "C" fn local_muts() {
         b"hello hello world\0" as *const u8 as *const std::ffi::c_char;
     let mut str_concatenation: [std::ffi::c_char; 18] =
         *::core::mem::transmute::<&[u8; 18], &mut [std::ffi::c_char; 18]>(b"hello hello world\0");
+    let mut builtin: std::ffi::c_int =
+        (0xffff as std::ffi::c_int as std::ffi::c_uint).leading_zeros() as i32;
     let mut ref_indexing: *const std::ffi::c_char =
         &*(b"hello\0" as *const u8 as *const std::ffi::c_char)
             .offset(3.14f64 as std::ffi::c_int as isize) as *const std::ffi::c_char;
@@ -175,6 +177,8 @@ pub unsafe extern "C" fn local_consts() {
         b"hello hello world\0" as *const u8 as *const std::ffi::c_char;
     let str_concatenation: [std::ffi::c_char; 18] =
         *::core::mem::transmute::<&[u8; 18], &[std::ffi::c_char; 18]>(b"hello hello world\0");
+    let builtin: std::ffi::c_int =
+        (0xffff as std::ffi::c_int as std::ffi::c_uint).leading_zeros() as i32;
     let ref_indexing: *const std::ffi::c_char =
         &*(b"hello\0" as *const u8 as *const std::ffi::c_char)
             .offset(3.14f64 as std::ffi::c_int as isize) as *const std::ffi::c_char;
@@ -252,6 +256,8 @@ static mut global_static_const_str_concatenation_ptr: *const std::ffi::c_char =
 static mut global_static_const_str_concatenation: [std::ffi::c_char; 18] = unsafe {
     *::core::mem::transmute::<&[u8; 18], &[std::ffi::c_char; 18]>(b"hello hello world\0")
 };
+static mut global_static_const_builtin: std::ffi::c_int =
+    (0xffff as std::ffi::c_int as std::ffi::c_uint).leading_zeros() as i32;
 static mut global_static_const_ref_indexing: *const std::ffi::c_char = 0 as *const std::ffi::c_char;
 static mut global_static_const_ref_struct: *const S = &{
     let mut init = S { i: 5 };
@@ -319,6 +325,9 @@ pub static mut global_const_str_concatenation_ptr: *const std::ffi::c_char =
 pub static mut global_const_str_concatenation: [std::ffi::c_char; 18] = unsafe {
     *::core::mem::transmute::<&[u8; 18], &[std::ffi::c_char; 18]>(b"hello hello world\0")
 };
+#[no_mangle]
+pub static mut global_const_builtin: std::ffi::c_int =
+    (0xffff as std::ffi::c_int as std::ffi::c_uint).leading_zeros() as i32;
 #[no_mangle]
 pub unsafe extern "C" fn test_fn_macro(mut x: std::ffi::c_int) -> std::ffi::c_int {
     return x * x;
