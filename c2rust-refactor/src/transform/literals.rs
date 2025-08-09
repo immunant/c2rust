@@ -93,9 +93,12 @@ impl Transform for RemoveNullTerminator {
                 ExprKind::Lit(l) => {
                     match &mut l.kind {
                         LitKind::ByteStr(bs) => {
-                            if bs.last() == Some(&0) {
-                                Lrc::get_mut(bs).unwrap().pop();
-                                strip_null(&mut l.token.symbol);
+                            let ms = &mut Lrc::get_mut(bs).unwrap();
+                            if let Some((last, rest)) = ms.split_last_mut() {
+                                if *last == 0 {
+                                    *ms = rest;
+                                    strip_null(&mut l.token.symbol);
+                                }
                             }
                         }
                         LitKind::Str(ref mut s, _style) => {
