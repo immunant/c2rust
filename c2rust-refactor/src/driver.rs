@@ -310,6 +310,7 @@ pub struct Compiler {
     input_path: Option<PathBuf>,
     output_dir: Option<PathBuf>,
     output_file: Option<PathBuf>,
+    temps_dir: Option<PathBuf>,
     register_lints: Option<Box<dyn Fn(&Session, &mut LintStore) + Send + Sync>>,
     override_queries:
         Option<fn(&Session, &mut ty::query::Providers, &mut ty::query::ExternProviders)>,
@@ -334,6 +335,8 @@ pub fn make_compiler(config: &Config, file_io: Arc<dyn FileIO + Sync + Send>) ->
     // collide with `DUMMY_SP` (which is `0 .. 0`).
     sess.source_map().new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
 
+    let temps_dir = sess.opts.unstable_opts.temps_dir.as_ref().map(|o| PathBuf::from(&o));
+
     let compiler = Compiler {
         sess,
         codegen_backend,
@@ -342,6 +345,7 @@ pub fn make_compiler(config: &Config, file_io: Arc<dyn FileIO + Sync + Send>) ->
         output_dir: config.output_dir,
         output_file: config.output_file,
         override_queries: config.override_queries,
+        temps_dir,
         register_lints: config.register_lints,
     };
 
