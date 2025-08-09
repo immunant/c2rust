@@ -233,7 +233,7 @@ impl RefactorState {
     }
 
     pub fn source_map(&self) -> &SourceMap {
-        self.compiler.source_map()
+        self.session().source_map()
     }
 
     pub fn drain_commands(&mut self) -> Vec<String> {
@@ -296,8 +296,8 @@ impl RefactorState {
         let disk_state = &mut self.disk_state;
         let marks = &mut self.marks;
         let parsed_nodes = &mut self.parsed_nodes;
-        let source_map = self.compiler.source_map();
         let session = self.compiler.session();
+        let source_map = session.source_map();
         let node_map = &mut self.node_map;
         let tcx_gen = &self.tcx_gen;
         let krate = &mut self.krate;
