@@ -9,7 +9,7 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res)>
     use rustc_hir::ItemKind::*;
 
     for &iid in &m.item_ids[..] {
-        let node = tcx.hir().get(iid.id);
+        let node = tcx.hir().get(iid.hir_id());
         let item = expect!([node] Node::Item(i) => i);
         let item_did = tcx.hir().local_def_id(item.hir_id());
 
