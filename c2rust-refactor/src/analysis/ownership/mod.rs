@@ -259,7 +259,7 @@ fn register_std_constraints<'a, 'tcx, 'lty>(
     tctxt: TyCtxt<'tcx>,
 ) {
     for (def_id, func_summ) in ctxt.funcs_mut() {
-        let fn_name_path = tctxt.def_path(*def_id).to_string_no_crate();
+        let fn_name_path = tctxt.def_path(*def_id).to_string_no_crate_verbose();
 
         // #[ownership_constraints(le(WRITE, _0), le(WRITE, _1), le(_0, _1))]
         // fn offset<T>(self: *mut T, _: isize) -> *mut T;
@@ -615,7 +615,7 @@ pub fn dump_results(dcx: &RefactorCtxt, results: &AnalysisResult) {
         format!("{:?} -> {:?}", pretty_slice(inputs), Pretty(output))
     };
 
-    let path_str = |def_id| dcx.ty_ctxt().def_path(def_id).to_string_no_crate();
+    let path_str = |def_id| dcx.ty_ctxt().def_path(def_id).to_string_no_crate_verbose();
 
     let mut ids = results.statics.keys().cloned().collect::<Vec<_>>();
     ids.sort();
