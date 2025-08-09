@@ -289,9 +289,15 @@ impl Transform for FixUnusedUnsafe {
                 let hir_id = cx.hir_map().node_to_hir_id(b.id);
                 let parent = cx.hir_map().get_parent_did(hir_id);
                 let result = cx.ty_ctxt().unsafety_check_result(parent);
-                let unused = result.unsafe_blocks.iter().any(|&(id, used)| {
-                    id == cx.hir_map().node_to_hir_id(b.id) && !used
-                });
+                let unused = result
+                    .unused_unsafes
+                    .as_deref()
+                    .unwrap_or_default()
+                    .iter()
+                    .any(|&(id, _)| {
+                        // TODO: do we need to check the UnusedUnsafe argument?
+                        id == cx.hir_map().node_to_hir_id(b.id)
+                    });
                 if unused {
                     b.rules = BlockCheckMode::Default;
                 }
