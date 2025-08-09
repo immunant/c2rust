@@ -6,7 +6,7 @@ use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_hir::definitions::DefPathData;
 use rustc_hir::Node;
 use rustc_middle::hir::map::Map as HirMap;
-use rustc_middle::ty::{self, DefIdTree, GenericParamDefKind, TyCtxt};
+use rustc_middle::ty::{self, DefIdTree, EarlyBinder, GenericParamDefKind, Subst, TyCtxt};
 use rustc_ast::*;
 use rustc_ast::ptr::P;
 use rustc_span::source_map::DUMMY_SP;
@@ -168,7 +168,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                             .iter()
                             .map(|&t| t.into())
                             .collect::<Vec<_>>();
-                        let ty = ty.subst(self.tcx, &tcx_substs);
+                        let ty = EarlyBinder(ty).subst(self.tcx, &tcx_substs);
                         reflect_tcx_ty(self.tcx, ty)
                     } else {
                         self.reflect_ty_inner(ty, true)
