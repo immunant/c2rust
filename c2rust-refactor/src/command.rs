@@ -357,7 +357,7 @@ impl RefactorState {
                     let expansion = queries.expansion()?.peek();
                     cs
                         .krate
-                        .replace(expansion.0.clone());
+                        .replace(expansion.0.deref().clone());
                     max_crate_node_id = Some(
                         expansion.1.borrow_mut().access(|resolver| resolver.next_node_id())
                     );
