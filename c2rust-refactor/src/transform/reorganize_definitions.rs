@@ -248,19 +248,22 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     ItemKind::Fn(box Fn { body: Some(ref body), .. }) => {
                         keep_items.insert(item.id);
                         visit_nodes(&**body, |path: &Path| {
-                            if path.segments.len() == 1 {
-                                used_idents.insert(path.segments[0].ident);
+                            if let [segment] = &path.segments[..] {
+                                used_idents.insert(segment.ident);
                             }
                         });
                     }
 
                     ItemKind::Static(_, _, init) if !is_exported(item) => {
                         keep_items.insert(item.id);
-                        visit_nodes(&**init, |path: &Path| {
-                            if path.segments.len() == 1 {
-                                used_idents.insert(path.segments[0].ident);
-                            }
-                        });
+
+                        if let Some(init) = init {
+                            visit_nodes(&**init, |path: &Path| {
+                                if let [segment] = &path.segments[..] {
+                                    used_idents.insert(segment.ident);
+                                }
+                            });
+                        }
                     }
 
                     _ => {}
