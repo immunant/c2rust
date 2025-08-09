@@ -227,11 +227,11 @@ impl FuncContext {
     }
 
     pub fn get_name(&self) -> &str {
-        return self.name.as_ref().unwrap();
+        self.name.as_ref().unwrap()
     }
 
     pub fn get_va_list_arg_name(&self) -> &str {
-        return self.va_list_arg_name.as_ref().unwrap();
+        self.va_list_arg_name.as_ref().unwrap()
     }
 }
 
@@ -435,8 +435,7 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&path
             .unwrap()
             .to_str()
             .unwrap()
-            .replace('.', "_")
-            .replace('-', "_")
+            .replace(['.', '-'], "_")
     }
 
     let mut file_path: String = path.map_or("internal".to_string(), path_to_str);
@@ -1243,9 +1242,7 @@ impl<'c> Translation<'c> {
         F: FnOnce(&mut ItemStore) -> T,
     {
         let mut item_stores = self.items.borrow_mut();
-        let item_store = item_stores
-            .entry(Self::cur_file(self))
-            .or_insert_with(ItemStore::new);
+        let item_store = item_stores.entry(Self::cur_file(self)).or_default();
         f(item_store)
     }
 
@@ -3390,7 +3387,7 @@ impl<'c> Translation<'c> {
                 // need to cast it to fn() to ensure that it has a real address.
                 let mut set_unsafe = false;
                 if ctx.needs_address() {
-                    if let &CDeclKind::Function { ref parameters, .. } = decl {
+                    if let CDeclKind::Function { parameters, .. } = decl {
                         let ty = self.convert_type(qual_ty.ctype)?;
                         let actual_ty = self
                             .type_converter
@@ -4932,8 +4929,8 @@ impl<'c> Translation<'c> {
             // is already in the form `(x <op> y) as <ty>` where `<op>` is a Rust operator
             // that returns a boolean, we can simple output `x <op> y` or `!(x <op> y)`.
             if let Expr::Cast(ExprCast { expr: ref arg, .. }) = *unparen(&val) {
-                if let Expr::Binary(ExprBinary { op, .. }) = *unparen(arg) {
-                    match op {
+                if let Expr::Binary(ExprBinary {
+                    op:
                         BinOp::Or(_)
                         | BinOp::And(_)
                         | BinOp::Eq(_)
@@ -4941,19 +4938,19 @@ impl<'c> Translation<'c> {
                         | BinOp::Lt(_)
                         | BinOp::Le(_)
                         | BinOp::Gt(_)
-                        | BinOp::Ge(_) => {
-                            if target {
-                                // If target == true, just return the argument
-                                return Box::new(unparen(arg).clone());
-                            } else {
-                                // If target == false, return !arg
-                                return mk().unary_expr(
-                                    UnOp::Not(Default::default()),
-                                    Box::new(unparen(arg).clone()),
-                                );
-                            }
-                        }
-                        _ => {}
+                        | BinOp::Ge(_),
+                    ..
+                }) = *unparen(arg)
+                {
+                    if target {
+                        // If target == true, just return the argument
+                        return Box::new(unparen(arg).clone());
+                    } else {
+                        // If target == false, return !arg
+                        return mk().unary_expr(
+                            UnOp::Not(Default::default()),
+                            Box::new(unparen(arg).clone()),
+                        );
                     }
                 }
             }
@@ -4999,9 +4996,7 @@ impl<'c> Translation<'c> {
             let attrs = item_attrs(&mut item).expect("no attrs field on unexpected item variant");
             add_src_loc_attr(attrs, &decl.loc.as_ref().map(|x| x.begin()));
             let mut item_stores = self.items.borrow_mut();
-            let items = item_stores
-                .entry(decl_file_id.unwrap())
-                .or_insert(ItemStore::new());
+            let items = item_stores.entry(decl_file_id.unwrap()).or_default();
 
             items.add_item(item);
         } else {
@@ -5020,9 +5015,7 @@ impl<'c> Translation<'c> {
                 .expect("no attrs field on unexpected foreign item variant");
             add_src_loc_attr(attrs, &decl.loc.as_ref().map(|x| x.begin()));
             let mut items = self.items.borrow_mut();
-            let mod_block_items = items
-                .entry(decl_file_id.unwrap())
-                .or_insert(ItemStore::new());
+            let mod_block_items = items.entry(decl_file_id.unwrap()).or_default();
 
             mod_block_items.add_foreign_item(item);
         } else {
@@ -5059,7 +5052,7 @@ impl<'c> Translation<'c> {
         self.items
             .borrow_mut()
             .entry(decl_file_id)
-            .or_insert(ItemStore::new())
+            .or_default()
             .add_use(module_path, ident_name);
     }
 

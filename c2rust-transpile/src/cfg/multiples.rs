@@ -94,7 +94,7 @@ impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
         self.multiples = self
             .multiples
             .iter()
-            .filter_map(|(entries, &(ref join_lbl, ref arms))| {
+            .filter_map(|(entries, (join_lbl, arms))| {
                 let entries: BTreeSet<Lbl> = entries
                     .iter()
                     .map(|lbl| rewrites.get(lbl).unwrap_or(lbl).clone())
@@ -122,7 +122,7 @@ impl<Lbl: Hash + Ord + Clone> MultipleInfo<Lbl> {
 
     /// Add in information about a new multiple
     pub fn add_multiple(&mut self, join: Lbl, arms: Vec<(Lbl, IndexSet<Lbl>)>) {
-        let entry_set: BTreeSet<Lbl> = arms.iter().map(|&(ref l, _)| l.clone()).collect();
+        let entry_set: BTreeSet<Lbl> = arms.iter().map(|(l, _)| l.clone()).collect();
         let arm_map: IndexMap<Lbl, IndexSet<Lbl>> = arms.into_iter().collect();
 
         if arm_map.len() > 1 {

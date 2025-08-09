@@ -50,7 +50,7 @@ fn config() -> TranspilerConfig {
 /// It could be the `target_arch`, `target_os`, some combination, or something else.
 fn transpile(platform: Option<&str>, c_path: &Path) {
     let status = Command::new("clang")
-        .args(&[
+        .args([
             "-c",
             "-o",
             "/dev/null",
@@ -108,7 +108,7 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
     // Don't need to worry about platform clashes here, as this is immediately deleted.
     let rlib_path = format!("lib{crate_name}.rlib");
     let status = Command::new("rustc")
-        .args(&[
+        .args([
             "+nightly-2022-08-08",
             "--crate-type",
             "lib",

@@ -46,7 +46,7 @@ macro_rules! impl_int {
     ($($typ: ident),+) => {
         $(
             impl FieldType for $typ {
-                const IS_SIGNED: bool = $typ::min_value() != 0;
+                const IS_SIGNED: bool = $typ::MIN != 0;
 
                 fn get_bit(&self, bit: usize) -> bool {
                     ((*self >> bit) & 1) == 1

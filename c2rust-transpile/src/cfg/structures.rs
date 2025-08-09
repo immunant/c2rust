@@ -26,10 +26,8 @@ pub fn structured_cfg(
     // If the very last statement in the vector is a `return`, we can either cut it out or replace
     // it with the returned value.
     if cut_out_trailing_ret {
-        if let Some(Stmt::Expr(ret, _)) = stmts.last() {
-            if let Expr::Return(ExprReturn { expr: None, .. }) = ret {
-                stmts.pop();
-            }
+        if let Some(Stmt::Expr(Expr::Return(ExprReturn { expr: None, .. }), _)) = stmts.last() {
+            stmts.pop();
         }
     }
 
@@ -287,7 +285,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label,
                         Switch { expr, cases } => {
                             let branched_cases = cases
                                 .iter()
-                                .map(|&(ref pat, ref slbl)| Ok((pat.clone(), branch(slbl)?)))
+                                .map(|(pat, slbl)| Ok((pat.clone(), branch(slbl)?)))
                                 .collect::<TranslationResult<_>>()?;
 
                             S::mk_match(expr.clone(), branched_cases)

@@ -1602,49 +1602,23 @@ impl BinOp {
     #[rustfmt::skip]
     pub fn input_types_same(&self) -> bool {
         use BinOp::*;
-        self.all_types_same() || match self {
-            Less => true,
-            Greater => true,
-            LessEqual => true,
-            GreaterEqual => true,
-            EqualEqual => true,
-            NotEqual => true,
-
-            And => true,
-            Or => true,
-
-            AssignAdd => true,
-            AssignSubtract => true,
-            AssignMultiply => true,
-            AssignDivide => true,
-            AssignModulus => true,
-            AssignBitXor => true,
-            AssignShiftLeft => true,
-            AssignShiftRight => true,
-            AssignBitOr => true,
-            AssignBitAnd => true,
-
-            Assign => true,
-            _ => false,
-        }
+        self.all_types_same() || matches!(self,
+            Less | Greater | LessEqual | GreaterEqual | EqualEqual | NotEqual
+            | And | Or
+            | AssignAdd | AssignSubtract | AssignMultiply | AssignDivide | AssignModulus
+            | AssignBitXor | AssignShiftLeft | AssignShiftRight | AssignBitOr | AssignBitAnd
+            | Assign
+        )
     }
 
     /// Does the rust equivalent of this operator have type (T, T) -> T?
     /// This ignores cases where one argument is a pointer and we translate to `.offset()`.
     pub fn all_types_same(&self) -> bool {
         use BinOp::*;
-        match self {
-            Multiply => true,
-            Divide => true,
-            Modulus => true,
-            Add => true,
-            Subtract => true,
-
-            BitAnd => true,
-            BitXor => true,
-            BitOr => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Multiply | Divide | Modulus | Add | Subtract | BitAnd | BitXor | BitOr
+        )
     }
 }
 
@@ -2444,11 +2418,10 @@ mod tests {
             let a = locs[i];
             for j in 0..n {
                 let b = locs[j];
-                for k in 0..n {
-                    let c = locs[k];
+                for c in locs.iter().take(n) {
                     let ab = ctx.compare_src_locs(&a, &b);
-                    let bc = ctx.compare_src_locs(&b, &c);
-                    let ac = ctx.compare_src_locs(&a, &c);
+                    let bc = ctx.compare_src_locs(&b, c);
+                    let ac = ctx.compare_src_locs(&a, c);
                     if ab == bc {
                         let [ab, bc, ac] = [ab, bc, ac].map(|ord| match ord {
                             Ordering::Less => "<",

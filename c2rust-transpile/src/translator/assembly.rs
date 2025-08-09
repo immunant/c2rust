@@ -1,6 +1,8 @@
 #![deny(missing_docs)]
 //! This module provides basic support for converting inline assembly statements.
 
+use std::fmt::{self as fmt, Display, Formatter};
+
 use crate::diagnostics::TranslationResult;
 
 use super::*;
@@ -17,17 +19,20 @@ enum ArgDirSpec {
     InLateOut,
 }
 
-impl ToString for ArgDirSpec {
-    fn to_string(&self) -> String {
+impl Display for ArgDirSpec {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         use ArgDirSpec::*;
-        match self {
-            In => "in",
-            Out => "out",
-            InOut => "inout",
-            LateOut => "lateout",
-            InLateOut => "inlateout",
-        }
-        .to_owned()
+        write!(
+            f,
+            "{}",
+            match self {
+                In => "in",
+                Out => "out",
+                InOut => "inout",
+                LateOut => "lateout",
+                InLateOut => "inlateout",
+            }
+        )
     }
 }
 
@@ -134,7 +139,7 @@ fn parse_constraints(
     }
 
     // Handle register names
-    let mut constraints = constraints.replace('{', "\"").replace('}', "\"");
+    let mut constraints = constraints.replace(['{', '}'], "\"");
 
     // Convert (simple) constraints to ones rustc understands
     match &*constraints {
@@ -673,13 +678,7 @@ impl<'c> Translation<'c> {
         let mut tokens: Vec<TokenTree> = vec![];
 
         let mut tied_operands = HashMap::new();
-        for (
-            input_idx,
-            &AsmOperand {
-                ref constraints, ..
-            },
-        ) in inputs.iter().enumerate()
-        {
+        for (input_idx, AsmOperand { constraints, .. }) in inputs.iter().enumerate() {
             let constraints_digits = constraints.trim_matches(|c: char| !c.is_ascii_digit());
             if let Ok(output_idx) = constraints_digits.parse::<usize>() {
                 let output_key = (output_idx, true);
@@ -1009,7 +1008,7 @@ impl<'c> Translation<'c> {
         stmts.push(mac);
 
         // Push the post-macro statements
-        stmts.extend(post_stmts.into_iter());
+        stmts.extend(post_stmts);
 
         Ok(stmts)
     }
