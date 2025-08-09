@@ -7,6 +7,7 @@
     drain_filter,
     label_break_value,
     let_else,
+    never_type,
 )]
 #![cfg_attr(feature = "profile", feature(proc_macro_hygiene))]
 
