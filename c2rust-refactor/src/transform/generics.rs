@@ -154,7 +154,7 @@ impl Transform for GeneralizeItems {
                     *args = args.clone().map(|mut args| {
                         match args {
                             GenericArgs::AngleBracketed(ref mut abpd) =>
-                                abpd.args.push(mk().generic_arg(arg)),
+                                abpd.args.push(AngleBracketedArg::Arg(mk().generic_arg(arg))),
                             GenericArgs::Parenthesized(..) =>
                                 panic!("expected angle bracketed params, but found parenthesized"),
                         }
