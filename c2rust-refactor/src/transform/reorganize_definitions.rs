@@ -256,11 +256,14 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
                     ItemKind::Static(_, _, init) if !is_exported(item) => {
                         keep_items.insert(item.id);
-                        visit_nodes(&**init, |path: &Path| {
-                            if path.segments.len() == 1 {
-                                used_idents.insert(path.segments[0].ident);
-                            }
-                        });
+
+                        if let Some(init) = init {
+                            visit_nodes(&**init, |path: &Path| {
+                                if path.segments.len() == 1 {
+                                    used_idents.insert(path.segments[0].ident);
+                                }
+                            });
+                        }
                     }
 
                     _ => {}
