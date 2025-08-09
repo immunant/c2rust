@@ -222,7 +222,7 @@ pub fn is_relative_path(path: &Path) -> bool {
 
 /// Return the namespace the given Def is defined in. Does not yet handle the
 /// macro namespace.
-pub fn namespace(res: &def::Res) -> Option<Namespace> {
+pub fn namespace<T>(res: &def::Res<T>) -> Option<Namespace> {
     use rustc_hir::def::DefKind::*;
     match res {
         Res::Def(kind, _) => match kind {
