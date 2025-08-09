@@ -407,7 +407,8 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                     }
                     (tuple_ty, Perm::move_())
                 }
-                AggregateKind::Adt(adt, disr, _substs, _annot, union_variant) => {
+                AggregateKind::Adt(adt_did, disr, _substs, _annot, union_variant) => {
+                    let adt = self.cx.tcx.adt_def(adt_did);
                     let adt_ty = self.local_ty(ty);
 
                     if let Some(union_variant) = union_variant {
@@ -419,7 +420,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                         self.propagate(field_ty, op_ty, op_perm);
                     } else {
                         for (i, op) in ops.iter().enumerate() {
-                            let field_def_id = adt.variants[disr].fields[i].did;
+                            let field_def_id = adt.variant(disr).fields[i].did;
                             let poly_field_ty = self.static_ty(field_def_id);
                             let field_ty = self.ilcx.subst(poly_field_ty, adt_ty.args);
                             let (op_ty, op_perm) = self.operand_lty(op);
