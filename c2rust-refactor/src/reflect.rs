@@ -227,7 +227,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
             if let DefPathData::Ctor = dk.disambiguated_data.data {
                 // The parent of the struct ctor in `visible_parent_map` is the parent of the
                 // struct.  But we want to visit the struct first, so we can add its name.
-                if let Some(parent_id) = self.tcx.parent(id) {
+                if let Some(parent_id) = self.tcx.opt_parent(id) {
                     id = parent_id;
                     continue;
                 } else {
@@ -274,7 +274,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
             let visible_parent_map = self.tcx.visible_parent_map(());
             if let Some(&parent_id) = visible_parent_map.get(&id) {
                 id = parent_id;
-            } else if let Some(parent_id) = self.tcx.parent(id) {
+            } else if let Some(parent_id) = self.tcx.opt_parent(id) {
                 id = parent_id;
             } else {
                 break;
