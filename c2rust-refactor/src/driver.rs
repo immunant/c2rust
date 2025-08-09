@@ -578,12 +578,13 @@ pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
         BlockCheckMode::Default
     };
 
-    match p.parse_block() {
-        Ok(mut block) => {
+    match p.parse_expr().map(|e| e.into_inner().kind) {
+        Ok(ast::ExprKind::Block(mut block, _)) => {
             remove_paren(&mut block);
             block.rules = rules;
             block
         }
+        Ok(_) => panic!("expected to find a block item"),
         Err(db) => emit_and_panic(db, "block"),
     }
 }
