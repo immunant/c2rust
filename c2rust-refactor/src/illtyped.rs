@@ -291,9 +291,8 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                     info!("STATIC: expected ty {:?}, expr {:?}", expected_ty, expr);
 
                     let tcx = self.cx.ty_ctxt();
-                    let node_id = tcx.hir().as_local_hir_id(did).unwrap();
-                    match tcx.hir().get(node_id) {
-                        hir::Node::Item(item) => match item.kind {
+                    match tcx.hir().get_if_local(did) {
+                        Some(hir::Node::Item(item)) => match item.kind {
                             hir::ItemKind::Static(ref t, ..) => info!("  - ty hir = {:?}", t),
                             _ => {}
                         },
