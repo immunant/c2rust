@@ -571,7 +571,12 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         match self.hir_map().get_if_local(id) {
             Some(Node::Item(item)) => match &item.kind {
                 hir::ItemKind::Static(..) | hir::ItemKind::Const(..) | hir::ItemKind::Fn(..) => {
-                    item.attrs.iter().any(is_export_attr)
+                    self
+                        .ty_ctxt()
+                        .hir()
+                        .attrs(item.hir_id())
+                        .iter()
+                        .any(is_export_attr)
                 }
                 _ => true,
             },
