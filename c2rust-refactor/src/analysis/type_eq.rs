@@ -57,7 +57,6 @@ use rustc_span::symbol::Symbol;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::context::RefactorCtxt;
-use crate::match_or;
 use crate::type_map;
 
 /// Unification key for types.
@@ -202,11 +201,10 @@ impl<'lty, 'tcx> ExprPatVisitor<'lty, 'tcx> {
     /// Process the type tables for a single body.
     fn handle_body(&mut self, body_id: BodyId) {
         let tables = self.tcx.typeck_body(body_id);
-        let def_id = match_or!([tables.local_id_root] Some(x) => x; return);
 
         for (&local_id, &ty) in tables.node_types().iter() {
             let id = HirId {
-                owner: def_id.index,
+                owner: tables.hir_owner,
                 local_id,
             };
             self.unadjusted.insert(id, self.ltt.label(ty));
