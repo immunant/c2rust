@@ -49,7 +49,7 @@ impl Transform for ByteStrToStr {
                 ExprKind::Lit(l) => {
                     match l.kind {
                         LitKind::ByteStr(ref bs) => {
-                            let s = String::from_utf8((**bs).clone()).unwrap();
+                            let s = String::from_utf8(bs.to_vec()).unwrap();
                             l.kind = LitKind::Str(Symbol::intern(&s), StrStyle::Cooked);
                             l.token.kind = token::LitKind::Str;
                         }
