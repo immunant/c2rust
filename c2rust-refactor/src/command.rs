@@ -359,7 +359,7 @@ impl RefactorState {
                         .krate
                         .replace(expansion.0.clone());
                     max_crate_node_id = Some(
-                        expansion.1.borrow().borrow_mut().access(|resolver| resolver.next_node_id())
+                        expansion.1.borrow_mut().access(|resolver| resolver.next_node_id())
                     );
                     profile_end!("Expand crate");
                     remove_paren(cs.krate.get_mut());
