@@ -14,8 +14,8 @@ use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
 use c2rust_ast_printer::pprust;
 use syn::{
-    self, AttrStyle, BinOp as RBinOp, Expr, ExprAssign, ExprBinary, ExprBlock, ExprCast,
-    ExprMethodCall, ExprUnary, Field, Stmt, Type,
+    self, BinOp as RBinOp, Expr, ExprAssign, ExprBinary, ExprBlock, ExprCast, ExprMethodCall,
+    ExprUnary, Field, Stmt, Type,
 };
 
 use itertools::EitherOrBoth::{Both, Right};
@@ -316,7 +316,7 @@ impl<'a> Translation<'a> {
                         mk().lit_expr(mk().int_unsuffixed_lit(bytes)),
                     );
                     let mut field = mk();
-                    let field_attrs = attrs.iter().map(|attr| {
+                    for attr in attrs {
                         let ty_str = match &*attr.1 {
                             Type::Path(syn::TypePath { path, .. }) => pprust::path_to_string(path),
                             _ => unreachable!("Found type other than path"),
@@ -327,11 +327,7 @@ impl<'a> Translation<'a> {
                             mk().meta_namevalue("bits", &attr.2),
                         ];
 
-                        mk().meta_list("bitfield", field_attr_items)
-                    });
-
-                    for field_attr in field_attrs {
-                        field = field.meta_item_attr(AttrStyle::Outer, field_attr);
+                        field = field.call_attr("bitfield", field_attr_items)
                     }
 
                     field_entries.push(field.pub_().struct_field(field_name, ty));
@@ -344,9 +340,8 @@ impl<'a> Translation<'a> {
                     );
 
                     // Mark it with `#[bitfield(padding)]`
-                    let field_padding_outer = mk().meta_list("bitfield", vec!["padding"]);
                     let field = mk()
-                        .meta_item_attr(AttrStyle::Outer, field_padding_outer)
+                        .call_attr("bitfield", vec!["padding"])
                         .pub_()
                         .struct_field(field_name, ty);
 
