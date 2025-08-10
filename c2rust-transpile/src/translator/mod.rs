@@ -1499,35 +1499,26 @@ impl<'c> Translation<'c> {
 
         let static_attributes = mk()
             .single_attr("used")
-            .meta_item_attr(
-                AttrStyle::Outer,
-                mk().meta_list(
-                    "cfg_attr",
-                    vec![
-                        mk().meta_namevalue("target_os", "linux"),
-                        mk().meta_namevalue("link_section", ".init_array"),
-                    ],
-                ),
+            .call_attr(
+                "cfg_attr",
+                vec![
+                    mk().meta_namevalue("target_os", "linux"),
+                    mk().meta_namevalue("link_section", ".init_array"),
+                ],
             )
-            .meta_item_attr(
-                AttrStyle::Outer,
-                mk().meta_list(
-                    "cfg_attr",
-                    vec![
-                        mk().meta_namevalue("target_os", "windows"),
-                        mk().meta_namevalue("link_section", ".CRT$XIB"),
-                    ],
-                ),
+            .call_attr(
+                "cfg_attr",
+                vec![
+                    mk().meta_namevalue("target_os", "windows"),
+                    mk().meta_namevalue("link_section", ".CRT$XIB"),
+                ],
             )
-            .meta_item_attr(
-                AttrStyle::Outer,
-                mk().meta_list(
-                    "cfg_attr",
-                    vec![
-                        mk().meta_namevalue("target_os", "macos"),
-                        mk().meta_namevalue("link_section", "__DATA,__mod_init_func"),
-                    ],
-                ),
+            .call_attr(
+                "cfg_attr",
+                vec![
+                    mk().meta_namevalue("target_os", "macos"),
+                    mk().meta_namevalue("link_section", "__DATA,__mod_init_func"),
+                ],
             );
         let static_array_size = mk().lit_expr(mk().int_unsuffixed_lit(1));
         let static_ty = mk().array_ty(
@@ -1657,28 +1648,27 @@ impl<'c> Translation<'c> {
                     assert!(self.ast_context.has_inner_struct_decl(decl_id));
                     let inner_name = self.resolve_decl_inner_name(decl_id);
                     let inner_ty = mk().path_ty(vec![inner_name.clone()]);
-                    let inner_repr_attr = mk().meta_list("repr", reprs);
                     let inner_struct = mk()
                         .span(span)
                         .pub_()
                         .call_attr("derive", derives)
-                        .meta_item_attr(AttrStyle::Outer, inner_repr_attr)
+                        .call_attr("repr", reprs)
                         .struct_item(inner_name.clone(), field_entries, false);
 
-                    // https://github.com/rust-lang/rust/issues/33626
                     let outer_ty = mk().path_ty(vec![name.clone()]);
-                    let outer_reprs = vec![
-                        mk().meta_path("C"),
-                        mk().meta_list("align", vec![alignment]),
-                        // TODO: copy others from `reprs` above
-                    ];
-                    let repr_attr = mk().meta_list("repr", outer_reprs);
                     let outer_field = mk().pub_().enum_field(mk().ident_ty(inner_name));
                     let outer_struct = mk()
                         .span(span)
                         .pub_()
                         .call_attr("derive", vec!["Copy", "Clone"])
-                        .meta_item_attr(AttrStyle::Outer, repr_attr)
+                        .call_attr(
+                            "repr",
+                            vec![
+                                mk().meta_path("C"),
+                                mk().meta_list("align", vec![alignment]),
+                                // TODO: copy others from `reprs` above
+                            ],
+                        )
                         .struct_item(name, vec![outer_field], true);
 
                     // Emit `const X_PADDING: usize = size_of(Outer) - size_of(Inner);`
@@ -1701,13 +1691,11 @@ impl<'c> Translation<'c> {
                     Ok(ConvertedDecl::Items(structs))
                 } else {
                     assert!(!self.ast_context.has_inner_struct_decl(decl_id));
-                    let repr_attr = mk().meta_list("repr", reprs);
-
                     let mut mk_ = mk()
                         .span(span)
                         .pub_()
                         .call_attr("derive", derives)
-                        .meta_item_attr(AttrStyle::Outer, repr_attr);
+                        .call_attr("repr", reprs);
 
                     if contains_va_list {
                         mk_ = mk_.generic_over(mk().lt_param(mk().ident("a")))
