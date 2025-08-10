@@ -106,6 +106,7 @@ jobs:
             libpsl-dev              \
             librtmp-dev             \
             libtool                 \
+            libzstd-dev             \
             python3-setuptools      \
             python3-wheel           \
             rcs                     \
