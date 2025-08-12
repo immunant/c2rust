@@ -1,0 +1,76 @@
+--- a/c2rust-ast-exporter/src/CMakeLists.txt	2025-08-22 16:55:32.191186099 -0400
++++ b/c2rust-ast-exporter/src/CMakeLists.txt	2025-08-22 16:56:04.157045169 -0400
+@@ -1,6 +1,7 @@
+ cmake_minimum_required(VERSION 3.5...4.0)
+ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+ project(ASTExporter)
++set(CMAKE_VERBOSE_MAKEFILE ON)
+ 
+ #################################################
+ # TinyCBOR                                      #
+@@ -21,28 +22,12 @@
+     set(MAKE "make")
+ endif()
+ 
+-include(ExternalProject)
+-ExternalProject_Add(tinycbor_build
+-            PREFIX ${TINYCBOR_PREFIX}
+-            INSTALL_DIR ${CMAKE_BINARY_DIR}
+-            GIT_REPOSITORY ${TINYCBOR_REPO}
+-            GIT_TAG ${TINYCBOR_TAG}
+-            # the fd redirection here fails when the build run inside Cargo.
+-            # patch from upstream:
+-            # https://github.com/intel/tinycbor/commit/6176e0a28d7c5ef3a5e9cbd02521999c412de72c
+-            PATCH_COMMAND patch --forward -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/tinycbor_fix_build.patch || true
+-            CONFIGURE_COMMAND ${MAKE} .config && cat ${CMAKE_CURRENT_SOURCE_DIR}/tinycbor.config >> .config
+-            BUILD_COMMAND ${MAKE} --quiet prefix=<INSTALL_DIR> CFLAGS=-fPIC
+-            INSTALL_COMMAND ${MAKE} --quiet prefix=<INSTALL_DIR> install
+-            BUILD_IN_SOURCE 1
+-            BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/lib/libtinycbor.a
+-)
+-
+ include_directories(${CMAKE_BINARY_DIR}/include)
+ 
+-add_library(tinycbor STATIC IMPORTED)
+-set_target_properties(tinycbor PROPERTIES IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/lib/libtinycbor.a)
+-add_dependencies(tinycbor tinycbor_build)
++find_package(PkgConfig REQUIRED)
++pkg_check_modules(TINYCBOR REQUIRED tinycbor)
++include_directories(${TINYCBOR_INCLUDE_DIRS})
++link_directories(${TINYCBOR_LIBRARY_DIRS})
+ 
+ set(AST_EXPORTER_SRCS
+   AstExporter.cpp
+@@ -93,6 +78,9 @@
+   CXX_STANDARD 17
+   CXX_EXTENSIONS OFF
+   )
++
++target_link_directories(c2rust-ast-exporter PRIVATE ${TINYCBOR_LIBRARY_DIRS})
++
+ # PRIVATE was added to make c2rust-ast-exporter build with LLVM 6.0. Keyword
+ # description: https://cmake.org/pipermail/cmake/2016-May/063400.html
+ target_link_libraries(c2rust-ast-exporter PRIVATE
+@@ -101,18 +89,20 @@
+   clangTooling
+   clangBasic
+   clangASTMatchers
+-  tinycbor
++  ${TINYCBOR_LIBRARIES}
+   )
+ 
+ set_target_properties(clangAstExporter PROPERTIES
+   CXX_STANDARD 17 # will decay to 14 if compiler doesn't support c++17
+   CXX_EXTENSIONS OFF
+   )
++
++target_link_directories(clangAstExporter PRIVATE ${TINYCBOR_LIBRARY_DIRS})
+ target_link_libraries(clangAstExporter PRIVATE
+   clangAST
+   clangFrontend
+   clangTooling
+   clangBasic
+   clangASTMatchers
+-  tinycbor
++  ${TINYCBOR_LIBRARIES}
+   )
