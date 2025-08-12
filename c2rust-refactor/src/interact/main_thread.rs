@@ -209,8 +209,10 @@ impl InteractState {
 
 fn filename_to_str(filename: &FileName) -> String {
     match filename {
-        &FileName::Real(ref pathbuf) => pathbuf.to_str().expect("Invalid path name").to_owned(),
-        &FileName::Macros(ref macros) => format!("<{}>", macros),
+        &FileName::Real(ref rfn) => rfn
+            .to_string_lossy(rustc_span::FileNameDisplayPreference::Local)
+            .into_owned(),
+        // TODO: FileName::Macros is gone, do we need an alternative?
         other => panic!("Need to implement name conversion for {:?}", other),
     }
 }
