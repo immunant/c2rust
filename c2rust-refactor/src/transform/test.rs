@@ -186,7 +186,7 @@ impl Transform for TestDebugCallees {
                 if let Some(substs) = substs {
                     info!("      subst: {:?}",
                           tcx.subst_and_normalize_erasing_regions(
-                              substs, ParamEnv::empty(), &ty));
+                              substs, ParamEnv::empty(), ty));
                 }
                 if ty.is_fn() {
                     let sig = ty.fn_sig(tcx);
@@ -198,7 +198,7 @@ impl Transform for TestDebugCallees {
                     if let Some(substs) = substs {
                         let sig2 = tcx.subst_and_normalize_erasing_regions(
                             substs, ParamEnv::empty(),
-                            &tcx.erase_late_bound_regions(sig));
+                            tcx.erase_late_bound_regions(sig));
                         info!("      sig + erase + subst: {:?}", sig2);
                         info!("      input tys: {:?}", sig2.inputs());
                     }
