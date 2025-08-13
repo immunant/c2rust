@@ -3218,6 +3218,10 @@ impl<'c> Translation<'c> {
     /// In the case that `ctx.is_unused()`, all side-effecting components will be in the
     /// `stmts` field of the output and it is expected that the `val` field of the output will be
     /// ignored.
+    ///
+    /// `override_ty` is the type expected by the surrounding expression context.
+    /// This can be different from the type of the AST node itself
+    /// and in many cases should override it.
     pub fn convert_expr(
         &self,
         mut ctx: ExprContext,
