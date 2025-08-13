@@ -532,7 +532,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
     /// Are we refactoring an executable crate?
     pub fn is_executable(&self) -> bool {
-        self.sess.crate_types.borrow().contains(&CrateType::Executable)
+        self.sess.crate_types().contains(&CrateType::Executable)
     }
 
     pub fn item_namespace(&self, item: &Item) -> Option<Namespace> {
