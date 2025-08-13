@@ -981,7 +981,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             if func.body.is_some() {
                 let def_id = self.cx.hir_map().local_def_id_from_node_id(func.id);
                 let tables = self.cx.ty_ctxt().typeck(def_id);
-                if tables.tainted_by_errors {
+                if tables.tainted_by_errors.is_some() {
                     errors = true
                 }
             }
