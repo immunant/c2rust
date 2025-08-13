@@ -980,7 +980,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
         visit_fns(krate, |func| {
             if func.body.is_some() {
                 let def_id = self.cx.hir_map().local_def_id_from_node_id(func.id);
-                let tables = self.cx.ty_ctxt().typeck_tables_of(def_id);
+                let tables = self.cx.ty_ctxt().typeck(def_id);
                 if tables.tainted_by_errors {
                     errors = true
                 }
