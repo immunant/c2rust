@@ -18,7 +18,7 @@ impl Transform for CanonicalizeRefs {
             let hir_id = cx.hir_map().node_to_hir_id(expr.id);
             let hir_expr = cx.hir_map().expect_expr(hir_id);
             let parent = cx.hir_map().get_parent_did(hir_id);
-            let tables = cx.ty_ctxt().typeck_tables_of(parent);
+            let tables = cx.ty_ctxt().typeck(parent);
             for adjustment in tables.expr_adjustments(hir_expr) {
                 match adjustment.kind {
                     Adjust::Deref(_) => {
