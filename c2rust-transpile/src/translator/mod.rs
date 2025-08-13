@@ -3316,11 +3316,11 @@ impl<'c> Translation<'c> {
                 Ok(result)
             }
 
-            ConstantExpr(_ty, child, value) => {
+            ConstantExpr(ty, child, value) => {
                 if let Some(constant) = value {
                     self.convert_constant(constant).map(WithStmts::new_val)
                 } else {
-                    self.convert_expr(ctx, child, Some(_ty))
+                    self.convert_expr(ctx, child, Some(ty))
                 }
             }
 
