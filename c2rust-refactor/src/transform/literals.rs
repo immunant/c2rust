@@ -443,8 +443,8 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.replace_with_leaf(new_node, source);
             }
 
-            sty::TyKind::Adt(ref adt_ref, ref substs)
-            if adt_ref.is_box() || adt_ref.is_rc() || adt_ref.is_arc() => {
+            // TODO: we used to be able to handle Rc/Arc as well
+            sty::TyKind::Adt(ref adt_ref, ref substs) if adt_ref.is_box() =>{
                 // Ignore the actual structure for these types, and just
                 // use the inner type as the single child
                 let inner_ty = substs.type_at(0);
