@@ -3237,10 +3237,10 @@ impl<'c> Translation<'c> {
     /// Translate a C expression into a Rust one, possibly collecting side-effecting statements
     /// to run before the expression.
     ///
-    /// The `use_` argument informs us how the C expression we are translating is used in the C
-    /// program. See `ExprUse` for more information.
+    /// `ctx.is_used()` informs us how the C expression we are translating is used in the C
+    /// program.
     ///
-    /// In the case that `use_` is unused, all side-effecting components will be in the
+    /// In the case that `ctx.is_unused()`, all side-effecting components will be in the
     /// `stmts` field of the output and it is expected that the `val` field of the output will be
     /// ignored.
     pub fn convert_expr(
