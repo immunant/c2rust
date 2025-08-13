@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 struct S {
   int i;
@@ -364,3 +365,7 @@ int local_fn(void) { return 1234; }
 #define LOCAL_VALUE (local_fn())
 
 int use_local_value(void) { return LOCAL_VALUE; }
+
+bool use_portable_type(uintptr_t len) {
+  return len <= UINTPTR_MAX / 2;
+}

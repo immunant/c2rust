@@ -3260,7 +3260,7 @@ impl<'c> Translation<'c> {
             self.ast_context[expr_id]
         );
 
-        if let Some(converted) = self.convert_const_macro_expansion(ctx, expr_id)? {
+        if let Some(converted) = self.convert_const_macro_expansion(ctx, expr_id, override_ty)? {
             return Ok(converted);
         }
 
@@ -4095,6 +4095,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         expr_id: CExprId,
+        override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<Option<WithStmts<Box<Expr>>>> {
         let macros = match self.ast_context.macro_invocations.get(&expr_id) {
             Some(macros) => macros.as_slice(),
@@ -4145,7 +4146,8 @@ impl<'c> Translation<'c> {
         let val = WithStmts::new_val(mk().path_expr(vec![rust_name]));
 
         let expr_kind = &self.ast_context[expr_id].kind;
-        if let Some(expr_ty) = expr_kind.get_qual_type() {
+        let expr_ty = override_ty.or_else(|| expr_kind.get_qual_type());
+        if let Some(expr_ty) = expr_ty {
             self.convert_cast(
                 ctx,
                 CQualTypeId::new(macro_ty),
