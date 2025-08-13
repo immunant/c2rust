@@ -680,7 +680,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         // Put new modules for executables inline, because we can't really put
         // them into the source tree where the library sources are since they
         // will conflict.
-        let inline = self.cx.is_executable();
+        let _inline = self.cx.is_executable();
         for mod_info in self.modules.values() {
             if let Some(declarations) = module_item_decls.remove(&mod_info.id) {
                 let new_items = declarations.into_items(self.st, mod_info);
@@ -705,8 +705,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         // FIXME: we should also check if items overlap
                         mod_items.extend(new_items.into_iter());
                     } else {
-                        let mut new_mod = mk().mod_(new_items);
-                        new_mod.inline = inline;
+                        let new_mod = mk().mod_(new_items);
+                        // TODO: do this again when we switch back to outline modules
+                        //new_mod.inline = inline;
                         let new_mod_item = mk()
                             .pub_()
                             .id(mod_info.id)
