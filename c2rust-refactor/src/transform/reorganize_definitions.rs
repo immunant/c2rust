@@ -706,7 +706,6 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         mod_items.extend(new_items.into_iter());
                     } else {
                         let mut new_mod = mk().mod_(new_items);
-                        new_mod.inline = inline;
                         let new_mod_item = mk()
                             .pub_()
                             .id(mod_info.id)
