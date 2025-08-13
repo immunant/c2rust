@@ -216,7 +216,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 // TODO: Implement
 
                 // let parent = self.cx.hir_map().get_parent_did(sub_e.id);
-                // let tables = self.cx.ty_ctxt().typeck_tables_of(parent);
+                // let tables = self.cx.ty_ctxt().typeck(parent);
                 // let hir_id = self.cx.hir_map().node_to_hir_id(sub_e.id);
                 // if tables.cast_kinds().get(hir_id).is_none() {
                 //     illtyped |= self.ensure_cast(sub_e, ty);

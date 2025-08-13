@@ -127,7 +127,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             return self.def_type(def_id);
         }
         let parent = self.hir_map().get_parent_did(hir_id);
-        let tables = self.ty_ctxt().typeck_tables_of(parent);
+        let tables = self.ty_ctxt().typeck(parent);
         tables.node_type(hir_id)
     }
 
@@ -141,7 +141,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         if !self.ty_ctxt().has_typeck_tables(parent) {
             return None;
         }
-        let tables = self.ty_ctxt().typeck_tables_of(parent);
+        let tables = self.ty_ctxt().typeck(parent);
         let hir_id = self.hir_map().opt_node_to_hir_id(id)?;
         tables.node_type_opt(hir_id)
     }
@@ -163,7 +163,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         if !self.ty_ctxt().has_typeck_tables(parent) {
             return None;
         }
-        let tables = self.ty_ctxt().typeck_tables_of(parent);
+        let tables = self.ty_ctxt().typeck(parent);
         if let Some(adj) = tables
             .adjustments()
             .get(hir_id)
