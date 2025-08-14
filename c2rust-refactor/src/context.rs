@@ -637,6 +637,11 @@ impl<'hir> HirMap<'hir> {
         self.node_id_to_def_id.get(&id).copied()
     }
 
+    pub fn local_def_id_from_node_id(&self, id: NodeId) -> LocalDefId {
+        self.opt_local_def_id_from_node_id(id)
+            .unwrap_or_else(|| panic!("Could not find a LocalDefId for NodeId: {:?}", id))
+    }
+
     pub fn hir_to_node_id(&self, id: HirId) -> NodeId {
         self
             .map
