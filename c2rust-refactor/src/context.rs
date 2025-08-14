@@ -646,6 +646,10 @@ impl<'hir> HirMap<'hir> {
             .unwrap_or_else(|| panic!("Could not find a NodeId for HirId: {:?}", id))
     }
 
+    pub fn as_local_node_id(&self, id: DefId) -> Option<NodeId> {
+        id.as_local().map(|ldid| self.def_id_to_node_id[ldid])
+    }
+
     pub fn get_if_local(&self, id: DefId) -> Option<Node<'hir>> {
         self.map.get_if_local(id)
     }
