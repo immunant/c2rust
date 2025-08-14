@@ -103,7 +103,7 @@ pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Res)> {
             ref it => panic!("item {:?} does not have resolvable children", it),
         }
     } else {
-        let children = tcx.item_children(did);
+        let children = tcx.module_children(did);
         children.iter().map(|c| (c.ident.name, c.res)).collect()
     }
 }
