@@ -2,7 +2,7 @@ use log::{debug, info, trace};
 use std::collections::{HashMap, HashSet};
 use std::ops::DerefMut;
 use rustc_hir as hir;
-use rustc_hir::def_id::DefId;
+use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::ty::{self, TyKind, TyCtxt, ParamEnv};
 use rustc_ast::*;
 use rustc_ast::mut_visit::{self, MutVisitor};
@@ -1041,7 +1041,7 @@ impl<'tcx> TypeExpectation<'tcx> {
 
 impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
     /// Determine if `from` can cast be cast to `to` according to rust-rfc 0401.
-    fn can_cast(&self, from: ty::Ty<'tcx>, to: ty::Ty<'tcx>, parent: DefId) -> bool {
+    fn can_cast(&self, from: ty::Ty<'tcx>, to: ty::Ty<'tcx>, parent: LocalDefId) -> bool {
         use rustc_type_ir::sty::TyKind::*;
         use rustc_middle::ty::TypeAndMut;
 
@@ -1068,7 +1068,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 (Mutability::Not, Mutability::Mut) => false,
 
                 _ => {
-                    let param_env_ty = self.cx.ty_ctxt().param_env(parent).and(to);
+                    let param_env_ty = self.cx.ty_ctxt().param_env(parent.to_def_id()).and(to);
 
                     // All pointer casts to sized types are allowed
                     self.cx.ty_ctxt().is_sized_raw(param_env_ty)
@@ -1353,7 +1353,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
         }
 
         let hir_id = self.cx.hir_map().node_to_hir_id(expr.id);
-        if self.can_cast(cur_ty, expected.ty, self.cx.hir_map().get_parent_did(hir_id)) {
+        if self.can_cast(cur_ty, expected.ty, self.cx.hir_map().get_parent_item(hir_id)) {
             self.num_inserted_casts += 1;
             *expr = mk().cast_expr(expr.clone(), reflect_tcx_ty(self.cx.ty_ctxt(), expected.ty));
             return true;
