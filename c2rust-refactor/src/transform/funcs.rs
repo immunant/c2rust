@@ -287,7 +287,7 @@ impl Transform for FixUnusedUnsafe {
         MutVisitNodes::visit(krate, |b: &mut P<Block>| {
             if let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules {
                 let hir_id = cx.hir_map().node_to_hir_id(b.id);
-                let parent = cx.hir_map().get_parent_did(hir_id);
+                let parent = cx.hir_map().get_parent_item(hir_id);
                 let result = cx.ty_ctxt().unsafety_check_result(parent);
                 let unused = result
                     .unused_unsafes
