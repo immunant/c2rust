@@ -137,7 +137,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         if let Some(def_id) = self.hir_map().opt_local_def_id(hir_id) {
             return self.def_type(def_id);
         }
-        let parent = self.hir_map().get_parent_did(hir_id);
+        let parent = self.hir_map().get_parent_item(hir_id);
         let tables = self.ty_ctxt().typeck(parent);
         tables.node_type(hir_id)
     }
