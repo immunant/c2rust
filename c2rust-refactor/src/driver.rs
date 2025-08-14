@@ -8,9 +8,11 @@ use rustc_session::config::Input;
 use rustc_session::{self, DiagnosticOutput, Session};
 use rustc_middle::ty;
 use rustc_codegen_ssa::traits::CodegenBackend;
+use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::sync::Lrc;
 use rustc_driver;
 use rustc_errors::{DiagnosticBuilder, ErrorGuaranteed};
+use rustc_index::vec::IndexVec;
 use rustc_interface::interface;
 use rustc_interface::util::{get_codegen_backend, run_in_thread_pool_with_globals};
 use rustc_interface::{util, Config};
@@ -38,6 +40,7 @@ use rustc_span::symbol::{kw, Symbol};
 use rustc_ast::tokenstream::TokenTree;
 use rustc_span::{FileName, Span, DUMMY_SP};
 use rustc_span::edition::Edition;
+use rustc_span::def_id::LocalDefId;
 
 use crate::ast_manip::remove_paren;
 use crate::command::{GenerationalTyCtxt, RefactorState, Registry};
@@ -70,9 +73,11 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         sess: &'a Session,
         max_node_id: NodeId,
         map: hir_map::Map<'tcx>,
+        node_id_to_def_id: FxHashMap<NodeId, LocalDefId>,
+        def_id_to_node_id: IndexVec<LocalDefId, NodeId>,
         tcx: GenerationalTyCtxt<'tcx>,
     ) -> RefactorCtxt<'a, 'tcx> {
-        RefactorCtxt::new(sess, None, Some(HirMap::new(max_node_id, map)), Some(tcx))
+        RefactorCtxt::new(sess, None, Some(HirMap::new(max_node_id, map, node_id_to_def_id, def_id_to_node_id)), Some(tcx))
     }
 }
 
