@@ -984,7 +984,7 @@ pub fn analyze<'a, 'tcx: 'a>(
         adjusted: HashMap::new(),
         substs: HashMap::new(),
     };
-    cx.hir_map().krate().visit_all_item_likes(&mut v);
+    cx.ty_ctxt().hir().visit_all_item_likes_in_crate(&mut v);
     let ExprPatVisitor {
         unadjusted: unadjusted_nodes,
         adjusted: nodes,
@@ -1011,9 +1011,7 @@ pub fn analyze<'a, 'tcx: 'a>(
         defs: RefCell::new(HashMap::new()),
         def_sigs: RefCell::new(HashMap::new()),
     };
-    cx.hir_map()
-        .krate()
-        .visit_all_item_likes(&mut v);
+    cx.ty_ctxt().hir().visit_all_item_likes_in_crate(&mut v);
 
     // For all `ast::Ty` nodes, build a map with the `NodeId` and the raw label of the root of its
     // equivalence class.
