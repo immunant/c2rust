@@ -296,7 +296,9 @@ pub fn anon_const_to_expr(hir_map: &HirMap, def_id: DefId) -> P<Expr> {
     let node = hir_map.get_if_local(def_id).unwrap();
     let ac = expect!([node] Node::AnonConst(ac) => ac);
     let body_id = ac.body;
-    let body = hir_map.krate().body(body_id);
+    // TODO: This used to be hir_map.krate().body(body_id).
+    // Is the replacement correct?
+    let body = hir_map.body(body_id);
     hir_expr_to_expr(&body.value)
 }
 
