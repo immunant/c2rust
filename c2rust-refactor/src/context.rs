@@ -242,8 +242,8 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                 }
             })
             .and_then(|def| {
-                if let Some(def_id) = def.opt_def_id() {
-                    self.hir_map().as_local_hir_id(def_id)
+                if let Some(def_id) = def.opt_def_id().and_then(DefId::as_local) {
+                    Some(self.hir_map().local_def_id_to_hir_id(def_id))
                 } else if let Res::Local(hir_id) = def {
                     Some(hir_id)
                 } else {
@@ -688,6 +688,10 @@ impl<'hir> HirMap<'hir> {
 
     pub fn local_def_id(&self, id: HirId) -> LocalDefId {
         self.map.local_def_id(id)
+    }
+
+    pub fn local_def_id_to_hir_id(&self, def_id: LocalDefId) -> HirId {
+        self.map.local_def_id_to_hir_id(def_id)
     }
 }
 
