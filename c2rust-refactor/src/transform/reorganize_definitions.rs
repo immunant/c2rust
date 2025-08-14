@@ -768,7 +768,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     // Canonicalize a new path from the crate root. Will rewrite
                     // any relative paths that we may have moved into absolute
                     // paths.
-                    if let Some(hir_id) = self.cx.hir_map().as_local_hir_id(def_id) {
+                    if let Some(hir_id) = self.cx.hir_map().local_def_id_to_hir_id(def_id) {
                         let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(def_id);
                         let mod_id = self.cx.hir_map().hir_to_node_id(mod_hir_id);
                         let inserted = remapped_paths.insert(id, (mod_id, def_id)).is_none();
@@ -852,7 +852,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                     // Canonicalize a new path from the crate root. Will rewrite
                                     // any relative paths that we may have moved into absolute
                                     // paths.
-                                    if let Some(hir_id) = self.cx.hir_map().as_local_hir_id(*def_id) {
+                                    if let Some(hir_id) = self.cx.hir_map().local_def_id_to_hir_id(*def_id) {
                                         let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(*def_id);
                                         let mod_id = self.cx.hir_map().hir_to_node_id(mod_hir_id);
                                         if other_mod_id != mod_id {
@@ -933,7 +933,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                     let mod_id = if let Some(Replacement {parent, ..}) = self.path_mapping.get(&def_id) {
                                         *parent
                                     } else {
-                                        if let Some(hir_id) = self.cx.hir_map().as_local_hir_id(def_id) {
+                                        if let Some(hir_id) = self.cx.hir_map().local_def_id_to_hir_id(def_id) {
                                             let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(def_id);
                                             self.cx.hir_map().hir_to_node_id(mod_hir_id)
                                         } else {
