@@ -427,7 +427,7 @@ fn do_split_variants(st: &CommandState,
             // Figure out where we are.
             let hir_id = cx.hir_map().node_to_hir_id(e.id);
             let src = cx.hir_map().get_parent_item(hir_id);
-            let src = cx.hir_map().hir_to_node_id(src);
+            let src = cx.hir_map().local_def_id_to_node_id(src);
             let src_def_id = cx.node_def_id(src);
             let (src_fr, src_vr) = ana.fn_results(src_def_id);
 
