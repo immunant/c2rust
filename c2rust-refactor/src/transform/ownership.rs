@@ -565,7 +565,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
 
         fn pat_type(&mut self, p: &Pat) -> Option<Self::Type> {
             let hir_id = self.hir_map.opt_node_to_hir_id(p.id)?;
-            let fn_def_id = self.hir_map.get_parent_did(hir_id);
+            let fn_def_id = self.hir_map.get_parent_item(hir_id);
             let f = self.ana.funcs.get(&fn_def_id)?;
             let local_var = f.locals.get(&p.span)?;
 
