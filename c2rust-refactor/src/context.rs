@@ -2,8 +2,9 @@ use log::{trace, warn};
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
+use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def::{DefKind, Namespace, Res};
-use rustc_hir::def_id::{CrateNum, DefId};
+use rustc_hir::def_id::{CrateNum, DefId, LocalDefId};
 use rustc_hir::{self as hir, Node, HirId};
 use rustc_session::Session;
 use rustc_session::config::CrateType;
@@ -16,6 +17,7 @@ use rustc_ast::{
     Expr, ExprKind, ForeignItem, ForeignItemKind, FnDecl, FnRetTy, Item, ItemKind, NodeId, Path, QSelf, UseTreeKind, DUMMY_NODE_ID,
 };
 use rustc_ast::ptr::P;
+use rustc_index::vec::IndexVec;
 
 use crate::ast_manip::AstEquiv;
 use crate::command::{GenerationalTyCtxt, TyCtxtGeneration};
@@ -52,18 +54,26 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct HirMap<'hir> {
     map: hir_map::Map<'hir>,
 
     /// Next NodeId after the crate. Needed to validate NodeIds used with the
     /// map.
     max_node_id: NodeId,
+
+    node_id_to_def_id: FxHashMap<NodeId, LocalDefId>,
+    def_id_to_node_id: IndexVec<LocalDefId, NodeId>,
 }
 
 impl<'hir> HirMap<'hir> {
-    pub fn new(max_node_id: NodeId, map: hir_map::Map<'hir>) -> Self {
-        Self { map, max_node_id }
+    pub fn new(
+        max_node_id: NodeId,
+        map: hir_map::Map<'hir>,
+        node_id_to_def_id: FxHashMap<NodeId, LocalDefId>,
+        def_id_to_node_id: IndexVec<LocalDefId, NodeId>,
+    ) -> Self {
+        Self { map, max_node_id, node_id_to_def_id, def_id_to_node_id }
     }
 }
 
@@ -600,7 +610,9 @@ impl<'hir> HirMap<'hir> {
         if id > self.max_node_id {
             None
         } else {
-            Some(self.map.node_to_hir_id(id))
+            self.node_id_to_def_id.get(&id).map(|ldid| {
+                self.map.local_def_id_to_hir_id(*ldid)
+            })
         }
     }
 
@@ -618,6 +630,10 @@ impl<'hir> HirMap<'hir> {
 
     pub fn find_by_hir_id(&self, id: HirId) -> Option<Node<'hir>> {
         self.map.find(id)
+    }
+
+    pub fn opt_local_def_id_from_node_id(&self, id: NodeId) -> Option<LocalDefId> {
+        self.node_id_to_def_id.get(&id).copied()
     }
 }
 
