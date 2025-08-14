@@ -38,7 +38,7 @@ impl<'a, 'tcx> MarkUseVisitor<'a, 'tcx> {
                         if crate::matches!([path.res] Res::Def(DefKind::Ctor(..), _)) {
                             let hir_id = self.cx.hir_map().node_to_hir_id(id);
                             let parent_id = self.cx.hir_map().get_parent_item(hir_id);
-                            let parent_id = self.cx.hir_map().hir_to_node_id(parent_id);
+                            let parent_id = self.cx.hir_map().local_def_id_to_node_id(parent_id);
                             if self.st.marked(parent_id, self.label) {
                                 self.st.add_mark(use_id, self.label);
                             }
