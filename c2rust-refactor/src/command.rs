@@ -148,7 +148,7 @@ pub struct RefactorState {
 // }
 
 #[cfg_attr(feature = "profile", flame)]
-fn parse_extras(source_map: &Lrc<SourceMap>, session: &Lrc<Session>) -> Vec<Comment> {
+fn parse_extras(source_map: &SourceMap, session: &Lrc<Session>) -> Vec<Comment> {
     let mut comments = vec![];
     for file in source_map.files().iter() {
         if let Some(src) = &file.src {
@@ -175,7 +175,7 @@ pub const FRESH_NODE_ID_START: u32 = 0x8000_0000;
 impl DiskState {
     /// Initialization shared between new() and load_crate()
     #[cfg_attr(feature = "profile", flame)]
-    fn new(krate: Crate, source_map: &Lrc<SourceMap>, session: &Lrc<Session>, node_map: &mut NodeMap) -> DiskState {
+    fn new(krate: Crate, source_map: &SourceMap, session: &Lrc<Session>, node_map: &mut NodeMap) -> DiskState {
         // (Re)initialize `node_map` and `marks`.
         node_map.init(krate.list_node_ids().into_iter());
         // Special case: CRATE_NODE_ID doesn't actually appear anywhere in the AST.
