@@ -374,7 +374,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 let def_id = self.cx.node_def_id(item.id);
                 let dest_path = self.cx.def_path(def_id);
                 let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(def_id);
-                let mod_id = self.cx.hir_map().hir_to_node_id(mod_hir_id);
+                let mod_id = self.cx.hir_map().local_def_id_to_node_id(mod_hir_id);
                 decl_ids.into_iter()
                     .for_each(|decl_id| {
                         self.path_mapping.insert(
@@ -770,7 +770,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     // paths.
                     if let Some(hir_id) = self.cx.hir_map().local_def_id_to_hir_id(def_id) {
                         let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(def_id);
-                        let mod_id = self.cx.hir_map().hir_to_node_id(mod_hir_id);
+                        let mod_id = self.cx.hir_map().local_def_id_to_node_id(mod_hir_id);
                         let inserted = remapped_paths.insert(id, (mod_id, def_id)).is_none();
                         assert!(inserted);
                     }
@@ -854,7 +854,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                     // paths.
                                     if let Some(hir_id) = self.cx.hir_map().local_def_id_to_hir_id(*def_id) {
                                         let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(*def_id);
-                                        let mod_id = self.cx.hir_map().hir_to_node_id(mod_hir_id);
+                                        let mod_id = self.cx.hir_map().local_def_id_to_node_id(mod_hir_id);
                                         if other_mod_id != mod_id {
                                             let new_node_id = self.st.next_node_id();
                                             let inserted = remapped_paths.insert(new_node_id, (mod_id, *def_id)).is_none();
@@ -935,7 +935,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                     } else {
                                         if let Some(hir_id) = self.cx.hir_map().local_def_id_to_hir_id(def_id) {
                                             let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(def_id);
-                                            self.cx.hir_map().hir_to_node_id(mod_hir_id)
+                                            self.cx.hir_map().local_def_id_to_node_id(mod_hir_id)
                                         } else {
                                             DUMMY_NODE_ID
                                         }
