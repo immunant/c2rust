@@ -5,7 +5,7 @@ use std::ops::Deref;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def::{DefKind, Namespace, Res};
 use rustc_hir::def_id::{CrateNum, DefId, LocalDefId};
-use rustc_hir::{self as hir, Node, HirId};
+use rustc_hir::{self as hir, BodyId, Node, HirId};
 use rustc_session::Session;
 use rustc_session::config::CrateType;
 use rustc_middle::hir::map as hir_map;
@@ -18,6 +18,7 @@ use rustc_ast::{
 };
 use rustc_ast::ptr::P;
 use rustc_index::vec::IndexVec;
+use rustc_span::Span;
 
 use crate::ast_manip::AstEquiv;
 use crate::command::{GenerationalTyCtxt, TyCtxtGeneration};
@@ -644,12 +645,45 @@ impl<'hir> HirMap<'hir> {
             .copied()
             .unwrap_or_else(|| panic!("Could not find a NodeId for HirId: {:?}", id))
     }
-}
 
-impl<'hir> Deref for HirMap<'hir> {
-    type Target = hir_map::Map<'hir>;
-    fn deref(&self) -> &Self::Target {
-        &self.map
+    pub fn get_if_local(&self, id: DefId) -> Option<Node<'hir>> {
+        self.map.get_if_local(id)
+    }
+
+    pub fn get_parent_item(&self, id: HirId) -> LocalDefId {
+        self.map.get_parent_item(id)
+    }
+
+    pub fn body_owned_by(&self, id: LocalDefId) -> BodyId {
+        self.map.body_owned_by(id)
+    }
+
+    pub fn span(&self, id: HirId) -> Span {
+        self.map.span(id)
+    }
+
+    pub fn expect_expr(&self, id: HirId) -> &'hir hir::Expr<'hir> {
+        self.map.expect_expr(id)
+    }
+
+    pub fn get_parent_node(&self, id: HirId) -> HirId {
+        self.map.get_parent_node(id)
+    }
+
+    pub fn opt_local_def_id(&self, id: HirId) -> Option<LocalDefId> {
+        self.map.opt_local_def_id(id)
+    }
+
+    pub fn maybe_body_owned_by(&self, id: LocalDefId) -> Option<BodyId> {
+        self.map.maybe_body_owned_by(id)
+    }
+
+    pub fn body(&self, id: BodyId) -> &'hir hir::Body<'hir> {
+        self.map.body(id)
+    }
+
+    pub fn local_def_id(&self, id: HirId) -> LocalDefId {
+        self.map.local_def_id(id)
     }
 }
 
