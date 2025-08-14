@@ -1,5 +1,6 @@
 use log::debug;
 use rustc_hir::HirId;
+use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::hir::place::PlaceWithHirId;
 use rustc_middle::mir::FakeReadCause;
 use rustc_middle::ty::{self, ParamEnv};
