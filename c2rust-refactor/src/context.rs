@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
 use rustc_hir::def::{DefKind, Namespace, Res};
-use rustc_hir::def_id::{CRATE_DEF_INDEX, DefId};
+use rustc_hir::def_id::{CrateNum, DefId};
 use rustc_hir::{self as hir, Node, HirId};
 use rustc_session::Session;
 use rustc_session::config::CrateType;
@@ -585,9 +585,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     }
 
     pub fn crate_defs(&self) -> Vec<DefId> {
-        self.ty_ctxt().crates(()).iter().map(|crate_num| {
-            DefId { krate: *crate_num, index: CRATE_DEF_INDEX }
-        }).collect()
+        self.ty_ctxt().crates(()).iter().copied().map(CrateNum::as_def_id).collect()
     }
 }
 
