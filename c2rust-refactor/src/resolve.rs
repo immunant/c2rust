@@ -5,7 +5,7 @@ use rustc_hir::{ForeignItemRef, Mod, Node};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::{Ident, Symbol};
 
-fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res)>) {
+fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res<!>)>) {
     use rustc_hir::ItemKind::*;
 
     for &iid in &m.item_ids[..] {
@@ -44,7 +44,7 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res)>
     }
 }
 
-fn push_hir_foreign_mod_children(tcx: TyCtxt, items: &[ForeignItemRef], children: &mut Vec<(Symbol, Res)>) {
+fn push_hir_foreign_mod_children(tcx: TyCtxt, items: &[ForeignItemRef], children: &mut Vec<(Symbol, Res<!>)>) {
     for fi in &items[..] {
         let did = tcx.hir().local_def_id(fi.id.hir_id()).to_def_id();
         let def = tcx.def_kind(did);
@@ -53,7 +53,7 @@ fn push_hir_foreign_mod_children(tcx: TyCtxt, items: &[ForeignItemRef], children
 }
 
 /// List the names and `Def`s of all children of the indicated module.
-pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Res)> {
+pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Res<!>)> {
     use rustc_hir::ItemKind::*;
 
     if did.krate == LOCAL_CRATE {
@@ -109,7 +109,7 @@ pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Res)> {
 }
 
 /// Resolve an absolute path to a `Def`.
-pub fn resolve_absolute(tcx: TyCtxt, path: &[Ident]) -> Res {
+pub fn resolve_absolute(tcx: TyCtxt, path: &[Ident]) -> Res<!> {
     let krate_did = DefId {
         krate: LOCAL_CRATE,
         index: CRATE_DEF_INDEX,
