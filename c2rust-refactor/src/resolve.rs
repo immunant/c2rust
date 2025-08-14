@@ -1,6 +1,6 @@
 use crate::expect;
 use rustc_hir::def::{DefKind, Res};
-use rustc_hir::def_id::{DefId, CRATE_DEF_INDEX, LOCAL_CRATE};
+use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_hir::{ForeignItemRef, Mod, Node};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::{Ident, Symbol};
@@ -22,13 +22,9 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res<!
                 let krate = tcx
                     .extern_mod_stmt_cnum(item_did)
                     .expect("no cnum available for `extern crate`");
-                let krate_did = DefId {
-                    krate,
-                    index: CRATE_DEF_INDEX,
-                };
                 // This is a little bogus (the thing at `krate_did` isn't really a module), but it
                 // works well enough.
-                let krate_def = Res::Def(DefKind::Mod, krate_did);
+                let krate_def = Res::Def(DefKind::Mod, krate.as_def_id());
                 children.push((item.ident.name, krate_def));
             }
 
@@ -56,8 +52,8 @@ fn push_hir_foreign_mod_children(tcx: TyCtxt, items: &[ForeignItemRef], children
 pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Res<!>)> {
     use rustc_hir::ItemKind::*;
 
-    if did.krate == LOCAL_CRATE {
-        if did.index == CRATE_DEF_INDEX {
+    if did.is_local() {
+        if did.is_crate_root() {
             // Crate root needs some special handling.  Looking it up in the HIR map by DefId
             // fails, but we can grab its root `Mod` directly.
             let m = &tcx.hir().root_module();
@@ -77,11 +73,7 @@ pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Res<!>)> {
                 let krate = tcx
                     .extern_mod_stmt_cnum(did.expect_local())
                     .expect("no cnum available for `extern crate`");
-                let krate_did = DefId {
-                    krate,
-                    index: CRATE_DEF_INDEX,
-                };
-                module_children(tcx, krate_did)
+                module_children(tcx, krate.as_def_id())
             }
 
             Use(ref path, _kind) => {
@@ -110,10 +102,7 @@ pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Res<!>)> {
 
 /// Resolve an absolute path to a `Def`.
 pub fn resolve_absolute(tcx: TyCtxt, path: &[Ident]) -> Res<!> {
-    let krate_did = DefId {
-        krate: LOCAL_CRATE,
-        index: CRATE_DEF_INDEX,
-    };
+    let krate_did = LOCAL_CRATE.as_def_id();
     let mut cur_def = Res::Def(DefKind::Mod, krate_did);
 
     'a: for ident in path {
