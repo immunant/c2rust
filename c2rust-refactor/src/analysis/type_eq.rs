@@ -675,9 +675,9 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
             },
 
             ExprKind::Unary(op, ref a) => match op {
-                UnDeref => self.ltt.unify(rty, self.expr_lty(a).args[0]),
-                UnNot => self.ltt.unify(rty, self.expr_lty(a)),
-                UnNeg => self.ltt.unify(rty, self.expr_lty(a)),
+                UnOp::Deref => self.ltt.unify(rty, self.expr_lty(a).args[0]),
+                UnOp::Not => self.ltt.unify(rty, self.expr_lty(a)),
+                UnOp::Neg => self.ltt.unify(rty, self.expr_lty(a)),
             },
 
             ExprKind::Lit(..) => {} // Nothing to unify
