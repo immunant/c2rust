@@ -4,7 +4,6 @@
 use std::fmt::Debug;
 
 use rustc_hir::def_id::DefId;
-use rustc_middle::hir::map as hir_map;
 use rustc_middle::ty;
 use rustc_ast::*;
 use rustc_ast::visit::{self, AssocCtxt, Visitor};
@@ -50,7 +49,7 @@ pub trait Type: Copy + Debug {
 }
 
 pub struct TypeMapVisitor<'a, 'tcx: 'a, S, F> {
-    hir_map: &'a hir_map::Map<'tcx>,
+    hir_map: &'a HirMap<'tcx>,
     source: S,
     callback: F,
 }
