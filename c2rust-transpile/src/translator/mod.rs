@@ -1132,31 +1132,6 @@ pub(crate) fn unparen(expr: &Expr) -> &Expr {
     }
 }
 
-/// This represents all of the ways a C expression can be used in a C program. Making this
-/// distinction is important for:
-///
-///   * not generating a bunch of unnecessary code, e.g., the expression `p = 1` evaluates `1`,
-///     but when used in a statement like `p = 1;`, we don't care about this, so we can translate
-///     to the Rust `p = 1` (even if it evaluates to the unit type). We get this behaviour by
-///     translating expression statements using `ExprUse::Unused`.
-///
-///   * handling `volatile` properly, e.g., suppose `volatile int n, *p;` and `int x;`.
-///     Then, `x = n` is a volatile read of `n` but `p = &n` is not. We get this behaviour
-///     by translating the argument of `&` using `ExprUse::LValue` and the right hand side of `=`
-///
-///     using `ExprUse::RValue`.
-///
-///   * handling `volatile` properly
-///
-/// See `Translation::convert_expr` for more details.
-#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Ord, Eq)]
-pub enum ExprUse {
-    /// expressions interesting only for their side-effects - we don't care about their values
-    Unused,
-    /// expressions used for their values
-    Used,
-}
-
 /// Declarations can be converted into a normal item, or into a foreign item.
 /// Foreign items are called out specially because we'll combine all of them
 /// into a single extern block at the end of translation.
@@ -3237,12 +3212,16 @@ impl<'c> Translation<'c> {
     /// Translate a C expression into a Rust one, possibly collecting side-effecting statements
     /// to run before the expression.
     ///
-    /// The `use_` argument informs us how the C expression we are translating is used in the C
-    /// program. See `ExprUse` for more information.
+    /// `ctx.is_used()` informs us how the C expression we are translating is used in the C
+    /// program.
     ///
-    /// In the case that `use_` is unused, all side-effecting components will be in the
+    /// In the case that `ctx.is_unused()`, all side-effecting components will be in the
     /// `stmts` field of the output and it is expected that the `val` field of the output will be
     /// ignored.
+    ///
+    /// `override_ty` is the type expected by the surrounding expression context.
+    /// This can be different from the type of the AST node itself
+    /// and in many cases should override it.
     pub fn convert_expr(
         &self,
         mut ctx: ExprContext,
@@ -3316,11 +3295,11 @@ impl<'c> Translation<'c> {
                 Ok(result)
             }
 
-            ConstantExpr(_ty, child, value) => {
+            ConstantExpr(ty, child, value) => {
                 if let Some(constant) = value {
                     self.convert_constant(constant).map(WithStmts::new_val)
                 } else {
-                    self.convert_expr(ctx, child, Some(_ty))
+                    self.convert_expr(ctx, child, Some(ty))
                 }
             }
 
