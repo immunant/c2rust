@@ -57,7 +57,8 @@ transform_modules! {
     format,
     funcs,
     generics,
-    ionize,
+    //TODO: this is disabled because it uses Subst for AssocItem
+    //ionize,
     items,
     // TODO: this is disabled for now because it depends on analysis/runtime
     //lifetime_analysis,
