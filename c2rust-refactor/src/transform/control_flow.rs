@@ -191,8 +191,8 @@ fn is_one_lit(l: &Lit) -> bool {
     }
 }
 
-struct ForRangeDelegate<'hir> {
-    hir_map: HirMap<'hir>,
+struct ForRangeDelegate<'a, 'hir> {
+    hir_map: &'a HirMap<'hir>,
     while_hir_id: HirId,
     parent_hir_id: HirId,
     var_hir_id: HirId,
@@ -201,7 +201,7 @@ struct ForRangeDelegate<'hir> {
     reads_outside_loop: usize,
 }
 
-impl<'hir> ForRangeDelegate<'hir> {
+impl<'a, 'hir> ForRangeDelegate<'a, 'hir> {
     fn node_inside_loop(&self, id: HirId) -> bool {
         let mut cur_id = id;
         loop {
@@ -222,7 +222,7 @@ impl<'hir> ForRangeDelegate<'hir> {
     }
 }
 
-impl<'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'hir> {
+impl<'a, 'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
     fn consume(&mut self, cmt: &PlaceWithHirId<'tcx>, _diag_expr_id: HirId) {
         match cmt.place.base {
             PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {},
