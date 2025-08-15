@@ -226,7 +226,7 @@ pub fn namespace<T>(res: &def::Res<T>) -> Option<Namespace> {
     use rustc_hir::def::DefKind::*;
     match res {
         Res::Def(kind, _) => match kind {
-            Struct | Union | Enum | Variant | Trait | OpaqueTy | TyAlias
+            Mod | Struct | Union | Enum | Variant | Trait | TyAlias
             | ForeignTy | TraitAlias | AssocTy | TyParam => {
                 Some(Namespace::TypeNS)
             }
@@ -234,6 +234,10 @@ pub fn namespace<T>(res: &def::Res<T>) -> Option<Namespace> {
                 Some(Namespace::ValueNS)
             }
             Macro(..) => Some(Namespace::MacroNS),
+
+            ExternCrate | Use | ForeignMod | AnonConst | InlineConst | OpaqueTy
+            | Field | LifetimeParam | GlobalAsm | Impl | Closure
+            | Generator => None,
         }
 
         Res::PrimTy(..) | Res::SelfTy { .. } | Res::ToolMod => Some(Namespace::TypeNS),
