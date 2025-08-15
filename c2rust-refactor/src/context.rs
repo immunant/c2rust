@@ -147,9 +147,8 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         if let Some(def_id) = self.hir_map().opt_local_def_id(hir_id) {
             return Some(self.def_type(def_id.to_def_id()));
         }
-        let parent_node = self.hir_map().get_parent_item(hir_id);
-        let parent = self.hir_map().opt_local_def_id(parent_node)?;
-        if !self.ty_ctxt().has_typeck_results(parent) {
+        let parent = self.hir_map().get_parent_item(hir_id);
+        if !self.ty_ctxt().has_typeck_results(parent.to_def_id()) {
             return None;
         }
         let tables = self.ty_ctxt().typeck(parent);
@@ -169,9 +168,8 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         if let Some(def_id) = self.hir_map().opt_local_def_id(hir_id) {
             return Some(self.def_type(def_id.to_def_id()));
         }
-        let parent_node = self.hir_map().get_parent_item(hir_id);
-        let parent = self.hir_map().opt_local_def_id(parent_node)?;
-        if !self.ty_ctxt().has_typeck_results(parent) {
+        let parent = self.hir_map().get_parent_item(hir_id);
+        if !self.ty_ctxt().has_typeck_results(parent.to_def_id()) {
             return None;
         }
         let tables = self.ty_ctxt().typeck(parent);
