@@ -245,7 +245,7 @@ pub fn matches_filter(
                 return false;
             }
             let def_id = match cx.hir_map().opt_local_def_id_from_node_id(node.id()) {
-                Some(id) => id,
+                Some(ldid) => ldid.to_def_id(),
                 None => return false,
             };
             let path = reflect::reflect_def_path(cx.ty_ctxt(), def_id).1; // TODO: handle qself
